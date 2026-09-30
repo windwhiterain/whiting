@@ -24,6 +24,13 @@ pub const DEPTH_BUFFER: &str = "depth_buffer";
 /// Binding point holding the image a lighting pass renders into.
 pub const COLOR_TARGET: &str = "color_target";
 
+/// Binding point holding the image a post stage renders into.
+///
+/// A pass that reads the colour target cannot also write it, so a post stage writes
+/// somewhere else. That image is the one the frame is read back from, which is what makes
+/// the post stage the end of the pipeline rather than a pass something else follows.
+pub const PRESENT_TARGET: &str = "present_target";
+
 /// Binding point holding the vertex data of every mesh a pass draws.
 pub const VERTICES: &str = "vertices";
 
@@ -62,6 +69,64 @@ pub const LIGHT_SHADOW_TEXEL: &str = "light_shadow_texel";
 /// pure function of the documents and this one number: a frame taken at `t = 2.5` is
 /// reproduced exactly by rendering the same documents at `t = 2.5` again.
 pub const TIME: &str = "time";
+
+/// Field holding the camera a post pass reconstructs its rays from.
+pub const CAMERA: &str = "camera";
+
+/// Field holding the direction the camera looks along.
+pub const FORWARD: &str = "forward";
+
+/// Field holding the axis the camera's right runs along.
+pub const RIGHT: &str = "right";
+
+/// Field holding the axis the camera's up runs along.
+pub const UP: &str = "up";
+
+/// Field holding where the camera is.
+pub const POSITION: &str = "position";
+
+/// Field holding how far off centre the edge of the frame is.
+pub const HALF_EXTENT: &str = "half_extent";
+
+/// Builds the schema of the camera a post pass draws through.
+///
+/// # Invariants
+///
+/// The basis is carried beside the projection rather than derived from it, because a ray
+/// through a pixel is recovered from a matrix by an inverse that a shader cannot compute:
+/// `WGSL` has no matrix inverse. A post pass that has these three axes and the half
+/// extent of the frame reconstructs the ray the camera would have cast, and with it a sky.
+///
+/// The fields sort as `forward`, `half_extent`, `position`, `right`, `up`.
+pub fn camera_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            FORWARD.to_owned(),
+            vector().with_documentation("The direction the camera looks along."),
+        ),
+        (
+            HALF_EXTENT.to_owned(),
+            vector2().with_documentation(
+                "How far off centre the edge of the frame is, horizontally and then \
+                 vertically. A ray through a pixel is forward plus so much of right and up \
+                 as that pixel is off centre.",
+            ),
+        ),
+        (
+            POSITION.to_owned(),
+            vector().with_documentation("Where the camera is, in world space."),
+        ),
+        (
+            RIGHT.to_owned(),
+            vector().with_documentation("The axis the camera's right runs along."),
+        ),
+        (
+            UP.to_owned(),
+            vector().with_documentation("The axis the camera's up runs along."),
+        ),
+    ]))
+    .with_documentation("The camera a post pass draws through, and the rays it casts.")
+}
 
 /// Width in pixels of every shadow map the standard pipeline renders.
 pub const SHADOW_MAP_WIDTH: i64 = 1024;
@@ -224,6 +289,61 @@ pub fn lighting_pass_schema() -> Schema {
             (
                 LIGHT_SHADOW_TEXEL,
                 vector2().with_documentation("The size of one texel of the shadow map."),
+            ),
+            (
+                TIME,
+                time().with_documentation("Seconds since the scene started."),
+            ),
+        ],
+    )
+}
+
+/// Builds the interface of a post pass, which draws over the whole frame.
+///
+/// # Invariants
+///
+/// A post pass is handed the shaded image and the depth that produced it, and writes a
+/// third image. It has no projection and no points of its own beyond the three corners of
+/// a fullscreen triangle, so its uniform is the time and nothing else: what a post stage
+/// reads is the frame, not the scene.
+///
+/// A post pass declares no depth of its own. It has to be able to sample the depth buffer
+/// it is drawn over, and a pass that both tested against that buffer and sampled it would
+/// be reading and writing one texture at once.
+pub fn post_pass_schema() -> Schema {
+    interface(
+        "A post pass, which draws over the whole frame.",
+        vec![
+            (
+                VERTICES,
+                buffer_binding_schema()
+                    .with_documentation("The fullscreen triangle this pass draws."),
+            ),
+            (
+                COLOR_TARGET,
+                texture_binding_schema().with_documentation("The shaded image this pass reads."),
+            ),
+            (
+                DEPTH_BUFFER,
+                texture_binding_schema()
+                    .with_documentation("The depth that produced the shaded image."),
+            ),
+            (
+                PRESENT_TARGET,
+                texture_binding_schema()
+                    .with_documentation("The image this pass renders into, and the frame."),
+            ),
+        ],
+        vec![
+            (
+                CAMERA,
+                camera_schema().with_documentation(
+                    "The camera this pass draws through, which is what a sky is built from.",
+                ),
+            ),
+            (
+                PROJECTION,
+                projection_schema().with_documentation("The camera's own projection."),
             ),
             (
                 TIME,

@@ -88,6 +88,16 @@ impl<'document> PassView<'document> {
         self.text(SHADER)
     }
 
+    /// Borrows a field of the pass that may be absent.
+    ///
+    /// This is how an optional field is read: the field belongs to the variant's struct, so
+    /// it is borrowed from the variant rather than from the pass, and a field that is not
+    /// there is `None` rather than an error. A field the schema requires is still read with
+    /// [`PassView::text`] or [`PassView::list`], which report a missing one.
+    pub fn optional(&self, field: &'static str) -> Option<&'document Value> {
+        self.document.at(&self.path().key(field))
+    }
+
     /// Returns every binder declaration of the pass, keyed by binding point.
     pub fn binders(&self) -> Result<Vec<Declaration<'document>>, GraphicsError> {
         let path = self.path().key(BINDERS);

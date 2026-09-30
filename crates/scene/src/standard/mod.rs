@@ -211,15 +211,18 @@ mod scene_schema;
 
 pub use camera::{DEFAULT_FIELD_OF_VIEW, Projection, projection_value};
 pub use compiler::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema};
-pub use emit::{COLOR_TARGET_ENTRY, DEPTH_BUFFER_ENTRY, Emitted, Stage, emit, shadow_map_entry};
+pub use emit::{
+    COLOR_TARGET_ENTRY, DEPTH_BUFFER_ENTRY, Emitted, FULLSCREEN_INSTANCE, FULLSCREEN_MESH,
+    PRESENT_TARGET_ENTRY, Stage, emit, shadow_map_entry,
+};
 pub use example::example_standard_scene;
 pub use math::{Bounds, apply as project_point, transform_matrix};
 pub use pass_schemas::{
     COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
     DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, LIGHT_PROJECTION,
-    LIGHT_SHADOW_TEXEL, PROJECTION, SHADOW_MAP, SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT,
-    SHADOW_MAP_WIDTH, TIME, VERTICES, depthing_pass_schema, lighting_pass_schema,
-    projection_schema, shadowing_pass_schema,
+    LIGHT_SHADOW_TEXEL, PRESENT_TARGET, PROJECTION, SHADOW_MAP, SHADOW_MAP_FORMAT,
+    SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, TIME, VERTICES, depthing_pass_schema,
+    lighting_pass_schema, post_pass_schema, projection_schema, shadowing_pass_schema,
 };
 pub use scene_schema::{
     CAMERA, CUSTOM_DATA, CUSTOM_SCHEMA, EYE, FIELD_OF_VIEW, INSTANCE_SCHEMA, LABEL, MATERIAL, MESH,

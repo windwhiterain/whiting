@@ -120,6 +120,21 @@ impl Bounds {
             ],
         }
     }
+
+    /// Returns half the length of the box's diagonal, which bounds how far any corner of
+    /// it is from its centre.
+    ///
+    /// This is what a projection needs for its depth planes when the camera crops in: the
+    /// planes have to bracket the whole box, because a box that is cropped is still a box
+    /// whose near half is in front of the frame.
+    pub fn half_diagonal(&self) -> f64 {
+        let extent = [
+            (self.maximum[0] - self.minimum[0]).abs(),
+            (self.maximum[1] - self.minimum[1]).abs(),
+            (self.maximum[2] - self.minimum[2]).abs(),
+        ];
+        0.5 * (extent[0] * extent[0] + extent[1] * extent[1] + extent[2] * extent[2]).sqrt()
+    }
 }
 
 /// Returns an orthographic projection of `box` looked at from `eye` towards `target`.

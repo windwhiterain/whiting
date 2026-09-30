@@ -57,15 +57,34 @@ pub struct Camera {
     pub(crate) kind: Kind,
     pub(crate) padding: f64,
     pub(crate) aspect: f64,
-    pub(crate) radius: f64,
+    pub(crate) bounds: Bounds,
 }
 
 /// A projection, and the eye it was made from.
+///
+/// # Invariants
+///
+/// The basis is carried alongside the matrix because a stage that draws over the frame
+/// has to reconstruct a ray through each pixel, and reconstructing one from a matrix needs
+/// an inverse that a shader cannot compute — `WGSL` has no matrix inverse. Carrying the
+/// three axes the view was built from turns that into arithmetic: a ray is the forward axis
+/// plus so much of the right and up axes as the pixel is off centre.
 pub struct Projection {
     /// The matrix world space is drawn through.
     pub matrix: Matrix,
     /// Where the projection was made from, which may not be where the camera asked to be.
     pub eye: [f64; 3],
+    /// The direction the camera looks along.
+    pub forward: [f64; 3],
+    /// The axis the camera's right runs along.
+    pub right: [f64; 3],
+    /// The axis the camera's up runs along.
+    pub up: [f64; 3],
+    /// How far off centre the edge of the frame is, horizontally and then vertically.
+    ///
+    /// A ray through a pixel is `forward + right * x * half_extent.0 + up * y *
+    /// half_extent.1`, for a pixel whose centre is at `x` and `y` in minus one to one.
+    pub half_extent: [f64; 2],
 }
 
 impl Camera {
@@ -116,7 +135,7 @@ impl Camera {
                 .and_then(Value::as_float)
                 .unwrap_or(FRAMING_PADDING),
             aspect,
-            radius: bounds.largest_half_width(),
+            bounds: *bounds,
         })
     }
 
@@ -135,13 +154,56 @@ impl Camera {
             kind: Kind::Orthographic,
             padding: FRAMING_PADDING,
             aspect,
-            radius: bounds.largest_half_width(),
+            bounds: *bounds,
         }
     }
 
+    /// Returns the nearest distance the eye can sit at and still hold the whole box.
+    ///
+    /// # Invariants
+    ///
+    /// A corner is inside the frame when its offset from the axis is no larger than the
+    /// frame is wide **at that corner's own depth**, and depth is measured from the eye.
+    /// Rearranging gives the bound below: the eye has to be at least as far as the
+    /// corner's own distance along the view plus the distance the frame's width covers.
+    /// The bound is taken over all eight corners because the one that needs the most room
+    /// is whichever is nearest the eye and furthest off axis, and which corner that is
+    /// depends on where the eye is.
+    fn fitting_distance(
+        &self,
+        forward: [f64; 3],
+        right: [f64; 3],
+        up: [f64; 3],
+        vertical_half: f64,
+    ) -> f64 {
+        let horizontal_half = (vertical_half * self.aspect).max(1e-6);
+        let mut needed: f64 = 0.0;
+        for corner in corners(&self.bounds) {
+            let offset = subtract(corner, self.target);
+            let along = dot(offset, forward);
+            needed = needed.max(dot(offset, right).abs() / horizontal_half + along);
+            needed = needed.max(dot(offset, up).abs() / vertical_half + along);
+        }
+        needed.max(1e-3)
+    }
+
     /// Returns the projection the camera draws the scene through.
+    ///
+    /// # Invariants
+    ///
+    /// The basis returned is the one `look_at` built the view from and the half extent is
+    /// that same view's field of view, so a ray reconstructed from the two is the ray the
+    /// matrix would have produced. That pairing is the only test that matters: a basis from
+    /// one camera and a matrix from another is a sky drawn in the wrong place.
     pub fn projection(&self) -> Projection {
         let direction = normalize(subtract(self.eye, self.target));
+        // The first three columns of a view matrix are its right, up and back axes, in
+        // that order, and the back axis is the direction back towards the eye.
+        let basis = |view: &Matrix| {
+            let column = |index: usize| [view[index], view[4 + index], view[8 + index]];
+            (column(0), column(1), column(2))
+        };
+        let forward = scale(direction, -1.0);
         match self.kind {
             // A parallel projection has no distance to fit: the box lands on the frame
             // wherever the eye is, so the eye sets the direction and nothing else. The
@@ -153,40 +215,111 @@ impl Camera {
                     subtract(self.eye, self.target),
                 )
                 .sqrt();
-                let half_extent = 2.0 * self.radius * self.padding;
-                let depth = distance + 2.0 * self.radius;
+                let half_extent = (2.0 * self.bounds.largest_half_width() * self.padding).max(1e-3);
+                let depth = distance + 2.0 * self.bounds.largest_half_width();
+                let view = look_at(self.eye, self.target, self.up);
+                let (right, up, _) = basis(&view);
                 Projection {
-                    matrix: multiply(
-                        &orthographic(half_extent.max(1e-3), depth / 4.0, depth),
-                        &look_at(self.eye, self.target, self.up),
-                    ),
+                    matrix: multiply(&orthographic(half_extent, depth / 4.0, depth), &view),
                     eye: self.eye,
+                    forward,
+                    right,
+                    up,
+                    half_extent: [half_extent, half_extent],
                 }
             }
             Kind::Perspective => {
-                // The eye is pushed back until a sphere around the scene fills the field of
-                // view, because a scene that overflows the frame is a scene that is
-                // cropped. The eye the author wrote therefore sets the direction of the
-                // view and not its distance, and the eye the pass carries is the one the
-                // projection was actually made from.
-                let radius = (self.radius * self.padding).max(1e-3);
-                let distance = (radius / (self.field_of_view / 2.0).tan().max(1e-3)).max(1e-3);
+                // A perspective projection maps depth with a divide, so how far back the
+                // eye has to be is not one number but a bound per corner of the box: a
+                // corner is inside the frame when it is no further off the axis than the
+                // frame is wide at that corner's own depth.
+                //
+                // Fitting a sphere around the box instead — the obvious thing — puts the
+                // eye much further out than any corner needs, and for a wide flat scene
+                // much further out than the scene is deep. A heightfield fills a box whose
+                // height is a tenth of its width; a sphere around that box is as wide as
+                // the box and as tall as its half width, and fitting it puts the camera
+                // far enough away that the field's own edges fall inside the frame.
+                let vertical_half = (self.field_of_view / 2.0)
+                    .clamp(1e-3, std::f64::consts::FRAC_PI_2 - 1e-3)
+                    .tan();
+                let view = look_at(self.eye, self.target, self.up);
+                let (right, up, _) = basis(&view);
+                let forward = scale(direction, -1.0);
+                let distance = (self.fitting_distance(forward, right, up, vertical_half)
+                    * self.padding)
+                    .max(1e-3);
                 let eye = add(self.target, scale(direction, distance));
+                let view = look_at(eye, self.target, self.up);
+                let (right, up, _) = basis(&view);
+                // The depth planes bracket the whole scene rather than the part of it the
+                // frame holds. A camera that crops in — a `padding` below one — is
+                // closer to the scene than the scene is deep, and planes drawn at the
+                // frame's own depth would cut the near half of it away.
+                let reach = self.bounds.half_diagonal();
                 Projection {
                     matrix: multiply(
                         &perspective(
                             self.field_of_view,
                             self.aspect,
-                            (distance - radius).max(1e-4),
-                            distance + radius,
+                            (distance - reach).max(1e-4),
+                            distance + reach,
                         ),
-                        &look_at(eye, self.target, self.up),
+                        &view,
                     ),
                     eye,
+                    forward,
+                    right,
+                    up,
+                    // The vertical half angle of the view, and the horizontal one widened
+                    // by the aspect: a wide frame is wider rather than cropped.
+                    half_extent: [vertical_half * self.aspect, vertical_half],
                 }
             }
         }
     }
+}
+
+/// Returns the eight corners of a box.
+fn corners(box_of: &Bounds) -> [[f64; 3]; 8] {
+    let mut found = [[0.0; 3]; 8];
+    for (index, corner) in found.iter_mut().enumerate() {
+        *corner = [
+            if index & 1 == 0 {
+                box_of.minimum[0]
+            } else {
+                box_of.maximum[0]
+            },
+            if index & 2 == 0 {
+                box_of.minimum[1]
+            } else {
+                box_of.maximum[1]
+            },
+            if index & 4 == 0 {
+                box_of.minimum[2]
+            } else {
+                box_of.maximum[2]
+            },
+        ];
+    }
+    found
+}
+
+/// Wraps a matrix and the eye it was made from as the value a pass carries.
+///
+/// This is what a pass that is not drawn through a camera needs: a light's projection is
+/// a matrix and an eye, and has no basis because nothing reconstructs rays through it.
+pub fn matrix_projection(matrix: Matrix, eye: [f64; 3]) -> Value {
+    Value::structure([
+        (
+            "view_projection".to_owned(),
+            Value::List(matrix.into_iter().map(Value::Float).collect()),
+        ),
+        (
+            "position".to_owned(),
+            Value::List(eye.into_iter().map(Value::Float).collect()),
+        ),
+    ])
 }
 
 /// Wraps a projection as the value a pass carries.

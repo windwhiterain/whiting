@@ -25,10 +25,12 @@
 //! that does not match its layout, and a draw with no buffer all arrive as errors with
 //! the backend's own words in them.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use definition::Value;
 use graphics::{Binder, PassKind, passes};
+use wgpu::naga;
 use wgpu::util::DeviceExt;
 
 use crate::render::{Frame, RenderError, Renderer};
@@ -45,6 +47,26 @@ pub struct WgpuRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     errors: Arc<Mutex<Vec<String>>>,
+    /// Shader modules, keyed by their source.
+    ///
+    /// # Invariants
+    ///
+    /// A module is keyed by the text it was built from, so two passes naming the same
+    /// shader share one module however differently they are labelled, and a scene that
+    /// has not changed a shader never rebuilds it. Without this, a frame compiles every
+    /// shader it runs — and a range of frames that changes only a number recompiles the
+    /// lot on every one of them, which is most of the cost of animating a scene whose
+    /// geometry is heavy.
+    ///
+    /// The map grows with the number of *distinct* shaders, not with the number of frames,
+    /// because a scene is a document: it carries the same shader text however many times
+    /// it is drawn.
+    modules: Mutex<HashMap<String, Arc<wgpu::ShaderModule>>>,
+    /// The intermediate form of a shader, keyed by its source, for the uniform layout
+    /// check. The same argument as [`WgpuRenderer::modules`]: the check parses a shader on
+    /// every pass of every frame, and a shader that has not changed parses to the same
+    /// thing every time.
+    parsed: Mutex<HashMap<String, Arc<naga::Module>>>,
 }
 
 impl WgpuRenderer {
@@ -89,6 +111,8 @@ impl WgpuRenderer {
             device,
             queue,
             errors,
+            modules: Mutex::new(HashMap::new()),
+            parsed: Mutex::new(HashMap::new()),
         })
     }
 
@@ -185,20 +209,62 @@ impl WgpuRenderer {
 
     /// Creates a shader module from a bound shader document.
     ///
-    /// The module is labelled with the pass that needs it, because there is no filename to
-    /// name it by and the pass is what a backend diagnostic is about.
+    /// The module is labelled with the pass that first needed it, because there is no
+    /// filename to name it by and the pass is what a backend diagnostic is about. A
+    /// module already built from the same text is shared rather than rebuilt, which is
+    /// what keeps a frame that changes nothing from paying to compile its shaders again.
     pub(super) fn shader_module(
         &self,
         binder: &Binder<'_>,
         label: &str,
-    ) -> Result<wgpu::ShaderModule, RenderError> {
-        let source = self.shader_source(binder)?;
-        Ok(self
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(label),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            }))
+    ) -> Result<Arc<wgpu::ShaderModule>, RenderError> {
+        let source = self.shader_source(binder)?.to_owned();
+        if let Some(found) = self
+            .modules
+            .lock()
+            .ok()
+            .and_then(|modules| modules.get(&source).cloned())
+        {
+            return Ok(found);
+        }
+        let module = Arc::new(
+            self.device
+                .create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some(label),
+                    source: wgpu::ShaderSource::Wgsl(source.clone().into()),
+                }),
+        );
+        if let Ok(mut modules) = self.modules.lock() {
+            modules.insert(source, Arc::clone(&module));
+        }
+        Ok(module)
+    }
+
+    /// Returns the intermediate form of a shader, parsing it the first time only.
+    ///
+    /// `label` names the pass in a parse failure, because a bound shader entry has no
+    /// name of its own and the source of a shader is a wall of text that a reader cannot
+    /// find a pass in.
+    pub(super) fn parsed_module(
+        &self,
+        source: &str,
+        label: &str,
+    ) -> Result<Arc<naga::Module>, RenderError> {
+        if let Some(found) = self
+            .parsed
+            .lock()
+            .ok()
+            .and_then(|parsed| parsed.get(source).cloned())
+        {
+            return Ok(found);
+        }
+        let module = Arc::new(naga::front::wgsl::parse_str(source).map_err(|error| {
+            RenderError::Backend(format!("`{label}` does not parse as wgsl: {error}"))
+        })?);
+        if let Ok(mut parsed) = self.parsed.lock() {
+            parsed.insert(source.to_owned(), Arc::clone(&module));
+        }
+        Ok(module)
     }
 
     /// Executes every pass, in order, and reads back the colour target of the last one.

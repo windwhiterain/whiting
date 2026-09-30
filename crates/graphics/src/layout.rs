@@ -156,7 +156,7 @@ fn split(components: usize) -> Vec<usize> {
 }
 
 /// Returns how many float components a field contributes to a vertex.
-fn components(name: &str, field: &Schema) -> Result<usize, LayoutError> {
+pub fn components(name: &str, field: &Schema) -> Result<usize, LayoutError> {
     match &field.kind {
         SchemaKind::Float | SchemaKind::Int => Ok(1),
         SchemaKind::List { .. } => declared_components(name, field),

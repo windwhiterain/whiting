@@ -147,6 +147,14 @@ impl Value {
         }
     }
 
+    /// Returns the inner value of a boolean, otherwise returns `None`.
+    pub const fn as_bool(&self) -> Option<bool> {
+        match self {
+            Self::Bool(flag) => Some(*flag),
+            _ => None,
+        }
+    }
+
     /// Returns the inner value of an integer, otherwise returns `None`.
     pub const fn as_int(&self) -> Option<i64> {
         match self {

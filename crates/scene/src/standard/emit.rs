@@ -33,19 +33,78 @@ use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{derived_instance_schema, verify_pass_inputs};
 
 use crate::CompileError;
-use crate::standard::camera::{Camera, Projection, projection_value};
+use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
 use crate::standard::math::{Bounds, Matrix, apply, projection_of, transform_matrix};
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
-    COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
-    DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, LIGHT_PROJECTION,
-    LIGHT_SHADOW_TEXEL, PROJECTION, SHADOW_MAP, SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT,
-    SHADOW_MAP_WIDTH, TIME, VERTICES,
+    CAMERA, COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
+    DEPTH_HEIGHT, DEPTH_WIDTH, FORWARD, HALF_EXTENT, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION,
+    LIGHT_PROJECTION, LIGHT_SHADOW_TEXEL, POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP,
+    SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, TIME, UP, VERTICES,
 };
 use crate::standard::scene_schema;
+use graphics::layout::components;
+use graphics::pass::{BLEND, DEPTH, DEPTH_COMPARE, DEPTH_WRITE};
 
 /// Field the model matrix of an instance row is carried under.
 const MODEL: &str = "model";
+
+/// Field of a point schema that says where the point is.
+///
+/// A point schema is free to declare whatever a mesh needs, so a mesh that carries a
+/// normal and a texcoord as well as a position names the position, and the emitter reads
+/// it by name rather than by position in the field order.
+const POSITION_FIELD: &str = "position";
+
+/// Field of an instance schema that says how a normal is carried through the transform.
+const NORMAL_MATRIX: &str = "normal_matrix";
+
+/// Returns whether a row schema declares a named field.
+fn declares(schema: &Schema, name: &str) -> bool {
+    matches!(&schema.kind, SchemaKind::Struct { fields } if fields.contains_key(name))
+}
+
+/// Returns the inverse transpose of a model matrix, as a column major four by four.
+///
+/// # Invariants
+///
+/// A model is an affine transform: a three by three linear part and a translation. The
+/// translation has no effect on a normal, so only the linear part is inverted and the
+/// result is written back as an affine matrix — a shader indexes it the same way it
+/// indexes the model, and a three by three in sixteen floats would leave it guessing where
+/// the padding was.
+///
+/// A model whose linear part is singular — a scale of zero on some axis — has no inverse,
+/// and the normal matrix falls back to the model itself. A point on such an instance has
+/// been flattened onto a plane or a line, so there is no normal to be right about.
+fn normal_matrix(model: &Matrix) -> Matrix {
+    // The three columns of the linear part, as rows of the matrix to invert.
+    let a = [model[0], model[4], model[8]];
+    let b = [model[1], model[5], model[9]];
+    let c = [model[2], model[6], model[10]];
+    let determinant = a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
+        + a[2] * (b[0] * c[1] - b[1] * c[0]);
+    if determinant.abs() < 1e-12 {
+        return *model;
+    }
+    let reciprocal = 1.0 / determinant;
+    // The inverse, by the adjugate, and transposed on the way out.
+    let inverse = [
+        (b[1] * c[2] - b[2] * c[1]) * reciprocal,
+        (a[2] * c[1] - a[1] * c[2]) * reciprocal,
+        (a[1] * b[2] - a[2] * b[1]) * reciprocal,
+        (b[2] * c[0] - b[0] * c[2]) * reciprocal,
+        (a[0] * c[2] - a[2] * c[0]) * reciprocal,
+        (a[2] * b[0] - a[0] * b[2]) * reciprocal,
+        (b[0] * c[1] - b[1] * c[0]) * reciprocal,
+        (a[1] * c[0] - a[0] * c[1]) * reciprocal,
+        (a[0] * b[1] - a[1] * b[0]) * reciprocal,
+    ];
+    [
+        inverse[0], inverse[3], inverse[6], 0.0, inverse[1], inverse[4], inverse[7], 0.0,
+        inverse[2], inverse[5], inverse[8], 0.0, 0.0, 0.0, 0.0, 1.0,
+    ]
+}
 
 /// How much wider than its box a projection is fitted.
 pub const FRAMING_PADDING: f64 = 1.1;
@@ -56,6 +115,19 @@ pub const DEPTH_BUFFER_ENTRY: &str = "depth_buffer";
 /// Name of the instance entry holding the image every lighting pass writes.
 pub const COLOR_TARGET_ENTRY: &str = "color_target";
 
+/// Name of the instance entry holding the image a post stage writes.
+///
+/// A post stage reads the shaded image and writes this one, because a pass that both reads
+/// and writes one texture is a pass reading and writing the same pixels. The frame comes
+/// back from here, so this is the last thing a scene draws into.
+pub const PRESENT_TARGET_ENTRY: &str = "present_target";
+
+/// Label of the mesh covering the frame, which a post stage draws.
+pub const FULLSCREEN_MESH: &str = "fullscreen";
+
+/// Label of the instance covering the frame.
+pub const FULLSCREEN_INSTANCE: &str = "fullscreen";
+
 /// Which stage of the pipeline a material belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
@@ -65,6 +137,8 @@ pub enum Stage {
     Depthing,
     /// Shades the scene.
     Lighting,
+    /// Draws over the whole frame once the scene is shaded.
+    Post,
 }
 
 impl Stage {
@@ -74,6 +148,7 @@ impl Stage {
             Self::Shadowing => "ShadowingShader",
             Self::Depthing => "DepthShader",
             Self::Lighting => "LightingShader",
+            Self::Post => "ScreenShader",
         }
     }
 
@@ -83,6 +158,7 @@ impl Stage {
             Self::Shadowing => "shadowing",
             Self::Depthing => "depthing",
             Self::Lighting => "lighting",
+            Self::Post => "post",
         }
     }
 
@@ -92,6 +168,7 @@ impl Stage {
             Self::Shadowing => "shadow",
             Self::Depthing => "depth",
             Self::Lighting => "lighting",
+            Self::Post => "post",
         }
     }
 }
@@ -205,7 +282,8 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     let bounds = bounds_of_instances(&meshes, &instances);
     let time = read_time(scene)?;
     let camera = Camera::read(scene, &bounds, COLOR_WIDTH as f64 / COLOR_HEIGHT as f64)?;
-    let camera = projection_value(&camera.projection());
+    let camera_basis = camera.projection();
+    let camera = projection_value(&camera_basis);
 
     add_targets(&mut instance);
     for light in &lights {
@@ -249,6 +327,13 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
             insert_entry(&mut instance, group.entry(), group.payload())?;
             passes.push(lighting_pass(&group, light, &camera, &bounds, time));
         }
+    }
+    // The post stage, if the scene declares one, is the last pass: everything it reads was
+    // written above it, and the frame is read back from what it writes.
+    if let Some(shader) = shaders.iter().find(|shader| shader.stage == Stage::Post) {
+        let (pass, entry, vertex_entry) = post_pass(shader, &camera_basis, time)?;
+        insert_entry(&mut instance, vertex_entry, entry)?;
+        passes.push(pass);
     }
 
     // An instance holds its payloads under a field rather than at its root, so that it can name
@@ -497,6 +582,23 @@ fn read_instance(
         MODEL.to_owned(),
         Value::List(model.iter().copied().map(Value::Float).collect()),
     )];
+    // A shader that declares a normal matrix is asking for the one that carries a normal
+    // through this transform, and the emitter is the only place that knows the transform.
+    // Filling it here rather than in a shader is what makes an unevenly scaled instance
+    // lit correctly: a normal transformed by the model itself is wrong by exactly the
+    // amount the scale is uneven by.
+    if declares(&row_schema, NORMAL_MATRIX) {
+        fields.push((
+            NORMAL_MATRIX.to_owned(),
+            Value::List(
+                normal_matrix(&model)
+                    .iter()
+                    .copied()
+                    .map(Value::Float)
+                    .collect(),
+            ),
+        ));
+    }
     let Some(custom_fields) = custom_data.as_field_map() else {
         return Err(malformed(&custom_path, "the custom data as a struct"));
     };
@@ -684,14 +786,8 @@ struct ShaderRead {
 
 /// Reads a shader document and every schema it declares.
 fn read_shader(shader: &Value, path: &Path) -> Result<ShaderRead, CompileError> {
-    if shader.variant_tag() == Some("ScreenShader") {
-        return Err(CompileError::ScreenShader {
-            path: path.clone(),
-            reason: "a standard material is drawn by a mesh shader, in one of the three stages"
-                .to_owned(),
-        });
-    }
     let stage = match shader.variant_tag() {
+        Some("ScreenShader") => Stage::Post,
         Some("ShadowingShader") => Stage::Shadowing,
         Some("DepthShader") => Stage::Depthing,
         Some("LightingShader") => Stage::Lighting,
@@ -701,7 +797,7 @@ fn read_shader(shader: &Value, path: &Path) -> Result<ShaderRead, CompileError> 
                 stage: other.to_owned(),
             });
         }
-        None => return Err(malformed(path, "a mesh shader")),
+        None => return Err(malformed(path, "a shader")),
     };
 
     let Some(fields) = shader.variant_fields() else {
@@ -715,13 +811,28 @@ fn read_shader(shader: &Value, path: &Path) -> Result<ShaderRead, CompileError> 
         Ok(Rc::new(read_schema(field, &field_path)?))
     };
 
+    // A screen shader draws over the frame rather than over a mesh, so it reads neither
+    // points nor an instance row. Both are declared as the unit schema, which is a schema
+    // nothing satisfies, and neither is ever packed: the post pass draws a mesh of its own
+    // with no instance data on it. Declaring a real interface here would be a claim the
+    // pipeline does not keep.
+    let nothing = || Rc::new(Schema::new(SchemaKind::Unit));
+    let (point_schema, instance_schema) = if stage == Stage::Post {
+        (nothing(), nothing())
+    } else {
+        (
+            read(scene_schema::POINT_SCHEMA)?,
+            read(scene_schema::INSTANCE_SCHEMA)?,
+        )
+    };
+
     Ok(ShaderRead {
         stage,
         label: text(shader, path, scene_schema::LABEL)?.to_owned(),
         source: text(shader, path, scene_schema::SOURCE)?.to_owned(),
         pass_schema: read(scene_schema::PASS_SCHEMA)?,
-        instance_schema: read(scene_schema::INSTANCE_SCHEMA)?,
-        point_schema: read(scene_schema::POINT_SCHEMA_FIELD)?,
+        instance_schema,
+        point_schema,
         custom_schema: read(scene_schema::CUSTOM_SCHEMA)?,
     })
 }
@@ -789,6 +900,35 @@ fn derive_instance_schema(graphics: &Value) -> Result<Value, CompileError> {
         .map_err(emission)
 }
 
+/// Wraps a camera basis as the value a post stage reads its rays from.
+///
+/// # Invariants
+///
+/// The basis is the one the projection's matrix was built from, so a ray reconstructed from
+/// these axes is the ray that matrix would have cast. A post stage that drew a sky from a
+/// basis belonging to a different camera would place it correctly for one frame and
+/// incorrectly for every other.
+fn camera_value(projection: &Projection) -> Value {
+    let triple =
+        |components: [f64; 3]| Value::List(components.into_iter().map(Value::Float).collect());
+    Value::structure([
+        (FORWARD.to_owned(), triple(projection.forward)),
+        (
+            HALF_EXTENT.to_owned(),
+            Value::List(
+                projection
+                    .half_extent
+                    .into_iter()
+                    .map(Value::Float)
+                    .collect(),
+            ),
+        ),
+        (POSITION.to_owned(), triple(projection.eye)),
+        (RIGHT.to_owned(), triple(projection.right)),
+        (UP.to_owned(), triple(projection.up)),
+    ])
+}
+
 /// Adds the depth buffer and the shaded image to the instance.
 fn add_targets(instance: &mut BTreeMap<String, Value>) {
     instance.insert(
@@ -799,6 +939,93 @@ fn add_targets(instance: &mut BTreeMap<String, Value>) {
         COLOR_TARGET_ENTRY.to_owned(),
         texture(COLOR_WIDTH, COLOR_HEIGHT, COLOR_FORMAT),
     );
+    instance.insert(
+        PRESENT_TARGET_ENTRY.to_owned(),
+        texture(COLOR_WIDTH, COLOR_HEIGHT, COLOR_FORMAT),
+    );
+}
+
+/// Builds the three points that cover the frame.
+///
+/// # Invariants
+///
+/// The three corners are given in clip space directly, so a post stage's vertex stage
+/// passes them through rather than projecting them. The mesh exists only so that a post
+/// stage is an ordinary pass with an ordinary vertex buffer: there is no special case in
+/// the renderer for drawing over the frame, and a post stage that wanted a different
+/// shape would author a different mesh.
+fn fullscreen_points() -> Vec<Value> {
+    [(-1.0, -1.0), (3.0, -1.0), (-1.0, 3.0)]
+        .into_iter()
+        .map(|(x, y)| {
+            Value::structure([(
+                "position".to_owned(),
+                Value::List([x, y, 0.0].into_iter().map(Value::Float).collect()),
+            )])
+        })
+        .collect()
+}
+
+/// Builds the point schema the fullscreen mesh declares, which is a position alone.
+fn fullscreen_point_schema() -> Rc<Schema> {
+    Rc::new(Schema::new(SchemaKind::structure([(
+        "position".to_owned(),
+        graphics::layout::components_schema(3),
+    )])))
+}
+
+/// Builds the pass a post stage draws with, when the scene declares one.
+fn post_pass(
+    scene_shader: &ShaderRead,
+    projection: &Projection,
+    time: f64,
+) -> Result<(Value, Value, String), CompileError> {
+    // The vertex buffer is packed once and entered into the instance, the same way a
+    // mesh's is, because a post stage draws a mesh like any other pass does.
+    let points = fullscreen_points();
+    let point_schema = fullscreen_point_schema();
+    let bytes = pack_points(point_schema.as_ref(), &points, &Path::root().key("points"))?;
+    let vertex_entry = format!("{FULLSCREEN_MESH}_vertices");
+    let size_bytes = bytes.len() as i64;
+    let entry = buffer_payload(bytes, point_schema.to_value(), "vertex", "Triangles");
+
+    let uniform = Value::structure([
+        (CAMERA.to_owned(), camera_value(projection)),
+        (PROJECTION.to_owned(), projection_value(projection)),
+        (TIME.to_owned(), Value::Float(time)),
+    ]);
+    let pass = rasterize(
+        &format!("post/{}", scene_shader.label),
+        &scene_shader.label,
+        uniform,
+        [
+            (
+                VERTICES.to_owned(),
+                buffer_binding(&vertex_entry, size_bytes),
+            ),
+            (
+                COLOR_TARGET.to_owned(),
+                texture_binding(COLOR_TARGET_ENTRY, COLOR_WIDTH, COLOR_HEIGHT, COLOR_FORMAT),
+            ),
+            (
+                DEPTH_BUFFER.to_owned(),
+                texture_binding(DEPTH_BUFFER_ENTRY, DEPTH_WIDTH, DEPTH_HEIGHT, DEPTH_FORMAT),
+            ),
+            (
+                PRESENT_TARGET.to_owned(),
+                texture_binding(
+                    PRESENT_TARGET_ENTRY,
+                    COLOR_WIDTH,
+                    COLOR_HEIGHT,
+                    COLOR_FORMAT,
+                ),
+            ),
+        ],
+        vec![PRESENT_TARGET],
+        COLOUR_CLEAR,
+        PipelineStateFields::default_state(),
+    );
+    Ok((pass, entry, vertex_entry))
 }
 
 /// Returns the instance entry name holding one light's shadow map.
@@ -811,12 +1038,15 @@ fn shadowing_pass(group: &Group<'_>, light: &LightRead, bounds: &Bounds, time: f
     // The shadow map looks down the light's direction, at a box centred on the scene and
     // as wide as the light says it shines. The same projection is handed to the lighting
     // pass as `light_projection`, because that is how a surface is found in the map.
-    let light_projection = light_projection(light, bounds);
+    let (light_matrix, light_eye) = light_projection(light, bounds);
     rasterize(
         &group.label(),
         group.shader,
         Value::structure([
-            (PROJECTION.to_owned(), projection_value(&light_projection)),
+            (
+                PROJECTION.to_owned(),
+                matrix_projection(light_matrix, light_eye),
+            ),
             (TIME.to_owned(), Value::Float(time)),
         ]),
         mesh_bindings(group).chain([(
@@ -830,6 +1060,7 @@ fn shadowing_pass(group: &Group<'_>, light: &LightRead, bounds: &Bounds, time: f
         )]),
         vec![SHADOW_MAP],
         DEPTH_CLEAR,
+        PipelineStateFields::default_state(),
     )
 }
 
@@ -848,6 +1079,7 @@ fn depthing_pass(group: &Group<'_>, camera: &Value, time: f64) -> Value {
         )]),
         vec![DEPTH_BUFFER],
         DEPTH_CLEAR,
+        PipelineStateFields::default_state(),
     )
 }
 
@@ -884,9 +1116,8 @@ fn lighting_pass(
                 LIGHT_PROJECTION.to_owned(),
                 Value::List(
                     light_projection(light, bounds)
-                        .matrix
-                        .iter()
-                        .copied()
+                        .0
+                        .into_iter()
                         .map(Value::Float)
                         .collect(),
                 ),
@@ -926,6 +1157,7 @@ fn lighting_pass(
         ]),
         vec![COLOR_TARGET],
         COLOUR_CLEAR,
+        lighting_state(),
     )
 }
 
@@ -938,17 +1170,29 @@ fn lighting_pass(
 /// functions that each built "the light's projection" would agree until one of them was
 /// edited, and until then a shadow would be sampled at the wrong place for every surface
 /// in the scene.
-fn light_projection(light: &LightRead, bounds: &Bounds) -> Projection {
+/// Returns the projection a light looks at the scene through, and the eye it is made from.
+///
+/// # Invariants
+///
+/// The shadowing pass draws through this projection and the lighting pass is handed the
+/// same matrix as `light_projection`, so the two are computed here once. A pair of
+/// functions that each built "the light's projection" would agree until one of them was
+/// edited, and until then a shadow would be sampled at the wrong place for every surface
+/// in the scene.
+///
+/// A light gets a matrix and an eye and nothing else: it is not a camera, and nothing
+/// draws through it as though it were.
+fn light_projection(light: &LightRead, bounds: &Bounds) -> (Matrix, [f64; 3]) {
     let centre = bounds.centre();
-    Projection {
-        matrix: projection_of(
+    (
+        projection_of(
             &Bounds::around(centre, light.shadow_extent),
             light.position,
             centre,
             FRAMING_PADDING,
         ),
-        eye: light.position,
-    }
+        light.position,
+    )
 }
 
 /// Returns the box the instanced meshes of a scene cover.
@@ -967,7 +1211,7 @@ fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> Bound
             maximum: [f64::NEG_INFINITY; 3],
         };
         for point in &mesh.points {
-            let world = apply(&instance.model, point_position(point));
+            let world = apply(&instance.model, point_position(&mesh.point_schema, point));
             for axis in 0..3 {
                 covered.minimum[axis] = covered.minimum[axis].min(world[axis]);
                 covered.maximum[axis] = covered.maximum[axis].max(world[axis]);
@@ -983,8 +1227,46 @@ fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> Bound
     bounds.unwrap_or_else(|| Bounds::around([0.0; 3], 1.0))
 }
 
-/// Returns the position a point carries, which is the first three numbers it declares.
-fn point_position(point: &Value) -> [f64; 3] {
+/// Returns the position a point carries.
+///
+/// # Invariants
+///
+/// A point schema is free to declare whatever a mesh needs, so the position is the field
+/// **named** `position` and not the first three numbers in field order. A schema whose
+/// fields sort as `normal`, `position`, `texture` has its normal first, and taking the
+/// first three numbers of such a point reads the normal — which is a unit vector, so every
+/// such mesh appears to be one unit across and the camera frames a box around the origin
+/// rather than the scene.
+fn point_position(schema: &Schema, point: &Value) -> [f64; 3] {
+    let SchemaKind::Struct { fields } = &schema.kind else {
+        return first_components(point);
+    };
+    let Some(field) = fields.get(POSITION_FIELD) else {
+        return first_components(point);
+    };
+    let Some(declared) = point
+        .as_struct()
+        .and_then(|values| values.get(POSITION_FIELD))
+    else {
+        return first_components(point);
+    };
+    let width = components(POSITION_FIELD, field).unwrap_or(3).min(3);
+    let mut position = [0.0f64; 3];
+    for (axis, component) in number_components(declared)
+        .into_iter()
+        .take(width)
+        .enumerate()
+    {
+        position[axis] = component;
+    }
+    position
+}
+
+/// Returns the first three numbers a point carries, in field order.
+///
+/// This is the fallback for a point schema that names no `position`, where the first field
+/// is the only reasonable guess at where the point is.
+fn first_components(point: &Value) -> [f64; 3] {
     let mut position = [0.0f64; 3];
     for (axis, component) in point
         .as_struct()
@@ -1033,6 +1315,11 @@ const DEPTH_CLEAR: [f64; 4] = [1.0, 1.0, 1.0, 1.0];
 const COLOUR_CLEAR: [f64; 4] = [0.0, 0.0, 0.0, 1.0];
 
 /// Builds a rasterize pass with the shared fields every pass carries.
+///
+/// `depth` is the pass's depth state, or `None` for a pass that writes the depth it draws
+/// and keeps the nearer fragment, which is what a pass into a depth map or a depth buffer
+/// wants.
+#[allow(clippy::too_many_arguments)]
 fn rasterize(
     label: &str,
     shader_entry: &str,
@@ -1040,29 +1327,88 @@ fn rasterize(
     binders: impl IntoIterator<Item = (String, Value)>,
     targets: impl IntoIterator<Item = &'static str>,
     clear: [f64; 4],
+    state: PipelineStateFields,
 ) -> Value {
-    Value::variant(
-        "Rasterize",
-        [
-            (LABEL.to_owned(), Value::String(label.to_owned())),
-            (UNIFORM.to_owned(), uniform),
-            (SHADER.to_owned(), Value::String(shader_entry.to_owned())),
-            (BINDERS.to_owned(), Value::dictionary(binders)),
-            (
-                TARGETS.to_owned(),
-                Value::List(
-                    targets
-                        .into_iter()
-                        .map(|target| Value::String(target.to_owned()))
-                        .collect(),
-                ),
+    let mut fields = vec![
+        (LABEL.to_owned(), Value::String(label.to_owned())),
+        (UNIFORM.to_owned(), uniform),
+        (SHADER.to_owned(), Value::String(shader_entry.to_owned())),
+        (BINDERS.to_owned(), Value::dictionary(binders)),
+        (
+            TARGETS.to_owned(),
+            Value::List(
+                targets
+                    .into_iter()
+                    .map(|target| Value::String(target.to_owned()))
+                    .collect(),
             ),
-            (
-                CLEAR_COLOR.to_owned(),
-                Value::List(clear.into_iter().map(Value::Float).collect()),
-            ),
-        ],
-    )
+        ),
+        (
+            CLEAR_COLOR.to_owned(),
+            Value::List(clear.into_iter().map(Value::Float).collect()),
+        ),
+    ];
+    let (blend, depth) = state.into_fields();
+    if let Some(blend) = blend {
+        fields.push((BLEND.to_owned(), blend));
+    }
+    if let Some(depth) = depth {
+        fields.push((DEPTH.to_owned(), depth));
+    }
+    Value::variant("Rasterize", fields)
+}
+
+/// The blend and depth a pass declares, or the absence of either.
+///
+/// A pass that names neither builds the pipeline it always built: it replaces what is
+/// there, it records the depth of what it draws, and it keeps the nearer fragment.
+struct PipelineStateFields {
+    blend: Option<Value>,
+    depth: Option<Value>,
+}
+
+impl PipelineStateFields {
+    /// The state of a pass that writes a depth map or a depth buffer.
+    fn default_state() -> Self {
+        Self {
+            blend: None,
+            depth: None,
+        }
+    }
+
+    /// Returns the two fields, for a pass that declares them.
+    fn into_fields(self) -> (Option<Value>, Option<Value>) {
+        (self.blend, self.depth)
+    }
+}
+
+/// Builds the pipeline state of a lighting pass.
+///
+/// # Invariants
+///
+/// - **The pass adds.** There is one lighting pass per light and they all draw into the
+///   same image, so a pass that replaced what was there would leave only the last light
+///   standing. Adding is what makes several lights into a sum rather than a choice, and
+///   the first pass to write the target clears it to black, which added to nothing is
+///   the same as replaced.
+/// - **The comparison is `LessEqual` and the pass does not write.** A depth prepass
+///   records the depth of every opaque fragment, and a later pass drawing the *same*
+///   geometry lands on exactly those depths — so a comparison of `Less` rejects every one
+///   of them, and the pass draws nothing at all. `LessEqual` keeps the nearer fragment,
+///   which is what a prepass exists to establish, and not writing keeps the prepass's
+///   depths rather than replacing them with the same numbers.
+fn lighting_state() -> PipelineStateFields {
+    let (blend, depth) = (
+        Value::variant("Add", []),
+        Value::structure([
+            (DEPTH_WRITE.to_owned(), Value::Bool(false)),
+            (DEPTH_COMPARE.to_owned(), Value::variant("LessEqual", [])),
+        ]),
+    );
+    PipelineStateFields {
+        blend: Some(blend),
+        depth: Some(depth),
+    }
 }
 
 /// Builds a buffer declaration naming an instance entry.

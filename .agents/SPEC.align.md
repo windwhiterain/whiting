@@ -478,6 +478,77 @@ incremental compile.
     schema is also the layout a buffer is read with: a point is a position of three, and a
     model matrix is sixteen, which the renderer reads as four attributes of four.
 
+## What the standard pipeline gained, and what it got wrong
+
+The spec describes a pipeline that could draw a scene and not compose one. Four changes make the
+difference, and three defects surfaced underneath them.
+
+### A camera, a perspective, a time, and a real shadow
+
+  - `math::perspective` and `math::perspective_of` sit beside the orthographic path, which
+    remains and is what a camera asks for by name.
+  - A scene carries an optional `camera` of `eye`, `target`, `up`, `field_of_view`,
+    `projection` and `padding`. **A scene with no camera is drawn by the convention it was
+    always drawn by** — parallel, dead ahead, framing everything that is drawn — so every
+    scene that existed before a camera existed still draws as it did.
+  - `time` is a field of the scene, on every pass uniform. A render is a pure function of
+    the documents and that one number, so a frame taken at `t = 2.5` is reproduced by
+    rendering the same documents at `t = 2.5` again.
+  - `light_projection` and `light_shadow_texel` join the lighting uniform. **A lighting pass
+    needs both projections and they are not the same one**, and this is the finding that
+    matters: the example that shipped before this had only the camera's, and sampled the
+    shadow map at the fragment's own screen coordinate. That is a screen-space lookup of a
+    light-space texture, which is not a shadow. With the light's own matrix a fragment can
+    carry its world position into the light's clip space, and the shadow map becomes a shadow
+    map.
+
+### Pipeline state as data
+
+`blend`, `depth` and `samples` are fields of a rasterize pass, and a field that is absent is
+the behaviour the backend always had: `Replace`, depth written, `Less`, one sample. These are
+statements about how a frame is put together, so they belong on the pass that makes it rather
+than in the code that runs it. Two uses in the standard pipeline would otherwise have been
+impossible, and both were found the hard way:
+
+  - **The lighting passes add.** There is one lighting pass per light and they all draw into
+    the same image, so a pass that replaced what was there left only the last light standing.
+    A scene with a sun and a sky fill was lit by the fill alone. Adding is what makes several
+    lights a sum rather than a choice; the first pass to write the target clears it, which
+    added to nothing is the same as replaced.
+  - **The lighting pass does not write depth, and compares `LessEqual`.** A depth prepass
+    records the depth of every opaque fragment and a later pass drawing the *same* geometry
+    lands on exactly those depths, so `Less` rejected every one of them and the pass drew
+    nothing at all. The dune field was invisible until this was fixed.
+
+### A post stage
+
+`ScreenShader` is no longer refused. The compiler emits a final pass that draws over the
+whole frame, reads the shaded image and the depth, and writes a third image which is what
+the frame is read back from. It carries the camera's basis — `forward`, `right`, `up`,
+`half_extent` — beside the projection, because a ray through a pixel is recovered from a
+matrix by an inverse and `WGSL` has no matrix inverse. **A depth of one is where nothing was
+drawn**, so a post stage is also where a sky belongs: it draws over the frame and the pixels
+the scene never reached are the ones left to it.
+
+### Three defects this surfaced
+
+  - **`point_position` read the first three numbers of a point in field order.** A point
+    schema is free to declare whatever a mesh needs, and one whose fields sort as `normal`,
+    `position`, `texture` has its normal first — so a mesh carrying a normal was one unit
+    across as far as the camera was concerned, and the camera framed a box around the origin
+    instead of the scene. The position is the field *named* `position` now.
+  - **The camera fit a sphere around the scene's box.** A wide flat scene fills a box whose
+    height is a tenth of its width, and a sphere around that box is as wide as the box and
+    as tall as its half width, so fitting it puts the eye far enough out that the scene's own
+    edges fall inside the frame. The fit is now a bound per corner: a corner is inside the
+    frame when its offset from the axis is no larger than the frame is wide **at that
+    corner's own depth**.
+  - **A normal was carried through the model matrix.** A transform that rotates and
+    translates does carry a normal through unchanged, and an instance twenty times taller
+    than it is wide is lit wrongly by exactly the amount it is uneven by. A shader that
+    declares a `normal_matrix` in its instance schema has one filled in beside the model, and
+    the gallery's does.
+
 ## References
 
 The spec's `definition` crate now carries references: a value slot a schema marks may hold a

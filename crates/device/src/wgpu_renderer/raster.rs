@@ -10,6 +10,8 @@
 //! - A target is cleared by the first pass that writes it and loaded by the rest, or the
 //!   second pass into a shared target would erase the first pass's contribution.
 
+use std::collections::BTreeMap;
+
 use definition::Value;
 use graphics::{PassView, resolve_for_pass};
 
@@ -69,6 +71,12 @@ impl WgpuRenderer {
         let depth = attachments.iter().find(|entry| entry.depth);
         let format = colour.map_or(wgpu::TextureFormat::Rgba8Unorm, |entry| entry.slot.format);
         let clear = clear_color(pass);
+        // What a pass does with blending, depth and samples is on the pass, so a document
+        // can express an additive pass, a pass that draws over the depth it reads, and an
+        // antialiased edge. A pass that names none of them builds the pipeline it always
+        // built.
+        let state = graphics::PipelineState::read(pass).map_err(RenderError::Graphics)?;
+        let samples = state.samples;
 
         let bind_group_layout =
             self.device
@@ -100,7 +108,7 @@ impl WgpuRenderer {
         // descriptor borrows locals rather than building them inline.
         let colour_targets = [Some(wgpu::ColorTargetState {
             format,
-            blend: Some(wgpu::BlendState::REPLACE),
+            blend: Some(blend_of(state.blend)),
             write_mask: wgpu::ColorWrites::ALL,
         })];
         let fragment = colour.map(|_| wgpu::FragmentState {
@@ -126,12 +134,16 @@ impl WgpuRenderer {
                 },
                 depth_stencil: depth.map(|entry| wgpu::DepthStencilState {
                     format: entry.slot.format,
-                    depth_write_enabled: Some(true),
-                    depth_compare: Some(wgpu::CompareFunction::Less),
+                    depth_write_enabled: Some(state.depth_write),
+                    depth_compare: Some(compare_of(state.depth_compare)),
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),
-                multisample: wgpu::MultisampleState::default(),
+                multisample: wgpu::MultisampleState {
+                    count: samples,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
                 fragment,
                 multiview_mask: None,
                 cache: None,
@@ -143,12 +155,31 @@ impl WgpuRenderer {
                 label: Some(&format!("{label} encoder")),
             });
         {
+            // A pass that takes more than one sample renders into a view of the target with
+            // that many samples and resolves into the target itself, so the target holds
+            // one pixel per fragment rather than one per sample. The views are keyed by the
+            // binding point, which is what tells two attachments of one pass apart.
+            let multisampled: BTreeMap<String, wgpu::TextureView> = if samples > 1 {
+                attachments
+                    .iter()
+                    .map(|entry| {
+                        (
+                            entry.slot.point.clone(),
+                            self.multisample_view(&label, entry.slot, samples),
+                        )
+                    })
+                    .collect()
+            } else {
+                BTreeMap::new()
+            };
+            // The view a pass draws into, and where a multisampled draw resolves to.
             let colour_attachments: Vec<Option<wgpu::RenderPassColorAttachment>> = colour
                 .map(|entry| {
+                    let (view, resolve_target) = drawing_into(&multisampled, &entry.slot);
                     Some(wgpu::RenderPassColorAttachment {
-                        view: &entry.slot.view,
+                        view,
                         depth_slice: None,
-                        resolve_target: None,
+                        resolve_target,
                         ops: wgpu::Operations {
                             load: load(cleared, &entry.slot.source, clear),
                             store: wgpu::StoreOp::Store,
@@ -157,13 +188,16 @@ impl WgpuRenderer {
                 })
                 .into_iter()
                 .collect();
-            let depth_attachment = depth.map(|entry| wgpu::RenderPassDepthStencilAttachment {
-                view: &entry.slot.view,
-                depth_ops: Some(wgpu::Operations {
-                    load: load_depth(cleared, &entry.slot.source),
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
+            let depth_attachment = depth.map(|entry| {
+                let (view, _) = drawing_into(&multisampled, &entry.slot);
+                wgpu::RenderPassDepthStencilAttachment {
+                    view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: load_depth(cleared, &entry.slot.source),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }
             });
 
             let mut pass_encoder = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -192,6 +226,30 @@ impl WgpuRenderer {
             width: entry.slot.width,
             height: entry.slot.height,
         }))
+    }
+
+    /// Creates a view of an attachment's texture with several samples, which a pass that
+    /// takes more than one renders into and resolves out of.
+    ///
+    /// The view is not kept: a pass that samples more than once creates one per draw and
+    /// the backend drops it with the pass, which is cheaper than holding a multisampled
+    /// copy of every target for the whole frame.
+    fn multisample_view(&self, label: &str, slot: &TextureSlot, samples: u32) -> wgpu::TextureView {
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&format!("{label} multisample")),
+            size: wgpu::Extent3d {
+                width: slot.width,
+                height: slot.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: samples,
+            dimension: wgpu::TextureDimension::D2,
+            format: slot.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 
     /// Reads a texture back into a frame.
@@ -267,10 +325,83 @@ impl WgpuRenderer {
     }
 }
 
-/// Returns whether an attachment has already been written this render.
+/// Returns the view an attachment is drawn into, and where a multisampled draw resolves.
 ///
-/// The first pass to write a target clears it, so a clear colour is honoured, and the
-/// rest load it, so they accumulate.
+/// A pass that takes more than one sample draws into a view of the target with that many
+/// samples and resolves into the target itself, so the target holds one pixel per fragment
+/// rather than one per sample. A pass that takes one draws into the target directly and
+/// has nowhere to resolve to.
+fn drawing_into<'view>(
+    multisampled: &'view BTreeMap<String, wgpu::TextureView>,
+    slot: &'view TextureSlot,
+) -> (&'view wgpu::TextureView, Option<&'view wgpu::TextureView>) {
+    match multisampled.get(&slot.point) {
+        Some(view) => (view, Some(&slot.view)),
+        None => (&slot.view, None),
+    }
+}
+
+/// Returns the blend a pass's declared blend becomes.
+///
+/// The colour and alpha terms are given separately because a backend blends them with
+/// their own equations: replacing colour and adding alpha tints a frame rather than
+/// changing it, and the two are the most common way a blend is written down wrong.
+fn blend_of(blend: graphics::Blend) -> wgpu::BlendState {
+    use wgpu::{BlendComponent, BlendFactor, BlendOperation};
+    let (colour, alpha) = match blend {
+        // Replacing both is what writing a value means; blending either one leaves a
+        // target whose alpha drifts away from its colour.
+        graphics::Blend::Replace => (BlendComponent::REPLACE, BlendComponent::REPLACE),
+        // Straight alpha: the source contributes its share and the destination the rest,
+        // which is the only weighting that keeps a translucent surface from darkening what
+        // is behind it twice over.
+        graphics::Blend::Alpha => (
+            BlendComponent {
+                src_factor: BlendFactor::SrcAlpha,
+                dst_factor: BlendFactor::OneMinusSrcAlpha,
+                operation: BlendOperation::Add,
+            },
+            BlendComponent {
+                src_factor: BlendFactor::One,
+                dst_factor: BlendFactor::OneMinusSrcAlpha,
+                operation: BlendOperation::Add,
+            },
+        ),
+        // One and one: light is gathered by adding to what is already there rather than by
+        // replacing it.
+        graphics::Blend::Add => (
+            BlendComponent {
+                src_factor: BlendFactor::One,
+                dst_factor: BlendFactor::One,
+                operation: BlendOperation::Add,
+            },
+            BlendComponent {
+                src_factor: BlendFactor::One,
+                dst_factor: BlendFactor::One,
+                operation: BlendOperation::Add,
+            },
+        ),
+    };
+    wgpu::BlendState {
+        color: colour,
+        alpha,
+    }
+}
+
+/// Returns the depth comparison a pass's declared comparison becomes.
+fn compare_of(compare: graphics::Compare) -> wgpu::CompareFunction {
+    match compare {
+        graphics::Compare::Never => wgpu::CompareFunction::Never,
+        graphics::Compare::Less => wgpu::CompareFunction::Less,
+        graphics::Compare::LessEqual => wgpu::CompareFunction::LessEqual,
+        graphics::Compare::Equal => wgpu::CompareFunction::Equal,
+        graphics::Compare::Greater => wgpu::CompareFunction::Greater,
+        graphics::Compare::GreaterEqual => wgpu::CompareFunction::GreaterEqual,
+        graphics::Compare::Always => wgpu::CompareFunction::Always,
+    }
+}
+
+/// Returns whether an attachment has already been written this render.
 fn load(cleared: &mut Vec<String>, source: &str, clear: wgpu::Color) -> wgpu::LoadOp<wgpu::Color> {
     if written(cleared, source) {
         wgpu::LoadOp::Load

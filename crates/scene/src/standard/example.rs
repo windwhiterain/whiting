@@ -10,11 +10,9 @@ use graphics::layout::components_schema;
 
 use crate::standard::Stage;
 use crate::standard::pass_schemas::{
-    depthing_pass_schema, lighting_pass_schema, shadowing_pass_schema,
+    depthing_pass_schema, lighting_pass_schema, post_pass_schema, shadowing_pass_schema,
 };
-use crate::standard::scene_schema::{
-    default_custom_schema, default_instance_schema, default_point_schema,
-};
+use crate::standard::scene_schema::{default_custom_schema, default_instance_schema};
 
 /// The point schema the example's one mesh declares.
 ///
@@ -94,6 +92,7 @@ fn shader(label: &str, stage: Stage, source: &str) -> Value {
         Stage::Shadowing => shadowing_pass_schema(),
         Stage::Depthing => depthing_pass_schema(),
         Stage::Lighting => lighting_pass_schema(),
+        Stage::Post => post_pass_schema(),
     };
     Value::variant(
         stage.tag(),

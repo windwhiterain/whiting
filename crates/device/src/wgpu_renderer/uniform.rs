@@ -46,7 +46,9 @@ impl WgpuRenderer {
     ///
     /// The shader is parsed rather than taken on trust, so this costs a parse per pass per
     /// render. A layout disagreement is a defect in the shader rather than in the frame, so
-    /// the cost buys an error where there would otherwise be a wrong image.
+    /// the cost buys an error where there would otherwise be a wrong image. The parse
+    /// itself is cached against the renderer's other parses, so a frame that changes no
+    /// shader pays for the comparison and not for the parse.
     ///
     /// The pass is named in every error, because a bound shader entry has no name of its own
     /// and the pass is what a reader is looking at.
@@ -62,9 +64,7 @@ impl WgpuRenderer {
                 "the uniform interface `{label}` declares has no layout: {error}"
             ))
         })?;
-        let module = naga::front::wgsl::parse_str(source).map_err(|error| {
-            RenderError::Backend(format!("`{label}` does not parse as wgsl: {error}"))
-        })?;
+        let module = self.parsed_module(source, label)?;
         let found = uniform_members(&module);
         if found.is_empty() {
             return Ok(());

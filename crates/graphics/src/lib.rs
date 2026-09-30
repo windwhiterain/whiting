@@ -86,6 +86,7 @@ mod inputs;
 mod instance;
 pub mod layout;
 pub mod pass;
+mod pipeline;
 mod read;
 
 pub use binders::{
@@ -96,10 +97,14 @@ pub use binders::{
 pub use example::{example_graphics, example_instance};
 pub use inputs::{shader_interface, uniform_schema, verify_pass_inputs};
 pub use instance::derived_instance_schema;
-pub use layout::{VertexAttribute, VertexLayout, uniform_bytes, value_bytes, vertex_layout};
-pub use pass::{
-    BINDERS, CLEAR_COLOR, ENTRY_POINT, LABEL, SHADER, TARGETS, UNIFORM, WORKGROUP, pass_schema,
+pub use layout::{
+    VertexAttribute, VertexLayout, components, uniform_bytes, value_bytes, vertex_layout,
 };
+pub use pass::{
+    BINDERS, BLEND, CLEAR_COLOR, DEPTH, ENTRY_POINT, LABEL, SAMPLES, SHADER, TARGETS, UNIFORM,
+    WORKGROUP, pass_schema,
+};
+pub use pipeline::{Blend, Compare, MAX_SAMPLES, PipelineState};
 pub use read::{PassKind, PassView, passes};
 
 /// Name of the schema a graphics document is verified against.
@@ -194,7 +199,7 @@ pub enum GraphicsError {
         path: Path,
         field: String,
         expected: &'static str,
-        found: &'static str,
+        found: String,
     },
     #[error("pass {index} is neither `Rasterize` nor `Compute`, found `{tag}`")]
     UnknownPass { index: usize, tag: String },
@@ -247,6 +252,9 @@ pub(crate) fn malformed(
         path: path.clone(),
         field: field.to_owned(),
         expected,
-        found: value.map_or("nothing", Value::kind_name),
+        found: value.map_or_else(
+            || "nothing".to_owned(),
+            |value| value.kind_name().to_owned(),
+        ),
     }
 }

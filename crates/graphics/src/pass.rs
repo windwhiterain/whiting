@@ -55,12 +55,30 @@ pub const WORKGROUP: &str = "workgroup";
 /// Field holding the entry point a compute pass invokes.
 pub const ENTRY_POINT: &str = "entry_point";
 
+/// Field holding how a rasterize pass combines what it draws with what is there.
+pub const BLEND: &str = "blend";
+
+/// Field holding how a rasterize pass reads and writes depth.
+pub const DEPTH: &str = "depth";
+
+/// Field holding how many samples a rasterize pass takes per pixel.
+pub const SAMPLES: &str = "samples";
+
+/// Field holding whether a rasterize pass writes depth.
+pub const DEPTH_WRITE: &str = "write";
+
+/// Field holding how a rasterize pass compares a fragment's depth against the buffer's.
+pub const DEPTH_COMPARE: &str = "compare";
+
 /// Builds the schema of a single pass.
 pub fn pass_schema() -> Schema {
     Schema::new(SchemaKind::enumeration([
         (
             "Rasterize".to_owned(),
-            variant(shared_fields(), [targets(), clear_color()]),
+            variant(
+                shared_fields(),
+                [targets(), clear_color(), blend(), depth(), samples()],
+            ),
         ),
         (
             "Compute".to_owned(),
@@ -134,6 +152,105 @@ fn entry_point() -> (String, Schema) {
     (
         ENTRY_POINT.to_owned(),
         Schema::new(SchemaKind::String).with_documentation("Entry function invoked in the shader."),
+    )
+}
+
+/// Builds the schema of how a rasterize pass blends what it draws.
+///
+/// # Invariants
+///
+/// `Replace` is the default and what every pass drew before blend was a field, so a
+/// document that names nothing blends exactly as it always did. A blend other than
+/// `Replace` is a statement about order: what a pass draws is combined with what earlier
+/// passes left, so a pass that uses one is a pass whose result depends on what ran before
+/// it.
+fn blend() -> (String, Schema) {
+    (
+        BLEND.to_owned(),
+        Schema::new(SchemaKind::enumeration([
+            (
+                "Replace".to_owned(),
+                Schema::new(SchemaKind::structure([])).with_documentation(
+                    "Overwrite whatever was there. One opaque pass replaces another.",
+                ),
+            ),
+            (
+                "Alpha".to_owned(),
+                Schema::new(SchemaKind::structure([])).with_documentation(
+                    "Mix by the fragment's own alpha, so a surface can be see-through.",
+                ),
+            ),
+            (
+                "Add".to_owned(),
+                Schema::new(SchemaKind::structure([])).with_documentation(
+                    "Add the fragment's colour to what was there, which is how light is \
+                     gathered rather than reflected.",
+                ),
+            ),
+        ]))
+        .optional()
+        .with_documentation(
+            "How what this pass draws is combined with what is already in the target. \
+             Defaults to Replace.",
+        ),
+    )
+}
+
+/// Builds the schema of how a rasterize pass reads and writes depth.
+fn depth() -> (String, Schema) {
+    (
+        DEPTH.to_owned(),
+        Schema::new(SchemaKind::structure([
+            (
+                DEPTH_WRITE.to_owned(),
+                Schema::new(SchemaKind::Bool)
+                    .optional()
+                    .with_documentation("Whether this pass records the depth of what it draws."),
+            ),
+            (
+                DEPTH_COMPARE.to_owned(),
+                Schema::new(SchemaKind::enumeration([
+                    ("Never".to_owned(), Schema::new(SchemaKind::structure([]))),
+                    ("Less".to_owned(), Schema::new(SchemaKind::structure([]))),
+                    (
+                        "LessEqual".to_owned(),
+                        Schema::new(SchemaKind::structure([])),
+                    ),
+                    ("Equal".to_owned(), Schema::new(SchemaKind::structure([]))),
+                    ("Greater".to_owned(), Schema::new(SchemaKind::structure([]))),
+                    (
+                        "GreaterEqual".to_owned(),
+                        Schema::new(SchemaKind::structure([])),
+                    ),
+                    ("Always".to_owned(), Schema::new(SchemaKind::structure([]))),
+                ]))
+                .optional()
+                .with_documentation(
+                    "Whether a fragment survives on how its depth compares against what the \
+                     buffer holds. A pass that draws over the whole frame and reads the \
+                     depth buffer it is drawn over needs Always.",
+                ),
+            ),
+        ]))
+        .optional()
+        .with_documentation(
+            "How this pass uses the depth buffer. Defaults to recording depth and keeping \
+             the nearer fragment, which is what an opaque pass does.",
+        ),
+    )
+}
+
+/// Builds the schema of how many samples a rasterize pass takes per pixel.
+///
+/// A pass that takes more than one resolves them into its target, so the target is written
+/// once and every pass that shares it has to agree on the count.
+fn samples() -> (String, Schema) {
+    (
+        SAMPLES.to_owned(),
+        Schema::new(SchemaKind::Int).optional().with_documentation(
+            "How many samples each pixel takes, which is how many edges are covered. \
+                 Defaults to one, which is one sample and a hard edge.",
+        ),
     )
 }
 
