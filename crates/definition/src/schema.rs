@@ -6,6 +6,7 @@ use facet::Facet;
 
 use crate::error::ValidationError;
 use crate::path::{Path, PathSegment};
+use crate::reference::Reference;
 use crate::value::{FieldMap, Value};
 
 /// Map of named entries to a nested schema, used for both struct fields and enum variants.
@@ -50,6 +51,32 @@ impl Schema {
         self
     }
 
+    /// Marks this schema as one a slot refers to rather than holds.
+    ///
+    /// # Invariants
+    ///
+    /// The declared kind stays the kind of the value the reference resolves to, so a marked
+    /// schema describes both ends: the slot requires a reference spelling, and the target
+    /// that reference names must satisfy the same schema with the marker cleared.
+    #[must_use]
+    pub fn reference(mut self) -> Self {
+        self.attributes.reference = true;
+        self
+    }
+
+    /// Returns whether a slot of this schema holds a reference rather than a value.
+    pub const fn is_reference(&self) -> bool {
+        self.attributes.reference
+    }
+
+    /// Returns this schema with the reference marker cleared, which is the schema that a
+    /// reference to it must resolve to.
+    #[must_use]
+    pub fn without_reference(mut self) -> Self {
+        self.attributes.reference = false;
+        self
+    }
+
     /// Attaches documentation to this schema.
     #[must_use]
     pub fn with_documentation(mut self, documentation: impl Into<String>) -> Self {
@@ -80,6 +107,16 @@ impl Schema {
     }
 
     fn validate_at(&self, path: &Path, value: &Value) -> Result<(), ValidationError> {
+        // A marked slot is checked against the reference it spells rather than against the
+        // value it names, so a document verifies without the referent being loaded.
+        if self.attributes.reference {
+            return Reference::from_value(value).map(|_| ()).map_err(|error| {
+                ValidationError::MalformedReference {
+                    path: path.clone(),
+                    reason: error.to_string(),
+                }
+            });
+        }
         // `Int` and `Float` stay distinct, so this match is on the pair of kinds.
         match (&self.kind, value) {
             (SchemaKind::Any, _) => Ok(()),
@@ -238,6 +275,8 @@ impl SchemaKind {
 pub struct Attributes {
     /// The field may be absent.
     pub optional: bool,
+    /// A slot of this schema holds a reference rather than a value.
+    pub reference: bool,
     /// Value substituted when the field is absent.
     pub default: Option<Value>,
     /// Open map for domain-specific constraints.
@@ -249,6 +288,7 @@ impl Attributes {
     pub const fn new() -> Self {
         Self {
             optional: false,
+            reference: false,
             default: None,
             extensions: FieldMap::new(),
         }

@@ -70,6 +70,7 @@ mod error;
 mod history;
 mod identifier;
 mod path;
+mod reference;
 mod registry;
 mod schema;
 mod schema_document;
@@ -82,6 +83,7 @@ pub use error::{DeltaError, HistoryError, RegistryError, SchemaError, Validation
 pub use history::History;
 pub use identifier::{DefinitionIdentifier, SchemaIdentifier};
 pub use path::{Path, PathError, PathSegment};
+pub use reference::{FilePath, Reference, ReferenceError};
 pub use registry::Registry;
 pub use schema::{Attributes, Schema, SchemaKind, SchemaMap};
 pub use value::{FieldMap, Value};

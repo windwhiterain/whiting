@@ -55,6 +55,9 @@ const DEFAULT: &str = "default";
 /// Field holding the `extensions` attribute.
 const EXTENSIONS: &str = "extensions";
 
+/// Field marking a slot as one a reference points at rather than one that holds a value.
+const REFERENCE: &str = "reference";
+
 /// Payload field of a `Struct` or `Enum` kind: a map of names to nested schemas.
 const FIELDS: &str = "fields";
 
@@ -217,6 +220,9 @@ fn attributes_document_schema() -> Schema {
 }
 
 /// Writes the attributes block of a schema document.
+///
+/// A flag that is off is left out, so only the attributes a schema actually sets are
+/// written and a document stays as short as what it says.
 fn attributes_to_value(attributes: &Attributes) -> Value {
     let mut fields = vec![
         (OPTIONAL.to_owned(), Value::Bool(attributes.optional)),
@@ -225,6 +231,9 @@ fn attributes_to_value(attributes: &Attributes) -> Value {
             Value::Dict(attributes.extensions.clone()),
         ),
     ];
+    if attributes.reference {
+        fields.push((REFERENCE.to_owned(), Value::Bool(true)));
+    }
     if let Some(default) = &attributes.default {
         fields.push((DEFAULT.to_owned(), default.clone()));
     }
@@ -240,7 +249,7 @@ fn attributes_from_value(value: &Value, path: &Path) -> Result<Attributes, Schem
         });
     };
     for name in fields.keys() {
-        if !matches!(name.as_str(), OPTIONAL | DEFAULT | EXTENSIONS) {
+        if !matches!(name.as_str(), OPTIONAL | DEFAULT | REFERENCE | EXTENSIONS) {
             return Err(SchemaError::UnknownField {
                 path: path.clone(),
                 field: name.clone(),
@@ -257,6 +266,18 @@ fn attributes_from_value(value: &Value, path: &Path) -> Result<Attributes, Schem
                 found: other.kind_name(),
             });
         }
+    };
+    let reference_path = path.key(REFERENCE);
+    let reference = match fields.get(REFERENCE) {
+        Some(Value::Bool(flag)) => *flag,
+        Some(other) => {
+            return Err(SchemaError::KindMismatch {
+                path: reference_path,
+                expected: "a bool",
+                found: other.kind_name(),
+            });
+        }
+        None => false,
     };
     let extensions_path = path.key(EXTENSIONS);
     let extensions = match required(fields, EXTENSIONS, path)? {
@@ -275,6 +296,7 @@ fn attributes_from_value(value: &Value, path: &Path) -> Result<Attributes, Schem
     };
     Ok(Attributes {
         optional,
+        reference,
         default,
         extensions,
     })

@@ -23,6 +23,8 @@ pub enum ValidationError {
     UnknownField { path: Path, field: String },
     #[error("at {path}: unknown variant `{tag}`")]
     UnknownVariant { path: Path, tag: String },
+    #[error("at {path}: the schema declares a reference here, and {reason}")]
+    MalformedReference { path: Path, reason: String },
 }
 
 /// A value is not a readable [`Schema`](crate::Schema) document.
