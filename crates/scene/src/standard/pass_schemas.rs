@@ -30,11 +30,8 @@ pub const VERTICES: &str = "vertices";
 /// Binding point holding the per instance data of every mesh a pass draws.
 pub const INSTANCE_DATA: &str = "instance_data";
 
-/// Field holding the view projection matrix of a pass.
-pub const VIEW_PROJECTION: &str = "view_projection";
-
-/// Field holding the direction a light shines in, in a shadowing pass.
-pub const LIGHT_DIRECTION: &str = "light_direction";
+/// Field holding the projection a pass draws through.
+pub const PROJECTION: &str = "projection";
 
 /// Field holding the position of a light, in a lighting pass.
 pub const LIGHT_POSITION: &str = "light_position";
@@ -69,6 +66,25 @@ pub const COLOR_HEIGHT: i64 = 1024;
 /// Format the shaded image is rendered in.
 pub const COLOR_FORMAT: &str = "rgba8unorm";
 
+/// Builds the schema of a projection, which every stage draws through.
+///
+/// A projection is data on the pass rather than arithmetic in the renderer, because a
+/// reload may change the scene the projection covers and the pass has to say so. The
+/// matrix is sixteen floats, column major, which is the order a shader indexes in.
+pub fn projection_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            "view_projection".to_owned(),
+            matrix().with_documentation("Projection times view, column major."),
+        ),
+        (
+            "position".to_owned(),
+            vector().with_documentation("Where the projection was made from."),
+        ),
+    ]))
+    .with_documentation("What a pass draws through.")
+}
+
 /// Builds the interface of a shadowing pass.
 pub fn shadowing_pass_schema() -> Schema {
     interface(
@@ -89,16 +105,10 @@ pub fn shadowing_pass_schema() -> Schema {
                     .with_documentation("The depth map this pass renders into."),
             ),
         ],
-        vec![
-            (
-                VIEW_PROJECTION,
-                matrix().with_documentation("Light view projection, column major."),
-            ),
-            (
-                LIGHT_DIRECTION,
-                vector().with_documentation("Direction the light shines in."),
-            ),
-        ],
+        vec![(
+            PROJECTION,
+            projection_schema().with_documentation("Looking down the light's direction."),
+        )],
     )
 }
 
@@ -122,8 +132,8 @@ pub fn depthing_pass_schema() -> Schema {
             ),
         ],
         vec![(
-            VIEW_PROJECTION,
-            matrix().with_documentation("Camera view projection, column major."),
+            PROJECTION,
+            projection_schema().with_documentation("Looking at the scene from the camera."),
         )],
     )
 }
@@ -157,8 +167,8 @@ pub fn lighting_pass_schema() -> Schema {
         ],
         vec![
             (
-                VIEW_PROJECTION,
-                matrix().with_documentation("Camera view projection, column major."),
+                PROJECTION,
+                projection_schema().with_documentation("Looking at the scene from the camera."),
             ),
             (
                 LIGHT_POSITION,
@@ -203,12 +213,10 @@ fn interface(
 
 /// Builds the schema of a four by four matrix, written as sixteen floats.
 fn matrix() -> Schema {
-    Schema::new(SchemaKind::list(Schema::new(SchemaKind::Float)))
-        .with_documentation("Four by four matrix, column major.")
+    graphics::layout::components_schema(16).with_documentation("Four by four matrix, column major.")
 }
 
 /// Builds the schema of a three component vector.
 fn vector() -> Schema {
-    Schema::new(SchemaKind::list(Schema::new(SchemaKind::Float)))
-        .with_documentation("Three components.")
+    graphics::layout::components_schema(3).with_documentation("Three components.")
 }

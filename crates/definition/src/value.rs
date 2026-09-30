@@ -139,6 +139,14 @@ impl Value {
         }
     }
 
+    /// Borrows the bytes of a byte string, otherwise returns `None`.
+    pub fn as_bytes(&self) -> Option<&[u8]> {
+        match self {
+            Self::Bytes(bytes) => Some(bytes),
+            _ => None,
+        }
+    }
+
     /// Returns the inner value of an integer, otherwise returns `None`.
     pub const fn as_int(&self) -> Option<i64> {
         match self {

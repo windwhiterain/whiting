@@ -91,7 +91,7 @@
 mod compiler;
 mod emit;
 mod example;
-mod math;
+pub mod math;
 mod packing;
 mod pass_schemas;
 mod scene_schema;
@@ -99,11 +99,12 @@ mod scene_schema;
 pub use compiler::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema};
 pub use emit::{COLOR_TARGET_ENTRY, DEPTH_BUFFER_ENTRY, Emitted, Stage, emit, shadow_map_entry};
 pub use example::example_standard_scene;
+pub use math::{Bounds, apply as project_point};
 pub use pass_schemas::{
     COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
-    DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_DIRECTION, LIGHT_POSITION,
-    SHADOW_MAP, SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, VERTICES, VIEW_PROJECTION,
-    depthing_pass_schema, lighting_pass_schema, shadowing_pass_schema,
+    DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, PROJECTION, SHADOW_MAP,
+    SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, VERTICES, depthing_pass_schema,
+    lighting_pass_schema, projection_schema, shadowing_pass_schema,
 };
 pub use scene_schema::{
     default_custom_schema, default_instance_schema, default_point_schema, light_schema,

@@ -48,7 +48,7 @@ fn example_passes() -> Vec<Value> {
                             "target".to_owned(),
                             texture_binding("backdrop_target", 512, 512, "rgba8unorm"),
                         ),
-                        ("vertices".to_owned(), buffer_binding("shape_vertices", 96)),
+                        ("vertices".to_owned(), buffer_binding("shape_vertices", 36)),
                     ]),
                 ),
                 // The colour attachments, named as the binding points they read.
@@ -85,6 +85,18 @@ fn example_passes() -> Vec<Value> {
             ],
         ),
     ]
+}
+
+/// The schema the example vertex buffer was packed with.
+///
+/// A buffer says which schema shaped it, so a renderer derives the vertex layout from
+/// that rather than the layout being written down a second time in the declaration.
+pub fn vertex_schema() -> Value {
+    Schema::new(SchemaKind::structure([(
+        "position".to_owned(),
+        crate::layout::components_schema(3),
+    )]))
+    .to_value()
 }
 
 /// Builds a buffer declaration for the example.
@@ -162,13 +174,14 @@ pub fn example_instance() -> Value {
             Value::variant(
                 "Buffer",
                 [
-                    ("size_bytes".to_owned(), Value::Int(96)),
+                    ("size_bytes".to_owned(), Value::Int(36)),
                     (
                         "usage".to_owned(),
                         Value::List(vec![Value::String("vertex".to_owned())]),
                     ),
                     // Three points of three floats each.
-                    ("data".to_owned(), Value::Bytes(vec![0u8; 96])),
+                    ("data".to_owned(), Value::Bytes(vec![0u8; 36])),
+                    ("schema".to_owned(), vertex_schema()),
                 ],
             ),
         ),

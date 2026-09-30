@@ -113,8 +113,8 @@ fn triangle(offset: f64) -> Vec<Value> {
 /// Returns an identity model matrix, column major.
 fn identity() -> Value {
     let mut components = vec![0.0f64; 16];
-    for (index, component) in [0.0f64, 5.0, 10.0, 15.0].into_iter().enumerate() {
-        components[index * 5] = component;
+    for index in [0usize, 5, 10, 15] {
+        components[index] = 1.0;
     }
     Value::List(components.into_iter().map(Value::Float).collect())
 }

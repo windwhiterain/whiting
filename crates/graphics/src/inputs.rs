@@ -17,7 +17,7 @@
 //! { uniform: <pass uniform>, binders: { <point>: <declaration>, .. } }
 //! ```
 
-use definition::{Schema, Value};
+use definition::{Schema, SchemaKind, Value};
 
 use crate::GraphicsError;
 use crate::binders::Declaration;
@@ -49,7 +49,7 @@ pub fn verify_pass_inputs(pass: &PassView<'_>, instance: &Value) -> Result<(), G
             .map_err(|error| name_pass(&label, error))?;
     }
 
-    let Some(interface) = shader_interface(pass, instance, &label)? else {
+    let Some(interface) = shader_interface(pass, instance)? else {
         return Ok(());
     };
 
@@ -66,23 +66,42 @@ pub fn verify_pass_inputs(pass: &PassView<'_>, instance: &Value) -> Result<(), G
         })
 }
 
-/// Returns the interface the pass's shader declares, or `None` when it declares none.
-fn shader_interface(
+/// Returns the schema of the uniform a pass supplies, as its shader declares it.
+///
+/// The interface is what a shader says it reads, so it is also the layout the uniform is
+/// uploaded with: a renderer that packed a uniform without it would put the second field
+/// where a tight packing leaves room rather than where the shader's own alignment puts it.
+/// A shader that declares no interface has no declared layout, and `None` says so.
+pub fn uniform_schema(
     pass: &PassView<'_>,
     instance: &Value,
-    label: &str,
 ) -> Result<Option<Schema>, GraphicsError> {
+    let Some(interface) = shader_interface(pass, instance)? else {
+        return Ok(None);
+    };
+    let SchemaKind::Struct { fields } = &interface.kind else {
+        return Ok(None);
+    };
+    Ok(fields.get(UNIFORM).cloned())
+}
+
+/// Returns the interface the pass's shader declares, or `None` when it declares none.
+pub fn shader_interface(
+    pass: &PassView<'_>,
+    instance: &Value,
+) -> Result<Option<Schema>, GraphicsError> {
+    let label = pass.label().unwrap_or("<unlabelled>").to_owned();
     let shader = pass
         .shader_binder()
-        .map_err(|error| name_pass(label, error))?;
-    let binder = crate::resolve_for_pass(label, instance, shader)?;
+        .map_err(|error| name_pass(&label, error))?;
+    let binder = crate::resolve_for_pass(&label, instance, shader)?;
     let Some(declared) = binder.schema() else {
         return Ok(None);
     };
     declared
         .map(Some)
         .map_err(|error| GraphicsError::UnreadableSchema {
-            label: label.to_owned(),
+            label,
             shader: shader.to_owned(),
             reason: error.to_string(),
         })

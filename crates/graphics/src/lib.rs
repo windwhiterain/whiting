@@ -26,7 +26,7 @@
 //! use definition::{Definition, DefinitionIdentifier, Registry, Schema, SchemaIdentifier, SchemaKind, Value};
 //! use whiting_graphics::{
 //!     BinderKind, PassKind, example_graphics, example_instance, graphics_schema, instance_schema,
-//!     passes, resolve_binder, verify_pass_inputs, GRAPHICS_SCHEMA, INSTANCE_SCHEMA,
+//!     passes, resolve_binder, verify_pass_inputs, vertex_layout, GRAPHICS_SCHEMA, INSTANCE_SCHEMA,
 //! };
 //!
 //! let mut registry = Registry::new();
@@ -56,6 +56,17 @@
 //! assert_eq!(shader.kind(), Some(BinderKind::Shader));
 //! assert!(resolve_binder(&instance, "absent").is_err());
 //!
+//! // A buffer carries the schema it was packed with, so the vertex layout is derived
+//! // from a point schema rather than declared a second time.
+//! let vertices = resolve_binder(&instance, "shape_vertices").expect("the vertex buffer resolves");
+//! let packed = Schema::from_value(
+//!     vertices.value().variant_fields().expect("a typed buffer").get("schema").expect("a schema"),
+//! )
+//! .expect("the packed schema reads");
+//! let layout = vertex_layout(&packed).expect("a point schema has a layout");
+//! assert_eq!(layout.stride_bytes, 12);
+//! assert_eq!(layout.vertex_count(36), Some(3));
+//!
 //! let identifier = DefinitionIdentifier::new("scene");
 //! registry
 //!     .insert_definition(Definition::new(
@@ -72,7 +83,8 @@ use thiserror::Error;
 pub mod binders;
 mod example;
 mod inputs;
-pub mod instance;
+mod instance;
+pub mod layout;
 pub mod pass;
 mod read;
 
@@ -82,8 +94,9 @@ pub use binders::{
     uniform_binding_schema,
 };
 pub use example::{example_graphics, example_instance};
-pub use inputs::verify_pass_inputs;
+pub use inputs::{shader_interface, uniform_schema, verify_pass_inputs};
 pub use instance::derived_instance_schema;
+pub use layout::{VertexAttribute, VertexLayout, uniform_bytes, value_bytes, vertex_layout};
 pub use pass::{
     BINDERS, CLEAR_COLOR, ENTRY_POINT, LABEL, SHADER, TARGETS, UNIFORM, WORKGROUP, pass_schema,
 };

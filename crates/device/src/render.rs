@@ -154,6 +154,8 @@ pub(crate) fn texture_size(value: &Value) -> Option<(u32, u32)> {
 pub enum RenderError {
     #[error("the graphics document could not be read: {0}")]
     Graphics(#[from] GraphicsError),
+    #[error("the graphics document declares no pass that renders into a colour target")]
+    NoColourTarget,
     #[error("no gpu adapter is available")]
     NoAdapter,
     #[error("the framebuffer size does not match its pixel buffer")]

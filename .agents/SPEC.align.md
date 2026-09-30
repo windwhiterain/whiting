@@ -224,6 +224,42 @@ graphics computation, as data.
   - **invariant**: an entry name bound by two passes must be declared the same way by
     both. A disagreement fails the derivation rather than widening to `Any`, because a
     silent widening would turn an author mistake into an unchecked binding.
+- **decision**: the vertex layout is derived from the point schema, and is not declared
+  again. A field of the schema is an attribute, a list field is as many components as it
+  declares in a `components` extension, and the fields are laid out in schema order, which
+  is sorted by name. A field wider than four components is split into consecutive
+  attributes of four, which is how a matrix is read. The compiler that packs and the
+  renderer that draws both read the layout from
+  [`layout`](../crates/graphics/src/layout.rs), so they cannot disagree about a stride.
+  - **invariant**: every component is four little endian bytes. A buffer was packed at
+    eight bytes per component while the layout said four, which every stride and every
+    draw then disagreed about; the check that caught it was rendering a triangle on a real
+    adapter, not any schema validation.
+  - **invariant**: a field's `components` extension is what the layout reads, so a bare
+    `List` of floats has no layout and a buffer packed from it cannot be drawn.
+- **decision**: the uniform layout is the shader's own interface, not a second
+  declaration. The shader declares what it reads, the pass supplies it, and the renderer
+  lays the value out by that schema: a three component vector starts on a sixteen byte
+  boundary and a matrix on one too, with zeroed padding between fields.
+  - **invariant**: a schema sorts its fields by name, so a shader declares the fields of
+    its uniform in that order and the two lay out the same. This is the rule a shader
+    author has to know, and getting it wrong is a render that reads the wrong bytes rather
+    than an error.
+  - a shader that declares no interface has declared no layout, and its uniform is packed
+    tightly.
+- **decision**: a vertex buffer is not a binding. A buffer whose usage is `vertex` or
+  `instance` becomes a vertex buffer, and its attribute locations continue from where the
+  previous one's ended; per vertex buffers come first and per instance buffers follow, so
+  a shader reads its point at the low locations and the instance data above. Every other
+  buffer and every texture is a binding, numbered from one in name order, with the uniform
+  at binding zero.
+- **invariant**: a binding point that is one of a pass's targets is an attachment, not a
+  binding. A backend treats an attachment as an exclusive use of the texture, so a pass
+  that both wrote and sampled one would be rejected. The declaration is how a pass says
+  what it renders into, so the same point serves as the attachment.
+- **invariant**: a texture whose format is a depth format is declared to a shader with the
+  depth sample type, not the float one, and a pass whose targets are all depth formats is
+  built with no fragment stage.
 - `GraphicsInstance`: a `Definition` that provides data to its `referencing_graphics`
   in the corresponding schema.
   - `referencing_graphics`: the `Graphics` this instance serves, by `DefinitionIdentifier`.
@@ -248,11 +284,24 @@ a server that can hot reload `Graphics`, `GraphicsInstance`, incrementally apply
   framebuffer back. Behind the optional `wgpu` feature.
   - a rasterize pass binds one shader for both stages, because a pass has one `shader`
     field and a shader that exposes both entry points is the only thing that field can
-    mean.
-  - it clears its target and issues no draw call. A buffer payload says how many bytes it
-    holds, which is not how many vertices or what attributes they have, and `wgpu` needs
-    both. The declaration that would carry them is in
-    [proposals/vertex-layout-declaration.md](proposals/vertex-layout-declaration.md).
+    mean. The two entry points are `vertex_main` and `fragment_main`: WGSL has one
+    namespace for functions, so a shader cannot name both `main`.
+  - every pass runs in the order the document lists them, into textures shared by the
+    instance entry they come from, and what comes back is the colour target of the last
+    pass that drew into one. A pass whose targets are all depth formats has no image, and a
+    document with no colour pass reports that rather than returning a placeholder.
+  - a target is cleared by the first pass that writes it and loaded by the rest, or the
+    second pass into a shared target would erase the first pass's contribution.
+  - the device is created with an error handler and drains it into the render result, so a
+    shader that does not compile, a bind group that does not match its layout, and a draw
+    with no buffer arrive as errors carrying the backend's own words. Without it a silent
+    render is indistinguishable from one that drew nothing.
+  - **not shipped**: the workspace has no shader sources. The standard compiler emits
+    paths such as `shaders/quad.wgsl`, so a scene renders once an author supplies them.
+    The whole path was verified on a real adapter with temporary shaders: a triangle
+    rasterized with a vertex layout derived from a point schema, and the standard scene's
+    three passes ran in order, sharing a shadow map and a depth buffer between them, with
+    the lighting pass shaded by what the earlier passes wrote.
 - `NoopRenderer`: the fallback when no gpu adapter is present, so the server and the
   reload logic stay testable on machines without a gpu.
 - `Frame`: a rendered frame, returned as png bytes and as raw readback bytes.
@@ -342,19 +391,31 @@ incremental compile.
         pipeline needs, in exchange for a binding model where what a shader declares is
         exactly what the pass supplies.
   - `PassSchema`: the schema of a pass the standard pipeline emits.
-    - `ShadowingSchema`, `DepthingSchema` and `LightingSchema`, one per stage.
-    - each is the interface of that stage: a `uniform` of numbers and a `binders` block
-      naming a buffer at `vertices` and `instance_data` and the textures the stage writes
-      or reads. A material that wants the standard stage writes that schema, and the
-      compiler is on the hook to supply exactly it.
+    - `ProjectionSchema` is the schema of a projection: a view projection matrix and the
+      point it was made from. It is data on the pass, not arithmetic in the renderer,
+      because a reload can change the scene a projection covers and the pass has to say so,
+      and because a shader reads it from the uniform it declares.
+    - `ShadowingSchema`, `DepthingSchema` and `LightingSchema`, one per stage, each
+      carrying a `projection` of that schema.
+    - each is the interface of that stage: a `uniform` and a `binders` block naming a
+      buffer at `vertices` and `instance_data` and the textures the stage writes or reads.
+      A material that wants the standard stage writes that schema, and the compiler is on
+      the hook to supply exactly it.
+    - the projection is a real matrix: the camera stages look at the scene's bounds from
+      three box widths in front along the negative z axis, and a shadowing stage looks at a
+      box of the light's `shadow_extent` centred on the scene from the light's position,
+      with the near and far planes derived from how far that is. The scene document has no
+      camera field, so that framing is a stated convention rather than an author's
+      decision; an author who wants a camera writes one and the convention goes away.
   - a buffer is a flat run of little endian four byte floats, in the field order of the
     schema that describes it, which is sorted by field name. Every point of a mesh
     occupies the same number of bytes, because a shader reads a fixed stride; a ragged
     point list is refused rather than packed into a buffer the shader cannot walk.
-  - the compile emits three stages in order: one shadowing pass per light, one depthing
-    pass, then one lighting pass that reads the shadow maps and the depth buffer the
-    earlier passes produced. Ordering is what makes the passes a pipeline rather than a
-    list, so it is a property of the emitted order and not of any document field.
+  - the compile emits three stages in order: one shadowing pass per light and per shadow
+    casting mesh, one depthing pass per mesh, then one lighting pass per mesh and per
+    light. The order is the pipeline: nothing in a document says a lighting pass runs
+    after a shadowing pass. Each stage clears its target to what that stage means: depth
+    maps clear to the far plane, a shaded image clears to unlit.
   - the emitted instance carries the shaders with their schemas, the vertex and
     instance buffers, and the shadow map, depth and colour targets. The graphics
     document declares each of them through a `Binder`, and its `instance_schema` is the
@@ -366,8 +427,6 @@ incremental compile.
     facts about the scene document and are known before any gpu work starts. The
     compiler also verifies every pass it emitted against the interface that pass's own
     shader declares, so a compiler bug is a compile error rather than a bad frame.
-  - the emitted view projection is the identity and the light direction is the unit
-    vector toward the light. A real camera and a real light frustum need fields the spec
-    does not have, and are written up in
-    [proposals/standard-pipeline-math.md](proposals/standard-pipeline-math.md) rather
-    than invented here.
+  - the default point and instance schemas declare their component widths, because a
+    schema is also the layout a buffer is read with: a point is a position of three, and a
+    model matrix is sixteen, which the renderer reads as four attributes of four.

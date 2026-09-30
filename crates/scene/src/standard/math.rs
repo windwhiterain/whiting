@@ -1,40 +1,236 @@
-//! The little arithmetic the standard pipeline needs, and nothing more.
+//! The arithmetic a projection is made of.
 //!
-//! A pass's uniform is data the shader reads, so a compiler has to put numbers in it.
-//! What the standard compiler puts there is deliberately minimal: an identity view
-//! projection and the direction from the origin toward a light. A real camera, a real
-//! light frustum and a real projection are a larger piece of work, recorded in
-//! [proposals/standard-pipeline-math.md](../../../../.agents/proposals/standard-pipeline-math.md),
-//! and are not smuggled in here.
+//! A projection is data: the pass carries it, and the shader reads it. What a compiler
+//! has to decide is which box the projection covers and where it looks from, and those two
+//! decisions are stated where they are used rather than hidden here.
+//!
+//! Matrices are column major, sixteen floats, which is the order `wgpu` and `WGSL` both
+//! read, and the depth range is zero to one.
+//!
+//! # Example
+//!
+//! ```
+//! use whiting_scene::standard::math::{Bounds, apply, look_at, projection_of};
+//!
+//! // A point at the half width lands on the edge of the frame, on the side it is on, and
+//! // the near and far planes land at depth zero and depth one.
+//! let projection = whiting_scene::standard::math::orthographic(2.0, 1.0, 10.0);
+//! let near = apply(&projection, [2.0, 2.0, -1.0]);
+//! let far = apply(&projection, [0.0, 0.0, -10.0]);
+//! assert!((near[0] - 1.0).abs() < 1e-9 && (near[1] - 1.0).abs() < 1e-9);
+//! assert!((near[2]).abs() < 1e-9, "the near plane is at depth zero");
+//! assert!((far[2] - 1.0).abs() < 1e-9, "the far plane is at depth one");
+//!
+//! // A view from above the origin sees the origin in the middle of the frame, at a
+//! // depth inside the range, which is what makes the projection cover the box.
+//! let view = projection_of(
+//!     &Bounds::around([0.0, 0.0, 0.0], 4.0),
+//!     [0.0, 0.0, 10.0],
+//!     [0.0, 0.0, 0.0],
+//!     1.1,
+//! );
+//! let centre = apply(&view, [0.0, 0.0, 0.0]);
+//! assert!(centre[0].abs() < 1e-9 && centre[1].abs() < 1e-9);
+//! assert!((0.0..=1.0).contains(&centre[2]), "the centre is inside the depth range");
+//!
+//! // A view is not mirrored: positive x in view space stays positive in clip space.
+//! let corner = look_at([0.0, 0.0, 10.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+//! assert!(apply(&corner, [1.0, 0.0, 0.0])[0] > 0.0);
+//! ```
 
-use definition::Value;
+/// A four by four matrix, column major.
+pub type Matrix = [f64; 16];
 
-/// Returns an identity view projection, column major.
-pub fn identity_view_projection() -> Value {
-    let mut components = vec![0.0f64; 16];
-    for (index, component) in [0.0f64, 5.0, 10.0, 15.0].into_iter().enumerate() {
-        components[index * 5] = component;
-    }
-    Value::List(components.into_iter().map(Value::Float).collect())
+/// An axis aligned box, in world space.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Bounds {
+    /// The smallest corner.
+    pub minimum: [f64; 3],
+    /// The largest corner.
+    pub maximum: [f64; 3],
 }
 
-/// Returns the unit vector from the origin toward a position.
-///
-/// A light at the origin has no direction, so it is reported as pointing down the
-/// positive x axis rather than dividing by zero.
-pub fn direction(position: &[f64; 3]) -> Value {
-    let length = (position[0].powi(2) + position[1].powi(2) + position[2].powi(2)).sqrt();
-    if length == 0.0 {
-        return Value::List([1.0, 0.0, 0.0].into_iter().map(Value::Float).collect());
-    }
-    Value::List(
+impl Bounds {
+    /// Returns the centre of the box.
+    pub fn centre(&self) -> [f64; 3] {
         [
-            position[0] / length,
-            position[1] / length,
-            position[2] / length,
+            (self.minimum[0] + self.maximum[0]) / 2.0,
+            (self.minimum[1] + self.maximum[1]) / 2.0,
+            (self.minimum[2] + self.maximum[2]) / 2.0,
         ]
-        .into_iter()
-        .map(Value::Float)
-        .collect(),
-    )
+    }
+
+    /// Returns the half width of the box along an axis.
+    pub fn half_width(&self, axis: usize) -> f64 {
+        ((self.maximum[axis] - self.minimum[axis]) / 2.0).abs()
+    }
+
+    /// Returns the half width of the box, which is the largest of the three.
+    pub fn largest_half_width(&self) -> f64 {
+        (0..3)
+            .map(|axis| self.half_width(axis))
+            .fold(0.0f64, f64::max)
+    }
+
+    /// Returns a box around `centre` with the given half width, never degenerate.
+    pub fn around(centre: [f64; 3], half_width: f64) -> Self {
+        let half_width = if half_width > 0.0 { half_width } else { 1.0 };
+        Self {
+            minimum: [
+                centre[0] - half_width,
+                centre[1] - half_width,
+                centre[2] - half_width,
+            ],
+            maximum: [
+                centre[0] + half_width,
+                centre[1] + half_width,
+                centre[2] + half_width,
+            ],
+        }
+    }
+
+    /// Returns the smallest box holding both.
+    pub fn union(self, other: Self) -> Self {
+        Self {
+            minimum: [
+                self.minimum[0].min(other.minimum[0]),
+                self.minimum[1].min(other.minimum[1]),
+                self.minimum[2].min(other.minimum[2]),
+            ],
+            maximum: [
+                self.maximum[0].max(other.maximum[0]),
+                self.maximum[1].max(other.maximum[1]),
+                self.maximum[2].max(other.maximum[2]),
+            ],
+        }
+    }
+}
+
+/// Returns a projection of `box` looked at from `eye` towards `target`.
+///
+/// The box is fitted to the view, so whatever the scene's extent is, the projection
+/// covers all of it. `padding` widens the box, which keeps geometry exactly on the edge
+/// from being clipped by a rounding error. The near and far planes are derived from how
+/// far the camera is from the box, so the whole box is between them.
+pub fn projection_of(box_of: &Bounds, eye: [f64; 3], target: [f64; 3], padding: f64) -> Matrix {
+    let distance = dot(subtract(eye, target), subtract(eye, target)).sqrt();
+    let depth = distance + 2.0 * box_of.largest_half_width();
+    let view = look_at(eye, target, [0.0, 1.0, 0.0]);
+    let ortho = orthographic(
+        2.0 * box_of.largest_half_width() * padding,
+        depth / 4.0,
+        depth,
+    );
+    multiply(&ortho, &view)
+}
+
+/// Returns the matrix that transforms world space into the space the camera is in.
+pub fn look_at(eye: [f64; 3], target: [f64; 3], up: [f64; 3]) -> Matrix {
+    // The camera looks down its own negative z axis, so the basis is built from the
+    // direction back towards the eye.
+    let back = normalize(subtract(eye, target));
+    let right = normalize(cross(up, back));
+    let up = cross(back, right);
+
+    [
+        right[0],
+        up[0],
+        back[0],
+        0.0,
+        right[1],
+        up[1],
+        back[1],
+        0.0,
+        right[2],
+        up[2],
+        back[2],
+        0.0,
+        -dot(right, eye),
+        -dot(up, eye),
+        -dot(back, eye),
+        1.0,
+    ]
+}
+
+/// Returns an orthographic projection of half width `half_width`, from `near` to `far`.
+///
+/// # Invariants
+///
+/// The camera looks down its own negative z, so a point `d` in front of it sits at
+/// `z == -d`. This puts `d == near` at depth zero and `d == far` at depth one, and maps a
+/// point at `half_width` to the edge of the frame on the same side it is on. The doctest
+/// in the module is what holds all three true.
+pub fn orthographic(half_width: f64, near: f64, far: f64) -> Matrix {
+    let half_width = if half_width > 0.0 { half_width } else { 1.0 };
+    let (near, far) = (near.max(1e-6), far.max(near + 1e-6));
+    let a = 1.0 / (near - far);
+    [
+        1.0 / half_width,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0 / half_width,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        a,
+        0.0,
+        0.0,
+        0.0,
+        near * a,
+        1.0,
+    ]
+}
+
+/// Returns the product of two column major matrices.
+pub fn multiply(left: &Matrix, right: &Matrix) -> Matrix {
+    let mut product = [0.0f64; 16];
+    for column in 0..4 {
+        for row in 0..4 {
+            product[column * 4 + row] = (0..4)
+                .map(|inner| left[inner * 4 + row] * right[column * 4 + inner])
+                .sum();
+        }
+    }
+    product
+}
+
+/// Applies a matrix to a point, which is the point in clip space it maps to.
+pub fn apply(matrix: &Matrix, point: [f64; 3]) -> [f64; 4] {
+    [
+        matrix[0] * point[0] + matrix[4] * point[1] + matrix[8] * point[2] + matrix[12],
+        matrix[1] * point[0] + matrix[5] * point[1] + matrix[9] * point[2] + matrix[13],
+        matrix[2] * point[0] + matrix[6] * point[1] + matrix[10] * point[2] + matrix[14],
+        matrix[3] * point[0] + matrix[7] * point[1] + matrix[11] * point[2] + matrix[15],
+    ]
+}
+
+/// Subtracts one vector from another.
+pub fn subtract(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
+    [left[0] - right[0], left[1] - right[1], left[2] - right[2]]
+}
+
+/// Returns the cross product of two vectors.
+pub fn cross(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
+    [
+        left[1] * right[2] - left[2] * right[1],
+        left[2] * right[0] - left[0] * right[2],
+        left[0] * right[1] - left[1] * right[0],
+    ]
+}
+
+/// Returns the dot product of two vectors.
+pub fn dot(left: [f64; 3], right: [f64; 3]) -> f64 {
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+/// Returns a unit vector, falling back to a unit x vector for a zero length one.
+pub fn normalize(vector: [f64; 3]) -> [f64; 3] {
+    let length = dot(vector, vector).sqrt();
+    if length == 0.0 {
+        return [1.0, 0.0, 0.0];
+    }
+    [vector[0] / length, vector[1] / length, vector[2] / length]
 }

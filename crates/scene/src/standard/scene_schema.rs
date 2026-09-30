@@ -229,8 +229,12 @@ pub fn shader_schema() -> Schema {
 }
 
 /// Builds a schema of exactly three floats.
+///
+/// The width is declared rather than left to the value, because a point schema is also the
+/// layout a vertex buffer is read with, and a list that does not declare its width has no
+/// layout at all.
 fn float_triple(documentation: &str) -> Schema {
-    Schema::new(SchemaKind::list(Schema::new(SchemaKind::Float))).with_documentation(documentation)
+    graphics::layout::components_schema(3).with_documentation(documentation)
 }
 
 /// Builds the point schema a mesh gets when the author does not write one.
@@ -248,12 +252,12 @@ pub fn default_point_schema() -> Schema {
 /// Builds the instance schema a standard material gets when it does not write one.
 ///
 /// The per instance data is packed according to this schema, which is why it has to be a
-/// struct: the field order is the layout.
+/// struct and why the matrix declares its width: the field order is the layout, and a
+/// matrix is read as four attributes of four components each.
 pub fn default_instance_schema() -> Schema {
     Schema::new(SchemaKind::structure([(
         "model".to_owned(),
-        Schema::new(SchemaKind::list(Schema::new(SchemaKind::Float)))
-            .with_documentation("Model matrix, column major."),
+        graphics::layout::components_schema(16).with_documentation("Model matrix, column major."),
     )]))
     .with_documentation("One model matrix per instance.")
 }

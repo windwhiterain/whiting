@@ -200,6 +200,13 @@ pub fn binder_payload_schema() -> Schema {
                     Schema::new(SchemaKind::list(Schema::new(SchemaKind::String))),
                 ),
                 (DATA.to_owned(), Schema::new(SchemaKind::Bytes)),
+                (
+                    SCHEMA.to_owned(),
+                    Schema::document_schema().optional().with_documentation(
+                        "The schema the bytes were packed with. A renderer derives the \
+                             vertex layout from it, rather than the layout being declared twice.",
+                    ),
+                ),
             ])),
         ),
         (

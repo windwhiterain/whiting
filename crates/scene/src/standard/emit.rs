@@ -32,14 +32,17 @@ use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{derived_instance_schema, verify_pass_inputs};
 
 use crate::CompileError;
-use crate::standard::math::{direction, identity_view_projection};
+use crate::standard::math::{Bounds, Matrix, projection_of};
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
-    DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_DIRECTION, LIGHT_POSITION,
-    SHADOW_MAP, SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, VERTICES, VIEW_PROJECTION,
+    DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, PROJECTION, SHADOW_MAP,
+    SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, VERTICES,
 };
 use crate::standard::scene_schema;
+
+/// How much wider than its box a projection is fitted.
+const PADDING: f64 = 1.1;
 
 /// Name of the instance entry holding the depth buffer every depthing pass writes.
 pub const DEPTH_BUFFER_ENTRY: &str = "depth_buffer";
@@ -91,6 +94,7 @@ struct MeshRead {
     vertex_bytes: i64,
     instance_entry: String,
     instance_bytes: i64,
+    bounds: Bounds,
 }
 
 /// One light, read out of the scene document.
@@ -98,6 +102,7 @@ struct LightRead {
     label: String,
     position: [f64; 3],
     colour: [f64; 3],
+    shadow_extent: f64,
 }
 
 /// The two documents a standard scene compiles to.
@@ -111,7 +116,8 @@ pub struct Emitted {
 /// Reads a scene and emits the graphics and instance documents that draw it.
 pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     let lights = read_lights(scene)?;
-    let (meshes, mut instance) = read_meshes(scene)?;
+    let (meshes, mut instance, bounds) = read_meshes(scene)?;
+    let camera = camera_projection(&bounds);
 
     add_targets(&mut instance);
     for light in &lights {
@@ -124,15 +130,15 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     let mut passes = Vec::new();
     for light in &lights {
         for mesh in meshes.iter().filter(|mesh| mesh.stage == Stage::Shadowing) {
-            passes.push(shadowing_pass(mesh, light));
+            passes.push(shadowing_pass(mesh, light, &bounds));
         }
     }
     for mesh in meshes.iter().filter(|mesh| mesh.stage == Stage::Depthing) {
-        passes.push(depthing_pass(mesh));
+        passes.push(depthing_pass(mesh, &camera));
     }
     for light in &lights {
         for mesh in meshes.iter().filter(|mesh| mesh.stage == Stage::Lighting) {
-            passes.push(lighting_pass(mesh, light));
+            passes.push(lighting_pass(mesh, light, &camera));
         }
     }
 
@@ -173,6 +179,7 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
         read.push(LightRead {
             label,
             position: triple(light, &path, "position")?,
+            shadow_extent: number(light, &path, "shadow_extent")?,
             colour: [
                 colour[0] * intensity,
                 colour[1] * intensity,
@@ -184,15 +191,23 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
 }
 
 /// Reads the meshes of the scene, verifying each against the schemas it declares, and
-/// collects the instance entries they contribute.
-fn read_meshes(scene: &Value) -> Result<(Vec<MeshRead>, BTreeMap<String, Value>), CompileError> {
+/// collects the instance entries they contribute and the bounds they cover.
+fn read_meshes(
+    scene: &Value,
+) -> Result<(Vec<MeshRead>, BTreeMap<String, Value>, Bounds), CompileError> {
     let path = Path::root().key(scene_schema::MESHES);
     let meshes = list_at(scene, &Path::root(), scene_schema::MESHES)?;
 
     let mut read: Vec<MeshRead> = Vec::with_capacity(meshes.len());
     let mut instance = BTreeMap::new();
+    let mut bounds: Option<Bounds> = None;
     for (index, mesh) in meshes.iter().enumerate() {
-        let (found, entries) = read_mesh(mesh, &path.index(index))?;
+        let mesh_path = path.index(index);
+        let (found, entries) = read_mesh(mesh, &mesh_path)?;
+        bounds = Some(match bounds {
+            None => found.bounds,
+            Some(previous) => previous.union(found.bounds),
+        });
         if read.iter().any(|other| other.label == found.label) {
             return Err(CompileError::DuplicateLabel {
                 kind: "mesh",
@@ -204,7 +219,12 @@ fn read_meshes(scene: &Value) -> Result<(Vec<MeshRead>, BTreeMap<String, Value>)
         }
         read.push(found);
     }
-    Ok((read, instance))
+    // A scene with no mesh has nothing to project, so the projection covers a unit box.
+    Ok((
+        read,
+        instance,
+        bounds.unwrap_or_else(|| Bounds::around([0.0; 3], 1.0)),
+    ))
 }
 
 /// Reads one mesh and every schema it is verified against.
@@ -275,18 +295,25 @@ fn read_mesh(mesh: &Value, path: &Path) -> Result<(MeshRead, Vec<(String, Value)
         vertex_bytes: vertex_bytes.len() as i64,
         instance_entry: format!("{label}_{INSTANCE_DATA}"),
         instance_bytes: instance_bytes.len() as i64,
+        bounds: bounds_of(points),
         label,
         stage: shader.stage,
     };
 
+    // The buffers carry the schema they were packed with, so a renderer derives the
+    // vertex layout from the point schema rather than it being declared a second time.
     let entries = vec![
         (
             found.vertex_entry.clone(),
-            buffer_payload(vertex_bytes, "vertex"),
+            buffer_payload(vertex_bytes, point_schema.to_value(), "vertex"),
         ),
         (
             found.instance_entry.clone(),
-            buffer_payload(instance_bytes, "instance"),
+            buffer_payload(
+                instance_bytes,
+                shader.instance_schema.to_value(),
+                "instance",
+            ),
         ),
         (
             found.shader_entry.clone(),
@@ -390,14 +417,25 @@ pub fn shadow_map_entry(light_label: &str) -> String {
 }
 
 /// Builds the shadowing pass of one mesh for one light.
-fn shadowing_pass(mesh: &MeshRead, light: &LightRead) -> Value {
+fn shadowing_pass(mesh: &MeshRead, light: &LightRead, bounds: &Bounds) -> Value {
+    // The shadow map looks down the light's direction, at a box centred on the scene and
+    // as wide as the light says it shines.
+    let centre = bounds.centre();
+    let eye = light.position;
+    let projection = projection_value(
+        &projection_of(
+            &Bounds::around(centre, light.shadow_extent),
+            eye,
+            centre,
+            PADDING,
+        ),
+        eye,
+    );
+
     rasterize(
         &format!("shadow/{}/{}", light.label, mesh.label),
         &mesh.shader_entry,
-        Value::structure([
-            (VIEW_PROJECTION.to_owned(), identity_view_projection()),
-            (LIGHT_DIRECTION.to_owned(), direction(&light.position)),
-        ]),
+        Value::structure([(PROJECTION.to_owned(), projection)]),
         mesh_bindings(mesh).chain([(
             SHADOW_MAP.to_owned(),
             texture_binding(
@@ -408,30 +446,32 @@ fn shadowing_pass(mesh: &MeshRead, light: &LightRead) -> Value {
             ),
         )]),
         vec![SHADOW_MAP],
+        DEPTH_CLEAR,
     )
 }
 
 /// Builds the depthing pass of one mesh.
-fn depthing_pass(mesh: &MeshRead) -> Value {
+fn depthing_pass(mesh: &MeshRead, camera: &Value) -> Value {
     rasterize(
         &format!("depth/{}", mesh.label),
         &mesh.shader_entry,
-        Value::structure([(VIEW_PROJECTION.to_owned(), identity_view_projection())]),
+        Value::structure([(PROJECTION.to_owned(), camera.clone())]),
         mesh_bindings(mesh).chain([(
             DEPTH_BUFFER.to_owned(),
             texture_binding(DEPTH_BUFFER_ENTRY, DEPTH_WIDTH, DEPTH_HEIGHT, DEPTH_FORMAT),
         )]),
         vec![DEPTH_BUFFER],
+        DEPTH_CLEAR,
     )
 }
 
 /// Builds the lighting pass of one mesh for one light.
-fn lighting_pass(mesh: &MeshRead, light: &LightRead) -> Value {
+fn lighting_pass(mesh: &MeshRead, light: &LightRead, camera: &Value) -> Value {
     rasterize(
         &format!("lighting/{}/{}", mesh.label, light.label),
         &mesh.shader_entry,
         Value::structure([
-            (VIEW_PROJECTION.to_owned(), identity_view_projection()),
+            (PROJECTION.to_owned(), camera.clone()),
             (
                 LIGHT_POSITION.to_owned(),
                 Value::List(light.position.into_iter().map(Value::Float).collect()),
@@ -461,7 +501,78 @@ fn lighting_pass(mesh: &MeshRead, light: &LightRead) -> Value {
             ),
         ]),
         vec![COLOR_TARGET],
+        COLOUR_CLEAR,
     )
+}
+
+/// Returns the projection the camera stages draw through.
+///
+/// # Invariants
+///
+/// The scene document has no camera, so this is a stated convention rather than an
+/// author decision: the camera looks down the negative z axis from three box widths in
+/// front of the scene, and the box it projects is the whole scene with a little padding
+/// so geometry on the edge is not clipped by a rounding error. A scene that wants a
+/// camera writes one, and this goes away.
+fn camera_projection(bounds: &Bounds) -> Value {
+    let eye = [
+        bounds.centre()[0],
+        bounds.centre()[1],
+        bounds.centre()[2] + 3.0 * bounds.largest_half_width(),
+    ];
+    projection_value(&projection_of(bounds, eye, bounds.centre(), PADDING), eye)
+}
+
+/// Wraps a matrix and the point it was made from into a projection document.
+fn projection_value(matrix: &Matrix, eye: [f64; 3]) -> Value {
+    Value::structure([
+        (
+            "view_projection".to_owned(),
+            Value::List(matrix.iter().copied().map(Value::Float).collect()),
+        ),
+        (
+            "position".to_owned(),
+            Value::List(eye.into_iter().map(Value::Float).collect()),
+        ),
+    ])
+}
+
+/// Returns the box the packed points of a mesh cover.
+///
+/// Every point of a mesh has the same shape, so the box is over the components of the
+/// first three of them, which is the position a projection needs.
+fn bounds_of(points: &[Value]) -> Bounds {
+    let mut bounds = Bounds {
+        minimum: [f64::INFINITY; 3],
+        maximum: [f64::NEG_INFINITY; 3],
+    };
+    for point in points {
+        for (axis, component) in point
+            .as_struct()
+            .into_iter()
+            .flat_map(|fields| fields.values())
+            .flat_map(number_components)
+            .take(3)
+            .enumerate()
+        {
+            bounds.minimum[axis] = bounds.minimum[axis].min(component);
+            bounds.maximum[axis] = bounds.maximum[axis].max(component);
+        }
+    }
+    if !bounds.minimum.iter().all(|value| value.is_finite()) {
+        return Bounds::around([0.0; 3], 1.0);
+    }
+    bounds
+}
+
+/// Returns the numbers a point field contributes, whether it is one number or a list.
+fn number_components(value: &Value) -> Vec<f64> {
+    match value {
+        Value::Float(number) => vec![*number],
+        Value::Int(number) => vec![*number as f64],
+        Value::List(components) => components.iter().flat_map(number_components).collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// Returns the two binding points every pass of a mesh carries.
@@ -479,6 +590,12 @@ fn mesh_bindings(mesh: &MeshRead) -> impl Iterator<Item = (String, Value)> + use
     .into_iter()
 }
 
+/// The colour a depth map is cleared to, which is as far away as the depth range goes.
+const DEPTH_CLEAR: [f64; 4] = [1.0, 1.0, 1.0, 1.0];
+
+/// The colour a shaded image is cleared to, which is unlit.
+const COLOUR_CLEAR: [f64; 4] = [0.0, 0.0, 0.0, 1.0];
+
 /// Builds a rasterize pass with the shared fields every pass carries.
 fn rasterize(
     label: &str,
@@ -486,6 +603,7 @@ fn rasterize(
     uniform: Value,
     binders: impl IntoIterator<Item = (String, Value)>,
     targets: impl IntoIterator<Item = &'static str>,
+    clear: [f64; 4],
 ) -> Value {
     Value::variant(
         "Rasterize",
@@ -505,7 +623,7 @@ fn rasterize(
             ),
             (
                 CLEAR_COLOR.to_owned(),
-                Value::List([1.0, 1.0, 1.0, 1.0].into_iter().map(Value::Float).collect()),
+                Value::List(clear.into_iter().map(Value::Float).collect()),
             ),
         ],
     )
@@ -547,8 +665,8 @@ fn texture_binding(source: &str, width: i64, height: i64, format: &str) -> Value
     )
 }
 
-/// Builds a buffer payload, whose declared size is its own byte length.
-fn buffer_payload(bytes: Vec<u8>, usage: &str) -> Value {
+/// Builds a buffer payload, which carries the schema it was packed with.
+fn buffer_payload(bytes: Vec<u8>, schema: Value, usage: &str) -> Value {
     Value::variant(
         "Buffer",
         [
@@ -557,6 +675,7 @@ fn buffer_payload(bytes: Vec<u8>, usage: &str) -> Value {
                 graphics::binders::USAGE.to_owned(),
                 Value::List(vec![Value::String(usage.to_owned())]),
             ),
+            (graphics::binders::SCHEMA.to_owned(), schema),
             (graphics::binders::DATA.to_owned(), Value::Bytes(bytes)),
         ],
     )
