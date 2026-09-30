@@ -170,23 +170,24 @@ pub(crate) fn assemble(
         .map_or(Version::INITIAL, |previous| previous.version);
     let previous_graphics = context.previous_graphics.map(|previous| &previous.value);
     let previous_instance = context.previous_instance.map(|previous| &previous.value);
+    let graphics_delta = Delta::new(
+        graphics_identifier.clone(),
+        graphics_base,
+        diff::document_delta(previous_graphics, &graphics.value),
+    );
+    let instance_delta = Delta::new(
+        instance_identifier.clone(),
+        instance_base,
+        diff::document_delta(previous_instance, &instance.value),
+    );
 
     Ok(CompileOutput {
-        graphics_delta: Delta::new(
-            graphics_identifier.clone(),
-            graphics_base,
-            diff::document_delta(previous_graphics, &graphics.value),
-        ),
-        instance_delta: Delta::new(
-            instance_identifier.clone(),
-            instance_base,
-            diff::document_delta(previous_instance, &instance.value),
-        ),
+        graphics_delta,
+        instance_delta,
         graphics,
         instance,
     })
 }
-
 /// The schema describing the shape a [`Compiler`] accepts.
 ///
 /// This is a schema document, not a rust type, so a compiler can declare a new scene

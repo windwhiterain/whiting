@@ -8,11 +8,12 @@ All four tiers of [proposals/striking-3d-scenes.md](../proposals/striking-3d-sce
 two scenes render on a real adapter. The analysis of the system is recorded in
 [SPEC.align](../SPEC.align.md) under *What the standard pipeline gained, and what it got wrong*.
 
-**The single most important finding is not implemented** and is in
-[proposals/compile-cost.md](../proposals/compile-cost.md): a frame of the dune field spends 25 ms
-rendering and 3.5 s compiling, and the delta is six operations. The delta makes *applying* a change
-cheap and *finding* it expensive, so a sequence of frames that changes one number pays the whole
-document walk once per frame. Read that proposal before optimising anything here.
+**A frame was 99% compile**, and profiling it rather than reasoning about it found that the cost was
+not the diff at all. Three changes took a frame from 3.7 s to 0.37 s, and made the cost *flat* over a
+sequence rather than growing. The measurements, what was fixed and what is still open are in
+[proposals/compile-cost.md](../proposals/compile-cost.md) — **read that before optimising anything
+here.** What is left is the structural one: reuse the nodes a compile read last time, by identity,
+rather than rebuilding the document every time.
 
 ## How to run it
 
@@ -45,6 +46,11 @@ Scenes: `dunes`, `monoliths`, `studio` (the shipped example).
 - **Shader and parse caches in the renderer.** A module is keyed by its text, so two passes naming
   the same shader share one and a frame that changes no shader pays for no compilation. The
   uniform layout check parses through the same cache, which the code had flagged as a known cost.
+- **Three compile fixes**, all sound and all in the framework rather than in a scene:
+  points are verified per mesh against each *distinct* shader point schema rather than once per
+  instance that draws the mesh; `pack_points` sizes its buffer from the schema's declared widths
+  rather than growing to it; and `find_reference` stops at a schema that constrains nothing,
+  because a reference is declared and an unconstrained slot has no declaration to mark.
 
 ## What is known-incomplete
 

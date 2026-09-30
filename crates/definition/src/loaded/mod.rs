@@ -575,9 +575,25 @@ impl Loaded {
 }
 
 /// Walks a document for the first reference it spells where the schema marks a slot.
+///
+/// # Invariants
+///
+/// A walk stops at a schema that constrains nothing. A reference is *declared* — a slot is
+/// marked, and the mark names the kind the target must have — so nothing beneath a slot whose
+/// kind is `Any` can be a reference, because there is no declaration down there to mark one.
+/// The walk is a question about the schema, not about the shape of the data, and a blob of
+/// unconstrained values is not an answer to it.
+///
+/// This is also what keeps the walk cheap on the documents it matters for. A mesh declares
+/// its points as a list of `Any`, and a mesh of a hundred thousand points is a hundred
+/// thousand values with no schema beneath them; descending into it to look for a
+/// declaration that cannot be there is the whole cost of loading a scene that names nothing.
 fn find_reference(value: &Value, schema: &Schema, at: &Path) -> Option<Path> {
     if schema.is_reference() && load::spelled(value).is_some() {
         return Some(at.clone());
+    }
+    if matches!(schema.kind, crate::schema::SchemaKind::Any) {
+        return None;
     }
     match value {
         Value::Struct(fields) | Value::Dict(fields) => fields.iter().find_map(|(name, value)| {

@@ -25,3 +25,8 @@ thiserror = { workspace = true }
 
 wgpu = { workspace = true, optional = true }
 png = { workspace = true, optional = true }
+
+# The render harness drives the gpu backend, so it is only built when that backend is.
+[[example]]
+name = "render"
+required-features = ["wgpu"]

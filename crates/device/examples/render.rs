@@ -83,7 +83,9 @@ async fn run() -> Result<(), String> {
     let mut moments = Vec::with_capacity(request.times.len());
     let mut previous: Option<Compiled> = None;
     for &time in &request.times {
+        let started = std::time::Instant::now();
         let mut scene = authored.clone();
+        let cloned_at = started.elapsed();
         set_time(&mut scene, time);
 
         let source = Definition::new(
@@ -94,8 +96,8 @@ async fn run() -> Result<(), String> {
         source
             .validate(&registry)
             .map_err(|error| format!("the scene does not satisfy the scene schema: {error}"))?;
+        let validated_at = started.elapsed();
 
-        let started = std::time::Instant::now();
         let compiled = compiler
             .compile(&CompileContext {
                 scene: &source,
@@ -112,15 +114,17 @@ async fn run() -> Result<(), String> {
         let passes = graphics::passes(&compiled.graphics.value)
             .map_err(|error| format!("the emitted passes do not read: {error}"))?
             .len();
-        // The two are reported apart because they are two different costs, and only one
-        // of them is the delta's business: a delta is small or large, and the compile it
-        // came from is the same size either way.
+        // The three are reported apart because they are three different costs, and only
+        // one of them is the delta's business: a delta is small or large, and the work
+        // that finds it is the same size either way.
         println!(
             "{name}: {} drawn, {passes} passes, {} operations of delta, \
-             compiled in {} ms, rendered in {} ms",
+             cloned {} ms, validated {} ms, compiled {} ms, rendered {} ms",
             describe(time),
             compiled.graphics_delta.operations.len() + compiled.instance_delta.operations.len(),
-            compiled_at.as_millis(),
+            cloned_at.as_millis(),
+            (validated_at - cloned_at).as_millis(),
+            (compiled_at - validated_at).as_millis(),
             started.elapsed().as_millis() - compiled_at.as_millis(),
         );
 

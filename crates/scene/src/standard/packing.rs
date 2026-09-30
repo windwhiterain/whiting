@@ -13,7 +13,6 @@ use definition::{Path, Schema, SchemaKind, Value};
 use graphics::value_bytes;
 
 use crate::CompileError;
-
 /// Packs the points of a mesh into one buffer.
 pub fn pack_points(
     schema: &Schema,
@@ -21,8 +20,13 @@ pub fn pack_points(
     path: &Path,
 ) -> Result<Vec<u8>, CompileError> {
     let fields = layout(schema, path)?;
-    let mut bytes = Vec::new();
-    let mut stride = None;
+    // Every point occupies the same number of bytes, which the field widths give before a
+    // single point is read. Sizing the buffer from that rather than letting it grow turns
+    // a mesh of a hundred thousand points from a few hundred reallocations and a copy of
+    // the whole thing into a single allocation and a write into it.
+    let stride = width_of(schema, path, &fields)?;
+    let mut bytes = Vec::with_capacity(points.len() * stride);
+    let mut packed_stride = None;
 
     for (index, point) in points.iter().enumerate() {
         let point_path = path.index(index);
@@ -46,8 +50,8 @@ pub fn pack_points(
             })?);
         }
         let width = bytes.len() - start;
-        match stride {
-            None => stride = Some(width),
+        match packed_stride {
+            None => packed_stride = Some(width),
             Some(expected) if expected != width => {
                 return Err(CompileError::Unpackable {
                     path: point_path,
@@ -61,6 +65,41 @@ pub fn pack_points(
         }
     }
     Ok(bytes)
+}
+
+/// Returns the number of bytes one point of a schema occupies.
+///
+/// # Invariants
+///
+/// This is the width of every point, or an error: the widths come from the schema, which
+/// declares them, and a point that packs to a different width is a ragged point list, which
+/// is refused by [`pack_points`] rather than packed into a buffer no shader can walk. A
+/// schema whose field widths cannot be read is refused here for the same reason, so that the
+/// reservation is never a guess.
+fn width_of(schema: &Schema, path: &Path, fields: &[String]) -> Result<usize, CompileError> {
+    let SchemaKind::Struct { fields: declared } = &schema.kind else {
+        return Err(CompileError::Unpackable {
+            path: path.clone(),
+            reason: "a standard shader must declare a struct schema, because the data is \
+                     packed according to it"
+                .to_owned(),
+        });
+    };
+    fields
+        .iter()
+        .map(|name| {
+            let field = declared.get(name).ok_or_else(|| CompileError::Unpackable {
+                path: path.key(name),
+                reason: "a packed field is not in the schema it was laid out from".to_owned(),
+            })?;
+            graphics::layout::components(name, field)
+                .map(|components| components * 4)
+                .map_err(|error| CompileError::Unpackable {
+                    path: path.key(name),
+                    reason: error.to_string(),
+                })
+        })
+        .sum()
 }
 
 /// Packs one struct of numbers into a buffer, using the field order of its schema.

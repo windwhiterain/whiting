@@ -56,7 +56,7 @@ impl Compiler for StandardScene {
         let _name = scene_text(scene, "name")?;
 
         let emitted = emit::emit(scene)?;
-        assemble(
+        let output = assemble(
             &self.graphics_identifier,
             &self.instance_identifier,
             Definition::new(
@@ -70,7 +70,8 @@ impl Compiler for StandardScene {
                 emitted.instance,
             ),
             context,
-        )
+        );
+        output
     }
 }
 

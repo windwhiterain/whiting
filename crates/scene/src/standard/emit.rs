@@ -275,7 +275,7 @@ fn read_topology(mesh: &Value, path: &Path) -> Result<Topology, CompileError> {
 pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     let lights = read_lights(scene)?;
     let shaders = read_shaders(scene)?;
-    let (meshes, mut instance) = read_meshes(scene)?;
+    let (meshes, mut instance) = read_meshes(scene, &shaders)?;
     let instances = read_instances(scene, &meshes, &shaders)?;
     // The camera frames what is drawn rather than what is authored, because an instance
     // may place its mesh anywhere and a mesh no instance names is not drawn at all.
@@ -410,15 +410,32 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
 }
 
 /// Reads the meshes of the scene and the instance entries their vertex buffers contribute.
-fn read_meshes(scene: &Value) -> Result<(Vec<MeshRead>, BTreeMap<String, Value>), CompileError> {
+///
+/// # Invariants
+///
+/// A point is verified here against its mesh's own point schema **and against every point
+/// schema a shader in the scene declares**, which is the same set of checks
+/// `read_instances` used to do one instance at a time. Doing them here rather than there is
+/// the difference between checking a mesh's points once and checking them once per instance
+/// that draws it: a field of a thousand identical objects is a thousand times the same
+/// verification, and the answer is the same every time because it depends only on the points
+/// and the schema.
+///
+/// The set of distinct schemas is small — one per shader a scene draws with — so a scene
+/// verifies each mesh's points once per *shader* rather than once per *instance*.
+fn read_meshes(
+    scene: &Value,
+    shaders: &[ShaderRead],
+) -> Result<(Vec<MeshRead>, BTreeMap<String, Value>), CompileError> {
     let path = Path::root().key(scene_schema::MESHES);
     let meshes = list_at(scene, &Path::root(), scene_schema::MESHES)?;
+    let schemas = shader_point_schemas(shaders);
 
     let mut read: Vec<MeshRead> = Vec::with_capacity(meshes.len());
     let mut instance = BTreeMap::new();
     for (index, mesh) in meshes.iter().enumerate() {
         let mesh_path = path.index(index);
-        let (found, entry) = read_mesh(mesh, &mesh_path)?;
+        let (found, entry) = read_mesh(mesh, &mesh_path, &schemas)?;
         if read.iter().any(|other| other.label == found.label) {
             return Err(CompileError::DuplicateLabel {
                 kind: "mesh",
@@ -431,8 +448,30 @@ fn read_meshes(scene: &Value) -> Result<(Vec<MeshRead>, BTreeMap<String, Value>)
     Ok((read, instance))
 }
 
+/// Returns the distinct point schemas the scene's mesh stages declare.
+///
+/// A screen shader is left out: it draws over the frame and reads no points, so its
+/// interface is the unit schema, and verifying points against that would refuse every point
+/// in the scene.
+fn shader_point_schemas(shaders: &[ShaderRead]) -> Vec<Rc<Schema>> {
+    let mut distinct: Vec<Rc<Schema>> = Vec::new();
+    for shader in shaders {
+        if shader.stage == Stage::Post {
+            continue;
+        }
+        if !distinct.iter().any(|seen| **seen == *shader.point_schema) {
+            distinct.push(Rc::clone(&shader.point_schema));
+        }
+    }
+    distinct
+}
+
 /// Reads one mesh: the geometry an instance draws.
-fn read_mesh(mesh: &Value, path: &Path) -> Result<(MeshRead, (String, Value)), CompileError> {
+fn read_mesh(
+    mesh: &Value,
+    path: &Path,
+    shader_schemas: &[Rc<Schema>],
+) -> Result<(MeshRead, (String, Value)), CompileError> {
     let label = text(mesh, path, scene_schema::LABEL)?.to_owned();
     let point_schema = schema_at(mesh, path, scene_schema::POINT_SCHEMA)?;
     let points = list_at(mesh, path, scene_schema::POINTS)?;
@@ -445,6 +484,20 @@ fn read_mesh(mesh: &Value, path: &Path) -> Result<(MeshRead, (String, Value)), C
             "a point",
             "the mesh point schema",
         )?;
+        // A mesh is never described in a shape a shader that draws it rejects, and the
+        // shape it is described in is the same whatever instance draws it.
+        for schema in shader_schemas {
+            if **schema == *point_schema {
+                continue;
+            }
+            verify(
+                point,
+                &points_path.index(index),
+                schema.as_ref(),
+                "a point",
+                "a shader point schema",
+            )?;
+        }
     }
 
     let vertex_bytes = pack_points(point_schema.as_ref(), points, &points_path)?;
@@ -514,7 +567,7 @@ fn read_instance(
 ) -> Result<InstanceRead, CompileError> {
     let label = text(instance, path, scene_schema::LABEL)?.to_owned();
     let mesh_label = text(instance, path, scene_schema::MESH)?;
-    let Some((mesh, found)) = meshes
+    let Some((mesh, _found)) = meshes
         .iter()
         .enumerate()
         .find(|(_, mesh)| mesh.label == mesh_label)
@@ -543,20 +596,10 @@ fn read_instance(
         });
     };
 
-    let points_path = Path::root()
-        .key(scene_schema::MESHES)
-        .index(mesh)
-        .key(scene_schema::POINTS);
-    for (index, point) in found.points.iter().enumerate() {
-        verify(
-            point,
-            &points_path.index(index),
-            shader_read.point_schema.as_ref(),
-            "a point",
-            "the shader point schema",
-        )?;
-    }
-
+    // The points of the mesh this instance draws were verified against this shader's point
+    // schema when the mesh was read, once for the whole scene rather than once per
+    // instance. The check's answer depends only on the points and the schema, so doing it
+    // again here would be the same answer the same number of times as there are instances.
     let custom_data = at(material, &material_path, scene_schema::CUSTOM_DATA)?;
     let custom_path = material_path.key(scene_schema::CUSTOM_DATA);
     verify(
