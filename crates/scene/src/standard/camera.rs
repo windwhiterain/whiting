@@ -253,17 +253,33 @@ impl Camera {
                 let view = look_at(eye, self.target, self.up);
                 let (right, up, _) = basis(&view);
                 // The depth planes bracket the whole scene rather than the part of it the
-                // frame holds. A camera that crops in — a `padding` below one — is
-                // closer to the scene than the scene is deep, and planes drawn at the
-                // frame's own depth would cut the near half of it away.
-                let reach = self.bounds.half_diagonal();
+                // frame holds. A camera that crops in — a `padding` below one — is closer
+                // to the scene than the scene is deep, and planes drawn at the frame's own
+                // depth would cut the near half of it away.
+                //
+                // The bracket is the span of the corners' own depths along the view, which
+                // is the deepest the box reaches in each direction. Bracketing by the half
+                // diagonal instead — `distance` minus one diagonal to `distance` plus one —
+                // holds a wide flat scene's near plane an entire diagonal in front of
+                // anything drawn, and depth mapped from a near plane at zero is depth that
+                // cannot tell two close surfaces apart.
+                let mut nearest = f64::INFINITY;
+                let mut farthest = 0.0f64;
+                for corner in corners(&self.bounds) {
+                    let depth = dot(subtract(corner, eye), forward);
+                    nearest = nearest.min(depth);
+                    farthest = farthest.max(depth);
+                }
+                // A small margin, so a point exactly on the bound is not clipped by a
+                // rounding error in the matrix.
+                let margin = (farthest - nearest).max(1.0) * 0.01;
                 Projection {
                     matrix: multiply(
                         &perspective(
                             self.field_of_view,
                             self.aspect,
-                            (distance - reach).max(1e-4),
-                            distance + reach,
+                            (nearest - margin).max(1e-4),
+                            farthest + margin,
                         ),
                         &view,
                     ),
