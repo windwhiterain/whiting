@@ -65,12 +65,17 @@ reference design needs the schema machinery that branch carries). The design is 
 
 ## Flags for the superior
 
-- **Definitions refer to each other in a graph, not in a cycle.** A reference keeps its target
-  alive, so two definitions naming each other would hold two generations alive with nothing
-  else reaching either — the one cycle refcounting cannot free. The rule is therefore that a
-  store refuses a definition that is already being loaded, and this is the design point to
-  confirm or overturn: allowing it needs either weak references (a referent can be freed, so a
-  reference can dangle and must be re-resolved) or a collector.
+- **Definitions refer to each other in a graph, not in a cycle** — confirmed. A reference keeps
+  its target alive, so two definitions naming each other would hold two generations alive with
+  nothing else reaching either, which is the one cycle refcounting cannot free. The rule is a
+  contract on `Store`: a definition already being loaded is refused rather than loaded again.
+  Cycles *within* a generation are free and need no rule.
+- **Open: whether a delta mutates the live generation or makes a new one.** This decides what
+  the sharing flag is for. Mutating in place makes the flag a diagnostic, and any reference —
+  including one from another document — reads the evolving state, which is what transparent
+  traversal promises. Making a new generation makes the flag load-bearing: a shared node has to
+  be copied and every reference slot that named it re-pointed, and a reference from another
+  document then pins the version it resolved against until the dependent is re-resolved.
 - A `Remove` of indices is a contiguous range, so an arbitrary non-contiguous set is not
   representable. That is deliberate: the operations map holds one primitive per path, and no
   `Append` can invert a scattered removal. The general fix would be multi-position inserts on
