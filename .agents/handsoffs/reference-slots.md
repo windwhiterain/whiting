@@ -49,33 +49,47 @@ reference design needs the schema machinery that branch carries). The design is 
 - `loaded/mod.rs`: `Target::{Local, Foreign}`, where a foreign target holds the generation it
   lives in, so a reference out of a document keeps its target alive.
 - Doctests pin the union rule, the lossless round trip, a cycle through the root, the
-  value-less cycle, and the store contract (external definition, file as asset, spellings
-  preserved).
+  value-less cycle, the store contract (external definition, file as asset, spellings
+  preserved), and a patch through a reference being visible to every referrer.
+- `loaded/patch.rs`: `Loaded::patch`, which applies operations to this generation in place.
+  A path is resolved transparently, so a patch through a reference writes the node the
+  reference names and every referrer observes it, including a reference from another document.
+  A path that arrives in another definition is refused, because a delta belongs to one
+  definition at one version. Planning does everything that can fail — resolving paths, checking
+  kinds and bounds, reading introduced content — so writing cannot fail and a patch is atomic.
+  Inverses are keyed by the path they were applied at, which is correct because undo is a
+  stack: a reference is restored before the change that ran through it is undone.
+  The schema is what tells a patch which slots may hold a reference, so introduced content is
+  read with the same rules a load uses (`field_schema`, `element_schema`, `variant_schema` and
+  `spelled` are shared rather than repeated).
 
 ## Next
 
-1. **Patching a loaded generation**, and `Delta::apply` against it: the sharing flag decides
-   whether a `Replace` writes in place or swaps the target. A path that runs into another
-   generation must be refused, because a delta's version belongs to its own definition.
-2. **`History` inverses recorded at the resolved location** rather than the spelling the
-   forward delta used, or undo replays through a reference that may since resolve elsewhere.
-3. **Packers and emitters** resolve before packing, since a GPU buffer cannot hold a path, and
+1. **`History` and the registry on the loaded form.** `Definition` still holds the serialized
+   value and applies deltas to it, so the two appliers now exist side by side and must agree.
+2. **Packers and emitters** resolve before packing, since a GPU buffer cannot hold a path, and
    the graphics-to-instance link becomes a checkable reference edge rather than a `source`
    string that happens to match an entry key.
 
 ## Flags for the superior
 
+- **A delta's paths only mean what they say on a loaded generation.** A path is transparent, so
+  a path through a reference names the node the reference points at; the serialized form holds
+  spellings rather than the nodes they name, so a path reaching through one has nothing to
+  arrive at. `Delta::apply` on the serialized form is therefore a fast path that is correct
+  only for a document without references, and it should either be guarded (refuse a document
+  whose schema marks a slot, or whose value spells a reference) or documented as such. The
+  loaded applier is the authoritative one.
+- A patch cannot introduce a reference out of the document, because resolving one needs a store
+  and a patch has none; that is a load rather than a patch, and it is refused with that reason.
 - **Definitions refer to each other in a graph, not in a cycle** — confirmed. A reference keeps
   its target alive, so two definitions naming each other would hold two generations alive with
   nothing else reaching either, which is the one cycle refcounting cannot free. The rule is a
   contract on `Store`: a definition already being loaded is refused rather than loaded again.
-  Cycles *within* a generation are free and need no rule.
-- **Open: whether a delta mutates the live generation or makes a new one.** This decides what
-  the sharing flag is for. Mutating in place makes the flag a diagnostic, and any reference —
-  including one from another document — reads the evolving state, which is what transparent
-  traversal promises. Making a new generation makes the flag load-bearing: a shared node has to
-  be copied and every reference slot that named it re-pointed, and a reference from another
-  document then pins the version it resolved against until the dependent is re-resolved.
+- **A delta mutates the live generation in place** — confirmed. So the sharing flag is a
+  diagnostic and a packer hint rather than a correctness input: writing in place is what keeps
+  every referrer consistent, and it is what a patch does unconditionally. A reload (a whole new
+  document) is what makes a new generation, and holders of the old one keep it.
 - A `Remove` of indices is a contiguous range, so an arbitrary non-contiguous set is not
   representable. That is deliberate: the operations map holds one primitive per path, and no
   `Append` can invert a scattered removal. The general fix would be multi-position inserts on

@@ -179,16 +179,16 @@ fn apply_primitive(
     primitive: &PrimitiveDelta,
     inverse_operations: &mut BTreeMap<Path, PrimitiveDelta>,
 ) -> Result<(), DeltaError> {
-    let invalid = |reason: &'static str| DeltaError::InvalidOperation {
+    let invalid = |reason: &str| DeltaError::InvalidOperation {
         path: path.clone(),
-        reason,
+        reason: reason.to_owned(),
     };
 
     let target = path
         .resolve_mut(root)
         .map_err(|reason| DeltaError::UnresolvedPath {
             path: path.clone(),
-            reason,
+            reason: reason.to_string(),
         })?;
 
     match primitive {

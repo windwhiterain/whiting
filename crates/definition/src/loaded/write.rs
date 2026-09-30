@@ -19,7 +19,7 @@ impl Loaded {
     }
 
     /// Writes the node at an address.
-    fn write_node(&self, id: crate::loaded::NodeId) -> Value {
+    pub(super) fn write_node(&self, id: crate::loaded::NodeId) -> Value {
         match self.node(id) {
             Node::Unit => Value::Unit,
             Node::Bool(flag) => Value::Bool(*flag),
@@ -48,7 +48,7 @@ impl Loaded {
     ///
     /// A slot without a spelling always names a node of this generation, because a reference
     /// to another generation was written as a reference and keeps its spelling.
-    fn write_slot(&self, slot: &Slot) -> Value {
+    pub(super) fn write_slot(&self, slot: &Slot) -> Value {
         match slot.spelling() {
             Some(reference) => reference.to_value(),
             None => self.write_node(slot.target().node()),

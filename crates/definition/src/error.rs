@@ -79,9 +79,9 @@ pub enum DeltaError {
     )]
     Conflict { expected: Version, actual: Version },
     #[error("at {path}: {reason}")]
-    UnresolvedPath { path: Path, reason: PathError },
+    UnresolvedPath { path: Path, reason: String },
     #[error("at {path}: {reason}")]
-    InvalidOperation { path: Path, reason: &'static str },
+    InvalidOperation { path: Path, reason: String },
     #[error(transparent)]
     Validation(#[from] ValidationError),
 }

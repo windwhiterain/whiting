@@ -472,7 +472,10 @@ impl RawNode {
 }
 
 /// Returns the reference a value spells, when it spells one at all.
-fn spelled(value: &Value) -> Option<Reference> {
+///
+/// A patch reads the content it introduces with the same rules a load does, so this is shared
+/// rather than repeated.
+pub(super) fn spelled(value: &Value) -> Option<Reference> {
     let tag = value.variant_tag()?;
     if !Reference::is_tag(tag) {
         return None;
@@ -481,7 +484,7 @@ fn spelled(value: &Value) -> Option<Reference> {
 }
 
 /// Returns the schema a field is verified against, which is an open one when the schema is.
-fn field_schema<'schema>(schema: &'schema Schema, name: &str) -> &'schema Schema {
+pub(super) fn field_schema<'schema>(schema: &'schema Schema, name: &str) -> &'schema Schema {
     match &schema.kind {
         SchemaKind::Struct { fields } => fields.get(name).unwrap_or_else(|| open_schema()),
         SchemaKind::Enum { variants } => variants.get(name).unwrap_or_else(|| open_schema()),
@@ -491,7 +494,7 @@ fn field_schema<'schema>(schema: &'schema Schema, name: &str) -> &'schema Schema
 }
 
 /// Returns the schema a variant's fields are verified against.
-fn variant_schema<'schema>(schema: &'schema Schema, tag: &str) -> &'schema Schema {
+pub(super) fn variant_schema<'schema>(schema: &'schema Schema, tag: &str) -> &'schema Schema {
     match &schema.kind {
         SchemaKind::Enum { variants } => variants.get(tag).unwrap_or_else(|| open_schema()),
         _ => schema,
@@ -499,7 +502,7 @@ fn variant_schema<'schema>(schema: &'schema Schema, tag: &str) -> &'schema Schem
 }
 
 /// Returns the schema an element of a list is verified against.
-fn element_schema(schema: &Schema) -> &Schema {
+pub(super) fn element_schema(schema: &Schema) -> &Schema {
     match &schema.kind {
         SchemaKind::List { element } => element.as_ref(),
         _ => schema,

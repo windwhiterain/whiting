@@ -80,6 +80,7 @@ use crate::schema::Schema;
 use crate::value::Value;
 
 mod load;
+mod patch;
 mod store;
 mod write;
 
