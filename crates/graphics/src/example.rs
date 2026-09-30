@@ -135,65 +135,77 @@ fn texture_binding(source: &str, width: i64, height: i64, format: &str) -> Value
     )
 }
 
+/// The definition the example instance says it provides data to.
+pub const EXAMPLE_GRAPHICS: &str = "example.graphics";
+
 /// Builds the instance that supplies the payloads the example graphics declares.
 ///
 /// The document satisfies the schema derived from those declarations, which is the
 /// stricter of the two instance schemas on offer.
 pub fn example_instance() -> Value {
-    Value::dictionary([
+    Value::structure([
         (
-            "shape".to_owned(),
-            Value::variant(
-                "Shader",
-                [
-                    (
-                        "source".to_owned(),
-                        Value::String("// the example shape shader".to_owned()),
-                    ),
-                    ("schema".to_owned(), shape_interface()),
-                ],
-            ),
+            crate::REFERENCING_GRAPHICS.to_owned(),
+            Value::String(EXAMPLE_GRAPHICS.to_owned()),
         ),
         (
-            "blur".to_owned(),
-            Value::variant(
-                "Shader",
-                [
-                    (
-                        "source".to_owned(),
-                        Value::String("// the example blur shader".to_owned()),
+            crate::ENTRIES.to_owned(),
+            Value::dictionary([
+                (
+                    "shape".to_owned(),
+                    Value::variant(
+                        "Shader",
+                        [
+                            (
+                                "source".to_owned(),
+                                Value::String("// the example shape shader".to_owned()),
+                            ),
+                            ("schema".to_owned(), shape_interface()),
+                        ],
                     ),
-                    ("schema".to_owned(), blur_interface()),
-                ],
-            ),
-        ),
-        (
-            "shape_vertices".to_owned(),
-            Value::variant(
-                "Buffer",
-                [
-                    ("size_bytes".to_owned(), Value::Int(36)),
-                    (
-                        "usage".to_owned(),
-                        Value::List(vec![Value::String("vertex".to_owned())]),
+                ),
+                (
+                    "blur".to_owned(),
+                    Value::variant(
+                        "Shader",
+                        [
+                            (
+                                "source".to_owned(),
+                                Value::String("// the example blur shader".to_owned()),
+                            ),
+                            ("schema".to_owned(), blur_interface()),
+                        ],
                     ),
-                    // Three points of three floats each.
-                    ("data".to_owned(), Value::Bytes(vec![0u8; 36])),
-                    ("topology".to_owned(), Value::variant("Triangles", [])),
-                    ("schema".to_owned(), vertex_schema()),
-                ],
-            ),
-        ),
-        (
-            "backdrop_target".to_owned(),
-            Value::variant(
-                "Texture",
-                [
-                    ("width".to_owned(), Value::Int(512)),
-                    ("height".to_owned(), Value::Int(512)),
-                    ("format".to_owned(), Value::String("rgba8unorm".to_owned())),
-                ],
-            ),
+                ),
+                (
+                    "shape_vertices".to_owned(),
+                    Value::variant(
+                        "Buffer",
+                        [
+                            ("size_bytes".to_owned(), Value::Int(36)),
+                            (
+                                "usage".to_owned(),
+                                Value::List(vec![Value::String("vertex".to_owned())]),
+                            ),
+                            // Three points of three floats each.
+                            ("data".to_owned(), Value::Bytes(vec![0u8; 36])),
+                            ("topology".to_owned(), Value::variant("Triangles", [])),
+                            ("schema".to_owned(), vertex_schema()),
+                        ],
+                    ),
+                ),
+                (
+                    "backdrop_target".to_owned(),
+                    Value::variant(
+                        "Texture",
+                        [
+                            ("width".to_owned(), Value::Int(512)),
+                            ("height".to_owned(), Value::Int(512)),
+                            ("format".to_owned(), Value::String("rgba8unorm".to_owned())),
+                        ],
+                    ),
+                ),
+            ]),
         ),
     ])
 }

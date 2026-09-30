@@ -114,16 +114,24 @@ pub const PASSES_FIELD: &str = "passes";
 /// Field of the graphics root that holds the schema of the instance data.
 pub const INSTANCE_SCHEMA_FIELD: &str = "instance_schema";
 
-/// Field of the graphics root that names the definition its binders read from.
+/// Field of the instance root that names the graphics it provides data to.
 ///
 /// # Invariants
 ///
-/// The same edge the spec names from the other side, as `GraphicsInstance.referencing_graphics`,
-/// declared here because the instance document is a flat map of binder payloads: a dictionary
-/// schema carries one value schema, so it has no room for a field of another kind. Declaring it
-/// on the reader means the pair can be checked, since the reader is the document that knows
-/// which definition its binders were written against.
-pub const INSTANCE_DEFINITION_FIELD: &str = "instance_definition";
+/// This is the edge that ties a pair together, declared from the side that knows it: a pair is
+/// otherwise assumed, and a renderer given the wrong data resolves whatever entries happen to
+/// carry the names its binders ask for.
+pub const REFERENCING_GRAPHICS: &str = "referencing_graphics";
+
+/// Field of the instance root that holds the payloads, keyed by the name a binder asks for.
+///
+/// # Why the payloads sit under a field
+///
+/// An instance says which graphics it serves and then holds the payloads, so it is a struct with
+/// a name and a map rather than a bare map. A dictionary schema carries one value schema, so a
+/// bare map has no room for a field of another kind; keeping the payloads one level down also
+/// keeps an authored instance schema permissive about them.
+pub const ENTRIES: &str = "entries";
 
 /// Builds the schema of a graphics instruction set document.
 ///
@@ -142,32 +150,35 @@ pub fn graphics_schema() -> Schema {
             Schema::document_schema()
                 .with_documentation("Schema of the instance data, authored or derived."),
         ),
-        (
-            INSTANCE_DEFINITION_FIELD.to_owned(),
-            Schema::new(SchemaKind::String)
-                .optional()
-                .with_documentation(
-                    "Name of the definition the binders read from. A renderer refuses a graphics \
-                 document that does not name one, so a document meant to be rendered sets it.",
-                ),
-        ),
     ]))
     .with_documentation("An instruction set of low level graphics computation.")
 }
 
 /// Builds the default permissive schema of instance data.
 ///
-/// # Why this is permissive
+/// # Why the payloads are permissive
 ///
-/// The instance is authored rather than derived from the passes that read it, so that a
-/// human or an agent can edit it freely: any entry is legal, so a new buffer needs no
-/// schema change. The cost is that binding is resolved by name at render time rather than
-/// checked up front, which is why [`resolve_binder`] reports a
-/// [`GraphicsError::Binding`] rather than a validation failure.
+/// The payloads are authored rather than derived from the passes that read them, so that a
+/// human or an agent can edit them freely: any entry is legal, so a new buffer needs no schema
+/// change. The cost is that binding is resolved by name at render time rather than checked up
+/// front, which is why [`resolve_binder`] reports a [`GraphicsError::Binding`] rather than a
+/// validation failure. What is not permissive is the pair: an instance names the graphics it
+/// serves, because a pair that disagrees renders the wrong data rather than failing.
 pub fn instance_schema() -> Schema {
-    Schema::new(SchemaKind::dictionary(Schema::new(SchemaKind::Any))).with_documentation(
-        "Open instance data. Entries are bound to passes by name, so any entry is legal.",
-    )
+    Schema::new(SchemaKind::structure([
+        (
+            REFERENCING_GRAPHICS.to_owned(),
+            Schema::new(SchemaKind::String)
+                .with_documentation("Definition this instance provides data to."),
+        ),
+        (
+            ENTRIES.to_owned(),
+            Schema::new(SchemaKind::dictionary(Schema::new(SchemaKind::Any))).with_documentation(
+                "Open payloads, keyed by the name a binder asks for, so any entry is legal.",
+            ),
+        ),
+    ]))
+    .with_documentation("Instance data, and the graphics it belongs to.")
 }
 
 /// Something in a graphics or instance document could not be read.

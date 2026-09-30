@@ -102,29 +102,29 @@ pub use standard::{
 
 /// Turns two emitted documents into a compile output.
 ///
-/// Returns a graphics document that names the definition its binders read from.
+/// Returns an instance document that names the graphics it provides data to.
 ///
 /// # Invariants
 ///
-/// A graphics document is a struct, so naming its instance is a field of it. One that is not a
-/// struct cannot name one, which is reported rather than passed on, because a renderer refuses
-/// a document that does not name its instance.
-fn with_instance_definition(
-    mut graphics: Definition,
-    instance_identifier: &DefinitionIdentifier,
+/// An instance is a struct, so naming its graphics is a field of it. One that is not a struct
+/// cannot name one, which is reported rather than passed on, because a renderer refuses an
+/// instance that does not say which graphics it belongs to.
+fn with_referencing_graphics(
+    mut instance: Definition,
+    graphics_identifier: &DefinitionIdentifier,
 ) -> Result<Definition, CompileError> {
-    let Some(fields) = graphics.value.as_field_map_mut() else {
+    let Some(fields) = instance.value.as_field_map_mut() else {
         return Err(CompileError::Emission {
-            reason: "the emitted graphics document is not a struct, so it cannot name the \
-                     instance its binders read from"
+            reason: "the emitted instance document is not a struct, so it cannot name the \
+                     graphics it provides data to"
                 .to_owned(),
         });
     };
     fields.insert(
-        graphics::INSTANCE_DEFINITION_FIELD.to_owned(),
-        Value::String(instance_identifier.to_string()),
+        graphics::REFERENCING_GRAPHICS.to_owned(),
+        Value::String(graphics_identifier.to_string()),
     );
-    Ok(graphics)
+    Ok(instance)
 }
 
 /// The emitted documents are verified against their registered schemas here, so a
@@ -138,11 +138,11 @@ pub(crate) fn assemble(
     instance: Definition,
     context: &CompileContext<'_>,
 ) -> Result<CompileOutput, CompileError> {
-    // The reader names the document its binders read from, which is the one edge that ties a
-    // graphics document to instance data. It is written here rather than by the compiler
-    // because it is the identifier the instance output is stored under, which only assembling
-    // knows; a renderer refuses a pair that disagrees.
-    let graphics = with_instance_definition(graphics, instance_identifier)?;
+    // The instance names the graphics it provides data to, which is the one edge that ties a
+    // pair together. It is written here rather than by the compiler because it is the
+    // identifier the graphics output is stored under, which only assembling knows; a renderer
+    // refuses a pair that disagrees.
+    let instance = with_referencing_graphics(instance, graphics_identifier)?;
     let registry = context.registry;
     registry
         .schema(&graphics.schema_identifier)

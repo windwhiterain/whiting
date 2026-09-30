@@ -439,11 +439,15 @@ pub fn resolve_binder<'instance>(
     instance: &'instance Value,
     binder_name: &str,
 ) -> Result<Binder<'instance>, GraphicsError> {
-    let Some(entries) = instance.as_dict() else {
+    let entries = instance
+        .as_field_map()
+        .and_then(|fields| fields.get(crate::ENTRIES))
+        .and_then(Value::as_dict);
+    let Some(entries) = entries else {
         return Err(GraphicsError::Binding {
             label: "<instance>".to_owned(),
             binder_name: binder_name.to_owned(),
-            reason: "the instance is not a dict".to_owned(),
+            reason: "the instance holds no entries".to_owned(),
         });
     };
     let Some(value) = entries.get(binder_name) else {

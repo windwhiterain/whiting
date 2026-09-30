@@ -253,7 +253,10 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
         }
     }
 
-    let instance = Value::Dict(instance);
+    // An instance holds its payloads under a field rather than at its root, so that it can name
+    // the graphics it belongs to. What names it is written by assembling, which is where the
+    // identifier the output is stored under is known.
+    let instance = Value::structure([(graphics::ENTRIES.to_owned(), Value::Dict(instance))]);
     let mut fields = BTreeMap::new();
     fields.insert(graphics::PASSES_FIELD.to_owned(), Value::List(passes));
     fields.insert(

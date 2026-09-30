@@ -196,7 +196,7 @@ impl ReferenceScene {
                 ),
             );
         }
-        Value::Dict(entries)
+        Value::structure([(graphics::ENTRIES.to_owned(), Value::Dict(entries))])
     }
 
     /// The interface every reference shader declares.

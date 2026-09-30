@@ -81,23 +81,15 @@
 //! // The compiler identifies the instance the renderer binds against.
 //! assert_eq!(device.compiler().instance_identifier(), &instance_identifier);
 //!
-//! // A pair is checked rather than assumed: a graphics document that reads from another
-//! // instance is refused, instead of resolving whatever entries happen to carry the names its
-//! // binders ask for.
+//! // A pair is checked rather than assumed: the instance names the graphics it provides data
+//! // to, so a graphics document nothing names is refused rather than rendered against
+//! // whatever entries happen to carry the names its binders ask for.
 //! let mut elsewhere = device
 //!     .registry()
 //!     .definition(&graphics_identifier)
 //!     .expect("the graphics output exists")
 //!     .clone();
 //! elsewhere.definition_identifier = DefinitionIdentifier::new("elsewhere.graphics");
-//! elsewhere
-//!     .value
-//!     .as_field_map_mut()
-//!     .expect("a graphics document is a struct")
-//!     .insert(
-//!         graphics::INSTANCE_DEFINITION_FIELD.to_owned(),
-//!         Value::String("elsewhere.instance".to_owned()),
-//!     );
 //! device
 //!     .registry_mut()
 //!     .insert_definition(elsewhere)

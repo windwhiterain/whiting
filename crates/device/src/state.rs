@@ -222,37 +222,36 @@ impl Device {
     ///
     /// # Invariants
     ///
-    /// A graphics document names the definition its binders read from, and rendering it
-    /// against anything else is refused rather than done: the binders address instance entries
-    /// by name, so a mismatched pair would resolve to whatever happens to carry those names
-    /// and produce pixels that look like a rendering of the wrong data.
+    /// An instance names the graphics it provides data to, and rendering it against anything
+    /// else is refused rather than done: the binders address instance entries by name, so a
+    /// mismatched pair would resolve to whatever happens to carry those names and produce
+    /// pixels that look like a rendering of the wrong thing.
     pub fn render(
         &self,
         graphics_identifier: &DefinitionIdentifier,
     ) -> Result<RenderedFrame, DeviceError> {
         let graphics = self.registry.definition(graphics_identifier)?.clone();
         let instance_identifier = self.compiler.instance_identifier();
-        let declared = graphics
-            .value
-            .as_field_map()
-            .and_then(|fields| fields.get(graphics::INSTANCE_DEFINITION_FIELD))
-            .and_then(Value::as_str)
-            .ok_or_else(|| DeviceError::UnpairedGraphics {
-                graphics: graphics_identifier.clone(),
-            })?;
-        if declared != instance_identifier.as_str() {
-            return Err(DeviceError::InstancePairing {
-                graphics: graphics_identifier.clone(),
-                declared: declared.to_owned(),
-                rendered: instance_identifier.clone(),
-            });
-        }
         let instance = self
             .registry
             .definition(instance_identifier)
             .ok()
             .map(|definition| definition.value.clone())
             .unwrap_or_default();
+        let declared = instance
+            .as_field_map()
+            .and_then(|fields| fields.get(graphics::REFERENCING_GRAPHICS))
+            .and_then(Value::as_str)
+            .ok_or_else(|| DeviceError::UnpairedInstance {
+                instance: instance_identifier.clone(),
+            })?;
+        if declared != graphics_identifier.as_str() {
+            return Err(DeviceError::InstancePairing {
+                graphics: graphics_identifier.clone(),
+                declared: declared.to_owned(),
+                rendered: instance_identifier.clone(),
+            });
+        }
         Ok(render_with(
             self.renderer.as_ref(),
             &graphics.value,
@@ -289,12 +288,10 @@ pub enum DeviceError {
         output: DefinitionIdentifier,
         reason: String,
     },
+    #[error("the instance `{instance}` does not name the graphics it provides data to")]
+    UnpairedInstance { instance: DefinitionIdentifier },
     #[error(
-        "the graphics document `{graphics}` does not name the definition its binders read from"
-    )]
-    UnpairedGraphics { graphics: DefinitionIdentifier },
-    #[error(
-        "the graphics document `{graphics}` reads from `{declared}`, and this device renders it against `{rendered}`"
+        "the instance `{rendered}` provides data to `{declared}`, and this render is of `{graphics}`"
     )]
     InstancePairing {
         graphics: DefinitionIdentifier,

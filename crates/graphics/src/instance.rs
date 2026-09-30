@@ -44,9 +44,17 @@ pub fn derived_instance_schema(graphics: &Value) -> Result<Schema, GraphicsError
         }
     }
 
-    Ok(
-        Schema::new(SchemaKind::dictionary(crate::binder_payload_schema())).with_documentation(
-            "Instance data, derived from the binders of the passes that read it.",
+    Ok(Schema::new(SchemaKind::structure([
+        (
+            crate::REFERENCING_GRAPHICS.to_owned(),
+            Schema::new(SchemaKind::String)
+                .with_documentation("Definition this instance provides data to."),
         ),
-    )
+        (
+            crate::ENTRIES.to_owned(),
+            Schema::new(SchemaKind::dictionary(crate::binder_payload_schema()))
+                .with_documentation("Instance data, keyed by the name a binder asks for."),
+        ),
+    ]))
+    .with_documentation("Instance data, derived from the binders of the passes that read it."))
 }

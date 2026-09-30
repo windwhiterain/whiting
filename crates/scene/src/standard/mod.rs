@@ -70,31 +70,32 @@
 //! let labels: Vec<&str> = passes.iter().map(|pass| pass.label().unwrap()).collect();
 //! assert_eq!(labels, ["shadow/key/caster", "depth/occluder", "lighting/quad/key"]);
 //!
-//! // A pass carries declarations; the instance carries the payloads they name. The mesh is
+//! // A pass carries declarations; the instance carries the payloads they name, under the field
+//! // that leaves room for the instance to say which graphics it belongs to. The mesh is
 //! // authored once, so one vertex buffer is shared by all three instances.
 //! let triangle = compiled
 //!     .instance
 //!     .value
-//!     .at(&definition::Path::root().key("triangle_vertices"))
+//!     .at(&definition::Path::root().key("entries").key("triangle_vertices"))
 //!     .expect("the vertex buffer is in the instance");
 //! assert_eq!(triangle.variant_tag(), Some("Buffer"));
 //! let quad = compiled
 //!     .instance
 //!     .value
-//!     .at(&definition::Path::root().key("quad_instance_data"))
+//!     .at(&definition::Path::root().key("entries").key("quad_instance_data"))
 //!     .expect("the instance buffer is in the instance");
 //! assert_eq!(quad.variant_tag(), Some("Buffer"));
 //!
-//! // The graphics document names the definition its binders read from, which is the one edge
-//! // that ties the pair together: a renderer refuses a graphics document paired with anything
-//! // else rather than resolving whatever entries happen to carry those names.
+//! // The instance names the graphics it provides data to, which is the one edge that ties the
+//! // pair together: a renderer refuses an instance rendered against anything else rather than
+//! // resolving whatever entries happen to carry those names.
 //! let declared = compiled
-//!     .graphics
+//!     .instance
 //!     .value
 //!     .as_field_map()
-//!     .and_then(|fields| fields.get(graphics::INSTANCE_DEFINITION_FIELD))
+//!     .and_then(|fields| fields.get(graphics::REFERENCING_GRAPHICS))
 //!     .and_then(definition::Value::as_str);
-//! assert_eq!(declared, Some("scene.instance"));
+//! assert_eq!(declared, Some("scene.graphics"));
 //!
 //! // The contract: applying the emitted delta to the previous output reproduces it.
 //! assert!(compiled.graphics_delta.is_empty(), "a first compile has nothing to delta from");
