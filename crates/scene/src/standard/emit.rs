@@ -447,33 +447,51 @@ fn read_instance(
     }
 
     let custom_data = at(material, &material_path, scene_schema::CUSTOM_DATA)?;
+    let custom_path = material_path.key(scene_schema::CUSTOM_DATA);
     verify(
         custom_data,
-        &material_path.key(scene_schema::CUSTOM_DATA),
+        &custom_path,
         shader_read.custom_schema.as_ref(),
         "the custom data",
         "the shader custom schema",
     )?;
 
-    // The instance row is the model matrix and nothing else: what a shader reads per
-    // instance is where the instance is, and everything else is the material's custom data.
+    // The instance row is where the instance is, plus the material's custom data. Both are per
+    // instance, and once one pass draws several instances at once a per instance attribute is the
+    // only place either can go: a uniform is read by every instance of the pass, so anything that
+    // varies belongs here. The row is therefore read with the shader's instance schema and the
+    // material's custom schema merged, and a field both name is an error rather than one of them
+    // silently winning.
+    let row_schema = merged_row_schema(
+        shader_read.instance_schema.as_ref(),
+        shader_read.custom_schema.as_ref(),
+    )?;
     let model = transform.matrix();
-    let row = Value::structure([(
+    let mut fields = vec![(
         MODEL.to_owned(),
         Value::List(model.iter().copied().map(Value::Float).collect()),
-    )]);
+    )];
+    let Some(custom_fields) = custom_data.as_field_map() else {
+        return Err(malformed(&custom_path, "the custom data as a struct"));
+    };
+    fields.extend(
+        custom_fields
+            .iter()
+            .map(|(name, value)| (name.clone(), value.clone())),
+    );
+    let row = Value::structure(fields);
     let row_path = path.key(scene_schema::TRANSFORM);
     verify(
         &row,
         &row_path,
-        shader_read.instance_schema.as_ref(),
-        "the model matrix",
+        &row_schema,
+        "the instance row",
         "the shader instance schema",
     )?;
-    let instance_bytes = pack_struct(shader_read.instance_schema.as_ref(), &row, &row_path)?;
+    let instance_bytes = pack_struct(&row_schema, &row, &row_path)?;
 
     Ok(InstanceRead {
-        instance_schema: shader_read.instance_schema.clone(),
+        instance_schema: row_schema,
         instance_bytes,
         label,
         mesh,
@@ -481,6 +499,38 @@ fn read_instance(
         stage: shader_read.stage,
         model,
     })
+}
+
+/// Returns the schema one instance row is read with: what the shader reads per instance, and the
+/// custom fields the material carries.
+///
+/// # Invariants
+///
+/// A field named by both is an error rather than one of them winning, because the two schemas
+/// describe one row and a name in both would be two values written to one place.
+fn merged_row_schema(instance: &Schema, custom: &Schema) -> Result<Rc<Schema>, CompileError> {
+    let (
+        SchemaKind::Struct {
+            fields: instance_fields,
+        },
+        SchemaKind::Struct { fields: custom },
+    ) = (&instance.kind, &custom.kind)
+    else {
+        return Err(CompileError::Emission {
+            reason: "an instance row and a material's custom data are both read from struct \
+                     schemas"
+                .to_owned(),
+        });
+    };
+    let mut fields = instance_fields.clone();
+    for (name, field) in custom {
+        if fields.insert(name.clone(), field.clone()).is_some() {
+            return Err(CompileError::Emission {
+                reason: format!("the custom field `{name}` is also an instance field"),
+            });
+        }
+    }
+    Ok(Rc::new(Schema::new(SchemaKind::structure(fields))))
 }
 
 /// Reads where an instance is.

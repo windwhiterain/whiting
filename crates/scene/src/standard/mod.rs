@@ -89,13 +89,15 @@
 //!         labels_tail = "lighting/key/lighting/triangle"
 //!     )))
 //!     .expect("the lighting instances are in one entry");
-//! let rows = shared
+//! let bytes = shared
 //!     .variant_fields()
 //!     .and_then(|fields| fields.get("data"))
 //!     .and_then(definition::Value::as_bytes)
 //!     .expect("a buffer carries its bytes")
 //!     .len();
-//! assert_eq!(rows, 128, "two rows of sixteen floats");
+//! // Two rows, and each row is the model matrix plus the material's custom data: sixteen
+//! // floats of transform and three of tint, which is what makes the tint per instance.
+//! assert_eq!(bytes, 2 * (16 + 3) * 4);
 //!
 //! // A pass carries declarations; the instance carries the payloads they name, under the field
 //! // that leaves room for the instance to say which graphics it belongs to. The mesh is
