@@ -181,6 +181,7 @@ pub fn example_instance() -> Value {
                     ),
                     // Three points of three floats each.
                     ("data".to_owned(), Value::Bytes(vec![0u8; 36])),
+                    ("topology".to_owned(), Value::variant("Triangles", [])),
                     ("schema".to_owned(), vertex_schema()),
                 ],
             ),

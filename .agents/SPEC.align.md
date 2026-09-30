@@ -260,6 +260,11 @@ graphics computation, as data.
 - **invariant**: a texture whose format is a depth format is declared to a shader with the
   depth sample type, not the float one, and a pass whose targets are all depth formats is
   built with no fragment stage.
+- **decision**: a vertex buffer declares how its points are read, in a `topology` on the
+  payload rather than a second field on the pass. The topology belongs to the run of points
+  rather than to the instruction, and a mesh's `Topology` is what the compiler carries into
+  it, so a `Segments` mesh is drawn as lines rather than as a triangle fan. A buffer that
+  does not say is read as triangles.
 - `GraphicsInstance`: a `Definition` that provides data to its `referencing_graphics`
   in the corresponding schema.
   - `referencing_graphics`: the `Graphics` this instance serves, by `DefinitionIdentifier`.

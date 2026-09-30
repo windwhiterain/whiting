@@ -53,6 +53,9 @@ pub struct VertexSlot {
     pub count: u64,
     /// The first attribute location this buffer's attributes answer to.
     pub location_base: u32,
+    /// How the points are read, which a vertex buffer declares and an instance buffer
+    /// does not use.
+    pub topology: wgpu::PrimitiveTopology,
 }
 
 /// A resource bound to the shader.
@@ -114,6 +117,14 @@ impl Bindings {
             .iter()
             .find(|slot| slot.step_mode == wgpu::VertexStepMode::Vertex)
             .map(|slot| slot.count)
+    }
+
+    /// Returns how the points a pass draws are read as primitives.
+    pub fn topology(&self) -> wgpu::PrimitiveTopology {
+        self.vertices
+            .iter()
+            .find(|slot| slot.step_mode == wgpu::VertexStepMode::Vertex)
+            .map_or(wgpu::PrimitiveTopology::TriangleList, |slot| slot.topology)
     }
 
     /// Describes the bindings to a pipeline.
@@ -376,6 +387,7 @@ impl WgpuRenderer {
                 layout,
                 count,
                 location_base: 0,
+                topology: topology_of(payload),
             });
             return Ok(());
         }
@@ -489,6 +501,14 @@ fn bytes(value: &Value) -> Option<&[u8]> {
 /// Borrows a field of an instance entry.
 fn field<'value>(payload: &'value Value, name: &str) -> Option<&'value Value> {
     payload.variant_fields()?.get(name)
+}
+
+/// Returns the primitive topology a vertex buffer declares, defaulting to triangles.
+fn topology_of(payload: &Value) -> wgpu::PrimitiveTopology {
+    match graphics::binders::topology_of(payload) {
+        Some("Segments") => wgpu::PrimitiveTopology::LineList,
+        _ => wgpu::PrimitiveTopology::TriangleList,
+    }
 }
 
 /// Packs the uniform of a pass the way its own shader declares it.

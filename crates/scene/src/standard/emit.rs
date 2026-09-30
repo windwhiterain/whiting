@@ -113,6 +113,39 @@ pub struct Emitted {
     pub instance: Value,
 }
 
+/// Which topology a mesh declares, which is how its points are read as primitives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Topology {
+    /// Every three points are a triangle.
+    Triangles,
+    /// Every two points are a segment.
+    Segments,
+}
+
+impl Topology {
+    /// Returns the tag this topology is stored under, in a scene and in a buffer.
+    const fn tag(self) -> &'static str {
+        match self {
+            Self::Triangles => "Triangles",
+            Self::Segments => "Segments",
+        }
+    }
+}
+
+/// Reads the topology of a mesh.
+fn read_topology(mesh: &Value, path: &Path) -> Result<Topology, CompileError> {
+    let topology_path = path.key(scene_schema::TOPOLOGY);
+    match field(mesh, scene_schema::TOPOLOGY).and_then(Value::variant_tag) {
+        Some("Triangles") => Ok(Topology::Triangles),
+        Some("Segments") => Ok(Topology::Segments),
+        Some(other) => Err(CompileError::UnknownTopology {
+            path: topology_path,
+            topology: other.to_owned(),
+        }),
+        None => Err(malformed(&topology_path, "a topology")),
+    }
+}
+
 /// Reads a scene and emits the graphics and instance documents that draw it.
 pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     let lights = read_lights(scene)?;
@@ -283,6 +316,7 @@ fn read_mesh(mesh: &Value, path: &Path) -> Result<(MeshRead, Vec<(String, Value)
     if vertex_bytes.is_empty() {
         return Err(CompileError::EmptyMesh { label });
     }
+    let topology = read_topology(mesh, path)?;
     let instance_bytes = pack_struct(
         shader.instance_schema.as_ref(),
         instance_data,
@@ -305,7 +339,12 @@ fn read_mesh(mesh: &Value, path: &Path) -> Result<(MeshRead, Vec<(String, Value)
     let entries = vec![
         (
             found.vertex_entry.clone(),
-            buffer_payload(vertex_bytes, point_schema.to_value(), "vertex"),
+            buffer_payload(
+                vertex_bytes,
+                point_schema.to_value(),
+                "vertex",
+                topology.tag(),
+            ),
         ),
         (
             found.instance_entry.clone(),
@@ -313,6 +352,7 @@ fn read_mesh(mesh: &Value, path: &Path) -> Result<(MeshRead, Vec<(String, Value)
                 instance_bytes,
                 shader.instance_schema.to_value(),
                 "instance",
+                topology.tag(),
             ),
         ),
         (
@@ -666,7 +706,7 @@ fn texture_binding(source: &str, width: i64, height: i64, format: &str) -> Value
 }
 
 /// Builds a buffer payload, which carries the schema it was packed with.
-fn buffer_payload(bytes: Vec<u8>, schema: Value, usage: &str) -> Value {
+fn buffer_payload(bytes: Vec<u8>, schema: Value, usage: &str, topology: &str) -> Value {
     Value::variant(
         "Buffer",
         [
@@ -676,6 +716,10 @@ fn buffer_payload(bytes: Vec<u8>, schema: Value, usage: &str) -> Value {
                 Value::List(vec![Value::String(usage.to_owned())]),
             ),
             (graphics::binders::SCHEMA.to_owned(), schema),
+            (
+                graphics::binders::TOPOLOGY.to_owned(),
+                Value::variant(topology, []),
+            ),
             (graphics::binders::DATA.to_owned(), Value::Bytes(bytes)),
         ],
     )

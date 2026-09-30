@@ -33,6 +33,9 @@ pub const USAGE: &str = "usage";
 /// Field holding the bytes of a buffer or a uniform payload.
 pub const DATA: &str = "data";
 
+/// Field holding how the points of a vertex buffer are read as primitives.
+pub const TOPOLOGY: &str = "topology";
+
 /// Field holding a texture width in pixels.
 pub const WIDTH: &str = "width";
 
@@ -188,6 +191,26 @@ fn texture_resource() -> (String, Schema) {
     )
 }
 
+/// Builds the schema of how the points of a vertex buffer are read.
+pub fn topology_schema() -> Schema {
+    Schema::new(SchemaKind::enumeration([
+        (
+            "Triangles".to_owned(),
+            Schema::new(SchemaKind::structure([])),
+        ),
+        (
+            "Segments".to_owned(),
+            Schema::new(SchemaKind::structure([])),
+        ),
+    ]))
+    .with_documentation("How a packed run of points is read as primitives.")
+}
+
+/// Returns which topology a buffer declares, defaulting to triangles.
+pub fn topology_of(payload: &Value) -> Option<&str> {
+    payload.variant_fields()?.get(TOPOLOGY)?.variant_tag()
+}
+
 /// Builds the schema of an instance entry, which is what a declaration resolves to.
 pub fn binder_payload_schema() -> Schema {
     Schema::new(SchemaKind::enumeration([
@@ -200,6 +223,12 @@ pub fn binder_payload_schema() -> Schema {
                     Schema::new(SchemaKind::list(Schema::new(SchemaKind::String))),
                 ),
                 (DATA.to_owned(), Schema::new(SchemaKind::Bytes)),
+                (
+                    TOPOLOGY.to_owned(),
+                    topology_schema().optional().with_documentation(
+                        "How the points are read, for a vertex buffer. Absent means triangles.",
+                    ),
+                ),
                 (
                     SCHEMA.to_owned(),
                     Schema::document_schema().optional().with_documentation(

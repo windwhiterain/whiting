@@ -114,7 +114,10 @@ impl WgpuRenderer {
                     compilation_options: Default::default(),
                     buffers: &layouts,
                 },
-                primitive: wgpu::PrimitiveState::default(),
+                primitive: wgpu::PrimitiveState {
+                    topology: bindings.topology(),
+                    ..Default::default()
+                },
                 depth_stencil: depth.map(|entry| wgpu::DepthStencilState {
                     format: entry.slot.format,
                     depth_write_enabled: Some(true),
