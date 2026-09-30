@@ -55,8 +55,11 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
     - `List`: an element `Schema`.
     - `Dict`: a value `Schema`.
     - `Any`: accepts any `Value` of the container kind expected at that position.
+  - **invariant**: a `Struct` is closed. A field present in the `Value` but absent from
+    the `Schema` is an error. A `Dict` is open, which is the distinction that lets an
+    agent add entries without editing a schema. `Int` and `Float` are distinct: an
+    `Int` value does not satisfy a `Float` schema.
 - `Attributes`: per-node constraints and metadata.
-  - `deny_unknown_fields`: reject a field absent from the `Schema`.
   - `optional`: the field may be absent.
   - `default`: value substituted when the field is absent.
   - `extensions`: open map for domain-specific constraints.
@@ -80,17 +83,22 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
   - enum of:
     - `Replace`: schema must be the same with the `referencing_value`.
       - can replace a structural value.
-    - `Append`: values to append to the end of a `List`.
-      - tail only, by design: an insert at an interior index would shift every
-        later index and silently invalidate the `Path`s of other `Delta`s.
+    - `Append`: values to insert into a `List` at a position.
+      - `index` is the position the values are inserted before, so `index == length`
+        is a tail append. An `index` beyond the length is rejected.
     - `AppendEntries`: key-value pairs to append to a `Dict`.
-    - `RemoveIndices`: indices to remove from a `List`.
+    - `RemoveIndices`: a contiguous range of a `List` to remove, as `start` and `count`.
     - `RemoveKeys`: keys to remove from a `Struct` or `Dict`.
-  - every `Delta` carries the `version` it was computed against. A `PrimitiveDelta`
-    whose `version` does not equal the current `version` is rejected as a conflict,
-    so two agents can never silently clobber each other.
-  - the applier rejects an out-of-bounds index, an out-of-order or duplicated
-    `RemoveIndices` entry, and a `Path` that does not resolve.
+  - **invariant**: `Append` and `RemoveIndices` each describe a contiguous range, so
+    they are exact mutual inverses and every list mutation inverts minimally. An
+    arbitrary non-contiguous set of indices is deliberately not representable, because
+    no append primitive can invert it.
+  - an indexed `Append` shifts every later index and therefore invalidates the `Path`s
+    of other `Delta`s. This is safe because a `Delta` carries the `version` it was
+    computed against and is rejected as a conflict once that version is stale, so a
+    shifted list can never be mutated by a delta that assumed the old indices.
+  - the applier rejects an out-of-bounds `index`, an out-of-bounds `count`, and a
+    `Path` that does not resolve.
 - `Delta`: how to change a `Definition` that a `PrimitiveDelta` references.
   - `definition_identifier: DefinitionIdentifier`: the `Definition` this delta applies to.
   - `base_version: Version`: the `version` this delta was computed against.
@@ -102,8 +110,14 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
     applies the delta and returns the inverse `Delta` that undoes it.
     - the inverse is produced from values observed **at apply time**, so `RemoveIndices`
       and `RemoveKeys` can return the removed data.
-    - `RemoveIndices` is applied in ascending index order, and its inverse appends the
-      removed values in that same ascending order to restore the original ordering.
+    - **invariant**: list inverses are exact and minimal. The inverse of
+      `Append { index, values }` is `RemoveIndices { start: index, count: values.len() }`,
+      and the inverse of `RemoveIndices { start, count }` is
+      `Append { index: start, values }` carrying the removed values. A whole-list
+      `Replace` is never needed to undo a list mutation.
+    - apply is atomic: a `Delta` either applies completely and leaves the `Definition`
+      at `version + 1`, or leaves it untouched. This is achieved by applying to a
+      clone, validating the clone against its `Schema`, and only then committing.
 - `History`: a `Delta` replay system that generates an inverse `Delta` for each `Delta`
   applied, to help building an undo-redo system.
   - `entries`: an ordered log of applied deltas paired with their inverses.
