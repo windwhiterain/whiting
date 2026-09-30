@@ -1,1 +1,238 @@
-//! Compilers from a scene schema to graphics instructions.
+//! Compilers that turn a scene into graphics instructions, incrementally.
+//!
+//! A compiler is a pure function from a scene document to a graphics document and a
+//! matching instance document. There is no scene type: a [`Scene`] is a [`Schema`]
+//! document the compiler declares, and the scene itself is an ordinary [`Value`] that
+//! the registry verifies against it.
+//!
+//! # The incremental contract
+//!
+//! A compiler emits its own [`Delta`] alongside its full outputs. It is not re-diffed
+//! centrally. That places the burden on the compiler, and the contract is therefore
+//! explicit: applying the emitted delta to the previous output must yield exactly the
+//! emitted output.
+//!
+//! The cross-check lives in the device crate, which performs a full recompile in debug
+//! and test builds and compares. In release the emitted delta is trusted, because paying
+//! a full compile on every reload would defeat the point of compiling incrementally.
+//!
+//! # Example
+//!
+//! ```
+//! use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
+//! use whiting_scene::{CompileContext, Compiler, ReferenceScene, REFERENCE_SCENE_SCHEMA};
+//! use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
+//!
+//! let mut registry = Registry::new();
+//! registry.put_schema(SchemaIdentifier::new(GRAPHICS_SCHEMA), graphics::graphics_schema());
+//! registry.put_schema(SchemaIdentifier::new(INSTANCE_SCHEMA), graphics::instance_schema());
+//!
+//! let compiler = ReferenceScene::new(
+//!     DefinitionIdentifier::new("scene.graphics"),
+//!     DefinitionIdentifier::new("scene.instance"),
+//! );
+//! registry.put_schema(SchemaIdentifier::from(REFERENCE_SCENE_SCHEMA), compiler.scene_schema().clone());
+//!
+//! let scene = Definition::new(
+//!     DefinitionIdentifier::new("scene.source"),
+//!     SchemaIdentifier::from(REFERENCE_SCENE_SCHEMA),
+//!     Value::structure([
+//!         ("name".to_owned(), Value::String("backdrop".to_owned())),
+//!         ("layers".to_owned(), Value::List(vec![Value::variant("Layer", [
+//!             ("label".to_owned(), Value::String("sky".to_owned())),
+//!             ("shader".to_owned(), Value::String("sky".to_owned())),
+//!             ("clear_color".to_owned(), Value::List(
+//!                 [0.1, 0.2, 0.3, 1.0].into_iter().map(Value::Float).collect(),
+//!             )),
+//!         ])])),
+//!     ]),
+//! );
+//! scene.validate(&registry).expect("the scene validates");
+//!
+//! // A first compile has no previous output, so it emits empty deltas.
+//! let first = compiler
+//!     .compile(&CompileContext {
+//!         scene: &scene,
+//!         previous_graphics: None,
+//!         previous_instance: None,
+//!         registry: &registry,
+//!     })
+//!     .expect("the scene compiles");
+//! assert!(first.graphics_delta.is_empty());
+//! assert_eq!(first.graphics.value.at(&definition::Path::root().key("passes")).map(|v| v.as_list().map(<[Value]>::len)), Some(Some(1)));
+//!
+//! // The contract: applying the emitted delta to the previous output reproduces it.
+//! let mut replayed = first.graphics.clone();
+//! let _ = first.graphics_delta.apply(&mut replayed, &registry);
+//! assert_eq!(replayed.value, first.graphics.value);
+//!
+//! // A second compile against the first output emits a non-empty delta.
+//! let second = compiler
+//!     .compile(&CompileContext {
+//!         scene: &scene,
+//!         previous_graphics: Some(&first.graphics),
+//!         previous_instance: Some(&first.instance),
+//!         registry: &registry,
+//!     })
+//!     .expect("the scene compiles");
+//! assert!(second.graphics_delta.is_empty(), "nothing changed, so nothing to emit");
+//!
+//! let mut replayed = first.graphics.clone();
+//! replayed.version = first.graphics.version;
+//! let applied = second.graphics_delta.apply(&mut replayed, &registry);
+//! assert!(applied.is_ok(), "the emitted delta applies to the previous output");
+//! assert_eq!(replayed.value, second.graphics.value);
+//! ```
+
+use std::collections::BTreeMap;
+
+use definition::{Definition, Delta, Path, PrimitiveDelta, Registry, Schema, Value, Version};
+use thiserror::Error;
+
+mod reference;
+
+pub use reference::{register_scene_schema, ReferenceScene, REFERENCE_SCENE_SCHEMA};
+
+/// The schema describing the shape a [`Compiler`] accepts.
+///
+/// This is a schema document, not a rust type, so a compiler can declare a new scene
+/// shape and have it take effect with no recompilation of this crate.
+pub type Scene = Schema;
+
+/// The inputs of a compile.
+pub struct CompileContext<'registry> {
+    /// The current scene document.
+    pub scene: &'registry Definition,
+    /// The graphics output of the previous compile, or `None` on a first compile.
+    pub previous_graphics: Option<&'registry Definition>,
+    /// The instance output of the previous compile, or `None` on a first compile.
+    pub previous_instance: Option<&'registry Definition>,
+    /// The registry the scene and the outputs are resolved against.
+    pub registry: &'registry Registry,
+}
+
+impl<'registry> CompileContext<'registry> {
+    /// Borrows the scene value, which is the document the compiler reads.
+    pub fn scene_value(&self) -> &'registry Value {
+        &self.scene.value
+    }
+}
+
+/// The outputs of a compile.
+pub struct CompileOutput {
+    /// The complete new graphics document.
+    pub graphics: Definition,
+    /// The complete new instance document.
+    pub instance: Definition,
+    /// The compiler's own delta for the graphics output.
+    ///
+    /// # Invariant
+    ///
+    /// Applying this to `previous_graphics` must yield exactly `graphics`.
+    pub graphics_delta: Delta,
+    /// The compiler's own delta for the instance output.
+    ///
+    /// # Invariant
+    ///
+    /// Applying this to `previous_instance` must yield exactly `instance`.
+    pub instance_delta: Delta,
+}
+
+impl CompileOutput {
+    /// Builds a first-compile output, where there is no previous state to delta from.
+    pub fn initial(graphics: Definition, instance: Definition) -> Self {
+        let graphics_delta = Delta::new(
+            graphics.definition_identifier.clone(),
+            Version::new(0),
+            BTreeMap::new(),
+        );
+        let instance_delta = Delta::new(
+            instance.definition_identifier.clone(),
+            Version::new(0),
+            BTreeMap::new(),
+        );
+        Self {
+            graphics,
+            instance,
+            graphics_delta,
+            instance_delta,
+        }
+    }
+}
+
+/// Compiles a scene into a graphics document and a matching instance document.
+pub trait Compiler {
+    /// The schema this compiler accepts, describing the shape of a scene.
+    fn scene_schema(&self) -> &Scene;
+
+    /// Compiles the scene, emitting the deltas that reproduce the outputs incrementally.
+    fn compile(&self, context: &CompileContext<'_>) -> Result<CompileOutput, CompileError>;
+}
+
+/// A compile failed, or emitted a delta that does not reproduce its own output.
+#[derive(Debug, Error)]
+pub enum CompileError {
+    #[error("the scene field at {path} is not {expected}, found {found}")]
+    MalformedScene {
+        path: Path,
+        expected: &'static str,
+        found: &'static str,
+    },
+    #[error("a graphics binder name is empty")]
+    EmptyBinderName,
+    #[error("the previous output is missing but the compiler was asked to delta against it")]
+    MissingPreviousOutput,
+    #[error(
+        "applying the emitted graphics delta does not reproduce the emitted graphics: {reason}"
+    )]
+    GraphicsDeltaMismatch { reason: &'static str },
+    #[error("applying the emitted instance delta does not reproduce the emitted instance: {reason}")]
+    InstanceDeltaMismatch { reason: &'static str },
+    #[error(transparent)]
+    Definition(#[from] definition::ValidationError),
+}
+
+/// Builds a delta that replaces `path` outright, for compilers that patch rather than
+/// diff.
+///
+/// A whole-value replace is always a valid delta, which makes it a correct but coarse
+/// fallback for a compiler that has not yet narrowed a change to a minimal primitive.
+pub fn replace_at(path: Path, value: Value) -> BTreeMap<Path, PrimitiveDelta> {
+    let mut operations = BTreeMap::new();
+    operations.insert(path, PrimitiveDelta::Replace(value));
+    operations
+}
+
+/// Reports a scene field that is not the shape the compiler requires.
+pub(crate) fn malformed_scene(
+    path: &Path,
+    expected: &'static str,
+    value: Option<&Value>,
+) -> CompileError {
+    CompileError::MalformedScene {
+        path: path.clone(),
+        expected,
+        found: value.map_or("nothing", Value::kind_name),
+    }
+}
+
+/// Reads a required string field of the scene.
+pub(crate) fn scene_text<'value>(
+    scene: &'value Value,
+    field: &str,
+) -> Result<&'value str, CompileError> {
+    let path = Path::root().key(field);
+    match scene.at(&path) {
+        Some(Value::String(text)) => Ok(text),
+        other => Err(malformed_scene(&path, "a string", other)),
+    }
+}
+
+/// Reads a required list field of the scene.
+pub(crate) fn scene_list<'value>(scene: &'value Value, field: &str) -> Result<&'value [Value], CompileError> {
+    let path = Path::root().key(field);
+    match scene.at(&path) {
+        Some(Value::List(elements)) => Ok(elements),
+        other => Err(malformed_scene(&path, "a list", other)),
+    }
+}

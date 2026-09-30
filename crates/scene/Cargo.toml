@@ -9,3 +9,4 @@ description = "Compilers from a scene schema to graphics instructions, with incr
 [dependencies]
 definition = { workspace = true }
 graphics = { workspace = true }
+thiserror = { workspace = true }
