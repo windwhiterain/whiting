@@ -47,25 +47,29 @@ impl WgpuRenderer {
     /// The shader is parsed rather than taken on trust, so this costs a parse per pass per
     /// render. A layout disagreement is a defect in the shader rather than in the frame, so
     /// the cost buys an error where there would otherwise be a wrong image.
+    ///
+    /// The pass is named in every error, because a bound shader entry has no name of its own
+    /// and the pass is what a reader is looking at.
     pub(super) fn check_uniform_layout(
         &self,
         binder: &Binder<'_>,
         schema: &Schema,
+        label: &str,
     ) -> Result<(), RenderError> {
-        let (path, source) = self.shader_source(binder)?;
+        let source = self.shader_source(binder)?;
         let declared = graphics::layout::uniform_layout(schema).map_err(|error| {
             RenderError::Backend(format!(
-                "the uniform interface `{path}` declares has no layout: {error}"
+                "the uniform interface `{label}` declares has no layout: {error}"
             ))
         })?;
-        let module = naga::front::wgsl::parse_str(&source).map_err(|error| {
-            RenderError::Backend(format!("`{path}` does not parse as wgsl: {error}"))
+        let module = naga::front::wgsl::parse_str(source).map_err(|error| {
+            RenderError::Backend(format!("`{label}` does not parse as wgsl: {error}"))
         })?;
         let found = uniform_members(&module);
         if found.is_empty() {
             return Ok(());
         }
-        compare(&path, &declared, &found, &module)
+        compare(label, &declared, &found, &module)
     }
 }
 

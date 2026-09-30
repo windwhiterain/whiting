@@ -185,8 +185,8 @@ impl ReferenceScene {
                     "Shader",
                     [
                         (
-                            graphics::binders::PATH.to_owned(),
-                            Value::String(format!("shaders/{name}.wgsl")),
+                            graphics::binders::SOURCE.to_owned(),
+                            Value::String(format!("// the reference shader for {name}")),
                         ),
                         (
                             graphics::binders::SCHEMA.to_owned(),

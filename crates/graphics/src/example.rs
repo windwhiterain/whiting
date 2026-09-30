@@ -147,8 +147,8 @@ pub fn example_instance() -> Value {
                 "Shader",
                 [
                     (
-                        "path".to_owned(),
-                        Value::String("shaders/shape.wgsl".to_owned()),
+                        "source".to_owned(),
+                        Value::String("// the example shape shader".to_owned()),
                     ),
                     ("schema".to_owned(), shape_interface()),
                 ],
@@ -160,8 +160,8 @@ pub fn example_instance() -> Value {
                 "Shader",
                 [
                     (
-                        "path".to_owned(),
-                        Value::String("shaders/blur.wgsl".to_owned()),
+                        "source".to_owned(),
+                        Value::String("// the example blur shader".to_owned()),
                     ),
                     ("schema".to_owned(), blur_interface()),
                 ],

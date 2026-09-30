@@ -18,7 +18,9 @@ use definition::{Path, Schema, SchemaKind, Value};
 
 use crate::GraphicsError;
 
-/// Field naming the instance entry a declaration binds.
+/// Field naming where content comes from: the instance entry a declaration binds, and, in
+/// a shader entry, the source itself. A shader carries its own text because the instruction
+/// has to be able to travel to whoever runs it.
 pub const SOURCE: &str = "source";
 
 /// Field holding the resource of a `Resource` declaration.
@@ -44,9 +46,6 @@ pub const HEIGHT: &str = "height";
 
 /// Field holding a texture format name.
 pub const FORMAT: &str = "format";
-
-/// Field holding the source of a shader, resolved against the shader root.
-pub const PATH: &str = "path";
 
 /// Field holding the interface a shader declares.
 pub const SCHEMA: &str = "schema";
@@ -257,9 +256,12 @@ pub fn binder_payload_schema() -> Schema {
             "Shader".to_owned(),
             Schema::new(SchemaKind::structure([
                 (
-                    PATH.to_owned(),
-                    Schema::new(SchemaKind::String)
-                        .with_documentation("Source, resolved against the shader root."),
+                    SOURCE.to_owned(),
+                    Schema::new(SchemaKind::String).with_documentation(
+                        "The shader source. An instruction carries its own text so that it \
+                         renders wherever it is sent, rather than naming a file the reader \
+                         may not have.",
+                    ),
                 ),
                 (
                     SCHEMA.to_owned(),

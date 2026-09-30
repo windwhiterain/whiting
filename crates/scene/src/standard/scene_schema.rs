@@ -22,6 +22,9 @@ pub const NAME: &str = "name";
 /// Field holding the lights of the scene.
 pub const LIGHTS: &str = "lights";
 
+/// Field holding the shaders of the scene.
+pub const SHADERS: &str = "shaders";
+
 /// Field holding the meshes of the scene.
 pub const MESHES: &str = "meshes";
 
@@ -55,8 +58,8 @@ pub const SHADER: &str = "shader";
 /// Field holding the data a material's own shader reads.
 pub const CUSTOM_DATA: &str = "custom_data";
 
-/// Field naming the source a shader is loaded from.
-pub const PATH: &str = "path";
+/// Field holding the text a shader is written in.
+pub const SOURCE: &str = "source";
 
 /// Field holding the schema of the pass a shader is bound to.
 pub const PASS_SCHEMA: &str = "pass_schema";
@@ -83,6 +86,13 @@ pub fn standard_scene_schema() -> Schema {
                 .with_documentation("One shadowing pass is emitted per light."),
         ),
         (
+            SHADERS.to_owned(),
+            Schema::new(SchemaKind::list(shader_schema())).with_documentation(
+                "Shaders, listed once per shader. A material names one by label, so two \
+                 objects drawn the same way carry one copy of the source.",
+            ),
+        ),
+        (
             MESHES.to_owned(),
             Schema::new(SchemaKind::list(mesh_schema())).with_documentation(
                 "Geometry, listed once per shape. A mesh is drawn only where an instance \
@@ -97,7 +107,7 @@ pub fn standard_scene_schema() -> Schema {
             ),
         ),
     ]))
-    .with_documentation("The conventional lit scene: lights, geometry, and what draws it.")
+    .with_documentation("The conventional lit scene: lights, shaders, geometry, and what draws it.")
 }
 
 /// Builds the schema of one light.
@@ -198,14 +208,20 @@ pub fn transform_schema() -> Schema {
 /// Builds the schema of one material.
 pub fn material_schema() -> Schema {
     Schema::new(SchemaKind::structure([
-        (SHADER.to_owned(), shader_schema()),
+        (
+            SHADER.to_owned(),
+            Schema::new(SchemaKind::String).with_documentation(
+                "The label of a shader this scene declares, which is where the stage an \
+                 instance is drawn in comes from.",
+            ),
+        ),
         (
             CUSTOM_DATA.to_owned(),
             Schema::new(SchemaKind::Any)
                 .with_documentation("Verified against the shader's custom schema."),
         ),
     ]))
-    .with_documentation("What a mesh looks like.")
+    .with_documentation("How an instance is drawn.")
 }
 
 /// Builds the schema of a shader: the three mesh stages and the screen stage.
@@ -218,13 +234,24 @@ pub fn material_schema() -> Schema {
 /// single value under a synthetic name; the tag already carries it. The three stages stay
 /// the variants a reader sees, and `Stage` in the emitter is what a tag means.
 pub fn shader_schema() -> Schema {
+    let label = (
+        LABEL.to_owned(),
+        Schema::new(SchemaKind::String).with_documentation(
+            "The name a material refers to this shader by, used in pass labels and in errors.",
+        ),
+    );
+    let source = (
+        SOURCE.to_owned(),
+        Schema::new(SchemaKind::String).with_documentation(
+            "The shader source. A shader carries its own text so that a compiled scene \
+             renders wherever it is sent.",
+        ),
+    );
+
     let mesh = || {
         Schema::new(SchemaKind::structure([
-            (
-                PATH.to_owned(),
-                Schema::new(SchemaKind::String)
-                    .with_documentation("Source, resolved against the shader root."),
-            ),
+            label.clone(),
+            source.clone(),
             (
                 PASS_SCHEMA.to_owned(),
                 Schema::document_schema()
@@ -233,13 +260,14 @@ pub fn shader_schema() -> Schema {
             (
                 INSTANCE_SCHEMA.to_owned(),
                 Schema::document_schema().with_documentation(
-                    "Verified against the mesh's instance data, and the layout it is packed with.",
+                    "Verified against the instance row, and the layout it is packed with.",
                 ),
             ),
             (
                 POINT_SCHEMA_FIELD.to_owned(),
                 Schema::document_schema().with_documentation(
-                    "Verified against every point of the mesh, alongside the mesh's own schema.",
+                    "Verified against every point of the mesh an instance draws, alongside \
+                     the mesh's own schema.",
                 ),
             ),
             (
@@ -263,7 +291,8 @@ pub fn shader_schema() -> Schema {
                 Schema::new(SchemaKind::String)
                     .with_documentation("Name of the stage this shader belongs to."),
             ),
-            (PATH.to_owned(), Schema::new(SchemaKind::String)),
+            label,
+            source,
             (PASS_SCHEMA.to_owned(), Schema::document_schema()),
             (INSTANCE_SCHEMA.to_owned(), Schema::document_schema()),
             (CUSTOM_SCHEMA.to_owned(), Schema::document_schema()),
@@ -271,7 +300,7 @@ pub fn shader_schema() -> Schema {
         .with_documentation("A shader over the screen, which reads no points."),
     ));
     Schema::new(SchemaKind::enumeration(variants))
-        .with_documentation("The shader a material is drawn with.")
+        .with_documentation("A shader a material names, declared once per scene.")
 }
 
 /// Builds a schema of exactly three floats.

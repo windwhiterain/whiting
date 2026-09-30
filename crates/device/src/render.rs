@@ -160,8 +160,6 @@ pub enum RenderError {
     NoAdapter,
     #[error("the framebuffer size does not match its pixel buffer")]
     FrameSize,
-    #[error("shader `{path}` could not be read: {reason}")]
-    ShaderRead { path: String, reason: String },
     #[error("the renderer backend failed: {0}")]
     Backend(String),
     #[cfg_attr(not(feature = "png"), allow(dead_code))]

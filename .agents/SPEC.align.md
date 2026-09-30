@@ -265,11 +265,27 @@ graphics computation, as data.
   read, in a `topology` on the payload rather than a field on the pass. The topology belongs
   to the run of points rather than to the instruction, and a buffer that does not say is
   read as triangles, so a `Segments` mesh is drawn as lines rather than as a triangle fan.
-- **decision**: the `Shader` binder carries a path and an interface, and no entry point. A
-  rasterize shader exposes `vertex_main` and `fragment_main`, which is the backend's
-  convention rather than data, and the entry point a compute pass invokes is already a field
-  of the compute pass. The shader payload used to carry a second, unused `entry_point` that
-  said `main` while the renderer called `vertex_main`.
+- **decision**: a document is a graph of references, not a tree of owned values, and
+  ownership is decided when a document is serialized rather than while it is held. A part
+  names another part by label, and the emitted documents keep that shape: a mesh
+  contributes one vertex buffer however many instances draw it, and a shader one entry
+  however many materials name it. Emitted entry names are checked, because two labels that
+  generate one name would silently overwrite each other.
+- **decision**: a shader carries its source, and no part carries a path. An instruction has
+  to be able to travel to whoever runs it, and the device renders over RPC: a document
+  naming a file on the author's disk could not be drawn by a server that cannot see that
+  disk. Nothing in the framework reads the filesystem, and `WgpuRenderer::new` takes no
+  shader root. An author who keeps shaders in files resolves that in their own tooling,
+  which is the only place the file's existence is known.
+- **decision**: the scene declares its shaders once, and a material names one by label, the
+  same way an instance names a mesh. The shader's stage comes from the shader, so a
+  material's stage is whatever the shader it names belongs to, and a label no shader
+  carries is a compile error rather than a pass that draws nothing.
+- **decision**: the `Shader` binder carries an interface and no entry point. A rasterize
+  shader exposes `vertex_main` and `fragment_main`, which is the backend's convention rather
+  than data, and the entry point a compute pass invokes is already a field of the compute
+  pass. The shader payload used to carry a second, unused `entry_point` that said `main`
+  while the renderer called `vertex_main`.
 - `GraphicsInstance`: a `Definition` that provides data to its `referencing_graphics`
   in the corresponding schema.
   - `referencing_graphics`: the `Graphics` this instance serves, by `DefinitionIdentifier`.
@@ -356,9 +372,13 @@ incremental compile.
     the operations itself.
 - `StandardScene`: a compiler over the conventional lit scene, and the schema that
   describes it.
-  - the scene document: a `name`, a list of `lights`, a list of `meshes` and a list of
-    `instances`.
+  - the scene document: a `name`, a list of `lights`, a list of `shaders`, a list of `meshes`
+    and a list of `instances`.
     - `Light`: position, colour and the extent of the volume it shadows.
+    - `Shader`: source, stage and the four schemas, declared once per scene and named by
+      every material that draws with it.
+      - `source`: the shader text. Nothing in the framework reads a file, because an
+        instruction has to render wherever it is sent.
     - `Mesh`: geometry, and nothing about where it is drawn.
       - `point_schema: Schema`: the shape of a point, authored per mesh so that a mesh
         carrying only positions is not forced to carry texcoords.
@@ -375,7 +395,8 @@ incremental compile.
         a turn about x, then y, then z, then the translation.
       - `material: Material`.
     - `Material`:
-      - `shader: Shader`.
+      - `shader`: the label of a shader this scene declares, which is also where the stage
+        its instance is drawn in comes from.
       - `custom_data`: an open dict, verified against the shader's `custom_schema`.
     - `Shader`: what a material is drawn with, and the interface it expects.
       - the three mesh stages and the screen stage are the variants of one enum. The spec

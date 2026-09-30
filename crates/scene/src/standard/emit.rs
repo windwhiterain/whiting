@@ -102,11 +102,9 @@ struct InstanceRead {
     label: String,
     /// The index of the mesh this instance draws, resolved from its label.
     mesh: usize,
+    /// The index of the shader it is drawn by, resolved from the material's label.
+    shader: usize,
     stage: Stage,
-    shader_entry: String,
-    shader_path: String,
-    /// The interface the instance's shader declares for the pass it is drawn in.
-    pass_schema: Rc<Schema>,
     instance_entry: String,
     /// The schema the instance row was packed with, which is the layout it is read with.
     instance_schema: Rc<Schema>,
@@ -180,10 +178,18 @@ fn read_topology(mesh: &Value, path: &Path) -> Result<Topology, CompileError> {
 }
 
 /// Reads a scene and emits the graphics and instance documents that draw it.
+///
+/// # Invariants
+///
+/// A part is declared once and referred to by label: a mesh by every instance that draws
+/// it, a shader by every material that names it. The emitted document keeps that shape, so
+/// one mesh contributes one vertex buffer and one shader contributes one entry, however
+/// many passes draw with them.
 pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     let lights = read_lights(scene)?;
+    let shaders = read_shaders(scene)?;
     let (meshes, mut instance) = read_meshes(scene)?;
-    let instances = read_instances(scene, &meshes)?;
+    let instances = read_instances(scene, &meshes, &shaders)?;
     // The camera frames what is drawn rather than what is authored, because an instance
     // may place its mesh anywhere and a mesh no instance names is not drawn at all.
     let bounds = bounds_of_instances(&meshes, &instances);
@@ -191,14 +197,18 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
 
     add_targets(&mut instance);
     for light in &lights {
-        instance.insert(
+        insert_entry(
+            &mut instance,
             shadow_map_entry(&light.label),
             texture(SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT, SHADOW_MAP_FORMAT),
-        );
+        )?;
+    }
+    for shader in &shaders {
+        insert_entry(&mut instance, shader.label.clone(), shader_entry(shader))?;
     }
     for found in &instances {
         for (entry, value) in instance_entries(found, &meshes[found.mesh]) {
-            instance.insert(entry, value);
+            insert_entry(&mut instance, entry, value)?;
         }
     }
 
@@ -208,21 +218,38 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
             .iter()
             .filter(|found| found.stage == Stage::Shadowing)
         {
-            passes.push(shadowing_pass(found, &meshes[found.mesh], light, &bounds));
+            passes.push(shadowing_pass(
+                found,
+                &meshes[found.mesh],
+                &shaders[found.shader].label,
+                light,
+                &bounds,
+            ));
         }
     }
     for found in instances
         .iter()
         .filter(|found| found.stage == Stage::Depthing)
     {
-        passes.push(depthing_pass(found, &meshes[found.mesh], &camera));
+        passes.push(depthing_pass(
+            found,
+            &meshes[found.mesh],
+            &shaders[found.shader].label,
+            &camera,
+        ));
     }
     for light in &lights {
         for found in instances
             .iter()
             .filter(|found| found.stage == Stage::Lighting)
         {
-            passes.push(lighting_pass(found, &meshes[found.mesh], light, &camera));
+            passes.push(lighting_pass(
+                found,
+                &meshes[found.mesh],
+                &shaders[found.shader].label,
+                light,
+                &camera,
+            ));
         }
     }
 
@@ -341,14 +368,18 @@ fn read_mesh(mesh: &Value, path: &Path) -> Result<(MeshRead, (String, Value)), C
     Ok((found, entry))
 }
 
-/// Reads the instances of the scene, resolving each one's mesh.
-fn read_instances(scene: &Value, meshes: &[MeshRead]) -> Result<Vec<InstanceRead>, CompileError> {
+/// Reads the instances of the scene, resolving each one's mesh and shader.
+fn read_instances(
+    scene: &Value,
+    meshes: &[MeshRead],
+    shaders: &[ShaderRead],
+) -> Result<Vec<InstanceRead>, CompileError> {
     let path = Path::root().key(scene_schema::INSTANCES);
     let instances = list_at(scene, &Path::root(), scene_schema::INSTANCES)?;
 
     let mut read: Vec<InstanceRead> = Vec::with_capacity(instances.len());
     for (index, instance) in instances.iter().enumerate() {
-        let found = read_instance(instance, &path.index(index), meshes)?;
+        let found = read_instance(instance, &path.index(index), meshes, shaders)?;
         if read.iter().any(|other| other.label == found.label) {
             return Err(CompileError::DuplicateLabel {
                 kind: "instance",
@@ -371,6 +402,7 @@ fn read_instance(
     instance: &Value,
     path: &Path,
     meshes: &[MeshRead],
+    shaders: &[ShaderRead],
 ) -> Result<InstanceRead, CompileError> {
     let label = text(instance, path, scene_schema::LABEL)?.to_owned();
     let mesh_label = text(instance, path, scene_schema::MESH)?;
@@ -389,10 +421,19 @@ fn read_instance(
     let material_path = path.key(scene_schema::MATERIAL);
     let material = at(instance, path, scene_schema::MATERIAL)?;
     let shader_path = material_path.key(scene_schema::SHADER);
-    let shader = read_shader(
-        at(material, &material_path, scene_schema::SHADER)?,
-        &shader_path,
-    )?;
+    let shader_label = at(material, &material_path, scene_schema::SHADER)?
+        .as_str()
+        .unwrap_or("<not a label>");
+    let Some((shader, shader_read)) = shaders
+        .iter()
+        .enumerate()
+        .find(|(_, shader)| shader.label == shader_label)
+    else {
+        return Err(CompileError::UnknownShader {
+            path: shader_path,
+            shader: shader_label.to_owned(),
+        });
+    };
 
     let points_path = Path::root()
         .key(scene_schema::MESHES)
@@ -402,7 +443,7 @@ fn read_instance(
         verify(
             point,
             &points_path.index(index),
-            shader.point_schema.as_ref(),
+            shader_read.point_schema.as_ref(),
             "a point",
             "the shader point schema",
         )?;
@@ -412,7 +453,7 @@ fn read_instance(
     verify(
         custom_data,
         &material_path.key(scene_schema::CUSTOM_DATA),
-        shader.custom_schema.as_ref(),
+        shader_read.custom_schema.as_ref(),
         "the custom data",
         "the shader custom schema",
     )?;
@@ -428,22 +469,20 @@ fn read_instance(
     verify(
         &row,
         &row_path,
-        shader.instance_schema.as_ref(),
+        shader_read.instance_schema.as_ref(),
         "the model matrix",
         "the shader instance schema",
     )?;
-    let instance_bytes = pack_struct(shader.instance_schema.as_ref(), &row, &row_path)?;
+    let instance_bytes = pack_struct(shader_read.instance_schema.as_ref(), &row, &row_path)?;
 
     Ok(InstanceRead {
-        shader_entry: format!("{label}_{}", shader.stage.suffix()),
         instance_entry: format!("{label}_{INSTANCE_DATA}"),
-        shader_path: shader.path,
-        pass_schema: shader.pass_schema,
-        instance_schema: shader.instance_schema,
+        instance_schema: shader_read.instance_schema.clone(),
         instance_bytes,
         label,
         mesh,
-        stage: shader.stage,
+        shader,
+        stage: shader_read.stage,
         model,
     })
 }
@@ -459,41 +498,27 @@ fn read_transform(instance: &Value, path: &Path) -> Result<Transform, CompileErr
     })
 }
 
-/// Returns the instance entries one instance contributes: its buffer and its shader.
+/// Returns the instance entries one instance contributes, which is its own row.
+///
+/// The shader is not among them: a shader is declared once and named by every material that
+/// draws with it, so its entry belongs to the scene rather than to an instance.
 fn instance_entries(found: &InstanceRead, mesh: &MeshRead) -> Vec<(String, Value)> {
-    vec![
-        (
-            found.instance_entry.clone(),
-            buffer_payload(
-                found.instance_bytes.clone(),
-                found.instance_schema.to_value(),
-                "instance",
-                mesh.topology.tag(),
-            ),
+    vec![(
+        found.instance_entry.clone(),
+        buffer_payload(
+            found.instance_bytes.clone(),
+            found.instance_schema.to_value(),
+            "instance",
+            mesh.topology.tag(),
         ),
-        (
-            found.shader_entry.clone(),
-            Value::variant(
-                "Shader",
-                [
-                    (
-                        graphics::binders::PATH.to_owned(),
-                        Value::String(found.shader_path.clone()),
-                    ),
-                    (
-                        graphics::binders::SCHEMA.to_owned(),
-                        found.pass_schema.to_value(),
-                    ),
-                ],
-            ),
-        ),
-    ]
+    )]
 }
 
 /// A shader as the scene document declares it.
 struct ShaderRead {
+    label: String,
     stage: Stage,
-    path: String,
+    source: String,
     pass_schema: Rc<Schema>,
     instance_schema: Rc<Schema>,
     point_schema: Rc<Schema>,
@@ -535,12 +560,69 @@ fn read_shader(shader: &Value, path: &Path) -> Result<ShaderRead, CompileError> 
 
     Ok(ShaderRead {
         stage,
-        path: text(shader, path, scene_schema::PATH)?.to_owned(),
+        label: text(shader, path, scene_schema::LABEL)?.to_owned(),
+        source: text(shader, path, scene_schema::SOURCE)?.to_owned(),
         pass_schema: read(scene_schema::PASS_SCHEMA)?,
         instance_schema: read(scene_schema::INSTANCE_SCHEMA)?,
         point_schema: read(scene_schema::POINT_SCHEMA_FIELD)?,
         custom_schema: read(scene_schema::CUSTOM_SCHEMA)?,
     })
+}
+
+/// Reads the shaders of the scene, which every material names by label.
+fn read_shaders(scene: &Value) -> Result<Vec<ShaderRead>, CompileError> {
+    let path = Path::root().key(scene_schema::SHADERS);
+    let shaders = list_at(scene, &Path::root(), scene_schema::SHADERS)?;
+
+    let mut read: Vec<ShaderRead> = Vec::with_capacity(shaders.len());
+    for (index, shader) in shaders.iter().enumerate() {
+        let found = read_shader(shader, &path.index(index))?;
+        if read.iter().any(|other| other.label == found.label) {
+            return Err(CompileError::DuplicateLabel {
+                kind: "shader",
+                label: found.label,
+            });
+        }
+        read.push(found);
+    }
+    Ok(read)
+}
+
+/// Builds the instance entry that holds one declared shader.
+///
+/// A shader is declared once and named by every material that draws with it, so its entry
+/// carries the source and the interface rather than being copied per pass.
+fn shader_entry(shader: &ShaderRead) -> Value {
+    Value::variant(
+        "Shader",
+        [
+            (
+                graphics::binders::SOURCE.to_owned(),
+                Value::String(shader.source.clone()),
+            ),
+            (
+                graphics::binders::SCHEMA.to_owned(),
+                shader.pass_schema.to_value(),
+            ),
+        ],
+    )
+}
+
+/// Adds one instance entry, refusing a name another entry already holds.
+///
+/// Emitted entry names are generated from scene labels, so two parts whose labels collide
+/// would silently overwrite one another and draw the wrong thing. A collision is a compile
+/// error that names the entry.
+fn insert_entry(
+    instance: &mut BTreeMap<String, Value>,
+    entry: String,
+    value: Value,
+) -> Result<(), CompileError> {
+    if instance.contains_key(&entry) {
+        return Err(CompileError::DuplicateEntry { entry });
+    }
+    instance.insert(entry, value);
+    Ok(())
 }
 
 /// Reads the `instance_schema` the emitted declarations imply.
@@ -571,6 +653,7 @@ pub fn shadow_map_entry(light_label: &str) -> String {
 fn shadowing_pass(
     instance: &InstanceRead,
     mesh: &MeshRead,
+    shader: &str,
     light: &LightRead,
     bounds: &Bounds,
 ) -> Value {
@@ -590,7 +673,7 @@ fn shadowing_pass(
 
     rasterize(
         &format!("shadow/{}/{}", light.label, instance.label),
-        &instance.shader_entry,
+        shader,
         Value::structure([(PROJECTION.to_owned(), projection)]),
         mesh_bindings(instance, mesh).chain([(
             SHADOW_MAP.to_owned(),
@@ -607,10 +690,10 @@ fn shadowing_pass(
 }
 
 /// Builds the depthing pass of one instance.
-fn depthing_pass(instance: &InstanceRead, mesh: &MeshRead, camera: &Value) -> Value {
+fn depthing_pass(instance: &InstanceRead, mesh: &MeshRead, shader: &str, camera: &Value) -> Value {
     rasterize(
         &format!("depth/{}", instance.label),
-        &instance.shader_entry,
+        shader,
         Value::structure([(PROJECTION.to_owned(), camera.clone())]),
         mesh_bindings(instance, mesh).chain([(
             DEPTH_BUFFER.to_owned(),
@@ -625,12 +708,13 @@ fn depthing_pass(instance: &InstanceRead, mesh: &MeshRead, camera: &Value) -> Va
 fn lighting_pass(
     instance: &InstanceRead,
     mesh: &MeshRead,
+    shader: &str,
     light: &LightRead,
     camera: &Value,
 ) -> Value {
     rasterize(
         &format!("lighting/{}/{}", instance.label, light.label),
-        &instance.shader_entry,
+        shader,
         Value::structure([
             (PROJECTION.to_owned(), camera.clone()),
             (

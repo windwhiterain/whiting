@@ -25,7 +25,6 @@
 //! that does not match its layout, and a draw with no buffer all arrive as errors with
 //! the backend's own words in them.
 
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use definition::Value;
@@ -45,7 +44,6 @@ mod uniform;
 pub struct WgpuRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    shader_root: PathBuf,
     errors: Arc<Mutex<Vec<String>>>,
 }
 
@@ -54,7 +52,7 @@ impl WgpuRenderer {
     ///
     /// Returns [`RenderError::NoAdapter`] when no adapter is available, which is the
     /// signal for a caller to fall back to the no-operation renderer.
-    pub async fn new(shader_root: impl Into<PathBuf>) -> Result<Self, RenderError> {
+    pub async fn new() -> Result<Self, RenderError> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -90,7 +88,6 @@ impl WgpuRenderer {
         Ok(Self {
             device,
             queue,
-            shader_root: shader_root.into(),
             errors,
         })
     }
@@ -173,31 +170,33 @@ impl WgpuRenderer {
         })
     }
 
-    /// Reads the source of a bound shader document.
-    fn shader_source(&self, binder: &Binder<'_>) -> Result<(String, String), RenderError> {
-        let path = binder
-            .text(graphics::binders::PATH)
-            .ok_or_else(|| RenderError::Backend("a shader binder needs a `path`".to_owned()))?
-            .to_owned();
-        let full_path = self.shader_root.join(Path::new(&path));
-        let source =
-            std::fs::read_to_string(&full_path).map_err(|error| RenderError::ShaderRead {
-                path: full_path.display().to_string(),
-                reason: error.to_string(),
-            })?;
-        Ok((path, source))
+    /// Borrows the source of a bound shader document.
+    ///
+    /// An instruction carries its own text, so nothing here reads a file: a document that
+    /// arrived over the wire has everything it needs to be drawn.
+    fn shader_source<'binder>(
+        &self,
+        binder: &'binder Binder<'_>,
+    ) -> Result<&'binder str, RenderError> {
+        binder
+            .text(graphics::binders::SOURCE)
+            .ok_or_else(|| RenderError::Backend("a shader binder needs a `source`".to_owned()))
     }
 
     /// Creates a shader module from a bound shader document.
+    ///
+    /// The module is labelled with the pass that needs it, because there is no filename to
+    /// name it by and the pass is what a backend diagnostic is about.
     pub(super) fn shader_module(
         &self,
         binder: &Binder<'_>,
+        label: &str,
     ) -> Result<wgpu::ShaderModule, RenderError> {
-        let (path, source) = self.shader_source(binder)?;
+        let source = self.shader_source(binder)?;
         Ok(self
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(&path),
+                label: Some(label),
                 source: wgpu::ShaderSource::Wgsl(source.into()),
             }))
     }
