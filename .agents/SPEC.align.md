@@ -260,11 +260,16 @@ graphics computation, as data.
 - **invariant**: a texture whose format is a depth format is declared to a shader with the
   depth sample type, not the float one, and a pass whose targets are all depth formats is
   built with no fragment stage.
-- **decision**: a vertex buffer declares how its points are read, in a `topology` on the
-  payload rather than a second field on the pass. The topology belongs to the run of points
-  rather than to the instruction, and a mesh's `Topology` is what the compiler carries into
-  it, so a `Segments` mesh is drawn as lines rather than as a triangle fan. A buffer that
-  does not say is read as triangles.
+- **decision**: the scene's `Mesh` declares its `Topology`, as the spec says, and the
+  compiler carries it into the packed buffer: a vertex buffer declares how its points are
+  read, in a `topology` on the payload rather than a field on the pass. The topology belongs
+  to the run of points rather than to the instruction, and a buffer that does not say is
+  read as triangles, so a `Segments` mesh is drawn as lines rather than as a triangle fan.
+- **decision**: the `Shader` binder carries a path and an interface, and no entry point. A
+  rasterize shader exposes `vertex_main` and `fragment_main`, which is the backend's
+  convention rather than data, and the entry point a compute pass invokes is already a field
+  of the compute pass. The shader payload used to carry a second, unused `entry_point` that
+  said `main` while the renderer called `vertex_main`.
 - `GraphicsInstance`: a `Definition` that provides data to its `referencing_graphics`
   in the corresponding schema.
   - `referencing_graphics`: the `Graphics` this instance serves, by `DefinitionIdentifier`.
@@ -351,16 +356,23 @@ incremental compile.
     the operations itself.
 - `StandardScene`: a compiler over the conventional lit scene, and the schema that
   describes it.
-  - the scene document: a `name`, a list of `lights` and a list of `meshes`.
+  - the scene document: a `name`, a list of `lights`, a list of `meshes` and a list of
+    `instances`.
     - `Light`: position, colour and the extent of the volume it shadows.
-    - `Mesh`:
-      - `instance_data`: the per instance transform data, as an open dict.
+    - `Mesh`: geometry, and nothing about where it is drawn.
       - `point_schema: Schema`: the shape of a point, authored per mesh so that a mesh
         carrying only positions is not forced to carry texcoords.
       - `Point`: one point, verified against the owning mesh's `point_schema`.
       - `Topology`: enum of `Triangles` and `Segments`. The topology says how the
         points are read, and is what tells a rasterize pass to draw indexed or line
         primitives.
+    - `Instance`: a mesh placed in the scene and drawn by one stage.
+      - `mesh`: the label of a mesh in the same scene, which is what lets one run of
+        points be drawn by several stages without being listed again. A label no mesh
+        carries is a compile error rather than a pass that draws nothing.
+      - `transform: Transform`: `translation`, `rotation` in radians, `scale`. The three
+        compose into the model matrix the instance row carries, in that order: scale, then
+        a turn about x, then y, then z, then the translation.
       - `material: Material`.
     - `Material`:
       - `shader: Shader`.
@@ -376,25 +388,30 @@ incremental compile.
       - every variant declares three schemas, and each one is verified against the data
         it describes, so a shader that outgrows its data is a compile error:
         - `pass_schema`: verified against the emitted pass by `verify_pass_inputs`.
-        - `instance_schema`: verified against the mesh's `instance_data`, and it is also
-          the layout that data is packed with, so it has to be a struct.
+        - `instance_schema`: verified against the instance row, and it is also the layout
+          that row is packed with, so it has to be a struct.
         - `custom_schema`: the `CustomSchema`, verified against the material's
           `custom_data`. It is the one schema an author writes for their own effect.
         - `point_schema`, on a mesh shader only: verified against every point of the
-          mesh. A mesh also declares its own `point_schema`, and **both** must accept
-          the points, so a mesh is never described in a shape its own shader rejects.
-      - **decision**: a material's shader names the stage the mesh is drawn in, and
-        each of the three passes draws the meshes whose material belongs to it. One
-        material per mesh is what the spec gives, so a mesh declares the stage it
-        belongs in rather than carrying a material per stage. A mesh that has to appear
-        in several stages is listed once per stage, which repeats its points; the
-        alternative, three mesh lists in the scene document, was not chosen because the
-        spec names one `Mesh`.
-      - **decision**: a pass draws one mesh. A pass binds one shader and a shader
-        declares one interface, so a pass that drew several meshes would have to bind
+          mesh an instance draws. A mesh also declares its own `point_schema`, and **both**
+          must accept the points, so a mesh is never described in a shape its own shader
+          rejects.
+      - **decision**: a material's shader names the stage its instance is drawn in, and
+        each of the three passes draws the instances whose material belongs to it. A mesh
+        that has to appear in several stages is several instances of one mesh, so its
+        points are authored once. This replaced listing a mesh once per stage, which is
+        what made `Instance` worth having.
+      - **decision**: a pass draws one instance. A pass binds one shader and a shader
+        declares one interface, so a pass that drew several instances would have to bind
         several shaders and the pass model has no room for it. More passes than a merged
         pipeline needs, in exchange for a binding model where what a shader declares is
         exactly what the pass supplies.
+      - **decision**: an instance row is the model matrix and nothing else. Per instance
+        data beyond a placement is not needed, because the transform places an instance and
+        the material's `custom_data` carries what else a shader reads.
+      - the emitted instance carries one vertex buffer per mesh, shared by every instance
+        that draws it, and one instance buffer per instance, holding that instance's row
+        alone.
   - `PassSchema`: the schema of a pass the standard pipeline emits.
     - `ProjectionSchema` is the schema of a projection: a view projection matrix and the
       point it was made from. It is data on the pass, not arithmetic in the renderer,
@@ -417,21 +434,25 @@ incremental compile.
     occupies the same number of bytes, because a shader reads a fixed stride; a ragged
     point list is refused rather than packed into a buffer the shader cannot walk.
   - the compile emits three stages in order: one shadowing pass per light and per shadow
-    casting mesh, one depthing pass per mesh, then one lighting pass per mesh and per
-    light. The order is the pipeline: nothing in a document says a lighting pass runs
-    after a shadowing pass. Each stage clears its target to what that stage means: depth
-    maps clear to the far plane, a shaded image clears to unlit.
+    casting instance, one depthing pass per instance, then one lighting pass per instance
+    and per light. The order is the pipeline: nothing in a document says a lighting pass
+    runs after a shadowing pass. Each stage clears its target to what that stage means:
+    depth maps clear to the far plane, a shaded image clears to unlit.
+  - the camera frames what is drawn rather than what is authored: the box is over the
+    instanced points, so a mesh an instance places somewhere is projected where it is drawn
+    and a mesh no instance names does not widen the view.
   - the emitted instance carries the shaders with their schemas, the vertex and
     instance buffers, and the shadow map, depth and colour targets. The graphics
     document declares each of them through a `Binder`, and its `instance_schema` is the
     schema derived from those declarations, which is what makes the spec's
     "its binders define a corresponding schema for `GraphicsInstance`" true of every
     compiler rather than only of one.
-  - a material whose shader cannot be read, or a mesh whose points do not satisfy its
-    own `point_schema`, fails the compile rather than the render, because both are
-    facts about the scene document and are known before any gpu work starts. The
-    compiler also verifies every pass it emitted against the interface that pass's own
-    shader declares, so a compiler bug is a compile error rather than a bad frame.
+  - a material whose shader cannot be read, an instance whose `mesh` label names nothing,
+    or a mesh whose points do not satisfy its own `point_schema`, fails the compile rather
+    than the render, because each is a fact about the scene document and is known before any
+    gpu work starts. The compiler also verifies every pass it emitted against the interface
+    that pass's own shader declares, so a compiler bug is a compile error rather than a bad
+    frame.
   - the default point and instance schemas declare their component widths, because a
     schema is also the layout a buffer is read with: a point is a position of three, and a
     model matrix is sixteen, which the renderer reads as four attributes of four.

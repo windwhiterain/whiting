@@ -271,6 +271,8 @@ pub enum CompileError {
     UnknownStage { path: Path, stage: String },
     #[error("at {path}: `{topology}` is not a topology a mesh is drawn as")]
     UnknownTopology { path: Path, topology: String },
+    #[error("at {path}: no mesh in this scene is labelled `{mesh}`")]
+    UnknownMesh { path: Path, mesh: String },
     #[error("at {path}: a screen shader cannot be a standard material: {reason}")]
     ScreenShader { path: Path, reason: String },
     #[error("two {kind}s are labelled `{label}`, so their instance entries would collide")]

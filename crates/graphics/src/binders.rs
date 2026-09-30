@@ -48,9 +48,6 @@ pub const FORMAT: &str = "format";
 /// Field holding the source of a shader, resolved against the shader root.
 pub const PATH: &str = "path";
 
-/// Field holding the entry point a compute pass invokes.
-pub const ENTRY_POINT: &str = "entry_point";
-
 /// Field holding the interface a shader declares.
 pub const SCHEMA: &str = "schema";
 
@@ -264,11 +261,12 @@ pub fn binder_payload_schema() -> Schema {
                     Schema::new(SchemaKind::String)
                         .with_documentation("Source, resolved against the shader root."),
                 ),
-                (ENTRY_POINT.to_owned(), Schema::new(SchemaKind::String)),
                 (
                     SCHEMA.to_owned(),
                     Schema::document_schema().optional().with_documentation(
-                        "The interface this shader reads, checked against the pass.",
+                        "The interface this shader reads, checked against the pass. A \
+                         rasterize shader exposes `vertex_main` and `fragment_main`, which \
+                         is the backend's convention rather than data.",
                     ),
                 ),
             ])),

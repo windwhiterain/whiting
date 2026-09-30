@@ -2,18 +2,17 @@
 //!
 //! # What the pipeline is
 //!
-//! One shadowing pass per light and per shadow casting mesh, then one depthing pass per
-//! mesh, then one lighting pass per mesh and per light. The order of the emitted list is
-//! the pipeline: nothing in a document says that a lighting pass runs after a shadowing
-//! pass, the order does.
+//! One shadowing pass per light and per shadow casting instance, then one depthing pass per
+//! instance, then one lighting pass per instance and per light. The order of the emitted
+//! list is the pipeline: nothing in a document says that a lighting pass runs after a
+//! shadowing pass, the order does.
 //!
-//! # Why one mesh per pass
+//! # Why one instance per pass
 //!
 //! A pass binds exactly one shader, and a shader declares one interface. A pass that drew
-//! several meshes would therefore have to bind several shaders, which the pass model has
-//! no room for. So a pass draws one mesh, and a mesh in three stages is three passes.
-//! That is more passes than a merged pipeline needs, and it buys a binding model where
-//! what a shader declares is exactly what the pass supplies.
+//! several instances would therefore have to bind several shaders, which the pass model has
+//! no room for. So a pass draws one instance, and a mesh drawn in three stages is three
+//! instances of one mesh, which is why a mesh is geometry and an instance is a placement.
 //!
 //! # Invariants
 //!
@@ -21,6 +20,8 @@
 //!   the emitter returns, so a compiler bug is a compile error rather than a bad frame.
 //! - The `instance_schema` of the emitted graphics document is derived from the emitted
 //!   declarations, so the two documents cannot drift apart silently.
+//! - A vertex buffer belongs to a mesh and is shared by every instance that draws it; an
+//!   instance buffer belongs to an instance and holds that instance's row alone.
 
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -32,7 +33,7 @@ use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{derived_instance_schema, verify_pass_inputs};
 
 use crate::CompileError;
-use crate::standard::math::{Bounds, Matrix, projection_of};
+use crate::standard::math::{Bounds, Matrix, apply, projection_of, transform_matrix};
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
@@ -43,6 +44,9 @@ use crate::standard::scene_schema;
 
 /// How much wider than its box a projection is fitted.
 const PADDING: f64 = 1.1;
+
+/// Field the model matrix of an instance row is carried under.
+const MODEL: &str = "model";
 
 /// Name of the instance entry holding the depth buffer every depthing pass writes.
 pub const DEPTH_BUFFER_ENTRY: &str = "depth_buffer";
@@ -83,18 +87,47 @@ impl Stage {
 
 /// One mesh, read out of the scene document.
 ///
-/// This is the emitter's working state, not a document: the scene is a [`Value`], the
-/// outputs are [`Value`]s, and this exists so the emitter can hold what it read while it
-/// walks the stages in order.
+/// One mesh, read out of the scene document: geometry, and nothing about where it is drawn.
 struct MeshRead {
     label: String,
+    topology: Topology,
+    point_schema: Rc<Schema>,
+    points: Vec<Value>,
+    vertex_bytes: i64,
+    vertex_entry: String,
+}
+
+/// One instance, read out of the scene document: a mesh, where it is, and what draws it.
+struct InstanceRead {
+    label: String,
+    /// The index of the mesh this instance draws, resolved from its label.
+    mesh: usize,
     stage: Stage,
     shader_entry: String,
-    vertex_entry: String,
-    vertex_bytes: i64,
+    shader_path: String,
+    /// The interface the instance's shader declares for the pass it is drawn in.
+    pass_schema: Rc<Schema>,
     instance_entry: String,
-    instance_bytes: i64,
-    bounds: Bounds,
+    /// The schema the instance row was packed with, which is the layout it is read with.
+    instance_schema: Rc<Schema>,
+    instance_bytes: Vec<u8>,
+    /// The model matrix the instance row carries, which the transform composes to.
+    model: Matrix,
+}
+
+/// Where an instance is, and how it is turned and sized.
+#[derive(Debug, Clone, Copy)]
+struct Transform {
+    translation: [f64; 3],
+    rotation: [f64; 3],
+    scale: [f64; 3],
+}
+
+impl Transform {
+    /// Returns the model matrix this transform composes to.
+    fn matrix(self) -> Matrix {
+        transform_matrix(self.translation, self.rotation, self.scale)
+    }
 }
 
 /// One light, read out of the scene document.
@@ -149,7 +182,11 @@ fn read_topology(mesh: &Value, path: &Path) -> Result<Topology, CompileError> {
 /// Reads a scene and emits the graphics and instance documents that draw it.
 pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     let lights = read_lights(scene)?;
-    let (meshes, mut instance, bounds) = read_meshes(scene)?;
+    let (meshes, mut instance) = read_meshes(scene)?;
+    let instances = read_instances(scene, &meshes)?;
+    // The camera frames what is drawn rather than what is authored, because an instance
+    // may place its mesh anywhere and a mesh no instance names is not drawn at all.
+    let bounds = bounds_of_instances(&meshes, &instances);
     let camera = camera_projection(&bounds);
 
     add_targets(&mut instance);
@@ -159,19 +196,33 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
             texture(SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT, SHADOW_MAP_FORMAT),
         );
     }
+    for found in &instances {
+        for (entry, value) in instance_entries(found, &meshes[found.mesh]) {
+            instance.insert(entry, value);
+        }
+    }
 
     let mut passes = Vec::new();
     for light in &lights {
-        for mesh in meshes.iter().filter(|mesh| mesh.stage == Stage::Shadowing) {
-            passes.push(shadowing_pass(mesh, light, &bounds));
+        for found in instances
+            .iter()
+            .filter(|found| found.stage == Stage::Shadowing)
+        {
+            passes.push(shadowing_pass(found, &meshes[found.mesh], light, &bounds));
         }
     }
-    for mesh in meshes.iter().filter(|mesh| mesh.stage == Stage::Depthing) {
-        passes.push(depthing_pass(mesh, &camera));
+    for found in instances
+        .iter()
+        .filter(|found| found.stage == Stage::Depthing)
+    {
+        passes.push(depthing_pass(found, &meshes[found.mesh], &camera));
     }
     for light in &lights {
-        for mesh in meshes.iter().filter(|mesh| mesh.stage == Stage::Lighting) {
-            passes.push(lighting_pass(mesh, light, &camera));
+        for found in instances
+            .iter()
+            .filter(|found| found.stage == Stage::Lighting)
+        {
+            passes.push(lighting_pass(found, &meshes[found.mesh], light, &camera));
         }
     }
 
@@ -223,85 +274,139 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
     Ok(read)
 }
 
-/// Reads the meshes of the scene, verifying each against the schemas it declares, and
-/// collects the instance entries they contribute and the bounds they cover.
-fn read_meshes(
-    scene: &Value,
-) -> Result<(Vec<MeshRead>, BTreeMap<String, Value>, Bounds), CompileError> {
+/// Reads the meshes of the scene and the instance entries their vertex buffers contribute.
+fn read_meshes(scene: &Value) -> Result<(Vec<MeshRead>, BTreeMap<String, Value>), CompileError> {
     let path = Path::root().key(scene_schema::MESHES);
     let meshes = list_at(scene, &Path::root(), scene_schema::MESHES)?;
 
     let mut read: Vec<MeshRead> = Vec::with_capacity(meshes.len());
     let mut instance = BTreeMap::new();
-    let mut bounds: Option<Bounds> = None;
     for (index, mesh) in meshes.iter().enumerate() {
         let mesh_path = path.index(index);
-        let (found, entries) = read_mesh(mesh, &mesh_path)?;
-        bounds = Some(match bounds {
-            None => found.bounds,
-            Some(previous) => previous.union(found.bounds),
-        });
+        let (found, entry) = read_mesh(mesh, &mesh_path)?;
         if read.iter().any(|other| other.label == found.label) {
             return Err(CompileError::DuplicateLabel {
                 kind: "mesh",
                 label: found.label,
             });
         }
-        for (entry, value) in entries {
-            instance.insert(entry, value);
-        }
+        instance.insert(entry.0, entry.1);
         read.push(found);
     }
-    // A scene with no mesh has nothing to project, so the projection covers a unit box.
-    Ok((
-        read,
-        instance,
-        bounds.unwrap_or_else(|| Bounds::around([0.0; 3], 1.0)),
-    ))
+    Ok((read, instance))
 }
 
-/// Reads one mesh and every schema it is verified against.
-fn read_mesh(mesh: &Value, path: &Path) -> Result<(MeshRead, Vec<(String, Value)>), CompileError> {
+/// Reads one mesh: the geometry an instance draws.
+fn read_mesh(mesh: &Value, path: &Path) -> Result<(MeshRead, (String, Value)), CompileError> {
     let label = text(mesh, path, scene_schema::LABEL)?.to_owned();
-    let material_path = path.key(scene_schema::MATERIAL);
-    let material = at(mesh, path, scene_schema::MATERIAL)?;
-    let shader_path = material_path.key(scene_schema::SHADER);
-    let shader_value = at(material, &material_path, scene_schema::SHADER)?;
-
     let point_schema = schema_at(mesh, path, scene_schema::POINT_SCHEMA)?;
-    let shader = read_shader(shader_value, &shader_path)?;
-
-    // A point must satisfy both the mesh's own shape and the shape its shader reads.
-    // Verifying one and not the other is how a mesh ends up carrying a field no shader
-    // asked for, or a shader that reads a field no point carries.
     let points = list_at(mesh, path, scene_schema::POINTS)?;
     let points_path = path.key(scene_schema::POINTS);
     for (index, point) in points.iter().enumerate() {
-        let point_at = points_path.index(index);
         verify(
             point,
-            &point_at,
+            &points_path.index(index),
             point_schema.as_ref(),
             "a point",
             "the mesh point schema",
         )?;
+    }
+
+    let vertex_bytes = pack_points(point_schema.as_ref(), points, &points_path)?;
+    if vertex_bytes.is_empty() {
+        return Err(CompileError::EmptyMesh { label });
+    }
+    let topology = read_topology(mesh, path)?;
+    let vertex_entry = format!("{label}_{VERTICES}");
+    let found = MeshRead {
+        vertex_bytes: vertex_bytes.len() as i64,
+        vertex_entry: vertex_entry.clone(),
+        label,
+        topology,
+        point_schema,
+        points: points.to_vec(),
+    };
+
+    // The buffer carries the schema it was packed with, so a renderer derives the vertex
+    // layout from the point schema rather than it being declared a second time.
+    let entry = (
+        vertex_entry,
+        buffer_payload(
+            vertex_bytes,
+            found.point_schema.to_value(),
+            "vertex",
+            topology.tag(),
+        ),
+    );
+    Ok((found, entry))
+}
+
+/// Reads the instances of the scene, resolving each one's mesh.
+fn read_instances(scene: &Value, meshes: &[MeshRead]) -> Result<Vec<InstanceRead>, CompileError> {
+    let path = Path::root().key(scene_schema::INSTANCES);
+    let instances = list_at(scene, &Path::root(), scene_schema::INSTANCES)?;
+
+    let mut read: Vec<InstanceRead> = Vec::with_capacity(instances.len());
+    for (index, instance) in instances.iter().enumerate() {
+        let found = read_instance(instance, &path.index(index), meshes)?;
+        if read.iter().any(|other| other.label == found.label) {
+            return Err(CompileError::DuplicateLabel {
+                kind: "instance",
+                label: found.label,
+            });
+        }
+        read.push(found);
+    }
+    Ok(read)
+}
+
+/// Reads one instance and every schema it is verified against.
+///
+/// # Invariants
+///
+/// A point is verified against its mesh's own point schema and against the point schema of
+/// every shader that draws that mesh. Verifying one and not the other is how a mesh ends up
+/// carrying a field no shader asked for, or a shader that reads a field no point carries.
+fn read_instance(
+    instance: &Value,
+    path: &Path,
+    meshes: &[MeshRead],
+) -> Result<InstanceRead, CompileError> {
+    let label = text(instance, path, scene_schema::LABEL)?.to_owned();
+    let mesh_label = text(instance, path, scene_schema::MESH)?;
+    let Some((mesh, found)) = meshes
+        .iter()
+        .enumerate()
+        .find(|(_, mesh)| mesh.label == mesh_label)
+    else {
+        return Err(CompileError::UnknownMesh {
+            path: path.key(scene_schema::MESH),
+            mesh: mesh_label.to_owned(),
+        });
+    };
+
+    let transform = read_transform(instance, path)?;
+    let material_path = path.key(scene_schema::MATERIAL);
+    let material = at(instance, path, scene_schema::MATERIAL)?;
+    let shader_path = material_path.key(scene_schema::SHADER);
+    let shader = read_shader(
+        at(material, &material_path, scene_schema::SHADER)?,
+        &shader_path,
+    )?;
+
+    let points_path = Path::root()
+        .key(scene_schema::MESHES)
+        .index(mesh)
+        .key(scene_schema::POINTS);
+    for (index, point) in found.points.iter().enumerate() {
         verify(
             point,
-            &point_at,
+            &points_path.index(index),
             shader.point_schema.as_ref(),
             "a point",
             "the shader point schema",
         )?;
     }
-
-    let instance_data = at(mesh, path, scene_schema::INSTANCE_DATA)?;
-    verify(
-        instance_data,
-        &path.key(scene_schema::INSTANCE_DATA),
-        shader.instance_schema.as_ref(),
-        "the instance data",
-        "the shader instance schema",
-    )?;
 
     let custom_data = at(material, &material_path, scene_schema::CUSTOM_DATA)?;
     verify(
@@ -312,47 +417,58 @@ fn read_mesh(mesh: &Value, path: &Path) -> Result<(MeshRead, Vec<(String, Value)
         "the shader custom schema",
     )?;
 
-    let vertex_bytes = pack_points(point_schema.as_ref(), points, &points_path)?;
-    if vertex_bytes.is_empty() {
-        return Err(CompileError::EmptyMesh { label });
-    }
-    let topology = read_topology(mesh, path)?;
-    let instance_bytes = pack_struct(
+    // The instance row is the model matrix and nothing else: what a shader reads per
+    // instance is where the instance is, and everything else is the material's custom data.
+    let model = transform.matrix();
+    let row = Value::structure([(
+        MODEL.to_owned(),
+        Value::List(model.iter().copied().map(Value::Float).collect()),
+    )]);
+    let row_path = path.key(scene_schema::TRANSFORM);
+    verify(
+        &row,
+        &row_path,
         shader.instance_schema.as_ref(),
-        instance_data,
-        &path.key(scene_schema::INSTANCE_DATA),
+        "the model matrix",
+        "the shader instance schema",
     )?;
+    let instance_bytes = pack_struct(shader.instance_schema.as_ref(), &row, &row_path)?;
 
-    let found = MeshRead {
+    Ok(InstanceRead {
         shader_entry: format!("{label}_{}", shader.stage.suffix()),
-        vertex_entry: format!("{label}_{VERTICES}"),
-        vertex_bytes: vertex_bytes.len() as i64,
         instance_entry: format!("{label}_{INSTANCE_DATA}"),
-        instance_bytes: instance_bytes.len() as i64,
-        bounds: bounds_of(points),
+        shader_path: shader.path,
+        pass_schema: shader.pass_schema,
+        instance_schema: shader.instance_schema,
+        instance_bytes,
         label,
+        mesh,
         stage: shader.stage,
-    };
+        model,
+    })
+}
 
-    // The buffers carry the schema they were packed with, so a renderer derives the
-    // vertex layout from the point schema rather than it being declared a second time.
-    let entries = vec![
-        (
-            found.vertex_entry.clone(),
-            buffer_payload(
-                vertex_bytes,
-                point_schema.to_value(),
-                "vertex",
-                topology.tag(),
-            ),
-        ),
+/// Reads where an instance is.
+fn read_transform(instance: &Value, path: &Path) -> Result<Transform, CompileError> {
+    let transform = at(instance, path, scene_schema::TRANSFORM)?;
+    let transform_path = path.key(scene_schema::TRANSFORM);
+    Ok(Transform {
+        translation: triple(transform, &transform_path, "translation")?,
+        rotation: triple(transform, &transform_path, "rotation")?,
+        scale: triple(transform, &transform_path, "scale")?,
+    })
+}
+
+/// Returns the instance entries one instance contributes: its buffer and its shader.
+fn instance_entries(found: &InstanceRead, mesh: &MeshRead) -> Vec<(String, Value)> {
+    vec![
         (
             found.instance_entry.clone(),
             buffer_payload(
-                instance_bytes,
-                shader.instance_schema.to_value(),
+                found.instance_bytes.clone(),
+                found.instance_schema.to_value(),
                 "instance",
-                topology.tag(),
+                mesh.topology.tag(),
             ),
         ),
         (
@@ -362,21 +478,16 @@ fn read_mesh(mesh: &Value, path: &Path) -> Result<(MeshRead, Vec<(String, Value)
                 [
                     (
                         graphics::binders::PATH.to_owned(),
-                        Value::String(shader.path),
-                    ),
-                    (
-                        graphics::binders::ENTRY_POINT.to_owned(),
-                        Value::String("main".to_owned()),
+                        Value::String(found.shader_path.clone()),
                     ),
                     (
                         graphics::binders::SCHEMA.to_owned(),
-                        shader.pass_schema.to_value(),
+                        found.pass_schema.to_value(),
                     ),
                 ],
             ),
         ),
-    ];
-    Ok((found, entries))
+    ]
 }
 
 /// A shader as the scene document declares it.
@@ -456,8 +567,13 @@ pub fn shadow_map_entry(light_label: &str) -> String {
     format!("{light_label}_{SHADOW_MAP}")
 }
 
-/// Builds the shadowing pass of one mesh for one light.
-fn shadowing_pass(mesh: &MeshRead, light: &LightRead, bounds: &Bounds) -> Value {
+/// Builds the shadowing pass of one instance for one light.
+fn shadowing_pass(
+    instance: &InstanceRead,
+    mesh: &MeshRead,
+    light: &LightRead,
+    bounds: &Bounds,
+) -> Value {
     // The shadow map looks down the light's direction, at a box centred on the scene and
     // as wide as the light says it shines.
     let centre = bounds.centre();
@@ -473,10 +589,10 @@ fn shadowing_pass(mesh: &MeshRead, light: &LightRead, bounds: &Bounds) -> Value 
     );
 
     rasterize(
-        &format!("shadow/{}/{}", light.label, mesh.label),
-        &mesh.shader_entry,
+        &format!("shadow/{}/{}", light.label, instance.label),
+        &instance.shader_entry,
         Value::structure([(PROJECTION.to_owned(), projection)]),
-        mesh_bindings(mesh).chain([(
+        mesh_bindings(instance, mesh).chain([(
             SHADOW_MAP.to_owned(),
             texture_binding(
                 &shadow_map_entry(&light.label),
@@ -490,13 +606,13 @@ fn shadowing_pass(mesh: &MeshRead, light: &LightRead, bounds: &Bounds) -> Value 
     )
 }
 
-/// Builds the depthing pass of one mesh.
-fn depthing_pass(mesh: &MeshRead, camera: &Value) -> Value {
+/// Builds the depthing pass of one instance.
+fn depthing_pass(instance: &InstanceRead, mesh: &MeshRead, camera: &Value) -> Value {
     rasterize(
-        &format!("depth/{}", mesh.label),
-        &mesh.shader_entry,
+        &format!("depth/{}", instance.label),
+        &instance.shader_entry,
         Value::structure([(PROJECTION.to_owned(), camera.clone())]),
-        mesh_bindings(mesh).chain([(
+        mesh_bindings(instance, mesh).chain([(
             DEPTH_BUFFER.to_owned(),
             texture_binding(DEPTH_BUFFER_ENTRY, DEPTH_WIDTH, DEPTH_HEIGHT, DEPTH_FORMAT),
         )]),
@@ -505,11 +621,16 @@ fn depthing_pass(mesh: &MeshRead, camera: &Value) -> Value {
     )
 }
 
-/// Builds the lighting pass of one mesh for one light.
-fn lighting_pass(mesh: &MeshRead, light: &LightRead, camera: &Value) -> Value {
+/// Builds the lighting pass of one instance for one light.
+fn lighting_pass(
+    instance: &InstanceRead,
+    mesh: &MeshRead,
+    light: &LightRead,
+    camera: &Value,
+) -> Value {
     rasterize(
-        &format!("lighting/{}/{}", mesh.label, light.label),
-        &mesh.shader_entry,
+        &format!("lighting/{}/{}", instance.label, light.label),
+        &instance.shader_entry,
         Value::structure([
             (PROJECTION.to_owned(), camera.clone()),
             (
@@ -521,7 +642,7 @@ fn lighting_pass(mesh: &MeshRead, light: &LightRead, camera: &Value) -> Value {
                 Value::List(light.colour.into_iter().map(Value::Float).collect()),
             ),
         ]),
-        mesh_bindings(mesh).chain([
+        mesh_bindings(instance, mesh).chain([
             (
                 COLOR_TARGET.to_owned(),
                 texture_binding(COLOR_TARGET_ENTRY, COLOR_WIDTH, COLOR_HEIGHT, COLOR_FORMAT),
@@ -577,32 +698,52 @@ fn projection_value(matrix: &Matrix, eye: [f64; 3]) -> Value {
     ])
 }
 
-/// Returns the box the packed points of a mesh cover.
+/// Returns the box the instanced meshes of a scene cover.
 ///
-/// Every point of a mesh has the same shape, so the box is over the components of the
-/// first three of them, which is the position a projection needs.
-fn bounds_of(points: &[Value]) -> Bounds {
-    let mut bounds = Bounds {
-        minimum: [f64::INFINITY; 3],
-        maximum: [f64::NEG_INFINITY; 3],
-    };
-    for point in points {
-        for (axis, component) in point
-            .as_struct()
-            .into_iter()
-            .flat_map(|fields| fields.values())
-            .flat_map(number_components)
-            .take(3)
-            .enumerate()
-        {
-            bounds.minimum[axis] = bounds.minimum[axis].min(component);
-            bounds.maximum[axis] = bounds.maximum[axis].max(component);
+/// # Invariants
+///
+/// The box is over what is drawn rather than over what is authored: a mesh that no instance
+/// names is not drawn, and an instance places its mesh wherever its transform says. A scene
+/// with nothing drawn covers a unit box, so a projection is still well defined.
+fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> Bounds {
+    let mut bounds: Option<Bounds> = None;
+    for instance in instances {
+        let mesh = &meshes[instance.mesh];
+        let mut covered = Bounds {
+            minimum: [f64::INFINITY; 3],
+            maximum: [f64::NEG_INFINITY; 3],
+        };
+        for point in &mesh.points {
+            let world = apply(&instance.model, point_position(point));
+            for axis in 0..3 {
+                covered.minimum[axis] = covered.minimum[axis].min(world[axis]);
+                covered.maximum[axis] = covered.maximum[axis].max(world[axis]);
+            }
+        }
+        if covered.minimum.iter().all(|value| value.is_finite()) {
+            bounds = Some(match bounds {
+                None => covered,
+                Some(previous) => previous.union(covered),
+            });
         }
     }
-    if !bounds.minimum.iter().all(|value| value.is_finite()) {
-        return Bounds::around([0.0; 3], 1.0);
+    bounds.unwrap_or_else(|| Bounds::around([0.0; 3], 1.0))
+}
+
+/// Returns the position a point carries, which is the first three numbers it declares.
+fn point_position(point: &Value) -> [f64; 3] {
+    let mut position = [0.0f64; 3];
+    for (axis, component) in point
+        .as_struct()
+        .into_iter()
+        .flat_map(|fields| fields.values())
+        .flat_map(number_components)
+        .take(3)
+        .enumerate()
+    {
+        position[axis] = component;
     }
-    bounds
+    position
 }
 
 /// Returns the numbers a point field contributes, whether it is one number or a list.
@@ -615,8 +756,11 @@ fn number_components(value: &Value) -> Vec<f64> {
     }
 }
 
-/// Returns the two binding points every pass of a mesh carries.
-fn mesh_bindings(mesh: &MeshRead) -> impl Iterator<Item = (String, Value)> + use<'_> {
+/// Returns the two binding points every pass of an instance carries.
+fn mesh_bindings<'read>(
+    instance: &'read InstanceRead,
+    mesh: &'read MeshRead,
+) -> impl Iterator<Item = (String, Value)> + use<'read> {
     [
         (
             VERTICES.to_owned(),
@@ -624,7 +768,10 @@ fn mesh_bindings(mesh: &MeshRead) -> impl Iterator<Item = (String, Value)> + use
         ),
         (
             INSTANCE_DATA.to_owned(),
-            buffer_binding(&mesh.instance_entry, mesh.instance_bytes),
+            buffer_binding(
+                &instance.instance_entry,
+                instance.instance_bytes.len() as i64,
+            ),
         ),
     ]
     .into_iter()

@@ -65,18 +65,25 @@
 //!     })
 //!     .expect("the scene compiles");
 //!
-//! // The scene named one mesh per stage, so the pipeline is the three stages in order.
+//! // The scene has one instance per stage, so the pipeline is the three stages in order.
 //! let passes = graphics::passes(&compiled.graphics.value).expect("the passes read");
 //! let labels: Vec<&str> = passes.iter().map(|pass| pass.label().unwrap()).collect();
 //! assert_eq!(labels, ["shadow/key/caster", "depth/occluder", "lighting/quad/key"]);
 //!
-//! // A pass carries declarations; the instance carries the payloads they name.
-//! let quad_vertices = compiled
+//! // A pass carries declarations; the instance carries the payloads they name. The mesh is
+//! // authored once, so one vertex buffer is shared by all three instances.
+//! let triangle = compiled
 //!     .instance
 //!     .value
-//!     .at(&definition::Path::root().key("quad_vertices"))
+//!     .at(&definition::Path::root().key("triangle_vertices"))
 //!     .expect("the vertex buffer is in the instance");
-//! assert_eq!(quad_vertices.variant_tag(), Some("Buffer"));
+//! assert_eq!(triangle.variant_tag(), Some("Buffer"));
+//! let quad = compiled
+//!     .instance
+//!     .value
+//!     .at(&definition::Path::root().key("quad_instance_data"))
+//!     .expect("the instance buffer is in the instance");
+//! assert_eq!(quad.variant_tag(), Some("Buffer"));
 //!
 //! // The contract: applying the emitted delta to the previous output reproduces it.
 //! assert!(compiled.graphics_delta.is_empty(), "a first compile has nothing to delta from");
@@ -99,7 +106,7 @@ mod scene_schema;
 pub use compiler::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema};
 pub use emit::{COLOR_TARGET_ENTRY, DEPTH_BUFFER_ENTRY, Emitted, Stage, emit, shadow_map_entry};
 pub use example::example_standard_scene;
-pub use math::{Bounds, apply as project_point};
+pub use math::{Bounds, apply as project_point, transform_matrix};
 pub use pass_schemas::{
     COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
     DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, PROJECTION, SHADOW_MAP,
@@ -107,6 +114,7 @@ pub use pass_schemas::{
     lighting_pass_schema, projection_schema, shadowing_pass_schema,
 };
 pub use scene_schema::{
-    default_custom_schema, default_instance_schema, default_point_schema, light_schema,
-    material_schema, mesh_schema, shader_schema, standard_scene_schema,
+    default_custom_schema, default_instance_schema, default_point_schema, instance_schema,
+    light_schema, material_schema, mesh_schema, shader_schema, standard_scene_schema,
+    transform_schema,
 };

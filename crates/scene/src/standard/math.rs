@@ -197,6 +197,65 @@ pub fn multiply(left: &Matrix, right: &Matrix) -> Matrix {
     product
 }
 
+/// Returns the model matrix of a transform: scale, then turn, then move.
+///
+/// # Example
+///
+/// ```
+/// use whiting_scene::standard::{math::apply, transform_matrix};
+///
+/// // A translation moves the origin and leaves a direction alone.
+/// let moved = transform_matrix([1.0, 2.0, 3.0], [0.0; 3], [1.0; 3]);
+/// assert_eq!(apply(&moved, [0.0; 3]), [1.0, 2.0, 3.0, 1.0]);
+///
+/// // A quarter turn about z takes x to y.
+/// let turned = transform_matrix([0.0; 3], [0.0, 0.0, std::f64::consts::FRAC_PI_2], [1.0; 3]);
+/// let point = apply(&turned, [1.0, 0.0, 0.0]);
+/// assert!((point[0]).abs() < 1e-12 && (point[1] - 1.0).abs() < 1e-12);
+///
+/// // Scale is applied first, so it does not scale the translation.
+/// let scaled = transform_matrix([1.0, 0.0, 0.0], [0.0; 3], [2.0; 3]);
+/// assert_eq!(apply(&scaled, [1.0, 0.0, 0.0]), [3.0, 0.0, 0.0, 1.0]);
+/// ```
+pub fn transform_matrix(translation: [f64; 3], rotation: [f64; 3], scale: [f64; 3]) -> Matrix {
+    let (sin_x, cos_x) = rotation[0].sin_cos();
+    let (sin_y, cos_y) = rotation[1].sin_cos();
+    let (sin_z, cos_z) = rotation[2].sin_cos();
+
+    // Column major, so the first four entries are the image of the x axis.
+    let x = [
+        cos_y * cos_z,
+        cos_x * sin_z + sin_x * sin_y * cos_z,
+        sin_x * sin_z - cos_x * sin_y * cos_z,
+        0.0,
+    ];
+    let y = [
+        -cos_y * sin_z,
+        cos_x * cos_z - sin_x * sin_y * sin_z,
+        sin_x * cos_z + cos_x * sin_y * sin_z,
+        0.0,
+    ];
+    let z = [sin_y, -sin_x * cos_y, cos_x * cos_y, 0.0];
+    [
+        x[0] * scale[0],
+        x[1] * scale[0],
+        x[2] * scale[0],
+        0.0,
+        y[0] * scale[1],
+        y[1] * scale[1],
+        y[2] * scale[1],
+        0.0,
+        z[0] * scale[2],
+        z[1] * scale[2],
+        z[2] * scale[2],
+        0.0,
+        translation[0],
+        translation[1],
+        translation[2],
+        1.0,
+    ]
+}
+
 /// Applies a matrix to a point, which is the point in clip space it maps to.
 pub fn apply(matrix: &Matrix, point: [f64; 3]) -> [f64; 4] {
     [

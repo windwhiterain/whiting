@@ -25,6 +25,15 @@ pub const LIGHTS: &str = "lights";
 /// Field holding the meshes of the scene.
 pub const MESHES: &str = "meshes";
 
+/// Field holding the instances of the scene.
+pub const INSTANCES: &str = "instances";
+
+/// Field holding the label of a mesh an instance draws.
+pub const MESH: &str = "mesh";
+
+/// Field holding where an instance is.
+pub const TRANSFORM: &str = "transform";
+
 /// Field holding the label of a mesh.
 pub const LABEL: &str = "label";
 
@@ -37,10 +46,7 @@ pub const POINT_SCHEMA: &str = "point_schema";
 /// Field holding the points of a mesh.
 pub const POINTS: &str = "points";
 
-/// Field holding the per instance transform data of a mesh.
-pub const INSTANCE_DATA: &str = "instance_data";
-
-/// Field holding the material of a mesh.
+/// Field holding the material an instance is drawn with.
 pub const MATERIAL: &str = "material";
 
 /// Field holding the shader a material is drawn with.
@@ -78,11 +84,20 @@ pub fn standard_scene_schema() -> Schema {
         ),
         (
             MESHES.to_owned(),
-            Schema::new(SchemaKind::list(mesh_schema()))
-                .with_documentation("A mesh is drawn by the stage its material belongs to."),
+            Schema::new(SchemaKind::list(mesh_schema())).with_documentation(
+                "Geometry, listed once per shape. A mesh is drawn only where an instance \
+                 names it.",
+            ),
+        ),
+        (
+            INSTANCES.to_owned(),
+            Schema::new(SchemaKind::list(instance_schema())).with_documentation(
+                "One instance is drawn by the stage its material's shader belongs to, so a \
+                 mesh drawn in three stages is three instances of one mesh.",
+            ),
         ),
     ]))
-    .with_documentation("The conventional lit scene: lights and meshes.")
+    .with_documentation("The conventional lit scene: lights, geometry, and what draws it.")
 }
 
 /// Builds the schema of one light.
@@ -111,7 +126,7 @@ pub fn light_schema() -> Schema {
     .with_documentation("A light, which contributes one shadowing pass.")
 }
 
-/// Builds the schema of one mesh.
+/// Builds the schema of one mesh: geometry, and nothing about where it is drawn.
 pub fn mesh_schema() -> Schema {
     Schema::new(SchemaKind::structure([
         (LABEL.to_owned(), Schema::new(SchemaKind::String)),
@@ -139,14 +154,45 @@ pub fn mesh_schema() -> Schema {
             Schema::new(SchemaKind::list(Schema::new(SchemaKind::Any)))
                 .with_documentation("Verified against the mesh's own point schema."),
         ),
+    ]))
+    .with_documentation("Geometry an instance draws, listed once and referenced by label.")
+}
+
+/// Builds the schema of one instance: a mesh, where it is, and what draws it.
+pub fn instance_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
         (
-            INSTANCE_DATA.to_owned(),
-            Schema::new(SchemaKind::Any)
-                .with_documentation("Verified against the material shader's instance schema."),
+            LABEL.to_owned(),
+            Schema::new(SchemaKind::String)
+                .with_documentation("Name used in pass labels and in errors."),
         ),
+        (
+            MESH.to_owned(),
+            Schema::new(SchemaKind::String).with_documentation(
+                "The label of a mesh in this scene, which is how one mesh is drawn by \
+                 several stages without its points being listed again.",
+            ),
+        ),
+        (TRANSFORM.to_owned(), transform_schema()),
         (MATERIAL.to_owned(), material_schema()),
     ]))
-    .with_documentation("A mesh, drawn by the stage its material belongs to.")
+    .with_documentation("A mesh placed in the scene and drawn by one stage.")
+}
+
+/// Builds the schema of a transform: where an instance is, and how it is turned and sized.
+pub fn transform_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            "translation".to_owned(),
+            float_triple("Offset from the origin, in world space."),
+        ),
+        (
+            "rotation".to_owned(),
+            float_triple("Rotation in radians about x, then y, then z."),
+        ),
+        ("scale".to_owned(), float_triple("Scale per axis.")),
+    ]))
+    .with_documentation("Composed into the model matrix the instance row carries.")
 }
 
 /// Builds the schema of one material.

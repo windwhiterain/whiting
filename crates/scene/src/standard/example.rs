@@ -1,7 +1,8 @@
 //! A small, valid standard scene, built from the schemas the compiler declares.
 //!
-//! The scene has one light and one mesh per stage, so the pipeline it compiles to is the
-//! whole three stage pipeline: a shadowing pass, a depthing pass and a lighting pass.
+//! The scene has one light, one mesh, and three instances of that mesh — one per stage — so
+//! the pipeline it compiles to is the whole three stage pipeline, and the geometry is
+//! written once however many stages draw it.
 
 use definition::Value;
 
@@ -13,7 +14,7 @@ use crate::standard::scene_schema::{
     default_custom_schema, default_instance_schema, default_point_schema,
 };
 
-/// Builds the example scene: one light and one mesh per stage.
+/// Builds the example scene: one light, one mesh, and one instance per stage.
 pub fn example_standard_scene() -> Value {
     Value::structure([
         ("name".to_owned(), Value::String("studio".to_owned())),
@@ -35,17 +36,31 @@ pub fn example_standard_scene() -> Value {
         ),
         (
             "meshes".to_owned(),
+            Value::List(vec![mesh("triangle", triangle())]),
+        ),
+        (
+            "instances".to_owned(),
             Value::List(vec![
-                mesh("caster", Stage::Shadowing, triangle(0.0)),
-                mesh("occluder", Stage::Depthing, triangle(1.0)),
-                mesh("quad", Stage::Lighting, triangle(0.0)),
+                instance("caster", "triangle", Stage::Shadowing, [0.0, 0.0, 0.0]),
+                instance("occluder", "triangle", Stage::Depthing, [1.0, 0.0, 0.0]),
+                instance("quad", "triangle", Stage::Lighting, [0.0, 0.0, 0.0]),
             ]),
         ),
     ])
 }
 
-/// Builds one mesh of the example, drawn by the stage its material belongs to.
-fn mesh(label: &str, stage: Stage, points: Vec<Value>) -> Value {
+/// Builds one mesh of the example, which is geometry and nothing else.
+fn mesh(label: &str, points: Vec<Value>) -> Value {
+    Value::structure([
+        ("label".to_owned(), Value::String(label.to_owned())),
+        ("topology".to_owned(), Value::variant("Triangles", [])),
+        ("point_schema".to_owned(), default_point_schema().to_value()),
+        ("points".to_owned(), Value::List(points)),
+    ])
+}
+
+/// Builds one instance of the example, which places a mesh and says what draws it.
+fn instance(label: &str, mesh: &str, stage: Stage, translation: [f64; 3]) -> Value {
     let pass_schema = match stage {
         Stage::Shadowing => shadowing_pass_schema(),
         Stage::Depthing => depthing_pass_schema(),
@@ -53,12 +68,23 @@ fn mesh(label: &str, stage: Stage, points: Vec<Value>) -> Value {
     };
     Value::structure([
         ("label".to_owned(), Value::String(label.to_owned())),
-        ("topology".to_owned(), Value::variant("Triangles", [])),
-        ("point_schema".to_owned(), default_point_schema().to_value()),
-        ("points".to_owned(), Value::List(points)),
+        ("mesh".to_owned(), Value::String(mesh.to_owned())),
         (
-            "instance_data".to_owned(),
-            Value::structure([("model".to_owned(), identity())]),
+            "transform".to_owned(),
+            Value::structure([
+                (
+                    "translation".to_owned(),
+                    Value::List(translation.into_iter().map(Value::Float).collect()),
+                ),
+                (
+                    "rotation".to_owned(),
+                    Value::List([0.0f64; 3].into_iter().map(Value::Float).collect()),
+                ),
+                (
+                    "scale".to_owned(),
+                    Value::List([1.0f64; 3].into_iter().map(Value::Float).collect()),
+                ),
+            ]),
         ),
         (
             "material".to_owned(),
@@ -97,24 +123,15 @@ fn mesh(label: &str, stage: Stage, points: Vec<Value>) -> Value {
     ])
 }
 
-/// Builds a triangle of points, offset along the x axis.
-fn triangle(offset: f64) -> Vec<Value> {
+/// Builds a triangle of points, which is the one mesh every instance of the example draws.
+fn triangle() -> Vec<Value> {
     [(-1.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
         .into_iter()
         .map(|(x, y)| {
             Value::structure([(
                 "position".to_owned(),
-                Value::List([x + offset, y, 0.0].into_iter().map(Value::Float).collect()),
+                Value::List([x, y, 0.0].into_iter().map(Value::Float).collect()),
             )])
         })
         .collect()
-}
-
-/// Returns an identity model matrix, column major.
-fn identity() -> Value {
-    let mut components = vec![0.0f64; 16];
-    for index in [0usize, 5, 10, 15] {
-        components[index] = 1.0;
-    }
-    Value::List(components.into_iter().map(Value::Float).collect())
 }

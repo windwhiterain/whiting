@@ -189,10 +189,6 @@ impl ReferenceScene {
                             Value::String(format!("shaders/{name}.wgsl")),
                         ),
                         (
-                            graphics::binders::ENTRY_POINT.to_owned(),
-                            Value::String("main".to_owned()),
-                        ),
-                        (
                             graphics::binders::SCHEMA.to_owned(),
                             ReferenceScene::interface(),
                         ),
