@@ -60,9 +60,13 @@ provide utility to build compilers to compile `Definition` with certain schema i
   - `fn compile`
 - `StandardScene`
   - `PassSchema`
+    - `ProjectionSchema`
     - `ShadowingSchema`
+      - `projection: Schema`
     - `DepthingSchema`
+      - `projection: Schema`
     - `LightingSchema`
+      - `projection: Schema`
   - `Light`
   - `Mesh`
     - `instance_data` 
