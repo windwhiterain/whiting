@@ -31,6 +31,30 @@ pub const MESHES: &str = "meshes";
 /// Field holding the instances of the scene.
 pub const INSTANCES: &str = "instances";
 
+/// Field holding the camera the scene is drawn through.
+pub const CAMERA: &str = "camera";
+
+/// Field holding where the camera is.
+pub const EYE: &str = "eye";
+
+/// Field holding what the camera looks at.
+pub const TARGET: &str = "target";
+
+/// Field holding which way is up, for the camera.
+pub const UP: &str = "up";
+
+/// Field holding the angle the camera sees through, in radians.
+pub const FIELD_OF_VIEW: &str = "field_of_view";
+
+/// Field holding which projection the camera draws through.
+pub const PROJECTION: &str = "projection";
+
+/// Field holding how much wider than its box the camera frames the scene.
+pub const PADDING: &str = "padding";
+
+/// Field holding the time the scene is drawn at, in seconds.
+pub const TIME: &str = "time";
+
 /// Field holding the label of a mesh an instance draws.
 pub const MESH: &str = "mesh";
 
@@ -108,8 +132,84 @@ pub fn standard_scene_schema() -> Schema {
                  mesh drawn in three stages is three instances of one mesh.",
             ),
         ),
+        (
+            CAMERA.to_owned(),
+            camera_schema().optional().with_documentation(
+                "Where the scene is drawn from. A scene without a camera is drawn by the \
+                     stated convention: parallel, dead ahead, framing everything that is drawn.",
+            ),
+        ),
+        (
+            TIME.to_owned(),
+            Schema::new(SchemaKind::Float)
+                .optional()
+                .with_documentation(
+                    "Seconds since the scene started, which every pass carries to its shader. \
+                     A scene that does not write one is a still, and a scene that does is \
+                     reproducible: the same documents at the same time give the same frame.",
+                ),
+        ),
     ]))
     .with_documentation("The conventional lit scene: lights, shaders, geometry, and what draws it.")
+}
+
+/// Builds the schema of a camera.
+///
+/// # Invariants
+///
+/// Every field but `eye` is optional, and a field that is absent falls back to the
+/// convention rather than to a default the author has to know. A camera that names only an
+/// eye is a camera that looks at the middle of what is drawn through a fifty degree lens.
+pub fn camera_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            EYE.to_owned(),
+            float_triple("Where the camera is, in world space."),
+        ),
+        (
+            TARGET.to_owned(),
+            float_triple("What the camera looks at. Defaults to the middle of what is drawn.")
+                .optional(),
+        ),
+        (
+            UP.to_owned(),
+            float_triple("Which way is up. Defaults to the world y axis.").optional(),
+        ),
+        (
+            FIELD_OF_VIEW.to_owned(),
+            Schema::new(SchemaKind::Float)
+                .optional()
+                .with_documentation("The angle seen through, vertically, in radians."),
+        ),
+        (
+            PROJECTION.to_owned(),
+            Schema::new(SchemaKind::enumeration([
+                (
+                    "Perspective".to_owned(),
+                    Schema::new(SchemaKind::structure([])),
+                ),
+                (
+                    "Orthographic".to_owned(),
+                    Schema::new(SchemaKind::structure([])),
+                ),
+            ]))
+            .optional()
+            .with_documentation(
+                "Which projection the camera draws through. A parallel projection measures \
+                 every distance the same, which is what a diagram is made of.",
+            ),
+        ),
+        (
+            PADDING.to_owned(),
+            Schema::new(SchemaKind::Float)
+                .optional()
+                .with_documentation(
+                    "How much wider than the scene the camera frames it. A value above one leaves \
+                 a margin; below one crops.",
+                ),
+        ),
+    ]))
+    .with_documentation("Where the scene is drawn from.")
 }
 
 /// Builds the schema of one light.

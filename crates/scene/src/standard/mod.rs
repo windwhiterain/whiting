@@ -200,6 +200,7 @@
 //!     .expect("a scene that names a mesh takes a delta that reaches no reference");
 //! ```
 
+mod camera;
 mod compiler;
 mod emit;
 mod example;
@@ -208,18 +209,22 @@ mod packing;
 mod pass_schemas;
 mod scene_schema;
 
+pub use camera::{DEFAULT_FIELD_OF_VIEW, Projection, projection_value};
 pub use compiler::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema};
 pub use emit::{COLOR_TARGET_ENTRY, DEPTH_BUFFER_ENTRY, Emitted, Stage, emit, shadow_map_entry};
 pub use example::example_standard_scene;
 pub use math::{Bounds, apply as project_point, transform_matrix};
 pub use pass_schemas::{
     COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
-    DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, PROJECTION, SHADOW_MAP,
-    SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, VERTICES, depthing_pass_schema,
-    lighting_pass_schema, projection_schema, shadowing_pass_schema,
+    DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, LIGHT_PROJECTION,
+    LIGHT_SHADOW_TEXEL, PROJECTION, SHADOW_MAP, SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT,
+    SHADOW_MAP_WIDTH, TIME, VERTICES, depthing_pass_schema, lighting_pass_schema,
+    projection_schema, shadowing_pass_schema,
 };
 pub use scene_schema::{
-    MESH_SCHEMA, default_custom_schema, default_instance_schema, default_point_schema,
-    instance_schema, light_schema, material_schema, mesh_schema, shader_schema,
-    standard_scene_schema, transform_schema,
+    CAMERA, CUSTOM_DATA, CUSTOM_SCHEMA, EYE, FIELD_OF_VIEW, INSTANCE_SCHEMA, LABEL, MATERIAL, MESH,
+    MESH_SCHEMA, PADDING, PASS_SCHEMA, POINT_SCHEMA, POINTS, SHADER, SOURCE, STAGE, TARGET,
+    TOPOLOGY, TRANSFORM, UP, camera_schema, default_custom_schema, default_instance_schema,
+    default_point_schema, instance_schema, light_schema, material_schema, mesh_schema,
+    shader_schema, standard_scene_schema, transform_schema,
 };

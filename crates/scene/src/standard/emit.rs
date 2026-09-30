@@ -33,20 +33,22 @@ use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{derived_instance_schema, verify_pass_inputs};
 
 use crate::CompileError;
+use crate::standard::camera::{Camera, Projection, projection_value};
 use crate::standard::math::{Bounds, Matrix, apply, projection_of, transform_matrix};
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
-    DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, PROJECTION, SHADOW_MAP,
-    SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, VERTICES,
+    DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, LIGHT_PROJECTION,
+    LIGHT_SHADOW_TEXEL, PROJECTION, SHADOW_MAP, SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT,
+    SHADOW_MAP_WIDTH, TIME, VERTICES,
 };
 use crate::standard::scene_schema;
 
-/// How much wider than its box a projection is fitted.
-const PADDING: f64 = 1.1;
-
 /// Field the model matrix of an instance row is carried under.
 const MODEL: &str = "model";
+
+/// How much wider than its box a projection is fitted.
+pub const FRAMING_PADDING: f64 = 1.1;
 
 /// Name of the instance entry holding the depth buffer every depthing pass writes.
 pub const DEPTH_BUFFER_ENTRY: &str = "depth_buffer";
@@ -201,7 +203,9 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     // The camera frames what is drawn rather than what is authored, because an instance
     // may place its mesh anywhere and a mesh no instance names is not drawn at all.
     let bounds = bounds_of_instances(&meshes, &instances);
-    let camera = camera_projection(&bounds);
+    let time = read_time(scene)?;
+    let camera = Camera::read(scene, &bounds, COLOR_WIDTH as f64 / COLOR_HEIGHT as f64)?;
+    let camera = projection_value(&camera.projection());
 
     add_targets(&mut instance);
     for light in &lights {
@@ -227,12 +231,12 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
             Some(&light.label),
         ) {
             insert_entry(&mut instance, group.entry(), group.payload())?;
-            passes.push(shadowing_pass(&group, light, &bounds));
+            passes.push(shadowing_pass(&group, light, &bounds, time));
         }
     }
     for group in groups(&instances, &meshes, &shaders, Stage::Depthing, None) {
         insert_entry(&mut instance, group.entry(), group.payload())?;
-        passes.push(depthing_pass(&group, &camera));
+        passes.push(depthing_pass(&group, &camera, time));
     }
     for light in &lights {
         for group in groups(
@@ -243,7 +247,7 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
             Some(&light.label),
         ) {
             insert_entry(&mut instance, group.entry(), group.payload())?;
-            passes.push(lighting_pass(&group, light, &camera));
+            passes.push(lighting_pass(&group, light, &camera, &bounds, time));
         }
     }
 
@@ -266,6 +270,28 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     }
 
     Ok(Emitted { graphics, instance })
+}
+
+/// Reads the time a scene is drawn at, which defaults to a still.
+///
+/// # Invariants
+///
+/// Time is a field of the scene rather than a clock the renderer reads, so a render is a
+/// pure function of the documents and this one number. A scene that names no time is a
+/// still, which is what every scene was before time existed.
+fn read_time(scene: &Value) -> Result<f64, CompileError> {
+    let path = Path::root().key(scene_schema::TIME);
+    match field(scene, scene_schema::TIME) {
+        None => Ok(0.0),
+        Some(value) => value
+            .as_float()
+            .or_else(|| value.as_int().map(|number| number as f64))
+            .ok_or_else(|| CompileError::MalformedScene {
+                path,
+                expected: "a number of seconds",
+                found: value.kind_name(),
+            }),
+    }
 }
 
 /// Reads the lights of the scene.
@@ -781,25 +807,18 @@ pub fn shadow_map_entry(light_label: &str) -> String {
 }
 
 /// Builds the shadowing pass of one group for one light.
-fn shadowing_pass(group: &Group<'_>, light: &LightRead, bounds: &Bounds) -> Value {
+fn shadowing_pass(group: &Group<'_>, light: &LightRead, bounds: &Bounds, time: f64) -> Value {
     // The shadow map looks down the light's direction, at a box centred on the scene and
-    // as wide as the light says it shines.
-    let centre = bounds.centre();
-    let eye = light.position;
-    let projection = projection_value(
-        &projection_of(
-            &Bounds::around(centre, light.shadow_extent),
-            eye,
-            centre,
-            PADDING,
-        ),
-        eye,
-    );
-
+    // as wide as the light says it shines. The same projection is handed to the lighting
+    // pass as `light_projection`, because that is how a surface is found in the map.
+    let light_projection = light_projection(light, bounds);
     rasterize(
         &group.label(),
         group.shader,
-        Value::structure([(PROJECTION.to_owned(), projection)]),
+        Value::structure([
+            (PROJECTION.to_owned(), projection_value(&light_projection)),
+            (TIME.to_owned(), Value::Float(time)),
+        ]),
         mesh_bindings(group).chain([(
             SHADOW_MAP.to_owned(),
             texture_binding(
@@ -815,11 +834,14 @@ fn shadowing_pass(group: &Group<'_>, light: &LightRead, bounds: &Bounds) -> Valu
 }
 
 /// Builds the depthing pass of one group.
-fn depthing_pass(group: &Group<'_>, camera: &Value) -> Value {
+fn depthing_pass(group: &Group<'_>, camera: &Value, time: f64) -> Value {
     rasterize(
         &group.label(),
         group.shader,
-        Value::structure([(PROJECTION.to_owned(), camera.clone())]),
+        Value::structure([
+            (PROJECTION.to_owned(), camera.clone()),
+            (TIME.to_owned(), Value::Float(time)),
+        ]),
         mesh_bindings(group).chain([(
             DEPTH_BUFFER.to_owned(),
             texture_binding(DEPTH_BUFFER_ENTRY, DEPTH_WIDTH, DEPTH_HEIGHT, DEPTH_FORMAT),
@@ -830,7 +852,21 @@ fn depthing_pass(group: &Group<'_>, camera: &Value) -> Value {
 }
 
 /// Builds the lighting pass of one group for one light.
-fn lighting_pass(group: &Group<'_>, light: &LightRead, camera: &Value) -> Value {
+///
+/// # Invariants
+///
+/// The pass carries the **light's** projection as well as the camera's, and they are
+/// different matrices. A fragment decides it is in shadow by carrying its world position
+/// into the light's clip space and comparing the depth there against the shadow map; with
+/// only the camera's matrix, there is no way to do that and the shadow map is a texture no
+/// shader can meaningfully read.
+fn lighting_pass(
+    group: &Group<'_>,
+    light: &LightRead,
+    camera: &Value,
+    bounds: &Bounds,
+    time: f64,
+) -> Value {
     rasterize(
         &group.label(),
         group.shader,
@@ -844,6 +880,30 @@ fn lighting_pass(group: &Group<'_>, light: &LightRead, camera: &Value) -> Value 
                 LIGHT_COLOR.to_owned(),
                 Value::List(light.colour.into_iter().map(Value::Float).collect()),
             ),
+            (
+                LIGHT_PROJECTION.to_owned(),
+                Value::List(
+                    light_projection(light, bounds)
+                        .matrix
+                        .iter()
+                        .copied()
+                        .map(Value::Float)
+                        .collect(),
+                ),
+            ),
+            (
+                LIGHT_SHADOW_TEXEL.to_owned(),
+                Value::List(
+                    [
+                        1.0 / SHADOW_MAP_WIDTH as f64,
+                        1.0 / SHADOW_MAP_HEIGHT as f64,
+                    ]
+                    .into_iter()
+                    .map(Value::Float)
+                    .collect(),
+                ),
+            ),
+            (TIME.to_owned(), Value::Float(time)),
         ]),
         mesh_bindings(group).chain([
             (
@@ -869,36 +929,26 @@ fn lighting_pass(group: &Group<'_>, light: &LightRead, camera: &Value) -> Value 
     )
 }
 
-/// Returns the projection the camera stages draw through.
+/// Returns the projection a light looks at the scene through, and the eye it is made from.
 ///
 /// # Invariants
 ///
-/// The scene document has no camera, so this is a stated convention rather than an
-/// author decision: the camera looks down the negative z axis from three box widths in
-/// front of the scene, and the box it projects is the whole scene with a little padding
-/// so geometry on the edge is not clipped by a rounding error. A scene that wants a
-/// camera writes one, and this goes away.
-fn camera_projection(bounds: &Bounds) -> Value {
-    let eye = [
-        bounds.centre()[0],
-        bounds.centre()[1],
-        bounds.centre()[2] + 3.0 * bounds.largest_half_width(),
-    ];
-    projection_value(&projection_of(bounds, eye, bounds.centre(), PADDING), eye)
-}
-
-/// Wraps a matrix and the point it was made from into a projection document.
-fn projection_value(matrix: &Matrix, eye: [f64; 3]) -> Value {
-    Value::structure([
-        (
-            "view_projection".to_owned(),
-            Value::List(matrix.iter().copied().map(Value::Float).collect()),
+/// The shadowing pass draws through this projection and the lighting pass is handed the
+/// same matrix as `light_projection`, so the two are computed here once. A pair of
+/// functions that each built "the light's projection" would agree until one of them was
+/// edited, and until then a shadow would be sampled at the wrong place for every surface
+/// in the scene.
+fn light_projection(light: &LightRead, bounds: &Bounds) -> Projection {
+    let centre = bounds.centre();
+    Projection {
+        matrix: projection_of(
+            &Bounds::around(centre, light.shadow_extent),
+            light.position,
+            centre,
+            FRAMING_PADDING,
         ),
-        (
-            "position".to_owned(),
-            Value::List(eye.into_iter().map(Value::Float).collect()),
-        ),
-    ])
+        eye: light.position,
+    }
 }
 
 /// Returns the box the instanced meshes of a scene cover.

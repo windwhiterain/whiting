@@ -39,6 +39,30 @@ pub const LIGHT_POSITION: &str = "light_position";
 /// Field holding the colour of a light, in a lighting pass.
 pub const LIGHT_COLOR: &str = "light_color";
 
+/// Field holding the light's own view projection, in a lighting pass.
+///
+/// A lighting pass needs both projections and they are not the same one: the scene is drawn
+/// through `projection`, and a surface is in shadow when it is further from the light than
+/// the shadow map recorded. Deciding that needs the world position of the surface carried
+/// into the light's own clip space, which is what this matrix is for. Without it a shader
+/// can only read the shadow map at a screen coordinate, which is a different lookup and not
+/// a shadow.
+pub const LIGHT_PROJECTION: &str = "light_projection";
+
+/// Field holding the size of one texel of the shadow map, in a lighting pass.
+///
+/// The shadow map is sampled with a filter kernel, and a kernel of a fixed width in texels
+/// is a fixed width on the surface only because the map's resolution is known. Carrying it
+/// keeps a scene that changes the shadow map's size from changing the width of its penumbra.
+pub const LIGHT_SHADOW_TEXEL: &str = "light_shadow_texel";
+
+/// Field holding the time a pass is drawn at, in seconds.
+///
+/// Time is data on the pass rather than a clock inside the renderer, so a render stays a
+/// pure function of the documents and this one number: a frame taken at `t = 2.5` is
+/// reproduced exactly by rendering the same documents at `t = 2.5` again.
+pub const TIME: &str = "time";
+
 /// Width in pixels of every shadow map the standard pipeline renders.
 pub const SHADOW_MAP_WIDTH: i64 = 1024;
 
@@ -105,10 +129,16 @@ pub fn shadowing_pass_schema() -> Schema {
                     .with_documentation("The depth map this pass renders into."),
             ),
         ],
-        vec![(
-            PROJECTION,
-            projection_schema().with_documentation("Looking down the light's direction."),
-        )],
+        vec![
+            (
+                PROJECTION,
+                projection_schema().with_documentation("Looking down the light's direction."),
+            ),
+            (
+                TIME,
+                time().with_documentation("Seconds since the scene started."),
+            ),
+        ],
     )
 }
 
@@ -131,10 +161,16 @@ pub fn depthing_pass_schema() -> Schema {
                     .with_documentation("The depth buffer this pass renders into."),
             ),
         ],
-        vec![(
-            PROJECTION,
-            projection_schema().with_documentation("Looking at the scene from the camera."),
-        )],
+        vec![
+            (
+                PROJECTION,
+                projection_schema().with_documentation("Looking at the scene from the camera."),
+            ),
+            (
+                TIME,
+                time().with_documentation("Seconds since the scene started."),
+            ),
+        ],
     )
 }
 
@@ -178,6 +214,21 @@ pub fn lighting_pass_schema() -> Schema {
                 LIGHT_COLOR,
                 vector().with_documentation("Colour of the light, scaled by its intensity."),
             ),
+            (
+                LIGHT_PROJECTION,
+                matrix().with_documentation(
+                    "The light's own view projection, which carries a world position into the \
+                     shadow map's clip space.",
+                ),
+            ),
+            (
+                LIGHT_SHADOW_TEXEL,
+                vector2().with_documentation("The size of one texel of the shadow map."),
+            ),
+            (
+                TIME,
+                time().with_documentation("Seconds since the scene started."),
+            ),
         ],
     )
 }
@@ -219,4 +270,17 @@ fn matrix() -> Schema {
 /// Builds the schema of a three component vector.
 fn vector() -> Schema {
     graphics::layout::components_schema(3).with_documentation("Three components.")
+}
+
+/// Builds the schema of a two component vector.
+fn vector2() -> Schema {
+    graphics::layout::components_schema(2).with_documentation("Two components.")
+}
+
+/// Builds the schema of a time in seconds.
+///
+/// One float rather than a list: a time is a single number, and a list of one component
+/// would be read as a four component vector by anything that went by the schema alone.
+fn time() -> Schema {
+    Schema::new(SchemaKind::Float).with_documentation("Seconds since the scene started.")
 }

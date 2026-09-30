@@ -93,6 +93,7 @@ use definition::{
 use thiserror::Error;
 
 mod diff;
+pub mod gallery;
 mod reference;
 pub mod standard;
 

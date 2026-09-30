@@ -36,7 +36,23 @@
 //! // A view is not mirrored: positive x in view space stays positive in clip space.
 //! let corner = look_at([0.0, 0.0, 10.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 //! assert!(apply(&corner, [1.0, 0.0, 0.0])[0] > 0.0);
+//!
+//! // A perspective projection puts the near plane at depth zero and the far plane at depth
+//! // one, and a point at the half width of the near plane lands on the edge of the frame.
+//! let projection = whiting_scene::standard::math::perspective(
+//!     std::f64::consts::FRAC_PI_2, 1.0, 1.0, 11.0,
+//! );
+//! let near = apply(&projection, [1.0, 1.0, -1.0]);
+//! let far = apply(&projection, [0.0, 0.0, -11.0]);
+//! assert!((near[2] / near[3]).abs() < 1e-9, "the near plane is at depth zero");
+//! assert!(((far[2] / far[3]) - 1.0).abs() < 1e-9, "the far plane is at depth one");
+//! assert!((near[0] / near[3] - 1.0).abs() < 1e-9, "the half width is the edge of the frame");
 //! ```
+//!
+//! A perspective projection is a divide, so `apply` returns clip space: the depth is `z` over `w`,
+//! and `w` is how far the point is in front of the camera. That is what makes a nearer point larger
+//! than a further one of the same size, and it is the whole of what separates a perspective scene
+//! from a parallel one.
 
 /// A four by four matrix, column major.
 pub type Matrix = [f64; 16];
@@ -106,7 +122,7 @@ impl Bounds {
     }
 }
 
-/// Returns a projection of `box` looked at from `eye` towards `target`.
+/// Returns an orthographic projection of `box` looked at from `eye` towards `target`.
 ///
 /// The box is fitted to the view, so whatever the scene's extent is, the projection
 /// covers all of it. `padding` widens the box, which keeps geometry exactly on the edge
@@ -122,6 +138,47 @@ pub fn projection_of(box_of: &Bounds, eye: [f64; 3], target: [f64; 3], padding: 
         depth,
     );
     multiply(&ortho, &view)
+}
+
+/// Returns a perspective projection of `box` looked at from `eye` towards `target`.
+///
+/// # Invariants
+///
+/// - The eye is pushed back along its own direction until the box fits inside the field
+///   of view, because a box that overflows the frame is a scene that is cropped rather
+///   than a scene that is drawn. The eye the caller asked for therefore sets the
+///   *direction* of the view, and the distance is the smallest that frames the box.
+/// - The near and far planes are placed one box radius outside it. A perspective
+///   projection maps depth with a divide, so a near plane inside the box clips geometry
+///   the box says is visible and a far plane short of the back clips the far wall.
+/// - `vertical_field_of_view` is the full angle at the vertical, in radians, and the
+///   horizontal follows from `aspect`, so a wide frame is wider rather than cropped.
+pub fn perspective_of(
+    box_of: &Bounds,
+    eye: [f64; 3],
+    target: [f64; 3],
+    vertical_field_of_view: f64,
+    aspect: f64,
+    padding: f64,
+) -> Matrix {
+    let radius = box_of.largest_half_width() * padding;
+    let direction = normalize(subtract(eye, target));
+    // The distance at which a sphere of `radius` exactly fills the vertical field.
+    let fitting = radius / (vertical_field_of_view / 2.0).tan().max(1e-3);
+    let fitted = fitting.max(1e-3);
+    multiply(
+        &perspective(
+            vertical_field_of_view,
+            aspect,
+            (fitted - radius).max(1e-4),
+            fitted + radius,
+        ),
+        &look_at(
+            add(target, scale(direction, fitted)),
+            target,
+            [0.0, 1.0, 0.0],
+        ),
+    )
 }
 
 /// Returns the matrix that transforms world space into the space the camera is in.
@@ -264,6 +321,50 @@ pub fn apply(matrix: &Matrix, point: [f64; 3]) -> [f64; 4] {
         matrix[2] * point[0] + matrix[6] * point[1] + matrix[10] * point[2] + matrix[14],
         matrix[3] * point[0] + matrix[7] * point[1] + matrix[11] * point[2] + matrix[15],
     ]
+}
+
+/// Returns a perspective projection of a `vertical_field_of_view`, from `near` to `far`.
+///
+/// # Invariants
+///
+/// The camera looks down its own negative z, so a point `d` in front of it sits at
+/// `z == -d`. This puts `d == near` at depth zero and `d == far` at depth one, and maps a
+/// point at the half width of the near plane to the edge of the frame on the same side it
+/// is on. The doctest in the module is what holds all three true.
+pub fn perspective(vertical_field_of_view: f64, aspect: f64, near: f64, far: f64) -> Matrix {
+    // A field of view at or beyond half a turn makes the divide singular and projects
+    // everything to infinity, so the half angle is clamped to a range a lens can produce.
+    let half_angle = (vertical_field_of_view / 2.0).clamp(1e-3, std::f64::consts::FRAC_PI_2 - 1e-3);
+    let (aspect, near, far) = (aspect.max(1e-3), near.max(1e-4), far.max(near + 1e-4));
+    let focal = 1.0 / half_angle.tan();
+    [
+        focal / aspect,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        focal,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        far / (near - far),
+        -1.0,
+        0.0,
+        0.0,
+        (near * far) / (near - far),
+        0.0,
+    ]
+}
+
+/// Adds two vectors.
+pub fn add(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
+    [left[0] + right[0], left[1] + right[1], left[2] + right[2]]
+}
+
+/// Scales a vector.
+pub fn scale(vector: [f64; 3], factor: f64) -> [f64; 3] {
+    [vector[0] * factor, vector[1] * factor, vector[2] * factor]
 }
 
 /// Subtracts one vector from another.
