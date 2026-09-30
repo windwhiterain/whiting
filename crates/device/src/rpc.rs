@@ -227,6 +227,7 @@ async fn put_schema(
     device
         .registry_mut()
         .put_schema(identifier.clone(), body.schema.clone());
+    device.forget_resolved();
     Ok(Json(SchemaReport {
         name: identifier.into_string(),
         schema: body.schema,
@@ -274,6 +275,7 @@ async fn put_definition(
         let _ = device.registry_mut().remove_definition(&identifier);
     }
     device.registry_mut().insert_definition(definition)?;
+    device.forget_resolved();
     let stored = device.registry().definition(&identifier)?;
     Ok(Json(report(&identifier, stored)))
 }
@@ -297,6 +299,7 @@ async fn apply_delta(
     let identifier = DefinitionIdentifier::new(name);
     let operations = body.delta.operations.len();
     device.registry_mut().apply(&body.delta)?;
+    device.forget_resolved();
     Ok(Json(MutationReport {
         version: device.registry().definition(&identifier)?.version.get(),
         name: identifier.into_string(),
@@ -311,6 +314,7 @@ async fn undo(
     let mut device = device.lock().expect("the device lock is not poisoned");
     let identifier = DefinitionIdentifier::new(name);
     let delta = device.registry_mut().undo(&identifier)?;
+    device.forget_resolved();
     Ok(Json(MutationReport {
         version: device.registry().definition(&identifier)?.version.get(),
         name: identifier.into_string(),
@@ -325,6 +329,7 @@ async fn redo(
     let mut device = device.lock().expect("the device lock is not poisoned");
     let identifier = DefinitionIdentifier::new(name);
     let delta = device.registry_mut().redo(&identifier)?;
+    device.forget_resolved();
     Ok(Json(MutationReport {
         version: device.registry().definition(&identifier)?.version.get(),
         name: identifier.into_string(),
@@ -338,6 +343,7 @@ async fn reload(
 ) -> Result<Json<ReloadResponse>, ApiError> {
     let mut device = device.lock().expect("the device lock is not poisoned");
     let report = device.reload(&DefinitionIdentifier::new(name))?;
+    device.forget_resolved();
     Ok(Json(ReloadResponse {
         graphics_version: report.graphics_version.get(),
         instance_version: report.instance_version.get(),
@@ -412,6 +418,7 @@ async fn restore(
     let mut device = device.lock().expect("the device lock is not poisoned");
     let path = std::path::PathBuf::from(&body.path);
     device.restore(&path)?;
+    device.forget_resolved();
     Ok(Json(MutationReport {
         name: body.path,
         version: 0,

@@ -91,17 +91,14 @@ fn indexed_append_inverts_to_exactly_the_inserted_range() {
     let forward = delta(
         0,
         step_path(),
-        PrimitiveDelta::Append {
-            index: 1,
-            values: vec![Value::Int(2), Value::Int(3)],
-        },
+        PrimitiveDelta::append_values(1, [Value::Int(2), Value::Int(3)]),
     );
     let inverse = registry.apply(&forward).expect("the delta applies");
     assert_eq!(steps(&registry), vec![1, 2, 3, 4]);
 
     assert_eq!(
         inverse.operations.get(&step_path()),
-        Some(&PrimitiveDelta::RemoveIndices { start: 1, count: 2 })
+        Some(&PrimitiveDelta::remove_indices(1, 2))
     );
 
     registry.undo(&walk()).expect("undoable");
@@ -112,11 +109,7 @@ fn indexed_append_inverts_to_exactly_the_inserted_range() {
 fn a_mid_list_removal_restores_position() {
     let mut registry = registry_with(vec![1, 2, 3, 4, 5]);
 
-    let forward = delta(
-        0,
-        step_path(),
-        PrimitiveDelta::RemoveIndices { start: 1, count: 1 },
-    );
+    let forward = delta(0, step_path(), PrimitiveDelta::remove_indices(1, 1));
     registry.apply(&forward).expect("the delta applies");
     assert_eq!(steps(&registry), vec![1, 3, 4, 5]);
 
@@ -151,16 +144,12 @@ fn dict_entry_changes_invert_exactly() {
     let forward = delta(
         0,
         options_path.clone(),
-        PrimitiveDelta::AppendEntries {
-            entries: vec![("height".to_owned(), Value::Int(2))],
-        },
+        PrimitiveDelta::append_entries([("height".to_owned(), Value::Int(2))]),
     );
     let inverse = registry.apply(&forward).expect("the delta applies");
     assert_eq!(
         inverse.operations.get(&options_path),
-        Some(&PrimitiveDelta::RemoveKeys {
-            keys: vec!["height".to_owned()]
-        })
+        Some(&PrimitiveDelta::remove_keys(["height".to_owned()]))
     );
 
     registry.undo(&walk()).expect("undoable");
@@ -213,14 +202,11 @@ fn apply_is_atomic_when_a_later_operation_fails() {
     // Sorted order means this valid append runs before the failing removal below.
     operations.insert(
         Path::root().key("first"),
-        PrimitiveDelta::Append {
-            index: 2,
-            values: vec![Value::Int(9)],
-        },
+        PrimitiveDelta::append_values(2, [Value::Int(9)]),
     );
     operations.insert(
         Path::root().key("second"),
-        PrimitiveDelta::RemoveIndices { start: 1, count: 5 },
+        PrimitiveDelta::remove_indices(1, 5),
     );
     let forward = Delta::new(walk(), Version::INITIAL, operations);
 
@@ -291,11 +277,7 @@ fn a_stale_delta_is_rejected_as_a_conflict() {
 #[test]
 fn redo_replays_the_forward_delta() {
     let mut registry = registry_with(vec![1]);
-    let forward = delta(
-        0,
-        step_path(),
-        PrimitiveDelta::RemoveIndices { start: 0, count: 1 },
-    );
+    let forward = delta(0, step_path(), PrimitiveDelta::remove_indices(0, 1));
     registry.apply(&forward).expect("the delta applies");
     assert_eq!(steps(&registry), Vec::<i64>::new());
 

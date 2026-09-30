@@ -1,7 +1,8 @@
 //! The renderer abstraction, and the no-operation implementation used without a gpu.
 
 use definition::Value;
-use graphics::{GraphicsError, PassKind, passes, resolve_for_pass};
+use graphics::binders::{BinderKind, HEIGHT, WIDTH};
+use graphics::{GraphicsError, PassKind, passes};
 use thiserror::Error;
 
 /// One rendered frame, read back from the gpu.
@@ -105,23 +106,31 @@ pub fn render_with(
     })
 }
 
-/// Returns the size of the first rasterize target that resolves to a texture descriptor,
+/// Returns the size of the first rasterize target that resolves to a texture payload,
 /// falling back to one by one.
 ///
 /// The size is read from the instance rather than the graphics document, because a
-/// target is a named binder and only the instance knows what it points at.
+/// target is a named binding point and only the instance knows what it points at.
 fn first_target_size(graphics: &Value, instance: &Value) -> Result<(u32, u32), RenderError> {
     for pass in passes(graphics)? {
         if pass.kind() != PassKind::Rasterize {
             continue;
         }
-        let label = pass.label().unwrap_or("<unlabelled>").to_owned();
-        for binder_name in pass.binder_names()? {
-            let Ok(binder) = resolve_for_pass(&label, instance, binder_name) else {
+        let declarations = pass.binders()?;
+        for target in pass.targets()? {
+            let Some(point) = target.as_str() else {
                 continue;
             };
-            if let Some(size) = texture_size(binder.value()) {
-                return Ok(size);
+            let Some(declaration) = declarations
+                .iter()
+                .find(|declaration| declaration.point() == point)
+            else {
+                continue;
+            };
+            if let Ok(binder) = declaration.bind(instance) {
+                if let Some(size) = texture_size(binder.value()) {
+                    return Ok(size);
+                }
             }
         }
         return Ok((1, 1));
@@ -129,12 +138,14 @@ fn first_target_size(graphics: &Value, instance: &Value) -> Result<(u32, u32), R
     Ok((1, 1))
 }
 
-/// Reads a width and height out of a bound texture descriptor.
+/// Reads a width and height out of a bound texture payload.
 pub(crate) fn texture_size(value: &Value) -> Option<(u32, u32)> {
-    let resource = value.variant_fields()?.get("resource")?;
-    let fields = resource.variant_fields()?;
-    let width = fields.get("width")?.as_int()?;
-    let height = fields.get("height")?.as_int()?;
+    if BinderKind::from_tag(value.variant_tag()?) != Some(BinderKind::Texture) {
+        return None;
+    }
+    let fields = value.variant_fields()?;
+    let width = fields.get(WIDTH)?.as_int()?;
+    let height = fields.get(HEIGHT)?.as_int()?;
     (width > 0 && height > 0).then_some((width as u32, height as u32))
 }
 
@@ -143,12 +154,12 @@ pub(crate) fn texture_size(value: &Value) -> Option<(u32, u32)> {
 pub enum RenderError {
     #[error("the graphics document could not be read: {0}")]
     Graphics(#[from] GraphicsError),
+    #[error("the graphics document declares no pass that renders into a colour target")]
+    NoColourTarget,
     #[error("no gpu adapter is available")]
     NoAdapter,
     #[error("the framebuffer size does not match its pixel buffer")]
     FrameSize,
-    #[error("shader `{path}` could not be read: {reason}")]
-    ShaderRead { path: String, reason: String },
     #[error("the renderer backend failed: {0}")]
     Backend(String),
     #[cfg_attr(not(feature = "png"), allow(dead_code))]

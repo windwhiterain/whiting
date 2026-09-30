@@ -4,9 +4,11 @@ use std::path::Path;
 
 use definition::{
     Definition, DefinitionIdentifier, Delta, Registry, RegistryError, SchemaIdentifier,
-    ValidationError, Version,
+    ValidationError, Value, Version,
 };
 use graphics::GraphicsError;
+
+use crate::resolve::{Resolved, Stored};
 use scene::{CompileContext, CompileError, Compiler};
 use thiserror::Error;
 
@@ -23,6 +25,11 @@ pub struct Device {
     /// second full compile and a wrong delta is a development-time defect rather than a
     /// production concern. See [cross checking emitted deltas](crate#cross-checking).
     cross_check: bool,
+    /// Documents already written out, so a render does not write out what has not changed.
+    ///
+    /// A definition changed through [`Device::registry_mut`] keeps its version, so whoever
+    /// changes one that way must call [`Device::forget_resolved`].
+    resolved: Resolved,
 }
 
 /// What a reload did.
@@ -54,7 +61,17 @@ impl Device {
             compiler,
             renderer,
             cross_check: cfg!(debug_assertions),
+            resolved: Resolved::default(),
         }
+    }
+
+    /// Forgets every document written out, so the next render resolves them again.
+    ///
+    /// A change that goes through the registry itself is seen without this, because a change
+    /// produces a new version and a written out document is keyed by one. This is for a change
+    /// made through [`Device::registry_mut`], which does not.
+    pub fn forget_resolved(&self) {
+        self.resolved.borrow_mut().clear();
     }
 
     /// Forces cross checking on or off, overriding the build profile default.
@@ -219,21 +236,53 @@ impl Device {
     }
 
     /// Renders a stored graphics definition against the compiler's instance output.
+    ///
+    /// # Invariants
+    ///
+    /// An instance names the graphics it provides data to, and rendering it against anything
+    /// else is refused rather than done: the binders address instance entries by name, so a
+    /// mismatched pair would resolve to whatever happens to carry those names and produce
+    /// pixels that look like a rendering of the wrong thing.
     pub fn render(
         &self,
         graphics_identifier: &DefinitionIdentifier,
     ) -> Result<RenderedFrame, DeviceError> {
         let graphics = self.registry.definition(graphics_identifier)?.clone();
-        let instance = self
-            .registry
-            .definition(self.compiler.instance_identifier())
-            .ok()
-            .map(|definition| definition.value.clone())
-            .unwrap_or_default();
+        let instance_identifier = self.compiler.instance_identifier();
+        let instance = self.registry.definition(instance_identifier).ok().cloned();
+        let declared = instance
+            .as_ref()
+            .and_then(|instance| {
+                instance
+                    .value
+                    .as_field_map()
+                    .and_then(|fields| fields.get(graphics::REFERENCING_GRAPHICS))
+                    .and_then(Value::as_str)
+            })
+            .ok_or_else(|| DeviceError::UnpairedInstance {
+                instance: instance_identifier.clone(),
+            })?;
+        if declared != graphics_identifier.as_str() {
+            return Err(DeviceError::InstancePairing {
+                graphics: graphics_identifier.clone(),
+                declared: declared.to_owned(),
+                rendered: instance_identifier.clone(),
+            });
+        }
+
+        // A document that names data in another definition can only be read once it is loaded,
+        // so the renderer is handed what each reference resolves to rather than a spelling it
+        // could not follow. A document that names nothing is handed over as it is.
+        let stored = Stored::new(&self.registry, &self.resolved);
+        let graphics_value = stored.value(&graphics)?;
+        let instance_value = match &instance {
+            Some(instance) => stored.value(instance)?,
+            None => Value::default(),
+        };
         Ok(render_with(
             self.renderer.as_ref(),
-            &graphics.value,
-            &instance,
+            &graphics_value,
+            &instance_value,
         )?)
     }
 
@@ -261,10 +310,24 @@ pub enum DeviceError {
     Render(#[from] RenderError),
     #[error(transparent)]
     Graphics(#[from] GraphicsError),
+    #[error(transparent)]
+    Schema(#[from] definition::SchemaError),
+    #[error(transparent)]
+    Load(#[from] definition::LoadError),
     #[error("the emitted delta for `{output}` failed the cross-check: {reason}")]
     CrossCheck {
         output: DefinitionIdentifier,
         reason: String,
+    },
+    #[error("the instance `{instance}` does not name the graphics it provides data to")]
+    UnpairedInstance { instance: DefinitionIdentifier },
+    #[error(
+        "the instance `{rendered}` provides data to `{declared}`, and this render is of `{graphics}`"
+    )]
+    InstancePairing {
+        graphics: DefinitionIdentifier,
+        declared: String,
+        rendered: DefinitionIdentifier,
     },
     #[error("the snapshot at {path} could not be read: {reason}")]
     SnapshotRead { path: String, reason: String },

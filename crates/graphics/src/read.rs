@@ -5,6 +5,8 @@
 
 use definition::{Path, Value};
 
+use crate::binders::Declaration;
+use crate::pass::{BINDERS, CLEAR_COLOR, ENTRY_POINT, LABEL, SHADER, TARGETS, UNIFORM, WORKGROUP};
 use crate::{GraphicsError, PASSES_FIELD, malformed};
 
 /// Which kind of pass a [`PassView`] is.
@@ -61,7 +63,7 @@ impl<'document> PassView<'document> {
 
     /// Returns the pass label, which identifies the pass in errors and in output.
     pub fn label(&self) -> Result<&'document str, GraphicsError> {
-        self.text("label")
+        self.text(LABEL)
     }
 
     /// Borrows a list field of the pass.
@@ -73,28 +75,68 @@ impl<'document> PassView<'document> {
         }
     }
 
-    /// Borrows an integer field of the pass.
-    pub fn integer(&self, field: &'static str) -> Result<i64, GraphicsError> {
-        let path = self.path().key(field);
-        match self.document.at(&path) {
-            Some(Value::Int(number)) => Ok(*number),
-            other => Err(malformed(&path, field, "an int", other)),
-        }
+    /// Borrows the uniform data of the pass.
+    pub fn uniform(&self) -> Result<&'document Value, GraphicsError> {
+        let path = self.path().key(UNIFORM);
+        self.document
+            .at(&path)
+            .ok_or_else(|| malformed(&path, UNIFORM, "a value", None))
     }
 
-    /// Returns the names of every shader this pass binds, in binding order.
+    /// Returns the name of the instance entry holding this pass's shader.
+    pub fn shader_binder(&self) -> Result<&'document str, GraphicsError> {
+        self.text(SHADER)
+    }
+
+    /// Returns every binder declaration of the pass, keyed by binding point.
+    pub fn binders(&self) -> Result<Vec<Declaration<'document>>, GraphicsError> {
+        let path = self.path().key(BINDERS);
+        let Some(Value::Dict(entries)) = self.document.at(&path) else {
+            return Err(malformed(&path, BINDERS, "a dict", self.document.at(&path)));
+        };
+        Ok(entries
+            .iter()
+            .map(|(point, value)| Declaration {
+                path: path.key(point),
+                point,
+                value,
+            })
+            .collect())
+    }
+
+    /// Returns the names of every instance entry this pass needs, in binding order.
     ///
-    /// A rasterize pass binds a vertex then a fragment shader; a compute pass binds one.
-    pub fn shader_binders(&self) -> Result<Vec<&'document str>, GraphicsError> {
-        Ok(match self.kind {
-            PassKind::Rasterize => vec![self.text("vertex_shader")?, self.text("fragment_shader")?],
-            PassKind::Compute => vec![self.text("shader")?],
-        })
+    /// The shader is listed first, then the binding points in the order the document
+    /// writes them, which is the order a renderer binds them in.
+    pub fn binder_names(&self) -> Result<Vec<&'document str>, GraphicsError> {
+        let mut names = vec![self.shader_binder()?];
+        names.extend(
+            self.binders()?
+                .iter()
+                .map(|declaration| declaration.source())
+                .collect::<Result<Vec<&str>, GraphicsError>>()?,
+        );
+        Ok(names)
     }
 
-    /// Returns every binder name this pass needs, in binding order.
-    pub fn binder_names(&self) -> Result<Vec<&'document str>, GraphicsError> {
-        self.shader_binders()
+    /// Returns the colour target formats of a rasterize pass, in attachment order.
+    pub fn targets(&self) -> Result<&'document [Value], GraphicsError> {
+        self.list(TARGETS)
+    }
+
+    /// Returns the clear colour of a rasterize pass.
+    pub fn clear_color(&self) -> Result<&'document [Value], GraphicsError> {
+        self.list(CLEAR_COLOR)
+    }
+
+    /// Returns the workgroup size and dispatch count of a compute pass.
+    pub fn workgroup(&self) -> Result<&'document [Value], GraphicsError> {
+        self.list(WORKGROUP)
+    }
+
+    /// Returns the entry point a compute pass invokes.
+    pub fn entry_point(&self) -> Result<&'document str, GraphicsError> {
+        self.text(ENTRY_POINT)
     }
 }
 

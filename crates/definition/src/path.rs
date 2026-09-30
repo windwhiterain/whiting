@@ -37,6 +37,10 @@ pub enum PathError {
     AbsentKey(String),
     #[error("index {index} is out of bounds for a list of length {length}")]
     IndexOutOfBounds { index: usize, length: usize },
+    #[error("a path is a list of segments, and this is {found}")]
+    NotAPath { found: &'static str },
+    #[error("a path segment is a string key or an integer index, and this is {found}")]
+    NotASegment { found: &'static str },
 }
 
 /// The chain of keys and indices that accesses a certain value in a definition.
@@ -96,6 +100,55 @@ impl Path {
             return None;
         }
         Some(Self(self.0[..self.0.len() - 1].to_vec()))
+    }
+
+    /// Encodes this path as the value that carries it, which is how a reference spells the
+    /// path it points at.
+    ///
+    /// # Invariants
+    ///
+    /// A key is a string and an index an integer, and [`Path::from_value`] is its inverse.
+    /// The encoding is unambiguous by construction rather than by convention, because a
+    /// dict in this language is keyed by strings and a list is addressed by position, so a
+    /// segment's kind follows from the kind of value it is written as. Nothing needs
+    /// quoting, so a key that contains a dot or a bracket is written as it is.
+    pub fn to_value(&self) -> Value {
+        Value::List(
+            self.0
+                .iter()
+                .map(|segment| match segment {
+                    PathSegment::Key(name) => Value::String(name.clone()),
+                    PathSegment::Index(index) => Value::Int(*index as i64),
+                })
+                .collect(),
+        )
+    }
+
+    /// Decodes the path a value carries, which [`Path::to_value`] wrote.
+    pub fn from_value(value: &Value) -> Result<Self, PathError> {
+        let Value::List(segments) = value else {
+            return Err(PathError::NotAPath {
+                found: value.kind_name(),
+            });
+        };
+        let mut path = Vec::with_capacity(segments.len());
+        for segment in segments {
+            path.push(match segment {
+                Value::String(name) => PathSegment::Key(name.clone()),
+                Value::Int(index) if *index >= 0 => PathSegment::Index(*index as usize),
+                Value::Int(_) => {
+                    return Err(PathError::NotASegment {
+                        found: "a negative index",
+                    });
+                }
+                other => {
+                    return Err(PathError::NotASegment {
+                        found: other.kind_name(),
+                    });
+                }
+            });
+        }
+        Ok(Self(path))
     }
 
     /// Borrows the value this path addresses.
