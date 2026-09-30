@@ -75,6 +75,9 @@ provide utility to build compilers to compile `Definition` with certain schema i
     - `Topology`: enum of:
       - `Triangles`
       - `Segments`
+  - `Instance`
+    - `transform: Transform`
+    - `mesh: Mesh`
     - `material: Material`
   - `Shader`: 
     - verify aginst `CustomSchema`.
