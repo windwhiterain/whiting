@@ -480,6 +480,19 @@ impl Loaded {
         self.shared.contains(&id)
     }
 
+    /// Returns the path of the first reference a document spells, when it spells one.
+    ///
+    /// # Invariants
+    ///
+    /// The schema decides which slots may hold a reference, so a value that looks like a
+    /// reference in an unmarked slot is the data it is, and a document that only inlines its
+    /// values has none. This is what tells whether a document's paths mean anything before it is
+    /// loaded: a path that runs through a reference names the node the reference points at, and
+    /// only a loaded generation holds those.
+    pub fn spelled_reference(value: &Value, schema: &Schema) -> Option<Path> {
+        find_reference(value, schema, &Path::root())
+    }
+
     /// Resolves a path to the node it names, following references as it goes.
     ///
     /// A path that runs out of this document into another one answers with a target in that
@@ -519,5 +532,35 @@ impl Loaded {
             };
         }
         Ok(current)
+    }
+}
+
+/// Walks a document for the first reference it spells where the schema marks a slot.
+fn find_reference(value: &Value, schema: &Schema, at: &Path) -> Option<Path> {
+    if schema.is_reference() && load::spelled(value).is_some() {
+        return Some(at.clone());
+    }
+    match value {
+        Value::Struct(fields) | Value::Dict(fields) => fields.iter().find_map(|(name, value)| {
+            find_reference(
+                value,
+                load::field_schema(schema, name),
+                &at.key(name.clone()),
+            )
+        }),
+        Value::Enum { tag, fields } => {
+            let variant = load::variant_schema(schema, tag);
+            fields.iter().find_map(|(name, value)| {
+                find_reference(
+                    value,
+                    load::field_schema(variant, name),
+                    &at.key(name.clone()),
+                )
+            })
+        }
+        Value::List(elements) => elements.iter().enumerate().find_map(|(index, value)| {
+            find_reference(value, load::element_schema(schema), &at.index(index))
+        }),
+        _ => None,
     }
 }

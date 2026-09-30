@@ -7,6 +7,7 @@ use facet::Facet;
 use crate::definition::Definition;
 use crate::error::DeltaError;
 use crate::identifier::DefinitionIdentifier;
+use crate::loaded::Loaded;
 use crate::path::Path;
 use crate::registry::Registry;
 use crate::value::Value;
@@ -132,6 +133,60 @@ impl Delta {
     ///
     /// The returned inverse carries the post-apply version, because that is the state it
     /// applies to.
+    ///
+    /// # References are patched as a loaded generation
+    ///
+    /// A path is transparent, so a path that runs through a reference names the node the
+    /// reference points at. The serialized form holds the spelling rather than the node, so a
+    /// document that spells one has nothing for such a path to arrive at and is refused here:
+    /// it is patched with [`Loaded::patch`](crate::Loaded::patch) instead. A delta may still
+    /// introduce a reference, because writing a spelling is an ordinary write of a value and
+    /// nothing traverses it; the deltas that follow belong on the loaded generation.
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    ///
+    /// use whiting_definition::{
+    ///     Definition, DefinitionIdentifier, Delta, DeltaError, Path, PrimitiveDelta, Reference,
+    ///     Registry, RegistryError, Schema, SchemaIdentifier, SchemaKind, Value,
+    /// };
+    ///
+    /// let slot = Schema::new(SchemaKind::Int).reference();
+    /// let schema = Schema::new(SchemaKind::structure([
+    ///     ("left".to_owned(), slot.clone()),
+    ///     ("right".to_owned(), slot.clone()),
+    /// ]));
+    /// let mut registry = Registry::new();
+    /// registry.put_schema(SchemaIdentifier::new("scene"), schema);
+    ///
+    /// let identifier = DefinitionIdentifier::new("scene");
+    /// registry
+    ///     .insert_definition(Definition::new(
+    ///         identifier.clone(),
+    ///         SchemaIdentifier::new("scene"),
+    ///         Value::structure([
+    ///             ("left".to_owned(), Value::Int(7)),
+    ///             (
+    ///                 "right".to_owned(),
+    ///                 Reference::Internal(Path::root().key("left")).to_value(),
+    ///             ),
+    ///         ]),
+    ///     ))
+    ///     .expect("the definition is new");
+    ///
+    /// let mut operations = BTreeMap::new();
+    /// operations.insert(
+    ///     Path::root().key("left"),
+    ///     PrimitiveDelta::Replace(Value::Int(9)),
+    /// );
+    /// let delta = Delta::new(identifier, 0u64.into(), operations);
+    ///
+    /// // The serialized form refuses it, and names the reference it found.
+    /// assert!(matches!(
+    ///     registry.apply(&delta),
+    ///     Err(RegistryError::Delta(DeltaError::ReferenceInSerialized { .. }))
+    /// ));
+    /// ```
     pub fn apply(
         &self,
         definition: &mut Definition,
@@ -148,6 +203,18 @@ impl Delta {
                 expected: self.base_version,
                 actual: definition.version,
             });
+        }
+
+        // A path is transparent, so a path that runs through a reference names the node the
+        // reference points at, and only a loaded generation holds those nodes. A document that
+        // already spells one is therefore patched as a loaded generation rather than here.
+        //
+        // A delta may still *introduce* a reference, because writing a spelling is an ordinary
+        // write of a value and nothing traverses it. From then on the document spells one, so
+        // the deltas that follow belong on the loaded generation.
+        let schema = registry.schema(&definition.schema_identifier)?;
+        if let Some(path) = Loaded::spelled_reference(&definition.value, schema) {
+            return Err(DeltaError::ReferenceInSerialized { path });
         }
 
         // Applying to a clone is what makes a rejected delta leave nothing behind, so a

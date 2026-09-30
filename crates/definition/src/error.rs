@@ -82,6 +82,10 @@ pub enum DeltaError {
     UnresolvedPath { path: Path, reason: String },
     #[error("at {path}: {reason}")]
     InvalidOperation { path: Path, reason: String },
+    #[error(
+        "at {path}: the document spells a reference, and a reference is only traversed once the document is loaded, so this delta belongs on a loaded generation"
+    )]
+    ReferenceInSerialized { path: Path },
     #[error(transparent)]
     Validation(#[from] ValidationError),
 }

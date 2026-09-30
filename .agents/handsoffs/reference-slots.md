@@ -65,36 +65,47 @@ reference design needs the schema machinery that branch carries). The design is 
 
 ## Next
 
-1. **`History` and the registry on the loaded form.** `Definition` still holds the serialized
-   value and applies deltas to it, so the two appliers now exist side by side and must agree.
-2. **Packers and emitters** resolve before packing, since a GPU buffer cannot hold a path, and
-   the graphics-to-instance link becomes a checkable reference edge rather than a `source`
-   string that happens to match an entry key.
+1. **The graphics/instance pairing, at the document level.** See the flag below: the edge belongs
+   on the definitions rather than on every binder.
+2. **`History` and the registry on the loaded form.** `Definition` still holds the serialized
+   value and applies deltas to it, so `Delta::apply` and `Loaded::patch` now exist side by side;
+   the wire path refuses a document that spells a reference, so the two cannot disagree silently,
+   but the registry itself is still value-based.
 
 ## Flags for the superior
 
-- **A delta's paths only mean what they say on a loaded generation.** A path is transparent, so
-  a path through a reference names the node the reference points at; the serialized form holds
-  spellings rather than the nodes they name, so a path reaching through one has nothing to
-  arrive at. `Delta::apply` on the serialized form is therefore a fast path that is correct
-  only for a document without references, and it should either be guarded (refuse a document
-  whose schema marks a slot, or whose value spells a reference) or documented as such. The
-  loaded applier is the authoritative one.
-- A patch cannot introduce a reference out of the document, because resolving one needs a store
-  and a patch has none; that is a load rather than a patch, and it is refused with that reason.
+- **The graphics/instance edge belongs on the documents, not on every binder.** The device's
+  per-frame path is *given* the pair `(graphics, instance)` as two values and has no notion of
+  definition identity, so a reference on a binder's `source` would be a pointer nobody checks
+  and would only complicate the texture cache key and `verify_pass_inputs`. What is missing is
+  the other direction of the edge the SPEC already names: the graphics document declares
+  `instance_schema`, which the instance data is validated against, but `GraphicsInstance`'s
+  `referencing_graphics` is not emitted, so nothing asserts *which* graphics an instance
+  belongs to. The small change is to have `assemble` (which knows both identifiers) write
+  `referencing_graphics` into the instance document and to assert it where the pair is loaded —
+  which needs a decision about where that assertion runs, since the renderer is handed values
+  rather than definitions.
+- **A field whose only meaning is a pointer cannot be required to be one.** The union lets a
+  marked slot hold a reference *or* a value, which is right for a slot that may inline its
+  value, but a binder's `source` and `referencing_graphics` are pointers with no meaningful
+  inline arm. The schema is therefore permissive and only the reader can refuse a bare name.
+  If that should be expressible in the schema, it needs a marker that *requires* a reference
+  alongside the one that permits it.
+- **A delta's paths only mean what they say on a loaded generation**, so `Delta::apply` refuses a
+  document that spells a reference and the loaded applier is the authoritative one. The check
+  runs on the document being applied to, so a delta may still introduce a reference (writing a
+  spelling is an ordinary write of a value); from then on the document is patched as a loaded
+  generation.
 - **Definitions refer to each other in a graph, not in a cycle** — confirmed. A reference keeps
   its target alive, so two definitions naming each other would hold two generations alive with
   nothing else reaching either, which is the one cycle refcounting cannot free. The rule is a
   contract on `Store`: a definition already being loaded is refused rather than loaded again.
-- **A delta mutates the live generation in place** — confirmed. So the sharing flag is a
-  diagnostic and a packer hint rather than a correctness input: writing in place is what keeps
-  every referrer consistent, and it is what a patch does unconditionally. A reload (a whole new
-  document) is what makes a new generation, and holders of the old one keep it.
+- **A delta mutates the live generation in place** — confirmed, so the sharing flag is a
+  diagnostic and a packer hint rather than a correctness input.
 - A `Remove` of indices is a contiguous range, so an arbitrary non-contiguous set is not
   representable. That is deliberate: the operations map holds one primitive per path, and no
   `Append` can invert a scattered removal. The general fix would be multi-position inserts on
   both sides, which is more vocabulary.
-- `Append` carries a position, so a middle insertion is expressible and invertible.
 - A loaded generation is a plain value; whether the client holds it in an `Rc`, behind a lock,
   or in a single owning task is the client's call, and the single-owner reading keeps the graph
   `Send`.
