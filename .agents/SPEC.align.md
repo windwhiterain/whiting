@@ -18,6 +18,9 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
 - `definition`, `graphics`, `scene` depend on `facet` for `(de)serialization only`.
   Schema validation does not use `facet` reflection.
 - `device` additionally depends on `axum` with `facet-axum`, `tokio`, and `wgpu`.
+- the `facet` stack is pinned to the `0.44` line: `facet 0.44`, `facet-json 0.44.7`,
+  `facet-axum 0.44.0`. `facet-axum` has no stable release past `0.44.0`, so this is the
+  newest combination in which all three crates are stable and mutually compatible.
 - `wgpu` is an optional feature of `device` so the workspace builds and tests on
   machines with no gpu adapter.
 

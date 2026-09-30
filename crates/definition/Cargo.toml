@@ -1,0 +1,11 @@
+[package]
+name = "whiting-definition"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Schema-checked dynamic data, deltas, and undo-redo history for the whiting workspace."
+
+[dependencies]
+facet = { workspace = true }
+thiserror = { workspace = true }

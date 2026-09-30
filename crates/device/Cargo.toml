@@ -1,0 +1,26 @@
+[package]
+name = "whiting-device"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Hot-reloadable headless graphics device served over http RPC."
+
+[features]
+default = []
+wgpu = ["dep:wgpu", "dep:png"]
+
+[dependencies]
+definition = { workspace = true }
+graphics = { workspace = true }
+scene = { workspace = true }
+
+facet = { workspace = true }
+facet-json = { workspace = true }
+facet-axum = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+
+wgpu = { workspace = true, optional = true }
+png = { workspace = true, optional = true }

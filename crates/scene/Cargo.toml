@@ -1,0 +1,11 @@
+[package]
+name = "whiting-scene"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Compilers from a scene schema to graphics instructions, with incremental deltas."
+
+[dependencies]
+definition = { workspace = true }
+graphics = { workspace = true }

@@ -1,0 +1,30 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/definition",
+    "crates/graphics",
+    "crates/scene",
+    "crates/device",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+
+# In-workspace names are the un-prefixed crate names; the publish name is prefixed.
+[workspace.dependencies]
+definition = { path = "crates/definition", package = "whiting-definition" }
+graphics = { path = "crates/graphics", package = "whiting-graphics" }
+scene = { path = "crates/scene", package = "whiting-scene" }
+device = { path = "crates/device", package = "whiting-device" }
+
+facet = "0.44"
+facet-json = "0.44"
+facet-axum = "0.44"
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+wgpu = "30"
+thiserror = "2"
+png = "0.17"
