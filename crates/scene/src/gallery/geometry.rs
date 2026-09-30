@@ -354,3 +354,101 @@ pub fn segments(pairs: impl IntoIterator<Item = ([f64; 3], [f64; 3])>) -> Packed
         .finish()
         .expect("every segment writes one whole position")
 }
+
+/// Appends one quad to a run of shaded points, as two triangles.
+///
+/// # Invariants
+///
+/// The quad is wound counter clockwise seen from the side `u` cross `v` points to, so the
+/// normal is derived from the edges rather than supplied: a face whose corners are given
+/// in the wrong order is a face whose normal is computed from the wrong order, not a
+/// silent inward surface.
+fn quad(points: &mut Shaded, corner: [f64; 3], u: [f64; 3], v: [f64; 3]) {
+    let normal = normalized(cross(u, v));
+    let far = add(add(corner, u), v);
+    // The texture coordinate runs along the two edges, so a face is a unit square of
+    // texture whatever its shape: nothing samples it yet, but a point schema carries one
+    // and a zero is a lie about where on the face the point is.
+    points.push(corner, normal, [0.0, 0.0]);
+    points.push(add(corner, u), normal, [1.0, 0.0]);
+    points.push(far, normal, [1.0, 1.0]);
+    points.push(corner, normal, [0.0, 0.0]);
+    points.push(far, normal, [1.0, 1.0]);
+    points.push(add(corner, v), normal, [0.0, 1.0]);
+}
+
+/// Builds a box standing on the ground, centred on its footprint.
+///
+/// The base is left open, as the cone's is: a box is stood on terrain and the face
+/// underneath is never seen. A box that floats is placed by its instance, and the open
+/// base is still inside whatever it meets.
+pub fn cuboid(width: f64, height: f64, depth: f64) -> PackedList {
+    let mut points = Shaded::with_capacity(30);
+    let (w, d) = (width * 0.5, depth * 0.5);
+    // The four walls, each a quad whose two edges cross to its outward normal.
+    quad(
+        &mut points,
+        [w, 0.0, -d],
+        [0.0, height, 0.0],
+        [0.0, 0.0, 2.0 * d],
+    );
+    quad(
+        &mut points,
+        [-w, 0.0, d],
+        [0.0, height, 0.0],
+        [0.0, 0.0, -2.0 * d],
+    );
+    quad(
+        &mut points,
+        [-w, 0.0, d],
+        [2.0 * w, 0.0, 0.0],
+        [0.0, height, 0.0],
+    );
+    quad(
+        &mut points,
+        [w, 0.0, -d],
+        [-2.0 * w, 0.0, 0.0],
+        [0.0, height, 0.0],
+    );
+    quad(
+        &mut points,
+        [-w, height, -d],
+        [0.0, 0.0, 2.0 * d],
+        [2.0 * w, 0.0, 0.0],
+    );
+    points.finish()
+}
+
+/// Builds a gable roof: a triangular prism with its ridge along the depth axis.
+///
+/// The eaves sit on the ground at the two sides and the ridge rises to `height` along
+/// the centre line, which is the shape a tiled roof has over the walls a [`cuboid`]
+/// makes. The underside is open, so the roof can sit a touch into the walls it caps.
+pub fn prism(width: f64, height: f64, depth: f64) -> PackedList {
+    let mut points = Shaded::with_capacity(18);
+    let (w, d) = (width * 0.5, depth * 0.5);
+    // The two slopes, each a quad from eave to ridge.
+    quad(
+        &mut points,
+        [w, 0.0, -d],
+        [-w, height, 0.0],
+        [0.0, 0.0, 2.0 * d],
+    );
+    quad(
+        &mut points,
+        [-w, 0.0, d],
+        [w, height, 0.0],
+        [0.0, 0.0, -2.0 * d],
+    );
+    // The two gable ends, each one triangle with the apex up.
+    for (a, b, c) in [
+        ([-w, 0.0, d], [w, 0.0, d], [0.0, height, d]),
+        ([w, 0.0, -d], [-w, 0.0, -d], [0.0, height, -d]),
+    ] {
+        let normal = normalized(cross(subtract(b, a), subtract(c, a)));
+        points.push(a, normal, [0.0, 0.0]);
+        points.push(b, normal, [1.0, 0.0]);
+        points.push(c, normal, [0.5, 1.0]);
+    }
+    points.finish()
+}
