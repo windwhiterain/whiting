@@ -45,10 +45,13 @@ impl Loaded {
     }
 
     /// Writes one slot: the reference it was written as, or the node it holds.
+    ///
+    /// A slot without a spelling always names a node of this generation, because a reference
+    /// to another generation was written as a reference and keeps its spelling.
     fn write_slot(&self, slot: &Slot) -> Value {
         match slot.spelling() {
             Some(reference) => reference.to_value(),
-            None => self.write_node(slot.target()),
+            None => self.write_node(slot.target().node()),
         }
     }
 }

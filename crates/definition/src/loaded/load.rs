@@ -4,8 +4,12 @@
 //!
 //! A reference may point forward, at a node the reader has not reached yet, and it may point
 //! at an ancestor, which makes a cycle. So the document is read into a raw arena first, with
-//! a slot that spelled a reference left unresolved but remembering its spelling, and only
-//! then is each of those resolved by walking its path over the raw arena.
+//! a slot that spelled a reference inside this document left unresolved but remembering its
+//! spelling, and only then is each of those resolved by walking its path over the raw arena.
+//!
+//! A reference out of the document needs no second phase: nothing here can hold its target, so
+//! it is resolved while the tree is being read, and its target is a node of the generation it
+//! names.
 //!
 //! # Why resolving is a fixpoint
 //!
@@ -16,28 +20,46 @@
 //! reference cycle holding no value at all, which is an error rather than a graph.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
 
 use crate::error::LoadError;
-use crate::loaded::{Loaded, Node, NodeId, Slot};
+use crate::loaded::store::{FileContent, Origin, Store, Wanted};
+use crate::loaded::{Loaded, Node, NodeId, Slot, Target};
 use crate::path::{Path, PathError, PathSegment};
-use crate::reference::Reference;
+use crate::reference::{FilePath, Reference};
 use crate::schema::{Schema, SchemaKind};
 use crate::value::Value;
 
 /// A loaded definition is built by reading, and then by resolving what it points at.
-pub(super) fn load(value: &Value, schema: &Schema) -> Result<Loaded, LoadError> {
-    let mut builder = Builder::default();
+///
+/// The context is absent for a load that was given no store, in which case a reference out of
+/// the document is an error rather than something to look up.
+pub(super) fn load(
+    value: &Value,
+    schema: &Schema,
+    context: Option<(&Origin, &dyn Store)>,
+) -> Result<Loaded, LoadError> {
+    let mut builder = Builder {
+        raw: Vec::new(),
+        pending: Vec::new(),
+        context,
+    };
     let root = builder.read(value, schema)?;
     builder.resolve(root)
 }
 
-/// A slot of the raw arena: the node it names, or a reference not resolved yet.
+/// A slot of the raw arena.
 #[derive(Debug, Clone)]
 enum RawSlot {
     /// The node this slot names.
     Node(usize),
-    /// A reference, kept as it was spelled until its path can be walked.
-    Reference(Reference),
+    /// A reference inside this document, whose target this document's own nodes hold.
+    Internal(Reference),
+    /// A reference out of this document, resolved as it was read.
+    Resolved {
+        reference: Reference,
+        target: Target,
+    },
 }
 
 /// A node of the raw arena, which is a [`Node`] whose slots may still be unresolved.
@@ -68,14 +90,15 @@ enum SlotKey {
 }
 
 /// Reads a document into a raw arena and then resolves the references in it.
-#[derive(Default)]
-struct Builder {
+struct Builder<'context> {
     raw: Vec<RawNode>,
-    /// Every slot that spelled a reference: the node holding it, which slot, and the spelling.
+    /// Every slot that spelled a reference inside this document: the node holding it, which
+    /// slot, and the spelling.
     pending: Vec<(usize, SlotKey, Reference)>,
+    context: Option<(&'context Origin, &'context dyn Store)>,
 }
 
-impl Builder {
+impl Builder<'_> {
     /// Reads a value into a node, returning the address of the node it became.
     ///
     /// Children are read before the node that holds them, so a node's address is above all
@@ -127,9 +150,9 @@ impl Builder {
                 let element_schema = element_schema(schema);
                 let mut read = Vec::with_capacity(elements.len());
                 for (position, element) in elements.iter().enumerate() {
-                    let (slot, reference) = self.read_slot(element, element_schema)?;
-                    if let Some(reference) = reference {
-                        pending.push((SlotKey::Index(position), reference));
+                    let slot = self.read_slot(element, element_schema)?;
+                    if let RawSlot::Internal(reference) = &slot {
+                        pending.push((SlotKey::Index(position), reference.clone()));
                     }
                     read.push(slot);
                 }
@@ -146,17 +169,27 @@ impl Builder {
     /// A schema marked as a reference makes its slot a union, so a value that spells a
     /// reference is read as one and anything else is read as a value of the declared kind.
     /// An unmarked slot is never read as a reference, however it is spelled.
-    fn read_slot(
-        &mut self,
-        value: &Value,
-        schema: &Schema,
-    ) -> Result<(RawSlot, Option<Reference>), LoadError> {
+    ///
+    /// A reference inside this document is the only kind left unresolved, because it is the
+    /// only kind whose target this document's own nodes hold. A reference out of it is
+    /// resolved here, and its spelling travels with it.
+    fn read_slot(&mut self, value: &Value, schema: &Schema) -> Result<RawSlot, LoadError> {
         if schema.is_reference() {
             if let Some(reference) = spelled(value) {
-                return Ok((RawSlot::Reference(reference.clone()), Some(reference)));
+                return Ok(match &reference {
+                    Reference::Internal(_) => RawSlot::Internal(reference),
+                    Reference::External(path) => RawSlot::Resolved {
+                        target: self.external(path)?,
+                        reference,
+                    },
+                    Reference::File(path) => RawSlot::Resolved {
+                        target: self.file(path, schema)?,
+                        reference,
+                    },
+                });
             }
         }
-        Ok((RawSlot::Node(self.read(value, schema)?), None))
+        Ok(RawSlot::Node(self.read(value, schema)?))
     }
 
     /// Reads the named slots of a struct, a dict or an enum variant.
@@ -168,39 +201,90 @@ impl Builder {
         let mut read = BTreeMap::new();
         let mut pending = Vec::new();
         for (name, value) in fields {
-            let (slot, reference) = self.read_slot(value, field_schema(schema, name))?;
-            if let Some(reference) = reference {
-                pending.push((SlotKey::Key(name.clone()), reference));
+            let slot = self.read_slot(value, field_schema(schema, name))?;
+            if let RawSlot::Internal(reference) = &slot {
+                pending.push((SlotKey::Key(name.clone()), reference.clone()));
             }
             read.insert(name.clone(), slot);
         }
         Ok((read, pending))
     }
 
-    /// Resolves every parked reference, then materialises the loaded definition.
+    /// Resolves a path from the registry root, whose first segment names a definition.
+    fn external(&self, path: &Path) -> Result<Target, LoadError> {
+        let (_, store) = self.context.ok_or_else(|| self.needs_store(path))?;
+        let (name, inside) = path
+            .segments()
+            .split_first()
+            .ok_or_else(|| LoadError::Store {
+                reason: "an external reference names no definition".to_owned(),
+            })?;
+        let PathSegment::Key(name) = name else {
+            return Err(LoadError::Store {
+                reason: "an external reference starts with the name of a definition".to_owned(),
+            });
+        };
+        let generation = store.definition(name)?;
+        let inside = Path::new(inside.iter().cloned());
+        match generation.resolve(&inside)? {
+            Target::Local(node) => Ok(Target::Foreign(generation, node)),
+            Target::Foreign(other, node) => Ok(Target::Foreign(other, node)),
+        }
+    }
+
+    /// Resolves a file: its bytes when the slot wants an asset, its document otherwise.
+    ///
+    /// A document a file held is a document in its own right, so it is loaded as a generation
+    /// of its own and the slot refers to it. That is what makes a path inside it relative to
+    /// the file rather than to the document that named the file.
+    fn file(&mut self, path: &FilePath, schema: &Schema) -> Result<Target, LoadError> {
+        let (origin, store) = self.context.ok_or_else(|| self.needs_store(path))?;
+        let wanted = match &schema.kind {
+            SchemaKind::Bytes => Wanted::Asset,
+            _ => Wanted::Document,
+        };
+        match (store.file(origin, path, wanted)?, wanted) {
+            (FileContent::Bytes(bytes), Wanted::Asset) => {
+                let id = self.raw.len();
+                self.raw.push(RawNode::Bytes(bytes));
+                Ok(Target::Local(NodeId(id)))
+            }
+            (FileContent::Document(document), Wanted::Document) => {
+                let inner = schema.clone().without_reference();
+                let generation =
+                    Loaded::load_in(&document, &inner, &Origin::File(path.clone()), store)?;
+                let root = generation.root();
+                Ok(Target::Foreign(Rc::new(generation), root))
+            }
+            (FileContent::Bytes(_), Wanted::Document) => Err(LoadError::Store {
+                reason: format!("`{path}` holds bytes, and this slot wants a document"),
+            }),
+            (FileContent::Document(_), Wanted::Asset) => Err(LoadError::Store {
+                reason: format!("`{path}` holds a document, and this slot wants bytes"),
+            }),
+        }
+    }
+
+    /// Builds the error for a reference that needs somewhere to look and has none.
+    fn needs_store(&self, reference: impl std::fmt::Debug) -> LoadError {
+        LoadError::NoStore {
+            reference: format!("{reference:?}"),
+        }
+    }
+
+    /// Resolves every pending reference, then materialises the loaded definition.
     fn resolve(&mut self, root: usize) -> Result<Loaded, LoadError> {
         let mut resolved: BTreeMap<(usize, SlotKey), usize> = BTreeMap::new();
         let mut waiting = std::mem::take(&mut self.pending);
 
-        // A reference that names another definition or a file needs something outside this
-        // document to resolve it, which a load on its own was not given.
-        if let Some((_, _, reference)) = waiting
-            .iter()
-            .find(|(_, _, reference)| !matches!(reference, Reference::Internal(_)))
-        {
-            return Err(LoadError::NoStore {
-                reference: format!("{reference:?}"),
-            });
-        }
-
         // Resolve what can be resolved until a round resolves nothing, which is what breaks a
         // cycle of references that names no value.
-        loop {
+        while !waiting.is_empty() {
             let mut progress = false;
             let mut still_waiting = Vec::new();
             for (parent, key, reference) in waiting {
                 let Reference::Internal(path) = &reference else {
-                    unreachable!("references that need a store were refused above");
+                    unreachable!("a reference out of the document is resolved as it is read");
                 };
                 match self.walk(root, path)? {
                     Some(target) => {
@@ -211,10 +295,7 @@ impl Builder {
                 }
             }
             waiting = still_waiting;
-            if waiting.is_empty() {
-                break;
-            }
-            if !progress {
+            if !progress && !waiting.is_empty() {
                 return Err(LoadError::ValueLessCycle {
                     references: waiting
                         .iter()
@@ -262,7 +343,7 @@ impl Builder {
             };
             current = match slot {
                 RawSlot::Node(id) => Some(*id),
-                RawSlot::Reference(_) => None,
+                RawSlot::Internal(_) | RawSlot::Resolved { .. } => None,
             };
         }
         Ok(current)
@@ -338,6 +419,9 @@ impl Builder {
     }
 
     /// Turns one raw slot into a slot that names a node, marking a reference's target shared.
+    ///
+    /// A reference into another generation marks nothing here: the node it names belongs to a
+    /// document that is not this one, and a delta of this document cannot reach it.
     fn materialise_slot(
         &self,
         index: usize,
@@ -347,8 +431,14 @@ impl Builder {
         shared: &mut BTreeSet<NodeId>,
     ) -> Result<Slot, LoadError> {
         match slot {
-            RawSlot::Node(id) => Ok(Slot::inlined(NodeId(*id))),
-            RawSlot::Reference(reference) => {
+            RawSlot::Node(id) => Ok(Slot::inlined(Target::Local(NodeId(*id)))),
+            RawSlot::Resolved { reference, target } => {
+                if let Target::Local(id) = target {
+                    shared.insert(*id);
+                }
+                Ok(Slot::referenced(reference.clone(), target.clone()))
+            }
+            RawSlot::Internal(reference) => {
                 let target =
                     resolved
                         .get(&(index, key.clone()))
@@ -357,7 +447,7 @@ impl Builder {
                         })?;
                 let id = NodeId(*target);
                 shared.insert(id);
-                Ok(Slot::referenced(reference.clone(), id))
+                Ok(Slot::referenced(reference.clone(), Target::Local(id)))
             }
         }
     }

@@ -120,6 +120,8 @@ pub enum LoadError {
         "the reference `{reference}` names a definition or a file, and this load was given no store to find it in"
     )]
     NoStore { reference: String },
+    #[error("a load could not find what a reference named: {reason}")]
+    Store { reason: String },
     #[error("at {path}: {reason}")]
     UnresolvedPath { path: Path, reason: PathError },
     #[error("the references {references:?} name each other and no value")]

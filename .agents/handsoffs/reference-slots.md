@@ -36,31 +36,41 @@ reference design needs the schema machinery that branch carries). The design is 
   `append_values`, `append_entries`, `remove_indices`, `remove_keys`, and application with the
   inverse algebra unchanged. The scene's emitter needed no change because it used the
   builders.
-- `loaded/`: the loaded generation. `Node`, `Slot` (a target plus the spelling it was written
-  with), `NodeId`, `Loaded` with `resolve`, `is_shared`, `node`, and `to_value`. Loading reads
-  the tree into a raw arena and then resolves references to a fixpoint, so a forward reference
-  and a reference to an ancestor both work, and a cycle of references holding no value is an
-  error. A reference's target is marked shared, which is what a patch consults.
-- Doctests pin the union rule, the lossless round trip, a cycle through the root, and the
-  value-less cycle.
+- `loaded/`: the loaded generation. `Node`, `Slot` (a `Target` plus the spelling it was written
+  with), `NodeId`, `Loaded` with `resolve`, `is_shared`, `node` and `to_value`. Loading reads
+  the tree into a raw arena and then resolves references inside it to a fixpoint, so a forward
+  reference and a reference to an ancestor both work, and a cycle of references holding no
+  value is an error.
+- `loaded/store.rs`: `Store`, `Origin` and `Wanted`. An external path's first segment names a
+  registry definition and the rest addresses inside it; a relative file path is resolved
+  against the document that spelled it, which is what `Origin` carries. A file wanted as an
+  asset becomes the bytes it holds, and one wanted as a document becomes a generation of its
+  own — which is what makes a path inside it relative to the file.
+- `loaded/mod.rs`: `Target::{Local, Foreign}`, where a foreign target holds the generation it
+  lives in, so a reference out of a document keeps its target alive.
+- Doctests pin the union rule, the lossless round trip, a cycle through the root, the
+  value-less cycle, and the store contract (external definition, file as asset, spellings
+  preserved).
 
 ## Next
 
-1. **A store**, so an `External` or `File` reference can resolve. `LoadError::NoStore` is the
-   seam: the loader needs something that hands it another definition's `Loaded` generation and
-   reads a file, which is also where the client's root for relative paths belongs. Decide
-   whether an external path's first segment names a definition.
-2. **Patching a loaded generation**, and `Delta::apply` against it: the sharing flag decides
-   whether a `Replace` writes in place or swaps the target, and a removal of a shared target
-   needs a rule.
-3. **`History` inverses recorded at the resolved location** rather than the spelling the
+1. **Patching a loaded generation**, and `Delta::apply` against it: the sharing flag decides
+   whether a `Replace` writes in place or swaps the target. A path that runs into another
+   generation must be refused, because a delta's version belongs to its own definition.
+2. **`History` inverses recorded at the resolved location** rather than the spelling the
    forward delta used, or undo replays through a reference that may since resolve elsewhere.
-4. **Packers and emitters** resolve before packing, since a GPU buffer cannot hold a path, and
+3. **Packers and emitters** resolve before packing, since a GPU buffer cannot hold a path, and
    the graphics-to-instance link becomes a checkable reference edge rather than a `source`
    string that happens to match an entry key.
 
 ## Flags for the superior
 
+- **Definitions refer to each other in a graph, not in a cycle.** A reference keeps its target
+  alive, so two definitions naming each other would hold two generations alive with nothing
+  else reaching either — the one cycle refcounting cannot free. The rule is therefore that a
+  store refuses a definition that is already being loaded, and this is the design point to
+  confirm or overturn: allowing it needs either weak references (a referent can be freed, so a
+  reference can dangle and must be re-resolved) or a collector.
 - A `Remove` of indices is a contiguous range, so an arbitrary non-contiguous set is not
   representable. That is deliberate: the operations map holds one primitive per path, and no
   `Append` can invert a scattered removal. The general fix would be multi-position inserts on
