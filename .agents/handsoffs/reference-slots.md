@@ -36,19 +36,26 @@ reference design needs the schema machinery that branch carries). The design is 
   `append_values`, `append_entries`, `remove_indices`, `remove_keys`, and application with the
   inverse algebra unchanged. The scene's emitter needed no change because it used the
   builders.
-- `validation`: a marked slot validates a reference spelling without the referent loaded, and
-  the target is validated against the same schema with the marker cleared.
+- `loaded/`: the loaded generation. `Node`, `Slot` (a target plus the spelling it was written
+  with), `NodeId`, `Loaded` with `resolve`, `is_shared`, `node`, and `to_value`. Loading reads
+  the tree into a raw arena and then resolves references to a fixpoint, so a forward reference
+  and a reference to an ancestor both work, and a cycle of references holding no value is an
+  error. A reference's target is marked shared, which is what a patch consults.
+- Doctests pin the union rule, the lossless round trip, a cycle through the root, and the
+  value-less cycle.
 
 ## Next
 
-1. **The loaded generation**: an arena, the loader (resolve internal, external and file
-   references, keep each edge's spelling, validate each target against the unmarked schema)
-   and the writer that re-spells. No cycle rejection is needed now that the generation owns
-   its nodes.
-2. **`Delta::apply` with the sharing decision**, and `History` inverses recorded at the
-   *resolved* location rather than the spelling the forward delta used, or undo replays
-   through a reference that may since resolve elsewhere.
-3. **Packers and emitters** resolve before packing, since a GPU buffer cannot hold a path, and
+1. **A store**, so an `External` or `File` reference can resolve. `LoadError::NoStore` is the
+   seam: the loader needs something that hands it another definition's `Loaded` generation and
+   reads a file, which is also where the client's root for relative paths belongs. Decide
+   whether an external path's first segment names a definition.
+2. **Patching a loaded generation**, and `Delta::apply` against it: the sharing flag decides
+   whether a `Replace` writes in place or swaps the target, and a removal of a shared target
+   needs a rule.
+3. **`History` inverses recorded at the resolved location** rather than the spelling the
+   forward delta used, or undo replays through a reference that may since resolve elsewhere.
+4. **Packers and emitters** resolve before packing, since a GPU buffer cannot hold a path, and
    the graphics-to-instance link becomes a checkable reference edge rather than a `source`
    string that happens to match an entry key.
 
@@ -59,3 +66,6 @@ reference design needs the schema machinery that branch carries). The design is 
   `Append` can invert a scattered removal. The general fix would be multi-position inserts on
   both sides, which is more vocabulary.
 - `Append` carries a position, so a middle insertion is expressible and invertible.
+- A loaded generation is a plain value; whether the client holds it in an `Rc`, behind a lock,
+  or in a single owning task is the client's call, and the single-owner reading keeps the graph
+  `Send`.

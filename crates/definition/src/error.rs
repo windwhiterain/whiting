@@ -109,3 +109,21 @@ pub enum RegistryError {
     #[error(transparent)]
     History(#[from] HistoryError),
 }
+
+/// A document could not be loaded, because a reference in it names nothing.
+///
+/// A load failure is its own kind of error rather than a validation failure: the document
+/// satisfied its schema, and what is missing is a target, or a store to find one in.
+#[derive(Debug, Error)]
+pub enum LoadError {
+    #[error(
+        "the reference `{reference}` names a definition or a file, and this load was given no store to find it in"
+    )]
+    NoStore { reference: String },
+    #[error("at {path}: {reason}")]
+    UnresolvedPath { path: Path, reason: PathError },
+    #[error("the references {references:?} name each other and no value")]
+    ValueLessCycle { references: Vec<String> },
+    #[error("the reference `{reference}` was never resolved")]
+    Unresolved { reference: String },
+}
