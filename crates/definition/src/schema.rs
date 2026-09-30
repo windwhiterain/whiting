@@ -51,20 +51,24 @@ impl Schema {
         self
     }
 
-    /// Marks this schema as one a slot refers to rather than holds.
+    /// Marks this schema as one a slot may refer to rather than hold.
     ///
     /// # Invariants
     ///
-    /// The declared kind stays the kind of the value the reference resolves to, so a marked
-    /// schema describes both ends: the slot requires a reference spelling, and the target
-    /// that reference names must satisfy the same schema with the marker cleared.
+    /// A marked slot holds a *union*: a reference, or a value of the declared kind. The
+    /// declared kind stays the kind the value is, so it describes both ends — what an
+    /// inlined value must be, and what a reference must resolve to.
+    ///
+    /// A reference is recognised by its tag rather than by failing to be a value, so a slot
+    /// whose declared kind could also accept the spelling still reads as a reference, and a
+    /// malformed reference is reported as one instead of as a kind mismatch.
     #[must_use]
     pub fn reference(mut self) -> Self {
         self.attributes.reference = true;
         self
     }
 
-    /// Returns whether a slot of this schema holds a reference rather than a value.
+    /// Returns whether a slot of this schema may hold a reference rather than a value.
     pub const fn is_reference(&self) -> bool {
         self.attributes.reference
     }
@@ -107,15 +111,19 @@ impl Schema {
     }
 
     fn validate_at(&self, path: &Path, value: &Value) -> Result<(), ValidationError> {
-        // A marked slot is checked against the reference it spells rather than against the
-        // value it names, so a document verifies without the referent being loaded.
+        // A marked slot holds a reference or a value, so a value that spells a reference is
+        // one, and anything else is checked against the declared kind below. Recognising a
+        // reference by its tag rather than by failing to be a value keeps a malformed
+        // reference reported as a reference instead of as a kind mismatch.
         if self.attributes.reference {
-            return Reference::from_value(value).map(|_| ()).map_err(|error| {
-                ValidationError::MalformedReference {
-                    path: path.clone(),
-                    reason: error.to_string(),
-                }
-            });
+            if value.variant_tag().is_some_and(Reference::is_tag) {
+                return Reference::from_value(value).map(|_| ()).map_err(|error| {
+                    ValidationError::MalformedReference {
+                        path: path.clone(),
+                        reason: error.to_string(),
+                    }
+                });
+            }
         }
         // `Int` and `Float` stay distinct, so this match is on the pair of kinds.
         match (&self.kind, value) {

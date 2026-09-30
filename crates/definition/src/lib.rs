@@ -45,10 +45,7 @@
 //! let mut operations = BTreeMap::new();
 //! operations.insert(
 //!     Path::root().key("steps"),
-//!     PrimitiveDelta::Append {
-//!         index: 1,
-//!         values: vec![Value::Int(2)],
-//!     },
+//!     PrimitiveDelta::append_values(1, [Value::Int(2)]),
 //! );
 //! let delta = Delta::new(identifier.clone(), 0u64.into(), operations);
 //!
@@ -58,10 +55,7 @@
 //!
 //! // The inverse of an indexed append removes exactly the inserted range.
 //! let primitive = inverse.operations.get(&Path::root().key("steps"));
-//! assert_eq!(
-//!     primitive,
-//!     Some(&PrimitiveDelta::RemoveIndices { start: 1, count: 1 })
-//! );
+//! assert_eq!(primitive, Some(&PrimitiveDelta::remove_indices(1, 1)));
 //! ```
 
 mod definition;
@@ -78,7 +72,7 @@ mod value;
 mod version;
 
 pub use definition::Definition;
-pub use delta::{Delta, PrimitiveDelta};
+pub use delta::{Appended, Delta, PrimitiveDelta, Removed};
 pub use error::{DeltaError, HistoryError, RegistryError, SchemaError, ValidationError};
 pub use history::History;
 pub use identifier::{DefinitionIdentifier, SchemaIdentifier};

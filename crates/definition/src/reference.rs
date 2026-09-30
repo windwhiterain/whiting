@@ -37,13 +37,14 @@
 //!     ),
 //! );
 //!
-//! // The schema is what says a slot is a reference, and the declared kind is the kind the
-//! // reference must resolve to, so the slot requires the spelling and the target requires
-//! // the value.
+//! // The schema is what says a slot is a reference, and a marked slot holds a union of the
+//! // reference and the value, so either is accepted and the declared kind describes what the
+//! // value is and what a reference must resolve to.
 //! let slot = Schema::new(SchemaKind::String).reference();
 //! assert!(slot.is_reference());
-//! slot.validate(&spelled).expect("a reference is what a marked slot wants");
-//! assert!(slot.validate(&Value::String("inlined".to_owned())).is_err());
+//! slot.validate(&spelled).expect("a reference is what a marked slot accepts");
+//! slot.validate(&Value::String("inlined".to_owned()))
+//!     .expect("a value of the declared kind is accepted too");
 //! slot.clone()
 //!     .without_reference()
 //!     .validate(&Value::String("inlined".to_owned()))
@@ -113,6 +114,15 @@ pub enum Reference {
 }
 
 impl Reference {
+    /// Returns whether a variant tag names a kind of reference.
+    ///
+    /// A marked slot holds a union of a reference and a value, so this is what tells the two
+    /// apart: a tag that names a reference is read as one, whether or not its path is well
+    /// formed, and any other tag is a value of the declared kind.
+    pub fn is_tag(tag: &str) -> bool {
+        matches!(tag, INTERNAL | EXTERNAL | FILE)
+    }
+
     /// Encodes this reference as the value a document spells it with.
     pub fn to_value(&self) -> Value {
         let (tag, target) = match self {

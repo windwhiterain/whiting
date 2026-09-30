@@ -14,42 +14,71 @@ use crate::version::Version;
 
 /// A change to the single value a [`Path`] selects.
 ///
-/// `Append` and `RemoveIndices` each describe a contiguous range of a list, which makes
-/// them exact mutual inverses. An arbitrary non-contiguous set of indices is deliberately
-/// not representable, because no append primitive can invert it.
+/// Three variants, as the spec names them: `Replace` swaps the value, and `Append` and
+/// `Remove` add to or take from one. A value a list holds and a value a dict holds are
+/// different shapes, so what each of those two acts on is a union of the shapes rather than
+/// a variant apiece.
+///
+/// `Append` of values and `Remove` of indices each describe a contiguous range of a list,
+/// which makes them exact mutual inverses. An arbitrary non-contiguous set of indices is
+/// deliberately not representable, because no append primitive can invert it.
 #[derive(Debug, Clone, PartialEq, Facet)]
 #[repr(C)]
 pub enum PrimitiveDelta {
     /// Replaces the value outright, structural values included.
     Replace(Value),
+    /// Adds to a list or to a dict.
+    Append(Appended),
+    /// Takes from a list, a struct or a dict.
+    Remove(Removed),
+}
+
+/// What a [`PrimitiveDelta::Append`] adds.
+#[derive(Debug, Clone, PartialEq, Facet)]
+#[repr(C)]
+pub enum Appended {
     /// Inserts values before `index`, so `index == length` is a tail append.
-    Append { index: usize, values: Vec<Value> },
+    Values { index: usize, values: Vec<Value> },
     /// Adds entries to a dict, failing if a key is already present.
-    AppendEntries { entries: Vec<(String, Value)> },
+    Entries { entries: Vec<(String, Value)> },
+}
+
+/// What a [`PrimitiveDelta::Remove`] takes.
+#[derive(Debug, Clone, PartialEq, Facet)]
+#[repr(C)]
+pub enum Removed {
     /// Removes `count` elements starting at `start`.
-    RemoveIndices { start: usize, count: usize },
+    Indices { start: usize, count: usize },
     /// Removes keys from a struct or a dict.
-    RemoveKeys { keys: Vec<String> },
+    Keys { keys: Vec<String> },
 }
 
 impl PrimitiveDelta {
+    /// Builds a list insert.
+    pub fn append_values(index: usize, values: impl IntoIterator<Item = Value>) -> Self {
+        Self::Append(Appended::Values {
+            index,
+            values: values.into_iter().collect(),
+        })
+    }
+
     /// Builds a removal of a contiguous range of a list.
     pub fn remove_indices(start: usize, count: usize) -> Self {
-        Self::RemoveIndices { start, count }
+        Self::Remove(Removed::Indices { start, count })
     }
 
     /// Builds a dict entry append.
     pub fn append_entries(entries: impl IntoIterator<Item = (String, Value)>) -> Self {
-        Self::AppendEntries {
+        Self::Append(Appended::Entries {
             entries: entries.into_iter().collect(),
-        }
+        })
     }
 
     /// Builds a key removal.
     pub fn remove_keys(keys: impl IntoIterator<Item = String>) -> Self {
-        Self::RemoveKeys {
+        Self::Remove(Removed::Keys {
             keys: keys.into_iter().collect(),
-        }
+        })
     }
 }
 
@@ -168,7 +197,7 @@ fn apply_primitive(
             inverse_operations.insert(path.clone(), PrimitiveDelta::Replace(previous));
         }
 
-        PrimitiveDelta::Append { index, values } => {
+        PrimitiveDelta::Append(Appended::Values { index, values }) => {
             let elements = target
                 .as_list_mut()
                 .ok_or_else(|| invalid("append needs a list"))?;
@@ -180,14 +209,11 @@ fn apply_primitive(
             }
             inverse_operations.insert(
                 path.clone(),
-                PrimitiveDelta::RemoveIndices {
-                    start: *index,
-                    count: values.len(),
-                },
+                PrimitiveDelta::remove_indices(*index, values.len()),
             );
         }
 
-        PrimitiveDelta::RemoveIndices { start, count } => {
+        PrimitiveDelta::Remove(Removed::Indices { start, count }) => {
             let elements = target
                 .as_list_mut()
                 .ok_or_else(|| invalid("removal needs a list"))?;
@@ -195,17 +221,11 @@ fn apply_primitive(
                 .checked_add(*count)
                 .filter(|end| *end <= elements.len())
                 .ok_or_else(|| invalid("removal range is out of bounds for the list"))?;
-            let removed = elements.drain(*start..end).collect();
-            inverse_operations.insert(
-                path.clone(),
-                PrimitiveDelta::Append {
-                    index: *start,
-                    values: removed,
-                },
-            );
+            let removed = elements.drain(*start..end).collect::<Vec<Value>>();
+            inverse_operations.insert(path.clone(), PrimitiveDelta::append_values(*start, removed));
         }
 
-        PrimitiveDelta::AppendEntries { entries } => {
+        PrimitiveDelta::Append(Appended::Entries { entries }) => {
             let map = target
                 .as_dict_mut()
                 .ok_or_else(|| invalid("entry append needs a dict"))?;
@@ -216,13 +236,11 @@ fn apply_primitive(
             }
             inverse_operations.insert(
                 path.clone(),
-                PrimitiveDelta::RemoveKeys {
-                    keys: entries.iter().map(|(name, _)| name.clone()).collect(),
-                },
+                PrimitiveDelta::remove_keys(entries.iter().map(|(name, _)| name.clone())),
             );
         }
 
-        PrimitiveDelta::RemoveKeys { keys } => {
+        PrimitiveDelta::Remove(Removed::Keys { keys }) => {
             let map = target
                 .as_field_map_mut()
                 .ok_or_else(|| invalid("key removal needs a struct or a dict"))?;
@@ -233,10 +251,7 @@ fn apply_primitive(
                     None => return Err(invalid("key removal found a key that is absent")),
                 }
             }
-            inverse_operations.insert(
-                path.clone(),
-                PrimitiveDelta::AppendEntries { entries: removed },
-            );
+            inverse_operations.insert(path.clone(), PrimitiveDelta::append_entries(removed));
         }
     }
 
