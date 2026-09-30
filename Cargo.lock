@@ -1838,6 +1838,7 @@ name = "whiting-graphics"
 version = "0.1.0"
 dependencies = [
  "facet 0.44.5",
+ "thiserror",
  "whiting-definition",
 ]
 

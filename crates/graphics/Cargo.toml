@@ -9,3 +9,4 @@ description = "Graphics instruction schema, authored as data, for the whiting wo
 [dependencies]
 definition = { workspace = true }
 facet = { workspace = true }
+thiserror = { workspace = true }

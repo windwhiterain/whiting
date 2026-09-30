@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use facet::Facet;
 
+use crate::path::Path;
 use crate::schema::{Schema, SchemaKind};
 
 /// Ordered map of named fields.
@@ -186,6 +187,16 @@ impl Value {
             Self::List(elements) => format!("list of {}", elements.len()),
             Self::Dict(entries) => format!("dict of {}", entries.len()),
         }
+    }
+
+    /// Borrows the value at `path`, returning `None` when the path does not resolve.
+    pub fn at(&self, path: &Path) -> Option<&Value> {
+        path.resolve(self).ok()
+    }
+
+    /// Mutably borrows the value at `path`, returning `None` when it does not resolve.
+    pub fn at_mut(&mut self, path: &Path) -> Option<&mut Value> {
+        path.resolve_mut(self).ok()
     }
 
     /// Substitutes the `default` of every absent optional field, recursively.
