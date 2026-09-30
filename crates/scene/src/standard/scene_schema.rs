@@ -94,9 +94,11 @@ pub fn standard_scene_schema() -> Schema {
         ),
         (
             MESHES.to_owned(),
-            Schema::new(SchemaKind::list(mesh_schema())).with_documentation(
+            Schema::new(SchemaKind::list(mesh_schema().reference())).with_documentation(
                 "Geometry, listed once per shape. A mesh is drawn only where an instance \
-                 names it.",
+                 names it. A mesh may be written here or named from another definition, \
+                 which is what lets several scenes share one mesh instead of each holding \
+                 its own copy of the points.",
             ),
         ),
         (

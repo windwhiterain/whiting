@@ -84,7 +84,7 @@ mod patch;
 mod store;
 mod write;
 
-pub use store::{FileContent, Origin, Store, Wanted};
+pub use store::{FileContent, Origin, RegistryStore, Store, Wanted};
 
 /// The address of a node in a generation's arena.
 ///

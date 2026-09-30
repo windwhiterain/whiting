@@ -33,7 +33,7 @@
 //! use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 //! use whiting_scene::{
 //!     CompileContext, Compiler, StandardScene, STANDARD_SCENE_SCHEMA,
-//!     standard::example_standard_scene,
+//!     standard::{example_standard_scene, mesh_schema},
 //! };
 //!
 //! let mut registry = Registry::new();
@@ -128,6 +128,51 @@
 //!     .apply(&mut replayed, &registry)
 //!     .expect("the emitted delta applies");
 //! assert_eq!(replayed.value, compiled.graphics.value);
+//!
+//! // A scene may name a mesh instead of writing it out, so several scenes share one mesh
+//! // rather than each holding a copy of its points. The compiler reads a scene that holds
+//! // everything it names, so the named mesh compiles to the same pipeline.
+//! let named_mesh = example_standard_scene()
+//!     .at(&definition::Path::root().key("meshes").index(0))
+//!     .expect("the example has a mesh")
+//!     .clone();
+//! registry.put_schema(SchemaIdentifier::new("mesh"), mesh_schema());
+//! registry
+//!     .insert_definition(Definition::new(
+//!         DefinitionIdentifier::new("studio.mesh"),
+//!         SchemaIdentifier::new("mesh"),
+//!         named_mesh,
+//!     ))
+//!     .expect("the mesh definition is new");
+//!
+//! let mut naming = example_standard_scene();
+//! if let Some(definition::Value::List(meshes)) = naming
+//!     .as_field_map_mut()
+//!     .and_then(|fields| fields.get_mut("meshes"))
+//! {
+//!     meshes[0] =
+//!         definition::Reference::External(definition::Path::root().key("studio.mesh")).to_value();
+//! }
+//! let naming = Definition::new(
+//!     DefinitionIdentifier::new("naming.source"),
+//!     SchemaIdentifier::new(STANDARD_SCENE_SCHEMA),
+//!     naming,
+//! );
+//! naming.validate(&registry).expect("a named mesh validates");
+//! let named = compiler
+//!     .compile(&CompileContext {
+//!         scene: &naming,
+//!         previous_graphics: None,
+//!         previous_instance: None,
+//!         registry: &registry,
+//!     })
+//!     .expect("a scene whose mesh is named compiles");
+//! let named_labels: Vec<&str> = graphics::passes(&named.graphics.value)
+//!     .expect("the passes read")
+//!     .iter()
+//!     .map(|pass| pass.label().unwrap())
+//!     .collect();
+//! assert_eq!(named_labels, labels);
 //! ```
 
 mod compiler;

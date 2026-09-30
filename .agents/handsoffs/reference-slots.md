@@ -65,25 +65,24 @@ reference design needs the schema machinery that branch carries). The design is 
 
 ## Next
 
-1. **A compiler that emits a reference** — see the flag below, which is the one thing this work
-   stopped to ask about.
-2. **`History` and the registry on the loaded form.** `Definition` still holds the serialized value
+1. **`History` and the registry on the loaded form.** `Definition` still holds the serialized value
    and applies deltas to it, so `Delta::apply` and `Loaded::patch` exist side by side; the wire path
    refuses a document that spells a reference, so the two cannot disagree silently.
 
-## Done since the last revision of this note
+## Since the first pass
 
+- A schema may mark a slot as one that holds a reference, a load resolves them into a graph, a
+  patch writes in place through them, and the compiler and the device both read a document through
+  one registry-backed store.
 - An instance names the graphics it provides data to, and a render of a pair that disagrees is
   refused.
-- The device resolves and writes out a document that names references, so a compiled output can
-  reach a payload that lives in another definition.
 - Instances whose passes would be identical are drawn together, so a pass draws as many instances
-  as its instance buffer has rows.
-- A material's custom data is packed into the instance row, which is where per-instance variation
-  has to live once a pass draws several instances at once.
+  as its instance buffer has rows, and a material's custom data is packed into the instance row
+  where per-instance variation has to live.
+- A **scene may name a mesh** that lives in another definition, so several scenes share one mesh
+  instead of each holding a copy. The compiler reads a scene that holds everything it names.
 - A document a render resolved is cached by identifier and version, and every mutation route
   forgets the cache.
-
 ## Flags for the superior
 
 - **The one thing left needs a decision.** Sharing a mesh between two compiled outputs means the

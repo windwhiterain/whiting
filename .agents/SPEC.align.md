@@ -477,3 +477,26 @@ incremental compile.
   - the default point and instance schemas declare their component widths, because a
     schema is also the layout a buffer is read with: a point is a position of three, and a
     model matrix is sixteen, which the renderer reads as four attributes of four.
+
+## References
+
+The spec's `definition` crate now carries references: a value slot a schema marks may hold a
+`Reference` — a path inside the same document, a path to a registered definition, or a file —
+instead of a value. What this amends for a scene:
+
+  - a mesh may be named from another definition rather than written into the scene, so several
+    scenes share one mesh instead of each holding a copy of its points. `meshes` is a list whose
+    element schema is marked, so a scene may write a mesh or name one, and a name that does not
+    resolve fails the compile rather than the render.
+  - a compiler reads a scene that holds everything it names: `CompileContext::scene_value`
+    resolves the document through the registry before the compiler sees it, so nothing in a
+    compiler has to know which parts were named rather than written.
+  - the same store serves the device, which is what keeps a compiler and a renderer from
+    resolving references in two ways.
+
+What was deliberately not built: a compiler emitting shared definitions of its own, so that two
+compiled outputs reference one copy of a mesh's bytes. The bytes are a function of the mesh, so
+the copy is derived data and regenerating it per scene is correct; sharing it pays only when one
+source has a large fan-out, and it would grow the compiler contract with extra definitions, their
+versions, and a rule for retiring a shared part whose last user went away. Sharing a mesh in the
+authored document is what the fan-out needs first, and that is what is built.

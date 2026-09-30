@@ -50,7 +50,7 @@ impl Compiler for StandardScene {
     }
 
     fn compile(&self, context: &CompileContext<'_>) -> Result<CompileOutput, CompileError> {
-        let scene = context.scene_value();
+        let scene = &context.scene_value()?;
         // The name is part of the schema even though the pipeline does not need it, so a
         // scene that does not carry one still fails at compile time.
         let _name = scene_text(scene, "name")?;

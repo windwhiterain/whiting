@@ -77,7 +77,9 @@ pub use delta::{Appended, Delta, PrimitiveDelta, Removed};
 pub use error::{DeltaError, HistoryError, LoadError, RegistryError, SchemaError, ValidationError};
 pub use history::History;
 pub use identifier::{DefinitionIdentifier, SchemaIdentifier};
-pub use loaded::{FileContent, Loaded, Node, NodeId, Origin, Slot, Store, Target, Wanted};
+pub use loaded::{
+    FileContent, Loaded, Node, NodeId, Origin, RegistryStore, Slot, Store, Target, Wanted,
+};
 pub use path::{Path, PathError, PathSegment};
 pub use reference::{FilePath, Reference, ReferenceError};
 pub use registry::Registry;

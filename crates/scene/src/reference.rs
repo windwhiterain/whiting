@@ -241,7 +241,7 @@ impl Compiler for ReferenceScene {
     }
 
     fn compile(&self, context: &CompileContext<'_>) -> Result<CompileOutput, CompileError> {
-        let scene = context.scene_value();
+        let scene = &context.scene_value()?;
         // Reading the name is part of the contract even though the reference compiler does
         // not need it, so a malformed scene still fails at compile time.
         let _name = scene_text(scene, "name")?;

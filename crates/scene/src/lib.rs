@@ -19,7 +19,7 @@
 //! # Example
 //!
 //! ```
-//! use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
+//! use definition::{RegistryStore,Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 //! use whiting_scene::{CompileContext, Compiler, ReferenceScene, REFERENCE_SCENE_SCHEMA};
 //! use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 //!
@@ -87,7 +87,8 @@
 use std::collections::BTreeMap;
 
 use definition::{
-    Definition, DefinitionIdentifier, Delta, Path, PrimitiveDelta, Registry, Schema, Value, Version,
+    Definition, DefinitionIdentifier, Delta, Path, PrimitiveDelta, Registry, RegistryStore, Schema,
+    Value, Version,
 };
 use thiserror::Error;
 
@@ -203,9 +204,20 @@ pub struct CompileContext<'registry> {
 }
 
 impl<'registry> CompileContext<'registry> {
-    /// Borrows the scene value, which is the document the compiler reads.
-    pub fn scene_value(&self) -> &'registry Value {
-        &self.scene.value
+    /// Reads the scene: the document the compiler works from, with its references resolved.
+    ///
+    /// # Invariants
+    ///
+    /// A scene may name something that lives in another definition — a mesh shared by several
+    /// scenes, say — so the document is written out before a compiler reads it. What a compiler
+    /// sees is therefore always a scene that holds everything it names, however the author spread
+    /// it out, and a compiler never has to know which parts were named rather than written.
+    pub fn scene_value(&self) -> Result<Value, CompileError> {
+        RegistryStore::new(self.registry)
+            .value(self.scene)
+            .map_err(|reason| CompileError::UnreadableScene {
+                reason: reason.to_string(),
+            })
     }
 }
 
@@ -274,6 +286,8 @@ pub trait Compiler: Send + Sync {
 /// A compile failed, or emitted a delta that does not reproduce its own output.
 #[derive(Debug, Error)]
 pub enum CompileError {
+    #[error("the scene could not be read: {reason}")]
+    UnreadableScene { reason: String },
     #[error("the scene field at {path} is not {expected}, found {found}")]
     MalformedScene {
         path: Path,
