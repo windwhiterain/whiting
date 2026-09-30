@@ -83,6 +83,15 @@ impl Stage {
             Self::Lighting => "lighting",
         }
     }
+
+    /// Returns the prefix this stage's passes are labelled with.
+    pub const fn prefix(self) -> &'static str {
+        match self {
+            Self::Shadowing => "shadow",
+            Self::Depthing => "depth",
+            Self::Lighting => "lighting",
+        }
+    }
 }
 
 /// One mesh, read out of the scene document.
@@ -105,7 +114,6 @@ struct InstanceRead {
     /// The index of the shader it is drawn by, resolved from the material's label.
     shader: usize,
     stage: Stage,
-    instance_entry: String,
     /// The schema the instance row was packed with, which is the layout it is read with.
     instance_schema: Rc<Schema>,
     instance_bytes: Vec<u8>,
@@ -206,50 +214,36 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     for shader in &shaders {
         insert_entry(&mut instance, shader.label.clone(), shader_entry(shader))?;
     }
-    for found in &instances {
-        for (entry, value) in instance_entries(found, &meshes[found.mesh]) {
-            insert_entry(&mut instance, entry, value)?;
-        }
-    }
 
+    // One pass per group, and one instance entry per group, because the instances in a group are
+    // drawn together by one instanced draw rather than one draw apiece.
     let mut passes = Vec::new();
     for light in &lights {
-        for found in instances
-            .iter()
-            .filter(|found| found.stage == Stage::Shadowing)
-        {
-            passes.push(shadowing_pass(
-                found,
-                &meshes[found.mesh],
-                &shaders[found.shader].label,
-                light,
-                &bounds,
-            ));
+        for group in groups(
+            &instances,
+            &meshes,
+            &shaders,
+            Stage::Shadowing,
+            Some(&light.label),
+        ) {
+            insert_entry(&mut instance, group.entry(), group.payload())?;
+            passes.push(shadowing_pass(&group, light, &bounds));
         }
     }
-    for found in instances
-        .iter()
-        .filter(|found| found.stage == Stage::Depthing)
-    {
-        passes.push(depthing_pass(
-            found,
-            &meshes[found.mesh],
-            &shaders[found.shader].label,
-            &camera,
-        ));
+    for group in groups(&instances, &meshes, &shaders, Stage::Depthing, None) {
+        insert_entry(&mut instance, group.entry(), group.payload())?;
+        passes.push(depthing_pass(&group, &camera));
     }
     for light in &lights {
-        for found in instances
-            .iter()
-            .filter(|found| found.stage == Stage::Lighting)
-        {
-            passes.push(lighting_pass(
-                found,
-                &meshes[found.mesh],
-                &shaders[found.shader].label,
-                light,
-                &camera,
-            ));
+        for group in groups(
+            &instances,
+            &meshes,
+            &shaders,
+            Stage::Lighting,
+            Some(&light.label),
+        ) {
+            insert_entry(&mut instance, group.entry(), group.payload())?;
+            passes.push(lighting_pass(&group, light, &camera));
         }
     }
 
@@ -479,7 +473,6 @@ fn read_instance(
     let instance_bytes = pack_struct(shader_read.instance_schema.as_ref(), &row, &row_path)?;
 
     Ok(InstanceRead {
-        instance_entry: format!("{label}_{INSTANCE_DATA}"),
         instance_schema: shader_read.instance_schema.clone(),
         instance_bytes,
         label,
@@ -501,20 +494,105 @@ fn read_transform(instance: &Value, path: &Path) -> Result<Transform, CompileErr
     })
 }
 
-/// Returns the instance entries one instance contributes, which is its own row.
+/// Instances one pass can draw together.
 ///
-/// The shader is not among them: a shader is declared once and named by every material that
-/// draws with it, so its entry belongs to the scene rather than to an instance.
-fn instance_entries(found: &InstanceRead, mesh: &MeshRead) -> Vec<(String, Value)> {
-    vec![(
-        found.instance_entry.clone(),
+/// # Why instances share a pass
+///
+/// A pass binds one vertex buffer and one instance buffer, and the instance buffer steps once per
+/// row, so the renderer draws as many instances as the buffer has rows. Instances whose pass
+/// would otherwise be identical therefore share one pass: the same stage, the same shader, the
+/// same mesh, and the same light when the stage reads one. What differs between the rows of that
+/// one buffer is the per-instance data, which is why the material carries it and why nothing about
+/// it belongs in the uniform — a uniform is read by every instance the pass draws.
+struct Group<'read> {
+    /// The instances drawn together, in the order their rows are written.
+    members: Vec<&'read InstanceRead>,
+    /// The mesh they draw.
+    mesh: &'read MeshRead,
+    /// The label of the shader they draw with.
+    shader: &'read str,
+    /// The stage they are drawn in.
+    stage: Stage,
+    /// The light the stage reads, for the stages that read one.
+    light: Option<&'read str>,
+}
+
+impl Group<'_> {
+    /// Returns the name of the pass, which is also what its instance entry is named after.
+    fn label(&self) -> String {
+        match self.light {
+            Some(light) => format!(
+                "{}/{light}/{}/{}",
+                self.stage.prefix(),
+                self.shader,
+                self.mesh.label
+            ),
+            None => format!(
+                "{}/{}/{}",
+                self.stage.prefix(),
+                self.shader,
+                self.mesh.label
+            ),
+        }
+    }
+
+    /// Returns the name of the instance entry the pass reads.
+    fn entry(&self) -> String {
+        format!("{}_instance_data", self.label())
+    }
+
+    /// Returns the rows of every member, in order, as the bytes one instance buffer carries.
+    fn bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for member in &self.members {
+            bytes.extend_from_slice(&member.instance_bytes);
+        }
+        bytes
+    }
+
+    /// Returns the instance entry this group contributes.
+    ///
+    /// # Invariants
+    ///
+    /// Every member's row was packed with the schema of the shader the group draws with, so the
+    /// rows share one layout and the first of them describes all of them.
+    fn payload(&self) -> Value {
         buffer_payload(
-            found.instance_bytes.clone(),
-            found.instance_schema.to_value(),
+            self.bytes(),
+            self.members[0].instance_schema.to_value(),
             "instance",
-            mesh.topology.tag(),
-        ),
-    )]
+            self.mesh.topology.tag(),
+        )
+    }
+}
+
+/// Groups the instances of one stage by the pass they can share.
+fn groups<'read>(
+    instances: &'read [InstanceRead],
+    meshes: &'read [MeshRead],
+    shaders: &'read [ShaderRead],
+    stage: Stage,
+    light: Option<&'read str>,
+) -> Vec<Group<'read>> {
+    let mut groups: Vec<Group<'read>> = Vec::new();
+    for found in instances.iter().filter(|found| found.stage == stage) {
+        let mesh = &meshes[found.mesh];
+        let shader = shaders[found.shader].label.as_str();
+        match groups
+            .iter_mut()
+            .find(|group| group.shader == shader && group.mesh.label == mesh.label)
+        {
+            Some(group) => group.members.push(found),
+            None => groups.push(Group {
+                members: vec![found],
+                mesh,
+                shader,
+                stage,
+                light,
+            }),
+        }
+    }
+    groups
 }
 
 /// A shader as the scene document declares it.
@@ -652,14 +730,8 @@ pub fn shadow_map_entry(light_label: &str) -> String {
     format!("{light_label}_{SHADOW_MAP}")
 }
 
-/// Builds the shadowing pass of one instance for one light.
-fn shadowing_pass(
-    instance: &InstanceRead,
-    mesh: &MeshRead,
-    shader: &str,
-    light: &LightRead,
-    bounds: &Bounds,
-) -> Value {
+/// Builds the shadowing pass of one group for one light.
+fn shadowing_pass(group: &Group<'_>, light: &LightRead, bounds: &Bounds) -> Value {
     // The shadow map looks down the light's direction, at a box centred on the scene and
     // as wide as the light says it shines.
     let centre = bounds.centre();
@@ -675,13 +747,13 @@ fn shadowing_pass(
     );
 
     rasterize(
-        &format!("shadow/{}/{}", light.label, instance.label),
-        shader,
+        &group.label(),
+        group.shader,
         Value::structure([(PROJECTION.to_owned(), projection)]),
-        mesh_bindings(instance, mesh).chain([(
+        mesh_bindings(group).chain([(
             SHADOW_MAP.to_owned(),
             texture_binding(
-                &shadow_map_entry(&light.label),
+                &shadow_map_entry(light.label.as_str()),
                 SHADOW_MAP_WIDTH,
                 SHADOW_MAP_HEIGHT,
                 SHADOW_MAP_FORMAT,
@@ -692,13 +764,13 @@ fn shadowing_pass(
     )
 }
 
-/// Builds the depthing pass of one instance.
-fn depthing_pass(instance: &InstanceRead, mesh: &MeshRead, shader: &str, camera: &Value) -> Value {
+/// Builds the depthing pass of one group.
+fn depthing_pass(group: &Group<'_>, camera: &Value) -> Value {
     rasterize(
-        &format!("depth/{}", instance.label),
-        shader,
+        &group.label(),
+        group.shader,
         Value::structure([(PROJECTION.to_owned(), camera.clone())]),
-        mesh_bindings(instance, mesh).chain([(
+        mesh_bindings(group).chain([(
             DEPTH_BUFFER.to_owned(),
             texture_binding(DEPTH_BUFFER_ENTRY, DEPTH_WIDTH, DEPTH_HEIGHT, DEPTH_FORMAT),
         )]),
@@ -707,17 +779,11 @@ fn depthing_pass(instance: &InstanceRead, mesh: &MeshRead, shader: &str, camera:
     )
 }
 
-/// Builds the lighting pass of one instance for one light.
-fn lighting_pass(
-    instance: &InstanceRead,
-    mesh: &MeshRead,
-    shader: &str,
-    light: &LightRead,
-    camera: &Value,
-) -> Value {
+/// Builds the lighting pass of one group for one light.
+fn lighting_pass(group: &Group<'_>, light: &LightRead, camera: &Value) -> Value {
     rasterize(
-        &format!("lighting/{}/{}", instance.label, light.label),
-        shader,
+        &group.label(),
+        group.shader,
         Value::structure([
             (PROJECTION.to_owned(), camera.clone()),
             (
@@ -729,7 +795,7 @@ fn lighting_pass(
                 Value::List(light.colour.into_iter().map(Value::Float).collect()),
             ),
         ]),
-        mesh_bindings(instance, mesh).chain([
+        mesh_bindings(group).chain([
             (
                 COLOR_TARGET.to_owned(),
                 texture_binding(COLOR_TARGET_ENTRY, COLOR_WIDTH, COLOR_HEIGHT, COLOR_FORMAT),
@@ -843,22 +909,18 @@ fn number_components(value: &Value) -> Vec<f64> {
     }
 }
 
-/// Returns the two binding points every pass of an instance carries.
-fn mesh_bindings<'read>(
-    instance: &'read InstanceRead,
-    mesh: &'read MeshRead,
-) -> impl Iterator<Item = (String, Value)> + use<'read> {
+/// Returns the two binding points every pass of a group carries.
+fn mesh_bindings<'group>(
+    group: &'group Group<'_>,
+) -> impl Iterator<Item = (String, Value)> + 'group {
     [
         (
             VERTICES.to_owned(),
-            buffer_binding(&mesh.vertex_entry, mesh.vertex_bytes),
+            buffer_binding(&group.mesh.vertex_entry, group.mesh.vertex_bytes),
         ),
         (
             INSTANCE_DATA.to_owned(),
-            buffer_binding(
-                &instance.instance_entry,
-                instance.instance_bytes.len() as i64,
-            ),
+            buffer_binding(&group.entry(), group.bytes().len() as i64),
         ),
     ]
     .into_iter()

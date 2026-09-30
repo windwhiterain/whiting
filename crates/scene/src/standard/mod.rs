@@ -65,26 +65,47 @@
 //!     })
 //!     .expect("the scene compiles");
 //!
-//! // The scene has one instance per stage, so the pipeline is the three stages in order.
+//! // The scene has instances in three stages, so the pipeline is the three stages in order.
+//! // Instances that would be drawn by identical passes share one: the two lighting instances
+//! // are one pass, so the label names the group rather than an instance.
 //! let passes = graphics::passes(&compiled.graphics.value).expect("the passes read");
 //! let labels: Vec<&str> = passes.iter().map(|pass| pass.label().unwrap()).collect();
-//! assert_eq!(labels, ["shadow/key/caster", "depth/occluder", "lighting/quad/key"]);
+//! assert_eq!(
+//!     labels,
+//!     [
+//!         "shadow/key/shadowing/triangle",
+//!         "depth/depthing/triangle",
+//!         "lighting/key/lighting/triangle"
+//!     ]
+//! );
+//!
+//! // A pass draws as many instances as its instance buffer has rows, so the two lighting
+//! // instances are one buffer of two rows rather than two buffers or two passes.
+//! let shared = compiled
+//!     .instance
+//!     .value
+//!     .at(&definition::Path::root().key("entries").key(&format!(
+//!         "{labels_tail}_instance_data",
+//!         labels_tail = "lighting/key/lighting/triangle"
+//!     )))
+//!     .expect("the lighting instances are in one entry");
+//! let rows = shared
+//!     .variant_fields()
+//!     .and_then(|fields| fields.get("data"))
+//!     .and_then(definition::Value::as_bytes)
+//!     .expect("a buffer carries its bytes")
+//!     .len();
+//! assert_eq!(rows, 128, "two rows of sixteen floats");
 //!
 //! // A pass carries declarations; the instance carries the payloads they name, under the field
 //! // that leaves room for the instance to say which graphics it belongs to. The mesh is
-//! // authored once, so one vertex buffer is shared by all three instances.
+//! // authored once, so one vertex buffer is shared by every stage that draws it.
 //! let triangle = compiled
 //!     .instance
 //!     .value
 //!     .at(&definition::Path::root().key("entries").key("triangle_vertices"))
 //!     .expect("the vertex buffer is in the instance");
 //! assert_eq!(triangle.variant_tag(), Some("Buffer"));
-//! let quad = compiled
-//!     .instance
-//!     .value
-//!     .at(&definition::Path::root().key("entries").key("quad_instance_data"))
-//!     .expect("the instance buffer is in the instance");
-//! assert_eq!(quad.variant_tag(), Some("Buffer"));
 //!
 //! // The instance names the graphics it provides data to, which is the one edge that ties the
 //! // pair together: a renderer refuses an instance rendered against anything else rather than

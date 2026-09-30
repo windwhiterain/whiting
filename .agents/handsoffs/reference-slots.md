@@ -65,45 +65,38 @@ reference design needs the schema machinery that branch carries). The design is 
 
 ## Next
 
-1. **A compiler that emits a reference.** The device resolves one and the instances it holds may
-   name their payloads elsewhere, but no compiler emits such a name yet: the standard scene puts
-   each mesh's bytes in the instance output, so a second scene does not share them. Emitting a
-   definition per shared part is what the design was for, and it is a compiler change rather than
-   a mechanism one.
-2. **A cache, if the load per render matters.** A document that spells a reference is loaded per
-   render call; the store is rebuilt each time. A document that names nothing is handed over as
-   it is, so only a sharing document pays.
-3. **`History` and the registry on the loaded form.** `Definition` still holds the serialized
-   value and applies deltas to it, so `Delta::apply` and `Loaded::patch` now exist side by side;
-   the wire path refuses a document that spells a reference, so the two cannot disagree silently,
-   but the registry itself is still value-based.
+1. **The material's custom data never reaches the gpu.** The emitter verifies it against the
+   shader's custom schema and then drops it: the instance row is the model matrix and nothing
+   else. Since the material carries it and a material belongs to an instance, it is per-instance
+   data, so it belongs in the instance row — which is also what makes it work under batching,
+   where a uniform is read by every instance of the pass. This is the next thing to write.
+2. **A compiler that emits a reference.** The device resolves one and an instance entry may name
+   its payload in another definition, but no compiler emits such a name yet: the standard scene
+   puts each mesh's bytes in its own output, so a second scene shares nothing.
+3. **A cache, if the load per render matters.** A document that spells a reference is loaded per
+   render call; one that names nothing is handed over as it is.
 
 ## Flags for the superior
 
-- **The graphics/instance edge is where the spec puts it**, on the instance
-  (`referencing_graphics`), and the instance is now a struct of a name and a payload map rather
-  than a bare map, because a dictionary schema carries one value schema and so had nowhere to put
-  a name. An instance that does not say which graphics it belongs to fails validation, and a
-  render of a pair that disagrees is refused.
-- **A slot must be marked before a reference in it means anything**, which the device's own
-  doctest proved the hard way: the entry schema was `Dict(Any)`, so an entry that spelled a
-  reference was read as data and silently never resolved. Both instance schemas now mark their
-  entry values as able to hold a reference. The same is true of a dictionary in general, where
-  the loader had been reading entries as open rather than as the dictionary's value schema — a
-  bug that only a document *using* a reference could have found.
+- **The renderer already draws instanced, and the compiler now feeds it.** A pass binds one
+  vertex buffer and one instance buffer, and the draw is `draw(0..vertices, 0..rows)`, so
+  instances whose passes would be identical now share one pass: the same stage, shader, mesh and
+  light. The example scene gained a second lighting instance to demonstrate it — one pass, one
+  buffer, two rows — because its original three instances were in three stages and could never
+  merge. The consequence for the format is that anything varying per instance must be per-instance
+  *data*, which is where the material's custom data belongs and where a uniform cannot.
+- **The instance carries the payloads under `entries`, and names its graphics**, because a
+  dictionary schema had nowhere to put a name. A pair that disagrees is refused rather than
+  rendered.
+- **A slot must be marked before a reference in it means anything**, and a dictionary's entries
+  are read with the dictionary's value schema rather than as open — a bug that only a document
+  using a reference could have found.
 - **A field whose only meaning is a pointer cannot be required to be one.** The union lets a
-  marked slot hold a reference *or* a value, so a field that must be a pointer is only enforced by
-  the reader. If that should be expressible in the schema, it needs a marker that *requires* a
-  reference alongside the one that permits it.
+  marked slot hold a reference *or* a value, so a pointer field is only enforced by the reader.
 - **A delta's paths only mean what they say on a loaded generation**, so `Delta::apply` refuses a
   document that spells a reference and the loaded applier is the authoritative one.
-- **Definitions refer to each other in a graph, not in a cycle** — confirmed, and the store in the
-  device enforces it by refusing a definition already being loaded.
-- **A delta mutates the live generation in place** — confirmed, so the sharing flag is a
-  diagnostic and a packer hint rather than a correctness input.
+- **Definitions refer to each other in a graph, not in a cycle** — confirmed, and the device's
+  store enforces it.
+- **A delta mutates the live generation in place** — confirmed.
 - A `Remove` of indices is a contiguous range, so an arbitrary non-contiguous set is not
-  representable, because the operations map holds one primitive per path and no `Append` can
-  invert a scattered removal.
-- A loaded generation is a plain value; whether the client holds it in an `Rc`, behind a lock, or
-  in a single owning task is the client's call, and the single-owner reading keeps the graph
-  `Send`.
+  representable.

@@ -1,8 +1,9 @@
 //! A small, valid standard scene, built from the schemas the compiler declares.
 //!
-//! The scene has one light, one mesh, and three instances of that mesh — one per stage — so
-//! the pipeline it compiles to is the whole three stage pipeline, and the geometry is
-//! written once however many stages draw it.
+//! The scene has one light, one mesh, and four instances of that mesh — one per stage, and two
+//! in the lighting stage — so the pipeline it compiles to is the whole three stage pipeline, the
+//! geometry is written once however many stages draw it, and the two lighting instances are drawn
+//! together by one instanced draw.
 
 use definition::Value;
 
@@ -53,6 +54,10 @@ pub fn example_standard_scene() -> Value {
                 instance("caster", "triangle", "shadowing", [0.0, 0.0, 0.0]),
                 instance("occluder", "triangle", "depthing", [1.0, 0.0, 0.0]),
                 instance("quad", "triangle", "lighting", [0.0, 0.0, 0.0]),
+                // A second instance of the same mesh drawn by the same shader in the same stage,
+                // so that the two share one pass and one instance buffer with a row apiece rather
+                // than being drawn one at a time.
+                instance("twin", "triangle", "lighting", [2.0, 0.0, 0.0]),
             ]),
         ),
     ])
