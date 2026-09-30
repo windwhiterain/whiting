@@ -29,9 +29,13 @@ provide a schema of `Definition` that represents instruction set of lowlevel gra
 - `Graphics`: a `Definition` in `graphics`'s schema.
   - `instance_schema: Schema`:
   - its binders defines a corresponding schema for `GraphicsInstance`
-  - `Pass`:
-    - `Rasterize`
-    - `Compute`
+  - `Pass`: 
+    - enum of:
+      - `Rasterize`
+      - `Compute`
+    - `uniform: Uniform`
+    - `shader: Shader`
+    - `binders`
   - `Binder`: retrieve data from `GraphicsInstance`, used by `Pass`:
     - enum of:
       - `Resource`: GPU resources.
@@ -39,7 +43,7 @@ provide a schema of `Definition` that represents instruction set of lowlevel gra
           - `Buffer`
           - `Texture`
       - `Uniform`: uniform data.
-      - `Shader`: shader path.
+      - `Shader`: verify schema against `uniform` and `binders`.
 - `GraphicsInstance`: a `Definition` provide data to its `referencing_graphics` in corresponding schema.
   - `referencing_graphics: Graphics`
 
@@ -52,5 +56,32 @@ a server that can hot reload `Graphics`, `GraphicsInstance`, increntally apply `
 provide utility to build compilers to compile `Definition` with certain schema into `Graphics` and corresponding `GraphicsInstance`, and its `Delta` version for incremental compile.
 
 - `Compiler`: trait.
-  - `scene: Scene`: the schema to compile.
+  - `scene: Schema`: the schema to compile.
   - `fn compile`
+- `StandardScene`
+  - `PassSchema`
+    - `ShadowingSchema`
+    - `DepthingSchema`
+    - `LightingSchema`
+  - `Light`
+  - `Mesh`
+    - `instance_data` 
+    - `point_schema: Schema`: schema of point data (e.g. position, uv ...).
+    - `Point`
+    - `Topology`: enum of:
+      - `Triangles`
+      - `Segments`
+    - `material: Material`
+  - `Shader`: 
+    - verify aginst `CustomSchema`.
+    - enum of:
+      - `MeshShader`: 
+        - verify schema aginst `PassSchema` + `InstanceSchema` + `PointSchema`.
+        - enum of:
+          - `ShadowingShader`
+          - `DepthShader`
+          - `LightingShader`
+      - `ScreenShader`
+  - `Material`
+    - `shader: Shader`
+    - `custom_data`
