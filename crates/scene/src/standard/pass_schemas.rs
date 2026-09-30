@@ -129,10 +129,14 @@ pub fn camera_schema() -> Schema {
 }
 
 /// Width in pixels of every shadow map the standard pipeline renders.
-pub const SHADOW_MAP_WIDTH: i64 = 1024;
+///
+/// Two thousand over the few hundred units a scene's shadow volume spans is a fifth of a
+/// unit a texel, which is what a step two units wide needs for its shadow to outlive the
+/// blur the comparison kernel spreads it by. At one thousand the texel was the step.
+pub const SHADOW_MAP_WIDTH: i64 = 2048;
 
 /// Height in pixels of every shadow map the standard pipeline renders.
-pub const SHADOW_MAP_HEIGHT: i64 = 1024;
+pub const SHADOW_MAP_HEIGHT: i64 = 2048;
 
 /// Format every shadow map is rendered in.
 pub const SHADOW_MAP_FORMAT: &str = "depth32float";
