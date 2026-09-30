@@ -52,6 +52,19 @@ fn value_delta(
     next: &Value,
 ) -> BTreeMap<Path, PrimitiveDelta> {
     match next {
+        // A packed list is a list, and two runs are compared by their bytes rather than by their
+        // elements. A mesh whose points did not move therefore costs one `memcmp` however many
+        // points it has, and a mesh whose points did move is a single replace, because there is
+        // no finer operation than "these are the new bytes".
+        Value::Packed(run) => {
+            if previous
+                .and_then(Value::as_packed)
+                .is_some_and(|before| before.matches(run))
+            {
+                return BTreeMap::new();
+            }
+            whole_replace(path, next)
+        }
         Value::List(_) => list_delta(path, previous, Some(next)),
         _ => struct_delta(path, previous, Some(next)),
     }

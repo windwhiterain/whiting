@@ -232,6 +232,15 @@ pub enum Node {
     },
     /// An ordered sequence.
     List(Vec<Slot>),
+    /// A list whose elements all have one structure, carried as a flat run of bytes.
+    ///
+    /// # Invariants
+    ///
+    /// A run holds no slots, because an element of it is a stride rather than a node: a reference
+    /// into a packed list therefore resolves to the run and is read by decoding the element it
+    /// names. Keeping it a node of its own is what makes a list a list to everything above it,
+    /// whether it is carried as a tree or as bytes.
+    Packed(crate::packed::PackedList),
     /// An open map of string keys.
     Dict(BTreeMap<String, Slot>),
 }
@@ -246,11 +255,37 @@ impl Node {
     }
 
     /// Borrows the elements of this node when it is a list.
+    ///
+    /// A packed list holds a run rather than elements, so it answers `None` here: a caller that
+    /// wants the elements of a packed list expands it, and a caller that wants to walk them
+    /// cheaply reads the run through [`Node::as_packed`].
     pub fn elements(&self) -> Option<&[Slot]> {
         match self {
             Self::List(elements) => Some(elements),
             _ => None,
         }
+    }
+
+    /// Borrows the run when this node is a packed list.
+    pub fn as_packed(&self) -> Option<&crate::packed::PackedList> {
+        match self {
+            Self::Packed(list) => Some(list),
+            _ => None,
+        }
+    }
+
+    /// Returns how many elements this node holds, in either representation of a list.
+    pub fn list_len(&self) -> Option<usize> {
+        match self {
+            Self::List(elements) => Some(elements.len()),
+            Self::Packed(list) => Some(list.len()),
+            _ => None,
+        }
+    }
+
+    /// Returns whether this node is a list in either of its two representations.
+    pub const fn is_list(&self) -> bool {
+        matches!(self, Self::List(_) | Self::Packed(_))
     }
 
     /// Returns the name of this kind of node, for an error message.
@@ -265,6 +300,9 @@ impl Node {
             Self::Struct(_) => "a struct",
             Self::Enum { .. } => "an enum",
             Self::List(_) => "a list",
+            // A packed list is a list, so a path that reaches one is not reaching something it
+            // cannot address.
+            Self::Packed(_) => "a list",
             Self::Dict(_) => "a dict",
         }
     }
@@ -515,6 +553,10 @@ impl Loaded {
                 | (PathSegment::Key(name), Value::Dict(fields))
                 | (PathSegment::Key(name), Value::Enum { fields, .. }) => fields.get(name)?,
                 (PathSegment::Index(index), Value::List(elements)) => elements.get(*index)?,
+                // A packed list holds structs of numbers and nothing else, and none of that can
+                // spell a reference, so nothing beneath one crosses a reference. The walk stops
+                // here rather than decoding a run to look for a declaration that cannot be in it.
+                (PathSegment::Index(_), Value::Packed(_)) => return None,
                 _ => return None,
             };
             current_schema = match (segment, current_schema, container) {
@@ -552,16 +594,34 @@ impl Loaded {
                     .ok_or_else(|| unresolved(PathError::AbsentKey(name.clone())))?
                     .target()
                     .clone(),
-                (PathSegment::Index(index), Node::List(elements)) => elements
-                    .get(*index)
-                    .ok_or_else(|| {
-                        unresolved(PathError::IndexOutOfBounds {
+                (PathSegment::Index(index), node) if node.is_list() => {
+                    let length = node.list_len().expect("the guard checked this");
+                    if *index >= length {
+                        return Err(unresolved(PathError::IndexOutOfBounds {
                             index: *index,
-                            length: elements.len(),
-                        })
-                    })?
-                    .target()
-                    .clone(),
+                            length,
+                        }));
+                    }
+                    // An index into a packed list names a stride of the run rather than a node, so
+                    // the target is the run itself and a reader decodes the element out of it. A
+                    // path that continues past the index names something *inside* one element,
+                    // which is reached by decoding rather than by walking nodes, and the loaded
+                    // graph has no node for it.
+                    if node.as_packed().is_some() {
+                        return Err(unresolved(PathError::NotIndexed("a packed list element")));
+                    }
+                    node.elements()
+                        .expect("the guard checked this")
+                        .get(*index)
+                        .ok_or_else(|| {
+                            unresolved(PathError::IndexOutOfBounds {
+                                index: *index,
+                                length,
+                            })
+                        })?
+                        .target()
+                        .clone()
+                }
                 (PathSegment::Key(_), node) => {
                     return Err(unresolved(PathError::NotKeyed(node.kind_name())));
                 }
@@ -616,6 +676,12 @@ fn find_reference(value: &Value, schema: &Schema, at: &Path) -> Option<Path> {
         Value::List(elements) => elements.iter().enumerate().find_map(|(index, value)| {
             find_reference(value, load::element_schema(schema), &at.index(index))
         }),
+        // A packed run is a list of values that were already read, and the walk that got here
+        // would have descended into each of them. Nothing beneath a packed list can spell a
+        // reference, because packing only accepts elements that are structs of numbers, so the
+        // walk stops here rather than decoding a run to look for a declaration that cannot be in
+        // it.
+        Value::Packed(_) => None,
         _ => None,
     }
 }

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use facet::Facet;
 
+use crate::packed::PackedList;
 use crate::path::Path;
 use crate::schema::{Schema, SchemaKind};
 
@@ -18,6 +19,18 @@ pub type FieldMap = BTreeMap<String, Value>;
 /// `Value` carries no domain meaning. Every domain concept in the workspace, such as
 /// `Graphics` or `Pass`, is a pattern of `Value` validated by a
 /// [`Schema`](crate::Schema), never a distinct rust type.
+///
+/// # The packed form of a list
+///
+/// A [`Value::List`] whose elements all have one structure may be carried as
+/// [`Value::Packed`] instead: a flat run of bytes, one stride per element, described by the
+/// layout its element schema implies. The two are the same data — a packed list expands back
+/// into the list exactly — and they are the same *kind*, so a schema accepts either. What differs
+/// is what reading one costs: a tree is walked, and a run is indexed.
+///
+/// The choice is the author's or a compiler's, per list. Nothing in the framework converts one
+/// into the other behind an author's back, because expanding a run to read one element would undo
+/// the reason for having it.
 #[derive(Debug, Clone, PartialEq, Default, Facet)]
 #[repr(C)]
 pub enum Value {
@@ -38,6 +51,11 @@ pub enum Value {
     },
     /// An ordered sequence.
     List(Vec<Value>),
+    /// A list whose elements all have one structure, carried as a flat run of bytes.
+    ///
+    /// This is the same kind as [`Value::List`] and satisfies the same schema; it is a
+    /// representation, not a different thing. See [`crate::PackedList`].
+    Packed(PackedList),
     /// An open map of string keys, whose entries an agent may add without editing a schema.
     Dict(FieldMap),
 }
@@ -55,6 +73,9 @@ impl Value {
             Self::Struct(_) => "struct",
             Self::Enum { .. } => "enum",
             Self::List(_) => "list",
+            // A packed list is a list; saying otherwise would make a schema that accepts one
+            // report a kind mismatch to a caller that did nothing wrong.
+            Self::Packed(_) => "list",
             Self::Dict(_) => "dict",
         }
     }
@@ -72,6 +93,55 @@ impl Value {
         match self {
             Self::List(elements) => Some(elements),
             _ => None,
+        }
+    }
+
+    /// Borrows the packed run when this is a packed list, otherwise returns `None`.
+    pub fn as_packed(&self) -> Option<&PackedList> {
+        match self {
+            Self::Packed(list) => Some(list),
+            _ => None,
+        }
+    }
+
+    /// Mutably borrows the packed run when this is a packed list, otherwise returns `None`.
+    pub fn as_packed_mut(&mut self) -> Option<&mut PackedList> {
+        match self {
+            Self::Packed(list) => Some(list),
+            _ => None,
+        }
+    }
+
+    /// Returns whether this value is a list in either of its two representations.
+    ///
+    /// A schema, a path and a reader all need to ask "is this a sequence" without caring how it
+    /// is carried, and this is how they ask. Expanding a packed list to answer a question about
+    /// its shape would cost the whole run, which is the one thing the run exists to avoid.
+    pub const fn is_list(&self) -> bool {
+        matches!(self, Self::List(_) | Self::Packed(_))
+    }
+
+    /// Returns how many elements this list holds, in either representation.
+    ///
+    /// This is a `len` for a tree and a division for a run, and it is exact for both because a
+    /// packed list's byte length is always a whole number of strides.
+    pub fn list_len(&self) -> Option<usize> {
+        match self {
+            Self::List(elements) => Some(elements.len()),
+            Self::Packed(list) => Some(list.len()),
+            _ => None,
+        }
+    }
+
+    /// Expands a list into the tree form, leaving anything else as it is.
+    ///
+    /// This is the reading that undoes the packing, and it is deliberately explicit: nothing
+    /// calls it on a path walk, because doing so would turn one element's read into a whole run's
+    /// copy. A caller that genuinely needs the tree asks for it.
+    pub fn expanded(&self) -> Value {
+        match self {
+            Self::Packed(list) => list.to_list(),
+            other => other.clone(),
         }
     }
 
@@ -171,6 +241,47 @@ impl Value {
         }
     }
 
+    /// Inserts whole elements before `index`, in either representation.
+    ///
+    /// # Invariants
+    ///
+    /// A packed list keeps its representation: inserting into a run rebuilds the run rather than
+    /// expanding it, because a list that was packed for its size should not grow into a tree the
+    /// moment something is added to it. An element appended to a run is encoded against the run's
+    /// own layout, so the run stays uniform.
+    pub fn list_insert(&mut self, index: usize, values: Vec<Value>) -> Option<()> {
+        match self {
+            Self::List(elements) => {
+                if index > elements.len() {
+                    return None;
+                }
+                for (offset, value) in values.into_iter().enumerate() {
+                    elements.insert(index + offset, value);
+                }
+                Some(())
+            }
+            Self::Packed(list) => list.insert(index, &values).ok(),
+            _ => None,
+        }
+    }
+
+    /// Removes a contiguous range of whole elements and returns them, in either representation.
+    ///
+    /// This is the exact inverse of [`Value::list_insert`] over the same range, which is what lets
+    /// a delta invert a list mutation minimally in packed form as well as in tree form.
+    pub fn list_remove(&mut self, start: usize, count: usize) -> Option<Vec<Value>> {
+        match self {
+            Self::List(elements) => {
+                let end = start
+                    .checked_add(count)
+                    .filter(|end| *end <= elements.len())?;
+                Some(elements.drain(start..end).collect())
+            }
+            Self::Packed(list) => list.remove(start, count).ok(),
+            _ => None,
+        }
+    }
+
     /// Builds a struct value from an iterator of fields.
     pub fn structure(fields: impl IntoIterator<Item = (String, Value)>) -> Self {
         Self::Struct(fields.into_iter().collect())
@@ -204,18 +315,27 @@ impl Value {
             Self::Struct(fields) => format!("struct with {} fields", fields.len()),
             Self::Enum { tag, fields } => format!("enum {tag} with {} fields", fields.len()),
             Self::List(elements) => format!("list of {}", elements.len()),
+            Self::Packed(list) => format!("list of {}", list.len()),
             Self::Dict(entries) => format!("dict of {}", entries.len()),
         }
     }
 
     /// Borrows the value at `path`, returning `None` when the path does not resolve.
-    pub fn at(&self, path: &Path) -> Option<&Value> {
+    ///
+    /// A path into a packed list answers with a decoded element, which is why this returns a
+    /// [`Resolved`] rather than a plain borrow: see [`Resolved`](crate::Resolved).
+    pub fn at(&self, path: &Path) -> Option<crate::path::Resolved<'_>> {
         path.resolve(self).ok()
     }
 
-    /// Mutably borrows the value at `path`, returning `None` when it does not resolve.
-    pub fn at_mut(&mut self, path: &Path) -> Option<&mut Value> {
-        path.resolve_mut(self).ok()
+    /// Applies an edit to the value at `path`, returning `None` when the path does not resolve.
+    ///
+    /// # Invariants
+    ///
+    /// The edit runs at most once, and only after the whole path has resolved, so a rejected
+    /// operation leaves the document untouched.
+    pub fn update_at<R>(&mut self, path: &Path, edit: impl FnOnce(&mut Value) -> R) -> Option<R> {
+        path.update(self, edit).ok()
     }
 
     /// Substitutes the `default` of every absent optional field, recursively.
@@ -261,6 +381,21 @@ impl Value {
                     .map(|element_value| element_value.defaulted(element))
                     .collect(),
             ),
+            // A packed list is filled in the same way a tree list is and is packed again rather
+            // than expanded: filling defaults must not turn a run back into fifty thousand maps,
+            // which is the cost the run was chosen to avoid. A run that will not pack again was
+            // already valid, so it is returned rather than mangled.
+            (SchemaKind::List { element }, Self::Packed(list)) => {
+                let filled: Vec<Value> = (0..list.len())
+                    .map(|index| {
+                        list.element(index)
+                            .map_or(Value::Unit, |value| value.defaulted(element))
+                    })
+                    .collect();
+                Self::Packed(
+                    PackedList::from_list(list.layout(), &filled).unwrap_or_else(|_| list.clone()),
+                )
+            }
             (SchemaKind::Enum { variants }, Self::Enum { tag, fields }) => {
                 let Some(variant_schema) = variants.get(tag) else {
                     return self.clone();

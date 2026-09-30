@@ -98,7 +98,8 @@ pub use example::{example_graphics, example_instance};
 pub use inputs::{shader_interface, uniform_schema, verify_pass_inputs};
 pub use instance::derived_instance_schema;
 pub use layout::{
-    VertexAttribute, VertexLayout, components, uniform_bytes, value_bytes, vertex_layout,
+    LayoutError, VertexAttribute, VertexLayout, components, packed_layout, uniform_bytes,
+    value_bytes, vertex_layout,
 };
 pub use pass::{
     BINDERS, BLEND, CLEAR_COLOR, DEPTH, ENTRY_POINT, LABEL, SAMPLES, SHADER, TARGETS, UNIFORM,

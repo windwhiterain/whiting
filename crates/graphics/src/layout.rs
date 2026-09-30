@@ -53,7 +53,7 @@
 //! assert!(vertex_layout(&vague).is_err());
 //! ```
 
-use definition::{Schema, SchemaKind, Value};
+use definition::{PackedLayout, Schema, SchemaKind, Value};
 use thiserror::Error;
 
 /// Extension on a list field naming how many components it has.
@@ -209,6 +209,28 @@ pub fn components_schema(count: usize) -> Schema {
     }
 }
 
+/// Derives the packed layout of a point schema.
+///
+/// # Invariants
+///
+/// This is the *same* layout [`vertex_layout`] derives offsets from — the fields in schema order,
+/// each with the component count it declares — so a list packed against it and a buffer laid out
+/// from it agree by construction rather than by two functions agreeing. That is the whole reason
+/// a mesh's points can be a run of bytes and be handed to the renderer with nothing in between.
+///
+/// A field the layout cannot read is an error rather than a component count of zero, because a
+/// run packed with a zero width field would read as a list of elements that are missing it.
+pub fn packed_layout(schema: &Schema) -> Result<PackedLayout, LayoutError> {
+    let SchemaKind::Struct { fields } = &schema.kind else {
+        return Err(LayoutError::NotAStruct(schema.kind_name()));
+    };
+    fields
+        .iter()
+        .map(|(name, field)| Ok((name.clone(), components(name, field)?)))
+        .collect::<Result<Vec<_>, LayoutError>>()
+        .map(PackedLayout::new)
+}
+
 /// Packs a value into the bytes a buffer carries.
 ///
 /// # Invariants
@@ -228,6 +250,12 @@ pub fn value_bytes(value: &Value) -> Result<Vec<u8>, LayoutError> {
 /// Appends one value, flattening a list of numbers into consecutive components.
 fn push(bytes: &mut Vec<u8>, value: &Value) -> Result<(), LayoutError> {
     match value {
+        // A packed list is already a run of exactly these bytes, so it is appended whole. This is
+        // the whole cost of packing a mesh's points into a vertex buffer: a copy.
+        Value::Packed(list) => {
+            bytes.extend_from_slice(list.bytes());
+            Ok(())
+        }
         Value::List(components) => {
             for component in components {
                 push(bytes, component)?;

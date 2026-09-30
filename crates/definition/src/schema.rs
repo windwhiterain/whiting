@@ -105,7 +105,36 @@ impl Schema {
         }
     }
 
+    /// Returns the offset and component count of a named field of a struct schema, or `None`
+    /// when this schema is not a struct or declares no such field.
+    ///
+    /// A caller that reads one field out of a packed list asks this once and then indexes the run
+    /// by the answer, rather than walking the struct for every element it reads.
+    pub fn struct_field(&self, name: &str) -> Option<&Schema> {
+        let SchemaKind::Struct { fields } = &self.kind else {
+            return None;
+        };
+        fields.get(name)
+    }
+
     /// Verifies that `value` satisfies this schema, reporting the root path.
+    ///
+    /// # This runs in every build
+    ///
+    /// Validation is not a debug-build check. It is the mechanism by which a document that does
+    /// not satisfy its schema is *refused*, and three contracts depend on it being on in a
+    /// release server as much as in a test:
+    ///
+    /// - A bad document is an error naming the path that is wrong, rather than a bad frame an
+    ///   agent has to diagnose from a picture.
+    /// - `Delta::apply` is atomic against a schema-breaking result, not only against a malformed
+    ///   operation, because it validates a clone before committing it.
+    /// - A server's `put` rejects a document at the boundary rather than storing one no schema
+    ///   admits.
+    ///
+    /// A packed list is what makes this affordable rather than what makes it optional: its check
+    /// is `len % stride == 0`, so a mesh of a hundred thousand points is still verified in
+    /// constant time. See `.agents/proposals/compile-cost.md`.
     pub fn validate(&self, value: &Value) -> Result<(), ValidationError> {
         self.validate_at(&Path::root(), value)
     }
@@ -165,6 +194,33 @@ impl Schema {
                 .try_for_each(|(index, element_value)| {
                     element.validate_at(&path.child(PathSegment::Index(index)), element_value)
                 }),
+
+            // A packed list is a list, and it satisfies the same schema — the difference is what
+            // reading one costs, not what it means. So the check is not a walk of the elements at
+            // all: packing only accepts elements that are structs of the declared fields, so the
+            // run is uniform by construction and what is left to verify is that the bytes are a
+            // whole number of the layout's strides.
+            //
+            // This is what makes a list that was packed cheap to keep verified, and it is why
+            // packing is preferable to dropping the check: an author's error is still caught, in
+            // constant time.
+            //
+            // The layout is *not* compared against the element schema here. Whether a field is one
+            // component or three is a convention of the layer that lays buffers out, and this
+            // crate is below that layer; whoever packs a list from a schema is the one that knows,
+            // and it checks the two layouts agree at the point it packs.
+            (SchemaKind::List { element }, Value::Packed(list)) => {
+                let _ = element;
+                let stride = list.layout().stride_bytes();
+                if stride == 0 || list.bytes().len() % stride != 0 {
+                    return Err(ValidationError::MalformedPackedList {
+                        path: path.clone(),
+                        stride,
+                        found: list.bytes().len(),
+                    });
+                }
+                Ok(())
+            }
 
             (SchemaKind::Dict { value: entry }, Value::Dict(entries)) => {
                 entries.iter().try_for_each(|(name, entry_value)| {

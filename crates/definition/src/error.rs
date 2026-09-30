@@ -25,6 +25,14 @@ pub enum ValidationError {
     UnknownVariant { path: Path, tag: String },
     #[error("at {path}: the schema declares a reference here, and {reason}")]
     MalformedReference { path: Path, reason: String },
+    #[error(
+        "at {path}: a packed list of {stride} byte elements has {found} bytes, which is not a whole number of elements"
+    )]
+    MalformedPackedList {
+        path: Path,
+        stride: usize,
+        found: usize,
+    },
 }
 
 /// A value is not a readable [`Schema`](crate::Schema) document.

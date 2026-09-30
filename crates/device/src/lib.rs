@@ -88,6 +88,7 @@
 //!     .value
 //!     .at(&definition::Path::root().key("entries").key("surface"))
 //!     .expect("the surface is in the instance")
+//!     .as_value()
 //!     .clone();
 //! device
 //!     .registry_mut()

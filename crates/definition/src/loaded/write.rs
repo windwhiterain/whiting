@@ -34,6 +34,7 @@ impl Loaded {
             Node::List(elements) => {
                 Value::List(elements.iter().map(|slot| self.write_slot(slot)).collect())
             }
+            Node::Packed(list) => Value::Packed(list.clone()),
         }
     }
 
@@ -143,6 +144,9 @@ impl Loaded {
                 }
                 Value::List(written)
             }
+            // A run holds no slots to expand, so it is written as the run it is. Expanding it
+            // would undo the packing for a reader that never asked for a tree.
+            Node::Packed(list) => Value::Packed(list.clone()),
         })
     }
 

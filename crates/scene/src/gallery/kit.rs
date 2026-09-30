@@ -9,7 +9,7 @@
 //! A builder here produces the field names the scene schema declares and the emitter
 //! reads. Nothing in this module knows what a stage does, only which tag names it.
 
-use definition::{Schema, SchemaKind, Value};
+use definition::{PackedList, Schema, SchemaKind, Value};
 use graphics::layout::components_schema;
 
 /// The tint a material's shader multiplies its albedo by.
@@ -48,7 +48,13 @@ pub fn light(
 }
 
 /// Builds one mesh of a scene: its label, how its points are read, and the points.
-pub fn mesh(label: &str, topology: &str, point_schema: Schema, points: Vec<Value>) -> Value {
+///
+/// # Invariants
+///
+/// The points are a [`PackedList`], which is the same list a document would write as values and
+/// is what a buffer is built from directly. A generator produces the run rather than a tree of
+/// maps, so the geometry a scene is built from never exists in the expensive form at all.
+pub fn mesh(label: &str, topology: &str, point_schema: Schema, points: PackedList) -> Value {
     Value::structure([
         (
             crate::standard::LABEL.to_owned(),
@@ -62,7 +68,7 @@ pub fn mesh(label: &str, topology: &str, point_schema: Schema, points: Vec<Value
             crate::standard::POINT_SCHEMA.to_owned(),
             point_schema.to_value(),
         ),
-        (crate::standard::POINTS.to_owned(), Value::List(points)),
+        (crate::standard::POINTS.to_owned(), Value::Packed(points)),
     ])
 }
 

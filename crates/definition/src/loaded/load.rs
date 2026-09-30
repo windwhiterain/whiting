@@ -77,6 +77,7 @@ enum RawNode {
         fields: BTreeMap<String, RawSlot>,
     },
     List(Vec<RawSlot>),
+    Packed(crate::packed::PackedList),
     Dict(BTreeMap<String, RawSlot>),
 }
 
@@ -158,6 +159,11 @@ impl Builder<'_> {
                 }
                 RawNode::List(read)
             }
+            // A run holds no slots and therefore no references: packing only accepts structs of
+            // numbers, so there is nothing in one that could have been spelled. The run is read
+            // as it was written, which is what makes a loaded definition write back as the
+            // document it was read from.
+            Value::Packed(list) => RawNode::Packed(list.clone()),
         };
         Ok((node, pending))
     }
@@ -334,6 +340,14 @@ impl Builder<'_> {
                         })
                     })?
                 }
+                // A run is not walked here: a reference is spelled by a value, and a run holds
+                // only numbers.
+                (PathSegment::Index(index), RawNode::Packed(list)) => {
+                    return Err(unresolved(PathError::IndexOutOfBounds {
+                        index: *index,
+                        length: list.len(),
+                    }));
+                }
                 (PathSegment::Key(_), node) => {
                     return Err(unresolved(PathError::NotKeyed(node.kind_name())));
                 }
@@ -375,6 +389,7 @@ impl Builder<'_> {
                     tag: tag.clone(),
                     fields: self.materialise_fields(index, fields, resolved, &mut shared)?,
                 },
+                RawNode::Packed(list) => Node::Packed(list.clone()),
                 RawNode::List(elements) => {
                     let mut read = Vec::with_capacity(elements.len());
                     for (position, slot) in elements.iter().enumerate() {
@@ -466,6 +481,7 @@ impl RawNode {
             Self::Struct(_) => "a struct",
             Self::Enum { .. } => "an enum",
             Self::List(_) => "a list",
+            Self::Packed(_) => "a list",
             Self::Dict(_) => "a dict",
         }
     }

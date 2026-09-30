@@ -1,9 +1,9 @@
 # The compile, not the render, is what costs
 
-Status: **partly implemented**, partly open. The measurements and the three changes that came out of
-them are below; the larger structural fix is still open and is stated at the end. Every number was
-measured on an RTX 3060 through `wgpu`, with the harness in `crates/device/examples/render.rs`, which
-reports the phases of a frame apart.
+Status: **landed**. The three changes below were measured and applied; the structural fix is now
+`Value::Packed`, described in *What a packed list bought* at the end. Every number was measured on
+an RTX 3060 through `wgpu`, with the harness in `crates/device/examples/render.rs`, which reports
+the phases of a frame apart.
 
 ## The observation
 
@@ -85,10 +85,11 @@ document is one `Value::Bytes` of packed vertices, and comparing two of those is
 The growth across a sequence is gone as well as the size, which is the part that mattered: a range
 of frames is a range of frames rather than something that gets slower the longer it runs.
 
-## Still open
+## Still open, as it stood
 
 The remaining 310 ms is the honest cost of rebuilding everything from scratch every time, and
-removing it needs the change this proposal originally pointed at.
+removing it needed the change this proposal originally pointed at. Two routes were open; what
+actually closed them is at the end of this document.
 
 ### Do not re-read a value that has not changed
 
@@ -120,6 +121,59 @@ is not in the document that changes.
 
 That is a real change to what a compiler is, and it is the one that scales to a real asset.
 
+## What a packed list bought
+
+The geometry did not need to move out of the document. It needed to stop being a tree.
+
+A list whose elements all have one structure is stored as a flat run of bytes — `Value::Packed`,
+holding a `PackedList` — and the uniform structure is **guaranteed by the schema** rather than
+discovered by a packer: a list declares one element schema, and a struct is closed, so every
+element has the same fields, in the same order, with the same widths. `Packed` and `List` are the
+same kind, so a schema accepts either and packing is a representation rather than a change of
+meaning.
+
+| | before | after |
+| --- | --- | --- |
+| clone | 40 ms | 0 ms |
+| validate | 9 ms | 0 ms |
+| **compile** | **305 ms** | **10 ms** |
+| render | 10 ms | 8 ms |
+
+**Every frame is byte-identical to the pre-change baseline**, checked by SHA-256 over the PNGs, so
+nothing about the picture moved. A frame had been 97% compile; it is now split evenly.
+
+Each of the five rows that made up the compile, and what it became:
+
+| | was | is now |
+| --- | --- | --- |
+| `scene_value` — clone the document | 53 ms | a `memcpy` |
+| verifying every point against the mesh's schema | **100 ms** | `len % stride == 0` |
+| `pack_points` | 30 ms | a copy of bytes that are already packed |
+| clone the point list again | 45 ms | nothing |
+| `bounds_of_instances` | 43 ms | a strided read, with no map lookup |
+
+The cost now scales with *bytes* rather than with tree nodes. `monoliths`, at 182k points against
+`dunes`' 55k, compiles in 32 ms against 10 ms: three times the data for three times the time,
+which is the linear behaviour the change was for. That also answers the second open section for
+this workload — the geometry no longer costs what the document that changes costs, because a
+packed run is copied rather than walked, and a frame that changes one number copies one run.
+
+### The proposal that did not survive contact with the measurement
+
+"Do not validate anything in release mode" was implemented, measured, and reverted. It bought
+nothing: 10, 10, 10, 10, 11, 11 ms with validation on against 10, 10, 10, 10, 10, 11 ms with it
+off, both at the noise floor.
+
+The reason is the table above. The 100 ms that made validation look expensive *was* the per-point
+verification, and packing made it `len % stride == 0`. What was left was the ~2 ms of checks that
+can only ever fail on a compiler bug — and turning those off cost three real contracts for no
+measurable gain: a bad document became a bad frame rather than an error naming the field, `Delta::apply`
+lost atomicity against a schema-breaking result, and a server's `put` accepted documents its schema
+would have rejected.
+
+**Packing is what makes validation affordable, not what makes it optional.** The validation the
+author needs is now O(1) per list rather than O(points), and it still runs.
+
 ## What this is not
 
 This is not an argument against the value tree. A tree is the right *interface* language for a
@@ -133,3 +187,5 @@ should be the ones that make reading cheap too.
 Ten milliseconds of render against three hundred and ten of compile, where a dune field is
 fifty-five thousand points. An animation is still thirty times away from being limited by the thing
 it is actually for.
+
+**It is now ten milliseconds of render against ten of compile.** The number to beat is the render.

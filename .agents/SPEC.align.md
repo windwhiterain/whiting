@@ -42,6 +42,38 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
     - `Dict`: ordered map of string keys to `Value`.
   - `Struct` and `Dict` are distinct: `Struct` is closed by its `Schema` and
     validates field presence, `Dict` is open.
+  - `Packed(PackedList)`: a list whose elements all have one structure, carried as a flat
+    run of bytes, one stride per element, described by a `PackedLayout`.
+    - **decision**: `Packed` is the *same kind* as `List`, not a kind of its own.
+      `kind_name` reports `list` for both and a `List` schema accepts either, so packing
+      is a representation and never a change of meaning. A document that a reader cannot
+      tell apart is a document an agent can edit with the same tools.
+    - **invariant**: a packed list's byte length is always a whole number of strides. A
+      partial trailing element is a malformed list, and `PackedList::new` refuses to build
+      one, so no accessor ever has to cope with reading past the end. This is what makes a
+      run indexable by offset arithmetic at all.
+    - **invariant**: field order is schema order, which is sorted by name, which is the
+      order `graphics::layout::vertex_layout` derives offsets from. `packed_layout` and
+      `vertex_layout` read the same schema the same way, so a compiler that packs and a
+      renderer that draws cannot disagree about a stride.
+    - **invariant**: every component is four little endian bytes — the rule a buffer
+      already follows. A field of one component may be a bare number in a document and a
+      field of several is a list; reading back is the mirror of that rule, which is why a
+      document round-trips.
+    - **invariant**: packing is never done behind an author's back. Nothing expands a run
+      to answer a question about its shape, because that would undo the reason for having
+      one. The choice to pack is the writer's, per list.
+    - **why it exists**: a tree is the right *interface* language for a document an agent
+      reads and edits, and a poor *storage* format for a hundred thousand floats. Fifty-five
+      thousand `Value::Struct` values over `BTreeMap<String, Value>`, each with three
+      heap-allocated keys, is walked per pass; a run of `N * stride` bytes is one
+      allocation that a `memcmp` compares and a strided read indexes. The uniform structure
+      is guaranteed rather than hoped for: a list declares one element schema and a struct
+      is closed, so every element has the same fields, order and widths. A list that does
+      not satisfy that cannot be packed and is a `List` instead.
+    - **not done**: a run has no element cache, so a path walk into one decodes per element.
+      That is the right default — such a caller wants a tree and should say so — but it
+      means a run is fast for bulk reads and not for random ones.
 - `Schema`: a schema document used to verify a `Definition` and the `Delta`s
   referencing it.
   - a recursive node of:
@@ -97,6 +129,23 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
   - a sequence of segments, each either a `String` key or a `usize` index.
   - invariants: an index segment only addresses a `List`; a key segment only
     addresses a `Struct`, `Enum`, or `Dict`.
+  - `Resolved<'value>`: what a path answers with, either `Borrowed(&Value)` or
+    `Owned(Value)`, with `Deref<Target = Value>`.
+    - **decision**: a path walk returns this rather than `&Value`. A packed list carries a
+      run, and an element of it has to be decoded to be a `Value`; a decoded element is a
+      temporary with no address in the tree, so a walk that reached into a run cannot hand
+      back a borrow of it. Telling the two cases apart in one type, rather than at every
+      call site, is what keeps the readers reading like the borrows they usually are.
+    - **invariant**: reaching into a packed run decodes exactly one element, so the cost of
+      a path is bounded by an element rather than by the length of the list it names.
+  - `Path::update(&mut Value, FnOnce(&mut Value) -> R)` **replaces** `resolve_mut`.
+    - **decision**: an edit into a run decodes the element, hands it to the closure, and
+      encodes the result back, because a borrow of a decoded element could not outlive the
+      call. Doing it through a closure is what lets the two representations share one edit
+      path: a caller writes the same code whether the value it is changing is a map in a
+      tree or a stride in a run. The edit runs at most once, and a path that does not
+      resolve never runs it.
+    - `Value::resolve_mut` and `Value::at_mut` are removed with it; use `Value::update_at`.
 - `PrimitiveDelta`: a change to the value a `Path` selects.
   - enum of:
     - `Replace`: schema must be the same with the `referencing_value`.
@@ -149,6 +198,25 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
   - resolves `SchemaIdentifier` to `Schema` and tracks the `Version` of each `Definition`.
   - schema and definition changes take effect at runtime with no recompilation.
 - `ValidationError`: a `Value` does not satisfy its `Schema`.
+  - **validation runs in every build.** It is not a `debug_assertions` check, and the
+    three contracts below depend on that:
+    - a bad document is an error naming the path that is wrong, rather than a bad frame an
+      agent has to diagnose from a picture;
+    - `Delta::apply` is atomic against a schema-breaking result and not only against a
+      malformed operation, because it validates a clone before committing it;
+    - a server's `put` rejects a document at the boundary rather than storing one no schema
+      admits.
+  - **measured and rejected**: gating validation on `debug_assertions` was implemented and
+    measured at *zero* gain — 10, 10, 10, 10, 11, 11 ms with it on against 10, 10, 10, 10,
+    10, 11 ms with it off, both at the noise floor. The 100 ms that made validation look
+    expensive was per-point verification, and packed lists made that `len % stride == 0`.
+    **Packing is what makes validation affordable, not what makes it optional.** See
+    [proposals/compile-cost.md](proposals/compile-cost.md).
+  - a packed list satisfies `List { element }` in constant time, so a packed mesh is
+    still verified rather than trusted.
+  - **not validation**: packing, unpacking, path resolution and delta inversion are
+    checked in every build regardless, because a run is read by offset arithmetic and its
+    whole-number-of-strides invariant is what makes it readable.
 - `ConflictError`: a `Delta` was computed against a `Version` that is no longer current.
 
 ### `graphics` crate
@@ -600,3 +668,27 @@ written to; the code states the same invariants at the points they matter.
   - `Append` carries the position it appends at, and a `Remove` of indices is a contiguous range, so
     an operation map holding one primitive per path can always invert exactly. A scattered removal
     is deliberately not representable, because no `Append` could invert it.
+  - a loaded generation carries a packed list as a node of its own, holding the run whole.
+    **Invariant**: a run holds no slots, because an element of it is a stride rather than a node.
+    A reference *to* a packed list therefore resolves to the run and a reader decodes the element.
+    A path that goes *through* a packed index is refused at the `Loaded` level — there is no node
+    for `points[42].position` — while `Value`-level `Path::resolve` and `Path::update` both handle
+    it by decoding.
+  - **invariant**: `find_reference` and `crossed_reference` stop at a packed list rather than
+    decoding it. Packing only accepts structs of numbers, so nothing beneath a run can spell a
+    reference, and descending into a run to look for a declaration that cannot be there is the
+    whole cost the run was chosen to avoid.
+
+## What a packed list bought, and what it did not
+
+A dune field went from a **305 ms compile and a 10 ms render** to a **10 ms compile and an 8 ms
+render**, with every frame byte-identical to before. A frame had been 97% compile; it is now split
+evenly. The compile cost scales with *bytes* rather than with tree nodes — `monoliths`, at 182k
+points against `dunes`' 55k, compiles in 32 ms against 10 ms.
+
+What made it possible is that the uniform structure of a list is **guaranteed by the schema**
+rather than discovered by a packer: a list declares one element schema, and a struct is closed. So
+packing is a decision about representation, taken where the data is written, rather than a
+verification the compiler repeats on every compile.
+
+The same change is why validation was kept. See *ValidationError* above.

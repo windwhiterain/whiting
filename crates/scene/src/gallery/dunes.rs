@@ -24,12 +24,13 @@ use crate::gallery::shaders::{mesh_shaders, post_shader};
 const EXTENT: f64 = 165.0;
 
 /// How many cells the field is divided into along each axis.
-/// How many cells the field is divided into along each axis.
 ///
-/// This is small for a landscape, and the reason is worth stating: the cost of a frame is
-/// almost entirely the compile, and the compile is proportional to the number of points in
-/// the document rather than to the number that changed. A field twice as fine is four
-/// times the compile, for detail the picture is too far away to resolve. See the note in
+/// This is small for a landscape, and the reason is worth stating: the cost of a frame used to
+/// be almost entirely the compile, and the compile was proportional to the number of points *as a
+/// tree* rather than to the number that changed. A field twice as fine was four times the compile,
+/// for detail the picture is too far away to resolve. The points are packed now, so the compile is
+/// proportional to their bytes and a frame is limited by the render rather than by the compile —
+/// but the picture is no more able to resolve the detail, so the divisions stay. See
 /// [.agents/proposals/compile-cost.md].
 const DIVISIONS: usize = 96;
 

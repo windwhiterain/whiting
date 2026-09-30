@@ -153,13 +153,14 @@ fn dict_entry_changes_invert_exactly() {
     );
 
     registry.undo(&walk()).expect("undoable");
-    let options = registry
+    // The resolved value is bound before it is read, because a path may answer with a value it
+    // decoded rather than a borrow of the document.
+    let resolved = registry
         .definition(&walk())
         .expect("registered")
         .at(&options_path)
-        .expect("resolves")
-        .as_dict()
-        .expect("a dict");
+        .expect("resolves");
+    let options = resolved.as_dict().expect("a dict");
     assert_eq!(options.len(), 1);
     assert!(options.contains_key("width"));
 }

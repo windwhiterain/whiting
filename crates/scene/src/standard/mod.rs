@@ -134,6 +134,7 @@
 //! let named_mesh = example_standard_scene()
 //!     .at(&definition::Path::root().key("meshes").index(0))
 //!     .expect("the example has a mesh")
+//!     .as_value()
 //!     .clone();
 //! registry
 //!     .insert_definition(Definition::new(

@@ -59,7 +59,7 @@ impl Definition {
     }
 
     /// Borrows the value at `path`, reporting whether it resolves.
-    pub fn at(&self, path: &Path) -> Option<&Value> {
+    pub fn at(&self, path: &Path) -> Option<crate::path::Resolved<'_>> {
         path.resolve(&self.value).ok()
     }
 }

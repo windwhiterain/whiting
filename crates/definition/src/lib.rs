@@ -64,6 +64,7 @@ mod error;
 mod history;
 mod identifier;
 mod loaded;
+mod packed;
 mod path;
 mod reference;
 mod registry;
@@ -80,7 +81,8 @@ pub use identifier::{DefinitionIdentifier, SchemaIdentifier};
 pub use loaded::{
     FileContent, Loaded, Node, NodeId, Origin, RegistryStore, Slot, Store, Target, Wanted,
 };
-pub use path::{Path, PathError, PathSegment};
+pub use packed::{PackedBuilder, PackedError, PackedLayout, PackedList};
+pub use path::{Path, PathError, PathSegment, Resolved};
 pub use reference::{FilePath, Reference, ReferenceError};
 pub use registry::Registry;
 pub use schema::{Attributes, Schema, SchemaKind, SchemaMap};

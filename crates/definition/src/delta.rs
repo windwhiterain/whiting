@@ -262,51 +262,45 @@ fn apply_primitive(
         reason: reason.to_owned(),
     };
 
-    let target = path
-        .resolve_mut(root)
-        .map_err(|reason| DeltaError::UnresolvedPath {
-            path: path.clone(),
-            reason: reason.to_string(),
-        })?;
-
-    match primitive {
+    // The edit is applied through `Path::update`, so a path that reaches into a packed list
+    // decodes the one element it names, applies the operation, and writes it back. Editing a
+    // single point of a run of a hundred thousand therefore costs one point.
+    let outcome = path.update(root, |target| match primitive {
         PrimitiveDelta::Replace(new_value) => {
             let previous = std::mem::replace(target, new_value.clone());
             inverse_operations.insert(path.clone(), PrimitiveDelta::Replace(previous));
+            Ok(())
         }
 
         PrimitiveDelta::Append(Appended::Values { index, values }) => {
-            let elements = target
-                .as_list_mut()
-                .ok_or_else(|| invalid("append needs a list"))?;
-            if *index > elements.len() {
-                return Err(invalid("append index is beyond the end of the list"));
+            if !target.is_list() {
+                return Err(invalid("append needs a list"));
             }
-            for (offset, value) in values.iter().enumerate() {
-                elements.insert(*index + offset, value.clone());
+            if target.list_insert(*index, values.clone()).is_none() {
+                return Err(invalid("append index is beyond the end of the list"));
             }
             inverse_operations.insert(
                 path.clone(),
                 PrimitiveDelta::remove_indices(*index, values.len()),
             );
+            Ok(())
         }
 
         PrimitiveDelta::Remove(Removed::Indices { start, count }) => {
-            let elements = target
-                .as_list_mut()
-                .ok_or_else(|| invalid("removal needs a list"))?;
-            let end = start
-                .checked_add(*count)
-                .filter(|end| *end <= elements.len())
-                .ok_or_else(|| invalid("removal range is out of bounds for the list"))?;
-            let removed = elements.drain(*start..end).collect::<Vec<Value>>();
+            if !target.is_list() {
+                return Err(invalid("removal needs a list"));
+            }
+            let Some(removed) = target.list_remove(*start, *count) else {
+                return Err(invalid("removal range is out of bounds for the list"));
+            };
             inverse_operations.insert(path.clone(), PrimitiveDelta::append_values(*start, removed));
+            Ok(())
         }
 
         PrimitiveDelta::Append(Appended::Entries { entries }) => {
-            let map = target
-                .as_dict_mut()
-                .ok_or_else(|| invalid("entry append needs a dict"))?;
+            let Some(map) = target.as_dict_mut() else {
+                return Err(invalid("entry append needs a dict"));
+            };
             for (name, value) in entries {
                 if map.insert(name.clone(), value.clone()).is_some() {
                     return Err(invalid("entry append found a key that is already present"));
@@ -316,12 +310,13 @@ fn apply_primitive(
                 path.clone(),
                 PrimitiveDelta::remove_keys(entries.iter().map(|(name, _)| name.clone())),
             );
+            Ok(())
         }
 
         PrimitiveDelta::Remove(Removed::Keys { keys }) => {
-            let map = target
-                .as_field_map_mut()
-                .ok_or_else(|| invalid("key removal needs a struct or a dict"))?;
+            let Some(map) = target.as_field_map_mut() else {
+                return Err(invalid("key removal needs a struct or a dict"));
+            };
             let mut removed = Vec::with_capacity(keys.len());
             for name in keys {
                 match map.remove(name) {
@@ -330,8 +325,18 @@ fn apply_primitive(
                 }
             }
             inverse_operations.insert(path.clone(), PrimitiveDelta::append_entries(removed));
+            Ok(())
         }
-    }
+    });
 
-    Ok(())
+    // The edit itself may have refused, in which case its error is the operation's error; a path
+    // that does not resolve at all is reported as such.
+    match outcome {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => Err(error),
+        Err(reason) => Err(DeltaError::UnresolvedPath {
+            path: path.clone(),
+            reason: reason.to_string(),
+        }),
+    }
 }

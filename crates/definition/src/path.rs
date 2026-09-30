@@ -1,11 +1,57 @@
 //! Addressing a particular value inside a [`Definition`](crate::Definition).
 
 use std::fmt;
+use std::ops::Deref;
 
 use facet::Facet;
 use thiserror::Error;
 
 use crate::value::Value;
+
+/// The value a path addresses, which is either in the tree or decoded out of a run.
+///
+/// # Why this is an enum
+///
+/// A packed list carries a run of bytes, and an element of it has to be decoded to be a
+/// [`Value`]. A decoded element is a temporary with no address in the tree, so a path walk that
+/// reached into a run cannot hand back a borrow of it. It hands back the value instead, and the
+/// two cases are told apart here rather than at every call site.
+///
+/// `Deref` makes this read like the borrow it usually is: a caller that only reads writes
+/// `&*resolved`, or calls a method on it directly, and never names this type at all.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Resolved<'value> {
+    /// The value is in the tree, and this borrows it.
+    Borrowed(&'value Value),
+    /// The value was decoded out of a packed run and is owned here.
+    Owned(Value),
+}
+
+impl Deref for Resolved<'_> {
+    type Target = Value;
+
+    fn deref(&self) -> &Value {
+        match self {
+            Self::Borrowed(value) => value,
+            Self::Owned(value) => value,
+        }
+    }
+}
+
+impl<'value> Resolved<'value> {
+    /// Borrows the value this addresses.
+    pub fn as_value(&self) -> &Value {
+        match self {
+            Self::Borrowed(value) => value,
+            Self::Owned(value) => value,
+        }
+    }
+
+    /// Returns whether this borrows the tree rather than owning a decoded element.
+    pub const fn is_borrowed(&self) -> bool {
+        matches!(self, Self::Borrowed(_))
+    }
+}
 
 /// One step of a [`Path`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Facet)]
@@ -37,6 +83,12 @@ pub enum PathError {
     AbsentKey(String),
     #[error("index {index} is out of bounds for a list of length {length}")]
     IndexOutOfBounds { index: usize, length: usize },
+    #[error("index {index} is out of bounds for a packed list of length {length}: {reason}")]
+    NotIndexedInRun {
+        index: usize,
+        length: usize,
+        reason: String,
+    },
     #[error("a path is a list of segments, and this is {found}")]
     NotAPath { found: &'static str },
     #[error("a path segment is a string key or an integer index, and this is {found}")]
@@ -102,6 +154,15 @@ impl Path {
         Some(Self(self.0[..self.0.len() - 1].to_vec()))
     }
 
+    /// Splits off the first segment, leaving the rest of the path.
+    ///
+    /// This is what an edit walks with: the first segment says which node to descend into and the
+    /// rest says what to do once there.
+    fn split_first(&self) -> Option<(&PathSegment, Path)> {
+        let (first, rest) = self.0.split_first()?;
+        Some((first, Self(rest.to_vec())))
+    }
+
     /// Encodes this path as the value that carries it, which is how a reference spells the
     /// path it points at.
     ///
@@ -151,68 +212,131 @@ impl Path {
         Ok(Self(path))
     }
 
-    /// Borrows the value this path addresses.
-    pub fn resolve<'value>(&self, value: &'value Value) -> Result<&'value Value, PathError> {
+    /// Borrows the value this path addresses, decoding it out of a packed run if it is in one.
+    ///
+    /// # Invariants
+    ///
+    /// An index segment addresses a list, in either of its two representations, and a key segment
+    /// addresses a struct, a dict, or the fields of an enum variant. Reaching into a packed run
+    /// decodes exactly one element, so the cost of a path is bounded by an element rather than by
+    /// the length of the list it names.
+    pub fn resolve<'value>(&self, value: &'value Value) -> Result<Resolved<'value>, PathError> {
+        let mut at = 0;
+        // The borrowed walk keeps a `&'value Value` the whole way, which is what lets it return a
+        // borrow of the tree. A packed list has no address in the tree, so reaching one hands the
+        // rest of the walk to an owned one, which decodes the element and walks the rest over it.
         let mut current = value;
-        for segment in &self.0 {
-            current = match (segment, current) {
-                (PathSegment::Key(name), Value::Struct(fields)) => fields
-                    .get(name)
-                    .ok_or_else(|| PathError::AbsentKey(name.clone()))?,
-                (PathSegment::Key(name), Value::Dict(entries)) => entries
-                    .get(name)
-                    .ok_or_else(|| PathError::AbsentKey(name.clone()))?,
-                (PathSegment::Key(name), Value::Enum { fields, .. }) => fields
-                    .get(name)
-                    .ok_or_else(|| PathError::AbsentKey(name.clone()))?,
-                (PathSegment::Key(_), other) => return Err(PathError::NotKeyed(other.kind_name())),
-                (PathSegment::Index(index), Value::List(elements)) => {
-                    elements.get(*index).ok_or(PathError::IndexOutOfBounds {
-                        index: *index,
-                        length: elements.len(),
-                    })?
+        while let Some(segment) = self.0.get(at) {
+            match segment {
+                PathSegment::Key(name) => {
+                    current = field(current, name)?;
+                    at += 1;
                 }
-                (PathSegment::Index(_), other) => {
-                    return Err(PathError::NotIndexed(other.kind_name()));
-                }
-            };
+                PathSegment::Index(index) => match current {
+                    Value::List(elements) => {
+                        current = elements.get(*index).ok_or(PathError::IndexOutOfBounds {
+                            index: *index,
+                            length: elements.len(),
+                        })?;
+                        at += 1;
+                    }
+                    Value::Packed(list) => {
+                        let element =
+                            list.element(*index)
+                                .map_err(|error| PathError::NotIndexedInRun {
+                                    index: *index,
+                                    length: list.len(),
+                                    reason: error.to_string(),
+                                })?;
+                        return walk_owned(&self.0[at + 1..], element).map(Resolved::Owned);
+                    }
+                    other => return Err(PathError::NotIndexed(other.kind_name())),
+                },
+            }
         }
-        Ok(current)
+        Ok(Resolved::Borrowed(current))
     }
 
-    /// Mutably borrows the value this path addresses.
-    pub fn resolve_mut<'value>(
+    /// Applies an edit to the value this path addresses, and returns what the edit returned.
+    ///
+    /// # Why this rather than a mutable borrow
+    ///
+    /// An edit into a packed run decodes the element, hands it to the edit, and encodes the result
+    /// back, because a decoded element is a temporary and a borrow of it could not outlive the
+    /// call. Doing it through a closure is what lets the two representations share one edit path:
+    /// a caller writes the same code whether the value it is changing is a map in a tree or a
+    /// stride in a run.
+    ///
+    /// # Invariants
+    ///
+    /// The walk descends one segment at a time, and a segment into a packed run decodes exactly
+    /// the element it names, edits it, and writes it back. So editing `points[42].position[1]`
+    /// of a run of a hundred thousand points costs one point, not one list.
+    ///
+    /// The edit runs at most once, and a path that does not resolve never runs it.
+    pub fn update<R>(
         &self,
-        value: &'value mut Value,
-    ) -> Result<&'value mut Value, PathError> {
-        let mut current = value;
-        for segment in &self.0 {
-            current = match (segment, current) {
-                (PathSegment::Key(name), Value::Struct(fields)) => fields
+        value: &mut Value,
+        edit: impl FnOnce(&mut Value) -> R,
+    ) -> Result<R, PathError> {
+        let Some((first, rest)) = self.split_first() else {
+            return Ok(edit(value));
+        };
+
+        match first {
+            PathSegment::Key(name) => {
+                let found = value.kind_name();
+                let fields = value.as_field_map_mut().ok_or(PathError::NotKeyed(found))?;
+                let field = fields
                     .get_mut(name)
-                    .ok_or_else(|| PathError::AbsentKey(name.clone()))?,
-                (PathSegment::Key(name), Value::Dict(entries)) => entries
-                    .get_mut(name)
-                    .ok_or_else(|| PathError::AbsentKey(name.clone()))?,
-                (PathSegment::Key(name), Value::Enum { fields, .. }) => fields
-                    .get_mut(name)
-                    .ok_or_else(|| PathError::AbsentKey(name.clone()))?,
-                (PathSegment::Key(_), other) => return Err(PathError::NotKeyed(other.kind_name())),
-                (PathSegment::Index(index), Value::List(elements)) => {
+                    .ok_or_else(|| PathError::AbsentKey(name.clone()))?;
+                if rest.is_root() {
+                    Ok(edit(field))
+                } else {
+                    rest.update(field, edit)
+                }
+            }
+            PathSegment::Index(index) => match value {
+                Value::List(elements) => {
                     let length = elements.len();
-                    elements
+                    let element = elements
                         .get_mut(*index)
                         .ok_or(PathError::IndexOutOfBounds {
                             index: *index,
                             length,
-                        })?
+                        })?;
+                    if rest.is_root() {
+                        Ok(edit(element))
+                    } else {
+                        rest.update(element, edit)
+                    }
                 }
-                (PathSegment::Index(_), other) => {
-                    return Err(PathError::NotIndexed(other.kind_name()));
+                Value::Packed(list) => {
+                    let length = list.len();
+                    let mut element =
+                        list.element(*index)
+                            .map_err(|error| PathError::NotIndexedInRun {
+                                index: *index,
+                                length,
+                                reason: error.to_string(),
+                            })?;
+                    let result = if rest.is_root() {
+                        edit(&mut element)
+                    } else {
+                        rest.update(&mut element, edit)?
+                    };
+                    list.set_element(*index, &element).map_err(|error| {
+                        PathError::NotIndexedInRun {
+                            index: *index,
+                            length,
+                            reason: error.to_string(),
+                        }
+                    })?;
+                    Ok(result)
                 }
-            };
+                other => Err(PathError::NotIndexed(other.kind_name())),
+            },
         }
-        Ok(current)
     }
 
     /// Returns whether this path addresses something inside `value`.
@@ -235,6 +359,60 @@ impl fmt::Display for Path {
         }
         Ok(())
     }
+}
+
+/// Borrows a named field of a struct, a dict, or the fields of an enum variant.
+fn field<'value>(value: &'value Value, name: &str) -> Result<&'value Value, PathError> {
+    match value {
+        Value::Struct(fields) | Value::Dict(fields) | Value::Enum { fields, .. } => fields
+            .get(name)
+            .ok_or_else(|| PathError::AbsentKey(name.to_owned())),
+        other => Err(PathError::NotKeyed(other.kind_name())),
+    }
+}
+
+/// Walks the segments left after a packed list has been decoded, and returns what they name.
+///
+/// This is the owned half of a walk, and it exists for a concrete reason: a decoded element has
+/// no address in the document, so nothing below it can be borrowed out to a caller. The walk
+/// therefore finishes by value. It recurses when the path reaches *another* run, which is the one
+/// case where the remaining segments are not already in hand.
+fn walk_owned(segments: &[PathSegment], value: Value) -> Result<Value, PathError> {
+    let mut current = value;
+    let mut at = 0;
+    while let Some(segment) = segments.get(at) {
+        match segment {
+            PathSegment::Key(name) => {
+                current = field(&current, name)?.clone();
+                at += 1;
+            }
+            PathSegment::Index(index) => match &current {
+                Value::List(elements) => {
+                    let length = elements.len();
+                    current = elements
+                        .get(*index)
+                        .cloned()
+                        .ok_or(PathError::IndexOutOfBounds {
+                            index: *index,
+                            length,
+                        })?;
+                    at += 1;
+                }
+                Value::Packed(list) => {
+                    let element =
+                        list.element(*index)
+                            .map_err(|error| PathError::NotIndexedInRun {
+                                index: *index,
+                                length: list.len(),
+                                reason: error.to_string(),
+                            })?;
+                    return walk_owned(&segments[at + 1..], element);
+                }
+                other => return Err(PathError::NotIndexed(other.kind_name())),
+            },
+        }
+    }
+    Ok(current)
 }
 
 impl FromIterator<PathSegment> for Path {

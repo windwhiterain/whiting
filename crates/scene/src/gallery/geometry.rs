@@ -14,7 +14,67 @@
 //!   is perpendicular to the surface it actually has. A normal that disagrees with the
 //!   geometry is the single most common way a lit scene stops reading as lit.
 
-use definition::{FieldMap, Value};
+use definition::{FieldMap, PackedBuilder, PackedLayout, PackedList, Value};
+
+/// Field a shaded point's normal is written under.
+const NORMAL: &str = "normal";
+/// Field a shaded point's position is written under.
+const POSITION: &str = "position";
+/// Field a shaded point's texture coordinate is written under.
+const TEXTURE: &str = "texture";
+
+/// The layout a shaded mesh's points are written with, which is the run the generators below
+/// build.
+///
+/// # Invariants
+///
+/// The fields are in the order [`shaded_point_schema`] sorts them into, which is the order a
+/// buffer lays them out in, so a point written through this builder is already the bytes a vertex
+/// buffer wants and packing is a copy rather than a walk.
+fn shaded_layout() -> PackedLayout {
+    PackedLayout::new([
+        (NORMAL.to_owned(), 3),
+        (POSITION.to_owned(), 3),
+        (TEXTURE.to_owned(), 2),
+    ])
+}
+
+/// A run of shaded points, built without ever building a point as a value.
+struct Shaded {
+    points: PackedBuilder,
+}
+
+impl Shaded {
+    /// Creates a run of shaded points.
+    fn with_capacity(count: usize) -> Self {
+        let mut points = PackedBuilder::new(shaded_layout());
+        points.reserve(count);
+        Self { points }
+    }
+
+    /// Appends one shaded point.
+    ///
+    /// # Invariants
+    ///
+    /// The fields are written in layout order with the literal widths the layout declares, so
+    /// this cannot fail: a refusal here is a bug in the generator rather than a document to
+    /// report, and it is reported as one rather than swallowed.
+    fn push(&mut self, position: [f64; 3], normal: [f64; 3], texture: [f64; 2]) {
+        let written = self
+            .points
+            .field(NORMAL, &normal)
+            .and_then(|points| points.field(POSITION, &position))
+            .and_then(|points| points.field(TEXTURE, &texture));
+        written.expect("a generator writes whole elements of its own layout");
+    }
+
+    /// Ends the run.
+    fn finish(self) -> PackedList {
+        self.points
+            .finish()
+            .expect("every generator writes whole elements of its own layout")
+    }
+}
 
 /// Builds one shaded point from a position, a normal and a texture coordinate.
 /// A three component point field, as a document value.
@@ -161,7 +221,7 @@ pub fn fract(value: f64) -> f64 {
     value - value.floor()
 }
 
-/// Builds a heightfield as a grid of shaded points.
+/// Builds a heightfield as a grid of shaded points, packed.
 ///
 /// # Invariants
 ///
@@ -172,10 +232,10 @@ pub fn fract(value: f64) -> f64 {
 /// `height` is called once per grid point, and the four neighbours of that point are read
 /// from the same function, so a caller whose height depends on anything but its argument
 /// produces a surface whose normals disagree with its geometry.
-pub fn heightfield(divisions: usize, extent: f64, height: impl Fn(f64, f64) -> f64) -> Vec<Value> {
+pub fn heightfield(divisions: usize, extent: f64, height: impl Fn(f64, f64) -> f64) -> PackedList {
     let step = 2.0 * extent / divisions as f64;
     let origin = -extent;
-    let mut points = Vec::with_capacity(divisions * divisions * 6);
+    let mut points = Shaded::with_capacity(divisions * divisions * 6);
 
     for row in 0..divisions {
         for column in 0..divisions {
@@ -201,46 +261,26 @@ pub fn heightfield(divisions: usize, extent: f64, height: impl Fn(f64, f64) -> f
             let up = [x, 0.0, z + step];
             let corner = [x + step, 0.0, z + step];
             let lift = |corner: [f64; 3]| [corner[0], height(corner[0], corner[2]), corner[2]];
-            points.push(shaded_point(position, normal, texture));
-            points.push(shaded_point(
-                lift(right),
-                normal,
-                [texture[0] + 0.5, texture[1]],
-            ));
-            points.push(shaded_point(
-                lift(up),
-                normal,
-                [texture[0], texture[1] + 0.5],
-            ));
-            points.push(shaded_point(
-                lift(right),
-                normal,
-                [texture[0] + 0.5, texture[1]],
-            ));
-            points.push(shaded_point(
-                lift(corner),
-                normal,
-                [texture[0] + 0.5, texture[1] + 0.5],
-            ));
-            points.push(shaded_point(
-                lift(up),
-                normal,
-                [texture[0], texture[1] + 0.5],
-            ));
+            points.push(position, normal, texture);
+            points.push(lift(right), normal, [texture[0] + 0.5, texture[1]]);
+            points.push(lift(up), normal, [texture[0], texture[1] + 0.5]);
+            points.push(lift(right), normal, [texture[0] + 0.5, texture[1]]);
+            points.push(lift(corner), normal, [texture[0] + 0.5, texture[1] + 0.5]);
+            points.push(lift(up), normal, [texture[0], texture[1] + 0.5]);
         }
     }
-    points
+    points.finish()
 }
 
-/// Builds a sphere as a stack of triangles, as shaded points.
+/// Builds a sphere as a stack of triangles, as packed shaded points.
 ///
 /// # Invariants
 ///
 /// The normal of a point is the direction it sits in from the centre, so a sphere lit by
 /// its own normals is round rather than faceted whatever the tessellation. The winding is
 /// counter clockwise seen from outside, so the surface faces the viewer.
-pub fn sphere(divisions: usize, radius: f64) -> Vec<Value> {
-    let mut points = Vec::with_capacity(divisions * divisions * 6);
+pub fn sphere(divisions: usize, radius: f64) -> PackedList {
+    let mut points = Shaded::with_capacity(divisions * divisions * 6);
     let vertex = |theta: f64, phi: f64| -> ([f64; 3], [f64; 2]) {
         let normal = [theta.sin() * phi.cos(), phi.sin(), theta.cos() * phi.cos()];
         (
@@ -266,19 +306,19 @@ pub fn sphere(divisions: usize, radius: f64) -> Vec<Value> {
             ];
             for index in [0usize, 1, 2, 0, 2, 3] {
                 let (position, texture) = corners[index];
-                points.push(shaded_point(position, normalized(position), texture));
+                points.push(position, normalized(position), texture);
             }
         }
     }
-    points
+    points.finish()
 }
 
 /// Builds a cone standing on the ground, tapering to a point above it.
 ///
 /// The base is a regular polygon of `sides` faces and the side is a fan from the apex, so
 /// a cone costs `sides` quads rather than a tessellated surface.
-pub fn cone(sides: usize, radius: f64, height: f64) -> Vec<Value> {
-    let mut points = Vec::with_capacity(sides * 6);
+pub fn cone(sides: usize, radius: f64, height: f64) -> PackedList {
+    let mut points = Shaded::with_capacity(sides * 6);
     let apex = [0.0, height, 0.0];
     let rim = |index: usize| {
         let angle = index as f64 / sides as f64 * std::f64::consts::TAU;
@@ -291,22 +331,26 @@ pub fn cone(sides: usize, radius: f64, height: f64) -> Vec<Value> {
         let slope = [a[0] + b[0], height * 2.0, a[2] + b[2]];
         let normal = normalized(cross(slope, subtract(b, a)));
         for corner in [a, b, apex] {
-            points.push(shaded_point(
+            points.push(
                 corner,
                 normal,
                 [corner[0] * 0.5 + 0.5, corner[2] * 0.5 + 0.5],
-            ));
+            );
         }
     }
-    points
+    points.finish()
 }
 
-/// Builds a run of line segments, as positions alone.
-pub fn segments(pairs: impl IntoIterator<Item = ([f64; 3], [f64; 3])>) -> Vec<Value> {
-    let mut points = Vec::new();
+/// Builds a run of line segments, as packed positions alone.
+pub fn segments(pairs: impl IntoIterator<Item = ([f64; 3], [f64; 3])>) -> PackedList {
+    let mut builder = PackedBuilder::new(PackedLayout::new([(POSITION.to_owned(), 3)]));
     for (from, to) in pairs {
-        points.push(positioned_point(from));
-        points.push(positioned_point(to));
+        builder
+            .field(POSITION, &from)
+            .and_then(|builder| builder.field(POSITION, &to))
+            .expect("a segment writes one whole position");
     }
-    points
+    builder
+        .finish()
+        .expect("every segment writes one whole position")
 }

@@ -377,19 +377,33 @@ pub(crate) fn scene_text<'value>(
 ) -> Result<&'value str, CompileError> {
     let path = Path::root().key(field);
     match scene.at(&path) {
-        Some(Value::String(text)) => Ok(text),
-        other => Err(malformed_scene(&path, "a string", other)),
+        Some(definition::Resolved::Borrowed(Value::String(text))) => Ok(text),
+        other => Err(malformed_scene(
+            &path,
+            "a string",
+            other.as_ref().map(|found| found.as_value()),
+        )),
     }
 }
 
 /// Reads a required list field of the scene.
+///
+/// # Invariants
+///
+/// A top level field of the scene is a list of declarations — lights, shaders, meshes, instances —
+/// and is read as a tree. A mesh's *points* are a list of numbers and may be packed, but they are
+/// read one stride at a time rather than through this, so nothing here ever has to expand a run.
 pub(crate) fn scene_list<'value>(
     scene: &'value Value,
     field: &str,
 ) -> Result<&'value [Value], CompileError> {
     let path = Path::root().key(field);
     match scene.at(&path) {
-        Some(Value::List(elements)) => Ok(elements),
-        other => Err(malformed_scene(&path, "a list", other)),
+        Some(definition::Resolved::Borrowed(Value::List(elements))) => Ok(elements),
+        other => Err(malformed_scene(
+            &path,
+            "a list",
+            other.as_ref().map(|found| found.as_value()),
+        )),
     }
 }

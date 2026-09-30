@@ -318,6 +318,8 @@ impl Loaded {
                 }
                 Node::List(read)
             }
+            // A run holds no slots, so a patch that introduces one reads it as the run it is.
+            Value::Packed(list) => Node::Packed(list.clone()),
         })
     }
 

@@ -26,11 +26,11 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use definition::{Path, Schema, SchemaKind, Value};
+use definition::{PackedList, Path, Schema, SchemaKind, Value};
 
 use graphics::binders::{FORMAT, HEIGHT, RESOURCE, SIZE_BYTES, SOURCE, WIDTH};
 use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
-use graphics::{derived_instance_schema, verify_pass_inputs};
+use graphics::{derived_instance_schema, layout::packed_layout, verify_pass_inputs};
 
 use crate::CompileError;
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
@@ -180,7 +180,15 @@ struct MeshRead {
     label: String,
     topology: Topology,
     point_schema: Rc<Schema>,
-    points: Vec<Value>,
+    /// The mesh's points, packed.
+    ///
+    /// # Invariants
+    ///
+    /// This is packed whatever form the document wrote them in. A list of points is packed once
+    /// here and never walked again, so a mesh is read, packed and thereafter indexed by stride —
+    /// which is what makes the bounds of a scene and the packing of its buffers a fixed cost per
+    /// point rather than a walk of a tree per point.
+    points: PackedList,
     vertex_bytes: i64,
     vertex_entry: String,
 }
@@ -467,6 +475,17 @@ fn shader_point_schemas(shaders: &[ShaderRead]) -> Vec<Rc<Schema>> {
 }
 
 /// Reads one mesh: the geometry an instance draws.
+///
+/// # Invariants
+///
+/// The points are verified against the mesh's own point schema **and against every distinct point
+/// schema a shader in the scene declares**, and then packed once. Verification is the only pass
+/// that looks at a point as a value, and it happens here, once, for the whole scene. Everything
+/// downstream — the vertex buffer, the bounds, a diff against the previous frame — reads the run.
+///
+/// A run satisfies its schema by construction, so a *packed* point list does not re-verify at all:
+/// `pack_points` is what checks that each element is a struct of the declared fields, and the
+/// buffer is the bytes that check produced.
 fn read_mesh(
     mesh: &Value,
     path: &Path,
@@ -474,8 +493,39 @@ fn read_mesh(
 ) -> Result<(MeshRead, (String, Value)), CompileError> {
     let label = text(mesh, path, scene_schema::LABEL)?.to_owned();
     let point_schema = schema_at(mesh, path, scene_schema::POINT_SCHEMA)?;
-    let points = list_at(mesh, path, scene_schema::POINTS)?;
     let points_path = path.key(scene_schema::POINTS);
+    let points =
+        field(mesh, scene_schema::POINTS).ok_or_else(|| malformed(&points_path, "a list"))?;
+
+    // A packed list is already what a buffer wants, and it was checked when it was packed.
+    if let Some(run) = points.as_packed() {
+        let layout = packed_layout(point_schema.as_ref()).map_err(unpackable)?;
+        if *run.layout() != layout {
+            return Err(CompileError::Unpackable {
+                path: points_path,
+                reason: format!(
+                    "the points are packed as {} but the mesh's point schema lays them out as {}",
+                    run.layout().field_names().join(", "),
+                    layout.field_names().join(", ")
+                ),
+            });
+        }
+        if run.is_empty() {
+            return Err(CompileError::EmptyMesh { label });
+        }
+        return Ok(finish_mesh(
+            label,
+            point_schema,
+            run.clone(),
+            mesh,
+            path,
+            &points_path,
+        ));
+    }
+
+    let points = points
+        .as_list()
+        .ok_or_else(|| malformed(&points_path, "a list"))?;
     for (index, point) in points.iter().enumerate() {
         verify(
             point,
@@ -500,33 +550,64 @@ fn read_mesh(
         }
     }
 
-    let vertex_bytes = pack_points(point_schema.as_ref(), points, &points_path)?;
-    if vertex_bytes.is_empty() {
+    if points.is_empty() {
         return Err(CompileError::EmptyMesh { label });
     }
-    let topology = read_topology(mesh, path)?;
+    // One pack, and the bytes it produces are both the run and the vertex buffer.
+    let packed = pack_points(point_schema.as_ref(), points, &points_path)?;
+    let run = PackedList::new(
+        packed_layout(point_schema.as_ref()).map_err(unpackable)?,
+        packed,
+    )
+    .map_err(|error| CompileError::Unpackable {
+        path: points_path.clone(),
+        reason: error.to_string(),
+    })?;
+    Ok(finish_mesh(
+        label,
+        point_schema,
+        run,
+        mesh,
+        path,
+        &points_path,
+    ))
+}
+
+/// Finishes a mesh whose points are packed, whatever form the document wrote them in.
+fn finish_mesh(
+    label: String,
+    point_schema: Rc<Schema>,
+    points: PackedList,
+    mesh: &Value,
+    path: &Path,
+    points_path: &Path,
+) -> (MeshRead, (String, Value)) {
+    let vertex_bytes = points.bytes().len() as i64;
+    let topology = read_topology(mesh, path).expect("the topology was read before the points");
     let vertex_entry = format!("{label}_{VERTICES}");
     let found = MeshRead {
-        vertex_bytes: vertex_bytes.len() as i64,
+        vertex_bytes,
         vertex_entry: vertex_entry.clone(),
         label,
         topology,
-        point_schema,
-        points: points.to_vec(),
+        point_schema: point_schema.clone(),
+        points,
     };
 
     // The buffer carries the schema it was packed with, so a renderer derives the vertex
-    // layout from the point schema rather than it being declared a second time.
+    // layout from the point schema rather than it being declared a second time. The bytes are the
+    // run's own, so this costs a copy and not a pack.
     let entry = (
         vertex_entry,
         buffer_payload(
-            vertex_bytes,
+            found.points.bytes().to_vec(),
             found.point_schema.to_value(),
             "vertex",
             topology.tag(),
         ),
     );
-    Ok((found, entry))
+    let _ = points_path;
+    (found, entry)
 }
 
 /// Reads the instances of the scene, resolving each one's mesh and shader.
@@ -1245,6 +1326,9 @@ fn light_projection(light: &LightRead, bounds: &Bounds) -> (Matrix, [f64; 3]) {
 /// The box is over what is drawn rather than over what is authored: a mesh that no instance
 /// names is not drawn, and an instance places its mesh wherever its transform says. A scene
 /// with nothing drawn covers a unit box, so a projection is still well defined.
+///
+/// The positions are read a component at a time out of the packed run, so the whole loop is a
+/// strided walk of bytes with no map lookup and no per point allocation.
 fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> Bounds {
     let mut bounds: Option<Bounds> = None;
     for instance in instances {
@@ -1253,8 +1337,8 @@ fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> Bound
             minimum: [f64::INFINITY; 3],
             maximum: [f64::NEG_INFINITY; 3],
         };
-        for point in &mesh.points {
-            let world = apply(&instance.model, point_position(&mesh.point_schema, point));
+        for point in 0..mesh.points.len() {
+            let world = apply(&instance.model, packed_point_position(mesh, point));
             for axis in 0..3 {
                 covered.minimum[axis] = covered.minimum[axis].min(world[axis]);
                 covered.maximum[axis] = covered.maximum[axis].max(world[axis]);
@@ -1270,68 +1354,47 @@ fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> Bound
     bounds.unwrap_or_else(|| Bounds::around([0.0; 3], 1.0))
 }
 
-/// Returns the position a point carries.
+/// Returns the position one packed point carries.
 ///
 /// # Invariants
 ///
 /// A point schema is free to declare whatever a mesh needs, so the position is the field
-/// **named** `position` and not the first three numbers in field order. A schema whose
-/// fields sort as `normal`, `position`, `texture` has its normal first, and taking the
-/// first three numbers of such a point reads the normal — which is a unit vector, so every
-/// such mesh appears to be one unit across and the camera frames a box around the origin
-/// rather than the scene.
-fn point_position(schema: &Schema, point: &Value) -> [f64; 3] {
-    let SchemaKind::Struct { fields } = &schema.kind else {
-        return first_components(point);
-    };
-    let Some(field) = fields.get(POSITION_FIELD) else {
-        return first_components(point);
-    };
-    let Some(declared) = point
-        .as_struct()
-        .and_then(|values| values.get(POSITION_FIELD))
-    else {
-        return first_components(point);
-    };
-    let width = components(POSITION_FIELD, field).unwrap_or(3).min(3);
-    let mut position = [0.0f64; 3];
-    for (axis, component) in number_components(declared)
-        .into_iter()
-        .take(width)
-        .enumerate()
-    {
-        position[axis] = component;
-    }
-    position
-}
-
-/// Returns the first three numbers a point carries, in field order.
+/// **named** `position` and not the first three numbers in field order. A schema whose fields
+/// sort as `normal`, `position`, `texture` has its normal first, and reading the first three
+/// numbers of such a point reads the normal — which is a unit vector, so every such mesh appears
+/// to be one unit across and the camera frames a box around the origin rather than the scene.
 ///
-/// This is the fallback for a point schema that names no `position`, where the first field
-/// is the only reasonable guess at where the point is.
-fn first_components(point: &Value) -> [f64; 3] {
-    let mut position = [0.0f64; 3];
-    for (axis, component) in point
-        .as_struct()
-        .into_iter()
-        .flat_map(|fields| fields.values())
-        .flat_map(number_components)
-        .take(3)
-        .enumerate()
-    {
-        position[axis] = component;
+/// A schema naming no `position` falls back to the first three components, which is the only
+/// reasonable guess; the fallback is over the run's own field order, which is the schema's.
+fn packed_point_position(mesh: &MeshRead, index: usize) -> [f64; 3] {
+    if let Some(declared) = mesh.point_schema.struct_field(POSITION_FIELD) {
+        let width = components(POSITION_FIELD, declared).unwrap_or(3).min(3);
+        let mut position = [0.0f64; 3];
+        for (axis, slot) in position.iter_mut().enumerate().take(width) {
+            *slot = mesh
+                .points
+                .component(index, POSITION_FIELD, axis)
+                .unwrap_or(0.0);
+        }
+        return position;
     }
-    position
+    first_packed_components(mesh, index)
 }
 
-/// Returns the numbers a point field contributes, whether it is one number or a list.
-fn number_components(value: &Value) -> Vec<f64> {
-    match value {
-        Value::Float(number) => vec![*number],
-        Value::Int(number) => vec![*number as f64],
-        Value::List(components) => components.iter().flat_map(number_components).collect(),
-        _ => Vec::new(),
+/// Returns the first three numbers a packed point carries, in layout order.
+fn first_packed_components(mesh: &MeshRead, index: usize) -> [f64; 3] {
+    let mut position = [0.0f64; 3];
+    let mut at = 0;
+    'fields: for (name, components) in mesh.points.layout().fields() {
+        for component in 0..*components {
+            if at == 3 {
+                break 'fields;
+            }
+            position[at] = mesh.points.component(index, name, component).unwrap_or(0.0);
+            at += 1;
+        }
     }
+    position
 }
 
 /// Returns the two binding points every pass of a group carries.
@@ -1656,6 +1719,14 @@ fn verify(
 /// Wraps a graphics failure as an emission failure.
 fn emission(error: graphics::GraphicsError) -> CompileError {
     CompileError::Emission {
+        reason: error.to_string(),
+    }
+}
+
+/// Wraps a layout failure as a packing failure at a mesh's points.
+fn unpackable(error: graphics::LayoutError) -> CompileError {
+    CompileError::Unpackable {
+        path: Path::root(),
         reason: error.to_string(),
     }
 }
