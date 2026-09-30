@@ -65,47 +65,45 @@ reference design needs the schema machinery that branch carries). The design is 
 
 ## Next
 
-1. **The consumer migration**, if a compiler output should use references at all: the packers
-   (`layout`, `uniform_bytes`, `inputs`) read values, so a document that spells a reference can
-   be *loaded* but not *packed*. Until that moves, references serve documents that share a
-   sub-object, and compiled output keeps naming instance entries.
-2. **`History` and the registry on the loaded form.** `Definition` still holds the serialized
+1. **A compiler that emits a reference.** The device resolves one and the instances it holds may
+   name their payloads elsewhere, but no compiler emits such a name yet: the standard scene puts
+   each mesh's bytes in the instance output, so a second scene does not share them. Emitting a
+   definition per shared part is what the design was for, and it is a compiler change rather than
+   a mechanism one.
+2. **A cache, if the load per render matters.** A document that spells a reference is loaded per
+   render call; the store is rebuilt each time. A document that names nothing is handed over as
+   it is, so only a sharing document pays.
+3. **`History` and the registry on the loaded form.** `Definition` still holds the serialized
    value and applies deltas to it, so `Delta::apply` and `Loaded::patch` now exist side by side;
-   the wire path refuses a document that spells a reference, so the two cannot disagree
-   silently, but the registry itself is still value-based.
+   the wire path refuses a document that spells a reference, so the two cannot disagree silently,
+   but the registry itself is still value-based.
 
 ## Flags for the superior
 
-- **The graphics/instance edge is implemented on the reader's side, which is a deviation from
-  the SPEC's direction.** A graphics document names its instance
-  (`INSTANCE_DEFINITION_FIELD = "instance_definition"`), `assemble` writes it once it knows the
-  identifier the instance output is stored under, and the device refuses a pair that disagrees.
-  The SPEC names the same edge from the other side, as `GraphicsInstance.referencing_graphics`,
-  and it cannot go there without restructuring: the instance document is a flat map of binder
-  payloads, and a dictionary schema carries one value schema, so it has no room for a field of
-  another kind. Putting it on the instance means making the instance a struct, which touches
-  every binder lookup, the derived schema, the emitters and the reference scene. Say so if the
-  SPEC's direction matters more than the cost and I will move it.
+- **The graphics/instance edge is where the spec puts it**, on the instance
+  (`referencing_graphics`), and the instance is now a struct of a name and a payload map rather
+  than a bare map, because a dictionary schema carries one value schema and so had nowhere to put
+  a name. An instance that does not say which graphics it belongs to fails validation, and a
+  render of a pair that disagrees is refused.
+- **A slot must be marked before a reference in it means anything**, which the device's own
+  doctest proved the hard way: the entry schema was `Dict(Any)`, so an entry that spelled a
+  reference was read as data and silently never resolved. Both instance schemas now mark their
+  entry values as able to hold a reference. The same is true of a dictionary in general, where
+  the loader had been reading entries as open rather than as the dictionary's value schema — a
+  bug that only a document *using* a reference could have found.
 - **A field whose only meaning is a pointer cannot be required to be one.** The union lets a
-  marked slot hold a reference *or* a value, so a field that must be a pointer (a binder
-  `source`, or a name like `instance_definition`) is only enforced by the reader. If that should
-  be expressible in the schema, it needs a marker that *requires* a reference alongside the one
-  that permits it.
+  marked slot hold a reference *or* a value, so a field that must be a pointer is only enforced by
+  the reader. If that should be expressible in the schema, it needs a marker that *requires* a
+  reference alongside the one that permits it.
 - **A delta's paths only mean what they say on a loaded generation**, so `Delta::apply` refuses a
-  document that spells a reference and the loaded applier is the authoritative one. The check
-  runs on the document being applied to, so a delta may still introduce a reference (writing a
-  spelling is an ordinary write of a value); from then on the document is patched as a loaded
-  generation.
-- **Definitions refer to each other in a graph, not in a cycle** — confirmed. A reference keeps
-  its target alive, so two definitions naming each other would hold two generations alive with
-  nothing else reaching either, which is the one cycle refcounting cannot free. The rule is a
-  contract on `Store`: a definition already being loaded is refused rather than loaded again.
+  document that spells a reference and the loaded applier is the authoritative one.
+- **Definitions refer to each other in a graph, not in a cycle** — confirmed, and the store in the
+  device enforces it by refusing a definition already being loaded.
 - **A delta mutates the live generation in place** — confirmed, so the sharing flag is a
   diagnostic and a packer hint rather than a correctness input.
 - A `Remove` of indices is a contiguous range, so an arbitrary non-contiguous set is not
-  representable. That is deliberate: the operations map holds one primitive per path, and no
-  `Append` can invert a scattered removal. The general fix would be multi-position inserts on
-  both sides, which is more vocabulary.
-- A loaded generation is a plain value; whether the client holds it in an `Rc`, behind a lock,
-  or in a single owning task is the client's call, and the single-owner reading keeps the graph
+  representable, because the operations map holds one primitive per path and no `Append` can
+  invert a scattered removal.
+- A loaded generation is a plain value; whether the client holds it in an `Rc`, behind a lock, or
+  in a single owning task is the client's call, and the single-owner reading keeps the graph
   `Send`.

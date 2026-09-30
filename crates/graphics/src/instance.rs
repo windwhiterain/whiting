@@ -52,8 +52,13 @@ pub fn derived_instance_schema(graphics: &Value) -> Result<Schema, GraphicsError
         ),
         (
             crate::ENTRIES.to_owned(),
-            Schema::new(SchemaKind::dictionary(crate::binder_payload_schema()))
-                .with_documentation("Instance data, keyed by the name a binder asks for."),
+            Schema::new(SchemaKind::dictionary(
+                crate::binder_payload_schema().reference(),
+            ))
+            .with_documentation(
+                "Instance data, keyed by the name a binder asks for. An entry may name \
+                     payloads in another definition instead of holding them.",
+            ),
         ),
     ]))
     .with_documentation("Instance data, derived from the binders of the passes that read it."))

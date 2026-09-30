@@ -484,11 +484,18 @@ pub(super) fn spelled(value: &Value) -> Option<Reference> {
 }
 
 /// Returns the schema a field is verified against, which is an open one when the schema is.
+///
+/// # Invariants
+///
+/// An entry of a dictionary is described by the dictionary's value schema rather than by nothing,
+/// which is what lets an entry be marked as one that may hold a reference. A field of a struct or
+/// of a variant is described by its own schema, and one the schema does not declare is open.
 pub(super) fn field_schema<'schema>(schema: &'schema Schema, name: &str) -> &'schema Schema {
     match &schema.kind {
         SchemaKind::Struct { fields } => fields.get(name).unwrap_or_else(|| open_schema()),
         SchemaKind::Enum { variants } => variants.get(name).unwrap_or_else(|| open_schema()),
-        SchemaKind::Dict { .. } | SchemaKind::Any => open_schema(),
+        SchemaKind::Dict { value } => value.as_ref(),
+        SchemaKind::Any => open_schema(),
         _ => schema,
     }
 }

@@ -7,6 +7,8 @@ use definition::{
     ValidationError, Value, Version,
 };
 use graphics::GraphicsError;
+
+use crate::resolve::Stored;
 use scene::{CompileContext, CompileError, Compiler};
 use thiserror::Error;
 
@@ -232,16 +234,16 @@ impl Device {
     ) -> Result<RenderedFrame, DeviceError> {
         let graphics = self.registry.definition(graphics_identifier)?.clone();
         let instance_identifier = self.compiler.instance_identifier();
-        let instance = self
-            .registry
-            .definition(instance_identifier)
-            .ok()
-            .map(|definition| definition.value.clone())
-            .unwrap_or_default();
+        let instance = self.registry.definition(instance_identifier).ok().cloned();
         let declared = instance
-            .as_field_map()
-            .and_then(|fields| fields.get(graphics::REFERENCING_GRAPHICS))
-            .and_then(Value::as_str)
+            .as_ref()
+            .and_then(|instance| {
+                instance
+                    .value
+                    .as_field_map()
+                    .and_then(|fields| fields.get(graphics::REFERENCING_GRAPHICS))
+                    .and_then(Value::as_str)
+            })
             .ok_or_else(|| DeviceError::UnpairedInstance {
                 instance: instance_identifier.clone(),
             })?;
@@ -252,10 +254,20 @@ impl Device {
                 rendered: instance_identifier.clone(),
             });
         }
+
+        // A document that names data in another definition can only be read once it is loaded,
+        // so the renderer is handed what each reference resolves to rather than a spelling it
+        // could not follow. A document that names nothing is handed over as it is.
+        let stored = Stored::new(&self.registry);
+        let graphics_value = stored.value(&graphics)?;
+        let instance_value = match &instance {
+            Some(instance) => stored.value(instance)?,
+            None => Value::default(),
+        };
         Ok(render_with(
             self.renderer.as_ref(),
-            &graphics.value,
-            &instance,
+            &graphics_value,
+            &instance_value,
         )?)
     }
 
@@ -283,6 +295,10 @@ pub enum DeviceError {
     Render(#[from] RenderError),
     #[error(transparent)]
     Graphics(#[from] GraphicsError),
+    #[error(transparent)]
+    Schema(#[from] definition::SchemaError),
+    #[error(transparent)]
+    Load(#[from] definition::LoadError),
     #[error("the emitted delta for `{output}` failed the cross-check: {reason}")]
     CrossCheck {
         output: DefinitionIdentifier,

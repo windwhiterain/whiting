@@ -78,6 +78,44 @@
 //! // The size comes from the target the first pass binds, resolved through the instance.
 //! assert_eq!((frame.frame.width, frame.frame.height), (512, 512));
 //!
+//! // A document can name its data rather than hold it. The surface moves into a definition of
+//! // its own, the instance names it, and the renderer follows it: the frame is still the
+//! // surface's size, which it can only know by resolving the reference.
+//! let surface = device
+//!     .registry()
+//!     .definition(&instance_identifier)
+//!     .expect("the instance output exists")
+//!     .value
+//!     .at(&definition::Path::root().key("entries").key("surface"))
+//!     .expect("the surface is in the instance")
+//!     .clone();
+//! device
+//!     .registry_mut()
+//!     .put_schema(SchemaIdentifier::new("payload"), graphics::binder_payload_schema());
+//! device
+//!     .registry_mut()
+//!     .insert_definition(Definition::new(
+//!         DefinitionIdentifier::new("shared.surface"),
+//!         SchemaIdentifier::new("payload"),
+//!         surface,
+//!     ))
+//!     .expect("the surface definition is new");
+//! device
+//!     .registry_mut()
+//!     .definition_mut(&instance_identifier)
+//!     .expect("the instance output exists")
+//!     .value
+//!     .as_field_map_mut()
+//!     .and_then(|fields| fields.get_mut("entries"))
+//!     .and_then(Value::as_dict_mut)
+//!     .expect("the instance holds entries")
+//!     .insert(
+//!         "surface".to_owned(),
+//!         definition::Reference::External(definition::Path::root().key("shared.surface")).to_value(),
+//!     );
+//! let shared = device.render(&graphics_identifier).expect("the frame renders");
+//! assert_eq!((shared.frame.width, shared.frame.height), (512, 512));
+//!
 //! // The compiler identifies the instance the renderer binds against.
 //! assert_eq!(device.compiler().instance_identifier(), &instance_identifier);
 //!
@@ -102,6 +140,7 @@
 #[cfg(feature = "png")]
 mod image;
 mod render;
+mod resolve;
 mod rpc;
 mod snapshot;
 mod state;

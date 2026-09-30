@@ -173,8 +173,13 @@ pub fn instance_schema() -> Schema {
         ),
         (
             ENTRIES.to_owned(),
-            Schema::new(SchemaKind::dictionary(Schema::new(SchemaKind::Any))).with_documentation(
-                "Open payloads, keyed by the name a binder asks for, so any entry is legal.",
+            Schema::new(SchemaKind::dictionary(
+                Schema::new(SchemaKind::Any).reference(),
+            ))
+            .with_documentation(
+                "Open payloads, keyed by the name a binder asks for, so any entry is legal. \
+                     An entry may name payloads that live in another definition instead of \
+                     holding them, which is what lets two documents share one buffer.",
             ),
         ),
     ]))

@@ -132,4 +132,6 @@ pub enum LoadError {
     ValueLessCycle { references: Vec<String> },
     #[error("the reference `{reference}` was never resolved")]
     Unresolved { reference: String },
+    #[error("the document cannot be expanded into a tree, because it reaches node {node} again")]
+    Cycle { node: usize },
 }
