@@ -138,10 +138,11 @@ impl Delta {
     ///
     /// A path is transparent, so a path that runs through a reference names the node the
     /// reference points at. The serialized form holds the spelling rather than the node, so a
-    /// document that spells one has nothing for such a path to arrive at and is refused here:
-    /// it is patched with [`Loaded::patch`](crate::Loaded::patch) instead. A delta may still
-    /// introduce a reference, because writing a spelling is an ordinary write of a value and
-    /// nothing traverses it; the deltas that follow belong on the loaded generation.
+    /// delta whose path *reaches* a reference is refused here and belongs on
+    /// [`Loaded::patch`](crate::Loaded::patch) instead. The check is per path rather than per
+    /// document, so a document may name something and still take a delta that touches none of what
+    /// it named. A delta may also *introduce* a reference, because writing a spelling is an
+    /// ordinary write of a value and nothing traverses it.
     ///
     /// ```
     /// use std::collections::BTreeMap;
@@ -174,18 +175,27 @@ impl Delta {
     ///     ))
     ///     .expect("the definition is new");
     ///
-    /// let mut operations = BTreeMap::new();
-    /// operations.insert(
+    /// // A path that reaches the reference is refused, and the error names the slot it reached.
+    /// let mut at_the_reference = BTreeMap::new();
+    /// at_the_reference.insert(
+    ///     Path::root().key("right"),
+    ///     PrimitiveDelta::Replace(Value::Int(9)),
+    /// );
+    /// assert!(matches!(
+    ///     registry.apply(&Delta::new(identifier.clone(), 0u64.into(), at_the_reference)),
+    ///     Err(RegistryError::Delta(DeltaError::ReferenceInSerialized { .. }))
+    /// ));
+    ///
+    /// // A path that reaches none applies, and the reference goes on naming what it named: the
+    /// // node it points at is the one that changed.
+    /// let mut elsewhere = BTreeMap::new();
+    /// elsewhere.insert(
     ///     Path::root().key("left"),
     ///     PrimitiveDelta::Replace(Value::Int(9)),
     /// );
-    /// let delta = Delta::new(identifier, 0u64.into(), operations);
-    ///
-    /// // The serialized form refuses it, and names the reference it found.
-    /// assert!(matches!(
-    ///     registry.apply(&delta),
-    ///     Err(RegistryError::Delta(DeltaError::ReferenceInSerialized { .. }))
-    /// ));
+    /// registry
+    ///     .apply(&Delta::new(identifier, 0u64.into(), elsewhere))
+    ///     .expect("a path that reaches no reference applies");
     /// ```
     pub fn apply(
         &self,
@@ -205,16 +215,17 @@ impl Delta {
             });
         }
 
-        // A path is transparent, so a path that runs through a reference names the node the
-        // reference points at, and only a loaded generation holds those nodes. A document that
-        // already spells one is therefore patched as a loaded generation rather than here.
-        //
-        // A delta may still *introduce* a reference, because writing a spelling is an ordinary
-        // write of a value and nothing traverses it. From then on the document spells one, so
-        // the deltas that follow belong on the loaded generation.
+        // A path that runs through a reference names the node the reference points at, which the
+        // serialized form does not hold: it holds the spelling. A delta that reaches one is
+        // therefore refused, because applying it here would mean something different from applying
+        // it to a loaded generation, which is where such a delta belongs. A path that meets none is
+        // unambiguous here, which is what lets a document name something and still take a delta
+        // that touches none of what it named.
         let schema = registry.schema(&definition.schema_identifier)?;
-        if let Some(path) = Loaded::spelled_reference(&definition.value, schema) {
-            return Err(DeltaError::ReferenceInSerialized { path });
+        for path in self.operations.keys() {
+            if let Some(met) = Loaded::crossed_reference(&definition.value, schema, path) {
+                return Err(DeltaError::ReferenceInSerialized { path: met });
+            }
         }
 
         // Applying to a clone is what makes a rejected delta leave nothing behind, so a

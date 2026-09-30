@@ -173,6 +173,33 @@
 //!     .map(|pass| pass.label().unwrap())
 //!     .collect();
 //! assert_eq!(named_labels, labels);
+//!
+//! // And it still takes a delta, because a path that reaches no reference means the same thing
+//! // written out as it does loaded, however much the document names.
+//! registry
+//!     .insert_definition(naming)
+//!     .expect("the naming scene is new");
+//! let mut operations = std::collections::BTreeMap::new();
+//! operations.insert(
+//!     definition::Path::root()
+//!         .key("instances")
+//!         .index(0)
+//!         .key("transform")
+//!         .key("translation"),
+//!     definition::PrimitiveDelta::Replace(definition::Value::List(
+//!         [3.0, 0.0, 0.0]
+//!             .into_iter()
+//!             .map(definition::Value::Float)
+//!             .collect(),
+//!     )),
+//! );
+//! registry
+//!     .apply(&definition::Delta::new(
+//!         DefinitionIdentifier::new("naming.source"),
+//!         0u64.into(),
+//!         operations,
+//!     ))
+//!     .expect("a scene that names a mesh takes a delta that reaches no reference");
 //! ```
 
 mod compiler;

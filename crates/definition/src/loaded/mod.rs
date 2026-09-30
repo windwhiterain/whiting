@@ -493,6 +493,45 @@ impl Loaded {
         find_reference(value, schema, &Path::root())
     }
 
+    /// Returns the marked slot a path reaches or runs through that holds a reference.
+    ///
+    /// # Why the answer is per path
+    ///
+    /// A document may name something and still be patched where it names nothing: a scene whose
+    /// mesh is another definition can have an instance moved without touching the name. Only a path
+    /// that arrives at a reference, or descends through one, is ambiguous on the serialized form,
+    /// which is where a reference is a spelling rather than the node it names.
+    pub fn crossed_reference(value: &Value, schema: &Schema, path: &Path) -> Option<Path> {
+        let mut at = Path::root();
+        let mut current = value;
+        let mut current_schema = schema;
+        if current_schema.is_reference() && load::spelled(current).is_some() {
+            return Some(at);
+        }
+        for segment in path.segments() {
+            let container = current;
+            current = match (segment, current) {
+                (PathSegment::Key(name), Value::Struct(fields))
+                | (PathSegment::Key(name), Value::Dict(fields))
+                | (PathSegment::Key(name), Value::Enum { fields, .. }) => fields.get(name)?,
+                (PathSegment::Index(index), Value::List(elements)) => elements.get(*index)?,
+                _ => return None,
+            };
+            current_schema = match (segment, current_schema, container) {
+                (PathSegment::Key(name), schema, Value::Enum { tag, .. }) => {
+                    load::field_schema(load::variant_schema(schema, tag), name)
+                }
+                (PathSegment::Key(name), schema, _) => load::field_schema(schema, name),
+                (PathSegment::Index(_), schema, _) => load::element_schema(schema),
+            };
+            at = at.child(segment.clone());
+            if current_schema.is_reference() && load::spelled(current).is_some() {
+                return Some(at);
+            }
+        }
+        None
+    }
+
     /// Resolves a path to the node it names, following references as it goes.
     ///
     /// A path that runs out of this document into another one answers with a target in that
