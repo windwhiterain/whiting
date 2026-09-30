@@ -65,34 +65,41 @@ reference design needs the schema machinery that branch carries). The design is 
 
 ## Next
 
-1. **The material's custom data never reaches the gpu.** The emitter verifies it against the
-   shader's custom schema and then drops it: the instance row is the model matrix and nothing
-   else. Since the material carries it and a material belongs to an instance, it is per-instance
-   data, so it belongs in the instance row — which is also what makes it work under batching,
-   where a uniform is read by every instance of the pass. This is the next thing to write.
-2. **A compiler that emits a reference.** The device resolves one and an instance entry may name
-   its payload in another definition, but no compiler emits such a name yet: the standard scene
-   puts each mesh's bytes in its own output, so a second scene shares nothing.
-3. **A cache, if the load per render matters.** A document that spells a reference is loaded per
-   render call; one that names nothing is handed over as it is.
+1. **A compiler that emits a reference** — see the flag below, which is the one thing this work
+   stopped to ask about.
+2. **`History` and the registry on the loaded form.** `Definition` still holds the serialized value
+   and applies deltas to it, so `Delta::apply` and `Loaded::patch` exist side by side; the wire path
+   refuses a document that spells a reference, so the two cannot disagree silently.
+
+## Done since the last revision of this note
+
+- An instance names the graphics it provides data to, and a render of a pair that disagrees is
+  refused.
+- The device resolves and writes out a document that names references, so a compiled output can
+  reach a payload that lives in another definition.
+- Instances whose passes would be identical are drawn together, so a pass draws as many instances
+  as its instance buffer has rows.
+- A material's custom data is packed into the instance row, which is where per-instance variation
+  has to live once a pass draws several instances at once.
+- A document a render resolved is cached by identifier and version, and every mutation route
+  forgets the cache.
 
 ## Flags for the superior
 
-- **The renderer already draws instanced, and the compiler now feeds it.** A pass binds one
-  vertex buffer and one instance buffer, and the draw is `draw(0..vertices, 0..rows)`, so
-  instances whose passes would be identical now share one pass: the same stage, shader, mesh and
-  light. The example scene gained a second lighting instance to demonstrate it — one pass, one
-  buffer, two rows — because its original three instances were in three stages and could never
-  merge. The consequence for the format is that anything varying per instance must be per-instance
-  *data*, which is where the material's custom data belongs and where a uniform cannot.
+- **The one thing left needs a decision.** Sharing a mesh between two compiled outputs means the
+  compiler emitting a definition of its own (the packed vertex bytes) and the instance naming it,
+  which grows the compiler contract: `CompileOutput` carries extra definitions, the device
+  registers and versions them, and something has to decide when a shared part is no longer used.
+  The alternative is sharing only in authored documents — a scene names a registered mesh and the
+  compiler resolves it — which needs no contract change but leaves each compiled output carrying
+  its own copy of the bytes.
 - **The instance carries the payloads under `entries`, and names its graphics**, because a
-  dictionary schema had nowhere to put a name. A pair that disagrees is refused rather than
-  rendered.
-- **A slot must be marked before a reference in it means anything**, and a dictionary's entries
-  are read with the dictionary's value schema rather than as open — a bug that only a document
-  using a reference could have found.
-- **A field whose only meaning is a pointer cannot be required to be one.** The union lets a
-  marked slot hold a reference *or* a value, so a pointer field is only enforced by the reader.
+  dictionary schema had nowhere to put a name.
+- **A slot must be marked before a reference in it means anything**, and a dictionary's entries are
+  read with the dictionary's value schema rather than as open — a bug that only a document using a
+  reference could have found.
+- **A field whose only meaning is a pointer cannot be required to be one.** The union lets a marked
+  slot hold a reference *or* a value, so a pointer field is only enforced by the reader.
 - **A delta's paths only mean what they say on a loaded generation**, so `Delta::apply` refuses a
   document that spells a reference and the loaded applier is the authoritative one.
 - **Definitions refer to each other in a graph, not in a cycle** — confirmed, and the device's
