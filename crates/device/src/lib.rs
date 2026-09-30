@@ -113,6 +113,10 @@
 //!         "surface".to_owned(),
 //!         definition::Reference::External(definition::Path::root().key("shared.surface")).to_value(),
 //!     );
+//! // The instance changed without its version changing, which is what a change through the
+//! // registry looks like: a resolved document is keyed by version, so this is what tells the
+//! // device to write it out again.
+//! device.forget_resolved();
 //! let shared = device.render(&graphics_identifier).expect("the frame renders");
 //! assert_eq!((shared.frame.width, shared.frame.height), (512, 512));
 //!

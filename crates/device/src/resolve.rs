@@ -15,14 +15,24 @@
 //! so a scene that keeps its data to itself is unaffected.
 
 use std::cell::RefCell;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use definition::{
     Definition, DefinitionIdentifier, FileContent, FilePath, LoadError, Loaded, Origin, Registry,
-    Store, Value, Wanted,
+    Store, Value, Version, Wanted,
 };
 
 use crate::state::DeviceError;
+
+/// Documents already written out, keyed by the identifier they are stored under.
+///
+/// # Invariants
+///
+/// An entry is refreshed whenever the definition's version differs, because a version is what a
+/// change to a definition produces. A definition changed *without* its version changing is not
+/// seen here, so whoever changes one that way must call
+/// [`Device::forget_resolved`](crate::Device::forget_resolved).
+pub type Resolved = RefCell<BTreeMap<DefinitionIdentifier, (Version, Value)>>;
 
 /// The registry as a store, so a document that names another one can be loaded.
 ///
@@ -35,14 +45,17 @@ use crate::state::DeviceError;
 /// consults it is the load that is already running.
 pub struct Stored<'registry> {
     registry: &'registry Registry,
+    /// Documents already written out, so a render does not write out what has not changed.
+    resolved: &'registry Resolved,
     loading: RefCell<BTreeSet<String>>,
 }
 
 impl<'registry> Stored<'registry> {
-    /// Creates a store over a registry.
-    pub fn new(registry: &'registry Registry) -> Self {
+    /// Creates a store over a registry, writing out of and into a cache of resolved documents.
+    pub fn new(registry: &'registry Registry, resolved: &'registry Resolved) -> Self {
         Self {
             registry,
+            resolved,
             loading: RefCell::new(BTreeSet::new()),
         }
     }
@@ -57,8 +70,18 @@ impl<'registry> Stored<'registry> {
             return Ok(definition.value.clone());
         }
         let identifier = &definition.definition_identifier;
+        let cached = self.resolved.borrow().get(identifier).cloned();
+        if let Some((version, value)) = cached {
+            if version == definition.version {
+                return Ok(value);
+            }
+        }
         let loaded = self.load(identifier, &definition.value, schema)?;
-        Ok(loaded.expanded()?)
+        let expanded = loaded.expanded()?;
+        self.resolved
+            .borrow_mut()
+            .insert(identifier.clone(), (definition.version, expanded.clone()));
+        Ok(expanded)
     }
 
     /// Loads one definition against the schema it is registered with.

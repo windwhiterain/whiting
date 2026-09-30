@@ -8,7 +8,7 @@ use definition::{
 };
 use graphics::GraphicsError;
 
-use crate::resolve::Stored;
+use crate::resolve::{Resolved, Stored};
 use scene::{CompileContext, CompileError, Compiler};
 use thiserror::Error;
 
@@ -25,6 +25,11 @@ pub struct Device {
     /// second full compile and a wrong delta is a development-time defect rather than a
     /// production concern. See [cross checking emitted deltas](crate#cross-checking).
     cross_check: bool,
+    /// Documents already written out, so a render does not write out what has not changed.
+    ///
+    /// A definition changed through [`Device::registry_mut`] keeps its version, so whoever
+    /// changes one that way must call [`Device::forget_resolved`].
+    resolved: Resolved,
 }
 
 /// What a reload did.
@@ -56,7 +61,17 @@ impl Device {
             compiler,
             renderer,
             cross_check: cfg!(debug_assertions),
+            resolved: Resolved::default(),
         }
+    }
+
+    /// Forgets every document written out, so the next render resolves them again.
+    ///
+    /// A change that goes through the registry itself is seen without this, because a change
+    /// produces a new version and a written out document is keyed by one. This is for a change
+    /// made through [`Device::registry_mut`], which does not.
+    pub fn forget_resolved(&self) {
+        self.resolved.borrow_mut().clear();
     }
 
     /// Forces cross checking on or off, overriding the build profile default.
@@ -258,7 +273,7 @@ impl Device {
         // A document that names data in another definition can only be read once it is loaded,
         // so the renderer is handed what each reference resolves to rather than a spelling it
         // could not follow. A document that names nothing is handed over as it is.
-        let stored = Stored::new(&self.registry);
+        let stored = Stored::new(&self.registry, &self.resolved);
         let graphics_value = stored.value(&graphics)?;
         let instance_value = match &instance {
             Some(instance) => stored.value(instance)?,
