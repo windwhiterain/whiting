@@ -79,7 +79,7 @@ pub fn dunes() -> Value {
             Value::List(
                 mesh_shaders(surface_shading, helpers)
                     .into_iter()
-                    .chain(std::iter::once(post_shader(grade)))
+                    .chain(std::iter::once(post_shader(grade, "")))
                     .collect(),
             ),
         ),

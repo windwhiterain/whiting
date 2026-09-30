@@ -298,7 +298,12 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
 /// through: a post stage is not drawn through the camera's projection, it *is* the frame.
 /// The fullscreen mesh is a position and nothing else, and the pass binds no instance row,
 /// so the only attribute is at location zero.
-pub fn post(grade: &str) -> String {
+///
+/// `helpers` is WGSL a scene needs beyond the grade itself — a sky, a fog, a noise —
+/// declared at module level beside `ray_through`, because `WGSL` has no nested functions
+/// and `grade` is written into the body of one. It is the same arrangement the lighting
+/// stage has, and for the same reason.
+pub fn post(grade: &str, helpers: &str) -> String {
     format!(
         r#"
 struct Camera {{
@@ -361,6 +366,7 @@ fn ray_through(uv: vec2<f32>) -> vec3<f32> {{
     );
 }}
 
+{helpers}
 @fragment
 fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
     let size = vec2<f32>(textureDimensions(color_target));
@@ -414,7 +420,10 @@ pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
 }
 
 /// Builds the post shader a scene declares, which grades the frame the scene produced.
-pub fn post_shader(grade: &str) -> Value {
+///
+/// `helpers` is handed to [`post`] unchanged: the WGSL the grade's arithmetic is written
+/// against, declared at module level.
+pub fn post_shader(grade: &str, helpers: &str) -> Value {
     // A screen shader's variant carries a `stage` naming the stage it belongs to, which
     // the three mesh variants do not: they are named by their own tag, and a fourth one
     // that was not would leave a document with no way to say which stage a shader reads.
@@ -427,7 +436,7 @@ pub fn post_shader(grade: &str) -> Value {
             ),
             (
                 crate::standard::SOURCE.to_owned(),
-                Value::String(post(grade)),
+                Value::String(post(grade, helpers)),
             ),
             (
                 crate::standard::PASS_SCHEMA.to_owned(),
