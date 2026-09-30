@@ -75,9 +75,20 @@ impl Compiler for StandardScene {
 }
 
 /// Registers the scene schema this compiler accepts, so an agent can read it.
+///
+/// # Invariants
+///
+/// A scene may name a mesh that lives in another definition, and that definition is read with the
+/// mesh schema, so both are registered under their conventional identifiers by one call: a client
+/// that registers only the scene schema would compile a scene until the moment it named a mesh,
+/// and then fail on a schema it never knew it had to provide.
 pub fn register_standard_scene_schema(registry: &mut Registry) {
     registry.put_schema(
         SchemaIdentifier::new(STANDARD_SCENE_SCHEMA),
         StandardScene::schema(),
+    );
+    registry.put_schema(
+        SchemaIdentifier::new(crate::standard::MESH_SCHEMA),
+        crate::standard::mesh_schema(),
     );
 }

@@ -98,7 +98,8 @@ pub mod standard;
 
 pub use reference::{REFERENCE_SCENE_SCHEMA, ReferenceScene, register_scene_schema};
 pub use standard::{
-    STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema, standard_scene_schema,
+    MESH_SCHEMA, STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema,
+    standard_scene_schema,
 };
 
 /// Turns two emitted documents into a compile output.

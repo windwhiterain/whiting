@@ -32,17 +32,16 @@
 //! use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier};
 //! use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 //! use whiting_scene::{
-//!     CompileContext, Compiler, StandardScene, STANDARD_SCENE_SCHEMA,
-//!     standard::{example_standard_scene, mesh_schema},
+//!     CompileContext, Compiler, MESH_SCHEMA, StandardScene, STANDARD_SCENE_SCHEMA,
+//!     register_standard_scene_schema,
+//!     standard::example_standard_scene,
 //! };
 //!
 //! let mut registry = Registry::new();
 //! registry.put_schema(SchemaIdentifier::new(GRAPHICS_SCHEMA), graphics::graphics_schema());
 //! registry.put_schema(SchemaIdentifier::new(INSTANCE_SCHEMA), graphics::instance_schema());
-//! registry.put_schema(
-//!     SchemaIdentifier::new(STANDARD_SCENE_SCHEMA),
-//!     StandardScene::schema(),
-//! );
+//! // The scene schema, and the mesh schema a scene names a mesh under.
+//! register_standard_scene_schema(&mut registry);
 //!
 //! let compiler = StandardScene::new(
 //!     DefinitionIdentifier::new("scene.graphics"),
@@ -136,11 +135,10 @@
 //!     .at(&definition::Path::root().key("meshes").index(0))
 //!     .expect("the example has a mesh")
 //!     .clone();
-//! registry.put_schema(SchemaIdentifier::new("mesh"), mesh_schema());
 //! registry
 //!     .insert_definition(Definition::new(
 //!         DefinitionIdentifier::new("studio.mesh"),
-//!         SchemaIdentifier::new("mesh"),
+//!         SchemaIdentifier::new(MESH_SCHEMA),
 //!         named_mesh,
 //!     ))
 //!     .expect("the mesh definition is new");
@@ -221,7 +219,7 @@ pub use pass_schemas::{
     lighting_pass_schema, projection_schema, shadowing_pass_schema,
 };
 pub use scene_schema::{
-    default_custom_schema, default_instance_schema, default_point_schema, instance_schema,
-    light_schema, material_schema, mesh_schema, shader_schema, standard_scene_schema,
-    transform_schema,
+    MESH_SCHEMA, default_custom_schema, default_instance_schema, default_point_schema,
+    instance_schema, light_schema, material_schema, mesh_schema, shader_schema,
+    standard_scene_schema, transform_schema,
 };

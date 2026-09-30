@@ -138,6 +138,16 @@ pub fn light_schema() -> Schema {
     .with_documentation("A light, which contributes one shadowing pass.")
 }
 
+/// Schema identifier a mesh definition is registered under when a scene names it.
+///
+/// # Why the framework names it
+///
+/// A scene may name a mesh that lives in another definition, and the definition that holds it is
+/// read with [`mesh_schema`]. Which identifier it is registered under is the client's to choose,
+/// but a scene that names a mesh has to name the *same* one, so the framework states the
+/// conventional one rather than leaving two clients to invent two.
+pub const MESH_SCHEMA: &str = "whiting.scene.mesh";
+
 /// Builds the schema of one mesh: geometry, and nothing about where it is drawn.
 pub fn mesh_schema() -> Schema {
     Schema::new(SchemaKind::structure([
