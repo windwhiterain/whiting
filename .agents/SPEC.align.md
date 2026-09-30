@@ -500,3 +500,32 @@ the copy is derived data and regenerating it per scene is correct; sharing it pa
 source has a large fan-out, and it would grow the compiler contract with extra definitions, their
 versions, and a rule for retiring a shared part whose last user went away. Sharing a mesh in the
 authored document is what the fan-out needs first, and that is what is built.
+
+## Reference slots: the decisions behind them
+
+What a reference slot means, and what the loaded form is. These are the contracts the code is
+written to; the code states the same invariants at the points they matter.
+
+  - a schema declares which slots may hold a reference, and such a slot holds a **union**: a
+    reference or a value of the declared kind. The declared kind describes both ends, so an inlined
+    value must satisfy it and a reference must resolve to something that does.
+  - a reference is recognised by its tag, so a malformed reference is reported as one rather than as
+    a kind mismatch, and a value that happens to look like one in an unmarked slot is data.
+  - traversal is transparent: two slots naming one path name one node. Re-pointing a slot is a
+    `Replace` of the slot, which is why a delta whose path *reaches* a reference belongs on the
+    loaded form rather than the serialized one.
+  - loading resolves eagerly, so a loaded document is a graph of nodes rather than of spellings, and
+    reading a value through a path costs what reading any node costs.
+  - a loaded version is a **generation**: an arena of nodes addressed by index, behind one reference
+    count, freed whole when its last holder drops. A cycle is therefore free and there is no
+    collector, and an old generation lives while anything still refers to it, which is what makes a
+    hot reload safe for a holder that is mid-read.
+  - definitions refer to each other in a **graph, not a cycle**: a reference keeps its target alive,
+    so two definitions naming each other would hold two generations alive with nothing else
+    reaching either. That is the one cycle refcounting cannot free, so a store refuses a definition
+    already being loaded rather than loading it again.
+  - a delta mutates the live generation in place, so the sharing of a node is a diagnostic and a
+    packer hint rather than a correctness input.
+  - `Append` carries the position it appends at, and a `Remove` of indices is a contiguous range, so
+    an operation map holding one primitive per path can always invert exactly. A scattered removal
+    is deliberately not representable, because no `Append` could invert it.
