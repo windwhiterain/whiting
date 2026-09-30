@@ -85,6 +85,17 @@
 //!     .expect("the instance buffer is in the instance");
 //! assert_eq!(quad.variant_tag(), Some("Buffer"));
 //!
+//! // The graphics document names the definition its binders read from, which is the one edge
+//! // that ties the pair together: a renderer refuses a graphics document paired with anything
+//! // else rather than resolving whatever entries happen to carry those names.
+//! let declared = compiled
+//!     .graphics
+//!     .value
+//!     .as_field_map()
+//!     .and_then(|fields| fields.get(graphics::INSTANCE_DEFINITION_FIELD))
+//!     .and_then(definition::Value::as_str);
+//! assert_eq!(declared, Some("scene.instance"));
+//!
 //! // The contract: applying the emitted delta to the previous output reproduces it.
 //! assert!(compiled.graphics_delta.is_empty(), "a first compile has nothing to delta from");
 //! let mut replayed = compiled.graphics.clone();

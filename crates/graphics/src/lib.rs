@@ -114,6 +114,17 @@ pub const PASSES_FIELD: &str = "passes";
 /// Field of the graphics root that holds the schema of the instance data.
 pub const INSTANCE_SCHEMA_FIELD: &str = "instance_schema";
 
+/// Field of the graphics root that names the definition its binders read from.
+///
+/// # Invariants
+///
+/// The same edge the spec names from the other side, as `GraphicsInstance.referencing_graphics`,
+/// declared here because the instance document is a flat map of binder payloads: a dictionary
+/// schema carries one value schema, so it has no room for a field of another kind. Declaring it
+/// on the reader means the pair can be checked, since the reader is the document that knows
+/// which definition its binders were written against.
+pub const INSTANCE_DEFINITION_FIELD: &str = "instance_definition";
+
 /// Builds the schema of a graphics instruction set document.
 ///
 /// The `instance_schema` slot holds a schema document. A compiler may leave it permissive
@@ -130,6 +141,15 @@ pub fn graphics_schema() -> Schema {
             INSTANCE_SCHEMA_FIELD.to_owned(),
             Schema::document_schema()
                 .with_documentation("Schema of the instance data, authored or derived."),
+        ),
+        (
+            INSTANCE_DEFINITION_FIELD.to_owned(),
+            Schema::new(SchemaKind::String)
+                .optional()
+                .with_documentation(
+                    "Name of the definition the binders read from. A renderer refuses a graphics \
+                 document that does not name one, so a document meant to be rendered sets it.",
+                ),
         ),
     ]))
     .with_documentation("An instruction set of low level graphics computation.")

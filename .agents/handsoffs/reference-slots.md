@@ -65,32 +65,32 @@ reference design needs the schema machinery that branch carries). The design is 
 
 ## Next
 
-1. **The graphics/instance pairing, at the document level.** See the flag below: the edge belongs
-   on the definitions rather than on every binder.
+1. **The consumer migration**, if a compiler output should use references at all: the packers
+   (`layout`, `uniform_bytes`, `inputs`) read values, so a document that spells a reference can
+   be *loaded* but not *packed*. Until that moves, references serve documents that share a
+   sub-object, and compiled output keeps naming instance entries.
 2. **`History` and the registry on the loaded form.** `Definition` still holds the serialized
    value and applies deltas to it, so `Delta::apply` and `Loaded::patch` now exist side by side;
-   the wire path refuses a document that spells a reference, so the two cannot disagree silently,
-   but the registry itself is still value-based.
+   the wire path refuses a document that spells a reference, so the two cannot disagree
+   silently, but the registry itself is still value-based.
 
 ## Flags for the superior
 
-- **The graphics/instance edge belongs on the documents, not on every binder.** The device's
-  per-frame path is *given* the pair `(graphics, instance)` as two values and has no notion of
-  definition identity, so a reference on a binder's `source` would be a pointer nobody checks
-  and would only complicate the texture cache key and `verify_pass_inputs`. What is missing is
-  the other direction of the edge the SPEC already names: the graphics document declares
-  `instance_schema`, which the instance data is validated against, but `GraphicsInstance`'s
-  `referencing_graphics` is not emitted, so nothing asserts *which* graphics an instance
-  belongs to. The small change is to have `assemble` (which knows both identifiers) write
-  `referencing_graphics` into the instance document and to assert it where the pair is loaded —
-  which needs a decision about where that assertion runs, since the renderer is handed values
-  rather than definitions.
+- **The graphics/instance edge is implemented on the reader's side, which is a deviation from
+  the SPEC's direction.** A graphics document names its instance
+  (`INSTANCE_DEFINITION_FIELD = "instance_definition"`), `assemble` writes it once it knows the
+  identifier the instance output is stored under, and the device refuses a pair that disagrees.
+  The SPEC names the same edge from the other side, as `GraphicsInstance.referencing_graphics`,
+  and it cannot go there without restructuring: the instance document is a flat map of binder
+  payloads, and a dictionary schema carries one value schema, so it has no room for a field of
+  another kind. Putting it on the instance means making the instance a struct, which touches
+  every binder lookup, the derived schema, the emitters and the reference scene. Say so if the
+  SPEC's direction matters more than the cost and I will move it.
 - **A field whose only meaning is a pointer cannot be required to be one.** The union lets a
-  marked slot hold a reference *or* a value, which is right for a slot that may inline its
-  value, but a binder's `source` and `referencing_graphics` are pointers with no meaningful
-  inline arm. The schema is therefore permissive and only the reader can refuse a bare name.
-  If that should be expressible in the schema, it needs a marker that *requires* a reference
-  alongside the one that permits it.
+  marked slot hold a reference *or* a value, so a field that must be a pointer (a binder
+  `source`, or a name like `instance_definition`) is only enforced by the reader. If that should
+  be expressible in the schema, it needs a marker that *requires* a reference alongside the one
+  that permits it.
 - **A delta's paths only mean what they say on a loaded generation**, so `Delta::apply` refuses a
   document that spells a reference and the loaded applier is the authoritative one. The check
   runs on the document being applied to, so a delta may still introduce a reference (writing a

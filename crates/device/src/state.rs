@@ -4,7 +4,7 @@ use std::path::Path;
 
 use definition::{
     Definition, DefinitionIdentifier, Delta, Registry, RegistryError, SchemaIdentifier,
-    ValidationError, Version,
+    ValidationError, Value, Version,
 };
 use graphics::GraphicsError;
 use scene::{CompileContext, CompileError, Compiler};
@@ -219,14 +219,37 @@ impl Device {
     }
 
     /// Renders a stored graphics definition against the compiler's instance output.
+    ///
+    /// # Invariants
+    ///
+    /// A graphics document names the definition its binders read from, and rendering it
+    /// against anything else is refused rather than done: the binders address instance entries
+    /// by name, so a mismatched pair would resolve to whatever happens to carry those names
+    /// and produce pixels that look like a rendering of the wrong data.
     pub fn render(
         &self,
         graphics_identifier: &DefinitionIdentifier,
     ) -> Result<RenderedFrame, DeviceError> {
         let graphics = self.registry.definition(graphics_identifier)?.clone();
+        let instance_identifier = self.compiler.instance_identifier();
+        let declared = graphics
+            .value
+            .as_field_map()
+            .and_then(|fields| fields.get(graphics::INSTANCE_DEFINITION_FIELD))
+            .and_then(Value::as_str)
+            .ok_or_else(|| DeviceError::UnpairedGraphics {
+                graphics: graphics_identifier.clone(),
+            })?;
+        if declared != instance_identifier.as_str() {
+            return Err(DeviceError::InstancePairing {
+                graphics: graphics_identifier.clone(),
+                declared: declared.to_owned(),
+                rendered: instance_identifier.clone(),
+            });
+        }
         let instance = self
             .registry
-            .definition(self.compiler.instance_identifier())
+            .definition(instance_identifier)
             .ok()
             .map(|definition| definition.value.clone())
             .unwrap_or_default();
@@ -265,6 +288,18 @@ pub enum DeviceError {
     CrossCheck {
         output: DefinitionIdentifier,
         reason: String,
+    },
+    #[error(
+        "the graphics document `{graphics}` does not name the definition its binders read from"
+    )]
+    UnpairedGraphics { graphics: DefinitionIdentifier },
+    #[error(
+        "the graphics document `{graphics}` reads from `{declared}`, and this device renders it against `{rendered}`"
+    )]
+    InstancePairing {
+        graphics: DefinitionIdentifier,
+        declared: String,
+        rendered: DefinitionIdentifier,
     },
     #[error("the snapshot at {path} could not be read: {reason}")]
     SnapshotRead { path: String, reason: String },
