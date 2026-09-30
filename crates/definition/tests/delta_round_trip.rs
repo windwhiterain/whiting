@@ -112,7 +112,11 @@ fn indexed_append_inverts_to_exactly_the_inserted_range() {
 fn a_mid_list_removal_restores_position() {
     let mut registry = registry_with(vec![1, 2, 3, 4, 5]);
 
-    let forward = delta(0, step_path(), PrimitiveDelta::RemoveIndices { start: 1, count: 1 });
+    let forward = delta(
+        0,
+        step_path(),
+        PrimitiveDelta::RemoveIndices { start: 1, count: 1 },
+    );
     registry.apply(&forward).expect("the delta applies");
     assert_eq!(steps(&registry), vec![1, 3, 4, 5]);
 
@@ -220,7 +224,9 @@ fn apply_is_atomic_when_a_later_operation_fails() {
     );
     let forward = Delta::new(walk(), Version::INITIAL, operations);
 
-    registry.apply(&forward).expect_err("the range is out of bounds");
+    registry
+        .apply(&forward)
+        .expect_err("the range is out of bounds");
 
     let definition = registry.definition(&walk()).expect("registered");
     assert_eq!(
@@ -237,7 +243,11 @@ fn apply_is_atomic_when_a_later_operation_fails() {
 #[test]
 fn apply_is_atomic_when_the_result_fails_validation() {
     let mut registry = registry_with(vec![1]);
-    let before = registry.definition(&walk()).expect("registered").value.clone();
+    let before = registry
+        .definition(&walk())
+        .expect("registered")
+        .value
+        .clone();
 
     let forward = delta(
         0,
@@ -245,7 +255,9 @@ fn apply_is_atomic_when_the_result_fails_validation() {
         // A list of strings does not satisfy a list of ints.
         PrimitiveDelta::Replace(Value::List(vec![Value::String("nope".to_owned())])),
     );
-    registry.apply(&forward).expect_err("validation rejects the result");
+    registry
+        .apply(&forward)
+        .expect_err("validation rejects the result");
 
     let definition = registry.definition(&walk()).expect("registered");
     assert_eq!(definition.value, before);
@@ -267,12 +279,11 @@ fn a_stale_delta_is_rejected_as_a_conflict() {
         label_path(),
         PrimitiveDelta::Replace(Value::String("run".to_owned())),
     );
-    let error = registry.apply(&stale).expect_err("the version has moved on");
+    let error = registry
+        .apply(&stale)
+        .expect_err("the version has moved on");
     assert!(
-        matches!(
-            error,
-            RegistryError::Delta(DeltaError::Conflict { .. })
-        ),
+        matches!(error, RegistryError::Delta(DeltaError::Conflict { .. })),
         "expected a conflict, got {error}"
     );
 }

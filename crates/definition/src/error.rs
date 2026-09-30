@@ -33,7 +33,9 @@ pub enum DeltaError {
         expected: DefinitionIdentifier,
         actual: DefinitionIdentifier,
     },
-    #[error("delta was computed against version {expected} but the definition is at version {actual}")]
+    #[error(
+        "delta was computed against version {expected} but the definition is at version {actual}"
+    )]
     Conflict { expected: Version, actual: Version },
     #[error("at {path}: {reason}")]
     UnresolvedPath { path: Path, reason: PathError },

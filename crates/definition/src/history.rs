@@ -38,7 +38,10 @@ impl History {
 
     /// Records an applied delta and the inverse that undoes it, clearing the redo log.
     pub fn record(&mut self, applied: Delta, inverse: Delta) {
-        self.applied.push(Entry { delta: applied, inverse });
+        self.applied.push(Entry {
+            delta: applied,
+            inverse,
+        });
         self.undone.clear();
     }
 

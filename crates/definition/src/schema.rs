@@ -114,11 +114,11 @@ impl Schema {
                     element.validate_at(&path.child(PathSegment::Index(index)), element_value)
                 }),
 
-            (SchemaKind::Dict { value: entry }, Value::Dict(entries)) => entries
-                .iter()
-                .try_for_each(|(name, entry_value)| {
+            (SchemaKind::Dict { value: entry }, Value::Dict(entries)) => {
+                entries.iter().try_for_each(|(name, entry_value)| {
                     entry.validate_at(&path.child(PathSegment::Key(name.clone())), entry_value)
-                }),
+                })
+            }
 
             _ => Err(ValidationError::KindMismatch {
                 path: path.clone(),
@@ -176,13 +176,21 @@ pub enum SchemaKind {
     String,
     Bytes,
     /// Named fields. Closed: a field absent from this map is an error.
-    Struct { fields: SchemaMap },
+    Struct {
+        fields: SchemaMap,
+    },
     /// Variant tag to the fields that variant carries.
-    Enum { variants: SchemaMap },
+    Enum {
+        variants: SchemaMap,
+    },
     /// An ordered sequence of a single element shape.
-    List { element: Box<Schema> },
+    List {
+        element: Box<Schema>,
+    },
     /// An open map of string keys. Entries may be added without editing the schema.
-    Dict { value: Box<Schema> },
+    Dict {
+        value: Box<Schema>,
+    },
 }
 
 impl SchemaKind {

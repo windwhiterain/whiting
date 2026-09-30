@@ -63,9 +63,9 @@ mod binders;
 mod example;
 mod read;
 
-pub use binders::{resolve_binder, resolve_for_pass, Binder, BinderKind};
+pub use binders::{Binder, BinderKind, resolve_binder, resolve_for_pass};
 pub use example::{example_graphics, example_instance};
-pub use read::{passes, PassKind, PassView};
+pub use read::{PassKind, PassView, passes};
 
 /// Name of the schema a graphics document is verified against.
 pub const GRAPHICS_SCHEMA: &str = "whiting.graphics";
@@ -139,8 +139,7 @@ pub fn pass_schema() -> Schema {
             Schema::new(SchemaKind::structure([
                 (
                     "label".to_owned(),
-                    Schema::new(SchemaKind::String)
-                        .with_documentation("Name used in errors."),
+                    Schema::new(SchemaKind::String).with_documentation("Name used in errors."),
                 ),
                 (
                     "shader".to_owned(),
@@ -173,10 +172,9 @@ pub fn pass_schema() -> Schema {
 /// time rather than checked up front, which is why [`resolve_binder`] reports a
 /// [`GraphicsError::Binding`] rather than a validation failure.
 pub fn instance_schema() -> Schema {
-    Schema::new(SchemaKind::dictionary(Schema::new(SchemaKind::Any)))
-        .with_documentation(
-            "Open instance data. Entries are bound to passes by name, so any entry is legal.",
-        )
+    Schema::new(SchemaKind::dictionary(Schema::new(SchemaKind::Any))).with_documentation(
+        "Open instance data. Entries are bound to passes by name, so any entry is legal.",
+    )
 }
 
 /// Builds the schema of a bound instance entry, for documentation and for tooling that

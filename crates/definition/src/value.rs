@@ -32,7 +32,10 @@ pub enum Value {
     /// Named fields, closed by the schema that validates it.
     Struct(FieldMap),
     /// A variant tag plus the fields that variant carries.
-    Enum { tag: String, fields: FieldMap },
+    Enum {
+        tag: String,
+        fields: FieldMap,
+    },
     /// An ordered sequence.
     List(Vec<Value>),
     /// An open map of string keys, whose entries an agent may add without editing a schema.
@@ -225,7 +228,12 @@ impl Value {
                 }
                 Self::Struct(filled)
             }
-            (SchemaKind::Dict { value: entry_schema }, Self::Dict(entries)) => Self::Dict(
+            (
+                SchemaKind::Dict {
+                    value: entry_schema,
+                },
+                Self::Dict(entries),
+            ) => Self::Dict(
                 entries
                     .iter()
                     .map(|(name, value)| (name.clone(), value.defaulted(entry_schema)))

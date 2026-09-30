@@ -32,10 +32,7 @@ impl Registry {
     }
 
     /// Borrows a registered schema.
-    pub fn schema(
-        &self,
-        schema_identifier: &SchemaIdentifier,
-    ) -> Result<&Schema, ValidationError> {
+    pub fn schema(&self, schema_identifier: &SchemaIdentifier) -> Result<&Schema, ValidationError> {
         self.schemas
             .get(schema_identifier)
             .ok_or_else(|| ValidationError::UnknownSchema(schema_identifier.clone()))
@@ -57,7 +54,8 @@ impl Registry {
             ));
         }
         let definition_identifier = definition.definition_identifier.clone();
-        self.definitions.insert(definition_identifier.clone(), definition);
+        self.definitions
+            .insert(definition_identifier.clone(), definition);
         self.histories.insert(definition_identifier, History::new());
         Ok(())
     }
@@ -136,12 +134,16 @@ impl Registry {
         definition_identifier: &DefinitionIdentifier,
     ) -> Result<Delta, RegistryError> {
         let Some(mut definition) = self.definitions.remove(definition_identifier) else {
-            return Err(RegistryError::UnknownDefinition(definition_identifier.clone()));
+            return Err(RegistryError::UnknownDefinition(
+                definition_identifier.clone(),
+            ));
         };
         let Some(mut history) = self.histories.remove(definition_identifier) else {
             self.definitions
                 .insert(definition_identifier.clone(), definition);
-            return Err(RegistryError::UnknownDefinition(definition_identifier.clone()));
+            return Err(RegistryError::UnknownDefinition(
+                definition_identifier.clone(),
+            ));
         };
 
         let result = history.undo(&mut definition, self);
@@ -158,12 +160,16 @@ impl Registry {
         definition_identifier: &DefinitionIdentifier,
     ) -> Result<Delta, RegistryError> {
         let Some(mut definition) = self.definitions.remove(definition_identifier) else {
-            return Err(RegistryError::UnknownDefinition(definition_identifier.clone()));
+            return Err(RegistryError::UnknownDefinition(
+                definition_identifier.clone(),
+            ));
         };
         let Some(mut history) = self.histories.remove(definition_identifier) else {
             self.definitions
                 .insert(definition_identifier.clone(), definition);
-            return Err(RegistryError::UnknownDefinition(definition_identifier.clone()));
+            return Err(RegistryError::UnknownDefinition(
+                definition_identifier.clone(),
+            ));
         };
 
         let result = history.redo(&mut definition, self);

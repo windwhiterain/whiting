@@ -20,7 +20,11 @@ graphics = { path = "crates/graphics", package = "whiting-graphics" }
 scene = { path = "crates/scene", package = "whiting-scene" }
 device = { path = "crates/device", package = "whiting-device" }
 
-facet = "0.44"
+# The `facet` facade and `facet-core` must be the same line: `facet-json 0.44.7`
+# requires `facet ^0.45`, which pins `facet-core =0.45.0`. Declaring `facet = "0.44"`
+# here resolved the facade to 0.44.4 against a 0.45.0 core, and the derive impls no
+# longer satisfied the serializer's bound.
+facet = "0.45"
 facet-json = "0.44"
 facet-axum = "0.44"
 axum = "0.8"

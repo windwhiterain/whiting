@@ -118,7 +118,9 @@ pub fn resolve_for_pass<'instance>(
 ) -> Result<Binder<'instance>, GraphicsError> {
     resolve_binder(instance, binder_name).map_err(|error| match error {
         GraphicsError::Binding {
-            binder_name, reason, ..
+            binder_name,
+            reason,
+            ..
         } => GraphicsError::Binding {
             label: pass_label.to_owned(),
             binder_name,

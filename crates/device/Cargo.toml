@@ -7,8 +7,9 @@ license.workspace = true
 description = "Hot-reloadable headless graphics device served over http RPC."
 
 [features]
-default = []
-wgpu = ["dep:wgpu", "dep:png"]
+default = ["png"]
+png = ["dep:png"]
+wgpu = ["dep:wgpu"]
 
 [dependencies]
 definition = { workspace = true }
@@ -16,7 +17,7 @@ graphics = { workspace = true }
 scene = { workspace = true }
 
 facet = { workspace = true }
-facet-json = { workspace = true }
+facet-json = { workspace = true, features = ["axum"] }
 facet-axum = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }

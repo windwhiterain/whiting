@@ -169,7 +169,9 @@ fn apply_primitive(
         }
 
         PrimitiveDelta::Append { index, values } => {
-            let elements = target.as_list_mut().ok_or_else(|| invalid("append needs a list"))?;
+            let elements = target
+                .as_list_mut()
+                .ok_or_else(|| invalid("append needs a list"))?;
             if *index > elements.len() {
                 return Err(invalid("append index is beyond the end of the list"));
             }
@@ -186,7 +188,9 @@ fn apply_primitive(
         }
 
         PrimitiveDelta::RemoveIndices { start, count } => {
-            let elements = target.as_list_mut().ok_or_else(|| invalid("removal needs a list"))?;
+            let elements = target
+                .as_list_mut()
+                .ok_or_else(|| invalid("removal needs a list"))?;
             let end = start
                 .checked_add(*count)
                 .filter(|end| *end <= elements.len())

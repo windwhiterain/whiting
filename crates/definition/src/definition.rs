@@ -44,7 +44,9 @@ impl Definition {
 
     /// Verifies this definition against the schema its registry holds.
     pub fn validate(&self, registry: &Registry) -> Result<(), ValidationError> {
-        registry.schema(&self.schema_identifier)?.validate(&self.value)
+        registry
+            .schema(&self.schema_identifier)?
+            .validate(&self.value)
     }
 
     /// Returns the value this definition stores, with every schema default substituted.

@@ -113,12 +113,12 @@ impl Path {
                     .get(name)
                     .ok_or_else(|| PathError::AbsentKey(name.clone()))?,
                 (PathSegment::Key(_), other) => return Err(PathError::NotKeyed(other.kind_name())),
-                (PathSegment::Index(index), Value::List(elements)) => elements
-                    .get(*index)
-                    .ok_or(PathError::IndexOutOfBounds {
+                (PathSegment::Index(index), Value::List(elements)) => {
+                    elements.get(*index).ok_or(PathError::IndexOutOfBounds {
                         index: *index,
                         length: elements.len(),
-                    })?,
+                    })?
+                }
                 (PathSegment::Index(_), other) => {
                     return Err(PathError::NotIndexed(other.kind_name()));
                 }

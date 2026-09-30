@@ -86,12 +86,14 @@
 
 use std::collections::BTreeMap;
 
-use definition::{Definition, Delta, Path, PrimitiveDelta, Registry, Schema, Value, Version};
+use definition::{
+    Definition, DefinitionIdentifier, Delta, Path, PrimitiveDelta, Registry, Schema, Value, Version,
+};
 use thiserror::Error;
 
 mod reference;
 
-pub use reference::{register_scene_schema, ReferenceScene, REFERENCE_SCENE_SCHEMA};
+pub use reference::{REFERENCE_SCENE_SCHEMA, ReferenceScene, register_scene_schema};
 
 /// The schema describing the shape a [`Compiler`] accepts.
 ///
@@ -161,9 +163,20 @@ impl CompileOutput {
 }
 
 /// Compiles a scene into a graphics document and a matching instance document.
-pub trait Compiler {
+///
+/// The trait is `Send` and `Sync` because the device holds a compiler behind a shared
+/// lock and serves it from several request threads.
+pub trait Compiler: Send + Sync {
     /// The schema this compiler accepts, describing the shape of a scene.
     fn scene_schema(&self) -> &Scene;
+
+    /// The definition the graphics output is stored under.
+    ///
+    /// The device needs this to find the previous output and to store the new one.
+    fn graphics_identifier(&self) -> &DefinitionIdentifier;
+
+    /// The definition the instance output is stored under.
+    fn instance_identifier(&self) -> &DefinitionIdentifier;
 
     /// Compiles the scene, emitting the deltas that reproduce the outputs incrementally.
     fn compile(&self, context: &CompileContext<'_>) -> Result<CompileOutput, CompileError>;
@@ -186,7 +199,9 @@ pub enum CompileError {
         "applying the emitted graphics delta does not reproduce the emitted graphics: {reason}"
     )]
     GraphicsDeltaMismatch { reason: &'static str },
-    #[error("applying the emitted instance delta does not reproduce the emitted instance: {reason}")]
+    #[error(
+        "applying the emitted instance delta does not reproduce the emitted instance: {reason}"
+    )]
     InstanceDeltaMismatch { reason: &'static str },
     #[error(transparent)]
     Definition(#[from] definition::ValidationError),
@@ -229,7 +244,10 @@ pub(crate) fn scene_text<'value>(
 }
 
 /// Reads a required list field of the scene.
-pub(crate) fn scene_list<'value>(scene: &'value Value, field: &str) -> Result<&'value [Value], CompileError> {
+pub(crate) fn scene_list<'value>(
+    scene: &'value Value,
+    field: &str,
+) -> Result<&'value [Value], CompileError> {
     let path = Path::root().key(field);
     match scene.at(&path) {
         Some(Value::List(elements)) => Ok(elements),

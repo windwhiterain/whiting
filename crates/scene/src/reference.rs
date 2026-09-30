@@ -15,8 +15,8 @@ use definition::{
 use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 
 use crate::{
-    malformed_scene, scene_list, scene_text, CompileContext, CompileError, CompileOutput, Compiler,
-    Scene,
+    CompileContext, CompileError, CompileOutput, Compiler, Scene, malformed_scene, scene_list,
+    scene_text,
 };
 
 /// Name of the scene schema this compiler accepts.
@@ -78,11 +78,7 @@ impl ReferenceScene {
                 let text = |name: &str| -> Result<String, CompileError> {
                     match fields.get(name) {
                         Some(Value::String(value)) => Ok(value.clone()),
-                        other => Err(malformed_scene(
-                            &path.key(name),
-                            "a string",
-                            other,
-                        )),
+                        other => Err(malformed_scene(&path.key(name), "a string", other)),
                     }
                 };
                 let clear_color = match fields.get("clear_color") {
@@ -143,6 +139,14 @@ impl Compiler for ReferenceScene {
         &self.schema
     }
 
+    fn graphics_identifier(&self) -> &DefinitionIdentifier {
+        &self.graphics_identifier
+    }
+
+    fn instance_identifier(&self) -> &DefinitionIdentifier {
+        &self.instance_identifier
+    }
+
     fn compile(&self, context: &CompileContext<'_>) -> Result<CompileOutput, CompileError> {
         let scene = context.scene_value();
         // Reading the name is part of the contract even though the reference compiler does
@@ -189,8 +193,12 @@ impl Compiler for ReferenceScene {
             .previous_instance
             .map_or(Version::INITIAL, |definition| definition.version);
 
-        let previous_graphics = context.previous_graphics.map(|definition| &definition.value);
-        let previous_instance = context.previous_instance.map(|definition| &definition.value);
+        let previous_graphics = context
+            .previous_graphics
+            .map(|definition| &definition.value);
+        let previous_instance = context
+            .previous_instance
+            .map(|definition| &definition.value);
 
         let graphics_delta = Delta::new(
             self.graphics_identifier.clone(),

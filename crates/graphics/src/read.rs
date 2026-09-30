@@ -5,7 +5,7 @@
 
 use definition::{Path, Value};
 
-use crate::{malformed, GraphicsError, PASSES_FIELD};
+use crate::{GraphicsError, PASSES_FIELD, malformed};
 
 /// Which kind of pass a [`PassView`] is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,10 +87,7 @@ impl<'document> PassView<'document> {
     /// A rasterize pass binds a vertex then a fragment shader; a compute pass binds one.
     pub fn shader_binders(&self) -> Result<Vec<&'document str>, GraphicsError> {
         Ok(match self.kind {
-            PassKind::Rasterize => vec![
-                self.text("vertex_shader")?,
-                self.text("fragment_shader")?,
-            ],
+            PassKind::Rasterize => vec![self.text("vertex_shader")?, self.text("fragment_shader")?],
             PassKind::Compute => vec![self.text("shader")?],
         })
     }
