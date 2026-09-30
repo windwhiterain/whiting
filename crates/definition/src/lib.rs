@@ -72,12 +72,13 @@ mod identifier;
 mod path;
 mod registry;
 mod schema;
+mod schema_document;
 mod value;
 mod version;
 
 pub use definition::Definition;
 pub use delta::{Delta, PrimitiveDelta};
-pub use error::{DeltaError, HistoryError, RegistryError, ValidationError};
+pub use error::{DeltaError, HistoryError, RegistryError, SchemaError, ValidationError};
 pub use history::History;
 pub use identifier::{DefinitionIdentifier, SchemaIdentifier};
 pub use path::{Path, PathError, PathSegment};

@@ -4,7 +4,7 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
 
 > This is a proposed alignment of [SPEC.md](SPEC.md) for human review and merge.
 > It records the decisions taken during spec alignment and fills in the terms the
-> original spec left undefined. Nothing here has been implemented yet.
+> original spec left undefined.
 
 ## Principles
 
@@ -59,10 +59,28 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
     the `Schema` is an error. A `Dict` is open, which is the distinction that lets an
     agent add entries without editing a schema. `Int` and `Float` are distinct: an
     `Int` value does not satisfy a `Float` schema.
+  - **decision**: the schema of an `Enum` variant is a `Struct`, never another `Enum`. A
+    variant payload in this language is a struct of named fields, so a spec written as an
+    enum of an enum has nowhere to put the inner tag. The vocabulary still nests — a
+    `MeshShader` is a shadowing, depthing or lighting shader — but the document says so
+    with the tag alone, which is what the value tree can carry.
 - `Attributes`: per-node constraints and metadata.
   - `optional`: the field may be absent.
   - `default`: value substituted when the field is absent.
   - `extensions`: open map for domain-specific constraints.
+- **decision**: a `Schema` is a document, so a `Schema` must be embeddable in a `Value`.
+  A shader declares the interface of the data it reads, and a mesh declares the shape
+  of its points; both are schemas living inside another document rather than a
+  separately registered name. `Schema` therefore converts to and from `Value`, and the
+  conversion is the same `.ron`-shaped language as every other document.
+  - `fn Schema::to_value(&self) -> Value`: the schema written as a document.
+  - `fn Schema::from_value(value: &Value) -> Result<Schema, SchemaError>`: reads it back.
+  - `SchemaError`: a value is not a readable schema document. This is a read error, not
+    a `ValidationError`, because it is the *schema* that is malformed rather than the
+    value being wrong.
+  - **invariant**: the round trip is exact. `Schema::from_value(&schema.to_value())`
+    equals the original schema, so a document may be carried, stored and sent without
+    losing anything.
 - `DefinitionIdentifier`: unique name of a `Definition` in a `Registry`.
 - `SchemaIdentifier`: unique name of a `Schema` in a `Registry`.
 - `Version`: monotonically increasing counter of applied `Delta`s on a `Definition`.
@@ -142,18 +160,70 @@ graphics computation, as data.
   - `instance_schema`: a `Schema`, authored independently and deliberately
     permissive so an agent can read and edit it easily.
   - `Pass`:
-    - `Rasterize`
-    - `Compute`
-  - `Binder`: an internal indirection, not authored data. A `Pass` references a
-    binder by name and the renderer resolves that name against the
-    `GraphicsInstance` when building the pass.
+    - enum of:
+      - `Rasterize`
+      - `Compute`
+    - `uniform: Uniform`
+    - `shader: Shader`
+    - `binders`
+    - `binders`: an open dict of binding point name to a `Binder` declaration, holding
+      everything besides the uniform that the pass binds.
+    - **decision**: the consistent part is one struct, the varying part is the enum. A
+      pass is an enum whose variants each carry a struct built by merging the shared
+      fields with that variant's own fields. The shared fields are declared once and
+      merged in, so a field common to every pass is added in one place.
+      - shared fields: `label`, `uniform`, `shader`, `binders`.
+      - `Rasterize` adds `targets` and `clear_color`.
+      - `Compute` adds `workgroup` and `entry_point`.
+      - **invariant**: a pass kind that is not in the enum fails validation as an
+        unknown variant, so a typo in a tag can never be mistaken for a pass.
+    - `uniform`: the uniform data of the pass, as a `Value`. The renderer uploads it
+      verbatim; its shape is the shader's business, not the graphics schema's.
+    - `shader`: the name of the instance entry holding the pass's shader. A rasterize
+      pass binds one shader that must expose both the vertex and the fragment entry
+      point, so there is no separate fragment binder name.
+    - `targets`: the binding point names of the colour attachments, in attachment order.
+      A target is a binding like any other, so its format and its size live with the
+      payload in the instance rather than being written twice.
+    - **invariant**: a pass carries declarations, never payloads. A `Binder` names the
+      instance entry its data comes from, and the size and format it needs; the bytes
+      themselves live in the instance. That is what keeps a graphics document cheap to
+      diff and an instance document cheap to reload.
+  - `Binder`: the declaration a pass binds, naming the instance entry its data is in.
     - enum of:
       - `Resource`: GPU resources.
         - enum of:
           - `Buffer`
           - `Texture`
-      - `Uniform`: uniform data.
-      - `Shader`: shader path.
+        - each carries `source`, the instance entry the payload is in.
+      - `Uniform`: uniform data, carried by `source`.
+      - `Shader`: verify schema against `uniform` and `binders`.
+    - **decision**: the shader's `schema` lives on the instance entry, not in the
+      graphics document. The interface travels with the shader that declares it, the
+      pass keeps to naming its shader, and the instance schema is open so the new field
+      needs no schema edit.
+    - an instance entry of kind `Shader` carries `path`, `entry_point` and `schema`,
+      where `schema` is a schema document declaring the shape the shader reads.
+    - **invariant**: the declared kind and the kind of the entry it names must agree, and
+      a payload must be at least as large as the declaration reads. A `Buffer` declared
+      over a texture, or a read past the end of a buffer, would otherwise bind
+      successfully and produce nonsense.
+- `verify_pass_inputs`: resolves a pass's `shader` entry and checks the pass's
+  `uniform` and `binders` against that shader's `schema`.
+  - the pass writes its binding points as an open dict, because the set of points is the
+    pass's own business, and the interface writes them as a struct, because a shader needs
+    to name each one and a dict carries a single entry schema. This check is where that
+    difference is bridged, and it is the only place.
+  - a shader with no `schema` is unchecked, which keeps an instance editable before a
+    shader has declared anything.
+  - a failure is a binding error rather than a `ValidationError`, on the same grounds as
+    a missing binder: both documents validate against their own schemas and still fail
+    to agree with each other.
+- `derived_instance_schema`: the schema a graphics document implies for its instance,
+  built from the binders its passes declare.
+  - **invariant**: an entry name bound by two passes must be declared the same way by
+    both. A disagreement fails the derivation rather than widening to `Any`, because a
+    silent widening would turn an author mistake into an unchecked binding.
 - `GraphicsInstance`: a `Definition` that provides data to its `referencing_graphics`
   in the corresponding schema.
   - `referencing_graphics`: the `Graphics` this instance serves, by `DefinitionIdentifier`.
@@ -176,6 +246,13 @@ a server that can hot reload `Graphics`, `GraphicsInstance`, incrementally apply
   - `fn available(&self) -> bool`
 - `WgpuRenderer`: executes `Rasterize` and `Compute` passes headlessly and reads the
   framebuffer back. Behind the optional `wgpu` feature.
+  - a rasterize pass binds one shader for both stages, because a pass has one `shader`
+    field and a shader that exposes both entry points is the only thing that field can
+    mean.
+  - it clears its target and issues no draw call. A buffer payload says how many bytes it
+    holds, which is not how many vertices or what attributes they have, and `wgpu` needs
+    both. The declaration that would carry them is in
+    [proposals/vertex-layout-declaration.md](proposals/vertex-layout-declaration.md).
 - `NoopRenderer`: the fallback when no gpu adapter is present, so the server and the
   reload logic stay testable on machines without a gpu.
 - `Frame`: a rendered frame, returned as png bytes and as raw readback bytes.
@@ -207,3 +284,90 @@ incremental compile.
     exactly the emitted `graphics`. The device cross-checks this in debug and test builds.
 - the compiler is not re-diffed centrally; producing the `Delta` is the compiler's
   own responsibility.
+- `document_delta`: the shared part of that responsibility, comparing two whole
+  documents field by field.
+  - **invariant**: a top level field is diffed on its own, so a change to one field never
+    widens into a replace of the whole document. A field that already exists is replaced
+    in place, which is what keeps a small edit a small delta.
+  - a change of shape is a whole value replace rather than a composition, because the
+    operations map holds at most one primitive per path and no primitive covers every
+    shape change: a list that changes length needs a removal and an append at the same
+    path, and a struct that gains a field has no add-field primitive at all. This is
+    coarser than necessary and always correct, and a compiler that knows better can emit
+    the operations itself.
+- `StandardScene`: a compiler over the conventional lit scene, and the schema that
+  describes it.
+  - the scene document: a `name`, a list of `lights` and a list of `meshes`.
+    - `Light`: position, colour and the extent of the volume it shadows.
+    - `Mesh`:
+      - `instance_data`: the per instance transform data, as an open dict.
+      - `point_schema: Schema`: the shape of a point, authored per mesh so that a mesh
+        carrying only positions is not forced to carry texcoords.
+      - `Point`: one point, verified against the owning mesh's `point_schema`.
+      - `Topology`: enum of `Triangles` and `Segments`. The topology says how the
+        points are read, and is what tells a rasterize pass to draw indexed or line
+        primitives.
+      - `material: Material`.
+    - `Material`:
+      - `shader: Shader`.
+      - `custom_data`: an open dict, verified against the shader's `custom_schema`.
+    - `Shader`: what a material is drawn with, and the interface it expects.
+      - the three mesh stages and the screen stage are the variants of one enum. The spec
+        nests a `MeshShader` around the three stages; a variant payload in this language is
+        a struct of named fields, so the stage is the tag and the nesting is vocabulary.
+      - `MeshShader`: a shader over mesh points, in one of the three stages.
+        - enum of `ShadowingShader`, `DepthShader` and `LightingShader`.
+      - `ScreenShader`: a shader over the screen rather than over mesh points, so it
+        declares no `point_schema`.
+      - every variant declares three schemas, and each one is verified against the data
+        it describes, so a shader that outgrows its data is a compile error:
+        - `pass_schema`: verified against the emitted pass by `verify_pass_inputs`.
+        - `instance_schema`: verified against the mesh's `instance_data`, and it is also
+          the layout that data is packed with, so it has to be a struct.
+        - `custom_schema`: the `CustomSchema`, verified against the material's
+          `custom_data`. It is the one schema an author writes for their own effect.
+        - `point_schema`, on a mesh shader only: verified against every point of the
+          mesh. A mesh also declares its own `point_schema`, and **both** must accept
+          the points, so a mesh is never described in a shape its own shader rejects.
+      - **decision**: a material's shader names the stage the mesh is drawn in, and
+        each of the three passes draws the meshes whose material belongs to it. One
+        material per mesh is what the spec gives, so a mesh declares the stage it
+        belongs in rather than carrying a material per stage. A mesh that has to appear
+        in several stages is listed once per stage, which repeats its points; the
+        alternative, three mesh lists in the scene document, was not chosen because the
+        spec names one `Mesh`.
+      - **decision**: a pass draws one mesh. A pass binds one shader and a shader
+        declares one interface, so a pass that drew several meshes would have to bind
+        several shaders and the pass model has no room for it. More passes than a merged
+        pipeline needs, in exchange for a binding model where what a shader declares is
+        exactly what the pass supplies.
+  - `PassSchema`: the schema of a pass the standard pipeline emits.
+    - `ShadowingSchema`, `DepthingSchema` and `LightingSchema`, one per stage.
+    - each is the interface of that stage: a `uniform` of numbers and a `binders` block
+      naming a buffer at `vertices` and `instance_data` and the textures the stage writes
+      or reads. A material that wants the standard stage writes that schema, and the
+      compiler is on the hook to supply exactly it.
+  - a buffer is a flat run of little endian four byte floats, in the field order of the
+    schema that describes it, which is sorted by field name. Every point of a mesh
+    occupies the same number of bytes, because a shader reads a fixed stride; a ragged
+    point list is refused rather than packed into a buffer the shader cannot walk.
+  - the compile emits three stages in order: one shadowing pass per light, one depthing
+    pass, then one lighting pass that reads the shadow maps and the depth buffer the
+    earlier passes produced. Ordering is what makes the passes a pipeline rather than a
+    list, so it is a property of the emitted order and not of any document field.
+  - the emitted instance carries the shaders with their schemas, the vertex and
+    instance buffers, and the shadow map, depth and colour targets. The graphics
+    document declares each of them through a `Binder`, and its `instance_schema` is the
+    schema derived from those declarations, which is what makes the spec's
+    "its binders define a corresponding schema for `GraphicsInstance`" true of every
+    compiler rather than only of one.
+  - a material whose shader cannot be read, or a mesh whose points do not satisfy its
+    own `point_schema`, fails the compile rather than the render, because both are
+    facts about the scene document and are known before any gpu work starts. The
+    compiler also verifies every pass it emitted against the interface that pass's own
+    shader declares, so a compiler bug is a compile error rather than a bad frame.
+  - the emitted view projection is the identity and the light direction is the unit
+    vector toward the light. A real camera and a real light frustum need fields the spec
+    does not have, and are written up in
+    [proposals/standard-pipeline-math.md](proposals/standard-pipeline-math.md) rather
+    than invented here.

@@ -9,15 +9,28 @@
 use std::collections::BTreeMap;
 
 use definition::{
-    Definition, DefinitionIdentifier, Delta, Path, PrimitiveDelta, Registry, Schema, SchemaKind,
-    Value, Version,
+    Definition, DefinitionIdentifier, Path, Registry, Schema, SchemaIdentifier, SchemaKind, Value,
 };
+use graphics::binders::{FORMAT, HEIGHT, RESOURCE, SOURCE, WIDTH};
+use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 
 use crate::{
-    CompileContext, CompileError, CompileOutput, Compiler, Scene, malformed_scene, scene_list,
-    scene_text,
+    CompileContext, CompileError, CompileOutput, Compiler, Scene, assemble, malformed_scene,
+    scene_list, scene_text,
 };
+
+/// Name of the instance entry every layer of the reference scene renders into.
+pub const SURFACE: &str = "surface";
+
+/// Width in pixels of the surface the reference scene renders into.
+pub const SURFACE_WIDTH: i64 = 512;
+
+/// Height in pixels of the surface the reference scene renders into.
+pub const SURFACE_HEIGHT: i64 = 512;
+
+/// Format of the surface the reference scene renders into.
+pub const SURFACE_FORMAT: &str = "rgba8unorm";
 
 /// Name of the scene schema this compiler accepts.
 pub const REFERENCE_SCENE_SCHEMA: &str = "whiting.scene.reference";
@@ -91,19 +104,55 @@ impl ReferenceScene {
                         ));
                     }
                 };
+                let label = text("label")?;
                 Ok(Value::variant(
                     "Rasterize",
                     [
-                        ("label".to_owned(), Value::String(text("label")?)),
-                        // Both stages bind the same shader name; the renderer resolves the
-                        // stage specific entry point from the bound shader.
-                        ("vertex_shader".to_owned(), Value::String(text("shader")?)),
-                        ("fragment_shader".to_owned(), Value::String(text("shader")?)),
+                        (LABEL.to_owned(), Value::String(label)),
+                        // The clear colour is uniform data, so it is checked against the
+                        // interface of the shader that reads it.
                         (
-                            "targets".to_owned(),
-                            Value::List(vec![Value::String("rgba8unorm".to_owned())]),
+                            UNIFORM.to_owned(),
+                            Value::structure([("clear_color".to_owned(), clear_color)]),
                         ),
-                        ("clear_color".to_owned(), clear_color),
+                        (SHADER.to_owned(), Value::String(text("shader")?)),
+                        (
+                            BINDERS.to_owned(),
+                            Value::dictionary([(
+                                SURFACE.to_owned(),
+                                Value::variant(
+                                    "Resource",
+                                    [(
+                                        RESOURCE.to_owned(),
+                                        Value::variant(
+                                            "Texture",
+                                            [
+                                                (
+                                                    SOURCE.to_owned(),
+                                                    Value::String(SURFACE.to_owned()),
+                                                ),
+                                                (WIDTH.to_owned(), Value::Int(SURFACE_WIDTH)),
+                                                (HEIGHT.to_owned(), Value::Int(SURFACE_HEIGHT)),
+                                                (
+                                                    FORMAT.to_owned(),
+                                                    Value::String(SURFACE_FORMAT.to_owned()),
+                                                ),
+                                            ],
+                                        ),
+                                    )],
+                                ),
+                            )]),
+                        ),
+                        (
+                            TARGETS.to_owned(),
+                            Value::List(vec![Value::String(SURFACE.to_owned())]),
+                        ),
+                        (
+                            CLEAR_COLOR.to_owned(),
+                            Value::List(
+                                [0.0, 0.0, 0.0, 0.0].into_iter().map(Value::Float).collect(),
+                            ),
+                        ),
                     ],
                 ))
             })
@@ -111,26 +160,74 @@ impl ReferenceScene {
     }
 
     fn instance_value(passes: &[Value]) -> Value {
-        let entries = passes
-            .iter()
-            .filter_map(|pass| {
-                let _tag = pass.variant_tag()?;
-                let fields = pass.variant_fields()?;
-                let name = fields.get("vertex_shader")?.as_str()?.to_owned();
-                let shader = Value::variant(
+        let mut entries = BTreeMap::new();
+        entries.insert(
+            SURFACE.to_owned(),
+            Value::variant(
+                "Texture",
+                [
+                    (WIDTH.to_owned(), Value::Int(SURFACE_WIDTH)),
+                    (HEIGHT.to_owned(), Value::Int(SURFACE_HEIGHT)),
+                    (FORMAT.to_owned(), Value::String(SURFACE_FORMAT.to_owned())),
+                ],
+            ),
+        );
+        for pass in passes {
+            let Some(fields) = pass.variant_fields() else {
+                continue;
+            };
+            let Some(name) = fields.get(SHADER).and_then(Value::as_str) else {
+                continue;
+            };
+            entries.insert(
+                name.to_owned(),
+                Value::variant(
                     "Shader",
                     [
                         (
-                            "path".to_owned(),
+                            graphics::binders::PATH.to_owned(),
                             Value::String(format!("shaders/{name}.wgsl")),
                         ),
-                        ("entry_point".to_owned(), Value::String("main".to_owned())),
+                        (
+                            graphics::binders::ENTRY_POINT.to_owned(),
+                            Value::String("main".to_owned()),
+                        ),
+                        (
+                            graphics::binders::SCHEMA.to_owned(),
+                            ReferenceScene::interface(),
+                        ),
                     ],
-                );
-                Some((name, shader))
-            })
-            .collect();
+                ),
+            );
+        }
         Value::Dict(entries)
+    }
+
+    /// The interface every reference shader declares.
+    ///
+    /// A reference layer reads a clear colour and renders into the surface, and nothing
+    /// else. Writing the interface out here rather than leaving it out is the point of
+    /// the example: the pass is checked against it at compile time.
+    fn interface() -> Value {
+        Schema::new(SchemaKind::structure([
+            (
+                UNIFORM.to_owned(),
+                Schema::new(SchemaKind::structure([(
+                    "clear_color".to_owned(),
+                    Schema::new(SchemaKind::list(Schema::new(SchemaKind::Float))),
+                )]))
+                .with_documentation("Uniform data."),
+            ),
+            (
+                BINDERS.to_owned(),
+                Schema::new(SchemaKind::structure([(
+                    SURFACE.to_owned(),
+                    graphics::texture_binding_schema(),
+                )]))
+                .with_documentation("What the pass binds, keyed by binding point."),
+            ),
+        ]))
+        .to_value()
     }
 }
 
@@ -154,163 +251,39 @@ impl Compiler for ReferenceScene {
         let _name = scene_text(scene, "name")?;
 
         let passes = ReferenceScene::passes_value(scene)?;
-        let graphics_value = Value::structure([
-            ("passes".to_owned(), Value::List(passes.clone())),
-            ("instance_schema".to_owned(), Value::Unit),
+        let instance = ReferenceScene::instance_value(&passes);
+        // The instance schema is derived from the emitted declarations rather than
+        // authored, so the two documents cannot disagree about what an entry is.
+        let declared = Value::structure([(
+            graphics::PASSES_FIELD.to_owned(),
+            Value::List(passes.clone()),
+        )]);
+        let instance_schema = graphics::derived_instance_schema(&declared)
+            .map_err(|error| CompileError::Emission {
+                reason: error.to_string(),
+            })?
+            .to_value();
+        let graphics = Value::structure([
+            (graphics::PASSES_FIELD.to_owned(), Value::List(passes)),
+            (graphics::INSTANCE_SCHEMA_FIELD.to_owned(), instance_schema),
         ]);
-        let instance_value = ReferenceScene::instance_value(&passes);
 
-        let graphics = Definition::new(
-            self.graphics_identifier.clone(),
-            definition::SchemaIdentifier::new(GRAPHICS_SCHEMA),
-            graphics_value.clone(),
-        );
-        let instance = Definition::new(
-            self.instance_identifier.clone(),
-            definition::SchemaIdentifier::new(INSTANCE_SCHEMA),
-            instance_value,
-        );
-
-        // The emitted outputs are verified against their schemas here, so a compiler bug
-        // is reported as a compile error rather than surfacing later at render time.
-        context
-            .registry
-            .schema(&graphics.schema_identifier)
-            .expect("the graphics schema is registered")
-            .validate(&graphics.value)?;
-        context
-            .registry
-            .schema(&instance.schema_identifier)
-            .expect("the instance schema is registered")
-            .validate(&instance.value)?;
-
-        // The emitted delta applies to the previous output, so it carries that output's
-        // version, not the version of the freshly built document.
-        let graphics_base = context
-            .previous_graphics
-            .map_or(Version::INITIAL, |definition| definition.version);
-        let instance_base = context
-            .previous_instance
-            .map_or(Version::INITIAL, |definition| definition.version);
-
-        let previous_graphics = context
-            .previous_graphics
-            .map(|definition| &definition.value);
-        let previous_instance = context
-            .previous_instance
-            .map(|definition| &definition.value);
-
-        let graphics_delta = Delta::new(
-            self.graphics_identifier.clone(),
-            graphics_base,
-            list_delta(
-                &Path::root().key("passes"),
-                previous_graphics.and_then(|value| value.at(&Path::root().key("passes"))),
-                graphics_value.at(&Path::root().key("passes")),
+        assemble(
+            &self.graphics_identifier,
+            &self.instance_identifier,
+            Definition::new(
+                self.graphics_identifier.clone(),
+                SchemaIdentifier::new(GRAPHICS_SCHEMA),
+                graphics,
             ),
-        );
-        let instance_delta = Delta::new(
-            self.instance_identifier.clone(),
-            instance_base,
-            dict_delta(&Path::root(), previous_instance, Some(&instance.value)),
-        );
-
-        Ok(CompileOutput {
-            graphics,
-            instance,
-            graphics_delta,
-            instance_delta,
-        })
+            Definition::new(
+                self.instance_identifier.clone(),
+                SchemaIdentifier::new(INSTANCE_SCHEMA),
+                instance,
+            ),
+            context,
+        )
     }
-}
-
-/// Emits the operations that turn `previous` into `next` for a list at `path`.
-///
-/// A whole-value replace is used when a list changes length, because the operations map
-/// holds at most one primitive per path and a length change needs both a removal and an
-/// append at the same path.
-fn list_delta(
-    path: &Path,
-    previous: Option<&Value>,
-    next: Option<&Value>,
-) -> BTreeMap<Path, PrimitiveDelta> {
-    let mut operations = BTreeMap::new();
-    let (Some(Value::List(before)), Some(Value::List(after))) = (previous, next) else {
-        return operations;
-    };
-
-    if before.len() != after.len() {
-        operations.insert(
-            path.clone(),
-            PrimitiveDelta::Replace(Value::List(after.clone())),
-        );
-        return operations;
-    }
-
-    for (index, (old, new)) in before.iter().zip(after.iter()).enumerate() {
-        if old != new {
-            operations.insert(
-                path.clone().index(index),
-                PrimitiveDelta::Replace(new.clone()),
-            );
-        }
-    }
-    operations
-}
-
-/// Emits the operations that turn `previous` into `next` for a dict at `path`.
-///
-/// A dict that both gains and loses entries is replaced wholesale, for the same
-/// one-primitive-per-path reason as [`list_delta`].
-fn dict_delta(
-    path: &Path,
-    previous: Option<&Value>,
-    next: Option<&Value>,
-) -> BTreeMap<Path, PrimitiveDelta> {
-    let mut operations = BTreeMap::new();
-    let (Some(before), Some(after)) = (previous, next) else {
-        return operations;
-    };
-    let (Some(before), Some(after)) = (before.as_dict(), after.as_dict()) else {
-        return operations;
-    };
-
-    let removed: Vec<String> = before
-        .keys()
-        .filter(|name| !after.contains_key(*name))
-        .cloned()
-        .collect();
-    let added: Vec<(String, Value)> = after
-        .iter()
-        .filter(|(name, _)| !before.contains_key(*name))
-        .map(|(name, value)| (name.clone(), value.clone()))
-        .collect();
-
-    if !removed.is_empty() && !added.is_empty() {
-        operations.insert(
-            path.clone(),
-            PrimitiveDelta::Replace(Value::Dict(after.clone())),
-        );
-        return operations;
-    }
-    if !removed.is_empty() {
-        operations.insert(path.clone(), PrimitiveDelta::RemoveKeys { keys: removed });
-    }
-    if !added.is_empty() {
-        operations.insert(
-            path.clone(),
-            PrimitiveDelta::AppendEntries { entries: added },
-        );
-    }
-    for (name, value) in after {
-        if before.get(name).is_some_and(|old| old != value) {
-            operations.insert(
-                path.clone().key(name),
-                PrimitiveDelta::Replace(value.clone()),
-            );
-        }
-    }
-    operations
 }
 
 /// Registers the scene schema this compiler accepts, so an agent can read it.

@@ -91,9 +91,68 @@ use definition::{
 };
 use thiserror::Error;
 
+mod diff;
 mod reference;
+pub mod standard;
 
 pub use reference::{REFERENCE_SCENE_SCHEMA, ReferenceScene, register_scene_schema};
+pub use standard::{
+    STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema, standard_scene_schema,
+};
+
+/// Turns two emitted documents into a compile output.
+///
+/// The emitted documents are verified against their registered schemas here, so a
+/// compiler bug is reported as a compile error rather than surfacing later at render
+/// time, and the deltas are the diff against the previous output rather than a whole
+/// document replace.
+pub(crate) fn assemble(
+    graphics_identifier: &DefinitionIdentifier,
+    instance_identifier: &DefinitionIdentifier,
+    graphics: Definition,
+    instance: Definition,
+    context: &CompileContext<'_>,
+) -> Result<CompileOutput, CompileError> {
+    let registry = context.registry;
+    registry
+        .schema(&graphics.schema_identifier)
+        .map_err(|_| CompileError::UnregisteredSchema {
+            schema: graphics.schema_identifier.to_string(),
+        })?
+        .validate(&graphics.value)?;
+    registry
+        .schema(&instance.schema_identifier)
+        .map_err(|_| CompileError::UnregisteredSchema {
+            schema: instance.schema_identifier.to_string(),
+        })?
+        .validate(&instance.value)?;
+
+    // An emitted delta applies to the previous output, so it carries that output's
+    // version, not the version of the freshly built document.
+    let graphics_base = context
+        .previous_graphics
+        .map_or(Version::INITIAL, |previous| previous.version);
+    let instance_base = context
+        .previous_instance
+        .map_or(Version::INITIAL, |previous| previous.version);
+    let previous_graphics = context.previous_graphics.map(|previous| &previous.value);
+    let previous_instance = context.previous_instance.map(|previous| &previous.value);
+
+    Ok(CompileOutput {
+        graphics_delta: Delta::new(
+            graphics_identifier.clone(),
+            graphics_base,
+            diff::document_delta(previous_graphics, &graphics.value),
+        ),
+        instance_delta: Delta::new(
+            instance_identifier.clone(),
+            instance_base,
+            diff::document_delta(previous_instance, &instance.value),
+        ),
+        graphics,
+        instance,
+    })
+}
 
 /// The schema describing the shape a [`Compiler`] accepts.
 ///
@@ -195,6 +254,29 @@ pub enum CompileError {
     EmptyBinderName,
     #[error("the previous output is missing but the compiler was asked to delta against it")]
     MissingPreviousOutput,
+    #[error("the schema `{schema}` is not registered, so the emitted output cannot be checked")]
+    UnregisteredSchema { schema: String },
+    #[error("at {path}: the schema document could not be read: {reason}")]
+    UnreadableSchema { path: Path, reason: String },
+    #[error("at {path}: {subject} does not satisfy {against}: {reason}")]
+    Verification {
+        path: Path,
+        subject: String,
+        against: String,
+        reason: String,
+    },
+    #[error("at {path}: the data cannot be packed into a buffer: {reason}")]
+    Unpackable { path: Path, reason: String },
+    #[error("at {path}: `{stage}` is not a stage a standard material is drawn in")]
+    UnknownStage { path: Path, stage: String },
+    #[error("at {path}: a screen shader cannot be a standard material: {reason}")]
+    ScreenShader { path: Path, reason: String },
+    #[error("two {kind}s are labelled `{label}`, so their instance entries would collide")]
+    DuplicateLabel { kind: &'static str, label: String },
+    #[error("the mesh `{label}` has no points, so it has nothing to draw")]
+    EmptyMesh { label: String },
+    #[error("the emitted documents do not agree with each other: {reason}")]
+    Emission { reason: String },
     #[error(
         "applying the emitted graphics delta does not reproduce the emitted graphics: {reason}"
     )]

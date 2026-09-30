@@ -75,7 +75,8 @@
 //! assert!(!device.renderer().available());
 //! let frame = device.render(&graphics_identifier).expect("the frame renders");
 //! assert_eq!(frame.renderer, "noop");
-//! assert_eq!(frame.frame.rgba.len(), 4);
+//! // The size comes from the target the first pass binds, resolved through the instance.
+//! assert_eq!((frame.frame.width, frame.frame.height), (512, 512));
 //!
 //! // The compiler identifies the instance the renderer binds against.
 //! assert_eq!(device.compiler().instance_identifier(), &instance_identifier);

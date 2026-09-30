@@ -5,20 +5,23 @@
 //!
 //! # Shaders
 //!
-//! A shader binder names a path, resolved relative to the configured shader root, which
-//! defaults to the process working directory. Entry points are fixed by convention:
-//! a rasterize pass looks for `vertex_main` and `fragment_main`, and a compute pass uses
-//! the entry point named in the document.
+//! A pass names one shader, which must expose both the vertex and the fragment entry
+//! point, so one module serves both stages of a rasterize pass. A shader binder names a
+//! path, resolved relative to the configured shader root, which defaults to the process
+//! working directory. A compute pass invokes the entry point named in its document.
 //!
 //! # Geometry
 //!
-//! The graphics schema carries no geometry field yet, so a rasterize pass clears its
-//! target and issues no draw calls. The pipeline, the clear colour and the readback are
-//! all exercised; drawing arrives with the geometry schema.
+//! A rasterize pass clears its target and issues no draw calls. A buffer payload says
+//! how many bytes it holds, which is not the same thing as how many vertices it holds or
+//! what those vertices look like, and `wgpu` needs both to describe a vertex buffer. The
+//! declaration that would carry them is written up in
+//! [proposals/vertex-layout-declaration.md](../../../../.agents/proposals/vertex-layout-declaration.md).
 
 use std::path::{Path, PathBuf};
 
 use definition::Value;
+use graphics::binders::{Declaration, FORMAT};
 use graphics::{Binder, PassKind, PassView, passes, resolve_for_pass};
 use wgpu::util::DeviceExt;
 
@@ -145,11 +148,11 @@ impl WgpuRenderer {
     /// Executes one compute pass into a storage texture.
     fn run_compute(&self, pass: &PassView<'_>, instance: &Value) -> Result<(), RenderError> {
         let label = pass.label().unwrap_or("<unlabelled>").to_owned();
-        let binder = resolve_for_pass(&label, instance, pass.text("shader")?)?;
+        let binder = resolve_for_pass(&label, instance, pass.shader_binder()?)?;
         let module = self.shader_module(&binder)?;
 
         let numbers: Vec<u32> = pass
-            .list("workgroup")?
+            .workgroup()?
             .iter()
             .filter_map(|value| value.as_int())
             .map(|value| value.max(0) as u32)
@@ -180,7 +183,7 @@ impl WgpuRenderer {
                 label: Some("whiting compute"),
                 layout: None,
                 module: &module,
-                entry_point: Some(pass.text("entry_point").unwrap_or("main")),
+                entry_point: Some(pass.entry_point().unwrap_or("main")),
                 compilation_options: Default::default(),
                 cache: None,
             });
@@ -219,27 +222,18 @@ impl WgpuRenderer {
     /// Executes one rasterize pass and returns the frame it produced.
     fn run_rasterize(&self, pass: &PassView<'_>, instance: &Value) -> Result<Frame, RenderError> {
         let label = pass.label().unwrap_or("<unlabelled>").to_owned();
-        let vertex_binder = resolve_for_pass(&label, instance, pass.text("vertex_shader")?)?;
-        let fragment_binder = resolve_for_pass(&label, instance, pass.text("fragment_shader")?)?;
+        // A pass binds one shader, which must expose both stages, so one module serves
+        // both of them.
+        let shader = resolve_for_pass(&label, instance, pass.shader_binder()?)?;
+        let module = self.shader_module(&shader)?;
 
-        let targets = pass.list("targets")?;
-        let first_target = targets.first().and_then(Value::as_str).ok_or_else(|| {
-            RenderError::Backend("a rasterize pass needs at least one target".to_owned())
-        })?;
-        let format = Self::target_format(first_target)?;
-
-        // The target size comes from whichever bound entry describes a texture.
-        let (width, height) = pass
-            .binder_names()?
-            .into_iter()
-            .filter_map(|name| resolve_for_pass(&label, instance, name).ok())
-            .find_map(|binder| texture_size(binder.value()))
-            .unwrap_or((1, 1));
+        let declarations = pass.binders()?;
+        let target = first_target(&declarations, pass.targets()?, instance)
+            .ok_or_else(|| RenderError::Backend("a rasterize pass needs a target".to_owned()))?;
+        let format = Self::target_format(&target.format)?;
+        let (width, height) = (target.width.max(1), target.height.max(1));
 
         let clear = clear_color(pass)?;
-        let fragment_module = self.shader_module(&fragment_binder)?;
-        let vertex_module = self.shader_module(&vertex_binder)?;
-
         let layout = self
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -254,7 +248,7 @@ impl WgpuRenderer {
                 label: Some("whiting rasterize"),
                 layout: Some(&layout),
                 vertex: wgpu::VertexState {
-                    module: &vertex_module,
+                    module: &module,
                     entry_point: Some(VERTEX_ENTRY),
                     compilation_options: Default::default(),
                     buffers: &[],
@@ -263,7 +257,7 @@ impl WgpuRenderer {
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
                 fragment: Some(wgpu::FragmentState {
-                    module: &fragment_module,
+                    module: &module,
                     entry_point: Some(FRAGMENT_ENTRY),
                     compilation_options: Default::default(),
                     targets: &[Some(wgpu::ColorTargetState {
@@ -276,7 +270,7 @@ impl WgpuRenderer {
                 cache: None,
             });
 
-        let (target, target_view) = self.target_texture(width, height, format);
+        let (texture, target_view) = self.target_texture(width, height, format);
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -300,12 +294,11 @@ impl WgpuRenderer {
                 multiview_mask: None,
             });
             pass_encoder.set_pipeline(&pipeline);
-            // The graphics schema has no geometry field yet, so this pass clears its
-            // target and draws nothing. Draw calls arrive with the geometry schema.
+            // No draw call is issued yet. A buffer says how many bytes it holds, not how
+            // many vertices or what attributes they have, and wgpu needs both to describe
+            // a vertex buffer. See proposals/vertex-layout-declaration.md.
         }
 
-        let width = width.max(1);
-        let height = height.max(1);
         let unpadded = width * 4;
         let padded = unpadded.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
             * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
@@ -317,7 +310,7 @@ impl WgpuRenderer {
         });
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
-                texture: &target,
+                texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
@@ -402,7 +395,7 @@ impl Renderer for WgpuRenderer {
 
 /// Reads the clear colour of a rasterize pass, defaulting to transparent black.
 fn clear_color(pass: &PassView<'_>) -> Result<wgpu::Color, RenderError> {
-    let components = pass.list("clear_color")?;
+    let components = pass.clear_color()?;
     let component = |index: usize| -> f64 {
         components
             .get(index)
@@ -415,6 +408,38 @@ fn clear_color(pass: &PassView<'_>) -> Result<wgpu::Color, RenderError> {
         g: component(1),
         b: component(2),
         a: component(3),
+    })
+}
+
+/// A target resolved out of a pass's declarations and the instance.
+struct Target {
+    width: u32,
+    height: u32,
+    format: String,
+}
+
+/// Resolves the first named target of a pass to the texture the instance holds.
+///
+/// A pass names its attachments as binding points, and the format and the size live with
+/// the payload, so a renderer never has to guess what a target is.
+fn first_target(
+    declarations: &[Declaration<'_>],
+    targets: &[Value],
+    instance: &Value,
+) -> Option<Target> {
+    targets.iter().filter_map(Value::as_str).find_map(|point| {
+        let declaration = declarations
+            .iter()
+            .find(|declaration| declaration.point() == point)?;
+        let payload = declaration.bind(instance).ok()?;
+        let fields = payload.value().variant_fields()?;
+        let format = fields.get(FORMAT)?.as_str()?.to_owned();
+        let (width, height) = texture_size(payload.value())?;
+        Some(Target {
+            width,
+            height,
+            format,
+        })
     })
 }
 

@@ -43,6 +43,13 @@ impl Schema {
         self
     }
 
+    /// Marks a field as optional, so an absent value is accepted.
+    #[must_use]
+    pub fn optional(mut self) -> Self {
+        self.attributes.optional = true;
+        self
+    }
+
     /// Attaches documentation to this schema.
     #[must_use]
     pub fn with_documentation(mut self, documentation: impl Into<String>) -> Self {

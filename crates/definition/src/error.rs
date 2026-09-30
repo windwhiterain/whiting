@@ -25,6 +25,45 @@ pub enum ValidationError {
     UnknownVariant { path: Path, tag: String },
 }
 
+/// A value is not a readable [`Schema`](crate::Schema) document.
+///
+/// This is a read error rather than a [`ValidationError`], because it is the schema
+/// that is malformed rather than the value being wrong: a document that carries a
+/// schema is the thing at fault.
+#[derive(Debug, Error)]
+pub enum SchemaError {
+    #[error("at {path}: a schema document is a struct, found {found}")]
+    NotADocument { path: Path, found: &'static str },
+    #[error("at {path}: field `{field}` is required in a schema document")]
+    MissingField { path: Path, field: String },
+    #[error("at {path}: field `{field}` is not a schema document field")]
+    UnknownField { path: Path, field: String },
+    #[error("at {path}: a schema kind is an enum tag, found {found}")]
+    NotAKind { path: Path, found: &'static str },
+    #[error("at {path}: unknown schema kind `{tag}`")]
+    UnknownKind { path: Path, tag: String },
+    #[error("at {path}: the `{tag}` kind needs a `{field}` field")]
+    MissingKindField {
+        path: Path,
+        tag: String,
+        field: &'static str,
+    },
+    #[error("at {path}: the `{tag}` kind carries no fields, found `{field}`")]
+    UnexpectedKindField {
+        path: Path,
+        tag: String,
+        field: String,
+    },
+    #[error("at {path}: expected {expected}, found {found}")]
+    KindMismatch {
+        path: Path,
+        expected: &'static str,
+        found: &'static str,
+    },
+    #[error("at {path}: a map of named schemas is a dict, found {found}")]
+    NotAMap { path: Path, found: &'static str },
+}
+
 /// A [`Delta`](crate::Delta) could not be applied.
 #[derive(Debug, Error)]
 pub enum DeltaError {
