@@ -617,6 +617,59 @@ the scene never reached are the ones left to it.
     declares a `normal_matrix` in its instance schema has one filled in beside the model, and
     the gallery's does.
 
+## The gallery, and what it does not do yet
+
+`crates/scene/src/gallery/` holds the WGSL library, the geometry generators and the scenes
+`dunes`, `monoliths` and `studio`. They are rendered by the harness in
+`crates/device/examples/render.rs`:
+
+```text
+cargo run --release -p whiting-device --features wgpu --example render -- <scene> <out> [times] [mode]
+
+  render dunes out/dunes                    one frame, at the time the scene carries
+  render dunes out/dunes 0 5 0.25           twenty-one frames, a quarter second apart
+  render dunes out/dunes 0 5 0.25 --sheet   the same range as one contact sheet
+  render dunes out/dunes 0 5 0.25 --video   the same range as an mp4, encoded with ffmpeg
+```
+
+`--release` matters, though less than it did: the compile is no longer the bottleneck, but a
+debug build is still several times it. The harness reports clone, validate, compile and render
+apart, which is the measurement [proposals/compile-cost.md](proposals/compile-cost.md) rests on.
+`ffmpeg` must be on the path for `--video`; the frames are written either way.
+
+### Known-incomplete
+
+Stated rather than left to be discovered:
+
+  - **`dunes` is tuned, not finished.** The shadow map is 1024² over a 380-unit volume, and
+    the penumbra is wider than it should be. The horizon has a bright seam where the field's
+    far edge meets the sky, and there is faint shadow acne at the far edge.
+  - **`monoliths` is a sketch.** The composition is a row of small stones on a plain, and the
+    camera is framed so the ground — which reaches much further than the monoliths — decides
+    the fit, so the crop is a blunt instrument. The wet-ground reflection is a Fresnel
+    stand-in rather than a reflection pass, which is why the ground is drawn as geometry
+    instead of a clear colour.
+  - **The instance layout is not checked by the device.** Only the uniform is, against the
+    parsed shader. A shader that reads its instance row at the wrong locations gets no error,
+    and the gallery's shaders write their locations out in `shaders.rs` for exactly that
+    reason. This is the same gap the uniform check was built to close, one level down.
+  - **No textures.** A mesh carries texcoords and a material carries a `tint`, but nothing
+    samples an image, because a binding carries a texture and no sampler.
+
+### Invariants to keep
+
+  - A gallery scene is an ordinary standard scene document: the same `Value`, the same schema,
+    the same compiler. It is not a second kind of scene.
+  - A shader carries its own source, so a scene stays self-contained and renders wherever it
+    is sent.
+  - The uniform struct of a shader is written in the order its interface schema sorts its
+    fields into, and the device checks it against the parsed shader and will say so. It caught
+    two real mistakes: a stage declaring a uniform its pass does not supply, and a struct
+    written in the wrong order.
+  - A surface body is written into the body of the lighting stage's fragment function, so it
+    cannot redeclare a name the template or another surface already uses. A scene's helper
+    functions go in the `helpers` argument, because `WGSL` has no nested functions.
+
 ## References
 
 The spec's `definition` crate now carries references: a value slot a schema marks may hold a
