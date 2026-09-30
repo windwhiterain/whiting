@@ -8,6 +8,14 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
 
 - `Definition`: a general data representation.
   - nested struct-enum-list-dict structure like ".ron".
+  - `Path`: the chain of key's and indices that accessing certain value in `Definition`.
+  - `registry definition: FilePath`
+  - a value slot is inlined value by default.
+    - can be marked as `Reference`: enum of
+      - `InternalReference`: a absolute or relative `Path` inside the `Definition`.
+      - `ExternalReference`: a `Path` to the `registry definition`.
+      - `FilePath`
+    - once loaded into memory, every `Reference` must be resolved to rust reference.
   - `schema: Schema`
 - `Schema`: a general schema representation to verify a `Definition` and `Delta` referencing it.
 - `Delta`: a general data representation that represent how to change its `referencing_definition`.
@@ -19,7 +27,6 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
     - can replace structural value.
   - `Append`: a set of values or key-value pairs to append.
   - `Remove`: a set of indices or keys to remove.
-- `Path`: the chain of key's and indices that accessing certain value in `Definition`.
 - `History`: a `Delta` replay system that generate a inverse `Delta` for each `Delta` apply to help building undo-redo system.
 
 ### `graphics` crate
@@ -58,7 +65,7 @@ provide utility to build compilers to compile `Definition` with certain schema i
 - `Compiler`: trait.
   - `scene: Schema`: the schema to compile.
   - `fn compile`
-- `StandardScene`
+- `StandardScene`, `StandardCompiler`
   - `PassSchema`
     - `ProjectionSchema`
     - `ShadowingSchema`
@@ -67,19 +74,19 @@ provide utility to build compilers to compile `Definition` with certain schema i
       - `projection: Schema`
     - `LightingSchema`
       - `projection: Schema`
-  - `Light`
-  - `Mesh`
-    - `instance_data` 
+  - `Light`, `lights`
+  - `Camera`, `cameras`
+  - `Mesh`, `meshes`
     - `point_schema: Schema`: schema of point data (e.g. position, uv ...).
     - `Point`
     - `Topology`: enum of:
       - `Triangles`
       - `Segments`
-  - `Instance`
+  - `Instance`, `instances`
     - `transform: Transform`
     - `mesh: Mesh`
     - `material: Material`
-  - `Shader`: 
+  - `Shader`, `shaders`
     - verify aginst `CustomSchema`.
     - enum of:
       - `MeshShader`: 
@@ -89,6 +96,6 @@ provide utility to build compilers to compile `Definition` with certain schema i
           - `DepthShader`
           - `LightingShader`
       - `ScreenShader`
-  - `Material`
+  - `Material`, `materials`
     - `shader: Shader`
     - `custom_data`
