@@ -39,6 +39,7 @@ use raster::RenderedTarget;
 mod bindings;
 mod compute;
 mod raster;
+mod uniform;
 
 /// A renderer that executes passes on a gpu.
 pub struct WgpuRenderer {

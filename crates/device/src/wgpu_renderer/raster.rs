@@ -56,6 +56,12 @@ impl WgpuRenderer {
         let shader = resolve_for_pass(&label, instance, pass.shader_binder()?)
             .map_err(RenderError::Graphics)?;
         let module = self.shader_module(&shader)?;
+        // A shader declares the uniform it reads, and that declaration is what the pass is
+        // packed against, so a shader that declares it differently is caught here rather
+        // than quietly reading the wrong bytes.
+        if let Some(schema) = graphics::uniform_schema(pass, instance)? {
+            self.check_uniform_layout(&shader, &schema)?;
+        }
         let bindings = self.bind_pass(pass, instance, cache)?;
 
         let attachments = attachments(&bindings)?;

@@ -23,6 +23,9 @@ impl WgpuRenderer {
         let shader = resolve_for_pass(&label, instance, pass.shader_binder()?)
             .map_err(RenderError::Graphics)?;
         let module = self.shader_module(&shader)?;
+        if let Some(schema) = graphics::uniform_schema(pass, instance)? {
+            self.check_uniform_layout(&shader, &schema)?;
+        }
         let bindings = self.bind_pass(pass, instance, cache)?;
 
         let workgroup: Vec<u32> = pass

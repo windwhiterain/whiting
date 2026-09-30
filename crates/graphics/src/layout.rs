@@ -281,15 +281,6 @@ pub fn uniform_bytes(schema: &Schema, value: &Value) -> Result<Vec<u8>, LayoutEr
         .map_err(|error| LayoutError::Mismatch {
             reason: error.to_string(),
         })?;
-    let mut bytes = Vec::new();
-    write_fields(&mut bytes, schema, value)?;
-    // A uniform block is a whole number of sixteen byte blocks.
-    bytes.resize(align_to(bytes.len(), 16), 0);
-    Ok(bytes)
-}
-
-/// Writes the fields of a struct schema, in the order the schema declares them.
-fn write_fields(bytes: &mut Vec<u8>, schema: &Schema, value: &Value) -> Result<(), LayoutError> {
     let SchemaKind::Struct { fields } = &schema.kind else {
         return Err(LayoutError::NotAStruct(schema.kind_name()));
     };
@@ -299,28 +290,120 @@ fn write_fields(bytes: &mut Vec<u8>, schema: &Schema, value: &Value) -> Result<(
         });
     };
 
-    let mut offset = 0usize;
-    for (name, field) in fields {
-        let value = values.get(name).ok_or_else(|| LayoutError::Mismatch {
-            reason: format!("the uniform has no `{name}`"),
-        })?;
-        offset = align_to(offset, alignment_of(name, field)?);
-        if bytes.len() < offset {
-            bytes.resize(offset, 0);
-        }
-        write_value(bytes, field, value)?;
-        offset = bytes.len();
+    let mut bytes = Vec::new();
+    for field in uniform_layout(schema)? {
+        let value = values
+            .get(&field.name)
+            .ok_or_else(|| LayoutError::Mismatch {
+                reason: format!("the uniform has no `{}`", field.name),
+            })?;
+        write_at(&mut bytes, field.offset, &fields[&field.name], value)?;
     }
-    Ok(())
+    // A uniform block is a whole number of sixteen byte blocks.
+    bytes.resize(align_to(bytes.len(), 16), 0);
+    Ok(bytes)
 }
 
-/// Writes one field, recursing into a struct and flattening a list of numbers.
-fn write_value(bytes: &mut Vec<u8>, schema: &Schema, value: &Value) -> Result<(), LayoutError> {
-    if matches!(schema.kind, SchemaKind::Struct { .. }) {
-        return write_fields(bytes, schema, value);
+/// One field of a uniform layout: where it is written, and what is inside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UniformField {
+    /// The name the field is declared under.
+    pub name: String,
+    /// The offset the field starts at, in bytes from the start of the block.
+    pub offset: usize,
+    /// The fields inside it, when it is a struct.
+    pub fields: Vec<UniformField>,
+}
+
+/// Returns the layout of a uniform schema: where every field of it is written.
+///
+/// This is what a shader's own declaration is checked against. Two layouts that disagree
+/// read the wrong bytes, and nothing else in a pipeline notices.
+///
+/// # Invariants
+///
+/// This is the only place the uniform layout is decided. The packer writes at the offsets
+/// it returns and the check that a shader agrees reads them, so a change here changes both
+/// together.
+pub fn uniform_layout(schema: &Schema) -> Result<Vec<UniformField>, LayoutError> {
+    let SchemaKind::Struct { fields } = &schema.kind else {
+        return Err(LayoutError::NotAStruct(schema.kind_name()));
+    };
+
+    let mut laid_out = Vec::with_capacity(fields.len());
+    let mut offset = 0usize;
+    for (name, field) in fields {
+        offset = align_to(offset, alignment_of(name, field)?);
+        let inner = if matches!(field.kind, SchemaKind::Struct { .. }) {
+            uniform_layout(field)?
+        } else {
+            Vec::new()
+        };
+        laid_out.push(UniformField {
+            name: name.clone(),
+            offset,
+            fields: inner,
+        });
+        offset += size_of(name, field)?;
     }
+    Ok(laid_out)
+}
+
+/// Returns the size a field occupies, before the next field is aligned past it.
+///
+/// A struct is padded to its own alignment, because a backend places the field after it on
+/// that boundary rather than immediately after the last member.
+fn size_of(name: &str, field: &Schema) -> Result<usize, LayoutError> {
+    match &field.kind {
+        SchemaKind::Float | SchemaKind::Int => Ok(4),
+        SchemaKind::List { .. } => Ok(declared_components(name, field)? * 4),
+        SchemaKind::Struct { fields } => {
+            let mut offset = 0usize;
+            let mut end = 0usize;
+            for (member, member_schema) in fields {
+                offset = align_to(offset, alignment_of(member, member_schema)?);
+                end = offset + size_of(member, member_schema)?;
+                offset = end;
+            }
+            Ok(align_to(end, alignment_of(name, field)?))
+        }
+        _ => Err(LayoutError::UnpackableField {
+            field: name.to_owned(),
+            kind: field.kind_name(),
+        }),
+    }
+}
+
+/// Writes one field of a uniform at the offset the layout gives it.
+fn write_at(
+    bytes: &mut Vec<u8>,
+    base: usize,
+    schema: &Schema,
+    value: &Value,
+) -> Result<(), LayoutError> {
+    if let SchemaKind::Struct { fields } = &schema.kind {
+        let Some(values) = value.as_field_map().or_else(|| value.variant_fields()) else {
+            return Err(LayoutError::Mismatch {
+                reason: format!("expected a struct to pack, found {}", value.kind_name()),
+            });
+        };
+        for field in uniform_layout(schema)? {
+            let value = values
+                .get(&field.name)
+                .ok_or_else(|| LayoutError::Mismatch {
+                    reason: format!("the uniform has no `{}`", field.name),
+                })?;
+            write_at(bytes, base + field.offset, &fields[&field.name], value)?;
+        }
+        return Ok(());
+    }
+
     let packed = value_bytes(value)?;
-    bytes.extend_from_slice(&packed);
+    let end = base + packed.len();
+    if bytes.len() < end {
+        bytes.resize(end, 0);
+    }
+    bytes[base..end].copy_from_slice(&packed);
     Ok(())
 }
 
