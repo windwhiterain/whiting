@@ -3,7 +3,7 @@
 //! A pass schema is an interface: the `uniform` and the `binders` a pass of that stage
 //! carries, described as one struct. That is exactly the shape a shader's `pass_schema`
 //! is checked against, so a material that wants the standard shadowing pass writes
-//! [`shadowing_pass_schema`] and the compiler is on the hook to supply exactly that.
+//! [`shadow_pass_schema`] and the compiler is on the hook to supply exactly that.
 //!
 //! # Invariants
 //!
@@ -179,7 +179,7 @@ pub fn projection_schema() -> Schema {
 }
 
 /// Builds the interface of a shadowing pass.
-pub fn shadowing_pass_schema() -> Schema {
+pub fn shadow_pass_schema() -> Schema {
     interface(
         "A shadowing pass, which renders one light's depth map.",
         vec![
@@ -212,7 +212,7 @@ pub fn shadowing_pass_schema() -> Schema {
 }
 
 /// Builds the interface of a depthing pass.
-pub fn depthing_pass_schema() -> Schema {
+pub fn depth_pass_schema() -> Schema {
     interface(
         "A depthing pass, which renders the depth of every mesh in the scene.",
         vec![
@@ -244,7 +244,7 @@ pub fn depthing_pass_schema() -> Schema {
 }
 
 /// Builds the interface of a lighting pass.
-pub fn lighting_pass_schema() -> Schema {
+pub fn light_pass_schema() -> Schema {
     interface(
         "A lighting pass, which shades every mesh in the scene.",
         vec![

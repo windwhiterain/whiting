@@ -10,7 +10,7 @@ use graphics::layout::components_schema;
 
 use crate::standard::Stage;
 use crate::standard::pass_schemas::{
-    depthing_pass_schema, lighting_pass_schema, post_pass_schema, shadowing_pass_schema,
+    depth_pass_schema, light_pass_schema, post_pass_schema, shadow_pass_schema,
 };
 use crate::standard::scene_schema::{default_custom_schema, default_instance_schema};
 
@@ -133,9 +133,9 @@ fn mesh(label: &str, points: Vec<Value>) -> Value {
 /// Builds one shader of the example, which a material names by label.
 fn shader(label: &str, stage: Stage, source: &str) -> Value {
     let pass_schema = match stage {
-        Stage::Shadowing => shadowing_pass_schema(),
-        Stage::Depthing => depthing_pass_schema(),
-        Stage::Lighting => lighting_pass_schema(),
+        Stage::Shadowing => shadow_pass_schema(),
+        Stage::Depthing => depth_pass_schema(),
+        Stage::Lighting => light_pass_schema(),
         Stage::Post => post_pass_schema(),
     };
     Value::variant(

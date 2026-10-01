@@ -148,7 +148,7 @@ impl Stage {
         match self {
             Self::Shadowing => "ShadowingShader",
             Self::Depthing => "DepthShader",
-            Self::Lighting => "LightingShader",
+            Self::Lighting => "LightShader",
             Self::Post => "ScreenShader",
         }
     }
@@ -996,7 +996,7 @@ fn read_shader(shader: &Value, path: &Path) -> Result<ShaderRead, CompileError> 
         Some("ScreenShader") => Stage::Post,
         Some("ShadowingShader") => Stage::Shadowing,
         Some("DepthShader") => Stage::Depthing,
-        Some("LightingShader") => Stage::Lighting,
+        Some("LightShader") => Stage::Lighting,
         Some(other) => {
             return Err(CompileError::UnknownStage {
                 path: path.clone(),

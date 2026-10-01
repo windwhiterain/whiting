@@ -24,7 +24,7 @@
 use definition::{Schema, SchemaKind, Value};
 
 use crate::standard::{
-    Stage, depthing_pass_schema, lighting_pass_schema, post_pass_schema, shadowing_pass_schema,
+    Stage, depth_pass_schema, light_pass_schema, post_pass_schema, shadow_pass_schema,
 };
 
 use super::kit;
@@ -406,7 +406,7 @@ pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
             Stage::Shadowing,
             "shadowing",
             &shadowing(&inputs),
-            shadowing_pass_schema(),
+            shadow_pass_schema(),
             point.clone(),
             kit::gallery_instance_schema(),
             kit::gallery_custom_schema(),
@@ -415,7 +415,7 @@ pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
             Stage::Depthing,
             "depthing",
             &depthing(&inputs),
-            depthing_pass_schema(),
+            depth_pass_schema(),
             point.clone(),
             kit::gallery_instance_schema(),
             kit::gallery_custom_schema(),
@@ -424,7 +424,7 @@ pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
             Stage::Lighting,
             "lighting",
             &lighting(&inputs, surface, helpers),
-            lighting_pass_schema(),
+            light_pass_schema(),
             point,
             kit::gallery_instance_schema(),
             kit::gallery_custom_schema(),

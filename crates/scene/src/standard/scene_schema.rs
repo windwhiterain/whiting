@@ -483,7 +483,7 @@ pub fn shader_schema() -> Schema {
     let mut variants = vec![
         ("ShadowingShader".to_owned(), mesh()),
         ("DepthShader".to_owned(), mesh()),
-        ("LightingShader".to_owned(), mesh()),
+        ("LightShader".to_owned(), mesh()),
     ];
     variants.push((
         "ScreenShader".to_owned(),

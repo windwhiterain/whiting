@@ -34,7 +34,7 @@ use crate::gallery::kit::{
     mesh_material, shaded_point_schema, shader, surface,
 };
 use crate::gallery::shaders::{lighting, mesh_shaders, post_shader};
-use crate::standard::{Stage, lighting_pass_schema};
+use crate::standard::{Stage, light_pass_schema};
 
 /// How far the valley reaches from its centre, in world units.
 const EXTENT: f64 = 190.0;
@@ -235,7 +235,7 @@ fn build_shaders() -> Vec<Value> {
         // shader reads the same points and rows, and a list of its own is a second
         // transcription to keep in step with the first.
         &lighting(&gallery_vertex_inputs(&shaded_point_schema()), "", ""),
-        lighting_pass_schema(),
+        light_pass_schema(),
         shaded_point_schema(),
         gallery_instance_schema(),
         gallery_custom_schema(),
