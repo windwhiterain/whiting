@@ -103,16 +103,26 @@ fn terraced_valley(materials: Vec<Value>, instances: Value) -> Value {
                 // The sun, low and warm. It stands in the frame's quarter rather than
                 // behind the camera, because a paddy is a mirror and a mirror lit from
                 // behind the viewer shows nothing.
-                light("sun", SUN_POSITION, [1.0, 0.66, 0.40], 5.4, 330.0),
+                //
+                // The radius is 692 to the far corner of the valley and is written out
+                // because the convention for a light that names none is one box radius —
+                // 190, the size of the valley and not how far this light reaches. A light
+                // standing outside the scene is culled per cluster by its own radius, and a
+                // light dropped from every cluster past that draws its own edge as a
+                // staircase quantised to the cluster grid rather than as a terminator.
+                // See `.agents/handoffs/light-radius.md`.
+                light("sun", SUN_POSITION, [1.0, 0.66, 0.40], 5.4, 330.0, 700.0),
                 // The sky's fill: a broad cool light from the opposite quarter, so a
                 // riser in its own shadow reads as shadowed earth rather than as black,
-                // and the backlit face of the mountain keeps its forest.
+                // and the backlit face of the mountain keeps its forest. It is 692 to the
+                // far corner as well. See the sun above for why it is written here.
                 light(
                     "sky",
                     [-260.0, 320.0, 230.0],
                     [0.36, 0.47, 0.72],
                     1.0,
                     340.0,
+                    700.0,
                 ),
             ]),
         ),

@@ -60,6 +60,7 @@ use crate::standard::pass_schemas::{
     VERTICES,
 };
 use crate::standard::scene_schema;
+use crate::standard::scene_schema::RADIUS;
 use crate::{CompileError, CompileNote};
 use graphics::layout::components;
 use graphics::pass::{BLEND, DEPTH, DEPTH_COMPARE, DEPTH_WRITE};
@@ -328,10 +329,9 @@ struct LightRead {
     /// How far the light reaches, when the document says.
     ///
     /// It is a field of the light because a light's reach is the light's own, and a scene
-    /// that mixes a lantern with a sun has to be able to say which is which. The convention
-    /// for a light that says nothing is not applied here: it is one box radius of what the
-    /// scene draws, and what the scene draws is not known until the meshes have been read.
-    /// [`LightRead::radius`] resolves the two, once the bounds are.
+    /// that mixes a lantern with a sun has to be able to say which is which. It is required
+    /// of a point light and optional for a spot, whose cone answers for it; a kind that takes
+    /// no cluster slot has no reach to state. [`LightRead::radius`] resolves those three.
     radius: Option<f64>,
     /// The cone the light shines in.
     ///
@@ -346,31 +346,36 @@ struct LightRead {
 }
 
 impl LightRead {
-    /// Returns how far this light reaches, falling back to what the kind itself says.
+    /// Returns how far this light reaches, and what answers for the kinds that do not say.
     ///
     /// # Invariants
     ///
-    /// A light that names a radius has said how far it reaches and that is the answer. One that
-    /// does not has it worked out, and the two kinds that can be in that position want different
-    /// answers:
-    ///
-    /// - A **spot** light's reach is its own cone. The volume that cone cuts out of a scene of
-    ///   half width `shadow_extent` ends in a disc, and the distance from the light to the rim
-    ///   of that disc is what the cone reaches — see [`SpotCone::reach`]. Falling back to the
-    ///   box radius here would be a light whose **culling** sphere is smaller than the cone it
-    ///   is drawing, so the light would be dropped from the clusters at the edge of its own
-    ///   cone and the outer angle would never be seen. A lamp standing higher above the floor
-    ///   than the box is wide hits this on the first try, and what the author sees is a
-    ///   grid-aligned rectangle where the cone's own circle should be.
-    /// - Everything else is a point light's reach, and a light the size of the scene it stands
-    ///   in reaches across it.
-    fn radius(&self, bounds: &Bounds) -> f64 {
-        if let Some(radius) = self.radius {
-            return radius;
-        }
-        match (self.kind, self.shadow_extent) {
-            (LightKind::Spot, Some(extent)) => self.cone.reach(extent),
-            _ => bounds.largest_half_width(),
+    /// - A **point** light has said. `radius` is a required field of its variant, and there
+    ///   is no default behind it, because the default that used to be there — one box radius
+    ///   of what the scene draws — is right only for a light standing inside the scene it
+    ///   lights. A light standing outside it is culled short of its own reach, dropped from
+    ///   every cluster past that, and the boundary between lit and unlit then comes out
+    ///   quantised to the **cluster grid**: a terminator drawn as a staircase of
+    ///   screen-aligned rectangles. Which distance is right is a fact about where the scene's
+    ///   own surfaces are, so it is a number the document carries rather than one the
+    ///   compiler can work out.
+    /// - A **spot** light may not have, and is then answered by the reach of its own cone. The
+    ///   volume that cone cuts out of a scene of half width `shadow_extent` ends in a disc,
+    ///   and the distance from the light to the rim of that disc is what the cone reaches —
+    ///   see [`SpotCone::reach`]. Answering it by the box radius instead would be a light
+    ///   whose **culling** sphere is smaller than the cone it is drawing, so the light would
+    ///   be dropped from the clusters at the edge of its own cone and the outer angle would
+    ///   never be seen. A lamp standing higher above the floor than the box is wide hits that
+    ///   on the first try, and what the author sees is a grid-aligned rectangle where the
+    ///   cone's own circle should be.
+    /// - A kind that takes no cluster slot is answered with zero, which is a number nothing
+    ///   reads: [`LightKind::takes_cluster_slot`] being false is what says so, and it is the
+    ///   one fact that makes the zero here a statement rather than a stand-in.
+    fn radius(&self) -> f64 {
+        match (self.radius, self.kind) {
+            (Some(reach), _) => reach,
+            (None, LightKind::Spot) => self.cone.reach(self.shadow_extent.unwrap_or(0.0)),
+            (None, _) => 0.0,
         }
     }
 
@@ -627,7 +632,7 @@ pub fn emit(
             label: light.label.clone(),
             position: light.record_position(),
             colour: light.colour,
-            radius: light.radius(&bounds),
+            radius: light.radius(),
             // The projection is computed here rather than in the lighting module, because
             // building one is a property of a view and the lighting module deliberately has
             // no view. It is the same matrix the shadowing pass draws its page through.
@@ -1187,12 +1192,13 @@ fn read_lights(
                     colour,
                     shadow_extent: Some(number(light, &path, "shadow_extent")?),
                     // A directional light reaches every distance equally, so it has no reach to
-                    // cull by. It declares no `radius` of its own, and
-                    // [`LightRead::radius`] answers for it with one box radius of the scene —
-                    // which is a number nothing asks. It is left to that answer rather than
-                    // given a special case, so a reader who finds a way to ask is handed the
-                    // same fallback every other kind without a radius would get, and the one
-                    // fact that says it is a fallback is `takes_cluster_slot` being false.
+                    // cull by. It declares no `radius` of its own and
+                    // [`LightRead::radius`] answers with zero for it, which is a number nothing
+                    // reads. It is left to that answer rather than given a special case, so a
+                    // reader who finds a way to ask is handed the same answer a light that
+                    // takes no cluster slot gets whatever kind it is, and the one fact that
+                    // says the zero is a statement rather than a stand-in is
+                    // `takes_cluster_slot` being false.
                     radius: None,
                     cone: SpotCone::whole_sphere(),
                 }
@@ -1205,10 +1211,18 @@ fn read_lights(
             // point light declares no `direction`, so a read that asked for one would report a
             // missing field on a document that is in no way missing one.
             _ => {
-                let radius = optional_number(light, &path, "radius")?;
+                // A point light declares a required `radius` and a spot light declares an
+                // optional one, so the two are read apart here rather than by one optional
+                // read: a point light that says nothing is a document the schema has already
+                // refused, and asking again would report the same absence twice.
+                let radius = if kind == LightKind::Spot {
+                    optional_number(light, &path, RADIUS)?
+                } else {
+                    Some(number(light, &path, RADIUS)?)
+                };
                 if let Some(reach) = radius.filter(|reach| *reach <= 0.0) {
                     return Err(CompileError::EmptyLightRadius {
-                        path: path.key("radius"),
+                        path: path.key(RADIUS),
                         label,
                         radius: reach,
                     });

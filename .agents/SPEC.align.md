@@ -569,13 +569,25 @@ incremental compile.
       - `label`, `color` and `intensity` are what every kind carries; `position`,
         `direction`, the two angles, `image`, `radius` and `shadow_extent` belong to the
         kinds that have them.
-      - `radius` is optional and means one box radius of what the scene draws, which is
-        the measure the camera and the shadow volume already use. It is a field of the
-        light rather than of the scene because a scene that mixes a lantern with a sun
+      - `radius` is **required on a `Point`** and optional on a `Spot`. It is a field of
+        the light rather than of the scene because a scene that mixes a lantern with a sun
         has to say which is which, and it is separate from `shadow_extent` because the
         two answer different questions: how far a light's *light* falls off, and how much
         of the scene its shadow map covers. A radius of zero or less is refused rather
         than read as a light that reaches nothing, which is a scene lit by nothing.
+      - **decision**: a `Point` light's `radius` has no default. It used to be optional and
+        to mean one box radius of what the scene draws, which is right for a light standing
+        **inside** the scene it lights and wrong for one standing outside it — and a wrong
+        answer here is a picture, not an error, because the light is culled per cluster by
+        its own radius and the clusters it is missing are just never lit. The symptom is
+        documented twice in this repository, once in `emit.rs` for a spot light and once in
+        `proposals/photographic-stilllife.md` for a still life: **rectangular patches about
+        a cluster wide**, because the boundary between a cluster that has the light and one
+        that does not is a plane through the eye. Which distance is right is a fact about
+        where the scene's own surfaces are, so a document carries it rather than a compiler
+        working it out. A `Spot` may leave it out and is culled by `SpotCone::reach`, which
+        its own two angles already determine; a `Directional` declares none and takes no
+        cluster slot, so there is nothing for the number to cull.
       - **decision**: the kind is the variant tag and **a missing kind is a validation
         error with no default**. In an offline render a wrongly classified light is a wrong
         image that nobody sees until the render finishes, and statelessness removes the

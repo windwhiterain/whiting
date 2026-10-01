@@ -187,14 +187,18 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
     // shadow directly away from the viewer, where the block itself hides it, and the two
     // frames come out identical for a reason that has nothing to do with the mechanism.
     //
-    // Each light names a **radius** wide enough to reach the ground, which the convention would
-    // not: a light's radius falls back to one box radius of what the scene draws, and a light
-    // stood far enough off to throw a visible shadow is further from the scene than that. A
-    // light that reaches nothing is lit by nothing, and a scene of ambient alone is a frame
-    // that renders and casts no shadow — which is the same symptom as a broken page and the
-    // opposite diagnosis, so the radius is written down rather than left to the convention.
-    let mut lights_list = Value::List(vec![reaching(
-        light("key", [-30.0, 20.0, -24.0], [1.0, 0.96, 0.9], 3.0, 20.0),
+    // Each light names a **radius** wide enough to reach the ground, and it is a required
+    // field rather than something left to a convention: a light's radius is what the cluster
+    // assignment culls it by, and a light stood far enough off to throw a visible shadow is
+    // further from the scene than one box radius of it. A light that reaches nothing is lit by
+    // nothing, and a scene of ambient alone is a frame that renders and casts no shadow —
+    // which is the same symptom as a broken page and the opposite diagnosis.
+    let mut lights_list = Value::List(vec![light(
+        "key",
+        [-30.0, 20.0, -24.0],
+        [1.0, 0.96, 0.9],
+        3.0,
+        20.0,
         70.0,
     )]);
     // A second light, on the far side too and to the other hand, so that its light lands on
@@ -204,8 +208,12 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
             Value::List(list) => list,
             _ => Vec::new(),
         };
-        extra.push(reaching(
-            light("second", [26.0, 18.0, -20.0], [0.85, 0.9, 1.0], 2.4, 20.0),
+        extra.push(light(
+            "second",
+            [26.0, 18.0, -20.0],
+            [0.85, 0.9, 1.0],
+            2.4,
+            20.0,
             70.0,
         ));
         lights_list = Value::List(extra);
@@ -361,18 +369,6 @@ fn renderer() -> Option<WgpuRenderer> {
         }
         WgpuRenderer::new().await.ok()
     })
-}
-
-/// Returns a light that reaches as far as the scene does.
-///
-/// The radius is a field of a point light and the convention for it is one box radius of what
-/// the scene draws, which is the right answer for a light standing inside its own scene and
-/// the wrong one for a light stood off to throw a shadow across it.
-fn reaching(mut light: Value, radius: f64) -> Value {
-    if let Value::Enum { ref mut fields, .. } = light {
-        fields.insert("radius".to_owned(), Value::Float(radius));
-    }
-    light
 }
 
 /// Compiles a scene the way a host would.

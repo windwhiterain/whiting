@@ -98,19 +98,39 @@ pub fn dunes() -> Value {
         (
             "lights".to_owned(),
             Value::List(vec![
-                // The sun, low and off to one side, so the crests catch it and the
-                // troughs are in their own shadow. It stands well outside the field: a
-                // light inside the volume it lights blows out everything near it.
-                // The sun, off to one side, so the crests catch it and the troughs are
-                // in their own shadow. It stands well outside the field: a light inside
-                // the volume it lights blows out everything near it. The shadow volume is
-                // wide enough to hold the whole field, because a shadow map that stops
-                // short of the scene's own edge draws a hard line across it.
-                light("sun", [-150.0, 125.0, 95.0], [1.0, 0.80, 0.55], 3.6, 175.0),
+                // The sun, low and off to one side, so the crests catch it and the troughs are
+                // in their own shadow. It stands well outside the field: a light inside the
+                // volume it lights blows out everything near it. The shadow volume is wide
+                // enough to hold the whole field, because a shadow map that stops short of the
+                // scene's own edge draws a hard line across it.
+                //
+                // The radius is the distance to the far corner, and it is written out rather
+                // than defaulted. A light standing outside the field is culled per cluster by
+                // its own radius, and the convention for a light that names none is one box
+                // radius — 165, which is the size of the field and not how far this light
+                // reaches. The sun is 427 from the corner it could not reach, so it is dropped
+                // from every cluster past that and the boundary between lit and unlit comes out
+                // quantised to the cluster grid. See `.agents/handoffs/light-radius.md`.
+                light(
+                    "sun",
+                    [-150.0, 125.0, 95.0],
+                    [1.0, 0.80, 0.55],
+                    3.6,
+                    175.0,
+                    430.0,
+                ),
                 // A fill from the opposite side and from above, dim and blue, standing in
                 // for the sky. One light with one falloff leaves every shadowed slope
                 // black, and black is not what a shadow looks like outdoors.
-                light("sky", [130.0, 150.0, -95.0], [0.34, 0.44, 0.68], 0.5, 175.0),
+                // 420 to the far corner. See the sun above for why it is written here.
+                light(
+                    "sky",
+                    [130.0, 150.0, -95.0],
+                    [0.34, 0.44, 0.68],
+                    0.5,
+                    175.0,
+                    430.0,
+                ),
             ]),
         ),
         (

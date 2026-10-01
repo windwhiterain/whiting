@@ -13,7 +13,7 @@ use crate::standard::pass_schemas::{
     depth_pass_schema, emission_pass_schema, light_pass_schema, post_pass_schema,
     shadow_pass_schema,
 };
-use crate::standard::scene_schema::{default_custom_schema, default_instance_schema};
+use crate::standard::scene_schema::{RADIUS, default_custom_schema, default_instance_schema};
 
 /// The point schema the example's one mesh declares.
 ///
@@ -50,6 +50,11 @@ pub fn example_standard_scene() -> Value {
                     ),
                     ("intensity".to_owned(), Value::Float(1.0)),
                     ("shadow_extent".to_owned(), Value::Float(2.5)),
+                    // 8.1 is the distance to the far corner of a triangle two units across
+                    // with a light standing off it; without this the light reached nothing and
+                    // the example rendered as two unlit shapes on black. The field used to be
+                    // optional and default to one box radius of the triangle, which is 1.0.
+                    (RADIUS.to_owned(), Value::Float(10.0)),
                 ],
             )]),
         ),

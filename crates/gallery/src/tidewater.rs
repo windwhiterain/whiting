@@ -199,7 +199,11 @@ pub fn tidewater() -> Value {
                 // standard shading rather than anything the document can set: at this range
                 // it attenuates by something over twenty, and what a scene sets is therefore
                 // a radiance at a chosen distance, not a power. See the proposal.
-                light("sun", SUN, [1.0, 0.55, 0.28], 34.0, 900.0),
+                // The radius is the lake's own half width, which is what the convention used to
+                // answer with and what this picture is tuned around. It reaches short of the
+                // far corners — 2610 and 2413 — and the handoff records that as a scene-level
+                // look rather than a number to change here.
+                light("sun", SUN, [1.0, 0.55, 0.28], 34.0, 900.0, 1400.0),
                 // The sky, which at this hour is doing most of the lighting. It is dim, cold
                 // and from above: a scene with one light leaves every shadowed slope black,
                 // and black is not what a shadow looks like outdoors.
@@ -215,6 +219,7 @@ pub fn tidewater() -> Value {
                     [260.0, 420.0, 300.0],
                     [0.30, 0.42, 0.70],
                     13.0,
+                    1400.0,
                     1400.0,
                 ),
                 // The environment the ambient term is read from. The colour is left at one

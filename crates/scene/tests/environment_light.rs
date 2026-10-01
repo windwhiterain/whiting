@@ -15,6 +15,7 @@
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use graphics::{BINDERS, ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA, LABEL, PASSES_FIELD, UNIFORM};
+use whiting_scene::standard::RADIUS;
 use whiting_scene::standard::example_standard_scene;
 use whiting_scene::{
     CompileContext, CompileOutput, Compiler, STANDARD_SCENE_SCHEMA, StandardScene,
@@ -131,6 +132,8 @@ fn point(label: &str) -> Value {
             ("color".to_owned(), triple([1.0, 0.95, 0.9])),
             ("intensity".to_owned(), Value::Float(1.0)),
             ("shadow_extent".to_owned(), Value::Float(2.5)),
+            // A point light is required to say how far it reaches; the field has no default.
+            (RADIUS.to_owned(), Value::Float(20.0)),
         ],
     )
 }

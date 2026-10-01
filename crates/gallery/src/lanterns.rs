@@ -69,13 +69,39 @@ pub fn lanterns() -> Value {
             Value::List(vec![
                 // The moon, dim and high behind the field, so the water has a sky to reflect
                 // and the poles have an edge.
-                light("moon", [-70.0, 120.0, 90.0], [0.24, 0.30, 0.50], 1.5, 300.0),
+                // The radius of every light here is the water's own half width, which is what
+                // the convention used to answer with and what the picture is tuned around: the
+                // field is a raft 52 units across in a 300 unit lake, and the water past it
+                // is meant to go dark rather than to be lit to its edges. See the handoff for
+                // why the number is written down rather than defaulted.
+                light(
+                    "moon",
+                    [-70.0, 120.0, 90.0],
+                    [0.24, 0.30, 0.50],
+                    1.5,
+                    300.0,
+                    300.0,
+                ),
                 // Two lanterns are also lights. A lantern's own stage adds its colour to
                 // itself and lights nothing else — an emission is not a light — so what makes
                 // the water glow under the field is these, and they are the reason the field
                 // reads as a place rather than as a row of bright squares.
-                light("near", [-20.0, 5.0, 16.0], [1.0, 0.55, 0.24], 2.4, 60.0),
-                light("far", [10.0, 5.0, -22.0], [1.0, 0.58, 0.26], 2.0, 60.0),
+                light(
+                    "near",
+                    [-20.0, 5.0, 16.0],
+                    [1.0, 0.55, 0.24],
+                    2.4,
+                    60.0,
+                    300.0,
+                ),
+                light(
+                    "far",
+                    [10.0, 5.0, -22.0],
+                    [1.0, 0.58, 0.26],
+                    2.0,
+                    60.0,
+                    300.0,
+                ),
             ]),
         ),
         ("shaders".to_owned(), Value::List(build_shaders())),
