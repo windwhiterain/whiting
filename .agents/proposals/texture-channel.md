@@ -1,15 +1,25 @@
 # A sampled texture channel: a binding that names an image and the sampler that reads it
 
-Status: proposal, **not started**. The design below was reached by building the naive version
-first and rendering it; the section *What the built version got wrong* is the part worth
-reading, because the rule it broke is the whole content of this proposal.
+Status: **the device half has landed**; the scene-side half is not started. Everything below
+the section *The corrected rule* is now code: the payload carries `data`, `sampled`, `filter`,
+`address` and `mip_filter`, a sampled texture takes a sampler at the binding after its own, the
+upload fills the level chain its size implies, and six tests in
+`crates/device/tests/texture_channel_render.rs` check it against a real adapter.
 
-**The payload half of the schema is already written**, on the branch
-`parked/texture-channel`: `data`, `filter`, `address`, `mip_filter` and `SamplerSettings`,
-all additive. The branch carries nothing else — the device half, which is where the broken
-rule lives, was discarded with the worktree it was built in. So the work that remains is the
-rule, the upload, the mip chain and the sampler creation, and the payload fields can be taken
-as they stand.
+The section *What makes this landable now* is the part that was tested first: the negative case
+is the sampling shader with its sampler moved one number down, and it arrives as
+`the shader for `sampling` declares `image_sampler` at binding 1, and this pass binds a buffer
+there.` rather than as a backend message about a view dimension. That is why the rule could be
+changed at all, and it is the reason to keep the check rather than a reason to trust the rule.
+
+**What has not landed, and why the gap is not closed.** A standard scene still cannot sample an
+image, and no device change could have made it able to. A material carries one `custom_data`,
+which is a `Value` rather than a resource, and every mesh stage's binder set is a closed
+contract shared by every material and every shader in the gallery. So the channel is reachable
+from a hand written `Graphics` document and not from a scene, and the plan's *finding 7* is the
+one to start from. That is a separate design with its own question — whether a scene's textures
+are a per-material list, a per-scene list, or a new stage — and it should be written with the
+device half's numbering in hand, which it now is.
 
 ## The gap
 

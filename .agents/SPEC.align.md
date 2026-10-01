@@ -321,13 +321,42 @@ graphics computation, as data.
   a shader reads its point at the low locations and the instance data above. Every other
   buffer and every texture is a binding, numbered from one in name order, with the uniform
   at binding zero.
+- **decision**: a texture whose payload declares `sampled` takes a sampler at the binding
+  after its own, and a texture that declares nothing takes nothing. The need is **declared,
+  never inferred from the format**: the post stage reads a colour texture with
+  `textureLoad` and wants no sampler, so inferring one from the format pushes the depth
+  buffer from binding two to three and stops every scene's pipeline from building. The key
+  is a unit, because its presence is the whole declaration and a boolean would give
+  `sampled: false` a meaning. The numbering is computed once, in `Bindings::binding_numbers`,
+  and both the layout and the bind group read it, because a rule written twice is a rule
+  that can be applied once.
+- **invariant**: `sampled` on a depth format is an error, and so is `sampled` on a format
+  that cannot be filtered. A filtered depth comparison is a comparison sampler, which is a
+  different resource from the one this binding model has; and the device requests
+  `Features::empty`, so `R32Float` and `Rgba32Float` genuinely cannot be filtered here. A
+  document that asks for a linear filter of a float lookup table is refused by name rather
+  than silently given a blocky one.
+- **invariant**: a texture payload that carries `data` is uploaded, and the level chain its
+  size implies is built by a two by two box filter in linear light — an sRGB channel is
+  decoded before it is averaged and re-encoded after. A payload with no `data` gets one
+  level, because a pass is about to write its base level and a chain built here would be
+  stale from the first frame. Levels are written with `write_texture`, which stages
+  internally, so a row need not be a multiple of `COPY_BYTES_PER_ROW_ALIGNMENT`.
 - **invariant**: a binding point that is one of a pass's targets is an attachment, not a
   binding. A backend treats an attachment as an exclusive use of the texture, so a pass
   that both wrote and sampled one would be rejected. The declaration is how a pass says
-  what it renders into, so the same point serves as the attachment.
+  what it renders into, so the same point serves as the attachment. An attachment is
+  filtered by nothing whatever its payload says.
 - **invariant**: a texture whose format is a depth format is declared to a shader with the
   depth sample type, not the float one, and a pass whose targets are all depth formats is
-  built with no fragment stage.
+  built with no fragment stage. A bound colour texture is filterable exactly when its
+  payload asked for a sampler, so the sample type follows the texture's *role* rather than
+  its format.
+- **known gap**: `sampled` is a property of the payload and not of the declaration, so
+  `graphics::verify_pass_inputs` cannot check it — a shader's declared interface says it
+  reads a texture and carries no opinion on how it is read. `device`'s `check_bindings`
+  compares the two against the layout it actually built, and reports a disagreement as a
+  message naming the pass and the shader's own variable.
 - **decision**: the scene's `Mesh` declares its `Topology`, as the spec says, and the
   compiler carries it into the packed buffer: a vertex buffer declares how its points are
   read, in a `topology` on the payload rather than a field on the pass. The topology belongs
@@ -767,10 +796,15 @@ Stated rather than left to be discovered:
     the fit, so the crop is a blunt instrument. The wet-ground reflection is a Fresnel
     stand-in rather than a reflection pass, which is why the ground is drawn as geometry
     instead of a clear colour.
-  - **No textures.** A mesh carries texcoords and a material carries a `tint`, but nothing
-    samples an image, because a binding carries a texture and no sampler. This is the one
-    structural gap left between the pipeline and a photograph, and closing it means a binding
-    has to be able to name two resources — see [proposals/texture-channel.md](proposals/texture-channel.md).
+  - **No scene samples an image, yet.** The device half of the texture channel has landed: a
+    payload carries `data`, `sampled`, `filter`, `address` and `mip_filter`, a sampled texture
+    gets a sampler at the binding after its own, and the pixels and their level chain reach the
+    gpu. What is still missing is a way for a *standard scene* to name a texture: a material
+    carries one `custom_data`, which is a `Value` and not a resource, and every mesh stage's
+    binder set is a closed contract shared by every material and shader in the gallery. So the
+    channel is reachable from a hand written `Graphics` document and not from a scene, and
+    saying otherwise would be false. That is the scene-side half, and it is a separate design
+    with its own question — see [proposals/texture-channel.md](proposals/texture-channel.md).
 
 ### Invariants to keep
 
