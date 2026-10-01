@@ -159,9 +159,14 @@ async fn run() -> Result<(), String> {
         // A scene with one camera writes where it always wrote, so every existing invocation
         // of the harness names the files it named before, and a scene with several says which
         // view each set is.
+        //
+        // The suffix goes **before** the extension. Appended after it, `with_extension` in
+        // `numbered` reads `png-camera0` as the extension and replaces it with `png` again,
+        // so every camera writes the same file and the last one silently overwrites the
+        // rest — which is how a two camera scene produces one image and no complaint.
         let target = if cameras > 1 {
             Request {
-                path: format!("{}-camera{camera}", request.path),
+                path: with_stem_suffix(&request.path, &format!("camera{camera}")),
                 ..request.clone()
             }
         } else {
@@ -170,6 +175,28 @@ async fn run() -> Result<(), String> {
         write_moments(&target, &moments)?;
     }
     Ok(())
+}
+
+/// Inserts a suffix before a path's extension.
+///
+/// # Invariants
+///
+/// The suffix lands on the **stem**. A path carrying it after the extension still names the
+/// same file once anything replaces the extension, which is what every writer in this
+/// harness does before it writes.
+fn with_stem_suffix(path: &str, suffix: &str) -> String {
+    let as_path = Path::new(path);
+    let stem = as_path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "frame".to_owned());
+    match as_path.extension() {
+        Some(extension) => as_path
+            .with_file_name(format!("{stem}-{suffix}.{}", extension.to_string_lossy()))
+            .to_string_lossy()
+            .into_owned(),
+        None => format!("{path}-{suffix}"),
+    }
 }
 
 /// Returns how many cameras a scene names, which is one for a scene that names none.
