@@ -190,6 +190,25 @@ impl WgpuRenderer {
         )
     }
 
+    /// Returns whether a format may be read through a filtering sampler.
+    ///
+    /// # Invariants
+    ///
+    /// The device requests [`wgpu::Features::empty`], so the filterability here is the
+    /// format's own and not the adapter's: `R32Float` and `Rgba32Float` need the
+    /// `float32-filterable` feature, which is why they are excluded rather than assumed to
+    /// work. A 32 bit float texture is therefore readable with `textureLoad` and cannot be
+    /// declared `sampled`, which is a limit of the device and is reported as one.
+    pub(super) const fn is_filterable(format: wgpu::TextureFormat) -> bool {
+        matches!(
+            format,
+            wgpu::TextureFormat::Rgba8Unorm
+                | wgpu::TextureFormat::Rgba8UnormSrgb
+                | wgpu::TextureFormat::Bgra8Unorm
+                | wgpu::TextureFormat::Rgba16Float
+        )
+    }
+
     /// Uploads bytes into a buffer.
     pub(super) fn upload(
         &self,

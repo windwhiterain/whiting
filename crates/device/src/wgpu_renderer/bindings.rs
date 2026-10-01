@@ -26,7 +26,9 @@ use std::collections::BTreeMap;
 use definition::Value;
 use graphics::binders::{BinderKind, DATA, FORMAT, HEIGHT, SCHEMA, SIZE_BYTES, USAGE, WIDTH};
 use graphics::layout::{VertexLayout, vertex_layout};
-use graphics::{Declaration, PassView, verify_pass_inputs};
+use graphics::{
+    Declaration, PassView, SamplerAddress, SamplerSettings, is_sampled, verify_pass_inputs,
+};
 
 use super::WgpuRenderer;
 use crate::render::RenderError;
@@ -84,6 +86,42 @@ pub struct TextureSlot {
     pub width: u32,
     /// The size the instance declared.
     pub height: u32,
+    /// The sampler that reads it, when the payload declares that it is sampled.
+    ///
+    /// The settings belong to the image rather than to the pass, so the sampler is built
+    /// once with the texture and cloned out of the cache on every later hit: one instance
+    /// entry yields one sampler however many passes bind it.
+    pub sampler: Option<wgpu::Sampler>,
+    /// How many levels of detail the texture holds.
+    pub levels: u32,
+    /// Whether this slot is one of the pass's own render targets.
+    ///
+    /// An attachment is never sampled and is never filtered, so its sample type does not
+    /// follow from the declarations a bound texture is judged by. The two are told apart
+    /// here rather than at the layout, because only the binding knows which it built.
+    pub attachment: bool,
+}
+
+impl TextureSlot {
+    /// Returns the sample type a shader reads this texture as.
+    ///
+    /// # Invariants
+    ///
+    /// The type follows the texture's *role* rather than its format. A depth texture is
+    /// read as depth whatever it is for. An attachment is filtered by nothing: a backend
+    /// forbids filtering a texture a pass is writing. A bound colour texture is filterable
+    /// exactly when the payload asked for a sampler, which is why the same
+    /// `rgba8unorm` target pictures as a filterable image and as an unfilterable one
+    /// depending on which it is.
+    pub fn sample_type(&self) -> wgpu::TextureSampleType {
+        if WgpuRenderer::is_depth_format(self.format) {
+            wgpu::TextureSampleType::Depth
+        } else {
+            wgpu::TextureSampleType::Float {
+                filterable: !self.attachment && self.sampler.is_some(),
+            }
+        }
+    }
 }
 
 /// Everything one pass needs from the instance.
@@ -127,12 +165,43 @@ impl Bindings {
             .map_or(wgpu::PrimitiveTopology::TriangleList, |slot| slot.topology)
     }
 
+    /// Returns the binding number of every bound resource, and of its sampler when it has
+    /// one, in the order the resources are bound.
+    ///
+    /// # Invariants
+    ///
+    /// The uniform is binding zero and each bound resource takes the next number, so a
+    /// shader counts to a resource without knowing which pass declared it. A texture whose
+    /// payload declares `sampled` then takes a second number, for the sampler that reads it,
+    /// at the position immediately after its own. A texture that declares nothing takes one
+    /// number, which is what keeps every existing document's numbering unchanged.
+    ///
+    /// The two arrays are parallel to `self.bound`. This is the only place the arithmetic is
+    /// written: the layout and the bind group are both derived from it, so they cannot
+    /// disagree about a number. A rule expressed twice is a rule that can be applied once.
+    fn binding_numbers(&self) -> (Vec<u32>, Vec<Option<u32>>) {
+        let mut numbers = Vec::with_capacity(self.bound.len());
+        let mut samplers = Vec::with_capacity(self.bound.len());
+        let mut next = 1;
+        for resource in self.bound.iter() {
+            numbers.push(next);
+            next += 1;
+            let sampler = match resource {
+                Bound::Texture(texture) if texture.sampler.is_some() => {
+                    let number = next;
+                    next += 1;
+                    Some(number)
+                }
+                _ => None,
+            };
+            samplers.push(sampler);
+        }
+        (numbers, samplers)
+    }
+
     /// Describes the bindings to a pipeline.
     ///
-    /// The uniform is binding zero and the bound resources follow it, in name order, so a
-    /// shader can name them without knowing which pass declared them. A vertex buffer is
-    /// not one of them: it is a vertex buffer, and it is described by
-    /// [`Bindings::vertex_layouts`].
+    /// The numbering is [`Bindings::binding_numbers`], and this is the layout half of it.
     pub fn layout_entries(
         &self,
         visibility: wgpu::ShaderStages,
@@ -148,9 +217,10 @@ impl Bindings {
             count: None,
         };
         let mut entries = vec![uniform];
-        entries.extend(self.bound.iter().enumerate().map(|(index, resource)| {
-            wgpu::BindGroupLayoutEntry {
-                binding: (index + 1) as u32,
+        let (numbers, samplers) = self.binding_numbers();
+        for (index, resource) in self.bound.iter().enumerate() {
+            entries.push(wgpu::BindGroupLayoutEntry {
+                binding: numbers[index],
                 visibility,
                 ty: match resource {
                     Bound::Buffer(_) => wgpu::BindingType::Buffer {
@@ -162,18 +232,22 @@ impl Bindings {
                         // A depth texture is sampled as depth, not as float: a shader
                         // that declares `texture_depth_2d` is bound to one, and a
                         // float sample type would not match it.
-                        sample_type: if WgpuRenderer::is_depth_format(texture.format) {
-                            wgpu::TextureSampleType::Depth
-                        } else {
-                            wgpu::TextureSampleType::Float { filterable: false }
-                        },
+                        sample_type: texture.sample_type(),
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
                 },
                 count: None,
+            });
+            if let Some(binding) = samplers[index] {
+                entries.push(wgpu::BindGroupLayoutEntry {
+                    binding,
+                    visibility,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                });
             }
-        }));
+        }
         entries
     }
 
@@ -183,17 +257,28 @@ impl Bindings {
             binding: 0,
             resource: wgpu::BindingResource::Buffer(self.uniform.as_entire_buffer_binding()),
         }];
-        entries.extend(self.bound.iter().enumerate().map(|(index, resource)| {
-            wgpu::BindGroupEntry {
-                binding: (index + 1) as u32,
+        let (numbers, samplers) = self.binding_numbers();
+        for (index, resource) in self.bound.iter().enumerate() {
+            let sampler = match resource {
+                Bound::Texture(texture) => texture.sampler.as_ref(),
+                Bound::Buffer(_) => None,
+            };
+            entries.push(wgpu::BindGroupEntry {
+                binding: numbers[index],
                 resource: match resource {
                     Bound::Buffer(buffer) => {
                         wgpu::BindingResource::Buffer(buffer.as_entire_buffer_binding())
                     }
                     Bound::Texture(texture) => wgpu::BindingResource::TextureView(&texture.view),
                 },
+            });
+            if let (Some(binding), Some(sampler)) = (samplers[index], sampler) {
+                entries.push(wgpu::BindGroupEntry {
+                    binding,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                });
             }
-        }));
+        }
         entries
     }
 
@@ -340,7 +425,13 @@ impl WgpuRenderer {
                     // how the pass says what it renders into, so a point that is one of
                     // this pass's targets is an attachment rather than a binding.
                     if bindings.targets.contains(&texture.point) {
-                        bindings.attachments.push(texture);
+                        // An attachment is filtered by nothing whatever its payload said,
+                        // because a backend forbids filtering a texture being written.
+                        bindings.attachments.push(TextureSlot {
+                            sampler: None,
+                            attachment: true,
+                            ..texture
+                        });
                     } else {
                         bindings.bound.push(Bound::Texture(texture));
                     }
@@ -453,6 +544,38 @@ impl WgpuRenderer {
         })?;
         let format = WgpuRenderer::format_of(format)?;
 
+        // The declaration decides whether there is a sampler; the payload decides how it
+        // filters. A texture the payload does not call sampled is read with `textureLoad`
+        // and gets none, whatever its format is.
+        let sampled = is_sampled(payload.value());
+        if sampled && WgpuRenderer::is_depth_format(format) {
+            return Err(RenderError::Backend(format!(
+                "the texture `{source}` declares `sampled`, and it is a depth texture. A \
+                 depth texture is read with `textureLoad`; a filtered depth comparison is a \
+                 comparison sampler, which is a different resource from the one this \
+                 binding model has."
+            )));
+        }
+        if sampled && !WgpuRenderer::is_filterable(format) {
+            return Err(RenderError::Backend(format!(
+                "the texture `{source}` declares `sampled`, and `{}` cannot be filtered: \
+                 filtering it needs the `float32-filterable` feature, which this device does \
+                 not request. Declaring `sampled` asks for a linear filter, and silently \
+                 giving a blocky one instead would be a worse answer than this error.",
+                format_label(format)
+            )));
+        }
+
+        // A texture with pixels gets the levels they imply. One without gets a single
+        // level: a pass is about to write its base level, so a chain built here would be
+        // stale, and silently wrong levels are worse than none.
+        let data = field(payload.value(), DATA).and_then(bytes);
+        let levels = if data.is_some() {
+            levels_for(width, height)
+        } else {
+            1
+        };
+
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(&source),
             size: wgpu::Extent3d {
@@ -460,16 +583,33 @@ impl WgpuRenderer {
                 height,
                 depth_or_array_layers: 1,
             },
-            mip_level_count: 1,
+            mip_level_count: levels,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+        if let Some(data) = data {
+            self.fill_texture(&source, &texture, format, width, height, levels, data)?;
+        }
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = sampled.then(|| {
+            let settings = SamplerSettings::read(payload.value());
+            self.device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some(&source),
+                address_mode_u: address_mode(settings.address),
+                address_mode_v: address_mode(settings.address),
+                address_mode_w: address_mode(settings.address),
+                mag_filter: filter_mode(settings.linear_filter),
+                min_filter: filter_mode(settings.linear_filter),
+                mipmap_filter: mipmap_filter_mode(settings.linear_mip_filter),
+                ..Default::default()
+            })
+        });
         let slot = TextureSlot {
             point: declaration.point().to_owned(),
             source: source.clone(),
@@ -478,9 +618,206 @@ impl WgpuRenderer {
             view: view.clone(),
             width,
             height,
+            sampler,
+            levels,
+            attachment: false,
         };
         cache.0.insert(source, slot.clone());
         Ok(slot)
+    }
+
+    /// Writes a texture's pixels, and the levels a box filter derives from them.
+    ///
+    /// # Invariants
+    ///
+    /// One upload fills the whole chain, so a sampled texture has every level it advertises.
+    /// A level is averaged in linear light, which is what stops a tiling surface going grey
+    /// as it shrinks: averaging gamma encoded values averages the wrong quantity.
+    fn fill_texture(
+        &self,
+        source: &str,
+        texture: &wgpu::Texture,
+        format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+        levels: u32,
+        data: &[u8],
+    ) -> Result<(), RenderError> {
+        let expected = (width as usize) * (height as usize) * 4;
+        if data.len() != expected {
+            return Err(RenderError::Backend(format!(
+                "the texture `{source}` declares `data` of {} bytes, and {width} by {height} \
+                 texels of four bytes each is {expected}",
+                data.len()
+            )));
+        }
+        let encoded = is_srgb(format);
+        let mut level = data.to_vec();
+        let mut level_width = width;
+        let mut level_height = height;
+        for index in 0..levels {
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: index,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &level,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    // `write_texture` stages into a buffer itself, so a row does not have to
+                    // be a multiple of `COPY_BYTES_PER_ROW_ALIGNMENT`. A 300, 100 or 90 wide
+                    // texture is then an ordinary shape rather than a padded one.
+                    bytes_per_row: Some(level_width * 4),
+                    rows_per_image: Some(level_height),
+                },
+                wgpu::Extent3d {
+                    width: level_width,
+                    height: level_height,
+                    depth_or_array_layers: 1,
+                },
+            );
+            if index + 1 < levels {
+                level = filtered_level(&level, level_width, level_height, encoded);
+                level_width = (level_width / 2).max(1);
+                level_height = (level_height / 2).max(1);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Returns how many levels a texture of this size holds.
+///
+/// # Invariants
+///
+/// Halving by integer division rather than taking a logarithm, so the count is exactly the
+/// number of times the larger side can be halved before it reaches one texel. This is the
+/// count the level chain is built with, and the two cannot disagree about it.
+fn levels_for(width: u32, height: u32) -> u32 {
+    let mut levels = 1;
+    let mut size = width.max(height);
+    while size > 1 {
+        size /= 2;
+        levels += 1;
+    }
+    levels
+}
+
+/// Returns the next level down, as a box filter over each two by two block.
+///
+/// # Invariants
+///
+/// The result is exactly `max(source_width / 2, 1)` by `max(source_height / 2, 1)` texels of
+/// four bytes, which is the shape the chain was sized for. An odd source size drops the
+/// last column or row rather than averaging a partial block, so a level is never a blend of
+/// a texel with nothing.
+fn filtered_level(source: &[u8], width: u32, height: u32, encoded: bool) -> Vec<u8> {
+    let target_width = (width / 2).max(1);
+    let target_height = (height / 2).max(1);
+    let mut target = vec![0u8; target_width as usize * target_height as usize * 4];
+    for y in 0..target_height {
+        for x in 0..target_width {
+            let mut average = [0.0f32; 4];
+            for (offset_y, offset_x) in [(0u32, 0u32), (0, 1), (1, 0), (1, 1)] {
+                let source_x = (x * 2 + offset_x).min(width - 1);
+                let source_y = (y * 2 + offset_y).min(height - 1);
+                let at = ((source_y * width + source_x) * 4) as usize;
+                for channel in 0..4 {
+                    let value = source[at + channel] as f32 / 255.0;
+                    // Alpha is linear whatever the format says about the other three.
+                    average[channel] += if encoded && channel < 3 {
+                        linearize(value)
+                    } else {
+                        value
+                    };
+                }
+            }
+            let at = ((y * target_width + x) * 4) as usize;
+            for channel in 0..4 {
+                let value = average[channel] / 4.0;
+                let value = if encoded && channel < 3 {
+                    encode(value)
+                } else {
+                    value
+                };
+                target[at + channel] = (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+            }
+        }
+    }
+    target
+}
+
+/// Decodes one sRGB encoded channel into linear light.
+fn linearize(value: f32) -> f32 {
+    if value <= 0.040_45 {
+        value / 12.92
+    } else {
+        ((value + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// Encodes one linear light channel into sRGB.
+fn encode(value: f32) -> f32 {
+    if value <= 0.003_130_8 {
+        value * 12.92
+    } else {
+        1.055 * value.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+/// Returns how a sampler setting is spelled by the backend.
+fn filter_mode(linear: bool) -> wgpu::FilterMode {
+    if linear {
+        wgpu::FilterMode::Linear
+    } else {
+        wgpu::FilterMode::Nearest
+    }
+}
+
+/// Returns how a level blending setting is spelled by the backend.
+///
+/// The backend keeps this as its own type rather than reusing [`wgpu::FilterMode`], because
+/// a mip filter is a choice between levels rather than between texels.
+fn mipmap_filter_mode(linear: bool) -> wgpu::MipmapFilterMode {
+    if linear {
+        wgpu::MipmapFilterMode::Linear
+    } else {
+        wgpu::MipmapFilterMode::Nearest
+    }
+}
+
+/// Returns how an address setting is spelled by the backend.
+fn address_mode(address: SamplerAddress) -> wgpu::AddressMode {
+    match address {
+        SamplerAddress::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+        SamplerAddress::Repeat => wgpu::AddressMode::Repeat,
+        SamplerAddress::MirrorRepeat => wgpu::AddressMode::MirrorRepeat,
+    }
+}
+
+/// Returns whether a format stores its colour channels sRGB encoded.
+///
+/// Alpha is linear in every one of them, which is why the box filter linearises three
+/// channels and not four.
+fn is_srgb(format: wgpu::TextureFormat) -> bool {
+    matches!(
+        format,
+        wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb
+    )
+}
+
+/// Returns the name of a format as a document spells it, for an error message.
+fn format_label(format: wgpu::TextureFormat) -> &'static str {
+    match format {
+        wgpu::TextureFormat::Rgba8Unorm => "rgba8unorm",
+        wgpu::TextureFormat::Rgba8UnormSrgb => "rgba8unorm-srgb",
+        wgpu::TextureFormat::Rgba16Float => "rgba16float",
+        wgpu::TextureFormat::Bgra8Unorm => "bgra8unorm",
+        wgpu::TextureFormat::R32Float => "r32float",
+        wgpu::TextureFormat::Rgba32Float => "rgba32float",
+        _ => "an unsupported format",
     }
 }
 
