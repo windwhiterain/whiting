@@ -43,6 +43,7 @@ use graphics::binders::{FORMAT, HEIGHT, LAYER, LAYERS, RESOURCE, SIZE_BYTES, SOU
 use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{derived_instance_schema, layout::packed_layout, verify_pass_inputs};
 
+use crate::DeviceLimits;
 use crate::lighting::{self as lighting_pool, ClusterLight, Clustering, LightPool};
 use crate::lighting::{SPOT_CONES_ENTRY, SpotCone, spot_cone_schema, spot_cones, storage};
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
@@ -559,7 +560,16 @@ fn read_topology(mesh: &Value, path: &Path) -> Result<Topology, CompileError> {
 /// it, a shader by every material that names it. The emitted document keeps that shape, so
 /// one mesh contributes one vertex buffer and one shader contributes one entry, however
 /// many passes draw with them.
-pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError> {
+///
+/// `limits` is the machine the documents are being written for. It is a parameter rather than
+/// a constant because a width, a page size and a page count are all numbers a document may ask
+/// past what the hardware holds, and a compiler that answered for the hardware on its behalf
+/// would be answering for a machine no reader of the output has.
+pub fn emit(
+    scene: &Value,
+    camera_index: usize,
+    limits: DeviceLimits,
+) -> Result<Emitted, CompileError> {
     // The images come before the lights because an environment light names one of them by
     // label, and a label resolved against a list that had not been read is a label resolved
     // against nothing. Nothing else about the two reads depends on the other.
@@ -587,8 +597,9 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     let time = read_time(scene)?;
     // The frame is read before the camera because the camera's field of view is widened by
     // the frame's aspect: a wide frame is wider rather than cropped, and which frame a
-    // scene is drawn into is the scene's decision.
-    let frame = Frame::read(scene);
+    // scene is drawn into is the scene's decision. Its notes come with it, so the note list
+    // starts here rather than beside the cluster assignment further down.
+    let (frame, mut notes) = Frame::read(scene, limits);
     // One camera of the scene, chosen by the compile. Every camera a scene names is rendered,
     // which means a compile is a compile for one of them: the projection every pass draws
     // through is a camera's, so the choice is made here rather than by a renderer afterwards.
@@ -608,7 +619,8 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     // compilation. The shadow page pool is read beside it because the pages are assigned from
     // the same ranking, in the same walk over the same lights.
     let clustering = Clustering::read(scene)?;
-    let light_pool = lighting_pool::read_light_pool(scene)?;
+    let (light_pool, pool_notes) = lighting_pool::read_light_pool(scene, limits)?;
+    notes.extend(pool_notes);
     let cluster_lights: Vec<ClusterLight> = lights
         .iter()
         .map(|light| ClusterLight {
@@ -629,7 +641,7 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
         })
         .collect();
     let clusters = lighting_pool::assign(&clustering, &cluster_lights, &camera_basis, &light_pool)?;
-    let mut notes = clusters.notes(&clustering, &Path::root().key(scene_schema::CLUSTERING));
+    notes.extend(clusters.notes(&clustering, &Path::root().key(scene_schema::CLUSTERING)));
     notes.extend(lighting_pool::pool_notes(
         &cluster_lights,
         &light_pool,

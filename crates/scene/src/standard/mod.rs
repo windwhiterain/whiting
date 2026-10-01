@@ -63,6 +63,8 @@
 //!         registry: &registry,
 //!         // The convention camera, which a scene naming no camera of its own is drawn with.
 //!         camera: 0,
+//!         // No machine behind this compile, so it is made against the floor.
+//!         limits: None,
 //!     })
 //!     .expect("the scene compiles");
 //!
@@ -171,6 +173,7 @@
 //!         previous_instance: None,
 //!         registry: &registry,
 //!         camera: 0,
+//!         limits: None,
 //!     })
 //!     .expect("a scene whose mesh is named compiles");
 //! let named_labels: Vec<&str> = graphics::passes(&named.graphics.value)

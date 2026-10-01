@@ -3,6 +3,7 @@
 use definition::Value;
 use graphics::binders::{BinderKind, HEIGHT, WIDTH};
 use graphics::{GraphicsError, PassKind, passes};
+use scene::DeviceLimits;
 use thiserror::Error;
 
 /// One rendered frame, read back from the gpu.
@@ -61,6 +62,21 @@ pub trait Renderer: Send + Sync {
     /// without inspecting the pixels.
     fn available(&self) -> bool;
 
+    /// Returns what the machine behind this renderer can hold, or `None` where there is no
+    /// machine.
+    ///
+    /// # Why a renderer answers this rather than a caller asking an adapter
+    ///
+    /// A compile is held to the limits of the **device**, and the device is the one that was
+    /// created with the lower of a request and an adapter's numbers. A caller that asked the
+    /// adapter separately would have the adapter's answer, which is not the one the resources
+    /// are validated against, and a caller that held no adapter at all would have no answer.
+    ///
+    /// Returning `None` is a real answer rather than a default one: it says this renderer
+    /// creates nothing, so nothing it is asked to draw is bounded by it, and a compile made
+    /// without a machine is made against the floor.
+    fn limits(&self) -> Option<DeviceLimits>;
+
     /// Renders the first rasterize pass that declares a target and reads the framebuffer
     /// back.
     ///
@@ -85,6 +101,10 @@ impl Renderer for NoopRenderer {
 
     fn available(&self) -> bool {
         false
+    }
+
+    fn limits(&self) -> Option<DeviceLimits> {
+        None
     }
 
     fn render(&self, graphics: &Value, instance: &Value) -> Result<Frame, RenderError> {

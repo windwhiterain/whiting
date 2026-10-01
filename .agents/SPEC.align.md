@@ -512,6 +512,8 @@ incremental compile.
 - `CompileContext`: the inputs of a compile.
   - `scene`: the current `Scene` `Definition`.
   - `previous_graphics` and `previous_instance`: the last outputs, or none on first compile.
+  - `limits`: the `Option<DeviceLimits>` the compile is made against, `None` where no machine
+    is behind it and the floor is the answer.
 - `CompileOutput`: the outputs of a compile.
   - `graphics` and `instance`: the full new `Definition`s.
   - `graphics_delta` and `instance_delta`: the compiler's own emitted `Delta`s, each
@@ -1371,9 +1373,10 @@ a modern adapter's feature set; `WgpuRenderer` asks for `Features::empty()`. Val
 the defaults would accept a shader this renderer cannot run, which makes the check worse than
 useless. This is a statement about **features only**: the device's *limits* are the adapter's own
 rather than the downlevel floor, so a limit is no longer a constant this test could state, and
-the two limits this project does bound are bounded where they are owned — the array limit is
-`lighting::MAX_TEXTURE_ARRAY_LAYERS`, a floor the compiler enforces, and the clustered pass's
-three storage buffers are counted in the test file itself.
+the two limits this project does bound are bounded where they are owned — a document is held to
+the limits of the machine its compile is made against, which arrive through
+`CompileContext::limits`, and the clustered pass's three storage buffers are counted in the test
+file itself.
 
 **What the check is not**: it is not pipeline creation. `naga` cannot compare a bind group layout
 against a shader, because that is `check_bindings` in the device and needs a renderer instance.
@@ -1559,7 +1562,7 @@ buffer has to be a whole record wide even when every cluster's list is empty.
 the assignment and the budgets, and `light_records` owns the shape of the record buffer. A minimum
 in `pack` would be a rule about the assignment, saying nothing about the buffer.
 
-### The page pool is a frame property, and `MAX_TEXTURE_ARRAY_LAYERS` is a floor
+### The page pool is a frame property, and a count is bounded by the machine
 
 `shadow_page_width`, `shadow_page_height` and `shadow_pages` moved from the `clustering` block to
 the `frame` block, beside the width and height of the image and the depth buffer that share them.
@@ -1571,20 +1574,44 @@ to tell which numbers are about this view and which are about how lights are sor
 a `clustering` block at all, so the migration was two test files and one schema. Worth recording
 because "seven scenes" is the kind of number a reader would have believed.
 
-`MAX_TEXTURE_ARRAY_LAYERS` stayed at 256 and its documentation changed, because the device now
-asks for the adapter's own limits and the constant stopped being a transcription of a hardware
-fact. **A floor this compiler enforces is not a ceiling the hardware imposes**, and the two fail
-differently: a ceiling is a fact about the machine, while a floor is a decision about what this
-project will stand behind, and a document refused at a floor is refused *everywhere*, including
-on the machines that could have held it.
+`MAX_TEXTURE_ARRAY_LAYERS` was 256, and it stayed there for a while with documentation saying it
+was a floor this compiler enforces rather than a ceiling the hardware imposes. That was already
+the wrong shape, and the sentence defending it is the argument against it: a document refused at
+a floor is refused *everywhere*, including on the machines that could have held it. **The
+constant is gone**, along with `CompileError::PoolTooDeep`.
 
-That leaves a real hole — a scene may ask for 1024 pages on an adapter with 256 layers and is
-refused rather than given what the machine has — and the honest shape for closing it is a
-device-side clamp that emits a note, not a const that tracks the hardware and is therefore right
-on exactly one machine. It is written down in
-`.agents/proposals/adapter-limits-and-the-page-pool.md`, along with the same hole in the two page
-**dimensions**, which the downlevel floor of 2048 was also incidentally guarding and which
-nothing guards now.
+What replaced it is `scene::DeviceLimits` and `CompileContext::limits`, and the direction of
+travel is what the old paragraph argued for: the ceiling comes **from the device into the
+compile**, because the device is the only thing in the system that knows it. `Renderer` answers
+`fn limits(&self) -> Option<DeviceLimits>`; `WgpuRenderer` answers from `self.device.limits()`
+rather than from an adapter, because a resource is validated against the numbers the device was
+created with; `NoopRenderer` answers `None`, which is a real answer and not a default one. A
+compile with no machine behind it is made against `DeviceLimits::downlevel()` — 2048 and 256,
+**the two numbers the constant used to hold**, which is what they always were: the smallest
+answer that is true everywhere.
+
+**All three counts are bounded rather than refused, and the two page dimensions are bounded too.**
+The dimensions had no guard at all, not the constant: `pool_count` only refused a count below
+one, so a scene naming `shadow_page_width: 32768` compiled, reported 256 GiB from
+`LightPool::total_bytes`, and failed at `TextureDescriptor` creation — the least legible failure
+this project can produce, and one that takes the whole frame with it. `frame.width` and
+`frame.height` had the identical hole and are now bounded the same way.
+
+The line between a bound and a refusal is: **a count above what the machine has is bounded and
+named, and a count below one is refused.** The first is a machine being too small, which is a
+fact about this run; the second is a wrong image on every machine, which is a fact about the
+document. That also settles the question the proposal left open about a pool named by budget —
+a clamped pool is a note, always, because the note names the number asked for, the number given
+and the ceiling it hit, and an author who read it is not the failure the overflow note exists
+to prevent.
+
+The consequence sentence is supplied by the caller rather than the shared helper, because one
+ceiling bounds three different things: a narrower frame is a crop of the picture asked for, a
+smaller page is a coarser shadow for **every** light rather than a missing one, and a shallower
+pool is a light lit by the approximation. `Frame::read` still falls back to its default for a
+dimension that is not a positive integer — it did before and it is not what this changed — while
+`pool_count` still refuses that as `MalformedScene`. Unifying those two is a real open question,
+not a missing line.
 
 ## Directional light: a stated input, and a page for a light in no cluster
 

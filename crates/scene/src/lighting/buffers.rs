@@ -33,6 +33,8 @@ use graphics::binders::{DATA, RESOURCE, SCHEMA, SIZE_BYTES, SOURCE, USAGE};
 
 use crate::CompileError;
 use crate::CompileNote;
+use crate::DeviceLimits;
+use crate::limits::clamp_to_ceiling;
 use crate::standard::FRAME;
 use crate::standard::math::{IDENTITY, Matrix};
 
@@ -446,11 +448,11 @@ pub struct LightPool {
     ///
     /// # Invariants
     ///
-    /// This is refused above [`MAX_TEXTURE_ARRAY_LAYERS`], which is a floor this compiler
-    /// enforces rather than a ceiling the hardware imposes: a scene that asks for more is
-    /// refused rather than given a pool it cannot have, because a pool silently smaller than
-    /// the one the document asked for is a scene that silently lost the lights it did not
-    /// have room for.
+    /// This is the depth the pool was **given**, which is not always the depth the document
+    /// asked for: a pool deeper than [`DeviceLimits::max_texture_array_layers`] is given the
+    /// ceiling and a [`CompileNote`] naming the loss. The note is what makes a smaller frame
+    /// different from a wrong one, so a host that ignores the notes is rendering a scene that
+    /// is quietly missing the lights it could not give a page.
     pub pages: usize,
 }
 
@@ -463,7 +465,7 @@ impl LightPool {
     }
 }
 
-/// Reads the shadow page pool a scene declares, falling back to the convention.
+/// Reads the shadow page pool a scene declares, bounding it to what the machine can hold.
 ///
 /// # Invariants
 ///
@@ -473,16 +475,65 @@ impl LightPool {
 ///
 /// Every count is at least one, for the same reason the cluster grid's are: a pool of nothing
 /// is a scene whose every light is lit by the approximation, which is a wrong image rather
-/// than a fast one. The page count is additionally refused above the array limit, and the
-/// refusal names the number rather than truncating it.
-pub fn read_light_pool(scene: &Value) -> Result<LightPool, CompileError> {
+/// than a fast one, and it is wrong on every machine. A count **above** what the machine has
+/// is the opposite case and is bounded rather than refused: the pool is given the ceiling and
+/// a [`CompileNote`] names the number that was lost, so the frame still draws and the author
+/// is told what it drew without.
+///
+/// The notes are returned beside the pool rather than pushed into a pool that holds numbers,
+/// because a note is a fact about the compile and the pool is a fact about the resources.
+pub fn read_light_pool(
+    scene: &Value,
+    limits: DeviceLimits,
+) -> Result<(LightPool, Vec<CompileNote>), CompileError> {
     let path = Path::root().key(FRAME);
-    Ok(LightPool {
-        page_width: pool_count(scene, SHADOW_PAGE_WIDTH, 1024, &path)?,
-        page_height: pool_count(scene, SHADOW_PAGE_HEIGHT, 1024, &path)?,
-        pages: pool_count(scene, SHADOW_PAGES, 64, &path)? as usize,
-    })
+    let mut notes = Vec::new();
+    let side = limits.texture_side_ceiling();
+    let layers = limits.texture_layer_ceiling();
+    let page_width = pool_count(
+        scene,
+        SHADOW_PAGE_WIDTH,
+        1024,
+        side,
+        PAGE_SIDE_CONSEQUENCE,
+        &path,
+        &mut notes,
+    )?;
+    let page_height = pool_count(
+        scene,
+        SHADOW_PAGE_HEIGHT,
+        1024,
+        side,
+        PAGE_SIDE_CONSEQUENCE,
+        &path,
+        &mut notes,
+    )?;
+    let pages = pool_count(
+        scene,
+        SHADOW_PAGES,
+        64,
+        layers,
+        PAGE_COUNT_CONSEQUENCE,
+        &path,
+        &mut notes,
+    )?;
+    Ok((
+        LightPool {
+            page_width,
+            page_height,
+            pages: pages as usize,
+        },
+        notes,
+    ))
 }
+
+/// What a page drawn at the size given rather than the size asked for costs a frame.
+const PAGE_SIDE_CONSEQUENCE: &str = "Every page in the pool is rendered at the size given rather than the size asked for, so \
+     every shadow in the frame is coarser than this document says.";
+
+/// What a page count given rather than asked for costs a frame.
+const PAGE_COUNT_CONSEQUENCE: &str = "A light that got no page is lit by the approximation rather than by a real shadow map, \
+     and the pool overflow note names which of them those are.";
 
 /// Field holding the width of one shadow page.
 pub const SHADOW_PAGE_WIDTH: &str = "shadow_page_width";
@@ -493,24 +544,15 @@ pub const SHADOW_PAGE_HEIGHT: &str = "shadow_page_height";
 /// Field holding how many shadow pages the pool holds.
 pub const SHADOW_PAGES: &str = "shadow_pages";
 
-/// The deepest texture array a scene is allowed to ask for.
-///
-/// # Invariants
-///
-/// This is a **floor this compiler enforces**, not a statement about the hardware. The device
-/// requests the adapter's own limits, so `max_texture_array_layers` is whatever the adapter
-/// reports and is not this number; what this number does is refuse a document that names a
-/// pool deeper than a chain of reasons this project has agreed to stand behind. A scene refused
-/// here would be refused on a machine that could have held it, which is the honest failure
-/// rather than a texture array that fails to create on the next machine.
-pub const MAX_TEXTURE_ARRAY_LAYERS: usize = 256;
-
-/// Reads one count of the pool, refusing a count of nothing.
+/// Reads one count of the pool, refusing a count of nothing and bounding it to the machine.
 fn pool_count(
     scene: &Value,
     name: &str,
     convention: i64,
+    ceiling: i64,
+    consequence: &str,
     path: &Path,
+    notes: &mut Vec<CompileNote>,
 ) -> Result<i64, CompileError> {
     let Some(declared) = scene
         .as_field_map()
@@ -539,14 +581,14 @@ fn pool_count(
             found: count,
         });
     }
-    if name == SHADOW_PAGES && count > MAX_TEXTURE_ARRAY_LAYERS as i64 {
-        return Err(CompileError::PoolTooDeep {
-            path: field,
-            pages: count,
-            limit: MAX_TEXTURE_ARRAY_LAYERS,
-        });
-    }
-    Ok(count)
+    Ok(clamp_to_ceiling(
+        count,
+        ceiling,
+        name,
+        field,
+        consequence,
+        notes,
+    ))
 }
 
 /// Returns what a host is told about a pool that could not hold every candidate.

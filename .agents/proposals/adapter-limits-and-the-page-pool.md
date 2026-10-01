@@ -1,5 +1,8 @@
 # Adapter limits and the shadow page pool: what a ceiling should be
 
+**Status: implemented** on `feature/device-limits`. The three decisions this file left open are
+recorded under *Decided* at the end.
+
 `WgpuRenderer::required_limits` used to build its request from `wgpu::Limits::downlevel_defaults()` and
 override only the two vertex counts, so every other limit the device was created with was the
 downlevel floor — `max_texture_dimension_2d` of 2048, `max_texture_array_layers` of 256 — whatever
@@ -90,7 +93,7 @@ wants a 4096 page on a machine that can give it is now allowed to, and the refus
 stop it is gone. The clamp is what makes that safe, because the refusal was never the thing making
 it safe; the downlevel floor was an accident of how the limits were built.
 
-## What this costs
+## What this cost
 
 - One field on `CompileContext` and one on `Renderer` to read, so a host can pass the limits down.
 - A ceiling on each of the three counts in `read_light_pool`, and a `CompileNote` for each clamp.
@@ -98,8 +101,41 @@ it safe; the downlevel floor was an accident of how the limits were built.
   (`crates/scene/tests/wgsl_validation.rs`, `crates/scene/tests/shadow_pages.rs`) rewritten to
   assert the **clamp** rather than a constant: a scene asking for more than the limit still
   compiles, still draws, and still emits a note naming what it lost.
-- A decision this project has not made: whether a clamped pool is a note or an error when the
-  document asked for pages by name. The argument above is for a note, and the argument against is
-  that a document naming a budget and silently receiving less is the exact failure the
-  `pool_notes` machinery exists to prevent — which is answered by the note existing at all, and
-  not answered at all if the host does not print them.
+
+Two costs this file did not list, both found while doing it:
+
+- **`frame.width` and `frame.height` had the same hole**, and they were not in this file because
+  nobody had looked. `Frame::read` filtered a dimension to `> 0` and took whatever else it was
+  given, so a scene naming `width: 100000` compiled and died at the frame's own texture
+  creation. Bounded by the same ceiling through the same helper.
+- **Sixteen `CompileContext` construction sites**, four of which are doctests and fail to compile
+  rather than fail an assertion. The three adapter backed render tests pass
+  `renderer.limits()` rather than `None`, because they *are* compiled against a real machine and
+  saying otherwise would be a small lie in a test that draws.
+
+## Decided
+
+- **A clamped pool is a note, not an error.** The argument for it was the portability one above,
+  and the argument against it was that a document naming a budget and silently receiving less is
+  the exact failure `pool_notes` exists to prevent. The note answering it is: it names the field,
+  the number asked for, the number given and the ceiling. **A count above what the machine has is
+  bounded and named; a count below one is refused.** That line is the whole policy, and it
+  separates a machine being too small — a fact about this run — from a wrong image on every
+  machine, which is a fact about the document.
+- **The two page dimensions are bounded, not refused.** This was the one genuinely contested
+  point, and the argument that settled it is that a page drawn at the size given is *not* a
+  smaller frame in the way a light that lost the ranking is: it degrades **every** shadow in the
+  frame. Bounding it does not make that harmless, so the note has to say it — the consequence
+  sentence for a page names the coarseness rather than leaving the reader to infer it from two
+  numbers.
+- **The consequence sentence is the caller's, not the helper's.** One ceiling bounds a frame, a
+  page and a page count, and what a smaller number means is not the same in all three, so
+  `clamp_to_ceiling` takes the sentence as an argument. What it owns is the part that must not
+  drift: field, asked, given, ceiling, in that order, on every clamped count in the project.
+
+### Still open, and not a missing line
+
+`Frame::read` still falls back to its default for a dimension that is not a positive integer,
+while `pool_count` refuses the same thing as `MalformedScene`. Unifying them is a design call —
+one is a field with a convention, the other a field whose whole content is a budget — and it was
+left alone rather than settled in passing.

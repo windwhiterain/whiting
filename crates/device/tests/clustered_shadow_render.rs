@@ -376,7 +376,7 @@ fn reaching(mut light: Value, radius: f64) -> Value {
 }
 
 /// Compiles a scene the way a host would.
-fn compile(scene: &Value) -> scene::CompileOutput {
+fn compile(scene: &Value, limits: Option<scene::DeviceLimits>) -> scene::CompileOutput {
     let mut registry = Registry::new();
     scene::register_standard_scene_schema(&mut registry);
     registry.put_schema(
@@ -406,13 +406,16 @@ fn compile(scene: &Value) -> scene::CompileOutput {
         previous_instance: None,
         registry: &registry,
         camera: 0,
+        limits,
     })
     .expect("the scene compiles")
 }
 
 /// Compiles a scene the way a host would and renders it.
 fn render(renderer: &WgpuRenderer, scene: &Value) -> Result<Frame, String> {
-    let compiled = compile(scene);
+    // The limits are the renderer's own, because this scene is compiled against the machine
+    // that is about to draw it rather than against a floor.
+    let compiled = compile(scene, renderer.limits());
     renderer
         .render(&compiled.graphics.value, &compiled.instance.value)
         .map_err(|error| format!("the frame does not render: {error}"))

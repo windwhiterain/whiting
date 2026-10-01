@@ -14,18 +14,20 @@
 //!   dropped by a full pool, because nothing was dropped — it was never a candidate;
 //! - a light of a kind that takes no cluster slot, which casts no shadow and so is given no
 //!   page however bright it is;
-//! - the pool's own shape, refused rather than truncated at the array limit.
+//! - the pool's own shape, bounded rather than refused, with a note naming what was lost.
 
 use definition::{Definition, DefinitionIdentifier, Path, Registry, SchemaIdentifier, Value};
 use whiting_gallery::Gallery;
 use whiting_scene::CompileContext;
 use whiting_scene::Compiler;
 use whiting_scene::lighting::{
-    ClusterLight, Clustering, Clusters, LightPool, MAX_TEXTURE_ARRAY_LAYERS, NO_PAGE, SHADOW_PAGES,
+    ClusterLight, Clustering, Clusters, LightPool, NO_PAGE, SHADOW_PAGE_WIDTH, SHADOW_PAGES,
     assign, read_light_pool,
 };
 use whiting_scene::standard::{Bounds, Camera, FRAME, Projection, register_standard_scene_schema};
-use whiting_scene::{CompileError, CompileNote, STANDARD_SCENE_SCHEMA, StandardScene};
+use whiting_scene::{
+    CompileError, CompileNote, DeviceLimits, STANDARD_SCENE_SCHEMA, StandardScene,
+};
 
 #[test]
 fn a_pool_larger_than_the_scene_gives_every_reaching_light_a_page_and_reports_nothing() {
@@ -183,29 +185,70 @@ fn a_record_says_no_page_with_a_value_no_real_page_can_carry() {
     );
 }
 
+/// The machine a test compile is made against, which is small enough that a document can ask
+/// past it. A count of 8 pages and a page of 512 pixels are both inside it, so the only way a
+/// note appears in this file is a count that asked for more.
+fn small_machine() -> DeviceLimits {
+    DeviceLimits {
+        max_texture_dimension_2d: 512,
+        max_texture_array_layers: 8,
+    }
+}
+
 #[test]
-fn a_pool_deeper_than_the_array_limit_is_refused_rather_than_truncated() {
+fn a_pool_deeper_than_the_machine_has_is_bounded_and_named() {
     let too_deep = Value::structure([(
         FRAME.to_owned(),
-        Value::structure([(
-            SHADOW_PAGES.to_owned(),
-            Value::Int(MAX_TEXTURE_ARRAY_LAYERS as i64 + 1),
-        )]),
+        Value::structure([(SHADOW_PAGES.to_owned(), Value::Int(64))]),
     )]);
-    let refused = read_light_pool(&too_deep).expect_err("257 pages is refused");
+    let (pool, notes) =
+        read_light_pool(&too_deep, small_machine()).expect("a pool past the ceiling still reads");
+    assert_eq!(
+        pool.pages, 8,
+        "the pool is given the depth this machine has"
+    );
+    assert_eq!(
+        notes.len(),
+        1,
+        "one count was bounded, so it is named once: {notes:?}"
+    );
+    let note = &notes[0];
+    assert_eq!(
+        note.path,
+        Path::root().key(FRAME).key(SHADOW_PAGES),
+        "the note points at the number to change"
+    );
+    for named in ["shadow_pages", "64", "8"] {
+        assert!(
+            note.message.contains(named),
+            "the note names `{named}` so an author can act on it: {}",
+            note.message
+        );
+    }
+
+    // A pool that fits says nothing at all, which is the other half of the contract: a note
+    // nobody asked for is noise, and the author of a scene that fits has nothing to read.
+    let fitting = Value::structure([(
+        FRAME.to_owned(),
+        Value::structure([(SHADOW_PAGES.to_owned(), Value::Int(8))]),
+    )]);
+    let (pool, notes) =
+        read_light_pool(&fitting, small_machine()).expect("a pool within the ceiling reads");
+    assert_eq!(pool.pages, 8);
     assert!(
-        matches!(refused, CompileError::PoolTooDeep { limit, .. } if limit == 256),
-        "the refusal names the limit: {refused}"
+        notes.is_empty(),
+        "a pool that fits is not a note: {notes:?}"
     );
 
-    // And a pool of nothing is refused on the same grounds a grid of nothing is.
+    // And a pool of nothing is still refused, because a pool of nothing is a wrong image on
+    // every machine rather than a machine being too small.
     let empty = Value::structure([(
         FRAME.to_owned(),
         Value::structure([(SHADOW_PAGES.to_owned(), Value::Int(0))]),
     )]);
     assert!(
         matches!(
-            read_light_pool(&empty),
+            read_light_pool(&empty, small_machine()),
             Err(CompileError::EmptyClustering { .. })
         ),
         "a pool of nothing is a scene whose every light is approximate"
@@ -213,8 +256,38 @@ fn a_pool_deeper_than_the_array_limit_is_refused_rather_than_truncated() {
 }
 
 #[test]
+fn a_page_wider_than_the_machine_has_is_bounded_and_named() {
+    let too_wide = Value::structure([(
+        FRAME.to_owned(),
+        Value::structure([(SHADOW_PAGE_WIDTH.to_owned(), Value::Int(4096))]),
+    )]);
+    let (pool, notes) =
+        read_light_pool(&too_wide, small_machine()).expect("a page past the ceiling still reads");
+    assert_eq!(
+        pool.page_width, 512,
+        "the page is given the side this machine can make"
+    );
+    assert_eq!(
+        pool.page_height, 1024,
+        "the other side was never asked past the ceiling"
+    );
+    assert_eq!(notes.len(), 1, "only the side that asked past it is named");
+    assert!(
+        notes[0].message.contains("coarser"),
+        "the note says what a smaller page costs, because a page drawn at the size given is a \
+         wrong picture rather than a smaller one: {}",
+        notes[0].message
+    );
+}
+
+#[test]
 fn a_pool_the_scene_says_nothing_about_is_the_documented_one() {
-    let pool = read_light_pool(&Value::structure([])).expect("a scene with no pool reads");
+    let (pool, notes) = read_light_pool(&Value::structure([]), DeviceLimits::downlevel())
+        .expect("a scene with no pool reads");
+    assert!(
+        notes.is_empty(),
+        "a convention is below every machine's ceiling, so it is never bounded: {notes:?}"
+    );
     assert_eq!(
         (pool.page_width, pool.page_height, pool.pages),
         (1024, 1024, 64)
@@ -477,6 +550,8 @@ fn compiled(scene: &Value) -> whiting_scene::CompileOutput {
         previous_instance: None,
         registry: &registry,
         camera: 0,
+        // No machine behind this compile, so it is made against the floor.
+        limits: None,
     })
     .expect("the scene compiles")
 }

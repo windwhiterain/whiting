@@ -417,6 +417,7 @@ fn render(renderer: &WgpuRenderer, scene: &Value) -> Result<Frame, String> {
         previous_instance: None,
         registry: &registry,
         camera: 0,
+        limits: renderer.limits(),
     })
     .expect("the scene compiles");
     renderer

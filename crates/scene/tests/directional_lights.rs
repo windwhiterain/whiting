@@ -473,5 +473,7 @@ fn compile(scene: &Value) -> Result<CompileOutput, CompileError> {
         previous_instance: None,
         registry: &registry,
         camera: 0,
+        // No machine behind this compile, so it is made against the floor.
+        limits: None,
     })
 }

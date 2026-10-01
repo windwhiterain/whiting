@@ -117,6 +117,11 @@ async fn run() -> Result<(), String> {
                     previous_instance: previous.as_ref().map(|output| &output.instance),
                     registry: &registry,
                     camera,
+                    // The renderer was created before this loop, so the numbers the frame is
+                    // actually drawn with are in hand at the point the compile is made
+                    // against. A scene asking for a page wider or a pool deeper than this is
+                    // given what this machine has and a note naming what it lost.
+                    limits: renderer.limits(),
                 })
                 .map_err(|error| format!("the scene does not compile: {error}"))?;
             let compiled_at = started.elapsed();

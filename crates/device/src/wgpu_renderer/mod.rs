@@ -30,6 +30,7 @@ use std::sync::{Arc, Mutex};
 
 use definition::Value;
 use graphics::{Binder, PassKind, passes};
+use scene::DeviceLimits;
 use wgpu::naga;
 use wgpu::util::DeviceExt;
 
@@ -384,6 +385,22 @@ impl Renderer for WgpuRenderer {
 
     fn available(&self) -> bool {
         true
+    }
+
+    /// # Invariants
+    ///
+    /// Read from the **device** rather than from the adapter, because the device is what was
+    /// created with the lower of the request above and the adapter's numbers, and a resource
+    /// is validated against the numbers the device agreed to rather than the numbers it could
+    /// have had. The two are equal today for these two fields, because the request asks for
+    /// the adapter's own; they would part company the day an override joined them, which is
+    /// exactly the day this would otherwise be the wrong answer.
+    fn limits(&self) -> Option<DeviceLimits> {
+        let limits = self.device.limits();
+        Some(DeviceLimits {
+            max_texture_dimension_2d: limits.max_texture_dimension_2d,
+            max_texture_array_layers: limits.max_texture_array_layers,
+        })
     }
 
     fn render(&self, graphics: &Value, instance: &Value) -> Result<Frame, RenderError> {
