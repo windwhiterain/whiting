@@ -790,6 +790,141 @@ pub fn tile_pixels(size: i64) -> Vec<u8> {
     pixels
 }
 
+/// Returns the direction one texel of an octahedral map stands for.
+///
+/// # Invariants
+///
+/// This is the shader's fold **run backwards**, and it is written out here rather than shared
+/// with it because the two live in different languages and because a generator that used the
+/// shader's own arithmetic would agree with a fold that is wrong. A test that builds a map this
+/// way and samples it with the shader proves the two are inverses, which is the only property
+/// that matters and the one neither can check alone.
+///
+/// The overshoot is subtracted along each axis' own sign rather than reflected. Reflection is
+/// what a reader would reach for, and it is the wrong one: it sends the point through the
+/// origin and out the other side, which is why a decode written that way and an encode written
+/// this way are not inverses.
+fn octahedral_direction(column: i64, row: i64, size: i64) -> [f64; 3] {
+    // The texel's place in the square, in the units the fold works in: minus one to one, with
+    // the image's first row at the **top**, which is the mirror of the shader's own mapping and
+    // is why the vertical half is negated here.
+    let planar = [
+        (column as f64 + 0.5) / size as f64 * 2.0 - 1.0,
+        1.0 - (row as f64 + 0.5) / size as f64 * 2.0,
+    ];
+    // The front of the sphere is the triangle the square's interior covers, and its height
+    // above the centre plane is what is left of the square after the two coordinates have
+    // taken their share.
+    let depth = 1.0 - planar[0].abs() - planar[1].abs();
+    // Outside that triangle — the four corners of the square — the point is behind, and the
+    // fold brings it back by pulling each coordinate in by however far past the edge it went.
+    let overshoot = if depth < 0.0 { -depth } else { 0.0 };
+    let folded = [
+        planar[0]
+            - if planar[0] >= 0.0 {
+                overshoot
+            } else {
+                -overshoot
+            },
+        planar[1]
+            - if planar[1] >= 0.0 {
+                overshoot
+            } else {
+                -overshoot
+            },
+    ];
+    let length = (folded[0] * folded[0] + folded[1] * folded[1] + depth * depth).sqrt();
+    [folded[0] / length, folded[1] / length, depth / length]
+}
+
+/// Returns an octahedral environment map as pixels, four bytes a texel, top row first.
+///
+/// # What the map is
+///
+/// A **sky above and a ground below**, and nothing else: the value of a texel is a function of
+/// the direction it stands for, and only of that direction's height, so the top row of the
+/// square is as bright as it goes and the bottom row is as dark as it goes. That is the whole
+/// point of generating it this way rather than drawing a gradient by hand — a hand drawn
+/// gradient is bright at the top and dark at the bottom *as an image*, which is a claim about
+/// rows, whereas this is a claim about directions, and the two differ by exactly the fold the
+/// shader has to get right.
+///
+/// The middle row of the square is the seam, and it is the half of the map the other half is
+/// folded onto, so it holds the horizon **twice**: once for the direction just above it and once
+/// for the direction just below. A generator that could not produce that row could not be
+/// testing the fold.
+pub fn octahedral_pixels(size: i64) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity((size * size * 4) as usize);
+    for row in 0..size {
+        for column in 0..size {
+            let direction = octahedral_direction(column, row, size);
+            // A number in zero to one from the direction's height, and nothing else: no noise,
+            // no colour, no detail. A map with detail in it would make a blurrier level and a
+            // sharper one differ for a reason that has nothing to do with which one was read.
+            let height = (direction[1] * 0.5 + 0.5).clamp(0.0, 1.0);
+            let value = (height * 255.0).round() as u8;
+            pixels.extend_from_slice(&[value, value, value, 255]);
+        }
+    }
+    pixels
+}
+
+/// The colours a [`sunset_pixels`] map is mixed from, as they appear in the map.
+///
+/// They are a function of the direction's **height** and not of where the sun is, which is what
+/// makes a map a scene can write without a rotation: the horizon runs the whole way round the
+/// square, so a warm band at the horizon is warm in every direction and needs nothing placed.
+const ZENITH: [f64; 3] = [0.20, 0.30, 0.52];
+const HORIZON: [f64; 3] = [0.92, 0.52, 0.26];
+const GROUND: [f64; 3] = [0.16, 0.12, 0.12];
+
+/// Returns a sunset environment map as pixels, four bytes a texel, top row first.
+///
+/// # What the map is, and why it is not a hemisphere
+///
+/// A cold dim zenith, a warm and much brighter band along the horizon, and a dark warm ground
+/// below it. The band is the part that matters: it is **brighter than the zenith**, so the
+/// brightest thing in this environment is not overhead. The two colour hemisphere it replaces
+/// is darkest overhead and brightest at the zenith, so a frame lit by this map and a frame lit
+/// by the stand-in differ in more than brightness — they differ in which way is bright, and a
+/// surface tilted towards the horizon picks up more light than one tilted at the sky.
+///
+/// The colours are mixed by a curve over the direction's height rather than written per texel,
+/// so the map is a function of directions and survives the fold: the four corners of the square
+/// hold the horizon too, and they hold it because of the arithmetic rather than because anybody
+/// drew a corner.
+pub fn sunset_pixels(size: i64) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity((size * size * 4) as usize);
+    for row in 0..size {
+        for column in 0..size {
+            let height = octahedral_direction(column, row, size)[1];
+            // Below the horizon is the ground, which is not black: a real one is lit by the sky
+            // above it, and a black underside is the thing that makes a render look like it was
+            // drawn rather than lit.
+            let colour = if height < 0.0 {
+                GROUND
+            } else {
+                // A band that peaks at the horizon and falls away towards the zenith. The curve
+                // is a squared falloff rather than a linear one because a linear one puts half
+                // the range at the zenith, which is the shape the hemisphere already has.
+                let toward_horizon = (1.0 - height).powi(2);
+                [
+                    ZENITH[0] + (HORIZON[0] - ZENITH[0]) * toward_horizon,
+                    ZENITH[1] + (HORIZON[1] - ZENITH[1]) * toward_horizon,
+                    ZENITH[2] + (HORIZON[2] - ZENITH[2]) * toward_horizon,
+                ]
+            };
+            pixels.extend_from_slice(&[
+                (colour[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (colour[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (colour[2].clamp(0.0, 1.0) * 255.0).round() as u8,
+                255,
+            ]);
+        }
+    }
+    pixels
+}
+
 /// The post stage, which draws over the whole frame.
 /// The three points arrive already in clip space, so the vertex stage passes them
 /// through: a post stage is not drawn through the camera's projection, it *is* the frame.
