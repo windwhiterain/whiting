@@ -55,9 +55,9 @@ use crate::standard::math::{
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     CAMERA, CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, DEPTH_RANGE,
-    DIRECTIONAL, ENVIRONMENT, ENVIRONMENT_MAP, FORWARD, FRAME_SIZE, HALF_EXTENT, INSTANCE_DATA,
-    POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, UP,
-    VERTICES,
+    DIRECTIONAL, ENVIRONMENT, ENVIRONMENT_MAP, FORWARD, FRAME_SIZE, GLOBAL_COUNT, HALF_EXTENT,
+    INSTANCE_DATA, POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP_FORMAT, SHADOW_POOL,
+    TIME, UP, VERTICES,
 };
 use crate::standard::scene_schema;
 use crate::standard::scene_schema::RADIUS;
@@ -329,9 +329,11 @@ struct LightRead {
     /// How far the light reaches, when the document says.
     ///
     /// It is a field of the light because a light's reach is the light's own, and a scene
-    /// that mixes a lantern with a sun has to be able to say which is which. It is required
-    /// of a point light and optional for a spot, whose cone answers for it; a kind that takes
-    /// no cluster slot has no reach to state. [`LightRead::radius`] resolves those three.
+    /// that mixes a lantern with a sun has to be able to say which is which. A **point** light
+    /// that says nothing is a **global** light, and a **spot** light that says nothing is
+    /// answered by the reach of its own cone; a kind that takes no cluster slot has no reach
+    /// to state. [`LightRead::reach`] resolves those three and [`LightRead::membership`] says
+    /// which of them a light is.
     radius: Option<f64>,
     /// The cone the light shines in.
     ///
@@ -350,33 +352,112 @@ impl LightRead {
     ///
     /// # Invariants
     ///
-    /// - A **point** light has said. `radius` is a required field of its variant, and there
-    ///   is no default behind it, because the default that used to be there — one box radius
-    ///   of what the scene draws — is right only for a light standing inside the scene it
-    ///   lights. A light standing outside it is culled short of its own reach, dropped from
-    ///   every cluster past that, and the boundary between lit and unlit then comes out
-    ///   quantised to the **cluster grid**: a terminator drawn as a staircase of
-    ///   screen-aligned rectangles. Which distance is right is a fact about where the scene's
-    ///   own surfaces are, so it is a number the document carries rather than one the
-    ///   compiler can work out.
-    /// - A **spot** light may not have, and is then answered by the reach of its own cone. The
+    /// Three answers and no fourth, and the third is the one that used to be a wrong number:
+    ///
+    /// - A light that **named** a reach has said it, and the number is that number whatever
+    ///   the kind is.
+    /// - A **spot** light that may not have is answered by the reach of its own cone. The
     ///   volume that cone cuts out of a scene of half width `shadow_extent` ends in a disc,
     ///   and the distance from the light to the rim of that disc is what the cone reaches —
-    ///   see [`SpotCone::reach`]. Answering it by the box radius instead would be a light
-    ///   whose **culling** sphere is smaller than the cone it is drawing, so the light would
-    ///   be dropped from the clusters at the edge of its own cone and the outer angle would
+    ///   see [`SpotCone::reach`]. Answering it by something else would be a light whose
+    ///   **culling** sphere is smaller than the cone it is drawing, so the light would be
+    ///   dropped from the clusters at the edge of its own cone and the outer angle would
     ///   never be seen. A lamp standing higher above the floor than the box is wide hits that
     ///   on the first try, and what the author sees is a grid-aligned rectangle where the
     ///   cone's own circle should be.
-    /// - A kind that takes no cluster slot is answered with zero, which is a number nothing
-    ///   reads: [`LightKind::takes_cluster_slot`] being false is what says so, and it is the
-    ///   one fact that makes the zero here a statement rather than a stand-in.
-    fn radius(&self) -> f64 {
+    /// - A **point** light that named nothing is **global**, and `None` is what says so.
+    ///   There is no default behind it, and there never should be: a light standing outside
+    ///   the scene it lights is culled short of its own reach by any number the compiler
+    ///   could pick, dropped from every cluster past that, and the boundary between lit and
+    ///   unlit then comes out quantised to the **cluster grid** — a terminator drawn as a
+    ///   staircase of screen-aligned rectangles, with nothing in the frame to say a number
+    ///   was wrong. Saying nothing is the one answer that cannot be short of anything,
+    ///   because it asks for no culling at all.
+    fn reach(&self) -> Option<f64> {
         match (self.radius, self.kind) {
-            (Some(reach), _) => reach,
-            (None, LightKind::Spot) => self.cone.reach(self.shadow_extent.unwrap_or(0.0)),
-            (None, _) => 0.0,
+            (Some(reach), _) => Some(reach),
+            (None, LightKind::Spot) => Some(self.cone.reach(self.shadow_extent.unwrap_or(0.0))),
+            (None, _) => None,
         }
+    }
+
+    /// Returns how a shading pass reaches this light, which is one question with three answers.
+    ///
+    /// # Invariants
+    ///
+    /// The three are asked together rather than one predicate at a time, because they are one
+    /// decision: a light is either walked into clusters, evaluated by every fragment, or
+    /// neither — and the third is the case of the two kinds that stand nowhere, whose light
+    /// the pass reads out of its own uniform and its own map rather than out of a record.
+    /// Answering them separately is how a directional light ends up in the global run, and a
+    /// directional light in the global run is a sun evaluated twice.
+    ///
+    /// - A **point** light that named no reach is [`Membership::Global`], and one that named
+    ///   a reach is [`Membership::Clustered`] until that reach is found to contain the whole
+    ///   scene, which is a **promotion**: a light that reaches everywhere has no culling left
+    ///   to do, and the slot it holds in every cluster it reached buys nothing. What it does
+    ///   to the picture is [`LightRead::covers_scene`]'s to say, and it is not nothing.
+    /// - A **spot** light is always clustered. A cone is a light that does not reach the
+    ///   whole scene, and one promoted on the strength of a radius would be a cone drawn past
+    ///   the edge of the frame.
+    /// - A **directional** and an **environment** light are [`Membership::Exempt`]: they
+    ///   took no cluster slot before this rule existed and they take none now, and the
+    ///   shading pass reaches them through the two uniform fields it already carried.
+    fn membership(&self, bounds: &Bounds) -> Membership {
+        if !self.kind.takes_cluster_slot() {
+            return Membership::Exempt;
+        }
+        match self.reach() {
+            None => Membership::Global,
+            Some(reach) => {
+                if self.covers_scene(reach, bounds) {
+                    Membership::Global
+                } else {
+                    Membership::Clustered
+                }
+            }
+        }
+    }
+
+    /// Returns whether a sphere of this reach around the light holds the whole scene.
+    ///
+    /// # Invariants
+    ///
+    /// The test is against the **farthest corner of what the scene draws**, and not against
+    /// the box the camera frames or the far plane: a fragment exists only where geometry is,
+    /// so the scene's own bounds are the whole of what a light can be wanted to reach.
+    /// Comparing against the frustum instead would promote almost nothing — the boxes of the
+    /// far slices stand a long way beyond the geometry — and comparing against less would
+    /// promote a light that stops short of a corner the scene draws.
+    ///
+    /// **Promoting is not a pure optimisation, and it is not meant to be.** A cluster's box is
+    /// the cross-section at its slice's far boundary rather than a superset of the slice (see
+    /// `View::box_of`), so the culling test can drop a light from a box that holds a fragment
+    /// well inside its radius: the box's *nearest point* is further away than that fragment
+    /// is. A global light is evaluated for every fragment and so is immune to that error, and
+    /// the pixels it repairs are pixels that were drawn unlit for want of a light the cluster
+    /// walk mis-measured — a hole with edges on the cluster grid, which is the symptom this
+    /// whole rule exists to remove. The dune field is one: at the corner of the frame its two
+    /// lights are culled from seven boxes of the farthest slice, and a black notch the shape
+    /// of the grid is what that draws.
+    ///
+    /// The reach itself is not applied to anything: a record carries the radius the document
+    /// named and the shading loop has no test against it — the radius is a culling number, not
+    /// a cut-off — so a promoted light reaches past what it named, to every fragment there is.
+    /// That is the one thing about a promotion an author cannot see in their own document, and
+    /// it is the honest reading of a light whose reach already holds the whole scene.
+    fn covers_scene(&self, reach: f64, bounds: &Bounds) -> bool {
+        let Some(position) = self.position else {
+            return false;
+        };
+        let offset = subtract(position, bounds.centre());
+        let corner = (0..3)
+            .map(|axis| {
+                let half = bounds.half_width(axis);
+                (offset[axis].abs() + half).powi(2)
+            })
+            .sum::<f64>();
+        reach >= corner.sqrt()
     }
 
     /// Returns the position this light's record carries.
@@ -386,8 +467,8 @@ impl LightRead {
     /// A light that stands nowhere has no position, and the record has a slot for one
     /// whatever the kind is: the record's layout is the same for every light because the
     /// clustered loop indexes it by a light and not by a kind. The origin is written rather
-    /// than a value that could be mistaken for a place, and nothing reads it: an exempt
-    /// light is in no cluster list, so no fragment ever loads its record.
+    /// than a value that could be mistaken for a place, and nothing reads it: an exempt light
+    /// is in no cluster list and in no global run, so no fragment ever loads its record.
     fn record_position(&self) -> [f64; 3] {
         self.position.unwrap_or([0.0; 3])
     }
@@ -473,6 +554,11 @@ impl LightKind {
     /// take a slot: a spot light is a point light with a cone, and it is culled by its reach
     /// exactly as one is, with the cone scaling what survives rather than replacing the
     /// culling. A directional light is the one kind here that is exempt and still refused.
+    ///
+    /// This is the question of the **kind** and not of the light: whether a point light
+    /// actually takes a slot is asked by [`LightRead::membership`], which promotes a light
+    /// that names no reach or a reach that holds the whole scene. A kind that could be
+    /// promoted would make this answer false for it.
     const fn takes_cluster_slot(self) -> bool {
         matches!(self, Self::Point | Self::Spot)
     }
@@ -512,6 +598,26 @@ impl LightKind {
             Self::Point | Self::Spot | Self::Directional | Self::Environment
         )
     }
+}
+
+/// How a shading pass reaches one light, which is one question with three answers.
+///
+/// # Invariants
+///
+/// The three are exhaustive and disjoint. A light is walked into clusters, evaluated by every
+/// fragment, or neither — and **neither** is the case of the two kinds that stand nowhere,
+/// whose light the pass reads out of its own uniform and its own map. Folding the third into
+/// the second is the mistake this type exists to prevent: an environment light read as a
+/// global record would be a lamp at the origin, because a light with no position has a record
+/// carrying the origin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Membership {
+    /// Assigned to the clusters its reach covers, and found there by a fragment.
+    Clustered,
+    /// In no cluster list, and evaluated by every fragment out of the record run.
+    Global,
+    /// In no cluster list and in no global run, because the pass carries it in its uniform.
+    Exempt,
 }
 
 /// The two documents a standard scene compiles to.
@@ -626,18 +732,39 @@ pub fn emit(
     let clustering = Clustering::read(scene)?;
     let (light_pool, pool_notes) = lighting_pool::read_light_pool(scene, limits)?;
     notes.extend(pool_notes);
-    let cluster_lights: Vec<ClusterLight> = lights
+    // The light list, with the **global** lights first, and every other run built from that
+    // one order. The order is not a preference: a shading pass reaches a global light by
+    // index rather than through a cluster list, and the records, the cones, the cluster
+    // entries and the shadow pages are all indexed by the same number, so writing the global
+    // records first is what makes `global_count` a count rather than a list. The sort is
+    // stable, so a scene's own order is kept within each group and one scene compiles to one
+    // set of bytes.
+    let mut ordered: Vec<(Membership, LightRead)> = lights
+        .into_iter()
+        .map(|light| {
+            let membership = light.membership(&bounds);
+            (membership, light)
+        })
+        .collect();
+    ordered.sort_by_key(|(membership, _)| membership != &Membership::Global);
+    let cluster_lights: Vec<ClusterLight> = ordered
         .iter()
-        .map(|light| ClusterLight {
+        .map(|(membership, light)| ClusterLight {
             label: light.label.clone(),
             position: light.record_position(),
             colour: light.colour,
-            radius: light.radius(),
+            // The radius a record carries is the one the document named, and **zero** for a
+            // global light that named none. Zero is what the page ranking wants: a light that
+            // reaches everything is at distance nothing from the view, so it outranks every
+            // other light for a page. A light promoted for a named radius keeps it, so its
+            // rank is the same number it had before it was promoted.
+            radius: light.reach().unwrap_or(0.0),
             // The projection is computed here rather than in the lighting module, because
             // building one is a property of a view and the lighting module deliberately has
             // no view. It is the same matrix the shadowing pass draws its page through.
             shadow_projection: light.shadow_projection(&bounds),
-            clustered: light.kind.takes_cluster_slot(),
+            clustered: *membership == Membership::Clustered,
+            global: *membership == Membership::Global,
             // Whether the light casts a shadow, which is asked apart from the projection above
             // because that field answers the same question for two different reasons: a light
             // the pool had no room for and a light that casts nothing both carry a matrix
@@ -645,6 +772,10 @@ pub fn emit(
             casts_shadow: light.shadow_extent.is_some(),
         })
         .collect();
+    // The document's own light run, in the order the records above were written in. Every
+    // later index into it — the shadowing pass per light, the directional light's page, the
+    // cone run — is an index into this list, so the two cannot come apart.
+    let lights: Vec<LightRead> = ordered.into_iter().map(|(_, light)| light).collect();
     let clusters = lighting_pool::assign(&clustering, &cluster_lights, &camera_basis, &light_pool)?;
     notes.extend(clusters.notes(&clustering, &Path::root().key(scene_schema::CLUSTERING)));
     notes.extend(lighting_pool::pool_notes(
@@ -1168,9 +1299,10 @@ fn read_lights(
                     colour,
                     shadow_extent: None,
                     radius: None,
-                    // An environment light is in no cluster list, so no fragment ever loads
-                    // its record or its cone. The whole sphere is written rather than nothing
-                    // because the run has one record per light and this one is a light.
+                    // An environment light is in no cluster list and in no global run, so no
+                    // fragment ever loads its record or its cone. The whole sphere is written
+                    // rather than nothing because the run has one record per light and this
+                    // one is a light.
                     cone: SpotCone::whole_sphere(),
                 }
             }
@@ -1192,13 +1324,11 @@ fn read_lights(
                     colour,
                     shadow_extent: Some(number(light, &path, "shadow_extent")?),
                     // A directional light reaches every distance equally, so it has no reach to
-                    // cull by. It declares no `radius` of its own and
-                    // [`LightRead::radius`] answers with zero for it, which is a number nothing
-                    // reads. It is left to that answer rather than given a special case, so a
-                    // reader who finds a way to ask is handed the same answer a light that
-                    // takes no cluster slot gets whatever kind it is, and the one fact that
-                    // says the zero is a statement rather than a stand-in is
-                    // `takes_cluster_slot` being false.
+                    // cull by. It declares no `radius` of its own, and it is **exempt** rather
+                    // than global: the lighting pass carries it in its own uniform, so putting
+                    // its record in the global run would shade it twice. The one fact that
+                    // says so is [`LightKind::takes_cluster_slot`] being false, and the
+                    // membership it leads to is [`Membership::Exempt`].
                     radius: None,
                     cone: SpotCone::whole_sphere(),
                 }
@@ -1211,15 +1341,15 @@ fn read_lights(
             // point light declares no `direction`, so a read that asked for one would report a
             // missing field on a document that is in no way missing one.
             _ => {
-                // A point light declares a required `radius` and a spot light declares an
-                // optional one, so the two are read apart here rather than by one optional
-                // read: a point light that says nothing is a document the schema has already
-                // refused, and asking again would report the same absence twice.
-                let radius = if kind == LightKind::Spot {
-                    optional_number(light, &path, RADIUS)?
-                } else {
-                    Some(number(light, &path, RADIUS)?)
-                };
+                // A point light that names no `radius` and a spot light that names none are
+                // read the same way, because the schema now says the same thing about both:
+                // the field is optional and what an absent one means is decided by the kind
+                // rather than here. A point light that says nothing is a **global** light —
+                // see [`LightRead::reach`] — and a spot that says nothing is culled by the
+                // reach of its own cone. One optional read rather than two, so there is one
+                // place that knows a document naming no radius is not a document missing a
+                // field.
+                let radius = optional_number(light, &path, RADIUS)?;
                 if let Some(reach) = radius.filter(|reach| *reach <= 0.0) {
                     return Err(CompileError::EmptyLightRadius {
                         path: path.key(RADIUS),
@@ -2938,6 +3068,14 @@ fn lighting_pass(
                         .map(Value::Float)
                         .collect(),
                 ),
+            ),
+            (
+                GLOBAL_COUNT.to_owned(),
+                // How many of the leading records are the global lights, and nothing else: a
+                // fragment loops over `[0, global_count)` reading the record and the cone of
+                // each. Zero for a scene whose lights are all clustered, which is the answer
+                // the loop is shaped to take without running at all.
+                Value::Float(clusters.globals as f64),
             ),
             (TIME.to_owned(), Value::Float(time)),
         ]),

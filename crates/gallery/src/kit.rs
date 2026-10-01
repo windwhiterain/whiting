@@ -54,7 +54,7 @@ pub fn image(label: &str, width: i64, height: i64, pixels: impl IntoIterator<Ite
     ])
 }
 
-/// Builds one point light of a scene.
+/// Builds one **global** point light of a scene.
 ///
 /// # Invariants
 ///
@@ -63,30 +63,32 @@ pub fn image(label: &str, width: i64, height: i64, pixels: impl IntoIterator<Ite
 /// call site name a kind they all share would be a kind spelled nine times. A kind with
 /// fields of its own is a sibling of this one rather than a parameter of it.
 ///
-/// [`environment_light`], [`spot`] and [`directional`] are those siblings, and they are here now
-/// because those paths have landed. Every light kind the standard pipeline draws has a builder,
-/// which is what makes a gallery of scenes that compile the whole of what can be drawn.
+/// [`environment_light`], [`spot`] and [`directional`] are those siblings, and they are here
+/// now because those paths have landed. Every light kind the standard pipeline draws has a
+/// builder, which is what makes a gallery of scenes that compile the whole of what can be
+/// drawn.
 ///
-/// # Why a scene has to say how far the light reaches
+/// # Why this builder writes no `radius`
 ///
-/// `radius` is a parameter rather than an option because the cluster assignment culls a light
-/// by it, and the value that would otherwise stand in — one box radius of everything the
-/// scene draws — is right for exactly one kind of light: one standing **inside** the scene it
-/// lights. A light outside it is culled short of its own reach, dropped from every cluster
-/// past that, and the boundary between lit and unlit comes out quantised to the cluster grid:
-/// a terminator drawn as a staircase of screen-aligned rectangles, with nothing in the frame
+/// A point light that names no reach is a **global** light: it takes no cluster slot, every
+/// fragment evaluates it, and it cannot be culled short of the scene it is lighting. That is
+/// the whole of what saying nothing means, and it is the answer to a light standing **outside**
+/// the scene it lights — a sun over a valley, a fill on the far side. Such a light culled per
+/// cluster is dropped from every cluster past its own reach, and the boundary between a
+/// cluster that has the light and one that does not is a plane through the eye, so the
+/// terminator comes out as a staircase of screen-aligned rectangles with nothing in the frame
 /// to say a number was wrong.
 ///
-/// The value wants to be at least the distance from the light to the furthest surface it is
-/// meant to light. A **spot** light needs no such parameter, because its cone already says how
-/// far it carries — see [`spot`].
+/// A scene whose light only reaches part of what it draws wants [`light_with_radius`] instead,
+/// and wants the number to be at least the distance from the light to the furthest surface it
+/// is meant to light. A **spot** light needs no such parameter, because its cone already says
+/// how far it carries — see [`spot`].
 pub fn light(
     label: &str,
     position: [f64; 3],
     color: [f64; 3],
     intensity: f64,
     shadow_extent: f64,
-    radius: f64,
 ) -> Value {
     Value::variant(
         "Point",
@@ -96,9 +98,39 @@ pub fn light(
             ("color".to_owned(), triple(color)),
             ("intensity".to_owned(), Value::Float(intensity)),
             ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
-            (scene::standard::RADIUS.to_owned(), Value::Float(radius)),
         ],
     )
+}
+
+/// Builds one point light that says how far it reaches.
+///
+/// # Why a scene says it
+///
+/// The cluster assignment tests a light against the boxes it can reach, and the cluster grid
+/// is a grid: a light culled out of one box and kept in the next has an edge that runs along
+/// a box boundary, which on the frame is a straight line at a multiple of the grid. So a
+/// reach that is shorter than the light's own light draws that light's own edge as a
+/// staircase rather than as the curve the falloff is.
+///
+/// The value is the distance the light is meant to carry over, so it wants to be at least the
+/// distance from the light to the furthest surface it is supposed to light. A reach that
+/// already holds the whole scene is **promoted** to a global light by the compiler and changes
+/// no pixel, so a scene that names a reach which reaches is saying something true about
+/// itself whether or not it is load-bearing.
+pub fn light_with_radius(
+    label: &str,
+    position: [f64; 3],
+    color: [f64; 3],
+    intensity: f64,
+    shadow_extent: f64,
+    radius: f64,
+) -> Value {
+    let Value::Enum { tag, mut fields } = light(label, position, color, intensity, shadow_extent)
+    else {
+        unreachable!("a light is an enum value")
+    };
+    fields.insert(scene::standard::RADIUS.to_owned(), Value::Float(radius));
+    Value::Enum { tag, fields }
 }
 
 /// Builds one spot light of a scene: a point light with a cone.

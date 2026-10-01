@@ -16,7 +16,7 @@ use definition::Value;
 use crate::geometry::heightfield;
 use crate::kit::{
     IMAGE_FIELD, camera_placed, gallery_custom_schema_with_image, gallery_instance_schema, image,
-    instance, instances, light, mesh, mesh_material, post_processes, screen_material,
+    instance, instances, light_with_radius, mesh, mesh_material, post_processes, screen_material,
     shaded_point_schema, shader, surface,
 };
 use crate::shaders::{depthing, post_shader, shadowing, textured, tile_pixels};
@@ -117,7 +117,7 @@ pub fn tiles_of(pixels: Vec<u8>) -> Value {
         ),
         (
             "lights".to_owned(),
-            Value::List(vec![light(
+            Value::List(vec![light_with_radius(
                 "sun",
                 [-6.0, 12.0, 7.0],
                 [1.0, 0.94, 0.86],

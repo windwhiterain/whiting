@@ -22,8 +22,8 @@ use scene::standard::Stage;
 use crate::air::Atmosphere;
 use crate::geometry::{fractal_noise, heightfield};
 use crate::kit::{
-    camera, instance, instances, light, mesh, mesh_material, post_processes, screen_material,
-    shaded_point_schema, surface,
+    camera, instance, instances, light_with_radius, mesh, mesh_material, post_processes,
+    screen_material, shaded_point_schema, surface,
 };
 use crate::shaders::{mesh_shaders, post_shader};
 
@@ -104,14 +104,14 @@ pub fn dunes() -> Value {
                 // enough to hold the whole field, because a shadow map that stops short of the
                 // scene's own edge draws a hard line across it.
                 //
-                // The radius is the distance to the far corner, and it is written out rather
-                // than defaulted. A light standing outside the field is culled per cluster by
-                // its own radius, and the convention for a light that names none is one box
-                // radius — 165, which is the size of the field and not how far this light
-                // reaches. The sun is 427 from the corner it could not reach, so it is dropped
-                // from every cluster past that and the boundary between lit and unlit comes out
-                // quantised to the cluster grid. See `.agents/handoffs/light-radius.md`.
-                light(
+                // The radius is the distance to the far corner: 427 for the sun, 420 for the
+                // fill, so each one's sphere holds the whole field. A light whose reach holds
+                // everything the scene draws is promoted by the compiler to a **global**
+                // light — in no cluster list, evaluated by every fragment — so neither number
+                // is culling anything. Naming no radius at all would say the same thing and
+                // say it more directly; what the number buys is that the scene states the
+                // reach it means.
+                light_with_radius(
                     "sun",
                     [-150.0, 125.0, 95.0],
                     [1.0, 0.80, 0.55],
@@ -123,7 +123,7 @@ pub fn dunes() -> Value {
                 // for the sky. One light with one falloff leaves every shadowed slope
                 // black, and black is not what a shadow looks like outdoors.
                 // 420 to the far corner. See the sun above for why it is written here.
-                light(
+                light_with_radius(
                     "sky",
                     [130.0, 150.0, -95.0],
                     [0.34, 0.44, 0.68],

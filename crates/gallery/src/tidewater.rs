@@ -43,7 +43,7 @@ use scene::standard::Stage;
 
 use crate::geometry::{cone, fractal_noise, hash01, heightfield, normalized, ridged_noise};
 use crate::kit::{
-    camera_placed_on_lens, environment_light, image, instance, instances, light, mesh,
+    camera_placed_on_lens, environment_light, image, instance, instances, light_with_radius, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, surface,
 };
 use crate::shaders::{emission_shader, mesh_shaders_with_normal, post_shader, sunset_pixels};
@@ -203,7 +203,7 @@ pub fn tidewater() -> Value {
                 // answer with and what this picture is tuned around. It reaches short of the
                 // far corners — 2610 and 2413 — and the handoff records that as a scene-level
                 // look rather than a number to change here.
-                light("sun", SUN, [1.0, 0.55, 0.28], 34.0, 900.0, 1400.0),
+                light_with_radius("sun", SUN, [1.0, 0.55, 0.28], 34.0, 900.0, 1400.0),
                 // The sky, which at this hour is doing most of the lighting. It is dim, cold
                 // and from above: a scene with one light leaves every shadowed slope black,
                 // and black is not what a shadow looks like outdoors.
@@ -214,7 +214,7 @@ pub fn tidewater() -> Value {
                 // takes the full specular term off this light while its diffuse term is a
                 // fiftieth of it. Dim the fill and the reeds go dark; leave it and no tint
                 // on the material can bring them back.
-                light(
+                light_with_radius(
                     "sky",
                     [260.0, 420.0, 300.0],
                     [0.30, 0.42, 0.70],

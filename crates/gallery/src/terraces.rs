@@ -30,8 +30,8 @@ use crate::geometry::{
     cone, cuboid, fractal_noise, hash01, heightfield, prism, ridged_noise, sphere, value_noise,
 };
 use crate::kit::{
-    camera, gallery_custom_schema, gallery_instance_schema, instance, instances, light, mesh,
-    mesh_material, post_processes, screen_material, shaded_point_schema, shader, surface,
+    camera, gallery_custom_schema, gallery_instance_schema, instance, instances, light_with_radius,
+    mesh, mesh_material, post_processes, screen_material, shaded_point_schema, shader, surface,
 };
 use crate::shaders::{lighting, mesh_shaders, post_shader};
 use scene::standard::{Stage, light_pass_schema};
@@ -104,19 +104,18 @@ fn terraced_valley(materials: Vec<Value>, instances: Value) -> Value {
                 // behind the camera, because a paddy is a mirror and a mirror lit from
                 // behind the viewer shows nothing.
                 //
-                // The radius is 692 to the far corner of the valley and is written out
-                // because the convention for a light that names none is one box radius —
-                // 190, the size of the valley and not how far this light reaches. A light
-                // standing outside the scene is culled per cluster by its own radius, and a
-                // light dropped from every cluster past that draws its own edge as a
-                // staircase quantised to the cluster grid rather than as a terminator.
-                // See `.agents/handoffs/light-radius.md`.
-                light("sun", SUN_POSITION, [1.0, 0.66, 0.40], 5.4, 330.0, 700.0),
+                // The radius is 692 to the far corner of the valley, so the sphere holds the
+                // whole scene and the compiler promotes this light to a **global** one: in no
+                // cluster list, evaluated by every fragment. Naming no radius would say the
+                // same thing; the number is the scene's statement of the reach it means, and
+                // a light naming less than that draws its own edge as a staircase quantised
+                // to the cluster grid rather than as a terminator.
+                light_with_radius("sun", SUN_POSITION, [1.0, 0.66, 0.40], 5.4, 330.0, 700.0),
                 // The sky's fill: a broad cool light from the opposite quarter, so a
                 // riser in its own shadow reads as shadowed earth rather than as black,
                 // and the backlit face of the mountain keeps its forest. It is 692 to the
                 // far corner as well. See the sun above for why it is written here.
-                light(
+                light_with_radius(
                     "sky",
                     [-260.0, 320.0, 230.0],
                     [0.36, 0.47, 0.72],
