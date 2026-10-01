@@ -48,6 +48,8 @@ Each step ends with all four gallery scenes rendering, and the numbers are uncha
 1. **The document shape.** `mesh_materials` as a list, `Instance.material` as a label,
    `instances` as a map of pass to list, and the emitter reading buckets and checking the
    stage against the bucket. The gallery and the example build the map. **Pixel-identical.**
+   *Done: 8595edc. All four scenes render to the numbers `main` rendered, and the emitter
+   now refuses a material listed under a pass its shader does not belong to.*
 2. **The renames.** `ShadowSchema`, `DepthSchema`, `LightSchema`, and the `LightShader` tag.
    **Pixel-identical.**
 3. **The emission stage.** `Stage::Emission`, its tag and suffix, an `emission()` template, a
