@@ -48,3 +48,10 @@ required-features = ["wgpu"]
 [[test]]
 name = "gallery_render"
 required-features = ["wgpu"]
+
+# The interface check compares a parsed module against a layout and needs no adapter, so
+# this one runs on a machine with no gpu. It is what holds the check honest about a flat
+# texture against an array of them.
+[[test]]
+name = "texture_array_interface"
+required-features = ["wgpu"]

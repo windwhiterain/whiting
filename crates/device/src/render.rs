@@ -139,8 +139,16 @@ fn first_target_size(graphics: &Value, instance: &Value) -> Result<(u32, u32), R
 }
 
 /// Reads a width and height out of a bound texture payload.
+///
+/// # Invariants
+///
+/// A texture array answers this the same way a flat texture does, because the size of an
+/// image is the size of each of its layers: the question is which image this entry holds,
+/// and both shapes hold one. The kind test is therefore [`BinderKind::is_texture`] rather
+/// than one variant, so that a pool reports the size of a page and a frame is not sized
+/// from a default.
 pub(crate) fn texture_size(value: &Value) -> Option<(u32, u32)> {
-    if BinderKind::from_tag(value.variant_tag()?) != Some(BinderKind::Texture) {
+    if !BinderKind::from_tag(value.variant_tag()?)?.is_texture() {
         return None;
     }
     let fields = value.variant_fields()?;

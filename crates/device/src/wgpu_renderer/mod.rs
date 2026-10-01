@@ -43,6 +43,8 @@ mod raster;
 mod shader_interface;
 mod uniform;
 
+pub use shader_interface::check_resources;
+
 /// How many vertex attributes the pipeline asks an adapter for.
 ///
 /// # Invariants
