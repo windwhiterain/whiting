@@ -82,6 +82,7 @@ use thiserror::Error;
 
 pub mod binders;
 mod example;
+pub mod image;
 mod inputs;
 mod instance;
 pub mod layout;
@@ -96,6 +97,7 @@ pub use binders::{
     texture_binding_schema, uniform_binding_schema,
 };
 pub use example::{example_graphics, example_instance};
+pub use image::{IMAGE, image_field, is_image};
 pub use inputs::{shader_interface, uniform_schema, verify_pass_inputs};
 pub use instance::derived_instance_schema;
 pub use layout::{

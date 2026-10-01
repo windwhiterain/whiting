@@ -234,9 +234,10 @@ pub use pass_schemas::{
     shadow_pass_schema,
 };
 pub use scene_schema::{
-    CAMERAS, CUSTOM_DATA, CUSTOM_SCHEMA, EYE, FIELD_OF_VIEW, INSTANCE_SCHEMA, LABEL, MATERIAL,
-    MESH, MESH_MATERIALS, MESH_SCHEMA, PADDING, PASS_SCHEMA, POINT_SCHEMA, POINTS, SHADER, SOURCE,
-    STAGE, TARGET, TOPOLOGY, TRANSFORM, UP, camera_schema, default_custom_schema,
-    default_instance_schema, default_point_schema, instance_schema, light_schema,
-    mesh_material_schema, mesh_schema, shader_schema, standard_scene_schema, transform_schema,
+    CAMERAS, CUSTOM_DATA, CUSTOM_SCHEMA, DATA, EYE, FIELD_OF_VIEW, FORMAT, HEIGHT, IMAGE_SCHEMA,
+    IMAGES, INSTANCE_SCHEMA, LABEL, MATERIAL, MESH, MESH_MATERIALS, MESH_SCHEMA, PADDING,
+    PASS_SCHEMA, POINT_SCHEMA, POINTS, SHADER, SOURCE, STAGE, TARGET, TOPOLOGY, TRANSFORM, UP,
+    WIDTH, camera_schema, default_custom_schema, default_instance_schema, default_point_schema,
+    image_schema, instance_schema, light_schema, mesh_material_schema, mesh_schema, shader_schema,
+    standard_scene_schema, transform_schema,
 };
