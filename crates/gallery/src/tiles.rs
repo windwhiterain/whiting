@@ -149,19 +149,19 @@ pub fn tiles_of(pixels: Vec<u8>) -> Value {
             "instances".to_owned(),
             instances(vec![
                 (
-                    "shadowing",
+                    Stage::Shadowing,
                     vec![instance(
                         "caster", "floor", [0.0; 3], [0.0; 3], [1.0; 3], "caster",
                     )],
                 ),
                 (
-                    "depthing",
+                    Stage::Depthing,
                     vec![instance(
                         "occluder", "floor", [0.0; 3], [0.0; 3], [1.0; 3], "occluder",
                     )],
                 ),
                 (
-                    "lighting",
+                    Stage::Lighting,
                     vec![instance(
                         "floor", "floor", [0.0; 3], [0.0; 3], [1.0; 3], "tiles",
                     )],

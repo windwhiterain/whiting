@@ -39,10 +39,11 @@
 //! range.
 
 use definition::Value;
+use scene::standard::Stage;
 
 use crate::geometry::{cone, fractal_noise, hash01, heightfield, normalized, ridged_noise};
 use crate::kit::{
-    camera_placed, instance, instances, light, mesh, mesh_material, post_processes,
+    camera_placed_on_lens, instance, instances, light, mesh, mesh_material, post_processes,
     screen_material, shaded_point_schema, surface,
 };
 use crate::shaders::{emission_shader, mesh_shaders_with_normal, post_shader};
@@ -135,20 +136,35 @@ pub fn tidewater() -> Value {
                 // stands higher in the frame than the far waterline, and the frame stops
                 // reading as sky, shore, lake and foreground in four separate bands. Four
                 // units is what a photographer standing on a bank actually has.
-                camera_placed(
+                //
+                // Thirty five millimetres on a full frame negative, which is the lens a
+                // photographer would name for a view this wide. The angle it works out to
+                // is not written here: it is the vertical angle of that lens on that
+                // negative in *this* frame's aspect, and an author who wrote the angle
+                // would be quoting a number off a calculator rather than a lens.
+                camera_placed_on_lens(
                     [-30.0, 9.00, 240.0],
                     [-26.0, -33.0, -160.0],
-                    0.66,
+                    35.0,
+                    36.0,
+                    0.0,
                     0.4,
                     2400.0,
                 ),
                 // The same bank on a longer lens, framed on the treeline. A second camera
                 // is a second frame of the same scene rather than a second scene, which is
                 // what makes it a lens choice instead of a re-render.
-                camera_placed(
+                //
+                // A hundred and fourteen millimetres is the same view narrowed to about a
+                // third of the angle, and it is the lens that turns the treeline from a
+                // band into a subject. Nothing about the scene changed between the two
+                // frames but the number the camera was holding.
+                camera_placed_on_lens(
                     [-30.0, 9.00, 240.0],
                     [-110.0, 22.0, -700.0],
-                    0.21,
+                    114.0,
+                    36.0,
+                    0.0,
                     0.4,
                     2400.0,
                 ),
@@ -331,7 +347,7 @@ fn bank_height(x: f64, z: f64) -> f64 {
 /// three lists are the same placements under three materials, because a material names one
 /// shader and a shader belongs to one stage — and under three sets of labels, because a
 /// label names one instance in the whole scene rather than one per pass.
-fn instance_buckets() -> Vec<(&'static str, Vec<Value>)> {
+fn instance_buckets() -> Vec<(Stage, Vec<Value>)> {
     let water = |material: &str| {
         instance(
             format!("{material}-water"),
@@ -347,10 +363,10 @@ fn instance_buckets() -> Vec<(&'static str, Vec<Value>)> {
     let lighting = standing_instances("shore");
 
     vec![
-        ("shadowing", standing_instances("cast")),
-        ("depthing", depth),
-        ("lighting", lighting),
-        ("emission", vec![water("water")]),
+        (Stage::Shadowing, standing_instances("cast")),
+        (Stage::Depthing, depth),
+        (Stage::Lighting, lighting),
+        (Stage::Emission, vec![water("water")]),
     ]
 }
 

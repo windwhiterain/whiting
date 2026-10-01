@@ -14,6 +14,8 @@
 //!
 //! - [`kit`] — one builder per field a scene document has: a light, a mesh, a material, a shader,
 //!   an image, a camera, an instance.
+//! - [`air`] — the air a scene is drawn through, written once and handed to every stage, so
+//!   the sky and the haze a distant surface fades into are the same number.
 //! - [`geometry`] — the generators that produce points: a heightfield, a sphere, a cuboid, and the
 //!   noise a heightfield is usually given.
 //! - [`shaders`] — WGSL the standard stages are written from, and the vertex attribute lists they
@@ -47,6 +49,7 @@
 
 use definition::Value;
 
+pub mod air;
 pub mod attributes;
 pub mod geometry;
 pub mod kit;

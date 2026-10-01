@@ -349,9 +349,9 @@ impl Scene {
         (
             self.materials,
             instances(vec![
-                ("shadowing", self.shadowing),
-                ("depthing", self.depthing),
-                ("lighting", self.lighting),
+                (Stage::Shadowing, self.shadowing),
+                (Stage::Depthing, self.depthing),
+                (Stage::Lighting, self.lighting),
             ]),
         )
     }
