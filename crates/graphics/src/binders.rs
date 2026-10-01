@@ -13,6 +13,33 @@
 //! missing entry, or an entry of the wrong kind, is reported as a binding error rather
 //! than a schema validation failure. Both documents validate against their own schemas
 //! and still fail to agree with each other.
+//!
+//! # What a texture carries, and the sampler beside it
+//!
+//! A texture entry carries its own pixels and the sampler its reader filters them with, and
+//! a pass declares neither separately. A binding carries one resource, so a sampled image is
+//! two: the texture and the sampler that reads it. Rather than making every shader author
+//! write a second declaration that can disagree with the first, the two are allocated
+//! together and in a stated order — **a bound resource takes one binding number, and a
+//! texture the document says is `sampled` takes the sampler that reads it at the next one**.
+//! A shader therefore reads its texture at a binding it can count to, and reads its sampler
+//! one above.
+//!
+//! The need is *declared rather than inferred*. A colour texture is not necessarily sampled:
+//! the post stage reads the shaded image with `textureLoad`, at the coordinates of the pixel
+//! it is writing, and wants no sampler at all. Format does not carry the distinction, so the
+//! document states it, and a texture that says nothing gets no sampler and keeps the
+//! numbering every existing document already has.
+//!
+//! The settings live in the payload rather than in the pass because they belong to the
+//! image: two passes that bind one texture bind one sampler, and a texture's filtering is a
+//! fact about the texture. A texture a pass renders *into* is an attachment and is never
+//! bound, so its sampler does not exist and its settings are ignored.
+//!
+//! Because `sampled` is a property of the payload and not of the declaration,
+//! [`crate::verify_pass_inputs`] cannot report a disagreement about it: a shader's declared
+//! interface says it reads a texture, and carries no opinion on how it is read. The device
+//! is where the two are compared, against the layout it actually built.
 
 use definition::{Path, Schema, SchemaKind, Value};
 
@@ -46,6 +73,26 @@ pub const HEIGHT: &str = "height";
 
 /// Field holding a texture format name.
 pub const FORMAT: &str = "format";
+
+/// Field holding how a texture is magnified and minified.
+pub const FILTER: &str = "filter";
+
+/// Field holding how a texture is addressed outside zero to one.
+pub const ADDRESS: &str = "address";
+
+/// Field holding how levels of a texture are blended between.
+pub const MIP_FILTER: &str = "mip_filter";
+
+/// Field whose *presence* declares that a texture is read with a sampler.
+///
+/// # Why presence rather than a boolean
+///
+/// The key carries no value that could contradict it, so there is one reading and not two.
+/// A `Bool` field would have to be read for its value, which gives `sampled: false` a
+/// meaning, and both candidate meanings are wrong for somebody: it would either duplicate
+/// the absent case or name a third state. A unit key is present or it is not, which is the
+/// distinction the binding model actually makes — see the module documentation.
+pub const SAMPLED: &str = "sampled";
 
 /// Field holding the interface a shader declares.
 pub const SCHEMA: &str = "schema";
@@ -187,6 +234,145 @@ fn texture_resource() -> (String, Schema) {
     )
 }
 
+/// How a sampled texture is filtered and addressed.
+///
+/// # Why this is a value and not a declaration
+///
+/// The settings belong to the image rather than to the pass that reads it: a texture is one
+/// entry, two passes that bind it bind one sampler, and a filter is as much a fact about a
+/// texture as its size. They are read from the payload the texture entry already owns, so a
+/// shader author writes no second declaration that could disagree with the first.
+///
+/// The default is the one a tiling surface wants: magnified and minified linearly, blended
+/// between mip levels, and repeating past its edge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SamplerSettings {
+    /// Whether magnification and minification interpolate between texels.
+    pub linear_filter: bool,
+    /// Whether a level is blended into the next, or one level is chosen.
+    pub linear_mip_filter: bool,
+    /// How a coordinate outside zero to one is folded back in.
+    pub address: SamplerAddress,
+}
+
+/// How a sampled texture is addressed outside zero to one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SamplerAddress {
+    /// The edge texel is repeated outwards.
+    ClampToEdge,
+    /// The image tiles, which is what a surface texture wants.
+    Repeat,
+    /// The image tiles, reflected at every edge.
+    MirrorRepeat,
+}
+
+impl Default for SamplerSettings {
+    fn default() -> Self {
+        Self {
+            linear_filter: true,
+            linear_mip_filter: true,
+            address: SamplerAddress::Repeat,
+        }
+    }
+}
+
+impl SamplerSettings {
+    /// Reads settings out of a texture payload, defaulting what it does not declare.
+    ///
+    /// # Invariants
+    ///
+    /// An unrecognised tag selects the default rather than failing, because the payload is
+    /// already validated against [`binder_payload_schema`] before it reaches here and a
+    /// reader that refused a tag the schema admits would be a second, disagreeing schema.
+    pub fn read(payload: &Value) -> Self {
+        let fields = payload.variant_fields();
+        let text = |name: &str| {
+            fields
+                .and_then(|fields| fields.get(name))
+                .and_then(Value::as_str)
+        };
+        let mut settings = Self::default();
+        if let Some(filter) = text(FILTER) {
+            settings.linear_filter = filter != "Nearest";
+            // A mip filter the payload does not name follows the filter, which is the
+            // pairing a sampler means by `Linear`: both or neither.
+            settings.linear_mip_filter = settings.linear_filter;
+        }
+        if let Some(mip) = text(MIP_FILTER) {
+            settings.linear_mip_filter = mip == "Linear";
+        }
+        if let Some(address) = text(ADDRESS) {
+            settings.address = match address {
+                "ClampToEdge" => SamplerAddress::ClampToEdge,
+                "MirrorRepeat" => SamplerAddress::MirrorRepeat,
+                _ => SamplerAddress::Repeat,
+            };
+        }
+        settings
+    }
+}
+
+/// Returns whether a texture payload declares that it is read with a sampler.
+///
+/// # Invariants
+///
+/// The key's presence is the whole of the declaration, so this reads the field map and not
+/// the value under it. A payload that is not a texture struct is not sampled, which matches
+/// the schema: only a texture payload has the key.
+pub fn is_sampled(payload: &Value) -> bool {
+    payload
+        .variant_fields()
+        .is_some_and(|fields| fields.contains_key(SAMPLED))
+}
+
+/// Returns whether a texture payload carries pixels to upload.
+///
+/// # Invariants
+///
+/// The presence of the bytes is the declaration, exactly as [`is_sampled`] reads its key.
+/// A texture with none was rendered into rather than uploaded, which is also the texture
+/// whose levels cannot be built: a chain generated at upload would be stale the moment a
+/// pass wrote the base level.
+pub fn has_data(payload: &Value) -> bool {
+    payload
+        .variant_fields()
+        .is_some_and(|fields| fields.contains_key(DATA))
+}
+
+/// Builds the schema of how a texture is magnified and minified.
+pub fn sampler_filter_schema() -> Schema {
+    Schema::new(SchemaKind::enumeration([
+        ("Nearest".to_owned(), Schema::new(SchemaKind::structure([]))),
+        ("Linear".to_owned(), Schema::new(SchemaKind::structure([]))),
+    ]))
+    .with_documentation("Whether a sample is one texel or a blend of its neighbours.")
+}
+
+/// Builds the schema of how a texture is addressed outside zero to one.
+pub fn sampler_address_schema() -> Schema {
+    Schema::new(SchemaKind::enumeration([
+        (
+            "ClampToEdge".to_owned(),
+            Schema::new(SchemaKind::structure([])),
+        ),
+        ("Repeat".to_owned(), Schema::new(SchemaKind::structure([]))),
+        (
+            "MirrorRepeat".to_owned(),
+            Schema::new(SchemaKind::structure([])),
+        ),
+    ]))
+    .with_documentation("How a coordinate outside zero to one is folded back in.")
+}
+
+/// Builds the schema of how the levels of a texture are blended between.
+pub fn sampler_mip_filter_schema() -> Schema {
+    Schema::new(SchemaKind::enumeration([
+        ("Nearest".to_owned(), Schema::new(SchemaKind::structure([]))),
+        ("Linear".to_owned(), Schema::new(SchemaKind::structure([]))),
+    ]))
+    .with_documentation("Whether two levels are blended or one is chosen.")
+}
+
 /// Builds the schema of how the points of a vertex buffer are read.
 pub fn topology_schema() -> Schema {
     Schema::new(SchemaKind::enumeration([
@@ -240,6 +426,49 @@ pub fn binder_payload_schema() -> Schema {
                 (WIDTH.to_owned(), Schema::new(SchemaKind::Int)),
                 (HEIGHT.to_owned(), Schema::new(SchemaKind::Int)),
                 (FORMAT.to_owned(), Schema::new(SchemaKind::String)),
+                (
+                    DATA.to_owned(),
+                    Schema::new(SchemaKind::Bytes)
+                        .optional()
+                        .with_documentation(
+                            "The pixels, one texel per four bytes, top row first. Absent on \
+                             a texture a pass renders into, which has nothing to upload: a \
+                             shadow map is written, never read from the instance.",
+                        ),
+                ),
+                (
+                    SAMPLED.to_owned(),
+                    Schema::new(SchemaKind::Unit).optional().with_documentation(
+                        "Present when the shader reads this texture with `textureSample`, \
+                             which is what gives it a sampler at the binding after it. Absent \
+                             means `textureLoad`, which is how a render target is read: the \
+                             post stage reads the shaded image at the coordinates of the pixel \
+                             it is writing and needs no sampler. The key is a unit because its \
+                             presence is the whole declaration.",
+                    ),
+                ),
+                (
+                    FILTER.to_owned(),
+                    sampler_filter_schema().optional().with_documentation(
+                        "How the image is magnified and minified. Absent means `Linear`.",
+                    ),
+                ),
+                (
+                    ADDRESS.to_owned(),
+                    sampler_address_schema().optional().with_documentation(
+                        "How the image is addressed outside zero to one. Absent means \
+                         `Repeat`, which is what a tiling surface wants; `ClampToEdge` is \
+                         what a picture that must not wrap wants.",
+                    ),
+                ),
+                (
+                    MIP_FILTER.to_owned(),
+                    sampler_mip_filter_schema().optional().with_documentation(
+                        "How the levels of the image are blended between. Absent means the \
+                         filter; `Nearest` selects one level rather than blending two, which \
+                         is a hard edge at every level boundary.",
+                    ),
+                ),
             ])),
         ),
         (
