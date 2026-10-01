@@ -53,6 +53,18 @@ because the invariant that an exempt light keeps its record is what a `Direction
 path will need. Not worth the index shift for one light, and it becomes worth revisiting the day
 a scene can name a thousand of something.
 
+**Checkpoint 7 made the second half of that a fact rather than a prediction, and the item grew
+rather than went away.** A `Directional` light is the second exempt kind, it is also in no
+cluster list, and it also never loads its record — but it is read through a **uniform field**
+rather than a record, which is the only way a fragment reaches it. So the invariant is now
+load-bearing twice over, and one scene naming a sun and an environment pays 192 bytes and two
+indices for two lights no fragment loads.
+
+The cost went up and the reasoning did not change. It is still not worth an index shift, and the
+day it is worth revisiting is unchanged: a scene naming a thousand of something. What did change
+is that the "one light" in the paragraph above is now two, and the honest version of the trigger
+is a scene with many exempt lights rather than many lights at all.
+
 ## 5. ~~A scene naming no light at all does not render~~ — fixed
 
 **This was a bug, not a refinement, and it was pre-existing.** A scene with an empty `lights`
