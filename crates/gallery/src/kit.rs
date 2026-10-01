@@ -59,13 +59,15 @@ pub fn image(label: &str, width: i64, height: i64, pixels: impl IntoIterator<Ite
 /// # Invariants
 ///
 /// A light names the kind it is, so this builder writes the `Point` tag rather than taking
-/// a kind: every light in the gallery is a point light, and a builder that made each call
-/// site name a kind they all share would be a kind spelled nine times. A kind with fields of
-/// its own is a sibling of this one rather than a parameter of it.
+/// a kind: every point light in the gallery is a point light, and a builder that made each
+/// call site name a kind they all share would be a kind spelled nine times. A kind with
+/// fields of its own is a sibling of this one rather than a parameter of it.
 ///
-/// The other kinds have no builder here, because a light they built is a document the
-/// compiler refuses: this is a gallery of scenes that compile, and a builder whose only
-/// effect is to write a scene that does not is a builder for a stage that has not landed.
+/// [`environment_light`] is that sibling, and it is here now because the environment path has
+/// landed. A `Spot` or a `Directional` light still has no builder, because a light they built
+/// is a document the compiler refuses: this is a gallery of scenes that compile, and a builder
+/// whose only effect is to write a scene that does not is a builder for a stage that has not
+/// landed.
 pub fn light(
     label: &str,
     position: [f64; 3],
@@ -81,6 +83,29 @@ pub fn light(
             ("color".to_owned(), triple(color)),
             ("intensity".to_owned(), Value::Float(intensity)),
             ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
+        ],
+    )
+}
+
+/// Builds one environment light of a scene, reading the image the label names.
+///
+/// # Invariants
+///
+/// It declares neither a position nor a volume, because it stands nowhere and casts no shadow:
+/// the fields the kind has are the fields it writes, and a document carrying one of the others
+/// would be a document asking for a point light by another name.
+///
+/// The image is a **label** into the scene's own image list rather than pixels, which is the
+/// same reason a material's image is: one map is shared by every surface of a scene, and the
+/// scene's `images` list is where it is written down once.
+pub fn environment_light(label: &str, image: &str, color: [f64; 3], intensity: f64) -> Value {
+    Value::variant(
+        "Environment",
+        [
+            ("label".to_owned(), Value::String(label.to_owned())),
+            ("image".to_owned(), Value::String(image.to_owned())),
+            ("color".to_owned(), triple(color)),
+            ("intensity".to_owned(), Value::Float(intensity)),
         ],
     )
 }

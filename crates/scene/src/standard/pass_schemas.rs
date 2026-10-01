@@ -72,6 +72,30 @@ pub const CLUSTER_GRID: &str = "cluster_grid";
 /// size, because the view's depth runs zero to one whatever the frame is.
 pub const FRAME_SIZE: &str = "frame_size";
 
+/// Field holding the environment a lighting pass is shaded against.
+///
+/// # Invariants
+///
+/// It is **four** numbers and not three: the light's colour scaled by its intensity, and then
+/// whether the scene named an `Environment` light at all. The flag is in the same vector rather
+/// than beside it because two numbers a shader could disagree about are one too many — the
+/// shader reads the vector and the flag is already in it — and because a colour of zero is a
+/// perfectly good environment to want, so a shader that inferred presence from a black map
+/// would be reading the wrong question.
+///
+/// The field is written for every lighting pass, whether the scene names an environment or
+/// not, because the uniform's layout is the same for every scene. A field that came and went
+/// with the document would put every field after it somewhere else.
+pub const ENVIRONMENT: &str = "environment";
+
+/// Binding point the environment map is read at.
+///
+/// The name is what puts it at its binding number: a pass's binders are numbered in name
+/// order, so this point sits between `depth_buffer` and any image a material names. It is
+/// bound by every lighting pass — see [`ENVIRONMENT`] for why — and it declares no sampler,
+/// because the map is read with `textureLoad` at a texel the shader computes.
+pub const ENVIRONMENT_MAP: &str = "environment_map";
+
 /// Field holding the time a pass is drawn at, in seconds.
 ///
 /// Time is data on the pass rather than a clock inside the renderer, so a render stays a
@@ -347,6 +371,14 @@ pub fn light_pass_schema() -> Schema {
                      itself with the page each record carries.",
                 ),
             ),
+            (
+                ENVIRONMENT_MAP,
+                texture_binding_schema().with_documentation(
+                    "The scene's environment, as a two dimensional octahedral map read with \
+                     `textureLoad`. A scene naming no environment light binds a one texel black \
+                     map here rather than nothing, so the binding numbers are the same either way.",
+                ),
+            ),
         ],
         vec![
             (
@@ -358,6 +390,13 @@ pub fn light_pass_schema() -> Schema {
                 components_schema(4).with_documentation(
                     "How the view is divided: how many clusters across, how many up, how many \
                      depth slices, and how many lights one cluster keeps.",
+                ),
+            ),
+            (
+                ENVIRONMENT,
+                components_schema(4).with_documentation(
+                    "The environment light's colour scaled by its intensity, and whether the \
+                     scene named one at all. Written for every lighting pass.",
                 ),
             ),
             (
