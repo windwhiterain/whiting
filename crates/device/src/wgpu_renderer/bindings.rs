@@ -48,6 +48,15 @@ pub const VERTEX: &str = "vertex";
 /// The usage that makes a buffer step once per instance.
 pub const INSTANCE: &str = "instance";
 
+/// The usage that names a buffer as a uniform, which is also what a buffer with no usage is.
+///
+/// The word is redundant, since a payload that declares nothing is read as a uniform, and it is
+/// here for the document that would rather say what a buffer is than leave it unstated. Without
+/// it the vocabulary can name a vertex buffer, an instance buffer and two kinds of storage
+/// buffer but cannot name the one a shader reads most often, and an error listing the words
+/// would be asking a document to say nothing at all in order to be understood.
+pub const UNIFORM: &str = "uniform";
+
 /// The usage that makes a buffer a read only storage buffer.
 ///
 /// A storage buffer is what a data set that does not fit in a uniform is bound as: the
@@ -697,9 +706,15 @@ impl Bindings {
 /// was handed a uniform gets a frame that is quietly wrong. `storage_write` without
 /// `storage` is refused for the same reason, since a buffer nothing declared to be a
 /// storage buffer cannot be one a shader writes.
+///
+/// A buffer is one kind, so naming two is a document that contradicts itself and is reported
+/// as one. `uniform` beside `storage` is that contradiction: the first says the shader reads
+/// a sixteen kibibyte block and the second says it reads a buffer the device sized for a data
+/// set, and picking either silently would bind a buffer that is not the one either word names.
 fn buffer_kind(usage: &[&str], source: &str) -> Result<BufferKind, RenderError> {
     let storage = usage.contains(&STORAGE);
     let writable = usage.contains(&STORAGE_WRITE);
+    let uniform = usage.contains(&UNIFORM);
     if writable && !storage {
         return Err(RenderError::Backend(format!(
             "the buffer `{source}` declares `{STORAGE_WRITE}` without `{STORAGE}`. A buffer a \
@@ -707,10 +722,17 @@ fn buffer_kind(usage: &[&str], source: &str) -> Result<BufferKind, RenderError> 
              as a uniform would look right and read the wrong bytes."
         )));
     }
+    if uniform && storage {
+        return Err(RenderError::Backend(format!(
+            "the buffer `{source}` declares both `{UNIFORM}` and `{STORAGE}`. A buffer is bound \
+             as one kind or the other: a uniform is capped at sixteen kibibytes and a storage \
+             buffer is not, so the two words describe two different buffers under one name."
+        )));
+    }
     let mut unknown = usage
         .iter()
         .copied()
-        .filter(|word| !matches!(*word, VERTEX | INSTANCE | STORAGE | STORAGE_WRITE));
+        .filter(|word| !matches!(*word, VERTEX | INSTANCE | UNIFORM | STORAGE | STORAGE_WRITE));
     let Some(word) = unknown.next() else {
         return Ok(if writable {
             BufferKind::ReadWriteStorage
@@ -722,10 +744,10 @@ fn buffer_kind(usage: &[&str], source: &str) -> Result<BufferKind, RenderError> 
     };
     Err(RenderError::Backend(format!(
         "the buffer `{source}` declares the usage `{word}`, which is not a usage a buffer can \
-         be bound with. A buffer's usage is `vertex`, `instance`, `storage`, or `storage_write`, \
-         and a buffer that declares none of them is bound as a uniform. Reading an unrecognised \
-         word as a uniform would give a frame that is quietly wrong, which is a worse answer \
-         than this error."
+         be bound with. A buffer's usage is `vertex`, `instance`, `{UNIFORM}`, `storage` or \
+         `storage_write`, and a buffer that declares none of them is bound as a uniform. \
+         Reading an unrecognised word as a uniform would give a frame that is quietly wrong, \
+         which is a worse answer than this error."
     )))
 }
 
