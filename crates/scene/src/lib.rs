@@ -369,14 +369,57 @@ pub enum CompileError {
     )]
     MissingLightKind { path: Path, label: String },
     #[error(
-        "at {path}: the light `{label}` is a {kind} light, and only a Point or an Environment \
-         light is emitted at this stage. A light the renderer cannot draw is refused rather than \
-         drawn as a point, which would be a wrong image nobody sees until the render finishes."
+        "at {path}: the light `{label}` is a {kind} light, and only a Point, a Spot or an \
+         Environment light is emitted at this stage. A light the renderer cannot draw is refused \
+         rather than drawn as a point, which would be a wrong image nobody sees until the render \
+         finishes."
     )]
     UnsupportedLightKind {
         path: Path,
         label: String,
         kind: String,
+    },
+    #[error(
+        "at {path}: the spot light `{label}` shines along a direction of zero, and a zero is not \
+         a direction. The shader would normalise it and divide by nothing, so the cone is \
+         refused rather than turned into a `NaN` the frame cannot be inspected past."
+    )]
+    ZeroLightDirection { path: Path, label: String },
+    #[error(
+        "at {path}: the spot light `{label}` has an inner angle of {inner_angle} and an outer \
+         angle of {outer_angle}, and a cone whose outside is inside its own inside is not a cone. \
+         The two numbers are the same fact about one cone, so a document where they disagree is \
+         refused rather than drawn."
+    )]
+    InvertedSpotCone {
+        path: Path,
+        label: String,
+        inner_angle: f64,
+        outer_angle: f64,
+    },
+    #[error(
+        "at {path}: the spot light `{label}` has an inner angle of {angle}, which is below the \
+         axis it shines along. A cone is at full strength around its axis, so a full strength \
+         region on the far side of that axis is a region the outer angle does not contain, and a \
+         cone with no region at all is the whole sphere — which is what a Point light already is."
+    )]
+    NegativeSpotAngle {
+        path: Path,
+        label: String,
+        angle: f64,
+    },
+    #[error(
+        "at {path}: the spot light `{label}` has an outer angle of {outer_angle} radians, and a \
+         half angle of {limit} is a right angle. Past a hemisphere the shape is not a cone, and \
+         the page its shadow is rendered through is a perspective frustum, whose field of view \
+         cannot reach a right angle at all. A light that shines in every direction is a Point \
+         light."
+    )]
+    SpotConeTooWide {
+        path: Path,
+        label: String,
+        outer_angle: f64,
+        limit: f64,
     },
     #[error(
         "at {path}: the light `{label}` is a second Environment light, and the first is \

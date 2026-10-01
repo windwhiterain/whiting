@@ -63,9 +63,9 @@ pub fn image(label: &str, width: i64, height: i64, pixels: impl IntoIterator<Ite
 /// call site name a kind they all share would be a kind spelled nine times. A kind with
 /// fields of its own is a sibling of this one rather than a parameter of it.
 ///
-/// [`environment_light`] is that sibling, and it is here now because the environment path has
-/// landed. A `Spot` or a `Directional` light still has no builder, because a light they built
-/// is a document the compiler refuses: this is a gallery of scenes that compile, and a builder
+/// [`environment_light`] and [`spot`] are those siblings, and they are here now because those
+/// paths have landed. A `Directional` light still has no builder, because a light it built is
+/// a document the compiler refuses: this is a gallery of scenes that compile, and a builder
 /// whose only effect is to write a scene that does not is a builder for a stage that has not
 /// landed.
 pub fn light(
@@ -82,6 +82,45 @@ pub fn light(
             ("position".to_owned(), triple(position)),
             ("color".to_owned(), triple(color)),
             ("intensity".to_owned(), Value::Float(intensity)),
+            ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
+        ],
+    )
+}
+
+/// Builds one spot light of a scene: a point light with a cone.
+///
+/// # Invariants
+///
+/// The two angles are **half** angles in radians, and both are written rather than one being
+/// derived: the pair is what draws the cone, and a default angle would be a number chosen once
+/// in this source rather than a number the author of a scene chooses. `direction` is the way
+/// the light shines, so the cone opens away from the light rather than towards it, and its
+/// length does not matter.
+///
+/// The builder takes no `radius`. A spot light's reach is its cone, and a `Spot` declares no
+/// radius of its own to be inconsistent with: the compiler culls it by one box radius of the
+/// scene, which is the whole scene, and the cone scales what survives. A scene that needs a
+/// reach narrower than that is asking a spot light to do a point light's job.
+pub fn spot(
+    label: &str,
+    position: [f64; 3],
+    direction: [f64; 3],
+    color: [f64; 3],
+    intensity: f64,
+    inner_angle: f64,
+    outer_angle: f64,
+    shadow_extent: f64,
+) -> Value {
+    Value::variant(
+        "Spot",
+        [
+            ("label".to_owned(), Value::String(label.to_owned())),
+            ("position".to_owned(), triple(position)),
+            ("direction".to_owned(), triple(direction)),
+            ("color".to_owned(), triple(color)),
+            ("intensity".to_owned(), Value::Float(intensity)),
+            ("inner_angle".to_owned(), Value::Float(inner_angle)),
+            ("outer_angle".to_owned(), Value::Float(outer_angle)),
             ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
         ],
     )

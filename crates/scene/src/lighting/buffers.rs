@@ -47,6 +47,22 @@ pub const CLUSTER_COUNTS_ENTRY: &str = "cluster_light_counts";
 /// Name of the instance entry holding the light of every slot of every cluster.
 pub const CLUSTER_INDICES_ENTRY: &str = "cluster_light_indices";
 
+/// Name of the instance entry holding the cone of every light.
+///
+/// # Invariants
+///
+/// It is a run of its own rather than three more fields of the light record, because the record
+/// is read by every fragment of every clustered pass and a point light is most of what a scene
+/// draws: thirty two bytes a light that most scenes never read is a cost every scene pays. The
+/// cone is the one thing about a light that a fragment reads only when the light has one.
+pub const SPOT_CONES_ENTRY: &str = "spot_cones";
+
+/// Field of the cone record naming the axis the light shines along.
+pub const CONE_AXIS_FIELD: &str = "axis";
+
+/// Field of the cone record naming the cone's two limits.
+pub const CONE_LIMITS_FIELD: &str = "limits";
+
 /// Field of the light record naming what colour the light is.
 pub const LIGHT_COLOR_FIELD: &str = "color";
 
@@ -204,42 +220,56 @@ impl Clusters {
     ///
     /// # Invariants
     ///
-    /// Nothing is dropped without a note. A scene lit less than it was drawn is a wrong image
-    /// nobody sees until the render finishes, so the report carries a count for every
-    /// overflowing cluster rather than a sample of them, and the labels of one cluster are
-    /// named up to [`NAMED_LIGHTS`] and counted beyond that.
+    /// Nothing is dropped without being **named**. A scene lit less than it was drawn is a
+    /// wrong image nobody sees until the render finishes, and a count alone is not enough to
+    /// act on: an author told that six thousand entries are missing cannot tell which of their
+    /// fifty lights is the one to move. So the note carries three things — how many clusters
+    /// overflowed, how many entries are missing, and which lights are behind all of it.
+    ///
+    /// It is **one** note rather than one per overflowing cluster, and the reason is that a
+    /// cluster is not something the author can act on. The cluster index is an interior of the
+    /// grid they configured, and they can recompute it; the light's **label** is the one string
+    /// in the document they can go and edit. A grid of sixteen by nine by twenty four has three
+    /// thousand four hundred and fifty six clusters, and a cap low enough for them all to
+    /// overflow put a note per cluster — thousands of lines, nearly all of them naming the same
+    /// two or three lights, which is a report that buries the fact it exists to state.
+    ///
+    /// The labels are the **distinct** ones across every cluster, sorted, and bounded by
+    /// [`NAMED_LIGHTS`] with the rest counted: a scene that overflows is a scene where a few
+    /// lights are crowded out everywhere, so the distinct set is small, and it is small by
+    /// exactly the mechanism that produced the overflow.
     pub fn notes(&self, clustering: &Clustering, path: &Path) -> Vec<CompileNote> {
         if self.overflows.is_empty() {
             return Vec::new();
         }
         let cap = path.key(super::assignment::LIGHTS_PER_CLUSTER);
-        let mut notes = vec![CompileNote {
+        // The distinct labels, sorted so that one scene compiles to one note. The order they
+        // are first seen in is the order the clusters happen to be walked, and two clusters
+        // that dropped the same light would put it in two different places otherwise.
+        let mut labels: Vec<&str> = self
+            .overflows
+            .iter()
+            .flat_map(|overflow| overflow.dropped.iter().map(String::as_str))
+            .collect();
+        labels.sort_unstable();
+        labels.dedup();
+        vec![CompileNote {
             path: cap.clone(),
             message: format!(
                 "{} of the {} clusters of this view had more lights reach them than the cap of {} \
                  keeps, and {} of the light entries in their lists are missing. The lights that \
                  contribute most are the ones kept, so this view is lit less than the scene was \
-                 drawn: raise `{}`, or the grid, or move the lights.",
+                 drawn. The lights that never made it in, {} of them, are {}: raise `{}`, or the \
+                 grid, or move the lights.",
                 self.overflows.len(),
                 clustering.cluster_count(),
                 clustering.lights_per_cluster,
                 self.lights_dropped,
+                labels.len(),
+                names_of(&labels),
                 super::assignment::LIGHTS_PER_CLUSTER,
             ),
-        }];
-        for overflow in &self.overflows {
-            notes.push(CompileNote {
-                path: cap.clone(),
-                message: format!(
-                    "cluster {} kept {} of the {} lights that reached it and dropped {}.",
-                    overflow.cluster,
-                    overflow.reached - overflow.dropped.len(),
-                    overflow.reached,
-                    dropped_names(&overflow.dropped),
-                ),
-            });
-        }
-        notes
+        }]
     }
 
     /// Returns the page one light was given, or nothing when it was given none.
@@ -254,10 +284,17 @@ impl Clusters {
 /// The page count [`Clusters::page_of`] filters against, which is [`NO_PAGE`] as a count.
 const NO_PAGE_USIZE: usize = usize::MAX;
 
-/// Names a cluster's dropped lights, counting the ones past the naming limit.
-fn dropped_names(labels: &[String]) -> String {
+/// Names the lights that never made it in, counting the ones past the naming limit.
+///
+/// # Invariants
+///
+/// Each name is in backticks because the whole point of putting it in the message is that it is
+/// a string the author can find in their document, and a bare word in a sentence of prose is
+/// not a string they can go and edit. They arrive already **distinct** and sorted, which is why
+/// this takes borrowed names and not a run of owned ones.
+fn names_of(labels: &[&str]) -> String {
     let (named, rest) = labels.split_at(labels.len().min(NAMED_LIGHTS));
-    let names: Vec<&str> = named.iter().map(String::as_str).collect();
+    let names: Vec<String> = named.iter().map(|label| format!("`{label}`")).collect();
     if rest.is_empty() {
         return names.join(", ");
     }
@@ -647,7 +684,15 @@ fn one_number(field: &str) -> PackedLayout {
 }
 
 /// Builds the payload of a read only storage buffer holding a packed run.
-fn storage(bytes: &[u8], schema: &Schema) -> Value {
+///
+/// # Invariants
+///
+/// It is public because not every read only storage run belongs to an assignment: a run that
+/// is a property of the light rather than of which clusters reach it is packed by the standard
+/// scene compiler, which owns the document the light came from. What it is not allowed to be
+/// is a **second** way of building one of these — the payload and the declaration beside it
+/// are two views of the same run, and a rule written twice is a rule that can be applied once.
+pub fn storage(bytes: &[u8], schema: &Schema) -> Value {
     Value::variant(
         "Buffer",
         [
@@ -753,6 +798,158 @@ pub fn light_record_schema() -> Schema {
         ),
     ]))
     .with_documentation("One light, as a clustered shading pass reads it.")
+}
+
+/// One light's cone, as a document states it.
+///
+/// # Invariants
+///
+/// Every light has one, so the run has one record per light whatever the kinds are: a kind
+/// that has no cone carries the whole sphere rather than an absent field, because a cluster
+/// index is a plain index into this run and a run with a hole in it is a run a fragment has
+/// to test before it can read.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpotCone {
+    /// The unit direction the light shines along, in world space.
+    pub axis: [f64; 3],
+    /// The half angle of the cone the light is at full strength within, in radians.
+    pub inner_angle: f64,
+    /// The half angle of the cone the light has fallen to nothing at, in radians.
+    pub outer_angle: f64,
+}
+
+impl SpotCone {
+    /// Returns the cone of a light that shines in every direction, which is a point light.
+    ///
+    /// Both angles are a half turn, so the two cosines the shader compares are equal and the
+    /// run answers "the whole sphere" for every direction. The shader recognises that shape
+    /// by the equality rather than by the value, so the answer does not rest on a cosine of
+    /// a half turn being exactly minus one.
+    pub fn whole_sphere() -> Self {
+        Self {
+            // The axis of a cone that is the whole sphere is never compared against, because
+            // the two limits are equal and the shader answers before it reads one.
+            axis: [0.0, 0.0, 1.0],
+            inner_angle: std::f64::consts::PI,
+            outer_angle: std::f64::consts::PI,
+        }
+    }
+
+    /// Returns how far from the light a cone of this shape reaches into a scene whose shadowed
+    /// volume is of half width `shadow_extent`.
+    ///
+    /// # Invariants
+    ///
+    /// This is the distance to the **rim** of the volume's base, and it is the radius the
+    /// cluster assignment has to cull a spot light by. A cone of half angle `θ` reaches a disc
+    /// of half width `e` at a distance `e / tan(θ)` along its axis, and the rim of that disc
+    /// is `e / sin(θ)` away — the hypotenuse, which is strictly further than the depth and is
+    /// the only radius whose sphere **contains** the volume.
+    ///
+    /// Containment is the whole requirement, and it is why this is not the depth. A sphere of
+    /// the depth alone would drop the light from the clusters at the edge of its own cone,
+    /// which is a light that stops lighting where it is still shining.
+    pub fn reach(&self, shadow_extent: f64) -> f64 {
+        (shadow_extent.max(0.0) / self.outer_angle.sin().max(1e-6)).max(shadow_extent)
+    }
+}
+
+/// Builds the schema of one light's cone, which is what a clustered shading pass scales that
+/// light by.
+///
+/// # Invariants
+///
+/// The fields sort as `axis` then `limits`, which is the order the packed layout derives from
+/// the schema and the order the WGSL struct is written in, so the two agree about every byte.
+///
+/// **Two vectors of four components is the shape this record has to be, and the reason is the
+/// same one the light record's own documentation gives.** A `WGSL` `array<T>` in a storage
+/// buffer lays its elements out at `roundUp(align_of_T, size_of_T)`, and a struct holding a
+/// vector is aligned to sixteen bytes — so a record of the three components of a direction and
+/// two angles is twenty bytes packed and **thirty two** to a shader, and a shader reading the
+/// tightly packed run would read the second light's direction as the first light's outer angle.
+/// Thirty two bytes is the smallest record that is a whole number of sixteen byte blocks, and
+/// these two vectors are thirty two: `axis` carries the unit direction with its fourth
+/// component reserved, and `limits` carries the cosine of the inner half angle and the cosine
+/// of the outer one with two components reserved.
+///
+/// The two limits are cosines rather than the angles themselves because a shader compares a
+/// dot product against them and needs no inverse cosine to do it, and because the falloff
+/// between the two is then a straight line in the number being compared. An angle and its
+/// cosine are not both stored: a record carrying a number and the number derived from it is a
+/// record with two answers to one question, which is the shape this project's `NO_PAGE`
+/// sentinel exists to avoid.
+pub fn spot_cone_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            CONE_AXIS_FIELD.to_owned(),
+            graphics::layout::components_schema(4).with_documentation(
+                "The unit direction the light shines along, in xyz. The fourth component is \
+                 reserved, and is what puts `limits` on its own sixteen byte boundary.",
+            ),
+        ),
+        (
+            CONE_LIMITS_FIELD.to_owned(),
+            graphics::layout::components_schema(4).with_documentation(
+                "The cosine of the inner half angle in x and the cosine of the outer one in y, \
+                 so a fragment scales the light by how its direction falls between them. Two \
+                 equal cosines are the whole sphere, which is what a light that is not a spot \
+                 light carries. The last two components are reserved.",
+            ),
+        ),
+    ]))
+    .with_documentation("One light's cone, as a clustered shading pass reads it.")
+}
+
+/// Packs one cone per light, in the order the scene lists them, which is the order the light
+/// record buffer is indexed by.
+///
+/// # Invariants
+///
+/// The two runs have **one record each per light, in the same order**, so a cluster's index
+/// is an index into both and a fragment reads a light's record and its cone without a second
+/// lookup or a test on whether one exists.
+///
+/// A scene naming **no** light at all still gets one cone, by the same argument
+/// [`light_records`] gives for its placeholder: the buffer is bound by every lighting pass,
+/// and the shader declares `array<SpotCone>`, so a run of no records is a binding wgpu
+/// refuses for want of a whole thirty two byte element.
+pub fn spot_cones(lights: &[SpotCone]) -> Result<PackedList, CompileError> {
+    let layout = graphics::layout::packed_layout(&spot_cone_schema()).map_err(|error| {
+        CompileError::Unpackable {
+            path: Path::root().key(graphics::ENTRIES).key(SPOT_CONES_ENTRY),
+            reason: error.to_string(),
+        }
+    })?;
+    let mut cones = PackedBuilder::new(layout);
+    cones.reserve(lights.len().max(1));
+    for cone in lights {
+        write_cone(&mut cones, cone)?;
+    }
+    if lights.is_empty() {
+        write_cone(&mut cones, &SpotCone::whole_sphere())?;
+    }
+    cones
+        .finish()
+        .map_err(|error| unpacked(SPOT_CONES_ENTRY, error))
+}
+
+/// Writes one cone's two fields into a run under construction.
+///
+/// # Invariants
+///
+/// The fields are written in the layout's order — `axis` then `limits` — because the builder
+/// refuses a field written out of order, which is what makes the run mean what its layout
+/// says. The three reserved components are written rather than skipped, so the run is as long
+/// as the layout says it is rather than as long as the real data is.
+fn write_cone(cones: &mut PackedBuilder, cone: &SpotCone) -> Result<(), CompileError> {
+    let axis = [cone.axis[0], cone.axis[1], cone.axis[2], 0.0];
+    let limits = [cone.inner_angle.cos(), cone.outer_angle.cos(), 0.0, 0.0];
+    cones
+        .field(CONE_AXIS_FIELD, &axis)
+        .and_then(|builder| builder.field(CONE_LIMITS_FIELD, &limits))
+        .map_err(|error| unpacked(SPOT_CONES_ENTRY, error))?;
+    Ok(())
 }
 
 /// Builds the schema of one cluster's count, which is how many lights the cluster kept.

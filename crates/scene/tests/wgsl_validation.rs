@@ -58,11 +58,12 @@ fn downlevel_capabilities() -> naga::valid::Capabilities {
 
 /// The storage buffers one clustered lighting pass binds.
 ///
-/// The three are the light records, the per cluster counts and the per cluster light lists.
-/// There is one spare at the four a stage is guaranteed, and this is what holds that there is
-/// one: a fourth storage buffer in the clustered template is a shader that validates here and
-/// fails on a driver's limit.
-const CLUSTERED_STORAGE_BUFFERS: usize = 3;
+/// The four are the light records, the per cluster counts, the per cluster light lists and the
+/// spot cones. Four is all a stage is guaranteed, so this is now the whole of the budget rather
+/// than most of it: the cone run spent the one spare the other three left. A fifth storage
+/// buffer in the clustered template is a shader that validates here and fails on a driver's
+/// limit, and the test below is what says there is no room for one.
+const CLUSTERED_STORAGE_BUFFERS: usize = 4;
 
 /// The texture array layers a scene is refused above, which is the compiler's own floor.
 const MAX_TEXTURE_ARRAY_LAYERS: usize = 256;
@@ -96,17 +97,19 @@ fn every_gallery_shader_parses_and_validates_within_the_requested_features() {
 
 #[test]
 fn the_clustered_lighting_template_stays_inside_the_storage_budget() {
-    // The budget is four storage buffers per shader stage and the cluster assignment uses
-    // three, so exactly one is spare. This is a statement about the design rather than about
-    // a shader: it fails the day a fourth storage buffer is wanted, which is the day the
-    // packing has to be reconsidered.
+    // The budget is four storage buffers per shader stage and the clustered pass binds all four
+    // of them, so this is a statement about the design rather than about a shader: it fails the
+    // day a fifth is wanted, which is the day the packing has to be reconsidered.
     assert!(
         CLUSTERED_STORAGE_BUFFERS <= 4,
-        "light records, cluster counts and cluster lists are the whole of the storage budget"
+        "light records, cluster counts, cluster lists and the spot cones are the whole of the \
+         storage budget"
     );
-    assert!(
-        CLUSTERED_STORAGE_BUFFERS < 4,
-        "one storage buffer is left for whatever the clustered pass needs next"
+    assert_eq!(
+        CLUSTERED_STORAGE_BUFFERS, 4,
+        "one storage buffer is no longer left spare: the spot cone run took it, and the next \
+         thing the clustered pass needs has to share a buffer with something rather than get \
+         one of its own"
     );
 }
 

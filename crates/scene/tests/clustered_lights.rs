@@ -210,6 +210,15 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            "spotlight",
+            Stages {
+                shadowing: 4,
+                depthing: 4,
+                lighting: 4,
+                other: 1,
+            },
+        ),
+        (
             "studio",
             Stages {
                 shadowing: 1,
@@ -461,24 +470,30 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
         "the brighter light is kept and the first one to arrive is not"
     );
 
-    // And the author is told, with the count and the name of what went missing.
+    // And the author is told, in one note, with the count and the name of what went missing.
     assert_eq!(clusters.lights_dropped, 1);
     assert_eq!(clusters.overflows.len(), 1);
     assert_eq!(clusters.overflows[0].reached, 2);
     assert_eq!(clusters.overflows[0].dropped, ["dim".to_owned()]);
 
+    // **One** note, not one per overflowing cluster: the cluster is an interior of a grid the
+    // author recomputes, and the label is the string they go and edit.
     let notes = clusters.notes(&grid, &Path::root().key(CLUSTERING));
-    assert_eq!(notes.len(), 2, "one summary and one for the cluster");
+    assert_eq!(
+        notes.len(),
+        1,
+        "one note for the whole view, whatever overflowed"
+    );
     assert!(
         notes[0].message.contains("1 of the 1 clusters")
             && notes[0].message.contains("1 of the light entries"),
-        "the summary counts: {}",
+        "the note counts: {}",
         notes[0].message
     );
     assert!(
-        notes[1].message.contains("kept 1 of the 2 lights") && notes[1].message.contains("dim"),
-        "the cluster's own note names what it dropped: {}",
-        notes[1].message
+        notes[0].message.contains("`dim`"),
+        "and it names the light that was dropped, in backticks: {}",
+        notes[0].message
     );
     assert!(
         notes[0].path.to_string().contains(LIGHTS_PER_CLUSTER),
