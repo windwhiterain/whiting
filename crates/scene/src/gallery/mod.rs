@@ -25,6 +25,7 @@
 
 use definition::Value;
 
+pub mod attributes;
 pub mod geometry;
 pub mod kit;
 pub mod shaders;

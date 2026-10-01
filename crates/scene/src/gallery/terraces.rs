@@ -25,6 +25,7 @@
 
 use definition::Value;
 
+use crate::gallery::attributes::gallery_vertex_inputs;
 use crate::gallery::geometry::{
     cone, cuboid, fractal_noise, hash01, heightfield, prism, ridged_noise, sphere, value_noise,
 };
@@ -223,7 +224,10 @@ fn build_shaders() -> Vec<Value> {
     set.push(shader(
         Stage::Lighting,
         "lighting_props",
-        &lighting("", ""),
+        // The same attribute list the three stages above were given: a second lighting
+        // shader reads the same points and rows, and a list of its own is a second
+        // transcription to keep in step with the first.
+        &lighting(&gallery_vertex_inputs(&shaded_point_schema()), "", ""),
         lighting_pass_schema(),
         shaded_point_schema(),
         gallery_instance_schema(),

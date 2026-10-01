@@ -77,41 +77,20 @@ struct Uniforms {
 };
 "#;
 
-/// The vertex attributes a shaded point schema and a standard instance row lay out to.
-///
-/// A point schema of `normal`, `position`, `texture` sorts into that order, so the normal
-/// is at location zero. The row follows, and a row of `emissive`, `metallic`, `model`,
-/// `normal_matrix`, `roughness`, `tint` sorts the same way — so the two matrices are read
-/// as four consecutive locations each, and `roughness` and `tint` come after both.
-const MESH_VERTEX_INPUTS: &str = "    @location(0) normal: vec3<f32>,
-    @location(1) position: vec3<f32>,
-    @location(2) texture: vec2<f32>,
-    @location(3) emissive: vec3<f32>,
-    @location(4) metallic: f32,
-    @location(5) m0: vec4<f32>,
-    @location(6) m1: vec4<f32>,
-    @location(7) m2: vec4<f32>,
-    @location(8) m3: vec4<f32>,
-    @location(9) n0: vec4<f32>,
-    @location(10) n1: vec4<f32>,
-    @location(11) n2: vec4<f32>,
-    @location(12) n3: vec4<f32>,
-    @location(13) reflect: f32,
-    @location(14) roughness: f32,
-    @location(15) tint: vec3<f32>,
-";
-
 /// The shadowing stage: the point is placed, and the fragment writes depth through the
 /// target itself, so the stage declares no fragment entry point.
-pub fn shadowing() -> String {
+///
+/// `vertex_inputs` is the attribute list [`crate::gallery::attributes`] writes out from the
+/// two schemas, rather than a transcription of it.
+pub fn shadowing(vertex_inputs: &str) -> String {
     format!(
         r#"{PLACEMENT_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 @vertex
 fn vertex_main(
-{MESH_VERTEX_INPUTS}) -> @builtin(position) vec4<f32> {{
-    let model = mat4x4<f32>(m0, m1, m2, m3);
+{vertex_inputs}) -> @builtin(position) vec4<f32> {{
+    let model = mat4x4<f32>(model0, model1, model2, model3);
     return uniforms.projection.view_projection * model * vec4<f32>(position, 1.0);
 }}
 
@@ -124,15 +103,19 @@ fn fragment_main() -> @location(0) vec4<f32> {{
 }
 
 /// The depth stage: the same placement, and no fragment stage at all.
-pub fn depthing() -> String {
+///
+/// `vertex_inputs` is the attribute list [`crate::gallery::attributes`] writes out, and it is
+/// the same list the shadowing stage was given: a stage that places a point differently
+/// places it differently, and nothing downstream can tell by how much.
+pub fn depthing(vertex_inputs: &str) -> String {
     format!(
         r#"{PLACEMENT_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 @vertex
 fn vertex_main(
-{MESH_VERTEX_INPUTS}) -> @builtin(position) vec4<f32> {{
-    let model = mat4x4<f32>(m0, m1, m2, m3);
+{vertex_inputs}) -> @builtin(position) vec4<f32> {{
+    let model = mat4x4<f32>(model0, model1, model2, model3);
     return uniforms.projection.view_projection * model * vec4<f32>(position, 1.0);
 }}
 "#
@@ -149,7 +132,11 @@ fn vertex_main(
 /// separate argument because what a surface looks like is the scene's business and how it
 /// is lit is not: the shadow term, the falloff and the Fresnel are the same for every
 /// surface, and a scene that rewrote them would get one of them subtly wrong.
-pub fn lighting(surface: &str, helpers: &str) -> String {
+///
+/// `vertex_inputs` is the attribute list [`crate::gallery::attributes`] writes out from the
+/// two schemas the stages and the mesh all declare, so a scene that changes its point schema
+/// gets the attributes for it without writing them out.
+pub fn lighting(vertex_inputs: &str, surface: &str, helpers: &str) -> String {
     format!(
         r#"{LIGHTING_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -217,14 +204,14 @@ struct Vertex {{
 
 @vertex
 fn vertex_main(
-{MESH_VERTEX_INPUTS}) -> Vertex {{
-    let model = mat4x4<f32>(m0, m1, m2, m3);
+{vertex_inputs}) -> Vertex {{
+    let model = mat4x4<f32>(model0, model1, model2, model3);
     // A normal is carried through the inverse transpose of the model, which the emitter
     // fills in beside the model itself. A transform that scales unevenly tilts a normal
     // by exactly the amount it is uneven by, so an instance twenty times taller than it
     // is wide is lit wrongly by the model alone — and `WGSL` has no matrix inverse for a
     // shader to recover it with.
-    let normals = mat4x4<f32>(n0, n1, n2, n3);
+    let normals = mat4x4<f32>(normal_matrix0, normal_matrix1, normal_matrix2, normal_matrix3);
     let world = model * vec4<f32>(position, 1.0);
     var out: Vertex;
     out.position = uniforms.projection.view_projection * world;
@@ -405,32 +392,40 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
 
 /// Builds the three mesh shaders every gallery scene declares, and the point schema they
 /// all read.
+///
+/// # Invariants
+///
+/// The attributes are derived from the point schema this passes, so the three stages and
+/// the mesh a scene draws all read one layout, and a scene that declares a different point
+/// schema gets the attributes for it without writing them out.
 pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
+    let point = kit::shaded_point_schema();
+    let inputs = crate::gallery::attributes::gallery_vertex_inputs(&point);
     vec![
         kit::shader(
             Stage::Shadowing,
             "shadowing",
-            &shadowing(),
+            &shadowing(&inputs),
             shadowing_pass_schema(),
-            kit::shaded_point_schema(),
+            point.clone(),
             kit::gallery_instance_schema(),
             kit::gallery_custom_schema(),
         ),
         kit::shader(
             Stage::Depthing,
             "depthing",
-            &depthing(),
+            &depthing(&inputs),
             depthing_pass_schema(),
-            kit::shaded_point_schema(),
+            point.clone(),
             kit::gallery_instance_schema(),
             kit::gallery_custom_schema(),
         ),
         kit::shader(
             Stage::Lighting,
             "lighting",
-            &lighting(surface, helpers),
+            &lighting(&inputs, surface, helpers),
             lighting_pass_schema(),
-            kit::shaded_point_schema(),
+            point,
             kit::gallery_instance_schema(),
             kit::gallery_custom_schema(),
         ),

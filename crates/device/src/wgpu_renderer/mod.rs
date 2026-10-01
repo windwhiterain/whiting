@@ -43,6 +43,37 @@ mod raster;
 mod shader_interface;
 mod uniform;
 
+/// How many vertex attributes the pipeline asks an adapter for.
+///
+/// # Invariants
+///
+/// This is not a number a document chooses: it is what the layout rules imply. A point
+/// carries its own fields, and an instance row carries a model matrix **and** the inverse
+/// transpose that carries a normal through the same transform — two matrices, eight
+/// attributes between them, before a row's own material has said anything. A row of any
+/// use at all is therefore within one attribute of the sixteen a backend allows by
+/// default, and a pipeline that carries a normal matrix and a material does not fit in a
+/// default that was chosen before anything had to be drawn through it.
+const VERTEX_ATTRIBUTES: u32 = 32;
+
+/// How many vertex buffers a pass may bind: the points, then the instance rows.
+const VERTEX_BUFFERS: u32 = 8;
+
+/// Returns the limits this pipeline needs, clamped to what the adapter has.
+///
+/// # Invariants
+///
+/// The request is the lower of what the pipeline needs and what the adapter reports, so a
+/// device on an adapter that cannot do this fails to be created — which is a clear error —
+/// rather than drawing a frame whose attributes the hardware never received.
+fn required_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
+    adapter.limits().using_resolution(wgpu::Limits {
+        max_vertex_attributes: VERTEX_ATTRIBUTES,
+        max_vertex_buffers: VERTEX_BUFFERS,
+        ..wgpu::Limits::downlevel_defaults()
+    })
+}
+
 /// A renderer that executes passes on a gpu.
 pub struct WgpuRenderer {
     device: wgpu::Device,
@@ -91,7 +122,7 @@ impl WgpuRenderer {
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("whiting device"),
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
+                required_limits: required_limits(&adapter),
                 memory_hints: wgpu::MemoryHints::default(),
                 trace: wgpu::Trace::Off,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
