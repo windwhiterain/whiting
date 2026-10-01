@@ -1,7 +1,8 @@
 # A cluster's box is not where its fragments are
 
-**Found while implementing the global light rule** ([`photographic-scenes`](../handoffs) is
-closed; this is the finding it left). Merged as `5b19431`, on top of `main` at `e1b29c2`.
+**Found while implementing the global light rule.** Merged as `5b19431`; **fixed** on branch
+`fix/cluster-box-corners`. The finding is kept whole below because the evidence is what says the
+fix works, and the measured outcome is at the end.
 
 ## The claim
 
@@ -14,7 +15,7 @@ closer to it than the box's own nearest point is.
 **The light is culled because of where the *box* is, not where the surface is.** The hole this
 leaves in the image has edges on the cluster grid, because a box is a box.
 
-## Why the box is wrong
+## Why the box was wrong
 
 ```rust
 fn box_of(&self, column: usize, row: usize, slice: usize) -> ClusterBox {
@@ -44,7 +45,9 @@ let row    = u32(up * uniforms.cluster_grid.y);
 slice's near end and at the right edge of the frame resolves to the frame's rightmost column,
 whose box has an `across` span of the rightmost 1/16 **of the far cross-section** — far to the
 right of where that fragment actually is. **A fragment can lie outside its own cluster's box.**
-The two constructions coincide only at the far boundary of each slice.
+The two constructions coincide only at the far boundary of each slice, and at the centre of the
+frame the two cells nest, which is why the defect reads as a screen-edge artefact rather than as
+a broken walk.
 
 ## What it drew
 
@@ -57,40 +60,71 @@ A probe with the promotion disabled reported the cause directly: those clusters,
 **farthest** slice, held 1 of the 2 lights. Disabling the promotion reproduces the pre-change
 frame byte for byte, so the promotion is the only thing that changed the picture.
 
-## What is already true, and what is still open
+## The fix
 
-**The global light rule is a workaround for this, and a good one.** A light that holds the whole
-scene is promoted out of the walk and evaluated for every fragment, so it is immune to the
-mis-measurement. That repairs every pixel a light of that size could have lost, and it repairs
-them in the only way available from the scene's own documents.
+Take the box from the cell's **eight** frustum corners — four at the slice's near boundary and
+four at its far one — and keep the min and max of each axis. This is the clustered-shading
+standard and not a local invention; identical code appears in
+[A Primer On Efficient Rendering Algorithms & Clustered Shading](http://www.aortiz.me/2018/12/21/CG.html),
+in the Skyrim Community Shaders' `ClusterBuildingCS.hlsl`, and in
+[WebGPU Forward+ and Clustered Deferred](https://wrnmd.com/jichumao/Project4-WebGPU-Forward-Plus-and-Clustered-Deferred).
+A cell is a rectangle, so the eight corners reduce to two spans and the box is the union of the
+near cell and the far cell on each of `across` and `up`.
 
-**But it only repairs them for lights big enough to be promoted.** A clustered light — a lamp
-in a room, a lantern over a table — is still culled by a box that is in the wrong place, and a
-lamp near the near end of a slice can still go missing in a rectangle. `stilllife` is the scene
-that reaches it: eleven lights over a table, and
-[`photographic-stilllife.md`](photographic-stilllife.md) §2 recorded 73 clusters lit by nothing
-there, which it worked around by tightening the camera's planes rather than by fixing the walk.
+The box grows, and the literature's own verdict on that is worth keeping:
+[Clustered Shading](https://gitmemories.com/index.php/DaveH355/clustered-shading) reports that
+the boxes "must overlap to cover the frustum shape" and that the technique "does not benefit
+from more accurate cluster shapes or distributions of clusters". Conservatism here is the
+algorithm's accepted price, not a risk that had to be measured before shipping.
 
-## The options
+## What it measured
 
-1. **Make the box a real cover of the slice.** A wedge, not a rectangle: `across` and `up` would
-   have to be a frustum segment per depth, and the nearest-point test would be against that. The
-   honest shape is the convex hull of the slice's eight corners, which is cheap to precompute per
-   slice and makes the box a true superset. It also makes the box larger, so more lights survive
-   the test — which is the point, and is why the current rectangle is a *tight* fit that is tight
-   in the wrong direction.
-2. **Cull on the sphere against the slice, not the box.** A light reaches a slice if its sphere
-   meets the slice's own volume. Same answer as 1 for the "does it reach" question, and it drops
-   the per-column/row reasoning entirely — at the cost of a light that reaches the slice being
-   listed in all 16x9 of its boxes, which is what the cap is for.
-3. **Leave it.** The global rule removes the visible symptom for the lights that are big enough,
-   and the remaining case is a small light in a wide frame, which no gallery scene currently
-   shows.
+Eight of eleven gallery scenes render **byte for byte** as they did. Three change, and every
+change is confined to the outermost columns of the frame — 1024px over 16 columns is 64px a
+column, and each changed region is 192px, exactly three:
 
-1 and 2 both make the promotion what it was meant to be — a pure optimisation rather than a
-repair — and that is the test of whether the walk is right: **with a correct box, a light whose
-radius holds the scene is in every cluster the camera reaches, and promoting it changes no
-pixel.**
+| scene | pixels | region | mean abs RGB delta |
+| --- | --- | --- | --- |
+| `tiles` | 13056 (1.25%) | x 0..191, y 501..568 | 321.2 |
+| `tidewater` cam0 | 17745 (1.13%) | x 0..147, y 603..797 | 11.8 |
+| `monoliths` | 41960 (4.00%) | x 832..1023, y 583..888 | 1.9 |
+
+`tiles` is the one to look at: a lit strip across the frame was cut off dead at x = 192, three
+columns in, and now runs to the left edge. That boundary was the defect's own shape drawn in the
+image. `tidewater` is a faint rectangular seam in the dark foreground island, smoothed. `monoliths`
+is a fill of about two code values, imperceptible.
+
+**The change is monotone.** The hull contains the old box on every axis, so a light is only ever
+*added* to a cluster and never removed from one. This fix cannot darken a frame.
+
+## What is now true
+
+**The global light rule is no longer a repair.** With a box that holds its cell, a light whose
+sphere holds the scene cannot fail the distance test against any cluster that holds a surface, so
+promoting it changes no pixel — which is the test this finding set out. What promotion still buys
+is immunity: a global light does not depend on the cluster walk being right at all, which is what
+makes "name no reach" a good default, since an author who forgets the number then gets a light
+that is wrong everywhere and says so rather than one subtly absent at the edge of the frame.
+
+## Not fixed here
+
+**Exponential depth slicing.** The grid is divided evenly through depth; the literature prefers
+`Z = near * (far/near)^(i/slices)`. That is correct in general and does not apply here without a
+cost this branch does not pay.
+
+`cluster_of` reads `fragment.z`, the framebuffer's depth, and multiplies. `View::read` builds its
+boundaries as `projection.distance_at(i / depth_extents)`, the exact inverse. The two are equal
+**by construction rather than by agreement**, and both sides document that this is the reason
+(`shaders.rs:427-435` and `assignment.rs:539-543`). Recovering a view distance on the GPU would
+need the near and far planes and a divide — what the shader's comment says the design avoids —
+and would put a second copy of the depth curve in the shader at a divide and a logarithm per
+fragment.
+
+Now that the box holds its cell, what is left is only how *loose* it is, and the same literature
+says this algorithm does not benefit from answering that. The one route to exponential slicing
+without the trade is to change `DepthMap` from its rational form to a logarithmic curve, and
+`DepthMap` also drives the depth buffer, the shadow pages and every scene's depth test. That is a
+renderer change, not a cluster change, and it is not proposed here.
 
 ## Not proposed here
 

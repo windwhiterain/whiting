@@ -112,14 +112,15 @@ const SENSOR_WIDTH: f64 = 36.0;
 ///
 /// # Why this is not a wide range
 ///
-/// A projection's depth is a fraction of the way from the near plane to the far one in `1/d`,
-/// so a far plane far enough away collapses the whole scene into the last slice of the cluster
-/// grid. A cluster of the **last** slice is the slab at the slice's far boundary, which is the
-/// far plane, where a perspective view is widest — so its column is a slab forty metres out and
-/// off to one side, and a light standing over the table is further from that slab than its own
-/// radius. The cluster is then lit by nothing at all, and the frame is covered in rectangular
-/// patches a cluster wide. See the proposal: the scene sets its planes and the framework
-/// should not need it to.
+/// A projection's depth is a fraction of the way from the near plane to the far one in `1/d`, so
+/// a far plane far enough away collapses the whole scene into the last slice of the cluster grid.
+/// That slice's cells are then slabs tens of metres across holding nothing but a table, and every
+/// light over the table is tested against all of them and kept by most. Planes close to what the
+/// scene draws keep a slice the size of its own contents.
+///
+/// A cluster's box is the min and max of its cell's eight frustum corners (`View::box_of`), so a
+/// light is dropped from a cluster only when it is out of reach of everything that cell holds. The
+/// planes here are a scene's own framing decision and not a way of staying clear of the grid.
 const NEAR: f64 = 0.25;
 const FAR: f64 = 8.0;
 

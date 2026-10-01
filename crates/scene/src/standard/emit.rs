@@ -430,16 +430,15 @@ impl LightRead {
     /// far slices stand a long way beyond the geometry — and comparing against less would
     /// promote a light that stops short of a corner the scene draws.
     ///
-    /// **Promoting is not a pure optimisation, and it is not meant to be.** A cluster's box is
-    /// the cross-section at its slice's far boundary rather than a superset of the slice (see
-    /// `View::box_of`), so the culling test can drop a light from a box that holds a fragment
-    /// well inside its radius: the box's *nearest point* is further away than that fragment
-    /// is. A global light is evaluated for every fragment and so is immune to that error, and
-    /// the pixels it repairs are pixels that were drawn unlit for want of a light the cluster
-    /// walk mis-measured — a hole with edges on the cluster grid, which is the symptom this
-    /// whole rule exists to remove. The dune field is one: at the corner of the frame its two
-    /// lights are culled from seven boxes of the farthest slice, and a black notch the shape
-    /// of the grid is what that draws.
+    /// **Promoting now saves a slot and buys nothing else, because a cluster's box contains
+    /// its cell** (see `View::box_of`). A box that holds the cell and a sphere that holds the
+    /// scene cannot fail their distance test, so a promoted light was never going to be
+    /// dropped from any cluster holding a surface; the slots it gives up are the ones the far
+    /// slices spend on empty space. What the rule really buys is immunity. A global light is
+    /// evaluated for every fragment and does not depend on the cluster walk being right, which
+    /// is what makes "name no reach" a good default: an author who forgets the number gets a
+    /// light that is wrong everywhere and says so, rather than one that is subtly absent at
+    /// the edge of the frame and says nothing.
     ///
     /// The reach itself is not applied to anything: a record carries the radius the document
     /// named and the shading loop has no test against it — the radius is a culling number, not
