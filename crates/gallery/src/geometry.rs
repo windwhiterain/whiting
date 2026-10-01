@@ -341,6 +341,97 @@ pub fn sphere(divisions: usize, radius: f64) -> PackedList {
     points.finish()
 }
 
+/// Builds a surface of revolution about the **y** axis: a profile, turned.
+///
+/// # Invariants
+///
+/// - The profile is a polyline of `(radius, height)` pairs read in order, and the surface
+///   between two consecutive entries is one band of quads. A profile that begins and ends on
+///   the axis — a radius of zero — closes the shape, and that is how a hollow object is one
+///   mesh: a bowl is a profile that goes out along its underside, up its outside, over its
+///   rim, back down its inside and in along the inside of its base. Its two surfaces are one
+///   run of points and there is no second mesh to keep in step with the first.
+/// - The normal is taken from the **profile's own tangent** and not from the triangles the
+///   surface is drawn as, so a coarse division shades as a smooth solid. Normals per facet
+///   make a turned shape read as a polygon however many segments it is given, which is the
+///   one thing a turned shape cannot look like.
+/// - The texture coordinate runs one turn across the profile and its own arc length up it, so
+///   a pattern sampled from it has no seam at the join and no stretch where the profile turns.
+///
+/// A profile with fewer than two entries, or with no segments, is an empty run: a shape with
+/// no surface is drawn as nothing rather than refused, because a scene that generated one
+/// generated it from its own numbers.
+pub fn lathe(profile: &[[f64; 2]], segments: usize) -> PackedList {
+    let mut points = Shaded::with_capacity(profile.len().saturating_mul(segments) * 6);
+    if profile.len() < 2 || segments == 0 {
+        return points.finish();
+    }
+
+    // The arc length up the profile, so a texture does not slide where the profile turns a
+    // corner, and the tangent either side of each entry, so a vertex on the join of two bands
+    // is shaded as the average of them rather than as one of them.
+    let mut arc = Vec::with_capacity(profile.len());
+    let mut total = 0.0;
+    arc.push(0.0);
+    for pair in profile.windows(2) {
+        let (dr, dy) = (pair[1][0] - pair[0][0], pair[1][1] - pair[0][1]);
+        total += (dr * dr + dy * dy).sqrt();
+        arc.push(total);
+    }
+    let height_at = |index: usize| arc[index] / total.max(1e-9);
+
+    // The outward normal of a revolve at one entry of the profile.
+    //
+    // The surface is `(r cosθ, y, r sinθ)`, so its tangent along the profile is
+    // `(dr cosθ, dy, dr sinθ)` and its tangent around the axis is `(-sinθ, 0, cosθ)`. The
+    // cross product of the second into the first is `(-dy cosθ, dr, -dy sinθ)`, which points
+    // **in**, so what is returned is its negation. A profile that rises as it widens — the
+    // outside of a bowl — then has a normal that leans out and down, which is where the
+    // surface is.
+    let normal_at = |index: usize, angle: f64| -> [f64; 3] {
+        let (mut dr, mut dy) = (0.0, 0.0);
+        if index + 1 < profile.len() {
+            dr += profile[index + 1][0] - profile[index][0];
+            dy += profile[index + 1][1] - profile[index][1];
+        }
+        if index > 0 {
+            dr += profile[index][0] - profile[index - 1][0];
+            dy += profile[index][1] - profile[index - 1][1];
+        }
+        normalized([dy * angle.cos(), -dr, dy * angle.sin()])
+    };
+    let at = |index: usize, angle: f64| -> ([f64; 3], [f64; 3], [f64; 2]) {
+        let (radius, height) = (profile[index][0], profile[index][1]);
+        (
+            [radius * angle.cos(), height, radius * angle.sin()],
+            normal_at(index, angle),
+            [angle / std::f64::consts::TAU, height_at(index)],
+        )
+    };
+
+    for segment in 0..segments {
+        let (from, to) = (
+            segment as f64 / segments as f64 * std::f64::consts::TAU,
+            (segment + 1) as f64 / segments as f64 * std::f64::consts::TAU,
+        );
+        for band in 0..profile.len() - 1 {
+            let corners = [
+                at(band, from),
+                at(band + 1, from),
+                at(band + 1, to),
+                at(band, to),
+            ];
+            // Wound counter clockwise seen from outside the shape, so the surface faces away
+            // from the axis it was turned about.
+            for index in [0usize, 1, 2, 0, 2, 3] {
+                let (position, normal, texture) = corners[index];
+                points.push(position, normal, texture);
+            }
+        }
+    }
+    points.finish()
+}
+
 /// Builds a cone standing on the ground, tapering to a point above it.
 ///
 /// The base is a regular polygon of `sides` faces and the side is a fan from the apex, so

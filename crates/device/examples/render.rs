@@ -116,6 +116,17 @@ async fn run() -> Result<(), String> {
                 .map_err(|error| format!("the scene does not compile: {error}"))?;
             let compiled_at = started.elapsed();
 
+            // What the compiler learned and could not refuse on. A note is not an error: a
+            // scene lit less than it was drawn still renders, and the render is wrong in a way
+            // nobody sees until the frame is looked at. A host that keeps the field to itself
+            // is a host that hands over a wrong image without a word, so it is printed here —
+            // once per camera, because the notes are about the view that camera compiles.
+            if camera == 0 {
+                for note in &compiled.notes {
+                    println!("note at {}: {}", note.path, note.message);
+                }
+            }
+
             let frame = renderer
                 .render(&compiled.graphics.value, &compiled.instance.value)
                 .map_err(|error| {

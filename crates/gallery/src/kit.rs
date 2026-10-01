@@ -85,6 +85,35 @@ pub fn light(
     )
 }
 
+/// Builds one point light that says how far it reaches.
+///
+/// # Why a scene has to say
+///
+/// The cluster assignment tests a light against the boxes it can reach, and a light that
+/// names no `radius` is given one box radius of everything the scene draws. That default is
+/// right for a lamp standing inside the scene and wrong for a light **outside** it: a window
+/// two and a half metres from the table reaches the table and is not inside the box around
+/// it, so a scene that leaves the radius out gets a light that lights nothing, which renders
+/// as a frame with one light missing and no complaint.
+///
+/// The value is the distance the light is meant to carry over, so it wants to be at least the
+/// distance from the light to the furthest surface it is supposed to light.
+pub fn light_with_radius(
+    label: &str,
+    position: [f64; 3],
+    color: [f64; 3],
+    intensity: f64,
+    shadow_extent: f64,
+    radius: f64,
+) -> Value {
+    let Value::Enum { tag, mut fields } = light(label, position, color, intensity, shadow_extent)
+    else {
+        unreachable!("a light is an enum value")
+    };
+    fields.insert(scene::standard::RADIUS.to_owned(), Value::Float(radius));
+    Value::Enum { tag, fields }
+}
+
 /// Builds one mesh of a scene: its label, how its points are read, and the points.
 ///
 /// # Invariants

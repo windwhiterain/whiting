@@ -210,6 +210,18 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // Eleven lights and eight groups. The shadowing count is the one that moved: a
+            // light with a page costs a pass per group, which is what a scene pays for keeping
+            // a window's softness as a grid of point lights.
+            "stilllife",
+            Stages {
+                shadowing: 88,
+                depthing: 8,
+                lighting: 8,
+                other: 1,
+            },
+        ),
+        (
             "studio",
             Stages {
                 shadowing: 1,
