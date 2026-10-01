@@ -506,10 +506,14 @@ fn dot(left: [f64; 3], right: [f64; 3]) -> f64 {
 ///
 /// # Invariants
 ///
-/// The box is the cross-section at the slice's far boundary, which does **not** contain the
-/// slice: see [`View::box_of`]. Everything measured against it is therefore a statement
-/// about the box rather than about the surfaces inside it, which is what makes a light
-/// cullable from a box that holds a fragment well within its reach.
+/// The box **contains the cell it stands for**: see [`View::box_of`]. A light that
+/// [`Volume::nearest_squared`] drops from this box is therefore dropped from a volume that
+/// holds the cell's own surfaces, which is what makes that distance a statement about how far
+/// the light reaches rather than about where the box was drawn.
+///
+/// The box is looser than the cell, so a light can also be kept by a cluster that holds no
+/// surface of it. That costs shading time and never costs correctness, which is the direction
+/// a bounding volume is allowed to be wrong in.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ClusterBox {
     /// Across, measured from the centre of the frame.
@@ -524,7 +528,7 @@ pub(crate) struct ClusterBox {
 struct View {
     /// The distance at each slice boundary, one more than there are slices.
     boundaries: Vec<f64>,
-    /// The frame's half width and half height at each slice's far boundary.
+    /// The frame's half width and half height at each of those distances, across then up.
     widths: Vec<[f64; 2]>,
     width_extents: usize,
     height_extents: usize,
@@ -608,32 +612,43 @@ impl View {
     ///
     /// # Invariants
     ///
-    /// The box is the **cross-section at the slice's far boundary**, which is where a
-    /// perspective view is widest, and its depth interval is the slice's own. The alternative
-    /// — a box at the near boundary, which is the tighter fit — leaves out a light that
-    /// reaches the slice's far half, and a light missing from a cluster is a light nothing
-    /// can shade.
+    /// The box **holds the cell**: it is the smallest box containing the cell's eight frustum
+    /// corners, the four at the slice's near boundary and the four at its far one. Because a
+    /// cell of a perspective view is a slab of a wedge and not a box, holding it costs a box
+    /// looser than the cell, so neighbouring clusters' boxes overlap. That overlap is the
+    /// algorithm's accepted price, not an oversight: see
+    /// [Clustered Shading](https://gitmemories.com/index.php/DaveH355/clustered-shading), which
+    /// reports that the boxes "must overlap to cover the frustum shape" and that the technique
+    /// "does not benefit from more accurate cluster shapes or distributions of clusters".
     ///
-    /// **This box is not a superset of the slice, and the culling is slacker than a reader
-    /// would assume.** A slab of a widening view is a wedge, and a rectangle cut at the far
-    /// cross-section does not contain it: a fragment near the slice's *near* end is well
-    /// inside the frustum there and yet outside this box, because the box's across and up
-    /// spans are the far end's. So the test below can drop a light from a box that holds a
-    /// fragment much closer to it than the box's nearest point is — the light is culled
-    /// because of where the *box* is, not where the surface is. That is a hole in the image
-    /// with the shape of the grid, and the shape it takes is the last of this project's
-    /// reasons for a light to be global: see `LightRead::covers_scene`, where a light that
-    /// holds the whole scene is taken out of the walk entirely and evaluated for every
-    /// fragment instead.
+    /// Sizing the box from the **far** cross-section alone looks tighter and is wrong. The near
+    /// cell is narrower and sits proportionally further from the view axis, so at the edge of a
+    /// column or a row it leaves the far cell entirely. A fragment is then outside its own
+    /// cluster's box, and a light standing on that fragment is culled by
+    /// [`Volume::nearest_squared`] for lying outside the box rather than for being out of reach.
+    /// At the centre of the frame the two cells nest and the far one is enough, which is what
+    /// made the defect look like a screen-edge artefact. See
+    /// [proposals/cluster-box-span.md](../../../.agents/proposals/cluster-box-span.md).
     fn box_of(&self, column: usize, row: usize, slice: usize) -> ClusterBox {
-        let far = self.boundaries[slice + 1];
-        let [half_across, half_up] = self.widths[slice + 1];
+        let near_cell = [
+            span(column, self.width_extents, self.widths[slice][0]),
+            span(row, self.height_extents, self.widths[slice][1]),
+        ];
+        let far_cell = [
+            span(column, self.width_extents, self.widths[slice + 1][0]),
+            span(row, self.height_extents, self.widths[slice + 1][1]),
+        ];
         ClusterBox {
-            across: span(column, self.width_extents, half_across),
-            up: span(row, self.height_extents, half_up),
-            depth: [self.boundaries[slice], far],
+            across: hull(near_cell[0], far_cell[0]),
+            up: hull(near_cell[1], far_cell[1]),
+            depth: [self.boundaries[slice], self.boundaries[slice + 1]],
         }
     }
+}
+
+/// Returns the smallest interval containing both of two.
+fn hull(near: [f64; 2], far: [f64; 2]) -> [f64; 2] {
+    [near[0].min(far[0]), near[1].max(far[1])]
 }
 
 /// Returns the two ends of one column or row of a frame, given its half width.
