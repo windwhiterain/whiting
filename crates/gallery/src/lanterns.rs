@@ -236,7 +236,11 @@ fn build() -> (Vec<Value>, Value) {
 fn build_shaders() -> Vec<Value> {
     mesh_shaders(WATER_SURFACE, "")
         .into_iter()
-        .chain(std::iter::once(emission_shader("emission_lantern", GLOW)))
+        .chain(std::iter::once(emission_shader(
+            "emission_lantern",
+            GLOW,
+            "",
+        )))
         .chain(std::iter::once(post_shader(NIGHT, "")))
         .collect()
 }

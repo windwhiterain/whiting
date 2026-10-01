@@ -225,8 +225,15 @@ pub fn mesh_material(label: &str, shader: &str, custom_data: Value) -> Value {
 }
 
 /// Builds one instance: a mesh, where it is, how it is turned, and what draws it.
+///
+/// # Invariants
+///
+/// The label is taken as anything a string can be made from rather than as a `&str`,
+/// because a scene that places the same geometry in several passes needs a distinct label
+/// for each placement — a label names one instance in the **whole** scene, not one per pass —
+/// and a label that has to be assembled is one every call site then writes the same way.
 pub fn instance(
-    label: &str,
+    label: impl Into<String>,
     mesh: &str,
     translation: [f64; 3],
     rotation: [f64; 3],
@@ -236,7 +243,7 @@ pub fn instance(
     Value::structure([
         (
             scene::standard::LABEL.to_owned(),
-            Value::String(label.to_owned()),
+            Value::String(label.into()),
         ),
         (
             scene::standard::MESH.to_owned(),

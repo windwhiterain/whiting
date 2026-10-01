@@ -92,12 +92,18 @@ struct Uniforms {
 /// material's `custom_data` through them. It is a separate argument for the same reason the
 /// lighting stage's `surface` is: what a surface emits is the scene's business and the fact
 /// that it is added once is not.
-pub fn emission(vertex_inputs: &str, emission: &str) -> String {
+///
+/// `helpers` is module level `WGSL` the body needs — a sky, a mist, a noise — for the same
+/// reason the lighting stage takes one. **A stage whose body cannot reach a shared function
+/// cannot use one**, and a surface that emits the reflection of the same sky the frame's
+/// background is drawn from has no other way to say that the two are one sky.
+pub fn emission(vertex_inputs: &str, emission: &str, helpers: &str) -> String {
     format!(
         r#"{PLACEMENT_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var depth_buffer: texture_depth_2d;
 
+{helpers}
 struct Vertex {{
     @builtin(position) position: vec4<f32>,
     @location(0) world_position: vec3<f32>,
@@ -200,6 +206,28 @@ fn vertex_main(
 /// two schemas the stages and the mesh all declare, so a scene that changes its point schema
 /// gets the attributes for it without writing them out.
 pub fn lighting(vertex_inputs: &str, surface: &str, helpers: &str) -> String {
+    lighting_with_normal(vertex_inputs, "", surface, helpers)
+}
+
+/// The lighting stage of a scene that displaces the normal it is lit by.
+///
+/// # Why the normal is displaced before the shading and not after
+///
+/// Everything the fragment stage computes — the Lambert term, the specular lobe, the Fresnel
+/// term, the offset the shadow lookup is taken at — is a function of the shading normal, so a
+/// body spliced after them can only add to a colour it did not get to influence. A water
+/// surface with waves in it, a leaf that turns, a brushed metal and a coat of cloth are all
+/// unreachable for that one reason: the normal arrives, is used, and is never offered again.
+///
+/// `displace` runs where the normal arrives and before anything reads it, and may reassign
+/// `normal` — declared `var` for exactly that. An empty body changes nothing, so
+/// [`lighting`] is this with an empty `displace`.
+pub fn lighting_with_normal(
+    vertex_inputs: &str,
+    displace: &str,
+    surface: &str,
+    helpers: &str,
+) -> String {
     format!(
         r#"{LIGHTING_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -289,7 +317,13 @@ fn vertex_main(
 
 @fragment
 fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
-    let normal = normalize(in.normal);
+    // The shading normal, and the one thing a scene may displace. Everything below is a
+    // function of it, so displacing it here moves the diffuse term, the highlight, the
+    // Fresnel term and the offset the shadow is looked up at together — which is what a
+    // wave, a leaf or a piece of cloth needs, and what a body spliced after them could not
+    // reach.
+    var normal = normalize(in.normal);
+{displace}
     let to_light = uniforms.light_position - in.world_position;
     let light_range = max(length(to_light), 0.0001);
     let direction = to_light / light_range;
@@ -542,6 +576,19 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
 /// the mesh a scene draws all read one layout, and a scene that declares a different point
 /// schema gets the attributes for it without writing them out.
 pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
+    mesh_shaders_with_normal("", surface, helpers)
+}
+
+/// The same three shaders, for a scene that displaces the normal it is lit by.
+///
+/// # Invariants
+///
+/// The four shaders are declared together, because the stages have to agree about the point
+/// layout they all read and a scene that wrote one stage out by hand would have to keep that
+/// agreement by hand. A scene that displaces a normal declares its own lighting shader
+/// beside these rather than in place of them, and only the instances listed under `lighting`
+/// with that material are drawn by it.
+pub fn mesh_shaders_with_normal(displace: &str, surface: &str, helpers: &str) -> Vec<Value> {
     let point = kit::shaded_point_schema();
     let inputs = crate::attributes::gallery_vertex_inputs(&point);
     vec![
@@ -566,7 +613,7 @@ pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
         kit::shader(
             Stage::Lighting,
             "lighting",
-            &lighting(&inputs, surface, helpers),
+            &lighting_with_normal(&inputs, displace, surface, helpers),
             light_pass_schema(),
             point.clone(),
             kit::gallery_instance_schema(),
@@ -579,7 +626,7 @@ pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
         kit::shader(
             Stage::Emission,
             "emission",
-            &emission(&inputs, ""),
+            &emission(&inputs, "", helpers),
             emission_pass_schema(),
             point,
             kit::gallery_instance_schema(),
@@ -594,14 +641,46 @@ pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
 /// scene whose emission varies across a surface — a falloff, a flicker, a pattern — needs a
 /// body, and this is how it declares one. The body is written into the fragment stage's own
 /// scope, where `emitted` is the colour the stage returns and `in` is the point and the row.
-pub fn emission_shader(label: &str, body: &str) -> Value {
+///
+/// `helpers` is the module level `WGSL` the body is written against — a sky, a mist, a
+/// noise — and it is what lets a body that reflects something be written against the same
+/// copy of that something the rest of the scene uses.
+pub fn emission_shader(label: &str, body: &str, helpers: &str) -> Value {
     let point = kit::shaded_point_schema();
     let inputs = crate::attributes::gallery_vertex_inputs(&point);
     kit::shader(
         Stage::Emission,
         label,
-        &emission(&inputs, body),
+        &emission(&inputs, body, helpers),
         emission_pass_schema(),
+        point,
+        kit::gallery_instance_schema(),
+        kit::gallery_custom_schema(),
+    )
+}
+
+/// Builds a lighting shader of a scene's own, which displaces the normal it is lit by.
+///
+/// # Why this is beside [`mesh_shaders`] rather than in place of it
+///
+/// A pass draws one shader, so a surface whose shading differs from the rest of the scene
+/// needs a material that names a different one — and the two are then drawn by two passes
+/// that share a point schema, a row schema and a vertex layout. That is the arrangement the
+/// pipeline is built for: what differs between two surfaces is a shader and a row, not a
+/// pipeline.
+pub fn displaced_lighting_shader(
+    label: &str,
+    displace: &str,
+    surface: &str,
+    helpers: &str,
+) -> Value {
+    let point = kit::shaded_point_schema();
+    let inputs = crate::attributes::gallery_vertex_inputs(&point);
+    kit::shader(
+        Stage::Lighting,
+        label,
+        &lighting_with_normal(&inputs, displace, surface, helpers),
+        light_pass_schema(),
         point,
         kit::gallery_instance_schema(),
         kit::gallery_custom_schema(),
