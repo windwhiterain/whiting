@@ -183,6 +183,18 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
         .collect();
     let expected: Vec<(&str, Stages)> = vec![
         (
+            // A courtyard, its grove and the mountain: nine meshes, two lights with
+            // pages (the sun and the lantern at the gate), so the shadowing count is
+            // the nine meshes under both.
+            "bamboo",
+            Stages {
+                shadowing: 18,
+                depthing: 9,
+                lighting: 11,
+                other: 2,
+            },
+        ),
+        (
             "dunes",
             Stages {
                 shadowing: 2,

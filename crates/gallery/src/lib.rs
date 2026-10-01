@@ -55,6 +55,7 @@ pub mod geometry;
 pub mod kit;
 pub mod shaders;
 
+mod bamboo;
 mod dunes;
 mod lanterns;
 mod monoliths;
@@ -65,6 +66,7 @@ mod terraces;
 mod tidewater;
 mod tiles;
 
+pub use bamboo::bamboo;
 pub use dunes::dunes;
 pub use lanterns::lanterns;
 pub use monoliths::monoliths;
@@ -82,6 +84,7 @@ impl Gallery {
     /// Returns the names of every scene the gallery holds.
     pub fn names() -> &'static [&'static str] {
         &[
+            "bamboo",
             "dunes",
             "lanterns",
             "monoliths",
@@ -101,6 +104,7 @@ impl Gallery {
     /// is usually a command line and a list is more use than a backtrace.
     pub fn build(name: &str) -> Value {
         match name {
+            "bamboo" => bamboo(),
             "dunes" => dunes(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
