@@ -263,6 +263,13 @@ impl TextureSlot {
 /// - **A flat texture produces exactly the descriptors it produced before any of this
 ///   existed.** A view of one layer is the default view descriptor and the layout dimension
 ///   is `D2`, so a document that says nothing is byte for byte the document it was.
+/// - **The shape follows the variant and never the count.** An array of one layer is still an
+///   array: it is a `D2Array` view and a `D2Array` layout entry, because the shader that reads
+///   it declared `texture_depth_2d_array` and that is the only thing that can sample it.
+///   Reading the shape off `layers == 1` made a pool of a single page — a scene with one
+///   shadow casting light, which is a scene any of them may write — bind as a flat texture,
+///   and the interface check reported that as the shader declaring a shape the pass did not
+///   bind. The count says how deep the array is; the variant says what it *is*.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TextureShape {
     /// The width in pixels that each layer is.
@@ -271,6 +278,14 @@ pub struct TextureShape {
     pub height: u32,
     /// How many layers the texture has, which is one for a flat texture.
     pub layers: u32,
+    /// Whether the payload declared itself an **array**, whatever its layer count.
+    ///
+    /// # Invariants
+    ///
+    /// An array of one layer is an array. This is the flag the view and the layout entry read,
+    /// and it comes from the payload's variant rather than from `layers`, because a count of
+    /// one is what a flat texture *and* the shallowest pool both say.
+    pub arrayed: bool,
 }
 
 impl TextureShape {
@@ -322,6 +337,7 @@ impl TextureShape {
         Ok(Self {
             width,
             height,
+            arrayed: kind == Some(BinderKind::TextureArray),
             layers,
         })
     }
@@ -363,11 +379,13 @@ impl TextureShape {
     ///
     /// # Invariants
     ///
-    /// One layer is the *default* descriptor rather than a spelled out one, because the
-    /// default is a `D2` view of the single layer and a flat texture is exactly the
-    /// resource every document before a layer count existed described.
+    /// One layer is the *default* descriptor for a **flat** texture, because the default is a
+    /// `D2` view of a single layer and that is exactly the resource every document before a
+    /// layer count existed described. An array is a `D2Array` view however deep it is, since
+    /// a shader declares `texture_depth_2d_array` for a pool of one page as readily as for a
+    /// pool of sixty four.
     pub fn view_descriptor(&self) -> wgpu::TextureViewDescriptor<'_> {
-        if self.layers == 1 {
+        if !self.arrayed {
             return wgpu::TextureViewDescriptor::default();
         }
         wgpu::TextureViewDescriptor {
@@ -398,10 +416,10 @@ impl TextureShape {
 
     /// Returns the view dimension a shader must declare to read this shape.
     pub fn view_dimension(&self) -> wgpu::TextureViewDimension {
-        if self.layers == 1 {
-            wgpu::TextureViewDimension::D2
-        } else {
+        if self.arrayed {
             wgpu::TextureViewDimension::D2Array
+        } else {
+            wgpu::TextureViewDimension::D2
         }
     }
 
