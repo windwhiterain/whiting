@@ -628,6 +628,7 @@ fn spot_light() -> Schema {
             direction(),
             inner_angle(),
             outer_angle(),
+            optional_radius(),
             shadow_extent(),
         ],
     )
@@ -692,18 +693,52 @@ fn direction() -> (String, Schema) {
 /// covers — and a scene that wants a small light with a wide shadow volume, or the other way
 /// round, has to be able to say so.
 ///
-/// Absent is one box radius of what is drawn, which is the measure the camera and the shadow
-/// volume already use: a light the size of the scene it stands in reaches across it.
+/// **A point light must say it.** This field used to be optional and to default to one box
+/// radius of what is drawn, which is the measure the camera and the shadow volume already use
+/// and which is right for exactly one kind of light: one standing inside the scene it lights.
+/// For a light that stands outside it — a sun over a valley, a fill on the far side — that
+/// default is smaller than the light's own reach, so the light is dropped from every cluster
+/// past it and the boundary between lit and unlit comes out quantised to the **cluster grid**,
+/// which draws the terminator as a staircase of screen-aligned rectangles. No default can be
+/// right for both, because the right answer is a distance to the furthest surface the light is
+/// meant to carry over and only the scene knows where that is.
+///
+/// A **spot** light may leave it out, and is then culled by the reach of its own cone, which
+/// the two angles and the shadow volume already determine — see [`SpotCone::reach`]. A
+/// **directional** light declares no radius of its own and takes no cluster slot, so there is
+/// nothing for the number to cull.
 fn radius() -> (String, Schema) {
+    (
+        RADIUS.to_owned(),
+        Schema::new(SchemaKind::Float).with_documentation(
+            "How far the light reaches, in world units, as a sphere around its position. \
+             It is what decides which clusters the light is assigned to, so a radius that \
+             covers the whole frustum is a light in every cluster and one that culls \
+             nothing. A point light must give one, and it wants to be at least the \
+             distance from the light to the furthest surface it is meant to light; one that \
+             reaches short culls the light out of the clusters beyond it and draws its own \
+             edge as a staircase. A spot light may leave it out and is culled by the reach \
+             of its cone instead.",
+        ),
+    )
+}
+
+/// Builds the schema of how far a **spot** light reaches, which its cone answers for it.
+///
+/// The same field and the same meaning as [`radius`], and optional where that one is required:
+/// a cone already determines how far the light carries, so a spot that names nothing is culled
+/// by the reach of its own cone rather than by a number the document would have to restate.
+fn optional_radius() -> (String, Schema) {
     (
         RADIUS.to_owned(),
         Schema::new(SchemaKind::Float)
             .optional()
             .with_documentation(
                 "How far the light reaches, in world units, as a sphere around its position. \
-                 It is what decides which clusters the light is assigned to, so a radius that \
-                 covers the whole frustum is a light in every cluster and one that culls \
-                 nothing. Defaults to one box radius of the scene that is drawn.",
+                 It is what decides which clusters the light is assigned to. Optional for a \
+                 spot light, which is otherwise culled by the reach of its own cone — see \
+                 `SpotCone::reach` — and a radius narrower than that cone is a light that \
+                 stops lighting where it is still shining.",
             ),
     )
 }

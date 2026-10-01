@@ -66,12 +66,27 @@ pub fn image(label: &str, width: i64, height: i64, pixels: impl IntoIterator<Ite
 /// [`environment_light`], [`spot`] and [`directional`] are those siblings, and they are here now
 /// because those paths have landed. Every light kind the standard pipeline draws has a builder,
 /// which is what makes a gallery of scenes that compile the whole of what can be drawn.
+///
+/// # Why a scene has to say how far the light reaches
+///
+/// `radius` is a parameter rather than an option because the cluster assignment culls a light
+/// by it, and the value that would otherwise stand in — one box radius of everything the
+/// scene draws — is right for exactly one kind of light: one standing **inside** the scene it
+/// lights. A light outside it is culled short of its own reach, dropped from every cluster
+/// past that, and the boundary between lit and unlit comes out quantised to the cluster grid:
+/// a terminator drawn as a staircase of screen-aligned rectangles, with nothing in the frame
+/// to say a number was wrong.
+///
+/// The value wants to be at least the distance from the light to the furthest surface it is
+/// meant to light. A **spot** light needs no such parameter, because its cone already says how
+/// far it carries — see [`spot`].
 pub fn light(
     label: &str,
     position: [f64; 3],
     color: [f64; 3],
     intensity: f64,
     shadow_extent: f64,
+    radius: f64,
 ) -> Value {
     Value::variant(
         "Point",
@@ -81,37 +96,9 @@ pub fn light(
             ("color".to_owned(), triple(color)),
             ("intensity".to_owned(), Value::Float(intensity)),
             ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
+            (scene::standard::RADIUS.to_owned(), Value::Float(radius)),
         ],
     )
-}
-
-/// Builds one point light that says how far it reaches.
-///
-/// # Why a scene has to say
-///
-/// The cluster assignment tests a light against the boxes it can reach, and a light that names
-/// no `radius` is given one box radius of everything the scene draws. That default is right for
-/// a lamp standing inside the scene and wrong for a light **outside** it: a window two and a
-/// half metres from the table reaches the table and is not inside the box around it, so a scene
-/// that leaves the radius out gets a light that lights nothing, which renders as a frame with
-/// one light missing and no complaint.
-///
-/// The value is the distance the light is meant to carry over, so it wants to be at least the
-/// distance from the light to the furthest surface it is supposed to light.
-pub fn light_with_radius(
-    label: &str,
-    position: [f64; 3],
-    color: [f64; 3],
-    intensity: f64,
-    shadow_extent: f64,
-    radius: f64,
-) -> Value {
-    let Value::Enum { tag, mut fields } = light(label, position, color, intensity, shadow_extent)
-    else {
-        unreachable!("a light is an enum value")
-    };
-    fields.insert(scene::standard::RADIUS.to_owned(), Value::Float(radius));
-    Value::Enum { tag, fields }
 }
 
 /// Builds one spot light of a scene: a point light with a cone.
@@ -124,10 +111,12 @@ pub fn light_with_radius(
 /// the light shines, so the cone opens away from the light rather than towards it, and its
 /// length does not matter.
 ///
-/// The builder takes no `radius`. A spot light's reach is its cone, and a `Spot` declares no
-/// radius of its own to be inconsistent with: the compiler culls it by one box radius of the
-/// scene, which is the whole scene, and the cone scales what survives. A scene that needs a
-/// reach narrower than that is asking a spot light to do a point light's job.
+/// The builder takes no `radius`. A spot light's reach is its cone, and the compiler culls it
+/// by the reach of that cone rather than by a number this builder would have to restate: the
+/// schema's `radius` is optional for a `Spot` precisely so that a cone is never culled shorter
+/// than the light it is drawing. A spot that stands **inside** the volume it lights is a
+/// different question — the cone reaches past the scene — and that is the one case a `Spot`
+/// should name a radius for, by writing the field beside the ones below.
 pub fn spot(
     label: &str,
     position: [f64; 3],

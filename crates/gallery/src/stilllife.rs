@@ -46,8 +46,8 @@ use scene::standard::Stage;
 use crate::geometry::{cuboid, fractal_noise, hash01, heightfield, lathe, sphere};
 use crate::kit::{
     camera_placed_on_lens, gallery_custom_schema, gallery_instance_schema, instance, instances,
-    light_with_radius, mesh, mesh_material, post_processes, screen_material, shaded_point_schema,
-    shader, surface, surface_reflecting,
+    light, mesh, mesh_material, post_processes, screen_material, shaded_point_schema, shader,
+    surface, surface_reflecting,
 };
 use crate::shaders::{depthing, post_shader, shadowing};
 
@@ -433,7 +433,7 @@ fn window_lights() -> Vec<Value> {
             // A metre of sky is not the same colour all over it, and the scatter gives the light
             // its own faint unevenness, which is what stops a lit wall from being a wash.
             let tint = 0.94 + 0.12 * scatter(index, 11);
-            lights.push(light_with_radius(
+            lights.push(light(
                 &format!("window-{row}-{column}"),
                 place([WINDOW_X, y, z]),
                 [tint, tint * 0.995, tint * 0.960],
@@ -452,7 +452,7 @@ fn window_lights() -> Vec<Value> {
     // land behind the things that made them and no second set of them is visible. A fill to one
     // side of the camera is a second light with a second set of shadows in the frame — which is
     // what this light was, and what a jug's ghost on the wall taught it not to be.
-    lights.push(light_with_radius(
+    lights.push(light(
         "bounce",
         place([-0.30, 0.26, 1.30]),
         [1.0, 0.72, 0.46],
@@ -463,7 +463,7 @@ fn window_lights() -> Vec<Value> {
     // And the room's own far corner, which reaches the shadow side of everything as a dim, cool
     // fill from above the camera. A frame whose only fill is warm reads as firelight. It is on
     // the axis too, and for the same reason.
-    lights.push(light_with_radius(
+    lights.push(light(
         "room",
         place([-0.10, 1.45, 1.15]),
         [0.62, 0.68, 0.80],

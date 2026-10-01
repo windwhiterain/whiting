@@ -23,6 +23,7 @@
 
 use definition::{Definition, DefinitionIdentifier, FieldMap, Registry, SchemaIdentifier, Value};
 use graphics::{ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA, LABEL, PASSES_FIELD};
+use whiting_scene::standard::RADIUS;
 use whiting_scene::standard::example_standard_scene;
 use whiting_scene::{
     CompileContext, CompileError, CompileOutput, Compiler, STANDARD_SCENE_SCHEMA, StandardScene,
@@ -260,6 +261,9 @@ fn point(label: &str) -> Value {
             ("position".to_owned(), triple([4.0, 6.0, 2.0])),
             ("color".to_owned(), triple([1.0, 0.95, 0.9])),
             ("intensity".to_owned(), Value::Float(1.0)),
+            // Wide enough to reach the geometry it stands over, which a point light is
+            // required to say: the field has no default behind it.
+            (RADIUS.to_owned(), Value::Float(20.0)),
             ("shadow_extent".to_owned(), Value::Float(2.5)),
         ],
     )

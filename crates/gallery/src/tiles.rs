@@ -123,6 +123,7 @@ pub fn tiles_of(pixels: Vec<u8>) -> Value {
                 [1.0, 0.94, 0.86],
                 3.0,
                 16.0,
+                12.0,
             )]),
         ),
         ("shaders".to_owned(), shaders),
