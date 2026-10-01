@@ -735,6 +735,60 @@ fn texture_with_data(format: &str, width: i64, height: i64, pixels: &[u8]) -> Va
     }
 }
 
+/// Returns a shader's pass schema with a texture bound at each field that names an image.
+///
+/// # Why the compiler writes this and not the author
+///
+/// A pass schema is a closed struct: a binder the schema does not declare is a binder the pass
+/// may not carry, so a pass that binds an image has to declare it. That declaration is the
+/// compiler's to write, because the field is where the author said what they wanted and the
+/// binding point is what the compiler decided to do about it. A shader that had to name the point
+/// itself would be naming a gpu resource, which is the one thing a scene does not do.
+///
+/// # Invariants
+///
+/// The point's name is the field's own name, and its schema is a texture declaration, because
+/// that is what the pass emits there. A schema that already declares the point is left alone
+/// rather than merged: a field is a field, and declaring it twice would be a schema that
+/// disagrees with itself.
+fn declared_with_images(pass: &Schema, custom: &Schema) -> Rc<Schema> {
+    let images = image_fields(custom);
+    if images.is_empty() {
+        return Rc::new(pass.clone());
+    }
+    // A pass schema is the interface of a pass: a `uniform` and a `binders` block, and the
+    // binder points are fields of the second. Adding one to the outer struct would declare a
+    // field of the interface that no pass carries.
+    let SchemaKind::Struct { fields } = &pass.kind else {
+        return Rc::new(pass.clone());
+    };
+    let Some(binders) = fields.get(graphics::BINDERS) else {
+        return Rc::new(pass.clone());
+    };
+    let SchemaKind::Struct {
+        fields: binder_fields,
+    } = &binders.kind
+    else {
+        return Rc::new(pass.clone());
+    };
+    let mut binder_fields = binder_fields.clone();
+    for field in images {
+        binder_fields.insert(
+            field.clone(),
+            graphics::texture_binding_schema().with_documentation(
+                "The image this pass binds, at the point named after the custom field the \
+                 material named it in.",
+            ),
+        );
+    }
+    let mut interface = fields.clone();
+    interface.insert(
+        graphics::BINDERS.to_owned(),
+        Schema::new(SchemaKind::structure(binder_fields)),
+    );
+    Rc::new(Schema::new(SchemaKind::structure(interface)))
+}
+
 /// Reads the meshes a scene declares.
 fn read_meshes(
     scene: &Value,
@@ -1362,14 +1416,18 @@ fn read_shader(shader: &Value, path: &Path) -> Result<ShaderRead, CompileError> 
         )
     };
 
+    let custom_schema = read(scene_schema::CUSTOM_SCHEMA)?;
+    let pass_schema = read(scene_schema::PASS_SCHEMA)?;
     Ok(ShaderRead {
         stage,
         label: text(shader, path, scene_schema::LABEL)?.to_owned(),
         source: text(shader, path, scene_schema::SOURCE)?.to_owned(),
-        pass_schema: read(scene_schema::PASS_SCHEMA)?,
+        // A field that names an image is a binder the pass carries, so the interface the shader
+        // is checked against has to say so. See [`declared_with_images`].
+        pass_schema: declared_with_images(&pass_schema, &custom_schema),
         instance_schema,
         point_schema,
-        custom_schema: read(scene_schema::CUSTOM_SCHEMA)?,
+        custom_schema,
     })
 }
 
