@@ -40,6 +40,25 @@
 //! [`crate::verify_pass_inputs`] cannot report a disagreement about it: a shader's declared
 //! interface says it reads a texture, and carries no opinion on how it is read. The device
 //! is where the two are compared, against the layout it actually built.
+//!
+//! # A texture array: the count is a payload, the layer is a declaration
+//!
+//! A texture may have **layers**, which are images of the same size stacked in one texture.
+//! One layer is a flat texture, which is what every document means today, so a payload
+//! that says nothing has one and a declaration that says nothing draws into the first.
+//!
+//! The two halves live on opposite sides of the binding, because they answer different
+//! questions. **How many** layers a texture has is a fact about the image, so it is a
+//! payload field beside `width` and `height`, and it is what the texture is created with.
+//! **Which** layer a pass draws into is a fact about that pass, so it is a declaration
+//! field, because a pool is one texture with many layers and one pass per light: a payload
+//! naming the layer would name one page for the whole image, which is the one addressing
+//! scheme a pool exists to replace.
+//!
+//! A pass that only *reads* a layered texture names no layer, because a shader indexes the
+//! layers itself with the page its own light record carries. That is why the field is on
+//! the declaration and not on the payload: the read side is a shader's business and the
+//! write side is a pass's.
 
 use definition::{Path, Schema, SchemaKind, Value};
 
@@ -70,6 +89,17 @@ pub const WIDTH: &str = "width";
 
 /// Field holding a texture height in pixels.
 pub const HEIGHT: &str = "height";
+
+/// Field holding how many layers a texture payload has.
+pub const LAYERS: &str = "layers";
+
+/// Field holding which layer of a texture a declaration draws into.
+///
+/// This is the *declaration's* field, not the payload's, and the two are named apart on
+/// purpose: [`LAYERS`] says how many there are and this says which of them. A pass that
+/// renders into page four of a pool names four here, and every other pass that binds the
+/// same entry still sees the whole array.
+pub const LAYER: &str = "layer";
 
 /// Field holding a texture format name.
 pub const FORMAT: &str = "format";
@@ -229,6 +259,14 @@ fn texture_resource() -> (String, Schema) {
             ),
             (WIDTH.to_owned(), Schema::new(SchemaKind::Int)),
             (HEIGHT.to_owned(), Schema::new(SchemaKind::Int)),
+            (
+                LAYER.to_owned(),
+                Schema::new(SchemaKind::Int).optional().with_documentation(
+                    "Which layer of the texture this pass draws into, counted from zero. \
+                     Absent means the first. A pass that only reads a layered texture \
+                     names none, because a shader reads a layer by its own index.",
+                ),
+            ),
             (FORMAT.to_owned(), Schema::new(SchemaKind::String)),
         ])),
     )
@@ -425,6 +463,17 @@ pub fn binder_payload_schema() -> Schema {
             Schema::new(SchemaKind::structure([
                 (WIDTH.to_owned(), Schema::new(SchemaKind::Int)),
                 (HEIGHT.to_owned(), Schema::new(SchemaKind::Int)),
+                (
+                    LAYERS.to_owned(),
+                    Schema::new(SchemaKind::Int).optional().with_documentation(
+                        "How many layers the texture has, where a layer is one image of the \
+                         same size. Absent means one, which is the flat texture every \
+                         document written before this field means. A shader names the layer \
+                         it reads itself, so a texture of many layers is still one binding \
+                         point; what it costs is the whole image once per layer, which is \
+                         what a pool of shadow pages is.",
+                    ),
+                ),
                 (FORMAT.to_owned(), Schema::new(SchemaKind::String)),
                 (
                     DATA.to_owned(),
@@ -615,6 +664,27 @@ impl<'pass> Declaration<'pass> {
             .variant_fields()?
             .get(SIZE_BYTES)?
             .as_int()
+    }
+
+    /// Returns which layer of the texture this declaration draws into, or `None` when it
+    /// names none and so means the first.
+    ///
+    /// # Invariants
+    ///
+    /// The count is not defaulted here, because this is a *declaration* and the defaults a
+    /// document may leave out are decided where the field is written: the payload's
+    /// [`LAYERS`] and this field's. A declaration that is not a texture has no layer, and
+    /// neither has a texture declaration that does not name one, which is every document
+    /// written before this field existed.
+    pub fn layer(&self) -> Option<i64> {
+        if self.value.variant_tag() != Some("Resource") {
+            return None;
+        }
+        let resource = self.value.variant_fields()?.get(RESOURCE)?;
+        if resource.variant_tag() != Some("Texture") {
+            return None;
+        }
+        resource.variant_fields()?.get(LAYER)?.as_int()
     }
 
     /// Resolves this declaration against an instance document.
