@@ -263,9 +263,29 @@ graphics computation, as data.
         - enum of:
           - `Buffer`
           - `Texture`
+          - `TextureArray`
         - each carries `source`, the instance entry the payload is in.
       - `Uniform`: uniform data, carried by `source`.
       - `Shader`: verify schema against `uniform` and `binders`.
+    - **decision**: `Texture` and `TextureArray` are two kinds, not one kind with a layer
+      count. `texture_depth_2d` and `texture_depth_2d_array` are two WGSL types and a
+      `textureLoad` on an array takes a layer index a flat texture has nowhere to put, so a
+      document whose payload reads `Texture` while meaning an array names something no
+      shader can read, and a reader of that document cannot tell which it holds. A reader
+      *can* tell a flat texture from an array of sixty four, so the document says which,
+      which is the same argument the light kinds made. The count is required rather than
+      defaulted, so there is no absent case for a reader to interpret.
+    - **decision**: the layer a pass draws into is a field of the `TextureArray`
+      *declaration*, not of the payload. A pool is one texture with many layers and one
+      pass per light: `layers` says how many the image has and `layer` says which of them
+      this pass writes, and every other pass that binds the same entry still sees the whole
+      array. A payload naming the layer would name one page for the whole image, which is
+      the addressing a pool exists to replace. A `Texture` declaration has no `layer` at
+      all, because a flat texture has no layer to choose between.
+    - **decision**: how many layers is a payload field and which one is a declaration
+      field, so the two halves of an array's addressing sit on opposite sides of the
+      binding. They answer different questions — the first is a fact about the image, the
+      second a fact about the pass — and only the second is per pass.
     - **decision**: the shader's `schema` lives on the instance entry, not in the
       graphics document. The interface travels with the shader that declares it, the
       pass keeps to naming its shader, and the instance schema is open so the new field
@@ -275,7 +295,27 @@ graphics computation, as data.
     - **invariant**: the declared kind and the kind of the entry it names must agree, and
       a payload must be at least as large as the declaration reads. A `Buffer` declared
       over a texture, or a read past the end of a buffer, would otherwise bind
-      successfully and produce nonsense.
+      successfully and produce nonsense. This is what forces a pass that binds a pool to
+      declare a `TextureArray`, rather than a `Texture` that quietly resolves to one.
+- **decision**: the interface check compares a texture's **shape**, not only its resource
+  kind. `ResourceKind::Texture` carries the shape, the layout entry's `view_dimension` is
+  read rather than discarded, and `naga`'s image `dim` and `arrayed` are read rather than
+  discarded, so a shader declaring `texture_depth_2d_array` where the pass bound a flat
+  texture is a render error naming the pass, the variable and both sides. Before this there
+  was one texture shape and the check's invariant that a resource kind is compared rather
+  than a resource's shape was sufficient; the moment a second shape exists it is not,
+  because the shape is part of the *type* a shader names rather than a property of its
+  size.
+  - the previous invariant stands for buffers. A buffer is a buffer whether it is a uniform
+    or a storage buffer, and a shader that asks for a storage buffer where the pass bound a
+    uniform still passes the check and fails in the backend. That gap is recorded, not
+    fixed, because the address space is a level of access rather than a different type.
+  - **invariant**: a shape the binding model never builds is left alone on both sides. A
+    one dimensional image is a WGSL type no document here declares and the device never
+    creates, so there is nothing to compare and forcing it into another shape would be a
+    lie in the other direction.
+  - the comparison is a parsed module and a list of layout entries, with no device in it, so
+    it is checkable on a machine with no adapter. That is the honest form of a test for it.
 - `verify_pass_inputs`: resolves a pass's `shader` entry and checks the pass's
   `uniform` and `binders` against that shader's `schema`.
   - the pass writes its binding points as an open dict, because the set of points is the

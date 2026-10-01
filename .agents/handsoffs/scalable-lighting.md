@@ -511,6 +511,159 @@ Settled. Each one is a constraint on the stage named beside it, not a suggestion
   reversible in one place, and the depth buffer's precedent for `frame` is the reason it might
   move there.
 
+## Stage 4b part 1: the device can build a texture array, and a pass can name a page
+
+**Status: done, on `feature/lighting`.** Three commits, in this order: the schema and the
+widened interface check together, then the descriptor, then the layer selection. The first
+two had to be one commit: a schema that can declare an array while the check still cannot
+see the difference is a worse state than either half, because it looks like it works.
+
+### The shape a texture has is a kind, not a count
+
+The blocker evidence in the section above said "add a `layers` field to the payload and the
+declaration". **That is type erasure and it was wrong**, and the correction matters: in
+wgpu a texture and a texture array are one `TextureDescriptor` with two fields, but in
+WGSL they are different types (`texture_depth_2d` against `texture_depth_2d_array`) and
+the access mode differs, a `textureLoad` on an array taking an index a flat texture has no
+place for. A single variant with a number in it accepts a document that reads `Texture`
+while meaning something no shader can name.
+
+What landed, in `crates/graphics/src/binders.rs`:
+
+- **`Texture` and `TextureArray` are two variants of the payload enumeration**, and two of a
+  declaration's `resource` enumeration. `Texture` declares exactly what it declared before
+  this effort, so no existing document changes meaning. `TextureArray` adds a **required**
+  `layers` — required, not defaulted, so there is no absent case for a reader to
+  interpret — and a `Texture` payload has no `layers` field to fall back on. Both shapes
+  are built from one shared field list (`texture_payload_fields`, `texture_declaration`)
+  rather than written out twice, so the size, format, pixels and sampler settings cannot
+  drift apart.
+- **`BinderKind::TextureArray`** joins `Texture` as its own kind, with
+  `BinderKind::is_texture()` for the callers that ask "is this an image" rather than "which
+  image is this". `layers_of(payload)` answers a count **only** for an array; it returns
+  `None` for a flat texture rather than a one, because returning one is the erasure the two
+  kinds exist to remove.
+- **`layer` is a field of the `TextureArray` declaration only**, read by
+  `Declaration::layer()`. See "Where a pass names its layer" below.
+- `texture_size` in `crates/device/src/render.rs` uses `is_texture()`, so the noop renderer
+  sizes a frame from a pool's page size as it does from a flat texture's.
+
+### Where a pass names its layer, and why
+
+**On the declaration's `resource` field, and only on the `TextureArray` variant.** The
+alternatives and why they are wrong:
+
+- **On the target declaration in the pass** — `targets` is a `List(String)` of binding point
+  names in attachment order (`crates/graphics/src/pass.rs:124-130`). An element that became
+  a struct would change every existing document, and a parallel list of layers would have
+  to be matched to it by position.
+- **On the instance entry** — that is the whole texture, shared by every pass that binds
+  it. A payload naming a layer would name one page for the whole image.
+- **On the binder, generically** — that is what the declaration *is*: the binder's
+  `resource` field is where `source`, the size and the format already live, and a target is
+  always also declared as a binder (`bindings.rs` refuses a target that is not one of the
+  pass's bindings). So the layer needed no new plumbing to reach the attachment.
+
+A pass that only *reads* a pool names no layer, and is **refused** if it tries to: the
+shader indexes the layers itself with the page its own light record carries. Absent means
+page zero.
+
+### The device side
+
+`TextureShape` in `crates/device/src/wgpu_renderer/bindings.rs` is the one place that knows
+what a payload's shape is. It is read before anything is created, and the descriptor, the
+view, the layout entry and the attachment's view all derive from it, so none of them can
+disagree about a shape.
+
+- the **limit** is read from the device (`self.device.limits().max_texture_array_layers`),
+  not written down, and a count above it is **refused naming the limit**, never clamped. A
+  count of zero is refused too, and a zero *extent* is still rounded up to one as it always
+  was, because a zero extent is a very small image and a zero layer count is no image.
+- the **texture dimension stays `D2`** for an array. An array of two dimensional images is
+  a two dimensional texture whose depth is its layer count, which is what
+  `depth_or_array_layers` is for; a volume would be `D3` and no document here declares one.
+  What changes is the **view**: a `D2Array` covering every layer, and the layout entry that
+  has to agree with it.
+- **a flat texture produces exactly what it produced before**: its extent is one layer, its
+  dimension is `D2`, its view descriptor is `TextureViewDescriptor::default()` and its
+  layout dimension is `D2`. `tests/texture_array_shape.rs` asserts all four against the
+  literals the module used to write.
+- an **array carrying `data` is refused**: filling a texture averages neighbouring texels
+  and cannot tell a layer boundary from a row. A pool is written by passes.
+- a **pass drawing into a layer the pool does not have is refused**, for the same reason a
+  clamped pool is refused: it would write page zero again and hand one light another's
+  shadow.
+- the attachment's view is built at bind time from the declaration, not taken from the
+  texture cache, because it is a function of that pass's document and one cached texture
+  has to serve every pass that writes a different page.
+
+**Two things the layer made necessary, which were quietly wrong otherwise.** Both are
+recorded as invariants on the code that does them:
+
+- **The clear bookkeeping is keyed on the entry *and* the layer** (`TextureSlot::clear_key`).
+  It used to be the entry alone, so the second shadowing pass into a pool would have
+  *loaded* the first one's page instead of clearing its own, and two lights would have cast
+  the same shadow.
+- **A frame is read back from the layer that was written** (`RenderedTarget::layer`, and the
+  copy's `origin.z`). A pass that drew into page three produced page three; reading page
+  zero would answer a question nobody asked. The multisampled copy keeps one layer whatever
+  the target's depth, so an antialiased pass into a page resolves into that page.
+
+### The interface check widened, in the same commit as the schema
+
+`ResourceKind::Texture` now carries the shape (`ImageShape`: `One`, `Array`, `Cube`,
+`Volume`). `kind_of` reads `view_dimension` out of the layout entry instead of discarding
+it, and `declared_resources` reads `dim` and `arrayed` out of the naga image type instead
+of discarding them. A shader declaring an array where the pass bound a flat texture is a
+render error naming the pass, the variable and both shapes.
+
+**This widens a deliberate invariant.** The module recorded "a resource kind is compared,
+not a resource's shape", and that was right when there was one texture shape to get wrong.
+The shape is now part of the *type* a shader names rather than a property of its size, so
+the invariant had to become "a buffer is compared as a buffer, and a texture as its shape".
+The buffer half is unchanged and its gap is still open: a shader declaring `var<storage>`
+where the pass bound a uniform passes the check and fails in wgpu, which is recorded in
+stage 1 and not fixed here. A one dimensional image is left alone on both sides, because
+no document here declares one and the device never creates one.
+
+The comparison was extracted out of `WgpuRenderer::check_bindings` into
+`check_resources(module, entries, label)`, which is re-exported from the crate root under
+the `wgpu` feature. It needs no device, so the check is testable on a machine with no
+adapter, which is the only honest way to test it.
+
+### What stage 4b part 1 did not close
+
+- **Nothing that creates a texture, a view, a bind group or a pipeline was executed.** This
+  machine has no adapter. The descriptor, the view and the layout values are asserted at
+  the schema and arithmetic level, and the *device path is unexecuted*: nothing here has
+  proved that a backend accepts a `D2Array` view of a depth array, that a render pass
+  accepts a single-layer view of one, or that a pipeline is built from a `D2Array` layout
+  entry. `crates/device/tests/gallery_render.rs` and `texture_channel_render.rs` need an
+  adapter and cannot run here.
+- **No shader in the repository declares a texture array**, so the widened check has never
+  seen a disagreement in a real document. `texture_array_interface.rs` drives it with
+  two one-line modules and hand-built entries.
+- **A shader's declared interface must name the `TextureArray` variant with the same fields
+  as the pass's declaration**, because `verify_pass_inputs` validates the pass's binder
+  values against the shader's declared schema and a `Struct` is closed. A clustered
+  lighting pass reading a pool therefore has to declare `Resource::TextureArray { source,
+  width, height, layers, format }` in its own interface schema, or the closed-struct check
+  refuses the pass's declaration. **This is the first thing stage 4b part 2 has to write.**
+- **`page` in the light record is still not read by anything.** The record carries the page
+  the pool gave a light, and nothing consumes it: that is the clustered lighting template,
+  which is 4b part 2.
+- **A `Directional` or `Environment` light still gets no page and no path**, because
+  `read_lights` still refuses those kinds. The exemption is designed and acted on by the
+  assignment and is unreachable from a document.
+- The pool's own limit check in `crates/scene/src/lighting/` is a constant of 256 and the
+  device's is the number the device was created with. They agree today because the renderer
+  requests `wgpu::Limits::downlevel_defaults()`. The compiler cannot ask an adapter, so
+  the duplication is inherent rather than an oversight: the scene side is an early, cheap
+  refusal and the device side is the one that means anything.
+- `SHADOW_MAP_WIDTH` and `SHADOW_MAP_HEIGHT` still exist and are still read by the per
+  light passes, as stage 4a recorded. Deleting them is the last edit of 4b part 2.
+
+
 ### Settled since: the page pool is a texture array, and the device gets extended
 
 The blocking question for 4b was how a clustered loop reaches a light's shadow. The page pool
@@ -525,10 +678,15 @@ rather than a filtered comparison sampler, so no hardware filter can bleed acros
 boundary; an atlas would have been workable. It was rejected for coupling two fields the
 project decided must not be coupled.
 
-What the device needs, all of it additive and defaulting to what a document means today:
+What the device needs, all of it additive and defaulting to what a document means today. This
+list is the specification stage 4b part 1 was written against; the one item that changed
+shape is the first, and the reason is in the section above:
 
-- a `layers` field on the `Texture` payload, because a document currently cannot express depth
-  at all, which is a limit of the schema rather than a decision
+- ~~a `layers` field on the `Texture` payload~~ — **superseded**. It is a `TextureArray`
+  **variant** beside `Texture`, carrying a required `layers`, and the declaration splits the
+  same way. A count on one variant was type erasure: it let a document read `Texture` while
+  meaning something no shader can name, because `texture_depth_2d` and
+  `texture_depth_2d_array` are two WGSL types with a different `textureLoad` arity.
 - `create_texture` to honour it instead of writing `depth_or_array_layers: 1` and
   `TextureDimension::D2`
 - the bind group layout's `view_dimension` to follow it instead of `D2`
