@@ -202,7 +202,8 @@ fn a_pool_the_scene_says_nothing_about_is_the_documented_one() {
 /// report is the real state of the renderer: `lanterns` emits 24 passes for three lights and
 /// 30 for four, and both numbers are per light per group. Run it with
 /// `cargo test -p whiting-scene --test shadow_pages -- --ignored` to see the bar being missed
-/// as it is today; it starts passing when stage 4b lands.#[test]
+/// as it is today; it starts passing when stage 4b lands.
+#[test]
 #[ignore = "the per light passes are still generated; the clustered pass cannot index a page yet"]
 fn the_lighting_pass_count_does_not_move_when_a_light_is_added() {
     // The acceptance bar for the whole effort, and it is checkable with no gpu: a pass count
