@@ -187,26 +187,43 @@ before anything else about the light is read.
   because writing tests needs the user's permission.
 
 
-## Stage 3: clustered assignment in a compute pass
+## Stage 3: clustered assignment, computed on the cpu
 
-Compute passes are real on this backend: `crates/device/src/wgpu_renderer/compute.rs:62-90`
-builds a compute pipeline and dispatches, and `mod.rs:331-343` runs them in instruction order
-before the rasterize passes. A compute pass needs a six component `workgroup` field, whose
-first triple is the shader's declaration and whose second is the dispatch count.
+**The assignment is not a compute pass.** This stage was originally planned as one, and that
+plan is wrong for this renderer. `emit(scene, camera_index)` returns the instance and
+`Renderer::render(&self, graphics, instance)` consumes an instance that is already built, so
+for a given scene and camera the frustum is fixed, the lights are fixed and the cluster boxes
+are fixed. Cluster assignment is therefore a pure function on the cpu, and it belongs in
+`emit` beside the rest of the compilation rather than in a pass.
 
-Three storage buffers, inside the limit of four:
+Doing it there collapses the work and buys something a gpu could not have. The textbook
+clustered path needs a clear dispatch, an `atomicAdd` count pass, a prefix sum for the
+offsets and a scatter pass, over a grid that `max_compute_invocations_per_workgroup` of 256
+cannot cover in one workgroup. On the cpu there is no atomics, no prefix sum and no dispatch,
+and **the per cluster cap can keep the highest contributing lights rather than the first
+ones to arrive.** Truncating a list is the one thing a sparse scheme must not do, and being
+able to rank exactly is the reason this stage is cheaper here than the plan assumed.
+
+Three storage buffers, all read only, inside the limit of four per shader stage:
 
 - light records, one per light
 - per cluster light count
 - per cluster light index list
 
-Starting grid is 16 x 9 x 24, which is 3456 clusters, with 8 bytes per cell for the index
-list and a per pixel cap that saturates rather than truncating.
+The grid and the per cluster cap are schema fields on the scene, defaulting to 16 x 9 x 24,
+which is 3456 clusters. The cap keeps the highest contributing lights and records that it
+dropped the rest, rather than dropping them silently.
 
 **Directional and environment lights must be exempt from clustering.** They cover the whole
 frustum at every depth, so letting them take cluster slots defeats the culling that makes the
-scheme work and spends the storage budget on lights that were never going to be culled. They
-get their own path.
+scheme work and spends the budget on lights that were never going to be culled. They get their
+own path.
+
+Stage 3 lands in two halves so that neither is unreviewable. This half produces the data and
+changes no shading: the cluster lists exist in the instance and nothing reads them yet. The
+next half writes the one lighting pass that consumes them, migrates the nine gallery scenes
+onto it and removes the per light pass generation from `emit`, which is where "replace rather
+than run both" is actually paid for.
 
 ## Stage 4: the sparse adaptive shadow page pool
 
@@ -255,6 +272,9 @@ Settled. Each one is a constraint on the stage named beside it, not a suggestion
 | whether light kind becomes an enum | 2, 3, 5 | yes, and a missing `kind` is a validation error rather than a default |
 | starting cluster grid | 3 | schema field with 16 x 9 x 24 as the default |
 | stage order | all | clustered and shadow before image based lighting |
+| replace the per light path or run both | 3b | replace; running both has no period of benefit in an offline renderer, it delivers a parallel implementation nobody uses |
+| how a directional light's shadow depth is expressed | 4 | derived from the scene's `bounds`, which `light_projection` already takes; `shadow_extent` is the half width of the orthographic volume and the near and far planes come from what is drawn |
+| where cluster assignment runs | 3 | on the cpu in `emit`, not in a compute pass, because the instance is built before the render and the frustum is therefore fixed |
 
 ## Still open
 
