@@ -12,16 +12,16 @@ vertex overrides, which are the pipeline's requirement rather than a ceiling.
 That change is one line and it is finished. What it leaves is a question about the shadow page
 pool, and the question is one this project already got wrong once and should not get wrong again.
 
-## What `MAX_TEXTURE_ARRAY_LAYERS` was, and what it is now
+## What `MAX_TEXTURE_ARRAY_LAYERS` was, and what it became
 
-`lighting::buffers::MAX_TEXTURE_ARRAY_LAYERS` is 256, and the compiler refuses a scene naming a
+`lighting::buffers::MAX_TEXTURE_ARRAY_LAYERS` was 256, and the compiler refused a scene naming a
 deeper pool than it. While the device asked for `downlevel_defaults()`, that constant was a
 **transcription of a hardware fact**: the floor really was 256, and the number in the compiler
 agreed with the number the device was created with. Raising the device's request and leaving the
 constant would have been a lie in the other direction — a scene asking for 1024 pages would have
 been refused by the compiler on a machine that could hold 4096 of them.
 
-So the constant stayed where it was, and its documentation now says what it is: **a floor this
+So the constant stayed where it was, and its documentation then said what it was: **a floor this
 compiler enforces, not a ceiling the hardware imposes**. The two are not the same kind of thing
 and they fail differently:
 
@@ -31,8 +31,9 @@ and they fail differently:
   behind. A document refused here is refused on *every* machine, including the ones that could
   have held it.
 
-That is a defensible thing for a compiler to do, and it is what the constant now is. It is also
-not the same as knowing what the hardware can do.
+That is a defensible thing for a compiler to do, and it was what the constant was. It was also
+never the same as knowing what the hardware can do, and the rest of this file is the argument
+that the difference is fatal.
 
 ## Why a const that tracks the hardware is the wrong shape
 
