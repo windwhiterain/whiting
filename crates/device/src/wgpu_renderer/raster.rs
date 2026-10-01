@@ -9,6 +9,10 @@
 //!   stage to write is rejected by the backend.
 //! - A target is cleared by the first pass that writes it and loaded by the rest, or the
 //!   second pass into a shared target would erase the first pass's contribution.
+//! - A target that is one layer of a texture array is cleared and resolved as **that
+//!   layer**, keyed by the layer as well as the instance entry. Keying on the entry alone
+//!   would make the second pass into a pool load the first one's page rather than clearing
+//!   its own, and two lights would cast the same shadow.
 
 use std::collections::BTreeMap;
 
@@ -38,10 +42,17 @@ struct Attachment<'bindings> {
 pub struct RenderedTarget {
     /// The texture the last colour pass drew into.
     pub texture: wgpu::Texture,
-    /// Its width in pixels.
+    /// Its width in pixels, which is the width of each of its layers.
     pub width: u32,
-    /// Its height in pixels.
+    /// Its height in pixels, which is the height of each of its layers.
     pub height: u32,
+    /// Which layer of it the pass drew into, which is the first unless the target is one
+    /// layer of a texture array.
+    ///
+    /// A frame is read back from the layer that was written rather than from the first one,
+    /// because a pass that drew into page three of an array produced page three, and reading
+    /// page zero would answer a question nobody asked.
+    pub layer: u32,
 }
 
 impl WgpuRenderer {
@@ -187,12 +198,13 @@ impl WgpuRenderer {
             let colour_attachments: Vec<Option<wgpu::RenderPassColorAttachment>> = colour
                 .map(|entry| {
                     let (view, resolve_target) = drawing_into(&multisampled, &entry.slot);
+                    let key = entry.slot.clear_key();
                     Some(wgpu::RenderPassColorAttachment {
                         view,
                         depth_slice: None,
                         resolve_target,
                         ops: wgpu::Operations {
-                            load: load(cleared, &entry.slot.source, clear),
+                            load: load(cleared, &key, clear),
                             store: wgpu::StoreOp::Store,
                         },
                     })
@@ -201,10 +213,11 @@ impl WgpuRenderer {
                 .collect();
             let depth_attachment = depth.map(|entry| {
                 let (view, _) = drawing_into(&multisampled, &entry.slot);
+                let key = entry.slot.clear_key();
                 wgpu::RenderPassDepthStencilAttachment {
                     view,
                     depth_ops: Some(wgpu::Operations {
-                        load: load_depth(cleared, &entry.slot.source),
+                        load: load_depth(cleared, &key),
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
@@ -234,8 +247,9 @@ impl WgpuRenderer {
 
         Ok(colour.map(|entry| RenderedTarget {
             texture: entry.slot.texture.clone(),
-            width: entry.slot.width,
-            height: entry.slot.height,
+            width: entry.slot.shape.width,
+            height: entry.slot.shape.height,
+            layer: entry.slot.layer,
         }))
     }
 
@@ -245,12 +259,16 @@ impl WgpuRenderer {
     /// The view is not kept: a pass that samples more than once creates one per draw and
     /// the backend drops it with the pass, which is cheaper than holding a multisampled
     /// copy of every target for the whole frame.
+    ///
+    /// The copy has one layer whatever the target's depth, because a pass draws into one
+    /// layer at a time and resolves into the view of that layer. An antialiased pass into a
+    /// page of a pool therefore resolves into that page and leaves the others untouched.
     fn multisample_view(&self, label: &str, slot: &TextureSlot, samples: u32) -> wgpu::TextureView {
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(&format!("{label} multisample")),
             size: wgpu::Extent3d {
-                width: slot.width,
-                height: slot.height,
+                width: slot.shape.width,
+                height: slot.shape.height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -284,7 +302,12 @@ impl WgpuRenderer {
             wgpu::TexelCopyTextureInfo {
                 texture: &target.texture,
                 mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
+                origin: wgpu::Origin3d {
+                    x: 0,
+                    y: 0,
+                    // The layer the pass drew into, which is the first for a flat texture.
+                    z: target.layer,
+                },
                 aspect: wgpu::TextureAspect::All,
             },
             wgpu::TexelCopyBufferInfo {

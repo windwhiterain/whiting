@@ -40,6 +40,31 @@
 //! [`crate::verify_pass_inputs`] cannot report a disagreement about it: a shader's declared
 //! interface says it reads a texture, and carries no opinion on how it is read. The device
 //! is where the two are compared, against the layout it actually built.
+//!
+//! # A texture array is a second kind, not a count on the first
+//!
+//! A texture may have **layers**, which are images of the same size stacked in one texture,
+//! and a document that holds one says `TextureArray` where a document that holds a flat
+//! image says `Texture`. The two are separate kinds rather than one kind with a count in
+//! it, and the reason is that a shader has no way to read them the same way: a flat
+//! texture is `texture_depth_2d` and an array is `texture_depth_2d_array`, two WGSL types,
+//! and `textureLoad` on an array takes an index argument that a flat texture has nowhere
+//! to put. A single variant with a number in it would accept a document that reads
+//! `Texture` while meaning something no shader can name, which is a document nobody can
+//! edit honestly and no reader could catch.
+//!
+//! This is the same argument the light kinds made: a reader *can* tell a flat texture from
+//! a sixteen layer one, so the document says which it is rather than leaving the reader to
+//! infer it from a field that might be absent.
+//!
+//! The two halves of an array's addressing live on opposite sides of the binding, because
+//! they answer different questions. **How many** layers a texture has is a fact about the
+//! image, so `layers` is a payload field and the texture is created with it. **Which**
+//! layer a pass draws into is a fact about that pass, so `layer` is a declaration field: a
+//! pool is one texture with many layers and one pass per light, and a payload naming the
+//! layer would name one page for the whole image, which is the addressing a pool exists to
+//! replace. A pass that only *reads* a pool names no layer, because a shader indexes the
+//! layers itself with the page its own light record carries.
 
 use definition::{Path, Schema, SchemaKind, Value};
 
@@ -70,6 +95,23 @@ pub const WIDTH: &str = "width";
 
 /// Field holding a texture height in pixels.
 pub const HEIGHT: &str = "height";
+
+/// Field holding how many layers a texture array has.
+///
+/// # Invariants
+///
+/// It is a required field of the `TextureArray` variant and is not a field of `Texture` at
+/// all, so there is no default to agree on: a document that wants a pool says how deep it
+/// is, and a document that wants a flat texture cannot say a count that would be ignored.
+pub const LAYERS: &str = "layers";
+
+/// Field holding which layer of a texture array a declaration draws into.
+///
+/// This is the *declaration's* field, and only the `TextureArray` variant carries it: a
+/// flat texture has no layer to choose between. A pool is one texture with many layers and
+/// one pass per light, so the pass says which of them it writes and every other pass that
+/// binds the same entry still sees the whole array.
+pub const LAYER: &str = "layer";
 
 /// Field holding a texture format name.
 pub const FORMAT: &str = "format";
@@ -105,8 +147,17 @@ pub const LAYOUT: &str = "layout";
 pub enum BinderKind {
     /// A buffer of bytes.
     Buffer,
-    /// A texture.
+    /// A texture of one layer.
     Texture,
+    /// A texture of more than one layer.
+    ///
+    /// A separate kind rather than a [`Texture`] carrying a count, because a shader names
+    /// the two with different types — `texture_depth_2d` and `texture_depth_2d_array` —
+    /// and reads them differently, a `textureLoad` on an array taking an index a flat
+    /// texture has nowhere to put. One kind with a number in it would let a document say
+    /// `Texture` and mean something no shader can name, which is the failure a reader of
+    /// the document could not see.
+    TextureArray,
     /// A uniform block.
     Uniform,
     /// A shader, addressed by path.
@@ -119,6 +170,7 @@ impl BinderKind {
         match self {
             Self::Buffer => "Buffer",
             Self::Texture => "Texture",
+            Self::TextureArray => "TextureArray",
             Self::Uniform => "Uniform",
             Self::Shader => "Shader",
         }
@@ -129,10 +181,23 @@ impl BinderKind {
         match tag {
             "Buffer" => Some(Self::Buffer),
             "Texture" => Some(Self::Texture),
+            "TextureArray" => Some(Self::TextureArray),
             "Uniform" => Some(Self::Uniform),
             "Shader" => Some(Self::Shader),
             _ => None,
         }
+    }
+
+    /// Returns whether this kind is a texture, whichever shape it has.
+    ///
+    /// # Invariants
+    ///
+    /// This is the question "is this an image", as against "which image is this". A caller
+    /// that only needs to read a size or a format asks it here rather than matching one
+    /// variant, so that the day a third texture shape is added the callers that did not
+    /// care are the ones that need no change.
+    pub const fn is_texture(self) -> bool {
+        matches!(self, Self::Texture | Self::TextureArray)
     }
 }
 
@@ -196,7 +261,78 @@ fn uniform_field() -> Schema {
 
 /// Every resource a declaration may name, as the variants of its `resource` field.
 fn all_resources() -> impl Iterator<Item = (String, Schema)> {
-    [buffer_resource(), texture_resource()].into_iter()
+    [
+        buffer_resource(),
+        texture_resource(),
+        texture_array_resource(),
+    ]
+    .into_iter()
+}
+
+/// Builds a texture declaration body around the fields its own shape adds.
+///
+/// # Why one builder and not two bodies
+///
+/// A flat texture and a texture array name their entry, give their size and give their
+/// format the same way, and the only differences are the array's layer count and the layer
+/// a pass draws into. Written out twice, that shared half would be free to drift, and a
+/// drift is a declaration that validates against a payload it cannot bind.
+fn texture_declaration(
+    tag: &str,
+    own: impl IntoIterator<Item = (String, Schema)>,
+) -> (String, Schema) {
+    let mut fields = vec![
+        (
+            SOURCE.to_owned(),
+            Schema::new(SchemaKind::String)
+                .with_documentation("Instance entry the texture is in."),
+        ),
+        (WIDTH.to_owned(), Schema::new(SchemaKind::Int)),
+        (HEIGHT.to_owned(), Schema::new(SchemaKind::Int)),
+    ];
+    // The shape's own fields sit between the size and the format, where a reader looks for
+    // what makes this texture the shape it is.
+    fields.extend(own);
+    fields.push((FORMAT.to_owned(), Schema::new(SchemaKind::String)));
+    (tag.to_owned(), Schema::new(SchemaKind::structure(fields)))
+}
+
+/// Builds the fields a texture array adds to what both shapes declare.
+///
+/// The count is required and states what it costs, because a reader choosing a pool depth
+/// is choosing memory: the whole image is stored once per layer, so sixty four pages of a
+/// thousand square depth texture cost sixty four times what one page does. The device caps
+/// the count at what it can build, and refuses rather than clamps, so an author who asks
+/// for more learns it at the document rather than in a frame.
+fn texture_array_fields() -> [(String, Schema); 2] {
+    [
+        (
+            LAYERS.to_owned(),
+            Schema::new(SchemaKind::Int).with_documentation(
+                "How many layers the array has, where a layer is one image of the same \
+                 size. The cost is the whole image once per layer. A count above what the \
+                 device can build is refused by name rather than clamped.",
+            ),
+        ),
+        (
+            LAYER.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "Which layer this pass draws into, counted from zero. Absent means the \
+                 first. A pass that only reads the array names none, because a shader \
+                 reads a layer by the index its own data carries.",
+            ),
+        ),
+    ]
+}
+
+/// Builds the declaration of a texture of one layer.
+fn texture_resource() -> (String, Schema) {
+    texture_declaration("Texture", [])
+}
+
+/// Builds the declaration of a texture of more than one layer.
+fn texture_array_resource() -> (String, Schema) {
+    texture_declaration("TextureArray", texture_array_fields())
 }
 
 /// Builds a buffer declaration body, which names the entry and the size read.
@@ -213,23 +349,6 @@ fn buffer_resource() -> (String, Schema) {
                 SIZE_BYTES.to_owned(),
                 Schema::new(SchemaKind::Int).with_documentation("Bytes the pass reads."),
             ),
-        ])),
-    )
-}
-
-/// Builds a texture declaration body, which names the entry and the format used.
-fn texture_resource() -> (String, Schema) {
-    (
-        "Texture".to_owned(),
-        Schema::new(SchemaKind::structure([
-            (
-                SOURCE.to_owned(),
-                Schema::new(SchemaKind::String)
-                    .with_documentation("Instance entry the texture is in."),
-            ),
-            (WIDTH.to_owned(), Schema::new(SchemaKind::Int)),
-            (HEIGHT.to_owned(), Schema::new(SchemaKind::Int)),
-            (FORMAT.to_owned(), Schema::new(SchemaKind::String)),
         ])),
     )
 }
@@ -318,11 +437,33 @@ impl SamplerSettings {
 ///
 /// The key's presence is the whole of the declaration, so this reads the field map and not
 /// the value under it. A payload that is not a texture struct is not sampled, which matches
-/// the schema: only a texture payload has the key.
+/// the schema: only a texture payload has the key, and both texture shapes declare it.
+///
+/// The question is the same for an array as for a flat texture, so a shader that samples a
+/// pool of shadow pages still says so. What it may not do is *compare*: a depth format is
+/// read with `textureLoad` in this project, and the device refuses a sampled depth texture
+/// whatever its shape.
 pub fn is_sampled(payload: &Value) -> bool {
     payload
         .variant_fields()
         .is_some_and(|fields| fields.contains_key(SAMPLED))
+}
+
+/// Returns how many layers a texture payload has, which only an array declares.
+///
+/// # Invariants
+///
+/// `None` is the flat texture and **not a defaulted count**. A `Texture` payload has no
+/// layer field to read, and a `TextureArray` payload that somehow had none is a document
+/// the schema already refuses, so a caller that needs a number asks
+/// [`BinderKind::is_texture`] and reads one for a flat texture itself. Returning a one here
+/// would put back the erasure the two kinds exist to remove: a reader could no longer tell
+/// a flat texture from an array by asking.
+pub fn layers_of(payload: &Value) -> Option<i64> {
+    if BinderKind::from_tag(payload.variant_tag()?) != Some(BinderKind::TextureArray) {
+        return None;
+    }
+    payload.variant_fields()?.get(LAYERS)?.as_int()
 }
 
 /// Returns whether a texture payload carries pixels to upload.
@@ -393,6 +534,70 @@ pub fn topology_of(payload: &Value) -> Option<&str> {
     payload.variant_fields()?.get(TOPOLOGY)?.variant_tag()
 }
 
+/// Builds the fields a texture payload has, beside the ones its own shape adds.
+///
+/// # Why one builder and not two bodies
+///
+/// The size, the format, the pixels and the four sampler settings mean exactly the same
+/// thing to a flat texture and to an array, and the only difference between the two is the
+/// layer count. Written out twice, that shared half would be free to drift, and a drift is
+/// a payload that validates against a shape and then builds the other one.
+fn texture_payload_fields(own: impl IntoIterator<Item = (String, Schema)>) -> Vec<(String, Schema)> {
+    let mut fields = vec![
+        (WIDTH.to_owned(), Schema::new(SchemaKind::Int)),
+        (HEIGHT.to_owned(), Schema::new(SchemaKind::Int)),
+    ];
+    // The shape's own fields sit between the size and the format, where a reader looks for
+    // what makes this texture the shape it is.
+    fields.extend(own);
+    fields.extend([
+        (FORMAT.to_owned(), Schema::new(SchemaKind::String)),
+        (
+            DATA.to_owned(),
+            Schema::new(SchemaKind::Bytes)
+                .optional()
+                .with_documentation(
+                    "The pixels, one texel per four bytes, top row first. Absent on a \
+                     texture a pass renders into, which has nothing to upload: a shadow \
+                     map is written, never read from the instance.",
+                ),
+        ),
+        (
+            SAMPLED.to_owned(),
+            Schema::new(SchemaKind::Unit).optional().with_documentation(
+                "Present when the shader reads this texture with `textureSample`, which is \
+                 what gives it a sampler at the binding after it. Absent means \
+                 `textureLoad`, which is how a render target is read: the post stage reads \
+                 the shaded image at the coordinates of the pixel it is writing and needs no \
+                 sampler. The key is a unit because its presence is the whole declaration.",
+            ),
+        ),
+        (
+            FILTER.to_owned(),
+            sampler_filter_schema().optional().with_documentation(
+                "How the image is magnified and minified. Absent means `Linear`.",
+            ),
+        ),
+        (
+            ADDRESS.to_owned(),
+            sampler_address_schema().optional().with_documentation(
+                "How the image is addressed outside zero to one. Absent means `Repeat`, \
+                 which is what a tiling surface wants; `ClampToEdge` is what a picture that \
+                 must not wrap wants.",
+            ),
+        ),
+        (
+            MIP_FILTER.to_owned(),
+            sampler_mip_filter_schema().optional().with_documentation(
+                "How the levels of the image are blended between. Absent means the filter; \
+                 `Nearest` selects one level rather than blending two, which is a hard edge \
+                 at every level boundary.",
+            ),
+        ),
+    ]);
+    fields
+}
+
 /// Builds the schema of an instance entry, which is what a declaration resolves to.
 pub fn binder_payload_schema() -> Schema {
     Schema::new(SchemaKind::enumeration([
@@ -422,54 +627,19 @@ pub fn binder_payload_schema() -> Schema {
         ),
         (
             "Texture".to_owned(),
-            Schema::new(SchemaKind::structure([
-                (WIDTH.to_owned(), Schema::new(SchemaKind::Int)),
-                (HEIGHT.to_owned(), Schema::new(SchemaKind::Int)),
-                (FORMAT.to_owned(), Schema::new(SchemaKind::String)),
-                (
-                    DATA.to_owned(),
-                    Schema::new(SchemaKind::Bytes)
-                        .optional()
-                        .with_documentation(
-                            "The pixels, one texel per four bytes, top row first. Absent on \
-                             a texture a pass renders into, which has nothing to upload: a \
-                             shadow map is written, never read from the instance.",
-                        ),
-                ),
-                (
-                    SAMPLED.to_owned(),
-                    Schema::new(SchemaKind::Unit).optional().with_documentation(
-                        "Present when the shader reads this texture with `textureSample`, \
-                             which is what gives it a sampler at the binding after it. Absent \
-                             means `textureLoad`, which is how a render target is read: the \
-                             post stage reads the shaded image at the coordinates of the pixel \
-                             it is writing and needs no sampler. The key is a unit because its \
-                             presence is the whole declaration.",
-                    ),
-                ),
-                (
-                    FILTER.to_owned(),
-                    sampler_filter_schema().optional().with_documentation(
-                        "How the image is magnified and minified. Absent means `Linear`.",
-                    ),
-                ),
-                (
-                    ADDRESS.to_owned(),
-                    sampler_address_schema().optional().with_documentation(
-                        "How the image is addressed outside zero to one. Absent means \
-                         `Repeat`, which is what a tiling surface wants; `ClampToEdge` is \
-                         what a picture that must not wrap wants.",
-                    ),
-                ),
-                (
-                    MIP_FILTER.to_owned(),
-                    sampler_mip_filter_schema().optional().with_documentation(
-                        "How the levels of the image are blended between. Absent means the \
-                         filter; `Nearest` selects one level rather than blending two, which \
-                         is a hard edge at every level boundary.",
-                    ),
-                ),
-            ])),
+            Schema::new(SchemaKind::structure(texture_payload_fields([]))),
+        ),
+        (
+            "TextureArray".to_owned(),
+            Schema::new(SchemaKind::structure(texture_payload_fields(
+                // The array's payload declares how deep the array is, and not which layer a
+                // pass writes: a payload is the image, and the image has no opinion about
+                // who is drawing into it. So the shared array fields are filtered down to
+                // the count rather than the count and the layer.
+                texture_array_fields()
+                    .into_iter()
+                    .filter(|(name, _)| name != LAYER),
+            ))),
         ),
         (
             "Uniform".to_owned(),
@@ -615,6 +785,27 @@ impl<'pass> Declaration<'pass> {
             .variant_fields()?
             .get(SIZE_BYTES)?
             .as_int()
+    }
+
+    /// Returns which layer of a texture array this declaration draws into, or `None` when
+    /// it names none and so means the first.
+    ///
+    /// # Invariants
+    ///
+    /// Only a `TextureArray` declaration has a layer, and the count it would be checked
+    /// against is not defaulted here: the two are fields of the same variant, so a
+    /// declaration that named a layer of a flat texture would be a document the schema
+    /// refuses. A pass that binds a texture without drawing into it names no layer either,
+    /// which is every document written before the field existed.
+    pub fn layer(&self) -> Option<i64> {
+        if self.value.variant_tag() != Some("Resource") {
+            return None;
+        }
+        let resource = self.value.variant_fields()?.get(RESOURCE)?;
+        if BinderKind::from_tag(resource.variant_tag()?) != Some(BinderKind::TextureArray) {
+            return None;
+        }
+        resource.variant_fields()?.get(LAYER)?.as_int()
     }
 
     /// Resolves this declaration against an instance document.

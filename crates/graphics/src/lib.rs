@@ -92,7 +92,7 @@ mod read;
 
 pub use binders::{
     Binder, BinderKind, Declaration, SamplerAddress, SamplerSettings, binder_declaration_schema,
-    binder_payload_schema, buffer_binding_schema, has_data, is_sampled, resolve_binder,
+    binder_payload_schema, buffer_binding_schema, has_data, is_sampled, layers_of, resolve_binder,
     resolve_for_pass, sampler_address_schema, sampler_filter_schema, sampler_mip_filter_schema,
     texture_binding_schema, uniform_binding_schema,
 };

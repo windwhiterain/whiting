@@ -48,3 +48,17 @@ required-features = ["wgpu"]
 [[test]]
 name = "gallery_render"
 required-features = ["wgpu"]
+
+# The interface check compares a parsed module against a layout and needs no adapter, so
+# this one runs on a machine with no gpu. It is what holds the check honest about a flat
+# texture against an array of them.
+[[test]]
+name = "texture_array_interface"
+required-features = ["wgpu"]
+
+# The shape a payload declares is arithmetic over a document and a limit, so what reaches
+# the descriptor, the view and the layout is checkable with no adapter. What a device then
+# does with those descriptors is not.
+[[test]]
+name = "texture_array_shape"
+required-features = ["wgpu"]
