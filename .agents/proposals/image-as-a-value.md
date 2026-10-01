@@ -1,9 +1,10 @@
 # An image is scene data, and the compiler is what binds it
 
-Status: **landed for the mesh stages.** Everything below is code, with the one amendment recorded
-under *What the build changed*. The rule held: a scene names its own image data and never names a
-gpu resource, and the compiler sorts a material's custom data by kind — packing the numbers into
-the instance row and lifting the image into a texture with a sampler.
+Status: **landed.** Everything below is code, with the amendments recorded under *What the build
+changed*. The rule held: a scene names its own image data and never names a gpu resource, and the
+compiler sorts a material's custom data by kind — packing the numbers into the instance row and
+lifting the image into a texture with a sampler. Both a mesh material and a screen material name
+one, by the same rule and through the same code.
 
 The scene that shows it is `tiles`, which generates its own pixels and samples them.
 `crates/device/tests/gallery_render.rs` draws it on a real adapter and reads the frame back,
@@ -27,7 +28,13 @@ touching the numbering:
   after it shifts by one. A shader that counts as though the image came last is refused by
   `check_bindings` with a message naming the point and the kind.
 - **The image binder is optional in the interface.** A material need not name an image, so a
-  required binder would make every material of that shader carry one.
+  required binder would make every material of that shader carry one. The same correction was
+  needed twice, once for the mesh stages and once for the screen stage, which is what an
+  invariant that is only stated in one place looks like when it is not stated at all.
+
+One stage is not grouped the way the others are. A post process runs once over the frame rather
+than once per object, so a screen material carries its own images rather than sharing a group's,
+and the image-emission half of the emitter is a function both callers share.
 
 ## The gap
 
@@ -140,9 +147,8 @@ built not to carry.
 
 ## What this does not close
 
-- **Images on screen materials.** A screen material's `custom_data` could carry one by the same
-  rule and the post stage's binder set would grow the same way. Same mechanism, and it should
-  follow once the mesh path is proven rather than before.
+- **A screen material's image is bound but never drawn**, because no gallery grade names one yet.
+  The mechanism is built and the tests hold the shape; what is missing is a grade that uses it.
 - **A texture a pass renders into and a later pass samples.** That is the shadow map and the
   depth buffer, which are pipeline internals rather than scene data, and they already work.
 - **A file.** Nothing in this framework reads the filesystem; a shader carries its own source

@@ -1,25 +1,22 @@
 # A sampled texture channel: a binding that names an image and the sampler that reads it
 
-Status: **the device half has landed**; the scene-side half is not started. Everything below
-the section *The corrected rule* is now code: the payload carries `data`, `sampled`, `filter`,
-`address` and `mip_filter`, a sampled texture takes a sampler at the binding after its own, the
-upload fills the level chain its size implies, and six tests in
-`crates/device/tests/texture_channel_render.rs` check it against a real adapter.
+Status: **landed, both halves.** Everything below the section *The corrected rule* is code: the
+payload carries `data`, `sampled`, `filter`, `address` and `mip_filter`, a sampled texture takes a
+sampler at the binding after its own, the upload fills the level chain its size implies, and six
+tests in `crates/device/tests/texture_channel_render.rs` check it against a real adapter.
 
-The section *What makes this landable now* is the part that was tested first: the negative case
-is the sampling shader with its sampler moved one number down, and it arrives as
+The section *What makes this landable now* is the part that was tested first: the negative case is
+the sampling shader with its sampler moved one number down, and it arrives as
 `the shader for `sampling` declares `image_sampler` at binding 1, and this pass binds a buffer
 there.` rather than as a backend message about a view dimension. That is why the rule could be
 changed at all, and it is the reason to keep the check rather than a reason to trust the rule.
 
-**What has not landed, and why the gap is not closed.** A standard scene still cannot sample an
-image, and no device change could have made it able to. A material carries one `custom_data`,
-which is a `Value` rather than a resource, and every mesh stage's binder set is a closed
-contract shared by every material and every shader in the gallery. So the channel is reachable
-from a hand written `Graphics` document and not from a scene, and the plan's *finding 7* is the
-one to start from. That is a separate design with its own question — whether a scene's textures
-are a per-material list, a per-scene list, or a new stage — and it should be written with the
-device half's numbering in hand, which it now is.
+**The scene side is a separate proposal, and it has landed too**: see
+[image-as-a-value.md](image-as-a-value.md). This one is about what a *binding* may carry, and that
+is a device question; the scene question — how an author asks for an image without naming a gpu
+resource — turned out to be about what an image is *as a value*, which is a different design and
+is recorded there. A scene names an image inside a material's `custom_data`, the compiler sorts
+the custom data by kind, and the result is the texture and sampler this proposal describes.
 
 ## The gap
 

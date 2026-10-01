@@ -76,6 +76,11 @@ provide utility to build compilers to compile `Definition` with certain schema i
       - `projection: Schema`
     - `LightSchema`
       - `projection: Schema`
+  - `Light`: enum of:
+    - `Directional`
+    - `Point`
+    - `Spot`
+    - `Environment`
   - `lights: Vec<Light>`
   - `cameras: Vec<Camera>` 
   - `textures: Vec<Texture>`
