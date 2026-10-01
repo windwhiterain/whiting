@@ -34,11 +34,13 @@ mod dunes;
 mod lanterns;
 mod monoliths;
 mod terraces;
+mod tiles;
 
 pub use dunes::dunes;
 pub use lanterns::lanterns;
 pub use monoliths::monoliths;
 pub use terraces::terraces;
+pub use tiles::tiles;
 
 /// Builds named scenes out of the parts in this module.
 pub struct Gallery;
@@ -46,7 +48,14 @@ pub struct Gallery;
 impl Gallery {
     /// Returns the names of every scene the gallery holds.
     pub fn names() -> &'static [&'static str] {
-        &["dunes", "lanterns", "monoliths", "studio", "terraces"]
+        &[
+            "dunes",
+            "lanterns",
+            "monoliths",
+            "studio",
+            "terraces",
+            "tiles",
+        ]
     }
 
     /// Builds the named scene.
@@ -60,6 +69,7 @@ impl Gallery {
             "monoliths" => monoliths(),
             "studio" => crate::standard::example_standard_scene(),
             "terraces" => terraces(),
+            "tiles" => tiles(),
             other => unimplemented!(
                 "the gallery holds {}, and `{other}` is not one of them",
                 Self::names().join(", ")

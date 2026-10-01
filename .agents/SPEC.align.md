@@ -796,15 +796,29 @@ Stated rather than left to be discovered:
     the fit, so the crop is a blunt instrument. The wet-ground reflection is a Fresnel
     stand-in rather than a reflection pass, which is why the ground is drawn as geometry
     instead of a clear colour.
-  - **No scene samples an image, yet.** The device half of the texture channel has landed: a
-    payload carries `data`, `sampled`, `filter`, `address` and `mip_filter`, a sampled texture
-    gets a sampler at the binding after its own, and the pixels and their level chain reach the
-    gpu. What is still missing is a way for a *standard scene* to name a texture: a material
-    carries one `custom_data`, which is a `Value` and not a resource, and every mesh stage's
-    binder set is a closed contract shared by every material and shader in the gallery. So the
-    channel is reachable from a hand written `Graphics` document and not from a scene, and
-    saying otherwise would be false. That is the scene-side half, and it is a separate design
-    with its own question — see [proposals/texture-channel.md](proposals/texture-channel.md).
+  - **A scene samples an image, and the compiler is what binds it.** `images` is a list of
+    labelled images — pixels, a size and a format — which a material names inside its
+    `custom_data`. The name is not a number, so the compiler sorts the custom data by kind: the
+    scalars and vectors are packed into the instance row as they always were, and the image
+    becomes a texture payload and a sampler bound at a point named after the field. The author
+    writes one name; the emitted documents hold a row and a texture.
+  - **The kind comes from the shader's `custom_schema`, not from the value.** A field carrying
+    the image marker is a field the compiler lifts; everything else is a field it packs. That is
+    why the marker is a schema attribute rather than a `SchemaKind`: `definition` is a general
+    data representation, and a texture is a graphics concept.
+  - **The binding point is the field's own name**, derived by the compiler and written by
+    nobody, so a shader declares the point its own schema already names and no author counts to
+    a binding. The pass schema the shader is checked against is generated from the same field, so
+    the two cannot disagree.
+  - **Images are part of the group key.** A pass binds one texture at one point, so two
+    instances naming different images in the same field are split into separate passes rather
+    than drawn by one pass that reads the wrong texture for half of them.
+  - **The one gallery scene that samples an image is `tiles`**, and it generates its own pixels:
+    nothing in this framework reads the filesystem, so a texture is something a scene compiler
+    produces. A pattern a loop can write is a texture, the same way a dune field's points are.
+  - **The scene-side gap is closed as far as the mesh stages.** A screen material's `custom_data`
+    could carry an image by the same rule and the post stage's binder set would grow the same
+    way; that is the same mechanism and it is not built.
 
 ### Invariants to keep
 

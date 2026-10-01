@@ -773,12 +773,17 @@ fn declared_with_images(pass: &Schema, custom: &Schema) -> Rc<Schema> {
     };
     let mut binder_fields = binder_fields.clone();
     for field in images {
+        // Optional, because a material need not name an image: the field it would name one in is
+        // optional in the custom schema, and a pass whose material named none binds nothing there.
+        // A required binder would make every material of that shader carry an image.
         binder_fields.insert(
             field.clone(),
-            graphics::texture_binding_schema().with_documentation(
-                "The image this pass binds, at the point named after the custom field the \
-                 material named it in.",
-            ),
+            graphics::texture_binding_schema()
+                .optional()
+                .with_documentation(
+                    "The image this pass binds, at the point named after the custom field the \
+                     material named it in. Absent when the material names no image.",
+                ),
         );
     }
     let mut interface = fields.clone();
@@ -1778,15 +1783,17 @@ fn shadowing_pass(
             ),
             (TIME.to_owned(), Value::Float(time)),
         ]),
-        mesh_bindings(group).chain(images.iter().cloned()).chain([(
-            SHADOW_MAP.to_owned(),
-            texture_binding(
-                &shadow_map_entry(light.label.as_str()),
-                SHADOW_MAP_WIDTH,
-                SHADOW_MAP_HEIGHT,
-                SHADOW_MAP_FORMAT,
-            ),
-        )]),
+        mesh_bindings(group)
+            .chain([(
+                SHADOW_MAP.to_owned(),
+                texture_binding(
+                    &shadow_map_entry(light.label.as_str()),
+                    SHADOW_MAP_WIDTH,
+                    SHADOW_MAP_HEIGHT,
+                    SHADOW_MAP_FORMAT,
+                ),
+            )])
+            .chain(images.iter().cloned()),
         vec![SHADOW_MAP],
         DEPTH_CLEAR,
         PipelineStateFields::default_state(),
@@ -1808,10 +1815,12 @@ fn depthing_pass(
             (PROJECTION.to_owned(), camera.clone()),
             (TIME.to_owned(), Value::Float(time)),
         ]),
-        mesh_bindings(group).chain(images.iter().cloned()).chain([(
-            DEPTH_BUFFER.to_owned(),
-            texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
-        )]),
+        mesh_bindings(group)
+            .chain([(
+                DEPTH_BUFFER.to_owned(),
+                texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
+            )])
+            .chain(images.iter().cloned()),
         vec![DEPTH_BUFFER],
         DEPTH_CLEAR,
         PipelineStateFields::default_state(),
@@ -1873,25 +1882,27 @@ fn lighting_pass(
             ),
             (TIME.to_owned(), Value::Float(time)),
         ]),
-        mesh_bindings(group).chain(images.iter().cloned()).chain([
-            (
-                COLOR_TARGET.to_owned(),
-                texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
-            ),
-            (
-                DEPTH_BUFFER.to_owned(),
-                texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
-            ),
-            (
-                SHADOW_MAP.to_owned(),
-                texture_binding(
-                    &shadow_map_entry(&light.label),
-                    SHADOW_MAP_WIDTH,
-                    SHADOW_MAP_HEIGHT,
-                    SHADOW_MAP_FORMAT,
+        mesh_bindings(group)
+            .chain([
+                (
+                    COLOR_TARGET.to_owned(),
+                    texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
                 ),
-            ),
-        ]),
+                (
+                    DEPTH_BUFFER.to_owned(),
+                    texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
+                ),
+                (
+                    SHADOW_MAP.to_owned(),
+                    texture_binding(
+                        &shadow_map_entry(&light.label),
+                        SHADOW_MAP_WIDTH,
+                        SHADOW_MAP_HEIGHT,
+                        SHADOW_MAP_FORMAT,
+                    ),
+                ),
+            ])
+            .chain(images.iter().cloned()),
         vec![COLOR_TARGET],
         COLOUR_CLEAR,
         lighting_state(),
@@ -1920,16 +1931,18 @@ fn emission_pass(
             (PROJECTION.to_owned(), camera.clone()),
             (TIME.to_owned(), Value::Float(time)),
         ]),
-        mesh_bindings(group).chain(images.iter().cloned()).chain([
-            (
-                COLOR_TARGET.to_owned(),
-                texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
-            ),
-            (
-                DEPTH_BUFFER.to_owned(),
-                texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
-            ),
-        ]),
+        mesh_bindings(group)
+            .chain([
+                (
+                    COLOR_TARGET.to_owned(),
+                    texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
+                ),
+                (
+                    DEPTH_BUFFER.to_owned(),
+                    texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
+                ),
+            ])
+            .chain(images.iter().cloned()),
         vec![COLOR_TARGET],
         COLOUR_CLEAR,
         lighting_state(),
