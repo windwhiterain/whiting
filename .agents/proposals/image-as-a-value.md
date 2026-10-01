@@ -1,7 +1,33 @@
 # An image is scene data, and the compiler is what binds it
 
-Status: proposal, **not started**. Depends on the device half of
-[texture-channel.md](texture-channel.md), which has landed.
+Status: **landed for the mesh stages.** Everything below is code, with the one amendment recorded
+under *What the build changed*. The rule held: a scene names its own image data and never names a
+gpu resource, and the compiler sorts a material's custom data by kind — packing the numbers into
+the instance row and lifting the image into a texture with a sampler.
+
+The scene that shows it is `tiles`, which generates its own pixels and samples them.
+`crates/device/tests/gallery_render.rs` draws it on a real adapter and reads the frame back,
+because a texture that was declared and never arrived still produces *a* picture, and only a frame
+that varies proves one was sampled.
+
+## What the build changed
+
+The image is written in `custom_data` as the design says. What the design did not say is that it
+cannot **stay** there: custom data is packed into the instance row as vertex attributes, so every
+field of it has to flatten into four byte numbers, and a name does not. So the sort is not a
+tidying step — it is what makes the value expressible at all. The kind comes from the shader's
+`custom_schema` rather than from the value, which is what lets the compiler decide before it reads
+anything an author wrote.
+
+Two consequences were found by the checks rather than by review, and both are worth knowing before
+touching the numbering:
+
+- **A binding point's number depends on the field's name.** A pass binds its resources in name
+  order, so a field called `image` lands between `depth_buffer` and `shadow_map`, and every number
+  after it shifts by one. A shader that counts as though the image came last is refused by
+  `check_bindings` with a message naming the point and the kind.
+- **The image binder is optional in the interface.** A material need not name an image, so a
+  required binder would make every material of that shader carry one.
 
 ## The gap
 

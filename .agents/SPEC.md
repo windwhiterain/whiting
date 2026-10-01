@@ -4,6 +4,8 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
 
 ## Terms
 
+in pseudo rust code.
+
 ### `definition` crate
 
 - `Definition`: a general data representation.
@@ -68,25 +70,26 @@ provide utility to build compilers to compile `Definition` with certain schema i
 - `StandardScene`, `StandardCompiler`
   - `PassSchema`
     - `ProjectionSchema`
-    - `ShadowingSchema`
+    - `ShadowSchema`
       - `projection: Schema`
-    - `DepthingSchema`
+    - `DepthSchema`
       - `projection: Schema`
-    - `LightingSchema`
+    - `LightSchema`
       - `projection: Schema`
-  - `Light`, `lights`
-  - `Camera`, `cameras`
-  - `Mesh`, `meshes`
+  - `lights: Vec<Light>`
+  - `cameras: Vec<Camera>` 
+  - `textures: Vec<Texture>`
+  - `meshes: Vec<Mesh>` 
     - `point_schema: Schema`: schema of point data (e.g. position, uv ...).
-    - `Point`
+    - `points`, `Point`
     - `Topology`: enum of:
       - `Triangles`
       - `Segments`
-  - `Instance`, `instances`
+  - `instances: HashMap<Pass, Vec<Instance>>`
     - `transform: Transform`
     - `mesh: Mesh`
-    - `material: Material`
-  - `Shader`, `shaders`
+    - `material: MeshMaterial`
+  - `shaders: Vec<Shader>`
     - verify aginst `CustomSchema`.
     - enum of:
       - `MeshShader`: 
@@ -94,8 +97,13 @@ provide utility to build compilers to compile `Definition` with certain schema i
         - enum of:
           - `ShadowingShader`
           - `DepthShader`
-          - `LightingShader`
+          - `LightShader`
+          - `EmissionShader`
       - `ScreenShader`
-  - `Material`, `materials`
-    - `shader: Shader`
+  - `mesh_materials: Vec<MeshMaterial>` 
+    - `shader: MeshShader`
     - `custom_data`
+  - `screen_materials: Vec<ScreenMaterial>` 
+    - `shader: ScreenShader`
+    - `custom_data`
+  - `post_processes: Vec<ScreenMaterial>`
