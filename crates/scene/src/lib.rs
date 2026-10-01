@@ -97,6 +97,7 @@ use thiserror::Error;
 
 mod diff;
 pub mod gallery;
+pub mod lighting;
 mod reference;
 pub mod standard;
 
@@ -412,6 +413,16 @@ pub enum CompileError {
         path: Path,
         field: String,
         found: i64,
+    },
+    #[error(
+        "at {path}: the shadow page pool asks for {pages} pages, and the deepest texture array \
+         this renderer requests is {limit}. A pool smaller than the one the document asked for \
+         would lose lights silently, so the count is refused rather than truncated."
+    )]
+    PoolTooDeep {
+        path: Path,
+        pages: i64,
+        limit: usize,
     },
     #[error(
         "at {path}: the light `{label}` has a radius of {radius}, and a light that reaches no \

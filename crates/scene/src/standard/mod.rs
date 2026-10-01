@@ -208,7 +208,6 @@
 //! ```
 
 pub mod camera;
-pub mod clusters;
 mod compiler;
 mod emit;
 mod example;

@@ -32,8 +32,8 @@ use graphics::binders::{FORMAT, HEIGHT, RESOURCE, SIZE_BYTES, SOURCE, WIDTH};
 use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{derived_instance_schema, layout::packed_layout, verify_pass_inputs};
 
+use crate::lighting::{self as lighting_pool, ClusterLight, Clustering};
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
-use crate::standard::clusters::{self, ClusterLight, Clustering};
 use crate::standard::frame::Frame;
 use crate::standard::math::{Bounds, Matrix, apply, projection_of, transform_matrix};
 use crate::standard::packing::{pack_points, pack_struct};
@@ -429,9 +429,10 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     // here rather than in a pass because the instance is built before it is rendered: for a
     // given scene and camera the frustum, the lights and the boxes are all fixed, so the
     // assignment is a pure function of the documents and belongs beside the rest of the
-    // compilation. Nothing reads the three buffers yet — the one lighting pass that consumes
-    // them is stage 3b — so the passes this emits are the same passes it emitted before.
+    // compilation. The shadow page pool is read beside it because the pages are assigned from
+    // the same ranking, in the same walk over the same lights.
     let clustering = Clustering::read(scene)?;
+    let light_pool = lighting_pool::read_light_pool(scene)?;
     let cluster_lights: Vec<ClusterLight> = lights
         .iter()
         .map(|light| ClusterLight {
@@ -442,8 +443,13 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
             clustered: light.kind.takes_cluster_slot(),
         })
         .collect();
-    let clusters = clusters::assign(&clustering, &cluster_lights, &camera_basis)?;
-    let notes = clusters.notes(&clustering, &Path::root().key(scene_schema::CLUSTERING));
+    let clusters = lighting_pool::assign(&clustering, &cluster_lights, &camera_basis, &light_pool)?;
+    let mut notes = clusters.notes(&clustering, &Path::root().key(scene_schema::CLUSTERING));
+    notes.extend(lighting_pool::pool_notes(
+        &cluster_lights,
+        &light_pool,
+        &clusters.pages,
+    ));
 
     add_targets(&mut instance, frame);
     for (entry, payload) in clusters.entries() {

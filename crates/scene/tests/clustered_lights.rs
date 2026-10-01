@@ -28,9 +28,9 @@ use whiting_scene::CompileContext;
 use whiting_scene::CompileOutput;
 use whiting_scene::Compiler;
 use whiting_scene::gallery::Gallery;
-use whiting_scene::standard::clusters::{
+use whiting_scene::lighting::{
     CLUSTER_COUNTS_ENTRY, CLUSTER_INDICES_ENTRY, ClusterLight, Clustering, Clusters,
-    LIGHT_RECORDS_ENTRY, assign,
+    LIGHT_RECORDS_ENTRY, LightPool, assign,
 };
 use whiting_scene::standard::{
     Bounds, CLUSTERING, Camera, DEPTH_EXTENTS, LIGHTS_PER_CLUSTER, Projection, WIDTH_EXTENTS,
@@ -74,11 +74,12 @@ fn an_all_point_scene_still_emits_the_passes_it_emitted_before() {
         );
     }
 
-    // And the three this stage adds: one record of seven floats for the one light, one count
-    // per cluster of the default grid, and one row of the default cap per cluster.
+    // And the three this stage adds: one record of eight floats for the one light — colour,
+    // page, position and radius — one count per cluster of the default grid, and one row of
+    // the default cap per cluster.
     let clusters = Clustering::convention().cluster_count() as i64;
     for (entry, size) in [
-        (LIGHT_RECORDS_ENTRY, 7 * 4),
+        (LIGHT_RECORDS_ENTRY, 8 * 4),
         (CLUSTER_COUNTS_ENTRY, clusters * 4),
         (CLUSTER_INDICES_ENTRY, clusters * 64 * 4),
     ] {
@@ -165,7 +166,7 @@ fn a_light_behind_the_eye_is_recorded_and_reaches_no_cluster() {
     let grid = grid(2, 2, 2, 4);
     // The parallel camera stands at z twelve, so a light at z twenty is eight units behind it.
     let behind = light("behind", [0.0, 0.0, 20.0], 1.0);
-    let clusters = assign(&grid, &[behind], &parallel()).expect("the assignment runs");
+    let clusters = assign(&grid, &[behind], &parallel(), &pool()).expect("the assignment runs");
 
     assert_eq!(clusters.records.len(), 1, "the light has a record");
     assert_eq!(count_of(&clusters, 0), 0.0, "and no cluster holds it");
@@ -180,7 +181,7 @@ fn a_light_behind_the_eye_is_recorded_and_reaches_no_cluster() {
 fn a_light_covering_the_view_is_in_every_cluster() {
     let grid = grid(2, 2, 2, 4);
     let everything = light("everything", [0.0, 0.0, 0.0], 1000.0);
-    let clusters = assign(&grid, &[everything], &parallel()).expect("the assignment runs");
+    let clusters = assign(&grid, &[everything], &parallel(), &pool()).expect("the assignment runs");
 
     assert_eq!(clusters.counts.len(), 8);
     for cluster in 0..8 {
@@ -195,7 +196,7 @@ fn a_light_off_to_one_side_reaches_no_cluster() {
     // A thousand units to the side of a frame eight and a bit wide, at a distance in the middle
     // of the frustum: the failure here is lateral, not one of depth.
     let aside = light("aside", [1000.0, 0.0, -2.0], 1.0);
-    let clusters = assign(&grid, &[aside], &parallel()).expect("the assignment runs");
+    let clusters = assign(&grid, &[aside], &parallel(), &pool()).expect("the assignment runs");
 
     assert_eq!(clusters.records.len(), 1);
     assert_eq!(clusters.counts.len(), 8);
@@ -214,7 +215,7 @@ fn a_volume_straddling_a_slice_boundary_is_in_both_slices() {
     // boundary is in the slice before it and the slice after, and in neither of the others.
     let grid = grid(1, 1, 4, 4);
     let across = light("across", parallel_at(12.5), 2.5);
-    let clusters = assign(&grid, &[across], &parallel()).expect("the assignment runs");
+    let clusters = assign(&grid, &[across], &parallel(), &pool()).expect("the assignment runs");
 
     let reached: Vec<usize> = (0..4)
         .filter(|slice| count_of(&clusters, *slice) > 0.0)
@@ -233,7 +234,7 @@ fn the_slices_divide_depth_rather_than_distance() {
     let grid = grid(1, 1, 4, 4);
     let two_and_a_half_out = light("out", perspective_at(2.5), 0.1);
     let clusters =
-        assign(&grid, &[two_and_a_half_out], &perspective()).expect("the assignment runs");
+        assign(&grid, &[two_and_a_half_out], &perspective(), &pool()).expect("the assignment runs");
 
     let reached: Vec<usize> = (0..4)
         .filter(|slice| count_of(&clusters, *slice) > 0.0)
@@ -246,7 +247,8 @@ fn a_light_at_each_plane_lands_in_the_slice_at_that_plane() {
     let grid = grid(1, 1, 4, 4);
     let near = light("near", perspective_at(1.0), 0.1);
     let far = light("far", perspective_at(21.0), 0.1);
-    let clusters = assign(&grid, &[near, far], &perspective()).expect("the assignment runs");
+    let clusters =
+        assign(&grid, &[near, far], &perspective(), &pool()).expect("the assignment runs");
 
     assert_eq!(
         count_of(&clusters, 0),
@@ -278,7 +280,8 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
         radius: 4.0,
         clustered: true,
     };
-    let clusters = assign(&grid, &[dim, bright], &parallel()).expect("the assignment runs");
+    let clusters =
+        assign(&grid, &[dim, bright], &parallel(), &pool()).expect("the assignment runs");
 
     assert_eq!(count_of(&clusters, 0), 1.0, "the cap is one light");
     assert_eq!(
@@ -325,7 +328,7 @@ fn a_light_that_covers_the_view_takes_no_cluster_slot() {
         radius: 1.0,
         clustered: false,
     };
-    let clusters = assign(&grid, &[sun], &parallel()).expect("the assignment runs");
+    let clusters = assign(&grid, &[sun], &parallel(), &pool()).expect("the assignment runs");
 
     assert_eq!(
         clusters.records.len(),
@@ -370,6 +373,18 @@ fn grid(width: usize, height: usize, depth: usize, cap: usize) -> Clustering {
         height_extents: height,
         depth_extents: depth,
         lights_per_cluster: cap,
+    }
+}
+
+/// Returns a pool big enough that no test here runs out of pages, so the assignment tests
+/// measure the assignment rather than the pool.
+///
+/// The tests that are about the pool pass their own.
+fn pool() -> LightPool {
+    LightPool {
+        page_width: 1024,
+        page_height: 1024,
+        pages: 64,
     }
 }
 

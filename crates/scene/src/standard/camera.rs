@@ -107,6 +107,7 @@
 use definition::{Path, Value};
 
 use crate::CompileError;
+use crate::lighting::ViewProjection;
 use crate::standard::emit::FRAMING_PADDING;
 use crate::standard::math::{
     Bounds, Matrix, add, apply, look_at, multiply, normalize, orthographic, perspective, scale,
@@ -510,6 +511,52 @@ impl Projection {
                 self.half_extent[1] * distance,
             ],
         }
+    }
+}
+
+/// The standard camera seen as the readings a clustered grid measures a view by.
+///
+/// # Invariants
+///
+/// Every one of these forwards to the projection's own field or method, so the grid is
+/// measured against the same numbers the pass is drawn through. A forwarding impl rather than
+/// a second computation is the whole point: two answers to "how deep is this distance" is how
+/// a light ends up in a cluster no fragment is in.
+impl ViewProjection for Projection {
+    fn eye(&self) -> [f64; 3] {
+        self.eye
+    }
+
+    fn forward(&self) -> [f64; 3] {
+        self.forward
+    }
+
+    fn right(&self) -> [f64; 3] {
+        self.right
+    }
+
+    fn up(&self) -> [f64; 3] {
+        self.up
+    }
+
+    fn near(&self) -> f64 {
+        self.near
+    }
+
+    fn far(&self) -> f64 {
+        self.far
+    }
+
+    fn depth_at(&self, distance: f64) -> f64 {
+        Projection::depth_at(self, distance)
+    }
+
+    fn distance_at(&self, depth: f64) -> f64 {
+        Projection::distance_at(self, depth)
+    }
+
+    fn half_width_at(&self, distance: f64) -> [f64; 2] {
+        Projection::half_width_at(self, distance)
     }
 }
 

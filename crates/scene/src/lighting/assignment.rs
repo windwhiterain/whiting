@@ -1,12 +1,5 @@
-//! Which lights reach which parts of the view, decided here rather than in a pass.
-//!
-//! # What this is for
-//!
-//! One pass per light per group is what stops a scene holding thousands of lights: the pass
-//! count is `O(lights * groups)`, and a thousand lights is a thousand shadow maps. A clustered
-//! path replaces both with data. The view is divided into a grid of boxes, every box holds the
-//! lights that reach it, and a shading pass that draws one box's worth of lights per fragment
-//! costs one pass however many lights there are.
+//! Which light reaches which cluster, and the ranking that decides when a cluster is over
+//! its cap.
 //!
 //! # Why the assignment is a cpu loop and not a compute pass
 //!
@@ -59,30 +52,15 @@
 //!
 //! # Invariants
 //!
-//! - The three buffers are read only. Nothing here writes a buffer, because there is no pass to
-//!   write one and no dispatch to write it with, and `max_storage_buffers_per_shader_stage` is
-//!   four: light records, cluster counts and cluster lists are all of the budget stage 3b has,
-//!   with one spare.
-//! - Every light is listed in every cluster its volume reaches, up to the cap. A light that is
-//!   not listed is a light no shading pass can find, so the cap is the only place one goes
-//!   missing, and the cap reports what it missed.
-//! - A kind that covers the whole view is listed nowhere and takes no cluster slot. A
-//!   directional light and an environment light are in every box by definition, so listing them
-//!   would spend the budget on lights the culling was never going to remove; they are in the
-//!   record buffer and in no cluster list, which is what gives stage 3b its own path for them.
-//!   A scene whose lights are only of those two kinds therefore has empty cluster lists, which
-//!   is the correct answer rather than a missing one.
+//! - The view is reached through [`ViewProjection`] and not through any one compiler's camera,
+//!   so a compiler whose view answers these readings differently uses the same arithmetic.
+//! - A light is assigned by its volume and never by its position alone, and a light is listed at
+//!   most once per cluster, and a cluster's list is at most the cap.
 
-use definition::{
-    FieldMap, PackedBuilder, PackedError, PackedLayout, PackedList, Path, Schema, SchemaKind, Value,
-};
+use definition::{FieldMap, Path, Value};
 
-use graphics::binders::{DATA, SCHEMA, SIZE_BYTES, USAGE};
-
-use crate::standard::camera::Projection;
-use crate::standard::math::{dot, subtract};
-use crate::standard::scene_schema;
-use crate::{CompileError, CompileNote};
+use super::buffers::{Clusters, LightPool};
+use crate::CompileError;
 
 /// How many clusters the frame is divided into across, for a scene that says nothing.
 pub const DEFAULT_WIDTH_EXTENTS: usize = 16;
@@ -96,36 +74,50 @@ pub const DEFAULT_DEPTH_EXTENTS: usize = 24;
 /// How many lights one cluster keeps, for a scene that says nothing.
 pub const DEFAULT_LIGHTS_PER_CLUSTER: usize = 64;
 
-/// Name of the instance entry holding one packed record per light.
-pub const LIGHT_RECORDS_ENTRY: &str = "light_records";
+/// Field holding how the view frustum is divided for clustered lighting.
+pub const CLUSTERING: &str = "clustering";
 
-/// Name of the instance entry holding how many lights each cluster kept.
-pub const CLUSTER_COUNTS_ENTRY: &str = "cluster_light_counts";
+/// Field holding how many clusters the frame is divided into across.
+pub const WIDTH_EXTENTS: &str = "width_extents";
 
-/// Name of the instance entry holding the light of every slot of every cluster.
-pub const CLUSTER_INDICES_ENTRY: &str = "cluster_light_indices";
+/// Field holding how many clusters the frame is divided into up.
+pub const HEIGHT_EXTENTS: &str = "height_extents";
 
-/// Field of the light record naming what colour the light is.
-pub const LIGHT_COLOR_FIELD: &str = "color";
+/// Field holding how many slices the frustum is divided into, deep.
+pub const DEPTH_EXTENTS: &str = "depth_extents";
 
-/// Field of the light record naming where the light is.
-pub const LIGHT_POSITION_FIELD: &str = "position";
+/// Field holding how many lights one cluster keeps.
+pub const LIGHTS_PER_CLUSTER: &str = "lights_per_cluster";
 
-/// Field of the light record naming how far the light reaches.
-pub const LIGHT_RADIUS_FIELD: &str = "radius";
-
-/// Field of the cluster count record naming the count.
-pub const CLUSTER_COUNT_FIELD: &str = "count";
-
-/// Field of the cluster list record naming the light.
-pub const CLUSTER_LIGHT_FIELD: &str = "light";
-
-/// How many dropped lights a report names before it counts the rest instead.
+/// The readings of a view that measuring a grid into it needs.
 ///
-/// The count is always the whole truth; only the naming is bounded, because one cluster can
-/// drop thousands of lights and a report that printed every label of every one of them is a
-/// report nobody reads to the end.
-const NAMED_LIGHTS: usize = 8;
+/// # Why this is a trait and not a camera type
+///
+/// The grid is measured in the view's own space, against the view's depth, and what it needs
+/// is the eye, the three axes, the two depth planes and the two mappings between depth and
+/// distance. A compiler whose camera is a different type answers the same questions, and taking
+/// them as a trait is what lets this arithmetic be a property of lighting rather than of the
+/// standard scene's camera.
+pub trait ViewProjection {
+    /// Where the view is made from, in world space.
+    fn eye(&self) -> [f64; 3];
+    /// The direction the view looks along.
+    fn forward(&self) -> [f64; 3];
+    /// The axis the view's right runs along.
+    fn right(&self) -> [f64; 3];
+    /// The axis the view's up runs along.
+    fn up(&self) -> [f64; 3];
+    /// How far from the eye the near plane is.
+    fn near(&self) -> f64;
+    /// How far from the eye the far plane is.
+    fn far(&self) -> f64;
+    /// Returns the depth the view gives a distance in front of the eye, in zero to one.
+    fn depth_at(&self, distance: f64) -> f64;
+    /// Returns how far in front of the eye a depth is, which inverts [`ViewProjection::depth_at`].
+    fn distance_at(&self, depth: f64) -> f64;
+    /// Returns how far off centre the frame's edge is at a distance, across then up.
+    fn half_width_at(&self, distance: f64) -> [f64; 2];
+}
 
 /// How the view is divided, as a scene document decides it.
 ///
@@ -166,10 +158,10 @@ impl Clustering {
     /// rest of the grid every scene gets.
     pub fn read(scene: &Value) -> Result<Self, CompileError> {
         let convention = Self::convention();
-        let path = Path::root().key(scene_schema::CLUSTERING);
+        let path = Path::root().key(CLUSTERING);
         let Some(declared) = scene
             .as_field_map()
-            .and_then(|fields| fields.get(&scene_schema::CLUSTERING.to_owned()))
+            .and_then(|fields| fields.get(&CLUSTERING.to_owned()))
         else {
             return Ok(convention);
         };
@@ -181,27 +173,12 @@ impl Clustering {
             });
         };
         Ok(Self {
-            width_extents: extent(
-                fields,
-                scene_schema::WIDTH_EXTENTS,
-                convention.width_extents,
-                &path,
-            )?,
-            height_extents: extent(
-                fields,
-                scene_schema::HEIGHT_EXTENTS,
-                convention.height_extents,
-                &path,
-            )?,
-            depth_extents: extent(
-                fields,
-                scene_schema::DEPTH_EXTENTS,
-                convention.depth_extents,
-                &path,
-            )?,
+            width_extents: extent(fields, WIDTH_EXTENTS, convention.width_extents, &path)?,
+            height_extents: extent(fields, HEIGHT_EXTENTS, convention.height_extents, &path)?,
+            depth_extents: extent(fields, DEPTH_EXTENTS, convention.depth_extents, &path)?,
             lights_per_cluster: extent(
                 fields,
-                scene_schema::LIGHTS_PER_CLUSTER,
+                LIGHTS_PER_CLUSTER,
                 convention.lights_per_cluster,
                 &path,
             )?,
@@ -295,115 +272,8 @@ pub struct Overflow {
     pub dropped: Vec<String>,
 }
 
-/// The three buffers one assignment produced, and what it had to drop.
-///
-/// # Invariants
-///
-/// The two lists are read together: `counts` is one per cluster, `indices` is
-/// `clusters * lights_per_cluster` of them, and the lights of cluster `c` are the first
-/// `counts[c]` of the row starting at `c * lights_per_cluster`. The row is a fixed width
-/// rather than packed end to end, because a fragment reading one cluster's lights computes
-/// that one multiplication, and a list packed end to end would need a prefix sum of the
-/// counts to find the row — which is the sum this stage exists to avoid computing.
-pub struct Clusters {
-    /// One record per light, packed from [`light_record_schema`].
-    pub records: PackedList,
-    /// One count per cluster, packed from [`cluster_count_schema`].
-    pub counts: PackedList,
-    /// One slot per cluster per cap, packed from [`cluster_list_schema`].
-    pub indices: PackedList,
-    /// The clusters that had more lights reach them than the cap keeps, in cluster order.
-    pub overflows: Vec<Overflow>,
-    /// How many lights were dropped, counted over every cluster.
-    ///
-    /// # Invariants
-    ///
-    /// One light is counted once per cluster it was dropped from, so this is a count of
-    /// (cluster, light) pairs missing rather than of distinct lights: a light dropped from
-    /// four clusters was missing four times over, and the cost of that is four regions lit by
-    /// nothing rather than one.
-    pub lights_dropped: usize,
-}
-
-impl Clusters {
-    /// Returns the three instance entries this assignment contributes, in a fixed order.
-    ///
-    /// # Invariants
-    ///
-    /// The names are constants rather than per scene names, so a shading pass names them the
-    /// same way whatever scene it draws, and an entry a pass does not bind costs nothing: a
-    /// buffer is created when something binds it, not because the instance holds it.
-    pub fn entries(&self) -> [(&'static str, Value); 3] {
-        [
-            (
-                LIGHT_RECORDS_ENTRY,
-                storage(self.records.bytes(), &light_record_schema()),
-            ),
-            (
-                CLUSTER_COUNTS_ENTRY,
-                storage(self.counts.bytes(), &cluster_count_schema()),
-            ),
-            (
-                CLUSTER_INDICES_ENTRY,
-                storage(self.indices.bytes(), &cluster_list_schema()),
-            ),
-        ]
-    }
-
-    /// Returns what a host is told about an assignment that dropped lights.
-    ///
-    /// # Invariants
-    ///
-    /// Nothing is dropped without a note. A scene lit less than it was drawn is a wrong image
-    /// nobody sees until the render finishes, so the report carries a count for every
-    /// overflowing cluster rather than a sample of them, and the labels of one cluster are
-    /// named up to [`NAMED_LIGHTS`] and counted beyond that.
-    pub fn notes(&self, clustering: &Clustering, path: &Path) -> Vec<CompileNote> {
-        if self.overflows.is_empty() {
-            return Vec::new();
-        }
-        let cap = path.key(scene_schema::LIGHTS_PER_CLUSTER);
-        let mut notes = vec![CompileNote {
-            path: cap.clone(),
-            message: format!(
-                "{} of the {} clusters of this view had more lights reach them than the cap of {} \
-                 keeps, and {} of the light entries in their lists are missing. The lights that \
-                 contribute most are the ones kept, so this view is lit less than the scene was \
-                 drawn: raise `{}`, or the grid, or move the lights.",
-                self.overflows.len(),
-                clustering.cluster_count(),
-                clustering.lights_per_cluster,
-                self.lights_dropped,
-                scene_schema::LIGHTS_PER_CLUSTER,
-            ),
-        }];
-        for overflow in &self.overflows {
-            notes.push(CompileNote {
-                path: cap.clone(),
-                message: format!(
-                    "cluster {} kept {} of the {} lights that reached it and dropped {}.",
-                    overflow.cluster,
-                    overflow.reached - overflow.dropped.len(),
-                    overflow.reached,
-                    dropped_names(&overflow.dropped),
-                ),
-            });
-        }
-        notes
-    }
-}
-
-/// Names a cluster's dropped lights, counting the ones past the naming limit.
-fn dropped_names(labels: &[String]) -> String {
-    let (named, rest) = labels.split_at(labels.len().min(NAMED_LIGHTS));
-    let names: Vec<&str> = named.iter().map(String::as_str).collect();
-    if rest.is_empty() {
-        return names.join(", ");
-    }
-    format!("{} and {} more", names.join(", "), rest.len())
-}
-
-/// Assigns every light to the clusters its volume reaches.
+/// Assigns every light to the clusters its volume reaches, and gives the shadow pages to the
+/// lights that contribute most.
 ///
 /// # Invariants
 ///
@@ -412,16 +282,17 @@ fn dropped_names(labels: &[String]) -> String {
 ///   it, and a light beyond its radius lights none of it.
 /// - A light is listed at most once per cluster, and a cluster's list is at most the cap.
 /// - A light that takes no cluster slots is in no list at all rather than in every one, and
-///   its record is still emitted: whether an exempt light is applied is stage 3b's business,
-///   and a record the emitter dropped would be a light stage 3b could not find.
+///   its record is still emitted: whether an exempt light is applied is the shading pass's
+///   business, and a record the emitter dropped would be a light nothing could find.
 pub fn assign(
     clustering: &Clustering,
     lights: &[ClusterLight],
-    projection: &Projection,
+    projection: &impl ViewProjection,
+    pool: &LightPool,
 ) -> Result<Clusters, CompileError> {
     let view = View::read(clustering, projection);
     let cluster_count = clustering.cluster_count();
-    let mut candidates: Vec<Vec<(usize, f64)>> = vec![Vec::new(); cluster_count];
+    let mut candidates: Vec<Vec<Candidate>> = vec![Vec::new(); cluster_count];
 
     for (index, light) in lights.iter().enumerate() {
         if !light.clustered {
@@ -438,14 +309,16 @@ pub fn assign(
                     if distance_squared > volume.radius_squared {
                         continue;
                     }
-                    candidates[view.index(column, row, slice)]
-                        .push((index, contribution(light.brightness(), distance_squared)));
+                    candidates[view.index(column, row, slice)].push(Candidate {
+                        light: index,
+                        weight: contribution(light.brightness(), distance_squared),
+                    });
                 }
             }
         }
     }
 
-    pack(clustering, lights, candidates)
+    super::buffers::pack(clustering, lights, pool, candidates)
 }
 
 /// How much a light can contribute to one cluster.
@@ -460,8 +333,29 @@ pub fn assign(
 ///
 /// No scene's falloff constants are written into this file, and that is the point: they are a
 /// scene's decision, and a number chosen once in the source is a number no author can change.
-fn contribution(brightness: f64, distance_squared: f64) -> f64 {
+///
+/// The shadow page pool ranks by this same function, over a light's reach of the whole view
+/// rather than of one cluster. Both are "how much does this light matter to a piece of the
+/// image", and they differ in what the distance is measured to: a cluster is a box, so a light
+/// just outside it still counts for a little, while a page is worth rendering once, so what
+/// matters there is how much of the scene the light reaches at all. A light can therefore
+/// matter to a cluster and still not be worth a page, which is the point of ranking twice
+/// rather than once.
+pub fn contribution(brightness: f64, distance_squared: f64) -> f64 {
     brightness / (1.0 + distance_squared)
+}
+
+/// One light's reach of one cluster, as an index and the weight it reached it at.
+///
+/// It is the compiler's own, rather than a tuple, because the packing reads it and the packing
+/// is a different module: a type both halves name is the smallest thing that keeps one from
+/// reaching into the other's.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct Candidate {
+    /// Which light of the scene, which is the index the record buffer is written in.
+    pub(super) light: usize,
+    /// How much it contributes to the cluster it reached.
+    pub(super) weight: f64,
 }
 
 /// One light's volume in view space, as the two things the test needs.
@@ -484,15 +378,15 @@ impl Volume {
     /// because the slices partition the depth range and the volume is a contiguous interval
     /// along it; a volume beyond the far plane, in front of the near plane or behind the eye
     /// reaches none, which is why the test is on the interval rather than on the centre.
-    fn read(light: &ClusterLight, projection: &Projection, view: &View) -> Option<Self> {
-        let offset = subtract(light.position, projection.eye);
+    fn read(light: &ClusterLight, projection: &impl ViewProjection, view: &View) -> Option<Self> {
+        let offset = subtract(light.position, projection.eye());
         let centre = [
-            dot(offset, projection.right),
-            dot(offset, projection.up),
-            dot(offset, projection.forward),
+            dot(offset, projection.right()),
+            dot(offset, projection.up()),
+            dot(offset, projection.forward()),
         ];
-        let nearest = (centre[2] - light.radius).max(projection.near);
-        let furthest = (centre[2] + light.radius).min(projection.far);
+        let nearest = (centre[2] - light.radius).max(projection.near());
+        let furthest = (centre[2] + light.radius).min(projection.far());
         if nearest > furthest {
             return None;
         }
@@ -529,15 +423,29 @@ fn outside(coordinate: f64, interval: [f64; 2]) -> f64 {
     }
 }
 
+/// Subtracts one vector from another.
+///
+/// The arithmetic a view space measurement needs, kept here rather than taken from the
+/// standard scene's matrix module: the two operations below are what this file uses, and a
+/// general module that reaches into a compiler's private vector helpers is not a general one.
+fn subtract(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
+    [left[0] - right[0], left[1] - right[1], left[2] - right[2]]
+}
+
+/// Returns the dot product of two vectors.
+fn dot(left: [f64; 3], right: [f64; 3]) -> f64 {
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
 /// One cluster, as a box in view space.
 #[derive(Debug, Clone, Copy)]
-struct ClusterBox {
+pub(crate) struct ClusterBox {
     /// Across, measured from the centre of the frame.
-    across: [f64; 2],
+    pub(crate) across: [f64; 2],
     /// Up, measured from the centre of the frame.
-    up: [f64; 2],
+    pub(crate) up: [f64; 2],
     /// How far in front of the eye.
-    depth: [f64; 2],
+    pub(crate) depth: [f64; 2],
 }
 
 /// The view, divided into the slices and boxes the assignment walks.
@@ -561,7 +469,7 @@ impl View {
     /// the last the far plane. They are read through the projection rather than by dividing
     /// the near to far range, because a grid of even distances is not the grid a fragment
     /// indexes.
-    fn read(clustering: &Clustering, projection: &Projection) -> Self {
+    fn read(clustering: &Clustering, projection: &impl ViewProjection) -> Self {
         let extents = clustering.depth_extents as f64;
         let boundaries: Vec<f64> = (0..=clustering.depth_extents)
             .map(|slice| projection.distance_at(slice as f64 / extents))
@@ -648,181 +556,4 @@ fn span(index: usize, extents: usize, half: f64) -> [f64; 2] {
     let step = 2.0 * half / extents as f64;
     let from = -half + step * index as f64;
     [from, from + step]
-}
-
-/// Packs the three buffers and reports what the cap had to drop.
-///
-/// # Invariants
-///
-/// Every cluster's row is exactly the cap wide, so a fragment can index it without a prefix
-/// sum. A cluster with fewer lights than the cap is padded with the first light rather than
-/// with a sentinel, and the count beside the row is what says how many of the entries are
-/// real: a padding entry is only ever read by a fragment that ignored its own cluster's
-/// count, and a sentinel would be a value a shader had to know the meaning of.
-fn pack(
-    clustering: &Clustering,
-    lights: &[ClusterLight],
-    mut candidates: Vec<Vec<(usize, f64)>>,
-) -> Result<Clusters, CompileError> {
-    let cap = clustering.lights_per_cluster;
-    let mut counts = PackedBuilder::new(one_number(CLUSTER_COUNT_FIELD));
-    let mut indices = PackedBuilder::new(one_number(CLUSTER_LIGHT_FIELD));
-    indices.reserve(candidates.len() * cap);
-    let mut overflows = Vec::new();
-    let mut lights_dropped = 0usize;
-
-    for (cluster, reaching) in candidates.iter_mut().enumerate() {
-        // Highest contribution first, and the light's own order for a tie, so that one scene
-        // compiles to one set of bytes however the walk above happened to find its lights.
-        reaching.sort_by(|(first, first_weight), (second, second_weight)| {
-            second_weight
-                .total_cmp(first_weight)
-                .then(first.cmp(second))
-        });
-        let kept = reaching.len().min(cap);
-        if reaching.len() > cap {
-            overflows.push(Overflow {
-                cluster,
-                reached: reaching.len(),
-                dropped: reaching[cap..]
-                    .iter()
-                    .map(|(index, _)| lights[*index].label.clone())
-                    .collect(),
-            });
-            lights_dropped += reaching.len() - cap;
-        }
-        counts
-            .field(CLUSTER_COUNT_FIELD, &[kept as f64])
-            .map_err(|error| unpacked(CLUSTER_COUNTS_ENTRY, error))?;
-        for slot in 0..cap {
-            let light = reaching.get(slot).map_or(0.0, |(index, _)| *index as f64);
-            indices
-                .field(CLUSTER_LIGHT_FIELD, &[light])
-                .map_err(|error| unpacked(CLUSTER_INDICES_ENTRY, error))?;
-        }
-    }
-
-    Ok(Clusters {
-        records: light_records(lights)?,
-        counts: counts
-            .finish()
-            .map_err(|error| unpacked(CLUSTER_COUNTS_ENTRY, error))?,
-        indices: indices
-            .finish()
-            .map_err(|error| unpacked(CLUSTER_INDICES_ENTRY, error))?,
-        overflows,
-        lights_dropped,
-    })
-}
-
-/// Packs one record per light, in the order the scene lists them, which is the order the
-/// cluster lists index into.
-fn light_records(lights: &[ClusterLight]) -> Result<PackedList, CompileError> {
-    let layout = graphics::layout::packed_layout(&light_record_schema()).map_err(|error| {
-        CompileError::Unpackable {
-            path: Path::root().key(graphics::ENTRIES).key(LIGHT_RECORDS_ENTRY),
-            reason: error.to_string(),
-        }
-    })?;
-    let mut records = PackedBuilder::new(layout);
-    records.reserve(lights.len());
-    for light in lights {
-        // Sorted by name, so the colour is written first: the builder refuses a field written
-        // out of the layout's order, which is what makes the run mean what its layout says.
-        records
-            .field(LIGHT_COLOR_FIELD, &light.colour)
-            .and_then(|builder| builder.field(LIGHT_POSITION_FIELD, &light.position))
-            .and_then(|builder| builder.field(LIGHT_RADIUS_FIELD, &[light.radius]))
-            .map_err(|error| unpacked(LIGHT_RECORDS_ENTRY, error))?;
-    }
-    records
-        .finish()
-        .map_err(|error| unpacked(LIGHT_RECORDS_ENTRY, error))
-}
-
-/// Returns a layout of one number, which is what a count and an index are: a run whose every
-/// record holds one value.
-fn one_number(field: &str) -> PackedLayout {
-    PackedLayout::new([(field.to_owned(), 1)])
-}
-
-/// Builds the payload of a read only storage buffer holding a packed run.
-fn storage(bytes: &[u8], schema: &Schema) -> Value {
-    Value::variant(
-        "Buffer",
-        [
-            (SIZE_BYTES.to_owned(), Value::Int(bytes.len() as i64)),
-            (
-                USAGE.to_owned(),
-                Value::List(vec![Value::String("storage".to_owned())]),
-            ),
-            (SCHEMA.to_owned(), schema.to_value()),
-            (DATA.to_owned(), Value::Bytes(bytes.to_vec())),
-        ],
-    )
-}
-
-/// Reports a run that could not be built as a compile error naming the entry it was for.
-fn unpacked(entry: &str, error: PackedError) -> CompileError {
-    CompileError::Unpackable {
-        path: Path::root().key(graphics::ENTRIES).key(entry),
-        reason: error.to_string(),
-    }
-}
-
-/// Builds the schema of one light's record, which is what a clustered shading pass reads its
-/// lights out of.
-///
-/// # Invariants
-///
-/// The record is a point light's: where it is, what colour it is, and the radius it was
-/// assigned by. The fields sort as `color`, `position`, `radius`, which is the order the
-/// packed layout derives from the schema, so the bytes and the layout cannot disagree about a
-/// stride.
-///
-/// A shadow projection is not in the record, and its absence is a decision rather than an
-/// oversight: what a light's shadow map is looked up through belongs to the shadow stage, and
-/// stage 4 replaces that addressing with a page pool. A record carrying a projection matrix
-/// would be sixteen floats per light that this stage has no reader for.
-pub fn light_record_schema() -> Schema {
-    Schema::new(SchemaKind::structure([
-        (
-            LIGHT_COLOR_FIELD.to_owned(),
-            graphics::layout::components_schema(3)
-                .with_documentation("Colour of the light, scaled by its intensity."),
-        ),
-        (
-            LIGHT_POSITION_FIELD.to_owned(),
-            graphics::layout::components_schema(3)
-                .with_documentation("Where the light is, in world space."),
-        ),
-        (
-            LIGHT_RADIUS_FIELD.to_owned(),
-            Schema::new(SchemaKind::Float)
-                .with_documentation("How far the light reaches, as a sphere around its position."),
-        ),
-    ]))
-    .with_documentation("One light, as a clustered shading pass reads it.")
-}
-
-/// Builds the schema of one cluster's count, which is how many lights the cluster kept.
-pub fn cluster_count_schema() -> Schema {
-    one_number_schema(CLUSTER_COUNT_FIELD, "How many lights this cluster kept.")
-}
-
-/// Builds the schema of one slot of one cluster, which is the light in it.
-pub fn cluster_list_schema() -> Schema {
-    one_number_schema(
-        CLUSTER_LIGHT_FIELD,
-        "The light in this slot, as an index into the light record buffer.",
-    )
-}
-
-/// Builds the schema of a run whose every record is one number.
-fn one_number_schema(field: &str, documentation: &str) -> Schema {
-    Schema::new(SchemaKind::structure([(
-        field.to_owned(),
-        Schema::new(SchemaKind::Float).with_documentation(documentation),
-    )]))
-    .with_documentation("One record of a run of numbers, four bytes each.")
 }
