@@ -78,12 +78,19 @@ impl WgpuRenderer {
         let state = graphics::PipelineState::read(pass).map_err(RenderError::Graphics)?;
         let samples = state.samples;
 
+        // A shader names its resources and its vertices by hand, in its own source, and
+        // the pass numbers both without consulting it. The two are compared here, against
+        // the layout the pass actually built, so a disagreement is an error naming the
+        // pass rather than a backend message about a view dimension.
+        let entries =
+            bindings.layout_entries(wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT);
+        self.check_bindings(&shader, &entries, &label)?;
+
         let bind_group_layout =
             self.device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some(&format!("{label} bind group layout")),
-                    entries: &bindings
-                        .layout_entries(wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT),
+                    entries: &entries,
                 });
         let pipeline_layout = self
             .device
@@ -98,6 +105,9 @@ impl WgpuRenderer {
             entries: &bindings.group_entries(),
         });
 
+        // The attributes are compared before the layouts borrow them, so the check sees
+        // the numbering this pass will hand the pipeline rather than a borrow of it.
+        self.check_vertex_inputs(&shader, &bindings.vertex_locations(), &label)?;
         let mut attributes: Vec<Vec<wgpu::VertexAttribute>> = Vec::new();
         let layouts: Vec<Option<wgpu::VertexBufferLayout>> = bindings
             .vertex_layouts(&mut attributes)

@@ -47,7 +47,11 @@ impl WgpuRenderer {
             workgroup.get(5).copied().unwrap_or(1).max(1),
         ];
 
-        let bind_group_layout = self.compute_bind_group_layout(&bindings);
+        // The same comparison the rasterize path makes: the shader names its resources by
+        // hand and the pass numbers them, and a compute pass has no vertices to check.
+        let entries = bindings.layout_entries(wgpu::ShaderStages::COMPUTE);
+        self.check_bindings(&shader, &entries, &label)?;
+        let bind_group_layout = self.compute_bind_group_layout(&entries);
         let layout = self
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -92,12 +96,12 @@ impl WgpuRenderer {
     /// Builds the bind group layout a compute pass needs.
     fn compute_bind_group_layout(
         &self,
-        bindings: &super::bindings::Bindings,
+        entries: &[wgpu::BindGroupLayoutEntry],
     ) -> wgpu::BindGroupLayout {
         self.device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("whiting compute bind group layout"),
-                entries: &bindings.layout_entries(wgpu::ShaderStages::COMPUTE),
+                entries,
             })
     }
 }

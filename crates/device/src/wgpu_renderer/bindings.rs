@@ -238,6 +238,26 @@ impl Bindings {
             .collect()
     }
 
+    /// Returns every vertex location this pass binds, as the location and the format it is
+    /// read at.
+    ///
+    /// This is the same numbering [`Bindings::vertex_layouts`] lays out, reported as owned
+    /// pairs so it can be compared against a shader's own declarations before the layouts
+    /// borrow the attribute lists they point at.
+    pub fn vertex_locations(&self) -> Vec<(u32, wgpu::VertexFormat)> {
+        self.vertices
+            .iter()
+            .flat_map(|vertex| {
+                vertex.layout.attributes.iter().map(|attribute| {
+                    (
+                        vertex.location_base + attribute.shader_location,
+                        vertex_format(attribute.components),
+                    )
+                })
+            })
+            .collect()
+    }
+
     /// Puts the vertex buffers in the order a pipeline reads them, and numbers them.
     ///
     /// A vertex buffer and an instance buffer both start their attributes at zero in the

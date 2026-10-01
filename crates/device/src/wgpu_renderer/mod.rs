@@ -40,6 +40,7 @@ use raster::RenderedTarget;
 mod bindings;
 mod compute;
 mod raster;
+mod shader_interface;
 mod uniform;
 
 /// A renderer that executes passes on a gpu.
