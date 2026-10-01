@@ -47,6 +47,8 @@ fn main() {
         previous_instance: None,
         registry: &registry,
         camera: 0,
+        // No machine behind this diagnostic, so the compile is made against the floor.
+        limits: None,
     })
     .expect("the scene compiles");
 

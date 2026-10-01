@@ -19,10 +19,15 @@
 //! - A dimension of zero or less is the default, because a texture a backend cannot
 //!   allocate is a render that cannot happen and a compile error about a pixel count is
 //!   not a useful one.
+//! - A dimension **above** what the machine can make is the ceiling and a note, because a
+//!   frame smaller than the document asked for is a frame that still draws. It is the same
+//!   rule the shadow page pool is held to, and the same reason.
 
 use definition::{Path, Value};
 
+use crate::limits::clamp_to_ceiling;
 use crate::standard::scene_schema::FRAME;
+use crate::{CompileNote, DeviceLimits};
 
 /// The width a scene is drawn into when it names none, in pixels.
 pub const DEFAULT_WIDTH: i64 = 1024;
@@ -40,8 +45,20 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// Returns the frame a scene is drawn into, which is the default unless it says.
-    pub fn read(scene: &Value) -> Self {
+    /// Returns the frame a scene is drawn into, which is the default unless it says, bounded
+    /// to what the machine can make.
+    ///
+    /// # Invariants
+    ///
+    /// The two directions are bounded separately and both say so, because they are two fields
+    /// an author changes separately. A frame narrowed in one direction is a scene drawn into a
+    /// different picture from the one it named, and that is a thing to be told about rather
+    /// than a thing to fail on: the document draws on a machine that can give it the size it
+    /// asked for.
+    ///
+    /// A convention is never bounded, because [`DeviceLimits::downlevel`] is above every
+    /// convention here and a machine below it is not one this pipeline runs on.
+    pub fn read(scene: &Value, limits: DeviceLimits) -> (Self, Vec<CompileNote>) {
         let declared = scene
             .as_field_map()
             .and_then(|fields| fields.get(FRAME))
@@ -53,10 +70,27 @@ impl Frame {
                 .filter(|size| *size > 0)
                 .unwrap_or(fallback)
         };
-        Self {
-            width: read("width", DEFAULT_WIDTH),
-            height: read("height", DEFAULT_HEIGHT),
-        }
+        let ceiling = limits.texture_side_ceiling();
+        let mut notes = Vec::new();
+        let width = clamp_to_ceiling(
+            read("width", DEFAULT_WIDTH),
+            ceiling,
+            "width",
+            Self::path("width"),
+            "Every pass that draws into this frame is drawn into a target smaller than the \
+             document named, so the picture is a crop of the one it asked for.",
+            &mut notes,
+        );
+        let height = clamp_to_ceiling(
+            read("height", DEFAULT_HEIGHT),
+            ceiling,
+            "height",
+            Self::path("height"),
+            "Every pass that draws into this frame is drawn into a target smaller than the \
+             document named, so the picture is a crop of the one it asked for.",
+            &mut notes,
+        );
+        (Self { width, height }, notes)
     }
 
     /// Returns the width divided by the height, which is what a camera's field of view is

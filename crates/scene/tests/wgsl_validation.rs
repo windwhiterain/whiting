@@ -48,10 +48,10 @@ use whiting_scene::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scen
 /// `Limits` now, with only the two vertex counts overridden, so `max_texture_dimension_2d` and
 /// `max_texture_array_layers` are whatever the hardware reports rather than the downlevel 2048
 /// and 256. A limit is therefore no longer expressible here as a constant, and the two places
-/// this project bounds a limit are bounded in the places that own them: the array limit is
-/// [`whiting_scene::lighting::MAX_TEXTURE_ARRAY_LAYERS`], which is a floor the compiler
-/// enforces and asserts, and the four storage buffers a clustered pass binds are counted by
-/// the test below.
+/// this project bounds a limit are bounded in the places that own them: a document is held to
+/// the limits of the machine its compile is made against, which reach the compiler through
+/// `CompileContext::limits` and are the floor below where no machine is behind the compile, and
+/// the four storage buffers a clustered pass binds are counted by the test below.
 fn downlevel_capabilities() -> naga::valid::Capabilities {
     naga::valid::Capabilities::empty()
 }
@@ -65,8 +65,9 @@ fn downlevel_capabilities() -> naga::valid::Capabilities {
 /// limit, and the test below is what says there is no room for one.
 const CLUSTERED_STORAGE_BUFFERS: usize = 4;
 
-/// The texture array layers a scene is refused above, which is the compiler's own floor.
-const MAX_TEXTURE_ARRAY_LAYERS: usize = 256;
+/// The texture array layers a compile with no machine behind it is bounded by, which is the
+/// floor every device agrees to rather than a ceiling the hardware imposes.
+const ARRAY_LAYER_FLOOR: u32 = 256;
 
 #[test]
 fn every_gallery_shader_parses_and_validates_within_the_requested_features() {
@@ -114,26 +115,29 @@ fn the_clustered_lighting_template_stays_inside_the_storage_budget() {
 }
 
 #[test]
-fn the_page_pool_is_bounded_by_the_floor_the_compiler_enforces() {
-    // `max_texture_array_layers` is the adapter's own number now, so this is not a statement
-    // about hardware: it is the floor this compiler refuses a document above, and what it
-    // holds is that a scene asking for more is told rather than given a pool it cannot have.
-    assert_eq!(
-        whiting_scene::lighting::MAX_TEXTURE_ARRAY_LAYERS,
-        MAX_TEXTURE_ARRAY_LAYERS
-    );
+fn the_page_pool_is_bounded_by_the_machine_the_compile_is_made_against() {
+    // `max_texture_array_layers` is the device's own number now, so this is not a statement
+    // about hardware. What it holds is that a scene asking for more is told what it lost
+    // rather than refused, and that a compile with no machine behind it is bounded by the
+    // floor every device agrees to.
+    let floor = whiting_scene::DeviceLimits::downlevel();
+    assert_eq!(floor.max_texture_array_layers, ARRAY_LAYER_FLOOR);
     let scene = Value::structure([(
         whiting_scene::standard::FRAME.to_owned(),
         Value::structure([(
             whiting_scene::lighting::SHADOW_PAGES.to_owned(),
-            Value::Int(MAX_TEXTURE_ARRAY_LAYERS as i64 + 1),
+            Value::Int(ARRAY_LAYER_FLOOR as i64 + 1),
         )]),
     )]);
-    let refused = whiting_scene::lighting::read_light_pool(&scene)
-        .expect_err("a pool deeper than the array limit is refused");
+    let (pool, notes) = whiting_scene::lighting::read_light_pool(&scene, floor)
+        .expect("a pool deeper than this machine has still reads");
+    assert_eq!(
+        pool.pages, ARRAY_LAYER_FLOOR as usize,
+        "the pool is given the depth the machine has"
+    );
     assert!(
-        refused.to_string().contains("256"),
-        "the refusal names the limit it hit: {refused}"
+        notes.len() == 1 && notes[0].message.contains(&ARRAY_LAYER_FLOOR.to_string()),
+        "the note names the number lost and the number given instead: {notes:?}"
     );
 }
 
@@ -197,6 +201,8 @@ fn compile(scene: &Value) -> whiting_scene::CompileOutput {
         previous_instance: None,
         registry: &registry,
         camera: 0,
+        // No machine behind this compile, so it is made against the floor.
+        limits: None,
     })
     .expect("the scene compiles")
 }

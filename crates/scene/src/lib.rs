@@ -58,6 +58,8 @@
 //!         registry: &registry,
 //!         // The convention camera, which a scene naming no camera of its own is drawn with.
 //!         camera: 0,
+//!         // No machine behind this compile, so it is made against the floor.
+//!         limits: None,
 //!     })
 //!     .expect("the scene compiles");
 //! assert!(first.graphics_delta.is_empty());
@@ -76,6 +78,7 @@
 //!         previous_instance: Some(&first.instance),
 //!         registry: &registry,
 //!         camera: 0,
+//!         limits: None,
 //!     })
 //!     .expect("the scene compiles");
 //! assert!(second.graphics_delta.is_empty(), "nothing changed, so nothing to emit");
@@ -97,9 +100,11 @@ use thiserror::Error;
 
 mod diff;
 pub mod lighting;
+mod limits;
 mod reference;
 pub mod standard;
 
+pub use limits::DeviceLimits;
 pub use reference::{REFERENCE_SCENE_SCHEMA, ReferenceScene, register_scene_schema};
 pub use standard::{
     CAMERAS, MESH_SCHEMA, STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema,
@@ -222,6 +227,24 @@ pub struct CompileContext<'registry> {
     /// An index no camera is at is the convention camera, so a scene that names none is
     /// compiled once and drawn by the stated convention as it always was.
     pub camera: usize,
+    /// What the machine this compile is made against can hold, or `None` where no machine is
+    /// behind it.
+    ///
+    /// # Why the limits are an input rather than a constant
+    ///
+    /// The same reason as the camera above, and for the same kind of thing: a number a
+    /// document can ask past is a fact about the machine that will hold it, and the emitter
+    /// cannot know it. A pool of more pages than an adapter can give, or a page wider than an
+    /// adapter can make, is not a document this compiler should refuse — it is a document for a
+    /// machine that does not exist, refused here on **every** machine, including the ones that
+    /// could have held it, and the reverse as well: a number compiled in is a number that was
+    /// right on the day somebody ran the program on their machine and is wrong everywhere else.
+    ///
+    /// So the ceiling travels from the device into the compile rather than the other way
+    /// round. A host holding a renderer has its limits and passes them; a host with no machine
+    /// passes nothing and is made against [`DeviceLimits::downlevel`], which is the floor a
+    /// compile is held to when nothing better is known.
+    pub limits: Option<DeviceLimits>,
 }
 
 impl<'registry> CompileContext<'registry> {
@@ -239,6 +262,18 @@ impl<'registry> CompileContext<'registry> {
             .map_err(|reason| CompileError::UnreadableScene {
                 reason: reason.to_string(),
             })
+    }
+
+    /// Returns what this compile is made against: what the host passed, or the floor where it
+    /// passed nothing.
+    ///
+    /// # Invariants
+    ///
+    /// This is the one place a missing machine becomes a number. A compiler reads its ceiling
+    /// through here rather than matching on the field itself, so "no machine behind this" has
+    /// one answer in the crate rather than one per reader.
+    pub fn device_limits(&self) -> DeviceLimits {
+        self.limits.unwrap_or_else(DeviceLimits::downlevel)
     }
 }
 
@@ -478,16 +513,6 @@ pub enum CompileError {
         path: Path,
         field: String,
         found: i64,
-    },
-    #[error(
-        "at {path}: the shadow page pool asks for {pages} pages, and the deepest texture array \
-         this renderer requests is {limit}. A pool smaller than the one the document asked for \
-         would lose lights silently, so the count is refused rather than truncated."
-    )]
-    PoolTooDeep {
-        path: Path,
-        pages: i64,
-        limit: usize,
     },
     #[error(
         "at {path}: the light `{label}` has a radius of {radius}, and a light that reaches no \

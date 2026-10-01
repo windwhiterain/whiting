@@ -108,6 +108,7 @@ fn render(renderer: &WgpuRenderer, name: &str) -> Result<whiting_device::Frame, 
             previous_instance: None,
             registry: &registry,
             camera: 0,
+            limits: renderer.limits(),
         })
         .map_err(|error| format!("the scene does not compile: {error}"))?;
     renderer

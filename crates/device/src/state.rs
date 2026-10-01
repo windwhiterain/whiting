@@ -135,6 +135,11 @@ impl Device {
             // compiles once per camera; making the server hold one output per view is a
             // change to what it publishes rather than to what a camera means.
             camera: 0,
+            // What the renderer behind this server can hold, which is `None` for a placeholder
+            // and the real device's numbers otherwise. A reload is compiled against the
+            // machine that is about to draw it, so a pool the device cannot create is bounded
+            // here and named in a note rather than failing at resource creation.
+            limits: self.renderer.limits(),
         })?;
 
         if self.cross_check {
