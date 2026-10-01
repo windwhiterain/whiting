@@ -110,15 +110,24 @@ use crate::CompileError;
 use crate::lighting::ViewProjection;
 use crate::standard::emit::FRAMING_PADDING;
 use crate::standard::math::{
-    Bounds, Matrix, add, apply, look_at, multiply, normalize, orthographic, perspective, scale,
-    subtract,
+    Bounds, Matrix, add, apply, cross, dot, look_at, multiply, normalize, orthographic,
+    perspective, scale, subtract,
 };
 use crate::standard::scene_schema::{
-    EYE, FAR, FIELD_OF_VIEW, NEAR, PADDING as PADDING_FIELD, PROJECTION, TARGET, UP,
+    EYE, FAR, FIELD_OF_VIEW, FOCAL_LENGTH, NEAR, PADDING as PADDING_FIELD, PROJECTION, ROLL,
+    SENSOR_WIDTH, TARGET, UP,
 };
 
 /// The angle a camera that names no field of view sees through, in radians.
 pub const DEFAULT_FIELD_OF_VIEW: f64 = std::f64::consts::PI / 3.0;
+
+/// The width of the sensor a focal length is measured against when a scene names none, in
+/// millimetres.
+///
+/// Thirty six is full frame, and it is the default because it is the number a focal length
+/// is quoted against everywhere a lens is named. A scene with a smaller negative says so
+/// and gets a wider field out of the same lens.
+pub const DEFAULT_SENSOR_WIDTH: f64 = 36.0;
 
 /// Which projection a camera draws through.
 ///
@@ -146,6 +155,8 @@ pub struct Camera {
     pub(crate) near: Option<f64>,
     /// The far plane the scene asked for, when it named one.
     pub(crate) far: Option<f64>,
+    /// How far the camera is turned about its own axis, in radians.
+    pub(crate) roll: f64,
     pub(crate) aspect: f64,
     pub(crate) bounds: Bounds,
 }
@@ -227,8 +238,26 @@ impl Camera {
             eye: optional_triple(read(EYE), path.key(EYE))?.unwrap_or(convention.eye),
             target: optional_triple(read(TARGET), path.key(TARGET))?.unwrap_or(convention.target),
             up: optional_triple(read(UP), path.key(UP))?.unwrap_or(convention.up),
+            // An angle is what the projection is built from, so a document that carries
+            // both an angle and a focal length is a document whose one of the two is being
+            // overridden. Taking the angle is that override, stated rather than inferred:
+            // the alternative is a scene that changes picture when a field it never read
+            // is added to it.
             field_of_view: read(FIELD_OF_VIEW)
                 .and_then(Value::as_float)
+                .or_else(|| {
+                    read(FOCAL_LENGTH)
+                        .and_then(Value::as_float)
+                        .map(|focal_length| {
+                            vertical_field_of_view(
+                                focal_length,
+                                read(SENSOR_WIDTH)
+                                    .and_then(Value::as_float)
+                                    .unwrap_or(DEFAULT_SENSOR_WIDTH),
+                                aspect,
+                            )
+                        })
+                })
                 .unwrap_or(DEFAULT_FIELD_OF_VIEW),
             kind,
             padding: read(PADDING_FIELD)
@@ -236,9 +265,49 @@ impl Camera {
                 .unwrap_or(FRAMING_PADDING),
             near: read(NEAR).and_then(Value::as_float),
             far: read(FAR).and_then(Value::as_float),
+            roll: read(ROLL).and_then(Value::as_float).unwrap_or(0.0),
             aspect,
             bounds: *bounds,
         })
+    }
+
+    /// Returns the `up` axis the view is built from, turned about the view by the roll.
+    ///
+    /// # Invariants
+    ///
+    /// The roll turns the **frame**, not the world: the eye and the target are untouched,
+    /// so a rolled camera still looks at exactly what it looked at and a horizon in the
+    /// frame is a horizon no longer level. That is the whole difference between this and
+    /// `up`, which is a statement about which way is up in the world — and which is why
+    /// `up` cannot express a roll at all: a camera whose up is not world-up has a tilted
+    /// frame *or* a horizon that is not the world's, and a photograph wants the first.
+    ///
+    /// The axis is the view's own direction, so the turn is about the optical axis rather
+    /// than about the world's y, and a camera already looking sideways rolls the same way
+    /// whichever way it happens to be pointed.
+    ///
+    /// The result is made perpendicular to the view again afterwards, because a roll that
+    /// carries the up axis towards the view direction would otherwise reach a `look_at`
+    /// whose cross product has nothing left to normalise.
+    fn rolled_up(&self, up: [f64; 3]) -> [f64; 3] {
+        if self.roll == 0.0 {
+            return up;
+        }
+        let axis = normalize(subtract(self.target, self.eye));
+        let (sin, cos) = self.roll.sin_cos();
+        let turned = add(
+            add(scale(up, cos), scale(cross(axis, up), sin)),
+            scale(axis, dot(axis, up) * (1.0 - cos)),
+        );
+        let perpendicular = subtract(turned, scale(axis, dot(axis, turned)));
+        let length = dot(perpendicular, perpendicular).sqrt();
+        if length < 1e-6 {
+            // The roll has carried the up axis onto the view direction, where every way of
+            // choosing a frame is as good as another and none of them is a frame at all.
+            // The unturned axis is the one answer that is still a frame.
+            return up;
+        }
+        scale(perpendicular, 1.0 / length)
     }
 
     /// Returns the camera a scene with no camera field is drawn through.
@@ -257,6 +326,7 @@ impl Camera {
             padding: FRAMING_PADDING,
             near: None,
             far: None,
+            roll: 0.0,
             aspect,
             bounds: *bounds,
         }
@@ -316,6 +386,11 @@ impl Camera {
     /// one camera and a matrix from another is a sky drawn in the wrong place.
     pub fn projection(&self) -> Projection {
         let direction = normalize(subtract(self.eye, self.target));
+        // The roll is applied to the up axis once, here, and every `look_at` below is given
+        // the turned axis. Turning it inside `look_at` instead would give two view matrices
+        // for one camera — one per call site — and a scene whose matrix and whose ray basis
+        // disagree is a sky drawn in the wrong place.
+        let up = self.rolled_up(self.up);
         // The first three columns of a view matrix are its right, up and back axes, in
         // that order, and the back axis is the direction back towards the eye.
         let basis = |view: &Matrix| {
@@ -336,7 +411,7 @@ impl Camera {
                 .sqrt();
                 let half_extent = (2.0 * self.bounds.largest_half_width() * self.padding).max(1e-3);
                 let depth = distance + 2.0 * self.bounds.largest_half_width();
-                let view = look_at(self.eye, self.target, self.up);
+                let view = look_at(self.eye, self.target, up);
                 let (right, up, _) = basis(&view);
                 Projection {
                     matrix: multiply(&orthographic(half_extent, depth / 4.0, depth), &view),
@@ -377,7 +452,7 @@ impl Camera {
                 let eye = match written {
                     Some(_) => self.eye,
                     None => {
-                        let view = look_at(self.eye, self.target, self.up);
+                        let view = look_at(self.eye, self.target, up);
                         let (right, up, _) = basis(&view);
                         let distance = (self.fitting_distance(forward, right, up, vertical_half)
                             * self.padding)
@@ -385,7 +460,7 @@ impl Camera {
                         add(self.target, scale(direction, distance))
                     }
                 };
-                let view = look_at(eye, self.target, self.up);
+                let view = look_at(eye, self.target, up);
                 let (right, up, _) = basis(&view);
                 // The depth planes bracket the whole scene rather than the part of it the
                 // frame holds. A camera that crops in — a `padding` below one — is closer
@@ -597,6 +672,39 @@ impl DepthMap {
     }
 }
 
+/// Returns the full vertical angle a lens of a given focal length sees through.
+///
+/// # Invariants
+///
+/// - **The angle a focal length buys is horizontal, and the projection wants it vertical.**
+///   A lens is named against a film size, and a thirty six millimetre sensor is thirty six
+///   millimetres across; a scene's `field_of_view` is the angle down the frame, which is a
+///   different number as soon as the frame is not square. Dividing the horizontal tangent
+///   by the aspect is what turns one into the other, and doing it the other way round
+///   quietly widens every frame that is not square — which is every frame a scene asks for.
+/// - **A frame taller than the sensor is wide is measured against the other side.** The
+///   number the scene writes is a width, so a portrait frame on a full frame negative wants
+///   the height, and the scene says which by writing the other number. There is no way to
+///   tell the two apart from the focal length alone, and guessing would be a lens the
+///   author did not name.
+/// - **A degenerate pair is the convention.** A focal length of zero, or a sensor narrower
+///   than nothing, is not a lens; it falls back to the angle a camera that named no lens
+///   has always had, rather than to an infinite field of view.
+fn vertical_field_of_view(focal_length: f64, sensor_width: f64, aspect: f64) -> f64 {
+    let (focal_length, sensor_width, aspect) = (
+        focal_length.abs().max(1e-3),
+        sensor_width.abs().max(1e-3),
+        aspect.max(1e-3),
+    );
+    let horizontal = 2.0 * (sensor_width / (2.0 * focal_length)).atan();
+    let vertical = 2.0 * ((horizontal / 2.0).tan() / aspect).atan();
+    if vertical.is_finite() && vertical > 1e-6 {
+        vertical
+    } else {
+        DEFAULT_FIELD_OF_VIEW
+    }
+}
+
 /// Returns the eight corners of a box.
 fn corners(box_of: &Bounds) -> [[f64; 3]; 8] {
     let mut found = [[0.0; 3]; 8];
@@ -699,9 +807,4 @@ fn optional_triple(value: Option<&Value>, path: Path) -> Result<Option<[f64; 3]>
         .map_err(|_| CompileError::Emission {
             reason: format!("at {path}: expected three components"),
         })
-}
-
-/// Returns the dot product of two vectors.
-fn dot(left: [f64; 3], right: [f64; 3]) -> f64 {
-    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
 }

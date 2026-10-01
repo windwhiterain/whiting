@@ -12,6 +12,7 @@
 //! sky rather than a shading of the mud under them.
 
 use definition::Value;
+use scene::standard::Stage;
 
 use crate::geometry::{cuboid, hash01, heightfield};
 use crate::kit::{
@@ -224,10 +225,10 @@ fn build() -> (Vec<Value>, Value) {
     (
         materials,
         instances(vec![
-            ("shadowing", shadowing),
-            ("depthing", depthing),
-            ("lighting", lighting),
-            ("emission", emission),
+            (Stage::Shadowing, shadowing),
+            (Stage::Depthing, depthing),
+            (Stage::Lighting, lighting),
+            (Stage::Emission, emission),
         ]),
     )
 }

@@ -956,12 +956,104 @@ around.
   off the light is the worst case for acne there is. A flat lake casts no shadow a viewer could
   see, and what the lookup then returns is the far shore's shadow lying across it.
 - **One sky, written once**, handed to the lighting stage, the emission stage and the post
-  stage. `dunes` writes the same air twice and the two copies disagree, which is the bright
-  seam the *Known-incomplete* note below already records.
+  stage. `dunes` wrote the same air twice and the two copies disagreed, which was the bright
+  seam the *Known-incomplete* note below already recorded; it is now closed.
 - **The camera is placed rather than fitted, and its height is the whole of it.** At four units
   above the water every visible part of a lake is at a grazing angle, the Fresnel term is near
   one everywhere, and the frame is one flat mirror. At nine the near water is seen steeply and
   goes dark, and the picture runs from a dark foreground to a bright horizon.
+- **Both cameras name a lens.** Thirty-five and a hundred and fourteen millimetres on a full
+  frame negative, rather than the angles they work out to. See below.
+
+### A camera names a lens, and a frame can be rolled
+
+Three optional fields on a camera, alongside the field of view it already had.
+
+- **`focal_length` and `sensor_width`**, in millimetres. A focal length is quoted against a
+  film size and is meaningless without one, so both are written and the angle is arrived at:
+  `2·atan(sensor / 2·focal)` horizontally, divided by the frame's aspect to reach the vertical
+  angle `field_of_view` is. **The angle a focal length buys is horizontal and the field of view
+  is vertical**, which is the one thing worth stating twice: doing the conversion the other way
+  round quietly widens every frame that is not square, and every frame a scene asks for is not
+  square. A document carrying both takes the angle, because the angle is what the projection is
+  built from and a scene that changed its picture when an unread field was added to it would be
+  a document whose meaning depends on its order.
+- **`roll`**, in radians, turning the frame about the view's own axis. The eye and the target
+  are untouched, so a rolled camera still looks at exactly what it looked at. This is the
+  whole difference between a roll and `up`: `up` is a statement about the world, and a camera
+  whose up is not world-up has a tilted frame *or* a horizon that is not the world's, and a
+  photograph wants the first. A level horizon is a decision, and this is the field it is
+  written in.
+- **`shift` is not here, and the reason is the interesting part.** A shifted principal point
+  has to reach the post stage as well, because `ray_through` rebuilds a ray from `half_extent`
+  and the shift is not in it — a shifted camera with the current post stage draws its sky in
+  the wrong place. That is a field on the post uniform, which is the same emitter change
+  exposure wants. Both are deferred together.
+
+### One air, described once, handed to every stage
+
+`gallery::air::Atmosphere` is a scene's description of the atmosphere, and `wgsl()` writes it
+out as module-level `WGSL` that any stage can be handed: `air_colour()`, `air_sky(ray)`,
+`air_closure(eye, point)`, and a sun's bearing, glow and disc if the scene named one.
+
+- **What must not disagree is the colour, not the law.** Every outdoor scene has its own aerial
+  perspective — a height falloff lying on water, a flat distance wash over a plain — and
+  forcing one law on all of them would be a worse mistake than the seam it fixes. So the module
+  owns the colour the air settles at and offers a law as a convenience, and a scene that wants
+  another law writes its own body against the same colour.
+- **`dunes` is the exhibit.** Its lighting body mixed distant surfaces towards
+  `vec3(0.58, 0.62, 0.72)` under the comment *"the colour a distant surface tends towards is
+  the colour of the sky behind it"*, and its grade drew the sky's horizon as
+  `vec3(0.70, 0.66, 0.60)`. The comment was right and the two values were not, and a comment
+  is not a constraint. `dunes` now reads both from one constant.
+- **The compiler cannot supply this**, and that is the half that is still open. A compiler can
+  hand a stage a uniform and nothing else — it cannot inject `WGSL` into a scene's own source —
+  and the uniform that would carry it is the per-light uniform `feature/lighting` is replacing.
+  The framework-level version of item 2 is therefore still owed; see the proposal.
+- **`tidewater`, `terraces` and `monoliths` each carry the same duplicate pair `dunes` had.**
+  `tidewater` is the one that got it right by hand, which is what this module is that code
+  promoted.
+
+### A rough surface is not a mirror, and the shading now says so
+
+Two changes in the gallery's lighting template, both in the specular.
+
+- **The Fresnel has a ceiling of `max(1 - roughness, f0)`** rather than saturating at one. The
+  rise towards one at a grazing angle is a property of a *smooth* interface; a rough surface
+  is a field of microfacets tilted in every direction and reflects about as much edge on as
+  head on. Schlick's term hands it the whole difference whatever the roughness, and the result
+  is that a thin object seen edge on — a reed, a wire, a branch, a railing, a wet edge, a
+  horizon-lit rim — renders as a white stick whatever tint it carries, because at a grazing
+  angle there is nothing left to tint it with.
+- **The specular peak is divided by the lobe's own width**, normalised against the smoothest
+  lobe the template builds, so a mirror is exactly as bright as it always was and only the
+  roughness moves. Widening a lobe is half of what a microfacet distribution does; the other
+  half is that the peak falls as the lobe widens, because the same energy is spread thinner.
+  Left unnormalised, `pow(n·h, exponent)` gives a searchlight — a surface as rough as a wall
+  still shows a highlight at a mirror's brightness.
+- **Measured, and the measurement is not flattering.** Across the gallery this changes a mean
+  of 0.0009 to 0.026 per channel out of 255, the largest single-channel difference anywhere
+  being 20. That is because the gallery no longer holds the case that motivated it: the reed
+  bed was removed from `tidewater` once it was diagnosed as the bug. The change is correct and
+  cheap and the class of scene it fixes is large, but the original claim that it "improves
+  every frame in the gallery at once" was wrong, and a reviewer who built a scene to see the
+  fix would have concluded it did not work.
+
+### A reflective surface is drawn by the emission stage, and `kit` now says so
+
+`kit::instances` takes `Vec<(Stage, Vec<Value>)>` rather than `Vec<(&str, Vec<Value>)>`. The
+lighting stage runs once per light and its passes add, so anything a lighting body computes is
+computed and added *per light* — which is how a lake drawn there comes out twice as bright as
+the sky above it. The emission stage runs exactly once, which is the whole of why it exists.
+
+Taking the stage as a type does not make an author choose correctly. It puts four choices side
+by side in one signature where the fourth is a different *word*, rather than four
+interchangeable strings that a typo turns into a different pass, and it puts the rule on the
+argument list where the decision is actually made.
+
+The schema field that would make the compiler route an unlit material by itself is **not**
+here, on purpose: a field nothing reads is data waiting for a stage, and the part that would
+act on it is `groups`/`read_instances` in the emitter, which is the lighting path.
 
 ### Known-incomplete
 
@@ -971,10 +1063,12 @@ Stated rather than left to be discovered:
     steps where the waves line up rather than sparkling, the near bank reads as a sandbar
     rather than as the corner it was placed to be, and the sun's disc shows through the treeline
     in the wide frame because the shore's crest sits lower than intended.
-  - **`dunes` is tuned, not finished.** The horizon has a bright seam where the field's far
-    edge meets the sky, and there is faint shadow acne at the far edge. The penumbra used to
-    be wider than it should be; at a 2048² shadow map over a 380-unit volume a texel is a
-    fifth of a unit, which is what a step two units wide needs.
+  - **`dunes` is tuned, not finished.** The bright seam where the field's far edge met the sky
+    is **closed** — `dunes` now reads its air from `air::Atmosphere` and both the haze and the
+    sky's horizon are the same constant, so the cold ridge along the horizon is gone. What is
+    left is faint shadow acne at the far edge. The penumbra used to be wider than it should be;
+    at a 2048² shadow map over a 380-unit volume a texel is a fifth of a unit, which is what a
+    step two units wide needs.
   - **`lanterns` is composed, not finished.** The field is a grid with a scatter over it
     rather than a layout, and the two lantern lights are placed by hand where the water
     wanted a reflection. A post-stage tone curve was tried and removed: compressing the

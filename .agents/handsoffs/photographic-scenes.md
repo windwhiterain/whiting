@@ -1,32 +1,12 @@
-# Photographic scenes: `tidewater`
+# Photographic scenes: the framework findings, implemented
 
-Worktree: `./.worktrees/photographic`, branch `feature/photographic`, based on `main` at `1ee2ddc`.
+Worktree: `./.worktrees/photographic`, branch `feature/photographic`, on top of `main` at
+`5a50461`.
 
-A lake at first light, built against the standard pipeline, and the write-up of what the
-framework could not say while building it:
-[proposals/photographic-scenes.md](../proposals/photographic-scenes.md).
-
-## Do not overlap `feature/lighting`
-
-`.worktrees/lighting` is mid-way through a five stage effort that owns the lighting path.
-This branch does not touch the per light pass generation, clustered assignment, the shadow
-page pool or IBL. The one finding that reaches the lighting path — a mirror drawn once per
-light — is answered by the emission stage that already exists, not by anything stage 3 or 4
-changes.
-
-The `lighting` handoff also moves `crates/gallery/src/*` to `crates/scene/src/gallery/*`.
-`tidewater.rs` is a pure addition, so the rename merges; the files this branch *edits* are
-listed in the proposal's *Touched* section and carry a real conflict.
-
-## Status
-
-| step | state |
-| --- | --- |
-| `tidewater` scene | renders; coherent, not finished |
-| `stilllife` scene | **not started** |
-| proposal | written, seven findings, the first four for review |
-| `SPEC.align.md` | not synced yet |
-| gallery render test | 2 passed on the adapter |
+A lake at first light, and the write-up of what the framework could not say while building it:
+[proposals/photographic-scenes.md](../proposals/photographic-scenes.md). That proposal is now
+the record of what was implemented, what was held back and why, and it carries two
+corrections to its own original claims.
 
 ```text
 cargo run --release -p whiting-device --features wgpu --example render -- tidewater out/tidewater 0
@@ -34,58 +14,77 @@ cargo run --release -p whiting-device --features wgpu --example render -- tidewa
 
 Both cameras are rendered; the wide one is the picture and the long lens is the treeline.
 
-## What `tidewater` is
+## What this stretch did
 
-A flat lake, a far shore in silhouette, mist lying on the water and a sun behind the ridge.
-Almost nothing in it is an object: the whole frame is water, shore, air, and the decisions
-are about light rather than geometry.
+Four of the seven findings, and the two that land in files `feature/lighting` is rewriting were
+held back by the superior's ruling and are recorded against their items in the proposal.
 
-- **The water is drawn by the emission stage, not the lighting stage.** Its colour is almost
-  entirely a reflection, and a lighting pass adds that colour once per light — under two
-  lights the lake came out twice as bright as the sky above it and went white. This is the
-  framework working as designed and the stage being undiscoverable; proposal item 3.
-- **The water is not in the `shadowing` bucket.** A flat plane a thousand units across at two
-  degrees off the light is the worst case for shadow acne there is, and a flat lake casts no
-  shadow anyone could see. What the lookup then returns is the far shore's shadow on the lake.
-- **One sky, written once**, handed to the lighting stage, the emission stage and the post
-  stage. `dunes` has this bug already and `SPEC.align.md` already records the symptom.
-- **The camera is placed, not fitted.** At four units up, every visible part of the lake is at
-  a grazing angle and the whole frame is one flat mirror; at nine the near water is seen
-  steeply, goes dark, and the frame runs from a dark foreground to a bright horizon. This was
-  the single change that made the scene a photograph, and it took the longest to find.
+| finding | state |
+| --- | --- |
+| 1. a surface body cannot displace the normal | implemented (earlier stretch) |
+| 2. no value reaches two stages | **the gallery half** — `air::Atmosphere`; `dunes` migrated and its seam is closed |
+| 3. a mirror in a lighting pass is added once per light | **the gallery half** — `kit::instances` takes a `Stage`, and the rule is stated on it |
+| 4. the specular is not normalised and the Fresnel goes to one | implemented — and measured to be nearly invisible on this gallery |
+| 5. MSAA is unreachable | not implemented; the size was re-measured and it is a renderer change, not a scene field |
+| 6. no exposure, no falloff, no lens | **the lens** — `focal_length`, `sensor_width`, `roll`; exposure and falloff held back |
+| 7. the harness wrote both cameras to one file | implemented (earlier stretch) |
 
-## What is not finished
+## The two corrections, because both invert a claim
 
-Stated rather than left to be discovered:
+- **Finding 4 does not improve every frame in the gallery.** The original proposal said it did.
+  Measured across the gallery: a mean absolute difference of 0.0009 to 0.026 per channel out
+  of 255, the largest single-channel difference anywhere being 20. The reason is not that the
+  change is wrong — it is that **the gallery no longer contains the case that motivated it**.
+  The 340-reed bed of `tidewater` was removed once it was diagnosed as the bug. The fix is
+  kept because the class of scene it fixes is large and it costs one multiply and one divide,
+  but anyone who builds a scene to *see* it will conclude it does nothing unless the scene
+  contains a thin edge-on object at a grazing angle.
+- **Finding 3's second half is not settled.** The proposal said a directional light "is already
+  in the schema", which reads as though the question were closed. It is in the schema and
+  `read_lights` (`emit.rs:623`) **refuses** it with `UnsupportedLightKind`. `tidewater` still
+  writes the sun into its own `WGSL` as a constant to get a glitter path at all.
 
-- **The sun's reflection bands.** The glitter is a tight lobe on a wave-modulated normal, and
-  where the waves line up it breaks into hard horizontal steps rather than sparkling. A
-  wider lobe, or waves faded sooner, would fix it; neither is in.
-- **The near bank reads as a sandbar, not as a corner.** It is a low mound at the right
-  distance and the right size, but it is too far into the frame and its shoreline is too soft.
-  It was replacing a bed of 340 reeds, which was worse: a thin object seen edge on takes the
-  whole of the standard shading's grazing Fresnel and renders as a pale stick whatever tint
-  it carries. Proposal item 4 is that bug.
-- **A bright sliver at the left edge** of the long lens frame, at the water's boundary. Not
-  diagnosed.
-- **The sun disc shows through the treeline** in the wide frame. It should be behind the ridge;
-  the shore's crest is lower than intended where `ridged_noise` spends most of its range low.
-- **`stilllife` was not started.** The session went on `tidewater` for far longer than planned
-  and the budget went there. It is the better half of the pair in principle — a placed camera
-  and a real depth of field — but nothing of it exists.
+## What is verified, and how
 
-## Findings
+Measured on the adapter, not by reading:
 
-The seven are in the proposal. In one line each, because they are the durable output:
+- All seven gallery scenes render with every change applied.
+- `whiting-scene`: 12 + 6 + 7 (1 ignored) + 3 + 5 pass, doctests 5 pass.
+- `gallery_render`: 2 pass on the adapter.
+- No clippy warnings in `air.rs`, `kit.rs`, `shaders.rs`, `dunes.rs`, `tidewater.rs`,
+  `camera.rs` or `scene_schema.rs`. The warnings that remain are pre-existing, in files this
+  branch does not touch.
+- **The lens is live**: 35 mm and 85 mm on the same scene give different frames, and 0.25 rad
+  of roll turns the horizon, the treeline and the sun's reflection column together with the
+  geometry standing still. Checked by rendering, because an earlier build was stale and a
+  field that does nothing is indistinguishable from a field that is right.
+- **The seam is closed**: `dunes` changed by a mean of 1.728 per channel with 6.2% of channels
+  differing by 8 or more — the largest change anything in this branch made to any frame.
 
-1. The surface body is spliced in after the shading, so it cannot displace the normal.
-2. No value reaches two stages, so the same air is written twice and disagrees.
-3. A mirror in a lighting pass is added once per light; the emission stage is the answer and
-   nothing says so.
-4. The specular is not normalised by roughness and the Fresnel goes to one at grazing.
-5. `samples` is a field of the graphics schema the standard emitter never writes.
-6. No exposure, no falloff a scene can set, and a lens is a field of view and nothing else.
-7. The harness wrote both cameras to the same file.
+## Still owed
 
-Items 1 and 7 are fixed on this branch. Item 4 is a change to a template and would improve
-every frame in the gallery at once.
+- **`stilllife` was not started.** Approved at the outset and nothing of it exists. It is the
+  scene that would actually exercise the fixed specular and the new lens fields, and it is
+  still the better half of the pair.
+- **`tidewater`'s three loose ends**, unchanged: the sun's reflection breaks into hard
+  horizontal steps where the waves line up rather than sparkling; the near bank reads as a
+  sandbar rather than as the corner it was placed to be; a bright sliver at the left edge of
+  the long-lens frame, undiagnosed. The sun's disc also shows through the treeline in the wide
+  frame.
+- **`tidewater`, `terraces` and `monoliths` each carry the duplicate air pair that `dunes`
+  had.** `tidewater` got it right by hand, which is what `air::Atmosphere` is that code
+  promoted; migrating the other two is mechanical and is the obvious next piece of work here.
+- **The framework half of finding 2** — a compiler-supplied atmosphere uniform spanning the
+  stages — needs a field in the per-light uniform, which is what lighting stage 1/2 replaces.
+- **Finding 5** is a renderer change and `feature/lighting` is editing `raster.rs` right now.
+  The three defects are written up in the proposal; the smallest of them,
+  `PipelineState::read` returning before it reads `samples`, is a one-line fix in `graphics`
+  that collides with nothing and can land whenever.
+
+## Do not overlap `feature/lighting`
+
+`.worktrees/lighting` is mid-way through a five stage effort that owns the lighting path. This
+branch does not touch the per light pass generation, clustered assignment, the shadow page pool
+or IBL, and it does not touch `emit.rs`, `pass_schemas.rs` or anything under
+`crates/scene/src/lighting/`. The proposal's *Touched* section lists every file changed, and
+the last line of that table is the list of files deliberately not touched and why.
