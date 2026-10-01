@@ -9,13 +9,17 @@
 //!   turns away from it. A light overhead flattens a heightfield into a texture.
 //! - **Atmospheric perspective.** Distance is shown by washing colour out towards the
 //!   colour of the sky, not by making things smaller. Without it a far dune is exactly as
-//!   saturated as a near one and the field has no depth.
+//!   saturated as a near one and the field has no depth. The colour it washes towards is
+//!   [`Atmosphere`]'s, which is the same number the sky is drawn with — see [`crate::air`]
+//!   for what that is worth, and for the seam this scene used to have.
 //! - **A grade at the end.** A filmic curve on the whole frame rather than a clamp. A
 //!   clamped frame is white wherever a highlight lands; a graded one rolls off, and a
 //!   sun low in the frame is bright without being a hole in the picture.
 
 use definition::Value;
+use scene::standard::Stage;
 
+use crate::air::Atmosphere;
 use crate::geometry::{fractal_noise, heightfield};
 use crate::kit::{
     camera, instance, instances, light, mesh, mesh_material, post_processes, screen_material,
@@ -37,10 +41,42 @@ const EXTENT: f64 = 165.0;
 /// [.agents/proposals/compile-cost.md].
 const DIVISIONS: usize = 96;
 
+/// The air this field is seen through.
+///
+/// # Invariants
+///
+/// The horizon colour is **the colour of the air**, not a second number that happens to look
+/// like one. This scene's two copies of it were `vec3(0.58, 0.62, 0.72)` in the lighting
+/// body and `vec3(0.70, 0.66, 0.60)` in the grade, under a comment in the first saying that a
+/// distant surface tends towards the colour of the sky behind it. They are the same physical
+/// quantity and they differed by a fifth, which is what put a bright seam along the ridge
+/// where the field's far edge met the sky. One number now, and the seam is not avoided by
+/// care at two call sites — there is only one call site.
+///
+/// The sun is written here because the sky is a function of it, and the light beside it
+/// stands at a position rather than a bearing. Those are two decisions and they are
+/// deliberately not made to agree: the sun's *bearing* is what the sky shows and the sun's
+/// *place* is what lights the field, and a scene that derived one from the other would be a
+/// scene that cannot light a field from behind it.
+fn atmosphere() -> Atmosphere {
+    Atmosphere::new()
+        .zenith([0.13, 0.27, 0.56])
+        .horizon([0.70, 0.66, 0.60])
+        .ground([0.44, 0.40, 0.36])
+        // The field is a plain and the air over it is the same all the way up, so the scale
+        // height is long: a short one would put the haze on the ground and thin it away
+        // above, which is a lake and not a desert.
+        .density(0.0006)
+        .scale_height(400.0)
+}
+
 /// Builds the dune field.
 pub fn dunes() -> Value {
     let surface_shading = SURFACE;
-    let helpers = HELPERS;
+    // One copy of the air, handed to the lighting stage and to the post stage. They describe
+    // the same morning because they read the same constants, not because the scene was
+    // careful twice.
+    let helpers = format!("{}\n{}", HELPERS, atmosphere().wgsl());
     let grade = GRADE;
 
     Value::structure([
@@ -80,9 +116,9 @@ pub fn dunes() -> Value {
         (
             "shaders".to_owned(),
             Value::List(
-                mesh_shaders(surface_shading, helpers)
+                mesh_shaders(surface_shading, &helpers)
                     .into_iter()
-                    .chain(std::iter::once(post_shader(grade, "")))
+                    .chain(std::iter::once(post_shader(grade, &helpers)))
                     .collect(),
             ),
         ),
@@ -127,7 +163,7 @@ pub fn dunes() -> Value {
             // rather than something a material's shader implies.
             instances(vec![
                 (
-                    "shadowing",
+                    Stage::Shadowing,
                     vec![instance(
                         "cast",
                         "field",
@@ -138,7 +174,7 @@ pub fn dunes() -> Value {
                     )],
                 ),
                 (
-                    "depthing",
+                    Stage::Depthing,
                     vec![instance(
                         "depth",
                         "field",
@@ -149,7 +185,7 @@ pub fn dunes() -> Value {
                     )],
                 ),
                 (
-                    "lighting",
+                    Stage::Lighting,
                     vec![instance(
                         "shade",
                         "field",
@@ -257,12 +293,10 @@ const SURFACE: &str = r#"
     // written into the same function, so a name used twice is a shader that will not
     // compile.
     let eye = uniforms.projection.position;
-    let from_eye = length(eye - in.world_position);
     let view = normalize(in.world_position - eye);
     let facing = 1.0 - abs(dot(normal, view));
-    let haze = 1.0 - exp(-from_eye * 0.0006);
-    let haze_colour = vec3<f32>(0.58, 0.62, 0.72);
-    color = mix(color, haze_colour, clamp(haze * (0.5 + 0.5 * facing), 0.0, 0.62));
+    let haze = air_closure(eye, in.world_position);
+    color = mix(color, air_colour(), clamp(haze * (0.5 + 0.5 * facing), 0.0, 0.62));
 "#;
 
 /// What the post stage does to the frame the scene produced.
@@ -279,18 +313,7 @@ const GRADE: &str = r#"
     // geometry covered.
     if depth >= 1.0 {
         let ray = ray_through(in.uv);
-        // A sky is a gradient taken off the ray rather than off the pixel: a gradient in
-        // screen space is a backdrop, and a backdrop does not move when the camera does.
-        // Below the horizon the ground haze takes over, which is what stops the bottom of
-        // the frame from being the same blue as the top.
-        let above = pow(clamp(ray.y, 0.0, 1.0), 0.55);
-        let horizon = vec3<f32>(0.70, 0.66, 0.60);
-        let zenith = vec3<f32>(0.13, 0.27, 0.56);
-        let below = vec3<f32>(0.44, 0.40, 0.36);
-        let sky = select(mix(horizon, below, clamp(-ray.y * 4.0, 0.0, 1.0)),
-                         mix(horizon, zenith, above),
-                         ray.y > 0.0);
-        color = sky;
+        color = air_sky(ray);
     }
 
     // Reinhard, applied per channel. The desaturation a plain Reinhard curve causes is

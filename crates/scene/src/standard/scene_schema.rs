@@ -64,6 +64,15 @@ pub const UP: &str = "up";
 /// Field holding the angle the camera sees through, in radians.
 pub const FIELD_OF_VIEW: &str = "field_of_view";
 
+/// Field holding the focal length of the lens the camera looks through, in millimetres.
+pub const FOCAL_LENGTH: &str = "focal_length";
+
+/// Field holding the width of the sensor the focal length is measured against.
+pub const SENSOR_WIDTH: &str = "sensor_width";
+
+/// Field holding how far the camera is turned about its own axis, in radians.
+pub const ROLL: &str = "roll";
+
 /// Field holding which projection the camera draws through.
 pub const PROJECTION: &str = "projection";
 
@@ -348,9 +357,9 @@ pub fn clustering_schema() -> Schema {
         ),
         (
             SHADOW_PAGE_HEIGHT.to_owned(),
-            Schema::new(SchemaKind::Int).optional().with_documentation(
-                "How tall one shadow page is, in pixels. Defaults to 1024.",
-            ),
+            Schema::new(SchemaKind::Int)
+                .optional()
+                .with_documentation("How tall one shadow page is, in pixels. Defaults to 1024."),
         ),
         (
             SHADOW_PAGES.to_owned(),
@@ -363,8 +372,10 @@ pub fn clustering_schema() -> Schema {
             ),
         ),
     ]))
-    .with_documentation("How the view is divided, how many lights one box keeps, and how many \
-                         shadows the scene can afford.")
+    .with_documentation(
+        "How the view is divided, how many lights one box keeps, and how many \
+                         shadows the scene can afford.",
+    )
 }
 
 /// Builds the schema of the image a scene is drawn into.
@@ -420,7 +431,53 @@ pub fn camera_schema() -> Schema {
             FIELD_OF_VIEW.to_owned(),
             Schema::new(SchemaKind::Float)
                 .optional()
-                .with_documentation("The angle seen through, vertically, in radians."),
+                .with_documentation(
+                    "The angle seen through, vertically, in radians. **A camera names a \
+                     lens or an angle, and an angle is the one the projection is built \
+                     from**, so a document carrying both takes the angle and ignores the \
+                     focal length. A camera that names neither is the fifty degree \
+                     convention.",
+                ),
+        ),
+        (
+            FOCAL_LENGTH.to_owned(),
+            Schema::new(SchemaKind::Float)
+                .optional()
+                .with_documentation(
+                    "The focal length of the lens, in millimetres, which is how a lens is \
+                     named in the hand. A twenty four millimetre lens and a two hundred \
+                     millimetre one on the same geometry are two photographs rather than \
+                     one, and a scene cannot say so with an angle alone without having to \
+                     work out the number itself. Read against `sensor_width` and divided by \
+                     the frame's aspect to reach the vertical angle the projection takes.",
+                ),
+        ),
+        (
+            SENSOR_WIDTH.to_owned(),
+            Schema::new(SchemaKind::Float)
+                .optional()
+                .with_documentation(
+                    "The width of the sensor the focal length is measured against, in \
+                     millimetres. A focal length is quoted against a film size rather than \
+                     on its own, so thirty six is full frame and a smaller number is a \
+                     smaller negative. Defaults to thirty six. A frame taller than it is \
+                     wide is a frame the author has to measure against the other side, \
+                     because the number here is a width.",
+                ),
+        ),
+        (
+            ROLL.to_owned(),
+            Schema::new(SchemaKind::Float)
+                .optional()
+                .with_documentation(
+                    "How far the camera is turned about its own axis, in radians. This is \
+                     the one camera move that a photographer makes with the camera itself \
+                     rather than with where it stands, and without it a horizon is a \
+                     horizon: a level frame is a choice that has to be made on purpose, \
+                     and `up` cannot make it because `up` is also what says which way is \
+                     up in the world. Positive turns the frame clockwise as the author sees \
+                     it.",
+                ),
         ),
         (
             PROJECTION.to_owned(),

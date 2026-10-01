@@ -131,8 +131,7 @@ fn texture_declaration(tag: &str, layers: Option<i64>, layer: Option<i64>) -> Va
 
 /// Reads the layer a declaration names, by building the one pass document that carries it.
 fn layer_of(declaration: &Value) -> Option<i64> {
-    passes(&graphics_document(declaration.clone()))
-        .expect("the pass reads")[0]
+    passes(&graphics_document(declaration.clone())).expect("the pass reads")[0]
         .binders()
         .expect("the binders read")[0]
         .layer()
@@ -142,12 +141,15 @@ fn layer_of(declaration: &Value) -> Option<i64> {
 fn graphics_document(declaration: Value) -> Value {
     Value::structure([(
         PASSES_FIELD.to_owned(),
-        Value::List(vec![Value::variant("Rasterize", [
-            (LABEL.to_owned(), Value::String("write the page".to_owned())),
-            (
-                BINDERS.to_owned(),
-                Value::dictionary([("pool".to_owned(), declaration)]),
-            ),
-        ])]),
+        Value::List(vec![Value::variant(
+            "Rasterize",
+            [
+                (LABEL.to_owned(), Value::String("write the page".to_owned())),
+                (
+                    BINDERS.to_owned(),
+                    Value::dictionary([("pool".to_owned(), declaration)]),
+                ),
+            ],
+        )]),
     )])
 }

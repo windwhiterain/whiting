@@ -5,6 +5,7 @@
 //! reflections run the length of the frame.
 
 use definition::Value;
+use scene::standard::Stage;
 
 use crate::geometry::heightfield;
 use crate::kit::{
@@ -187,9 +188,9 @@ pub fn monoliths() -> Value {
         (
             "instances".to_owned(),
             instances(vec![
-                ("shadowing", shadowing),
-                ("depthing", depthing),
-                ("lighting", lighting),
+                (Stage::Shadowing, shadowing),
+                (Stage::Depthing, depthing),
+                (Stage::Lighting, lighting),
             ]),
         ),
     ])

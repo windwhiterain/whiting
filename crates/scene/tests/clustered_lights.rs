@@ -140,7 +140,11 @@ impl Stages {
         let count = |prefix: &str| {
             passes
                 .iter()
-                .filter(|pass| pass.label().expect("a pass is labelled").starts_with(prefix))
+                .filter(|pass| {
+                    pass.label()
+                        .expect("a pass is labelled")
+                        .starts_with(prefix)
+                })
                 .count()
         };
         let stages = (
@@ -178,13 +182,69 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
         .map(|name| ((*name).to_owned(), Stages::of(&Gallery::build(name))))
         .collect();
     let expected: Vec<(&str, Stages)> = vec![
-        ("dunes", Stages { shadowing: 2, depthing: 1, lighting: 1, other: 1 }),
-        ("lanterns", Stages { shadowing: 9, depthing: 3, lighting: 3, other: 2 }),
-        ("monoliths", Stages { shadowing: 2, depthing: 2, lighting: 2, other: 1 }),
-        ("studio", Stages { shadowing: 1, depthing: 1, lighting: 1, other: 0 }),
-        ("terraces", Stages { shadowing: 12, depthing: 6, lighting: 6, other: 1 }),
-        ("tidewater", Stages { shadowing: 6, depthing: 4, lighting: 3, other: 2 }),
-        ("tiles", Stages { shadowing: 1, depthing: 1, lighting: 1, other: 1 }),
+        (
+            "dunes",
+            Stages {
+                shadowing: 2,
+                depthing: 1,
+                lighting: 1,
+                other: 1,
+            },
+        ),
+        (
+            "lanterns",
+            Stages {
+                shadowing: 9,
+                depthing: 3,
+                lighting: 3,
+                other: 2,
+            },
+        ),
+        (
+            "monoliths",
+            Stages {
+                shadowing: 2,
+                depthing: 2,
+                lighting: 2,
+                other: 1,
+            },
+        ),
+        (
+            "studio",
+            Stages {
+                shadowing: 1,
+                depthing: 1,
+                lighting: 1,
+                other: 0,
+            },
+        ),
+        (
+            "terraces",
+            Stages {
+                shadowing: 12,
+                depthing: 6,
+                lighting: 6,
+                other: 1,
+            },
+        ),
+        (
+            "tidewater",
+            Stages {
+                shadowing: 6,
+                depthing: 4,
+                lighting: 3,
+                other: 2,
+            },
+        ),
+        (
+            "tiles",
+            Stages {
+                shadowing: 1,
+                depthing: 1,
+                lighting: 1,
+                other: 1,
+            },
+        ),
     ];
     assert_eq!(
         counted,

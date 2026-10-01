@@ -250,7 +250,13 @@ pub fn lighting_with_normal(
     surface: &str,
     helpers: &str,
 ) -> String {
-    lighting_stage(vertex_inputs, displace, surface, helpers, lighting_bindings(false))
+    lighting_stage(
+        vertex_inputs,
+        displace,
+        surface,
+        helpers,
+        lighting_bindings(false),
+    )
 }
 
 /// Returns the binding declarations of the clustered lighting stage, numbered the way the
@@ -484,14 +490,43 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
     let normal_dot_view = max(dot(normal, to_view), 0.0);
 
     // A metal takes its colour from what it reflects and has no diffuse term; a dielectric
-    // reflects about four percent at normal incidence, rising to one at grazing angles,
-    // which is the Fresnel term below.
+    // reflects about four percent at normal incidence, which is the Fresnel term below.
     let f0 = mix(vec3<f32>(0.04), in.tint, metallic);
-    let fresnel = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - normal_dot_view, 5.0);
-    // A rough surface spreads its highlight, so the exponent of the lobe follows the
-    // roughness rather than being a constant.
+    // The rise towards one at a grazing angle is a property of a **smooth** interface. A rough
+    // surface is a field of microfacets tilted in every direction, so the reflectance it shows
+    // edge on is not much above the one it shows head on — and Schlick's term, which saturates
+    // at one whatever the roughness, hands it the whole difference anyway.
+    //
+    // That is what made a thin object seen edge on — a reed, a wire, a branch, a rope, a wet
+    // edge, a horizon-lit rim — render as a white stick whatever tint it carried. At those
+    // angles the specular reached a large share of the full light and the tint is not in the
+    // specular to darken it, so the only lever a scene had was to scale the whole shaded
+    // colour down, which is a scene reaching around the shading model to undo something the
+    // model did. The ceiling below is `max(1 - roughness, f0)`: a smooth surface still reaches
+    // one, and a fully rough dielectric settles at the flat four percent it physically is.
+    let fresnel_ceiling = max(vec3<f32>(1.0) - roughness, f0);
+    let fresnel = f0 + (fresnel_ceiling - f0) * pow(1.0 - normal_dot_view, 5.0);
+
+    // The specular lobe, in two parts that answer different questions.
+    //
+    // `strength` is how much of the surface's reflectance comes back as a highlight rather than
+    // as diffuse. That is a property of the material, and it is the only part of the highlight
+    // the tint has a say in.
+    //
+    // `exponent` is the shape of the lobe: a rough surface spreads its highlight. Widening a
+    // lobe is only half of what a microfacet distribution does, though — the other half is that
+    // **the peak falls as the lobe widens**, because the same energy is spread thinner. Left
+    // unnormalised, `pow` alone gives a searchlight rather than a material: a surface as rough
+    // as a wall still shows a highlight at a mirror's brightness, and no material can say
+    // otherwise. Dividing by the lobe's own width is what puts the roughness back into the
+    // peak. The division is against the smoothest lobe this template builds, so a mirror is
+    // exactly as bright here as it always was and only the roughness moves.
+    let strength = mix(0.02, 1.0, (1.0 - roughness) * (1.0 - roughness));
     let exponent = mix(512.0, 4.0, roughness);
-    let sharpness = mix(0.02, 1.0, (1.0 - roughness) * (1.0 - roughness));
+    // The lobe's own width, against the smoothest lobe this template builds, so that a mirror
+    // is exactly as bright here as it was before the lobe was normalised.
+    let lobe_width = sqrt(2.0 / (exponent + 2.0));
+    let smooth_lobe_width = sqrt(2.0 / (514.0));
 
     // The cluster this fragment is in, its light count, and the start of its row. The row is
     // the cap wide rather than the count, so no prefix sum of the counts is needed to find
@@ -518,7 +553,8 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
 
         let lambert = max(dot(normal, direction), 0.0);
         let half_vector = normalize(direction + to_view);
-        let specular = pow(max(dot(normal, half_vector), 0.0), exponent) * sharpness;
+        let specular = pow(max(dot(normal, half_vector), 0.0), exponent)
+            * strength * (smooth_lobe_width / lobe_width);
 
         color = color + diffuse_color * lambert * radiance;
         color = color + fresnel * specular * radiance * 3.0;

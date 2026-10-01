@@ -272,12 +272,36 @@ pub fn instance(
 /// several passes is drawn once per pass. A bucket no pass draws is not written at all rather
 /// than written empty: an absent key and an empty list mean the same thing here, and the
 /// shorter document is the one an agent reads.
-pub fn instances(buckets: Vec<(&str, Vec<Value>)>) -> Value {
-    Value::dictionary(
-        buckets
-            .into_iter()
-            .map(|(pass, instances)| (pass.to_owned(), Value::List(instances))),
-    )
+///
+/// # Why the key is a [`scene::standard::Stage`] and not a string
+///
+/// This is the argument list where a scene decides **which stage a surface is drawn in**, and
+/// it is therefore where the most expensive mistake in the gallery is available: a surface
+/// whose colour comes from a reflection rather than from a light.
+///
+/// The **lighting** stage runs once per light and its passes add, so anything a lighting body
+/// computes is computed and added *per light*. A mirror, a body of water, a pane of glass — a
+/// surface lit by what it reflects — drawn there comes out once per light. Under two lights it
+/// comes out twice as bright as the sky above it: white, clipped, no depth, no Fresnel
+/// gradient. The **emission** stage runs exactly once, which is the whole of why it exists, so
+/// it is the correct home for such a surface and it costs a third of the passes as well.
+///
+/// Nothing in the framework says so. The name "emission" is about light a material gives off,
+/// and a mirror gives off nothing, so a scene author draws water where everything else is
+/// drawn and finds a white lake. Taking the stage as a type rather than a string does not make
+/// an author choose correctly — but it puts four choices side by side in one signature, where
+/// the fourth is a different *word*, instead of four interchangeable strings that a typo turns
+/// into a different pass.
+///
+/// The framework half of this is a material field saying "none of that is a light's business",
+/// which belongs to whoever owns the emitter and is not invented here. See
+/// [the proposal](../../../.agents/proposals/photographic-scenes.md).
+pub fn instances(buckets: Vec<(scene::standard::Stage, Vec<Value>)>) -> Value {
+    let buckets: Vec<(String, Value)> = buckets
+        .into_iter()
+        .map(|(pass, instances)| (pass.suffix().to_owned(), Value::List(instances)))
+        .collect();
+    Value::dictionary(buckets)
 }
 
 /// Builds a camera that is drawn from the eye it writes, rather than fitted to the scene.
@@ -299,6 +323,41 @@ pub fn camera_placed(
         ("eye".to_owned(), triple(eye)),
         ("target".to_owned(), triple(target)),
         ("field_of_view".to_owned(), Value::Float(field_of_view)),
+        ("projection".to_owned(), Value::variant("Perspective", [])),
+        ("near".to_owned(), Value::Float(near)),
+        ("far".to_owned(), Value::Float(far)),
+    ])
+}
+
+/// Builds a camera that names the lens it looks through rather than an angle.
+///
+/// # Invariants
+///
+/// A lens is a focal length, and a focal length is meaningless without the film size it was
+/// measured against — so both are written here rather than the angle they work out to. A
+/// scene that says `35.0` says what a photographer would have said, and the angle is
+/// arrived at from the frame the scene is drawn into rather than by the author doing the
+/// arithmetic in their head and getting it slightly wrong for a frame that is not square.
+///
+/// `roll` is the camera turned about its own axis, which is a different thing from `up`:
+/// `up` is a statement about the world and a roll is a statement about the frame. A
+/// photograph whose horizon is level has made a decision, and this is the field that
+/// decision is written in.
+pub fn camera_placed_on_lens(
+    eye: [f64; 3],
+    target: [f64; 3],
+    focal_length: f64,
+    sensor_width: f64,
+    roll: f64,
+    near: f64,
+    far: f64,
+) -> Value {
+    Value::structure([
+        ("eye".to_owned(), triple(eye)),
+        ("target".to_owned(), triple(target)),
+        ("focal_length".to_owned(), Value::Float(focal_length)),
+        ("sensor_width".to_owned(), Value::Float(sensor_width)),
+        ("roll".to_owned(), Value::Float(roll)),
         ("projection".to_owned(), Value::variant("Perspective", [])),
         ("near".to_owned(), Value::Float(near)),
         ("far".to_owned(), Value::Float(far)),

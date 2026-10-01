@@ -33,7 +33,9 @@
 use std::collections::BTreeMap;
 
 use definition::Value;
-use graphics::binders::{BinderKind, DATA, FORMAT, HEIGHT, LAYERS, SCHEMA, SIZE_BYTES, USAGE, WIDTH};
+use graphics::binders::{
+    BinderKind, DATA, FORMAT, HEIGHT, LAYERS, SCHEMA, SIZE_BYTES, USAGE, WIDTH,
+};
 use graphics::layout::{VertexLayout, vertex_layout};
 use graphics::{
     Declaration, PassView, SamplerAddress, SamplerSettings, is_sampled, verify_pass_inputs,
@@ -300,10 +302,9 @@ impl TextureShape {
             .variant_fields()
             .ok_or_else(|| RenderError::Backend(format!("`{source}` is not a texture payload")))?;
         let number = |name: &str| {
-            fields
-                .get(name)
-                .and_then(Value::as_int)
-                .ok_or_else(|| RenderError::Backend(format!("the texture `{source}` needs a `{name}`")))
+            fields.get(name).and_then(Value::as_int).ok_or_else(|| {
+                RenderError::Backend(format!("the texture `{source}` needs a `{name}`"))
+            })
         };
         // A size of zero is rounded up rather than refused, as it always has been: a
         // document asking for no pixels is asking for a very small image, and a backend
@@ -431,12 +432,7 @@ impl TextureShape {
     /// the count itself is: a pass that drew into page four of a pool of four would write
     /// the first page again, and the shadow it thinks it gave a light would be another
     /// light's.
-    pub fn check_layer(
-        &self,
-        source: &str,
-        point: &str,
-        layer: i64,
-    ) -> Result<u32, RenderError> {
+    pub fn check_layer(&self, source: &str, point: &str, layer: i64) -> Result<u32, RenderError> {
         if layer < 0 || layer >= i64::from(self.layers) {
             return Err(RenderError::Backend(format!(
                 "the pass renders into `{point}`, which names layer {layer} of the texture \
@@ -893,9 +889,11 @@ impl WgpuRenderer {
                         // A layer the pool does not have is refused, because a pass that
                         // drew past the end of the pool would write the first page again
                         // and hand one light another's shadow.
-                        let layer = texture
-                            .shape
-                            .check_layer(&texture.source, &texture.point, layer_of(&declaration))?;
+                        let layer = texture.shape.check_layer(
+                            &texture.source,
+                            &texture.point,
+                            layer_of(&declaration),
+                        )?;
                         let view = texture
                             .texture
                             .create_view(&texture.shape.layer_view_descriptor(layer));

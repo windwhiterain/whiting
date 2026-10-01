@@ -329,9 +329,10 @@ pub fn light_pass_schema() -> Schema {
             ),
             (
                 CLUSTER_COUNTS_ENTRY,
-                buffer_binding_schema()
-                    .with_documentation("How many lights each cluster kept, which is the bound \
-                     of the loop."),
+                buffer_binding_schema().with_documentation(
+                    "How many lights each cluster kept, which is the bound \
+                     of the loop.",
+                ),
             ),
             (
                 CLUSTER_INDICES_ENTRY,

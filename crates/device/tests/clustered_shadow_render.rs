@@ -123,9 +123,7 @@ fn compare(after: &[u8], before: &[u8]) -> (usize, usize) {
     let mut darker = 0;
     let mut brighter = 0;
     for (own, other) in after.chunks_exact(4).zip(before.chunks_exact(4)) {
-        let luminance = |pixel: &[u8]| {
-            pixel[0] as i32 + pixel[1] as i32 + pixel[2] as i32
-        };
+        let luminance = |pixel: &[u8]| pixel[0] as i32 + pixel[1] as i32 + pixel[2] as i32;
         match luminance(own).cmp(&luminance(other)) {
             std::cmp::Ordering::Less => darker += 1,
             std::cmp::Ordering::Greater => brighter += 1,
@@ -170,8 +168,18 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
     };
 
     let meshes = Value::List(vec![
-        mesh("ground", "Triangles", point.clone(), heightfield(32, GROUND, flat)),
-        mesh("block", "Triangles", point.clone(), heightfield(32, GROUND, raised)),
+        mesh(
+            "ground",
+            "Triangles",
+            point.clone(),
+            heightfield(32, GROUND, flat),
+        ),
+        mesh(
+            "block",
+            "Triangles",
+            point.clone(),
+            heightfield(32, GROUND, raised),
+        ),
     ]);
 
     // The lights stand on the **far** side of the block from the camera, which is the whole
@@ -268,7 +276,10 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
     buckets.insert(0, ("shadowing", casters));
 
     Value::structure([
-        ("name".to_owned(), Value::String("clustered_shadow".to_owned())),
+        (
+            "name".to_owned(),
+            Value::String("clustered_shadow".to_owned()),
+        ),
         (
             "clustering".to_owned(),
             Value::structure([("shadow_pages".to_owned(), Value::Int(pages))]),

@@ -72,7 +72,10 @@ fn a_flat_texture_is_the_descriptor_and_the_view_it_always_was() {
 fn a_declared_layer_count_reaches_the_descriptor_and_the_view() {
     let shape = TextureShape::read("pool", &payload("TextureArray", Some(64)), MAX_LAYERS)
         .expect("an array of sixty four layers is within the limit");
-    assert_eq!(shape.layers, 64, "the count the document wrote is the count read");
+    assert_eq!(
+        shape.layers, 64,
+        "the count the document wrote is the count read"
+    );
 
     let descriptor = shape.descriptor("pool", wgpu::TextureFormat::Depth32Float, 1);
     assert_eq!(
@@ -88,7 +91,11 @@ fn a_declared_layer_count_reaches_the_descriptor_and_the_view() {
 
     let view = shape.view_descriptor();
     assert_eq!(
-        (view.dimension, view.array_layer_count, view.base_array_layer),
+        (
+            view.dimension,
+            view.array_layer_count,
+            view.base_array_layer
+        ),
         (Some(wgpu::TextureViewDimension::D2Array), Some(64), 0),
         "a shader reads every layer, so the view is the whole array counted from the first"
     );
@@ -100,7 +107,11 @@ fn a_declared_layer_count_reaches_the_descriptor_and_the_view() {
 
     let page = shape.layer_view_descriptor(40);
     assert_eq!(
-        (page.dimension, page.base_array_layer, page.array_layer_count),
+        (
+            page.dimension,
+            page.base_array_layer,
+            page.array_layer_count
+        ),
         (Some(wgpu::TextureViewDimension::D2), 40, Some(1)),
         "a pass draws into one layer as a flat image, because the layer is the view"
     );
@@ -139,7 +150,9 @@ fn a_pass_may_not_draw_into_a_layer_the_pool_does_not_have() {
     let shape = TextureShape::read("pool", &payload("TextureArray", Some(4)), MAX_LAYERS)
         .expect("a pool of four pages reads");
     assert_eq!(
-        shape.check_layer("pool", "shadow", 3).expect("page three exists"),
+        shape
+            .check_layer("pool", "shadow", 3)
+            .expect("page three exists"),
         3,
         "the last page is a page the pool has"
     );

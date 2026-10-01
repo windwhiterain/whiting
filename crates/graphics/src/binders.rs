@@ -306,8 +306,7 @@ fn texture_declaration(
     let mut fields = vec![
         (
             SOURCE.to_owned(),
-            Schema::new(SchemaKind::String)
-                .with_documentation("Instance entry the texture is in."),
+            Schema::new(SchemaKind::String).with_documentation("Instance entry the texture is in."),
         ),
         (WIDTH.to_owned(), Schema::new(SchemaKind::Int)),
         (HEIGHT.to_owned(), Schema::new(SchemaKind::Int)),
@@ -564,7 +563,9 @@ pub fn topology_of(payload: &Value) -> Option<&str> {
 /// thing to a flat texture and to an array, and the only difference between the two is the
 /// layer count. Written out twice, that shared half would be free to drift, and a drift is
 /// a payload that validates against a shape and then builds the other one.
-fn texture_payload_fields(own: impl IntoIterator<Item = (String, Schema)>) -> Vec<(String, Schema)> {
+fn texture_payload_fields(
+    own: impl IntoIterator<Item = (String, Schema)>,
+) -> Vec<(String, Schema)> {
     let mut fields = vec![
         (WIDTH.to_owned(), Schema::new(SchemaKind::Int)),
         (HEIGHT.to_owned(), Schema::new(SchemaKind::Int)),
