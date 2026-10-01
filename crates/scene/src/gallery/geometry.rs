@@ -211,6 +211,29 @@ pub fn fractal_noise(point: [f64; 2], octaves: usize, seed: i64) -> f64 {
     value / total
 }
 
+/// Returns creased noise summed over several octaves, in roughly zero to one.
+///
+/// Each octave is folded over its midpoint before it is summed, so the result is crests
+/// and gullies rather than swells: smooth noise makes domes whatever its amplitude, and
+/// a folded noise makes ridge lines, which is what a mountain range's silhouette is.
+pub fn ridged_noise(point: [f64; 2], octaves: usize, seed: i64) -> f64 {
+    let mut value = 0.0;
+    let mut amplitude = 1.0;
+    let mut frequency = 1.0;
+    let mut total = 0.0;
+    for octave in 0..octaves {
+        let noise = value_noise(
+            [point[0] * frequency, point[1] * frequency],
+            seed + octave as i64,
+        );
+        value += amplitude * (1.0 - (2.0 * noise - 1.0).abs());
+        total += amplitude;
+        amplitude /= 3.0;
+        frequency *= 2.0;
+    }
+    value / total
+}
+
 /// Interpolates between two numbers.
 pub fn lerp(from: f64, to: f64, amount: f64) -> f64 {
     from + (to - from) * amount
@@ -225,48 +248,53 @@ pub fn fract(value: f64) -> f64 {
 ///
 /// # Invariants
 ///
-/// The normal of each point is taken from the heightfield's own gradient, so it is
-/// perpendicular to the surface rather than to the ground. A terrain lit by the slope of
-/// the ground rather than the slope of the terrain has no form at all.
+/// The normal of every point is taken from the heightfield's own gradient at that point,
+/// so it is perpendicular to the surface rather than to the cell it happens to be drawn
+/// in. A normal per cell shades a smooth hillside as tiled facets, and a terrace riser —
+/// a slope a cell wide — as a stripe of alternating triangles, which is the single most
+/// common way a lit scene stops reading as lit.
 ///
-/// `height` is called once per grid point, and the four neighbours of that point are read
-/// from the same function, so a caller whose height depends on anything but its argument
-/// produces a surface whose normals disagree with its geometry.
+/// `height` is called for each grid point and for the four neighbours of that point, so
+/// a caller whose height depends on anything but its argument produces a surface whose
+/// normals disagree with its geometry.
 pub fn heightfield(divisions: usize, extent: f64, height: impl Fn(f64, f64) -> f64) -> PackedList {
     let step = 2.0 * extent / divisions as f64;
     let origin = -extent;
     let mut points = Shaded::with_capacity(divisions * divisions * 6);
 
+    // The position, normal and texture coordinate of one grid point. The gradient is
+    // the difference either side along each axis; a heightfield sampled on a grid is
+    // smooth enough that the difference over one step is its slope.
+    let at = |column: usize, row: usize| {
+        let (x, z) = (origin + column as f64 * step, origin + row as f64 * step);
+        let (dx, dz) = (step * 0.5, step * 0.5);
+        let slope_x = (height(x + dx, z) - height(x - dx, z)) / (2.0 * dx);
+        let slope_z = (height(x, z + dz) - height(x, z - dz)) / (2.0 * dz);
+        // The normal of a surface whose height rises by one per unit of x and z.
+        let normal = normalized([-slope_x, 1.0, -slope_z]);
+        let position = [x, height(x, z), z];
+        let texture = [
+            column as f64 / divisions as f64,
+            row as f64 / divisions as f64,
+        ];
+        (position, normal, texture)
+    };
+
     for row in 0..divisions {
         for column in 0..divisions {
-            let (x, z) = (origin + column as f64 * step, origin + row as f64 * step);
-            // The gradient, by the difference either side along each axis. A heightfield
-            // that is sampled on a grid is smooth enough that the difference over one
-            // step is its slope.
-            let (dx, dz) = (step * 0.5, step * 0.5);
-            let slope_x = (height(x + dx, z) - height(x - dx, z)) / (2.0 * dx);
-            let slope_z = (height(x, z + dz) - height(x, z - dz)) / (2.0 * dz);
-            // The normal of a surface whose height rises by one per unit of x and z.
-            let normal = normalized([-slope_x, 1.0, -slope_z]);
-            let position = [x, height(x, z), z];
-            let texture = [
-                column as f64 / divisions as f64,
-                row as f64 / divisions as f64,
-            ];
-
+            let (p00, n00, t00) = at(column, row);
+            let (p10, n10, t10) = at(column + 1, row);
+            let (p01, n01, t01) = at(column, row + 1);
+            let (p11, n11, t11) = at(column + 1, row + 1);
             // Two triangles per cell, wound counter clockwise seen from above, so the
             // surface faces up and the winding the rasterizer wants is the winding that
             // makes it visible.
-            let right = [x + step, 0.0, z];
-            let up = [x, 0.0, z + step];
-            let corner = [x + step, 0.0, z + step];
-            let lift = |corner: [f64; 3]| [corner[0], height(corner[0], corner[2]), corner[2]];
-            points.push(position, normal, texture);
-            points.push(lift(right), normal, [texture[0] + 0.5, texture[1]]);
-            points.push(lift(up), normal, [texture[0], texture[1] + 0.5]);
-            points.push(lift(right), normal, [texture[0] + 0.5, texture[1]]);
-            points.push(lift(corner), normal, [texture[0] + 0.5, texture[1] + 0.5]);
-            points.push(lift(up), normal, [texture[0], texture[1] + 0.5]);
+            points.push(p00, n00, t00);
+            points.push(p10, n10, t10);
+            points.push(p01, n01, t01);
+            points.push(p10, n10, t10);
+            points.push(p11, n11, t11);
+            points.push(p01, n01, t01);
         }
     }
     points.finish()
