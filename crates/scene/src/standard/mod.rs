@@ -83,13 +83,15 @@
 //! );
 //!
 //! // A pass draws as many instances as its instance buffer has rows, so the two lighting
-//! // instances are one buffer of two rows rather than two buffers or two passes.
+//! // instances are one buffer of two rows rather than two buffers or two passes. The rows are
+//! // the instances being drawn, not the lights: the lighting pass reads no light, so adding a
+//! // light to the scene adds a record to a buffer and not a row to this one.
 //! let shared = compiled
 //!     .instance
 //!     .value
 //!     .at(&definition::Path::root().key("entries").key(&format!(
 //!         "{labels_tail}_instance_data",
-//!         labels_tail = "lighting/key/lighting/triangle"
+//!         labels_tail = "lighting/lighting/triangle"
 //!     )))
 //!     .expect("the lighting instances are in one entry");
 //! let bytes = shared
