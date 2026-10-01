@@ -30,6 +30,30 @@ pub fn triple(components: [f64; 3]) -> Value {
     Value::List(components.into_iter().map(Value::Float).collect())
 }
 
+/// Builds one image of a scene, from pixels the scene generated.
+///
+/// # Why a scene generates its own pixels
+///
+/// Nothing in this framework reads the filesystem: a shader carries its own source, and an image
+/// carries its own pixels. A scene compiler is therefore where a texture comes from, and a
+/// pattern a loop can write is a texture — which is the same reason the points of a dune field
+/// are generated rather than typed out.
+///
+/// The pixels are four bytes a texel, top row first, which is what the device uploads and what it
+/// derives a level chain from.
+pub fn image(label: &str, width: i64, height: i64, pixels: impl IntoIterator<Item = u8>) -> Value {
+    Value::structure([
+        ("label".to_owned(), Value::String(label.to_owned())),
+        ("width".to_owned(), Value::Int(width)),
+        ("height".to_owned(), Value::Int(height)),
+        ("format".to_owned(), Value::String("rgba8unorm".to_owned())),
+        (
+            "data".to_owned(),
+            Value::Bytes(pixels.into_iter().collect()),
+        ),
+    ])
+}
+
 /// Builds one light of a scene.
 pub fn light(
     label: &str,
@@ -111,6 +135,32 @@ pub fn shader(
             ),
         ],
     )
+}
+
+/// The custom field a material names its image in.
+///
+/// # Why the name is fixed
+///
+/// The binding point an image is bound at is derived from the field it was named in, so the field
+/// is what a shader and a material agree on without either naming a binding number. A scene is
+/// free to call it anything; the gallery calls it this, and its shaders read it here.
+pub const IMAGE_FIELD: &str = "image";
+
+/// Builds the custom schema a gallery material gets when it may name an image.
+///
+/// # Invariants
+///
+/// This is [`gallery_custom_schema`] with one optional field added, so a material that names no
+/// image is packed exactly as it was before images existed. The field is a marker rather than a
+/// value the row carries: see [`graphics::image`].
+pub fn gallery_custom_schema_with_image() -> Schema {
+    let base = gallery_custom_schema();
+    let SchemaKind::Struct { fields } = base.kind else {
+        return base;
+    };
+    let mut fields = fields;
+    fields.insert(IMAGE_FIELD.to_owned(), graphics::image_field());
+    Schema::new(SchemaKind::structure(fields))
 }
 
 /// Builds a screen material, which a post process names by label.

@@ -340,6 +340,17 @@ pub enum CompileError {
     UnknownShader { path: Path, shader: String },
     #[error("at {path}: no mesh material in this scene is labelled `{material}`")]
     UnknownMaterial { path: Path, material: String },
+    #[error("at {path}: `{material}` names the image `{image}`, which this scene does not declare")]
+    UnknownImage {
+        path: Path,
+        material: String,
+        image: String,
+    },
+    #[error(
+        "at {path}: the image has no pixels, so there is nothing for a shader to sample. An \
+         image with no `data` is one nothing can read."
+    )]
+    ImageWithoutData { path: Path },
     #[error(
         "the emitted documents both need an entry named `{entry}`, so one would hide the other"
     )]

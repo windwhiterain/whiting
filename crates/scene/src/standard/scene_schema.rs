@@ -28,6 +28,21 @@ pub const SHADERS: &str = "shaders";
 /// Field holding the meshes of the scene.
 pub const MESHES: &str = "meshes";
 
+/// Field holding the list of images a scene declares.
+pub const IMAGES: &str = "images";
+
+/// Field holding how many texels across an image is.
+pub const WIDTH: &str = "width";
+
+/// Field holding how many texels down an image is.
+pub const HEIGHT: &str = "height";
+
+/// Field holding how a texel of an image is spelled.
+pub const FORMAT: &str = "format";
+
+/// Field holding the pixels of an image.
+pub const DATA: &str = "data";
+
 /// Field holding the instances of the scene.
 pub const INSTANCES: &str = "instances";
 
@@ -143,6 +158,19 @@ pub fn standard_scene_schema() -> Schema {
                  which is what lets several scenes share one mesh instead of each holding \
                  its own copy of the points.",
             ),
+        ),
+        (
+            IMAGES.to_owned(),
+            Schema::new(SchemaKind::list(image_schema().reference()))
+                .optional()
+                .with_documentation(
+                    "Pixels a material samples, listed once per image. A material names one by \
+                     label inside its custom data, so two materials that draw the same surface \
+                     share the one texture. An image may be written here or named from another \
+                     definition, which is what keeps a large one out of the document that is \
+                     re-sent to the device on every reload. Absent means no material in this \
+                     scene samples an image.",
+                ),
         ),
         (
             SCREEN_MATERIALS.to_owned(),
@@ -352,6 +380,13 @@ pub fn light_schema() -> Schema {
 /// conventional one rather than leaving two clients to invent two.
 pub const MESH_SCHEMA: &str = "whiting.scene.mesh";
 
+/// Identifier an image in another definition is read with.
+///
+/// A scene may write an image's pixels itself or name a definition to read them from, and a
+/// definition named that way is read with [`image_schema`]. Which identifier it is registered
+/// under is the client's to choose, and this is the conventional one.
+pub const IMAGE_SCHEMA: &str = "whiting.scene.image";
+
 /// Builds the schema of one mesh: geometry, and nothing about where it is drawn.
 pub fn mesh_schema() -> Schema {
     Schema::new(SchemaKind::structure([
@@ -382,6 +417,47 @@ pub fn mesh_schema() -> Schema {
         ),
     ]))
     .with_documentation("Geometry an instance draws, listed once and referenced by label.")
+}
+
+/// Builds the schema of one image: pixels, and nothing about what samples them.
+///
+/// # Why this is a list a material names, and not pixels a material carries
+///
+/// Two materials that draw the same surface have to share the one texture, or the same pixels
+/// are uploaded once per material. Sharing needs a name, and a list of labelled images is
+/// where a label lives — the same shape `meshes` already has for geometry.
+///
+/// It is also what makes a large image possible at all: a definition travels to the device as
+/// json, so a scene that inlined a photograph would re-send it on every reload. A scene may
+/// write its pixels here or reference them from a definition of their own.
+pub fn image_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (LABEL.to_owned(), Schema::new(SchemaKind::String)),
+        (
+            WIDTH.to_owned(),
+            Schema::new(SchemaKind::Int).with_documentation("Texels across."),
+        ),
+        (
+            HEIGHT.to_owned(),
+            Schema::new(SchemaKind::Int).with_documentation("Texels down."),
+        ),
+        (
+            FORMAT.to_owned(),
+            Schema::new(SchemaKind::String)
+                .with_documentation("How a texel is spelled, as the device names formats."),
+        ),
+        (
+            DATA.to_owned(),
+            Schema::new(SchemaKind::Bytes)
+                .optional()
+                .with_documentation(
+                    "The pixels, one texel per four bytes, top row first. Absent is an image \
+                     with nothing to sample, which the compiler refuses rather than binding a \
+                     texture that reads as garbage.",
+                ),
+        ),
+    ]))
+    .with_documentation("Pixels a material samples, listed once and referenced by label.")
 }
 
 /// Builds the schema of one instance: a mesh, where it is, and what draws it.

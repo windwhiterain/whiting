@@ -37,3 +37,9 @@ required-features = ["wgpu"]
 [[test]]
 name = "texture_channel_render"
 required-features = ["wgpu"]
+
+# A scene that samples an image has to be drawn to be shown to work: the compiler's own
+# tests see the documents it emitted and not the frame that came out.
+[[test]]
+name = "gallery_render"
+required-features = ["wgpu"]

@@ -236,6 +236,8 @@ struct InstanceRead {
     instance_bytes: Vec<u8>,
     /// The model matrix the instance row carries, which the transform composes to.
     model: Matrix,
+    /// The images this instance's material names, and the fields it names them in.
+    images: Vec<ImageBinding>,
 }
 
 /// One mesh material, read out of the scene document: a shader, and the data it reads.
@@ -331,9 +333,10 @@ fn read_topology(mesh: &Value, path: &Path) -> Result<Topology, CompileError> {
 pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError> {
     let lights = read_lights(scene)?;
     let shaders = read_shaders(scene)?;
+    let images = read_images(scene)?;
     let materials = read_materials(scene, &shaders)?;
     let (meshes, mut instance) = read_meshes(scene, &shaders)?;
-    let instances = read_instances(scene, &meshes, &materials, &shaders)?;
+    let instances = read_instances(scene, &meshes, &materials, &shaders, &images)?;
     // The camera frames what is drawn rather than what is authored, because an instance
     // may place its mesh anywhere and a mesh no instance names is not drawn at all.
     let bounds = bounds_of_instances(&meshes, &instances);
@@ -377,13 +380,15 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
             Stage::Shadowing,
             Some(&light.label),
         ) {
+            let images = declare_images(&mut instance, &group, &images)?;
             insert_entry(&mut instance, group.entry(), group.payload())?;
-            passes.push(shadowing_pass(&group, light, &bounds, time));
+            passes.push(shadowing_pass(&group, light, &bounds, time, &images));
         }
     }
     for group in groups(&instances, &meshes, &shaders, Stage::Depthing, None) {
+        let images = declare_images(&mut instance, &group, &images)?;
         insert_entry(&mut instance, group.entry(), group.payload())?;
-        passes.push(depthing_pass(&group, &camera, frame, time));
+        passes.push(depthing_pass(&group, &camera, frame, time, &images));
     }
     for light in &lights {
         for group in groups(
@@ -393,8 +398,11 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
             Stage::Lighting,
             Some(&light.label),
         ) {
+            let images = declare_images(&mut instance, &group, &images)?;
             insert_entry(&mut instance, group.entry(), group.payload())?;
-            passes.push(lighting_pass(&group, light, &camera, &bounds, frame, time));
+            passes.push(lighting_pass(
+                &group, light, &camera, &bounds, frame, time, &images,
+            ));
         }
     }
     // Emission runs once per instance rather than once per light, which is the whole reason it
@@ -403,8 +411,9 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     // lighting passes does not change the sum; it sits after them so that the first pass to
     // write the target is a lighting pass, which is what clears it to unlit.
     for group in groups(&instances, &meshes, &shaders, Stage::Emission, None) {
+        let images = declare_images(&mut instance, &group, &images)?;
         insert_entry(&mut instance, group.entry(), group.payload())?;
-        passes.push(emission_pass(&group, &camera, frame, time));
+        passes.push(emission_pass(&group, &camera, frame, time, &images));
     }
     // The post processes are the last passes, in the order the scene lists them. Everything
     // each reads was written above it: the first reads the shaded image and the last writes
@@ -526,6 +535,266 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
 ///
 /// The set of distinct schemas is small — one per shader a scene draws with — so a scene
 /// verifies each mesh's points once per *shader* rather than once per *instance*.
+/// One image, read out of the scene document: pixels a material samples, and nothing about
+/// which material samples them.
+///
+/// # Invariants
+///
+/// An image is read without being checked for a label collision, because a label no material
+/// names cannot collide with anything. `material_images` is where a name is resolved, and it
+/// is where a duplicate is reported.
+struct ImageRead {
+    label: String,
+    width: i64,
+    height: i64,
+    format: String,
+    pixels: Vec<u8>,
+}
+
+/// Reads the images a scene declares.
+fn read_images(scene: &Value) -> Result<Vec<ImageRead>, CompileError> {
+    let path = Path::root().key(scene_schema::IMAGES);
+    let Some(images) = field(scene, scene_schema::IMAGES) else {
+        return Ok(Vec::new());
+    };
+    let Some(images) = images.as_list() else {
+        return Err(malformed(&path, "a list"));
+    };
+
+    let mut read: Vec<ImageRead> = Vec::with_capacity(images.len());
+    for (index, image) in images.iter().enumerate() {
+        let path = path.index(index);
+        let label = text(image, &path, scene_schema::LABEL)?.to_owned();
+        let count = |name: &str| -> Result<i64, CompileError> {
+            let field_path = path.key(name);
+            field(image, name)
+                .and_then(Value::as_int)
+                .ok_or_else(|| malformed(&field_path, "a count of texels"))
+        };
+        let width = count(scene_schema::WIDTH)?;
+        let height = count(scene_schema::HEIGHT)?;
+        let format = text(image, &path, scene_schema::FORMAT)?.to_owned();
+        // A scene image carries its own pixels, or names a definition that does. Either way it
+        // is a texture the compiler can fill, and an image with nothing in it is caught where
+        // it is named rather than here: a scene may declare one it never uses.
+        let pixels = field(image, scene_schema::DATA)
+            .and_then(Value::as_bytes)
+            .ok_or_else(|| CompileError::ImageWithoutData {
+                path: path.key(scene_schema::DATA),
+            })?
+            .to_vec();
+        read.push(ImageRead {
+            label,
+            width,
+            height,
+            format,
+            pixels,
+        });
+    }
+    Ok(read)
+}
+
+/// One image a material's custom data names, and the field it was named in.
+///
+/// # Invariants
+///
+/// The field is what the compiler derives a binding point from, so two materials that name
+/// different images in the same field cannot share a pass: the point would have to be two
+/// sources at once. `groups` is where that is prevented, and this is what it compares.
+#[derive(Clone, PartialEq, Eq)]
+struct ImageBinding {
+    field: String,
+    label: String,
+}
+
+/// Returns the fields a shader's custom schema declares as images, in name order.
+fn image_fields(custom: &Schema) -> Vec<String> {
+    let SchemaKind::Struct { fields } = &custom.kind else {
+        return Vec::new();
+    };
+    fields
+        .iter()
+        .filter(|(_, field)| graphics::is_image(field))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
+/// Returns the custom data without the fields that name an image.
+///
+/// # Invariants
+///
+/// What is left is what gets packed into the instance row and what carries no name, so the two
+/// can be told apart: an image is a name the compiler resolves, and everything else is a number
+/// the row carries.
+fn numbers_only(custom: &Value, images: &[String]) -> Value {
+    let Some(fields) = custom.as_field_map() else {
+        return custom.clone();
+    };
+    Value::structure(
+        fields
+            .iter()
+            .filter(|(name, _)| !images.iter().any(|image| image == *name))
+            .map(|(name, value)| (name.clone(), value.clone())),
+    )
+}
+
+/// Resolves the images one material's custom data names.
+fn material_images(
+    custom_data: &Value,
+    shader: &ShaderRead,
+    material_label: &str,
+    material_path: &Path,
+    images: &[ImageRead],
+) -> Result<Vec<ImageBinding>, CompileError> {
+    let fields = image_fields(&shader.custom_schema);
+    if fields.is_empty() {
+        return Ok(Vec::new());
+    }
+    let Some(custom) = custom_data.as_field_map() else {
+        return Err(malformed(material_path, "the custom data as a struct"));
+    };
+    let mut bindings = Vec::new();
+    for field in fields {
+        // An image field is optional, so a material that names none is a material that draws
+        // no image. That is every material until one asks for one.
+        let Some(label) = custom.get(&field).and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(image) = images.iter().find(|image| image.label == label) else {
+            return Err(CompileError::UnknownImage {
+                path: material_path.key(scene_schema::CUSTOM_DATA).key(&field),
+                material: material_label.to_owned(),
+                image: label.to_owned(),
+            });
+        };
+        if image.pixels.is_empty() {
+            return Err(CompileError::ImageWithoutData {
+                path: material_path.key(scene_schema::CUSTOM_DATA).key(&field),
+            });
+        }
+        bindings.push(ImageBinding {
+            field,
+            label: label.to_owned(),
+        });
+    }
+    Ok(bindings)
+}
+
+/// The name a texture entry for one image is written under.
+///
+/// An image is emitted once however many materials name it, so the entry is named after the
+/// image rather than after the material. That is what makes two materials naming one image
+/// share the one texture rather than uploading it twice.
+fn image_entry(label: &str) -> String {
+    format!("image_{label}")
+}
+
+/// The binding point an image field is bound at.
+///
+/// It is the field's own name, so a shader declares the point its custom schema already names
+/// and no author writes a binding number anywhere.
+fn image_point(field: &str) -> String {
+    field.to_owned()
+}
+
+/// Builds the instance entry one image's pixels are uploaded from.
+fn image_payload(image: &ImageRead) -> Value {
+    texture_with_data(&image.format, image.width, image.height, &image.pixels)
+}
+
+/// Builds the pass declaration one image is bound with.
+fn image_binding(image: &ImageRead) -> Value {
+    texture_binding(
+        &image_entry(&image.label),
+        image.width,
+        image.height,
+        &image.format,
+    )
+}
+
+/// Builds a texture payload that carries its own pixels, to be sampled.
+fn texture_with_data(format: &str, width: i64, height: i64, pixels: &[u8]) -> Value {
+    let mut fields = BTreeMap::new();
+    fields.insert(graphics::binders::WIDTH.to_owned(), Value::Int(width));
+    fields.insert(graphics::binders::HEIGHT.to_owned(), Value::Int(height));
+    fields.insert(
+        graphics::binders::FORMAT.to_owned(),
+        Value::String(format.to_owned()),
+    );
+    fields.insert(
+        graphics::binders::DATA.to_owned(),
+        Value::Bytes(pixels.to_vec()),
+    );
+    // `sampled` is a unit key: its presence is the whole declaration, and an image a scene
+    // declares is an image a shader samples. A texture a pass renders into is the pipeline's
+    // own and is declared where it is emitted, not here.
+    fields.insert(graphics::binders::SAMPLED.to_owned(), Value::Unit);
+    Value::Enum {
+        tag: "Texture".to_owned(),
+        fields,
+    }
+}
+
+/// Returns a shader's pass schema with a texture bound at each field that names an image.
+///
+/// # Why the compiler writes this and not the author
+///
+/// A pass schema is a closed struct: a binder the schema does not declare is a binder the pass
+/// may not carry, so a pass that binds an image has to declare it. That declaration is the
+/// compiler's to write, because the field is where the author said what they wanted and the
+/// binding point is what the compiler decided to do about it. A shader that had to name the point
+/// itself would be naming a gpu resource, which is the one thing a scene does not do.
+///
+/// # Invariants
+///
+/// The point's name is the field's own name, and its schema is a texture declaration, because
+/// that is what the pass emits there. A schema that already declares the point is left alone
+/// rather than merged: a field is a field, and declaring it twice would be a schema that
+/// disagrees with itself.
+fn declared_with_images(pass: &Schema, custom: &Schema) -> Rc<Schema> {
+    let images = image_fields(custom);
+    if images.is_empty() {
+        return Rc::new(pass.clone());
+    }
+    // A pass schema is the interface of a pass: a `uniform` and a `binders` block, and the
+    // binder points are fields of the second. Adding one to the outer struct would declare a
+    // field of the interface that no pass carries.
+    let SchemaKind::Struct { fields } = &pass.kind else {
+        return Rc::new(pass.clone());
+    };
+    let Some(binders) = fields.get(graphics::BINDERS) else {
+        return Rc::new(pass.clone());
+    };
+    let SchemaKind::Struct {
+        fields: binder_fields,
+    } = &binders.kind
+    else {
+        return Rc::new(pass.clone());
+    };
+    let mut binder_fields = binder_fields.clone();
+    for field in images {
+        // Optional, because a material need not name an image: the field it would name one in is
+        // optional in the custom schema, and a pass whose material named none binds nothing there.
+        // A required binder would make every material of that shader carry an image.
+        binder_fields.insert(
+            field.clone(),
+            graphics::texture_binding_schema()
+                .optional()
+                .with_documentation(
+                    "The image this pass binds, at the point named after the custom field the \
+                     material named it in. Absent when the material names no image.",
+                ),
+        );
+    }
+    let mut interface = fields.clone();
+    interface.insert(
+        graphics::BINDERS.to_owned(),
+        Schema::new(SchemaKind::structure(binder_fields)),
+    );
+    Rc::new(Schema::new(SchemaKind::structure(interface)))
+}
+
+/// Reads the meshes a scene declares.
 fn read_meshes(
     scene: &Value,
     shaders: &[ShaderRead],
@@ -719,6 +988,7 @@ fn read_instances(
     meshes: &[MeshRead],
     materials: &[MeshMaterialRead],
     shaders: &[ShaderRead],
+    images: &[ImageRead],
 ) -> Result<Vec<InstanceRead>, CompileError> {
     let path = Path::root().key(scene_schema::INSTANCES);
     let instances = at(scene, &Path::root(), scene_schema::INSTANCES)?;
@@ -745,6 +1015,7 @@ fn read_instances(
                 meshes,
                 materials,
                 shaders,
+                images,
                 stage,
             )?;
             if read.iter().any(|other| other.label == found.label) {
@@ -772,6 +1043,7 @@ fn read_instance(
     meshes: &[MeshRead],
     materials: &[MeshMaterialRead],
     shaders: &[ShaderRead],
+    images: &[ImageRead],
     stage: Stage,
 ) -> Result<InstanceRead, CompileError> {
     let label = text(instance, path, scene_schema::LABEL)?.to_owned();
@@ -835,6 +1107,18 @@ fn read_instance(
     // varies belongs here. The row is therefore read with the shader's instance schema and the
     // material's custom schema merged, and a field both name is an error rather than one of them
     // silently winning.
+    //
+    // A field that names an image is left out of both. It is a name the compiler resolves into a
+    // texture rather than a number the row can carry, so the row is built from the custom data
+    // without it and the image is bound beside the row instead of packed into it.
+    let images = material_images(
+        custom_data,
+        shader_read,
+        &material.label,
+        &material.path,
+        images,
+    )?;
+    let custom_data = &numbers_only(custom_data, &image_fields(&shader_read.custom_schema));
     let row_schema = merged_row_schema(
         shader_read.instance_schema.as_ref(),
         shader_read.custom_schema.as_ref(),
@@ -888,6 +1172,7 @@ fn read_instance(
         shader: material.shader,
         stage,
         model,
+        images,
     })
 }
 
@@ -898,6 +1183,10 @@ fn read_instance(
 ///
 /// A field named by both is an error rather than one of them winning, because the two schemas
 /// describe one row and a name in both would be two values written to one place.
+///
+/// A field that names an image is left out. It is the one kind of custom value that is not a
+/// number, so it cannot be packed into a row and is bound as a texture instead; leaving it in
+/// would ask `pack_struct` for bytes no field of the row has.
 fn merged_row_schema(instance: &Schema, custom: &Schema) -> Result<Rc<Schema>, CompileError> {
     let (
         SchemaKind::Struct {
@@ -914,6 +1203,9 @@ fn merged_row_schema(instance: &Schema, custom: &Schema) -> Result<Rc<Schema>, C
     };
     let mut fields = instance_fields.clone();
     for (name, field) in custom {
+        if graphics::is_image(field) {
+            continue;
+        }
         if fields.insert(name.clone(), field.clone()).is_some() {
             return Err(CompileError::Emission {
                 reason: format!("the custom field `{name}` is also an instance field"),
@@ -955,6 +1247,16 @@ struct Group<'read> {
     stage: Stage,
     /// The light the stage reads, for the stages that read one.
     light: Option<&'read str>,
+    /// The images every member names, which is also what makes them one group.
+    ///
+    /// # Why this is part of the key
+    ///
+    /// A pass binds one texture at one binding point, so two instances that name different
+    /// images in the same field cannot be drawn together: the point would have to be two
+    /// sources at once. Instances whose images agree share a pass as they always did, and
+    /// instances whose images differ are drawn by separate passes rather than by one pass
+    /// that reads the wrong texture for half of them.
+    images: Vec<ImageBinding>,
 }
 
 impl Group<'_> {
@@ -1006,6 +1308,36 @@ impl Group<'_> {
     }
 }
 
+/// Writes the instance entry for each image a group draws with, once per image.
+///
+/// # Invariants
+///
+/// The entry is named after the image, so a second group naming the same image finds the entry
+/// already there and does not upload it again. That is what makes two materials naming one
+/// image bind one texture rather than two copies of it.
+fn declare_images(
+    instance: &mut BTreeMap<String, Value>,
+    group: &Group<'_>,
+    images: &[ImageRead],
+) -> Result<Vec<(String, Value)>, CompileError> {
+    let mut binders = Vec::with_capacity(group.images.len());
+    for binding in &group.images {
+        let Some(image) = images.iter().find(|image| image.label == binding.label) else {
+            // `material_images` resolved every label against this list, so a label that is not
+            // in it cannot reach here.
+            return Err(CompileError::Emission {
+                reason: format!(
+                    "the image `{}` was resolved and then not found",
+                    binding.label
+                ),
+            });
+        };
+        insert_entry(instance, image_entry(&image.label), image_payload(image))?;
+        binders.push((image_point(&binding.field), image_binding(image)));
+    }
+    Ok(binders)
+}
+
 /// Groups the instances of one stage by the pass they can share.
 fn groups<'read>(
     instances: &'read [InstanceRead],
@@ -1018,10 +1350,9 @@ fn groups<'read>(
     for found in instances.iter().filter(|found| found.stage == stage) {
         let mesh = &meshes[found.mesh];
         let shader = shaders[found.shader].label.as_str();
-        match groups
-            .iter_mut()
-            .find(|group| group.shader == shader && group.mesh.label == mesh.label)
-        {
+        match groups.iter_mut().find(|group| {
+            group.shader == shader && group.mesh.label == mesh.label && group.images == found.images
+        }) {
             Some(group) => group.members.push(found),
             None => groups.push(Group {
                 members: vec![found],
@@ -1029,6 +1360,7 @@ fn groups<'read>(
                 shader,
                 stage,
                 light,
+                images: found.images.clone(),
             }),
         }
     }
@@ -1089,14 +1421,18 @@ fn read_shader(shader: &Value, path: &Path) -> Result<ShaderRead, CompileError> 
         )
     };
 
+    let custom_schema = read(scene_schema::CUSTOM_SCHEMA)?;
+    let pass_schema = read(scene_schema::PASS_SCHEMA)?;
     Ok(ShaderRead {
         stage,
         label: text(shader, path, scene_schema::LABEL)?.to_owned(),
         source: text(shader, path, scene_schema::SOURCE)?.to_owned(),
-        pass_schema: read(scene_schema::PASS_SCHEMA)?,
+        // A field that names an image is a binder the pass carries, so the interface the shader
+        // is checked against has to say so. See [`declared_with_images`].
+        pass_schema: declared_with_images(&pass_schema, &custom_schema),
         instance_schema,
         point_schema,
-        custom_schema: read(scene_schema::CUSTOM_SCHEMA)?,
+        custom_schema,
     })
 }
 
@@ -1426,7 +1762,13 @@ pub fn shadow_map_entry(light_label: &str) -> String {
 }
 
 /// Builds the shadowing pass of one group for one light.
-fn shadowing_pass(group: &Group<'_>, light: &LightRead, bounds: &Bounds, time: f64) -> Value {
+fn shadowing_pass(
+    group: &Group<'_>,
+    light: &LightRead,
+    bounds: &Bounds,
+    time: f64,
+    images: &[(String, Value)],
+) -> Value {
     // The shadow map looks down the light's direction, at a box centred on the scene and
     // as wide as the light says it shines. The same projection is handed to the lighting
     // pass as `light_projection`, because that is how a surface is found in the map.
@@ -1441,15 +1783,17 @@ fn shadowing_pass(group: &Group<'_>, light: &LightRead, bounds: &Bounds, time: f
             ),
             (TIME.to_owned(), Value::Float(time)),
         ]),
-        mesh_bindings(group).chain([(
-            SHADOW_MAP.to_owned(),
-            texture_binding(
-                &shadow_map_entry(light.label.as_str()),
-                SHADOW_MAP_WIDTH,
-                SHADOW_MAP_HEIGHT,
-                SHADOW_MAP_FORMAT,
-            ),
-        )]),
+        mesh_bindings(group)
+            .chain([(
+                SHADOW_MAP.to_owned(),
+                texture_binding(
+                    &shadow_map_entry(light.label.as_str()),
+                    SHADOW_MAP_WIDTH,
+                    SHADOW_MAP_HEIGHT,
+                    SHADOW_MAP_FORMAT,
+                ),
+            )])
+            .chain(images.iter().cloned()),
         vec![SHADOW_MAP],
         DEPTH_CLEAR,
         PipelineStateFields::default_state(),
@@ -1457,7 +1801,13 @@ fn shadowing_pass(group: &Group<'_>, light: &LightRead, bounds: &Bounds, time: f
 }
 
 /// Builds the depthing pass of one group.
-fn depthing_pass(group: &Group<'_>, camera: &Value, frame: Frame, time: f64) -> Value {
+fn depthing_pass(
+    group: &Group<'_>,
+    camera: &Value,
+    frame: Frame,
+    time: f64,
+    images: &[(String, Value)],
+) -> Value {
     rasterize(
         &group.label(),
         group.shader,
@@ -1465,10 +1815,12 @@ fn depthing_pass(group: &Group<'_>, camera: &Value, frame: Frame, time: f64) -> 
             (PROJECTION.to_owned(), camera.clone()),
             (TIME.to_owned(), Value::Float(time)),
         ]),
-        mesh_bindings(group).chain([(
-            DEPTH_BUFFER.to_owned(),
-            texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
-        )]),
+        mesh_bindings(group)
+            .chain([(
+                DEPTH_BUFFER.to_owned(),
+                texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
+            )])
+            .chain(images.iter().cloned()),
         vec![DEPTH_BUFFER],
         DEPTH_CLEAR,
         PipelineStateFields::default_state(),
@@ -1491,6 +1843,7 @@ fn lighting_pass(
     bounds: &Bounds,
     frame: Frame,
     time: f64,
+    images: &[(String, Value)],
 ) -> Value {
     rasterize(
         &group.label(),
@@ -1529,25 +1882,27 @@ fn lighting_pass(
             ),
             (TIME.to_owned(), Value::Float(time)),
         ]),
-        mesh_bindings(group).chain([
-            (
-                COLOR_TARGET.to_owned(),
-                texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
-            ),
-            (
-                DEPTH_BUFFER.to_owned(),
-                texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
-            ),
-            (
-                SHADOW_MAP.to_owned(),
-                texture_binding(
-                    &shadow_map_entry(&light.label),
-                    SHADOW_MAP_WIDTH,
-                    SHADOW_MAP_HEIGHT,
-                    SHADOW_MAP_FORMAT,
+        mesh_bindings(group)
+            .chain([
+                (
+                    COLOR_TARGET.to_owned(),
+                    texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
                 ),
-            ),
-        ]),
+                (
+                    DEPTH_BUFFER.to_owned(),
+                    texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
+                ),
+                (
+                    SHADOW_MAP.to_owned(),
+                    texture_binding(
+                        &shadow_map_entry(&light.label),
+                        SHADOW_MAP_WIDTH,
+                        SHADOW_MAP_HEIGHT,
+                        SHADOW_MAP_FORMAT,
+                    ),
+                ),
+            ])
+            .chain(images.iter().cloned()),
         vec![COLOR_TARGET],
         COLOUR_CLEAR,
         lighting_state(),
@@ -1562,7 +1917,13 @@ fn lighting_pass(
 /// adds into the shaded image and tests against the depth the earlier passes wrote, so an
 /// emissive surface behind an opaque one is occluded — the same state the lighting passes run
 /// with, minus the shadow map and the light's projection, which it has no use for.
-fn emission_pass(group: &Group<'_>, camera: &Value, frame: Frame, time: f64) -> Value {
+fn emission_pass(
+    group: &Group<'_>,
+    camera: &Value,
+    frame: Frame,
+    time: f64,
+    images: &[(String, Value)],
+) -> Value {
     rasterize(
         &group.label(),
         group.shader,
@@ -1570,16 +1931,18 @@ fn emission_pass(group: &Group<'_>, camera: &Value, frame: Frame, time: f64) -> 
             (PROJECTION.to_owned(), camera.clone()),
             (TIME.to_owned(), Value::Float(time)),
         ]),
-        mesh_bindings(group).chain([
-            (
-                COLOR_TARGET.to_owned(),
-                texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
-            ),
-            (
-                DEPTH_BUFFER.to_owned(),
-                texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
-            ),
-        ]),
+        mesh_bindings(group)
+            .chain([
+                (
+                    COLOR_TARGET.to_owned(),
+                    texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
+                ),
+                (
+                    DEPTH_BUFFER.to_owned(),
+                    texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
+                ),
+            ])
+            .chain(images.iter().cloned()),
         vec![COLOR_TARGET],
         COLOUR_CLEAR,
         lighting_state(),

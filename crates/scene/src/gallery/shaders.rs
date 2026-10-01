@@ -345,8 +345,85 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
     )
 }
 
-/// The post stage, which draws over the whole frame.
+/// The lighting stage of a scene that samples an image.
 ///
+/// # Where the sample goes
+///
+/// The lighting stage ends in the [`lighting`] template's `{surface}` splice point, which is
+/// reached with the shaded colour computed and the interpolated point in scope. So this is the
+/// same shader with one term added, rather than a second lighting stage that would drift from the
+/// first: everything about how the surface is lit stays where it is, and the image decides what
+/// the surface *is*.
+///
+/// The image is declared in the custom schema under the name `image`, so the compiler binds it at
+/// that point and the shader reads it there. It is the one place a scene's document and a shader's
+/// source meet, and it is a name rather than a number.
+pub fn textured(vertex_inputs: &str, helpers: &str) -> String {
+    lighting(
+        vertex_inputs,
+        "let pattern = textureSample(image, image_sampler, in.texture);\n    \
+         color = color * (0.25 + 1.5 * pattern.rgb);",
+        helpers,
+    )
+    // The pass binds its resources in name order, so the numbers a shader writes are the order
+    // the names sort into: `depth_buffer`, then `image` and the sampler that reads it, then
+    // `shadow_map`. Nothing here counts to a binding; the numbers are what that order works out
+    // to, and `check_bindings` is what says so if it is written wrong.
+    .replace(
+        "@group(0) @binding(1) var depth_buffer: texture_depth_2d;\n\
+         @group(0) @binding(2) var shadow_map: texture_depth_2d;",
+        "@group(0) @binding(1) var depth_buffer: texture_depth_2d;\n\
+         @group(0) @binding(2) var image: texture_2d<f32>;\n\
+         @group(0) @binding(3) var image_sampler: sampler;\n\
+         @group(0) @binding(4) var shadow_map: texture_depth_2d;",
+    )
+}
+
+/// Returns a tile pattern as pixels: four bytes a texel, top row first.
+///
+/// # Why the image is generated rather than loaded
+///
+/// Nothing in this framework reads the filesystem, so a texture is something a scene compiler
+/// produces. A pattern a loop can write is a texture, which is the same reason a dune field's
+/// points are generated: it is reviewable where a binary blob is not, and it travels with the
+/// document instead of being looked up beside it.
+///
+/// The pattern is a grid of tiles with a mortar line between them, shaded so that no two
+/// neighbouring tiles are the same colour. That is deliberate: a flat texture would prove only
+/// that *a* texture was bound, and a pattern proves the texel the shader read is the texel that
+/// was uploaded.
+pub fn tile_pixels(size: i64) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity((size * size * 4) as usize);
+    for y in 0..size {
+        for x in 0..size {
+            // Four checks a side. A finer grid is correct and unreadable: at the distance a floor
+            // is drawn from, a small check falls below a texel per pixel and the level chain
+            // averages it to a flat grey, which is the filter working and is also a picture with
+            // nothing in it.
+            let cell = size / 4;
+            let (in_x, in_y) = (x % cell, y % cell);
+            let mortar = in_x < 2 || in_y < 2;
+            let (tile_x, tile_y) = (x / cell, y / cell);
+            // Two greys far enough apart to be told in a lit frame, and a mortar line much
+            // lighter than either. A surface multiplies this, so the tiles land as a grid of
+            // light and dark squares with a bright seam rather than as a flat wash.
+            let shade = if (tile_x + tile_y) % 2 == 0 { 210 } else { 120 };
+            // A slight gradient across each tile, so a texel read one row off lands on a
+            // different value rather than on the same flat colour.
+            let within = ((in_x + in_y) as f64 / (2.0 * cell as f64) * 30.0) as u8;
+            let value = if mortar { 240 } else { shade + within };
+            pixels.extend_from_slice(&[
+                value,
+                (value as f64 * 0.85) as u8,
+                (value as f64 * 0.7) as u8,
+                255,
+            ]);
+        }
+    }
+    pixels
+}
+
+/// The post stage, which draws over the whole frame.
 /// The three points arrive already in clip space, so the vertex stage passes them
 /// through: a post stage is not drawn through the camera's projection, it *is* the frame.
 /// The fullscreen mesh is a position and nothing else, and the pass binds no instance row,
