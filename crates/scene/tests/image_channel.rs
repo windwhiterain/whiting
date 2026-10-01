@@ -140,6 +140,60 @@ fn a_name_no_image_carries_is_an_error() {
     );
 }
 
+/// The name the grade names its image under, and the point it is therefore bound at.
+const GRADE_IMAGE: &str = "grade";
+
+/// The image the grade names, which is a different image from the one the mesh names.
+///
+/// Two names rather than one on purpose: an image's label and the field it is named in are
+/// different things, and a test that made them the same could not tell which of the two the
+/// compiler had used.
+const GRADE_IMAGE_LABEL: &str = "film";
+
+#[test]
+fn a_screen_material_names_an_image_the_same_way() {
+    // A grade over the frame reads its data from the same slot a mesh material's data comes
+    // from, so a screen material names an image by the same rule and the compiler resolves it by
+    // the same code. What differs is where the image is bound, not how it is named.
+    let compiled = compiled(&scene_with_grade(vec![material(
+        "quad",
+        "lighting",
+        Some("brick"),
+    )]));
+
+    let binders = binders_of(&compiled.graphics, "post");
+    assert!(
+        binders.contains_key(GRADE_IMAGE),
+        "the post pass binds the field's own name: {:?}",
+        binders.keys().collect::<Vec<_>>()
+    );
+    let entries = entries_of(&compiled.instance);
+    assert!(
+        entries.contains_key("image_film"),
+        "the grade's image is emitted: {:?}",
+        entries.keys().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_grade_that_names_no_image_binds_nothing() {
+    // The common case, and the one that has to keep working: a grade whose arithmetic is all in
+    // its own source declares the unit custom schema and carries no data at all, and the optional
+    // binder is what lets it.
+    let compiled = compiled(&scene_with_plain_grade(vec![material(
+        "quad",
+        "lighting",
+        Some("brick"),
+    )]));
+
+    let binders = binders_of(&compiled.graphics, "post");
+    assert!(
+        !binders.contains_key(GRADE_IMAGE),
+        "a grade that names nothing binds nothing: {:?}",
+        binders.keys().collect::<Vec<_>>()
+    );
+}
+
 /// Compiles a scene that is expected to compile.
 fn compiled(scene: &Value) -> Compiled {
     compile(scene).expect("the test scene compiles")
@@ -229,19 +283,51 @@ fn entries_of(instance: &Value) -> BTreeMap<String, Value> {
 /// only things added are the image, the materials that name it, and one more lighting instance so
 /// that a group has something to share.
 fn scene(materials: Vec<Value>) -> Value {
+    scene_of(materials, None)
+}
+
+/// The same, with a post stage whose screen material names the grade image.
+///
+/// A screen material reads its data from the same slot a mesh material's does, so the only thing
+/// that differs between the two cases is whether the scene has a grade at all.
+fn scene_with_grade(materials: Vec<Value>) -> Value {
+    scene_of(materials, Some(GRADE_IMAGE))
+}
+
+/// The same, with a post stage whose screen material declares no image field at all.
+fn scene_with_plain_grade(materials: Vec<Value>) -> Value {
+    scene_of(materials, Some(""))
+}
+
+/// Builds the example scene, optionally with a grade that names an image.
+fn scene_of(materials: Vec<Value>, grade: Option<&str>) -> Value {
     let mut scene = example_standard_scene();
     let fields = scene
         .as_field_map_mut()
         .expect("the example scene is a struct");
     fields.insert(
         IMAGES.to_owned(),
-        Value::List(vec![Value::structure([
-            ("label".to_owned(), Value::String("brick".to_owned())),
-            ("width".to_owned(), Value::Int(1)),
-            ("height".to_owned(), Value::Int(1)),
-            ("format".to_owned(), Value::String("rgba8unorm".to_owned())),
-            ("data".to_owned(), Value::Bytes(TEXEL.to_vec())),
-        ])]),
+        Value::List(vec![
+            Value::structure([
+                ("label".to_owned(), Value::String("brick".to_owned())),
+                ("width".to_owned(), Value::Int(1)),
+                ("height".to_owned(), Value::Int(1)),
+                ("format".to_owned(), Value::String("rgba8unorm".to_owned())),
+                ("data".to_owned(), Value::Bytes(TEXEL.to_vec())),
+            ]),
+            // A second image, so a grade and a mesh can name different ones and the test can tell
+            // which label the compiler resolved rather than which field it was written in.
+            Value::structure([
+                (
+                    "label".to_owned(),
+                    Value::String(GRADE_IMAGE_LABEL.to_owned()),
+                ),
+                ("width".to_owned(), Value::Int(1)),
+                ("height".to_owned(), Value::Int(1)),
+                ("format".to_owned(), Value::String("rgba8unorm".to_owned())),
+                ("data".to_owned(), Value::Bytes(TEXEL.to_vec())),
+            ]),
+        ]),
     );
     // A custom schema may name an image, and a material's data is verified against it, so the
     // example's lighting shader is given the field for a material to fill in.
@@ -337,7 +423,73 @@ fn scene(materials: Vec<Value>) -> Value {
     }
     all.extend(materials);
     fields.insert(MESH_MATERIALS.to_owned(), Value::List(all));
+
+    if let Some(field) = grade {
+        if let Some(shaders) = fields.get_mut(SHADERS).and_then(Value::as_list_mut) {
+            shaders.push(screen_shader(field));
+        }
+        // An empty field name is a grade that declares the unit custom schema and carries no
+        // data, which is every grade the gallery has.
+        let custom_data = if field.is_empty() {
+            Value::Unit
+        } else {
+            Value::structure([(
+                field.to_owned(),
+                Value::String(GRADE_IMAGE_LABEL.to_owned()),
+            )])
+        };
+        fields.insert(
+            "screen_materials".to_owned(),
+            Value::List(vec![Value::structure([
+                ("label".to_owned(), Value::String("grade".to_owned())),
+                ("shader".to_owned(), Value::String("grade".to_owned())),
+                ("custom_data".to_owned(), custom_data),
+            ])]),
+        );
+        fields.insert(
+            "post_processes".to_owned(),
+            Value::List(vec![Value::String("grade".to_owned())]),
+        );
+    }
     scene
+}
+
+/// Builds a screen shader whose custom schema declares one image field.
+///
+/// A post stage draws over the frame rather than over a mesh, so it declares no point schema and
+/// no instance row: the emitter refuses a screen shader carrying either.
+fn screen_shader(field: &str) -> Value {
+    Value::variant(
+        "ScreenShader",
+        [
+            ("label".to_owned(), Value::String("grade".to_owned())),
+            (
+                "source".to_owned(),
+                Value::String("// the grade reads its image".to_owned()),
+            ),
+            (
+                "pass_schema".to_owned(),
+                whiting_scene::standard::post_pass_schema().to_value(),
+            ),
+            (
+                "instance_schema".to_owned(),
+                Schema::new(definition::SchemaKind::Unit).to_value(),
+            ),
+            (
+                "custom_schema".to_owned(),
+                if field.is_empty() {
+                    Schema::new(definition::SchemaKind::Unit).to_value()
+                } else {
+                    Schema::new(definition::SchemaKind::structure([(
+                        field.to_owned(),
+                        graphics::image_field(),
+                    )]))
+                    .to_value()
+                },
+            ),
+            ("stage".to_owned(), Value::String("post".to_owned())),
+        ],
+    )
 }
 
 /// Builds one mesh material, optionally naming an image.

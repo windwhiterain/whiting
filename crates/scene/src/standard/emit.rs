@@ -419,8 +419,8 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     // each reads was written above it: the first reads the shaded image and the last writes
     // the frame, and each one between reads what the one before it wrote. A chain of two is
     // therefore two passes over the frame rather than two passes reading the same image.
-    let post = read_post_processes(scene, &shaders)?;
-    for (index, shader) in post.iter().enumerate() {
+    let post = read_post_processes(scene, &shaders, &images)?;
+    for (index, process) in post.iter().enumerate() {
         let source = if index == 0 {
             COLOR_TARGET_ENTRY.to_owned()
         } else {
@@ -436,13 +436,15 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
             );
             entry
         };
+        let binders = declare_read_images(&mut instance, &process.images, &images)?;
         let (pass, entry, vertex_entry) = post_pass(
-            &shaders[*shader],
+            &shaders[process.shader],
             &camera_basis,
             frame,
             time,
             &source,
             &target,
+            &binders,
         )?;
         insert_entry(&mut instance, vertex_entry, entry)?;
         passes.push(pass);
@@ -650,9 +652,11 @@ fn material_images(
     if fields.is_empty() {
         return Ok(Vec::new());
     }
-    let Some(custom) = custom_data.as_field_map() else {
-        return Err(malformed(material_path, "the custom data as a struct"));
-    };
+    // A grade a shader reads nothing into has no custom data at all, which is the common case for
+    // a screen material and is not an error: a shader that declares an image field and a material
+    // that carries nothing names no image.
+    let empty = definition::FieldMap::new();
+    let custom = custom_data.as_field_map().unwrap_or(&empty);
     let mut bindings = Vec::new();
     for field in fields {
         // An image field is optional, so a material that names none is a material that draws
@@ -1320,8 +1324,20 @@ fn declare_images(
     group: &Group<'_>,
     images: &[ImageRead],
 ) -> Result<Vec<(String, Value)>, CompileError> {
-    let mut binders = Vec::with_capacity(group.images.len());
-    for binding in &group.images {
+    declare_read_images(instance, &group.images, images)
+}
+
+/// The same, for any list of names: a group's, or one post process's.
+///
+/// A post process has no group to belong to — a grade runs once over the frame rather than once
+/// per object — so the two callers share this rather than one of them owning it.
+fn declare_read_images(
+    instance: &mut BTreeMap<String, Value>,
+    bindings: &[ImageBinding],
+    images: &[ImageRead],
+) -> Result<Vec<(String, Value)>, CompileError> {
+    let mut declared = Vec::with_capacity(bindings.len());
+    for binding in bindings {
         let Some(image) = images.iter().find(|image| image.label == binding.label) else {
             // `material_images` resolved every label against this list, so a label that is not
             // in it cannot reach here.
@@ -1333,9 +1349,9 @@ fn declare_images(
             });
         };
         insert_entry(instance, image_entry(&image.label), image_payload(image))?;
-        binders.push((image_point(&binding.field), image_binding(image)));
+        declared.push((image_point(&binding.field), image_binding(image)));
     }
-    Ok(binders)
+    Ok(declared)
 }
 
 /// Groups the instances of one stage by the pass they can share.
@@ -1443,7 +1459,11 @@ fn read_shader(shader: &Value, path: &Path) -> Result<ShaderRead, CompileError> 
 /// A post process names a screen material by label, and the shader that material names must be
 /// a screen shader: a mesh shader here would be a pass over the frame that reads points no
 /// pass supplies.
-fn read_post_processes(scene: &Value, shaders: &[ShaderRead]) -> Result<Vec<usize>, CompileError> {
+fn read_post_processes(
+    scene: &Value,
+    shaders: &[ShaderRead],
+    images: &[ImageRead],
+) -> Result<Vec<ScreenRead>, CompileError> {
     let path = Path::root().key(scene_schema::POST_PROCESSES);
     // A scene with no post stage is a scene that grades nothing, which is a legitimate scene
     // rather than an error: an absent field and an empty list mean the same thing here.
@@ -1499,9 +1519,29 @@ fn read_post_processes(scene: &Value, shaders: &[ShaderRead]) -> Result<Vec<usiz
                 ),
             });
         }
-        resolved.push(shader);
+        // A screen material's custom data is read the same way a mesh material's is: the fields
+        // the shader declares as images are names the compiler resolves into textures. A grade
+        // that carries nothing reads nothing, which is what every grade did until now.
+        let custom_data = field(material, scene_schema::CUSTOM_DATA)
+            .cloned()
+            .unwrap_or(Value::Unit);
+        let images = material_images(&custom_data, found, label, &material_path, images)?;
+        resolved.push(ScreenRead { shader, images });
     }
     Ok(resolved)
+}
+
+/// One screen material as a post process uses it: the shader it runs, and the images it names.
+///
+/// # Invariants
+///
+/// A post process is not grouped the way an instance is, because a grade runs once over the frame
+/// rather than once per object. So each process carries its own images rather than sharing a
+/// group's, and two processes naming one image still upload it once, because the entry is named
+/// after the image rather than after the material.
+struct ScreenRead {
+    shader: usize,
+    images: Vec<ImageBinding>,
 }
 
 /// Reads the shaders of the scene, which every material names by label.
@@ -1699,6 +1739,7 @@ fn post_pass(
     time: f64,
     source: &str,
     target: &str,
+    images: &[(String, Value)],
 ) -> Result<(Value, Value, String), CompileError> {
     // The vertex buffer is packed once and entered into the instance, the same way a
     // mesh's is, because a post stage draws a mesh like any other pass does.
@@ -1731,7 +1772,12 @@ fn post_pass(
         &format!("post/{}", scene_shader.label),
         &scene_shader.label,
         uniform,
-        [
+        // The images sit among the pass's own binders rather than after them, because a pass
+        // binds its resources in **name order**: `color_target` and `depth_buffer` come first,
+        // then the image and the sampler that reads it, then `present_target`, then `vertices`.
+        // The point is a field of the interface like any other, so a screen shader reads it at
+        // the number that order works out to, and `check_bindings` says so if it does not.
+        images.iter().cloned().chain([
             (
                 VERTICES.to_owned(),
                 buffer_binding(&vertex_entry, size_bytes),
@@ -1748,7 +1794,7 @@ fn post_pass(
                 PRESENT_TARGET.to_owned(),
                 texture_binding(target, frame.width, frame.height, COLOR_FORMAT),
             ),
-        ],
+        ]),
         vec![PRESENT_TARGET],
         COLOUR_CLEAR,
         PipelineStateFields::default_state(),
