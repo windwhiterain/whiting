@@ -213,7 +213,7 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
 
     let mut buckets = vec![
         (
-            "depthing",
+            Stage::Depthing,
             vec![
                 instance(
                     "ground_depth",
@@ -234,7 +234,7 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
             ],
         ),
         (
-            "lighting",
+            Stage::Lighting,
             vec![
                 instance(
                     "ground_lit",
@@ -273,7 +273,7 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
             "block_caster",
         ));
     }
-    buckets.insert(0, ("shadowing", casters));
+    buckets.insert(0, (Stage::Shadowing, casters));
 
     Value::structure([
         (
