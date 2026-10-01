@@ -767,7 +767,7 @@ the render harness and the render test do.
 
 `crates/gallery/` holds the builders a scene document is assembled from — the WGSL library, the
 geometry generators and the per-field builders — and the scenes `dunes`, `lanterns`, `monoliths`,
-`terraces`, `studio` and `tiles`. They are rendered by the harness in
+`terraces`, `tidewater`, `studio` and `tiles`. They are rendered by the harness in
 `crates/device/examples/render.rs`:
 
 ```text
@@ -784,10 +784,63 @@ debug build is still several times it. The harness reports clone, validate, comp
 apart, which is the measurement [proposals/compile-cost.md](proposals/compile-cost.md) rests on.
 `ffmpeg` must be on the path for `--video`; the frames are written either way.
 
+### A surface may displace the normal it is lit by
+
+The lighting stage's fragment body now offers a second splice point, immediately after the normal
+arrives from the vertex stage and **before** anything reads it, where a scene's body may
+reassign `normal`. An empty body produces the `WGSL` the stage produced before, so a scene that
+displaces nothing is unaffected.
+
+- **The existing `{surface}` splice could not do this.** It lands after `lambert`, `fresnel`,
+  `specular` and the offset the shadow is looked up at, all of which are functions of the
+  normal, so a body there can only add to a colour it was not allowed to influence. Water,
+  foliage, cloth and anything else lit by a normal that is not the geometric one were
+  unreachable without reimplementing the whole stage by hand.
+- **What it does not give.** A displaced normal is a per-fragment lie about geometry, so the
+  silhouette does not move. A leaf that turns or a coat of cloth wants the *outline* to move too,
+  which is a vertex stage hook and a different decision. `tidewater`'s reeds sway in shading
+  only and the file says so.
+- The emission stage gained a `helpers` slot for the same reason the lighting stage has one: a
+  stage whose body cannot reach a shared function cannot use one, and a surface that emits the
+  reflection of the same sky the frame's background is drawn from has no other way to say the
+  two are one sky.
+
+`kit::instance` takes `impl Into<String>` rather than a `&str`, because a label names one
+instance in the **whole** scene rather than one per pass, and a scene that places one mesh in
+three passes has to qualify them. Every builder that takes a constant label still takes a `&str`.
+
+### `tidewater`
+
+A lake at first light: water, a far shore in silhouette, mist lying on the surface, and a sun
+behind the ridge. It is the first gallery scene composed as a photograph rather than as a
+diagram, and three of its decisions are the framework being right rather than being worked
+around.
+
+- **The water is drawn by the emission stage, not the lighting stage.** Its colour is almost
+  entirely a reflection, and a lighting pass runs once per light and adds — so the lake came
+  out twice as bright as the sky above it. The emission stage exists for exactly this, which
+  makes the cost of getting it wrong a discoverability problem rather than a design one. See
+  [proposals/photographic-scenes.md](proposals/photographic-scenes.md) item 3.
+- **The water is in the `depthing` and `emission` buckets and not the `shadowing` one.** A
+  shadow map holds what is put in it, and a flat plane a thousand units across at two degrees
+  off the light is the worst case for acne there is. A flat lake casts no shadow a viewer could
+  see, and what the lookup then returns is the far shore's shadow lying across it.
+- **One sky, written once**, handed to the lighting stage, the emission stage and the post
+  stage. `dunes` writes the same air twice and the two copies disagree, which is the bright
+  seam the *Known-incomplete* note below already records.
+- **The camera is placed rather than fitted, and its height is the whole of it.** At four units
+  above the water every visible part of a lake is at a grazing angle, the Fresnel term is near
+  one everywhere, and the frame is one flat mirror. At nine the near water is seen steeply and
+  goes dark, and the picture runs from a dark foreground to a bright horizon.
+
 ### Known-incomplete
 
 Stated rather than left to be discovered:
 
+  - **`tidewater` is composed, not finished.** The sun's reflection breaks into hard horizontal
+    steps where the waves line up rather than sparkling, the near bank reads as a sandbar
+    rather than as the corner it was placed to be, and the sun's disc shows through the treeline
+    in the wide frame because the shore's crest sits lower than intended.
   - **`dunes` is tuned, not finished.** The horizon has a bright seam where the field's far
     edge meets the sky, and there is faint shadow acne at the far edge. The penumbra used to
     be wider than it should be; at a 2048² shadow map over a 380-unit volume a texel is a
