@@ -477,6 +477,7 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
         radius: 4.0,
         shadow_projection: identity(),
         clustered: true,
+        global: false,
         casts_shadow: true,
     };
     let bright = ClusterLight {
@@ -486,6 +487,7 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
         radius: 4.0,
         shadow_projection: identity(),
         clustered: true,
+        global: false,
         casts_shadow: true,
     };
     let clusters =
@@ -532,8 +534,10 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
 
 #[test]
 fn a_light_that_covers_the_view_takes_no_cluster_slot() {
-    // The exemption: a kind that reaches everywhere is in no cluster by design, so a scene of
-    // nothing but those kinds emits a full record buffer and a wholly empty pair of lists.
+    // The exemption, and now two of them: a light that reaches everywhere is in no cluster by
+    // design, whether it got there by naming no reach or by naming one that holds the whole
+    // scene. A scene of nothing but those emits a full record buffer and a wholly empty pair
+    // of lists.
     let grid = grid(1, 1, 2, 4);
     let sun = ClusterLight {
         label: "sun".to_owned(),
@@ -542,6 +546,7 @@ fn a_light_that_covers_the_view_takes_no_cluster_slot() {
         radius: 1.0,
         shadow_projection: identity(),
         clustered: false,
+        global: true,
         casts_shadow: true,
     };
     let clusters = assign(&grid, &[sun], &parallel(), &pool()).expect("the assignment runs");
@@ -613,6 +618,7 @@ fn light(label: &str, position: [f64; 3], radius: f64) -> ClusterLight {
         radius,
         shadow_projection: identity(),
         clustered: true,
+        global: false,
         casts_shadow: true,
     }
 }

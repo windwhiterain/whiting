@@ -51,9 +51,10 @@ pub fn example_standard_scene() -> Value {
                     ("intensity".to_owned(), Value::Float(1.0)),
                     ("shadow_extent".to_owned(), Value::Float(2.5)),
                     // 8.1 is the distance to the far corner of a triangle two units across
-                    // with a light standing off it; without this the light reached nothing and
-                    // the example rendered as two unlit shapes on black. The field used to be
-                    // optional and default to one box radius of the triangle, which is 1.0.
+                    // with a light standing off it, and 10 holds the whole scene — which is
+                    // what the compiler promotes a light to a global one on. Naming no
+                    // radius at all would say the same thing more directly; the number is
+                    // here so the example exercises the promotion as well as the global path.
                     (RADIUS.to_owned(), Value::Float(10.0)),
                 ],
             )]),
@@ -291,6 +292,8 @@ fn vertex_main(
 ///
 /// The loop is over one cluster's lights rather than over the scene's, which is what makes
 /// this pass's count a function of the scene's geometry rather than of how many lamps it has.
+/// The second loop is over the **global** lights, which are in no cluster list and are the
+/// first records of the run; see `light_pass_schema`'s `global_count`.
 const QUAD_SOURCE: &str = r#"
 struct Projection {
     position: vec3<f32>,
@@ -312,6 +315,7 @@ struct Uniforms {
     directional: Directional,
     environment: vec4<f32>,
     frame_size: vec2<f32>,
+    global_count: f32,
     projection: Projection,
     time: f32,
 };
@@ -531,6 +535,20 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {
     var color = vec3<f32>(0.0);
     for (var slot = 0u; slot < count; slot = slot + 1u) {
         let index = u32(cluster_light_indices[row + slot]);
+        let light = light_records[index];
+        let to_light = light.position - in.world_position;
+        let lambert = max(dot(normal, normalize(to_light)), 0.0);
+        color = color + light.color * lambert * cone_attenuation(spot_cones[index], -normalize(to_light))
+            * shadowed(light, in.world_position, normal);
+    }
+    // The **global** lights, which are in no cluster list and are evaluated by every fragment
+    // whether or not the fragment's own cluster holds them. They are the first `global_count`
+    // records of the run, so this walks indices rather than a list, and the body is the one
+    // above: same record, same cone, same shadow. A light that names no reach, or a reach
+    // that holds the whole scene, is here; a light whose reach stops short is in the cluster
+    // loop, and the edge between the two is a plane of the cluster grid rather than a
+    // terminator.
+    for (var index = 0u; index < u32(uniforms.global_count); index = index + 1u) {
         let light = light_records[index];
         let to_light = light.position - in.world_position;
         let lambert = max(dot(normal, normalize(to_light)), 0.0);

@@ -139,6 +139,21 @@ const NAMED_LIGHTS: usize = 8;
 pub struct Clusters {
     /// One record per light, packed from [`light_record_schema`].
     pub records: PackedList,
+    /// How many of the leading records are **global** lights.
+    ///
+    /// # Invariants
+    ///
+    /// A global light is one every fragment evaluates whether or not its cluster holds it, so
+    /// a shading pass reaches it by **index** rather than through a cluster list — and an
+    /// index has to mean the same thing to the compiler and to the shader, which is what
+    /// writing the global records first buys: the first `globals` records of the run are the
+    /// global ones, in the order the compiler built the list, and no cluster entry and no
+    /// shadow page can disagree with that because they are all indexed by the same number.
+    ///
+    /// It is counted here rather than passed in because the run is written here: this is the
+    /// one place that knows how many records there are, and a count handed to it could be a
+    /// count of something other than what it packed.
+    pub globals: usize,
     /// One count per cluster, packed from [`cluster_count_schema`].
     pub counts: PackedList,
     /// One slot per cluster per cap, packed from [`cluster_list_schema`].
@@ -372,9 +387,21 @@ pub(super) fn pack(
     }
 
     let pages = assign_pages(lights, pool, &reached);
+    // The global lights are the leading run, and the count is how long it is. A global light
+    // after a clustered one would be a record a shading pass never reaches, and a clustered
+    // light inside the global range would be a light counted twice — one by the unconditional
+    // loop and once by every cluster it reaches. The order is the compiler's to keep; this is
+    // the one place both facts are read, so the assertion is where a compiler that broke it
+    // is caught rather than in a frame.
+    let globals = lights.iter().take_while(|light| light.global).count();
+    debug_assert!(
+        lights[globals..].iter().all(|light| !light.global),
+        "the global lights are the first of the run"
+    );
 
     Ok(Clusters {
         records: light_records(lights, &pages)?,
+        globals,
         counts: counts
             .finish()
             .map_err(|error| unpacked(CLUSTER_COUNTS_ENTRY, error))?,
@@ -401,6 +428,13 @@ pub(super) fn pack(
 ///
 /// A light with no page is not a light the pool ranked and rejected for want of room. It is
 /// a light that reaches no cluster, or a light of a kind that casts no shadow.
+///
+/// A **global** light is ranked as though it stood at the view itself, because that is what a
+/// global light is: it names no reach, so its record carries a radius of zero, and a zero
+/// distance is the brightest the ranking can answer. A light that named a reach and was
+/// promoted for containing the whole scene keeps the radius it named, so it is ranked by the
+/// distance it would have been culled at — the same number as before it was promoted, which
+/// is what keeps a promotion from moving a page between two lights.
 ///
 /// The two are asked apart by [`ClusterLight::wants_page`], and the second half of that is the
 /// one a directional light turns on: it is exempt from every cluster, so the walk never

@@ -608,10 +608,16 @@ fn shared_fields() -> SchemaMap {
 /// A light at a position, brightest at the position and falling off with distance from it.
 /// This is the kind every light in the standard pipeline was before kinds existed, and the
 /// one a shadow volume is a box around.
+///
+/// A point light that names no `radius` is a **global** light: it takes no cluster slot, every
+/// fragment evaluates it, and it is never culled short of the scene it is lighting. See
+/// [`radius`] for why that is the answer to a light standing outside what it lights.
 fn point_light() -> Schema {
     light_variant(shared_fields(), [position(), radius(), shadow_extent()]).with_documentation(
         "A light at a position, falling off with distance from it. Shadows a box of \
-             half the given extent, centred on what is drawn.",
+             half the given extent, centred on what is drawn. A point light naming no \
+             `radius` is a global light: it reaches every fragment rather than being \
+             culled to a part of the view.",
     )
 }
 
@@ -628,7 +634,7 @@ fn spot_light() -> Schema {
             direction(),
             inner_angle(),
             outer_angle(),
-            optional_radius(),
+            radius(),
             shadow_extent(),
         ],
     )
@@ -693,52 +699,36 @@ fn direction() -> (String, Schema) {
 /// covers — and a scene that wants a small light with a wide shadow volume, or the other way
 /// round, has to be able to say so.
 ///
-/// **A point light must say it.** This field used to be optional and to default to one box
-/// radius of what is drawn, which is the measure the camera and the shadow volume already use
-/// and which is right for exactly one kind of light: one standing inside the scene it lights.
-/// For a light that stands outside it — a sun over a valley, a fill on the far side — that
-/// default is smaller than the light's own reach, so the light is dropped from every cluster
-/// past it and the boundary between lit and unlit comes out quantised to the **cluster grid**,
-/// which draws the terminator as a staircase of screen-aligned rectangles. No default can be
-/// right for both, because the right answer is a distance to the furthest surface the light is
-/// meant to carry over and only the scene knows where that is.
+/// **A light that names no radius is a global light, and that is the whole of what saying
+/// nothing means.** It takes no cluster slot and every fragment evaluates it, so it cannot be
+/// culled short of anything: the grid-aligned staircase of rectangles that a culled light
+/// draws is the symptom of a light whose reach is smaller than the scene it is meant to light,
+/// and the only two ways out are to say a reach that reaches or to say nothing at all. A
+/// radius that does reach is promoted to the same thing — culling a light whose sphere
+/// contains the whole scene never drops it, so the cluster slot buys nothing.
 ///
 /// A **spot** light may leave it out, and is then culled by the reach of its own cone, which
-/// the two angles and the shadow volume already determine — see [`SpotCone::reach`]. A
-/// **directional** light declares no radius of its own and takes no cluster slot, so there is
-/// nothing for the number to cull.
+/// the two angles and the shadow volume already determine — see [`SpotCone::reach`]. A spot
+/// is never global, because a cone does not light the whole scene. A **directional** light
+/// declares no radius of its own and takes no cluster slot, so there is nothing for the
+/// number to cull.
 fn radius() -> (String, Schema) {
-    (
-        RADIUS.to_owned(),
-        Schema::new(SchemaKind::Float).with_documentation(
-            "How far the light reaches, in world units, as a sphere around its position. \
-             It is what decides which clusters the light is assigned to, so a radius that \
-             covers the whole frustum is a light in every cluster and one that culls \
-             nothing. A point light must give one, and it wants to be at least the \
-             distance from the light to the furthest surface it is meant to light; one that \
-             reaches short culls the light out of the clusters beyond it and draws its own \
-             edge as a staircase. A spot light may leave it out and is culled by the reach \
-             of its cone instead.",
-        ),
-    )
-}
-
-/// Builds the schema of how far a **spot** light reaches, which its cone answers for it.
-///
-/// The same field and the same meaning as [`radius`], and optional where that one is required:
-/// a cone already determines how far the light carries, so a spot that names nothing is culled
-/// by the reach of its own cone rather than by a number the document would have to restate.
-fn optional_radius() -> (String, Schema) {
     (
         RADIUS.to_owned(),
         Schema::new(SchemaKind::Float)
             .optional()
             .with_documentation(
                 "How far the light reaches, in world units, as a sphere around its position. \
-                 It is what decides which clusters the light is assigned to. Optional for a \
-                 spot light, which is otherwise culled by the reach of its own cone — see \
-                 `SpotCone::reach` — and a radius narrower than that cone is a light that \
-                 stops lighting where it is still shining.",
+             It is what decides which clusters the light is assigned to, so a radius that \
+             covers the whole scene is a light in every cluster and one that culls nothing. \
+             **A point light that leaves it out is a global light**: it takes no cluster \
+             slot, every fragment evaluates it, and it is never culled short. A point light \
+             that names one and reaches short culls itself out of the clusters beyond it and \
+             draws its own edge as a staircase quantised to the cluster grid, so the number \
+             wants to be at least the distance from the light to the furthest surface it is \
+             meant to light; one that reaches the whole scene is promoted to a global light \
+             and changes no pixel. A spot light may leave it out and is culled by the reach \
+             of its cone instead.",
             ),
     )
 }

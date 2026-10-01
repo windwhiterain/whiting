@@ -31,6 +31,15 @@
 //! light list out of three storage buffers, and loops over it. Everything a per light pass
 //! carried in its uniform is a field of a light's record now, which is what makes a thousand
 //! lights a matter of buffer size rather than of passes.
+//!
+//! # What is outside that loop
+//!
+//! Three things, and only one of them is a light with a field of its own. A light that names
+//! no reach, or a reach that holds the whole scene, is **global**: it is in no cluster list,
+//! the compiler writes it first, and the fragment loops over the leading records outside the
+//! cluster walk. The environment and the directional light are the other two, and they are
+//! *stated* inputs of the pass rather than records, because neither is a lamp — one is an
+//! image and one is a direction.
 
 use definition::{Schema, SchemaKind, Value};
 
@@ -62,10 +71,19 @@ struct Uniforms {
 /// The uniform the clustered lighting stage reads.
 ///
 /// The fields are in the order the interface schema sorts them into, which is by name:
-/// `cluster_grid`, `directional`, `environment`, `frame_size`, `projection`, `time`. The order
-/// is not cosmetic — a three component vector is padded to sixteen bytes, so a field written
-/// second starts at sixteen either way, and a struct written in any other order puts the wrong
-/// thing there.
+/// `cluster_grid`, `directional`, `environment`, `frame_size`, `global_count`, `projection`,
+/// `time`. The order is not cosmetic — a three component vector is padded to sixteen bytes,
+/// so a field written second starts at sixteen either way, and a struct written in any other
+/// order puts the wrong thing there. The offsets are `cluster_grid` at 0, `directional` at 16
+/// (ninety six bytes, so `environment` at 112), `frame_size` at 128, `global_count` at 136,
+/// `projection` at 144 and `time` at 224, in a block of 240.
+///
+/// `global_count` is a plain `f32` and it lands in the four bytes `frame_size` already left
+/// over: a two component vector is eight bytes and the next field wants sixteen, so the
+/// padding was there before this field and nothing after it moves. That is a fact about the
+/// names, not a coincidence to rely on — a field that sorted before `frame_size` would push
+/// the whole tail of the struct along, and the device compares these offsets against the
+/// layout its own interface schema computes, so a wrong one is a render error naming both.
 ///
 /// **Nothing here names a clustered light.** The four per light fields this struct used to
 /// carry — the light's position, its colour, its own projection and the size of its shadow
@@ -73,12 +91,19 @@ struct Uniforms {
 /// inside the loop. That is the whole change: a uniform is sixteen kilobytes, which cannot
 /// hold a thousand light records however they are packed.
 ///
-/// The two lights it does carry are the two a fragment cannot reach any other way. Neither is
-/// in a cluster list, so neither has a record a fragment could load. `environment` is an
-/// image and casts no shadow; `directional` is a direction and casts one. Each is a colour
-/// with a fourth component saying whether the scene named it, because a colour of zero is a
-/// perfectly good light to want and a shader that inferred presence from the colour would be
-/// reading the wrong question.
+/// The three lights it does carry are the three a fragment cannot reach any other way. The
+/// first two are `environment` and `directional`: an image that casts no shadow and a
+/// direction that casts one, each a colour with a fourth component saying whether the scene
+/// named it, because a colour of zero is a perfectly good light to want and a shader that
+/// inferred presence from the colour would be reading the wrong question.
+///
+/// The third is a **count and not a light**, and it is what a global point light does not
+/// need a field for. A global light is in no cluster list, but unlike the other two it *is*
+/// a light with a record, and the record run and the cone run beside it are the ones the
+/// clustered loop already reads. The compiler writes the global lights first, so the loop
+/// over `[0, global_count)` reaches them by index out of buffers that were bound anyway.
+/// That is why the count is here rather than a second copy of a light: a global light that
+/// cost a uniform field of its own would be a light a shader had to be written for.
 const LIGHTING_UNIFORM: &str = r#"
 struct Projection {
     position: vec3<f32>,
@@ -100,6 +125,7 @@ struct Uniforms {
     directional: Directional,
     environment: vec4<f32>,
     frame_size: vec2<f32>,
+    global_count: f32,
     projection: Projection,
     time: f32,
 };
@@ -670,6 +696,53 @@ fn cone_attenuation(cone: SpotCone, to_surface: vec3<f32>) -> f32 {{
     return (facing - outer) / (inner - outer);
 }}
 
+/// Returns what the light of one record adds to a surface.
+///
+/// # Why both loops call this rather than each carrying the arithmetic
+///
+/// A **clustered** light is found through its cluster's list and a **global** one through the
+/// count the uniform carries, and the two differ in nothing else: same record, same cone, same
+/// shadow lookup, same falloff, same two shading terms. Writing the body out twice would be a
+/// second place for the shading model to be edited, which is the same argument
+/// [`light_contribution`] makes for the diffuse and specular terms — and here the two copies
+/// would be free to drift into disagreeing about what a light is.
+///
+/// The index is the whole difference between the callers, and it is an index into both runs
+/// rather than a value: the record and the cone are packed in the same order, so a light's
+/// cone is the same number away as the light itself.
+fn record_contribution(
+    index: u32,
+    world_position: vec3<f32>,
+    normal: vec3<f32>,
+    to_view: vec3<f32>,
+    diffuse: vec3<f32>,
+    fresnel: vec3<f32>,
+    roughness: f32,
+) -> vec3<f32> {{
+    let light = light_records[index];
+    let cone = spot_cones[index];
+    let to_light = light.position - world_position;
+    let light_range = max(length(to_light), 0.0001);
+    let direction = to_light / light_range;
+    // The cone is an **extra** attenuation, not a replacement for the culling that put
+    // this light in this cluster at all: a light outside the cone is already absent from
+    // the list by its radius, and a light inside the radius but outside the cone is here
+    // and scaled to nothing. A light that is not a spot light carries the whole sphere and
+    // is scaled by exactly one, so a point light's arithmetic is unchanged — which is what
+    // lets a global point light be evaluated by the same body as a clustered one.
+    let lit = shadowed(light.shadow_projection, light.page, direction, world_position, normal)
+        * cone_attenuation(cone, -direction);
+
+    // A point light falls off with the square of its distance. The constants are the
+    // gentlest that still read as a falloff over a scene a couple of hundred units
+    // across: a steeper one puts the light's own volume inside the scene, and every
+    // surface near the light then reads as white no matter what its colour is.
+    let attenuation = 1.0 / (1.0 + 0.0035 * light_range + 0.00002 * light_range * light_range);
+    let radiance = light.color * attenuation * lit;
+
+    return light_contribution(direction, radiance, normal, to_view, diffuse, fresnel, roughness);
+}}
+
 /// Returns the texel of the environment map a direction falls in, at one level.
 ///
 /// # Why a two dimensional octahedral map
@@ -875,34 +948,31 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
         // One index into both runs: the record and the cone are packed in the same order, so
         // a light's cone is the same number away as the light itself.
         let index = u32(cluster_light_indices[row + slot]);
-        let light = light_records[index];
-        let cone = spot_cones[index];
-        let to_light = light.position - in.world_position;
-        let light_range = max(length(to_light), 0.0001);
-        let direction = to_light / light_range;
-        // The cone is an **extra** attenuation, not a replacement for the culling that put
-        // this light in this cluster at all: a light outside the cone is already absent from
-        // the list by its radius, and a light inside the radius but outside the cone is here
-        // and scaled to nothing. A light that is not a spot light carries the whole sphere and
-        // is scaled by exactly one, so a point light's arithmetic is unchanged.
-        let lit = shadowed(
-            light.shadow_projection,
-            light.page,
-            direction,
+        color = color + record_contribution(
+            index,
             in.world_position,
             normal,
-        ) * cone_attenuation(cone, -direction);
+            to_view,
+            diffuse_color,
+            fresnel,
+            roughness,
+        );
+    }}
 
-        // A point light falls off with the square of its distance. The constants are the
-        // gentlest that still read as a falloff over a scene a couple of hundred units
-        // across: a steeper one puts the light's own volume inside the scene, and every
-        // surface near the light then reads as white no matter what its colour is.
-        let attenuation = 1.0 / (1.0 + 0.0035 * light_range + 0.00002 * light_range * light_range);
-        let radiance = light.color * attenuation * lit;
-
-        color = color + light_contribution(
-            direction,
-            radiance,
+    // The **global** lights, evaluated by every fragment whether or not its cluster holds
+    // them. They are the first `global_count` records of the run, so this loop walks indices
+    // rather than a list: a global light is a light that names no reach, or names one that
+    // holds the whole scene, and culling it would never drop it, so the cluster slot it was
+    // given bought nothing. A light with a reach that does not reach is not here — it is in
+    // the loop above, and the boundary between the two is where its radius ends, which is
+    // what draws a terminator as a staircase of cluster-grid rectangles rather than as a
+    // curve. The body is [`record_contribution`]'s, the same one the cluster loop uses, and
+    // the record carries the same page and the same projection, so a global light still
+    // casts its shadow.
+    for (var index = 0u; index < u32(uniforms.global_count); index = index + 1u) {{
+        color = color + record_contribution(
+            index,
+            in.world_position,
             normal,
             to_view,
             diffuse_color,

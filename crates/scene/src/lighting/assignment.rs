@@ -257,6 +257,22 @@ pub struct ClusterLight {
     /// A light that covers the whole view is in every cluster by definition, so listing it
     /// would spend the cap on a light the culling was never going to remove.
     pub clustered: bool,
+    /// Whether every fragment evaluates this light, whatever cluster the fragment is in.
+    ///
+    /// # Invariants
+    ///
+    /// This is the **only** thing that separates a global light from a light of a kind that
+    /// takes no cluster slot. Both are in no cluster list, and both are shaded by a path the
+    /// clustered loop does not walk, but they reach a fragment by two different routes: a
+    /// global light is read out of the record buffer by index, where a directional light is
+    /// carried in the pass's own uniform and an environment light in its map. A light in the
+    /// global run with a record nobody means to read that way would be lit twice or lit from
+    /// the origin, so the two facts are asked separately rather than inferred from each other.
+    ///
+    /// The global lights are the **first** of the run — see [`super::buffers::Clusters::globals`]
+    /// — and a compiler that wrote them anywhere else would have a shading pass reading the
+    /// wrong records.
+    pub global: bool,
     /// Whether this kind of light casts a shadow at all.
     ///
     /// It is a fact about the kind rather than about this scene's page budget, and it is asked
@@ -487,6 +503,13 @@ fn dot(left: [f64; 3], right: [f64; 3]) -> f64 {
 }
 
 /// One cluster, as a box in view space.
+///
+/// # Invariants
+///
+/// The box is the cross-section at the slice's far boundary, which does **not** contain the
+/// slice: see [`View::box_of`]. Everything measured against it is therefore a statement
+/// about the box rather than about the surfaces inside it, which is what makes a light
+/// cullable from a box that holds a fragment well within its reach.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ClusterBox {
     /// Across, measured from the centre of the frame.
@@ -585,10 +608,23 @@ impl View {
     ///
     /// # Invariants
     ///
-    /// The box is the slab at the slice's **far** boundary, which is where a perspective view
-    /// is widest, so the box contains the whole of the slab. The alternative — a box at the
-    /// near boundary, which is the tighter fit — leaves out a light that reaches the slice's
-    /// far half, and a light missing from a cluster is a light nothing can shade.
+    /// The box is the **cross-section at the slice's far boundary**, which is where a
+    /// perspective view is widest, and its depth interval is the slice's own. The alternative
+    /// — a box at the near boundary, which is the tighter fit — leaves out a light that
+    /// reaches the slice's far half, and a light missing from a cluster is a light nothing
+    /// can shade.
+    ///
+    /// **This box is not a superset of the slice, and the culling is slacker than a reader
+    /// would assume.** A slab of a widening view is a wedge, and a rectangle cut at the far
+    /// cross-section does not contain it: a fragment near the slice's *near* end is well
+    /// inside the frustum there and yet outside this box, because the box's across and up
+    /// spans are the far end's. So the test below can drop a light from a box that holds a
+    /// fragment much closer to it than the box's nearest point is — the light is culled
+    /// because of where the *box* is, not where the surface is. That is a hole in the image
+    /// with the shape of the grid, and the shape it takes is the last of this project's
+    /// reasons for a light to be global: see `LightRead::covers_scene`, where a light that
+    /// holds the whole scene is taken out of the walk entirely and evaluated for every
+    /// fragment instead.
     fn box_of(&self, column: usize, row: usize, slice: usize) -> ClusterBox {
         let far = self.boundaries[slice + 1];
         let [half_across, half_up] = self.widths[slice + 1];

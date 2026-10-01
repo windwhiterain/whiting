@@ -74,6 +74,23 @@ pub const CLUSTER_GRID: &str = "cluster_grid";
 /// size, because the view's depth runs zero to one whatever the frame is.
 pub const FRAME_SIZE: &str = "frame_size";
 
+/// Field holding how many of the scene's lights every fragment evaluates whatever cluster it
+/// is in.
+///
+/// # Invariants
+///
+/// This is a **count and not a list**, because the lights it counts are already written: they
+/// are the first records of the light record run and the first entries of the cone run beside
+/// it, and the two are indexed by the same number. A fragment loops over `[0, global_count)`
+/// and reads the same pair for every index, which is why a global light needs nothing in the
+/// uniform but its own number: everything else about it is in the two runs the clustered loop
+/// already reads.
+///
+/// It is written for every lighting pass, present or not, for the reason [`ENVIRONMENT`] is
+/// written for every pass: the uniform's layout is the same for every scene. A scene with no
+/// global light writes zero, and the loop above it does not run.
+pub const GLOBAL_COUNT: &str = "global_count";
+
 /// Field holding the environment a lighting pass is shaded against.
 ///
 /// # Invariants
@@ -480,6 +497,14 @@ pub fn light_pass_schema() -> Schema {
                 vector2().with_documentation(
                     "The frame's width and height in pixels, which is what turns a fragment's \
                      own position into a column and a row.",
+                ),
+            ),
+            (
+                GLOBAL_COUNT,
+                Schema::new(SchemaKind::Float).with_documentation(
+                    "How many of the leading light records are global lights, which every \
+                     fragment evaluates whatever cluster it is in. Zero for a scene whose \
+                     lights are all clustered.",
                 ),
             ),
             (

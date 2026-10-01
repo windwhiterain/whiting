@@ -9,8 +9,8 @@ use scene::standard::Stage;
 
 use crate::geometry::heightfield;
 use crate::kit::{
-    camera, instance, instances, light, mesh, mesh_material, post_processes, screen_material,
-    shaded_point_schema, surface, surface_reflecting,
+    camera, instance, instances, light_with_radius, mesh, mesh_material, post_processes,
+    screen_material, shaded_point_schema, surface, surface_reflecting,
 };
 use crate::shaders::{mesh_shaders, post_shader};
 
@@ -141,7 +141,7 @@ pub fn monoliths() -> Value {
         ),
         (
             "lights".to_owned(),
-            Value::List(vec![light(
+            Value::List(vec![light_with_radius(
                 "sun",
                 [-60.0, 30.0, 48.0],
                 [1.0, 0.72, 0.45],

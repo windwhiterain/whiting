@@ -32,8 +32,9 @@
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use gallery::geometry::heightfield;
 use gallery::kit::{
-    camera_placed, gallery_custom_schema, gallery_instance_schema, instance, instances, light,
-    mesh, mesh_material, post_processes, screen_material, shaded_point_schema, shader, surface,
+    camera_placed, gallery_custom_schema, gallery_instance_schema, instance, instances,
+    light_with_radius, mesh, mesh_material, post_processes, screen_material, shaded_point_schema,
+    shader, surface,
 };
 use gallery::shaders::{depthing, lighting, post_shader, shadowing};
 use scene::standard::Stage;
@@ -187,13 +188,14 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
     // shadow directly away from the viewer, where the block itself hides it, and the two
     // frames come out identical for a reason that has nothing to do with the mechanism.
     //
-    // Each light names a **radius** wide enough to reach the ground, and it is a required
-    // field rather than something left to a convention: a light's radius is what the cluster
-    // assignment culls it by, and a light stood far enough off to throw a visible shadow is
-    // further from the scene than one box radius of it. A light that reaches nothing is lit by
-    // nothing, and a scene of ambient alone is a frame that renders and casts no shadow —
-    // which is the same symptom as a broken page and the opposite diagnosis.
-    let mut lights_list = Value::List(vec![light(
+    // Each light names a **radius** wide enough to reach the ground, because a light's radius
+    // is what the cluster assignment culls it by and a light stood far enough off to throw a
+    // visible shadow is further from the scene than one box radius of it. A light that
+    // reaches nothing is lit by nothing, and a scene of ambient alone is a frame that
+    // renders and casts no shadow — which is the same symptom as a broken page and the
+    // opposite diagnosis. (A light that names **no** radius is a global light and is never
+    // culled at all, which is the other way out and is what `kit::light` builds.)
+    let mut lights_list = Value::List(vec![light_with_radius(
         "key",
         [-30.0, 20.0, -24.0],
         [1.0, 0.96, 0.9],
@@ -208,7 +210,7 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
             Value::List(list) => list,
             _ => Vec::new(),
         };
-        extra.push(light(
+        extra.push(light_with_radius(
             "second",
             [26.0, 18.0, -20.0],
             [0.85, 0.9, 1.0],

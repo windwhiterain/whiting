@@ -95,6 +95,7 @@ fn a_light_that_reaches_nothing_is_not_reported_as_dropped_by_a_full_pool() {
         radius: 1.0,
         shadow_projection: identity(),
         clustered: true,
+        global: false,
         casts_shadow: true,
     };
     let clusters =
@@ -118,6 +119,7 @@ fn a_light_that_takes_no_cluster_slot_and_casts_no_shadow_is_given_no_page() {
         radius: 1000.0,
         shadow_projection: identity(),
         clustered: false,
+        global: false,
         casts_shadow: false,
     };
     let clusters =
@@ -144,6 +146,7 @@ fn a_light_that_takes_no_cluster_slot_but_casts_a_shadow_is_still_given_a_page()
         radius: 1000.0,
         shadow_projection: identity(),
         clustered: false,
+        global: false,
         casts_shadow: true,
     };
     let clusters =
@@ -490,6 +493,7 @@ fn light(label: &str, brightness: f64) -> ClusterLight {
         radius: 8.0,
         shadow_projection: identity(),
         clustered: true,
+        global: false,
         casts_shadow: true,
     }
 }
