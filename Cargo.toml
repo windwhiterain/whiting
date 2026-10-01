@@ -4,6 +4,7 @@ members = [
     "crates/definition",
     "crates/graphics",
     "crates/scene",
+    "crates/gallery",
     "crates/device",
 ]
 
@@ -18,6 +19,7 @@ license = "MIT OR Apache-2.0"
 definition = { path = "crates/definition", package = "whiting-definition" }
 graphics = { path = "crates/graphics", package = "whiting-graphics" }
 scene = { path = "crates/scene", package = "whiting-scene" }
+gallery = { path = "crates/gallery", package = "whiting-gallery" }
 device = { path = "crates/device", package = "whiting-device" }
 
 # The `facet` facade and `facet-core` must be the same line: `facet-json 0.44.7`

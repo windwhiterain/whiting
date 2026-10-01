@@ -754,8 +754,20 @@ the scene never reached are the ones left to it.
 
 ## The gallery, and what it does not do yet
 
-`crates/scene/src/gallery/` holds the WGSL library, the geometry generators and the scenes
-`dunes`, `lanterns`, `monoliths`, `terraces` and `studio`. They are rendered by the harness in
+There is a sixth crate, `crates/gallery`, holding the builders a standard scene document is
+assembled from and the scenes built with them. It was the `scene` crate's `gallery` module until
+the builders turned out to be the reusable part: a scene document is the same shape at every call
+site, so `kit` writes each field once, and a new scene is then a file beside the others rather
+than an addition to the compiler.
+
+Nothing in `scene` depends on it and it depends on `scene`, so the direction is the same as
+`scene`'s towards `device`: frameworks below, the things built with them above. `device` takes it
+as a development dependency, because nothing in the device itself knows a scene by name — only
+the render harness and the render test do.
+
+`crates/gallery/` holds the builders a scene document is assembled from — the WGSL library, the
+geometry generators and the per-field builders — and the scenes `dunes`, `lanterns`, `monoliths`,
+`terraces`, `studio` and `tiles`. They are rendered by the harness in
 `crates/device/examples/render.rs`:
 
 ```text

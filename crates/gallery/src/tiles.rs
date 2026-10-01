@@ -13,14 +13,14 @@
 
 use definition::Value;
 
-use crate::gallery::geometry::heightfield;
-use crate::gallery::kit::{
+use crate::geometry::heightfield;
+use crate::kit::{
     IMAGE_FIELD, camera_placed, gallery_custom_schema_with_image, gallery_instance_schema, image,
     instance, instances, light, mesh, mesh_material, post_processes, screen_material,
     shaded_point_schema, shader, surface,
 };
-use crate::gallery::shaders::{depthing, post_shader, shadowing, textured, tile_pixels};
-use crate::standard::Stage;
+use crate::shaders::{depthing, post_shader, shadowing, textured, tile_pixels};
+use scene::standard::Stage;
 
 /// The size of the generated texture, in texels a side.
 const SIZE: i64 = 256;
@@ -43,7 +43,7 @@ pub fn tiles() -> Value {
 /// differ are the whole of the evidence, and this is how a caller gets the second one.
 pub fn tiles_of(pixels: Vec<u8>) -> Value {
     let point = shaded_point_schema();
-    let inputs = crate::gallery::attributes::gallery_vertex_inputs(&point);
+    let inputs = crate::attributes::gallery_vertex_inputs(&point);
 
     // The shader reads the image, so its custom schema declares one. `tint` is beside it because
     // every gallery shader reads the row and a material that carried only an image would be a
@@ -56,7 +56,7 @@ pub fn tiles_of(pixels: Vec<u8>) -> Value {
             Stage::Shadowing,
             "shadowing",
             &shadowing(&inputs),
-            crate::standard::shadow_pass_schema(),
+            scene::standard::shadow_pass_schema(),
             point.clone(),
             gallery_instance_schema(),
             custom.clone(),
@@ -65,7 +65,7 @@ pub fn tiles_of(pixels: Vec<u8>) -> Value {
             Stage::Depthing,
             "depthing",
             &depthing(&inputs),
-            crate::standard::depth_pass_schema(),
+            scene::standard::depth_pass_schema(),
             point.clone(),
             gallery_instance_schema(),
             custom.clone(),
@@ -74,7 +74,7 @@ pub fn tiles_of(pixels: Vec<u8>) -> Value {
             Stage::Lighting,
             "lighting",
             &lighting_source,
-            crate::standard::light_pass_schema(),
+            scene::standard::light_pass_schema(),
             point.clone(),
             gallery_instance_schema(),
             custom.clone(),

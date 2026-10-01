@@ -1,0 +1,12 @@
+[package]
+name = "whiting-gallery"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Builders for standard scene documents, and the scenes built with them."
+
+[dependencies]
+definition = { workspace = true }
+graphics = { workspace = true }
+scene = { workspace = true }

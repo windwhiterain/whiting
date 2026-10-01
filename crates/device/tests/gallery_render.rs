@@ -15,7 +15,7 @@
 #![cfg(feature = "wgpu")]
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier};
-use scene::gallery::Gallery;
+use gallery::Gallery;
 use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
 use whiting_device::{Renderer, WgpuRenderer};
 

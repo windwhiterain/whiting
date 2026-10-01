@@ -13,12 +13,12 @@
 
 use definition::Value;
 
-use crate::gallery::geometry::{cuboid, hash01, heightfield};
-use crate::gallery::kit::{
+use crate::geometry::{cuboid, hash01, heightfield};
+use crate::kit::{
     camera_placed, instance, instances, light, mesh, mesh_material, post_processes,
     screen_material, shaded_point_schema, surface, surface_reflecting,
 };
-use crate::gallery::shaders::{emission_shader, mesh_shaders, post_shader};
+use crate::shaders::{emission_shader, mesh_shaders, post_shader};
 
 /// How far the field reaches, in world units.
 const EXTENT: f64 = 52.0;
