@@ -412,6 +412,15 @@ data, and data that nothing reads yet is exactly the state the plan asked for be
 Option 1 preserves the settled decision. Option 2 is the one that fits the device as it
 actually is. **Recorded, not decided.**
 
+- **The page pool is schema data; `SHADOW_MAP_WIDTH` and `SHADOW_MAP_HEIGHT` are still Rust
+  constants.** They survive at `standard/pass_schemas.rs:143` and `:146` because their only
+  remaining readers are the per light path that stage 4b removes — `emit.rs:462` sizes each
+  light's own shadow map entry, and `emit.rs:1996`, `:2080` and `:2104` size the shadowing and
+  lighting passes. The pool itself reads no constant: its shape comes from
+  `shadow_page_width`, `shadow_page_height` and `shadow_pages`. Deleting the two constants is
+  the last edit of 4b and not before it, because deleting them while the per light path is
+  still live would leave a shadow map with no size at all.
+
 ### What stage 4a did not close
 
 - **The device cannot create a texture array**, and stage 4b is blocked on that rather than on
