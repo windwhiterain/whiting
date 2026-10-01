@@ -96,8 +96,7 @@ pub fn emission(vertex_inputs: &str, emission: &str) -> String {
     format!(
         r#"{PLACEMENT_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var color_target: texture_2d<f32>;
-@group(0) @binding(2) var depth_buffer: texture_depth_2d;
+@group(0) @binding(1) var depth_buffer: texture_depth_2d;
 
 struct Vertex {{
     @builtin(position) position: vec4<f32>,
@@ -510,6 +509,26 @@ pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
             kit::gallery_custom_schema(),
         ),
     ]
+}
+
+/// Builds an emission shader with a body of the scene's own.
+///
+/// A scene whose surfaces emit a constant names [`mesh_shaders`]' `emission` and is done. A
+/// scene whose emission varies across a surface — a falloff, a flicker, a pattern — needs a
+/// body, and this is how it declares one. The body is written into the fragment stage's own
+/// scope, where `emitted` is the colour the stage returns and `in` is the point and the row.
+pub fn emission_shader(label: &str, body: &str) -> Value {
+    let point = kit::shaded_point_schema();
+    let inputs = crate::gallery::attributes::gallery_vertex_inputs(&point);
+    kit::shader(
+        Stage::Emission,
+        label,
+        &emission(&inputs, body),
+        emission_pass_schema(),
+        point,
+        kit::gallery_instance_schema(),
+        kit::gallery_custom_schema(),
+    )
 }
 
 /// Builds the post shader a scene declares, which grades the frame the scene produced.

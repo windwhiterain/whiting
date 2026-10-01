@@ -181,6 +181,31 @@ pub fn instances(buckets: Vec<(&str, Vec<Value>)>) -> Value {
     )
 }
 
+/// Builds a camera that is drawn from the eye it writes, rather than fitted to the scene.
+///
+/// # Invariants
+///
+/// A camera that names both depth planes keeps its own eye and distance, and one that names
+/// neither is fitted until the scene's bounds fit the lens. A scene whose ground reaches much
+/// further than its subject wants this one: the extent of the water decides nothing about
+/// where the camera stood, and a fitted camera pulls back until all of it is in frame.
+pub fn camera_placed(
+    eye: [f64; 3],
+    target: [f64; 3],
+    field_of_view: f64,
+    near: f64,
+    far: f64,
+) -> Value {
+    Value::structure([
+        ("eye".to_owned(), triple(eye)),
+        ("target".to_owned(), triple(target)),
+        ("field_of_view".to_owned(), Value::Float(field_of_view)),
+        ("projection".to_owned(), Value::variant("Perspective", [])),
+        ("near".to_owned(), Value::Float(near)),
+        ("far".to_owned(), Value::Float(far)),
+    ])
+}
+
 /// Builds the camera a scene is drawn through.
 pub fn camera(eye: [f64; 3], target: [f64; 3], field_of_view: f64, padding: f64) -> Value {
     Value::structure([

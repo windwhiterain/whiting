@@ -31,10 +31,12 @@ pub mod kit;
 pub mod shaders;
 
 mod dunes;
+mod lanterns;
 mod monoliths;
 mod terraces;
 
 pub use dunes::dunes;
+pub use lanterns::lanterns;
 pub use monoliths::monoliths;
 pub use terraces::terraces;
 
@@ -44,7 +46,7 @@ pub struct Gallery;
 impl Gallery {
     /// Returns the names of every scene the gallery holds.
     pub fn names() -> &'static [&'static str] {
-        &["dunes", "monoliths", "studio", "terraces"]
+        &["dunes", "lanterns", "monoliths", "studio", "terraces"]
     }
 
     /// Builds the named scene.
@@ -54,6 +56,7 @@ impl Gallery {
     pub fn build(name: &str) -> Value {
         match name {
             "dunes" => dunes(),
+            "lanterns" => lanterns(),
             "monoliths" => monoliths(),
             "studio" => crate::standard::example_standard_scene(),
             "terraces" => terraces(),
