@@ -24,7 +24,7 @@ use graphics::{PassView, resolve_for_pass};
 
 use super::WgpuRenderer;
 use super::bindings::{Bindings, BufferCache, TextureCache, TextureSlot};
-use crate::render::{Frame, RenderError};
+use crate::render::{RenderError, RenderedImage};
 
 /// Vertex entry point every rasterize shader must expose.
 pub const VERTEX_ENTRY: &str = "vertex_main";
@@ -43,6 +43,12 @@ struct Attachment<'bindings> {
 
 /// The colour texture a render ended on, which is what a caller asked to see.
 pub struct RenderedTarget {
+    /// The binding point of the pass's `targets` that this image was written into.
+    ///
+    /// It is carried rather than looked up again, because a point is how a document names an
+    /// image and the same point is written by many passes: the *last* one to write it is the
+    /// image, and which pass that was is knowable here and nowhere later.
+    pub point: String,
     /// The texture the last colour pass drew into.
     pub texture: wgpu::Texture,
     /// Its width in pixels, which is the width of each of its layers.
@@ -266,6 +272,7 @@ impl WgpuRenderer {
         self.queue.submit(Some(encoder.finish()));
 
         Ok(colour.map(|entry| RenderedTarget {
+            point: entry.slot.point.clone(),
             texture: entry.slot.texture.clone(),
             width: entry.slot.shape.width,
             height: entry.slot.shape.height,
@@ -301,10 +308,32 @@ impl WgpuRenderer {
         texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 
-    /// Reads a texture back into a frame.
-    pub(super) fn read_back(&self, target: &RenderedTarget) -> Result<Frame, RenderError> {
+    /// Reads a texture back into an image named after the output it is.
+    ///
+    /// # Invariants
+    ///
+    /// The bytes copied are the format's own, so a target of eight byte texels is read as eight
+    /// byte texels: a readback that assumed four would ask the backend for a copy narrower than
+    /// the texels it is copying, which the backend refuses rather than truncates. The name is
+    /// passed in rather than derived from the point, because the point is where the image was
+    /// written and the name is what the document calls it.
+    pub(super) fn read_back(
+        &self,
+        name: &str,
+        target: &RenderedTarget,
+    ) -> Result<RenderedImage, RenderError> {
+        let format = target.texture.format();
+        // A depth format answers nothing here, because a copy of one has to say which aspect it
+        // wants and this reads colour images. A declared output that names a depth point is
+        // therefore refused by name rather than copied as if it were a colour.
+        let texel = format.block_copy_size(None).ok_or_else(|| {
+            RenderError::Backend(format!(
+                "`{}` is not a texture format a colour image is read back from",
+                super::bindings::format_label(format)
+            ))
+        })?;
         let (width, height) = (target.width.max(1), target.height.max(1));
-        let unpadded = width * 4;
+        let unpadded = width * texel;
         let padded = unpadded.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
             * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -367,15 +396,23 @@ impl WgpuRenderer {
         let view = buffer.slice(..).get_mapped_range().map_err(|error| {
             RenderError::Backend(format!("reading the mapped range failed: {error:?}"))
         })?;
-        let mut rgba = Vec::with_capacity(unpadded as usize * height as usize);
+        let mut bytes = Vec::with_capacity(unpadded as usize * height as usize);
         for row in 0..height as usize {
             let start = row * padded as usize;
-            rgba.extend_from_slice(&view[start..start + unpadded as usize]);
+            bytes.extend_from_slice(&view[start..start + unpadded as usize]);
         }
         drop(view);
         buffer.unmap();
 
-        Frame::new(width, height, rgba).ok_or(RenderError::FrameSize)
+        Ok(RenderedImage {
+            name: name.to_owned(),
+            // The name a document spells, because that is what a caller compares against and
+            // what decides how a texel is read.
+            format: super::bindings::format_label(format).to_owned(),
+            width,
+            height,
+            bytes,
+        })
     }
 }
 

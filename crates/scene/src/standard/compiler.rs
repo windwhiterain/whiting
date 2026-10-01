@@ -3,6 +3,7 @@
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier};
 use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 
+use crate::standard::DebugChannel;
 use crate::standard::emit;
 use crate::{CompileContext, CompileError, CompileOutput, Compiler, Scene, assemble, scene_text};
 
@@ -15,6 +16,15 @@ pub struct StandardScene {
     schema: Scene,
     graphics_identifier: DefinitionIdentifier,
     instance_identifier: DefinitionIdentifier,
+    /// The extra images every compile of this compiler is asked to draw.
+    ///
+    /// # Invariants
+    ///
+    /// It is a field of the compiler rather than an argument of [`Compiler::compile`], because a
+    /// caller that changed it between two compiles of one scene would emit two documents that
+    /// disagree, and the device's cross check recompiles with the compiler it holds. A channel is
+    /// a property of the *pipeline being compiled*, not of one moment of it.
+    debug: Vec<DebugChannel>,
 }
 
 impl StandardScene {
@@ -27,7 +37,25 @@ impl StandardScene {
             schema: Self::schema(),
             graphics_identifier,
             instance_identifier,
+            debug: Vec::new(),
         }
+    }
+
+    /// Returns this compiler, asked to draw the given debug images beside the frame.
+    ///
+    /// # Invariants
+    ///
+    /// A channel is an image *about* the frame rather than of it: every one writes a target of
+    /// its own, so asking for one cannot move a pixel of the picture, and the emitted documents
+    /// say which image is the frame rather than leaving it to be whichever pass wrote last.
+    pub fn with_debug(mut self, channels: impl IntoIterator<Item = DebugChannel>) -> Self {
+        self.debug = channels.into_iter().collect();
+        self
+    }
+
+    /// Returns the debug channels this compiler draws.
+    pub fn debug(&self) -> &[DebugChannel] {
+        &self.debug
     }
 
     /// Builds the scene schema: a name, a list of lights and a list of meshes.
@@ -55,7 +83,7 @@ impl Compiler for StandardScene {
         // scene that does not carry one still fails at compile time.
         let _name = scene_text(scene, "name")?;
 
-        let emitted = emit::emit(scene, context.camera, context.device_limits())?;
+        let emitted = emit::emit(scene, context.camera, context.device_limits(), &self.debug)?;
         let output = assemble(
             &self.graphics_identifier,
             &self.instance_identifier,

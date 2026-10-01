@@ -37,7 +37,7 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use definition::{PackedList, Path, Schema, SchemaKind, Value};
+use definition::{FieldMap, PackedList, Path, Schema, SchemaKind, Value};
 
 use graphics::binders::{FORMAT, HEIGHT, LAYER, LAYERS, RESOURCE, SIZE_BYTES, SOURCE, WIDTH};
 use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
@@ -47,6 +47,7 @@ use crate::DeviceLimits;
 use crate::lighting::{self as lighting_pool, ClusterLight, Clustering, LightPool};
 use crate::lighting::{SPOT_CONES_ENTRY, SpotCone, spot_cone_schema, spot_cones, storage};
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
+use crate::standard::debug::DebugChannel;
 use crate::standard::frame::Frame;
 use crate::standard::math::{
     Bounds, IDENTITY, Matrix, add, apply, dot, look_at, multiply, normalize, orthographic,
@@ -680,6 +681,7 @@ pub fn emit(
     scene: &Value,
     camera_index: usize,
     limits: DeviceLimits,
+    debug: &[DebugChannel],
 ) -> Result<Emitted, CompileError> {
     // The images come before the lights because an environment light names one of them by
     // label, and a label resolved against a list that had not been read is a label resolved
@@ -925,6 +927,40 @@ pub fn emit(
         passes.push(pass);
     }
 
+    // The channels are asked for by the caller rather than by the scene, and they are emitted
+    // **after** the post processes. That order is what the declared outputs below depend on: a
+    // channel writes a target of its own, so it can sit anywhere, and putting it last would make
+    // it the last colour pass — which is the frame under the convention this field replaces.
+    // The frame is therefore named here rather than left to be whichever pass wrote last, and
+    // naming it is what lets a channel be appended at all.
+    let frame_target = if post.is_empty() {
+        COLOR_TARGET_ENTRY
+    } else {
+        PRESENT_TARGET_ENTRY
+    };
+    // A channel that reconstructs a pixel's position reads it out of the depth buffer, so it
+    // covers what the `depthing` bucket drew and nothing else. A scene that lists no instance
+    // under `depthing` therefore gets a position image with nothing in it, and that is worth
+    // saying: the image is empty because no depth was written, not because the scene draws
+    // nothing, and a caller looking at a blank image has no way to tell those apart. The path is
+    // the bucket, because that is the field to change.
+    if !debug.is_empty()
+        && !instances
+            .iter()
+            .any(|instance| instance.stage == Stage::Depthing)
+    {
+        notes.push(CompileNote {
+            path: Path::root()
+                .key(scene_schema::INSTANCES)
+                .key(Stage::Depthing.suffix()),
+            message: "a debug position image is read out of the depth buffer, and this scene \
+                      lists no instance under `depthing`: the image will be empty because nothing \
+                      wrote a depth, not because the scene draws nothing"
+                .to_owned(),
+        });
+    }
+    passes.extend(debug_passes(debug, &mut instance, &camera_basis, frame)?);
+
     // An instance holds its payloads under a field rather than at its root, so that it can name
     // the graphics it belongs to. What names it is written by assembling, which is where the
     // identifier the output is stored under is known.
@@ -934,6 +970,10 @@ pub fn emit(
     fields.insert(
         graphics::INSTANCE_SCHEMA_FIELD.to_owned(),
         derive_instance_schema(&Value::Struct(fields.clone()))?,
+    );
+    fields.insert(
+        graphics::OUTPUTS_FIELD.to_owned(),
+        debug_outputs(frame_target, debug),
     );
     let graphics = Value::Struct(fields);
 
@@ -2891,6 +2931,120 @@ fn post_pass(
     Ok((pass, entry, vertex_entry))
 }
 
+/// Emits one pass per debug channel, and the instance entries they read.
+///
+/// # Invariants
+///
+/// - **Every channel writes a target of its own**, so asking for one cannot move a pixel of the
+///   picture. A channel that tinted the frame in place would make the image being diagnosed a
+///   different image, which is the one outcome worth more than the convenience it buys.
+/// - **The fullscreen triangle is one entry for the whole pipeline.** A post stage already makes
+///   `fullscreen_vertices`, from the same three points and the same point schema, so a channel's
+///   entry is the *same buffer* rather than a second one under a colliding name — which is why it
+///   is written only when it is not already there. The bytes are identical because the sources
+///   are: a scene with no post stage gets one made here, and one with a post stage reuses the one
+///   it has.
+/// - **The image is the size of the frame**, because it is read at the coordinates of the pixel
+///   it was written from, like every other image a post stage touches.
+/// - **The pass carries no depth state.** It reads the depth buffer as a texture, and a pass that
+///   both tested against a buffer and sampled it would be reading and writing one texture at once.
+fn debug_passes(
+    channels: &[DebugChannel],
+    instance: &mut BTreeMap<String, Value>,
+    camera: &Projection,
+    frame: Frame,
+) -> Result<Vec<Value>, CompileError> {
+    if channels.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let points = fullscreen_points();
+    let point_schema = fullscreen_point_schema();
+    let bytes = pack_points(point_schema.as_ref(), &points, &Path::root().key("points"))?;
+    let vertex_entry = format!("{FULLSCREEN_MESH}_vertices");
+    let vertex_bytes = bytes.len() as i64;
+    let vertex_payload = buffer_payload(bytes, point_schema.to_value(), &["vertex"], "Triangles");
+
+    let mut passes = Vec::with_capacity(channels.len());
+    for &channel in channels {
+        insert_entry_once(instance, vertex_entry.clone(), vertex_payload.clone());
+        insert_entry(
+            instance,
+            channel.point().to_owned(),
+            texture(frame.width, frame.height, channel.format()),
+        )?;
+        insert_entry(
+            instance,
+            channel.shader_entry().to_owned(),
+            Value::variant(
+                "Shader",
+                [
+                    (
+                        SOURCE.to_owned(),
+                        Value::String(channel.source().to_owned()),
+                    ),
+                    (
+                        graphics::binders::SCHEMA.to_owned(),
+                        channel.pass_schema().to_value(),
+                    ),
+                ],
+            ),
+        )?;
+
+        passes.push(rasterize(
+            channel.label(),
+            channel.shader_entry(),
+            Value::structure([
+                (CAMERA.to_owned(), camera_value(camera)),
+                (PROJECTION.to_owned(), projection_value(camera)),
+            ]),
+            [
+                (
+                    channel.point().to_owned(),
+                    texture_binding(channel.point(), frame.width, frame.height, channel.format()),
+                ),
+                (
+                    DEPTH_BUFFER.to_owned(),
+                    texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
+                ),
+                (
+                    VERTICES.to_owned(),
+                    buffer_binding(&vertex_entry, vertex_bytes),
+                ),
+            ],
+            vec![channel.point()],
+            DEBUG_CLEAR,
+            PipelineStateFields::default_state(),
+        ));
+    }
+    Ok(passes)
+}
+
+/// Builds the images an emitted document says a render produces.
+///
+/// # Invariants
+///
+/// The frame is named here rather than left to a convention about pass order, and that is the
+/// whole reason the field exists: a channel's pass is emitted after the post processes, so under
+/// the old rule — the colour target of the last pass that drew into one — asking for a debug
+/// image would silently stop the picture coming back. `frame_target` is the point that *would*
+/// have been the frame under that rule, so a document that declares this is not a document that
+/// changed its picture.
+fn debug_outputs(frame_target: &str, channels: &[DebugChannel]) -> Value {
+    let mut outputs = FieldMap::new();
+    outputs.insert(
+        graphics::PRESENT_OUTPUT.to_owned(),
+        Value::String(frame_target.to_owned()),
+    );
+    for &channel in channels {
+        outputs.insert(
+            channel.output().to_owned(),
+            Value::String(channel.point().to_owned()),
+        );
+    }
+    Value::Dict(outputs)
+}
+
 /// Builds the shadowing pass of one group for one light, drawing into the page that light
 /// was given.
 ///
@@ -3565,6 +3719,17 @@ const DEPTH_CLEAR: [f64; 4] = [1.0, 1.0, 1.0, 1.0];
 
 /// The colour a shaded image is cleared to, which is unlit.
 const COLOUR_CLEAR: [f64; 4] = [0.0, 0.0, 0.0, 1.0];
+
+/// The colour a debug image is cleared to, which is no surface.
+///
+/// # Invariants
+///
+/// Alpha is the marker rather than a component of the value, so the clear has to say "nothing
+/// here" in the same channel a fragment does. A debug pass draws the whole frame with a
+/// fullscreen triangle, so every pixel is written and the clear is never seen — which is exactly
+/// why it has to be right: the day a pass stops covering the frame is the day a background pixel
+/// starts reporting the origin of the scene as a position.
+const DEBUG_CLEAR: [f64; 4] = [0.0, 0.0, 0.0, 0.0];
 
 /// Builds a rasterize pass with the shared fields every pass carries.
 ///

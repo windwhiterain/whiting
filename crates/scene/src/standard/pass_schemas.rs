@@ -578,7 +578,12 @@ pub fn post_pass_schema() -> Schema {
 }
 
 /// Builds a shader interface of a `uniform` and a `binders` block.
-fn interface(
+///
+/// Shared with [`super::debug`], whose pass interface is built outside this file because the
+/// channel's shader is the compiler's own rather than one a scene declares: the binding point
+/// names here are the contract between the compiler and a scene author's shaders, and a channel
+/// has no author on the other side.
+pub(crate) fn interface(
     documentation: &str,
     binders: Vec<(&str, Schema)>,
     uniform: Vec<(&str, Schema)>,

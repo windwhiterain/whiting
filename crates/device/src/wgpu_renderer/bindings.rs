@@ -1445,8 +1445,9 @@ fn is_srgb(format: wgpu::TextureFormat) -> bool {
     )
 }
 
-/// Returns the name of a format as a document spells it, for an error message.
-fn format_label(format: wgpu::TextureFormat) -> &'static str {
+/// Returns the name of a format as a document spells it, for an error message or for naming a
+/// read back image.
+pub(super) fn format_label(format: wgpu::TextureFormat) -> &'static str {
     match format {
         wgpu::TextureFormat::Rgba8Unorm => "rgba8unorm",
         wgpu::TextureFormat::Rgba8UnormSrgb => "rgba8unorm-srgb",

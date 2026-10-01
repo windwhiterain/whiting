@@ -12,10 +12,15 @@
 //!
 //! # What comes back
 //!
-//! Every pass runs, in the order the document lists them, and what comes back is the
-//! colour target of the *last* pass that drew into one. A standard scene ends on its
-//! lighting pass, so that is the image; a scene whose last pass writes only a depth map
-//! has no image, which is reported rather than papered over with a placeholder.
+//! Every pass runs, in the order the document lists them, and what comes back is **what the
+//! document declares it produces**: every named output is read back, in the format its target
+//! was drawn in. A document that declares nothing means what every document written before the
+//! outputs field existed meant, and is answered exactly as it was — the colour target of the
+//! *last* pass that drew into one, under `present`. A document that declares an output no pass
+//! rendered into is refused rather than answered with a shorter list, because a caller that
+//! asked for an image and was handed none would read the missing one as a scene that draws
+//! nothing; and a document whose passes write no colour at all has no image, which is reported
+//! rather than papered over with a placeholder.
 //!
 //! # Errors
 //!
@@ -34,7 +39,7 @@ use scene::DeviceLimits;
 use wgpu::naga;
 use wgpu::util::DeviceExt;
 
-use crate::render::{Frame, RenderError, Renderer};
+use crate::render::{RenderError, RenderedImage, Renderer};
 use bindings::{BufferCache, TextureCache};
 use raster::RenderedTarget;
 
@@ -341,16 +346,25 @@ impl WgpuRenderer {
         Ok(module)
     }
 
-    /// Executes every pass, in order, and reads back the colour target of the last one.
+    /// Executes every pass, in order, and returns the colour target each one wrote into.
+    ///
+    /// # Invariants
+    ///
+    /// The list is in **write order** and keeps one entry per pass that drew into a colour
+    /// target, so the same point appears once per pass that wrote it. That is what lets a caller
+    /// read the two rules apart without either being inferred from the other: the frame under the
+    /// convention is the *last* entry, and an image a document declared is the last entry **for
+    /// that point**. Collapsing the duplicates here would answer the first question and lose the
+    /// second.
     fn execute(
         &self,
         graphics: &Value,
         instance: &Value,
-    ) -> Result<Option<RenderedTarget>, RenderError> {
+    ) -> Result<Vec<RenderedTarget>, RenderError> {
         let mut cache = TextureCache::default();
         let mut buffers = BufferCache::default();
         let mut cleared: Vec<String> = Vec::new();
-        let mut colour: Option<RenderedTarget> = None;
+        let mut colour: Vec<RenderedTarget> = Vec::new();
 
         for pass in passes(graphics)? {
             match pass.kind() {
@@ -365,8 +379,8 @@ impl WgpuRenderer {
                         &mut buffers,
                         &mut cleared,
                     )?;
-                    if target.is_some() {
-                        colour = target;
+                    if let Some(target) = target {
+                        colour.push(target);
                     }
                 }
             }
@@ -403,14 +417,41 @@ impl Renderer for WgpuRenderer {
         })
     }
 
-    fn render(&self, graphics: &Value, instance: &Value) -> Result<Frame, RenderError> {
-        let Some(target) = self.execute(graphics, instance)? else {
-            return Err(RenderError::NoColourTarget);
-        };
-        let frame = self.read_back(&target)?;
+    fn render_outputs(
+        &self,
+        graphics: &Value,
+        instance: &Value,
+    ) -> Result<Vec<RenderedImage>, RenderError> {
+        let written = self.execute(graphics, instance)?;
+        let declared = graphics::outputs(graphics)?;
+
+        // A document that says nothing about its outputs means what every document written
+        // before the field existed meant, and is answered exactly as it was: the colour target of
+        // the last pass that drew into one.
+        if declared.is_empty() {
+            let last = written.last().ok_or(RenderError::NoColourTarget)?;
+            return Ok(vec![self.read_back(graphics::PRESENT_OUTPUT, last)?]);
+        }
+
+        let mut images = Vec::with_capacity(declared.len());
+        for output in &declared {
+            // The last write to the point, because an image is what the last pass left there. A
+            // point no pass wrote is refused rather than skipped: a caller that asked for an
+            // image and was handed a shorter list would read the missing one as an image with
+            // nothing in it.
+            let target = written
+                .iter()
+                .rev()
+                .find(|target| target.point == output.point)
+                .ok_or_else(|| RenderError::MissingOutput {
+                    name: output.name.to_owned(),
+                    point: output.point.to_owned(),
+                })?;
+            images.push(self.read_back(output.name, target)?);
+        }
         if let Some(error) = self.drain_errors() {
             return Err(error);
         }
-        Ok(frame)
+        Ok(images)
     }
 }

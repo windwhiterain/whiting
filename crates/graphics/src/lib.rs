@@ -11,6 +11,7 @@
 //! {
 //!     passes: [ Pass, ... ],
 //!     instance_schema: <schema document>,
+//!     outputs: { <name>: <binding point>, ... },
 //! }
 //! ```
 //!
@@ -19,6 +20,11 @@
 //! instance entries the rest of its data is in. The instance holds those payloads, and
 //! the two halves are checked against each other when a pass is bound rather than when a
 //! document is written, because each document is authored on its own.
+//!
+//! `outputs` says which of the images a document draws are **answers**: a render returns
+//! what it names, rather than whichever target the last pass to write one happened to
+//! fill. A document that omits it means what it always meant, and the last colour target
+//! is the frame; see [`outputs`].
 //!
 //! # Example
 //!
@@ -109,7 +115,7 @@ pub use pass::{
     WORKGROUP, pass_schema,
 };
 pub use pipeline::{Blend, Compare, MAX_SAMPLES, PipelineState};
-pub use read::{PassKind, PassView, passes};
+pub use read::{Output, PassKind, PassView, outputs, passes};
 
 /// Name of the schema a graphics document is verified against.
 pub const GRAPHICS_SCHEMA: &str = "whiting.graphics";
@@ -122,6 +128,19 @@ pub const PASSES_FIELD: &str = "passes";
 
 /// Field of the graphics root that holds the schema of the instance data.
 pub const INSTANCE_SCHEMA_FIELD: &str = "instance_schema";
+
+/// Field of the graphics root that holds the images a render produces.
+pub const OUTPUTS_FIELD: &str = "outputs";
+
+/// Name the frame is conventionally declared under.
+///
+/// # Why the name is here rather than in the compiler or the device
+///
+/// Both sides have to spell it: the standard compiler declares the frame under it, and the
+/// device looks the frame up by it. A name one side writes and the other guesses is a frame
+/// that silently stops coming back the day either side is edited, so it is written once, in
+/// the vocabulary both sides already share.
+pub const PRESENT_OUTPUT: &str = "present";
 
 /// Field of the instance root that names the graphics it provides data to.
 ///
@@ -158,6 +177,19 @@ pub fn graphics_schema() -> Schema {
             INSTANCE_SCHEMA_FIELD.to_owned(),
             Schema::document_schema()
                 .with_documentation("Schema of the instance data, authored or derived."),
+        ),
+        (
+            OUTPUTS_FIELD.to_owned(),
+            Schema::new(SchemaKind::dictionary(Schema::new(SchemaKind::String)))
+                .optional()
+                .with_documentation(
+                    "The images a render produces, keyed by the name a caller looks one up \
+                     under and holding the binding point a pass renders it into. The frame is \
+                     the one called `present`. Absent means the document does not say, and the \
+                     colour target of the last pass that wrote one is the frame — which is what \
+                     every document written before this field existed means, so none of them \
+                     changes.",
+                ),
         ),
     ]))
     .with_documentation("An instruction set of low level graphics computation.")

@@ -18,6 +18,12 @@
 //!
 //! # Rendering
 //!
+//! A render returns every image the graphics document declares it produces, each in the format
+//! its target was drawn in, so a document can ask for more than a picture — a position image,
+//! say — and a caller reads each one by name. A document that declares no outputs is answered
+//! as it always was: one image, the colour target of the last pass that wrote one, under
+//! `present`.
+//!
 //! [`NoopRenderer`] is always available and always reports itself as unavailable, so the
 //! server and the reload path stay exercisable with no gpu. With the `wgpu` feature
 //! enabled, [`WgpuRenderer`] is selected instead when an adapter is present. Every render
@@ -73,10 +79,14 @@
 //! // never be mistaken for real pixels.
 //! assert_eq!(device.renderer().name(), "noop");
 //! assert!(!device.renderer().available());
-//! let frame = device.render(&graphics_identifier).expect("the frame renders");
-//! assert_eq!(frame.renderer, "noop");
-//! // The size comes from the target the first pass binds, resolved through the instance.
-//! assert_eq!((frame.frame.width, frame.frame.height), (512, 512));
+//! let rendered = device.render(&graphics_identifier).expect("the frame renders");
+//! assert_eq!(rendered.renderer, "noop");
+//! // The frame is the image the document declared as `present`, and this document declares
+//! // none, so it is the colour target of the last pass that wrote one. The size is the
+//! // target's, which the renderer can only know by resolving the instance.
+//! let frame = rendered.present().expect("the frame is declared");
+//! assert_eq!(frame.name, "present");
+//! assert_eq!((frame.width, frame.height), (512, 512));
 //!
 //! // A document can name its data rather than hold it. The surface moves into a definition of
 //! // its own, the instance names it, and the renderer follows it: the frame is still the
@@ -119,7 +129,8 @@
 //! // device to write it out again.
 //! device.forget_resolved();
 //! let shared = device.render(&graphics_identifier).expect("the frame renders");
-//! assert_eq!((shared.frame.width, shared.frame.height), (512, 512));
+//! let shared = shared.present().expect("the frame is declared");
+//! assert_eq!((shared.width, shared.height), (512, 512));
 //!
 //! // The compiler identifies the instance the renderer binds against.
 //! assert_eq!(device.compiler().instance_identifier(), &instance_identifier);
@@ -153,7 +164,7 @@ mod state;
 #[cfg(feature = "wgpu")]
 mod wgpu_renderer;
 
-pub use render::{Frame, NoopRenderer, RenderError, RenderedFrame, Renderer};
+pub use render::{Frame, NoopRenderer, RenderError, RenderedFrame, RenderedImage, Renderer};
 pub use rpc::{router, serve};
 pub use snapshot::{NamedDefinition, NamedSchema, Snapshot};
 pub use state::{Device, DeviceError, ReloadReport};
