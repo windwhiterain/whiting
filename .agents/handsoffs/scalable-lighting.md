@@ -12,6 +12,35 @@ per group, so pass count is `O(lights * groups) * 2`. Each light also gets its o
 texture entry named `{label}_{shadow_map}`, so shadow memory is `O(lights * 2048 * 2048 * 4)`.
 One thousand lights is one thousand shadow maps. The clustered path below is what replaces this.
 
+## This machine has a gpu
+
+**An adapter is present and rendering works.** This is worth stating plainly because earlier
+stages of this effort were written under the belief that it was not, and that belief cost real
+verification. Confirm it before you take any statement here on trust:
+
+```
+cargo test -p whiting-device --features wgpu
+cargo run -p whiting-device --features wgpu --example render -- terraces out/terraces.png
+```
+
+The second writes a 1024 square image of the terrace scene in about 1.1 seconds, thirty one
+passes deep. `crates/device/tests/gallery_render.rs` and `crates/device/tests/texture_channel_render.rs`
+both **pass**, and neither prints its `skipped: no gpu adapter is present` note. A pass with that
+note printed is a skip that reports success, so read the note rather than the summary.
+
+What this changes: a shader can be compiled by `wgpu` and executed, a `texture_depth_2d_array`
+view can be created and rendered into, a storage buffer can be written by one pass and read by
+another, and a frame can be looked at. The clustered lighting pass in the next stage is
+therefore verifiable by rendering a scene and counting what it draws, not only by validating
+WGSL and counting passes in a document.
+
+**Run the `wgpu` feature when you run tests.** `crates/device/Cargo.toml` marks the render
+tests `required-features = ["wgpu"]`, so `cargo test --workspace` on its own does not execute
+them. A checkpoint was merged with six failing tests inside exactly that gap: the strict usage
+check refused the word `uniform`, only the tests behind the feature could see it, and a plain
+workspace run reported green. `cargo test --workspace` **and**
+`cargo test --workspace --features whiting-device/wgpu` are both part of the gate from here.
+
 ## What this renderer is for
 
 This is an offline renderer. It has no real time frame and no ray tracing, and it is to be
