@@ -56,12 +56,14 @@ mod dunes;
 mod lanterns;
 mod monoliths;
 mod terraces;
+mod tidewater;
 mod tiles;
 
 pub use dunes::dunes;
 pub use lanterns::lanterns;
 pub use monoliths::monoliths;
 pub use terraces::terraces;
+pub use tidewater::tidewater;
 pub use tiles::tiles;
 
 /// Builds named scenes out of the parts in this module.
@@ -76,6 +78,7 @@ impl Gallery {
             "monoliths",
             "studio",
             "terraces",
+            "tidewater",
             "tiles",
         ]
     }
@@ -91,6 +94,7 @@ impl Gallery {
             "monoliths" => monoliths(),
             "studio" => scene::standard::example_standard_scene(),
             "terraces" => terraces(),
+            "tidewater" => tidewater(),
             "tiles" => tiles(),
             other => unimplemented!(
                 "the gallery holds {}, and `{other}` is not one of them",
