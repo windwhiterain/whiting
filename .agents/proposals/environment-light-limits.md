@@ -53,19 +53,19 @@ because the invariant that an exempt light keeps its record is what a `Direction
 path will need. Not worth the index shift for one light, and it becomes worth revisiting the day
 a scene can name a thousand of something.
 
-## 5. A scene naming no light at all does not render
+## 5. ~~A scene naming no light at all does not render~~ — fixed
 
-**This is a bug, not a refinement, and it is pre-existing.** A scene with an empty `lights` list
-packs a light record buffer of four bytes, and the shader's `array<LightRecord>` wants a whole
-96 byte record, so wgpu refuses the draw with a validation error naming a buffer size. Found
-while writing the environment test, which wanted a scene whose only light is the environment, and
-worked around with a point light of **zero intensity**: a record the loop can read, contributing
-nothing.
+**This was a bug, not a refinement, and it was pre-existing.** A scene with an empty `lights`
+list packed a light record buffer of four bytes, and the shader's `array<LightRecord>` wants a
+whole 96 byte record, so wgpu refused the draw with a validation error naming a buffer size.
 
-The fix is one line in `lighting::buffers::pack` — a record buffer of at least one record when
-the light list is empty — and it belongs to whoever next touches the record packing. It is
-recorded here because the workaround is in a test file and the reason is in a comment, and
-because a scene of pure environment light is the obvious next thing anyone will try to build.
+**Fixed.** `lighting::buffers::light_records` now writes one placeholder record when the light
+list is empty: a zero colour, the origin, a zero radius, and `NO_PAGE` with the identity
+projection. No cluster points at it — with an empty list every cluster's count is zero, so the
+loop that would load it never runs — which is the same reason an environment light's own record
+carries `NO_PAGE`. The workaround this was found through, a point light of **zero intensity** in
+the environment render test, is gone, and that test now exercises a scene whose only light is
+the environment and a scene with no light at all.
 
 ## 6. The seam clamp is argued, not proved
 

@@ -267,8 +267,9 @@ pub fn standard_scene_schema() -> Schema {
         (
             FRAME.to_owned(),
             frame_schema().optional().with_documentation(
-                "How large the image is. A scene that names no frame is drawn into the \
-                 square the pipeline has always drawn into.",
+                "How large the image is, and how large and how many the shadow pages it draws \
+                 are. A scene that names no frame is drawn into the square the pipeline has \
+                 always drawn into.",
             ),
         ),
         (
@@ -346,6 +347,42 @@ pub fn clustering_schema() -> Schema {
                      is what a larger cap costs.",
             ),
         ),
+    ]))
+    .with_documentation("How the view is divided and how many lights one box keeps.")
+}
+
+/// Builds the schema of the image a scene is drawn into.
+///
+/// # What is here and why
+///
+/// The two sizes of the image, and the three numbers of the shadow page pool. The pool is here
+/// rather than beside the cluster grid because a page's size and count are properties of the
+/// frame being rendered — a pool is a set of render targets this view draws its pages into,
+/// beside the depth buffer of the same frame — and a reader of their own document should be
+/// able to tell which numbers are about this view and which are about how lights are sorted
+/// into it.
+///
+/// # Invariants
+///
+/// Every field is optional, and a field that is absent falls back to the convention rather
+/// than to a default the author has to know, so a scene that names no frame draws the frame
+/// it always drew. The frame is a property of the scene rather than a constant of the
+/// backend because its aspect is part of the composition: a wide valley drawn into a
+/// square is cropped at the sides, and the same valley drawn wide is not.
+pub fn frame_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            "width".to_owned(),
+            Schema::new(SchemaKind::Int)
+                .optional()
+                .with_documentation("How wide the shaded image is, in pixels."),
+        ),
+        (
+            "height".to_owned(),
+            Schema::new(SchemaKind::Int)
+                .optional()
+                .with_documentation("How tall the shaded image is, in pixels."),
+        ),
         (
             SHADOW_PAGE_WIDTH.to_owned(),
             Schema::new(SchemaKind::Int).optional().with_documentation(
@@ -366,43 +403,13 @@ pub fn clustering_schema() -> Schema {
             Schema::new(SchemaKind::Int).optional().with_documentation(
                 "How many shadow pages the pool holds, which is how many lights can cast one \
                      at all. Defaults to 64, and a scene may not ask for more than the 256 \
-                     layers a texture array can have. A light the pool did not buy a page for \
+                     layers the compiler admits to. A light the pool did not buy a page for \
                      is lit unshadowed rather than wrongly shadowed, and a scene that wants \
                      more real shadows raises this.",
             ),
         ),
     ]))
-    .with_documentation(
-        "How the view is divided, how many lights one box keeps, and how many \
-                         shadows the scene can afford.",
-    )
-}
-
-/// Builds the schema of the image a scene is drawn into.
-///
-/// # Invariants
-///
-/// Both fields are optional, and a field that is absent falls back to the square the
-/// pipeline has always drawn into, so a scene that names no frame draws the frame it
-/// always drew. The frame is a property of the scene rather than a constant of the
-/// backend because its aspect is part of the composition: a wide valley drawn into a
-/// square is cropped at the sides, and the same valley drawn wide is not.
-pub fn frame_schema() -> Schema {
-    Schema::new(SchemaKind::structure([
-        (
-            "width".to_owned(),
-            Schema::new(SchemaKind::Int)
-                .optional()
-                .with_documentation("How wide the shaded image is, in pixels."),
-        ),
-        (
-            "height".to_owned(),
-            Schema::new(SchemaKind::Int)
-                .optional()
-                .with_documentation("How tall the shaded image is, in pixels."),
-        ),
-    ]))
-    .with_documentation("The image a scene is drawn into.")
+    .with_documentation("The image a scene is drawn into, and the shadow pages it draws.")
 }
 
 /// Builds the schema of a camera.

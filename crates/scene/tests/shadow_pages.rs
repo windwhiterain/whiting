@@ -21,10 +21,10 @@ use whiting_gallery::Gallery;
 use whiting_scene::CompileContext;
 use whiting_scene::Compiler;
 use whiting_scene::lighting::{
-    CLUSTERING, ClusterLight, Clustering, Clusters, LightPool, MAX_TEXTURE_ARRAY_LAYERS, NO_PAGE,
-    SHADOW_PAGES, assign, read_light_pool,
+    ClusterLight, Clustering, Clusters, LightPool, MAX_TEXTURE_ARRAY_LAYERS, NO_PAGE, SHADOW_PAGES,
+    assign, read_light_pool,
 };
-use whiting_scene::standard::{Bounds, Camera, Projection, register_standard_scene_schema};
+use whiting_scene::standard::{Bounds, Camera, FRAME, Projection, register_standard_scene_schema};
 use whiting_scene::{CompileError, CompileNote, STANDARD_SCENE_SCHEMA, StandardScene};
 
 #[test]
@@ -154,7 +154,7 @@ fn a_record_says_no_page_with_a_value_no_real_page_can_carry() {
 #[test]
 fn a_pool_deeper_than_the_array_limit_is_refused_rather_than_truncated() {
     let too_deep = Value::structure([(
-        CLUSTERING.to_owned(),
+        FRAME.to_owned(),
         Value::structure([(
             SHADOW_PAGES.to_owned(),
             Value::Int(MAX_TEXTURE_ARRAY_LAYERS as i64 + 1),
@@ -168,7 +168,7 @@ fn a_pool_deeper_than_the_array_limit_is_refused_rather_than_truncated() {
 
     // And a pool of nothing is refused on the same grounds a grid of nothing is.
     let empty = Value::structure([(
-        CLUSTERING.to_owned(),
+        FRAME.to_owned(),
         Value::structure([(SHADOW_PAGES.to_owned(), Value::Int(0))]),
     )]);
     assert!(
@@ -274,8 +274,8 @@ fn the_shadowing_pass_count_is_bounded_by_the_pool_and_not_by_the_light_count() 
 /// Returns the scene with one page of shadow pool, which is the smallest budget there is.
 fn with_a_pool_of_one_page(scene: Value) -> Value {
     let mut fields = scene.as_field_map().expect("a scene is a struct").clone();
-    let clustering = Value::structure([(SHADOW_PAGES.to_owned(), Value::Int(1))]);
-    fields.insert(CLUSTERING.to_owned(), clustering);
+    let frame = Value::structure([(SHADOW_PAGES.to_owned(), Value::Int(1))]);
+    fields.insert(FRAME.to_owned(), frame);
     Value::structure(fields)
 }
 

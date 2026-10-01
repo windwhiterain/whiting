@@ -246,25 +246,15 @@ fn scene(environment: bool, roughness: f64) -> Value {
         ),
     ]);
 
-    // The environment is the **only** light in the scene. A clustered loop over an empty list is
-    // a loop that does not run, so every pixel in the frame is the ambient term and nothing
-    // else, which is what makes the difference between the two surfaces attributable to the map
-    // rather than to a lamp. A scene with no environment light is a scene with *no* lights.
+    // The environment is the **only** light in the scene, and a scene naming no environment
+    // light is a scene with *no* lights at all. Both have to render: the clustered loop over
+    // an empty list is a loop that does not run, so every pixel in the frame is the ambient
+    // term and nothing else, which is what makes the difference between the two surfaces
+    // attributable to the map rather than to a lamp.
     let lights = if environment {
         Value::List(vec![environment_light("sky", "sky", [1.0; 3], 1.0)])
     } else {
-        // A light of **no brightness**, and not no light at all. The clustered loop reads its
-        // record, so a scene with an empty light list has a record buffer of nothing to read and
-        // the draw is refused for a buffer that is four bytes where the shader wants a whole
-        // record; a light of zero intensity gives the loop a record that contributes exactly
-        // nothing, which is what these scenes want — every pixel in the frame is the ambient
-        // term — without a scene that cannot be drawn at all.
-        //
-        // That it is needed is recorded rather than fixed: a scene naming no light of any kind
-        // does not render, which is a pre-existing edge and not this stage's business. It is
-        // written down here so the next reader knows the light is a stand-in and not a test of
-        // anything.
-        Value::List(vec![dark_light()])
+        Value::List(Vec::new())
     };
 
     Value::structure([
@@ -383,27 +373,6 @@ fn scene(environment: bool, roughness: f64) -> Value {
             ]),
         ),
     ])
-}
-
-/// Builds a point light that reaches everything and lights nothing.
-///
-/// # Why the intensity is zero and not the light absent
-///
-/// The clustered loop reads a record per light, so an empty light list is a record buffer of
-/// nothing and a draw the backend refuses for a buffer four bytes wide where the shader wants a
-/// whole ninety six byte record. A light of zero intensity is a record the loop can read and
-/// adds nothing, which is what these scenes want: every pixel in the frame is the ambient term
-/// and nothing else, so the difference between the two surfaces is the environment's.
-///
-/// The radius is the whole scene, because a light that reaches no cluster is a light in no
-/// list, and a light in no list is not a record the loop reads at all — which would be the same
-/// empty buffer by another route.
-fn dark_light() -> Value {
-    let mut light = gallery::kit::light("unlit", [0.0, 4.0, 0.0], [1.0; 3], 0.0, 1.0);
-    if let Value::Enum { ref mut fields, .. } = light {
-        fields.insert("radius".to_owned(), Value::Float(100.0));
-    }
-    light
 }
 
 /// Returns a renderer, or nothing when the machine has no adapter.

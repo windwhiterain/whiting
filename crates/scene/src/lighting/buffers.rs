@@ -33,6 +33,8 @@ use graphics::binders::{DATA, RESOURCE, SCHEMA, SIZE_BYTES, SOURCE, USAGE};
 
 use crate::CompileError;
 use crate::CompileNote;
+use crate::standard::FRAME;
+use crate::standard::math::{IDENTITY, Matrix};
 
 use super::assignment::{Candidate, ClusterLight, Clustering, Overflow, contribution};
 
@@ -404,10 +406,11 @@ pub struct LightPool {
     ///
     /// # Invariants
     ///
-    /// This is bounded by `max_texture_array_layers` of 256 on the downlevel limits this
-    /// renderer requests. A scene that asks for more is refused rather than given a pool it
-    /// cannot have, because a pool silently smaller than the one the document asked for is a
-    /// scene that silently lost the lights it did not have room for.
+    /// This is refused above [`MAX_TEXTURE_ARRAY_LAYERS`], which is a floor this compiler
+    /// enforces rather than a ceiling the hardware imposes: a scene that asks for more is
+    /// refused rather than given a pool it cannot have, because a pool silently smaller than
+    /// the one the document asked for is a scene that silently lost the lights it did not
+    /// have room for.
     pub pages: usize,
 }
 
@@ -424,12 +427,16 @@ impl LightPool {
 ///
 /// # Invariants
 ///
+/// The three counts are read out of the **frame** block, beside the width and height of the
+/// image and the depth buffer that share them, because a page's size and count are properties
+/// of the frame being rendered rather than of the cluster grid a light is sorted into.
+///
 /// Every count is at least one, for the same reason the cluster grid's are: a pool of nothing
 /// is a scene whose every light is lit by the approximation, which is a wrong image rather
 /// than a fast one. The page count is additionally refused above the array limit, and the
 /// refusal names the number rather than truncating it.
 pub fn read_light_pool(scene: &Value) -> Result<LightPool, CompileError> {
-    let path = Path::root().key(super::assignment::CLUSTERING);
+    let path = Path::root().key(FRAME);
     Ok(LightPool {
         page_width: pool_count(scene, SHADOW_PAGE_WIDTH, 1024, &path)?,
         page_height: pool_count(scene, SHADOW_PAGE_HEIGHT, 1024, &path)?,
@@ -446,7 +453,16 @@ pub const SHADOW_PAGE_HEIGHT: &str = "shadow_page_height";
 /// Field holding how many shadow pages the pool holds.
 pub const SHADOW_PAGES: &str = "shadow_pages";
 
-/// The deepest texture array the downlevel limits this renderer requests allow.
+/// The deepest texture array a scene is allowed to ask for.
+///
+/// # Invariants
+///
+/// This is a **floor this compiler enforces**, not a statement about the hardware. The device
+/// requests the adapter's own limits, so `max_texture_array_layers` is whatever the adapter
+/// reports and is not this number; what this number does is refuse a document that names a
+/// pool deeper than a chain of reasons this project has agreed to stand behind. A scene refused
+/// here would be refused on a machine that could have held it, which is the honest failure
+/// rather than a texture array that fails to create on the next machine.
 pub const MAX_TEXTURE_ARRAY_LAYERS: usize = 256;
 
 /// Reads one count of the pool, refusing a count of nothing.
@@ -458,7 +474,7 @@ fn pool_count(
 ) -> Result<i64, CompileError> {
     let Some(declared) = scene
         .as_field_map()
-        .and_then(|fields| fields.get(&super::assignment::CLUSTERING.to_owned()))
+        .and_then(|fields| fields.get(&FRAME.to_owned()))
     else {
         return Ok(convention);
     };
@@ -521,9 +537,7 @@ pub fn pool_notes(
     if without.is_empty() {
         return Vec::new();
     }
-    let path = Path::root()
-        .key(super::assignment::CLUSTERING)
-        .key(SHADOW_PAGES);
+    let path = Path::root().key(FRAME).key(SHADOW_PAGES);
     let given = candidates.len() - without.len();
     vec![CompileNote {
         path,
@@ -546,6 +560,16 @@ pub fn pool_notes(
 
 /// Packs one record per light, in the order the scene lists them, which is the order the
 /// cluster lists index into.
+///
+/// # Invariants
+///
+/// A scene naming **no** light at all still gets one record, written by [`write_record`] from
+/// the placeholder values. The buffer is bound by every lighting pass — the binding point is
+/// declared unconditionally, so a scene with nothing in the cluster lists still has the
+/// binding to satisfy — and the shader declares `array<LightRecord>`, so a buffer of no
+/// records is four bytes of alignment where a binding wants a whole ninety six byte record.
+/// wgpu refuses that draw with a validation error naming a buffer size, which is a scene of
+/// pure environment light failing to render for want of a placeholder.
 fn light_records(lights: &[ClusterLight], pages: &[usize]) -> Result<PackedList, CompileError> {
     let layout = graphics::layout::packed_layout(&light_record_schema()).map_err(|error| {
         CompileError::Unpackable {
@@ -554,25 +578,57 @@ fn light_records(lights: &[ClusterLight], pages: &[usize]) -> Result<PackedList,
         }
     })?;
     let mut records = PackedBuilder::new(layout);
-    records.reserve(lights.len());
+    records.reserve(lights.len().max(1));
     for (index, light) in lights.iter().enumerate() {
-        // Sorted by name, so the colour is written first and the projection last: the builder
-        // refuses a field written out of the layout's order, which is what makes the run mean
-        // what its layout says. `color`, `page`, `position`, `radius`, `shadow_projection` is
-        // that order, because `page` sorts before `position`.
-        records
-            .field(LIGHT_COLOR_FIELD, &light.colour)
-            .and_then(|builder| builder.field(LIGHT_PAGE_FIELD, &[page_value(pages[index])]))
-            .and_then(|builder| builder.field(LIGHT_POSITION_FIELD, &light.position))
-            .and_then(|builder| builder.field(LIGHT_RADIUS_FIELD, &[light.radius]))
-            .and_then(|builder| {
-                builder.field(LIGHT_SHADOW_PROJECTION_FIELD, &light.shadow_projection)
-            })
-            .map_err(|error| unpacked(LIGHT_RECORDS_ENTRY, error))?;
+        write_record(
+            &mut records,
+            light.colour,
+            page_value(pages[index]),
+            light.position,
+            light.radius,
+            light.shadow_projection,
+        )?;
+    }
+    if lights.is_empty() {
+        // The placeholder, and why it is the answer it is. A **zero colour** and a **zero
+        // radius** at the origin: a light that reaches nothing and lights nothing, so a record
+        // that somehow came to be read would add nothing to a fragment rather than carrying a
+        // brightness nothing in the document asked for. `NO_PAGE` and the identity are the
+        // answers an environment light's **own** record already gives, for the same reason it
+        // is never read — it is in no cluster list, so no fragment looks a page up through it.
+        // What makes this one unreadable is structural rather than numerical: with an empty
+        // light list every cluster's count is zero, so the loop that would load it never runs.
+        write_record(&mut records, [0.0; 3], NO_PAGE, [0.0; 3], 0.0, IDENTITY)?;
     }
     records
         .finish()
         .map_err(|error| unpacked(LIGHT_RECORDS_ENTRY, error))
+}
+
+/// Writes one record's five fields into a run under construction.
+///
+/// # Invariants
+///
+/// The fields are written in the layout's order — `color`, `page`, `position`, `radius`,
+/// `shadow_projection` — because the builder refuses a field written out of order, which is
+/// what makes the run mean what its layout says. `page` sorts before `position`, so the sorted
+/// order and the writing order are the same run.
+fn write_record(
+    records: &mut PackedBuilder,
+    colour: [f64; 3],
+    page: f64,
+    position: [f64; 3],
+    radius: f64,
+    projection: Matrix,
+) -> Result<(), CompileError> {
+    records
+        .field(LIGHT_COLOR_FIELD, &colour)
+        .and_then(|builder| builder.field(LIGHT_PAGE_FIELD, &[page]))
+        .and_then(|builder| builder.field(LIGHT_POSITION_FIELD, &position))
+        .and_then(|builder| builder.field(LIGHT_RADIUS_FIELD, &[radius]))
+        .and_then(|builder| builder.field(LIGHT_SHADOW_PROJECTION_FIELD, &projection))
+        .map_err(|error| unpacked(LIGHT_RECORDS_ENTRY, error))?;
+    Ok(())
 }
 
 /// Returns the page a record carries, which is minus one for a light with no page.
