@@ -59,6 +59,7 @@ mod dunes;
 mod lanterns;
 mod monoliths;
 mod spotlight;
+mod sunlight;
 mod terraces;
 mod tidewater;
 mod tiles;
@@ -67,6 +68,7 @@ pub use dunes::dunes;
 pub use lanterns::lanterns;
 pub use monoliths::monoliths;
 pub use spotlight::spotlight;
+pub use sunlight::sunlight;
 pub use terraces::terraces;
 pub use tidewater::tidewater;
 pub use tiles::tiles;
@@ -83,6 +85,7 @@ impl Gallery {
             "monoliths",
             "spotlight",
             "studio",
+            "sunlight",
             "terraces",
             "tidewater",
             "tiles",
@@ -100,6 +103,7 @@ impl Gallery {
             "monoliths" => monoliths(),
             "spotlight" => spotlight(),
             "studio" => scene::standard::example_standard_scene(),
+            "sunlight" => sunlight(),
             "terraces" => terraces(),
             "tidewater" => tidewater(),
             "tiles" => tiles(),

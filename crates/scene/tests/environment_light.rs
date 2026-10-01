@@ -95,47 +95,6 @@ fn a_second_environment_light_is_refused_rather_than_one_of_them_being_ignored()
     );
 }
 
-#[test]
-fn a_kind_this_compiler_cannot_draw_is_still_refused() {
-    // The exemption from clustering and the page pool is written for a directional light and is
-    // still unreachable, because `read_lights` refuses the kind before the field reads. A
-    // directional light declares no `position`, so reading the fields first would report a
-    // missing field instead of the mistake that is actually there.
-    //
-    // **This is the last entry.** A `Spot` light used to be on this list and stopped being
-    // refused when the cone run landed: a spot light stands somewhere, declares a `position`
-    // like a point light, and is drawn through the cluster list like one. A `Directional` is
-    // the only kind left standing nowhere and casting a shadow, and it is the only kind this
-    // test has anything to say about. When it is implemented this test has nothing left to
-    // assert and should go rather than be kept for a list of one that is then empty.
-    for (kind, fields) in [(
-        "Directional",
-        vec![
-            ("direction".to_owned(), triple([0.0, -1.0, 0.0])),
-            ("shadow_extent".to_owned(), Value::Float(20.0)),
-        ],
-    )] {
-        let failure = compile(&scene(&[Value::variant(
-            kind,
-            fields
-                .into_iter()
-                .chain([
-                    ("label".to_owned(), Value::String("other".to_owned())),
-                    ("color".to_owned(), triple([1.0, 1.0, 1.0])),
-                    ("intensity".to_owned(), Value::Float(1.0)),
-                ])
-                .collect::<Vec<_>>(),
-        )]))
-        .err()
-        .expect("a kind this compiler cannot draw is refused");
-        let message = failure.to_string();
-        assert!(
-            message.contains(kind) && message.contains("other"),
-            "a {kind} light is refused by name and the message names it and the light: {message}"
-        );
-    }
-}
-
 /// Builds a scene from the example one, with the given lights and an environment map declared.
 ///
 /// The example scene is a complete document that already compiles, so replacing its one light is

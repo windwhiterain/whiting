@@ -228,6 +228,20 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            "sunlight",
+            // A floor and four boxes, and one light. A shadowing pass is one per
+            // (light, shader, mesh), so a scene of five drawn meshes under one sun emits five
+            // of them — **and the sun counts**. It takes no cluster slot and is in no list, so
+            // a light that were wrongly given no page would emit **no** shadowing pass here at
+            // all, and the scene would render with no shadow in it and nothing to say so.
+            Stages {
+                shadowing: 5,
+                depthing: 5,
+                lighting: 5,
+                other: 1,
+            },
+        ),
+        (
             "terraces",
             Stages {
                 shadowing: 12,
@@ -451,6 +465,7 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
         radius: 4.0,
         shadow_projection: identity(),
         clustered: true,
+        casts_shadow: true,
     };
     let bright = ClusterLight {
         label: "bright".to_owned(),
@@ -459,6 +474,7 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
         radius: 4.0,
         shadow_projection: identity(),
         clustered: true,
+        casts_shadow: true,
     };
     let clusters =
         assign(&grid, &[dim, bright], &parallel(), &pool()).expect("the assignment runs");
@@ -514,6 +530,7 @@ fn a_light_that_covers_the_view_takes_no_cluster_slot() {
         radius: 1.0,
         shadow_projection: identity(),
         clustered: false,
+        casts_shadow: true,
     };
     let clusters = assign(&grid, &[sun], &parallel(), &pool()).expect("the assignment runs");
 
@@ -584,6 +601,7 @@ fn light(label: &str, position: [f64; 3], radius: f64) -> ClusterLight {
         radius,
         shadow_projection: identity(),
         clustered: true,
+        casts_shadow: true,
     }
 }
 
