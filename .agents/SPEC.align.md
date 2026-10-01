@@ -440,8 +440,9 @@ incremental compile.
     the operations itself.
 - `StandardScene`: a compiler over the conventional lit scene, and the schema that
   describes it.
-  - the scene document: a `name`, a list of `lights`, a list of `shaders`, a list of `meshes`
-    and a list of `instances`.
+  - the scene document: a `name`, a list of `cameras`, a list of `lights`, a list of `shaders`,
+    a list of `meshes`, a list of `mesh_materials`, a list of `screen_materials`, a list of
+    `post_processes`, and the `instances` bucketed by pass.
     - `Light`: position, colour and the extent of the volume it shadows.
     - `Shader`: source, stage and the four schemas, declared once per scene and named by
       every material that draws with it.
@@ -454,24 +455,57 @@ incremental compile.
       - `Topology`: enum of `Triangles` and `Segments`. The topology says how the
         points are read, and is what tells a rasterize pass to draw indexed or line
         primitives.
-    - `Instance`: a mesh placed in the scene and drawn by one stage.
-      - `mesh`: the label of a mesh in the same scene, which is what lets one run of
-        points be drawn by several stages without being listed again. A label no mesh
-        carries is a compile error rather than a pass that draws nothing.
+    - `Instance`: a mesh placed in the scene, listed under every pass that draws it.
+      - `mesh`: the label of a mesh in the same scene. A label no mesh carries is a compile
+        error rather than a pass that draws nothing.
       - `transform: Transform`: `translation`, `rotation` in radians, `scale`. The three
         compose into the model matrix the instance row carries, in that order: scale, then
         a turn about x, then y, then z, then the translation.
-      - `material: Material`.
-    - `Material`:
-      - `shader`: the label of a shader this scene declares, which is also where the stage
-        its instance is drawn in comes from.
+      - `material`: the label of a mesh material this scene declares.
+    - `instances`: **a map from pass to the instances drawn in it**, keyed by the stage
+      suffix — `shadowing`, `depthing`, `lighting`, `emission`. `post` is not a key: a post
+      process draws a fullscreen triangle rather than a scene instance and has no instances
+      to bucket.
+      - **decision**: the bucket is the pass, and the material it names must have a shader of
+        that pass's stage. Before this, the stage was a consequence of which shader a
+        material happened to name, so "a lighting material listed under `shadowing`" could
+        not be written down at all — and neither, therefore, could the check that refuses it.
+        The bucket makes the stage a fact the document states and the compiler verifies.
+      - **decision**: the duplication this costs is explicit and grouped. One mesh drawn in
+        three passes is three entries with the same transform and a material per pass, which
+        is what the old document carried implicitly and scattered; here they sit in three
+        named buckets. **This replaced a material naming the stage its instance was drawn
+        in**, which read as less duplication and was the same duplication with the reason for
+        it hidden one indirection away.
+    - `MeshMaterial`:
+      - `label`: the name an instance refers to it by.
+      - `shader`: the label of a shader this scene declares, whose stage is the only pass
+        this material can be drawn in.
       - `custom_data`: an open dict, verified against the shader's `custom_schema`.
+      - **decision**: a material is declared once and named by every instance drawn with it,
+        which is what `meshes` and `shaders` already did and what lets forty stones drawn in
+        three passes each carry a handful of materials rather than one apiece.
+    - `ScreenMaterial` and `post_processes`: a screen material is a `label` and the label of a
+      `ScreenShader`, and `post_processes` lists the screen materials to run, in order.
+      - **decision**: a `post_process` names a screen material by label rather than inlining
+        one, for the same reason `meshes` and `mesh_materials` are declared once and referred
+        to: the spec writes the type inline, and this is the one place the referencing design
+        was ours to choose.
+      - **decision**: the passes chain. The first reads the shaded image and the last writes
+        the frame, and every process between reads what the one before it wrote, each writing
+        an image of its own rather than reading and writing one. A chain of two is two passes
+        over the frame rather than two passes reading the same image.
+      - both lists are optional, because a scene that grades nothing is a legitimate scene.
+      - **not used yet**: `ScreenMaterial.custom_data`. Every screen shader the standard
+        pipeline emits declares the unit schema, so a grade whose parameters live in its own
+        source has none to carry, and requiring the field would be requiring an author to
+        write `{}` to say so.
     - `Shader`: what a material is drawn with, and the interface it expects.
-      - the three mesh stages and the screen stage are the variants of one enum. The spec
-        nests a `MeshShader` around the three stages; a variant payload in this language is
+      - the four mesh stages and the screen stage are the variants of one enum. The spec
+        nests a `MeshShader` around the mesh stages; a variant payload in this language is
         a struct of named fields, so the stage is the tag and the nesting is vocabulary.
-      - `MeshShader`: a shader over mesh points, in one of the three stages.
-        - enum of `ShadowingShader`, `DepthShader` and `LightingShader`.
+      - `MeshShader`: a shader over mesh points, in one of the four stages.
+        - enum of `ShadowingShader`, `DepthShader`, `LightShader` and `EmissionShader`.
       - `ScreenShader`: a shader over the screen rather than over mesh points, so it
         declares no `point_schema`.
       - every variant declares three schemas, and each one is verified against the data
@@ -485,19 +519,15 @@ incremental compile.
           mesh an instance draws. A mesh also declares its own `point_schema`, and **both**
           must accept the points, so a mesh is never described in a shape its own shader
           rejects.
-      - **decision**: a material's shader names the stage its instance is drawn in, and
-        each of the three passes draws the instances whose material belongs to it. A mesh
-        that has to appear in several stages is several instances of one mesh, so its
-        points are authored once. This replaced listing a mesh once per stage, which is
-        what made `Instance` worth having.
       - **decision**: a pass draws one instance. A pass binds one shader and a shader
         declares one interface, so a pass that drew several instances would have to bind
         several shaders and the pass model has no room for it. More passes than a merged
         pipeline needs, in exchange for a binding model where what a shader declares is
         exactly what the pass supplies.
-      - **decision**: an instance row is the model matrix and nothing else. Per instance
-        data beyond a placement is not needed, because the transform places an instance and
-        the material's `custom_data` carries what else a shader reads.
+      - **decision**: an instance row is the model matrix, the normal matrix, and the
+        material's custom data. Per instance data beyond a placement is not needed, because
+        the transform places an instance and the material's `custom_data` carries what else a
+        shader reads.
       - the emitted instance carries one vertex buffer per mesh, shared by every instance
         that draws it, and one instance buffer per instance, holding that instance's row
         alone.
@@ -506,8 +536,11 @@ incremental compile.
       point it was made from. It is data on the pass, not arithmetic in the renderer,
       because a reload can change the scene a projection covers and the pass has to say so,
       and because a shader reads it from the uniform it declares.
-    - `ShadowingSchema`, `DepthingSchema` and `LightingSchema`, one per stage, each
+    - `ShadowSchema`, `DepthSchema`, `LightSchema` and `EmissionSchema`, one per stage, each
       carrying a `projection` of that schema.
+      - **the functions keep a `_pass_` in their names** — `shadow_pass_schema` rather than
+        `shadow_schema` — because the scene already has a `light_schema` for a light, and a
+        pass schema and a light are different things that would otherwise share a name.
     - each is the interface of that stage: a `uniform` and a `binders` block naming a
       buffer at `vertices` and `instance_data` and the textures the stage writes or reads.
       A material that wants the standard stage writes that schema, and the compiler is on
@@ -586,6 +619,34 @@ difference, and three defects surfaced underneath them.
     `projection` and `padding`. **A scene with no camera is drawn by the convention it was
     always drawn by** — parallel, dead ahead, framing everything that is drawn — so every
     scene that existed before a camera existed still draws as it did.
+  - **A scene names a list of `cameras`, and every one of them is rendered.** `camera` was one
+    optional field, so a scene had one view.
+    - **a camera is an input to the compile rather than something a renderer picks
+      afterwards**, because it decides the projection every pass draws through — and, for a
+      fitted camera, how far back the eye stands, which changes what the passes frame.
+      `CompileContext` therefore carries a camera index, and a harness compiles and renders
+      once per camera. A scene that names none is drawn by the convention, exactly as before.
+    - a scene with one camera writes where it always wrote, so every existing invocation of
+      the harness names the same files; a scene with several writes `-camera0`, `-camera1`.
+    - **not done**: the device server holds one compiled output per definition and so draws
+      the first camera. Making it hold one output per view is a change to what it publishes
+      rather than to what a camera means, and it is not made.
+  - **Emission is a stage of its own, and it runs once.**
+    - the lighting stage runs once per light and its passes add, so a term a surface body
+      added there was added once per light: `color = color + in.emissive` made an emissive
+      surface twice as bright under two lights as under one. A lamp is as bright under three
+      lights as under one.
+    - the emission pass reads **no light**, which is the whole of what makes it run once, and
+      it adds into the shaded image against the depth the earlier passes wrote, so an
+      emissive surface behind an opaque one is still occluded.
+    - **it declares no pass schema of its own.** A projection, the two buffers every mesh
+      pass reads and the depth it tests against are the whole of it, which is why the spec
+      adds no `EmissionSchema` beside the other three.
+    - it is opt-in by the same mechanism every other stage is: a material names an emission
+      shader and an instance is listed under `emission`. A material that names none draws no
+      emission pass, so a scene that emits nothing costs nothing. `lanterns` is the scene it
+      was built for, and it is lit by three lights so that the pass count says which happened:
+      the lanterns are added by **one** pass while everything lit is added once per light.
   - **A camera may also name `near` and `far`, and then it is drawn from the eye it wrote.**
     Fitting is the right default for a diagram, where the whole scene has to be in frame by
     definition; it is the wrong one for a landscape, where the subject is a view and the
@@ -665,7 +726,7 @@ the scene never reached are the ones left to it.
 ## The gallery, and what it does not do yet
 
 `crates/scene/src/gallery/` holds the WGSL library, the geometry generators and the scenes
-`dunes`, `monoliths`, `terraces` and `studio`. They are rendered by the harness in
+`dunes`, `lanterns`, `monoliths`, `terraces` and `studio`. They are rendered by the harness in
 `crates/device/examples/render.rs`:
 
 ```text
@@ -690,6 +751,12 @@ Stated rather than left to be discovered:
     edge meets the sky, and there is faint shadow acne at the far edge. The penumbra used to
     be wider than it should be; at a 2048² shadow map over a 380-unit volume a texel is a
     fifth of a unit, which is what a step two units wide needs.
+  - **`lanterns` is composed, not finished.** The field is a grid with a scatter over it
+    rather than a layout, and the two lantern lights are placed by hand where the water
+    wanted a reflection. A post-stage tone curve was tried and removed: compressing the
+    lanterns also lifts the water, and a Reinhard curve and a gamma turn a night into a grey
+    fog. What keeps a lantern from clipping is the emission stage writing a dim enough
+    colour.
   - **`terraces` is composed, not finished.** The valley floor is a patchwork of crop colours
     keyed by cell hash, and the cells are square and the same size everywhere, so the floor
     reads as a grid laid over the land rather than as fields cut into it. There is a ring of
