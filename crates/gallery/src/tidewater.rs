@@ -43,10 +43,10 @@ use scene::standard::Stage;
 
 use crate::geometry::{cone, fractal_noise, hash01, heightfield, normalized, ridged_noise};
 use crate::kit::{
-    camera_placed_on_lens, instance, instances, light, mesh, mesh_material, post_processes,
-    screen_material, shaded_point_schema, surface,
+    camera_placed_on_lens, environment_light, image, instance, instances, light, mesh,
+    mesh_material, post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{emission_shader, mesh_shaders_with_normal, post_shader};
+use crate::shaders::{emission_shader, mesh_shaders_with_normal, post_shader, sunset_pixels};
 
 use std::f64::consts::TAU;
 
@@ -171,6 +171,26 @@ pub fn tidewater() -> Value {
             ]),
         ),
         (
+            // The environment this scene is lit against: a sunset, as a two dimensional
+            // octahedral map, and the thing that replaced the two colour hemisphere the
+            // standard shading stood in with.
+            //
+            // It is dim on purpose. This scene's sun is already the brightest thing in it and
+            // the environment is what a shadowed slope sees, so a map brighter than the sun
+            // would flatten the whole frame. What it changes is the *shape* of the fill rather
+            // than its size: the brightest part of the map is the band along the horizon, not
+            // the zenith, so a surface tilted out towards the water catches more of it than one
+            // facing the sky. A hemisphere cannot say that, and this scene is exactly the one
+            // where it shows — the reeds stand nearly edge on to the camera and are lit
+            // largely by what is towards the water.
+            //
+            // Both point lights stay. The sun is the sun and the cold fill is what rims the
+            // reeds through a grazing Fresnel term, which is a specular job that an ambient
+            // term is not.
+            "images".to_owned(),
+            Value::List(vec![image("dusk", 64, 64, sunset_pixels(64))]),
+        ),
+        (
             "lights".to_owned(),
             Value::List(vec![
                 // The sun, just behind the far shore and a long way off, so it is very
@@ -197,6 +217,11 @@ pub fn tidewater() -> Value {
                     13.0,
                     1400.0,
                 ),
+                // The environment the ambient term is read from. The colour is left at one
+                // because the map already carries the sunset's own brightness, and a second
+                // multiplier over it is one more number an author has to reason about to
+                // answer a question the map's pixels already answer.
+                environment_light("dusk", "dusk", [1.0; 3], 1.0),
             ]),
         ),
         (
