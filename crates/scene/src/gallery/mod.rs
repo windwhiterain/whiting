@@ -31,9 +31,11 @@ pub mod shaders;
 
 mod dunes;
 mod monoliths;
+mod terraces;
 
 pub use dunes::dunes;
 pub use monoliths::monoliths;
+pub use terraces::terraces;
 
 /// Builds named scenes out of the parts in this module.
 pub struct Gallery;
@@ -41,7 +43,7 @@ pub struct Gallery;
 impl Gallery {
     /// Returns the names of every scene the gallery holds.
     pub fn names() -> &'static [&'static str] {
-        &["dunes", "monoliths", "studio"]
+        &["dunes", "monoliths", "studio", "terraces"]
     }
 
     /// Builds the named scene.
@@ -53,6 +55,7 @@ impl Gallery {
             "dunes" => dunes(),
             "monoliths" => monoliths(),
             "studio" => crate::standard::example_standard_scene(),
+            "terraces" => terraces(),
             other => unimplemented!(
                 "the gallery holds {}, and `{other}` is not one of them",
                 Self::names().join(", ")
