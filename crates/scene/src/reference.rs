@@ -277,6 +277,9 @@ impl Compiler for ReferenceScene {
                 SchemaIdentifier::new(INSTANCE_SCHEMA),
                 instance,
             ),
+            // The reference compiler reads what the document says and draws all of it, so
+            // there is nothing of its own to tell the author about.
+            Vec::new(),
             context,
         )
     }

@@ -32,8 +32,8 @@ use graphics::binders::{FORMAT, HEIGHT, RESOURCE, SIZE_BYTES, SOURCE, WIDTH};
 use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{derived_instance_schema, layout::packed_layout, verify_pass_inputs};
 
-use crate::CompileError;
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
+use crate::standard::clusters::{self, ClusterLight, Clustering};
 use crate::standard::frame::Frame;
 use crate::standard::math::{Bounds, Matrix, apply, projection_of, transform_matrix};
 use crate::standard::packing::{pack_points, pack_struct};
@@ -44,6 +44,7 @@ use crate::standard::pass_schemas::{
     SHADOW_MAP_WIDTH, TIME, UP, VERTICES,
 };
 use crate::standard::scene_schema;
+use crate::{CompileError, CompileNote};
 use graphics::layout::components;
 use graphics::pass::{BLEND, DEPTH, DEPTH_COMPARE, DEPTH_WRITE};
 
@@ -286,6 +287,21 @@ struct LightRead {
     position: [f64; 3],
     colour: [f64; 3],
     shadow_extent: f64,
+    /// How far the light reaches, when the document says.
+    ///
+    /// It is a field of the light because a light's reach is the light's own, and a scene
+    /// that mixes a lantern with a sun has to be able to say which is which. The convention
+    /// for a light that says nothing is not applied here: it is one box radius of what the
+    /// scene draws, and what the scene draws is not known until the meshes have been read.
+    /// [`LightRead::radius`] resolves the two, once the bounds are.
+    radius: Option<f64>,
+}
+
+impl LightRead {
+    /// Returns how far this light reaches, falling back to one box radius of what is drawn.
+    fn radius(&self, bounds: &Bounds) -> f64 {
+        self.radius.unwrap_or_else(|| bounds.largest_half_width())
+    }
 }
 
 /// Which kind of light a scene names.
@@ -311,6 +327,24 @@ impl LightKind {
             Self::Environment => "Environment",
         }
     }
+
+    /// Returns whether a light of this kind takes a slot in a cluster.
+    ///
+    /// # Invariants
+    ///
+    /// A point light and a spot light stand somewhere and shine into a volume, so what they
+    /// light is that volume and a cluster inside it wants them. A directional light and an
+    /// environment light cover the whole view at every depth, so every cluster wants them
+    /// equally and a cluster slot spent on one is a slot not spent on culling anything. They
+    /// take no slot here and get a path of their own, which stage 3b builds.
+    ///
+    /// Only a point light reaches this compiler: `read_lights` refuses the other three rather
+    /// than drawing them as a point. The two answers that agree with nothing today are here
+    /// because the exemption is a statement about the design, and the kind it is stated on is
+    /// the kind that decides it.
+    const fn takes_cluster_slot(self) -> bool {
+        matches!(self, Self::Point | Self::Spot)
+    }
 }
 
 /// The two documents a standard scene compiles to.
@@ -319,6 +353,8 @@ pub struct Emitted {
     pub graphics: Value,
     /// The instance document.
     pub instance: Value,
+    /// What the author is told about what the compilation could not do exactly.
+    pub notes: Vec<CompileNote>,
 }
 
 /// Which topology a mesh declares, which is how its points are read as primitives.
@@ -389,7 +425,30 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     let camera_basis = camera.projection();
     let camera = projection_value(&camera_basis);
 
+    // Which lights reach which part of the view, and the three buffers that say so. This is
+    // here rather than in a pass because the instance is built before it is rendered: for a
+    // given scene and camera the frustum, the lights and the boxes are all fixed, so the
+    // assignment is a pure function of the documents and belongs beside the rest of the
+    // compilation. Nothing reads the three buffers yet — the one lighting pass that consumes
+    // them is stage 3b — so the passes this emits are the same passes it emitted before.
+    let clustering = Clustering::read(scene)?;
+    let cluster_lights: Vec<ClusterLight> = lights
+        .iter()
+        .map(|light| ClusterLight {
+            label: light.label.clone(),
+            position: light.position,
+            colour: light.colour,
+            radius: light.radius(&bounds),
+            clustered: light.kind.takes_cluster_slot(),
+        })
+        .collect();
+    let clusters = clusters::assign(&clustering, &cluster_lights, &camera_basis)?;
+    let notes = clusters.notes(&clustering, &Path::root().key(scene_schema::CLUSTERING));
+
     add_targets(&mut instance, frame);
+    for (entry, payload) in clusters.entries() {
+        insert_entry(&mut instance, entry.to_owned(), payload)?;
+    }
     for light in &lights {
         insert_entry(
             &mut instance,
@@ -500,7 +559,11 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
         verify_pass_inputs(&pass, &instance).map_err(emission)?;
     }
 
-    Ok(Emitted { graphics, instance })
+    Ok(Emitted {
+        graphics,
+        instance,
+        notes,
+    })
 }
 
 /// Reads the time a scene is drawn at, which defaults to a still.
@@ -560,10 +623,19 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
         }
         let intensity = number(light, &path, "intensity")?;
         let colour = triple(light, &path, "color")?;
+        let radius = optional_number(light, &path, "radius")?;
+        if let Some(reach) = radius.filter(|reach| *reach <= 0.0) {
+            return Err(CompileError::EmptyLightRadius {
+                path: path.key("radius"),
+                label,
+                radius: reach,
+            });
+        }
         read.push(LightRead {
             kind,
             label,
             position: triple(light, &path, "position")?,
+            radius,
             shadow_extent: number(light, &path, "shadow_extent")?,
             colour: [
                 colour[0] * intensity,
@@ -2451,6 +2523,14 @@ fn number(value: &Value, path: &Path, name: &str) -> Result<f64, CompileError> {
             found: other.kind_name(),
         }),
         None => Err(malformed(&field_path, "a number")),
+    }
+}
+
+/// Borrows an optional number field, which is how a field the document may leave out is read.
+fn optional_number(value: &Value, path: &Path, name: &str) -> Result<Option<f64>, CompileError> {
+    match field(value, name) {
+        None => Ok(None),
+        Some(_) => number(value, path, name).map(Some),
     }
 }
 

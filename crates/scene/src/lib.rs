@@ -142,6 +142,7 @@ pub(crate) fn assemble(
     instance_identifier: &DefinitionIdentifier,
     graphics: Definition,
     instance: Definition,
+    notes: Vec<CompileNote>,
     context: &CompileContext<'_>,
 ) -> Result<CompileOutput, CompileError> {
     // The instance names the graphics it provides data to, which is the one edge that ties a
@@ -189,6 +190,7 @@ pub(crate) fn assemble(
         instance_delta,
         graphics,
         instance,
+        notes,
     })
 }
 /// The schema describing the shape a [`Compiler`] accepts.
@@ -240,6 +242,23 @@ impl<'registry> CompileContext<'registry> {
     }
 }
 
+/// Something a compile wants the author of the documents to know about.
+///
+/// # Why this is not an error
+///
+/// An error stops the compile, and a compile that stops is a scene that is not drawn at all.
+/// Some things a compiler learns are not reasons to refuse: a scene lit less than it was
+/// drawn is still worth drawing, provided the author is told, because a warning nobody sees
+/// is the same as no warning. A note is that middle ground — the compile finishes, and the
+/// count of what it dropped travels with the output for a host to print.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompileNote {
+    /// The scene field the note is about, so it points at the number to change.
+    pub path: Path,
+    /// What happened, in a sentence.
+    pub message: String,
+}
+
 /// The outputs of a compile.
 pub struct CompileOutput {
     /// The complete new graphics document.
@@ -258,6 +277,15 @@ pub struct CompileOutput {
     ///
     /// Applying this to `previous_instance` must yield exactly `instance`.
     pub instance_delta: Delta,
+    /// What the compiler wants the author to know about the output it produced.
+    ///
+    /// # Invariant
+    ///
+    /// A compile that dropped something says so here rather than in the documents: the
+    /// documents hold what a shader reads, and a fact about what a shader cannot read is not
+    /// theirs to carry. A host that ignores this field renders a scene that is quietly wrong,
+    /// which is why a compiler that may drop something fills it.
+    pub notes: Vec<CompileNote>,
 }
 
 impl CompileOutput {
@@ -278,6 +306,7 @@ impl CompileOutput {
             instance,
             graphics_delta,
             instance_delta,
+            notes: Vec::new(),
         }
     }
 }
@@ -374,6 +403,26 @@ pub enum CompileError {
     ScreenShader { path: Path, reason: String },
     #[error("two {kind}s are labelled `{label}`, so their instance entries would collide")]
     DuplicateLabel { kind: &'static str, label: String },
+    #[error(
+        "at {path}: the clustering field `{field}` is {found}, and a grid of nothing is a \
+         scene whose lights reach no cluster at all. Every extent and every cap must be at \
+         least one."
+    )]
+    EmptyClustering {
+        path: Path,
+        field: String,
+        found: i64,
+    },
+    #[error(
+        "at {path}: the light `{label}` has a radius of {radius}, and a light that reaches no \
+         distance lights nothing at all. A radius is how far a light reaches, so it has to be \
+         greater than zero."
+    )]
+    EmptyLightRadius {
+        path: Path,
+        label: String,
+        radius: f64,
+    },
     #[error("the mesh `{label}` has no points, so it has nothing to draw")]
     EmptyMesh { label: String },
     #[error("the emitted documents do not agree with each other: {reason}")]

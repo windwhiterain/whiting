@@ -207,7 +207,8 @@
 //!     .expect("a scene that names a mesh takes a delta that reaches no reference");
 //! ```
 
-mod camera;
+pub mod camera;
+pub mod clusters;
 mod compiler;
 mod emit;
 mod example;
@@ -217,7 +218,7 @@ mod packing;
 mod pass_schemas;
 mod scene_schema;
 
-pub use camera::{DEFAULT_FIELD_OF_VIEW, Projection, projection_value};
+pub use camera::{Camera, DEFAULT_FIELD_OF_VIEW, Projection, ProjectionKind, projection_value};
 pub use compiler::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema};
 pub use emit::{
     COLOR_TARGET_ENTRY, DEPTH_BUFFER_ENTRY, Emitted, FULLSCREEN_INSTANCE, FULLSCREEN_MESH,
@@ -234,10 +235,11 @@ pub use pass_schemas::{
     shadow_pass_schema,
 };
 pub use scene_schema::{
-    CAMERAS, CUSTOM_DATA, CUSTOM_SCHEMA, DATA, EYE, FIELD_OF_VIEW, FORMAT, HEIGHT, IMAGE_SCHEMA,
-    IMAGES, INSTANCE_SCHEMA, LABEL, MATERIAL, MESH, MESH_MATERIALS, MESH_SCHEMA, PADDING,
-    PASS_SCHEMA, POINT_SCHEMA, POINTS, SHADER, SHADERS, SOURCE, STAGE, TARGET, TOPOLOGY, TRANSFORM,
-    UP, WIDTH, camera_schema, default_custom_schema, default_instance_schema, default_point_schema,
-    image_schema, instance_schema, light_schema, mesh_material_schema, mesh_schema, shader_schema,
-    standard_scene_schema, transform_schema,
+    CAMERAS, CLUSTERING, CUSTOM_DATA, CUSTOM_SCHEMA, DATA, DEPTH_EXTENTS, EYE, FIELD_OF_VIEW,
+    FORMAT, HEIGHT, HEIGHT_EXTENTS, IMAGE_SCHEMA, IMAGES, INSTANCE_SCHEMA, LABEL,
+    LIGHTS_PER_CLUSTER, MATERIAL, MESH, MESH_MATERIALS, MESH_SCHEMA, PADDING, PASS_SCHEMA,
+    POINT_SCHEMA, POINTS, RADIUS, SHADER, SHADERS, SOURCE, STAGE, TARGET, TOPOLOGY, TRANSFORM, UP,
+    WIDTH, WIDTH_EXTENTS, camera_schema, clustering_schema, default_custom_schema,
+    default_instance_schema, default_point_schema, image_schema, instance_schema, light_schema,
+    mesh_material_schema, mesh_schema, shader_schema, standard_scene_schema, transform_schema,
 };

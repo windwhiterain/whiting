@@ -77,6 +77,24 @@ pub const FAR: &str = "far";
 /// Field holding the image the scene is drawn into.
 pub const FRAME: &str = "frame";
 
+/// Field holding how the view frustum is divided for clustered lighting.
+pub const CLUSTERING: &str = "clustering";
+
+/// Field holding how many clusters the frame is divided into across.
+pub const WIDTH_EXTENTS: &str = "width_extents";
+
+/// Field holding how many clusters the frame is divided into up.
+pub const HEIGHT_EXTENTS: &str = "height_extents";
+
+/// Field holding how many slices the frustum is divided into, deep.
+pub const DEPTH_EXTENTS: &str = "depth_extents";
+
+/// Field holding how many lights one cluster keeps.
+pub const LIGHTS_PER_CLUSTER: &str = "lights_per_cluster";
+
+/// Field holding how far a light reaches.
+pub const RADIUS: &str = "radius";
+
 /// Field holding the time the scene is drawn at, in seconds.
 pub const TIME: &str = "time";
 
@@ -242,8 +260,83 @@ pub fn standard_scene_schema() -> Schema {
                  square the pipeline has always drawn into.",
             ),
         ),
+        (
+            CLUSTERING.to_owned(),
+            clustering_schema().optional().with_documentation(
+                "How the view frustum is divided into the boxes a light is assigned to, and how \
+                 many lights one box keeps. Absent is the grid below, which is what every scene \
+                 gets until it asks for another: the shape of the culling is a per scene \
+                 decision, because the number of lights a scene holds and the shape of what it \
+                 draws are both the author's.",
+            ),
+        ),
     ]))
     .with_documentation("The conventional lit scene: lights, shaders, geometry, and what draws it.")
+}
+
+/// Builds the schema of how the frustum is divided for clustered lighting.
+///
+/// # What the grid is
+///
+/// The frame is divided into `width_extents` by `height_extents` boxes across and up, and the
+/// frustum into `depth_extents` slices deep, which is 3456 boxes at the defaults. Every box
+/// holds the lights that reach it, and `lights_per_cluster` is how many of them it keeps: the
+/// ones that contribute most to that box, rather than the first ones to arrive. A shading pass
+/// that draws one box's worth of lights per fragment is what lets a scene hold thousands of
+/// lights without a pass apiece.
+///
+/// # What each number costs
+///
+/// The box list is `width_extents * height_extents * depth_extents` rows of
+/// `lights_per_cluster` four byte indices, so the defaults are 3456 rows of 64, which is 864
+/// KiB, whatever the scene holds. A finer grid buys a tighter fit and costs that much more, and
+/// a larger cap buys fewer dropped lights at four bytes apiece per cluster. Both are the
+/// author's to trade, which is why they are fields.
+///
+/// # Invariants
+///
+/// Every field is optional, and an absent field falls back to the documented default rather
+/// than to a number the author has to know. A grid is a decision about how much a frame is
+/// worth dividing, and a scene that names none gets the division every other scene gets.
+pub fn clustering_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            WIDTH_EXTENTS.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How many clusters the frame is divided into across. Defaults to 16. A \
+                     finer division fits a light's volume more tightly, so fewer lights are \
+                     listed for a box than for a larger one, at the cost of one count and one \
+                     row of the cap per extra cluster.",
+            ),
+        ),
+        (
+            HEIGHT_EXTENTS.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How many clusters the frame is divided into up. Defaults to 9, which is \
+                     three rows for every four of a sixteen by twenty four frame.",
+            ),
+        ),
+        (
+            DEPTH_EXTENTS.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How many slices the frustum is divided into, deep. Defaults to 24. The \
+                     slices are equal in depth rather than in distance, so each covers the same \
+                     part of the frame however far away it is, and a fragment's own depth is \
+                     the one number that says which slice it is in.",
+            ),
+        ),
+        (
+            LIGHTS_PER_CLUSTER.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How many lights one cluster keeps. Defaults to 64. A cluster with more \
+                     lights reaching it than this keeps the ones that contribute most to it \
+                     and reports the rest, because a list cut off at the cap is the one thing a \
+                     sparse scheme must not do quietly. Four bytes per cluster per extra light \
+                     is what a larger cap costs.",
+            ),
+        ),
+    ]))
+    .with_documentation("How the view is divided, and how many lights one box keeps.")
 }
 
 /// Builds the schema of the image a scene is drawn into.
@@ -375,6 +468,7 @@ pub fn camera_schema() -> Schema {
 ///     position: [ 4.0, 6.0, 2.0 ],
 ///     color: [ 1.0, 0.95, 0.9 ],
 ///     intensity: 1.0,
+///     radius: 6.0,
 ///     shadow_extent: 2.5,
 /// )
 /// Directional(
@@ -423,7 +517,7 @@ fn shared_fields() -> SchemaMap {
 /// This is the kind every light in the standard pipeline was before kinds existed, and the
 /// one a shadow volume is a box around.
 fn point_light() -> Schema {
-    light_variant(shared_fields(), [position(), shadow_extent()]).with_documentation(
+    light_variant(shared_fields(), [position(), radius(), shadow_extent()]).with_documentation(
         "A light at a position, falling off with distance from it. Shadows a box of \
              half the given extent, centred on what is drawn.",
     )
@@ -492,6 +586,33 @@ fn direction() -> (String, Schema) {
     (
         "direction".to_owned(),
         float_triple("Which way the light shines, in world space. Length does not matter."),
+    )
+}
+
+/// Builds the schema of how far a light reaches.
+///
+/// # Invariants
+///
+/// The radius is what a light is assigned by, so it is the one number that decides whether a
+/// scene is lit at all: a light whose radius reaches nothing is in no cluster, and no shading
+/// pass can find it. It is separate from `shadow_extent` because the two answer different
+/// questions — how far a light's *light* falls off, and how much of the scene its shadow map
+/// covers — and a scene that wants a small light with a wide shadow volume, or the other way
+/// round, has to be able to say so.
+///
+/// Absent is one box radius of what is drawn, which is the measure the camera and the shadow
+/// volume already use: a light the size of the scene it stands in reaches across it.
+fn radius() -> (String, Schema) {
+    (
+        RADIUS.to_owned(),
+        Schema::new(SchemaKind::Float)
+            .optional()
+            .with_documentation(
+                "How far the light reaches, in world units, as a sphere around its position. \
+                 It is what decides which clusters the light is assigned to, so a radius that \
+                 covers the whole frustum is a light in every cluster and one that culls \
+                 nothing. Defaults to one box radius of the scene that is drawn.",
+            ),
     )
 }
 

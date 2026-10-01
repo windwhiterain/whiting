@@ -23,13 +23,94 @@
 //!   the frame is not the document's to choose.
 //! - A field of view is a full angle in radians, because a half angle is a number an
 //!   author has to halve in their head and get wrong.
+//!
+//! # What a reader gets from a projection
+//!
+//! A matrix is enough to draw through and not enough to reason about: how deep something is,
+//! how far away a depth is, and how wide the frame is at a distance are the three questions a
+//! clustered grid asks, and all three are answered here rather than by a reader working them
+//! out of four matrix entries.
+//!
+//! ```
+//! use definition::{Path, Value};
+//! use whiting_scene::standard::math::Bounds;
+//! use whiting_scene::standard::{Camera, ProjectionKind};
+//!
+//! let bounds = Bounds::around([0.0, 0.0, 0.0], 4.0);
+//! let triple = |v: [f64; 3]| Value::List(v.into_iter().map(Value::Float).collect());
+//!
+//! // A parallel camera: the near plane is at depth zero, the far plane at depth one, and
+//! // the frame is the same width at every distance.
+//! let parallel = Camera::read(None, &Path::root(), &bounds, 1.0)
+//!     .expect("the convention camera reads")
+//!     .projection();
+//! assert_eq!(parallel.kind, ProjectionKind::Orthographic);
+//! assert!(parallel.depth_at(parallel.near).abs() < 1e-12);
+//! assert!((parallel.depth_at(parallel.far) - 1.0).abs() < 1e-12);
+//! assert_eq!(
+//!     parallel.half_width_at(parallel.near),
+//!     parallel.half_width_at(parallel.far),
+//!     "a parallel view does not widen"
+//! );
+//!
+//! // A perspective camera: the same two planes at the same two depths, and a frame that
+//! // widens with distance, four times as wide at the far plane as at the near one here.
+//! let perspective = Camera::read(
+//!     Some(&Value::structure([
+//!         ("eye".to_owned(), triple([0.0, 0.0, 10.0])),
+//!         ("target".to_owned(), triple([0.0, 0.0, 0.0])),
+//!         ("projection".to_owned(), Value::variant("Perspective", [])),
+//!         ("near".to_owned(), Value::Float(1.0)),
+//!         ("far".to_owned(), Value::Float(21.0)),
+//!     ])),
+//!     &Path::root(),
+//!     &bounds,
+//!     1.0,
+//! )
+//! .expect("a perspective camera reads")
+//! .projection();
+//! assert_eq!(perspective.kind, ProjectionKind::Perspective);
+//! assert!(perspective.depth_at(1.0).abs() < 1e-12);
+//! assert!((perspective.depth_at(21.0) - 1.0).abs() < 1e-12);
+//! let (near_half, far_half) = (
+//!     perspective.half_width_at(1.0)[0],
+//!     perspective.half_width_at(21.0)[0],
+//! );
+//! assert!(
+//! (far_half / near_half - 21.0).abs() < 1e-9,
+//!     "the frame is twenty one times as wide at twenty one times the distance"
+//! );
+//!
+//! // The two mappings invert, for both kinds, which is what lets a depth slice be found by
+//! // its depth and then measured as a distance.
+//! for projection in [parallel, perspective] {
+//!     for step in 0..=8 {
+//!         let depth = step as f64 / 8.0;
+//!         let distance = projection.distance_at(depth);
+//!         // The near plane comes back a hair under itself, so the mapping is exact to
+//!         // floating point rather than bit for bit. Anything that indexed a slice boundary
+//!         // on equality would be at the mercy of the last bit.
+//!         assert!(
+//!             (distance - projection.near).min(projection.far - distance) > -1e-9,
+//!             "depth {depth} gave {distance}, outside {} to {}",
+//!             projection.near,
+//!             projection.far
+//!         );
+//!         assert!(
+//!             (projection.depth_at(distance) - depth).abs() < 1e-9,
+//!             "depth {depth} came back from distance {distance}"
+//!         );
+//!     }
+//! }
+//! ```
 
 use definition::{Path, Value};
 
 use crate::CompileError;
 use crate::standard::emit::FRAMING_PADDING;
 use crate::standard::math::{
-    Bounds, Matrix, add, look_at, multiply, normalize, orthographic, perspective, scale, subtract,
+    Bounds, Matrix, add, apply, look_at, multiply, normalize, orthographic, perspective, scale,
+    subtract,
 };
 use crate::standard::scene_schema::{
     EYE, FAR, FIELD_OF_VIEW, NEAR, PADDING as PADDING_FIELD, PROJECTION, TARGET, UP,
@@ -39,8 +120,12 @@ use crate::standard::scene_schema::{
 pub const DEFAULT_FIELD_OF_VIEW: f64 = std::f64::consts::PI / 3.0;
 
 /// Which projection a camera draws through.
+///
+/// It is part of the projection rather than a private detail of building one, because a reader
+/// of a [`Projection`] needs it to know how the frame widens with distance: a parallel view is
+/// the same width everywhere and a perspective view grows with it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Kind {
+pub enum ProjectionKind {
     /// Distances measure the same wherever they are, which is what a diagram is made of.
     Orthographic,
     /// Distances shorten with range, which is what a photograph is made of.
@@ -54,7 +139,7 @@ pub struct Camera {
     pub(crate) target: [f64; 3],
     pub(crate) up: [f64; 3],
     pub(crate) field_of_view: f64,
-    pub(crate) kind: Kind,
+    pub(crate) kind: ProjectionKind,
     pub(crate) padding: f64,
     /// The near plane the scene asked for, when it named one.
     pub(crate) near: Option<f64>,
@@ -89,6 +174,8 @@ pub struct Projection {
     /// A ray through a pixel is `forward + right * x * half_extent.0 + up * y *
     /// half_extent.1`, for a pixel whose centre is at `x` and `y` in minus one to one.
     pub half_extent: [f64; 2],
+    /// Which projection this was, which is what says whether the frame widens with distance.
+    pub kind: ProjectionKind,
     /// How far from the eye the near plane is.
     pub near: f64,
     /// How far from the eye the far plane is.
@@ -115,8 +202,8 @@ impl Camera {
         };
         let read = |name: &str| field(camera, name);
         let kind = match read(PROJECTION).map(Value::variant_tag) {
-            Some(Some("Perspective")) => Kind::Perspective,
-            Some(Some("Orthographic")) => Kind::Orthographic,
+            Some(Some("Perspective")) => ProjectionKind::Perspective,
+            Some(Some("Orthographic")) => ProjectionKind::Orthographic,
             None => convention.kind,
             Some(Some(other)) => {
                 return Err(CompileError::Emission {
@@ -165,7 +252,7 @@ impl Camera {
             target: centre,
             up: [0.0, 1.0, 0.0],
             field_of_view: DEFAULT_FIELD_OF_VIEW,
-            kind: Kind::Orthographic,
+            kind: ProjectionKind::Orthographic,
             padding: FRAMING_PADDING,
             near: None,
             far: None,
@@ -240,7 +327,7 @@ impl Camera {
             // wherever the eye is, so the eye sets the direction and nothing else. The
             // extent is twice the scene's half width on each side, which is the margin the
             // convention has always left.
-            Kind::Orthographic => {
+            ProjectionKind::Orthographic => {
                 let distance = dot(
                     subtract(self.eye, self.target),
                     subtract(self.eye, self.target),
@@ -257,11 +344,12 @@ impl Camera {
                     right,
                     up,
                     half_extent: [half_extent, half_extent],
+                    kind: ProjectionKind::Orthographic,
                     near: depth / 4.0,
                     far: depth,
                 }
             }
-            Kind::Perspective => {
+            ProjectionKind::Perspective => {
                 // A perspective projection maps depth with a divide, so how far back the
                 // eye has to be is not one number but a bound per corner of the box: a
                 // corner is inside the frame when it is no further off the axis than the
@@ -342,11 +430,123 @@ impl Camera {
                     // The vertical half angle of the view, and the horizontal one widened
                     // by the aspect: a wide frame is wider rather than cropped.
                     half_extent: [vertical_half * self.aspect, vertical_half],
+                    kind: ProjectionKind::Perspective,
                     near,
                     far,
                 }
             }
         }
+    }
+}
+
+/// The mappings a reader of a [`Projection`] needs and a matrix alone does not give.
+///
+/// They are methods rather than free functions because every one of them is read off the
+/// projection itself, and a mapping that took the matrix and the near and far planes as three
+/// separate arguments is a mapping that can be handed the wrong one of the three.
+impl Projection {
+    /// Returns the depth the projection gives a point a distance in front of the eye, along the
+    /// view's own axis, in zero to one.
+    ///
+    /// # Invariants
+    ///
+    /// Depth is a function of distance alone, and a fragment carries the depth it was drawn
+    /// at, so this is the number a fragment knows and the one a grid divided by depth is
+    /// indexed by.
+    ///
+    /// The point is a **world** point a distance along the view's own axis, because the
+    /// matrix is the projection times the view and a point given in view space would be
+    /// measured from the wrong place. Depth is a linear fractional function of the distance —
+    /// a divide by a quantity that grows with it — and the two clip points of the axis below
+    /// are what fix it, so the pair here inverts exactly for either kind of camera.
+    ///
+    /// The distance must be in front of the eye: a perspective projection divides by the
+    /// distance, and the distance of the eye itself is the one that divides by zero.
+    pub fn depth_at(&self, distance: f64) -> f64 {
+        self.depth_map().depth_at(distance)
+    }
+
+    /// Returns how far in front of the eye a point at a given depth is, which inverts
+    /// [`Projection::depth_at`].
+    ///
+    /// # Invariants
+    ///
+    /// The inverse is the same algebra read backwards, rather than a matrix inverse, which
+    /// `WGSL` has no way to write. The doctest in the module is what holds that it inverts,
+    /// for both kinds of camera.
+    ///
+    /// A depth outside zero to one has no distance in front of the eye for a parallel view and
+    /// has one behind it for a perspective one, so only zero to one is meaningful here.
+    pub fn distance_at(&self, depth: f64) -> f64 {
+        self.depth_map().distance_at(depth)
+    }
+
+    /// Returns the depth map of the view: what the projection's depth runs with.
+    fn depth_map(&self) -> DepthMap {
+        let at_eye = apply(&self.matrix, self.eye);
+        let ahead = apply(&self.matrix, add(self.eye, self.forward));
+        DepthMap {
+            depth_at_eye: at_eye[2],
+            depth_rise: ahead[2] - at_eye[2],
+            weight_at_eye: at_eye[3],
+            weight_rise: ahead[3] - at_eye[3],
+        }
+    }
+
+    /// Returns how far off the centre of the frame the edge is at a distance from the eye,
+    /// horizontally and then vertically.
+    ///
+    /// # Invariants
+    ///
+    /// A parallel view is the same width everywhere and a perspective view's widens with the
+    /// distance it is at, so the half extent is one of the two readings and the kind is what
+    /// says which. `half_extent` is the width itself for the first and the slope of the second,
+    /// and multiplying by the distance is what turns a slope into a width.
+    pub fn half_width_at(&self, distance: f64) -> [f64; 2] {
+        match self.kind {
+            ProjectionKind::Orthographic => self.half_extent,
+            ProjectionKind::Perspective => [
+                self.half_extent[0] * distance,
+                self.half_extent[1] * distance,
+            ],
+        }
+    }
+}
+
+/// How the projection's depth runs with the distance from the eye, as a linear fractional
+/// function of it.
+///
+/// # Invariants
+///
+/// A projection divides by a quantity that grows with the distance from the eye, so the
+/// depth is `(a + b * d) / (c + e * d)` and the four numbers come from the two clip points of
+/// the view's own axis. The point has to be a *world* point: the matrix is the projection
+/// times the view, so a point given in view space would be measured from the wrong place, and
+/// a projection read as though it were the view alone gives a depth of a third of one at the
+/// near plane rather than nothing at all.
+struct DepthMap {
+    /// The clip depth at the eye itself.
+    depth_at_eye: f64,
+    /// How the clip depth rises per unit of distance.
+    depth_rise: f64,
+    /// The clip `w` at the eye itself, which is one for a parallel view and zero for a
+    /// perspective one.
+    weight_at_eye: f64,
+    /// How the clip `w` rises per unit of distance, which is the divide itself.
+    weight_rise: f64,
+}
+
+impl DepthMap {
+    /// Returns the depth a point a distance in front of the eye has.
+    fn depth_at(&self, distance: f64) -> f64 {
+        (self.depth_at_eye + distance * self.depth_rise)
+            / (self.weight_at_eye + distance * self.weight_rise)
+    }
+
+    /// Returns the distance a point at a depth is in front of the eye.
+    fn distance_at(&self, depth: f64) -> f64 {
+        (depth * self.weight_at_eye - self.depth_at_eye)
+            / (self.depth_rise - depth * self.weight_rise)
     }
 }
 

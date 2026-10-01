@@ -69,6 +69,10 @@ impl Compiler for StandardScene {
                 SchemaIdentifier::new(INSTANCE_SCHEMA),
                 emitted.instance,
             ),
+            // What the emitter could not do exactly — a cluster grid that had to drop lights —
+            // travels with the output rather than being logged here, because a compile has no
+            // console and a dropped light is a fact the author of the scene has to have.
+            emitted.notes,
             context,
         );
         output

@@ -178,9 +178,10 @@ before anything else about the light is read.
   The other three kinds have **no** builder: a builder here writes a document the compiler
   refuses, so it waits for the stage that emits it.
 - Nothing was rendered. The gallery render tests need an adapter, which this machine does
-  not have, so the nine gallery scenes were verified by compiling, by the `scene` doctests
+  not have, so the gallery scenes were verified by compiling, by the `scene` doctests
   that compile the example scene and assert its pass labels and buffer sizes, and by the six
-  `image_channel` tests — not by a frame.
+  `image_channel` tests — not by a frame. (The gallery holds six scenes, not the nine this
+  file used to say: `Gallery::names()` is the list.)
 - The `Directional` refusal was exercised by reading the code and by the `Spot` case, which
   shares the refusal; a `Spot` light carries a `position`, so it does not prove the refusal
   happens before the field reads. A test that proves it is worth having and was not written,
@@ -188,6 +189,8 @@ before anything else about the light is read.
 
 
 ## Stage 3: clustered assignment, computed on the cpu
+
+**Status: 3a done, on `feature/lighting`. 3b is the lighting pass and the migration.**
 
 **The assignment is not a compute pass.** This stage was originally planned as one, and that
 plan is wrong for this renderer. `emit(scene, camera_index)` returns the instance and
@@ -219,11 +222,97 @@ frustum at every depth, so letting them take cluster slots defeats the culling t
 scheme work and spends the budget on lights that were never going to be culled. They get their
 own path.
 
-Stage 3 lands in two halves so that neither is unreviewable. This half produces the data and
-changes no shading: the cluster lists exist in the instance and nothing reads them yet. The
-next half writes the one lighting pass that consumes them, migrates the nine gallery scenes
-onto it and removes the per light pass generation from `emit`, which is where "replace rather
-than run both" is actually paid for.
+Stage 3 lands in two halves so that neither is unreviewable. 3a produces the data and changes
+no shading: the cluster lists exist in the instance and nothing reads them yet. 3b writes the
+one lighting pass that consumes them, migrates the gallery onto it and removes the per light
+pass generation from `emit`, which is where "replace rather than run both" is actually paid
+for.
+
+### Stage 3a: the assignment, landed on `feature/lighting`
+
+`crates/scene/src/standard/clusters.rs` is the whole of it. What landed:
+
+- **`clustering` on the scene**, four optional counts — `width_extents`, `height_extents`,
+  `depth_extents`, `lights_per_cluster` — defaulting to 16 x 9 x 24 and 64, at
+  `scene_schema.rs:clustering_schema`. A count of zero is refused: a grid of nothing is a
+  scene whose lights reach no cluster.
+- **`radius` on a `Point` light**, optional, defaulting to one box radius of what the scene
+  draws. It is a field of the light and not of `shadow_extent` because the two answer
+  different questions. A radius of zero or less is refused.
+- **three read only `storage` entries**: `light_records`, `cluster_light_counts` and
+  `cluster_light_indices`. Nothing binds them yet, and nothing is created until a pass binds
+  it, so an entry a later stage does not read costs one packed run in the document.
+- **the light record** is `color`, `position`, `radius` — seven floats, 28 bytes a light —
+  packed with `definition::PackedBuilder` against `graphics::layout::packed_layout` of
+  `light_record_schema`, so the bytes and the layout cannot disagree about a stride. **No
+  shadow projection is in the record**: what a light's shadow map is looked up through
+  belongs to the shadow stage, and stage 4 replaces that addressing. Stage 3b will add the
+  field it needs when it writes the pass that reads it.
+- **`CompileOutput.notes`**, which is how a dropped light reaches an author. One note naming
+  the totals, then one per overflowing cluster naming what it kept and what it dropped, with
+  the labels counted past eight rather than silently elided. A host that ignores the field
+  renders a scene that is quietly wrong, which is the outcome this project treats as worse
+  than a refusal.
+
+**How depth is distributed: the slices divide the projection's depth, which is uniform in one
+over distance.** Equal *world* thickness slices pile up at the eye and vanish in the
+distance, so most of the boxes would cover the clusters that fill the screen and none would
+cover the far ones — and a cluster nearly empty in screen space but deep is still a cluster.
+It is also the only division a fragment can use for free: a fragment carries its own depth,
+so the clustered pass computes its box with a multiply and a cast. The cost is stated in the
+module rather than hidden: the slices are not even in world space, so the nearest is a hand's
+width from the eye and the furthest is most of the scene, and a light spanning a slice is
+listed in a box larger than the part of the scene it lights. `Projection::depth_at`,
+`distance_at` and `half_width_at` are the three readings this needs, and the doctest in
+`camera.rs` holds that the first two invert, for a parallel and a perspective camera both.
+
+**A cluster is the slab at its slice's far boundary.** A slice of a perspective view is a slab
+that widens with depth, and the box at the far end contains the whole of it. The tighter box
+at the near end would exclude a light that reaches the slice's far half, and a light missing
+from a cluster is a light no shading pass can find, so the slack is spent where it costs work.
+The slice *range* a light is tested over is also one slice wider at each end than its own
+extent calls for, because which slice a volume's end falls in is decided by a projection whose
+rounding puts a point exactly on a boundary in either slice beside it.
+
+**How the cap ranks.** By `brightness / (1 + distance_squared)` to the nearest point of the
+box, ties broken by document order so one scene compiles to one set of bytes. The only
+property the rank needs is to be monotone in distance, and it is: any falloff of the form
+`1 / (a + b*d + c*d*d)` with positive coefficients decreases with distance whatever its
+coefficients, so the nearest lights are the ones a scene's own falloff would keep. No scene's
+falloff constants are written into the compiler, because those are a scene's decision.
+
+**What stage 3b has to consume.** The three entries above, bound at the binding points of its
+own naming: `light_records` indexed by the cluster lists, `cluster_light_counts` for the loop
+bound and `cluster_light_indices` at `cluster * lights_per_cluster`. A fragment gets its box
+from its own depth and its two position indices, and reads `counts[cluster]` lights from that
+one row. It also has to add whatever the record is missing that it needs — a shadow projection
+per light, most likely — and it has to give `Directional` and `Environment` lights their own
+path, which is the exemption this stage states and does not yet act on: they are in the record
+buffer and in no cluster list, so a scene of nothing but those two kinds has empty cluster
+lists, which is correct and not a bug.
+
+### What stage 3a did not close
+
+- **Twelve tests in `crates/scene/tests/clustered_lights.rs` and a doctest in `camera.rs` are
+  the whole of what was verified.** The assignment is pure cpu code, so it is the one part of
+  this effort that can be checked without an adapter, and the tests cover a light that reaches
+  no cluster, one that reaches every one, a cluster no light reaches, a volume straddling a
+  slice boundary, the depth distribution at both ends of the frustum, the cap keeping the
+  highest contributing lights rather than the first ones, the exemption, the documented
+  defaults, and the regression bar that an all `Point` scene still emits the passes and buffer
+  sizes it emitted before. What none of them can cover: that the bytes are what a `WGSL`
+  struct reads, which needs a shader and an adapter.
+- **`the nine gallery scenes` is wrong: there are six.** `Gallery::names()` at
+  `crates/scene/src/gallery/mod.rs:52` lists `dunes`, `lanterns`, `monoliths`, `studio`,
+  `terraces` and `tiles`. The test that pins the pass count of each of them is the check to
+  copy for 3b.
+- **The note channel has no printer.** `CompileOutput.notes` is filled and tested and nothing
+  in this repository prints it, because the only thing that would is `device`, which this
+  stage does not touch. `crates/device/examples/render.rs` already prints per pass, so that
+  is where a host's print goes.
+- **The record carries no shadow projection**, so the clustered lighting pass cannot yet find a
+  light's shadow map, and a scene with any directional or environment light still gets one
+  pass per light from the old path, because `read_lights` still refuses those kinds.
 
 ## Stage 4: the sparse adaptive shadow page pool
 

@@ -478,6 +478,16 @@ incremental compile.
     carrying the `base_version` of the output it was computed against.
   - **invariant**: applying the emitted `Delta` to `previous_graphics` must yield
     exactly the emitted `graphics`. The device cross-checks this in debug and test builds.
+  - `notes`: what the compiler wants the author to know about what it produced, as a
+    path and a sentence each.
+    - **decision**: a note is not an error and not a field of either document. An
+      error stops the compile, and some things a compiler learns are not reasons to
+      refuse: a scene lit less than it was drawn is still worth drawing, provided the
+      author is told. The documents hold what a shader reads, and a fact about what a
+      shader cannot read is not theirs to carry, so the report travels beside them.
+    - **invariant**: a compiler that may drop something fills this. A host that
+      ignores it renders a scene that is quietly wrong, which is the one outcome this
+      project treats as worse than a refusal.
 - the compiler is not re-diffed centrally; producing the `Delta` is the compiler's
   own responsibility.
 - `document_delta`: the shared part of that responsibility, comparing two whole
@@ -498,16 +508,24 @@ incremental compile.
     `post_processes`, and the `instances` bucketed by pass.
     - `Light`: an enum of the kinds of light, because what a light is is its kind rather
       than a field it may or may not have.
-      - `Point`: `label`, `position`, `color`, `intensity`, `shadow_extent` — the shape
-        every light had before kinds existed.
+      - `Point`: `label`, `position`, `color`, `intensity`, `radius`,
+        `shadow_extent` — the shape every light had before kinds existed, plus the
+        distance the light's light falls off over.
       - `Spot`: a point light with a `direction` and the two cone angles, `inner_angle` and
         `outer_angle`.
       - `Directional`: a `direction` and no position, because a direction is not somewhere.
       - `Environment`: the `image` a material samples, and an `intensity`. It shadows
         nothing, so it declares no volume.
       - `label`, `color` and `intensity` are what every kind carries; `position`,
-        `direction`, the two angles, `image` and `shadow_extent` belong to the kinds that
-        have them.
+        `direction`, the two angles, `image`, `radius` and `shadow_extent` belong to the
+        kinds that have them.
+      - `radius` is optional and means one box radius of what the scene draws, which is
+        the measure the camera and the shadow volume already use. It is a field of the
+        light rather than of the scene because a scene that mixes a lantern with a sun
+        has to say which is which, and it is separate from `shadow_extent` because the
+        two answer different questions: how far a light's *light* falls off, and how much
+        of the scene its shadow map covers. A radius of zero or less is refused rather
+        than read as a light that reaches nothing, which is a scene lit by nothing.
       - **decision**: the kind is the variant tag and **a missing kind is a validation
         error with no default**. In an offline render a wrongly classified light is a wrong
         image that nobody sees until the render finishes, and statelessness removes the
@@ -611,6 +629,67 @@ incremental compile.
       - the emitted instance carries one vertex buffer per mesh, shared by every instance
         that draws it, and one instance buffer per instance, holding that instance's row
         alone.
+    - `clustering`: how the view frustum is divided for clustered lighting, and how
+      many lights one box keeps. Four optional counts, `width_extents`,
+      `height_extents`, `depth_extents` and `lights_per_cluster`, defaulting to
+      16 x 9 x 24 and 64.
+      - **decision**: the grid and the cap are fields of the scene, on the same grounds
+        as every other number here: a number in the source is a value someone chose
+        once, and a number in a document is a value an author chooses per scene. A
+        number in a document also has to be *readable*, which is what makes the cost
+        visible: the box list is `clusters * cap` four byte indices whatever the scene
+        holds, and 3456 clusters of 64 is 864 KiB at the defaults.
+      - **invariant**: every count is at least one, refused when it is not. A grid of
+        nothing is a scene whose lights reach no cluster, and that is a wrong image
+        rather than a fast one.
+    - `Clustering`: the grid a scene declares, and the three buffers the assignment
+      produces from it.
+      - **decision**: the assignment is computed on the cpu in `emit`, not in a compute
+        pass. `emit` returns the instance and `render` consumes an instance that is
+        already built, so for a given scene and camera the frustum, the lights and the
+        boxes are all fixed and the assignment is a pure function of the documents. The
+        textbook gpu path needs a clear dispatch, an `atomicAdd` count pass, a prefix
+        sum for the offsets and a scatter pass, over a grid that
+        `max_compute_invocations_per_workgroup` cannot cover in one workgroup; here
+        there is no clear, no counter, no prefix sum and no dispatch.
+      - **the three buffers are read only `storage`**: one packed record per light, one
+        count per cluster, and one slot per cluster per cap. `max_storage_buffers_per_
+        shader_stage` is 4, so these are three of the four and the fourth is the last
+        one available. Nothing writes them, because there is no pass to write one with.
+      - **invariant**: a cluster's row is a fixed `cap` wide, not packed end to end. A
+        fragment reading one cluster's lights computes `cluster * cap` and stops; a list
+        packed end to end would need a prefix sum of the counts to find the row, which
+        is the sum this stage exists to avoid computing. The unused tail of a short row
+        is padded with the first light and the count beside it is what says how many
+        entries are real.
+      - **the slices divide the projection's depth, which is uniform in one over
+        distance, rather than dividing the distance.** Slices of equal world thickness
+        pile up at the eye and vanish in the distance, so a grid of them spends most of
+        its boxes on the clusters that fill the screen; and a fragment already carries
+        its own depth, so this is the division a shading pass indexes with no arithmetic
+        at all. The cost is stated in `clusters.rs`: the slices are not even in world
+        space, so a light spanning one is listed in a box larger than the part of the
+        scene it lights.
+      - **invariant**: a cluster is the slab at its slice's **far** boundary, so the box
+        contains the whole slab. The tighter box at the near boundary would exclude a
+        light that reaches the slice's far half, and a light missing from a cluster is a
+        light no shading pass can find. The slack is spent where it costs work rather
+        than where it costs an image.
+      - **decision**: the cap keeps the lights that contribute most to their cluster and
+        **reports what it dropped**, through `CompileOutput.notes`, one note per
+        overflowing cluster with the labels named up to eight and counted beyond that.
+        The rank is `brightness / (1 + distance_squared)` to the nearest point of the
+        box, and the only property it needs is to be monotone in distance: a falloff of
+        the form `1 / (a + b*d + c*d*d)` with positive coefficients decreases with
+        distance whatever its coefficients, so the nearest lights are the ones a scene's
+        own falloff would keep. No scene's falloff constants are written into the
+        compiler, because they are a scene's decision.
+      - **invariant**: a kind that covers the whole view takes no cluster slot. A
+        `Directional` and an `Environment` light are in every cluster by definition, so
+        listing them spends the cap on lights the culling was never going to remove; they
+        are in the record buffer and in no cluster list. A scene whose lights are only
+        those two kinds therefore has empty cluster lists, which is the correct answer
+        rather than a missing one.
   - `PassSchema`: the schema of a pass the standard pipeline emits.
     - `ProjectionSchema` is the schema of a projection: a view projection matrix and the
       point it was made from. It is data on the pass, not arithmetic in the renderer,
