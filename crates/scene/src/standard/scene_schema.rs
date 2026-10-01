@@ -14,7 +14,7 @@
 //! part: a shader that wants a texcoord per point and a mesh that does not carry one
 //! is a compile error rather than a black triangle.
 
-use definition::{Schema, SchemaKind};
+use definition::{Schema, SchemaKind, SchemaMap};
 
 /// Field holding the name of the scene.
 pub const NAME: &str = "name";
@@ -76,6 +76,24 @@ pub const FAR: &str = "far";
 
 /// Field holding the image the scene is drawn into.
 pub const FRAME: &str = "frame";
+
+/// Field holding how the view frustum is divided for clustered lighting.
+pub const CLUSTERING: &str = "clustering";
+
+/// Field holding how many clusters the frame is divided into across.
+pub const WIDTH_EXTENTS: &str = "width_extents";
+
+/// Field holding how many clusters the frame is divided into up.
+pub const HEIGHT_EXTENTS: &str = "height_extents";
+
+/// Field holding how many slices the frustum is divided into, deep.
+pub const DEPTH_EXTENTS: &str = "depth_extents";
+
+/// Field holding how many lights one cluster keeps.
+pub const LIGHTS_PER_CLUSTER: &str = "lights_per_cluster";
+
+/// Field holding how far a light reaches.
+pub const RADIUS: &str = "radius";
 
 /// Field holding the time the scene is drawn at, in seconds.
 pub const TIME: &str = "time";
@@ -141,7 +159,7 @@ pub fn standard_scene_schema() -> Schema {
         (
             LIGHTS.to_owned(),
             Schema::new(SchemaKind::list(light_schema()))
-                .with_documentation("One shadowing pass is emitted per light."),
+                .with_documentation("One shadowing pass is emitted per point light."),
         ),
         (
             SHADERS.to_owned(),
@@ -242,8 +260,83 @@ pub fn standard_scene_schema() -> Schema {
                  square the pipeline has always drawn into.",
             ),
         ),
+        (
+            CLUSTERING.to_owned(),
+            clustering_schema().optional().with_documentation(
+                "How the view frustum is divided into the boxes a light is assigned to, and how \
+                 many lights one box keeps. Absent is the grid below, which is what every scene \
+                 gets until it asks for another: the shape of the culling is a per scene \
+                 decision, because the number of lights a scene holds and the shape of what it \
+                 draws are both the author's.",
+            ),
+        ),
     ]))
     .with_documentation("The conventional lit scene: lights, shaders, geometry, and what draws it.")
+}
+
+/// Builds the schema of how the frustum is divided for clustered lighting.
+///
+/// # What the grid is
+///
+/// The frame is divided into `width_extents` by `height_extents` boxes across and up, and the
+/// frustum into `depth_extents` slices deep, which is 3456 boxes at the defaults. Every box
+/// holds the lights that reach it, and `lights_per_cluster` is how many of them it keeps: the
+/// ones that contribute most to that box, rather than the first ones to arrive. A shading pass
+/// that draws one box's worth of lights per fragment is what lets a scene hold thousands of
+/// lights without a pass apiece.
+///
+/// # What each number costs
+///
+/// The box list is `width_extents * height_extents * depth_extents` rows of
+/// `lights_per_cluster` four byte indices, so the defaults are 3456 rows of 64, which is 864
+/// KiB, whatever the scene holds. A finer grid buys a tighter fit and costs that much more, and
+/// a larger cap buys fewer dropped lights at four bytes apiece per cluster. Both are the
+/// author's to trade, which is why they are fields.
+///
+/// # Invariants
+///
+/// Every field is optional, and an absent field falls back to the documented default rather
+/// than to a number the author has to know. A grid is a decision about how much a frame is
+/// worth dividing, and a scene that names none gets the division every other scene gets.
+pub fn clustering_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            WIDTH_EXTENTS.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How many clusters the frame is divided into across. Defaults to 16. A \
+                     finer division fits a light's volume more tightly, so fewer lights are \
+                     listed for a box than for a larger one, at the cost of one count and one \
+                     row of the cap per extra cluster.",
+            ),
+        ),
+        (
+            HEIGHT_EXTENTS.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How many clusters the frame is divided into up. Defaults to 9, which is \
+                     three rows for every four of a sixteen by twenty four frame.",
+            ),
+        ),
+        (
+            DEPTH_EXTENTS.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How many slices the frustum is divided into, deep. Defaults to 24. The \
+                     slices are equal in depth rather than in distance, so each covers the same \
+                     part of the frame however far away it is, and a fragment's own depth is \
+                     the one number that says which slice it is in.",
+            ),
+        ),
+        (
+            LIGHTS_PER_CLUSTER.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How many lights one cluster keeps. Defaults to 64. A cluster with more \
+                     lights reaching it than this keeps the ones that contribute most to it \
+                     and reports the rest, because a list cut off at the cap is the one thing a \
+                     sparse scheme must not do quietly. Four bytes per cluster per extra light \
+                     is what a larger cap costs.",
+            ),
+        ),
+    ]))
+    .with_documentation("How the view is divided, and how many lights one box keeps.")
 }
 
 /// Builds the schema of the image a scene is drawn into.
@@ -344,30 +437,245 @@ pub fn camera_schema() -> Schema {
     .with_documentation("Where the scene is drawn from.")
 }
 
-/// Builds the schema of one light.
+/// Builds the schema of one light: an enumeration of the kinds of light.
+///
+/// # Why a light names its kind rather than carrying an optional field for it
+///
+/// A light has two kinds of field: the ones every light has — a name, a colour and a
+/// brightness — and the ones that make a spot a spot and a directional light something
+/// other than a point. Written as one structure, `position` would be optional, because a
+/// directional light has none, and a document saying which shape of light it meant would be
+/// a document whose author had to be inferred from which fields were left out.
+///
+/// The same shape a pass has, in `graphics::pass`: `Rasterize` declares `targets` and
+/// `Compute` declares a `workgroup`, and neither declares an optional field for the other's
+/// work. What a thing **is** is its tag, and the fields beside the tag are the ones that
+/// kind of thing has.
+///
+/// # A light that names no kind is refused, not read as a point light
+///
+/// A missing kind has no default. In an offline render a wrongly classified light is a wrong
+/// image that nobody sees until the render finishes, and statelessness makes that worse
+/// rather than better: there is no previous frame in which the mistake was visible, so the
+/// only thing that catches it is a refusal at compile time. The cost of the error is a whole
+/// render; the cost of a guess is an image that was wrong for the whole render.
+///
+/// # Document shape
+///
+/// ```text
+/// Point(
+///     label: "key",
+///     position: [ 4.0, 6.0, 2.0 ],
+///     color: [ 1.0, 0.95, 0.9 ],
+///     intensity: 1.0,
+///     radius: 6.0,
+///     shadow_extent: 2.5,
+/// )
+/// Directional(
+///     label: "sun",
+///     direction: [ -0.3, -0.9, -0.2 ],
+///     color: [ 1.0, 0.95, 0.85 ],
+///     intensity: 2.0,
+///     shadow_extent: 60.0,
+/// )
+/// ```
 pub fn light_schema() -> Schema {
-    Schema::new(SchemaKind::structure([
+    Schema::new(SchemaKind::enumeration([
+        ("Point".to_owned(), point_light()),
+        ("Spot".to_owned(), spot_light()),
+        ("Directional".to_owned(), directional_light()),
+        ("Environment".to_owned(), environment_light()),
+    ]))
+    .with_documentation("A light, and which kind of light it is.")
+}
+
+/// The fields every light carries.
+///
+/// A field belongs here when every light has it. A field that only the kinds that stand
+/// somewhere have — a position, a direction, a cone, an image — belongs in the variant that
+/// declares it, so a document carrying a directional light cannot also carry a position.
+fn shared_fields() -> SchemaMap {
+    [
         (
             "label".to_owned(),
             Schema::new(SchemaKind::String)
                 .with_documentation("Name used in pass labels and in errors."),
-        ),
-        (
-            "position".to_owned(),
-            float_triple("Position in world space."),
         ),
         ("color".to_owned(), float_triple("Colour in zero to one.")),
         (
             "intensity".to_owned(),
             Schema::new(SchemaKind::Float).with_documentation("Brightness multiplier."),
         ),
-        (
-            "shadow_extent".to_owned(),
-            Schema::new(SchemaKind::Float)
-                .with_documentation("Half the width of the volume the light shadows."),
+    ]
+    .into_iter()
+    .collect()
+}
+
+/// Builds the schema of a point light.
+///
+/// A light at a position, brightest at the position and falling off with distance from it.
+/// This is the kind every light in the standard pipeline was before kinds existed, and the
+/// one a shadow volume is a box around.
+fn point_light() -> Schema {
+    light_variant(shared_fields(), [position(), radius(), shadow_extent()]).with_documentation(
+        "A light at a position, falling off with distance from it. Shadows a box of \
+             half the given extent, centred on what is drawn.",
+    )
+}
+
+/// Builds the schema of a spot light.
+///
+/// A point light with a cone, which is what a stage lamp, a torch and a street light are.
+/// The cone is what the two angles describe: one the light is at full strength inside, and
+/// the one it has fallen to nothing by.
+fn spot_light() -> Schema {
+    light_variant(
+        shared_fields(),
+        [
+            position(),
+            direction(),
+            inner_angle(),
+            outer_angle(),
+            shadow_extent(),
+        ],
+    )
+    .with_documentation(
+        "A point light that shines inside a cone. What it lights is the cone, and what it \
+         shadows is the volume that cone cuts out of the scene.",
+    )
+}
+
+/// Builds the schema of a directional light.
+///
+/// A light that is a direction rather than a place: every surface facing it is lit the same
+/// however far from it that surface stands, which is the sun as far as a shaded image is
+/// concerned. It has no position because a direction is not somewhere, and a document that
+/// gave it a position would be a document asking for a point light by another name.
+fn directional_light() -> Schema {
+    light_variant(shared_fields(), [direction(), shadow_extent()]).with_documentation(
+        "A light from a direction, reaching every distance equally. Shadows a box of \
+             half the given extent, which is where its shadowing pass looks at all.",
+    )
+}
+
+/// Builds the schema of an environment light.
+///
+/// A light that is an image: what a surface sees where no light reaches it, and what a
+/// smooth surface reflects. It stands nowhere and shines no direction, and it casts no
+/// shadow, so it declares neither a position nor a volume.
+fn environment_light() -> Schema {
+    light_variant(shared_fields(), [image()]).with_documentation(
+        "Light from an image the scene declares, sampled by a material rather than cast \
+         from anywhere. It shadows nothing.",
+    )
+}
+
+/// Builds the schema of where a light stands.
+fn position() -> (String, Schema) {
+    (
+        "position".to_owned(),
+        float_triple("Position in world space."),
+    )
+}
+
+/// Builds the schema of which way a light shines.
+///
+/// A direction, not a point to look at: the vector a surface is lit by, which is the same
+/// however far along it the light is written to be.
+fn direction() -> (String, Schema) {
+    (
+        "direction".to_owned(),
+        float_triple("Which way the light shines, in world space. Length does not matter."),
+    )
+}
+
+/// Builds the schema of how far a light reaches.
+///
+/// # Invariants
+///
+/// The radius is what a light is assigned by, so it is the one number that decides whether a
+/// scene is lit at all: a light whose radius reaches nothing is in no cluster, and no shading
+/// pass can find it. It is separate from `shadow_extent` because the two answer different
+/// questions — how far a light's *light* falls off, and how much of the scene its shadow map
+/// covers — and a scene that wants a small light with a wide shadow volume, or the other way
+/// round, has to be able to say so.
+///
+/// Absent is one box radius of what is drawn, which is the measure the camera and the shadow
+/// volume already use: a light the size of the scene it stands in reaches across it.
+fn radius() -> (String, Schema) {
+    (
+        RADIUS.to_owned(),
+        Schema::new(SchemaKind::Float)
+            .optional()
+            .with_documentation(
+                "How far the light reaches, in world units, as a sphere around its position. \
+                 It is what decides which clusters the light is assigned to, so a radius that \
+                 covers the whole frustum is a light in every cluster and one that culls \
+                 nothing. Defaults to one box radius of the scene that is drawn.",
+            ),
+    )
+}
+
+/// Builds the schema of the volume a light shadows.
+///
+/// A point light's shadow map covers a box of this half width centred on what is drawn, and
+/// a directional light's covers the same box seen along its direction. One number, because
+/// one shadow map covers it either way.
+fn shadow_extent() -> (String, Schema) {
+    (
+        "shadow_extent".to_owned(),
+        Schema::new(SchemaKind::Float)
+            .with_documentation("Half the width of the volume the light shadows."),
+    )
+}
+
+/// Builds the schema of the angle a spot light is at full strength inside.
+fn inner_angle() -> (String, Schema) {
+    (
+        "inner_angle".to_owned(),
+        Schema::new(SchemaKind::Float).with_documentation(
+            "Half the angle of the cone the light is at full strength within, in radians.",
         ),
-    ]))
-    .with_documentation("A light, which contributes one shadowing pass.")
+    )
+}
+
+/// Builds the schema of the angle a spot light falls to nothing at.
+///
+/// # Invariants
+///
+/// Both angles are required rather than one being derived, because nothing yet reads them
+/// and a default angle would be a number chosen once in this source rather than a number
+/// the author of a scene chooses. The pair describes a cone, and which cone is the
+/// author's to draw.
+fn outer_angle() -> (String, Schema) {
+    (
+        "outer_angle".to_owned(),
+        Schema::new(SchemaKind::Float).with_documentation(
+            "Half the angle of the cone the light has fallen to nothing at, in radians. \
+             Between this angle and the inner one the light is scaled down.",
+        ),
+    )
+}
+
+/// Builds the schema of the image an environment light is read from.
+///
+/// A label rather than pixels, for the reason images are a list a document names: the same
+/// image is sampled by every surface of a scene, and a scene that inlined it would send it
+/// again on every reload.
+fn image() -> (String, Schema) {
+    (
+        "image".to_owned(),
+        Schema::new(SchemaKind::String).with_documentation(
+            "Label of an image this scene declares, which is what the material samples.",
+        ),
+    )
+}
+
+/// Merges the fields every light carries with the fields of one kind.
+fn light_variant(shared: SchemaMap, own: impl IntoIterator<Item = (String, Schema)>) -> Schema {
+    let mut fields = shared;
+    fields.extend(own);
+    Schema::new(SchemaKind::Struct { fields })
 }
 
 /// Schema identifier a mesh definition is registered under when a scene names it.

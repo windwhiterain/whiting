@@ -1789,8 +1789,10 @@ dependencies = [
 name = "whiting-scene"
 version = "0.1.0"
 dependencies = [
+ "naga",
  "thiserror",
  "whiting-definition",
+ "whiting-gallery",
  "whiting-graphics",
 ]
 

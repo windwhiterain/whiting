@@ -54,7 +54,18 @@ pub fn image(label: &str, width: i64, height: i64, pixels: impl IntoIterator<Ite
     ])
 }
 
-/// Builds one light of a scene.
+/// Builds one point light of a scene.
+///
+/// # Invariants
+///
+/// A light names the kind it is, so this builder writes the `Point` tag rather than taking
+/// a kind: every light in the gallery is a point light, and a builder that made each call
+/// site name a kind they all share would be a kind spelled nine times. A kind with fields of
+/// its own is a sibling of this one rather than a parameter of it.
+///
+/// The other kinds have no builder here, because a light they built is a document the
+/// compiler refuses: this is a gallery of scenes that compile, and a builder whose only
+/// effect is to write a scene that does not is a builder for a stage that has not landed.
 pub fn light(
     label: &str,
     position: [f64; 3],
@@ -62,13 +73,16 @@ pub fn light(
     intensity: f64,
     shadow_extent: f64,
 ) -> Value {
-    Value::structure([
-        ("label".to_owned(), Value::String(label.to_owned())),
-        ("position".to_owned(), triple(position)),
-        ("color".to_owned(), triple(color)),
-        ("intensity".to_owned(), Value::Float(intensity)),
-        ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
-    ])
+    Value::variant(
+        "Point",
+        [
+            ("label".to_owned(), Value::String(label.to_owned())),
+            ("position".to_owned(), triple(position)),
+            ("color".to_owned(), triple(color)),
+            ("intensity".to_owned(), Value::Float(intensity)),
+            ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
+        ],
+    )
 }
 
 /// Builds one mesh of a scene: its label, how its points are read, and the points.

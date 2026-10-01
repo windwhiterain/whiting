@@ -34,7 +34,7 @@ use wgpu::naga;
 use wgpu::util::DeviceExt;
 
 use crate::render::{Frame, RenderError, Renderer};
-use bindings::TextureCache;
+use bindings::{BufferCache, TextureCache};
 use raster::RenderedTarget;
 
 mod bindings;
@@ -325,6 +325,7 @@ impl WgpuRenderer {
         instance: &Value,
     ) -> Result<Option<RenderedTarget>, RenderError> {
         let mut cache = TextureCache::default();
+        let mut buffers = BufferCache::default();
         let mut cleared: Vec<String> = Vec::new();
         let mut colour: Option<RenderedTarget> = None;
 
@@ -332,9 +333,15 @@ impl WgpuRenderer {
             match pass.kind() {
                 // A compute pass runs even though it contributes no pixels, because it may
                 // be a prerequisite for the passes that follow.
-                PassKind::Compute => self.run_compute(&pass, instance, &mut cache)?,
+                PassKind::Compute => self.run_compute(&pass, instance, &mut cache, &mut buffers)?,
                 PassKind::Rasterize => {
-                    let target = self.run_rasterize(&pass, instance, &mut cache, &mut cleared)?;
+                    let target = self.run_rasterize(
+                        &pass,
+                        instance,
+                        &mut cache,
+                        &mut buffers,
+                        &mut cleared,
+                    )?;
                     if target.is_some() {
                         colour = target;
                     }

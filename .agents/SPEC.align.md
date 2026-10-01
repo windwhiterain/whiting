@@ -321,6 +321,30 @@ graphics computation, as data.
   a shader reads its point at the low locations and the instance data above. Every other
   buffer and every texture is a binding, numbered from one in name order, with the uniform
   at binding zero.
+- **decision**: a buffer whose usage is `storage` is a binding bound as a storage buffer,
+  and one that also declares `storage_write` is bound so a shader may write it. The
+  writable case is a **second word rather than a third kind**, because it is a permission on
+  a storage buffer and not a kind of buffer: a uniform at sixteen kibibytes is the only
+  other binding a buffer can be, and thousands of light records do not fit in it.
+  - **invariant**: a read only and a writable storage buffer are created with the same
+    `STORAGE` usage, because a backend tells them apart at the bind group and not at
+    creation. One buffer therefore serves a compute pass that writes it and a later pass
+    that reads it, which is the whole point of the word existing.
+  - **invariant**: one instance entry is one gpu resource for a frame, for a buffer exactly
+    as for a texture. A compute pass that writes a storage buffer and a rasterize pass that
+    reads it must share the buffer, or the reader sees the bytes that were uploaded and not
+    the bytes that were written. A per frame cache keyed by the instance entry is what makes
+    that hold, and it is the buffer analogue of the texture cache, not an optimisation.
+  - **invariant**: an unrecognised usage word is an error, not a uniform. The list is
+    unconstrained by schema, so a misspelled `storage` validates and would otherwise bind a
+    uniform: a frame that is quietly wrong rather than a message naming the entry. An
+    *absent* usage list is still a uniform, so no document changes meaning. The same
+    position the module already takes for an unfilterable format and for mip levels.
+  - **invariant**: one entry cannot be two kinds of buffer within a frame. A backend grants
+    a buffer its usages once, so an entry that is a uniform in one pass and a storage buffer
+    in another is a document asking for two buffers under one name, and it is reported
+    rather than served by quietly making a second one.
+
 - **decision**: a texture whose payload declares `sampled` takes a sampler at the binding
   after its own, and a texture that declares nothing takes nothing. The need is **declared,
   never inferred from the format**: the post stage reads a colour texture with
@@ -454,6 +478,16 @@ incremental compile.
     carrying the `base_version` of the output it was computed against.
   - **invariant**: applying the emitted `Delta` to `previous_graphics` must yield
     exactly the emitted `graphics`. The device cross-checks this in debug and test builds.
+  - `notes`: what the compiler wants the author to know about what it produced, as a
+    path and a sentence each.
+    - **decision**: a note is not an error and not a field of either document. An
+      error stops the compile, and some things a compiler learns are not reasons to
+      refuse: a scene lit less than it was drawn is still worth drawing, provided the
+      author is told. The documents hold what a shader reads, and a fact about what a
+      shader cannot read is not theirs to carry, so the report travels beside them.
+    - **invariant**: a compiler that may drop something fills this. A host that
+      ignores it renders a scene that is quietly wrong, which is the one outcome this
+      project treats as worse than a refusal.
 - the compiler is not re-diffed centrally; producing the `Delta` is the compiler's
   own responsibility.
 - `document_delta`: the shared part of that responsibility, comparing two whole
@@ -472,7 +506,42 @@ incremental compile.
   - the scene document: a `name`, a list of `cameras`, a list of `lights`, a list of `shaders`,
     a list of `meshes`, a list of `mesh_materials`, a list of `screen_materials`, a list of
     `post_processes`, and the `instances` bucketed by pass.
-    - `Light`: position, colour and the extent of the volume it shadows.
+    - `Light`: an enum of the kinds of light, because what a light is is its kind rather
+      than a field it may or may not have.
+      - `Point`: `label`, `position`, `color`, `intensity`, `radius`,
+        `shadow_extent` — the shape every light had before kinds existed, plus the
+        distance the light's light falls off over.
+      - `Spot`: a point light with a `direction` and the two cone angles, `inner_angle` and
+        `outer_angle`.
+      - `Directional`: a `direction` and no position, because a direction is not somewhere.
+      - `Environment`: the `image` a material samples, and an `intensity`. It shadows
+        nothing, so it declares no volume.
+      - `label`, `color` and `intensity` are what every kind carries; `position`,
+        `direction`, the two angles, `image`, `radius` and `shadow_extent` belong to the
+        kinds that have them.
+      - `radius` is optional and means one box radius of what the scene draws, which is
+        the measure the camera and the shadow volume already use. It is a field of the
+        light rather than of the scene because a scene that mixes a lantern with a sun
+        has to say which is which, and it is separate from `shadow_extent` because the
+        two answer different questions: how far a light's *light* falls off, and how much
+        of the scene its shadow map covers. A radius of zero or less is refused rather
+        than read as a light that reaches nothing, which is a scene lit by nothing.
+      - **decision**: the kind is the variant tag and **a missing kind is a validation
+        error with no default**. In an offline render a wrongly classified light is a wrong
+        image that nobody sees until the render finishes, and statelessness removes the
+        previous frame in which the mistake would have been visible, so a refusal is the
+        only thing that catches it. This is the shape a pass already has:
+        `graphics::pass_schema` gives `Rasterize` a `targets` list and `Compute` a
+        `workgroup`, and neither declares an optional field for the other's work.
+      - **invariant**: a variant declares only the fields its own kind has, so a
+        `Directional` light cannot carry a `position` and an `Environment` light cannot
+        carry a volume. A document cannot say more about a light than that light has.
+      - **not emitted yet**: only `Point` is rendered. The emitter builds one shadowing
+        pass and one lighting pass per light through a projection made from the light's
+        position, so a light of another kind is refused by name at read time rather than
+        drawn as a point — a light quietly drawn as a point is a wrong image nobody sees
+        until the render finishes, which is the position this project takes everywhere else
+        in both code and comments.
     - `Shader`: source, stage and the four schemas, declared once per scene and named by
       every material that draws with it.
       - `source`: the shader text. Nothing in the framework reads a file, because an
@@ -560,6 +629,67 @@ incremental compile.
       - the emitted instance carries one vertex buffer per mesh, shared by every instance
         that draws it, and one instance buffer per instance, holding that instance's row
         alone.
+    - `clustering`: how the view frustum is divided for clustered lighting, and how
+      many lights one box keeps. Four optional counts, `width_extents`,
+      `height_extents`, `depth_extents` and `lights_per_cluster`, defaulting to
+      16 x 9 x 24 and 64.
+      - **decision**: the grid and the cap are fields of the scene, on the same grounds
+        as every other number here: a number in the source is a value someone chose
+        once, and a number in a document is a value an author chooses per scene. A
+        number in a document also has to be *readable*, which is what makes the cost
+        visible: the box list is `clusters * cap` four byte indices whatever the scene
+        holds, and 3456 clusters of 64 is 864 KiB at the defaults.
+      - **invariant**: every count is at least one, refused when it is not. A grid of
+        nothing is a scene whose lights reach no cluster, and that is a wrong image
+        rather than a fast one.
+    - `Clustering`: the grid a scene declares, and the three buffers the assignment
+      produces from it.
+      - **decision**: the assignment is computed on the cpu in `emit`, not in a compute
+        pass. `emit` returns the instance and `render` consumes an instance that is
+        already built, so for a given scene and camera the frustum, the lights and the
+        boxes are all fixed and the assignment is a pure function of the documents. The
+        textbook gpu path needs a clear dispatch, an `atomicAdd` count pass, a prefix
+        sum for the offsets and a scatter pass, over a grid that
+        `max_compute_invocations_per_workgroup` cannot cover in one workgroup; here
+        there is no clear, no counter, no prefix sum and no dispatch.
+      - **the three buffers are read only `storage`**: one packed record per light, one
+        count per cluster, and one slot per cluster per cap. `max_storage_buffers_per_
+        shader_stage` is 4, so these are three of the four and the fourth is the last
+        one available. Nothing writes them, because there is no pass to write one with.
+      - **invariant**: a cluster's row is a fixed `cap` wide, not packed end to end. A
+        fragment reading one cluster's lights computes `cluster * cap` and stops; a list
+        packed end to end would need a prefix sum of the counts to find the row, which
+        is the sum this stage exists to avoid computing. The unused tail of a short row
+        is padded with the first light and the count beside it is what says how many
+        entries are real.
+      - **the slices divide the projection's depth, which is uniform in one over
+        distance, rather than dividing the distance.** Slices of equal world thickness
+        pile up at the eye and vanish in the distance, so a grid of them spends most of
+        its boxes on the clusters that fill the screen; and a fragment already carries
+        its own depth, so this is the division a shading pass indexes with no arithmetic
+        at all. The cost is stated in `clusters.rs`: the slices are not even in world
+        space, so a light spanning one is listed in a box larger than the part of the
+        scene it lights.
+      - **invariant**: a cluster is the slab at its slice's **far** boundary, so the box
+        contains the whole slab. The tighter box at the near boundary would exclude a
+        light that reaches the slice's far half, and a light missing from a cluster is a
+        light no shading pass can find. The slack is spent where it costs work rather
+        than where it costs an image.
+      - **decision**: the cap keeps the lights that contribute most to their cluster and
+        **reports what it dropped**, through `CompileOutput.notes`, one note per
+        overflowing cluster with the labels named up to eight and counted beyond that.
+        The rank is `brightness / (1 + distance_squared)` to the nearest point of the
+        box, and the only property it needs is to be monotone in distance: a falloff of
+        the form `1 / (a + b*d + c*d*d)` with positive coefficients decreases with
+        distance whatever its coefficients, so the nearest lights are the ones a scene's
+        own falloff would keep. No scene's falloff constants are written into the
+        compiler, because they are a scene's decision.
+      - **invariant**: a kind that covers the whole view takes no cluster slot. A
+        `Directional` and an `Environment` light are in every cluster by definition, so
+        listing them spends the cap on lights the culling was never going to remove; they
+        are in the record buffer and in no cluster list. A scene whose lights are only
+        those two kinds therefore has empty cluster lists, which is the correct answer
+        rather than a missing one.
   - `PassSchema`: the schema of a pass the standard pipeline emits.
     - `ProjectionSchema` is the schema of a projection: a view projection matrix and the
       point it was made from. It is data on the pass, not arithmetic in the renderer,
@@ -948,3 +1078,114 @@ packing is a decision about representation, taken where the data is written, rat
 verification the compiler repeats on every compile.
 
 The same change is why validation was kept. See *ValidationError* above.
+
+## Clustered lighting and the shadow page pool: the seam, and a blocker
+
+Stage 4a of the scalable lighting effort. This records the two decisions that were not obvious
+and one that could not be made here.
+
+### The lifted module is general because it takes a `ViewProjection`, not a camera
+
+`crates/scene/src/lighting/` sits beside `diff` and `reference` rather than inside `standard`.
+The rule this follows is that a property of lighting in general belongs outside a compiler, and
+the test of it is whether the module can name anything of the standard scene's.
+
+It can now name none. The arithmetic took `&standard::Projection` and read its `eye`, `right`,
+`up`, `forward`, `near`, `far` and its two depth/distance mappings. Those nine readings are
+behind a `ViewProjection` trait now, and `Projection` implements it **by forwarding to its own
+fields and methods**.
+
+**Invariant**: a camera that implements `ViewProjection` by recomputing a reading rather than
+forwarding it can disagree with the matrix its passes are drawn through, which puts a light in
+clusters no fragment is in. Forwarding is the only implementation that cannot drift.
+
+**What stayed in `standard`, and why**: the camera itself (`Projection`, `Camera`) and the light
+document an author writes (`scene_schema::light_schema`). Both are the standard scene's own
+schema and WGSL surface. What moved out: the cluster grid and its four documented defaults, the
+per cluster cap, the contribution ranking, the packed record schema, the three buffer schemas,
+and the page pool. None of them mention a material, a mesh, a pass or a shader.
+
+**The two ways a general module quietly stops being general**, both of which this lift had to
+undo: reaching into another module for a constant (the clustering field names moved with the
+grid), and reaching into another module for a two line helper (`dot` and `subtract` are now
+local to `assignment.rs` rather than taken from `standard::math`, which is a matrix module).
+The second one duplicates two functions. It is worth it, because a general module that borrows
+a compiler's private arithmetic is not a general module.
+
+### One ranking, two budgets, and why they disagree
+
+The shadow page pool and the per cluster cap both ask "how much does this light matter", and
+both are answered by `contribution`, which is brightness over one plus distance squared. There
+is one notion on purpose: two rankings that could disagree would be two answers to one question.
+
+They *are* used differently, and the difference is not an accident:
+
+- a cluster asks **how bright is this light there**. The distance is to a box, so a light just
+  outside it still counts for a little, and a light inside it counts fully at any radius.
+- a page asks **is this light worth rendering once**. The distance is over how much of the
+  image the light reaches at all.
+
+So a light can be kept by a cluster and still be given no page. That is the whole reason to rank
+twice rather than derive the pool from the cluster lists: the cluster lists have already spent
+their budget on the lights nearest each box, and the page budget is a different question about
+the same lights.
+
+**Invariant**: a light that reaches no cluster is given no page and is not reported as dropped.
+A page for it would render nothing, and counting it would point an author at a pool that was
+never the problem. `Clusters::reached` is what tells the two apart; `pool_notes` is given the
+whole assignment rather than a list of pages for exactly this reason.
+
+**Invariant**: a light with no page carries minus one, not zero. Zero is the first page. A
+sentinel a shader can distinguish is worth four bytes a light, and a shadow lookup into the
+wrong light's page is a wrong image nobody sees until the render finishes.
+
+### A blocker: the device cannot create a texture array
+
+Stage 4b needs one shadow page pool a shader can index, and the pool was designed as a texture
+array. **The device cannot make one**, in four independent places, plus a missing schema field:
+
+- `graphics/binders.rs` `binder_payload_schema`'s `Texture` variant has no `layers` field, and
+  `texture_resource()` has no layer count either. A document cannot say a texture has depth.
+- `device/wgpu_renderer/bindings.rs` hardcodes `depth_or_array_layers: 1` and
+  `TextureDimension::D2`, and creates a default view, which on one layer is a `D2` view of
+  layer zero.
+- The same file hardcodes `view_dimension: TextureViewDimension::D2` in the bind group layout,
+  so a texture that *were* an array would still be declared as a flat one.
+- `device/wgpu_renderer/raster.rs` draws into `slot.view` with no way to select an array layer,
+  so a shadowing pass could not render into page *n* even if one existed.
+
+**This is not a gap that could be closed from the compiler side**, which is the thing worth
+recording: the design principle in this project is that the compiler decides and the device
+executes, and that principle has a boundary. A resource the device cannot create is not
+expressible as schema data, so a stage that is forbidden from touching the device is forbidden
+from using one.
+
+**Two ways forward, neither made here.** Extending the device is the settled design and needs
+four files across two crates, two of which are the device. A 2D atlas — pages tiled into one
+`texture_depth_2d`, the index resolved with a multiply and a modulo — needs no device change and
+fits what the device can already do, at the cost of making the page size and the count
+dependent (a 2048 square texture holds 16 pages of 512, not 256) and needing the nine tap
+kernel clamped so it cannot read a neighbour's texels across a page boundary.
+
+### naga validates this project's WGSL, and it fits
+
+Correcting an earlier belief: the WGSL here **is** verifiable without an adapter.
+`naga::front::wgsl::parse_str` and the validator are pure cpu work, `naga` 30.0.1 is already in
+the lock file through wgpu, and the device crate itself depends on this being true
+(`wgpu_renderer/mod.rs` parses every shader with it). So `naga` is a dev dependency of `scene`
+and `tests/wgsl_validation.rs` parses and validates every shader the six gallery scenes emit.
+
+**Invariant**: the check reads sources out of the **compiled instance**, never off a template. A
+template still holding `__SUN__` is a template with a live token in it, and a token that
+replaces to nothing is exactly the mistake a template hides.
+
+**Invariant**: it validates against `Capabilities::empty()`, not the defaults. The defaults are
+a modern adapter's feature set; `WgpuRenderer` asks for `downlevel_defaults()` with
+`Features::empty()`. Validating against the defaults would accept a shader this renderer cannot
+run, which makes the check worse than useless.
+
+**What the check is not**: it is not pipeline creation. `naga` cannot compare a bind group layout
+against a shader, because that is `check_bindings` in the device and needs a renderer instance.
+"Validated" here means well formed and within capabilities. **Nothing was executed**; this
+machine has no adapter, and the two adapter backed render tests in `crates/device/tests/` were
+not run.

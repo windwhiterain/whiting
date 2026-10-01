@@ -32,7 +32,7 @@ use graphics::binders::{FORMAT, HEIGHT, RESOURCE, SIZE_BYTES, SOURCE, WIDTH};
 use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{derived_instance_schema, layout::packed_layout, verify_pass_inputs};
 
-use crate::CompileError;
+use crate::lighting::{self as lighting_pool, ClusterLight, Clustering};
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
 use crate::standard::frame::Frame;
 use crate::standard::math::{Bounds, Matrix, apply, projection_of, transform_matrix};
@@ -44,6 +44,7 @@ use crate::standard::pass_schemas::{
     SHADOW_MAP_WIDTH, TIME, UP, VERTICES,
 };
 use crate::standard::scene_schema;
+use crate::{CompileError, CompileNote};
 use graphics::layout::components;
 use graphics::pass::{BLEND, DEPTH, DEPTH_COMPARE, DEPTH_WRITE};
 
@@ -275,10 +276,75 @@ impl Transform {
 
 /// One light, read out of the scene document.
 struct LightRead {
+    /// Which kind of light this is.
+    ///
+    /// The kind is read before the fields beside it, because a field is named by the kind
+    /// that declares it, and a read result that had dropped the kind could not say which
+    /// set of fields it had read. It is read rather than inferred from which fields were
+    /// present, so a document naming a kind it cannot render is refused by name.
+    kind: LightKind,
     label: String,
     position: [f64; 3],
     colour: [f64; 3],
     shadow_extent: f64,
+    /// How far the light reaches, when the document says.
+    ///
+    /// It is a field of the light because a light's reach is the light's own, and a scene
+    /// that mixes a lantern with a sun has to be able to say which is which. The convention
+    /// for a light that says nothing is not applied here: it is one box radius of what the
+    /// scene draws, and what the scene draws is not known until the meshes have been read.
+    /// [`LightRead::radius`] resolves the two, once the bounds are.
+    radius: Option<f64>,
+}
+
+impl LightRead {
+    /// Returns how far this light reaches, falling back to one box radius of what is drawn.
+    fn radius(&self, bounds: &Bounds) -> f64 {
+        self.radius.unwrap_or_else(|| bounds.largest_half_width())
+    }
+}
+
+/// Which kind of light a scene names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LightKind {
+    /// A light at a position, and nothing else.
+    Point,
+    /// A point light that shines inside a cone.
+    Spot,
+    /// A light from a direction rather than from a place.
+    Directional,
+    /// Light read from an image, which casts no shadow.
+    Environment,
+}
+
+impl LightKind {
+    /// Returns the tag this kind is stored under in a scene document.
+    const fn tag(self) -> &'static str {
+        match self {
+            Self::Point => "Point",
+            Self::Spot => "Spot",
+            Self::Directional => "Directional",
+            Self::Environment => "Environment",
+        }
+    }
+
+    /// Returns whether a light of this kind takes a slot in a cluster.
+    ///
+    /// # Invariants
+    ///
+    /// A point light and a spot light stand somewhere and shine into a volume, so what they
+    /// light is that volume and a cluster inside it wants them. A directional light and an
+    /// environment light cover the whole view at every depth, so every cluster wants them
+    /// equally and a cluster slot spent on one is a slot not spent on culling anything. They
+    /// take no slot here and get a path of their own, which stage 3b builds.
+    ///
+    /// Only a point light reaches this compiler: `read_lights` refuses the other three rather
+    /// than drawing them as a point. The two answers that agree with nothing today are here
+    /// because the exemption is a statement about the design, and the kind it is stated on is
+    /// the kind that decides it.
+    const fn takes_cluster_slot(self) -> bool {
+        matches!(self, Self::Point | Self::Spot)
+    }
 }
 
 /// The two documents a standard scene compiles to.
@@ -287,6 +353,8 @@ pub struct Emitted {
     pub graphics: Value,
     /// The instance document.
     pub instance: Value,
+    /// What the author is told about what the compilation could not do exactly.
+    pub notes: Vec<CompileNote>,
 }
 
 /// Which topology a mesh declares, which is how its points are read as primitives.
@@ -357,7 +425,36 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     let camera_basis = camera.projection();
     let camera = projection_value(&camera_basis);
 
+    // Which lights reach which part of the view, and the three buffers that say so. This is
+    // here rather than in a pass because the instance is built before it is rendered: for a
+    // given scene and camera the frustum, the lights and the boxes are all fixed, so the
+    // assignment is a pure function of the documents and belongs beside the rest of the
+    // compilation. The shadow page pool is read beside it because the pages are assigned from
+    // the same ranking, in the same walk over the same lights.
+    let clustering = Clustering::read(scene)?;
+    let light_pool = lighting_pool::read_light_pool(scene)?;
+    let cluster_lights: Vec<ClusterLight> = lights
+        .iter()
+        .map(|light| ClusterLight {
+            label: light.label.clone(),
+            position: light.position,
+            colour: light.colour,
+            radius: light.radius(&bounds),
+            clustered: light.kind.takes_cluster_slot(),
+        })
+        .collect();
+    let clusters = lighting_pool::assign(&clustering, &cluster_lights, &camera_basis, &light_pool)?;
+    let mut notes = clusters.notes(&clustering, &Path::root().key(scene_schema::CLUSTERING));
+    notes.extend(lighting_pool::pool_notes(
+        &cluster_lights,
+        &light_pool,
+        &clusters,
+    ));
+
     add_targets(&mut instance, frame);
+    for (entry, payload) in clusters.entries() {
+        insert_entry(&mut instance, entry.to_owned(), payload)?;
+    }
     for light in &lights {
         insert_entry(
             &mut instance,
@@ -468,7 +565,11 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
         verify_pass_inputs(&pass, &instance).map_err(emission)?;
     }
 
-    Ok(Emitted { graphics, instance })
+    Ok(Emitted {
+        graphics,
+        instance,
+        notes,
+    })
 }
 
 /// Reads the time a scene is drawn at, which defaults to a still.
@@ -494,14 +595,23 @@ fn read_time(scene: &Value) -> Result<f64, CompileError> {
 }
 
 /// Reads the lights of the scene.
+///
+/// # Invariants
+///
+/// The label is read first, because every error below names the light, and an error that
+/// cannot say which light it is about is an error an author has to search a document for.
+///
+/// The kind is read before the fields, and a kind this stage cannot render is refused there
+/// rather than further down: a directional light declares no `position`, so reading the
+/// fields first would report a missing field instead of the mistake that is actually there,
+/// and a light quietly drawn as a point is a wrong image nobody sees until the render is
+/// finished.
 fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
     let path = Path::root().key(scene_schema::LIGHTS);
     let lights = list_at(scene, &Path::root(), scene_schema::LIGHTS)?;
     let mut read = Vec::with_capacity(lights.len());
     for (index, light) in lights.iter().enumerate() {
         let path = path.index(index);
-        let intensity = number(light, &path, "intensity")?;
-        let colour = triple(light, &path, "color")?;
         let label = text(light, &path, "label")?.to_owned();
         if read.iter().any(|other: &LightRead| other.label == label) {
             return Err(CompileError::DuplicateLabel {
@@ -509,9 +619,29 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
                 label,
             });
         }
+        let kind = read_light_kind(light, &path, &label)?;
+        if kind != LightKind::Point {
+            return Err(CompileError::UnsupportedLightKind {
+                path: path.clone(),
+                label,
+                kind: kind.tag().to_owned(),
+            });
+        }
+        let intensity = number(light, &path, "intensity")?;
+        let colour = triple(light, &path, "color")?;
+        let radius = optional_number(light, &path, "radius")?;
+        if let Some(reach) = radius.filter(|reach| *reach <= 0.0) {
+            return Err(CompileError::EmptyLightRadius {
+                path: path.key("radius"),
+                label,
+                radius: reach,
+            });
+        }
         read.push(LightRead {
+            kind,
             label,
             position: triple(light, &path, "position")?,
+            radius,
             shadow_extent: number(light, &path, "shadow_extent")?,
             colour: [
                 colour[0] * intensity,
@@ -521,6 +651,35 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
         });
     }
     Ok(read)
+}
+
+/// Reads the kind of one light, which the schema writes as the light's variant tag.
+///
+/// # Invariants
+///
+/// A light is an enumeration whose tag is the kind, so a light that is a struct rather than
+/// a variant names no kind at all. That is a validation error rather than a default: see
+/// [`scene_schema::light_schema`] for why an offline renderer refuses the guess.
+///
+/// A tag this stage does not know is refused the same way a kind it knows is, because the
+/// emitter has no way to draw either and the schema has already reported the tag as one it
+/// does not declare.
+fn read_light_kind(light: &Value, path: &Path, label: &str) -> Result<LightKind, CompileError> {
+    match light.variant_tag() {
+        Some("Point") => Ok(LightKind::Point),
+        Some("Spot") => Ok(LightKind::Spot),
+        Some("Directional") => Ok(LightKind::Directional),
+        Some("Environment") => Ok(LightKind::Environment),
+        Some(kind) => Err(CompileError::UnsupportedLightKind {
+            path: path.clone(),
+            label: label.to_owned(),
+            kind: kind.to_owned(),
+        }),
+        None => Err(CompileError::MissingLightKind {
+            path: path.clone(),
+            label: label.to_owned(),
+        }),
+    }
 }
 
 /// Reads the meshes of the scene and the instance entries their vertex buffers contribute.
@@ -970,7 +1129,7 @@ fn finish_mesh(
         buffer_payload(
             found.points.bytes().to_vec(),
             found.point_schema.to_value(),
-            "vertex",
+            &["vertex"],
             topology.tag(),
         ),
     );
@@ -1306,7 +1465,7 @@ impl Group<'_> {
         buffer_payload(
             self.bytes(),
             self.members[0].instance_schema.to_value(),
-            "instance",
+            &["instance"],
             self.mesh.topology.tag(),
         )
     }
@@ -1748,7 +1907,7 @@ fn post_pass(
     let bytes = pack_points(point_schema.as_ref(), &points, &Path::root().key("points"))?;
     let vertex_entry = format!("{FULLSCREEN_MESH}_vertices");
     let size_bytes = bytes.len() as i64;
-    let entry = buffer_payload(bytes, point_schema.to_value(), "vertex", "Triangles");
+    let entry = buffer_payload(bytes, point_schema.to_value(), &["vertex"], "Triangles");
 
     let uniform = Value::structure([
         (CAMERA.to_owned(), camera_value(projection)),
@@ -2007,7 +2166,14 @@ fn emission_pass(
 ///
 /// A light gets a matrix and an eye and nothing else: it is not a camera, and nothing
 /// draws through it as though it were.
+///
+/// Every light that reaches this function is a point light, because `read_lights` refuses
+/// every other kind rather than approximating it as a point. So the eye below is a position
+/// the document declared, and a directional light — whose shadow volume is a box seen along
+/// a direction rather than a box looked at from somewhere — is not a light this function
+/// can be asked about.
 fn light_projection(light: &LightRead, bounds: &Bounds) -> (Matrix, [f64; 3]) {
+    debug_assert!(matches!(light.kind, LightKind::Point));
     let centre = bounds.centre();
     (
         projection_of(
@@ -2255,14 +2421,25 @@ fn texture_binding(source: &str, width: i64, height: i64, format: &str) -> Value
 }
 
 /// Builds a buffer payload, which carries the schema it was packed with.
-fn buffer_payload(bytes: Vec<u8>, schema: Value, usage: &str, topology: &str) -> Value {
+///
+/// # Invariants
+///
+/// The usage is a list because a buffer may need more than one word: a storage buffer a
+/// shader writes declares `storage` and `storage_write` together, and a vertex layout is
+/// built from the schema the bytes were packed with either way.
+fn buffer_payload(bytes: Vec<u8>, schema: Value, usage: &[&str], topology: &str) -> Value {
     Value::variant(
         "Buffer",
         [
             (SIZE_BYTES.to_owned(), Value::Int(bytes.len() as i64)),
             (
                 graphics::binders::USAGE.to_owned(),
-                Value::List(vec![Value::String(usage.to_owned())]),
+                Value::List(
+                    usage
+                        .iter()
+                        .map(|word| Value::String((*word).to_owned()))
+                        .collect(),
+                ),
             ),
             (graphics::binders::SCHEMA.to_owned(), schema),
             (
@@ -2352,6 +2529,14 @@ fn number(value: &Value, path: &Path, name: &str) -> Result<f64, CompileError> {
             found: other.kind_name(),
         }),
         None => Err(malformed(&field_path, "a number")),
+    }
+}
+
+/// Borrows an optional number field, which is how a field the document may leave out is read.
+fn optional_number(value: &Value, path: &Path, name: &str) -> Result<Option<f64>, CompileError> {
+    match field(value, name) {
+        None => Ok(None),
+        Some(_) => number(value, path, name).map(Some),
     }
 }
 

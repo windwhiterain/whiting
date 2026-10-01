@@ -16,7 +16,7 @@ use definition::Value;
 use graphics::{PassView, resolve_for_pass};
 
 use super::WgpuRenderer;
-use super::bindings::{Bindings, TextureCache, TextureSlot};
+use super::bindings::{Bindings, BufferCache, TextureCache, TextureSlot};
 use crate::render::{Frame, RenderError};
 
 /// Vertex entry point every rasterize shader must expose.
@@ -52,6 +52,7 @@ impl WgpuRenderer {
         pass: &PassView<'_>,
         instance: &Value,
         cache: &mut TextureCache,
+        buffers: &mut BufferCache,
         cleared: &mut Vec<String>,
     ) -> Result<Option<RenderedTarget>, RenderError> {
         let label = pass.label().unwrap_or("<unlabelled>").to_owned();
@@ -64,7 +65,7 @@ impl WgpuRenderer {
         if let Some(schema) = graphics::uniform_schema(pass, instance)? {
             self.check_uniform_layout(&shader, &schema, &label)?;
         }
-        let bindings = self.bind_pass(pass, instance, cache)?;
+        let bindings = self.bind_pass(pass, instance, cache, buffers)?;
 
         let attachments = attachments(&bindings)?;
         let colour = attachments.iter().find(|entry| !entry.depth);
