@@ -4,6 +4,13 @@ Status: proposal, **not started**. The design below was reached by building the 
 first and rendering it; the section *What the built version got wrong* is the part worth
 reading, because the rule it broke is the whole content of this proposal.
 
+**The payload half of the schema is already written**, on the branch
+`parked/texture-channel`: `data`, `filter`, `address`, `mip_filter` and `SamplerSettings`,
+all additive. The branch carries nothing else — the device half, which is where the broken
+rule lives, was discarded with the worktree it was built in. So the work that remains is the
+rule, the upload, the mip chain and the sampler creation, and the payload fields can be taken
+as they stand.
+
 ## The gap
 
 A standard scene can express geometry, placement, lighting, shadows, time and a fullscreen
