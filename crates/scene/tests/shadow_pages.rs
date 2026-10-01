@@ -17,9 +17,9 @@
 //! - the pool's own shape, refused rather than truncated at the array limit.
 
 use definition::{Definition, DefinitionIdentifier, Path, Registry, SchemaIdentifier, Value};
+use whiting_gallery::Gallery;
 use whiting_scene::CompileContext;
 use whiting_scene::Compiler;
-use whiting_scene::gallery::Gallery;
 use whiting_scene::lighting::{
     CLUSTERING, ClusterLight, Clustering, Clusters, LightPool, MAX_TEXTURE_ARRAY_LAYERS, NO_PAGE,
     SHADOW_PAGES, assign, read_light_pool,

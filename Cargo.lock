@@ -1762,6 +1762,16 @@ dependencies = [
  "tokio",
  "wgpu",
  "whiting-definition",
+ "whiting-gallery",
+ "whiting-graphics",
+ "whiting-scene",
+]
+
+[[package]]
+name = "whiting-gallery"
+version = "0.1.0"
+dependencies = [
+ "whiting-definition",
  "whiting-graphics",
  "whiting-scene",
 ]
@@ -1782,6 +1792,7 @@ dependencies = [
  "naga",
  "thiserror",
  "whiting-definition",
+ "whiting-gallery",
  "whiting-graphics",
 ]
 

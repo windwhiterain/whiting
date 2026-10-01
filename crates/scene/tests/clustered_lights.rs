@@ -24,10 +24,10 @@
 
 use definition::{Definition, DefinitionIdentifier, Path, Registry, SchemaIdentifier, Value};
 use graphics::{ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
+use whiting_gallery::Gallery;
 use whiting_scene::CompileContext;
 use whiting_scene::CompileOutput;
 use whiting_scene::Compiler;
-use whiting_scene::gallery::Gallery;
 use whiting_scene::lighting::{
     CLUSTER_COUNTS_ENTRY, CLUSTER_INDICES_ENTRY, ClusterLight, Clustering, Clusters,
     LIGHT_RECORDS_ENTRY, LightPool, assign,

@@ -137,7 +137,7 @@ fullscreen raymarching expressible, and it is the tier with the most leverage pe
 ### Tier 5 — the scenes
 
 Once the vocabulary is there, the scenes are the cheap part. A gallery of procedural scenes built
-against the library in `crates/scene/src/gallery/`, each a document rendered to a png by
+against the library in `crates/gallery/`, each a document rendered to a png by
 `crates/device/examples/render.rs` (both already working — the image above is its output).
 
 ## What is deliberately not proposed

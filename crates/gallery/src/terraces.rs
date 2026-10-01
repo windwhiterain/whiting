@@ -25,16 +25,16 @@
 
 use definition::Value;
 
-use crate::gallery::attributes::gallery_vertex_inputs;
-use crate::gallery::geometry::{
+use crate::attributes::gallery_vertex_inputs;
+use crate::geometry::{
     cone, cuboid, fractal_noise, hash01, heightfield, prism, ridged_noise, sphere, value_noise,
 };
-use crate::gallery::kit::{
+use crate::kit::{
     camera, gallery_custom_schema, gallery_instance_schema, instance, instances, light, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, shader, surface,
 };
-use crate::gallery::shaders::{lighting, mesh_shaders, post_shader};
-use crate::standard::{Stage, light_pass_schema};
+use crate::shaders::{lighting, mesh_shaders, post_shader};
+use scene::standard::{Stage, light_pass_schema};
 
 /// How far the valley reaches from its centre, in world units.
 const EXTENT: f64 = 190.0;

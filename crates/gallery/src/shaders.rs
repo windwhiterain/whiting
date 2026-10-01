@@ -23,7 +23,7 @@
 
 use definition::{Schema, SchemaKind, Value};
 
-use crate::standard::{
+use scene::standard::{
     Stage, depth_pass_schema, emission_pass_schema, light_pass_schema, post_pass_schema,
     shadow_pass_schema,
 };
@@ -143,7 +143,7 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
 /// The shadowing stage: the point is placed, and the fragment writes depth through the
 /// target itself, so the stage declares no fragment entry point.
 ///
-/// `vertex_inputs` is the attribute list [`crate::gallery::attributes`] writes out from the
+/// `vertex_inputs` is the attribute list [`crate::attributes`] writes out from the
 /// two schemas, rather than a transcription of it.
 pub fn shadowing(vertex_inputs: &str) -> String {
     format!(
@@ -167,7 +167,7 @@ fn fragment_main() -> @location(0) vec4<f32> {{
 
 /// The depth stage: the same placement, and no fragment stage at all.
 ///
-/// `vertex_inputs` is the attribute list [`crate::gallery::attributes`] writes out, and it is
+/// `vertex_inputs` is the attribute list [`crate::attributes`] writes out, and it is
 /// the same list the shadowing stage was given: a stage that places a point differently
 /// places it differently, and nothing downstream can tell by how much.
 pub fn depthing(vertex_inputs: &str) -> String {
@@ -196,7 +196,7 @@ fn vertex_main(
 /// is lit is not: the shadow term, the falloff and the Fresnel are the same for every
 /// surface, and a scene that rewrote them would get one of them subtly wrong.
 ///
-/// `vertex_inputs` is the attribute list [`crate::gallery::attributes`] writes out from the
+/// `vertex_inputs` is the attribute list [`crate::attributes`] writes out from the
 /// two schemas the stages and the mesh all declare, so a scene that changes its point schema
 /// gets the attributes for it without writing them out.
 pub fn lighting(vertex_inputs: &str, surface: &str, helpers: &str) -> String {
@@ -543,7 +543,7 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
 /// schema gets the attributes for it without writing them out.
 pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
     let point = kit::shaded_point_schema();
-    let inputs = crate::gallery::attributes::gallery_vertex_inputs(&point);
+    let inputs = crate::attributes::gallery_vertex_inputs(&point);
     vec![
         kit::shader(
             Stage::Shadowing,
@@ -596,7 +596,7 @@ pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
 /// scope, where `emitted` is the colour the stage returns and `in` is the point and the row.
 pub fn emission_shader(label: &str, body: &str) -> Value {
     let point = kit::shaded_point_schema();
-    let inputs = crate::gallery::attributes::gallery_vertex_inputs(&point);
+    let inputs = crate::attributes::gallery_vertex_inputs(&point);
     kit::shader(
         Stage::Emission,
         label,
@@ -620,15 +620,15 @@ pub fn post_shader(grade: &str, helpers: &str) -> Value {
         Stage::Post.tag(),
         [
             (
-                crate::standard::LABEL.to_owned(),
+                scene::standard::LABEL.to_owned(),
                 Value::String("post".to_owned()),
             ),
             (
-                crate::standard::SOURCE.to_owned(),
+                scene::standard::SOURCE.to_owned(),
                 Value::String(post(grade, helpers)),
             ),
             (
-                crate::standard::PASS_SCHEMA.to_owned(),
+                scene::standard::PASS_SCHEMA.to_owned(),
                 post_pass_schema().to_value(),
             ),
             // A post stage draws over the frame rather than over a mesh, so it declares no
@@ -636,11 +636,11 @@ pub fn post_shader(grade: &str, helpers: &str) -> Value {
             // carries either, because a shader that declares an interface nothing supplies
             // is a shader whose layout nothing can check.
             (
-                crate::standard::INSTANCE_SCHEMA.to_owned(),
+                scene::standard::INSTANCE_SCHEMA.to_owned(),
                 Schema::new(SchemaKind::Unit).to_value(),
             ),
             (
-                crate::standard::CUSTOM_SCHEMA.to_owned(),
+                scene::standard::CUSTOM_SCHEMA.to_owned(),
                 Schema::new(SchemaKind::Unit).to_value(),
             ),
             ("stage".to_owned(), Value::String("post".to_owned())),

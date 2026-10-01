@@ -96,7 +96,6 @@ use definition::{
 use thiserror::Error;
 
 mod diff;
-pub mod gallery;
 pub mod lighting;
 mod reference;
 pub mod standard;

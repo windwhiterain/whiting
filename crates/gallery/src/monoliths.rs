@@ -6,12 +6,12 @@
 
 use definition::Value;
 
-use crate::gallery::geometry::heightfield;
-use crate::gallery::kit::{
+use crate::geometry::heightfield;
+use crate::kit::{
     camera, instance, instances, light, mesh, mesh_material, post_processes, screen_material,
     shaded_point_schema, surface, surface_reflecting,
 };
-use crate::gallery::shaders::{mesh_shaders, post_shader};
+use crate::shaders::{mesh_shaders, post_shader};
 
 /// How many monoliths stand in the field.
 const COUNT: usize = 40;
@@ -61,10 +61,10 @@ pub fn monoliths() -> Value {
     let mut lighting = Vec::new();
     for index in 0..COUNT as i64 {
         // A deterministic scatter, so an unchanged scene compiles to an unchanged field.
-        let x = (crate::gallery::geometry::hash01(index, 7, 3) - 0.5) * 90.0;
-        let z = (crate::gallery::geometry::hash01(index, 13, 5) - 0.5) * 90.0;
-        let height = 6.0 + crate::gallery::geometry::hash01(index, 29, 11) * 22.0;
-        let turn = crate::gallery::geometry::hash01(index, 41, 13) * std::f64::consts::TAU;
+        let x = (crate::geometry::hash01(index, 7, 3) - 0.5) * 90.0;
+        let z = (crate::geometry::hash01(index, 13, 5) - 0.5) * 90.0;
+        let height = 6.0 + crate::geometry::hash01(index, 29, 11) * 22.0;
+        let turn = crate::geometry::hash01(index, 41, 13) * std::f64::consts::TAU;
 
         // The geometry is authored once and drawn three times over, so the same monolith is
         // three entries: one per pass, sharing the transform and naming the material for that
@@ -164,7 +164,7 @@ pub fn monoliths() -> Value {
                     "monolith",
                     "Triangles",
                     shaded_point_schema(),
-                    crate::gallery::geometry::sphere(20, 0.5),
+                    crate::geometry::sphere(20, 0.5),
                 ),
                 // The ground the monoliths stand in. It is a heightfield like any other,
                 // with a height that does not vary, which is what makes it flat and what

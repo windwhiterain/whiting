@@ -23,8 +23,8 @@
 use std::path::{Path, PathBuf};
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
+use gallery::Gallery;
 use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
-use scene::gallery::Gallery;
 use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
 use whiting_device::{RenderedFrame, Renderer, WgpuRenderer};
 

@@ -1,7 +1,7 @@
 //! Geometry for the gallery, generated rather than authored.
 //!
 //! Every mesh is a run of points against a point schema, so what belongs here is the
-//! arithmetic of a shape and what belongs in [`crate::gallery::kit`] is the document it is
+//! arithmetic of a shape and what belongs in [`crate::kit`] is the document it is
 //! wrapped in. A heightfield, a sphere, a cone: each is a few lines of maths, and a scene
 //! is a few lines of placement.
 //!

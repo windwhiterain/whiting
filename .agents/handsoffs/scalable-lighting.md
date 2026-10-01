@@ -318,7 +318,27 @@ lists, which is correct and not a bug.
 
 ## Stage 3 and Stage 4, together: the clustered pass and the sparse shadow page pool
 
-**Status: 4a landed, 4b blocked. See "What stage 4a did not close" below.**
+**Status: 4a landed, 4b blocked on the device. See "What stage 4a did not close" below.**
+
+### Checkpoint discipline
+
+This effort merges to `main` at each checkpoint rather than sitting on one branch until it is
+finished, so that other work can build on what has landed and stay in step with it. The branch
+is `feature/lighting` in `./.worktrees/lighting`; the worktree is deleted when the effort is
+done, not at a checkpoint.
+
+**Checkpoint 1** is stages 1, 2, 3a and 4a: storage buffers and the per frame buffer cache, the
+light kind, the cluster assignment on the cpu, and the general module lift with the page pool
+as schema data. It is mergeable as it stands. One thing it deliberately does not do is make the
+acceptance bar pass: the clustered lighting pass is not written, so a pass count still grows
+with the light count, and the bar that says so is marked ignored rather than deleted.
+
+`main` moved under this branch during that window. `1ee2ddc` moved the scene builders out of
+`crates/scene/src/gallery/` into a new `crates/gallery` crate that depends on `scene`, so the
+compiler can no longer see the gallery. The three tests that use gallery scenes as fixtures now
+reach it through a `whiting-gallery` **dev-dependency** of `whiting-scene`: cargo allows the
+cycle because it exists only for tests, and the tests stay in the crate whose behaviour they
+check, with the gallery as the fixture rather than the subject.
 
 These two stages landed as one effort and are written as one section, because they are one
 mechanism: a clustered shading loop cannot reach a light's shadow without an addressing scheme,
@@ -487,9 +507,33 @@ Settled. Each one is a constraint on the stage named beside it, not a suggestion
   keeps the floor for now, because `wgpu` is optional and the crate must run with no adapter.
   Raising `max_texture_dimension_2d` is what lets a page be larger than 2048 square, and it is
   stage 4's call.
-- Where the shadow page size and count are authored: on the light, on the scene, or derived
-  from the scene's `frame` the way the depth buffer is. The depth buffer precedent argues for
-  `frame`; a light that must cast from a specific volume argues for the light. Stage 4's call.
+- The page size and count sit in the scene's `clustering` block rather than in `frame`. That is
+  reversible in one place, and the depth buffer's precedent for `frame` is the reason it might
+  move there.
+
+### Settled since: the page pool is a texture array, and the device gets extended
+
+The blocking question for 4b was how a clustered loop reaches a light's shadow. The page pool
+is a **texture array**, each light record carrying the page it was given, and the `device` is
+extended to be able to build one. `max_texture_array_layers` is 256 on this device and unused,
+and the alternative, tiling pages into one 2d texture, was rejected because it makes the page
+size and the page count dependent, and those are two independent schema fields by a decision
+recorded above.
+
+The alternative was not rejected for being unsafe. The project reads depth with `textureLoad`
+rather than a filtered comparison sampler, so no hardware filter can bleed across a page
+boundary; an atlas would have been workable. It was rejected for coupling two fields the
+project decided must not be coupled.
+
+What the device needs, all of it additive and defaulting to what a document means today:
+
+- a `layers` field on the `Texture` payload, because a document currently cannot express depth
+  at all, which is a limit of the schema rather than a decision
+- `create_texture` to honour it instead of writing `depth_or_array_layers: 1` and
+  `TextureDimension::D2`
+- the bind group layout's `view_dimension` to follow it instead of `D2`
+- the rasterize target path to select a layer, since it attaches one view and a shadowing pass
+  has to be able to render into page *n*
 
 ## Working rules
 

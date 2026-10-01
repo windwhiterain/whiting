@@ -95,24 +95,24 @@ pub fn light(
 pub fn mesh(label: &str, topology: &str, point_schema: Schema, points: PackedList) -> Value {
     Value::structure([
         (
-            crate::standard::LABEL.to_owned(),
+            scene::standard::LABEL.to_owned(),
             Value::String(label.to_owned()),
         ),
         (
-            crate::standard::TOPOLOGY.to_owned(),
+            scene::standard::TOPOLOGY.to_owned(),
             Value::variant(topology, []),
         ),
         (
-            crate::standard::POINT_SCHEMA.to_owned(),
+            scene::standard::POINT_SCHEMA.to_owned(),
             point_schema.to_value(),
         ),
-        (crate::standard::POINTS.to_owned(), Value::Packed(points)),
+        (scene::standard::POINTS.to_owned(), Value::Packed(points)),
     ])
 }
 
 /// Builds one shader of a scene, in one of the four stages.
 pub fn shader(
-    stage: crate::standard::Stage,
+    stage: scene::standard::Stage,
     label: &str,
     source: &str,
     pass_schema: Schema,
@@ -124,27 +124,27 @@ pub fn shader(
         stage.tag(),
         [
             (
-                crate::standard::LABEL.to_owned(),
+                scene::standard::LABEL.to_owned(),
                 Value::String(label.to_owned()),
             ),
             (
-                crate::standard::SOURCE.to_owned(),
+                scene::standard::SOURCE.to_owned(),
                 Value::String(source.to_owned()),
             ),
             (
-                crate::standard::PASS_SCHEMA.to_owned(),
+                scene::standard::PASS_SCHEMA.to_owned(),
                 pass_schema.to_value(),
             ),
             (
-                crate::standard::INSTANCE_SCHEMA.to_owned(),
+                scene::standard::INSTANCE_SCHEMA.to_owned(),
                 instance_schema.to_value(),
             ),
             (
-                crate::standard::POINT_SCHEMA.to_owned(),
+                scene::standard::POINT_SCHEMA.to_owned(),
                 point_schema.to_value(),
             ),
             (
-                crate::standard::CUSTOM_SCHEMA.to_owned(),
+                scene::standard::CUSTOM_SCHEMA.to_owned(),
                 custom_schema.to_value(),
             ),
         ],
@@ -185,11 +185,11 @@ pub fn gallery_custom_schema_with_image() -> Schema {
 pub fn screen_material(label: &str, shader: &str) -> Value {
     Value::structure([
         (
-            crate::standard::LABEL.to_owned(),
+            scene::standard::LABEL.to_owned(),
             Value::String(label.to_owned()),
         ),
         (
-            crate::standard::SHADER.to_owned(),
+            scene::standard::SHADER.to_owned(),
             Value::String(shader.to_owned()),
         ),
     ])
@@ -213,14 +213,14 @@ pub fn post_processes(labels: &[&str]) -> Value {
 pub fn mesh_material(label: &str, shader: &str, custom_data: Value) -> Value {
     Value::structure([
         (
-            crate::standard::LABEL.to_owned(),
+            scene::standard::LABEL.to_owned(),
             Value::String(label.to_owned()),
         ),
         (
-            crate::standard::SHADER.to_owned(),
+            scene::standard::SHADER.to_owned(),
             Value::String(shader.to_owned()),
         ),
-        (crate::standard::CUSTOM_DATA.to_owned(), custom_data),
+        (scene::standard::CUSTOM_DATA.to_owned(), custom_data),
     ])
 }
 
@@ -235,15 +235,15 @@ pub fn instance(
 ) -> Value {
     Value::structure([
         (
-            crate::standard::LABEL.to_owned(),
+            scene::standard::LABEL.to_owned(),
             Value::String(label.to_owned()),
         ),
         (
-            crate::standard::MESH.to_owned(),
+            scene::standard::MESH.to_owned(),
             Value::String(mesh.to_owned()),
         ),
         (
-            crate::standard::TRANSFORM.to_owned(),
+            scene::standard::TRANSFORM.to_owned(),
             Value::structure([
                 ("translation".to_owned(), triple(translation)),
                 ("rotation".to_owned(), triple(rotation)),
@@ -251,7 +251,7 @@ pub fn instance(
             ]),
         ),
         (
-            crate::standard::MATERIAL.to_owned(),
+            scene::standard::MATERIAL.to_owned(),
             Value::String(material.to_owned()),
         ),
     ])
@@ -362,7 +362,7 @@ pub fn gallery_instance_schema() -> Schema {
 /// Builds the custom schema a gallery material carries.
 ///
 /// These names are chosen so that merged with [`gallery_instance_schema`] they sort into
-/// the order the shaders in [`crate::gallery::shaders`] read them at.
+/// the order the shaders in [`crate::shaders`] read them at.
 pub fn gallery_custom_schema() -> Schema {
     Schema::new(SchemaKind::structure([
         (

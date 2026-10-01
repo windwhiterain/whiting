@@ -16,12 +16,12 @@
 
 use definition::Value;
 
-use crate::gallery::geometry::{fractal_noise, heightfield};
-use crate::gallery::kit::{
+use crate::geometry::{fractal_noise, heightfield};
+use crate::kit::{
     camera, instance, instances, light, mesh, mesh_material, post_processes, screen_material,
     shaded_point_schema, surface,
 };
-use crate::gallery::shaders::{mesh_shaders, post_shader};
+use crate::shaders::{mesh_shaders, post_shader};
 
 /// How far the field reaches, in world units.
 const EXTENT: f64 = 165.0;

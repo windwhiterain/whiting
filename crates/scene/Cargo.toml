@@ -16,3 +16,8 @@ thiserror = { workspace = true }
 # check beside the WGSL it checks: parsing and validating a shader is pure cpu work that needs
 # no adapter, which is what makes the gallery's WGSL checkable on a machine with no gpu.
 naga = { version = "30.0.1", features = ["wgsl-in"] }
+# The gallery crate depends on this one, so the cycle only exists for tests, which cargo allows
+# and the dependency graph of the published library never sees. The tests belong here rather
+# than there because what they check is what the compiler does with a scene: the gallery is
+# the fixture, not the subject.
+whiting-gallery = { path = "../gallery" }

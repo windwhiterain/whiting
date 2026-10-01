@@ -26,6 +26,11 @@ thiserror = { workspace = true }
 wgpu = { workspace = true, optional = true }
 png = { workspace = true, optional = true }
 
+# The gallery is what the render harness draws and what the render test reads, so it is a
+# development dependency: nothing in the device itself knows a scene by name.
+[dev-dependencies]
+gallery = { workspace = true }
+
 # The render harness drives the gpu backend, so it is only built when that backend is.
 [[example]]
 name = "render"

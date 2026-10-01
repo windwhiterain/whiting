@@ -31,13 +31,13 @@ use definition::{Schema, SchemaKind};
 
 use graphics::layout::{MAX_ATTRIBUTE_COMPONENTS, components};
 
-use crate::gallery::kit::{gallery_custom_schema, gallery_instance_schema};
+use crate::kit::{gallery_custom_schema, gallery_instance_schema};
 
 /// Returns the attributes a gallery material's points and row are read at.
 ///
 /// The row is the gallery's own instance schema merged with the gallery's own custom
 /// schema, which are the two a gallery shader declares, so the list cannot disagree with
-/// the declarations a scene hands to [`crate::gallery::kit::shader`].
+/// the declarations a scene hands to [`crate::kit::shader`].
 pub fn gallery_vertex_inputs(point: &Schema) -> String {
     vertex_inputs(point, &gallery_row_schema())
 }

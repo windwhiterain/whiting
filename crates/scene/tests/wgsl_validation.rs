@@ -25,9 +25,9 @@
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use graphics::{ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
+use whiting_gallery::Gallery;
 use whiting_scene::CompileContext;
 use whiting_scene::Compiler;
-use whiting_scene::gallery::Gallery;
 use whiting_scene::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema};
 
 /// The capabilities the downlevel floor this renderer requests allows.
