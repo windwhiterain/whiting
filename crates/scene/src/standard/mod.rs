@@ -68,7 +68,9 @@
 //!
 //! // The scene has instances in three stages, so the pipeline is the three stages in order.
 //! // Instances that would be drawn by identical passes share one: the two lighting instances
-//! // are one pass, so the label names the group rather than an instance.
+//! // are one pass, so the label names the group rather than an instance. The lighting pass
+//! // names no light at all, where the shadowing one does — it draws one light's page, and
+//! // that light is part of what the pass is.
 //! let passes = graphics::passes(&compiled.graphics.value).expect("the passes read");
 //! let labels: Vec<&str> = passes.iter().map(|pass| pass.label().unwrap()).collect();
 //! assert_eq!(
@@ -76,7 +78,7 @@
 //!     [
 //!         "shadow/key/shadowing/triangle",
 //!         "depth/depthing/triangle",
-//!         "lighting/key/lighting/triangle"
+//!         "lighting/lighting/triangle"
 //!     ]
 //! );
 //!
@@ -221,15 +223,14 @@ pub use camera::{Camera, DEFAULT_FIELD_OF_VIEW, Projection, ProjectionKind, proj
 pub use compiler::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema};
 pub use emit::{
     COLOR_TARGET_ENTRY, DEPTH_BUFFER_ENTRY, Emitted, FULLSCREEN_INSTANCE, FULLSCREEN_MESH,
-    PRESENT_TARGET_ENTRY, Stage, emit, shadow_map_entry,
+    PRESENT_TARGET_ENTRY, Stage, emit,
 };
 pub use example::example_standard_scene;
 pub use frame::Frame;
 pub use math::{Bounds, apply as project_point, transform_matrix};
 pub use pass_schemas::{
-    COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, INSTANCE_DATA, LIGHT_COLOR,
-    LIGHT_POSITION, LIGHT_PROJECTION, LIGHT_SHADOW_TEXEL, PRESENT_TARGET, PROJECTION, SHADOW_MAP,
-    SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, TIME, VERTICES, depth_pass_schema,
+    CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, FRAME_SIZE, INSTANCE_DATA,
+    PRESENT_TARGET, PROJECTION, SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, VERTICES, depth_pass_schema,
     emission_pass_schema, light_pass_schema, post_pass_schema, projection_schema,
     shadow_pass_schema,
 };

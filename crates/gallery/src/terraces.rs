@@ -725,8 +725,11 @@ fn vec3_wgsl(vector: [f64; 3]) -> String {
 /// # Invariants
 ///
 /// The body is written into the lighting stage's fragment function, so it reads the
-/// names the template has in scope — `normal`, `lambert`, `radiance`, `ambient` — and
-/// declares none of them twice. The pipeline's own colour is multiplied by the fragment's
+/// names the template has in scope — `color`, `normal`, `in` and `uniforms` — and
+/// declares none of them twice. The per light names it used to name as well
+/// (`lambert`, `radiance`, `ambient`) are gone: the template sums the lights of one
+/// cluster and adds its ambient once, so a body spliced after them sees only the sum.
+/// The pipeline's own colour is multiplied by the fragment's
 /// albedo, which carries every zone the terrain has; the water's mirror is added after,
 /// because a reflection is light the surface gathers, not albedo it holds.
 const TERRAIN_SURFACE: &str = r#"

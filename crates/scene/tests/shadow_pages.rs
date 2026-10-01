@@ -91,6 +91,7 @@ fn a_light_that_reaches_nothing_is_not_reported_as_dropped_by_a_full_pool() {
         position: [0.0, 0.0, 20.0],
         colour: [1.0, 1.0, 1.0],
         radius: 1.0,
+        shadow_projection: identity(),
         clustered: true,
     };
     let clusters =
@@ -112,6 +113,7 @@ fn a_light_that_takes_no_cluster_slot_is_given_no_page_however_bright_it_is() {
         position: [0.0, 0.0, 0.0],
         colour: [1.0, 1.0, 1.0],
         radius: 1000.0,
+        shadow_projection: identity(),
         clustered: false,
     };
     let clusters =
@@ -192,22 +194,25 @@ fn a_pool_the_scene_says_nothing_about_is_the_documented_one() {
     );
 }
 
-/// The acceptance bar for the whole effort, and it is checkable with no gpu: a pass count that
-/// grows with the light count is the thing this effort exists to replace.
+/// The acceptance bar for the whole effort: the **lighting** pass count is a function of the
+/// scene's geometry and not of how many lights it has.
 ///
-/// **This does not pass yet, and it is marked ignored rather than deleted.** The per light
-/// pass generation in `emit` is still in place, because removing it needs the clustered
-/// lighting pass, and that pass needs a shadow page pool a shader can index — which is
-/// blocked on the device being able to create a texture array. The failure this test would
-/// report is the real state of the renderer: `lanterns` emits 24 passes for three lights and
-/// 30 for four, and both numbers are per light per group. Run it with
-/// `cargo test -p whiting-scene --test shadow_pages -- --ignored` to see the bar being missed
-/// as it is today; it starts passing when stage 4b lands.
+/// # Why this compares the lighting passes and not all of them
+///
+/// It used to compare every pass, and it could only be written that way because every pass
+/// named a light. It cannot be written that way now, and the reason is a limit of the api
+/// rather than a choice: **a render pass attaches exactly one depth image.** A light's page
+/// is rendered from that light's own eye, so two lights are two passes however the shading
+/// reads them, and no amount of clustering collapses the shadowing stage. A bar comparing
+/// every label would be a bar that can never go green, and a bar that reports nothing is
+/// worse than no bar.
+///
+/// What replaced it is the second test: the shadowing count is bounded by the **pool**, which
+/// is the budget the scene controls, rather than by the light count. Together the two say
+/// what the design actually claims — the shading is O(groups) and the shadow rendering is
+/// O(min(lights, pages) * groups).
 #[test]
-#[ignore = "the per light passes are still generated; the clustered pass cannot index a page yet"]
 fn the_lighting_pass_count_does_not_move_when_a_light_is_added() {
-    // The acceptance bar for the whole effort, and it is checkable with no gpu: a pass count
-    // that grows with the light count is the thing this effort exists to replace.
     let before = Gallery::build("lanterns");
     let one = light_count(&before);
     assert!(one > 1, "lanterns starts with several lights, not {one}");
@@ -219,11 +224,86 @@ fn the_lighting_pass_count_does_not_move_when_a_light_is_added() {
         "the added light is in the document"
     );
     assert_eq!(
-        pass_labels(&after),
-        pass_labels(&before),
-        "the emitted passes are the same, which is the point: a pass count that moved with the \
-         light count is exactly what stage 4b replaces"
+        lighting_pass_labels(&after),
+        lighting_pass_labels(&before),
+        "the lighting passes are the same, which is the point: a lighting pass count that \
+         moved with the light count is exactly what the clustered pass replaces"
     );
+}
+
+/// The shadowing pass count follows the **pool**, not the scene's light count.
+///
+/// A light the pool gave no page is drawn into nothing and is lit unshadowed, so a scene with
+/// more lights than pages emits no more shadowing passes than it has pages. That is the part
+/// of the old `lights * groups` that survived, and this is what bounds it: the scene's
+/// `shadow_pages` field is the whole budget.
+#[test]
+fn the_shadowing_pass_count_is_bounded_by_the_pool_and_not_by_the_light_count() {
+    let scene = with_a_pool_of_one_page(Gallery::build("lanterns"));
+    let three = light_count(&scene);
+    assert_eq!(
+        shadowing_pass_count(&scene),
+        3,
+        "lanterns has {three} groups and a pool of one page gives one light a page, so exactly \
+         one shadowing pass per group"
+    );
+
+    let scene = with_a_pool_of_one_page(with_one_more_light(&scene));
+    assert_eq!(
+        light_count(&scene),
+        three + 1,
+        "the added light is in the document and the pool is still one page"
+    );
+    assert_eq!(
+        shadowing_pass_count(&scene),
+        3,
+        "the pool did not grow, so the added light is lit unshadowed and no pass was added for \
+         it: the shadowing count is a function of the pool, not of the lights"
+    );
+    // And the whole document is untouched, which is the stronger claim and the reason the
+    // pool is the budget: with the pool no larger than one page, a fourth light costs
+    // nothing at all in passes, in either stage.
+    assert_eq!(
+        pass_labels(&scene),
+        pass_labels(&with_a_pool_of_one_page(Gallery::build("lanterns"))),
+        "every pass of the scene is the same, so a light the pool turned away is not drawn \
+         into anything and is lit unshadowed instead"
+    );
+}
+
+/// Returns the scene with one page of shadow pool, which is the smallest budget there is.
+fn with_a_pool_of_one_page(scene: Value) -> Value {
+    let mut fields = scene.as_field_map().expect("a scene is a struct").clone();
+    let clustering = Value::structure([(SHADOW_PAGES.to_owned(), Value::Int(1))]);
+    fields.insert(CLUSTERING.to_owned(), clustering);
+    Value::structure(fields)
+}
+
+/// Returns the labels of every lighting pass a scene emits, in order.
+fn lighting_pass_labels(scene: &Value) -> Vec<String> {
+    graphics::passes(&compiled(scene).graphics.value)
+        .expect("the passes read")
+        .iter()
+        .filter(|pass| {
+            pass.label()
+                .expect("a pass is labelled")
+                .starts_with("lighting/")
+        })
+        .map(|pass| pass.label().expect("a pass is labelled").to_owned())
+        .collect()
+}
+
+/// Returns how many shadowing passes a scene emits.
+fn shadowing_pass_count(scene: &Value) -> usize {
+    graphics::passes(&compiled(scene).graphics.value)
+        .expect("the passes read")
+        .iter()
+        .filter(|pass| {
+            pass.label()
+                .expect("a pass is labelled")
+                .starts_with("shadow/")
+        })
+        .count()
 }
 
 /// Returns the labels of every pass a scene emits, in order.
@@ -303,8 +383,23 @@ fn light(label: &str, brightness: f64) -> ClusterLight {
         position: [0.0, 0.0, 0.0],
         colour: [brightness; 3],
         radius: 8.0,
+        shadow_projection: identity(),
         clustered: true,
     }
+}
+
+/// Returns the identity matrix, which is the projection a light no shadow is looked up
+/// through carries.
+///
+/// Nothing in the pool reads it — a page is a page and a light either has one or does not —
+/// so what a projection holds is of no interest to which lights are given a page.
+fn identity() -> [f64; 16] {
+    [
+        1.0, 0.0, 0.0, 0.0, //
+        0.0, 1.0, 0.0, 0.0, //
+        0.0, 0.0, 1.0, 0.0, //
+        0.0, 0.0, 0.0, 1.0,
+    ]
 }
 
 /// Returns the parallel camera the convention gives a box of half width four.

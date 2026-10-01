@@ -276,12 +276,16 @@ fn vertex_main(
 "#;
 
 /// The lighting stage: shade by what the earlier passes wrote, so a frame where this draws
-/// is a frame where the shadow map and the depth buffer were both read.
+/// is a frame where the pool and the depth buffer were both read.
 ///
-/// The shadow is a real one: the world position is carried into the light's own clip
-/// space, and the surface is in shadow when it is further from the light than the map
-/// recorded. Reading the shadow map at the fragment's own screen coordinate is not a
-/// shadow, because the two spaces have nothing to do with each other.
+/// The shadow is a real one: the world position is carried into the **light's own** clip
+/// space through the projection in that light's own record, and the surface is in shadow when
+/// it is further from the light than that light's page recorded. Reading the page at the
+/// fragment's own screen coordinate is not a shadow, because the two spaces have nothing to
+/// do with each other.
+///
+/// The loop is over one cluster's lights rather than over the scene's, which is what makes
+/// this pass's count a function of the scene's geometry rather than of how many lamps it has.
 const QUAD_SOURCE: &str = r#"
 struct Projection {
     position: vec3<f32>,
@@ -289,17 +293,28 @@ struct Projection {
 };
 
 struct Uniforms {
-    light_color: vec3<f32>,
-    light_position: vec3<f32>,
-    light_projection: mat4x4<f32>,
-    light_shadow_texel: vec2<f32>,
+    cluster_grid: vec4<f32>,
+    frame_size: vec2<f32>,
     projection: Projection,
     time: f32,
 };
 
+/// One light, as the clustered loop reads it. The offsets need no padding written here: a
+/// three component vector is sixteen byte aligned and twelve bytes long, so the `f32` after
+/// each is the padding that aligns the next one.
+struct LightRecord {
+    color: vec3<f32>,
+    page: f32,
+    position: vec3<f32>,
+    radius: f32,
+    shadow_projection: mat4x4<f32>,
+};
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var depth_buffer: texture_depth_2d;
-@group(0) @binding(2) var shadow_map: texture_depth_2d;
+@group(0) @binding(1) var<storage, read> cluster_light_counts: array<f32>;
+@group(0) @binding(2) var<storage, read> cluster_light_indices: array<f32>;
+@group(0) @binding(4) var<storage, read> light_records: array<LightRecord>;
+@group(0) @binding(5) var shadow_pool: texture_depth_2d_array;
 
 struct Vertex {
     @builtin(position) position: vec4<f32>,
@@ -329,18 +344,42 @@ fn vertex_main(
     return out;
 }
 
-/// Returns how lit a surface is, by comparing its depth in the light's own space against
-/// what the shadow map recorded there.
+/// Returns which cluster of the grid a fragment is in.
 ///
-/// A nine tap kernel is what turns a hard staircase into an edge. The taps are taken by
-/// `textureLoad` rather than through a sampler because a binding carries a texture and
-/// nothing else: there is no sampler to filter with, and a depth compare has to be done
-/// by hand in any case.
-fn shadow(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
-    let to_light = uniforms.light_position - world_position;
-    let from_light = uniforms.light_projection * vec4<f32>(world_position, 1.0);
+/// The grid is divided evenly across the frame and evenly through the view's depth, and the
+/// depth is the number a fragment already carries, so this is three multiplies and no
+/// arithmetic. Rows count from the bottom, because a framebuffer row runs down the screen
+/// and a grid row runs up the view.
+fn cluster_of(fragment: vec4<f32>) -> u32 {
+    let across = clamp(fragment.x / uniforms.frame_size.x, 0.0, 0.99999);
+    let up = clamp(1.0 - fragment.y / uniforms.frame_size.y, 0.0, 0.99999);
+    let column = u32(across * uniforms.cluster_grid.x);
+    let row = u32(up * uniforms.cluster_grid.y);
+    let slice = u32(clamp(fragment.z, 0.0, 0.99999) * uniforms.cluster_grid.z);
+    return slice * u32(uniforms.cluster_grid.x * uniforms.cluster_grid.y)
+        + row * u32(uniforms.cluster_grid.x)
+        + column;
+}
+
+/// Returns how lit a surface is by one light: unshadowed where the light was given no page,
+/// and otherwise by comparing the surface's depth in that light's own space against what the
+/// light's page recorded there.
+///
+/// A light with no page is lit unshadowed because that is the pool working: a page is worth
+/// rendering once, a light the scene's budget did not buy one is a light the scene chose to
+/// draw approximately, and the alternative would be a neighbour's shadow.
+///
+/// The taps are taken by `textureLoad` rather than through a sampler because a binding
+/// carries a texture and nothing else: there is no sampler to filter with, and a depth
+/// compare has to be done by hand in any case.
+fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
+    let page = i32(light.page);
+    if page < 0 {
+        return 1.0;
+    }
+    let from_light = light.shadow_projection * vec4<f32>(world_position, 1.0);
     // A point behind the light has no shadow, and dividing by a negative w would fold it
-    // back into the map from behind.
+    // back into the page from behind.
     if from_light.w <= 0.0 {
         return 1.0;
     }
@@ -350,21 +389,24 @@ fn shadow(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
     if any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) {
         return 1.0;
     }
-    let size = vec2<f32>(textureDimensions(shadow_map));
+    let size = vec2<f32>(textureDimensions(shadow_pool));
     // A surface is its own depth and the recorded value is the depth of whatever was
     // nearest the light, so the comparison is biased. The bias is scaled by how obliquely
     // the light strikes the surface, because the depth a surface's own rasterised faces
     // disagree with its true depth by more the further they lean away from the light, and
     // one constant is either too small for the leaning surfaces or detaches the shadow
     // from the flat ones.
-    let slope = 1.0 - abs(dot(normal, normalize(to_light)));
+    let slope = 1.0 - abs(dot(normal, normalize(light.position - world_position)));
     let z = ndc.z - (0.002 + 0.04 * slope);
     var lit = 0.0;
     for (var row = -1; row <= 1; row = row + 1) {
         for (var column = -1; column <= 1; column = column + 1) {
-            let offset = vec2<f32>(f32(column), f32(row)) * uniforms.light_shadow_texel;
-            let coordinate = vec2<i32>(uv * size + offset);
-            let recorded = textureLoad(shadow_map, coordinate, 0);
+            // The offset is whole texels added after the conversion, so the kernel really is
+            // three by three rather than nine reads of the same texel. The last argument is
+            // the mip level, which a depth texture's `textureLoad` takes; a pool is rendered
+            // into and so has one level.
+            let coordinate = vec2<i32>(uv * size) + vec2<i32>(column, row);
+            let recorded = textureLoad(shadow_pool, coordinate, page, 0);
             lit = lit + select(0.0, 1.0, z <= recorded);
         }
     }
@@ -373,8 +415,17 @@ fn shadow(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
 
 @fragment
 fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {
-    let lit = shadow(in.world_position, normalize(in.normal));
-    let color = uniforms.light_color * lit;
+    let normal = normalize(in.normal);
+    let cluster = cluster_of(in.position);
+    let count = u32(cluster_light_counts[cluster]);
+    let row = cluster * u32(uniforms.cluster_grid.w);
+    var color = vec3<f32>(0.0);
+    for (var slot = 0u; slot < count; slot = slot + 1u) {
+        let light = light_records[u32(cluster_light_indices[row + slot])];
+        let to_light = light.position - in.world_position;
+        let lambert = max(dot(normal, normalize(to_light)), 0.0);
+        color = color + light.color * lambert * shadowed(light, in.world_position, normal);
+    }
     return vec4<f32>(color.r, color.g, color.b, 1.0);
 }
 "#;

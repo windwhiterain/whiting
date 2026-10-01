@@ -49,7 +49,7 @@ pub use assignment::{
 pub use buffers::{
     CLUSTER_COUNT_FIELD, CLUSTER_COUNTS_ENTRY, CLUSTER_INDICES_ENTRY, CLUSTER_LIGHT_FIELD,
     Clusters, LIGHT_COLOR_FIELD, LIGHT_PAGE_FIELD, LIGHT_POSITION_FIELD, LIGHT_RADIUS_FIELD,
-    LIGHT_RECORDS_ENTRY, LightPool, MAX_TEXTURE_ARRAY_LAYERS, NO_PAGE, SHADOW_PAGE_HEIGHT,
-    SHADOW_PAGE_WIDTH, SHADOW_PAGES, cluster_count_schema, cluster_list_schema,
-    light_record_schema, pool_notes, read_light_pool,
+    LIGHT_RECORDS_ENTRY, LIGHT_SHADOW_PROJECTION_FIELD, LightPool, MAX_TEXTURE_ARRAY_LAYERS,
+    NO_PAGE, SHADOW_PAGE_HEIGHT, SHADOW_PAGE_WIDTH, SHADOW_PAGES, cluster_count_schema,
+    cluster_list_schema, light_record_schema, light_record_stride, pool_notes, read_light_pool,
 };

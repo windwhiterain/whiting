@@ -238,6 +238,20 @@ pub struct ClusterLight {
     pub colour: [f64; 3],
     /// How far it reaches, as a sphere around its position.
     pub radius: f64,
+    /// The light's own view projection, sixteen floats in column major order.
+    ///
+    /// # Invariants
+    ///
+    /// This is **carried, not computed**: the arithmetic in this module never builds a
+    /// projection, because a projection is a property of a view and this module has no view.
+    /// The compiler that owns the light's camera fills it in, and a light of a kind that
+    /// casts no shadow carries the identity rather than a matrix nothing looks through.
+    ///
+    /// It is here rather than beside the page in [`super::buffers`] because the record is
+    /// packed from this one struct and a field reached from somewhere else would be a second
+    /// array indexed the same way, which is a way for the two to disagree about which light
+    /// a record is.
+    pub shadow_projection: [f64; 16],
     /// Whether this kind of light takes cluster slots at all.
     ///
     /// A light that covers the whole view is in every cluster by definition, so listing it

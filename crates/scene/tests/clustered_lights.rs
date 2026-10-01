@@ -50,14 +50,17 @@ fn an_all_point_scene_still_emits_the_passes_it_emitted_before() {
         .iter()
         .map(|pass| pass.label().expect("a pass is labelled"))
         .collect();
+    // The lighting pass no longer names a light, so its label lost the `key/` that the one
+    // light of this scene used to contribute. The shadowing pass still does name one, because
+    // it is still one per light that was given a page.
     assert_eq!(
         labels,
         [
             "shadow/key/shadowing/triangle",
             "depth/depthing/triangle",
-            "lighting/key/lighting/triangle",
+            "lighting/lighting/triangle",
         ],
-        "this stage adds data and removes no pass"
+        "one pass per stage, and none of them named twice over"
     );
 
     // Every buffer that existed before this stage, at the size it had.
@@ -65,7 +68,7 @@ fn an_all_point_scene_still_emits_the_passes_it_emitted_before() {
         ("triangle_vertices", 72),
         ("shadow/key/shadowing/triangle_instance_data", 76),
         ("depth/depthing/triangle_instance_data", 76),
-        ("lighting/key/lighting/triangle_instance_data", 152),
+        ("lighting/lighting/triangle_instance_data", 152),
     ] {
         assert_eq!(
             buffer_bytes(&compiled.instance, entry),
@@ -74,12 +77,19 @@ fn an_all_point_scene_still_emits_the_passes_it_emitted_before() {
         );
     }
 
-    // And the three this stage adds: one record of eight floats for the one light — colour,
-    // page, position and radius — one count per cluster of the default grid, and one row of
-    // the default cap per cluster.
+    // And the three this stage adds: one record of twenty four floats for the one light —
+    // colour, page, position, radius and the light's own projection — one count per cluster of
+    // the default grid, and one row of the default cap per cluster.
     let clusters = Clustering::convention().cluster_count() as i64;
+    let stride = whiting_scene::lighting::light_record_stride() as i64;
+    assert_eq!(
+        stride * 4,
+        96,
+        "the record is twenty four floats, and the stride is stated rather than written down \
+         so the assertion and the packing read one number"
+    );
     for (entry, size) in [
-        (LIGHT_RECORDS_ENTRY, 8 * 4),
+        (LIGHT_RECORDS_ENTRY, stride * 4),
         (CLUSTER_COUNTS_ENTRY, clusters * 4),
         (CLUSTER_INDICES_ENTRY, clusters * 64 * 4),
     ] {
@@ -97,21 +107,104 @@ fn an_all_point_scene_still_emits_the_passes_it_emitted_before() {
     );
 }
 
+/// How many passes a scene emits of each stage, which is the whole of what a pass count is.
+///
+/// # Invariants
+///
+/// The **lighting** number is the scene's groups and nothing else: it is what the clustered
+/// pass bought, and it is what the acceptance bar in `shadow_pages.rs` holds still while a
+/// light is added. The **shadowing** number is the lights the pool bought pages for, times
+/// the groups, so it is bounded by the pool rather than by the scene's light count — a scene
+/// with more lights than pages draws only as many shadow maps as it has pages, and lights the
+/// rest unshadowed.
+#[derive(Debug, PartialEq, Eq)]
+struct Stages {
+    shadowing: usize,
+    depthing: usize,
+    lighting: usize,
+    other: usize,
+}
+
+impl Stages {
+    fn of(scene: &Value) -> Self {
+        let compiled = compiled(scene);
+        let passes = graphics::passes(&compiled.graphics.value).expect("the passes read");
+        let count = |prefix: &str| {
+            passes
+                .iter()
+                .filter(|pass| pass.label().expect("a pass is labelled").starts_with(prefix))
+                .count()
+        };
+        let stages = (
+            count("shadow/"),
+            count("depth/"),
+            count("lighting/"),
+            passes.len(),
+        );
+        Self {
+            shadowing: stages.0,
+            depthing: stages.1,
+            lighting: stages.2,
+            // Everything else: the emission stage and the post processes, neither of which
+            // reads a light and neither of which this stage touched.
+            other: stages.3 - stages.0 - stages.1 - stages.2,
+        }
+    }
+
+    fn total(&self) -> usize {
+        self.shadowing + self.depthing + self.lighting + self.other
+    }
+}
+
 #[test]
 fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
-    for (name, passes) in [
-        ("dunes", 6),
-        ("lanterns", 23),
-        ("monoliths", 7),
-        ("studio", 3),
-        ("terraces", 31),
-        ("tiles", 4),
-    ] {
-        let compiled = compiled(&Gallery::build(name));
-        let count = graphics::passes(&compiled.graphics.value)
-            .expect("the passes read")
-            .len();
-        assert_eq!(count, passes, "{name} emits the passes it emitted before");
+    // The counts move, and this is where the movement is pinned. Each is a function of the
+    // scene's **geometry** — how many groups of mesh — and, for the shadowing stage, of how
+    // many pages the pool bought; none is a function of the scene's light count.
+    let counted: Vec<(String, Stages)> = ["dunes", "lanterns", "monoliths", "studio", "terraces", "tiles"]
+        .into_iter()
+        .map(|name| (name.to_owned(), Stages::of(&Gallery::build(name))))
+        .collect();
+    let expected: Vec<(&str, Stages)> = vec![
+        ("dunes", Stages { shadowing: 2, depthing: 1, lighting: 1, other: 1 }),
+        ("lanterns", Stages { shadowing: 9, depthing: 3, lighting: 3, other: 2 }),
+        ("monoliths", Stages { shadowing: 2, depthing: 2, lighting: 2, other: 1 }),
+        ("studio", Stages { shadowing: 1, depthing: 1, lighting: 1, other: 0 }),
+        ("terraces", Stages { shadowing: 12, depthing: 6, lighting: 6, other: 1 }),
+        ("tiles", Stages { shadowing: 1, depthing: 1, lighting: 1, other: 1 }),
+    ];
+    assert_eq!(
+        counted,
+        expected
+            .into_iter()
+            .map(|(name, stages)| (name.to_owned(), stages))
+            .collect::<Vec<(String, Stages)>>(),
+        "the passes of each gallery scene by stage, after the clustered pass replaced the \
+         per light ones"
+    );
+}
+
+/// The totals the same scenes emitted before, which is the claim the stage above is replacing.
+///
+/// Kept as a plain list so the move is legible in one place: `dunes` 6 to 5, `lanterns` 23
+/// to 17, `monoliths` 7 to 7, `studio` 3 to 3, `terraces` 31 to 25, `tiles` 4 to 4. Two of
+/// the six are unchanged, which is the honest result: a scene whose groups are few and whose
+/// lights are few gains nothing from the swap, and a scene with the most of both is where the
+/// count actually moved.
+#[test]
+fn the_totals_shrank_where_the_scene_had_more_lights_than_groups() {
+    let totals: Vec<(String, usize)> = ["dunes", "lanterns", "monoliths", "studio", "terraces", "tiles"]
+        .into_iter()
+        .map(|name| (name.to_owned(), Stages::of(&Gallery::build(name)).total()))
+        .collect();
+    let before = [("dunes", 6), ("lanterns", 23), ("monoliths", 7), ("studio", 3), ("terraces", 31), ("tiles", 4)];
+    for ((name, after), (was_name, was)) in totals.iter().zip(before.iter()) {
+        assert_eq!(name, was_name);
+        assert!(
+            after <= was,
+            "{name} emitted {was} passes and emits {after}, so the clustered pass never added \
+             one"
+        );
     }
 }
 
@@ -271,6 +364,7 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
         position: [WIDE / 2.0 + 4.0, 0.0, -0.5],
         colour: [0.5, 0.5, 0.5],
         radius: 4.0,
+        shadow_projection: identity(),
         clustered: true,
     };
     let bright = ClusterLight {
@@ -278,6 +372,7 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
         position: [0.0, 0.0, -0.5],
         colour: [1.0, 1.0, 1.0],
         radius: 4.0,
+        shadow_projection: identity(),
         clustered: true,
     };
     let clusters =
@@ -326,6 +421,7 @@ fn a_light_that_covers_the_view_takes_no_cluster_slot() {
         position: [0.0, 0.0, -0.5],
         colour: [1.0, 1.0, 1.0],
         radius: 1.0,
+        shadow_projection: identity(),
         clustered: false,
     };
     let clusters = assign(&grid, &[sun], &parallel(), &pool()).expect("the assignment runs");
@@ -395,8 +491,24 @@ fn light(label: &str, position: [f64; 3], radius: f64) -> ClusterLight {
         position,
         colour: [1.0, 1.0, 1.0],
         radius,
+        shadow_projection: identity(),
         clustered: true,
     }
+}
+
+/// Returns the identity matrix, which is the projection a light no shadow is looked up
+/// through carries.
+///
+/// The assignment does not read it and the packing only writes it, so a test that is about
+/// which lights reach which clusters has nothing to say about a projection — but the record
+/// has to carry one, and a light with no page is never looked up through it.
+fn identity() -> [f64; 16] {
+    [
+        1.0, 0.0, 0.0, 0.0, //
+        0.0, 1.0, 0.0, 0.0, //
+        0.0, 0.0, 1.0, 0.0, //
+        0.0, 0.0, 0.0, 1.0,
+    ]
 }
 
 /// Returns how many lights a cluster kept.
