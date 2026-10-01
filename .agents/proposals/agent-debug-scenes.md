@@ -263,9 +263,19 @@ declares nothing is still answered by the old rule.
 - **A G-buffer**, and with it `Normal` and `Identifier` channels, which is the change that would
   make the coverage contract above go away — a channel that ran its own geometry pass would cover
   exactly what it drew.
-- **A permanent test** of the two invariants that matter most here: the picture is unchanged by a
-  channel, and a background pixel reports none. They were verified by hand and by scratch
-  programs, and a scratch program is not a regression test.
 - **Exposing the channel over RPC.** The device now returns every declared output, so an RPC
   caller *receives* a position image a document declares; it still cannot *ask* for one, because
   the switch is the compiler's field.
+
+## Considered and declined
+
+- **Permanent tests of the two invariants that matter most**: that a channel does not move the
+  picture, and that a background pixel reports none. Both were verified by hand and by scratch
+  programs that were written, run and deleted, and the superior declined to keep them as tests.
+  This is recorded rather than dropped, because the verification above is a measurement of one
+  afternoon and not a property anything holds: **a later edit that moves a pixel of the picture
+  when a channel is asked for will not fail anything.**
+- **A `Position` channel that runs its own geometry pass** instead of reading the depth buffer.
+  It would cover exactly what it drew, and so would have no coverage contract to state — at the
+  cost of a second geometry pass over the whole scene, a shader generated per point schema, and a
+  scene bucket for the channel to draw, which the decision against a scene field rules out.
