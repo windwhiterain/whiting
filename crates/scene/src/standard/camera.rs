@@ -273,14 +273,17 @@ impl Camera {
                 // A small margin, so a point exactly on the bound is not clipped by a
                 // rounding error in the matrix.
                 let margin = (farthest - nearest).max(1.0) * 0.01;
+                // The floor under the near plane is a fraction of the eye's own distance
+                // rather than a hair above zero. A camera that crops in stands inside the
+                // box, no near plane brackets a box the eye is inside, and one at zero
+                // maps every drawn depth into the last few float values below one: the
+                // depth buffer becomes unable to tell any two surfaces apart. A five
+                // hundredth of the distance loses nothing the frame can show, because
+                // nothing that close to the eye was going to be in it.
+                let nearest = (nearest - margin).max(distance * 0.002);
                 Projection {
                     matrix: multiply(
-                        &perspective(
-                            self.field_of_view,
-                            self.aspect,
-                            (nearest - margin).max(1e-4),
-                            farthest + margin,
-                        ),
+                        &perspective(self.field_of_view, self.aspect, nearest, farthest + margin),
                         &view,
                     ),
                     eye,
