@@ -44,9 +44,13 @@ use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{derived_instance_schema, layout::packed_layout, verify_pass_inputs};
 
 use crate::lighting::{self as lighting_pool, ClusterLight, Clustering, LightPool};
+use crate::lighting::{SPOT_CONES_ENTRY, SpotCone, spot_cone_schema, spot_cones, storage};
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
 use crate::standard::frame::Frame;
-use crate::standard::math::{Bounds, IDENTITY, Matrix, apply, projection_of, transform_matrix};
+use crate::standard::math::{
+    Bounds, IDENTITY, Matrix, add, apply, dot, look_at, multiply, normalize, perspective,
+    projection_of, transform_matrix,
+};
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     CAMERA, CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, DEPTH_RANGE,
@@ -316,12 +320,45 @@ struct LightRead {
     /// scene draws, and what the scene draws is not known until the meshes have been read.
     /// [`LightRead::radius`] resolves the two, once the bounds are.
     radius: Option<f64>,
+    /// The cone the light shines in.
+    ///
+    /// # Invariants
+    ///
+    /// It is a cone for a spot light and [`SpotCone::whole_sphere`] for every other kind, so
+    /// the run of cones has one record per light whatever kinds a scene mixes. A light with
+    /// no cone is not one whose cone is absent: the record run is indexed by the same number
+    /// as the light record run, and a hole in one of them is a fragment that has to test
+    /// before it can read.
+    cone: SpotCone,
 }
 
 impl LightRead {
-    /// Returns how far this light reaches, falling back to one box radius of what is drawn.
+    /// Returns how far this light reaches, falling back to what the kind itself says.
+    ///
+    /// # Invariants
+    ///
+    /// A light that names a radius has said how far it reaches and that is the answer. One that
+    /// does not has it worked out, and the two kinds that can be in that position want different
+    /// answers:
+    ///
+    /// - A **spot** light's reach is its own cone. The volume that cone cuts out of a scene of
+    ///   half width `shadow_extent` ends in a disc, and the distance from the light to the rim
+    ///   of that disc is what the cone reaches — see [`SpotCone::reach`]. Falling back to the
+    ///   box radius here would be a light whose **culling** sphere is smaller than the cone it
+    ///   is drawing, so the light would be dropped from the clusters at the edge of its own
+    ///   cone and the outer angle would never be seen. A lamp standing higher above the floor
+    ///   than the box is wide hits this on the first try, and what the author sees is a
+    ///   grid-aligned rectangle where the cone's own circle should be.
+    /// - Everything else is a point light's reach, and a light the size of the scene it stands
+    ///   in reaches across it.
     fn radius(&self, bounds: &Bounds) -> f64 {
-        self.radius.unwrap_or_else(|| bounds.largest_half_width())
+        if let Some(radius) = self.radius {
+            return radius;
+        }
+        match (self.kind, self.shadow_extent) {
+            (LightKind::Spot, Some(extent)) => self.cone.reach(extent),
+            _ => bounds.largest_half_width(),
+        }
     }
 
     /// Returns the position this light's record carries.
@@ -358,12 +395,20 @@ impl LightRead {
     /// together rather than one after the other: a kind with a position and no volume would be
     /// a document whose two answers had come to disagree, and one check is the place that
     /// cannot.
+    ///
+    /// The **kind** chooses the shape, because a point light's volume is a box looked at from
+    /// where it stands and a spot light's is a cone: the same two numbers, read as two
+    /// different shapes. Which is why a spot light's cone reaches this function at all, and
+    /// why a point light's is never read: the cone of a point light is the whole sphere and
+    /// [`spot_projection`] would put a near plane and a far plane around a volume with no
+    /// sides.
     fn shadow_volume(&self, bounds: &Bounds) -> Option<(Matrix, [f64; 3])> {
-        Some(light_projection(
-            self.position?,
-            self.shadow_extent?,
-            bounds,
-        ))
+        let position = self.position?;
+        let extent = self.shadow_extent?;
+        Some(match self.kind {
+            LightKind::Spot => spot_projection(position, &self.cone, extent, bounds),
+            _ => light_projection(position, extent, bounds),
+        })
     }
 }
 
@@ -401,10 +446,10 @@ impl LightKind {
     /// equally and a cluster slot spent on one is a slot not spent on culling anything. They
     /// take no slot here and get a path of their own, which stage 3b builds.
     ///
-    /// Only a point light reaches this compiler: `read_lights` refuses the other three rather
-    /// than drawing them as a point. The two answers that agree with nothing today are here
-    /// because the exemption is a statement about the design, and the kind it is stated on is
-    /// the kind that decides it.
+    /// A point light and a spot light reach this compiler, and they are the two kinds that
+    /// take a slot: a spot light is a point light with a cone, and it is culled by its reach
+    /// exactly as one is, with the cone scaling what survives rather than replacing the
+    /// culling. A directional light is the one kind here that is exempt and still refused.
     const fn takes_cluster_slot(self) -> bool {
         matches!(self, Self::Point | Self::Spot)
     }
@@ -413,17 +458,21 @@ impl LightKind {
     ///
     /// # Invariants
     ///
-    /// A point light stands somewhere and is drawn through a cluster list. An environment
-    /// light is an image, and it is drawn by the one ambient term every fragment computes
-    /// beside that loop: it is exempt from clustering, so it takes no record a fragment would
-    /// load and no page, and it is a **stated** input of the lighting pass rather than
+    /// A point light stands somewhere and is drawn through a cluster list. A **spot** light
+    /// does the same thing through the same list, and differs only in the cone the shading
+    /// loop scales it by: it takes a cluster slot by exactly the rule a point light does, so
+    /// there is one list and one loop rather than two.
+    ///
+    /// An environment light is an image, and it is drawn by the one ambient term every fragment
+    /// computes beside that loop: it is exempt from clustering, so it takes no record a fragment
+    /// would load and no page, and it is a **stated** input of the lighting pass rather than
     /// something the loop stumbles on.
     ///
-    /// A spot light and a directional light are refused rather than approximated, and the
-    /// refusal lands before the field reads: neither declares a `position`, so reading the
-    /// fields first would report a missing field instead of the mistake that is there.
+    /// A directional light is refused rather than approximated, and the refusal lands before
+    /// the field reads: it declares no `position`, so reading the fields first would report a
+    /// missing field instead of the mistake that is there.
     const fn is_emitted(self) -> bool {
-        matches!(self, Self::Point | Self::Environment)
+        matches!(self, Self::Point | Self::Spot | Self::Environment)
     }
 }
 
@@ -563,6 +612,17 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     for (entry, payload) in clusters.entries() {
         insert_entry(&mut instance, entry.to_owned(), payload)?;
     }
+    // The cone run is packed here rather than by the assignment, because a cone is a property of
+    // the light and the assignment knows nothing about cones: what reaches which cluster, which
+    // page was bought and which light was dropped are three other questions. What it shares with
+    // the record run is its **order** — one record per light in the order the scene lists them —
+    // and that is what lets a cluster index be an index into both.
+    let cones = spot_cones(&lights.iter().map(|light| light.cone).collect::<Vec<_>>())?;
+    insert_entry(
+        &mut instance,
+        SPOT_CONES_ENTRY.to_owned(),
+        storage(cones.bytes(), &spot_cone_schema()),
+    )?;
     insert_entry(
         &mut instance,
         SHADOW_POOL.to_owned(),
@@ -622,6 +682,7 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
             &camera,
             &clustering,
             &clusters,
+            &cones,
             &light_pool,
             &environment,
             frame,
@@ -897,11 +958,19 @@ fn read_lights(
                     colour,
                     shadow_extent: None,
                     radius: None,
+                    // An environment light is in no cluster list, so no fragment ever loads
+                    // its record or its cone. The whole sphere is written rather than nothing
+                    // because the run has one record per light and this one is a light.
+                    cone: SpotCone::whole_sphere(),
                 }
             }
             // `is_emitted` has already refused every other kind, so reaching this arm with
-            // anything but a point light would mean the two answers above had come to
-            // disagree, which is a bug in the compiler rather than in the document.
+            // anything but a point or a spot light would mean the two answers above had come
+            // to disagree, which is a bug in the compiler rather than in the document. The
+            // cone is the one field set the two kinds do not share, and it is read by the
+            // kind rather than beside the fields they do share: a point light declares no
+            // `direction`, so a read that asked for one would report a missing field on a
+            // document that is in no way missing one.
             _ => {
                 let radius = optional_number(light, &path, "radius")?;
                 if let Some(reach) = radius.filter(|reach| *reach <= 0.0) {
@@ -911,6 +980,11 @@ fn read_lights(
                         radius: reach,
                     });
                 }
+                let cone = if kind == LightKind::Spot {
+                    read_spot_cone(light, &path, &label)?
+                } else {
+                    SpotCone::whole_sphere()
+                };
                 LightRead {
                     kind,
                     label,
@@ -918,12 +992,91 @@ fn read_lights(
                     colour,
                     shadow_extent: Some(number(light, &path, "shadow_extent")?),
                     radius,
+                    cone,
                 }
             }
         });
     }
     Ok((read, environment))
 }
+
+/// Reads the cone of a spot light, refusing a cone that could not be drawn.
+///
+/// # Invariants
+///
+/// The four refusals are all the same fact seen from four sides: **the two angles describe one
+/// shape, so a document whose numbers do not describe a shape is a document whose two answers
+/// disagree.** A cone whose outside is inside its own inside is inverted; a full strength
+/// region below the axis is not inside the cone at all; a half angle of a right angle is the
+/// whole sphere, which a point light already is and which the page a shadow is rendered
+/// through cannot be drawn as; and a direction of zero is not a direction, and normalising it
+/// divides by nothing.
+///
+/// The direction is **normalised here**, where it is read, rather than in the shader, because
+/// the shader is given the axis and not the vector the author typed. The schema says the
+/// length does not matter, so a document may write `[0, -20, 0]` and get the same cone as
+/// `[0, -1, 0]`. That is the one number about a light that is answered before it is packed.
+///
+/// The angles are carried as they are written, and the cosine the shader compares against is
+/// taken where the run is packed: this is a refusal about a document and that is a decision
+/// about bytes, and a refusal reached across two modules is a refusal that can be forgotten.
+fn read_spot_cone(light: &Value, path: &Path, label: &str) -> Result<SpotCone, CompileError> {
+    let direction = triple(light, path, "direction")?;
+    if dot(direction, direction) == 0.0 {
+        return Err(CompileError::ZeroLightDirection {
+            path: path.key("direction"),
+            label: label.to_owned(),
+        });
+    }
+    let inner_angle = number(light, path, "inner_angle")?;
+    let outer_angle = number(light, path, "outer_angle")?;
+    if outer_angle <= inner_angle {
+        return Err(CompileError::InvertedSpotCone {
+            path: path.key("outer_angle"),
+            label: label.to_owned(),
+            inner_angle,
+            outer_angle,
+        });
+    }
+    if inner_angle < 0.0 {
+        return Err(CompileError::NegativeSpotAngle {
+            path: path.key("inner_angle"),
+            label: label.to_owned(),
+            angle: inner_angle,
+        });
+    }
+    if outer_angle >= MAX_SPOT_HALF_ANGLE {
+        return Err(CompileError::SpotConeTooWide {
+            path: path.key("outer_angle"),
+            label: label.to_owned(),
+            outer_angle,
+            limit: MAX_SPOT_HALF_ANGLE,
+        });
+    }
+    Ok(SpotCone {
+        axis: normalize(direction),
+        inner_angle,
+        outer_angle,
+    })
+}
+
+/// The widest cone a spot light may be written with, as a half angle in radians.
+///
+/// # Invariants
+///
+/// A **quarter turn**, which is a right angle, and the limit is a hard one for two reasons
+/// that happen to agree. Past a right angle the shape is no longer a cone: at a right angle it
+/// is the whole sphere and past it the "outside" folds back inside, so a document naming one is
+/// asking for a light that already exists under another name. And the page a spot light's
+/// shadow is rendered through is a perspective frustum, whose field of view is `1 / tan(half)`
+/// and therefore has no value at a right angle at all — `perspective` silently clamps there,
+/// and a clamped page is a page that does not cover the cone it was asked to cover, which is a
+/// shadow that is missing where nobody was told it would be.
+///
+/// This is **not** the bound the handoff named, which was a half turn. A half turn is a wider
+/// shape than the shadow volume can be drawn as, so honouring it would mean compiling a
+/// document whose shading is right and whose shadow is silently absent.
+const MAX_SPOT_HALF_ANGLE: f64 = std::f64::consts::FRAC_PI_2;
 
 /// Reads the image an environment light is read from, and refuses a label that names nothing.
 ///
@@ -2439,12 +2592,21 @@ fn depthing_pass(
 /// The grid and the frame are carried so a fragment can resolve its own cluster. It could not
 /// derive the extents from anything, and it derives its own three indices from them with a
 /// multiply and a cast each — the depth being the one number a fragment already carries.
+///
+/// The cone run is bound **unconditionally**, by a scene that names no spot light as much as by
+/// one that names a hundred. The device numbers a pass's binders in name order, so a binding
+/// that came and went with the document would move every number after it and a shader would
+/// have to be written for one scene and not for another — the same argument the environment
+/// map is bound on, and the same answer it is given by binding a black one texel map. A scene
+/// with no spot light writes one whole sphere that no cluster's light points at, so the cost is
+/// one bound buffer nothing reads rather than a shader that cannot be written.
 #[allow(clippy::too_many_arguments)]
 fn lighting_pass(
     group: &Group<'_>,
     camera: &Value,
     clustering: &Clustering,
     clusters: &lighting_pool::Clusters,
+    cones: &PackedList,
     pool: &LightPool,
     environment: &EnvironmentMap,
     frame: Frame,
@@ -2522,6 +2684,10 @@ fn lighting_pass(
                     .into_iter()
                     .map(|(name, value)| (name.to_owned(), value)),
             )
+            .chain([(
+                SPOT_CONES_ENTRY.to_owned(),
+                lighting_pool::declaration(SPOT_CONES_ENTRY, cones.bytes().len() as i64),
+            )])
             .chain([environment_binding(environment)])
             .chain(images.iter().cloned()),
         vec![COLOR_TARGET],
@@ -2616,6 +2782,115 @@ fn light_projection(position: [f64; 3], shadow_extent: f64, bounds: &Bounds) -> 
             position,
             centre,
             FRAMING_PADDING,
+        ),
+        position,
+    )
+}
+
+/// The near plane of a spot light's page, as a fraction of its far plane.
+///
+/// # Invariants
+///
+/// **Not** the light itself. A page that starts at the light has a depth range of thousands to
+/// one, and a depth comparison over such a range cannot be biased: the constant a shadow lookup
+/// subtracts is in the page's own normalised depth, where one world unit near the far plane is
+/// a millionth of it, so the bias that fixes acne near the light detaches every shadow from its
+/// caster by tens of units near the far one. A fiftieth of the far plane is a range a bias can
+/// be written for.
+///
+/// The cost of that choice is stated rather than hidden: a fragment nearer the light than this is
+/// clipped out of the page, and the shader reads a fragment whose depth is **below** the page's
+/// near plane as unshadowed, because its depth compares less than anything the page recorded.
+/// So the sliver of scene right under a lamp has no shadow, which is a missing shadow rather
+/// than one in the wrong place, and a cone's own attenuation has already zeroed everything
+/// outside the cone besides.
+const SPOT_NEAR_FRACTION: f64 = 0.05;
+
+/// Returns the perspective projection a spot light's page is drawn through, and the eye it is
+/// made from.
+///
+/// # Invariants
+///
+/// **The page is the narrower of the cone and the column of half width `shadow_extent`, reaching
+/// from near the light to where the scene ends along the cone's axis.** That is the whole
+/// decision, and it is made here rather than in the schema because it is a decision about which
+/// box a projection covers, which is what this file answers.
+///
+/// It has to be one of them rather than the other, and the reason is which way each one fails.
+///
+/// - The cone is the light's own shape. Cutting it short to reach a `shadow_extent` the author
+///   wrote narrow would leave the outer band of the cone with **no shadow at all**, and a
+///   missing shadow is a shadow that is not there rather than one that is wrong.
+/// - The column is how much of the scene the author said this light shadows. Ignoring it would
+///   render the page from a light aimed at a scene smaller than the author asked for. A fragment
+///   beyond the **far** plane is the dangerous case and not the near one: the shader returns
+///   unshadowed for a fragment whose page coordinate falls outside the page, but a fragment
+///   past the far plane still lands *inside* the page and is compared against a depth recorded
+///   from nearer, so it reads as fully shadowed. The far plane is therefore **never** inside
+///   the scene, whatever the extent says — which is why the extent narrows the angle and never
+///   shortens the reach.
+///
+/// Taking the narrower half angle rather than the shorter of the two volumes is what makes both
+/// of those hold at once: at every distance the page is as wide as the smaller of what the cone
+/// would be and what the column would be, and it reaches the whole scene either way.
+///
+/// The far plane is the scene's **support interval** along the axis, which is the furthest the
+/// box reaches in the direction the light shines, and not the axis-aligned box's own far face:
+/// a box corner is the far end along an axis only when that axis points at the box, and a spot
+/// light aimed across its own scene — which is the case that matters — is not.
+///
+/// The page is fitted to the whole drawn box, which over-covers when the box is much larger than
+/// the pool of light. That is the same trade [`light_projection`] makes, and it is taken for
+/// the same reason: an exact cone and box intersection is a harder answer than a scene whose
+/// shadow page is a little larger than the shadow in it.
+///
+/// The aspect is one, so the page is a square that **circumscribes** the cone's disc at the far
+/// plane rather than being inscribed in it. The corners of a page are the parts of it furthest
+/// from the axis, so a page inscribed in the cone would render occluders that are outside the
+/// cone into a page whose middle is empty.
+fn spot_projection(
+    position: [f64; 3],
+    cone: &SpotCone,
+    shadow_extent: f64,
+    bounds: &Bounds,
+) -> (Matrix, [f64; 3]) {
+    // The furthest point of the box along the axis, which is the **sum** of each axis's own
+    // furthest end: a point of the box is a choice on every axis, so the furthest point is the
+    // one that takes the far end of all three at once. Taking the largest single term instead
+    // is a page that stops inside the scene, and everything beyond it reads as fully shadowed.
+    // Floored above a hand's width, because a light standing inside its own scene and aimed at
+    // a wall it is almost touching still has a page.
+    let far_plane = (0..3)
+        .map(|axis| cone.axis[axis])
+        .zip(0..3)
+        .map(|(direction, axis)| {
+            let low = direction * (bounds.minimum[axis] - position[axis]);
+            let high = direction * (bounds.maximum[axis] - position[axis]);
+            low.max(high)
+        })
+        .sum::<f64>()
+        .max(1e-2);
+    // The half angle the author's column subtends at that distance, which is the width it asks
+    // for written as a shape. The `min` of the two is the whole decision.
+    let half_angle = cone
+        .outer_angle
+        .min((shadow_extent.max(1e-3) / far_plane).atan())
+        .max(1e-3);
+    (
+        multiply(
+            &perspective(
+                2.0 * half_angle,
+                1.0,
+                (far_plane * SPOT_NEAR_FRACTION).max(1e-3),
+                far_plane,
+            ),
+            // The eye is the light and the target is a point along the cone's axis, so the
+            // basis is built from the direction the light shines rather than from a point the
+            // scene happens to have. A cone is symmetric about its axis, so which of the two
+            // perpendicular directions becomes "up" cannot be wrong; that is also what makes a
+            // light aimed straight up or straight down safe, where `look_at`'s up is parallel to
+            // the direction and its right hand axis falls back to a unit x.
+            &look_at(position, add(position, cone.axis), [0.0, 1.0, 0.0]),
         ),
         position,
     )

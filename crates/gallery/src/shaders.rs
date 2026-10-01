@@ -104,6 +104,22 @@ struct LightRecord {
     radius: f32,
     shadow_projection: mat4x4<f32>,
 };
+
+/// One light's cone, as the clustered loop reads it out of the cone buffer.
+///
+/// # Why this is two vectors of four and not a direction and two angles
+///
+/// A `WGSL` `array<T>` in a storage buffer lays its elements out at
+/// `roundUp(align_of_T, size_of_T)`, and a struct holding a vector is aligned to sixteen
+/// bytes. A struct of a `vec3` and two `f32` is twenty bytes packed and **thirty two** to a
+/// shader, so a shader reading the compiler's tightly packed run would read the second light's
+/// direction as the first light's outer angle. Thirty two bytes is the smallest record that is
+/// a whole number of sixteen byte blocks, and these two vectors are thirty two — which is the
+/// same argument the light record above makes about its own ninety six.
+struct SpotCone {
+    axis: vec4<f32>,
+    limits: vec4<f32>,
+};
 "#;
 
 /// The emission stage: what a surface emits, added once rather than once per light.
@@ -311,6 +327,13 @@ fn lighting_bindings(image: bool) -> String {
     }
     resources.push(("light_records", "<storage, read>", "array<LightRecord>"));
     resources.push(("shadow_pool", "", "texture_depth_2d_array"));
+    // The cone buffer is bound by every lighting pass, including one whose scene names no
+    // `Spot` light — the pass then binds a single whole sphere that no cluster points at.
+    // Bound unconditionally for the same reason the environment map is above: a binding that
+    // came and went with the document would move every number after it, so a shader would
+    // have to be written for one scene and not for another. A scene with no spot light reads
+    // nothing, so the bandwidth is zero and the only cost is a bound buffer.
+    resources.push(("spot_cones", "<storage, read>", "array<SpotCone>"));
 
     let mut declarations = String::new();
     for (source, access, ty) in resources {
@@ -450,6 +473,49 @@ fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) ->
 }}
 
 {helpers}
+/// Returns how much of this light reaches a surface in the given direction.
+///
+/// `to_surface` is the unit vector **from the light towards the surface**, which is the
+/// negative of the one the loop already has: the cone's axis is the way the light shines, and
+/// a surface in front of the light is in front of it along that axis, not behind it.
+///
+/// # Why the limits are cosines
+///
+/// The number being compared is a dot product, so the two numbers compared against it are
+/// cosines of the two half angles, and the falloff needs no inverse cosine to find the angle it
+/// is at. The ramp between them is a straight line in the cosine, which is a curve in the angle
+/// — and which curve it is belongs to the author, who picks it by where the two angles are.
+/// A cone with the two cosines equal is the whole sphere, and that is what a light that is not
+/// a spot light carries.
+///
+/// # Why the degenerate case is tested first
+///
+/// A cone with no range is a light with no cone, and it is recognised by the two limits being
+/// equal rather than by either of them having a particular value. That is deliberate: the
+/// whole sphere is written as a half turn, and whether the cosine of a half turn is exactly
+/// minus one is a fact about rounding that this answer should not rest on. Tested second, the
+/// single direction exactly opposite a point light would be *outside* a cone whose outer cosine
+/// came out a rounding above minus one, and one unlit texel on a sphere is a bug rather than a
+/// detail.
+fn cone_attenuation(cone: SpotCone, to_surface: vec3<f32>) -> f32 {{
+    let inner = cone.limits.x;
+    let outer = cone.limits.y;
+    if inner <= outer {{
+        return 1.0;
+    }}
+    // The cosine of the angle between the light's axis and the surface. Beyond the outer
+    // cosine the surface is outside the cone and gets nothing at all; short of the inner one it
+    // is inside the full strength region and gets all of it.
+    let facing = dot(to_surface, cone.axis.xyz);
+    if facing <= outer {{
+        return 0.0;
+    }}
+    if facing >= inner {{
+        return 1.0;
+    }}
+    return (facing - outer) / (inner - outer);
+}}
+
 /// Returns the texel of the environment map a direction falls in, at one level.
 ///
 /// # Why a two dimensional octahedral map
@@ -672,11 +738,21 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
 
     var color = vec3<f32>(0.0);
     for (var slot = 0u; slot < count; slot = slot + 1u) {{
-        let light = light_records[u32(cluster_light_indices[row + slot])];
+        // One index into both runs: the record and the cone are packed in the same order, so
+        // a light's cone is the same number away as the light itself.
+        let index = u32(cluster_light_indices[row + slot]);
+        let light = light_records[index];
+        let cone = spot_cones[index];
         let to_light = light.position - in.world_position;
         let light_range = max(length(to_light), 0.0001);
         let direction = to_light / light_range;
-        let lit = shadowed(light, in.world_position, normal);
+        // The cone is an **extra** attenuation, not a replacement for the culling that put
+        // this light in this cluster at all: a light outside the cone is already absent from
+        // the list by its radius, and a light inside the radius but outside the cone is here
+        // and scaled to nothing. A light that is not a spot light carries the whole sphere and
+        // is scaled by exactly one, so a point light's arithmetic is unchanged.
+        let lit = shadowed(light, in.world_position, normal)
+            * cone_attenuation(cone, -direction);
 
         // A point light falls off with the square of its distance. The constants are the
         // gentlest that still read as a falloff over a scene a couple of hundred units

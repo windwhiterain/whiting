@@ -18,7 +18,9 @@ use graphics::binders::{
 use graphics::layout::components_schema;
 use graphics::pass::{BINDERS, UNIFORM};
 
-use crate::lighting::{CLUSTER_COUNTS_ENTRY, CLUSTER_INDICES_ENTRY, LIGHT_RECORDS_ENTRY};
+use crate::lighting::{
+    CLUSTER_COUNTS_ENTRY, CLUSTER_INDICES_ENTRY, LIGHT_RECORDS_ENTRY, SPOT_CONES_ENTRY,
+};
 
 /// Binding point holding the depth buffer a depthing pass renders into.
 pub const DEPTH_BUFFER: &str = "depth_buffer";
@@ -350,6 +352,15 @@ pub fn light_pass_schema() -> Schema {
                 LIGHT_RECORDS_ENTRY,
                 buffer_binding_schema().with_documentation(
                     "One record per light, which is what a cluster's indices point into.",
+                ),
+            ),
+            (
+                SPOT_CONES_ENTRY,
+                buffer_binding_schema().with_documentation(
+                    "One cone per light, indexed by the same numbers as the records. Bound by \
+                     every lighting pass including one whose scene names no spot light, which \
+                     then binds a single whole sphere that no cluster points at, so the \
+                     binding numbers are the same either way.",
                 ),
             ),
             (

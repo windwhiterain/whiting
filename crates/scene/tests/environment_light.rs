@@ -101,25 +101,20 @@ fn a_kind_this_compiler_cannot_draw_is_still_refused() {
     // still unreachable, because `read_lights` refuses the kind before the field reads. A
     // directional light declares no `position`, so reading the fields first would report a
     // missing field instead of the mistake that is actually there.
-    for (kind, fields) in [
-        (
-            "Directional",
-            vec![
-                ("direction".to_owned(), triple([0.0, -1.0, 0.0])),
-                ("shadow_extent".to_owned(), Value::Float(20.0)),
-            ],
-        ),
-        (
-            "Spot",
-            vec![
-                ("position".to_owned(), triple([4.0, 6.0, 2.0])),
-                ("direction".to_owned(), triple([0.0, -1.0, 0.0])),
-                ("inner_angle".to_owned(), Value::Float(0.2)),
-                ("outer_angle".to_owned(), Value::Float(0.5)),
-                ("shadow_extent".to_owned(), Value::Float(20.0)),
-            ],
-        ),
-    ] {
+    //
+    // **This is the last entry.** A `Spot` light used to be on this list and stopped being
+    // refused when the cone run landed: a spot light stands somewhere, declares a `position`
+    // like a point light, and is drawn through the cluster list like one. A `Directional` is
+    // the only kind left standing nowhere and casting a shadow, and it is the only kind this
+    // test has anything to say about. When it is implemented this test has nothing left to
+    // assert and should go rather than be kept for a list of one that is then empty.
+    for (kind, fields) in [(
+        "Directional",
+        vec![
+            ("direction".to_owned(), triple([0.0, -1.0, 0.0])),
+            ("shadow_extent".to_owned(), Value::Float(20.0)),
+        ],
+    )] {
         let failure = compile(&scene(&[Value::variant(
             kind,
             fields

@@ -24,10 +24,12 @@
 //!
 //! # Invariants
 //!
-//! - The three buffers are read only. Nothing here writes a buffer, because there is no pass to
+//! - The cluster buffers are read only. Nothing here writes a buffer, because there is no pass to
 //!   write one and no dispatch to write it with, and `max_storage_buffers_per_shader_stage` is
-//!   four: light records, cluster counts and cluster lists are all of the budget the clustered
-//!   pass has, with one spare.
+//!   four: light records, cluster counts, cluster lists and the spot cones are all of the budget
+//!   a clustered pass has. **There is no spare left.** The cone run is what spent it, and a fifth
+//!   storage buffer in the clustered template is a shader that validates against a schema and
+//!   fails on a driver's limit.
 //! - Every light is listed in every cluster its volume reaches, up to the cap. A light that is
 //!   not listed is a light no shading pass can find, so the cap is the only place one goes
 //!   missing, and the cap reports what it missed.
@@ -48,8 +50,10 @@ pub use assignment::{
 };
 pub use buffers::{
     CLUSTER_COUNT_FIELD, CLUSTER_COUNTS_ENTRY, CLUSTER_INDICES_ENTRY, CLUSTER_LIGHT_FIELD,
-    Clusters, LIGHT_COLOR_FIELD, LIGHT_PAGE_FIELD, LIGHT_POSITION_FIELD, LIGHT_RADIUS_FIELD,
-    LIGHT_RECORDS_ENTRY, LIGHT_SHADOW_PROJECTION_FIELD, LightPool, MAX_TEXTURE_ARRAY_LAYERS,
-    NO_PAGE, SHADOW_PAGE_HEIGHT, SHADOW_PAGE_WIDTH, SHADOW_PAGES, cluster_count_schema,
-    cluster_list_schema, light_record_schema, light_record_stride, pool_notes, read_light_pool,
+    CONE_AXIS_FIELD, CONE_LIMITS_FIELD, Clusters, LIGHT_COLOR_FIELD, LIGHT_PAGE_FIELD,
+    LIGHT_POSITION_FIELD, LIGHT_RADIUS_FIELD, LIGHT_RECORDS_ENTRY, LIGHT_SHADOW_PROJECTION_FIELD,
+    LightPool, MAX_TEXTURE_ARRAY_LAYERS, NO_PAGE, SHADOW_PAGE_HEIGHT, SHADOW_PAGE_WIDTH,
+    SHADOW_PAGES, SPOT_CONES_ENTRY, SpotCone, cluster_count_schema, cluster_list_schema,
+    declaration, light_record_schema, light_record_stride, pool_notes, read_light_pool,
+    spot_cone_schema, spot_cones, storage,
 };

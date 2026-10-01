@@ -311,12 +311,23 @@ struct LightRecord {
     shadow_projection: mat4x4<f32>,
 };
 
+/// One light's cone. Two vectors of four because a `WGSL` `array<T>` in a storage buffer lays
+/// its elements out at `roundUp(align_of_T, size_of_T)`, and a struct holding a vector is
+/// aligned to sixteen: a `vec3` and two `f32` are twenty bytes packed and thirty two to a
+/// shader. A light that is not a spot light carries two equal cosines, which is the whole
+/// sphere, so the same loop reads a point light and a spot light without a branch on the kind.
+struct SpotCone {
+    axis: vec4<f32>,
+    limits: vec4<f32>,
+};
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> cluster_light_counts: array<f32>;
 @group(0) @binding(2) var<storage, read> cluster_light_indices: array<f32>;
 @group(0) @binding(4) var environment_map: texture_2d<f32>;
 @group(0) @binding(5) var<storage, read> light_records: array<LightRecord>;
 @group(0) @binding(6) var shadow_pool: texture_depth_2d_array;
+@group(0) @binding(7) var<storage, read> spot_cones: array<SpotCone>;
 
 struct Vertex {
     @builtin(position) position: vec4<f32>,
@@ -416,6 +427,30 @@ fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) ->
 }
 
 /// Returns the texel of the environment map a direction falls in, at one level.
+/// Returns how much of this light reaches a surface in the given direction, which is the unit
+/// vector from the light towards the surface.
+///
+/// The two limits are cosines of the cone's half angles, so the comparison is against a dot
+/// product and needs no inverse cosine. Two equal cosines are the whole sphere, which is what a
+/// light that is not a spot light carries — and that case is tested first, so the answer does
+/// not rest on the cosine of a half turn being exactly minus one.
+fn cone_attenuation(cone: SpotCone, to_surface: vec3<f32>) -> f32 {
+    let inner = cone.limits.x;
+    let outer = cone.limits.y;
+    if inner <= outer {
+        return 1.0;
+    }
+    let facing = dot(to_surface, cone.axis.xyz);
+    if facing <= outer {
+        return 0.0;
+    }
+    if facing >= inner {
+        return 1.0;
+    }
+    return (facing - outer) / (inner - outer);
+}
+
+/// Returns the texel of the environment map a direction falls in, at one level.
 ///
 /// This is the same octahedral fold the gallery's lighting template uses, and it is written
 /// out again here because this example has to compile without the gallery: `scene` is the
@@ -475,10 +510,12 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {
     let row = cluster * u32(uniforms.cluster_grid.w);
     var color = vec3<f32>(0.0);
     for (var slot = 0u; slot < count; slot = slot + 1u) {
-        let light = light_records[u32(cluster_light_indices[row + slot])];
+        let index = u32(cluster_light_indices[row + slot]);
+        let light = light_records[index];
         let to_light = light.position - in.world_position;
         let lambert = max(dot(normal, normalize(to_light)), 0.0);
-        color = color + light.color * lambert * shadowed(light, in.world_position, normal);
+        color = color + light.color * lambert * cone_attenuation(spot_cones[index], -normalize(to_light))
+            * shadowed(light, in.world_position, normal);
     }
     // One ambient term, added once whatever the cluster holds, and the material's own tint
     // still reaching it: a term that stopped multiplying by the tint would be a material that
