@@ -90,6 +90,63 @@ pub const FRAME_SIZE: &str = "frame_size";
 /// with the document would put every field after it somewhere else.
 pub const ENVIRONMENT: &str = "environment";
 
+/// Field holding the scene's directional light, which every lighting pass is shaded against.
+///
+/// # Invariants
+///
+/// It is a **stated input of the pass** and not a light record, for the same reason
+/// [`ENVIRONMENT`] is: the record is read through a cluster list and this light is in none, so
+/// a fragment has no path to a record of it. It differs from the environment in the one way
+/// that matters — it casts a shadow — so it carries a page and an orthographic projection
+/// where the environment carries neither.
+///
+/// A nested struct rather than three fields of its own, because one light is one thing. The
+/// light record run has one entry per light for exactly this reason, and a uniform reading as
+/// `directional_colour` beside `directional_projection` would be one light spelled three times.
+///
+/// The fields sort as `colour`, `direction`, `shadow_projection`.
+///
+/// The field is written for every lighting pass, whether the scene names a directional light
+/// or not, for the reason [`ENVIRONMENT`] is written for every pass: the uniform's layout is
+/// the same for every scene.
+pub const DIRECTIONAL: &str = "directional";
+
+/// Builds the interface of a directional light as a lighting pass's uniform carries it.
+///
+/// The page is the **fourth component of the direction** rather than a field of its own, so
+/// that a fragment reads and tests it in one comparison exactly as it reads and tests a
+/// record's own page. The flag is the fourth component of the colour, following [`ENVIRONMENT`]
+/// for the same reason: a colour of zero is a perfectly good sun to want, so a shader that
+/// inferred presence from the colour would be reading the wrong question.
+pub fn directional_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            "colour".to_owned(),
+            components_schema(4).with_documentation(
+                "The directional light's colour scaled by its intensity, and whether the scene \
+                 named one at all.",
+            ),
+        ),
+        (
+            "direction".to_owned(),
+            components_schema(4).with_documentation(
+                "The unit vector the light travels along, which is the way a surface faces it, \
+                 and the page of the shadow pool its shadow was rendered into. The page is \
+                 minus one for a light the pool gave none, which is lit unshadowed by design.",
+            ),
+        ),
+        (
+            "shadow_projection".to_owned(),
+            matrix().with_documentation(
+                "The orthographic matrix a fragment carries its own world position through to \
+                 find its page, and the eye the shadowing pass drew that page from. Written for \
+                 every lighting pass, so it is the identity in a scene naming no directional \
+                 light.",
+            ),
+        ),
+    ]))
+}
+
 /// Binding point the environment map is read at.
 ///
 /// The name is what puts it at its binding number: a pass's binders are numbered in name
@@ -409,6 +466,13 @@ pub fn light_pass_schema() -> Schema {
                 components_schema(4).with_documentation(
                     "The environment light's colour scaled by its intensity, and whether the \
                      scene named one at all. Written for every lighting pass.",
+                ),
+            ),
+            (
+                DIRECTIONAL,
+                directional_schema().with_documentation(
+                    "The directional light, which stands nowhere and so is in no cluster list. \
+                     Written for every lighting pass, present or not.",
                 ),
             ),
             (

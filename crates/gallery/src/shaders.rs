@@ -61,29 +61,42 @@ struct Uniforms {
 /// The uniform the clustered lighting stage reads.
 ///
 /// The fields are in the order the interface schema sorts them into, which is by name:
-/// `cluster_grid`, `environment`, `frame_size`, `projection`, `time`. The order is not
-/// cosmetic — a three component vector is padded to sixteen bytes, so a field written second
-/// starts at sixteen either way, and a struct written in any other order puts the wrong thing
-/// there.
+/// `cluster_grid`, `directional`, `environment`, `frame_size`, `projection`, `time`. The order
+/// is not cosmetic — a three component vector is padded to sixteen bytes, so a field written
+/// second starts at sixteen either way, and a struct written in any other order puts the wrong
+/// thing there.
 ///
-/// **Nothing here names a light.** The four per light fields this struct used to carry — the
-/// light's position, its colour, its own projection and the size of its shadow map's texel —
-/// are a field of the light's *record*, read from a storage buffer per light inside the
-/// loop. That is the whole change: a uniform is sixteen kilobytes, which cannot hold a
-/// thousand light records however they are packed.
+/// **Nothing here names a clustered light.** The four per light fields this struct used to
+/// carry — the light's position, its colour, its own projection and the size of its shadow
+/// map's texel — are a field of the light's *record*, read from a storage buffer per light
+/// inside the loop. That is the whole change: a uniform is sixteen kilobytes, which cannot
+/// hold a thousand light records however they are packed.
 ///
-/// `environment` is the one light this struct does carry, and it is a light rather than a
-/// record because it is not one of the clustered kind at all: it stands nowhere, it takes no
-/// cluster slot, and every fragment reads the same one. Three components are its colour scaled
-/// by its intensity and the fourth says whether the scene named it.
+/// The two lights it does carry are the two a fragment cannot reach any other way. Neither is
+/// in a cluster list, so neither has a record a fragment could load. `environment` is an
+/// image and casts no shadow; `directional` is a direction and casts one. Each is a colour
+/// with a fourth component saying whether the scene named it, because a colour of zero is a
+/// perfectly good light to want and a shader that inferred presence from the colour would be
+/// reading the wrong question.
 const LIGHTING_UNIFORM: &str = r#"
 struct Projection {
     position: vec3<f32>,
     view_projection: mat4x4<f32>,
 };
 
+/// The scene's directional light: what it is, which way it shines, and where its shadow is.
+///
+/// The page is the fourth component of the direction rather than a field of its own, so that
+/// a fragment reads and tests it in one comparison exactly as it reads a record's own page.
+struct Directional {
+    colour: vec4<f32>,
+    direction: vec4<f32>,
+    shadow_projection: mat4x4<f32>,
+};
+
 struct Uniforms {
     cluster_grid: vec4<f32>,
+    directional: Directional,
     environment: vec4<f32>,
     frame_size: vec2<f32>,
     projection: Projection,
@@ -402,23 +415,39 @@ fn cluster_of(fragment: vec4<f32>) -> u32 {{
 
 /// Returns how lit a surface is by one light.
 ///
+/// # Why the inputs rather than a record
+///
+/// A **directional** light is not in any cluster list, so no fragment ever loads a record of
+/// it and a function taking one could not be called for it. The shadow lookup itself is the
+/// same algorithm for both — one projection, one page, one comparison — so what it takes is
+/// the three numbers that differ: which matrix to look the page up through, which page, and
+/// which way the light is coming from. The record is how a clustered light supplies those, and
+/// the uniform is how the exempt one does.
+///
 /// A light the pool gave **no page** is lit unshadowed, and that is the design rather than a
 /// degraded mode: the pool is a scene's decision about how many shadows it wants to render
 /// once, a light that lost the ranking is a light the scene chose to approximate, and the
 /// alternative — giving it a neighbour's page — would be a wrong shadow rather than a missing
-/// one. The record's page is minus one for exactly that case, and a page index of zero is a
-/// page, so the two can be told apart by a single comparison.
+/// one. The page is minus one for exactly that case, and a page index of zero is a page, so
+/// the two can be told apart by a single comparison.
 ///
 /// Where there is a page, the surface's world position is carried through **the light's own**
 /// projection and its depth there is compared against what that page recorded. A projection is
-/// per light because a point light looks at the scene from where it is, and reading the page
-/// at the fragment's own screen coordinate would be a different lookup and not a shadow.
+/// per light because a point light looks at the scene from where it is and a directional one
+/// looks at it along its direction, and reading the page at the fragment's own screen
+/// coordinate would be a different lookup and not a shadow.
 ///
 /// The taps are taken by `textureLoad` rather than through a sampler because a binding
 /// carries a texture and nothing else: there is no sampler to filter with, and a depth
 /// compare has to be done by hand in any case.
-fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) -> f32 {{
-    let page = i32(light.page);
+fn shadowed(
+    shadow_projection: mat4x4<f32>,
+    page_index: f32,
+    to_light: vec3<f32>,
+    world_position: vec3<f32>,
+    normal: vec3<f32>,
+) -> f32 {{
+    let page = i32(page_index);
     if page < 0 {{
         return 1.0;
     }}
@@ -427,9 +456,13 @@ fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) ->
     // pushed away from the map by the same amount everywhere, so a slope and a flat both
     // move by one page texel and neither detaches.
     let lookup = world_position + normal * 1.6;
-    let from_light = light.shadow_projection * vec4<f32>(lookup, 1.0);
+    let from_light = shadow_projection * vec4<f32>(lookup, 1.0);
     // A point behind the light has no shadow, and dividing by a negative w would fold it
-    // back into the page from behind.
+    // back into the page from behind. This is the **perspective** case alone: a page built as
+    // `orthographic × look_at` has a bottom row of exactly `(0, 0, 0, 1)`, so every point
+    // keeps a `w` of one and this never fires. A point light and a directional one are both
+    // drawn that way; only a spot light's cone gives its page a field of view, and only that
+    // one takes this branch.
     if from_light.w <= 0.0 {{
         return 1.0;
     }}
@@ -450,7 +483,10 @@ fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) ->
     // constant is either too small for the leaning surfaces or detaches the shadow from
     // the flat ones. The normal offset above has already taken the large part of that
     // error, so what is left here is small.
-    let to_light = normalize(light.position - world_position);
+    //
+    // `to_light` is already the unit vector from the surface towards the light, which is
+    // what both kinds supply: the loop negates the light's direction, and the directional
+    // light negates the one it travels along.
     let slope = 1.0 - abs(dot(normal, to_light));
     let z = ndc.z - (0.0006 + 0.003 * slope);
     var lit = 0.0;
@@ -470,6 +506,109 @@ fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) ->
         }}
     }}
     return lit / 9.0;
+}}
+
+/// Returns what one light adds to a surface, given which way it arrives and how bright it is.
+///
+/// # Why this is shared and not written out twice
+///
+/// The diffuse and specular terms below are the same for a clustered light and for the
+/// directional one, and a copy of them would be a second place for the shading model to be
+/// edited. The **only** thing that differs between the two callers is how the light was found:
+/// a clustered light's brightness arrives already scaled by its falloff and its shadow, and
+/// the directional one arrives unscaled, because a light that reaches every distance equally
+/// has no falloff to apply.
+///
+/// `fresnel` is passed in rather than recomputed here because it depends only on the surface
+/// and the view, and the cluster loop already works it out once per fragment.
+fn light_contribution(
+    to_light: vec3<f32>,
+    radiance: vec3<f32>,
+    normal: vec3<f32>,
+    to_view: vec3<f32>,
+    diffuse: vec3<f32>,
+    fresnel: vec3<f32>,
+    roughness: f32,
+) -> vec3<f32> {{
+    // The specular lobe, in two parts that answer different questions.
+    //
+    // `strength` is how much of the surface's reflectance comes back as a highlight rather
+    // than as diffuse. That is a property of the material, and it is the only part of the
+    // highlight the tint has a say in.
+    //
+    // `exponent` is the shape of the lobe: a rough surface spreads its highlight. Widening a
+    // lobe is only half of what a microfacet distribution does, though — the other half is
+    // that **the peak falls as the lobe widens**, because the same energy is spread thinner.
+    // Left unnormalised, `pow` alone gives a searchlight rather than a material: a surface as
+    // rough as a wall still shows a highlight at a mirror's brightness, and no material can
+    // say otherwise. Dividing by the lobe's own width is what puts the roughness back into
+    // the peak. The division is against the smoothest lobe this template builds, so a mirror
+    // is exactly as bright here as it always was and only the roughness moves.
+    let strength = mix(0.02, 1.0, (1.0 - roughness) * (1.0 - roughness));
+    let exponent = mix(512.0, 4.0, roughness);
+    // The lobe's own width, against the smoothest lobe this template builds, so that a mirror
+    // is exactly as bright here as it was before the lobe was normalised.
+    let lobe_width = sqrt(2.0 / (exponent + 2.0));
+    let smooth_lobe_width = sqrt(2.0 / (514.0));
+
+    let lambert = max(dot(normal, to_light), 0.0);
+    let half_vector = normalize(to_light + to_view);
+    let specular = pow(max(dot(normal, half_vector), 0.0), exponent)
+        * strength * (smooth_lobe_width / lobe_width);
+
+    return diffuse * lambert * radiance + fresnel * specular * radiance * 3.0;
+}}
+
+/// Returns what the scene's directional light adds to a surface.
+///
+/// # Why it is a stated input and not a member of a cluster list
+///
+/// It stands nowhere and reaches every depth equally, so it is in every cluster by definition
+/// and listing it would spend the cap on a light the culling was never going to remove. There
+/// is no list to be in, so it is evaluated here, once, outside the loop — which is the
+/// correct cost: there is no culling to do and no light to choose between, and this is one
+/// BRDF evaluation beside a loop that already runs.
+///
+/// # Why there is no falloff
+///
+/// A point light's brightness falls off with the square of its distance, and a directional
+/// light has no distance: it reaches every distance equally, which is the whole of what makes
+/// it the sun rather than a lamp. The attenuation the cluster loop applies is therefore
+/// absent, and its absence is the light being drawn rather than an oversight.
+///
+/// The `colour.w` flag decides whether the scene named one, rather than the colour being
+/// black: a scene may want a sun of no light at all, and inferring presence from the colour
+/// would make that scene indistinguishable from one that named none.
+fn directional_radiance(
+    world_position: vec3<f32>,
+    normal: vec3<f32>,
+    to_view: vec3<f32>,
+    diffuse: vec3<f32>,
+    fresnel: vec3<f32>,
+    roughness: f32,
+) -> vec3<f32> {{
+    if uniforms.directional.colour.w < 0.5 {{
+        return vec3<f32>(0.0);
+    }}
+    // The uniform carries the direction the light **travels along**, which is the way it comes
+    // **from**, so the vector towards it is the negative.
+    let to_light = -normalize(uniforms.directional.direction.xyz);
+    let lit = shadowed(
+        uniforms.directional.shadow_projection,
+        uniforms.directional.direction.w,
+        to_light,
+        world_position,
+        normal,
+    );
+    return light_contribution(
+        to_light,
+        uniforms.directional.colour.rgb * lit,
+        normal,
+        to_view,
+        diffuse,
+        fresnel,
+        roughness,
+    );
 }}
 
 {helpers}
@@ -707,26 +846,6 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
     let fresnel_ceiling = max(vec3<f32>(1.0) - roughness, f0);
     let fresnel = f0 + (fresnel_ceiling - f0) * pow(1.0 - normal_dot_view, 5.0);
 
-    // The specular lobe, in two parts that answer different questions.
-    //
-    // `strength` is how much of the surface's reflectance comes back as a highlight rather than
-    // as diffuse. That is a property of the material, and it is the only part of the highlight
-    // the tint has a say in.
-    //
-    // `exponent` is the shape of the lobe: a rough surface spreads its highlight. Widening a
-    // lobe is only half of what a microfacet distribution does, though — the other half is that
-    // **the peak falls as the lobe widens**, because the same energy is spread thinner. Left
-    // unnormalised, `pow` alone gives a searchlight rather than a material: a surface as rough
-    // as a wall still shows a highlight at a mirror's brightness, and no material can say
-    // otherwise. Dividing by the lobe's own width is what puts the roughness back into the
-    // peak. The division is against the smoothest lobe this template builds, so a mirror is
-    // exactly as bright here as it always was and only the roughness moves.
-    let strength = mix(0.02, 1.0, (1.0 - roughness) * (1.0 - roughness));
-    let exponent = mix(512.0, 4.0, roughness);
-    // The lobe's own width, against the smoothest lobe this template builds, so that a mirror
-    // is exactly as bright here as it was before the lobe was normalised.
-    let lobe_width = sqrt(2.0 / (exponent + 2.0));
-    let smooth_lobe_width = sqrt(2.0 / (514.0));
 
     // The cluster this fragment is in, its light count, and the start of its row. The row is
     // the cap wide rather than the count, so no prefix sum of the counts is needed to find
@@ -751,8 +870,13 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
         // the list by its radius, and a light inside the radius but outside the cone is here
         // and scaled to nothing. A light that is not a spot light carries the whole sphere and
         // is scaled by exactly one, so a point light's arithmetic is unchanged.
-        let lit = shadowed(light, in.world_position, normal)
-            * cone_attenuation(cone, -direction);
+        let lit = shadowed(
+            light.shadow_projection,
+            light.page,
+            direction,
+            in.world_position,
+            normal,
+        ) * cone_attenuation(cone, -direction);
 
         // A point light falls off with the square of its distance. The constants are the
         // gentlest that still read as a falloff over a scene a couple of hundred units
@@ -761,14 +885,30 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
         let attenuation = 1.0 / (1.0 + 0.0035 * light_range + 0.00002 * light_range * light_range);
         let radiance = light.color * attenuation * lit;
 
-        let lambert = max(dot(normal, direction), 0.0);
-        let half_vector = normalize(direction + to_view);
-        let specular = pow(max(dot(normal, half_vector), 0.0), exponent)
-            * strength * (smooth_lobe_width / lobe_width);
-
-        color = color + diffuse_color * lambert * radiance;
-        color = color + fresnel * specular * radiance * 3.0;
+        color = color + light_contribution(
+            direction,
+            radiance,
+            normal,
+            to_view,
+            diffuse_color,
+            fresnel,
+            roughness,
+        );
     }}
+
+    // The directional light is added **once**, outside the loop, because it is not a member of
+    // any cluster: there is no list to walk and no culling to do, and every fragment wants it
+    // equally. The order against the ambient term below is the order of the two questions — a
+    // surface is lit by a direction, and then by whatever reaches it where no light does — and
+    // both are additions, so nothing depends on which came first.
+    color = color + directional_radiance(
+        in.world_position,
+        normal,
+        to_view,
+        diffuse_color,
+        fresnel,
+        roughness,
+    );
 
     // **The ambient term, and what feeds it.** It is added **once**, whatever the cluster
     // holds, because it is not one light's contribution: while the stage ran once per light

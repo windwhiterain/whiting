@@ -93,6 +93,7 @@ fn a_light_that_reaches_nothing_is_not_reported_as_dropped_by_a_full_pool() {
         radius: 1.0,
         shadow_projection: identity(),
         clustered: true,
+        casts_shadow: true,
     };
     let clusters =
         assign(&grid(), &[behind.clone()], &parallel(), &pool_of(1)).expect("the assignment runs");
@@ -105,9 +106,35 @@ fn a_light_that_reaches_nothing_is_not_reported_as_dropped_by_a_full_pool() {
 }
 
 #[test]
-fn a_light_that_takes_no_cluster_slot_is_given_no_page_however_bright_it_is() {
-    // The exemption: a light covering the whole view casts no shadow a page could hold, so a
-    // page for it would be a page rendering nothing.
+fn a_light_that_takes_no_cluster_slot_and_casts_no_shadow_is_given_no_page() {
+    // The environment light: exempt from every cluster **and** casting nothing, so a page for
+    // it would be a page rendering nothing however bright it is.
+    let sky = ClusterLight {
+        label: "sky".to_owned(),
+        position: [0.0, 0.0, 0.0],
+        colour: [1.0, 1.0, 1.0],
+        radius: 1000.0,
+        shadow_projection: identity(),
+        clustered: false,
+        casts_shadow: false,
+    };
+    let clusters =
+        assign(&grid(), &[sky.clone()], &parallel(), &pool_of(4)).expect("the assignment runs");
+
+    assert_eq!(clusters.page_of(0), None);
+    assert!(
+        notes(&[sky], &pool_of(4), &clusters).is_empty(),
+        "a light that was never a candidate is not a light the pool dropped"
+    );
+}
+
+#[test]
+fn a_light_that_takes_no_cluster_slot_but_casts_a_shadow_is_still_given_a_page() {
+    // The directional light, and the one place this branch can be wrong in a way that renders
+    // fine. It is exempt from every cluster, so the candidate walk never records it as having
+    // reached one, and a test that asked only whether the walk saw it would hand a sun no
+    // page — and a fragment tested against page minus one is unshadowed, so the scene would
+    // render with no shadow in it and nothing to say so.
     let sun = ClusterLight {
         label: "sun".to_owned(),
         position: [0.0, 0.0, 0.0],
@@ -115,14 +142,19 @@ fn a_light_that_takes_no_cluster_slot_is_given_no_page_however_bright_it_is() {
         radius: 1000.0,
         shadow_projection: identity(),
         clustered: false,
+        casts_shadow: true,
     };
     let clusters =
         assign(&grid(), &[sun.clone()], &parallel(), &pool_of(4)).expect("the assignment runs");
 
-    assert_eq!(clusters.page_of(0), None);
+    assert_eq!(
+        clusters.page_of(0),
+        Some(0),
+        "the exemption is a decision about a cluster's cap, and a page is not a cluster slot"
+    );
     assert!(
         notes(&[sun], &pool_of(4), &clusters).is_empty(),
-        "a light that was never a candidate is not a light the pool dropped"
+        "a light the pool ranked first was not dropped"
     );
 }
 
@@ -385,6 +417,7 @@ fn light(label: &str, brightness: f64) -> ClusterLight {
         radius: 8.0,
         shadow_projection: identity(),
         clustered: true,
+        casts_shadow: true,
     }
 }
 

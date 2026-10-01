@@ -397,15 +397,18 @@ pub(super) fn pack(
 /// kept by a cluster and dropped by the pool, and why the two are ranked rather than one
 /// derived from the other.
 ///
-/// A light with no page is not a light the pool ranked and rejected for want of room. It is a
-/// light that reaches no cluster, a light of a kind that casts no shadow, and a light that is
-/// already unshadowed because it is covered by the view. A page for any of those is a page
-/// rendering nothing.
+/// A light with no page is not a light the pool ranked and rejected for want of room. It is
+/// a light that reaches no cluster, or a light of a kind that casts no shadow.
+///
+/// The two are asked apart by [`ClusterLight::wants_page`], and the second half of that is the
+/// one a directional light turns on: it is exempt from every cluster, so the walk never
+/// records it as having reached one, and a test that only looked at the walk would hand a sun
+/// no page and the scene would render with no shadow in it and nothing to say so.
 fn assign_pages(lights: &[ClusterLight], pool: &LightPool, reached: &[bool]) -> Vec<usize> {
     let mut pages: Vec<usize> = vec![NO_PAGE_USIZE; lights.len()];
     let mut ranked: Vec<(f64, usize)> = Vec::with_capacity(lights.len());
     for (index, light) in lights.iter().enumerate() {
-        if !light.clustered || !reached[index] {
+        if !light.wants_page(reached[index]) {
             continue;
         }
         ranked.push((

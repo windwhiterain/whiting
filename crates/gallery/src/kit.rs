@@ -63,11 +63,9 @@ pub fn image(label: &str, width: i64, height: i64, pixels: impl IntoIterator<Ite
 /// call site name a kind they all share would be a kind spelled nine times. A kind with
 /// fields of its own is a sibling of this one rather than a parameter of it.
 ///
-/// [`environment_light`] and [`spot`] are those siblings, and they are here now because those
-/// paths have landed. A `Directional` light still has no builder, because a light it built is
-/// a document the compiler refuses: this is a gallery of scenes that compile, and a builder
-/// whose only effect is to write a scene that does not is a builder for a stage that has not
-/// landed.
+/// [`environment_light`], [`spot`] and [`directional`] are those siblings, and they are here now
+/// because those paths have landed. Every light kind the standard pipeline draws has a builder,
+/// which is what makes a gallery of scenes that compile the whole of what can be drawn.
 pub fn light(
     label: &str,
     position: [f64; 3],
@@ -150,6 +148,41 @@ pub fn spot(
             ("intensity".to_owned(), Value::Float(intensity)),
             ("inner_angle".to_owned(), Value::Float(inner_angle)),
             ("outer_angle".to_owned(), Value::Float(outer_angle)),
+            ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
+        ],
+    )
+}
+
+/// Builds one directional light of a scene: a light from a direction rather than a place.
+///
+/// # Invariants
+///
+/// It declares **no position**, because a direction is not somewhere. A builder that wrote one
+/// would be a builder for a point light under another name, and the compiler would read the
+/// position and never ask the direction that the shading actually uses.
+///
+/// `direction` is the way the light **travels**, the same convention a spot light's cone uses,
+/// so a light shining down at a floor is written `[0, -1, 0]`. Its length does not matter: the
+/// compiler normalises it where it reads it and refuses a direction of zero, which is the one
+/// refusal this builder cannot make for the author.
+///
+/// The builder takes no `radius`. A directional light reaches every distance equally, so it
+/// takes no cluster slot and is culled by nothing — `radius` would be a number no question is
+/// ever asked of.
+pub fn directional(
+    label: &str,
+    direction: [f64; 3],
+    color: [f64; 3],
+    intensity: f64,
+    shadow_extent: f64,
+) -> Value {
+    Value::variant(
+        "Directional",
+        [
+            ("label".to_owned(), Value::String(label.to_owned())),
+            ("direction".to_owned(), triple(direction)),
+            ("color".to_owned(), triple(color)),
+            ("intensity".to_owned(), Value::Float(intensity)),
             ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
         ],
     )

@@ -292,8 +292,19 @@ struct Projection {
     view_projection: mat4x4<f32>,
 };
 
+/// The scene's directional light: what it is, which way it shines, and where its shadow is.
+///
+/// The page is the fourth component of the direction rather than a field of its own, so that
+/// a fragment reads and tests it in one comparison exactly as it reads a record's own page.
+struct Directional {
+    colour: vec4<f32>,
+    direction: vec4<f32>,
+    shadow_projection: mat4x4<f32>,
+};
+
 struct Uniforms {
     cluster_grid: vec4<f32>,
+    directional: Directional,
     environment: vec4<f32>,
     frame_size: vec2<f32>,
     projection: Projection,

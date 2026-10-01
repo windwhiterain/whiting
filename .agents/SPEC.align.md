@@ -1586,3 +1586,124 @@ on exactly one machine. It is written down in
 **dimensions**, which the downlevel floor of 2048 was also incidentally guarding and which
 nothing guards now.
 
+## Directional light: a stated input, and a page for a light in no cluster
+
+### The exemption is about a cluster's cap, and a page is not a cluster slot
+
+This is the one place checkpoint 7 can be wrong **in a way that renders fine**, and the
+reason is worth stating before anything else about it.
+
+A directional light stands nowhere and reaches every depth equally, so it is in every cluster
+by definition and `takes_cluster_slot` exempts it. `assign` then skips it entirely when it
+walks the candidates, and `reached` — read off that walk in `pack` — is `false` for it. The
+original page rule read `!light.clustered || !reached[index]`, so a sun was given **no page**.
+
+That does not fail. A record's page of `NO_PAGE` means *lit unshadowed*, **by design**: the
+pool is the scene's decision about how many shadows it wants, a light that lost the ranking
+is a light the scene chose to approximate, and handing it a neighbour's page would be a wrong
+shadow rather than a missing one. So the failure mode is a scene that renders correctly and
+wrongly at once — a sun that lights everything and casts nothing, with no error, no note, and
+nothing in the frame to say so.
+
+The fix is `ClusterLight::wants_page`, which asks the question in one place because the two
+halves answer from two different facts:
+
+- a light that takes cluster slots is worth a page when the walk found it reaching one;
+- a light that takes no cluster slots covers the whole view by definition, so the walk never
+  sees it and `reached` is **false for a light that is on screen in every pixel** — its page
+  is decided by the light itself, which is why `casts_shadow` is a field of its own rather
+  than something read out of `shadow_projection`.
+
+**A light of a kind that casts no shadow still gets no page.** The environment light is
+exempt *and* casts nothing, and the two halves have to be asked apart or the environment
+would be handed a page rendering nothing. That is what the new `casts_shadow` flag is for, and
+it is asked apart from `shadow_projection` because a light the pool had no room for and a
+light that casts nothing both carry a matrix nothing looks through.
+
+`crates/scene/tests/directional_lights.rs` reads the page out of the **packed record** rather
+than asking the assignment, because the record is what a fragment looks the page up in — the
+number the test pins is then the number the shader sees. `crates/scene/tests/shadow_pages.rs`
+gained the paired test at the level below it.
+
+### Its data is a uniform field, because a record has no path to it
+
+A light record is read through a cluster list, and a directional light is in none, so a
+fragment cannot reach a record of it. It is a **stated input of the lighting pass** on exactly
+the environment's terms: one `Directional` struct in `Uniforms`, carrying its colour with the
+flag in the fourth component, its direction with its **page** in the fourth component, and its
+orthographic matrix.
+
+**A nested struct rather than three fields of its own.** One light is one thing, and the
+record run has one entry per light for exactly this reason; a uniform reading as
+`directional_colour` beside `directional_projection` would be one light spelled three times.
+The fields sort as `colour`, `direction`, `shadow_projection`, between `cluster_grid` and
+`environment`.
+
+**A matrix in a uniform is fine; a thousand records in one is not.** That is the whole reason
+the records are a storage buffer, and the two facts are consistent: one light's projection is
+sixty four bytes and a scene's light count is unbounded.
+
+**Written for every lighting pass, present or not.** The layout is the same for every scene, so
+a field that came and went with the document would put every field after it somewhere else.
+The environment map's rule, applied again.
+
+### The page is fitted to the scene, and the handoff's reason for it was wrong
+
+The handoff said the orthographic page "is what makes a sun's shadow the same sharpness across
+the whole scene rather than sharp near the camera and soft far away", and contrasted it with
+"a box looked at from where it stands".
+
+**The contrast does not hold in this renderer.** `projection_of` builds
+`orthographic × look_at`, so a **point** light's page is already a parallel projection and its
+shadows are already parallel. The only kind whose page is a perspective frustum is a **spot**
+light, whose cone is what gives it a field of view. And the sharpness claim is about the
+**camera's** projection, not the light's, so `directional_projection` is not what makes it
+true.
+
+What the function actually decides, and what is left of the design:
+
+- **the half width is `shadow_extent` and nothing else** — the same field a point light's is,
+  meaning the same thing, so a scene mixing a lantern and a sun says which is which with one
+  author's number;
+- **the page is centred on the scene rather than on the light** — a point light's page is a box
+  of that half width around the light reaching `distance + 2 × half_width` deep, so a scene
+  wider than `shadow_extent` falls *outside* it, where a fragment reads as unshadowed;
+- **the depth range is the scene's own extent along the light**, from the box's support
+  interval: a sum over the three scene axes of `|direction| × half_width`, because a point of
+  the box is a choice on every axis at once.
+
+**The eye distance does not change the page.** Both near and far are passed as distances from
+the eye, so moving the eye back moves them with it; and `look_at`'s rotation is the normalized
+`centre - eye`, which is the light's direction at any distance. It is a number anyway because
+a light that stands somewhere is a thing a reader can reason about, and it has to be behind
+the whole of the bounds.
+
+The cost of a near plane at the nearest point of the box is the same sliver
+`SPOT_NEAR_FRACTION` accepts for a cone — a fragment nearer the light than the plane is
+clipped out of the page and reads as unshadowed — except that here **nothing in the scene is in
+that sliver**, because the plane is derived from the box.
+
+### The record is still emitted, and the shader's `w` early-out is inert for a sun
+
+The record a directional light is still given is dead weight, and it is kept on purpose: one
+light one record is what makes a cluster index a plain index into an array, which
+`environment-light-limits.md` item 4 already argues for the environment light.
+
+The shader's `shadowed` returns unshadowed for a fragment whose `w` is not positive, because
+dividing by a negative `w` would fold it back into the page from behind. That branch is the
+**perspective** case alone: a page built as `orthographic × look_at` has a bottom row of
+exactly `(0, 0, 0, 1)`, so every point keeps a `w` of one. `directional_lights.rs` pins that
+with the bottom-right entry rather than `m[11]`, because for the perspective product `m[11]` is
+`-back.z`, which is zero for any light shining straight up or down and would pass for a spot
+light aimed at the floor.
+
+### One directional light per scene, and the record is still ninety six bytes
+
+A second is refused by name, on the environment's rule: one pass carries one field of each, and
+a light silently dropped to make room is a light an author wrote and nobody sees. The refusal
+lives in `read_lights` beside `SecondEnvironmentLight` because both are the same fact about two
+stated inputs.
+
+A directional light costs **nothing** in the clustered buffers: the record is still ninety six
+bytes and the cone run still thirty two, because its data is a uniform field rather than
+record fields. The test that says so is the same one the spot cone run needed.

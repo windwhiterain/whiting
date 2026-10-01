@@ -48,14 +48,15 @@ use crate::lighting::{SPOT_CONES_ENTRY, SpotCone, spot_cone_schema, spot_cones, 
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
 use crate::standard::frame::Frame;
 use crate::standard::math::{
-    Bounds, IDENTITY, Matrix, add, apply, dot, look_at, multiply, normalize, perspective,
-    projection_of, transform_matrix,
+    Bounds, IDENTITY, Matrix, add, apply, dot, look_at, multiply, normalize, orthographic,
+    perspective, projection_of, scale, subtract, transform_matrix,
 };
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     CAMERA, CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, DEPTH_RANGE,
-    ENVIRONMENT, ENVIRONMENT_MAP, FORWARD, FRAME_SIZE, HALF_EXTENT, INSTANCE_DATA, POSITION,
-    PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, UP, VERTICES,
+    DIRECTIONAL, ENVIRONMENT, ENVIRONMENT_MAP, FORWARD, FRAME_SIZE, HALF_EXTENT, INSTANCE_DATA,
+    POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, UP,
+    VERTICES,
 };
 use crate::standard::scene_schema;
 use crate::{CompileError, CompileNote};
@@ -309,6 +310,17 @@ struct LightRead {
     /// [`LightRead::shadow_projection`], which are the two places a record wants a number
     /// where a kind has none, and both say in words what they did.
     position: Option<[f64; 3]>,
+    /// The unit vector the light travels along, and `None` for a kind that shines from a place
+    /// rather than a direction.
+    ///
+    /// # Invariants
+    ///
+    /// A field is here exactly when the kind declares it, and it is **normalised where it is
+    /// read** so that everything downstream gets a unit vector: the schema says the length does
+    /// not matter, so a document may write `[0, -20, 0]` and get the same light as `[0, -1, 0]`.
+    /// A spot light's cone carries the same direction as its own axis, and the two are read from
+    /// one number rather than from two fields that would then be able to disagree.
+    direction: Option<[f64; 3]>,
     colour: [f64; 3],
     /// The half width of the volume a light shadows, and `None` for a kind that casts none.
     shadow_extent: Option<f64>,
@@ -396,19 +408,24 @@ impl LightRead {
     /// a document whose two answers had come to disagree, and one check is the place that
     /// cannot.
     ///
-    /// The **kind** chooses the shape, because a point light's volume is a box looked at from
-    /// where it stands and a spot light's is a cone: the same two numbers, read as two
-    /// different shapes. Which is why a spot light's cone reaches this function at all, and
-    /// why a point light's is never read: the cone of a point light is the whole sphere and
-    /// [`spot_projection`] would put a near plane and a far plane around a volume with no
-    /// sides.
+    /// The **kind** chooses the shape, because the same two numbers are three different shapes:
+    /// a point light's volume is a box looked at from where it stands, a spot light's is a
+    /// cone, and a directional light's is a box looked at **along** a direction. Which is why
+    /// the arm is chosen before either optional field is read — a light that has no position
+    /// and a light that has no direction are different documents, and one `?` on each in turn
+    /// would be a way of writing the match twice.
     fn shadow_volume(&self, bounds: &Bounds) -> Option<(Matrix, [f64; 3])> {
-        let position = self.position?;
         let extent = self.shadow_extent?;
-        Some(match self.kind {
-            LightKind::Spot => spot_projection(position, &self.cone, extent, bounds),
-            _ => light_projection(position, extent, bounds),
-        })
+        match self.kind {
+            LightKind::Directional => Some(directional_projection(self.direction?, extent, bounds)),
+            _ => {
+                let position = self.position?;
+                Some(match self.kind {
+                    LightKind::Spot => spot_projection(position, &self.cone, extent, bounds),
+                    _ => light_projection(position, extent, bounds),
+                })
+            }
+        }
     }
 }
 
@@ -468,11 +485,26 @@ impl LightKind {
     /// would load and no page, and it is a **stated** input of the lighting pass rather than
     /// something the loop stumbles on.
     ///
-    /// A directional light is refused rather than approximated, and the refusal lands before
-    /// the field reads: it declares no `position`, so reading the fields first would report a
-    /// missing field instead of the mistake that is there.
+    /// A **directional** light is a third way of being drawn, and the only one that is
+    /// exempt from clustering and still shadows. It stands nowhere, so it is in no cluster
+    /// list and no fragment has a path to a record; like the environment it is a **stated**
+    /// input of the lighting pass, evaluated by every fragment once beside the loop. It
+    /// differs from the environment in the one way that matters — it casts a shadow — so it
+    /// carries a page and the environment does not.
+    ///
+    /// Every kind this stage knows is now drawn, which makes this predicate the statement of
+    /// which light kinds exist rather than a list of the ones a pass is missing.
+    ///
+    /// It is still asked, and it is still the right place to ask, because it is the **gate**
+    /// rather than a list: a fifth kind added to the enumeration above and not added here is
+    /// refused by name before any of its fields are read, which is a document error rather than
+    /// a light quietly drawn as a point. An always-true check on today's four kinds is what a
+    /// gate that has not been needed yet looks like.
     const fn is_emitted(self) -> bool {
-        matches!(self, Self::Point | Self::Spot | Self::Environment)
+        matches!(
+            self,
+            Self::Point | Self::Spot | Self::Directional | Self::Environment
+        )
     }
 }
 
@@ -589,6 +621,11 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
             // no view. It is the same matrix the shadowing pass draws its page through.
             shadow_projection: light.shadow_projection(&bounds),
             clustered: light.kind.takes_cluster_slot(),
+            // Whether the light casts a shadow, which is asked apart from the projection above
+            // because that field answers the same question for two different reasons: a light
+            // the pool had no room for and a light that casts nothing both carry a matrix
+            // nothing looks through, and the page ranking has to tell them apart.
+            casts_shadow: light.shadow_extent.is_some(),
         })
         .collect();
     let clusters = lighting_pool::assign(&clustering, &cluster_lights, &camera_basis, &light_pool)?;
@@ -672,6 +709,10 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
         insert_entry(&mut instance, group.entry(), group.payload())?;
         passes.push(depthing_pass(&group, &camera, frame, time, &images));
     }
+    // The directional light as the pass carries it, found by the kind rather than by a separate
+    // return from `read_lights`: the light is in the same run as every other one and in the same
+    // order, so the page that was bought for it is the page of the same index.
+    let directional = DirectionalLight::read(&lights, &clusters, &bounds);
     // The lighting stage names no light, so its groups carry none and its pass labels do not
     // move when a light is added. That is the whole of what the clustered pass bought.
     for group in groups(&instances, &meshes, &shaders, Stage::Lighting, None) {
@@ -685,6 +726,7 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
             &cones,
             &light_pool,
             &environment,
+            &directional,
             frame,
             time,
             &images,
@@ -866,6 +908,145 @@ impl EnvironmentMap {
     }
 }
 
+/// The scene's directional light as a lighting pass's uniform carries it.
+///
+/// # Invariants
+///
+/// There is exactly one of these per compile, present or not, because a lighting pass carries
+/// one such field. A scene naming a second directional light is refused in [`read_lights`]
+/// rather than one of them being dropped, which is the environment's rule applied to the
+/// second exempt kind that has a uniform to collide in.
+///
+/// It is here rather than in a light record for the reason the environment is: the record is
+/// read through a cluster list, and this light is in no list, so a fragment has no path to a
+/// record to read. Every fragment evaluates it unconditionally, which is the correct cost —
+/// there is no culling to do and no light to choose between, and it is one BRDF evaluation
+/// beside a loop that already runs.
+///
+/// The record it is still given is dead weight, and it is kept on purpose: one light one
+/// record is what makes a cluster index a plain index into an array. See
+/// `.agents/proposals/environment-light-limits.md`.
+struct DirectionalLight {
+    /// The unit vector the light travels along, which is also the way a surface faces it.
+    direction: [f64; 3],
+    /// The light's colour scaled by its intensity.
+    colour: [f64; 3],
+    /// The orthographic matrix a fragment reads the light's page through, and the identity for
+    /// a scene that names none — the same answer a light of a kind that casts no shadow gives
+    /// anywhere else, and for the same reason.
+    shadow_projection: Matrix,
+    /// The page of the pool the light's shadow was rendered into, as [`lighting_pool::NO_PAGE`]
+    /// for a light that was given none.
+    ///
+    /// It is a number in the direction's fourth component rather than a field of its own, so
+    /// the page is read and tested in one comparison exactly as a record's own page is. A
+    /// light the pool had no room for is lit unshadowed by design, and that design is stated
+    /// once, beside [`shadowed`], rather than restated here for a second kind of light.
+    page: f64,
+    /// Whether the scene named a `Directional` light at all.
+    present: bool,
+}
+
+impl DirectionalLight {
+    /// Returns the scene's one directional light as a pass carries it, or the absent one.
+    ///
+    /// # Invariants
+    ///
+    /// Found by **kind** rather than taken from a second return, because the light is already
+    /// in the run with every other one and the run is the thing whose order the cluster
+    /// indices and the pages are both expressed in. Taking it from the same run is what makes
+    /// the page found here the page the record of the same index carries, and a second list
+    /// would be a second place for the two to come apart.
+    ///
+    /// A scene naming more than one is already refused in [`read_lights`], so the first found
+    /// is the only one there is.
+    fn read(lights: &[LightRead], clusters: &lighting_pool::Clusters, bounds: &Bounds) -> Self {
+        let Some((index, light)) = lights
+            .iter()
+            .enumerate()
+            .find(|(_, light)| light.kind == LightKind::Directional)
+        else {
+            return Self::absent();
+        };
+        // The projection is the same matrix the record of this index carries and the shadowing
+        // pass drew its page through, and the page is that record's own page. Reading either
+        // from somewhere else would be a second answer to a question with one.
+        let page = clusters
+            .page_of(index)
+            .map_or(lighting_pool::NO_PAGE, |page| page as f64);
+        Self {
+            direction: light.direction.unwrap_or([0.0, -1.0, 0.0]),
+            colour: light.colour,
+            shadow_projection: light.shadow_projection(bounds),
+            page,
+            present: true,
+        }
+    }
+
+    /// Returns the light a scene naming no directional light carries, which is the one that
+    /// lights nothing.
+    fn absent() -> Self {
+        Self {
+            direction: [0.0, -1.0, 0.0],
+            colour: [0.0; 3],
+            shadow_projection: IDENTITY,
+            page: lighting_pool::NO_PAGE,
+            present: false,
+        }
+    }
+
+    /// Returns the three fields the lighting pass's uniform carries for this light.
+    ///
+    /// The fields are in the order the interface schema sorts them into, which is by name:
+    /// `colour`, `direction`, `shadow_projection`. A nested struct rather than three fields of
+    /// its own, because one light is one thing: the record run has one entry per light for
+    /// exactly this reason, and a uniform reading as `directional_colour` beside
+    /// `directional_projection` would be one light spelled three times.
+    ///
+    /// It is **written for every lighting pass**, present or not, because the uniform's layout
+    /// is the same for every scene. A field that came and went with the document would put
+    /// every field after it somewhere else — see [`EnvironmentMap`] for the same argument about
+    /// the map.
+    fn uniform(&self) -> Value {
+        let present = if self.present { 1.0 } else { 0.0 };
+        Value::structure([
+            (
+                "colour".to_owned(),
+                Value::List(
+                    [self.colour[0], self.colour[1], self.colour[2], present]
+                        .into_iter()
+                        .map(Value::Float)
+                        .collect(),
+                ),
+            ),
+            (
+                "direction".to_owned(),
+                Value::List(
+                    [
+                        self.direction[0],
+                        self.direction[1],
+                        self.direction[2],
+                        self.page,
+                    ]
+                    .into_iter()
+                    .map(Value::Float)
+                    .collect(),
+                ),
+            ),
+            (
+                "shadow_projection".to_owned(),
+                Value::List(
+                    self.shadow_projection
+                        .iter()
+                        .copied()
+                        .map(Value::Float)
+                        .collect(),
+                ),
+            ),
+        ])
+    }
+}
+
 /// The label the absent environment's image is given, which nothing samples and nothing names.
 ///
 /// It is a name rather than nothing so that the payload and the declaration are written from
@@ -899,6 +1080,12 @@ const ABSENT_ENVIRONMENT_ENTRY: &str = "environment_absent_map";
 /// An environment light is read against the scene's **images**, which is why the images come
 /// first: the one field it declares is a label into that list, and a label resolved against a
 /// list that had not been read yet would be a label resolved against nothing.
+///
+/// The two kinds that are **stated inputs of the lighting pass** rather than members of a
+/// cluster list — the environment and the directional light — are counted here, because one
+/// pass carries one field of each. A second of either is refused by name, which is the same
+/// refusal in the same place, and a light silently dropped to make room is a light an author
+/// wrote and nobody sees.
 fn read_lights(
     scene: &Value,
     images: &[ImageRead],
@@ -910,6 +1097,11 @@ fn read_lights(
     // environment is what a lighting pass carries, so a second one is a document naming two
     // things the pass has one binding for.
     let mut environment: Option<Environment> = None;
+    // The label of the directional light already read, for the same reason the environment is
+    // kept: one lighting pass carries one directional field, so a second is a document naming
+    // two things the pass has one answer for. The label and not the light, because the light
+    // itself is in `read` either way and the refusal has to name the one that was first.
+    let mut directional: Option<String> = None;
     for (index, light) in lights.iter().enumerate() {
         let path = path.index(index);
         let label = text(light, &path, "label")?.to_owned();
@@ -955,6 +1147,7 @@ fn read_lights(
                     kind,
                     label,
                     position: None,
+                    direction: None,
                     colour,
                     shadow_extent: None,
                     radius: None,
@@ -964,13 +1157,41 @@ fn read_lights(
                     cone: SpotCone::whole_sphere(),
                 }
             }
+            LightKind::Directional => {
+                if let Some(first) = &directional {
+                    return Err(CompileError::SecondDirectionalLight {
+                        path: path.clone(),
+                        label,
+                        first: first.clone(),
+                    });
+                }
+                let direction = read_direction(light, &path, &label)?;
+                directional = Some(label.clone());
+                LightRead {
+                    kind,
+                    label,
+                    position: None,
+                    direction: Some(direction),
+                    colour,
+                    shadow_extent: Some(number(light, &path, "shadow_extent")?),
+                    // A directional light reaches every distance equally, so it has no reach to
+                    // cull by. It declares no `radius` of its own, and
+                    // [`LightRead::radius`] answers for it with one box radius of the scene —
+                    // which is a number nothing asks. It is left to that answer rather than
+                    // given a special case, so a reader who finds a way to ask is handed the
+                    // same fallback every other kind without a radius would get, and the one
+                    // fact that says it is a fallback is `takes_cluster_slot` being false.
+                    radius: None,
+                    cone: SpotCone::whole_sphere(),
+                }
+            }
             // `is_emitted` has already refused every other kind, so reaching this arm with
             // anything but a point or a spot light would mean the two answers above had come
             // to disagree, which is a bug in the compiler rather than in the document. The
-            // cone is the one field set the two kinds do not share, and it is read by the
-            // kind rather than beside the fields they do share: a point light declares no
-            // `direction`, so a read that asked for one would report a missing field on a
-            // document that is in no way missing one.
+            // direction is the one field the two kinds do not share with a directional light
+            // alone, and it is read by the kind rather than beside the fields they do share: a
+            // point light declares no `direction`, so a read that asked for one would report a
+            // missing field on a document that is in no way missing one.
             _ => {
                 let radius = optional_number(light, &path, "radius")?;
                 if let Some(reach) = radius.filter(|reach| *reach <= 0.0) {
@@ -980,8 +1201,13 @@ fn read_lights(
                         radius: reach,
                     });
                 }
-                let cone = if kind == LightKind::Spot {
-                    read_spot_cone(light, &path, &label)?
+                let direction = if kind == LightKind::Spot {
+                    Some(read_direction(light, &path, &label)?)
+                } else {
+                    None
+                };
+                let cone = if let Some(axis) = direction {
+                    read_spot_cone(axis, light, &path, &label)?
                 } else {
                     SpotCone::whole_sphere()
                 };
@@ -989,6 +1215,7 @@ fn read_lights(
                     kind,
                     label,
                     position: Some(triple(light, &path, "position")?),
+                    direction,
                     colour,
                     shadow_extent: Some(number(light, &path, "shadow_extent")?),
                     radius,
@@ -998,6 +1225,29 @@ fn read_lights(
         });
     }
     Ok((read, environment))
+}
+
+/// Reads the unit direction the light travels along, refusing a vector that is not one.
+///
+/// # Invariants
+///
+/// The zero is refused rather than normalised because normalising it divides by nothing, and a
+/// `NaN` that reaches a matrix is a page of nothing rendered with no error anywhere. This is
+/// the one number about a light that is answered before it is packed, because the schema says
+/// the length does not matter and a document may write `[0, -20, 0]` and mean the same light as
+/// `[0, -1, 0]`.
+///
+/// A **spot** light and a **directional** light both declare `direction` and both read it here,
+/// so the refusal and the normalisation are one answer rather than two copies that could drift.
+fn read_direction(light: &Value, path: &Path, label: &str) -> Result<[f64; 3], CompileError> {
+    let direction = triple(light, path, "direction")?;
+    if dot(direction, direction) == 0.0 {
+        return Err(CompileError::ZeroLightDirection {
+            path: path.key("direction"),
+            label: label.to_owned(),
+        });
+    }
+    Ok(normalize(direction))
 }
 
 /// Reads the cone of a spot light, refusing a cone that could not be drawn.
@@ -1012,22 +1262,20 @@ fn read_lights(
 /// through cannot be drawn as; and a direction of zero is not a direction, and normalising it
 /// divides by nothing.
 ///
-/// The direction is **normalised here**, where it is read, rather than in the shader, because
-/// the shader is given the axis and not the vector the author typed. The schema says the
-/// length does not matter, so a document may write `[0, -20, 0]` and get the same cone as
-/// `[0, -1, 0]`. That is the one number about a light that is answered before it is packed.
+/// `axis` is the already normalised direction, read by [`read_direction`] because a spot light
+/// is not the only kind that declares one and the zero check is not the only refusal that
+/// follows from it. The cone's axis and the light's own direction are therefore one number,
+/// and a document cannot write a cone pointing one way and a light shining another.
 ///
 /// The angles are carried as they are written, and the cosine the shader compares against is
 /// taken where the run is packed: this is a refusal about a document and that is a decision
 /// about bytes, and a refusal reached across two modules is a refusal that can be forgotten.
-fn read_spot_cone(light: &Value, path: &Path, label: &str) -> Result<SpotCone, CompileError> {
-    let direction = triple(light, path, "direction")?;
-    if dot(direction, direction) == 0.0 {
-        return Err(CompileError::ZeroLightDirection {
-            path: path.key("direction"),
-            label: label.to_owned(),
-        });
-    }
+fn read_spot_cone(
+    axis: [f64; 3],
+    light: &Value,
+    path: &Path,
+    label: &str,
+) -> Result<SpotCone, CompileError> {
     let inner_angle = number(light, path, "inner_angle")?;
     let outer_angle = number(light, path, "outer_angle")?;
     if outer_angle <= inner_angle {
@@ -1054,7 +1302,7 @@ fn read_spot_cone(light: &Value, path: &Path, label: &str) -> Result<SpotCone, C
         });
     }
     Ok(SpotCone {
-        axis: normalize(direction),
+        axis,
         inner_angle,
         outer_angle,
     })
@@ -2609,6 +2857,7 @@ fn lighting_pass(
     cones: &PackedList,
     pool: &LightPool,
     environment: &EnvironmentMap,
+    directional: &DirectionalLight,
     frame: Frame,
     time: f64,
     images: &[(String, Value)],
@@ -2640,6 +2889,13 @@ fn lighting_pass(
                 // writes is a zero colour and a zero flag, and the shader takes the stand-in
                 // path on the flag rather than on the colour: see `EnvironmentMap`.
                 environment.uniform(),
+            ),
+            (
+                DIRECTIONAL.to_owned(),
+                // Written on the same terms as the environment above and for the same reason:
+                // the layout is the same for every scene, so a scene with no directional light
+                // writes the absent one rather than nothing.
+                directional.uniform(),
             ),
             (
                 FRAME_SIZE.to_owned(),
@@ -2893,6 +3149,136 @@ fn spot_projection(
             &look_at(position, add(position, cone.axis), [0.0, 1.0, 0.0]),
         ),
         position,
+    )
+}
+
+/// How far behind the scene a directional light's eye stands, as a multiple of the page's own
+/// half width.
+///
+/// # Invariants
+///
+/// **This number does not change the page.** An orthographic projection's near and far planes
+/// are distances from the eye rather than a divide, and both are passed here as offsets from
+/// the eye, so moving the eye back moves the planes with it and the same geometry lands at the
+/// same place on the page. The only thing the distance reaches is `look_at`'s rotation, and
+/// that is the normalized `centre - eye`, which is the light's direction whatever the distance
+/// is — so the rotation is the distance-independent half and the page is the other half, and
+/// neither of them is this number.
+///
+/// It is still a number, because a light that stands somewhere is a thing a reader can reason
+/// about and an eye at the centre of the scene is not one. It has to be **behind the whole of
+/// the bounds**, since an eye in front of part of the scene puts that part behind it.
+const DIRECTIONAL_EYE_WIDTHS: f64 = 8.0;
+
+/// How much room a directional light's page leaves beyond the scene along its own direction,
+/// as a fraction of the page's half width.
+///
+/// # Invariants
+///
+/// The near plane sits a little **before** the nearest point of the box and the far plane a
+/// little **after** the furthest, because a plane exactly on a bound puts the surfaces that
+/// make up that bound on the plane itself, where the rasteriser's own rounding can clip them
+/// and the shadow at the very edge of the scene disappears.
+///
+/// The cost of a margin is depth range: every unit of it is a unit the page's twenty four bits
+/// of depth are spread over, and the whole reason the planes are derived from the bounds rather
+/// than from the light is a range no wider than the scene. Hence a fraction of a tenth rather
+/// than a plane a page width out.
+const DIRECTIONAL_DEPTH_PADDING: f64 = 0.1;
+
+/// Returns the orthographic projection a directional light's page is drawn through, and the eye
+/// it is made from.
+///
+/// # Invariants
+///
+/// **Orthographic, and fitted to the scene's bounds rather than to a box around a place**, and
+/// those are two separate decisions that the handoff recorded as one.
+///
+/// Orthographic is the obvious half and needs no defence here, because **a point light's page
+/// is already orthographic**: [`projection_of`] builds `orthographic × look_at`, so the
+/// "point lights get frusta and suns get parallel projections" contrast is not a fact about
+/// this renderer. The only kind whose page is a perspective frustum is a **spot** light, whose
+/// cone is what gives it a field of view. The handoff named the orthographic page as what makes
+/// a sun's shadow the same sharpness across the whole image rather than sharp near the camera
+/// and soft far away — which is true, but it is a claim about the *camera's* projection, not
+/// about the light's, and this function is not what makes it true.
+///
+/// What is left, and what this function actually decides:
+///
+/// - **The half width is `shadow_extent` and nothing else.** It is the same field a point
+///   light's is and it means the same thing — how much of the scene this light shadows — so a
+///   scene mixing a lantern and a sun says which is which with one author's number. Nothing
+///   here widens it to the bounds, because a page wider than the scene is a page whose texels
+///   are spread thinner than the author asked for; a scene whose own stage is wider than the
+///   extent is an author who has said the sun does not shadow the edges of it, and the edges
+///   come out unshadowed by that decision rather than by a bug.
+/// - **The page is fitted to the bounds, not to the light.** A point light's page is a box of
+///   half width `shadow_extent` centred on the light and reaching `distance + 2 × half_width`
+///   deep, so a light standing inside its own scene has a page that barely reaches past it and
+///   a scene wider than `shadow_extent` falls **outside** it, where a fragment reads as
+///   unshadowed. A sun's page is centred on the scene and is exactly as deep as the scene is
+///   along the light, so the whole stage is inside it however the author sized the extent.
+/// - **The depth range is the scene's own extent along the light**, which is what keeps a
+///   shadow's edges at one sharpness from the near wall to the far one. A page several times
+///   deeper than the geometry in it spends its texels on empty space, and the same number of
+///   texels over a larger area is a blurrier shadow.
+///
+/// # Why the near and far planes come from the box's support interval
+///
+/// A box is only as deep as a given direction sees it when that direction points at one of its
+/// axes, and a sun across its own scene is not pointing at an axis. The interval is therefore
+/// the box's **support interval along the light's own direction**: a sum over the three scene
+/// axes of `|direction| × half width`, because a point of the box is a choice on every axis at
+/// once and the furthest of them takes the far end of all three.
+///
+/// The cost of a near plane at the nearest point of the box is stated rather than hidden. A
+/// fragment nearer the light than this is clipped out of the page, and the shader reads a
+/// fragment whose depth is **below** the page's near plane as unshadowed, because it compares
+/// less than anything the page recorded. Nothing in the scene is in that sliver — the plane is
+/// derived from the box, so the nearest surface in the scene is at or beyond it — which is why
+/// here that cost is one a reader does not pay, and it is the same sliver
+/// [`SPOT_NEAR_FRACTION`] accepts for a cone.
+fn directional_projection(
+    direction: [f64; 3],
+    shadow_extent: f64,
+    bounds: &Bounds,
+) -> (Matrix, [f64; 3]) {
+    let centre = bounds.centre();
+    let half_width = shadow_extent.max(1e-3);
+    // The furthest the box reaches in each of the two directions along the light's own axis,
+    // as a **sum over the three scene axes**. A point of the box is a choice on every axis at
+    // once, so the furthest of them is the one that takes the far end of all three; taking the
+    // largest single term instead gives a page that stops inside the scene, and everything
+    // beyond it reads as fully shadowed.
+    let reach: f64 = (0..3)
+        .map(|axis| direction[axis].abs() * bounds.half_width(axis))
+        .sum();
+    // Far enough back that the whole box is in front of the eye even when the box is far wider
+    // than the page, and floored above a hand's width so a scene drawn inside a fraction of a
+    // unit still has an eye.
+    let eye_distance = (DIRECTIONAL_EYE_WIDTHS * half_width).max(reach * 2.0 + half_width);
+    let eye = subtract(centre, scale(direction, eye_distance));
+    let margin = DIRECTIONAL_DEPTH_PADDING * half_width;
+    (
+        multiply(
+            &orthographic(
+                half_width,
+                eye_distance - reach - margin,
+                eye_distance + reach + margin,
+            ),
+            // `look_at`'s up is parallel to the light when the light shines straight up or
+            // straight down, and its right hand axis then falls back to a unit x. Which of the
+            // two perpendicular directions becomes "up" cannot be wrong for a box looked at
+            // along an axis, so the same call a spot light's cone makes is the right one here.
+            //
+            // The **order** is `projection × view`, which is the order [`projection_of`] and
+            // [`spot_projection`] both use and the order a column major matrix acting on a
+            // column vector wants. Reversed, the orthographic scale lands in the view's
+            // rotation and the scene is rotated into a page and clipped, which is a page of
+            // nothing rather than a wrong shadow.
+            &look_at(eye, centre, [0.0, 1.0, 0.0]),
+        ),
+        eye,
     )
 }
 

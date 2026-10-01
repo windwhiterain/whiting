@@ -257,9 +257,44 @@ pub struct ClusterLight {
     /// A light that covers the whole view is in every cluster by definition, so listing it
     /// would spend the cap on a light the culling was never going to remove.
     pub clustered: bool,
+    /// Whether this kind of light casts a shadow at all.
+    ///
+    /// It is a fact about the kind rather than about this scene's page budget, and it is asked
+    /// apart from [`Self::shadow_projection`] because that field cannot answer it: a light the
+    /// pool had no room for and a light that casts nothing both carry a matrix nothing looks
+    /// through, and one of them is still worth a page.
+    pub casts_shadow: bool,
 }
 
 impl ClusterLight {
+    /// Returns whether this light is worth a page of the shadow pool, given whether the
+    /// candidate walk found it reaching any cluster.
+    ///
+    /// # Invariants
+    ///
+    /// The two halves answer from two different facts, and the question has to be asked in one
+    /// place because a directional light is exactly the case where reading the wrong half is
+    /// silently wrong rather than loudly.
+    ///
+    /// - A light that takes cluster slots is worth a page when the walk found it. One that
+    ///   reached no cluster lights nothing, so a page for it would render nothing and take the
+    ///   place of one that does not.
+    /// - A light that takes no cluster slots covers the whole view by definition, so the walk
+    ///   never sees it and `reached` is **false for a light that is on screen in every pixel**.
+    ///   Reading the first half for it would give the sun no page, and a fragment tested
+    ///   against page minus one is unshadowed — so the scene renders, correctly and wrongly,
+    ///   with no shadow anywhere and nothing to say so. The exemption is a decision about a
+    ///   cluster's cap, and a page is not a cluster slot: one page is paid for once for the
+    ///   whole image however many clusters there are, which is exactly why a light too wide to
+    ///   list is still worth shadowing.
+    pub fn wants_page(&self, reached: bool) -> bool {
+        if self.clustered {
+            reached
+        } else {
+            self.casts_shadow
+        }
+    }
+
     /// Returns the brightest the light can be anywhere, which is what the cap ranks by.
     ///
     /// # Invariants

@@ -369,8 +369,8 @@ pub enum CompileError {
     )]
     MissingLightKind { path: Path, label: String },
     #[error(
-        "at {path}: the light `{label}` is a {kind} light, and only a Point, a Spot or an \
-         Environment light is emitted at this stage. A light the renderer cannot draw is refused \
+        "at {path}: the light `{label}` is a {kind} light, and this stage emits only a Point, a \
+         Spot, a Directional or an Environment one. A light the renderer cannot draw is refused \
          rather than drawn as a point, which would be a wrong image nobody sees until the render \
          finishes."
     )]
@@ -380,9 +380,9 @@ pub enum CompileError {
         kind: String,
     },
     #[error(
-        "at {path}: the spot light `{label}` shines along a direction of zero, and a zero is not \
-         a direction. The shader would normalise it and divide by nothing, so the cone is \
-         refused rather than turned into a `NaN` the frame cannot be inspected past."
+        "at {path}: the light `{label}` shines along a direction of zero, and a zero is not a \
+         direction. The compiler would normalise it and divide by nothing, so the light is refused \
+         rather than turned into a `NaN` the frame cannot be inspected past."
     )]
     ZeroLightDirection { path: Path, label: String },
     #[error(
@@ -428,6 +428,18 @@ pub enum CompileError {
          nobody sees."
     )]
     SecondEnvironmentLight {
+        path: Path,
+        label: String,
+        first: String,
+    },
+    #[error(
+        "at {path}: the light `{label}` is a second Directional light, and the first is \
+         `{first}`. One directional light is what a lighting pass carries, because a light that \
+         stands nowhere is in no cluster list and a fragment reaches it through a stated input \
+         rather than through a record. A scene naming two would have one of them read and the \
+         other ignored, which is a light an author wrote and nobody sees."
+    )]
+    SecondDirectionalLight {
         path: Path,
         label: String,
         first: String,
