@@ -55,6 +55,7 @@ pub mod geometry;
 pub mod kit;
 pub mod shaders;
 
+mod courtyard;
 mod dunes;
 mod lanterns;
 mod monoliths;
@@ -65,6 +66,7 @@ mod terraces;
 mod tidewater;
 mod tiles;
 
+pub use courtyard::{MOMENTS as COURTYARD_MOMENTS, courtyard};
 pub use dunes::dunes;
 pub use lanterns::lanterns;
 pub use monoliths::monoliths;
@@ -92,15 +94,140 @@ impl Gallery {
             "terraces",
             "tidewater",
             "tiles",
+            "courtyard-dawn",
+            "courtyard-cloud",
+            "courtyard-rain",
+            "courtyard-dusk",
+            "courtyard-night",
+            "courtyard-snow",
         ]
+    }
+
+    /// Reports what a scene holds, in the terms its own document is written in.
+    ///
+    /// A scene is a document of lists and one dictionary of instances bucketed by pass, so this
+    /// is the count of every list and of every bucket. It is the answer to a question a scene
+    /// author asks constantly — how many instances did that grove actually place, and how many
+    /// passes did they become — and it costs nothing, because building a document is the cheap
+    /// half of anything.
+    pub fn census(name: &str) -> String {
+        let mut report = String::new();
+        let scene = match name {
+            other if COURTYARD_MOMENTS.contains(&other) => Some(courtyard(other)),
+            _ => None,
+        };
+        let Some(scene) = scene else {
+            return format!("`{name}` has no census of its own\n");
+        };
+        if let Some(fields) = scene.as_field_map() {
+            // The three facts that decide whether a frame is bright: what the lights are, what
+            // the camera is, and how much air is between the eye and the subject.
+            for key in ["lights", "cameras"] {
+                if let Some(list) = fields.get(key).and_then(Value::as_list) {
+                    report.push_str(&format!("{key}: {}\n", list.len()));
+                    for entry in list {
+                        report.push_str(&format!("  {entry:?}\n"));
+                    }
+                }
+            }
+            if let Some(Value::List(shaders)) = fields.get("shaders") {
+                report.push_str(&format!("shaders: {}\n", shaders.len()));
+                for entry in shaders {
+                    let Some(entry) = entry.as_field_map() else {
+                        continue;
+                    };
+                    if entry.get("label").and_then(Value::as_str) != Some("post") {
+                        continue;
+                    }
+                    if let Some(Value::String(source)) = entry.get("source") {
+                        for line in source.lines() {
+                            if line.starts_with("const ") && line.contains("f32") {
+                                report.push_str(&format!("  {line}\n"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        report
+    }
+
+    /// Reports the box every instance a scene places occupies, and where its labels are.
+    ///
+    /// # Why this is worth a function
+    ///
+    /// A scene author places things by arithmetic and then has to know where they ended up. The
+    /// two ways to find out are to render a frame and guess from the picture, or to read the
+    /// positions back out of the document; the first is a day of guessing and the second is this.
+    /// It is the same measurement the render harness makes of a debug channel, taken on the
+    /// document instead of on a frame.
+    pub fn bounds(name: &str) -> String {
+        let scene = match name {
+            other if COURTYARD_MOMENTS.contains(&other) => courtyard(other),
+            _ => return format!("`{name}` has no bounds of its own\n"),
+        };
+        let mut report = String::new();
+        let Some(instances) = scene
+            .as_field_map()
+            .and_then(|fields| fields.get("instances"))
+            .and_then(Value::as_dict)
+        else {
+            return report;
+        };
+        for (pass, held) in instances {
+            let Some(list) = held.as_list() else { continue };
+            let (mut low, mut high) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+            let mut named: Vec<String> = Vec::new();
+            for entry in list {
+                let Some(fields) = entry.as_field_map() else {
+                    continue;
+                };
+                let label = fields
+                    .get("label")
+                    .and_then(Value::as_str)
+                    .unwrap_or("?")
+                    .to_owned();
+                let Some(transform) = fields.get("transform").and_then(Value::as_field_map) else {
+                    continue;
+                };
+                let Some(at) = transform.get("translation").and_then(Value::as_list) else {
+                    continue;
+                };
+                let mut point = [0.0; 3];
+                for (axis, component) in at.iter().take(3).enumerate() {
+                    match component {
+                        Value::Float(number) => point[axis] = *number,
+                        Value::Int(number) => point[axis] = *number as f64,
+                        _ => {}
+                    }
+                }
+                for axis in 0..3 {
+                    low[axis] = low[axis].min(point[axis]);
+                    high[axis] = high[axis].max(point[axis]);
+                }
+                if !label.contains(' ') && named.len() < 400 {
+                    named.push(label);
+                }
+            }
+            report.push_str(&format!(
+                "{pass}: {} placements, x [{:.2}, {:.2}], y [{:.2}, {:.2}], z [{:.2}, {:.2}]\n",
+                list.len(),
+                low[0],
+                high[0],
+                low[1],
+                high[1],
+                low[2],
+                high[2],
+            ));
+        }
+        report
     }
 
     /// Builds the named scene.
     ///
     /// An unknown name lists the ones that exist rather than panicking, because the caller
     /// is usually a command line and a list is more use than a backtrace.
-    pub fn build(name: &str) -> Value {
-        match name {
+    pub fn build(name: &str) -> Value {        match name {
             "dunes" => dunes(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
@@ -111,6 +238,7 @@ impl Gallery {
             "terraces" => terraces(),
             "tidewater" => tidewater(),
             "tiles" => tiles(),
+            other if COURTYARD_MOMENTS.contains(&other) => courtyard(other),
             other => unimplemented!(
                 "the gallery holds {}, and `{other}` is not one of them",
                 Self::names().join(", ")

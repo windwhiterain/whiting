@@ -1443,8 +1443,33 @@ pub fn displaced_lighting_shader(
     surface: &str,
     helpers: &str,
 ) -> Value {
+    lighting_shader_with_schema(
+        label,
+        displace,
+        surface,
+        helpers,
+        crate::kit::gallery_custom_schema(),
+    )
+}
+
+/// Builds a lighting shader over a custom schema of the scene's own.
+///
+/// # Why the schema is a parameter
+///
+/// A shader declares the shape of the material's `custom_data` it reads, and the row is
+/// verified against it at compile time. A scene that adds a field to its own row — which is
+/// exactly what a scene with more than a handful of surfaces has to do, because the
+/// alternative is one shader per material — therefore has to declare it here, or every
+/// material is refused by name.
+pub fn lighting_shader_with_schema(
+    label: &str,
+    displace: &str,
+    surface: &str,
+    helpers: &str,
+    custom_schema: Schema,
+) -> Value {
     let point = kit::shaded_point_schema();
-    let inputs = crate::attributes::gallery_vertex_inputs(&point);
+    let inputs = crate::attributes::gallery_vertex_inputs_with(&point, &custom_schema);
     kit::shader(
         Stage::Lighting,
         label,
@@ -1452,8 +1477,60 @@ pub fn displaced_lighting_shader(
         light_pass_schema(),
         point,
         kit::gallery_instance_schema(),
-        kit::gallery_custom_schema(),
+        custom_schema,
     )
+}
+
+/// Builds an emission shader with a body of the scene's own, over a custom schema of its own.
+pub fn emission_shader_with_schema(
+    label: &str,
+    body: &str,
+    helpers: &str,
+    custom_schema: Schema,
+) -> Value {
+    let point = kit::shaded_point_schema();
+    let inputs = crate::attributes::gallery_vertex_inputs_with(&point, &custom_schema);
+    kit::shader(
+        Stage::Emission,
+        label,
+        &emission(&inputs, body, helpers),
+        emission_pass_schema(),
+        point,
+        kit::gallery_instance_schema(),
+        custom_schema,
+    )
+}
+
+/// Builds the two stage shaders that place a point rather than colour it, over a custom schema
+/// of the scene's own.
+///
+/// A shadowing or depthing shader's fragment stage never reads the row — it writes depth — but
+/// its `custom_schema` is what the row is verified against, and its **locations** come from the
+/// same merge, so a scene whose materials carry a field of their own declares that field here
+/// too. See [`lighting_shader_with_schema`].
+pub fn placement_shaders_with_schema(label: &str, custom_schema: Schema) -> Vec<Value> {
+    let point = kit::shaded_point_schema();
+    let inputs = crate::attributes::gallery_vertex_inputs_with(&point, &custom_schema);
+    vec![
+        kit::shader(
+            Stage::Shadowing,
+            &format!("{label}_shadowing"),
+            &shadowing(&inputs),
+            shadow_pass_schema(),
+            point.clone(),
+            kit::gallery_instance_schema(),
+            custom_schema.clone(),
+        ),
+        kit::shader(
+            Stage::Depthing,
+            &format!("{label}_depthing"),
+            &depthing(&inputs),
+            depth_pass_schema(),
+            point,
+            kit::gallery_instance_schema(),
+            custom_schema,
+        ),
+    ]
 }
 
 /// Builds the post shader a scene declares, which grades the frame the scene produced.

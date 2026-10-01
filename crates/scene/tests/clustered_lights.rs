@@ -280,6 +280,69 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
                 other: 1,
             },
         ),
+        (
+            // The courtyard, which is one scene drawn in six moments. Twenty groups is what a
+            // place of this many separate things costs: an instance is a group, so a grove of two
+            // hundred culms, a wall in five panels, a pond, a mill and a hundred and ninety tufts
+            // of grass are twenty passes each for the depth and the shading.
+            //
+            // The shadowing count is the one that says what a scene **bought**: the sky fill
+            // takes no page, so it costs no pass, and the page pool is spent on the sun alone.
+            // The three moments whose sun casts under a settled sky pay thirty, and the three
+            // whose frame is built on the sun's own shadows pay forty-five.
+            "courtyard-dawn",
+            Stages {
+                shadowing: 45,
+                depthing: 20,
+                lighting: 20,
+                other: 2,
+            },
+        ),
+        (
+            "courtyard-cloud",
+            Stages {
+                shadowing: 30,
+                depthing: 20,
+                lighting: 20,
+                other: 2,
+            },
+        ),
+        (
+            "courtyard-rain",
+            Stages {
+                shadowing: 30,
+                depthing: 20,
+                lighting: 20,
+                other: 2,
+            },
+        ),
+        (
+            "courtyard-dusk",
+            Stages {
+                shadowing: 45,
+                depthing: 20,
+                lighting: 20,
+                other: 2,
+            },
+        ),
+        (
+            "courtyard-night",
+            Stages {
+                shadowing: 45,
+                depthing: 20,
+                lighting: 20,
+                other: 2,
+            },
+        ),
+        (
+            "courtyard-snow",
+            Stages {
+                shadowing: 30,
+                depthing: 20,
+                lighting: 20,
+                other: 2,
+            },
+        ),
     ];
     assert_eq!(
         counted,

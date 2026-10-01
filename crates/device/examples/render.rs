@@ -109,6 +109,15 @@ async fn run() -> Result<(), String> {
     let source_identifier = DefinitionIdentifier::new("gallery.source");
     let authored = Gallery::build(&name);
 
+    // `--census` answers how big a scene is before any of it is drawn: how many instances each
+    // pass holds, how many meshes, how many materials. It is the number "the grove looks thin"
+    // wants beside it, and it costs no gpu work at all.
+    if request.census {
+        println!("{name}:\n{}", Gallery::census(&name));
+        println!("{}", Gallery::bounds(&name));
+        return Ok(());
+    }
+
     // Every camera a scene names is rendered. A camera decides the projection every pass draws
     // through — and, for a fitted camera, how far back the eye stands — so it is an input to
     // the compile rather than something a renderer picks afterwards. A scene naming two
@@ -312,9 +321,11 @@ fn parse_arguments() -> Result<Request, String> {
     let mut mode = Mode::Frames;
     let mut times: Vec<String> = Vec::new();
     let mut debug: Vec<DebugChannel> = Vec::new();
+    let mut census = false;
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
+            "--census" => census = true,
             "--sheet" => mode = Mode::Sheet,
             "--video" => mode = Mode::Video,
             "--debug" => {
@@ -374,6 +385,7 @@ fn parse_arguments() -> Result<Request, String> {
         mode,
         times: moments,
         debug,
+        census,
     })
 }
 
@@ -399,6 +411,8 @@ struct Request {
     times: Vec<f64>,
     /// The debug channels every compile of this run is asked to draw.
     debug: Vec<DebugChannel>,
+    /// Whether to report what the scene holds, rather than drawing it.
+    census: bool,
 }
 
 /// How the moments of a render are written out.
