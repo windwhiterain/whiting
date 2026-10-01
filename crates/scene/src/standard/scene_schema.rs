@@ -52,6 +52,12 @@ pub const PROJECTION: &str = "projection";
 /// Field holding how much wider than its box the camera frames the scene.
 pub const PADDING: &str = "padding";
 
+/// Field holding how far from the eye the near plane of the camera is.
+pub const NEAR: &str = "near";
+
+/// Field holding how far from the eye the far plane of the camera is.
+pub const FAR: &str = "far";
+
 /// Field holding the time the scene is drawn at, in seconds.
 pub const TIME: &str = "time";
 
@@ -207,6 +213,18 @@ pub fn camera_schema() -> Schema {
                     "How much wider than the scene the camera frames it. A value above one leaves \
                  a margin; below one crops.",
                 ),
+        ),
+        (
+            NEAR.to_owned(),
+            Schema::new(SchemaKind::Float)
+                .optional()
+                .with_documentation("How far from the eye the near plane is."),
+        ),
+        (
+            FAR.to_owned(),
+            Schema::new(SchemaKind::Float)
+                .optional()
+                .with_documentation("How far from the eye the far plane is."),
         ),
     ]))
     .with_documentation("Where the scene is drawn from.")

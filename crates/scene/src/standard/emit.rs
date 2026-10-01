@@ -38,9 +38,9 @@ use crate::standard::math::{Bounds, Matrix, apply, projection_of, transform_matr
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     CAMERA, COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
-    DEPTH_HEIGHT, DEPTH_WIDTH, FORWARD, HALF_EXTENT, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION,
-    LIGHT_PROJECTION, LIGHT_SHADOW_TEXEL, POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP,
-    SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, TIME, UP, VERTICES,
+    DEPTH_HEIGHT, DEPTH_RANGE, DEPTH_WIDTH, FORWARD, HALF_EXTENT, INSTANCE_DATA, LIGHT_COLOR,
+    LIGHT_POSITION, LIGHT_PROJECTION, LIGHT_SHADOW_TEXEL, POSITION, PRESENT_TARGET, PROJECTION,
+    RIGHT, SHADOW_MAP, SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, TIME, UP, VERTICES,
 };
 use crate::standard::scene_schema;
 use graphics::layout::components;
@@ -1117,6 +1117,19 @@ fn post_pass(
         (CAMERA.to_owned(), camera_value(projection)),
         (PROJECTION.to_owned(), projection_value(projection)),
         (TIME.to_owned(), Value::Float(time)),
+        // A depth is a fraction of the range between the two planes, and turning it back
+        // into a distance is a divide by the range. The two numbers travel with the pass
+        // for the same reason the camera's basis does: the stage is not given them
+        // otherwise and cannot recover them.
+        (
+            DEPTH_RANGE.to_owned(),
+            Value::List(
+                [projection.near, projection.far]
+                    .into_iter()
+                    .map(Value::Float)
+                    .collect(),
+            ),
+        ),
     ]);
     let pass = rasterize(
         &format!("post/{}", scene_shader.label),

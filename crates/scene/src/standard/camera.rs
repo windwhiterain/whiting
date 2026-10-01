@@ -32,7 +32,7 @@ use crate::standard::math::{
     Bounds, Matrix, add, look_at, multiply, normalize, orthographic, perspective, scale, subtract,
 };
 use crate::standard::scene_schema::{
-    CAMERA, EYE, FIELD_OF_VIEW, PADDING as PADDING_FIELD, PROJECTION, TARGET, UP,
+    CAMERA, EYE, FAR, FIELD_OF_VIEW, NEAR, PADDING as PADDING_FIELD, PROJECTION, TARGET, UP,
 };
 
 /// The angle a camera that names no field of view sees through, in radians.
@@ -56,6 +56,10 @@ pub struct Camera {
     pub(crate) field_of_view: f64,
     pub(crate) kind: Kind,
     pub(crate) padding: f64,
+    /// The near plane the scene asked for, when it named one.
+    pub(crate) near: Option<f64>,
+    /// The far plane the scene asked for, when it named one.
+    pub(crate) far: Option<f64>,
     pub(crate) aspect: f64,
     pub(crate) bounds: Bounds,
 }
@@ -85,6 +89,10 @@ pub struct Projection {
     /// A ray through a pixel is `forward + right * x * half_extent.0 + up * y *
     /// half_extent.1`, for a pixel whose centre is at `x` and `y` in minus one to one.
     pub half_extent: [f64; 2],
+    /// How far from the eye the near plane is.
+    pub near: f64,
+    /// How far from the eye the far plane is.
+    pub far: f64,
 }
 
 impl Camera {
@@ -134,6 +142,8 @@ impl Camera {
             padding: read(PADDING_FIELD)
                 .and_then(Value::as_float)
                 .unwrap_or(FRAMING_PADDING),
+            near: read(NEAR).and_then(Value::as_float),
+            far: read(FAR).and_then(Value::as_float),
             aspect,
             bounds: *bounds,
         })
@@ -153,8 +163,25 @@ impl Camera {
             field_of_view: DEFAULT_FIELD_OF_VIEW,
             kind: Kind::Orthographic,
             padding: FRAMING_PADDING,
+            near: None,
+            far: None,
             aspect,
             bounds: *bounds,
+        }
+    }
+
+    /// Returns the two depth planes the scene asked for, or `None` when it asked for
+    /// neither.
+    ///
+    /// # Invariants
+    ///
+    /// The two are read as a pair because one plane without the other cannot place a
+    /// camera: what a projection needs is where the depth range starts and ends, and a
+    /// near plane on its own is a number with nothing to be measured against.
+    fn written_planes(&self) -> Option<(f64, f64)> {
+        match (self.near, self.far) {
+            (Some(near), Some(far)) => Some((near, far)),
+            _ => None,
         }
     }
 
@@ -226,6 +253,8 @@ impl Camera {
                     right,
                     up,
                     half_extent: [half_extent, half_extent],
+                    near: depth / 4.0,
+                    far: depth,
                 }
             }
             Kind::Perspective => {
@@ -243,13 +272,26 @@ impl Camera {
                 let vertical_half = (self.field_of_view / 2.0)
                     .clamp(1e-3, std::f64::consts::FRAC_PI_2 - 1e-3)
                     .tan();
-                let view = look_at(self.eye, self.target, self.up);
-                let (right, up, _) = basis(&view);
                 let forward = scale(direction, -1.0);
-                let distance = (self.fitting_distance(forward, right, up, vertical_half)
-                    * self.padding)
-                    .max(1e-3);
-                let eye = add(self.target, scale(direction, distance));
+                // Where the eye ends up is the scene's decision when the scene wrote both
+                // depth planes, and the frame's otherwise. Fitting never moves the eye off
+                // the ray it was given, so the direction above is the view either way.
+                //
+                // A camera that composes itself — one on a hillside looking down a valley —
+                // cannot have its viewpoint decided by how large the scene is. The extent
+                // of the ground says nothing about where a photographer stood.
+                let written = self.written_planes();
+                let eye = match written {
+                    Some(_) => self.eye,
+                    None => {
+                        let view = look_at(self.eye, self.target, self.up);
+                        let (right, up, _) = basis(&view);
+                        let distance = (self.fitting_distance(forward, right, up, vertical_half)
+                            * self.padding)
+                            .max(1e-3);
+                        add(self.target, scale(direction, distance))
+                    }
+                };
                 let view = look_at(eye, self.target, self.up);
                 let (right, up, _) = basis(&view);
                 // The depth planes bracket the whole scene rather than the part of it the
@@ -263,27 +305,30 @@ impl Camera {
                 // holds a wide flat scene's near plane an entire diagonal in front of
                 // anything drawn, and depth mapped from a near plane at zero is depth that
                 // cannot tell two close surfaces apart.
-                let mut nearest = f64::INFINITY;
-                let mut farthest = 0.0f64;
-                for corner in corners(&self.bounds) {
-                    let depth = dot(subtract(corner, eye), forward);
-                    nearest = nearest.min(depth);
-                    farthest = farthest.max(depth);
-                }
-                // A small margin, so a point exactly on the bound is not clipped by a
-                // rounding error in the matrix.
-                let margin = (farthest - nearest).max(1.0) * 0.01;
-                // The floor under the near plane is a fraction of the eye's own distance
-                // rather than a hair above zero. A camera that crops in stands inside the
-                // box, no near plane brackets a box the eye is inside, and one at zero
-                // maps every drawn depth into the last few float values below one: the
-                // depth buffer becomes unable to tell any two surfaces apart. A five
-                // hundredth of the distance loses nothing the frame can show, because
-                // nothing that close to the eye was going to be in it.
-                let nearest = (nearest - margin).max(distance * 0.002);
+                let (near, far) = written.unwrap_or_else(|| {
+                    let mut nearest = f64::INFINITY;
+                    let mut farthest = 0.0f64;
+                    for corner in corners(&self.bounds) {
+                        let depth = dot(subtract(corner, eye), forward);
+                        nearest = nearest.min(depth);
+                        farthest = farthest.max(depth);
+                    }
+                    // A small margin, so a point exactly on the bound is not clipped by a
+                    // rounding error in the matrix.
+                    let margin = (farthest - nearest).max(1.0) * 0.01;
+                    // The floor under the near plane is a fraction of the eye's own distance
+                    // rather than a hair above zero. A camera that crops in stands inside the
+                    // box, no near plane brackets a box the eye is inside, and one at zero
+                    // maps every drawn depth into the last few float values below one: the
+                    // depth buffer becomes unable to tell any two surfaces apart. A five
+                    // hundredth of the distance loses nothing the frame can show, because
+                    // nothing that close to the eye was going to be in it.
+                    let reach = dot(subtract(eye, self.target), subtract(eye, self.target)).sqrt();
+                    ((nearest - margin).max(reach * 0.002), farthest + margin)
+                });
                 Projection {
                     matrix: multiply(
-                        &perspective(self.field_of_view, self.aspect, nearest, farthest + margin),
+                        &perspective(self.field_of_view, self.aspect, near, far),
                         &view,
                     ),
                     eye,
@@ -293,6 +338,8 @@ impl Camera {
                     // The vertical half angle of the view, and the horizontal one widened
                     // by the aspect: a wide frame is wider rather than cropped.
                     half_extent: [vertical_half * self.aspect, vertical_half],
+                    near,
+                    far,
                 }
             }
         }

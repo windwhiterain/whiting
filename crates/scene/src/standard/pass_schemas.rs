@@ -73,6 +73,13 @@ pub const TIME: &str = "time";
 /// Field holding the camera a post pass reconstructs its rays from.
 pub const CAMERA: &str = "camera";
 
+/// Field holding how far the near and far planes are, as two numbers rather than one.
+///
+/// It is on the pass for the same reason the camera's basis is: turning a depth back into a
+/// distance divides by a quantity the stage is not otherwise given and cannot recover, and
+/// `WGSL` has no matrix inverse to recover it with.
+pub const DEPTH_RANGE: &str = "depth_range";
+
 /// Field holding the direction the camera looks along.
 pub const FORWARD: &str = "forward";
 
@@ -352,6 +359,13 @@ pub fn post_pass_schema() -> Schema {
             (
                 TIME,
                 time().with_documentation("Seconds since the scene started."),
+            ),
+            (
+                DEPTH_RANGE,
+                vector2().with_documentation(
+                    "The distance to the near and far planes, which is what turns a depth into \
+                     a distance.",
+                ),
             ),
         ],
     )

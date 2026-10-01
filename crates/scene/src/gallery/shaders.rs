@@ -321,6 +321,7 @@ struct Projection {{
 
 struct Uniforms {{
     camera: Camera,
+    depth_range: vec2<f32>,
     projection: Projection,
     time: f32,
 }};
@@ -364,6 +365,23 @@ fn ray_through(uv: vec2<f32>) -> vec3<f32> {{
         + uniforms.camera.right * offset.x * uniforms.camera.half_extent.x
         + uniforms.camera.up * offset.y * uniforms.camera.half_extent.y,
     );
+}}
+
+/// Returns how far from the camera a surface at this depth is, measured along the view.
+///
+/// # Invariants
+///
+/// A depth buffer holds a fraction of the range between the near and far planes, and that
+/// fraction is linear in a divide rather than in the distance: `near * far` over
+/// `far - depth * (far - near)`. The two planes are handed over rather than left to be
+/// assumed, because a stage without them cannot divide at all — and `WGSL` cannot recover
+/// them, for the same reason it cannot invert the matrix the basis stands in for.
+///
+/// The result is along the view axis rather than along the ray through the pixel, so a
+/// caller walking through the air along a ray divides it by `dot(ray, forward)`.
+fn distance_to(depth: f32) -> f32 {{
+    let range = uniforms.depth_range;
+    return range.x * range.y / (range.y - depth * (range.y - range.x));
 }}
 
 {helpers}
