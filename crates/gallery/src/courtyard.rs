@@ -1236,14 +1236,14 @@ impl Place {
         if cast {
             let material = self.declare(&named("cast"), "courtyard_shadowing", row.clone());
             self.shadowing
-                .push(instance(&named("c"), mesh, at, rotation, scaled, &material));
+                .push(instance(named("c"), mesh, at, rotation, scaled, &material));
         }
         let material = self.declare(&named("depth"), "courtyard_depthing", row.clone());
         self.depthing
-            .push(instance(&named("d"), mesh, at, rotation, scaled, &material));
+            .push(instance(named("d"), mesh, at, rotation, scaled, &material));
         let material = self.declare(&named("shade"), "lighting", row);
         self.lighting
-            .push(instance(&named("s"), mesh, at, rotation, scaled, &material));
+            .push(instance(named("s"), mesh, at, rotation, scaled, &material));
     }
 
     /// Draws one placement **only** in the depth and shading stages: ground cover, which casts
@@ -1271,10 +1271,10 @@ impl Place {
         };
         let material = self.declare(&named("depth"), "courtyard_depthing", row.clone());
         self.depthing
-            .push(instance(&named("d"), mesh, at, rotation, scaled, &material));
+            .push(instance(named("d"), mesh, at, rotation, scaled, &material));
         let material = self.declare(&named("shade"), "lighting", row);
         self.lighting
-            .push(instance(&named("s"), mesh, at, rotation, scaled, &material));
+            .push(instance(named("s"), mesh, at, rotation, scaled, &material));
     }
 
     fn build(self) -> (Vec<Value>, Value) {
@@ -1486,16 +1486,15 @@ fn c_roof_tiles(position: vec3<f32>) -> f32 {
 /// **exactly once, before the body**, into `in.material.z`. `metallic` is read into two terms
 /// and `roughness` into three, and a value that has already stood in for one of those is a
 /// value that has already been used as the thing it is not.
-fn surface_body() -> String {
-    format!(
-        r#"    let kind = in.material.z;
+fn surface_body() -> &'static str {
+    r#"    let kind = in.material.z;
     let at = in.world_position;
     let to_eye = normalize(uniforms.projection.position - at);
     let view = normalize(at - uniforms.projection.position);
     let facing = clamp(dot(normal, -view), 0.0, 1.0);
     let sky_share = c_sun_share();
 
-    if (kind < 0.5) {{
+    if (kind < 0.5) {
         // Rough stone: a wall's base course, the pond's rim, the mill, the step. The mottle is
         // damp low down, because a stone in a wet yard is wet at its foot and dry at its head.
         let mottle = c_stone_mottle(at);
@@ -1503,7 +1502,7 @@ fn surface_body() -> String {
         let wet = smoothstep(0.9, 0.0, at.y) * WETNESS;
         color = color * mix(1.0, 0.52, wet);
         color = color + fresnel * c_sky_at(reflect(view, normal)) * (0.030 + 0.18 * wet) * GRAZE;
-    }} else if (kind < 1.5) {{
+    } else if (kind < 1.5) {
         // The ground, which is one mesh and five materials: paving, the joints between its
         // slabs, the earth of a bank, the water of a flooded terrace and the snow that lies on
         // all of it. Which of them a fragment is, is the mask the mesh carries in the one
@@ -1566,7 +1565,7 @@ fn surface_body() -> String {
         color = color * mix(0.86, 1.10, c_stone_mottle(at * 1.4));
         color = color + fresnel * c_sky_at(reflect(view, normal))
             * (0.010 + 0.09 * WETNESS * flat) * (1.0 - flooded) * (1.0 - pool) * GRAZE;
-    }} else if (kind < 2.5) {{
+    } else if (kind < 2.5) {
         // Whitewash: lime over rammed earth. It is the brightest thing in every frame and it is
         // not flat — a hand-applied wash has trowel bands and it has run at the base.
         let trowel = fractal21(vec2<f32>(at.x * 0.22 + at.z * 0.10, at.y * 0.30));
@@ -1580,7 +1579,7 @@ fn surface_body() -> String {
         wash = wash * mix(1.0, 0.86, 1.0 - smoothstep(0.0, 1.8, at.y));
         color = color * wash;
         color = color + fresnel * c_sky_at(reflect(view, normal)) * 0.030 * GRAZE;
-    }} else if (kind < 3.5) {{
+    } else if (kind < 3.5) {
         // A tiled roof: grey clay, fired dark and weathered pale, wet through when it rains.
         let tile = c_roof_tiles(at);
         let weathered = fractal21(at.xz * 0.55 + vec2<f32>(at.y * 0.3, 0.0));
@@ -1591,7 +1590,7 @@ fn surface_body() -> String {
         // a roof read as tiled rather than as a slab when there is no sun to model it.
         let sheen = pow(facing, 2.0) * WETNESS * 0.22;
         color = color + fresnel * c_sky_at(reflect(view, normal)) * (0.045 + sheen) * GRAZE;
-    }} else if (kind < 4.5) {{
+    } else if (kind < 4.5) {
         // Timber: a post, a door frame, the rack. Open grain along the length, greyed outside
         // and dark where the rain has run.
         let across = at.x * 8.0 + at.z * 6.0;
@@ -1601,7 +1600,7 @@ fn surface_body() -> String {
         let rain = smoothstep(0.9, 0.0, at.y) * WETNESS;
         color = color * mix(1.0, 0.55, rain);
         color = color + fresnel * c_sky_at(reflect(view, normal)) * 0.03 * WETNESS;
-    }} else if (kind < 5.5) {{
+    } else if (kind < 5.5) {
         // Bamboo. A culm is a cylinder of almost nothing: the whole of what it looks like is
         // the light on it, so the body is a rim, a lane of wax, and no albedo at all to speak
         // of.
@@ -1614,7 +1613,7 @@ fn surface_body() -> String {
         let through = pow(clamp(dot(-view, SUN_DIRECTION), 0.0, 1.0), 2.2) * (1.0 - sky_share);
         color = color + SUN_COLOUR * through * 0.55;
         color = color + fresnel * c_sky_at(reflect(view, normal)) * (0.10 + 0.18 * WETNESS) * GRAZE;
-    }} else if (kind < 6.5) {{
+    } else if (kind < 6.5) {
         // A leaf. Leaves are the one surface in an outdoor frame that light comes *through*,
         // and a grove lit without it is a grove of green wire. The transmission is strongest
         // when the sun is behind the leaf, which is what `dot(-view, SUN_DIRECTION)` measures.
@@ -1625,17 +1624,17 @@ fn surface_body() -> String {
         let wet = fresnel * c_sky_at(reflect(view, normal)) * WETNESS * 0.40;
         color = color + wet * GRAZE;
         // And the snow that lies along a leaf's own upper side, which is where snow lies.
-        if (SNOW > 0.001) {{
+        if (SNOW > 0.001) {
             let gather = clamp(normal.y, 0.0, 1.0);
             color = mix(color, vec3<f32>(0.82, 0.86, 0.94), SNOW * gather * 0.55);
-        }}
-    }} else if (kind < 7.5) {{
+        }
+    } else if (kind < 7.5) {
         // Grass: the same transmission as a leaf, a fifth of the size and a tenth of the light.
         let through = pow(clamp(dot(-view, SUN_DIRECTION), 0.0, 1.0), 1.4);
         color = color + SUN_COLOUR * through * (1.0 - sky_share) * 0.42;
         let frost = SNOW * clamp(normal.y, 0.0, 1.0);
         color = mix(color, vec3<f32>(0.78, 0.82, 0.90), frost * 0.7);
-    }} else if (kind < 8.5) {{
+    } else if (kind < 8.5) {
         // Water. The pond is a mirror and the only thing in the yard that is one, so this is
         // where the sky comes down to the ground.
         let time = uniforms.time;
@@ -1653,20 +1652,19 @@ fn surface_body() -> String {
         // it is the yard's own stone seen through a hand's depth of it.
         color = color * mix(1.0, 0.22, clamp(mirror, 0.0, 1.0));
         color = color + c_sky_at(reflect(view, water_normal)) * mirror * 0.96;
-    }} else if (kind < 9.5) {{
+    } else if (kind < 9.5) {
         // Metal: the lamp's hood, the hoop of a bucket. It has colours only in what it
         // reflects, and what it reflects here is one sky.
         color = color * 0.35;
         color = color + c_sky_at(reflect(view, normal)) * in.material.z * 0.30;
-    }} else {{
+    } else {
         // Cloth: the awning, the mat. A woven thing scatters, and it is the only surface here
         // that is warm and matte at once.
         let weave = value_noise21(vec2<f32>(at.x * 6.0, at.z * 6.0));
         color = color * mix(0.84, 1.08, weave);
         color = color + SUN_COLOUR * pow(clamp(dot(-view, SUN_DIRECTION), 0.0, 1.0), 1.8) * (1.0 - sky_share) * 0.30;
-    }}
+    }
 "#
-    )
 }
 
 /// The emission body, which is what is lit rather than what is lit by something: the lamp.
@@ -2189,7 +2187,7 @@ fn built_instances(place: &mut Place) {
                 0.20,
                 POND[1] + angle.sin() * POND_REACH[1] * 1.08,
             ],
-            hash01(index, 17, 221) * 6.28,
+            hash01(index, 17, 221) * std::f64::consts::TAU,
             [1.0 + hash01(index, 19, 223) * 0.5; 3],
             [0.135, 0.215, 0.090],
             0.72,
@@ -2425,7 +2423,7 @@ fn built_instances(place: &mut Place) {
             &format!("tuft-{tuft}"),
             "tuft",
             [x, terrain(x, z) - 0.07, z],
-            hash01(index, 17, 313) * 6.28,
+            hash01(index, 17, 313) * std::f64::consts::TAU,
             [scale, scale * (0.8 + hash01(index, 19, 317) * 0.7), scale],
             [
                 0.100 + 0.05 * hash01(index, 23, 319),
@@ -2608,7 +2606,7 @@ fn build_shaders(helpers: &str) -> Vec<Value> {
     list.push(crate::shaders::lighting_shader_with_schema(
         "lighting",
         "",
-        &surface_body(),
+        surface_body(),
         helpers,
         row.clone(),
     ));
