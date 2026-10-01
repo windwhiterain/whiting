@@ -164,8 +164,15 @@ pub struct TextureSlot {
     pub texture: wgpu::Texture,
     /// A view of it, for binding and for attachment.
     pub view: wgpu::TextureView,
-    /// The size the instance declared.
+    /// The shape the instance declared, which is where the layer count lives.
     pub shape: TextureShape,
+    /// Which layer of it this slot is: always the first for a bound texture, and the one
+    /// the pass named for an attachment of an array.
+    ///
+    /// The field exists so that a pass which clears a target clears the page it drew into
+    /// and not the whole texture, and so that a frame read back from an array comes from
+    /// the layer that was written. See [`TextureSlot::clear_key`].
+    pub layer: u32,
     /// The sampler that reads it, when the payload declares that it is sampled.
     ///
     /// The settings belong to the image rather than to the pass, so the sampler is built
@@ -212,6 +219,19 @@ impl TextureSlot {
     /// interface check compares the two sides on.
     pub fn view_dimension(&self) -> wgpu::TextureViewDimension {
         self.shape.view_dimension()
+    }
+
+    /// Returns the key that says whether this attachment's page has been written this
+    /// render.
+    ///
+    /// # Invariants
+    ///
+    /// A pass that clears a target clears the page it draws into and no other, so the key
+    /// is the entry **and** the layer. Keying on the entry alone would make the second
+    /// pass into a pool *load* the first one's page instead of clearing its own, and two
+    /// lights would cast the same shadow.
+    pub fn clear_key(&self) -> String {
+        format!("{}#{}", self.source, self.layer)
     }
 }
 
@@ -399,6 +419,19 @@ impl TextureShape {
         }
         Ok(layer as u32)
     }
+}
+
+/// Returns which layer of a texture a declaration draws into, defaulting to the first.
+///
+/// # Invariants
+///
+/// The default is applied here and not in the schema, because the document is not what
+/// decides: a flat texture has no layer field and an array's declaration that names none is
+/// drawing into page zero, and both of those are the same answer for one reason. A pass
+/// that names a layer the pool does not have is refused by [`TextureShape::check_layer`]
+/// rather than folded into the first page, which is the case that would be a wrong shadow.
+fn layer_of(declaration: &Declaration<'_>) -> i64 {
+    declaration.layer().unwrap_or_default()
 }
 
 /// Everything one pass needs from the instance.
@@ -812,13 +845,39 @@ impl WgpuRenderer {
                     // how the pass says what it renders into, so a point that is one of
                     // this pass's targets is an attachment rather than a binding.
                     if bindings.targets.contains(&texture.point) {
+                        // An attachment of a texture array is **one layer** of it, named by
+                        // the declaration, and the cached view is the whole array. So the
+                        // view a pass draws into is built here rather than taken from the
+                        // cache: it is a function of this pass's declaration, and one
+                        // cached texture serves every pass that writes a different page.
+                        // A layer the pool does not have is refused, because a pass that
+                        // drew past the end of the pool would write the first page again
+                        // and hand one light another's shadow.
+                        let layer = texture
+                            .shape
+                            .check_layer(&texture.source, &texture.point, layer_of(&declaration))?;
+                        let view = texture
+                            .texture
+                            .create_view(&texture.shape.layer_view_descriptor(layer));
                         // An attachment is filtered by nothing whatever its payload said,
                         // because a backend forbids filtering a texture being written.
                         bindings.attachments.push(TextureSlot {
                             sampler: None,
                             attachment: true,
+                            view,
+                            layer,
                             ..texture
                         });
+                    } else if let Some(layer) = declaration.layer() {
+                        // A layer is what a pass draws into. A pass that only reads a
+                        // texture array does not choose one: the shader indexes the layers
+                        // itself, with the page its own data carries.
+                        return Err(RenderError::Backend(format!(
+                            "the pass binds `{}` and names layer {layer} of it, but it is not \
+                             one of the pass's targets. A layer is what a pass draws into, and a \
+                             pass that only reads a texture array indexes the layers itself.",
+                            texture.point
+                        )));
                     } else {
                         bindings.bound.push(Bound::Texture(texture));
                     }
@@ -1064,6 +1123,7 @@ impl WgpuRenderer {
             texture: texture.clone(),
             view: view.clone(),
             shape,
+            layer: 0,
             sampler,
             attachment: false,
         };
