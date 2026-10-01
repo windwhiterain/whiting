@@ -32,7 +32,7 @@ use crate::standard::math::{
     Bounds, Matrix, add, look_at, multiply, normalize, orthographic, perspective, scale, subtract,
 };
 use crate::standard::scene_schema::{
-    CAMERA, EYE, FAR, FIELD_OF_VIEW, NEAR, PADDING as PADDING_FIELD, PROJECTION, TARGET, UP,
+    EYE, FAR, FIELD_OF_VIEW, NEAR, PADDING as PADDING_FIELD, PROJECTION, TARGET, UP,
 };
 
 /// The angle a camera that names no field of view sees through, in radians.
@@ -96,17 +96,21 @@ pub struct Projection {
 }
 
 impl Camera {
-    /// Reads the camera of a scene, falling back to the convention field by field.
+    /// Reads one camera of a scene, falling back to the convention field by field.
     ///
     /// # Invariants
     ///
-    /// A scene with no camera is not an error. Every field is read against the convention
-    /// rather than against a default, so a camera that names only an eye is a camera that
-    /// looks at the middle of what is drawn.
-    pub fn read(scene: &Value, bounds: &Bounds, aspect: f64) -> Result<Self, CompileError> {
-        let path = Path::root().key(CAMERA);
+    /// A scene with no camera, or a compile that names one the scene does not have, is not an
+    /// error. Every field is read against the convention rather than against a default, so a
+    /// camera that names only an eye is a camera that looks at the middle of what is drawn.
+    pub fn read(
+        camera: Option<&Value>,
+        path: &Path,
+        bounds: &Bounds,
+        aspect: f64,
+    ) -> Result<Self, CompileError> {
         let convention = Self::convention(bounds, aspect);
-        let Some(camera) = field(scene, CAMERA) else {
+        let Some(camera) = camera else {
             return Ok(convention);
         };
         let read = |name: &str| field(camera, name);

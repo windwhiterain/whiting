@@ -45,18 +45,18 @@ pub fn dunes() -> Value {
     Value::structure([
         ("name".to_owned(), Value::String("dunes".to_owned())),
         (
-            "camera".to_owned(),
+            "cameras".to_owned(),
             // The padding crops in. At one the whole field is held in frame with its edges
             // just inside, which reads as a slab floating in sky; below one the edges fall
             // outside the frame and what is left is a landscape with no edge to it. The
             // camera is above the field looking down across it, because a camera inside
             // the field compresses a heightfield into a band at the horizon.
-            camera(
+            Value::List(vec![camera(
                 [95.0, 78.0, 190.0],
                 [-15.0, 4.0, -25.0],
                 std::f64::consts::FRAC_PI_3,
                 0.46,
-            ),
+            )]),
         ),
         (
             "lights".to_owned(),

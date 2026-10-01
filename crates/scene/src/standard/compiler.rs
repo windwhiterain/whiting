@@ -55,7 +55,7 @@ impl Compiler for StandardScene {
         // scene that does not carry one still fails at compile time.
         let _name = scene_text(scene, "name")?;
 
-        let emitted = emit::emit(scene)?;
+        let emitted = emit::emit(scene, context.camera)?;
         let output = assemble(
             &self.graphics_identifier,
             &self.instance_identifier,

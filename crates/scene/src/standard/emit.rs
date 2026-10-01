@@ -320,7 +320,7 @@ fn read_topology(mesh: &Value, path: &Path) -> Result<Topology, CompileError> {
 /// it, a shader by every material that names it. The emitted document keeps that shape, so
 /// one mesh contributes one vertex buffer and one shader contributes one entry, however
 /// many passes draw with them.
-pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
+pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError> {
     let lights = read_lights(scene)?;
     let shaders = read_shaders(scene)?;
     let materials = read_materials(scene, &shaders)?;
@@ -334,7 +334,15 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     // the frame's aspect: a wide frame is wider rather than cropped, and which frame a
     // scene is drawn into is the scene's decision.
     let frame = Frame::read(scene);
-    let camera = Camera::read(scene, &bounds, frame.aspect())?;
+    // One camera of the scene, chosen by the compile. Every camera a scene names is rendered,
+    // which means a compile is a compile for one of them: the projection every pass draws
+    // through is a camera's, so the choice is made here rather than by a renderer afterwards.
+    let cameras = at(scene, &Path::root(), scene_schema::CAMERAS).ok();
+    let camera_path = Path::root().key(scene_schema::CAMERAS).index(camera_index);
+    let chosen = cameras
+        .and_then(Value::as_list)
+        .and_then(|cameras| cameras.get(camera_index));
+    let camera = Camera::read(chosen, &camera_path, &bounds, frame.aspect())?;
     let camera_basis = camera.projection();
     let camera = projection_value(&camera_basis);
 

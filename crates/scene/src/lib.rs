@@ -99,7 +99,7 @@ pub mod standard;
 
 pub use reference::{REFERENCE_SCENE_SCHEMA, ReferenceScene, register_scene_schema};
 pub use standard::{
-    MESH_SCHEMA, STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema,
+    CAMERAS, MESH_SCHEMA, STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema,
     standard_scene_schema,
 };
 
@@ -204,6 +204,19 @@ pub struct CompileContext<'registry> {
     pub previous_instance: Option<&'registry Definition>,
     /// The registry the scene and the outputs are resolved against.
     pub registry: &'registry Registry,
+    /// Which of the scene's cameras this compile draws through.
+    ///
+    /// # Why the camera is an input rather than an output
+    ///
+    /// A scene may name several cameras, and every one of them is rendered. A camera decides
+    /// the projection every pass draws through and, for a fitted camera, how far back the eye
+    /// stands — so it changes the emitted documents rather than being something a renderer can
+    /// choose afterwards. A compile is therefore a compile **for one camera**, and a scene with
+    /// three cameras is compiled and rendered three times.
+    ///
+    /// An index no camera is at is the convention camera, so a scene that names none is
+    /// compiled once and drawn by the stated convention as it always was.
+    pub camera: usize,
 }
 
 impl<'registry> CompileContext<'registry> {

@@ -80,68 +80,105 @@ async fn run() -> Result<(), String> {
     let source_identifier = DefinitionIdentifier::new("gallery.source");
     let authored = Gallery::build(&name);
 
-    let mut moments = Vec::with_capacity(request.times.len());
-    let mut previous: Option<Compiled> = None;
-    for &time in &request.times {
-        let started = std::time::Instant::now();
-        let mut scene = authored.clone();
-        let cloned_at = started.elapsed();
-        set_time(&mut scene, time);
+    // Every camera a scene names is rendered. A camera decides the projection every pass draws
+    // through — and, for a fitted camera, how far back the eye stands — so it is an input to
+    // the compile rather than something a renderer picks afterwards. A scene naming two
+    // cameras is compiled and drawn twice; a scene naming none is drawn once, by the stated
+    // convention, exactly as it always was.
+    let cameras = camera_count(&authored);
+    for camera in 0..cameras {
+        let mut moments = Vec::with_capacity(request.times.len());
+        let mut previous: Option<Compiled> = None;
+        for &time in &request.times {
+            let started = std::time::Instant::now();
+            let mut scene = authored.clone();
+            let cloned_at = started.elapsed();
+            set_time(&mut scene, time);
 
-        let source = Definition::new(
-            source_identifier.clone(),
-            SchemaIdentifier::new(STANDARD_SCENE_SCHEMA),
-            scene,
-        );
-        source
-            .validate(&registry)
-            .map_err(|error| format!("the scene does not satisfy the scene schema: {error}"))?;
-        let validated_at = started.elapsed();
+            let source = Definition::new(
+                source_identifier.clone(),
+                SchemaIdentifier::new(STANDARD_SCENE_SCHEMA),
+                scene,
+            );
+            source
+                .validate(&registry)
+                .map_err(|error| format!("the scene does not satisfy the scene schema: {error}"))?;
+            let validated_at = started.elapsed();
 
-        let compiled = compiler
-            .compile(&CompileContext {
-                scene: &source,
-                previous_graphics: previous.as_ref().map(|output| &output.graphics),
-                previous_instance: previous.as_ref().map(|output| &output.instance),
-                registry: &registry,
-            })
-            .map_err(|error| format!("the scene does not compile: {error}"))?;
-        let compiled_at = started.elapsed();
+            let compiled = compiler
+                .compile(&CompileContext {
+                    scene: &source,
+                    previous_graphics: previous.as_ref().map(|output| &output.graphics),
+                    previous_instance: previous.as_ref().map(|output| &output.instance),
+                    registry: &registry,
+                    camera,
+                })
+                .map_err(|error| format!("the scene does not compile: {error}"))?;
+            let compiled_at = started.elapsed();
 
-        let frame = renderer
-            .render(&compiled.graphics.value, &compiled.instance.value)
-            .map_err(|error| format!("the frame at {} does not render: {error}", describe(time)))?;
-        let passes = graphics::passes(&compiled.graphics.value)
-            .map_err(|error| format!("the emitted passes do not read: {error}"))?
-            .len();
-        // The three are reported apart because they are three different costs, and only
-        // one of them is the delta's business: a delta is small or large, and the work
-        // that finds it is the same size either way.
-        println!(
-            "{name}: {} drawn, {passes} passes, {} operations of delta, \
-             cloned {} ms, validated {} ms, compiled {} ms, rendered {} ms",
-            describe(time),
-            compiled.graphics_delta.operations.len() + compiled.instance_delta.operations.len(),
-            cloned_at.as_millis(),
-            (validated_at - cloned_at).as_millis(),
-            (compiled_at - validated_at).as_millis(),
-            started.elapsed().as_millis() - compiled_at.as_millis(),
-        );
+            let frame = renderer
+                .render(&compiled.graphics.value, &compiled.instance.value)
+                .map_err(|error| {
+                    format!("the frame at {} does not render: {error}", describe(time))
+                })?;
+            let passes = graphics::passes(&compiled.graphics.value)
+                .map_err(|error| format!("the emitted passes do not read: {error}"))?
+                .len();
+            // The three are reported apart because they are three different costs, and only
+            // one of them is the delta's business: a delta is small or large, and the work
+            // that finds it is the same size either way.
+            println!(
+                "{name}{}: {} drawn, {passes} passes, {} operations of delta, \
+                 cloned {} ms, validated {} ms, compiled {} ms, rendered {} ms",
+                if cameras > 1 {
+                    format!(" (camera {camera})")
+                } else {
+                    String::new()
+                },
+                describe(time),
+                compiled.graphics_delta.operations.len() + compiled.instance_delta.operations.len(),
+                cloned_at.as_millis(),
+                (validated_at - cloned_at).as_millis(),
+                (compiled_at - validated_at).as_millis(),
+                started.elapsed().as_millis() - compiled_at.as_millis(),
+            );
 
-        moments.push(Moment {
-            time,
-            frame: RenderedFrame {
-                renderer: renderer.name(),
-                frame,
-            },
-        });
-        previous = Some(Compiled {
-            graphics: compiled.graphics,
-            instance: compiled.instance,
-        });
+            moments.push(Moment {
+                time,
+                frame: RenderedFrame {
+                    renderer: renderer.name(),
+                    frame,
+                },
+            });
+            previous = Some(Compiled {
+                graphics: compiled.graphics,
+                instance: compiled.instance,
+            });
+        }
+
+        // A scene with one camera writes where it always wrote, so every existing invocation
+        // of the harness names the files it named before, and a scene with several says which
+        // view each set is.
+        let target = if cameras > 1 {
+            Request {
+                path: format!("{}-camera{camera}", request.path),
+                ..request.clone()
+            }
+        } else {
+            request.clone()
+        };
+        write_moments(&target, &moments)?;
     }
+    Ok(())
+}
 
-    write_moments(&request, &moments)
+/// Returns how many cameras a scene names, which is one for a scene that names none.
+fn camera_count(scene: &Value) -> usize {
+    scene
+        .as_field_map()
+        .and_then(|fields| fields.get(scene::CAMERAS))
+        .and_then(Value::as_list)
+        .map_or(1, |cameras| cameras.len().max(1))
 }
 
 /// Reads the command line into what to render and where to put it.
@@ -204,6 +241,7 @@ fn parse_arguments() -> Result<Request, String> {
 }
 
 /// What a render was asked for.
+#[derive(Clone)]
 struct Request {
     /// The scene to render.
     name: String,
@@ -216,6 +254,7 @@ struct Request {
 }
 
 /// How the moments of a render are written out.
+#[derive(Clone)]
 enum Mode {
     /// One image per moment.
     Frames,

@@ -84,13 +84,18 @@ fn terraced_valley(materials: Vec<Value>, instances: Value) -> Value {
         ("name".to_owned(), Value::String("terraces".to_owned())),
         ("time".to_owned(), Value::Float(TIME)),
         (
-            "camera".to_owned(),
+            "cameras".to_owned(),
             // Low on the south-west side, looking up the valley into the sun's quarter,
             // so the far paddies mirror the bright horizon and the near ones hold the
             // blue of the zenith. The padding crops the valley's rim out of frame: a
             // landscape whose edges show is a model, and one whose edges are cropped is
             // a place.
-            camera([-230.0, 128.0, 310.0], [10.0, 28.0, -50.0], 0.88, 0.52),
+            Value::List(vec![camera(
+                [-230.0, 128.0, 310.0],
+                [10.0, 28.0, -50.0],
+                0.88,
+                0.52,
+            )]),
         ),
         (
             "lights".to_owned(),

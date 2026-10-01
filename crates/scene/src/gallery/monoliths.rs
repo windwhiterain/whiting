@@ -127,16 +127,16 @@ pub fn monoliths() -> Value {
     Value::structure([
         ("name".to_owned(), Value::String("monoliths".to_owned())),
         (
-            "camera".to_owned(),
+            "cameras".to_owned(),
             // Low, close, and cropped hard in. The ground reaches far past the frame in
             // every direction, so what decides the framing is the padding: at one the
             // camera would frame the whole plain and the monoliths would be specks on it.
-            camera(
+            Value::List(vec![camera(
                 [34.0, 7.0, 44.0],
                 [-6.0, 12.0, -10.0],
                 std::f64::consts::FRAC_PI_3,
                 0.15,
-            ),
+            )]),
         ),
         (
             "lights".to_owned(),

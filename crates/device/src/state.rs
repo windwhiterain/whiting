@@ -130,6 +130,11 @@ impl Device {
             previous_graphics: previous_graphics.as_ref(),
             previous_instance: previous_instance.as_ref(),
             registry: &self.registry,
+            // The server holds one compiled output per definition, so it draws the scene's
+            // first camera. A scene with several cameras is rendered by a harness that
+            // compiles once per camera; making the server hold one output per view is a
+            // change to what it publishes rather than to what a camera means.
+            camera: 0,
         })?;
 
         if self.cross_check {

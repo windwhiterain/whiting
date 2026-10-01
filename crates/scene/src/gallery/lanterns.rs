@@ -50,12 +50,18 @@ pub fn lanterns() -> Value {
         ("name".to_owned(), Value::String("lanterns".to_owned())),
         ("time".to_owned(), Value::Float(0.0)),
         (
-            "camera".to_owned(),
+            "cameras".to_owned(),
             // Above and behind the near rank, looking down the field, and **placed rather than
             // fitted**: the water is much larger than the lanterns and fit to the water the
             // field would be a speck. A night field is a recession rather than a subject, and
             // what the frame has to show is the water between the camera and the far lights.
-            camera_placed([-16.0, 10.5, 40.0], [1.0, 3.0, -6.0], 0.88, 1.0, 320.0),
+            Value::List(vec![camera_placed(
+                [-16.0, 10.5, 40.0],
+                [1.0, 3.0, -6.0],
+                0.88,
+                1.0,
+                320.0,
+            )]),
         ),
         (
             "lights".to_owned(),

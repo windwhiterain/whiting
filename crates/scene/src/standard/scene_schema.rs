@@ -32,7 +32,8 @@ pub const MESHES: &str = "meshes";
 pub const INSTANCES: &str = "instances";
 
 /// Field holding the camera the scene is drawn through.
-pub const CAMERA: &str = "camera";
+/// Field holding the cameras a scene is drawn from.
+pub const CAMERAS: &str = "cameras";
 
 /// Field holding where the camera is.
 pub const EYE: &str = "eye";
@@ -158,11 +159,17 @@ pub fn standard_scene_schema() -> Schema {
             ),
         ),
         (
-            CAMERA.to_owned(),
-            camera_schema().optional().with_documentation(
-                "Where the scene is drawn from. A scene without a camera is drawn by the \
-                     stated convention: parallel, dead ahead, framing everything that is drawn.",
-            ),
+            CAMERAS.to_owned(),
+            Schema::new(SchemaKind::list(camera_schema().reference()))
+                .optional()
+                .with_documentation(
+                    "Where the scene is drawn from, listed once per view. **Every camera is \
+                 rendered**: a scene that names two is compiled and drawn twice, because a \
+                 camera decides the projection every pass draws through and so changes the \
+                 emitted documents rather than being something a renderer picks afterwards. A \
+                 scene without a camera is drawn by the stated convention: parallel, dead \
+                 ahead, framing everything that is drawn.",
+                ),
         ),
         (
             TIME.to_owned(),
