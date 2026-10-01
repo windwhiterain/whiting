@@ -61,15 +61,21 @@ struct Uniforms {
 /// The uniform the clustered lighting stage reads.
 ///
 /// The fields are in the order the interface schema sorts them into, which is by name:
-/// `cluster_grid`, `frame_size`, `projection`, `time`. The order is not cosmetic — a three
-/// component vector is padded to sixteen bytes, so a field written second starts at sixteen
-/// either way, and a struct written in any other order puts the wrong thing there.
+/// `cluster_grid`, `environment`, `frame_size`, `projection`, `time`. The order is not
+/// cosmetic — a three component vector is padded to sixteen bytes, so a field written second
+/// starts at sixteen either way, and a struct written in any other order puts the wrong thing
+/// there.
 ///
 /// **Nothing here names a light.** The four per light fields this struct used to carry — the
 /// light's position, its colour, its own projection and the size of its shadow map's texel —
 /// are a field of the light's *record*, read from a storage buffer per light inside the
 /// loop. That is the whole change: a uniform is sixteen kilobytes, which cannot hold a
 /// thousand light records however they are packed.
+///
+/// `environment` is the one light this struct does carry, and it is a light rather than a
+/// record because it is not one of the clustered kind at all: it stands nowhere, it takes no
+/// cluster slot, and every fragment reads the same one. Three components are its colour scaled
+/// by its intensity and the fourth says whether the scene named it.
 const LIGHTING_UNIFORM: &str = r#"
 struct Projection {
     position: vec3<f32>,
@@ -78,6 +84,7 @@ struct Projection {
 
 struct Uniforms {
     cluster_grid: vec4<f32>,
+    environment: vec4<f32>,
     frame_size: vec2<f32>,
     projection: Projection,
     time: f32,
@@ -292,6 +299,12 @@ fn lighting_bindings(image: bool) -> String {
         ("", "", ""),
     ];
     let mut number = 1;
+    // The environment map is bound by every lighting pass, including one whose scene names no
+    // `Environment` light — the pass then binds a one texel black map and the uniform's flag
+    // is zero. It is bound unconditionally for the same reason the list is in name order: a
+    // binding that came and went with the document would move every number after it, so a
+    // shader would have to be written for one scene and not for another.
+    resources.push(("environment_map", "", "texture_2d<f32>"));
     if image {
         resources.push(("image", "", "texture_2d<f32>"));
         resources.push(("image_sampler", "", "sampler"));
@@ -437,6 +450,127 @@ fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) ->
 }}
 
 {helpers}
+/// Returns the texel of the environment map a direction falls in, at one level.
+///
+/// # Why a two dimensional octahedral map
+///
+/// A cube map is the usual container for a direction, and this renderer's interface check
+/// already has a shape for one — but it can only **recognise** a cube a shader declares.
+/// Nothing here can build one: the device's texture shape answers `D2` or `D2Array` and there
+/// is no third answer, so a cube would need a payload variant, a view descriptor, a layout
+/// entry and a six face upload before a shader could name one, and a prefiltered specular
+/// cube on top of that.
+///
+/// A two dimensional octahedral map folds the sphere into a square instead. That needs
+/// nothing this device does not already do — one uploaded image is one flat texture with a
+/// box filtered level chain behind it — and the chain is what makes roughness free: a rough
+/// surface wants a blurrier environment, and a blurrier environment is the next level down.
+///
+/// The convention the map is authored to, which a scene needs to know to draw one: the
+/// **centre** of the square is the world's `+z` direction, the **top** row is `+y`, and the
+/// four edges are the seams the fold puts there.
+///
+/// # Why the fold is read at a texel and not through a sampler
+///
+/// The fold is a seam, and the two sides of it are as far apart in direction as the map is
+/// wide. A filtered read across one blends a texel from each side, which is a direction
+/// averaged with the direction almost opposite it, so the seam shows as a dark or a bright
+/// line that no amount of resolution removes. `textureLoad` at a texel computed here takes
+/// exactly one texel, so the only question left is whether that texel is inside the image.
+///
+/// Which is the second half of the bug this shape has to get right: a direction **on** the
+/// square's edge gives a coordinate of exactly the map's size, and the first texel past the
+/// end is a row of the next line of memory or a fault, depending on the backend. The answer
+/// at a seam is continuous — the two texels either side of it face almost the same direction
+/// — so clamping the coordinate to the last texel is not a rounding of the answer, it *is*
+/// the answer.
+fn octahedral(direction: vec3<f32>, level: i32) -> vec2<i32> {{
+    // The octahedron's own projection, divided by the sum of the magnitudes so that the whole
+    // sphere lands in the square rather than in a disc inscribed in it. The divisor is floored
+    // away from zero because a zero direction has no direction to place, and the origin of the
+    // square is a legal answer for it.
+    var planar = direction.xy / max(
+        abs(direction.x) + abs(direction.y) + abs(direction.z),
+        1e-8,
+    );
+    // The half of the sphere behind the centre is mirrored back into the square, and that
+    // mirror is the entire fold: four triangles folded onto the one the front covers. The sign
+    // is taken as it is rather than as `sign`, because `sign(0.0)` is zero in WGSL and a zero
+    // component has to land on the positive edge of the square, not on its middle.
+    if direction.z < 0.0 {{
+        let folded = vec2<f32>(1.0) - abs(planar.yx);
+        planar = vec2<f32>(
+            select(-folded.x, folded.x, planar.x >= 0.0),
+            select(-folded.y, folded.y, planar.y >= 0.0),
+        );
+    }}
+    // A square's `+y` is the map's top, and an image's rows run down, so the vertical half of
+    // the mapping is flipped. The horizontal half is not: `+x` is the map's right, which is
+    // where an image's columns run too.
+    let uv = vec2<f32>(planar.x * 0.5 + 0.5, 0.5 - planar.y * 0.5);
+    // The map's own size **at this level**, not the size of level zero. A coarse level of a
+    // 256 texel map is four texels across, and indexing it with the level zero size reads four
+    // times past the end of it.
+    let extent = vec2<i32>(textureDimensions(environment_map, level));
+    // Truncated rather than rounded, so a coordinate is the texel whose square contains it
+    // rather than the nearest one, and clamped to the last texel on each axis because of the
+    // seam. The coordinate is never negative — `uv` is a square — and the clamp says so rather
+    // than leaving it to the arithmetic.
+    return clamp(
+        vec2<i32>(uv * vec2<f32>(extent)),
+        vec2<i32>(0),
+        extent - vec2<i32>(1),
+    );
+}}
+
+/// Returns what a surface facing this normal receives from the environment.
+///
+/// # The environment replaces the stand-in, and the flag is what says so
+///
+/// There is **one** ambient term in this shader, and what feeds it is the scene's environment
+/// when the scene names an `Environment` light and the two colour hemisphere when it does not.
+/// Not both: a scene that named an environment and also had the hemisphere under it would be
+/// counting an author's environment twice and adding a sky of this renderer's own that the
+/// author had no way to turn off, which is exactly what the hemisphere was — a stand-in for
+/// something the shader could not yet read.
+///
+/// The choice is made on `uniforms.environment.w` and on nothing else. A scene naming no
+/// environment binds a one texel **black** map, so a shader that decided on the colour it
+/// sampled could not tell "there is no environment" from "the environment is black", and a
+/// frame's darkness would be a property of a texture rather than of a decision anybody made.
+///
+/// # Why the level is the roughness, and why it is clamped
+///
+/// A rough surface wants a blurrier environment, and the map's level chain is already blurred
+/// — the device derives every level from the one above by a box filter, averaging in linear
+/// light. So the level is the roughness scaled by the chain and clamped into it. The clamp is
+/// what decides the question of whether a document can ask for something impossible: a
+/// roughness of one maps to the **last** level rather than one past it, so the top of the
+/// range is the top of the chain and no material is refused for wanting a blurer environment
+/// than the map has.
+///
+/// The stand-in is returned unchanged, from the same two colours it has always been mixed
+/// from, so a scene that names no environment light renders byte for byte what it rendered
+/// before this stage. The tint and the metalness are applied by the caller and not here, and
+/// that is deliberate: they are the material's own, and a term that stopped multiplying by
+/// them would be a material that had stopped responding to its own colour.
+fn environment_radiance(normal: vec3<f32>, roughness: f32) -> vec3<f32> {{
+    if uniforms.environment.w < 0.5 {{
+        return mix(
+            vec3<f32>(0.014, 0.017, 0.026),
+            vec3<f32>(0.055, 0.072, 0.110),
+            normal.y * 0.5 + 0.5,
+        );
+    }}
+    // How many levels the map **has**, read rather than written: the chain is the device's to
+    // build and it is a function of the image's size, so a number written here would be right
+    // for one map and past the end of another.
+    let levels = i32(textureNumLevels(environment_map));
+    let level = clamp(i32(roughness * f32(levels - 1)), 0, levels - 1);
+    return textureLoad(environment_map, octahedral(normal, level), level).rgb
+        * uniforms.environment.rgb;
+}}
+
 struct Vertex {{
     @builtin(position) position: vec4<f32>,
     @location(0) world_position: vec3<f32>,
@@ -560,16 +694,22 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
         color = color + fresnel * specular * radiance * 3.0;
     }}
 
-    // A hemisphere of ambient light, brighter from above, which stands in for the
-    // environment a surface would otherwise have nothing to reflect. It is added **once**,
-    // whatever the cluster holds, because it is not one light's contribution: while the
-    // stage ran once per light this term was inside the loop and a scene of three lights
-    // added it three times, which is a bug the clustered pass happens to fix.
-    let sky = mix(
-        vec3<f32>(0.014, 0.017, 0.026),
-        vec3<f32>(0.055, 0.072, 0.110),
-        normal.y * 0.5 + 0.5,
-    );
+    // **The ambient term, and what feeds it.** It is added **once**, whatever the cluster
+    // holds, because it is not one light's contribution: while the stage ran once per light
+    // this term was inside the loop and a scene of three lights added it three times, which is
+    // a bug the clustered pass happens to fix.
+    //
+    // `environment_radiance` is the whole of what is decided about the source, and the
+    // decision is spelled out there: the scene's own environment map when it names an
+    // `Environment` light, the two colour hemisphere that stood in for one when it does not,
+    // and never both.
+    //
+    // The multiplication that follows is unchanged and is the reason it is here rather than
+    // inside that function. The tint and the metalness are the **material's own**, the same
+    // two the cluster loop uses, and a term that had stopped reaching them would be a
+    // material that had stopped responding to its own colour — which is a regression nobody
+    // asked for and the one thing this stage must not do.
+    let sky = environment_radiance(normal, roughness);
     let ambient = sky * mix(vec3<f32>(1.0), in.tint, metallic);
     color = color + ambient * diffuse_color;
     // What the surface emits is not added here either, for the same reason: the lighting

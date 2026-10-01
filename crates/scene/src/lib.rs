@@ -369,14 +369,25 @@ pub enum CompileError {
     )]
     MissingLightKind { path: Path, label: String },
     #[error(
-        "at {path}: the light `{label}` is a {kind} light, and only a Point light is emitted \
-         at this stage. A light the renderer cannot draw is refused rather than drawn as a \
-         point, which would be a wrong image nobody sees until the render finishes."
+        "at {path}: the light `{label}` is a {kind} light, and only a Point or an Environment \
+         light is emitted at this stage. A light the renderer cannot draw is refused rather than \
+         drawn as a point, which would be a wrong image nobody sees until the render finishes."
     )]
     UnsupportedLightKind {
         path: Path,
         label: String,
         kind: String,
+    },
+    #[error(
+        "at {path}: the light `{label}` is a second Environment light, and the first is \
+         `{first}`. One environment is what a lighting pass carries, so a scene naming two would \
+         have one of them read and the other ignored, which is a light an author wrote and \
+         nobody sees."
+    )]
+    SecondEnvironmentLight {
+        path: Path,
+        label: String,
+        first: String,
     },
     #[error("at {path}: no mesh in this scene is labelled `{mesh}`")]
     UnknownMesh { path: Path, mesh: String },
