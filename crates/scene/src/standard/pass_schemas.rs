@@ -243,6 +243,51 @@ pub fn depth_pass_schema() -> Schema {
     )
 }
 
+/// Builds the interface of an emission pass.
+///
+/// # Invariants
+///
+/// An emission pass carries no pass data of its own. What a surface emits is not lit, so the
+/// stage reads no light, no shadow map and no projection of a light's: a projection, the two
+/// buffers every mesh pass reads, and the depth it tests against are the whole of it. That is
+/// why emission is the one stage whose interface has nothing of its own to supply — the
+/// reason it exists is to be drawn once rather than once per light, and a pass that read a
+/// light would be drawn once per light again.
+pub fn emission_pass_schema() -> Schema {
+    interface(
+        "An emission pass, which adds what every mesh in the scene emits.",
+        vec![
+            (
+                VERTICES,
+                buffer_binding_schema().with_documentation("Vertex data of the meshes."),
+            ),
+            (
+                INSTANCE_DATA,
+                buffer_binding_schema().with_documentation("Per instance data of those meshes."),
+            ),
+            (
+                COLOR_TARGET,
+                texture_binding_schema().with_documentation("The image this pass adds into."),
+            ),
+            (
+                DEPTH_BUFFER,
+                texture_binding_schema()
+                    .with_documentation("The depth the earlier passes produced."),
+            ),
+        ],
+        vec![
+            (
+                PROJECTION,
+                projection_schema().with_documentation("Looking at the scene from the camera."),
+            ),
+            (
+                TIME,
+                time().with_documentation("Seconds since the scene started."),
+            ),
+        ],
+    )
+}
+
 /// Builds the interface of a lighting pass.
 pub fn light_pass_schema() -> Schema {
     interface(

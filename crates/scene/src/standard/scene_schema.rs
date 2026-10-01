@@ -484,6 +484,7 @@ pub fn shader_schema() -> Schema {
         ("ShadowingShader".to_owned(), mesh()),
         ("DepthShader".to_owned(), mesh()),
         ("LightShader".to_owned(), mesh()),
+        ("EmissionShader".to_owned(), mesh()),
     ];
     variants.push((
         "ScreenShader".to_owned(),

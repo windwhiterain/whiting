@@ -24,7 +24,8 @@
 use definition::{Schema, SchemaKind, Value};
 
 use crate::standard::{
-    Stage, depth_pass_schema, light_pass_schema, post_pass_schema, shadow_pass_schema,
+    Stage, depth_pass_schema, emission_pass_schema, light_pass_schema, post_pass_schema,
+    shadow_pass_schema,
 };
 
 use super::kit;
@@ -76,6 +77,69 @@ struct Uniforms {
     time: f32,
 };
 "#;
+
+/// The emission stage: what a surface emits, added once rather than once per light.
+///
+/// # Why this is a stage of its own
+///
+/// The lighting stage runs **once per light** and its passes add, so any term a surface body
+/// adds there is added once per light: an emissive surface is twice as bright under two lights
+/// as under one, which is not what emitting means. A lamp is as bright under three lights as
+/// under one. Emission therefore belongs in a pass that runs exactly once, which is what this
+/// stage is, and it is the only reason it exists.
+///
+/// `emission` is the emitted colour, written against the varyings below and reading the
+/// material's `custom_data` through them. It is a separate argument for the same reason the
+/// lighting stage's `surface` is: what a surface emits is the scene's business and the fact
+/// that it is added once is not.
+pub fn emission(vertex_inputs: &str, emission: &str) -> String {
+    format!(
+        r#"{PLACEMENT_UNIFORM}
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var color_target: texture_2d<f32>;
+@group(0) @binding(2) var depth_buffer: texture_depth_2d;
+
+struct Vertex {{
+    @builtin(position) position: vec4<f32>,
+    @location(0) world_position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) texture: vec2<f32>,
+    @location(3) emissive: vec3<f32>,
+    @location(4) tint: vec3<f32>,
+    @location(5) material: vec3<f32>,
+}};
+
+@vertex
+fn vertex_main(
+{vertex_inputs}) -> Vertex {{
+    let model = mat4x4<f32>(model0, model1, model2, model3);
+    let normals = mat4x4<f32>(normal_matrix0, normal_matrix1, normal_matrix2, normal_matrix3);
+    let world = model * vec4<f32>(position, 1.0);
+    var out: Vertex;
+    out.position = uniforms.projection.view_projection * world;
+    out.world_position = world.xyz;
+    out.normal = normalize((normals * vec4<f32>(normal, 0.0)).xyz);
+    out.texture = texture;
+    out.emissive = emissive;
+    out.tint = tint;
+    out.material = vec3<f32>(metallic, roughness, reflect);
+    return out;
+}}
+
+@fragment
+fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
+    // What the surface emits, before anything is added to it. A body that writes nothing emits
+    // the material's own `emissive`, which is what a scene that names an emission shader and
+    // writes no body for it means.
+    var emitted = in.emissive;
+{emission}
+    // An emission pass adds, so a surface that emits nothing leaves the frame it was drawn
+    // over exactly as it found it.
+    return vec4<f32>(emitted, 1.0);
+}}
+"#
+    )
+}
 
 /// The shadowing stage: the point is placed, and the fragment writes depth through the
 /// target itself, so the stage declares no fragment entry point.
@@ -271,7 +335,10 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
     var color = diffuse_color * lambert * radiance;
     color = color + fresnel * specular * radiance * 3.0;
     color = color + ambient * diffuse_color;
-    color = color + in.emissive;
+    // What the surface emits is not added here. The lighting stage runs once per light, so a
+    // term added here is a term added once per light: a surface that emits would be twice as
+    // bright under two lights as under one, which is not what emitting means. Emission is
+    // its own stage, drawn once.
 {surface}
     return vec4<f32>(color, 1.0);
 }}
@@ -425,6 +492,19 @@ pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
             "lighting",
             &lighting(&inputs, surface, helpers),
             light_pass_schema(),
+            point.clone(),
+            kit::gallery_instance_schema(),
+            kit::gallery_custom_schema(),
+        ),
+        // The emission stage is declared beside the other three, so a scene that emits writes
+        // no shader of its own and a scene that does not simply does not name this one. Naming
+        // a shader is what puts an instance in a pass, so an emission shader nothing names
+        // costs nothing.
+        kit::shader(
+            Stage::Emission,
+            "emission",
+            &emission(&inputs, ""),
+            emission_pass_schema(),
             point,
             kit::gallery_instance_schema(),
             kit::gallery_custom_schema(),

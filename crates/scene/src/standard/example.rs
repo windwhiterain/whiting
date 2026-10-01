@@ -10,7 +10,8 @@ use graphics::layout::components_schema;
 
 use crate::standard::Stage;
 use crate::standard::pass_schemas::{
-    depth_pass_schema, light_pass_schema, post_pass_schema, shadow_pass_schema,
+    depth_pass_schema, emission_pass_schema, light_pass_schema, post_pass_schema,
+    shadow_pass_schema,
 };
 use crate::standard::scene_schema::{default_custom_schema, default_instance_schema};
 
@@ -136,6 +137,7 @@ fn shader(label: &str, stage: Stage, source: &str) -> Value {
         Stage::Shadowing => shadow_pass_schema(),
         Stage::Depthing => depth_pass_schema(),
         Stage::Lighting => light_pass_schema(),
+        Stage::Emission => emission_pass_schema(),
         Stage::Post => post_pass_schema(),
     };
     Value::variant(

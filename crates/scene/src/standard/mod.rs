@@ -224,7 +224,8 @@ pub use pass_schemas::{
     COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, INSTANCE_DATA, LIGHT_COLOR,
     LIGHT_POSITION, LIGHT_PROJECTION, LIGHT_SHADOW_TEXEL, PRESENT_TARGET, PROJECTION, SHADOW_MAP,
     SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, TIME, VERTICES, depth_pass_schema,
-    light_pass_schema, post_pass_schema, projection_schema, shadow_pass_schema,
+    emission_pass_schema, light_pass_schema, post_pass_schema, projection_schema,
+    shadow_pass_schema,
 };
 pub use scene_schema::{
     CAMERA, CUSTOM_DATA, CUSTOM_SCHEMA, EYE, FIELD_OF_VIEW, INSTANCE_SCHEMA, LABEL, MATERIAL, MESH,

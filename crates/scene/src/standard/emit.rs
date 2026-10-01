@@ -138,6 +138,8 @@ pub enum Stage {
     Depthing,
     /// Shades the scene.
     Lighting,
+    /// Adds what a surface emits, once, rather than once per light.
+    Emission,
     /// Draws over the whole frame once the scene is shaded.
     Post,
 }
@@ -149,6 +151,7 @@ impl Stage {
             Self::Shadowing => "ShadowingShader",
             Self::Depthing => "DepthShader",
             Self::Lighting => "LightShader",
+            Self::Emission => "EmissionShader",
             Self::Post => "ScreenShader",
         }
     }
@@ -159,6 +162,7 @@ impl Stage {
             Self::Shadowing => "shadowing",
             Self::Depthing => "depthing",
             Self::Lighting => "lighting",
+            Self::Emission => "emission",
             Self::Post => "post",
         }
     }
@@ -169,6 +173,7 @@ impl Stage {
             Self::Shadowing => "shadow",
             Self::Depthing => "depth",
             Self::Lighting => "lighting",
+            Self::Emission => "emission",
             Self::Post => "post",
         }
     }
@@ -184,6 +189,7 @@ impl Stage {
             "shadowing" => Some(Self::Shadowing),
             "depthing" => Some(Self::Depthing),
             "lighting" => Some(Self::Lighting),
+            "emission" => Some(Self::Emission),
             _ => None,
         }
     }
@@ -374,6 +380,15 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
             insert_entry(&mut instance, group.entry(), group.payload())?;
             passes.push(lighting_pass(&group, light, &camera, &bounds, frame, time));
         }
+    }
+    // Emission runs once per instance rather than once per light, which is the whole reason it
+    // is a stage: what a surface emits is not lit, so a pass per light would count it as many
+    // times as there are lights. It adds into the shaded image, so the order against the
+    // lighting passes does not change the sum; it sits after them so that the first pass to
+    // write the target is a lighting pass, which is what clears it to unlit.
+    for group in groups(&instances, &meshes, &shaders, Stage::Emission, None) {
+        insert_entry(&mut instance, group.entry(), group.payload())?;
+        passes.push(emission_pass(&group, &camera, frame, time));
     }
     // The post stage, if the scene declares one, is the last pass: everything it reads was
     // written above it, and the frame is read back from what it writes.
@@ -997,6 +1012,7 @@ fn read_shader(shader: &Value, path: &Path) -> Result<ShaderRead, CompileError> 
         Some("ShadowingShader") => Stage::Shadowing,
         Some("DepthShader") => Stage::Depthing,
         Some("LightShader") => Stage::Lighting,
+        Some("EmissionShader") => Stage::Emission,
         Some(other) => {
             return Err(CompileError::UnknownStage {
                 path: path.clone(),
@@ -1432,15 +1448,38 @@ fn lighting_pass(
     )
 }
 
-/// Returns the projection a light looks at the scene through, and the eye it is made from.
+/// Builds the emission pass of one group.
 ///
 /// # Invariants
 ///
-/// The shadowing pass draws through this projection and the lighting pass is handed the
-/// same matrix as `light_projection`, so the two are computed here once. A pair of
-/// functions that each built "the light's projection" would agree until one of them was
-/// edited, and until then a shadow would be sampled at the wrong place for every surface
-/// in the scene.
+/// The pass reads no light, which is what makes it emit once rather than once per light. It
+/// adds into the shaded image and tests against the depth the earlier passes wrote, so an
+/// emissive surface behind an opaque one is occluded — the same state the lighting passes run
+/// with, minus the shadow map and the light's projection, which it has no use for.
+fn emission_pass(group: &Group<'_>, camera: &Value, frame: Frame, time: f64) -> Value {
+    rasterize(
+        &group.label(),
+        group.shader,
+        Value::structure([
+            (PROJECTION.to_owned(), camera.clone()),
+            (TIME.to_owned(), Value::Float(time)),
+        ]),
+        mesh_bindings(group).chain([
+            (
+                COLOR_TARGET.to_owned(),
+                texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
+            ),
+            (
+                DEPTH_BUFFER.to_owned(),
+                texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
+            ),
+        ]),
+        vec![COLOR_TARGET],
+        COLOUR_CLEAR,
+        lighting_state(),
+    )
+}
+
 /// Returns the projection a light looks at the scene through, and the eye it is made from.
 ///
 /// # Invariants
