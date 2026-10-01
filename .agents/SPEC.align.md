@@ -518,6 +518,15 @@ incremental compile.
       with the near and far planes derived from how far that is. The scene document has no
       camera field, so that framing is a stated convention rather than an author's
       decision; an author who wants a camera writes one and the convention goes away.
+    - **a fitted perspective camera's depth planes bracket the corners' own view depths**,
+      rather than the eye's distance to the target plus and minus the bounds' half diagonal.
+      The two look equivalent and are not: a wide flat scene's diagonal is an order of
+      magnitude deeper than the scene is, which holds the near plane a whole diagonal in
+      front of anything drawn, and depth mapped from a near plane at zero is depth that
+      cannot tell two close surfaces apart. The near plane is additionally floored at two
+      thousandths of the eye's own distance, because a camera that crops in stands *inside*
+      the box and no near plane brackets a box the eye is inside. Framing is unchanged; only
+      the z mapping moves.
   - a buffer is a flat run of little endian four byte floats, in the field order of the
     schema that describes it, which is sorted by field name. Every point of a mesh
     occupies the same number of bytes, because a shader reads a fixed stride; a ragged
@@ -620,7 +629,7 @@ the scene never reached are the ones left to it.
 ## The gallery, and what it does not do yet
 
 `crates/scene/src/gallery/` holds the WGSL library, the geometry generators and the scenes
-`dunes`, `monoliths` and `studio`. They are rendered by the harness in
+`dunes`, `monoliths`, `terraces` and `studio`. They are rendered by the harness in
 `crates/device/examples/render.rs`:
 
 ```text
@@ -641,9 +650,15 @@ apart, which is the measurement [proposals/compile-cost.md](proposals/compile-co
 
 Stated rather than left to be discovered:
 
-  - **`dunes` is tuned, not finished.** The shadow map is 1024² over a 380-unit volume, and
-    the penumbra is wider than it should be. The horizon has a bright seam where the field's
-    far edge meets the sky, and there is faint shadow acne at the far edge.
+  - **`dunes` is tuned, not finished.** The horizon has a bright seam where the field's far
+    edge meets the sky, and there is faint shadow acne at the far edge. The penumbra used to
+    be wider than it should be; at a 2048² shadow map over a 380-unit volume a texel is a
+    fifth of a unit, which is what a step two units wide needs.
+  - **`terraces` is composed, not finished.** The valley floor is a patchwork of crop colours
+    keyed by cell hash, and the cells are square and the same size everywhere, so the floor
+    reads as a grid laid over the land rather than as fields cut into it. There is a ring of
+    contour steps at the centre of the valley that the terrace mask draws and the scene does
+    not explain.
   - **`monoliths` is a sketch.** The composition is a row of small stones on a plain, and the
     camera is framed so the ground — which reaches much further than the monoliths — decides
     the fit, so the crop is a blunt instrument. The wet-ground reflection is a Fresnel
@@ -669,6 +684,21 @@ Stated rather than left to be discovered:
   - A surface body is written into the body of the lighting stage's fragment function, so it
     cannot redeclare a name the template or another surface already uses. A scene's helper
     functions go in the `helpers` argument, because `WGSL` has no nested functions.
+  - **Every triangle of a mesh is wound the same way round, and no generator is exempt.** The
+    two triangulations of a quad both fill it exactly, so the choice of diagonal looks free —
+    and it is, *provided* both triangles of a quad are wound alike. Winding one the other way
+    round fills the same area on paper and loses it on a gpu, and nothing reports it: the
+    depth buffer has a hole where that triangle was, every other pixel of the frame is
+    correct, and what a picture shows is a herringbone of missing geometry that looks exactly
+    like a shading artefact and is not one. There is no right way round, only a consistent
+    one, and it is a property of a mesh rather than of any point in it.
+  - **A heightfield's normal is taken per point, from that point's own gradient.** One normal
+    per cell is a rounding error away from the right answer on a smooth hillside, and nothing
+    like the right answer on a slope one cell wide: the two triangles sharing a quad disagree
+    about which way the surface faces along the diagonal, and a terrace riser renders as a
+    stripe of alternating triangles down its whole length. It cost four more calls to `height`
+    per cell, which is the price of a surface that is perpendicular to the surface the point
+    is actually on.
 
 ## References
 
