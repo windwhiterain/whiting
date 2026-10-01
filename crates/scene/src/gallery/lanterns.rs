@@ -15,8 +15,8 @@ use definition::Value;
 
 use crate::gallery::geometry::{cuboid, hash01, heightfield};
 use crate::gallery::kit::{
-    camera_placed, instance, instances, light, mesh, mesh_material, shaded_point_schema, surface,
-    surface_reflecting,
+    camera_placed, instance, instances, light, mesh, mesh_material, post_processes,
+    screen_material, shaded_point_schema, surface, surface_reflecting,
 };
 use crate::gallery::shaders::{emission_shader, mesh_shaders, post_shader};
 
@@ -79,6 +79,11 @@ pub fn lanterns() -> Value {
         ),
         ("shaders".to_owned(), Value::List(build_shaders())),
         ("meshes".to_owned(), Value::List(build_meshes())),
+        (
+            "screen_materials".to_owned(),
+            Value::List(vec![screen_material("post", "post")]),
+        ),
+        ("post_processes".to_owned(), post_processes(&["post"])),
         ("mesh_materials".to_owned(), Value::List(materials)),
         ("instances".to_owned(), instances),
     ])

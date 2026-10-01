@@ -31,7 +31,7 @@ use crate::gallery::geometry::{
 };
 use crate::gallery::kit::{
     camera, gallery_custom_schema, gallery_instance_schema, instance, instances, light, mesh,
-    mesh_material, shaded_point_schema, shader, surface,
+    mesh_material, post_processes, screen_material, shaded_point_schema, shader, surface,
 };
 use crate::gallery::shaders::{lighting, mesh_shaders, post_shader};
 use crate::standard::{Stage, light_pass_schema};
@@ -118,6 +118,11 @@ fn terraced_valley(materials: Vec<Value>, instances: Value) -> Value {
         ),
         ("shaders".to_owned(), Value::List(build_shaders())),
         ("meshes".to_owned(), Value::List(build_meshes())),
+        (
+            "screen_materials".to_owned(),
+            Value::List(vec![screen_material("post", "post")]),
+        ),
+        ("post_processes".to_owned(), post_processes(&["post"])),
         ("mesh_materials".to_owned(), Value::List(materials)),
         ("instances".to_owned(), instances),
     ])

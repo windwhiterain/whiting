@@ -123,6 +123,14 @@ pub const COLOR_TARGET_ENTRY: &str = "color_target";
 /// back from here, so this is the last thing a scene draws into.
 pub const PRESENT_TARGET_ENTRY: &str = "present_target";
 
+/// Returns the entry name of the image one post process writes when it is not the last.
+///
+/// A chain of post processes cannot read and write one image, so every process but the last
+/// writes one of its own and the next reads it.
+fn post_target_entry(index: usize) -> String {
+    format!("post_target_{index}")
+}
+
 /// Label of the mesh covering the frame, which a post stage draws.
 pub const FULLSCREEN_MESH: &str = "fullscreen";
 
@@ -398,10 +406,35 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
         insert_entry(&mut instance, group.entry(), group.payload())?;
         passes.push(emission_pass(&group, &camera, frame, time));
     }
-    // The post stage, if the scene declares one, is the last pass: everything it reads was
-    // written above it, and the frame is read back from what it writes.
-    if let Some(shader) = shaders.iter().find(|shader| shader.stage == Stage::Post) {
-        let (pass, entry, vertex_entry) = post_pass(shader, &camera_basis, frame, time)?;
+    // The post processes are the last passes, in the order the scene lists them. Everything
+    // each reads was written above it: the first reads the shaded image and the last writes
+    // the frame, and each one between reads what the one before it wrote. A chain of two is
+    // therefore two passes over the frame rather than two passes reading the same image.
+    let post = read_post_processes(scene, &shaders)?;
+    for (index, shader) in post.iter().enumerate() {
+        let source = if index == 0 {
+            COLOR_TARGET_ENTRY.to_owned()
+        } else {
+            post_target_entry(index - 1)
+        };
+        let target = if index + 1 == post.len() {
+            PRESENT_TARGET_ENTRY.to_owned()
+        } else {
+            let entry = post_target_entry(index);
+            instance.insert(
+                entry.clone(),
+                texture(frame.width, frame.height, COLOR_FORMAT),
+            );
+            entry
+        };
+        let (pass, entry, vertex_entry) = post_pass(
+            &shaders[*shader],
+            &camera_basis,
+            frame,
+            time,
+            &source,
+            &target,
+        )?;
         insert_entry(&mut instance, vertex_entry, entry)?;
         passes.push(pass);
     }
@@ -1067,6 +1100,74 @@ fn read_shader(shader: &Value, path: &Path) -> Result<ShaderRead, CompileError> 
     })
 }
 
+/// Reads the post processes a scene runs, in order, resolving each to its screen material.
+///
+/// # Invariants
+///
+/// A post process names a screen material by label, and the shader that material names must be
+/// a screen shader: a mesh shader here would be a pass over the frame that reads points no
+/// pass supplies.
+fn read_post_processes(scene: &Value, shaders: &[ShaderRead]) -> Result<Vec<usize>, CompileError> {
+    let path = Path::root().key(scene_schema::POST_PROCESSES);
+    // A scene with no post stage is a scene that grades nothing, which is a legitimate scene
+    // rather than an error: an absent field and an empty list mean the same thing here.
+    let Ok(processes) = list_at(scene, &Path::root(), scene_schema::POST_PROCESSES) else {
+        return Ok(Vec::new());
+    };
+    if processes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let materials_path = Path::root().key(scene_schema::SCREEN_MATERIALS);
+    let materials = list_at(scene, &Path::root(), scene_schema::SCREEN_MATERIALS)?;
+
+    let mut resolved = Vec::with_capacity(processes.len());
+    for (index, process) in processes.iter().enumerate() {
+        let process_path = path.index(index);
+        let Some(label) = process.as_str() else {
+            return Err(malformed(&process_path, "a screen material label"));
+        };
+        let Some((material_index, material)) =
+            materials.iter().enumerate().find(|(_, material)| {
+                material
+                    .as_field_map()
+                    .and_then(|fields| fields.get(scene_schema::LABEL))
+                    .and_then(Value::as_str)
+                    == Some(label)
+            })
+        else {
+            return Err(CompileError::Emission {
+                reason: format!(
+                    "at {process_path}: no screen material in this scene is labelled `{label}`"
+                ),
+            });
+        };
+        let material_path = materials_path.index(material_index);
+        let shader_path = material_path.key(scene_schema::SHADER);
+        let shader_label = text(material, &material_path, scene_schema::SHADER)?;
+        let Some((shader, found)) = shaders
+            .iter()
+            .enumerate()
+            .find(|(_, shader)| shader.label == shader_label)
+        else {
+            return Err(CompileError::UnknownShader {
+                path: shader_path,
+                shader: shader_label.to_owned(),
+            });
+        };
+        if found.stage != Stage::Post {
+            return Err(CompileError::Emission {
+                reason: format!(
+                    "at {material_path}: `{shader_label}` is a {} shader, and a screen material \
+                     names a screen shader",
+                    found.stage.tag()
+                ),
+            });
+        }
+        resolved.push(shader);
+    }
+    Ok(resolved)
+}
+
 /// Reads the shaders of the scene, which every material names by label.
 fn read_shaders(scene: &Value) -> Result<Vec<ShaderRead>, CompileError> {
     let path = Path::root().key(scene_schema::SHADERS);
@@ -1260,6 +1361,8 @@ fn post_pass(
     projection: &Projection,
     frame: Frame,
     time: f64,
+    source: &str,
+    target: &str,
 ) -> Result<(Value, Value, String), CompileError> {
     // The vertex buffer is packed once and entered into the instance, the same way a
     // mesh's is, because a post stage draws a mesh like any other pass does.
@@ -1299,7 +1402,7 @@ fn post_pass(
             ),
             (
                 COLOR_TARGET.to_owned(),
-                texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
+                texture_binding(source, frame.width, frame.height, COLOR_FORMAT),
             ),
             (
                 DEPTH_BUFFER.to_owned(),
@@ -1307,12 +1410,7 @@ fn post_pass(
             ),
             (
                 PRESENT_TARGET.to_owned(),
-                texture_binding(
-                    PRESENT_TARGET_ENTRY,
-                    frame.width,
-                    frame.height,
-                    COLOR_FORMAT,
-                ),
+                texture_binding(target, frame.width, frame.height, COLOR_FORMAT),
             ),
         ],
         vec![PRESENT_TARGET],

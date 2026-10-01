@@ -8,8 +8,8 @@ use definition::Value;
 
 use crate::gallery::geometry::heightfield;
 use crate::gallery::kit::{
-    camera, instance, instances, light, mesh, mesh_material, shaded_point_schema, surface,
-    surface_reflecting,
+    camera, instance, instances, light, mesh, mesh_material, post_processes, screen_material,
+    shaded_point_schema, surface, surface_reflecting,
 };
 use crate::gallery::shaders::{mesh_shaders, post_shader};
 
@@ -178,6 +178,11 @@ pub fn monoliths() -> Value {
                 ),
             ]),
         ),
+        (
+            "screen_materials".to_owned(),
+            Value::List(vec![screen_material("post", "post")]),
+        ),
+        ("post_processes".to_owned(), post_processes(&["post"])),
         ("mesh_materials".to_owned(), Value::List(materials)),
         (
             "instances".to_owned(),

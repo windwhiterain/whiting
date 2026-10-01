@@ -113,6 +113,34 @@ pub fn shader(
     )
 }
 
+/// Builds a screen material, which a post process names by label.
+///
+/// A screen material is a grade over the frame rather than a drawing of geometry, so it has
+/// no instance row and no points, and the only thing that distinguishes it from the shader it
+/// names is that several post processes may run one grade.
+pub fn screen_material(label: &str, shader: &str) -> Value {
+    Value::structure([
+        (
+            crate::standard::LABEL.to_owned(),
+            Value::String(label.to_owned()),
+        ),
+        (
+            crate::standard::SHADER.to_owned(),
+            Value::String(shader.to_owned()),
+        ),
+    ])
+}
+
+/// Builds the ordered post processes a scene runs, each naming a screen material.
+pub fn post_processes(labels: &[&str]) -> Value {
+    Value::List(
+        labels
+            .iter()
+            .map(|label| Value::String((*label).to_owned()))
+            .collect(),
+    )
+}
+
 /// Builds a mesh material, which an instance names by label.
 ///
 /// A material names one shader, and the shader's stage is the only pass the material can be

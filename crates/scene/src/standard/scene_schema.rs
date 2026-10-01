@@ -95,6 +95,12 @@ pub const MESH_MATERIALS: &str = "mesh_materials";
 /// Field holding the data a material's own shader reads.
 pub const CUSTOM_DATA: &str = "custom_data";
 
+/// The list of screen materials a scene declares.
+pub const SCREEN_MATERIALS: &str = "screen_materials";
+
+/// Field holding the ordered list of post processes a scene runs.
+pub const POST_PROCESSES: &str = "post_processes";
+
 /// Field holding the text a shader is written in.
 pub const SOURCE: &str = "source";
 
@@ -137,6 +143,26 @@ pub fn standard_scene_schema() -> Schema {
                  which is what lets several scenes share one mesh instead of each holding \
                  its own copy of the points.",
             ),
+        ),
+        (
+            SCREEN_MATERIALS.to_owned(),
+            Schema::new(SchemaKind::list(screen_material_schema()))
+                .optional()
+                .with_documentation(
+                    "Screen materials, listed once per material and named by a post process. A \
+                 screen material is a shader over the frame rather than over a mesh, so it \
+                 declares no point schema and no instance row.",
+                ),
+        ),
+        (
+            POST_PROCESSES.to_owned(),
+            Schema::new(SchemaKind::list(Schema::new(SchemaKind::String)))
+                .optional()
+                .with_documentation(
+                    "The post processes to run, in order, each naming a screen material by label. \
+                 The first reads the shaded image and the last writes the frame, and each \
+                 between them reads what the one before it wrote.",
+                ),
         ),
         (
             MESH_MATERIALS.to_owned(),
@@ -400,6 +426,39 @@ pub fn transform_schema() -> Schema {
         ("scale".to_owned(), float_triple("Scale per axis.")),
     ]))
     .with_documentation("Composed into the model matrix the instance row carries.")
+}
+
+/// Builds the schema of one screen material.
+///
+/// # Invariants
+///
+/// A screen material names one `ScreenShader` and the data that shader reads. It is a
+/// material rather than a shader because the same grade may be run over several frames with
+/// different data, and it is separate from the mesh materials because a shader over the
+/// screen reads no points and no instance row.
+pub fn screen_material_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            LABEL.to_owned(),
+            Schema::new(SchemaKind::String)
+                .with_documentation("Name a post process refers to this material by."),
+        ),
+        (
+            SHADER.to_owned(),
+            Schema::new(SchemaKind::String)
+                .with_documentation("The label of a screen shader this scene declares."),
+        ),
+        (
+            CUSTOM_DATA.to_owned(),
+            Schema::new(SchemaKind::Any).optional().with_documentation(
+                "The data this grade reads, verified against the shader's custom schema. \
+                     Every screen shader the standard pipeline emits declares the unit schema \
+                     and so reads none, which is why this is optional: a grade whose parameters \
+                     live in its own source has no data to carry.",
+            ),
+        ),
+    ]))
+    .with_documentation("A grade over the frame, run once by a post process.")
 }
 
 /// Builds the schema of one mesh material.
