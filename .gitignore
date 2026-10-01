@@ -1,2 +1,5 @@
 /target
 /out
+
+# Worktrees made by .worktrees, which are each a checkout of their own branch.
+/.worktrees/
