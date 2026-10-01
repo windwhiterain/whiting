@@ -46,7 +46,7 @@ use graphics::{derived_instance_schema, layout::packed_layout, verify_pass_input
 use crate::lighting::{self as lighting_pool, ClusterLight, Clustering, LightPool};
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
 use crate::standard::frame::Frame;
-use crate::standard::math::{Bounds, Matrix, apply, projection_of, transform_matrix};
+use crate::standard::math::{Bounds, IDENTITY, Matrix, apply, projection_of, transform_matrix};
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     CAMERA, CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, DEPTH_RANGE,
@@ -366,17 +366,6 @@ impl LightRead {
         ))
     }
 }
-
-/// The matrix a light that stands nowhere and casts no shadow carries.
-///
-/// Sixteen floats, column major, which is the order [`light_projection`] and the WGSL
-/// `mat4x4<f32>` both read it in.
-const IDENTITY: [f64; 16] = [
-    1.0, 0.0, 0.0, 0.0, //
-    0.0, 1.0, 0.0, 0.0, //
-    0.0, 0.0, 1.0, 0.0, //
-    0.0, 0.0, 0.0, 1.0,
-];
 
 /// Which kind of light a scene names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -68,13 +68,32 @@ const VERTEX_BUFFERS: u32 = 8;
 ///
 /// The request is the lower of what the pipeline needs and what the adapter reports, so a
 /// device on an adapter that cannot do this fails to be created — which is a clear error —
-/// rather than drawing a frame whose attributes the hardware never received.
+/// rather than drawing a frame whose attributes the hardware never received. wgpu takes that
+/// lower of the two for us when the device is created, so this asks for the adapter's own
+/// numbers and overrides only what the pipeline insists on.
+///
+/// Only the two vertex counts are overridden, and they are the pipeline's own requirement
+/// rather than a ceiling: a document does not choose them, and asking for fewer than a stage
+/// needs is the failure this whole function is about.
+///
+/// There is deliberately **no** `using_resolution` call. It reads as if it raised a floor and
+/// in fact it does the opposite: it copies the texture dimensions out of the limits passed to
+/// it and discards every other field, so pairing it with any constant re-pins the page size
+/// to that constant's numbers whatever the hardware reports. It came in with the vertex
+/// override above, as the way to say "the adapter's limits, and these two of them are ours",
+/// and the texture dimensions came along for the ride. A scene asking for a shadow page
+/// larger than the downlevel floor of 2048 was refused by a request that had pinned the
+/// dimension there, which is the bug this removes.
+///
+/// A scene that asks for more than the adapter has is refused by the device when the resource
+/// is created, with the adapter's own numbers in the error, which says more than a request
+/// that quietly asked for less and then let a scene's own size limit be the thing that failed.
 fn required_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
-    adapter.limits().using_resolution(wgpu::Limits {
+    wgpu::Limits {
         max_vertex_attributes: VERTEX_ATTRIBUTES,
         max_vertex_buffers: VERTEX_BUFFERS,
-        ..wgpu::Limits::downlevel_defaults()
-    })
+        ..adapter.limits()
+    }
 }
 
 /// A renderer that executes passes on a gpu.

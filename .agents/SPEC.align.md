@@ -1367,9 +1367,13 @@ template still holding `__SUN__` is a template with a live token in it, and a to
 replaces to nothing is exactly the mistake a template hides.
 
 **Invariant**: it validates against `Capabilities::empty()`, not the defaults. The defaults are
-a modern adapter's feature set; `WgpuRenderer` asks for `downlevel_defaults()` with
-`Features::empty()`. Validating against the defaults would accept a shader this renderer cannot
-run, which makes the check worse than useless.
+a modern adapter's feature set; `WgpuRenderer` asks for `Features::empty()`. Validating against
+the defaults would accept a shader this renderer cannot run, which makes the check worse than
+useless. This is a statement about **features only**: the device's *limits* are the adapter's own
+rather than the downlevel floor, so a limit is no longer a constant this test could state, and
+the two limits this project does bound are bounded where they are owned — the array limit is
+`lighting::MAX_TEXTURE_ARRAY_LAYERS`, a floor the compiler enforces, and the clustered pass's
+three storage buffers are counted in the test file itself.
 
 **What the check is not**: it is not pipeline creation. `naga` cannot compare a bind group layout
 against a shader, because that is `check_bindings` in the device and needs a renderer instance.
@@ -1522,4 +1526,63 @@ Both halves of the last sentence turned out to be wrong, and in opposite directi
 The octahedral choice itself was right, and for the reason the plan gave — it needs no new
 dimension or layer field — plus the one it had not thought of, which is that a 2D image's mip
 chain is already a direction blur and a cube's is not.
+
+## Silent errors, and where configuration lives
+
+Five things, no shader work, and the standing of each is worth saying because two of them are
+about the difference between a number that is a fact and a number that is a decision.
+
+### A scene naming no light gets one record it will never read
+
+`lighting::buffers::light_records` reserves one record per light, so an empty `lights` list
+finished into a **four byte** buffer where the shader's `array<LightRecord>` wants a whole
+ninety six byte one, and wgpu refused the draw with a validation error naming a buffer size. This
+was found while writing the environment test, which wanted a scene whose only light is the
+environment, and was worked around there with a point light of **zero intensity** — a workaround
+in a test file with its reason in a comment beside it.
+
+**The placeholder is a record no cluster points at**: a zero colour, the origin, a zero radius,
+`NO_PAGE`, and the identity projection. `NO_PAGE` and the identity are the answers an environment
+light's **own** record already gives, for the same reason — it is in no cluster list, so no
+fragment ever looks a page up through it. Zero colour is the one place this answer is *stronger*
+than the environment's, because an environment record carries the environment's real brightness:
+a record that somehow came to be read would then add a brightness nothing in the document asked
+for. The thing that actually makes it unreadable is structural rather than numerical — with an
+empty list every cluster's count is zero, so the loop that would load the record never runs.
+
+**Invariant**: the record count is `max(lights, 1)`. The binding is declared unconditionally by
+every lighting pass, which is the same rule the environment map follows and for the same reason
+(`shaders.rs`: a binding that came and went would move every binding number after it), so the
+buffer has to be a whole record wide even when every cluster's list is empty.
+
+**The fix went in `light_records` and not in `pack`.** The proposal had said `pack`; `pack` owns
+the assignment and the budgets, and `light_records` owns the shape of the record buffer. A minimum
+in `pack` would be a rule about the assignment, saying nothing about the buffer.
+
+### The page pool is a frame property, and `MAX_TEXTURE_ARRAY_LAYERS` is a floor
+
+`shadow_page_width`, `shadow_page_height` and `shadow_pages` moved from the `clustering` block to
+the `frame` block, beside the width and height of the image and the depth buffer that share them.
+A page's size and count are properties of the frame being rendered — a pool is a set of render
+targets this view draws its pages into — and an author reading their own document should be able
+to tell which numbers are about this view and which are about how lights are sorted into it.
+
+**The handoff said this changes the seven gallery scenes. It does not.** No gallery scene writes
+a `clustering` block at all, so the migration was two test files and one schema. Worth recording
+because "seven scenes" is the kind of number a reader would have believed.
+
+`MAX_TEXTURE_ARRAY_LAYERS` stayed at 256 and its documentation changed, because the device now
+asks for the adapter's own limits and the constant stopped being a transcription of a hardware
+fact. **A floor this compiler enforces is not a ceiling the hardware imposes**, and the two fail
+differently: a ceiling is a fact about the machine, while a floor is a decision about what this
+project will stand behind, and a document refused at a floor is refused *everywhere*, including
+on the machines that could have held it.
+
+That leaves a real hole — a scene may ask for 1024 pages on an adapter with 256 layers and is
+refused rather than given what the machine has — and the honest shape for closing it is a
+device-side clamp that emits a note, not a const that tracks the hardware and is therefore right
+on exactly one machine. It is written down in
+`.agents/proposals/adapter-limits-and-the-page-pool.md`, along with the same hole in the two page
+**dimensions**, which the downlevel floor of 2048 was also incidentally guarding and which
+nothing guards now.
 

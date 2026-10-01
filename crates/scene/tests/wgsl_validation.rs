@@ -5,8 +5,8 @@
 //!
 //! Parsing and validating is pure cpu work. It needs no adapter, so on a machine with no gpu
 //! this is the strongest statement anyone can make about a shader before it reaches a driver:
-//! that the module is well formed and that it fits inside the downlevel capabilities
-//! [`WgpuRenderer`] requests.
+//! that the module is well formed and that it needs no feature [`WgpuRenderer`] does not ask
+//! for.
 //!
 //! It is **not** pipeline creation. `naga` cannot tell that a bind group layout the compiler
 //! emitted matches what a shader declares, because that check lives in the device crate's
@@ -30,42 +30,45 @@ use whiting_scene::CompileContext;
 use whiting_scene::Compiler;
 use whiting_scene::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema};
 
-/// The capabilities the downlevel floor this renderer requests allows.
+/// The capabilities the renderer's device is created with.
 ///
 /// # Why these numbers and not the defaults
 ///
 /// `naga::valid::Capabilities::default()` is a modern adapter's feature set. Validating
 /// against it would accept a shader that `WgpuRenderer` cannot run, because the renderer asks
-/// for `wgpu::Limits::downlevel_defaults()` with `Features::empty()`. The values below are
-/// the ones that floor implies:
+/// for `wgpu::Features::empty()`. The values below are the ones that empty implies:
 ///
 /// - `float32-filterable` is off, so `r32float` and `rgba32float` cannot be sampled with a
 ///   linear filter. Only `rgba8unorm`, `rgba8unorm-srgb`, `rgba16float` and `bgra8unorm` are
 ///   filterable.
 /// - No push constants, no multiview, no ray queries, no storage texture binding arrays.
 ///
-/// The device layer and array limits — `max_texture_array_layers` of 256, four storage
-/// buffers per stage, sixteen invocations per workgroup — are not naga capabilities and are
-/// not expressible here. They are checked where they can be: the array limit bounds
-/// [`whiting_scene::lighting::MAX_TEXTURE_ARRAY_LAYERS`], which the compiler refuses to exceed,
-/// and the four storage buffers bound by a clustered pass are counted by the test below.
+/// This is a statement about **features**, and features are still an empty set. The *limits*
+/// the device is created with are no longer a floor: `WgpuRenderer` requests the adapter's own
+/// `Limits` now, with only the two vertex counts overridden, so `max_texture_dimension_2d` and
+/// `max_texture_array_layers` are whatever the hardware reports rather than the downlevel 2048
+/// and 256. A limit is therefore no longer expressible here as a constant, and the two places
+/// this project bounds a limit are bounded in the places that own them: the array limit is
+/// [`whiting_scene::lighting::MAX_TEXTURE_ARRAY_LAYERS`], which is a floor the compiler
+/// enforces and asserts, and the four storage buffers a clustered pass binds are counted by
+/// the test below.
 fn downlevel_capabilities() -> naga::valid::Capabilities {
     naga::valid::Capabilities::empty()
 }
 
-/// The storage buffers one clustered lighting pass binds, which the downlevel floor caps at
-/// four per shader stage.
+/// The storage buffers one clustered lighting pass binds.
 ///
 /// The three are the light records, the per cluster counts and the per cluster light lists.
-/// There is one spare, and this is what holds that there is one: a fourth storage buffer in
-/// the clustered template is a shader that validates here and fails on a driver's limit.
+/// There is one spare at the four a stage is guaranteed, and this is what holds that there is
+/// one: a fourth storage buffer in the clustered template is a shader that validates here and
+/// fails on a driver's limit.
 const CLUSTERED_STORAGE_BUFFERS: usize = 3;
 
-/// The texture array layers the downlevel floor allows, which bounds the page pool.
+/// The texture array layers a scene is refused above, which is the compiler's own floor.
 const MAX_TEXTURE_ARRAY_LAYERS: usize = 256;
 
 #[test]
-fn every_gallery_shader_parses_and_validates_within_the_downlevel_limits() {
+fn every_gallery_shader_parses_and_validates_within_the_requested_features() {
     let mut checked = 0usize;
     for name in Gallery::names() {
         for (label, source) in shaders_of(&Gallery::build(name)) {
@@ -108,16 +111,16 @@ fn the_clustered_lighting_template_stays_inside_the_storage_budget() {
 }
 
 #[test]
-fn the_page_pool_is_bounded_by_the_array_limit_the_floor_allows() {
-    // `max_texture_array_layers` is 256 under `downlevel_defaults()`, and it is what bounds
-    // the pool: a scene that asks for more pages than this is refused by the compiler rather
-    // than given a pool it cannot have.
+fn the_page_pool_is_bounded_by_the_floor_the_compiler_enforces() {
+    // `max_texture_array_layers` is the adapter's own number now, so this is not a statement
+    // about hardware: it is the floor this compiler refuses a document above, and what it
+    // holds is that a scene asking for more is told rather than given a pool it cannot have.
     assert_eq!(
         whiting_scene::lighting::MAX_TEXTURE_ARRAY_LAYERS,
         MAX_TEXTURE_ARRAY_LAYERS
     );
     let scene = Value::structure([(
-        whiting_scene::lighting::CLUSTERING.to_owned(),
+        whiting_scene::standard::FRAME.to_owned(),
         Value::structure([(
             whiting_scene::lighting::SHADOW_PAGES.to_owned(),
             Value::Int(MAX_TEXTURE_ARRAY_LAYERS as i64 + 1),

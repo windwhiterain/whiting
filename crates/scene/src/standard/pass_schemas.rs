@@ -53,7 +53,7 @@ pub const PROJECTION: &str = "projection";
 /// with the page its own light record carries.
 ///
 /// It is called a pool rather than `shadow_pages` on purpose: `shadow_pages` is the count a
-/// scene's `clustering` block declares, and two different things in one name is a name an
+/// scene's `frame` block declares, and two different things in one name is a name an
 /// author reads as one of them.
 pub const SHADOW_POOL: &str = "shadow_pool";
 
@@ -171,8 +171,9 @@ pub fn camera_schema() -> Schema {
 /// Format every shadow page is rendered in.
 ///
 /// A page is a depth map like any other. Its **size** is not a constant: it is
-/// `shadow_page_width` and `shadow_page_height` on the scene's `clustering` block, and the
-/// same rule the depth buffer's size follows. See [`crate::standard::frame`].
+/// `shadow_page_width` and `shadow_page_height` on the scene's `frame` block, beside the
+/// size of the image and the depth buffer, and the same rule their sizes follow. See
+/// [`crate::standard::frame`].
 pub const SHADOW_MAP_FORMAT: &str = "depth32float";
 
 /// Format the depth buffer is rendered in.
