@@ -56,6 +56,8 @@
 //!         previous_graphics: None,
 //!         previous_instance: None,
 //!         registry: &registry,
+//!         // The convention camera, which a scene naming no camera of its own is drawn with.
+//!         camera: 0,
 //!     })
 //!     .expect("the scene compiles");
 //! assert!(first.graphics_delta.is_empty());
@@ -73,6 +75,7 @@
 //!         previous_graphics: Some(&first.graphics),
 //!         previous_instance: Some(&first.instance),
 //!         registry: &registry,
+//!         camera: 0,
 //!     })
 //!     .expect("the scene compiles");
 //! assert!(second.graphics_delta.is_empty(), "nothing changed, so nothing to emit");

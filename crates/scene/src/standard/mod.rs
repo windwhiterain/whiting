@@ -61,6 +61,8 @@
 //!         previous_graphics: None,
 //!         previous_instance: None,
 //!         registry: &registry,
+//!         // The convention camera, which a scene naming no camera of its own is drawn with.
+//!         camera: 0,
 //!     })
 //!     .expect("the scene compiles");
 //!
@@ -164,6 +166,7 @@
 //!         previous_graphics: None,
 //!         previous_instance: None,
 //!         registry: &registry,
+//!         camera: 0,
 //!     })
 //!     .expect("a scene whose mesh is named compiles");
 //! let named_labels: Vec<&str> = graphics::passes(&named.graphics.value)
@@ -180,8 +183,11 @@
 //!     .expect("the naming scene is new");
 //! let mut operations = std::collections::BTreeMap::new();
 //! operations.insert(
+//!     // Instances are held in buckets named by the stage that draws them, and a bucket is a
+//!     // list, so reaching one is a key and then an index.
 //!     definition::Path::root()
 //!         .key("instances")
+//!         .key("lighting")
 //!         .index(0)
 //!         .key("transform")
 //!         .key("translation"),
