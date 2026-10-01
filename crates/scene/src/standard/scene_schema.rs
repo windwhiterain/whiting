@@ -88,6 +88,9 @@ pub const MATERIAL: &str = "material";
 /// Field holding the shader a material is drawn with.
 pub const SHADER: &str = "shader";
 
+/// The list of mesh materials a scene declares.
+pub const MESH_MATERIALS: &str = "mesh_materials";
+
 /// Field holding the data a material's own shader reads.
 pub const CUSTOM_DATA: &str = "custom_data";
 
@@ -135,10 +138,23 @@ pub fn standard_scene_schema() -> Schema {
             ),
         ),
         (
+            MESH_MATERIALS.to_owned(),
+            Schema::new(SchemaKind::list(mesh_material_schema())).with_documentation(
+                "Materials, listed once per material. An instance names one by label, so two \
+                 objects drawn the same way carry one copy of the material.",
+            ),
+        ),
+        (
             INSTANCES.to_owned(),
-            Schema::new(SchemaKind::list(instance_schema())).with_documentation(
-                "One instance is drawn by the stage its material's shader belongs to, so a \
-                 mesh drawn in three stages is three instances of one mesh.",
+            Schema::new(SchemaKind::dictionary(Schema::new(SchemaKind::list(
+                instance_schema(),
+            ))))
+            .with_documentation(
+                "The instances drawn in each pass, keyed by the pass's stage: `shadowing`, \
+                 `depthing`, `lighting` or `emission`. An instance listed under several \
+                 passes is drawn once per pass, so a mesh drawn in three stages is three \
+                 entries with the same transform and a material per stage. A key that is not \
+                 a mesh stage is an error.",
             ),
         ),
         (
@@ -351,9 +367,16 @@ pub fn instance_schema() -> Schema {
             ),
         ),
         (TRANSFORM.to_owned(), transform_schema()),
-        (MATERIAL.to_owned(), material_schema()),
+        (
+            MATERIAL.to_owned(),
+            Schema::new(SchemaKind::String).with_documentation(
+                "The label of a mesh material this scene declares. The stage this instance is \
+                 drawn in is the bucket it is listed under, not the material: the material \
+                 says how it is drawn there.",
+            ),
+        ),
     ]))
-    .with_documentation("A mesh placed in the scene and drawn by one stage.")
+    .with_documentation("A mesh placed in the scene, listed under every pass that draws it.")
 }
 
 /// Builds the schema of a transform: where an instance is, and how it is turned and sized.
@@ -372,14 +395,26 @@ pub fn transform_schema() -> Schema {
     .with_documentation("Composed into the model matrix the instance row carries.")
 }
 
-/// Builds the schema of one material.
-pub fn material_schema() -> Schema {
+/// Builds the schema of one mesh material.
+///
+/// # Invariants
+///
+/// A material names one shader, and that shader's stage is the pass it can be drawn in. Which
+/// passes an instance is actually drawn in is the buckets it is listed under in `instances`,
+/// so the two are checked against each other: a material whose shader is a `DepthShader`,
+/// listed under `lighting`, is an error rather than a depth pass drawn into the shaded image.
+pub fn mesh_material_schema() -> Schema {
     Schema::new(SchemaKind::structure([
+        (
+            LABEL.to_owned(),
+            Schema::new(SchemaKind::String)
+                .with_documentation("Name an instance refers to this material by."),
+        ),
         (
             SHADER.to_owned(),
             Schema::new(SchemaKind::String).with_documentation(
-                "The label of a shader this scene declares, which is where the stage an \
-                 instance is drawn in comes from.",
+                "The label of a shader this scene declares, whose stage is the pass this \
+                 material can be drawn in.",
             ),
         ),
         (
@@ -388,7 +423,7 @@ pub fn material_schema() -> Schema {
                 .with_documentation("Verified against the shader's custom schema."),
         ),
     ]))
-    .with_documentation("How an instance is drawn.")
+    .with_documentation("How an instance is drawn, in one pass.")
 }
 
 /// Builds the schema of a shader: the three mesh stages and the screen stage.

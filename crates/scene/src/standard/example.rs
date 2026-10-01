@@ -62,16 +62,60 @@ pub fn example_standard_scene() -> Value {
             Value::List(vec![mesh("triangle", triangle())]),
         ),
         (
-            "instances".to_owned(),
+            "mesh_materials".to_owned(),
             Value::List(vec![
-                instance("caster", "triangle", "shadowing", [0.0, 0.0, 0.0]),
-                instance("occluder", "triangle", "depthing", [1.0, 0.0, 0.0]),
-                instance("quad", "triangle", "lighting", [0.0, 0.0, 0.0]),
-                // A second instance of the same mesh drawn by the same shader in the same stage,
-                // so that the two share one pass and one instance buffer with a row apiece rather
-                // than being drawn one at a time.
-                instance("twin", "triangle", "lighting", [2.0, 0.0, 0.0]),
+                material("caster", "shadowing"),
+                material("occluder", "depthing"),
+                material("quad", "lighting"),
             ]),
+        ),
+        (
+            "instances".to_owned(),
+            Value::dictionary([
+                (
+                    "shadowing".to_owned(),
+                    Value::List(vec![instance(
+                        "caster",
+                        "triangle",
+                        "caster",
+                        [0.0, 0.0, 0.0],
+                    )]),
+                ),
+                (
+                    "depthing".to_owned(),
+                    Value::List(vec![instance(
+                        "occluder",
+                        "triangle",
+                        "occluder",
+                        [1.0, 0.0, 0.0],
+                    )]),
+                ),
+                (
+                    "lighting".to_owned(),
+                    Value::List(vec![
+                        instance("quad", "triangle", "quad", [0.0, 0.0, 0.0]),
+                        // A second instance of the same mesh drawn by the same material in the
+                        // same pass, so that the two share one pass and one instance buffer with
+                        // a row apiece rather than being drawn one at a time.
+                        instance("twin", "triangle", "quad", [2.0, 0.0, 0.0]),
+                    ]),
+                ),
+            ]),
+        ),
+    ])
+}
+
+/// Builds one mesh material of the example, which an instance names by label.
+fn material(label: &str, shader: &str) -> Value {
+    Value::structure([
+        ("label".to_owned(), Value::String(label.to_owned())),
+        ("shader".to_owned(), Value::String(shader.to_owned())),
+        (
+            "custom_data".to_owned(),
+            Value::structure([(
+                "tint".to_owned(),
+                Value::List([0.9, 0.9, 0.95].into_iter().map(Value::Float).collect()),
+            )]),
         ),
     ])
 }
@@ -113,8 +157,8 @@ fn shader(label: &str, stage: Stage, source: &str) -> Value {
     )
 }
 
-/// Builds one instance of the example, which places a mesh and names what draws it.
-fn instance(label: &str, mesh: &str, shader: &str, translation: [f64; 3]) -> Value {
+/// Builds one instance of the example, which places a mesh and names the material drawing it.
+fn instance(label: &str, mesh: &str, material: &str, translation: [f64; 3]) -> Value {
     Value::structure([
         ("label".to_owned(), Value::String(label.to_owned())),
         ("mesh".to_owned(), Value::String(mesh.to_owned())),
@@ -135,19 +179,7 @@ fn instance(label: &str, mesh: &str, shader: &str, translation: [f64; 3]) -> Val
                 ),
             ]),
         ),
-        (
-            "material".to_owned(),
-            Value::structure([
-                ("shader".to_owned(), Value::String(shader.to_owned())),
-                (
-                    "custom_data".to_owned(),
-                    Value::structure([(
-                        "tint".to_owned(),
-                        Value::List([0.9, 0.9, 0.95].into_iter().map(Value::Float).collect()),
-                    )]),
-                ),
-            ]),
-        ),
+        ("material".to_owned(), Value::String(material.to_owned())),
     ])
 }
 

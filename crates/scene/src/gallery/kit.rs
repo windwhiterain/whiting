@@ -113,9 +113,17 @@ pub fn shader(
     )
 }
 
-/// Builds the material an instance is drawn with.
-pub fn material(shader: &str, custom_data: Value) -> Value {
+/// Builds a mesh material, which an instance names by label.
+///
+/// A material names one shader, and the shader's stage is the only pass the material can be
+/// drawn in: an instance is listed under the passes that draw it, and each of those buckets
+/// names the material for that pass.
+pub fn mesh_material(label: &str, shader: &str, custom_data: Value) -> Value {
     Value::structure([
+        (
+            crate::standard::LABEL.to_owned(),
+            Value::String(label.to_owned()),
+        ),
         (
             crate::standard::SHADER.to_owned(),
             Value::String(shader.to_owned()),
@@ -131,7 +139,7 @@ pub fn instance(
     translation: [f64; 3],
     rotation: [f64; 3],
     scale: [f64; 3],
-    material: Value,
+    material: &str,
 ) -> Value {
     Value::structure([
         (
@@ -150,8 +158,27 @@ pub fn instance(
                 ("scale".to_owned(), triple(scale)),
             ]),
         ),
-        ("material".to_owned(), material),
+        (
+            crate::standard::MATERIAL.to_owned(),
+            Value::String(material.to_owned()),
+        ),
     ])
+}
+
+/// Builds the instances of a scene, bucketed by the pass that draws them.
+///
+/// # Invariants
+///
+/// The key is a pass and the value is the instances drawn in it, so an instance listed under
+/// several passes is drawn once per pass. A bucket no pass draws is not written at all rather
+/// than written empty: an absent key and an empty list mean the same thing here, and the
+/// shorter document is the one an agent reads.
+pub fn instances(buckets: Vec<(&str, Vec<Value>)>) -> Value {
+    Value::dictionary(
+        buckets
+            .into_iter()
+            .map(|(pass, instances)| (pass.to_owned(), Value::List(instances))),
+    )
 }
 
 /// Builds the camera a scene is drawn through.

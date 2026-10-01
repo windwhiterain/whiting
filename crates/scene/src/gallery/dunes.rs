@@ -17,7 +17,9 @@
 use definition::Value;
 
 use crate::gallery::geometry::{fractal_noise, heightfield};
-use crate::gallery::kit::{camera, instance, light, material, mesh, shaded_point_schema, surface};
+use crate::gallery::kit::{
+    camera, instance, instances, light, mesh, mesh_material, shaded_point_schema, surface,
+};
 use crate::gallery::shaders::{mesh_shaders, post_shader};
 
 /// How far the field reaches, in world units.
@@ -93,34 +95,63 @@ pub fn dunes() -> Value {
             )]),
         ),
         (
-            "instances".to_owned(),
+            "mesh_materials".to_owned(),
             Value::List(vec![
-                // One instance per stage: the geometry is authored once and drawn three
-                // times, which is the whole point of a mesh being separate from a
-                // placement.
-                instance(
+                // One material per stage, because a material names one shader and a shader
+                // belongs to one pass. The shadowing and depthing stages read no custom data,
+                // so theirs is a placeholder the shaders ignore.
+                mesh_material(
                     "cast",
-                    "field",
-                    [0.0, 0.0, 0.0],
-                    [0.0; 3],
-                    [1.0; 3],
-                    material("shadowing", surface([1.0, 1.0, 1.0], 0.0, 1.0, [0.0; 3])),
+                    "shadowing",
+                    surface([1.0, 1.0, 1.0], 0.0, 1.0, [0.0; 3]),
                 ),
-                instance(
+                mesh_material(
                     "depth",
-                    "field",
-                    [0.0, 0.0, 0.0],
-                    [0.0; 3],
-                    [1.0; 3],
-                    material("depthing", surface([1.0, 1.0, 1.0], 0.0, 1.0, [0.0; 3])),
+                    "depthing",
+                    surface([1.0, 1.0, 1.0], 0.0, 1.0, [0.0; 3]),
                 ),
-                instance(
-                    "shade",
-                    "field",
-                    [0.0, 0.0, 0.0],
-                    [0.0; 3],
-                    [1.0; 3],
-                    material("lighting", surface(SAND, 0.0, 0.92, [0.0; 3])),
+                mesh_material("shade", "lighting", surface(SAND, 0.0, 0.92, [0.0; 3])),
+            ]),
+        ),
+        (
+            "instances".to_owned(),
+            // One instance per pass, all three drawing the same mesh: the geometry is
+            // authored once and drawn three times, which is the whole point of a mesh being
+            // separate from a placement. Which pass each is drawn in is the bucket it is in
+            // rather than something a material's shader implies.
+            instances(vec![
+                (
+                    "shadowing",
+                    vec![instance(
+                        "cast",
+                        "field",
+                        [0.0, 0.0, 0.0],
+                        [0.0; 3],
+                        [1.0; 3],
+                        "cast",
+                    )],
+                ),
+                (
+                    "depthing",
+                    vec![instance(
+                        "depth",
+                        "field",
+                        [0.0, 0.0, 0.0],
+                        [0.0; 3],
+                        [1.0; 3],
+                        "depth",
+                    )],
+                ),
+                (
+                    "lighting",
+                    vec![instance(
+                        "shade",
+                        "field",
+                        [0.0, 0.0, 0.0],
+                        [0.0; 3],
+                        [1.0; 3],
+                        "shade",
+                    )],
                 ),
             ]),
         ),

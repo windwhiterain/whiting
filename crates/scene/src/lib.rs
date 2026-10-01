@@ -322,6 +322,8 @@ pub enum CompileError {
     UnknownMesh { path: Path, mesh: String },
     #[error("at {path}: no shader in this scene is labelled `{shader}`")]
     UnknownShader { path: Path, shader: String },
+    #[error("at {path}: no mesh material in this scene is labelled `{material}`")]
+    UnknownMaterial { path: Path, material: String },
     #[error(
         "the emitted documents both need an entry named `{entry}`, so one would hide the other"
     )]

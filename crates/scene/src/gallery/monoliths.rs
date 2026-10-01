@@ -8,7 +8,8 @@ use definition::Value;
 
 use crate::gallery::geometry::heightfield;
 use crate::gallery::kit::{
-    camera, instance, light, material, mesh, shaded_point_schema, surface, surface_reflecting,
+    camera, instance, instances, light, mesh, mesh_material, shaded_point_schema, surface,
+    surface_reflecting,
 };
 use crate::gallery::shaders::{mesh_shaders, post_shader};
 
@@ -17,7 +18,47 @@ const COUNT: usize = 40;
 
 /// Builds the monolith field.
 pub fn monoliths() -> Value {
-    let mut instances = Vec::new();
+    // A material is declared once and named by every instance drawn with it, so the forty
+    // monoliths share the handful their three stages need rather than carrying one apiece.
+    // The lighting ones differ only in tint, which is the material's own data and is why
+    // there are three of them rather than one.
+    //
+    // A smooth, dark, very slightly metallic surface. What stands in for water without a
+    // reflection pass is a very smooth dielectric: it reflects the sky at grazing angles
+    // and almost nothing looking straight down, which is what a flat mirror of a sky looks
+    // like.
+    let ground = || surface_reflecting([0.018, 0.020, 0.026], 0.0, 0.06, [0.0; 3], 1.0);
+    let mut materials = vec![
+        mesh_material(
+            "monolith-cast",
+            "shadowing",
+            surface([1.0, 1.0, 1.0], 0.1, 0.35, [0.0; 3]),
+        ),
+        mesh_material(
+            "monolith-depth",
+            "depthing",
+            surface([1.0, 1.0, 1.0], 0.1, 0.35, [0.0; 3]),
+        ),
+        mesh_material("ground-cast", "shadowing", ground()),
+        mesh_material("ground-depth", "depthing", ground()),
+        mesh_material("ground-shade", "lighting", ground()),
+    ];
+    for variant in 0..3 {
+        materials.push(mesh_material(
+            &format!("monolith-shade-{variant}"),
+            "lighting",
+            surface(
+                [0.05 + 0.03 * variant as f64, 0.055, 0.07],
+                0.1,
+                0.35,
+                [0.0; 3],
+            ),
+        ));
+    }
+
+    let mut shadowing = Vec::new();
+    let mut depthing = Vec::new();
+    let mut lighting = Vec::new();
     for index in 0..COUNT as i64 {
         // A deterministic scatter, so an unchanged scene compiles to an unchanged field.
         let x = (crate::gallery::geometry::hash01(index, 7, 3) - 0.5) * 90.0;
@@ -25,52 +66,63 @@ pub fn monoliths() -> Value {
         let height = 6.0 + crate::gallery::geometry::hash01(index, 29, 11) * 22.0;
         let turn = crate::gallery::geometry::hash01(index, 41, 13) * std::f64::consts::TAU;
 
-        // One instance per stage, as the dune field has: the geometry is authored once and
-        // drawn three times over.
-        for (label, shader, tint) in [
-            ("cast", "shadowing", [1.0, 1.0, 1.0]),
-            ("depth", "depthing", [1.0, 1.0, 1.0]),
-            (
-                "shade",
-                "lighting",
-                [0.05 + 0.03 * (index % 3) as f64, 0.055, 0.07],
-            ),
-        ] {
-            instances.push(instance(
-                &format!("{label}-{index}"),
-                "monolith",
-                [x, -0.5, z],
-                [0.0, turn, 0.0],
-                [1.0, height, 1.0],
-                material(shader, surface(tint, 0.1, 0.35, [0.0; 3])),
-            ));
-        }
-    }
-
-    // The ground, once per stage as well. A ground that were only in the lighting stage
-    // would cast no shadow and would be missing from the depth the lighting pass tests
-    // against, so it is drawn by all three like anything else.
-    for (label, shader) in [
-        ("cast", "shadowing"),
-        ("depth", "depthing"),
-        ("shade", "lighting"),
-    ] {
-        instances.push(instance(
-            &format!("ground-{label}"),
-            "ground",
-            [0.0; 3],
-            [0.0; 3],
-            [1.0; 3],
-            material(
-                shader,
-                // A smooth, dark, very slightly metallic surface. What stands in for
-                // water without a reflection pass is a very smooth dielectric: it
-                // reflects the sky at grazing angles and almost nothing looking straight
-                // down, which is what a flat mirror of a sky looks like.
-                surface_reflecting([0.018, 0.020, 0.026], 0.0, 0.06, [0.0; 3], 1.0),
-            ),
+        // The geometry is authored once and drawn three times over, so the same monolith is
+        // three entries: one per pass, sharing the transform and naming the material for that
+        // pass. A material names one shader and a shader belongs to one pass, so the passes
+        // cannot share one entry however identical the placement is.
+        shadowing.push(instance(
+            &format!("shadowing-{index}"),
+            "monolith",
+            [x, -0.5, z],
+            [0.0, turn, 0.0],
+            [1.0, height, 1.0],
+            "monolith-cast",
+        ));
+        depthing.push(instance(
+            &format!("depthing-{index}"),
+            "monolith",
+            [x, -0.5, z],
+            [0.0, turn, 0.0],
+            [1.0, height, 1.0],
+            "monolith-depth",
+        ));
+        lighting.push(instance(
+            &format!("lighting-{index}"),
+            "monolith",
+            [x, -0.5, z],
+            [0.0, turn, 0.0],
+            [1.0, height, 1.0],
+            &format!("monolith-shade-{}", index % 3),
         ));
     }
+
+    // The ground, in every pass as well. A ground that were only in the lighting stage would
+    // cast no shadow and would be missing from the depth the lighting pass tests against, so
+    // it is drawn by all three like anything else.
+    shadowing.push(instance(
+        "ground-shadowing",
+        "ground",
+        [0.0; 3],
+        [0.0; 3],
+        [1.0; 3],
+        "ground-cast",
+    ));
+    depthing.push(instance(
+        "ground-depthing",
+        "ground",
+        [0.0; 3],
+        [0.0; 3],
+        [1.0; 3],
+        "ground-depth",
+    ));
+    lighting.push(instance(
+        "ground-lighting",
+        "ground",
+        [0.0; 3],
+        [0.0; 3],
+        [1.0; 3],
+        "ground-shade",
+    ));
 
     Value::structure([
         ("name".to_owned(), Value::String("monoliths".to_owned())),
@@ -126,7 +178,15 @@ pub fn monoliths() -> Value {
                 ),
             ]),
         ),
-        ("instances".to_owned(), Value::List(instances)),
+        ("mesh_materials".to_owned(), Value::List(materials)),
+        (
+            "instances".to_owned(),
+            instances(vec![
+                ("shadowing", shadowing),
+                ("depthing", depthing),
+                ("lighting", lighting),
+            ]),
+        ),
     ])
 }
 

@@ -30,8 +30,8 @@ use crate::gallery::geometry::{
     cone, cuboid, fractal_noise, hash01, heightfield, prism, ridged_noise, sphere, value_noise,
 };
 use crate::gallery::kit::{
-    camera, gallery_custom_schema, gallery_instance_schema, instance, light, material, mesh,
-    shaded_point_schema, shader, surface,
+    camera, gallery_custom_schema, gallery_instance_schema, instance, instances, light, mesh,
+    mesh_material, shaded_point_schema, shader, surface,
 };
 use crate::gallery::shaders::{lighting, mesh_shaders, post_shader};
 use crate::standard::{Stage, lighting_pass_schema};
@@ -74,6 +74,12 @@ const TIME: f64 = 3.0;
 
 /// Builds the terraced valley.
 pub fn terraces() -> Value {
+    let (materials, instances) = build_instances();
+    terraced_valley(materials, instances)
+}
+
+/// Assembles the scene around the materials and the instances the placement produced.
+fn terraced_valley(materials: Vec<Value>, instances: Value) -> Value {
     Value::structure([
         ("name".to_owned(), Value::String("terraces".to_owned())),
         ("time".to_owned(), Value::Float(TIME)),
@@ -107,7 +113,8 @@ pub fn terraces() -> Value {
         ),
         ("shaders".to_owned(), Value::List(build_shaders())),
         ("meshes".to_owned(), Value::List(build_meshes())),
-        ("instances".to_owned(), Value::List(build_instances())),
+        ("mesh_materials".to_owned(), Value::List(materials)),
+        ("instances".to_owned(), instances),
     ])
 }
 
@@ -278,39 +285,105 @@ fn build_meshes() -> Vec<Value> {
     ]
 }
 
+/// The materials a scene declares, and the instances drawn in each pass.
+///
+/// # Invariants
+///
+/// A material is declared once and named by the instances drawn with it. An instance is
+/// listed under the passes that draw it, and since a material names one shader and a shader
+/// belongs to one pass, an object drawn in three passes contributes three materials and
+/// three entries, one per pass.
+///
+/// This is an accumulator rather than three loose lists because the two have to be built
+/// together: every instance names a material, and a material that nothing names is a
+/// declaration with no user.
+struct Scene {
+    materials: Vec<Value>,
+    shadowing: Vec<Value>,
+    depthing: Vec<Value>,
+    lighting: Vec<Value>,
+}
+
+impl Scene {
+    fn new() -> Self {
+        Self {
+            materials: Vec::new(),
+            shadowing: Vec::new(),
+            depthing: Vec::new(),
+            lighting: Vec::new(),
+        }
+    }
+
+    /// Declares a material and returns the label an instance names it by.
+    fn declare(&mut self, label: &str, shader: &str, custom_data: Value) -> String {
+        self.materials
+            .push(mesh_material(label, shader, custom_data));
+        label.to_owned()
+    }
+
+    /// Adds an instance to the bucket of the pass it is drawn in.
+    ///
+    /// The pass is the bucket key and the material's shader's stage, which the compiler
+    /// checks agree. A prop's lighting shader is `lighting_props` while the pass is
+    /// `lighting`, so the two are separate arguments rather than one name used twice.
+    fn draw(&mut self, pass: &str, instance: Value) {
+        match pass {
+            "shadowing" => self.shadowing.push(instance),
+            "depthing" => self.depthing.push(instance),
+            _ => self.lighting.push(instance),
+        }
+    }
+
+    /// Returns the material list and the instances bucketed by pass.
+    fn build(self) -> (Vec<Value>, Value) {
+        (
+            self.materials,
+            instances(vec![
+                ("shadowing", self.shadowing),
+                ("depthing", self.depthing),
+                ("lighting", self.lighting),
+            ]),
+        )
+    }
+}
+
 /// Builds every instance: the terrain three times, then the village and the firs three
 /// times each, so the geometry is authored once and drawn by every stage.
-fn build_instances() -> Vec<Value> {
-    let mut instances = Vec::new();
-    for (label, stage) in [
-        ("cast", "shadowing"),
-        ("depth", "depthing"),
-        ("shade", "lighting"),
-    ] {
-        instances.push(instance(
+fn build_instances() -> (Vec<Value>, Value) {
+    let mut scene = Scene::new();
+    for (label, pass, shader) in TERRAIN_STAGES {
+        let material = scene.declare(
             &format!("terrain-{label}"),
-            "terrain",
-            [0.0; 3],
-            [0.0; 3],
-            [1.0; 3],
+            shader,
             // The terrain's albedo is decided per fragment by the surface; the row only
             // carries the light's own terms. A roughness near a half is wet earth's sheen
             // under the sky, and the water's sharp glint is the reflected sun the surface
             // adds, not this lobe.
-            material(stage, surface([1.0, 1.0, 1.0], 0.0, 0.55, [0.0; 3])),
-        ));
+            surface([1.0, 1.0, 1.0], 0.0, 0.55, [0.0; 3]),
+        );
+        scene.draw(
+            pass,
+            instance(
+                &format!("terrain-{label}"),
+                "terrain",
+                [0.0; 3],
+                [0.0; 3],
+                [1.0; 3],
+                &material,
+            ),
+        );
     }
 
     for (index, house) in village().iter().enumerate() {
-        place_house(&mut instances, index, house);
+        place_house(&mut scene, index, house);
     }
     for (index, fir) in firs().iter().enumerate() {
-        place_fir(&mut instances, index, fir);
+        place_fir(&mut scene, index, fir);
     }
     for (index, crown) in broadleafs().iter().enumerate() {
-        place_crown(&mut instances, index, crown);
+        place_crown(&mut scene, index, crown);
     }
-    instances
+    scene.build()
 }
 
 /// One placement of a thing that stands on the terrain.
@@ -373,7 +446,7 @@ fn village() -> Vec<House> {
 /// The roof is a unit prism scaled a half unit past the walls on each eave and sunk a
 /// hand's width into the wall top, which is how a tiled roof sits on a farmhouse rather
 /// than how a box sits on a box.
-fn place_house(into: &mut Vec<Value>, index: usize, house: &House) {
+fn place_house(scene: &mut Scene, index: usize, house: &House) {
     let placed = &house.placement;
     // Sunk to the eaves' line of the first course: on a riser edge a house's downhill
     // corner would otherwise hover, and a farmhouse is built into its bank, not onto it.
@@ -385,24 +458,40 @@ fn place_house(into: &mut Vec<Value>, index: usize, house: &House) {
     } else {
         [0.76, 0.71, 0.62]
     };
-    for (label, stage) in PROP_STAGES {
-        into.push(instance(
+    for (label, pass, shader) in PROP_STAGES {
+        let wall = scene.declare(
             &format!("wall-{index}-{label}"),
-            "wall",
-            [placed.x, base, placed.z],
-            [0.0, placed.turn, 0.0],
-            house.walls,
-            prop_material(stage, tint, 0.75),
-        ));
-        into.push(instance(
+            shader,
+            prop_material(shader, tint, 0.75),
+        );
+        scene.draw(
+            pass,
+            instance(
+                &format!("wall-{index}-{label}"),
+                "wall",
+                [placed.x, base, placed.z],
+                [0.0, placed.turn, 0.0],
+                house.walls,
+                &wall,
+            ),
+        );
+        // The tile: a near-black grey-blue that warms where the sun catches it.
+        let roof = scene.declare(
             &format!("roof-{index}-{label}"),
-            "roof",
-            [placed.x, base + house.walls[1] - 0.10, placed.z],
-            [0.0, placed.turn, 0.0],
-            [house.walls[0] + 0.6, house.gable, house.walls[2] + 0.7],
-            // The tile: a near-black grey-blue that warms where the sun catches it.
-            prop_material(stage, [0.10, 0.11, 0.14], 0.62),
-        ));
+            shader,
+            prop_material(shader, [0.10, 0.11, 0.14], 0.62),
+        );
+        scene.draw(
+            pass,
+            instance(
+                &format!("roof-{index}-{label}"),
+                "roof",
+                [placed.x, base + house.walls[1] - 0.10, placed.z],
+                [0.0, placed.turn, 0.0],
+                [house.walls[0] + 0.6, house.gable, house.walls[2] + 0.7],
+                &roof,
+            ),
+        );
     }
 }
 
@@ -489,21 +578,29 @@ fn broadleafs() -> Vec<Placement> {
 }
 
 /// Places one broadleaf crown, once per stage.
-fn place_crown(into: &mut Vec<Value>, index: usize, crown: &Placement) {
+fn place_crown(scene: &mut Scene, index: usize, crown: &Placement) {
     let tint = [
         0.10 + 0.05 * crown.variety,
         0.20 + 0.06 * crown.variety,
         0.07,
     ];
-    for (label, stage) in PROP_STAGES {
-        into.push(instance(
+    for (label, pass, shader) in PROP_STAGES {
+        let material = scene.declare(
             &format!("crown-{index}-{label}"),
-            "crown",
-            [crown.x, crown.ground + 1.4 * crown.scale, crown.z],
-            [0.0, 0.0, 0.0],
-            [crown.scale * 1.9, crown.scale * 1.5, crown.scale * 1.9],
-            prop_material(stage, tint, 0.9),
-        ));
+            shader,
+            prop_material(shader, tint, 0.9),
+        );
+        scene.draw(
+            pass,
+            instance(
+                &format!("crown-{index}-{label}"),
+                "crown",
+                [crown.x, crown.ground + 1.4 * crown.scale, crown.z],
+                [0.0, 0.0, 0.0],
+                [crown.scale * 1.9, crown.scale * 1.5, crown.scale * 1.9],
+                &material,
+            ),
+        );
     }
 }
 
@@ -511,7 +608,7 @@ fn place_crown(into: &mut Vec<Value>, index: usize, crown: &Placement) {
 ///
 /// A China fir is a broad lower skirt and a narrow upper one, so the tree is two cones
 /// of one mesh pair and the pair is what every fir in the stand is drawn from.
-fn place_fir(into: &mut Vec<Value>, index: usize, fir: &Placement) {
+fn place_fir(scene: &mut Scene, index: usize, fir: &Placement) {
     // The green deepens with altitude: the stand on the mountain is near-black against
     // the haze, and a garden fir by the village is a touch warmer.
     let depth = ((fir.ground - 20.0) / 90.0).clamp(0.0, 1.0);
@@ -521,42 +618,63 @@ fn place_fir(into: &mut Vec<Value>, index: usize, fir: &Placement) {
         0.06 + 0.02 * (1.0 - depth),
     ];
     let base = fir.ground - 0.15;
-    for (label, stage) in PROP_STAGES {
-        into.push(instance(
-            &format!("fir-low-{index}-{label}"),
-            "fir_low",
-            [fir.x, base, fir.z],
-            [0.0, fir.turn, 0.0],
-            [fir.scale; 3],
-            prop_material(stage, tint, 0.9),
-        ));
-        into.push(instance(
-            &format!("fir-high-{index}-{label}"),
-            "fir_high",
-            [fir.x, base + 1.85 * fir.scale, fir.z],
-            [0.0, fir.turn + 0.4, 0.0],
-            [fir.scale; 3],
-            prop_material(stage, tint, 0.9),
-        ));
+    for (label, pass, shader) in PROP_STAGES {
+        let material = scene.declare(
+            &format!("fir-{index}-{label}"),
+            shader,
+            prop_material(shader, tint, 0.9),
+        );
+        scene.draw(
+            pass,
+            instance(
+                &format!("fir-low-{index}-{label}"),
+                "fir_low",
+                [fir.x, base, fir.z],
+                [0.0, fir.turn, 0.0],
+                [fir.scale; 3],
+                &material,
+            ),
+        );
+        scene.draw(
+            pass,
+            instance(
+                &format!("fir-high-{index}-{label}"),
+                "fir_high",
+                [fir.x, base + 1.85 * fir.scale, fir.z],
+                [0.0, fir.turn + 0.4, 0.0],
+                [fir.scale; 3],
+                &material,
+            ),
+        );
     }
 }
 
-/// The instance labels of the three stages a prop is drawn by.
-const PROP_STAGES: [(&str, &str); 3] = [
-    ("cast", "shadowing"),
-    ("depth", "depthing"),
-    ("shade", "lighting_props"),
+/// The instance labels and shaders of the three stages the terrain is drawn by.
+const TERRAIN_STAGES: [(&str, &str, &str); 3] = [
+    ("cast", "shadowing", "shadowing"),
+    ("depth", "depthing", "depthing"),
+    ("shade", "lighting", "lighting"),
+];
+
+/// The instance labels, passes and shaders of the three stages a prop is drawn by.
+///
+/// The pass and the shader are separate because a prop's lighting shader is
+/// `lighting_props`: the bucket key is the pass, which is `lighting`.
+const PROP_STAGES: [(&str, &str, &str); 3] = [
+    ("cast", "shadowing", "shadowing"),
+    ("depth", "depthing", "depthing"),
+    ("shade", "lighting", "lighting_props"),
 ];
 
 /// The material a prop is drawn with: plain in the two depth stages, tinted in the
 /// lighting one.
-fn prop_material(stage: &str, tint: [f64; 3], roughness: f64) -> Value {
-    let tint = if stage == "lighting_props" {
+fn prop_material(shader: &str, tint: [f64; 3], roughness: f64) -> Value {
+    let tint = if shader == "lighting_props" {
         tint
     } else {
         [1.0, 1.0, 1.0]
     };
-    material(stage, surface(tint, 0.0, roughness, [0.0; 3]))
+    surface(tint, 0.0, roughness, [0.0; 3])
 }
 
 /// Writes the shared constants into a WGSL source, in place of its tokens.

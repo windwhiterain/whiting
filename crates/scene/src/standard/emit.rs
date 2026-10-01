@@ -172,6 +172,21 @@ impl Stage {
             Self::Post => "post",
         }
     }
+
+    /// Returns the stage a bucket key names, or none when it names no mesh stage.
+    ///
+    /// The keys are the suffixes, because a bucket is a pass and the suffix is what a pass is
+    /// called everywhere else: in a shader entry's name, in a pass's label, and in a
+    /// diagnostic. `post` is not one of them, because a post process draws a fullscreen
+    /// triangle rather than a scene instance and so has no instances to bucket.
+    pub fn from_suffix(name: &str) -> Option<Self> {
+        match name {
+            "shadowing" => Some(Self::Shadowing),
+            "depthing" => Some(Self::Depthing),
+            "lighting" => Some(Self::Lighting),
+            _ => None,
+        }
+    }
 }
 
 /// One mesh, read out of the scene document.
@@ -207,6 +222,24 @@ struct InstanceRead {
     instance_bytes: Vec<u8>,
     /// The model matrix the instance row carries, which the transform composes to.
     model: Matrix,
+}
+
+/// One mesh material, read out of the scene document: a shader, and the data it reads.
+///
+/// # Invariants
+///
+/// A material names one shader, and that shader's stage is the only pass the material can be
+/// drawn in. Which passes an instance actually appears in is the buckets it is listed under,
+/// so a material is reusable across instances and an instance listed under two passes names
+/// two materials.
+struct MeshMaterialRead {
+    label: String,
+    /// The index of the shader this material is drawn with, resolved from its label.
+    shader: usize,
+    /// Where this material was read from, for a message about one of its fields.
+    path: Path,
+    /// The material's own data, for the shader's `custom_schema`.
+    custom_data: Value,
 }
 
 /// Where an instance is, and how it is turned and sized.
@@ -284,8 +317,9 @@ fn read_topology(mesh: &Value, path: &Path) -> Result<Topology, CompileError> {
 pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     let lights = read_lights(scene)?;
     let shaders = read_shaders(scene)?;
+    let materials = read_materials(scene, &shaders)?;
     let (meshes, mut instance) = read_meshes(scene, &shaders)?;
-    let instances = read_instances(scene, &meshes, &shaders)?;
+    let instances = read_instances(scene, &meshes, &materials, &shaders)?;
     // The camera frames what is drawn rather than what is authored, because an instance
     // may place its mesh anywhere and a mesh no instance names is not drawn at all.
     let bounds = bounds_of_instances(&meshes, &instances);
@@ -615,25 +649,56 @@ fn finish_mesh(
     (found, entry)
 }
 
-/// Reads the instances of the scene, resolving each one's mesh and shader.
+/// Reads the instances of the scene, which are listed in buckets, one per pass.
+///
+/// # Invariants
+///
+/// The pass an instance is drawn in is the bucket it is listed under. That is what makes the
+/// stage a checkable fact: the material an instance names must have a shader of that bucket's
+/// stage. Where the stage was whatever the material's shader happened to be, a material used
+/// in the wrong pass could not be written down at all — and a plane drawn in the shadow pass
+/// with a lighting shader could.
 fn read_instances(
     scene: &Value,
     meshes: &[MeshRead],
+    materials: &[MeshMaterialRead],
     shaders: &[ShaderRead],
 ) -> Result<Vec<InstanceRead>, CompileError> {
     let path = Path::root().key(scene_schema::INSTANCES);
-    let instances = list_at(scene, &Path::root(), scene_schema::INSTANCES)?;
+    let instances = at(scene, &Path::root(), scene_schema::INSTANCES)?;
+    let Some(buckets) = instances.as_dict() else {
+        return Err(malformed(&path, "the instances as a map of pass to list"));
+    };
 
-    let mut read: Vec<InstanceRead> = Vec::with_capacity(instances.len());
-    for (index, instance) in instances.iter().enumerate() {
-        let found = read_instance(instance, &path.index(index), meshes, shaders)?;
-        if read.iter().any(|other| other.label == found.label) {
-            return Err(CompileError::DuplicateLabel {
-                kind: "instance",
-                label: found.label,
+    let mut read: Vec<InstanceRead> = Vec::new();
+    for (name, bucket) in buckets {
+        let bucket_path = path.key(name);
+        let Some(stage) = Stage::from_suffix(name) else {
+            return Err(CompileError::UnknownStage {
+                path: bucket_path,
+                stage: name.clone(),
             });
+        };
+        let Some(bucket) = bucket.as_list() else {
+            return Err(malformed(&bucket_path, "a list of instances"));
+        };
+        for (index, instance) in bucket.iter().enumerate() {
+            let found = read_instance(
+                instance,
+                &bucket_path.index(index),
+                meshes,
+                materials,
+                shaders,
+                stage,
+            )?;
+            if read.iter().any(|other| other.label == found.label) {
+                return Err(CompileError::DuplicateLabel {
+                    kind: "instance",
+                    label: found.label,
+                });
+            }
+            read.push(found);
         }
-        read.push(found);
     }
     Ok(read)
 }
@@ -643,13 +708,15 @@ fn read_instances(
 /// # Invariants
 ///
 /// A point is verified against its mesh's own point schema and against the point schema of
-/// every shader that draws that mesh. Verifying one and not the other is how a mesh ends up
-/// carrying a field no shader asked for, or a shader that reads a field no point carries.
+/// the shader that draws it. Verifying one and not the other is how a mesh ends up carrying a
+/// field no shader asked for, or a shader that reads a field no point carries.
 fn read_instance(
     instance: &Value,
     path: &Path,
     meshes: &[MeshRead],
+    materials: &[MeshMaterialRead],
     shaders: &[ShaderRead],
+    stage: Stage,
 ) -> Result<InstanceRead, CompileError> {
     let label = text(instance, path, scene_schema::LABEL)?.to_owned();
     let mesh_label = text(instance, path, scene_schema::MESH)?;
@@ -666,28 +733,38 @@ fn read_instance(
 
     let transform = read_transform(instance, path)?;
     let material_path = path.key(scene_schema::MATERIAL);
-    let material = at(instance, path, scene_schema::MATERIAL)?;
-    let shader_path = material_path.key(scene_schema::SHADER);
-    let shader_label = at(material, &material_path, scene_schema::SHADER)?
-        .as_str()
-        .unwrap_or("<not a label>");
-    let Some((shader, shader_read)) = shaders
+    let material_label = text(instance, path, scene_schema::MATERIAL)?;
+    let Some(material) = materials
         .iter()
-        .enumerate()
-        .find(|(_, shader)| shader.label == shader_label)
+        .find(|material| material.label == material_label)
     else {
-        return Err(CompileError::UnknownShader {
-            path: shader_path,
-            shader: shader_label.to_owned(),
+        return Err(CompileError::UnknownMaterial {
+            path: material_path,
+            material: material_label.to_owned(),
         });
     };
+    let shader_read = &shaders[material.shader];
+    // The bucket is the pass and the material says how the instance is drawn in it, so the two
+    // have to agree. A material whose shader belongs to another stage would be drawn by this
+    // pass's pipeline with the wrong interface, which is a mismatch nothing else would report.
+    if shader_read.stage != stage {
+        return Err(CompileError::Emission {
+            reason: format!(
+                "at {material_path}: `{material_label}` names the {} shader `{}`, and this \
+                 instance is listed under `{}`",
+                shader_read.stage.tag(),
+                shader_read.label,
+                stage.suffix()
+            ),
+        });
+    }
 
     // The points of the mesh this instance draws were verified against this shader's point
     // schema when the mesh was read, once for the whole scene rather than once per
     // instance. The check's answer depends only on the points and the schema, so doing it
     // again here would be the same answer the same number of times as there are instances.
-    let custom_data = at(material, &material_path, scene_schema::CUSTOM_DATA)?;
-    let custom_path = material_path.key(scene_schema::CUSTOM_DATA);
+    let custom_data = &material.custom_data;
+    let custom_path = material.path.key(scene_schema::CUSTOM_DATA);
     verify(
         custom_data,
         &custom_path,
@@ -752,8 +829,8 @@ fn read_instance(
         instance_bytes,
         label,
         mesh,
-        shader,
-        stage: shader_read.stage,
+        shader: material.shader,
+        stage,
         model,
     })
 }
@@ -981,6 +1058,49 @@ fn read_shaders(scene: &Value) -> Result<Vec<ShaderRead>, CompileError> {
             });
         }
         read.push(found);
+    }
+    Ok(read)
+}
+
+/// Reads the mesh materials of the scene, which every instance names by label.
+///
+/// A material is declared once and named by every instance drawn with it, so two objects
+/// drawn the same way carry one copy of the material rather than one apiece.
+fn read_materials(
+    scene: &Value,
+    shaders: &[ShaderRead],
+) -> Result<Vec<MeshMaterialRead>, CompileError> {
+    let path = Path::root().key(scene_schema::MESH_MATERIALS);
+    let materials = list_at(scene, &Path::root(), scene_schema::MESH_MATERIALS)?;
+
+    let mut read: Vec<MeshMaterialRead> = Vec::with_capacity(materials.len());
+    for (index, material) in materials.iter().enumerate() {
+        let material_path = path.index(index);
+        let label = text(material, &material_path, scene_schema::LABEL)?.to_owned();
+        if read.iter().any(|other| other.label == label) {
+            return Err(CompileError::DuplicateLabel {
+                kind: "material",
+                label,
+            });
+        }
+        let shader_path = material_path.key(scene_schema::SHADER);
+        let shader_label = text(material, &material_path, scene_schema::SHADER)?;
+        let Some((shader, _found)) = shaders
+            .iter()
+            .enumerate()
+            .find(|(_, shader)| shader.label == shader_label)
+        else {
+            return Err(CompileError::UnknownShader {
+                path: shader_path,
+                shader: shader_label.to_owned(),
+            });
+        };
+        read.push(MeshMaterialRead {
+            shader,
+            custom_data: at(material, &material_path, scene_schema::CUSTOM_DATA)?.clone(),
+            label,
+            path: material_path,
+        });
     }
     Ok(read)
 }
