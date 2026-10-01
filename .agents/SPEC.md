@@ -51,6 +51,7 @@ provide a schema of `Definition` that represents instruction set of lowlevel gra
         - enum of:
           - `Buffer`
           - `Texture`
+          - `TextureArray`
       - `Uniform`: uniform data.
       - `Shader`: verify schema against `uniform` and `binders`.
 - `GraphicsInstance`: a `Definition` provide data to its `referencing_graphics` in corresponding schema.

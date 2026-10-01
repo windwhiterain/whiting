@@ -7,8 +7,8 @@
 
 if you have some ideas: new feature, fix, refactor, create a `<name>.md` under [proposals](.agents/proposals/).
 
-## Handsoffs
+## Handoffs
 
-- when start to implementation, create or follow a handsoff under [handsoffs](.agents/handsoffs/). 
-- during implementation, keep the handsoff synced so other session can follow-up your implementation. 
-- after an implementation is finished, delete the handsoff.
+- when start to implementation, create or follow a handoff under [handoffs](.agents/handoffs/). 
+- during implementation, keep the handoff synced so other session can follow-up your implementation. 
+- after an implementation is finished, delete the handoff.
