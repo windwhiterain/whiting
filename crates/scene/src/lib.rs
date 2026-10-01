@@ -334,6 +334,21 @@ pub enum CompileError {
     UnknownStage { path: Path, stage: String },
     #[error("at {path}: `{topology}` is not a topology a mesh is drawn as")]
     UnknownTopology { path: Path, topology: String },
+    #[error(
+        "at {path}: the light `{label}` names no kind, and a flat light is not a point one. \
+         Say whether it is a Point, a Spot, a Directional or an Environment light."
+    )]
+    MissingLightKind { path: Path, label: String },
+    #[error(
+        "at {path}: the light `{label}` is a {kind} light, and only a Point light is emitted \
+         at this stage. A light the renderer cannot draw is refused rather than drawn as a \
+         point, which would be a wrong image nobody sees until the render finishes."
+    )]
+    UnsupportedLightKind {
+        path: Path,
+        label: String,
+        kind: String,
+    },
     #[error("at {path}: no mesh in this scene is labelled `{mesh}`")]
     UnknownMesh { path: Path, mesh: String },
     #[error("at {path}: no shader in this scene is labelled `{shader}`")]

@@ -135,22 +135,57 @@ another is a document asking for two buffers under one name, and it is reported 
   two adapter backed render tests live in `crates/device/tests/` and cannot run here.
 
 
-## Stage 2: light data becomes a schema
+## Stage 2: a light names its kind
 
-`light_schema()` at `crates/scene/src/standard/scene_schema.rs:348-371` is flat: `label`,
-`position`, `color`, `intensity`, `shadow_extent`. There is no light kind, so a point light
-and a directional light are told apart by nothing at all.
+**Status: done, on `feature/lighting`.**
 
-This stage turns it into a `Value::Enum` with a `kind` variant, starting with `Point`,
-`Spot`, `Directional` and `Environment`. `read_lights` at `emit.rs:506-511` currently rejects
-duplicate labels, which stays.
+`light_schema()` at `crates/scene/src/standard/scene_schema.rs` is an enumeration whose tag
+is the kind, with `Point`, `Spot`, `Directional` and `Environment`. The variant names are
+the ones `.agents/SPEC.md` already gave, and the shape is `pass_schema`'s: the fields every
+light has are written once in `shared_fields()` and each variant declares only its own, so a
+`Directional` light cannot carry a `position` and an `Environment` light cannot carry a
+volume.
 
-A document with no `kind` is a validation error. There is no default and no fallback, and
-every existing scene is updated to carry its kind. This overrides the argument that a missing
-field should read as `Point`: in an offline render a wrongly classified light is a wrong image
-that nobody sees until the render finishes, and the cost of the error is a whole render rather
-than a dropped frame. Statelessness makes that worse, because there is no previous frame in
-which the mistake was visible.
+| variant | fields beside `label`, `color` and `intensity` |
+| --- | --- |
+| `Point` | `position`, `shadow_extent` |
+| `Spot` | `position`, `direction`, `inner_angle`, `outer_angle`, `shadow_extent` |
+| `Directional` | `direction`, `shadow_extent` |
+| `Environment` | `image` |
+
+The emitter refuses what it cannot draw. `read_lights` reads the label, then the kind, and
+returns `CompileError::UnsupportedLightKind` for anything that is not a `Point`, so the
+refusal lands before the field reads: a directional light declares no `position`, and
+reading the fields first would have reported a missing field instead of the mistake. A
+light with no kind at all is `CompileError::MissingLightKind`, which is the reader's half of
+the same rule — the schema refuses such a document first, as a `KindMismatch` at
+`lights[0]`, and the reader refuses it by name for a document that was never validated.
+
+**The `label` read moved above `intensity` and `color`.** Both errors name the light, and a
+label is the only way to name it. The duplicate label check is unchanged and still runs
+before anything else about the light is read.
+
+`LightRead` carries a `LightKind` so the refusal has something to be about, and
+`light_projection` asserts it is a point light rather than assuming one.
+
+### What stage 2 did not close
+
+- Only `Point` is emitted. `Spot` declares two required angles that nothing reads yet, and
+  a `Directional` light declares no field for how far its shadow volume reaches; both are
+  gaps in a schema nothing consumes, and stage 3 and stage 4 own filling them.
+- `kit::light` writes the `Point` tag itself and takes no kind parameter, because every
+  light in the gallery is a point light and a parameter would be a kind spelled nine times.
+  The other three kinds have **no** builder: a builder here writes a document the compiler
+  refuses, so it waits for the stage that emits it.
+- Nothing was rendered. The gallery render tests need an adapter, which this machine does
+  not have, so the nine gallery scenes were verified by compiling, by the `scene` doctests
+  that compile the example scene and assert its pass labels and buffer sizes, and by the six
+  `image_channel` tests — not by a frame.
+- The `Directional` refusal was exercised by reading the code and by the `Spot` case, which
+  shares the refusal; a `Spot` light carries a `position`, so it does not prove the refusal
+  happens before the field reads. A test that proves it is worth having and was not written,
+  because writing tests needs the user's permission.
+
 
 ## Stage 3: clustered assignment in a compute pass
 

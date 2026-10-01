@@ -36,19 +36,22 @@ pub fn example_standard_scene() -> Value {
         ("name".to_owned(), Value::String("studio".to_owned())),
         (
             "lights".to_owned(),
-            Value::List(vec![Value::structure([
-                ("label".to_owned(), Value::String("key".to_owned())),
-                (
-                    "position".to_owned(),
-                    Value::List([4.0, 6.0, 2.0].into_iter().map(Value::Float).collect()),
-                ),
-                (
-                    "color".to_owned(),
-                    Value::List([1.0, 0.95, 0.9].into_iter().map(Value::Float).collect()),
-                ),
-                ("intensity".to_owned(), Value::Float(1.0)),
-                ("shadow_extent".to_owned(), Value::Float(2.5)),
-            ])]),
+            Value::List(vec![Value::variant(
+                "Point",
+                [
+                    ("label".to_owned(), Value::String("key".to_owned())),
+                    (
+                        "position".to_owned(),
+                        Value::List([4.0, 6.0, 2.0].into_iter().map(Value::Float).collect()),
+                    ),
+                    (
+                        "color".to_owned(),
+                        Value::List([1.0, 0.95, 0.9].into_iter().map(Value::Float).collect()),
+                    ),
+                    ("intensity".to_owned(), Value::Float(1.0)),
+                    ("shadow_extent".to_owned(), Value::Float(2.5)),
+                ],
+            )]),
         ),
         (
             "shaders".to_owned(),

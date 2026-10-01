@@ -496,7 +496,34 @@ incremental compile.
   - the scene document: a `name`, a list of `cameras`, a list of `lights`, a list of `shaders`,
     a list of `meshes`, a list of `mesh_materials`, a list of `screen_materials`, a list of
     `post_processes`, and the `instances` bucketed by pass.
-    - `Light`: position, colour and the extent of the volume it shadows.
+    - `Light`: an enum of the kinds of light, because what a light is is its kind rather
+      than a field it may or may not have.
+      - `Point`: `label`, `position`, `color`, `intensity`, `shadow_extent` — the shape
+        every light had before kinds existed.
+      - `Spot`: a point light with a `direction` and the two cone angles, `inner_angle` and
+        `outer_angle`.
+      - `Directional`: a `direction` and no position, because a direction is not somewhere.
+      - `Environment`: the `image` a material samples, and an `intensity`. It shadows
+        nothing, so it declares no volume.
+      - `label`, `color` and `intensity` are what every kind carries; `position`,
+        `direction`, the two angles, `image` and `shadow_extent` belong to the kinds that
+        have them.
+      - **decision**: the kind is the variant tag and **a missing kind is a validation
+        error with no default**. In an offline render a wrongly classified light is a wrong
+        image that nobody sees until the render finishes, and statelessness removes the
+        previous frame in which the mistake would have been visible, so a refusal is the
+        only thing that catches it. This is the shape a pass already has:
+        `graphics::pass_schema` gives `Rasterize` a `targets` list and `Compute` a
+        `workgroup`, and neither declares an optional field for the other's work.
+      - **invariant**: a variant declares only the fields its own kind has, so a
+        `Directional` light cannot carry a `position` and an `Environment` light cannot
+        carry a volume. A document cannot say more about a light than that light has.
+      - **not emitted yet**: only `Point` is rendered. The emitter builds one shadowing
+        pass and one lighting pass per light through a projection made from the light's
+        position, so a light of another kind is refused by name at read time rather than
+        drawn as a point — a light quietly drawn as a point is a wrong image nobody sees
+        until the render finishes, which is the position this project takes everywhere else
+        in both code and comments.
     - `Shader`: source, stage and the four schemas, declared once per scene and named by
       every material that draws with it.
       - `source`: the shader text. Nothing in the framework reads a file, because an

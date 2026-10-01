@@ -275,10 +275,42 @@ impl Transform {
 
 /// One light, read out of the scene document.
 struct LightRead {
+    /// Which kind of light this is.
+    ///
+    /// The kind is read before the fields beside it, because a field is named by the kind
+    /// that declares it, and a read result that had dropped the kind could not say which
+    /// set of fields it had read. It is read rather than inferred from which fields were
+    /// present, so a document naming a kind it cannot render is refused by name.
+    kind: LightKind,
     label: String,
     position: [f64; 3],
     colour: [f64; 3],
     shadow_extent: f64,
+}
+
+/// Which kind of light a scene names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LightKind {
+    /// A light at a position, and nothing else.
+    Point,
+    /// A point light that shines inside a cone.
+    Spot,
+    /// A light from a direction rather than from a place.
+    Directional,
+    /// Light read from an image, which casts no shadow.
+    Environment,
+}
+
+impl LightKind {
+    /// Returns the tag this kind is stored under in a scene document.
+    const fn tag(self) -> &'static str {
+        match self {
+            Self::Point => "Point",
+            Self::Spot => "Spot",
+            Self::Directional => "Directional",
+            Self::Environment => "Environment",
+        }
+    }
 }
 
 /// The two documents a standard scene compiles to.
@@ -494,14 +526,23 @@ fn read_time(scene: &Value) -> Result<f64, CompileError> {
 }
 
 /// Reads the lights of the scene.
+///
+/// # Invariants
+///
+/// The label is read first, because every error below names the light, and an error that
+/// cannot say which light it is about is an error an author has to search a document for.
+///
+/// The kind is read before the fields, and a kind this stage cannot render is refused there
+/// rather than further down: a directional light declares no `position`, so reading the
+/// fields first would report a missing field instead of the mistake that is actually there,
+/// and a light quietly drawn as a point is a wrong image nobody sees until the render is
+/// finished.
 fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
     let path = Path::root().key(scene_schema::LIGHTS);
     let lights = list_at(scene, &Path::root(), scene_schema::LIGHTS)?;
     let mut read = Vec::with_capacity(lights.len());
     for (index, light) in lights.iter().enumerate() {
         let path = path.index(index);
-        let intensity = number(light, &path, "intensity")?;
-        let colour = triple(light, &path, "color")?;
         let label = text(light, &path, "label")?.to_owned();
         if read.iter().any(|other: &LightRead| other.label == label) {
             return Err(CompileError::DuplicateLabel {
@@ -509,7 +550,18 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
                 label,
             });
         }
+        let kind = read_light_kind(light, &path, &label)?;
+        if kind != LightKind::Point {
+            return Err(CompileError::UnsupportedLightKind {
+                path: path.clone(),
+                label,
+                kind: kind.tag().to_owned(),
+            });
+        }
+        let intensity = number(light, &path, "intensity")?;
+        let colour = triple(light, &path, "color")?;
         read.push(LightRead {
+            kind,
             label,
             position: triple(light, &path, "position")?,
             shadow_extent: number(light, &path, "shadow_extent")?,
@@ -521,6 +573,35 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
         });
     }
     Ok(read)
+}
+
+/// Reads the kind of one light, which the schema writes as the light's variant tag.
+///
+/// # Invariants
+///
+/// A light is an enumeration whose tag is the kind, so a light that is a struct rather than
+/// a variant names no kind at all. That is a validation error rather than a default: see
+/// [`scene_schema::light_schema`] for why an offline renderer refuses the guess.
+///
+/// A tag this stage does not know is refused the same way a kind it knows is, because the
+/// emitter has no way to draw either and the schema has already reported the tag as one it
+/// does not declare.
+fn read_light_kind(light: &Value, path: &Path, label: &str) -> Result<LightKind, CompileError> {
+    match light.variant_tag() {
+        Some("Point") => Ok(LightKind::Point),
+        Some("Spot") => Ok(LightKind::Spot),
+        Some("Directional") => Ok(LightKind::Directional),
+        Some("Environment") => Ok(LightKind::Environment),
+        Some(kind) => Err(CompileError::UnsupportedLightKind {
+            path: path.clone(),
+            label: label.to_owned(),
+            kind: kind.to_owned(),
+        }),
+        None => Err(CompileError::MissingLightKind {
+            path: path.clone(),
+            label: label.to_owned(),
+        }),
+    }
 }
 
 /// Reads the meshes of the scene and the instance entries their vertex buffers contribute.
@@ -2007,7 +2088,14 @@ fn emission_pass(
 ///
 /// A light gets a matrix and an eye and nothing else: it is not a camera, and nothing
 /// draws through it as though it were.
+///
+/// Every light that reaches this function is a point light, because `read_lights` refuses
+/// every other kind rather than approximating it as a point. So the eye below is a position
+/// the document declared, and a directional light — whose shadow volume is a box seen along
+/// a direction rather than a box looked at from somewhere — is not a light this function
+/// can be asked about.
 fn light_projection(light: &LightRead, bounds: &Bounds) -> (Matrix, [f64; 3]) {
+    debug_assert!(matches!(light.kind, LightKind::Point));
     let centre = bounds.centre();
     (
         projection_of(

@@ -14,7 +14,7 @@
 //! part: a shader that wants a texcoord per point and a mesh that does not carry one
 //! is a compile error rather than a black triangle.
 
-use definition::{Schema, SchemaKind};
+use definition::{Schema, SchemaKind, SchemaMap};
 
 /// Field holding the name of the scene.
 pub const NAME: &str = "name";
@@ -141,7 +141,7 @@ pub fn standard_scene_schema() -> Schema {
         (
             LIGHTS.to_owned(),
             Schema::new(SchemaKind::list(light_schema()))
-                .with_documentation("One shadowing pass is emitted per light."),
+                .with_documentation("One shadowing pass is emitted per point light."),
         ),
         (
             SHADERS.to_owned(),
@@ -344,30 +344,217 @@ pub fn camera_schema() -> Schema {
     .with_documentation("Where the scene is drawn from.")
 }
 
-/// Builds the schema of one light.
+/// Builds the schema of one light: an enumeration of the kinds of light.
+///
+/// # Why a light names its kind rather than carrying an optional field for it
+///
+/// A light has two kinds of field: the ones every light has — a name, a colour and a
+/// brightness — and the ones that make a spot a spot and a directional light something
+/// other than a point. Written as one structure, `position` would be optional, because a
+/// directional light has none, and a document saying which shape of light it meant would be
+/// a document whose author had to be inferred from which fields were left out.
+///
+/// The same shape a pass has, in `graphics::pass`: `Rasterize` declares `targets` and
+/// `Compute` declares a `workgroup`, and neither declares an optional field for the other's
+/// work. What a thing **is** is its tag, and the fields beside the tag are the ones that
+/// kind of thing has.
+///
+/// # A light that names no kind is refused, not read as a point light
+///
+/// A missing kind has no default. In an offline render a wrongly classified light is a wrong
+/// image that nobody sees until the render finishes, and statelessness makes that worse
+/// rather than better: there is no previous frame in which the mistake was visible, so the
+/// only thing that catches it is a refusal at compile time. The cost of the error is a whole
+/// render; the cost of a guess is an image that was wrong for the whole render.
+///
+/// # Document shape
+///
+/// ```text
+/// Point(
+///     label: "key",
+///     position: [ 4.0, 6.0, 2.0 ],
+///     color: [ 1.0, 0.95, 0.9 ],
+///     intensity: 1.0,
+///     shadow_extent: 2.5,
+/// )
+/// Directional(
+///     label: "sun",
+///     direction: [ -0.3, -0.9, -0.2 ],
+///     color: [ 1.0, 0.95, 0.85 ],
+///     intensity: 2.0,
+///     shadow_extent: 60.0,
+/// )
+/// ```
 pub fn light_schema() -> Schema {
-    Schema::new(SchemaKind::structure([
+    Schema::new(SchemaKind::enumeration([
+        ("Point".to_owned(), point_light()),
+        ("Spot".to_owned(), spot_light()),
+        ("Directional".to_owned(), directional_light()),
+        ("Environment".to_owned(), environment_light()),
+    ]))
+    .with_documentation("A light, and which kind of light it is.")
+}
+
+/// The fields every light carries.
+///
+/// A field belongs here when every light has it. A field that only the kinds that stand
+/// somewhere have — a position, a direction, a cone, an image — belongs in the variant that
+/// declares it, so a document carrying a directional light cannot also carry a position.
+fn shared_fields() -> SchemaMap {
+    [
         (
             "label".to_owned(),
             Schema::new(SchemaKind::String)
                 .with_documentation("Name used in pass labels and in errors."),
-        ),
-        (
-            "position".to_owned(),
-            float_triple("Position in world space."),
         ),
         ("color".to_owned(), float_triple("Colour in zero to one.")),
         (
             "intensity".to_owned(),
             Schema::new(SchemaKind::Float).with_documentation("Brightness multiplier."),
         ),
-        (
-            "shadow_extent".to_owned(),
-            Schema::new(SchemaKind::Float)
-                .with_documentation("Half the width of the volume the light shadows."),
+    ]
+    .into_iter()
+    .collect()
+}
+
+/// Builds the schema of a point light.
+///
+/// A light at a position, brightest at the position and falling off with distance from it.
+/// This is the kind every light in the standard pipeline was before kinds existed, and the
+/// one a shadow volume is a box around.
+fn point_light() -> Schema {
+    light_variant(shared_fields(), [position(), shadow_extent()]).with_documentation(
+        "A light at a position, falling off with distance from it. Shadows a box of \
+             half the given extent, centred on what is drawn.",
+    )
+}
+
+/// Builds the schema of a spot light.
+///
+/// A point light with a cone, which is what a stage lamp, a torch and a street light are.
+/// The cone is what the two angles describe: one the light is at full strength inside, and
+/// the one it has fallen to nothing by.
+fn spot_light() -> Schema {
+    light_variant(
+        shared_fields(),
+        [
+            position(),
+            direction(),
+            inner_angle(),
+            outer_angle(),
+            shadow_extent(),
+        ],
+    )
+    .with_documentation(
+        "A point light that shines inside a cone. What it lights is the cone, and what it \
+         shadows is the volume that cone cuts out of the scene.",
+    )
+}
+
+/// Builds the schema of a directional light.
+///
+/// A light that is a direction rather than a place: every surface facing it is lit the same
+/// however far from it that surface stands, which is the sun as far as a shaded image is
+/// concerned. It has no position because a direction is not somewhere, and a document that
+/// gave it a position would be a document asking for a point light by another name.
+fn directional_light() -> Schema {
+    light_variant(shared_fields(), [direction(), shadow_extent()]).with_documentation(
+        "A light from a direction, reaching every distance equally. Shadows a box of \
+             half the given extent, which is where its shadowing pass looks at all.",
+    )
+}
+
+/// Builds the schema of an environment light.
+///
+/// A light that is an image: what a surface sees where no light reaches it, and what a
+/// smooth surface reflects. It stands nowhere and shines no direction, and it casts no
+/// shadow, so it declares neither a position nor a volume.
+fn environment_light() -> Schema {
+    light_variant(shared_fields(), [image()]).with_documentation(
+        "Light from an image the scene declares, sampled by a material rather than cast \
+         from anywhere. It shadows nothing.",
+    )
+}
+
+/// Builds the schema of where a light stands.
+fn position() -> (String, Schema) {
+    (
+        "position".to_owned(),
+        float_triple("Position in world space."),
+    )
+}
+
+/// Builds the schema of which way a light shines.
+///
+/// A direction, not a point to look at: the vector a surface is lit by, which is the same
+/// however far along it the light is written to be.
+fn direction() -> (String, Schema) {
+    (
+        "direction".to_owned(),
+        float_triple("Which way the light shines, in world space. Length does not matter."),
+    )
+}
+
+/// Builds the schema of the volume a light shadows.
+///
+/// A point light's shadow map covers a box of this half width centred on what is drawn, and
+/// a directional light's covers the same box seen along its direction. One number, because
+/// one shadow map covers it either way.
+fn shadow_extent() -> (String, Schema) {
+    (
+        "shadow_extent".to_owned(),
+        Schema::new(SchemaKind::Float)
+            .with_documentation("Half the width of the volume the light shadows."),
+    )
+}
+
+/// Builds the schema of the angle a spot light is at full strength inside.
+fn inner_angle() -> (String, Schema) {
+    (
+        "inner_angle".to_owned(),
+        Schema::new(SchemaKind::Float).with_documentation(
+            "Half the angle of the cone the light is at full strength within, in radians.",
         ),
-    ]))
-    .with_documentation("A light, which contributes one shadowing pass.")
+    )
+}
+
+/// Builds the schema of the angle a spot light falls to nothing at.
+///
+/// # Invariants
+///
+/// Both angles are required rather than one being derived, because nothing yet reads them
+/// and a default angle would be a number chosen once in this source rather than a number
+/// the author of a scene chooses. The pair describes a cone, and which cone is the
+/// author's to draw.
+fn outer_angle() -> (String, Schema) {
+    (
+        "outer_angle".to_owned(),
+        Schema::new(SchemaKind::Float).with_documentation(
+            "Half the angle of the cone the light has fallen to nothing at, in radians. \
+             Between this angle and the inner one the light is scaled down.",
+        ),
+    )
+}
+
+/// Builds the schema of the image an environment light is read from.
+///
+/// A label rather than pixels, for the reason images are a list a document names: the same
+/// image is sampled by every surface of a scene, and a scene that inlined it would send it
+/// again on every reload.
+fn image() -> (String, Schema) {
+    (
+        "image".to_owned(),
+        Schema::new(SchemaKind::String).with_documentation(
+            "Label of an image this scene declares, which is what the material samples.",
+        ),
+    )
+}
+
+/// Merges the fields every light carries with the fields of one kind.
+fn light_variant(shared: SchemaMap, own: impl IntoIterator<Item = (String, Schema)>) -> Schema {
+    let mut fields = shared;
+    fields.extend(own);
+    Schema::new(SchemaKind::Struct { fields })
 }
 
 /// Schema identifier a mesh definition is registered under when a scene names it.
