@@ -712,6 +712,16 @@ fn direction() -> (String, Schema) {
 /// is never global, because a cone does not light the whole scene. A **directional** light
 /// declares no radius of its own and takes no cluster slot, so there is nothing for the
 /// number to cull.
+///
+/// # Invariants
+///
+/// The radius bounds where a light is *looked for*, not where it *stops*. The shading loop
+/// applies no distance cutoff of its own, so a light is either found everywhere or not found
+/// at all, and the only way one ends is by being dropped from clusters. Promotion to global is
+/// not a special case of that rule, it is the same rule reached from the other side: a light
+/// reaching the whole scene could never have been dropped, so its cluster slot buys nothing.
+/// The number stays on the record, and the shading loop does not read it — which is why a
+/// promoted light also lights whatever lies beyond the radius that earned it.
 fn radius() -> (String, Schema) {
     (
         RADIUS.to_owned(),
@@ -727,8 +737,12 @@ fn radius() -> (String, Schema) {
              draws its own edge as a staircase quantised to the cluster grid, so the number \
              wants to be at least the distance from the light to the furthest surface it is \
              meant to light; one that reaches the whole scene is promoted to a global light \
-             and changes no pixel. A spot light may leave it out and is culled by the reach \
-             of its cone instead.",
+             and changes no pixel. Once promoted the number stops being an edge the light ends \
+             at — it decided the promotion and the shading loop never tests it again, so a light \
+             kept only for having reached the whole scene will also light whatever lies beyond \
+             it. That is unobservable while it stays that large, because what lies beyond is off \
+             the scene. A spot light may leave it out and is culled by the reach of its cone \
+             instead.",
             ),
     )
 }
