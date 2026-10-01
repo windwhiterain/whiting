@@ -111,12 +111,20 @@ fn an_all_point_scene_still_emits_the_passes_it_emitted_before() {
 ///
 /// # Invariants
 ///
-/// The **lighting** number is the scene's groups and nothing else: it is what the clustered
-/// pass bought, and it is what the acceptance bar in `shadow_pages.rs` holds still while a
-/// light is added. The **shadowing** number is the lights the pool bought pages for, times
-/// the groups, so it is bounded by the pool rather than by the scene's light count — a scene
-/// with more lights than pages draws only as many shadow maps as it has pages, and lights the
-/// rest unshadowed.
+/// The **lighting** number is the scene's groups of *lit* geometry and nothing else: it is what
+/// the clustered pass bought, and it is what the acceptance bar in `shadow_pages.rs` holds
+/// still while a light is added.
+///
+/// The **shadowing** number is the lights the pool bought pages for, times the groups of
+/// *shadow casting* geometry, so it is bounded by the pool rather than by the scene's light
+/// count: a scene with more lights than pages draws only as many shadow maps as it has pages,
+/// and lights the rest unshadowed.
+///
+/// **The lighting count is not the depthing count**, and the difference is real rather than
+/// rounding: a mesh may be drawn in the depthing stage and not in the lighting one, as an
+/// occluder is. `tidewater` is the case in the gallery — four groups in the depth prepass and
+/// three lit — so a claim that the two are equal would be true of five of the seven scenes and
+/// wrong about the other two.
 #[derive(Debug, PartialEq, Eq)]
 struct Stages {
     shadowing: usize,
@@ -161,9 +169,13 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
     // The counts move, and this is where the movement is pinned. Each is a function of the
     // scene's **geometry** — how many groups of mesh — and, for the shadowing stage, of how
     // many pages the pool bought; none is a function of the scene's light count.
-    let counted: Vec<(String, Stages)> = ["dunes", "lanterns", "monoliths", "studio", "terraces", "tiles"]
-        .into_iter()
-        .map(|name| (name.to_owned(), Stages::of(&Gallery::build(name))))
+    // The list is `Gallery::names()` rather than a list written out here, because a list
+    // written out here is a list that goes stale: `tidewater` landed in the gallery and this
+    // test carried on covering the six scenes it was written for. A scene added to the
+    // gallery now has to be added to the table and cannot be forgotten.
+    let counted: Vec<(String, Stages)> = Gallery::names()
+        .iter()
+        .map(|name| ((*name).to_owned(), Stages::of(&Gallery::build(name))))
         .collect();
     let expected: Vec<(&str, Stages)> = vec![
         ("dunes", Stages { shadowing: 2, depthing: 1, lighting: 1, other: 1 }),
@@ -171,6 +183,7 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
         ("monoliths", Stages { shadowing: 2, depthing: 2, lighting: 2, other: 1 }),
         ("studio", Stages { shadowing: 1, depthing: 1, lighting: 1, other: 0 }),
         ("terraces", Stages { shadowing: 12, depthing: 6, lighting: 6, other: 1 }),
+        ("tidewater", Stages { shadowing: 6, depthing: 4, lighting: 3, other: 2 }),
         ("tiles", Stages { shadowing: 1, depthing: 1, lighting: 1, other: 1 }),
     ];
     assert_eq!(
@@ -186,24 +199,27 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
 
 /// The totals the same scenes emitted before, which is the claim the stage above is replacing.
 ///
-/// Kept as a plain list so the move is legible in one place: `dunes` 6 to 5, `lanterns` 23
-/// to 17, `monoliths` 7 to 7, `studio` 3 to 3, `terraces` 31 to 25, `tiles` 4 to 4. Two of
-/// the six are unchanged, which is the honest result: a scene whose groups are few and whose
-/// lights are few gains nothing from the swap, and a scene with the most of both is where the
-/// count actually moved.
+/// Kept as a plain list so the move is legible in one place. `dunes` 6 to 5, `lanterns` 23 to
+/// 17, `monoliths` 7 to 7, `studio` 3 to 3, `terraces` 31 to 25, `tidewater` 18 to 15, `tiles` 4
+/// to 4. Three of the seven did not move at all, which is the honest result: a scene whose
+/// groups are few and whose lights are few gains nothing from the swap, and a scene with the
+/// most of both is where the count actually moved.
 #[test]
 fn the_totals_shrank_where_the_scene_had_more_lights_than_groups() {
-    let totals: Vec<(String, usize)> = ["dunes", "lanterns", "monoliths", "studio", "terraces", "tiles"]
-        .into_iter()
-        .map(|name| (name.to_owned(), Stages::of(&Gallery::build(name)).total()))
-        .collect();
-    let before = [("dunes", 6), ("lanterns", 23), ("monoliths", 7), ("studio", 3), ("terraces", 31), ("tiles", 4)];
-    for ((name, after), (was_name, was)) in totals.iter().zip(before.iter()) {
-        assert_eq!(name, was_name);
+    let before: Vec<(&str, usize)> = vec![
+        ("dunes", 6),
+        ("lanterns", 23),
+        ("monoliths", 7),
+        ("studio", 3),
+        ("terraces", 31),
+        ("tidewater", 18),
+        ("tiles", 4),
+    ];
+    for (name, was) in before {
+        let after = Stages::of(&Gallery::build(name)).total();
         assert!(
             after <= was,
-            "{name} emitted {was} passes and emits {after}, so the clustered pass never added \
-             one"
+            "{name} emitted {was} passes and emits {after}, so the clustered pass never added one"
         );
     }
 }
