@@ -1376,3 +1376,150 @@ against a shader, because that is `check_bindings` in the device and needs a ren
 "Validated" here means well formed and within capabilities. **Nothing was executed**; this
 machine has no adapter, and the two adapter backed render tests in `crates/device/tests/` were
 not run.
+
+## Image based lighting: one ambient term, and what feeds it
+
+### The environment **replaces** the stand-in, and the stand-in is the stated fallback
+
+The lighting stage carried a two colour hemisphere: darker below, dimmer blue above, brighter
+towards `+y`. It was explicitly a stand-in — the code said so — and an `Environment` light is
+the thing it stood in for. The decision is therefore **replacement, not addition**, and it is
+written in the shader rather than left emergent:
+
+> There is **one** ambient term. What feeds it is the scene's `Environment` light when the
+> scene names one, and the two colour hemisphere when it does not. Never both.
+
+A scene naming an environment *and* keeping the hemisphere underneath would count an author's
+environment twice and add a sky of the renderer's own that no author could turn off, which is
+exactly what the hemisphere was. The alternative — coexist — was rejected for the same reason.
+
+**A scene naming no environment light still renders, and this is the rule rather than an
+accident.** It binds a **one texel black** map at `environment_map` and writes a uniform field
+of `vec4(colour * intensity, present)`. The shader branches on `present` and takes the
+stand-in. Three consequences, all of them load bearing:
+
+- The **binding is unconditional.** A binder that came and went with the document would move
+  every binding number below it, because the device numbers a pass's binders in name order. The
+  shader would then be a different shader per scene, and `lighting_bindings` generates its
+  numbers from a flag rather than reading the pass.
+- The **flag is a fourth number in the colour vector, not a field beside it.** Two numbers a
+  shader could disagree about are one too many. And a colour of zero is a perfectly good
+  environment to want, so presence cannot be inferred from brightness: the absent map is
+  deliberately **black**, so a shader deciding on the sampled colour could not tell "no
+  environment" from "a black environment".
+- The absent map's instance entry is **not** named after an image. It is
+  `environment_absent_map`, because the entry is named after the image it holds and this one
+  has no image; a name in the `image_` namespace standing for a thing no author declared is a
+  name a reader of the instance would go looking for.
+
+**The material's own tint and metalness still reach the term.** The multiplication stays in the
+fragment body, not in the function that picks the source, and it is the same
+`sky * mix(1, tint, metallic) * diffuse_color` the stand-in had. A term that had stopped
+multiplying by them would be a material that had stopped responding to its own colour, which is a
+regression nobody asked for.
+
+### How a direction becomes a texel: a two dimensional octahedral map
+
+**The obvious answer is a cube map, and the device cannot build one.** `ImageShape::Cube` exists
+in `shader_interface.rs` — but only as a value the interface check can *recognise* when a shader
+declares one. `TextureShape::view_dimension` in `crates/device/src/wgpu_renderer/bindings.rs`
+returns `D2` or `D2Array` and **there is no third answer**, `view_descriptor` produces a default
+or a `D2Array`, and no document can name a cube payload at all. A cube would need a payload
+variant, a view descriptor, a layout entry, a six face upload, and then a prefiltered specular
+cube. `ImageShape::Cube` is a shape in a comparison, not a texture this renderer can make.
+
+The landed version is a **two dimensional octahedral map**, which needs nothing new: an uploaded
+image is already one flat texture with a box filtered level chain behind it
+(`levels_for` and `fill_texture`), so:
+
+- **The fold.** `p = n.xy / (|n.x| + |n.y| + |n.z|)`, and for `n.z < 0`
+  `p = (1 - |p.yx|) * sign_not_zero(p)`. The sign is taken as `>= 0` rather than through
+  `sign()` because `sign(0.0)` is zero in WGSL and a zero component must land on the square's
+  **edge**, not its middle.
+- **The read is `textureLoad`, not a sampler**, because the fold is a seam and the two sides of
+  one are as far apart in direction as the map is wide. A filtered read across it blends a
+  direction with the direction nearly opposite it. Because there is no sampler, the payload
+  declares **no `sampled` key** and the binding takes **one** number rather than two — which the
+  interface check caught on the first run, naming both sides, because the image payload builder
+  was writing the key for every image.
+- **The texel is clamped, not truncated.** A normal of exactly `(0, -1, 0)` gives a square
+  coordinate of exactly `1.0`, which multiplied by the size is the first texel **past the end**.
+  The clamp is the difference between the last texel and an out of bounds read. *Honest limit:
+  this backend's out of range `textureLoad` returns the last texel anyway, so removing the clamp
+  leaves the pixel test green. The clamp is argued, not proved; what the test does catch is a
+  fold with the vertical axis the wrong way round, which swaps the two surfaces completely.*
+- **The size is read at the level being read**, not the size of level zero. A coarse level of a
+  256 texel map is four texels across.
+
+**The map's convention, which an author needs and the schema cannot state:** the **centre** of
+the square is the world's `+z` direction, the **top** row is `+y`, and the four edges are the
+seams the fold puts there. There is no rotation field, so a scene whose sun is not towards `+z`
+cannot put a glow at it. The sunset map sidesteps this by being a function of a direction's
+**height** only — the horizon band runs the whole way round the square and so needs nothing
+placed.
+
+### How roughness becomes a level, and why it is a clamped read
+
+```wgsl
+let levels = i32(textureNumLevels(environment_map));
+let level = clamp(i32(roughness * f32(levels - 1)), 0, levels - 1);
+```
+
+- The chain length is **read from the texture**, not written. It is the device's to build and it
+  is a function of the image's size, so a number in the shader would be right for one map and
+  past the end of another.
+- The clamp is what decides the question of whether a document can ask for something impossible.
+  Written this way it is a **clamped read**: a roughness of `1.0` lands on the **last** level
+  rather than one past it, so the top of the roughness range is the top of the chain and no
+  material is refused for wanting a blurrer environment than the map has. Had the level been
+  derived and then used unguarded, the same document would be a validation failure on some
+  adapters. Roughness is a **material**, not a document request, so the honest answer is that it
+  cannot ask for something impossible.
+- The box filter averages in **linear light** (`filtered_level` linearises the three colour
+  channels of an sRGB format and leaves alpha alone), so a coarse level is a bluer environment
+  rather than a grey one.
+
+`naga` accepted `textureNumLevels` and a dynamic level in `textureDimensions` against
+`Capabilities::empty()` without complaint; it is the interface check, not `naga`, that caught the
+`sampled` key and the `studio` scene's stale uniform.
+
+### One environment per scene, and why a second is refused
+
+A lighting pass carries one `environment_map` binding and one `environment` uniform field, so a
+scene naming two has one of them read and the other ignored — a light an author wrote that
+nobody sees. `SecondEnvironmentLight` refuses it and names both. This is a **first version's
+limit rather than a design**: a document wanting two needs a second binding and a second field,
+which is additive and reversible in one place.
+
+### The environment light is still in the light record buffer
+
+`ClusterLight` carries the environment light like any other, so it occupies a 96 byte record it
+never needs: it is exempt from clustering and gets no page, so no fragment ever loads it. The
+invariant in `lighting/mod.rs` — "whether an exempt light is applied is the shading pass's
+business, and a record the emitter dropped would be a light nothing could find" — is still
+right for a `Directional` light, whose own path will read its record. Dropping the environment's
+record would shift every index the cluster lists point into, which is not worth 96 bytes.
+
+### Where the handoff's stage 5 plan was wrong, and it is worth saying how
+
+The plan read: *"one environment per material, sampled as a two dimensional octahedral map...
+One roughness per material means one texture with no mip chain and no schema change at all."*
+
+Both halves of the last sentence turned out to be wrong, and in opposite directions:
+
+- **"no mip chain" was pessimistic.** The device already derives a full box filtered level chain
+  from every uploaded image (`levels_for`, `fill_texture`), so roughness became a **level index
+  with nothing to build and nothing to ship**. This is the whole reason the octahedral 2D map
+  beat a cube here: a cube would have needed a prefiltered specular chain *built for it*, because
+  a cube's mip levels are not a blur of a direction. The plan had costed the map's own chain as
+  work when it was already done, and had not noticed that the cube was the expensive one.
+- **"no schema change at all" was optimistic.** Three landed: `light_pass_schema` gained the
+  `environment_map` binder and the `environment` uniform field, and `texture_with_data` gained a
+  `sampled` parameter so the map could declare **no** sampler and take one binding number rather
+  than two. The last is the kind of change that looks like nothing and is a binding number: the
+  device caught it on the first run and named both sides.
+
+The octahedral choice itself was right, and for the reason the plan gave — it needs no new
+dimension or layer field — plus the one it had not thought of, which is that a 2D image's mip
+chain is already a direction blur and a cube's is not.
+
