@@ -3,14 +3,24 @@
 A five stage effort to let one scene hold thousands of lights without one pass per light
 per material group, and to give materials an environment instead of a flat ambient term.
 
-Worktree: `./.worktrees/lighting`, branch `feature/lighting`, based on `main` at `8eb58d8`.
+Worktree: `./.worktrees/lighting`, branch `feature/lighting`, based on `main` at `c2271fe`.
 
-## Why the current renderer cannot scale
+**Read the status line on each stage before its prose.** Stages 3b and 4b part 2 have landed
+since most of this file was written, and the per-stage "did not close" lists are snapshots of
+the moment that stage finished, not of the branch now. `Still open` is the current list.
 
-`crates/scene/src/standard/emit.rs` builds one shadowing pass and one lighting pass per light
-per group, so pass count is `O(lights * groups) * 2`. Each light also gets its own instance
-texture entry named `{label}_{shadow_map}`, so shadow memory is `O(lights * 2048 * 2048 * 4)`.
-One thousand lights is one thousand shadow maps. The clustered path below is what replaces this.
+## Why the renderer could not scale, and what replaced it
+
+At `c2271fe`, `crates/scene/src/standard/emit.rs` built one shadowing pass and one lighting pass
+per light per group, so pass count was `O(lights * groups) * 2`. Each light also got its own
+instance texture entry named `{label}_{shadow_map}`, so shadow memory was
+`O(lights * 2048 * 2048 * 4)`. One thousand lights was one thousand shadow maps.
+
+**Both are gone.** The per light lighting pass is replaced by one clustered pass per group; the
+per light shadow map is replaced by a page in a shared pool, so shadow memory is
+`O(pages * page_size)`, a scene decision rather than a function of the light count. The
+sections below describe how it was got to, and the per stage pass counts are in
+"Stage 4b part 2".
 
 ## This machine has a gpu
 
@@ -23,8 +33,8 @@ cargo test -p whiting-device --features wgpu
 cargo run -p whiting-device --features wgpu --example render -- terraces out/terraces.png
 ```
 
-The second writes a 1024 square image of the terrace scene in about 1.1 seconds, thirty one
-passes deep. `crates/device/tests/gallery_render.rs` and `crates/device/tests/texture_channel_render.rs`
+The second writes a 1024 square image of the terrace scene in about 1.1 seconds, twenty five
+passes deep — it was thirty one before the clustered lighting pass replaced the per light ones. `crates/device/tests/gallery_render.rs` and `crates/device/tests/texture_channel_render.rs`
 both **pass**, and neither prints its `skipped: no gpu adapter is present` note. A pass with that
 note printed is a skip that reports success, so read the note rather than the summary.
 
@@ -159,9 +169,10 @@ another is a document asking for two buffers under one name, and it is reported 
   check, because the check compares a resource kind and both address spaces are `Buffer`. It
   then fails inside wgpu with a message naming neither document. Catching it would mean
   splitting `ResourceKind` along the address space, which contradicts a deliberate invariant.
-- Nothing that creates a `wgpu::Buffer` was executed: this environment has no adapter, so
-  `cargo check` and the `scene` and `graphics` tests are the whole of what was verified. The
-  two adapter backed render tests live in `crates/device/tests/` and cannot run here.
+- Nothing that creates a `wgpu::Buffer` was executed **at the time this stage finished**: the
+  stage was written under the belief that there was no adapter. There is one. The buffer
+  creation path is now exercised by every test in
+  `cargo test --workspace --features whiting-device/wgpu`, which is part of the gate.
 
 
 ## Stage 2: a light names its kind
@@ -206,11 +217,10 @@ before anything else about the light is read.
   light in the gallery is a point light and a parameter would be a kind spelled nine times.
   The other three kinds have **no** builder: a builder here writes a document the compiler
   refuses, so it waits for the stage that emits it.
-- Nothing was rendered. The gallery render tests need an adapter, which this machine does
-  not have, so the gallery scenes were verified by compiling, by the `scene` doctests
-  that compile the example scene and assert its pass labels and buffer sizes, and by the six
-  `image_channel` tests — not by a frame. (The gallery holds six scenes, not the nine this
-  file used to say: `Gallery::names()` is the list.)
+- **Nothing was rendered when this stage finished**, because the belief was that the machine
+  has no adapter. Every gallery scene is now rendered to `out/` and looked at; the images and
+  what they showed are in "Stage 4b part 2". (The gallery holds **seven** scenes, not the six
+  this file used to say and not the nine before that: `Gallery::names()` is the list.)
 - The `Directional` refusal was exercised by reading the code and by the `Spot` case, which
   shares the refusal; a `Spot` light carries a `position`, so it does not prove the refusal
   happens before the field reads. A test that proves it is worth having and was not written,
@@ -219,9 +229,8 @@ before anything else about the light is read.
 
 ## Stage 3: clustered assignment, computed on the cpu
 
-**Status: 3a done, on `feature/lighting`. 3b is the lighting pass and the migration, and it
-is written as one section with stage 4 below because stage 3b is blocked on the same thing
-stage 4 is.**
+**Status: done, on `feature/lighting`. 3b landed with 4b part 2 below; the two are one mechanism
+and are written as one section.**
 
 **The assignment is not a compute pass.** This stage was originally planned as one, and that
 plan is wrong for this renderer. `emit(scene, camera_index)` returns the instance and
@@ -333,21 +342,27 @@ lists, which is correct and not a bug.
   defaults, and the regression bar that an all `Point` scene still emits the passes and buffer
   sizes it emitted before. What none of them can cover: that the bytes are what a `WGSL`
   struct reads, which needs a shader and an adapter.
-- **`the nine gallery scenes` is wrong: there are six.** `Gallery::names()` at
-  `crates/scene/src/gallery/mod.rs:52` lists `dunes`, `lanterns`, `monoliths`, `studio`,
-  `terraces` and `tiles`. The test that pins the pass count of each of them is the check to
-  copy for 3b.
+- **`the nine gallery scenes` is wrong: there are seven.** `Gallery::names()` at
+  `crates/gallery/src/lib.rs` lists `dunes`, `lanterns`, `monoliths`, `studio`, `terraces`,
+  `tidewater` and `tiles`. `tidewater` is the one that kept being missed: it names two cameras,
+  so it is the only scene that renders twice, and a hand written list of six left it
+  uncovered. The test that pins the pass count of each of them now iterates
+  `Gallery::names()` instead of naming them.
 - **The note channel has no printer.** `CompileOutput.notes` is filled and tested and nothing
   in this repository prints it, because the only thing that would is `device`, which this
   stage does not touch. `crates/device/examples/render.rs` already prints per pass, so that
   is where a host's print goes.
-- **The record carries no shadow projection**, so the clustered lighting pass cannot yet find a
-  light's shadow map, and a scene with any directional or environment light still gets one
-  pass per light from the old path, because `read_lights` still refuses those kinds.
+- **The record carried no shadow projection when this stage finished**, so the clustered
+  lighting pass could not find a light's shadow map, and a scene with any directional or
+  environment light still got one pass per light from the old path. Both are resolved: the
+  record grew a `shadow_projection` matrix in 4b part 2, and the old path is gone entirely.
+  `read_lights` still refuses `Directional` and `Environment`, which is stage 4's remaining
+  work, not 3b's.
 
 ## Stage 3 and Stage 4, together: the clustered pass and the sparse shadow page pool
 
-**Status: 4a landed, 4b blocked on the device. See "What stage 4a did not close" below.**
+**Status: 4a landed, and 4b part 1 and part 2 have both landed. The blocker below is resolved;
+the section is kept because "recorded, not decided" turned out to be the right shape for it.**
 
 ### Checkpoint discipline
 
@@ -398,9 +413,11 @@ outside a box still counts for a little, whereas a page is worth rendering once 
 matters is how much of the image the light reaches at all. A light can therefore be kept by a
 cluster and still be given no page.
 
-**A light with no page says so.** The record's fourth field is `page`, and a light with none
-carries **minus one**, because zero is the first page. The stride grows from seven floats to
-eight.
+**A light with no page says so.** The record's `page` field is the first number after the
+colour, and a light with none carries **minus one**, because zero is the first page. The
+stride then grew again when 4b part 2 put the light's shadow projection in the record; it is
+**24 floats, 96 bytes** today, and `light_record_stride()` is the one place that number is
+written.
 
 **The WGSL is checked.** `naga` 30.0.1 is a dev dependency of `scene` — already in the lock
 file through wgpu, so nothing new compiles. `tests/wgsl_validation.rs` parses and validates the
@@ -413,8 +430,12 @@ because that lives in the device's `check_bindings` and needs a renderer instanc
 
 ### The blocker: the device cannot make a texture array
 
+**Resolved — see "Stage 4b part 1" below. Kept because every one of the six items in it was
+real, and because a stage that has just been unblocked is the stage most likely to be handed
+to a session that reads only its own section.**
+
 **The page pool cannot be rendered until the device can create a texture array, and the device
-cannot, and this stage may not edit it.** The evidence, all of it load bearing:
+could not, and this stage was not allowed to edit it.** The evidence, all of it load bearing:
 
 - `crates/graphics/src/binders.rs:424-473` — the `Texture` payload schema has `width`, `height`,
   `format`, `data`, `sampled`, `filter`, `address` and `mip_filter`. **There is no `layers`
@@ -459,51 +480,51 @@ data, and data that nothing reads yet is exactly the state the plan asked for be
    the neighbour's texels, so the nine tap kernel needs clamping to the tile.
 
 Option 1 preserves the settled decision. Option 2 is the one that fits the device as it
-actually is. **Recorded, not decided.**
+actually is. **Recorded, not decided** — and, as it turned out, the right shape for the
+decision: option 1 was taken, in "Stage 4b part 1" below, and the atlas was never built. The
+argument against it held. An atlas couples the page size to the page count, and those are two
+independent schema fields, and the nine tap kernel would have had to clamp to a tile.
 
-- **The page pool is schema data; `SHADOW_MAP_WIDTH` and `SHADOW_MAP_HEIGHT` are still Rust
-  constants.** They survive at `standard/pass_schemas.rs:143` and `:146` because their only
-  remaining readers are the per light path that stage 4b removes — `emit.rs:462` sizes each
-  light's own shadow map entry, and `emit.rs:1996`, `:2080` and `:2104` size the shadowing and
-  lighting passes. The pool itself reads no constant: its shape comes from
-  `shadow_page_width`, `shadow_page_height` and `shadow_pages`. Deleting the two constants is
-  the last edit of 4b and not before it, because deleting them while the per light path is
-  still live would leave a shadow map with no size at all.
+- **The page pool is schema data and `SHADOW_MAP_WIDTH` and `SHADOW_MAP_HEIGHT` are gone.**
+  They were deleted with the per light path in 4b part 2, which was the only thing still
+  reading them: `emit.rs` no longer sizes a shadow map per light, and the pool's own shape
+  comes from `shadow_page_width`, `shadow_page_height` and `shadow_pages`. Nothing in the
+  repository names a page size in Rust any more.
 
 ### What stage 4a did not close
 
-- **The device cannot create a texture array**, and stage 4b is blocked on that rather than on
-  anything in this crate. The evidence is listed above. Until it is resolved there is no
-  `texture_depth_2d_array` to bind and no way to render into page *n*.
-- **The clustered lighting pass does not exist.** `shaders.rs` still carries a per light
-  uniform at binding zero, `emit` still builds one shadowing and one lighting pass per light
-  per group, and `terraces`' `fill` still has to supply a surface body written against
-  `normal`, `lambert`, `radiance` and `ambient` — the last three of which are per light and so
-  become sums over a cluster in the clustered template. That is the rework `fill`'s tokens
-  were flagged for, and it is 4b's.
-- **`Directional` and `Environment` are still refused by `read_lights`.** The exemption is
-  designed, documented and acted on by the assignment (a non clustered light takes no slot and
-  gets no page), but no reader accepts those kinds, so the path the exemption prepares is not
-  reachable from a document yet. A directional light's orthographic shadow volume, with
-  `shadow_extent` as its half width and its near and far planes from the scene bounds, is
-  4b's.
-- **The acceptance bar is written and marked `#[ignore]`**, not deleted:
+- **The device could not create a texture array**, and stage 4b was blocked on that rather than
+  on anything in this crate. **Both halves of that are now done**: the device builds a
+  `D2Array` view and a `D2Array` layout entry, and a shadowing pass names the page it writes.
+  See "Stage 4b part 1" below for what that took. What is left is the `Directional` and
+  `Environment` path, which is written and unreachable: the assignment exempts those kinds
+  from clustering and gives them no page, but `read_lights` still refuses them, so no document
+  can name one. A directional light's orthographic shadow volume, with `shadow_extent` as its
+  half width and its near and far planes from the scene bounds, is the piece that needs writing
+  when a kind is implemented.
+- **The acceptance bar was written and marked `#[ignore]`** rather than deleted:
   `the_lighting_pass_count_does_not_move_when_a_light_is_added` in
-  `crates/scene/tests/shadow_pages.rs`. It fails today, and its failure is the real state of
-  the renderer: `lanterns` emits 24 passes for three lights and 30 for four. Run it with
-  `--ignored` to see the bar being missed, and un-ignore it when 4b lands.
+  `crates/scene/tests/shadow_pages.rs`. **It is un-ignored and passing**, and it is narrowed to
+  the *lighting* labels rather than every pass label, for a reason recorded in the test: a
+  render pass attaches exactly one depth image, so one shadowing pass per light that drew into
+  a page is irreducible, and a bar comparing every label could never go green. A second test
+  pins the other half of the claim — the shadowing pass count is bounded by the pool, not by
+  the light count.
 - **The naga check is not pipeline creation.** It says a module is well formed and fits the
   downlevel capabilities. It cannot say a bind group layout the compiler emitted matches what a
   shader declares, because that check is `check_bindings` in the device and needs a renderer
-  instance. Nothing has been executed: this machine has no adapter.
+  instance. This is still true, and it is still the reason the `wgpu` feature is part of the
+  gate: the check runs on the cpu, the pipeline creation that follows it does not.
 - **The array limit and the storage budget are counted, not exercised by naga.** naga
   capabilities are a feature set, not limits, so `max_texture_array_layers` and
   `max_storage_buffers_per_shader_stage` are asserted as numbers in
-  `tests/wgsl_validation.rs` and enforced in the compiler, not validated by naga.
+  `tests/wgsl_validation.rs` and enforced in the compiler, not validated by naga. The device
+  refuses a count above the limit it was created with, and a cluster pass binds three storage
+  buffers against a limit of four.
 - **The pool's page size and count are read from the `clustering` block, not from `frame`.**
   The handoff left this open and the depth buffer's precedent argues for `frame`; a page is a
   scene decision about shadow quality rather than a property of the image, so it sits beside
-  the cluster grid it is ranked with. Reversible in one place.
+  the cluster grid it is ranked with. Reversible in one place. Unchanged by 4b.
 
 ## Stage 5: image based lighting
 
@@ -530,15 +551,121 @@ Settled. Each one is a constraint on the stage named beside it, not a suggestion
 | how a directional light's shadow depth is expressed | 4 | derived from the scene's `bounds`, which `light_projection` already takes; `shadow_extent` is the half width of the orthographic volume and the near and far planes come from what is drawn |
 | where cluster assignment runs | 3 | on the cpu in `emit`, not in a compute pass, because the instance is built before the render and the frustum is therefore fixed |
 
+## Stage 4b part 2: the clustered lighting pass
+
+**Status: done, on `feature/lighting`.** Three commits: the pass and the migration, a device
+fix the migration exposed, and the pixel tests that keep the device fix honest.
+
+### What the pass is
+
+**One lighting pass per group, not per light.** `emit` builds its lighting passes from
+`groups(instances, meshes, shaders, Stage::Lighting, None)` — the same call it always made,
+with no per light term left in it. A fragment resolves its own cluster and loops that
+cluster's list. This is the whole scalability claim, and it is now measurable: adding a light
+to a scene no longer adds a pass.
+
+**A shadowing pass per light that got a page, and that is the floor.** A render pass attaches
+exactly one depth image, so the shadow map for page *n* needs a pass whose attachment is a
+view of layer *n*. The bound is therefore the pool, not the light count, and it is the second
+half of the acceptance bar.
+
+**The record grew the light's shadow projection.** `ClusterLight` carries
+`shadow_projection: [f64; 16]`, filled by the same `light_projection` the old per light path
+used, so a fragment can project its own world position into the light's page and compare. The
+general module **carries** the matrix and does not know what a page is: `lighting/` still has
+no `standard` in it, and the `ViewProjection` seam that stage 3a's lift introduced is intact.
+
+**The record is 24 floats, 96 bytes**, laid out `color`(3), `page`(1), `position`(3),
+`radius`(1), `shadow_projection`(16). The packing is deliberately tight and the reason is
+recorded on the code: **it coincides with the WGSL `var<storage>` layout**, because every
+`vec3` in it is followed by exactly one `f32`, so a struct with no padding is a struct the
+shader can index. `light_record_stride()` is the single number both sides derive from.
+
+**A fragment finds its cluster from itself.** The column comes from the pixel's x, the row is
+counted **from the bottom** of the frame — WGSL's `@builtin(position)` has its origin at the
+top left, and a cluster grid indexed from the other corner is a grid every row is mirrored in
+— and the slice comes from the fragment's own `position.z` through the projection. No light
+list is walked to find the fragment; the fragment names one list and reads it.
+
+**Ambient is added once, after the loop.** It used to be added per light, so a scene with four
+lights had four ambients. That is the main reason the rendered frames are darker than the
+baseline and it is a fix, not a loss.
+
+### What it cost to get there
+
+- **The nine-tap kernel was reading the centre texel for most taps.** The offsets were added
+  in texel fractions *before* the truncation to integer coordinates, so `floor(u + 0.5)` and
+  `floor(u - 0.5)` are usually the same texel. Whole texels are now added after the
+  conversion. This is a pre-existing defect that the migration made visible; it was fixed
+  rather than inherited.
+- **The trailing `0` in the old `textureLoad` was a mip level, not a layer.** A depth array
+  needs `textureLoad(tex, coords, layer, level)` and naga rejected the three-argument form.
+  This is the sort of thing that is invisible until a shader is actually validated, which is
+  the argument for keeping the naga test in the gate rather than treating it as paperwork.
+- **`TextureShape` conflated "one layer" with "not an array".** A legal one-page pool was
+  bound as a flat `texture_depth_2d`, which is a mismatch a shader that indexes a layer cannot
+  recover from. The shape is now read from the payload **variant** and an array is a `D2Array`
+  however deep it is. This was found by a pixel test, not by reading: the schema, the layout
+  and the descriptor all agreed with each other and were all wrong together.
+- **The `depth_buffer` binder is bound but undeclared in the clustered shader**, because the
+  pass still binds it for the depth test. The generated declarations carry an intentional gap
+  in the binding numbers where it sits, with a comment, because renumbering it would have
+  produced a shader that validates and draws nothing.
+
+### What was rendered, and what was seen
+
+Every gallery scene was rendered to `out/` and looked at, not just counted.
+
+| scene | passes before → after | what the frame showed |
+| --- | --- | --- |
+| `dunes` | 6 → 5 | sky, a lit dune face against a dark one, dark boxes in the foreground |
+| `lanterns` | 23 → 17 | **one pool of light**, at the same place in the same size as the baseline |
+| `monoliths` | 7 → 7 | the scene, no banding |
+| `studio` | 3 → 3 | unchanged count, unchanged look |
+| `terraces` | 31 → 25 | the whole scene: water mirrors, terraces, mountains, trees, village |
+| `tidewater` | 18 → 15 | sunset, reflection column, treeline, both cameras; the water's faceting is the mesh's own triangles, not cluster seams |
+| `tiles` | 4 → 4 | the ground plane and its one bright tile |
+
+`terraces` and `lanterns` were rendered at `c2271fe` in the same worktree and compared against
+the branch. **`lanterns` is the useful comparison**: the baseline shows the same single pool of
+light at the same coordinates, so the look is the scene's, not a regression, and the only
+difference is the lighter water that the twice-added ambient explains. `terraces` is uniformly
+darker for the same reason. The other five were looked at, not diffed against a baseline.
+
 ## Still open
 
-- Whether the renderer requests the adapter's real limits or keeps the downlevel floor. It
-  keeps the floor for now, because `wgpu` is optional and the crate must run with no adapter.
-  Raising `max_texture_dimension_2d` is what lets a page be larger than 2048 square, and it is
-  stage 4's call.
-- The page size and count sit in the scene's `clustering` block rather than in `frame`. That is
-  reversible in one place, and the depth buffer's precedent for `frame` is the reason it might
-  move there.
+- **`Directional` and `Environment` are still refused by `read_lights`,** before the field
+  reads, so no document can name one. The exemption from clustering and the page pool is
+  written and acted on by the assignment; nothing reads it yet. This is the next piece of
+  stage 4, and it wants an orthographic shadow volume whose half width is `shadow_extent` and
+  whose near and far planes come from the scene bounds. **A `Spot` light needs the same
+  treatment** and has two required angle fields that nothing reads.
+- **The note channel still has no printer.** `CompileOutput.notes` is filled — a dropped light,
+  a light the pool refused, the pool's total bytes — and nothing in this repository prints it.
+  `crates/device/examples/render.rs` prints per pass and is where a host's print belongs. A
+  host that ignores the field renders a scene that is quietly wrong.
+- **Whether the renderer requests the adapter's real limits or keeps the downlevel floor.** It
+  keeps the floor, because `wgpu` is optional and the crate must run with no adapter at all,
+  so whatever is requested has to fall back to the downlevel numbers. Raising
+  `max_texture_dimension_2d` is what lets a page be larger than 2048 square. The pool is at
+  its default 1024 square and 64 pages, so nothing is blocked on this today.
+- **The page size and count sit in the scene's `clustering` block rather than in `frame`.** That
+  is reversible in one place, and the depth buffer's precedent for `frame` is the reason it
+  might move there.
+- **A light's `radius` defaults to one box radius of the scene, and `light_projection` puts a
+  light's near plane at `(distance + 2 * extent) / 4`.** Two authoring facts that both produce
+  "renders fine and casts nothing", and neither is a bug: a light far enough off to throw a
+  visible shadow reaches almost nothing unless it names a `radius`, and a light nearer than
+  twice its own `shadow_extent` clips its casters out of its own page. Both are worth a note in
+  the scene authoring docs, and both are worth remembering before concluding that the shadow
+  scheme is broken.
+- **The clustered pass is verified on this machine only.** `cargo test --workspace`,
+  `cargo test --workspace --features whiting-device/wgpu` and
+  `cargo check --workspace --all-targets` all pass, and the two pixel tests run rather than
+  skip. Every one of those ran on one adapter. The other thing the gate does not cover is
+  multi camera scenes: `tidewater` names two and both are rendered by the example, but no
+  test asserts that the two cameras produce different pass counts.
+- **Stage 5, image based lighting, is untouched.**
 
 ## Stage 4b part 1: the device can build a texture array, and a pass can name a page
 
@@ -662,25 +789,26 @@ adapter, which is the only honest way to test it.
 
 ### What stage 4b part 1 did not close
 
-- **Nothing that creates a texture, a view, a bind group or a pipeline was executed.** This
-  machine has no adapter. The descriptor, the view and the layout values are asserted at
-  the schema and arithmetic level, and the *device path is unexecuted*: nothing here has
-  proved that a backend accepts a `D2Array` view of a depth array, that a render pass
-  accepts a single-layer view of one, or that a pipeline is built from a `D2Array` layout
-  entry. `crates/device/tests/gallery_render.rs` and `texture_channel_render.rs` need an
-  adapter and cannot run here.
-- **No shader in the repository declares a texture array**, so the widened check has never
-  seen a disagreement in a real document. `texture_array_interface.rs` drives it with
-  two one-line modules and hand-built entries.
-- **A shader's declared interface must name the `TextureArray` variant with the same fields
-  as the pass's declaration**, because `verify_pass_inputs` validates the pass's binder
-  values against the shader's declared schema and a `Struct` is closed. A clustered
-  lighting pass reading a pool therefore has to declare `Resource::TextureArray { source,
-  width, height, layers, format }` in its own interface schema, or the closed-struct check
-  refuses the pass's declaration. **This is the first thing stage 4b part 2 has to write.**
-- **`page` in the light record is still not read by anything.** The record carries the page
-  the pool gave a light, and nothing consumes it: that is the clustered lighting template,
-  which is 4b part 2.
+- **Nothing that creates a texture, a view, a bind group or a pipeline was executed when this
+  part finished**, because the belief was that this machine has no adapter. **It is executed
+  now**: the clustered pass in part 2 binds a real pool, draws a real page per shadowing pass
+  and samples it, and `cargo test --workspace --features whiting-device/wgpu` runs two pixel
+  tests that would fail on a backend that refused the `D2Array` view. The claim that a backend
+  accepts these is no longer a prediction.
+- **No shader in the repository declared a texture array when this part finished.** One does
+  now — the clustered lighting template — and the widened check has seen a real document
+  agree with it, which is the thing `texture_array_interface.rs` could only fake before.
+- **A shader's declared interface must name the `TextureArray` variant with the same fields as
+  the pass's declaration**, because `verify_pass_inputs` validates the pass's binder values
+  against the shader's declared schema and a `Struct` is closed. This was the first thing part
+  2 had to write and is written: the clustered template declares the pool as a texture array
+  in its own interface schema. `graphics::texture_array_binding_schema` is the single schema
+  for it, so the pass and the shader cannot drift.
+- **`page` in the light record is now read.** It was carried and unused at the end of part 1;
+  part 2's shader indexes the pool with it. A light whose `page` is minus one is a light the
+  pool refused, and the shader returns *lit*, not *shadowed*, for it. That is the correct
+  reading and it is also why a light that reaches a cluster but gets no page still lights the
+  frame — see "What a page-less light costs" below.
 - **A `Directional` or `Environment` light still gets no page and no path**, because
   `read_lights` still refuses those kinds. The exemption is designed and acted on by the
   assignment and is unreachable from a document.
@@ -689,8 +817,9 @@ adapter, which is the only honest way to test it.
   requests `wgpu::Limits::downlevel_defaults()`. The compiler cannot ask an adapter, so
   the duplication is inherent rather than an oversight: the scene side is an early, cheap
   refusal and the device side is the one that means anything.
-- `SHADOW_MAP_WIDTH` and `SHADOW_MAP_HEIGHT` still exist and are still read by the per
-  light passes, as stage 4a recorded. Deleting them is the last edit of 4b part 2.
+- `SHADOW_MAP_WIDTH` and `SHADOW_MAP_HEIGHT` existed at the end of part 1 and were read by
+  the per light passes. **Part 2 deleted both**, in the same commit that deleted the per light
+  path that was the only remaining reader.
 
 
 ### Settled since: the page pool is a texture array, and the device gets extended
@@ -721,6 +850,10 @@ shape is the first, and the reason is in the section above:
 - the bind group layout's `view_dimension` to follow it instead of `D2`
 - the rasterize target path to select a layer, since it attaches one view and a shadowing pass
   has to be able to render into page *n*
+
+**All four are done**, and the list is kept because it is the specification part 1 was written
+against, and because a list of requirements that a later session can check off is more useful
+than a paragraph asserting they are met.
 
 ## Working rules
 

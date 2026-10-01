@@ -16,6 +16,8 @@
 
 use definition::{Schema, SchemaKind, SchemaMap};
 
+use crate::lighting::{SHADOW_PAGE_HEIGHT, SHADOW_PAGE_WIDTH, SHADOW_PAGES};
+
 /// Field holding the name of the scene.
 pub const NAME: &str = "name";
 
@@ -344,8 +346,36 @@ pub fn clustering_schema() -> Schema {
                      is what a larger cap costs.",
             ),
         ),
+        (
+            SHADOW_PAGE_WIDTH.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How wide one shadow page is, in pixels. Defaults to 1024. This is what a \
+                     shadow map's size was when it was a Rust constant, and it is a scene's \
+                     decision because a scene that draws its steps two units wide wants a \
+                     different answer from one that draws a mountain.",
+            ),
+        ),
+        (
+            SHADOW_PAGE_HEIGHT.to_owned(),
+            Schema::new(SchemaKind::Int)
+                .optional()
+                .with_documentation("How tall one shadow page is, in pixels. Defaults to 1024."),
+        ),
+        (
+            SHADOW_PAGES.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How many shadow pages the pool holds, which is how many lights can cast one \
+                     at all. Defaults to 64, and a scene may not ask for more than the 256 \
+                     layers a texture array can have. A light the pool did not buy a page for \
+                     is lit unshadowed rather than wrongly shadowed, and a scene that wants \
+                     more real shadows raises this.",
+            ),
+        ),
     ]))
-    .with_documentation("How the view is divided, and how many lights one box keeps.")
+    .with_documentation(
+        "How the view is divided, how many lights one box keeps, and how many \
+                         shadows the scene can afford.",
+    )
 }
 
 /// Builds the schema of the image a scene is drawn into.

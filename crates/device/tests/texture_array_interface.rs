@@ -77,7 +77,8 @@ fn a_shader_reading_a_flat_texture_where_the_pass_binds_an_array_is_refused_too(
     .expect_err("the disagreement is reported in whichever direction it is written");
     let message = error.to_string();
     assert!(
-        message.contains("a two dimensional texture") && message.contains("an array of two dimensional textures"),
+        message.contains("a two dimensional texture")
+            && message.contains("an array of two dimensional textures"),
         "both sides are named: {message}"
     );
 }

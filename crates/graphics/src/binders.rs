@@ -234,6 +234,28 @@ pub fn texture_binding_schema() -> Schema {
     .with_documentation("A binding point that reads a texture.")
 }
 
+/// Builds a schema of a binding point that reads an array of textures.
+///
+/// # Invariants
+///
+/// A separate builder rather than a shape on [`texture_binding_schema`], because a shader
+/// interface is a **closed** struct and a declaration it validates has to be one it admits.
+/// A schema that accepted both shapes would accept a pass that bound a flat texture where a
+/// shader reads an array, and the failure would arrive as a backend message about a view
+/// dimension naming neither document.
+///
+/// The `layer` field is the array's own and is optional, so a pass that draws into a page and
+/// a pass that only reads the pool are both declared by this one schema: the first names the
+/// page it writes, and the second names none, because a shader indexes the layers itself with
+/// the page its own data carries.
+pub fn texture_array_binding_schema() -> Schema {
+    Schema::new(SchemaKind::enumeration([(
+        "Resource".to_owned(),
+        resource_field([texture_array_resource()]),
+    )]))
+    .with_documentation("A binding point that reads an array of two dimensional textures.")
+}
+
 /// Builds the schema of a binding point that reads a uniform block.
 pub fn uniform_binding_schema() -> Schema {
     Schema::new(SchemaKind::enumeration([(
@@ -284,8 +306,7 @@ fn texture_declaration(
     let mut fields = vec![
         (
             SOURCE.to_owned(),
-            Schema::new(SchemaKind::String)
-                .with_documentation("Instance entry the texture is in."),
+            Schema::new(SchemaKind::String).with_documentation("Instance entry the texture is in."),
         ),
         (WIDTH.to_owned(), Schema::new(SchemaKind::Int)),
         (HEIGHT.to_owned(), Schema::new(SchemaKind::Int)),
@@ -542,7 +563,9 @@ pub fn topology_of(payload: &Value) -> Option<&str> {
 /// thing to a flat texture and to an array, and the only difference between the two is the
 /// layer count. Written out twice, that shared half would be free to drift, and a drift is
 /// a payload that validates against a shape and then builds the other one.
-fn texture_payload_fields(own: impl IntoIterator<Item = (String, Schema)>) -> Vec<(String, Schema)> {
+fn texture_payload_fields(
+    own: impl IntoIterator<Item = (String, Schema)>,
+) -> Vec<(String, Schema)> {
     let mut fields = vec![
         (WIDTH.to_owned(), Schema::new(SchemaKind::Int)),
         (HEIGHT.to_owned(), Schema::new(SchemaKind::Int)),

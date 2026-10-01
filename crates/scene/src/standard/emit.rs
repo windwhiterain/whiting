@@ -2,10 +2,21 @@
 //!
 //! # What the pipeline is
 //!
-//! One shadowing pass per light and per shadow casting instance, then one depthing pass per
-//! instance, then one lighting pass per instance and per light. The order of the emitted
-//! list is the pipeline: nothing in a document says that a lighting pass runs after a
-//! shadowing pass, the order does.
+//! One shadowing pass per light that was given a shadow page and per shadow casting instance,
+//! then one depthing pass per instance, then **one lighting pass per instance**, then the
+//! emission and post processes. The order of the emitted list is the pipeline: nothing in a
+//! document says that a lighting pass runs after a shadowing pass, the order does.
+//!
+//! # Why the lighting pass is not per light
+//!
+//! It used to be, and the count was `lights * groups` for both stages. The lighting pass now
+//! reads the cluster assignment the cpu produced and loops over one cluster's worth of lights
+//! per fragment, so it is one pass per group however many lamps the scene has. The shadowing
+//! pass still is one per light, because a render pass attaches exactly one depth image: a
+//! light's page is rendered from that light's own eye, and two eyes are two passes whatever
+//! the shading does. What changed there is that the number of them is bounded by the scene's
+//! **pool** rather than by its light count, because a light the pool gave no page is not drawn
+//! into anything and is lit unshadowed instead.
 //!
 //! # Why one instance per pass
 //!
@@ -28,20 +39,19 @@ use std::rc::Rc;
 
 use definition::{PackedList, Path, Schema, SchemaKind, Value};
 
-use graphics::binders::{FORMAT, HEIGHT, RESOURCE, SIZE_BYTES, SOURCE, WIDTH};
+use graphics::binders::{FORMAT, HEIGHT, LAYER, LAYERS, RESOURCE, SIZE_BYTES, SOURCE, WIDTH};
 use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{derived_instance_schema, layout::packed_layout, verify_pass_inputs};
 
-use crate::lighting::{self as lighting_pool, ClusterLight, Clustering};
+use crate::lighting::{self as lighting_pool, ClusterLight, Clustering, LightPool};
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
 use crate::standard::frame::Frame;
 use crate::standard::math::{Bounds, Matrix, apply, projection_of, transform_matrix};
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
-    CAMERA, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, DEPTH_RANGE, FORWARD,
-    HALF_EXTENT, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, LIGHT_PROJECTION, LIGHT_SHADOW_TEXEL,
-    POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP, SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT,
-    SHADOW_MAP_WIDTH, TIME, UP, VERTICES,
+    CAMERA, CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, DEPTH_RANGE,
+    FORWARD, FRAME_SIZE, HALF_EXTENT, INSTANCE_DATA, POSITION, PRESENT_TARGET, PROJECTION, RIGHT,
+    SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, UP, VERTICES,
 };
 use crate::standard::scene_schema;
 use crate::{CompileError, CompileNote};
@@ -440,6 +450,10 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
             position: light.position,
             colour: light.colour,
             radius: light.radius(&bounds),
+            // The projection is computed here rather than in the lighting module, because
+            // building one is a property of a view and the lighting module deliberately has
+            // no view. It is the same matrix the shadowing pass draws its page through.
+            shadow_projection: light_projection(light, &bounds).0,
             clustered: light.kind.takes_cluster_slot(),
         })
         .collect();
@@ -455,13 +469,16 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     for (entry, payload) in clusters.entries() {
         insert_entry(&mut instance, entry.to_owned(), payload)?;
     }
-    for light in &lights {
-        insert_entry(
-            &mut instance,
-            shadow_map_entry(&light.label),
-            texture(SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT, SHADOW_MAP_FORMAT),
-        )?;
-    }
+    insert_entry(
+        &mut instance,
+        SHADOW_POOL.to_owned(),
+        texture_array(
+            light_pool.page_width,
+            light_pool.page_height,
+            light_pool.pages as i64,
+            SHADOW_MAP_FORMAT,
+        ),
+    )?;
     for shader in &shaders {
         insert_entry(&mut instance, shader.label.clone(), shader_entry(shader))?;
     }
@@ -469,7 +486,13 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     // One pass per group, and one instance entry per group, because the instances in a group are
     // drawn together by one instanced draw rather than one draw apiece.
     let mut passes = Vec::new();
-    for light in &lights {
+    // A shadowing pass per light that was **given a page**. A light the pool turned away is
+    // drawn into nothing, and drawing it into page zero would hand it a neighbour's shadow,
+    // so it is lit unshadowed instead and there is no pass for it at all.
+    for (index, light) in lights.iter().enumerate() {
+        let Some(page) = clusters.page_of(index) else {
+            continue;
+        };
         for group in groups(
             &instances,
             &meshes,
@@ -479,7 +502,15 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
         ) {
             let images = declare_images(&mut instance, &group, &images)?;
             insert_entry(&mut instance, group.entry(), group.payload())?;
-            passes.push(shadowing_pass(&group, light, &bounds, time, &images));
+            passes.push(shadowing_pass(
+                &group,
+                light,
+                &bounds,
+                &light_pool,
+                page,
+                time,
+                &images,
+            ));
         }
     }
     for group in groups(&instances, &meshes, &shaders, Stage::Depthing, None) {
@@ -487,20 +518,21 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
         insert_entry(&mut instance, group.entry(), group.payload())?;
         passes.push(depthing_pass(&group, &camera, frame, time, &images));
     }
-    for light in &lights {
-        for group in groups(
-            &instances,
-            &meshes,
-            &shaders,
-            Stage::Lighting,
-            Some(&light.label),
-        ) {
-            let images = declare_images(&mut instance, &group, &images)?;
-            insert_entry(&mut instance, group.entry(), group.payload())?;
-            passes.push(lighting_pass(
-                &group, light, &camera, &bounds, frame, time, &images,
-            ));
-        }
+    // The lighting stage names no light, so its groups carry none and its pass labels do not
+    // move when a light is added. That is the whole of what the clustered pass bought.
+    for group in groups(&instances, &meshes, &shaders, Stage::Lighting, None) {
+        let images = declare_images(&mut instance, &group, &images)?;
+        insert_entry(&mut instance, group.entry(), group.payload())?;
+        passes.push(lighting_pass(
+            &group,
+            &camera,
+            &clustering,
+            &clusters,
+            &light_pool,
+            frame,
+            time,
+            &images,
+        ));
     }
     // Emission runs once per instance rather than once per light, which is the whole reason it
     // is a stage: what a surface emits is not lit, so a pass per light would count it as many
@@ -1961,22 +1993,30 @@ fn post_pass(
     Ok((pass, entry, vertex_entry))
 }
 
-/// Returns the instance entry name holding one light's shadow map.
-pub fn shadow_map_entry(light_label: &str) -> String {
-    format!("{light_label}_{SHADOW_MAP}")
-}
-
-/// Builds the shadowing pass of one group for one light.
+/// Builds the shadowing pass of one group for one light, drawing into the page that light
+/// was given.
+///
+/// # Invariants
+///
+/// The page is named on the **declaration** of the pool, which is the only place it can be
+/// named: the entry itself is the whole pool and is shared by every shadowing pass and by the
+/// lighting pass, so a payload naming a page would name it for the whole image. A device
+/// refuses a layer the pool does not have rather than clamping it, because a pass that wrote
+/// past the end would write page zero again and hand one light another's shadow.
+///
+/// The projection is the light's own, and it is the same matrix the light's record carries,
+/// because a fragment finds the page by carrying its world position through that matrix. A
+/// pair of functions that each built "the light's projection" would agree until one of them
+/// was edited, and until then every shadow in the scene would be sampled at the wrong place.
 fn shadowing_pass(
     group: &Group<'_>,
     light: &LightRead,
     bounds: &Bounds,
+    pool: &LightPool,
+    page: usize,
     time: f64,
     images: &[(String, Value)],
 ) -> Value {
-    // The shadow map looks down the light's direction, at a box centred on the scene and
-    // as wide as the light says it shines. The same projection is handed to the lighting
-    // pass as `light_projection`, because that is how a surface is found in the map.
     let (light_matrix, light_eye) = light_projection(light, bounds);
     rasterize(
         &group.label(),
@@ -1990,16 +2030,18 @@ fn shadowing_pass(
         ]),
         mesh_bindings(group)
             .chain([(
-                SHADOW_MAP.to_owned(),
-                texture_binding(
-                    &shadow_map_entry(light.label.as_str()),
-                    SHADOW_MAP_WIDTH,
-                    SHADOW_MAP_HEIGHT,
+                SHADOW_POOL.to_owned(),
+                texture_array_binding(
+                    SHADOW_POOL,
+                    pool.page_width,
+                    pool.page_height,
+                    pool.pages as i64,
                     SHADOW_MAP_FORMAT,
+                    Some(page as i64),
                 ),
             )])
             .chain(images.iter().cloned()),
-        vec![SHADOW_MAP],
+        vec![SHADOW_POOL],
         DEPTH_CLEAR,
         PipelineStateFields::default_state(),
     )
@@ -2032,20 +2074,31 @@ fn depthing_pass(
     )
 }
 
-/// Builds the lighting pass of one group for one light.
+/// Builds the lighting pass of one group, which shades every light of every cluster.
 ///
 /// # Invariants
 ///
-/// The pass carries the **light's** projection as well as the camera's, and they are
-/// different matrices. A fragment decides it is in shadow by carrying its world position
-/// into the light's clip space and comparing the depth there against the shadow map; with
-/// only the camera's matrix, there is no way to do that and the shadow map is a texture no
-/// shader can meaningfully read.
+/// The pass names **no light**. It binds the three buffers the assignment packed and the pool,
+/// and a fragment works out which cluster it is in from its own position and loops over that
+/// cluster's list. Everything a per light pass used to carry in its uniform — the light's
+/// position, its colour, its own projection, the size of its shadow map's texel — is a field
+/// of the light's **record**, which is read per light from a storage buffer, so the uniform is
+/// the same sixteen kilobytes whatever the scene's light count is.
+///
+/// That is the whole reason the record is a storage buffer and not the uniform: a uniform
+/// cannot hold a thousand light records, and a scene that could only be drawn with a few dozen
+/// lights was the limit this replaces.
+///
+/// The grid and the frame are carried so a fragment can resolve its own cluster. It could not
+/// derive the extents from anything, and it derives its own three indices from them with a
+/// multiply and a cast each — the depth being the one number a fragment already carries.
+#[allow(clippy::too_many_arguments)]
 fn lighting_pass(
     group: &Group<'_>,
-    light: &LightRead,
     camera: &Value,
-    bounds: &Bounds,
+    clustering: &Clustering,
+    clusters: &lighting_pool::Clusters,
+    pool: &LightPool,
     frame: Frame,
     time: f64,
     images: &[(String, Value)],
@@ -2056,33 +2109,26 @@ fn lighting_pass(
         Value::structure([
             (PROJECTION.to_owned(), camera.clone()),
             (
-                LIGHT_POSITION.to_owned(),
-                Value::List(light.position.into_iter().map(Value::Float).collect()),
-            ),
-            (
-                LIGHT_COLOR.to_owned(),
-                Value::List(light.colour.into_iter().map(Value::Float).collect()),
-            ),
-            (
-                LIGHT_PROJECTION.to_owned(),
-                Value::List(
-                    light_projection(light, bounds)
-                        .0
-                        .into_iter()
-                        .map(Value::Float)
-                        .collect(),
-                ),
-            ),
-            (
-                LIGHT_SHADOW_TEXEL.to_owned(),
+                CLUSTER_GRID.to_owned(),
                 Value::List(
                     [
-                        1.0 / SHADOW_MAP_WIDTH as f64,
-                        1.0 / SHADOW_MAP_HEIGHT as f64,
+                        clustering.width_extents as f64,
+                        clustering.height_extents as f64,
+                        clustering.depth_extents as f64,
+                        clustering.lights_per_cluster as f64,
                     ]
                     .into_iter()
                     .map(Value::Float)
                     .collect(),
+                ),
+            ),
+            (
+                FRAME_SIZE.to_owned(),
+                Value::List(
+                    [frame.width as f64, frame.height as f64]
+                        .into_iter()
+                        .map(Value::Float)
+                        .collect(),
                 ),
             ),
             (TIME.to_owned(), Value::Float(time)),
@@ -2098,15 +2144,27 @@ fn lighting_pass(
                     texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
                 ),
                 (
-                    SHADOW_MAP.to_owned(),
-                    texture_binding(
-                        &shadow_map_entry(&light.label),
-                        SHADOW_MAP_WIDTH,
-                        SHADOW_MAP_HEIGHT,
+                    SHADOW_POOL.to_owned(),
+                    // No layer, and that is the point: this pass only *reads* the pool, and a
+                    // shader indexes the layers itself with the page each record carries. A
+                    // layer on a binding that is not one of the pass's targets is refused by
+                    // the device rather than ignored, because it is what a pass draws into.
+                    texture_array_binding(
+                        SHADOW_POOL,
+                        pool.page_width,
+                        pool.page_height,
+                        pool.pages as i64,
                         SHADOW_MAP_FORMAT,
+                        None,
                     ),
                 ),
             ])
+            .chain(
+                clusters
+                    .declarations()
+                    .into_iter()
+                    .map(|(name, value)| (name.to_owned(), value)),
+            )
             .chain(images.iter().cloned()),
         vec![COLOR_TARGET],
         COLOUR_CLEAR,
@@ -2460,6 +2518,61 @@ fn texture(width: i64, height: i64, format: &str) -> Value {
             (HEIGHT.to_owned(), Value::Int(height)),
             (FORMAT.to_owned(), Value::String(format.to_owned())),
         ],
+    )
+}
+
+/// Builds the payload of a pool of shadow pages: one entry, one array, every light's page.
+///
+/// # Invariants
+///
+/// The payload is a `TextureArray` rather than a `Texture` carrying a count, because those are
+/// two `WGSL` types with a different `textureLoad` arity and a document that read `Texture`
+/// while meaning an array is a document no shader can name. It carries no `data`: a pool is
+/// written by shadowing passes, and filling a texture averages neighbouring texels and cannot
+/// tell a layer boundary from a row, so an array with pixels is refused.
+fn texture_array(width: i64, height: i64, layers: i64, format: &str) -> Value {
+    Value::variant(
+        "TextureArray",
+        [
+            (WIDTH.to_owned(), Value::Int(width)),
+            (HEIGHT.to_owned(), Value::Int(height)),
+            (LAYERS.to_owned(), Value::Int(layers)),
+            (FORMAT.to_owned(), Value::String(format.to_owned())),
+        ],
+    )
+}
+
+/// Builds a declaration of a texture array, and of the layer a pass draws into.
+///
+/// # Invariants
+///
+/// `layer` is `Some` only for a pass that renders into the pool. A pass that only reads it
+/// names none, because the page a fragment looks up is in the light's own record and a shader
+/// cannot be told which light to shade at bind time.
+fn texture_array_binding(
+    source: &str,
+    width: i64,
+    height: i64,
+    layers: i64,
+    format: &str,
+    layer: Option<i64>,
+) -> Value {
+    let mut resource = vec![
+        (SOURCE.to_owned(), Value::String(source.to_owned())),
+        (WIDTH.to_owned(), Value::Int(width)),
+        (HEIGHT.to_owned(), Value::Int(height)),
+        (LAYERS.to_owned(), Value::Int(layers)),
+        (FORMAT.to_owned(), Value::String(format.to_owned())),
+    ];
+    if let Some(layer) = layer {
+        resource.push((LAYER.to_owned(), Value::Int(layer)));
+    }
+    Value::variant(
+        "Resource",
+        [(
+            RESOURCE.to_owned(),
+            Value::variant("TextureArray", resource),
+        )],
     )
 }
 

@@ -70,7 +70,10 @@ fn every_gallery_shader_parses_and_validates_within_the_downlevel_limits() {
     for name in Gallery::names() {
         for (label, source) in shaders_of(&Gallery::build(name)) {
             let parsed = naga::front::wgsl::parse_str(&source).unwrap_or_else(|error| {
-                panic!("the shader `{label}` of `{name}` parses: {error}\n\n{source}")
+                panic!(
+                    "the shader `{label}` of `{name}` parses: {}",
+                    error.emit_to_string(&source)
+                )
             });
             let mut validator = naga::valid::Validator::new(
                 naga::valid::ValidationFlags::all(),

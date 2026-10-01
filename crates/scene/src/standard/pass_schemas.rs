@@ -12,11 +12,13 @@
 //! it, which is why they are constants rather than literals spread across the crate.
 
 use definition::{Schema, SchemaKind};
-use graphics::binders::{buffer_binding_schema, texture_binding_schema};
+use graphics::binders::{
+    buffer_binding_schema, texture_array_binding_schema, texture_binding_schema,
+};
+use graphics::layout::components_schema;
 use graphics::pass::{BINDERS, UNIFORM};
 
-/// Binding point holding the depth map a shadowing pass renders into.
-pub const SHADOW_MAP: &str = "shadow_map";
+use crate::lighting::{CLUSTER_COUNTS_ENTRY, CLUSTER_INDICES_ENTRY, LIGHT_RECORDS_ENTRY};
 
 /// Binding point holding the depth buffer a depthing pass renders into.
 pub const DEPTH_BUFFER: &str = "depth_buffer";
@@ -40,28 +42,35 @@ pub const INSTANCE_DATA: &str = "instance_data";
 /// Field holding the projection a pass draws through.
 pub const PROJECTION: &str = "projection";
 
-/// Field holding the position of a light, in a lighting pass.
-pub const LIGHT_POSITION: &str = "light_position";
-
-/// Field holding the colour of a light, in a lighting pass.
-pub const LIGHT_COLOR: &str = "light_color";
-
-/// Field holding the light's own view projection, in a lighting pass.
+/// Binding point holding the pool of shadow pages a scene's lights were given.
 ///
-/// A lighting pass needs both projections and they are not the same one: the scene is drawn
-/// through `projection`, and a surface is in shadow when it is further from the light than
-/// the shadow map recorded. Deciding that needs the world position of the surface carried
-/// into the light's own clip space, which is what this matrix is for. Without it a shader
-/// can only read the shadow map at a screen coordinate, which is a different lookup and not
-/// a shadow.
-pub const LIGHT_PROJECTION: &str = "light_projection";
-
-/// Field holding the size of one texel of the shadow map, in a lighting pass.
+/// # Invariants
 ///
-/// The shadow map is sampled with a filter kernel, and a kernel of a fixed width in texels
-/// is a fixed width on the surface only because the map's resolution is known. Carrying it
-/// keeps a scene that changes the shadow map's size from changing the width of its penumbra.
-pub const LIGHT_SHADOW_TEXEL: &str = "light_shadow_texel";
+/// This is one instance entry for the whole scene, not one per light, which is the whole
+/// point of a pool: a thousand lights that could each have a page share one texture array
+/// and one binding point. A shadowing pass names the page it draws into on its **declaration**
+/// of this point, and a lighting pass names none, because a shader indexes the layers itself
+/// with the page its own light record carries.
+///
+/// It is called a pool rather than `shadow_pages` on purpose: `shadow_pages` is the count a
+/// scene's `clustering` block declares, and two different things in one name is a name an
+/// author reads as one of them.
+pub const SHADOW_POOL: &str = "shadow_pool";
+
+/// Field holding how the view is divided for clustered lighting, as four whole numbers.
+///
+/// Across, up, deep, and how many lights one cluster keeps, in that order. They are one
+/// vector rather than four fields because a fragment multiplies its own position by them
+/// four times and a vector says so; a shader field per count would be four scalars padded to
+/// four slots each, which is the same sixteen bytes for no reason.
+pub const CLUSTER_GRID: &str = "cluster_grid";
+
+/// Field holding the size of the frame in pixels, as width then height.
+///
+/// A fragment resolves which cluster it is in from its own position, and a position in
+/// pixels only means a column and a row once the frame's size divides it. The depth needs no
+/// size, because the view's depth runs zero to one whatever the frame is.
+pub const FRAME_SIZE: &str = "frame_size";
 
 /// Field holding the time a pass is drawn at, in seconds.
 ///
@@ -135,17 +144,11 @@ pub fn camera_schema() -> Schema {
     .with_documentation("The camera a post pass draws through, and the rays it casts.")
 }
 
-/// Width in pixels of every shadow map the standard pipeline renders.
+/// Format every shadow page is rendered in.
 ///
-/// Two thousand over the few hundred units a scene's shadow volume spans is a fifth of a
-/// unit a texel, which is what a step two units wide needs for its shadow to outlive the
-/// blur the comparison kernel spreads it by. At one thousand the texel was the step.
-pub const SHADOW_MAP_WIDTH: i64 = 2048;
-
-/// Height in pixels of every shadow map the standard pipeline renders.
-pub const SHADOW_MAP_HEIGHT: i64 = 2048;
-
-/// Format every shadow map is rendered in.
+/// A page is a depth map like any other. Its **size** is not a constant: it is
+/// `shadow_page_width` and `shadow_page_height` on the scene's `clustering` block, and the
+/// same rule the depth buffer's size follows. See [`crate::standard::frame`].
 pub const SHADOW_MAP_FORMAT: &str = "depth32float";
 
 /// Format the depth buffer is rendered in.
@@ -179,9 +182,17 @@ pub fn projection_schema() -> Schema {
 }
 
 /// Builds the interface of a shadowing pass.
+///
+/// # Invariants
+///
+/// A shadowing pass draws **one light's depth into one page of the pool**, and the page is
+/// named on the declaration of [`SHADOW_POOL`] rather than anywhere else. That is why this
+/// interface declares the pool as a texture array: a flat texture is a `D2` view and an
+/// array is a `D2Array` view, they are different types to a shader, and a schema that
+/// accepted both would let a document draw into a pool no shader can read.
 pub fn shadow_pass_schema() -> Schema {
     interface(
-        "A shadowing pass, which renders one light's depth map.",
+        "A shadowing pass, which renders one light's depth into one page of the pool.",
         vec![
             (
                 VERTICES,
@@ -193,9 +204,9 @@ pub fn shadow_pass_schema() -> Schema {
                 buffer_binding_schema().with_documentation("Per instance data of those meshes."),
             ),
             (
-                SHADOW_MAP,
-                texture_binding_schema()
-                    .with_documentation("The depth map this pass renders into."),
+                SHADOW_POOL,
+                texture_array_binding_schema()
+                    .with_documentation("The pool of pages, and the page this pass draws into."),
             ),
         ],
         vec![
@@ -311,8 +322,30 @@ pub fn light_pass_schema() -> Schema {
                     .with_documentation("The depth the earlier passes produced."),
             ),
             (
-                SHADOW_MAP,
-                texture_binding_schema().with_documentation("The shadow map of every light."),
+                LIGHT_RECORDS_ENTRY,
+                buffer_binding_schema().with_documentation(
+                    "One record per light, which is what a cluster's indices point into.",
+                ),
+            ),
+            (
+                CLUSTER_COUNTS_ENTRY,
+                buffer_binding_schema().with_documentation(
+                    "How many lights each cluster kept, which is the bound \
+                     of the loop.",
+                ),
+            ),
+            (
+                CLUSTER_INDICES_ENTRY,
+                buffer_binding_schema().with_documentation(
+                    "The lights of each cluster, a row of the cap wide for each one.",
+                ),
+            ),
+            (
+                SHADOW_POOL,
+                texture_array_binding_schema().with_documentation(
+                    "The pages of every light that was given one, which the shader indexes \
+                     itself with the page each record carries.",
+                ),
             ),
         ],
         vec![
@@ -321,23 +354,18 @@ pub fn light_pass_schema() -> Schema {
                 projection_schema().with_documentation("Looking at the scene from the camera."),
             ),
             (
-                LIGHT_POSITION,
-                vector().with_documentation("Position of the light being applied."),
-            ),
-            (
-                LIGHT_COLOR,
-                vector().with_documentation("Colour of the light, scaled by its intensity."),
-            ),
-            (
-                LIGHT_PROJECTION,
-                matrix().with_documentation(
-                    "The light's own view projection, which carries a world position into the \
-                     shadow map's clip space.",
+                CLUSTER_GRID,
+                components_schema(4).with_documentation(
+                    "How the view is divided: how many clusters across, how many up, how many \
+                     depth slices, and how many lights one cluster keeps.",
                 ),
             ),
             (
-                LIGHT_SHADOW_TEXEL,
-                vector2().with_documentation("The size of one texel of the shadow map."),
+                FRAME_SIZE,
+                vector2().with_documentation(
+                    "The frame's width and height in pixels, which is what turns a fragment's \
+                     own position into a column and a row.",
+                ),
             ),
             (
                 TIME,

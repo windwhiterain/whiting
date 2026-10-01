@@ -29,7 +29,7 @@ use definition::{
     PackedBuilder, PackedError, PackedLayout, PackedList, Path, Schema, SchemaKind, Value,
 };
 
-use graphics::binders::{DATA, SCHEMA, SIZE_BYTES, USAGE};
+use graphics::binders::{DATA, RESOURCE, SCHEMA, SIZE_BYTES, SOURCE, USAGE};
 
 use crate::CompileError;
 use crate::CompileNote;
@@ -62,6 +62,29 @@ pub const LIGHT_RADIUS_FIELD: &str = "radius";
 /// A page index of zero is the first page and is a page, so the two cannot be told apart by
 /// magnitude and the compiler writes a distinct value for the second.
 pub const LIGHT_PAGE_FIELD: &str = "page";
+
+/// Field of the light record naming the light's own view projection.
+///
+/// # Invariants
+///
+/// Sixteen floats, column major, which is the order a `mat4x4<f32>` is read in. A fragment
+/// takes its world position through this matrix to find the page the light rendered, so a
+/// record without it is a record a shadow cannot be looked up from — which is why it is in
+/// the record and not beside the page: an index has to resolve to everything the shader
+/// needs about that light in one read.
+pub const LIGHT_SHADOW_PROJECTION_FIELD: &str = "shadow_projection";
+
+/// How many floats one light record is wide.
+///
+/// # Invariants
+///
+/// It is derived from [`light_record_schema`] rather than written down, because a stride the
+/// schema and the packing could disagree about is a stride that reads the wrong light's
+/// colour. The count is `3 + 1 + 3 + 1 + 16`: colour, page, position, radius and the
+/// projection.
+pub fn light_record_stride() -> usize {
+    24
+}
 
 /// Field of the cluster count record naming the count.
 pub const CLUSTER_COUNT_FIELD: &str = "count";
@@ -144,6 +167,33 @@ impl Clusters {
             (
                 CLUSTER_INDICES_ENTRY,
                 storage(self.indices.bytes(), &cluster_list_schema()),
+            ),
+        ]
+    }
+
+    /// Returns the three binder declarations a clustered shading pass carries, in the same
+    /// order as [`Clusters::entries`].
+    ///
+    /// # Invariants
+    ///
+    /// A declaration's `size_bytes` is the size of the entry it names, and the two are built
+    /// from the same [`PackedList`], so a pass cannot declare a buffer at one size and bind
+    /// the bytes of another. This is the counterpart of [`Clusters::entries`] and belongs
+    /// beside it for that reason: the payload and the declaration are two views of one run,
+    /// and a rule expressed twice is a rule that can be applied once.
+    pub fn declarations(&self) -> [(&'static str, Value); 3] {
+        [
+            (
+                LIGHT_RECORDS_ENTRY,
+                declaration(LIGHT_RECORDS_ENTRY, self.records.bytes().len() as i64),
+            ),
+            (
+                CLUSTER_COUNTS_ENTRY,
+                declaration(CLUSTER_COUNTS_ENTRY, self.counts.bytes().len() as i64),
+            ),
+            (
+                CLUSTER_INDICES_ENTRY,
+                declaration(CLUSTER_INDICES_ENTRY, self.indices.bytes().len() as i64),
             ),
         ]
     }
@@ -506,15 +556,18 @@ fn light_records(lights: &[ClusterLight], pages: &[usize]) -> Result<PackedList,
     let mut records = PackedBuilder::new(layout);
     records.reserve(lights.len());
     for (index, light) in lights.iter().enumerate() {
-        // Sorted by name, so the colour is written first and the page second: the builder
+        // Sorted by name, so the colour is written first and the projection last: the builder
         // refuses a field written out of the layout's order, which is what makes the run mean
-        // what its layout says. `color`, `page`, `position`, `radius` is that order, because
-        // `page` sorts before `position`.
+        // what its layout says. `color`, `page`, `position`, `radius`, `shadow_projection` is
+        // that order, because `page` sorts before `position`.
         records
             .field(LIGHT_COLOR_FIELD, &light.colour)
             .and_then(|builder| builder.field(LIGHT_PAGE_FIELD, &[page_value(pages[index])]))
             .and_then(|builder| builder.field(LIGHT_POSITION_FIELD, &light.position))
             .and_then(|builder| builder.field(LIGHT_RADIUS_FIELD, &[light.radius]))
+            .and_then(|builder| {
+                builder.field(LIGHT_SHADOW_PROJECTION_FIELD, &light.shadow_projection)
+            })
             .map_err(|error| unpacked(LIGHT_RECORDS_ENTRY, error))?;
     }
     records
@@ -553,6 +606,31 @@ fn storage(bytes: &[u8], schema: &Schema) -> Value {
     )
 }
 
+/// Builds the binder declaration of a storage buffer holding so many bytes.
+///
+/// # Invariants
+///
+/// The declaration carries **no** usage word, because a usage word is a property of the entry
+/// in the instance and not of one pass's view of it: the same bytes are a read only storage
+/// buffer here whatever else binds them. The entry's own `usage` is what the device reads, and
+/// a pass that named a different level than the entry declared would be a pass contradicting
+/// the document it binds.
+pub fn declaration(entry: &str, size_bytes: i64) -> Value {
+    Value::variant(
+        "Resource",
+        [(
+            RESOURCE.to_owned(),
+            Value::variant(
+                "Buffer",
+                [
+                    (SOURCE.to_owned(), Value::String(entry.to_owned())),
+                    (SIZE_BYTES.to_owned(), Value::Int(size_bytes)),
+                ],
+            ),
+        )],
+    )
+}
+
 /// Reports a run that could not be built as a compile error naming the entry it was for.
 fn unpacked(entry: &str, error: PackedError) -> CompileError {
     CompileError::Unpackable {
@@ -566,14 +644,25 @@ fn unpacked(entry: &str, error: PackedError) -> CompileError {
 ///
 /// # Invariants
 ///
-/// The record is a point light's: where it is, what colour it is, the radius it was assigned by,
-/// and the shadow page it was given. The fields sort as `color`, `page`, `position`, `radius`,
-/// which is the order the packed layout derives from the schema, so the bytes and the layout
-/// cannot disagree about a stride.
+/// The record is a point light's: where it is, what colour it is, the radius it was assigned
+/// by, the shadow page it was given, and the projection that finds the page. The fields sort
+/// as `color`, `page`, `position`, `radius`, `shadow_projection`, which is the order the
+/// packed layout derives from the schema, so the bytes and the layout cannot disagree about
+/// a stride.
 ///
 /// The page is in the record because that is the only place a shading loop can reach it from:
 /// the loop is over a cluster's light indices, and an index has to resolve to everything the
 /// shader needs about that light in one read.
+///
+/// **The tightly packed record is also the layout a `WGSL` `var<storage>` struct computes,
+/// and that is not a coincidence to be relied on by eye.** A three component vector is
+/// sixteen byte aligned and twelve bytes long, so the field after it must start four bytes
+/// later for the next one to be aligned — and each of this record's two vectors is followed
+/// by exactly one `f32`, which is precisely that four bytes. The projection is a matrix at
+/// offset thirty two, which is aligned, and the record is ninety six bytes, a whole number of
+/// sixteen byte blocks. A field added to this schema that does not keep that property would
+/// be read by a shader at the wrong offset, and the packed layout is the one place the bytes
+/// are described, so this is where the claim is made.
 pub fn light_record_schema() -> Schema {
     Schema::new(SchemaKind::structure([
         (
@@ -597,6 +686,14 @@ pub fn light_record_schema() -> Schema {
             LIGHT_RADIUS_FIELD.to_owned(),
             Schema::new(SchemaKind::Float)
                 .with_documentation("How far the light reaches, as a sphere around its position."),
+        ),
+        (
+            LIGHT_SHADOW_PROJECTION_FIELD.to_owned(),
+            graphics::layout::components_schema(16).with_documentation(
+                "The light's own view projection, sixteen floats in column major order. A \
+                 fragment carries its world position through this matrix to find the light's \
+                 page, which is what a shadow lookup is.",
+            ),
         ),
     ]))
     .with_documentation("One light, as a clustered shading pass reads it.")
