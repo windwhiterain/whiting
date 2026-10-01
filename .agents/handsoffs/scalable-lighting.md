@@ -119,6 +119,21 @@ and the cache never has to reconcile it. What the cache does record is the usage
 that *is* fixed at creation: an entry that is a uniform in one pass and a storage buffer in
 another is a document asking for two buffers under one name, and it is reported as one.
 
+### What stage 1 did not close
+
+- A buffer declaring `["vertex", "storage"]` is read by `buffer_kind` as a storage buffer and
+  then taken down the vertex path, so the `storage` word is silently discarded and the buffer
+  is created with `VERTEX | COPY_DST`. A document asking to be two kinds of buffer at once is
+  a mistake worth reporting on the same grounds as the unknown word, and it is not reported.
+  Rare enough not to block the clustered path, which never makes a vertex buffer storage.
+- A shader that declares `var<storage>` where the pass bound a uniform still passes the naga
+  check, because the check compares a resource kind and both address spaces are `Buffer`. It
+  then fails inside wgpu with a message naming neither document. Catching it would mean
+  splitting `ResourceKind` along the address space, which contradicts a deliberate invariant.
+- Nothing that creates a `wgpu::Buffer` was executed: this environment has no adapter, so
+  `cargo check` and the `scene` and `graphics` tests are the whole of what was verified. The
+  two adapter backed render tests live in `crates/device/tests/` and cannot run here.
+
 
 ## Stage 2: light data becomes a schema
 
@@ -193,17 +208,28 @@ no mip chain and no schema change at all.
 
 This stage depends only on stage 2, so it can run alongside stage 3 or stage 4.
 
-## Open decisions
+## Decisions
 
-These are not settled. Each one changes the shape of the stage named beside it.
+Settled. Each one is a constraint on the stage named beside it, not a suggestion.
 
-| decision | affects | leaning |
+| decision | affects | ruling |
 | --- | --- | --- |
-| does `Renderer` gain state across calls | 3, 4 | no, keep `render` pure |
-| shadow page size and count | 4 | 512 square, 16 pages, 16 MiB |
-| how directional and environment light are handled | 3 | exempt from clustering |
-| whether light kind becomes an enum | 2, 3, 5 | yes |
-| starting cluster grid | 3 | 16 x 9 x 24 |
+| does `Renderer` gain state across calls | 3, 4 | no, `render` stays pure; offline rendering, so temporal accumulation is invalid by construction and is replaced, not deferred |
+| shadow page size and count | 4 | schema fields, no constant; the pool is configured per scene and its total is accounted for |
+| how directional and environment light are handled | 3 | exempt from clustering, they get their own path |
+| whether light kind becomes an enum | 2, 3, 5 | yes, and a missing `kind` is a validation error rather than a default |
+| starting cluster grid | 3 | schema field with 16 x 9 x 24 as the default |
+| stage order | all | clustered and shadow before image based lighting |
+
+## Still open
+
+- Whether the renderer requests the adapter's real limits or keeps the downlevel floor. It
+  keeps the floor for now, because `wgpu` is optional and the crate must run with no adapter.
+  Raising `max_texture_dimension_2d` is what lets a page be larger than 2048 square, and it is
+  stage 4's call.
+- Where the shadow page size and count are authored: on the light, on the scene, or derived
+  from the scene's `frame` the way the depth buffer is. The depth buffer precedent argues for
+  `frame`; a light that must cast from a specific volume argues for the light. Stage 4's call.
 
 ## Working rules
 
