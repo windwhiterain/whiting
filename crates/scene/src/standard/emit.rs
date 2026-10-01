@@ -448,7 +448,7 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     notes.extend(lighting_pool::pool_notes(
         &cluster_lights,
         &light_pool,
-        &clusters.pages,
+        &clusters,
     ));
 
     add_targets(&mut instance, frame);

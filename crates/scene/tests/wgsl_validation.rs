@@ -23,7 +23,7 @@
 //!
 //! [`WgpuRenderer`]: ../../../../device/src/wgpu_renderer/mod.rs
 
-use definition::{Definition, DefinitionIdentifier, Path, Registry, SchemaIdentifier, Value};
+use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use graphics::{ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 use whiting_scene::CompileContext;
 use whiting_scene::Compiler;

@@ -102,6 +102,15 @@ pub struct Clusters {
     pub indices: PackedList,
     /// The page each light was given, one per light, indexed as the records are.
     pub pages: Vec<usize>,
+    /// Whether each light reached at least one cluster, one per light.
+    ///
+    /// # Invariants
+    ///
+    /// This is the difference between a light the pool turned away and a light that was never
+    /// a candidate. A light behind the eye reaches nothing, so it is lit by nothing and no
+    /// page was spent on it; counting it as dropped would point an author at a pool that was
+    /// never the problem.
+    pub reached: Vec<bool>,
     /// The clusters that had more lights reach them than the cap keeps, in cluster order.
     pub overflows: Vec<Overflow>,
     /// How many lights were dropped, counted over every cluster.
@@ -224,6 +233,19 @@ pub(super) fn pack(
     let mut overflows = Vec::new();
     let mut lights_dropped = 0usize;
 
+    // Which lights reached at least one cluster, read off the walk before the rows below
+    // consume it. A light that reached none is lit by nothing, so a page for it would be a
+    // page rendering nothing and would take the place of one that does.
+    let reached: Vec<bool> = {
+        let mut seen = vec![false; lights.len()];
+        for reaching in &candidates {
+            for candidate in reaching {
+                seen[candidate.light] = true;
+            }
+        }
+        seen
+    };
+
     for (cluster, reaching) in candidates.iter_mut().enumerate() {
         // Highest contribution first, and the light's own order for a tie, so that one scene
         // compiles to one set of bytes however the walk above happened to find its lights.
@@ -258,7 +280,7 @@ pub(super) fn pack(
         }
     }
 
-    let pages = assign_pages(lights, pool);
+    let pages = assign_pages(lights, pool, &reached);
 
     Ok(Clusters {
         records: light_records(lights, &pages)?,
@@ -269,6 +291,7 @@ pub(super) fn pack(
             .finish()
             .map_err(|error| unpacked(CLUSTER_INDICES_ENTRY, error))?,
         pages,
+        reached,
         overflows,
         lights_dropped,
     })
@@ -289,11 +312,11 @@ pub(super) fn pack(
 /// light that reaches no cluster, a light of a kind that casts no shadow, and a light that is
 /// already unshadowed because it is covered by the view. A page for any of those is a page
 /// rendering nothing.
-fn assign_pages(lights: &[ClusterLight], pool: &LightPool) -> Vec<usize> {
+fn assign_pages(lights: &[ClusterLight], pool: &LightPool, reached: &[bool]) -> Vec<usize> {
     let mut pages: Vec<usize> = vec![NO_PAGE_USIZE; lights.len()];
     let mut ranked: Vec<(f64, usize)> = Vec::with_capacity(lights.len());
     for (index, light) in lights.iter().enumerate() {
-        if !light.clustered {
+        if !light.clustered || !reached[index] {
             continue;
         }
         ranked.push((
@@ -424,16 +447,26 @@ fn pool_count(
 ///
 /// # Invariants
 ///
-/// The note is emitted whenever a light that reaches the view was given no page, whether
-/// because the pool filled or because the light reached nothing. A scene drawn with fewer
-/// real shadows than it has lights is a wrong image, and the count of what went missing is
-/// the only thing an author can act on.
-pub fn pool_notes(lights: &[ClusterLight], pool: &LightPool, pages: &[usize]) -> Vec<CompileNote> {
-    let without: Vec<&str> = lights
+/// The note is emitted only for a light that **reached the view and still got no page**. A
+/// light that reaches no cluster is not in this count: nothing dropped it, and sending an
+/// author to raise a pool that was never the problem is worse than saying nothing. A scene
+/// drawn with fewer real shadows than it has candidate lights is a wrong image, and the count
+/// of what went missing is the only thing an author can act on.
+pub fn pool_notes(
+    lights: &[ClusterLight],
+    pool: &LightPool,
+    assignment: &Clusters,
+) -> Vec<CompileNote> {
+    let candidates: Vec<usize> = lights
         .iter()
         .enumerate()
-        .filter(|(index, light)| light.clustered && pages[*index] == NO_PAGE_USIZE)
-        .map(|(_, light)| light.label.as_str())
+        .filter(|(index, light)| light.clustered && assignment.reached[*index])
+        .map(|(index, _)| index)
+        .collect();
+    let without: Vec<&str> = candidates
+        .iter()
+        .filter(|index| assignment.pages[**index] == NO_PAGE_USIZE)
+        .map(|index| lights[*index].label.as_str())
         .collect();
     if without.is_empty() {
         return Vec::new();
@@ -441,7 +474,7 @@ pub fn pool_notes(lights: &[ClusterLight], pool: &LightPool, pages: &[usize]) ->
     let path = Path::root()
         .key(super::assignment::CLUSTERING)
         .key(SHADOW_PAGES);
-    let given = lights.len() - without.len();
+    let given = candidates.len() - without.len();
     vec![CompileNote {
         path,
         message: format!(
@@ -454,7 +487,7 @@ pub fn pool_notes(lights: &[ClusterLight], pool: &LightPool, pages: &[usize]) ->
             pool.page_width,
             pool.page_height,
             pool.total_bytes(),
-            lights.len(),
+            candidates.len(),
             without.len(),
             SHADOW_PAGES,
         ),

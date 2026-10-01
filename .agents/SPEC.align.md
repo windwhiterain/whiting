@@ -1066,3 +1066,114 @@ packing is a decision about representation, taken where the data is written, rat
 verification the compiler repeats on every compile.
 
 The same change is why validation was kept. See *ValidationError* above.
+
+## Clustered lighting and the shadow page pool: the seam, and a blocker
+
+Stage 4a of the scalable lighting effort. This records the two decisions that were not obvious
+and one that could not be made here.
+
+### The lifted module is general because it takes a `ViewProjection`, not a camera
+
+`crates/scene/src/lighting/` sits beside `diff` and `reference` rather than inside `standard`.
+The rule this follows is that a property of lighting in general belongs outside a compiler, and
+the test of it is whether the module can name anything of the standard scene's.
+
+It can now name none. The arithmetic took `&standard::Projection` and read its `eye`, `right`,
+`up`, `forward`, `near`, `far` and its two depth/distance mappings. Those nine readings are
+behind a `ViewProjection` trait now, and `Projection` implements it **by forwarding to its own
+fields and methods**.
+
+**Invariant**: a camera that implements `ViewProjection` by recomputing a reading rather than
+forwarding it can disagree with the matrix its passes are drawn through, which puts a light in
+clusters no fragment is in. Forwarding is the only implementation that cannot drift.
+
+**What stayed in `standard`, and why**: the camera itself (`Projection`, `Camera`) and the light
+document an author writes (`scene_schema::light_schema`). Both are the standard scene's own
+schema and WGSL surface. What moved out: the cluster grid and its four documented defaults, the
+per cluster cap, the contribution ranking, the packed record schema, the three buffer schemas,
+and the page pool. None of them mention a material, a mesh, a pass or a shader.
+
+**The two ways a general module quietly stops being general**, both of which this lift had to
+undo: reaching into another module for a constant (the clustering field names moved with the
+grid), and reaching into another module for a two line helper (`dot` and `subtract` are now
+local to `assignment.rs` rather than taken from `standard::math`, which is a matrix module).
+The second one duplicates two functions. It is worth it, because a general module that borrows
+a compiler's private arithmetic is not a general module.
+
+### One ranking, two budgets, and why they disagree
+
+The shadow page pool and the per cluster cap both ask "how much does this light matter", and
+both are answered by `contribution`, which is brightness over one plus distance squared. There
+is one notion on purpose: two rankings that could disagree would be two answers to one question.
+
+They *are* used differently, and the difference is not an accident:
+
+- a cluster asks **how bright is this light there**. The distance is to a box, so a light just
+  outside it still counts for a little, and a light inside it counts fully at any radius.
+- a page asks **is this light worth rendering once**. The distance is over how much of the
+  image the light reaches at all.
+
+So a light can be kept by a cluster and still be given no page. That is the whole reason to rank
+twice rather than derive the pool from the cluster lists: the cluster lists have already spent
+their budget on the lights nearest each box, and the page budget is a different question about
+the same lights.
+
+**Invariant**: a light that reaches no cluster is given no page and is not reported as dropped.
+A page for it would render nothing, and counting it would point an author at a pool that was
+never the problem. `Clusters::reached` is what tells the two apart; `pool_notes` is given the
+whole assignment rather than a list of pages for exactly this reason.
+
+**Invariant**: a light with no page carries minus one, not zero. Zero is the first page. A
+sentinel a shader can distinguish is worth four bytes a light, and a shadow lookup into the
+wrong light's page is a wrong image nobody sees until the render finishes.
+
+### A blocker: the device cannot create a texture array
+
+Stage 4b needs one shadow page pool a shader can index, and the pool was designed as a texture
+array. **The device cannot make one**, in four independent places, plus a missing schema field:
+
+- `graphics/binders.rs` `binder_payload_schema`'s `Texture` variant has no `layers` field, and
+  `texture_resource()` has no layer count either. A document cannot say a texture has depth.
+- `device/wgpu_renderer/bindings.rs` hardcodes `depth_or_array_layers: 1` and
+  `TextureDimension::D2`, and creates a default view, which on one layer is a `D2` view of
+  layer zero.
+- The same file hardcodes `view_dimension: TextureViewDimension::D2` in the bind group layout,
+  so a texture that *were* an array would still be declared as a flat one.
+- `device/wgpu_renderer/raster.rs` draws into `slot.view` with no way to select an array layer,
+  so a shadowing pass could not render into page *n* even if one existed.
+
+**This is not a gap that could be closed from the compiler side**, which is the thing worth
+recording: the design principle in this project is that the compiler decides and the device
+executes, and that principle has a boundary. A resource the device cannot create is not
+expressible as schema data, so a stage that is forbidden from touching the device is forbidden
+from using one.
+
+**Two ways forward, neither made here.** Extending the device is the settled design and needs
+four files across two crates, two of which are the device. A 2D atlas — pages tiled into one
+`texture_depth_2d`, the index resolved with a multiply and a modulo — needs no device change and
+fits what the device can already do, at the cost of making the page size and the count
+dependent (a 2048 square texture holds 16 pages of 512, not 256) and needing the nine tap
+kernel clamped so it cannot read a neighbour's texels across a page boundary.
+
+### naga validates this project's WGSL, and it fits
+
+Correcting an earlier belief: the WGSL here **is** verifiable without an adapter.
+`naga::front::wgsl::parse_str` and the validator are pure cpu work, `naga` 30.0.1 is already in
+the lock file through wgpu, and the device crate itself depends on this being true
+(`wgpu_renderer/mod.rs` parses every shader with it). So `naga` is a dev dependency of `scene`
+and `tests/wgsl_validation.rs` parses and validates every shader the six gallery scenes emit.
+
+**Invariant**: the check reads sources out of the **compiled instance**, never off a template. A
+template still holding `__SUN__` is a template with a live token in it, and a token that
+replaces to nothing is exactly the mistake a template hides.
+
+**Invariant**: it validates against `Capabilities::empty()`, not the defaults. The defaults are
+a modern adapter's feature set; `WgpuRenderer` asks for `downlevel_defaults()` with
+`Features::empty()`. Validating against the defaults would accept a shader this renderer cannot
+run, which makes the check worse than useless.
+
+**What the check is not**: it is not pipeline creation. `naga` cannot compare a bind group layout
+against a shader, because that is `check_bindings` in the device and needs a renderer instance.
+"Validated" here means well formed and within capabilities. **Nothing was executed**; this
+machine has no adapter, and the two adapter backed render tests in `crates/device/tests/` were
+not run.
