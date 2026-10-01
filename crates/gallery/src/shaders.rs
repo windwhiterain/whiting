@@ -16,11 +16,12 @@
 //!   zero, and the instance row continues from where the point's ended. A row of
 //!   `emissive`, `metallic`, `model`, `roughness`, `tint` sorts into that order, so the
 //!   model matrix is read as four consecutive locations.
-//! - **The bindings.** The uniform is binding zero, and every bound resource follows it in
-//!   name order. A texture a pass renders *into* is an attachment and is not bound, and
-//!   neither are the two vertex buffers, so the numbering is over the rest. The lighting
-//!   stage's numbers are written out in [`lighting_bindings`] rather than counted in prose,
-//!   and the post stage binds the shaded image at one and the depth at two.
+//! - **The bindings.** The uniform is binding zero, and every binding point follows it in
+//!   name order, whether the pass binds it or renders into it. A point the pass renders into
+//!   takes its number and emits no entry, and a vertex or instance buffer takes no number at
+//!   all, so the numbering runs over the pass's points rather than over what it binds. The
+//!   lighting stage's numbers are written out in [`lighting_bindings`] rather than counted in
+//!   prose, and the post stage binds the shaded image at one and the depth at two.
 //!
 //! # The lighting stage is clustered
 //!
@@ -155,11 +156,19 @@ struct SpotCone {
 /// reason the lighting stage takes one. **A stage whose body cannot reach a shared function
 /// cannot use one**, and a surface that emits the reflection of the same sky the frame's
 /// background is drawn from has no other way to say that the two are one sky.
+///
+/// # Why this stage declares no resource beyond its uniform
+///
+/// The pass renders into the colour target and is tested against the depth buffer, so both
+/// are its **targets** rather than its bindings: a backend forbids a pass to read what it
+/// draws into, and a depth test is a pipeline state rather than a read a fragment performs.
+/// The two points still take the binding numbers their names sort them to — that is the
+/// device's rule and it applies to a point whatever the pass does with it — so the template
+/// declares the uniform alone and leaves those numbers unread.
 pub fn emission(vertex_inputs: &str, emission: &str, helpers: &str) -> String {
     format!(
         r#"{PLACEMENT_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var depth_buffer: texture_depth_2d;
 
 {helpers}
 struct Vertex {{
@@ -307,10 +316,16 @@ pub fn lighting_with_normal(
 /// it can only report one if there is a number to report, so the numbers are stated here once
 /// rather than spread through the template.
 ///
-/// `depth_buffer` is in the list and declares nothing. The pass binds it because a fragment
-/// is tested against it, and the fragment never reads it, so it takes a number and no line of
-/// WGSL. Leaving the number out instead would put every binding after it one lower than the
-/// device's, which is a frame of the wrong numbers rather than a failure.
+/// The order is over the pass's binding **points**, not over the resources it binds, because
+/// that is the rule the device numbers by: a point the pass renders into takes a number and
+/// emits no binding entry. So `color_target` and `depth_buffer` are both in the list and
+/// declare nothing. The pass renders into the colour target and a fragment is tested against
+/// the depth buffer, and the fragment reads neither, so each takes the number its own name
+/// sorts it to and no line of WGSL. Leaving a number out instead would put every binding after
+/// it one lower than the device's, which is a frame of the wrong numbers rather than a
+/// failure — and it is the mistake that left the lighting pass without a depth test at all,
+/// because moving the depth buffer out of the bound resources and into the targets moved
+/// `environment_map` into the slot the template had reserved for it.
 ///
 /// An image is a texture **and** the sampler that reads it, at the position immediately after
 /// its own, so adding one shifts everything below it. That is why the declarations are
@@ -322,9 +337,9 @@ fn lighting_bindings(image: bool) -> String {
     let mut resources: Vec<(&str, &str, &str)> = vec![
         ("cluster_light_counts", "<storage, read>", "array<f32>"),
         ("cluster_light_indices", "<storage, read>", "array<f32>"),
-        // The depth buffer is next in name order, so it takes binding three. The pass binds
-        // it because a fragment is tested against it and no fragment here reads it, so it has
-        // no line of WGSL: the empty name is the number it consumes and nothing else.
+        // `color_target` and `depth_buffer` are next in name order, so they take bindings
+        // three and four. The empty name is the number each consumes and nothing else.
+        ("", "", ""),
         ("", "", ""),
     ];
     let mut number = 1;

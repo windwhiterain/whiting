@@ -12,7 +12,9 @@
 //! - a buffer whose usage is `storage` is bound to the shader as a read only storage
 //!   buffer, and one that also declares `storage_write` is bound so a shader may write it;
 //! - every other buffer and every texture is bound to the shader, and its binding index
-//!   is its position among the bound points, in name order.
+//!   is its position among the pass's binding points, in name order. A binding point the
+//!   pass renders into takes its number the same way and emits no entry: it is the pass's
+//!   output rather than an input, which is a fact about the entry and not about the number.
 //!
 //! A usage word this module does not know is an error rather than a buffer of some
 //! default kind, for the reason the rest of the module takes the same position: a word
@@ -457,6 +459,24 @@ fn layer_of(declaration: &Declaration<'_>) -> i64 {
     declaration.layer().unwrap_or_default()
 }
 
+/// What one binding point of a pass became, which is what the numbering is a list of.
+///
+/// # Invariants
+///
+/// Every declaration of a pass appears here exactly once, in name order, whatever it became:
+/// a point that took no number at all would be a point whose resources are numbered by an
+/// order nothing else can reproduce.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Numbered {
+    /// A resource bound to the shader, at this index in `bound`.
+    Bound(usize),
+    /// A resource the pass renders into: it takes its number and emits no layout entry.
+    Attachment,
+    /// A vertex or instance buffer, which is an attribute rather than a binding and takes
+    /// no number at all.
+    Attribute,
+}
+
 /// Everything one pass needs from the instance.
 pub struct Bindings {
     /// The uniform data, as the bytes a uniform buffer carries.
@@ -471,9 +491,46 @@ pub struct Bindings {
     pub targets: Vec<String>,
     /// How many instances to draw, which is the instance buffer's element count.
     pub instances: u64,
+    /// What every binding point of the pass became, in the order the points take numbers.
+    ///
+    /// # Invariants
+    ///
+    /// This is [`Bindings::binding_numbers`]'s only input, so the numbers a pass hands a
+    /// shader are a function of the pass's **declarations** and not of which of them it
+    /// renders into: a pass that makes one of its own binders a target moves no number, and
+    /// therefore cannot move every number after it into a slot a shader was not written for.
+    /// That was the defect this order exists to remove.
+    ///
+    /// A point is written here by the same operation that puts the resource in `vertices`,
+    /// `bound` or `attachments`, so the two can never disagree about what a point became.
+    numbering: Vec<Numbered>,
 }
 
 impl Bindings {
+    /// Binds a resource to the shader, at the next number its binding point takes.
+    ///
+    /// # Invariants
+    ///
+    /// The resource and the number it takes are written by one call, because a resource in
+    /// one list and not the other is a resource bound at a number the numbering never
+    /// assigned. See [`Bindings::numbering`].
+    fn bind(&mut self, resource: Bound) {
+        self.bound.push(resource);
+        self.numbering.push(Numbered::Bound(self.bound.len() - 1));
+    }
+
+    /// Records a texture the pass renders into: it takes its number and emits no entry.
+    fn attach(&mut self, slot: TextureSlot) {
+        self.attachments.push(slot);
+        self.numbering.push(Numbered::Attachment);
+    }
+
+    /// Records a vertex or instance buffer, which is an attribute and takes no number.
+    fn attribute(&mut self, slot: VertexSlot) {
+        self.vertices.push(slot);
+        self.numbering.push(Numbered::Attribute);
+    }
+
     /// Returns the texture a target binding point names.
     pub fn target(&self, point: &str) -> Option<&TextureSlot> {
         self.attachments
@@ -503,23 +560,46 @@ impl Bindings {
     ///
     /// # Invariants
     ///
-    /// The uniform is binding zero and each bound resource takes the next number, so a
-    /// shader counts to a resource without knowing which pass declared it. A texture whose
-    /// payload declares `sampled` then takes a second number, for the sampler that reads it,
-    /// at the position immediately after its own. A texture that declares nothing takes one
-    /// number, which is what keeps every existing document's numbering unchanged.
+    /// The uniform is binding zero and every binding point of the pass takes the next number
+    /// in name order, whether the pass binds it or renders into it, so a shader counts to a
+    /// resource without knowing which pass declared it **or which of that pass's points are
+    /// its targets**. A texture whose payload declares `sampled` then takes a second number,
+    /// for the sampler that reads it, at the position immediately after its own. A texture
+    /// that declares nothing takes one number, which is what keeps every existing document's
+    /// numbering unchanged. A vertex or instance buffer takes no number: it is an attribute,
+    /// and a shader reads it at a location rather than at a binding.
+    ///
+    /// A point the pass renders into takes its number and is left out of the result, so the
+    /// numbering has holes exactly where a pass draws into one of its own declarations. That
+    /// is the whole point of numbering the declarations rather than the bound resources: the
+    /// number a shader reads is a property of the pass's document, and a document that
+    /// renders into a texture it also names must not renumber the resources behind it. A
+    /// shader that declared something at such a number would be refused by
+    /// [`check_resources`](super::shader_interface::check_resources) as reading a binding the
+    /// pass does not offer, which is the loud form of the mistake this rule removes.
     ///
     /// The two arrays are parallel to `self.bound`. This is the only place the arithmetic is
     /// written: the layout and the bind group are both derived from it, so they cannot
     /// disagree about a number. A rule expressed twice is a rule that can be applied once.
     fn binding_numbers(&self) -> (Vec<u32>, Vec<Option<u32>>) {
-        let mut numbers = Vec::with_capacity(self.bound.len());
-        let mut samplers = Vec::with_capacity(self.bound.len());
+        let mut numbers = vec![0; self.bound.len()];
+        let mut samplers = vec![None; self.bound.len()];
         let mut next = 1;
-        for resource in self.bound.iter() {
-            numbers.push(next);
+        for numbered in &self.numbering {
+            let index = match numbered {
+                // A hole: the pass draws into this point, so it is somebody's attachment and
+                // no shader's binding, and the numbers after it belong where they were.
+                Numbered::Attachment => {
+                    next += 1;
+                    continue;
+                }
+                // An attribute is not a binding, so it moves nothing.
+                Numbered::Attribute => continue,
+                Numbered::Bound(index) => *index,
+            };
+            numbers[index] = next;
             next += 1;
-            let sampler = match resource {
+            let sampler = match &self.bound[index] {
                 Bound::Texture(texture) if texture.sampler.is_some() => {
                     let number = next;
                     next += 1;
@@ -527,7 +607,7 @@ impl Bindings {
                 }
                 _ => None,
             };
-            samplers.push(sampler);
+            samplers[index] = sampler;
         }
         (numbers, samplers)
     }
@@ -858,6 +938,7 @@ impl WgpuRenderer {
                 .map(str::to_owned)
                 .collect(),
             instances: 1,
+            numbering: Vec::new(),
         };
 
         let declarations = pass.binders()?;
@@ -898,8 +979,10 @@ impl WgpuRenderer {
                             .texture
                             .create_view(&texture.shape.layer_view_descriptor(layer));
                         // An attachment is filtered by nothing whatever its payload said,
-                        // because a backend forbids filtering a texture being written.
-                        bindings.attachments.push(TextureSlot {
+                        // because a backend forbids filtering a texture being written. It is
+                        // recorded as an attachment rather than as a bound resource, which is
+                        // what gives it a number with no entry behind it.
+                        bindings.attach(TextureSlot {
                             sampler: None,
                             attachment: true,
                             view,
@@ -917,7 +1000,7 @@ impl WgpuRenderer {
                             texture.point
                         )));
                     } else {
-                        bindings.bound.push(Bound::Texture(texture));
+                        bindings.bind(Bound::Texture(texture));
                     }
                 }
                 Some(BinderKind::Uniform) => {
@@ -931,9 +1014,7 @@ impl WgpuRenderer {
                     // the same bytes, and uploading them twice buys nothing.
                     let source = declaration.source()?;
                     let buffer = self.resolve_buffer(source, data, BufferKind::Uniform, buffers)?;
-                    bindings
-                        .bound
-                        .push(Bound::Buffer(buffer, BufferKind::Uniform));
+                    bindings.bind(Bound::Buffer(buffer, BufferKind::Uniform));
                 }
                 _ => {
                     return Err(RenderError::Backend(format!(
@@ -980,7 +1061,7 @@ impl WgpuRenderer {
             if per_instance {
                 bindings.instances = count;
             }
-            bindings.vertices.push(VertexSlot {
+            bindings.attribute(VertexSlot {
                 point: point.to_owned(),
                 slot: 0,
                 buffer: self.upload(
@@ -1002,7 +1083,7 @@ impl WgpuRenderer {
         }
 
         let buffer = self.resolve_buffer(source, data, kind, cache)?;
-        bindings.bound.push(Bound::Buffer(buffer, kind));
+        bindings.bind(Bound::Buffer(buffer, kind));
         Ok(())
     }
 

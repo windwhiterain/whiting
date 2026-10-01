@@ -2,8 +2,9 @@
 //!
 //! # Why this check exists
 //!
-//! A pass binds its resources at numbers it chooses: the uniform is zero, and the bound
-//! resources follow it in name order. A vertex buffer's attributes are numbered the same
+//! A pass binds its resources at numbers it chooses: the uniform is zero, and the pass's
+//! binding points follow it in name order, each taking a number whether the pass binds it or
+//! renders into it. A vertex buffer's attributes are numbered the same
 //! way, continuing from where the previous buffer's ended. A shader names both, by hand,
 //! in its own source.
 //!
@@ -275,9 +276,10 @@ pub fn check_resources(
         let Some(entry) = entries.iter().find(|entry| entry.binding == number) else {
             return Err(RenderError::Backend(format!(
                 "the shader for `{label}` declares `{name}` at binding {number}, and this \
-                 pass binds nothing there. The uniform is binding zero and the bound \
-                 resources follow it in name order, so the numbers a shader uses are the \
-                 ones the document gave its binders."
+                 pass binds nothing there. The uniform is binding zero and the pass's \
+                 binding points follow it in name order, so the numbers a shader uses are \
+                 the positions the document gave its binders — a point the pass renders \
+                 into takes a position as well and has no entry to read."
             )));
         };
         let Some(bound) = kind_of(&entry.ty) else {

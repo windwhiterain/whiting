@@ -361,6 +361,14 @@ graphics computation, as data.
   a shader reads its point at the low locations and the instance data above. Every other
   buffer and every texture is a binding, numbered from one in name order, with the uniform
   at binding zero.
+  - **invariant**: the number belongs to the **binding point**, not to what the pass does
+    with it. A point the pass renders into takes its number and emits no layout entry, so a
+    pass that makes one of its own binders a target renumbers nothing. The earlier rule
+    counted only the resources a pass *bound*, which made a pass's `targets` an input to
+    every shader's numbering: naming the depth buffer as a target moved the environment map
+    one number down, into the slot the lighting shader had reserved for the depth buffer.
+    That is the defect recorded in
+    [proposals/lighting-pass-has-no-depth-test.md](proposals/lighting-pass-has-no-depth-test.md).
 - **decision**: a buffer whose usage is `storage` is a binding bound as a storage buffer,
   and one that also declares `storage_write` is bound so a shader may write it. The
   writable case is a **second word rather than a third kind**, because it is a permission on

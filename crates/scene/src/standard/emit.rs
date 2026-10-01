@@ -2848,6 +2848,13 @@ fn depthing_pass(
 /// map is bound on, and the same answer it is given by binding a black one texel map. A scene
 /// with no spot light writes one whole sphere that no cluster's light points at, so the cost is
 /// one bound buffer nothing reads rather than a shader that cannot be written.
+///
+/// The depth buffer is named among the **targets**, which is the whole of what makes the
+/// pass's `LessEqual` test exist. A fragment of a prepassed surface lands on the depth the
+/// prepass recorded, so the test keeps it; a fragment of a surface behind one already drawn
+/// is rejected, which is the occlusion the prepass was paid for. A resource a pass renders
+/// into cannot be bound to it, so the point takes its number in name order and no line of
+/// the shader reads it.
 #[allow(clippy::too_many_arguments)]
 fn lighting_pass(
     group: &Group<'_>,
@@ -2946,7 +2953,14 @@ fn lighting_pass(
             )])
             .chain([environment_binding(environment)])
             .chain(images.iter().cloned()),
-        vec![COLOR_TARGET],
+        // The depth buffer is named as a **target** and not only declared as a binder, which
+        // is what makes this pass's own depth state real: a pipeline reads its depth state
+        // off the depth attachment it was given, so a pass that declares `LessEqual` and is
+        // given no attachment is built with no test at all and its occlusion silently stops
+        // existing. The point stays in the numbering while it is a target, because the device
+        // numbers a pass's binding points rather than its bound resources; see
+        // `Bindings::binding_numbers`.
+        vec![COLOR_TARGET, DEPTH_BUFFER],
         COLOUR_CLEAR,
         lighting_state(),
     )
@@ -2978,7 +2992,9 @@ fn environment_binding(environment: &EnvironmentMap) -> (String, Value) {
 /// The pass reads no light, which is what makes it emit once rather than once per light. It
 /// adds into the shaded image and tests against the depth the earlier passes wrote, so an
 /// emissive surface behind an opaque one is occluded — the same state the lighting passes run
-/// with, minus the shadow map and the light's projection, which it has no use for.
+/// with, minus the shadow map and the light's projection, which it has no use for. The depth
+/// buffer is therefore named among its targets for the same reason it is named among the
+/// lighting pass's: a depth state without a depth attachment is a state nothing keeps.
 fn emission_pass(
     group: &Group<'_>,
     camera: &Value,
@@ -3005,7 +3021,10 @@ fn emission_pass(
                 ),
             ])
             .chain(images.iter().cloned()),
-        vec![COLOR_TARGET],
+        // Named as a target for the same reason the lighting pass names it: the depth state
+        // this pass declares is honoured through the attachment or not at all, and a pass
+        // that declares one and is given none is refused rather than drawn without it.
+        vec![COLOR_TARGET, DEPTH_BUFFER],
         COLOUR_CLEAR,
         lighting_state(),
     )
@@ -3451,21 +3470,28 @@ impl PipelineStateFields {
     }
 }
 
-/// Builds the pipeline state of a lighting pass.
+/// Builds the pipeline state of a lighting pass, and of the emission pass beside it.
 ///
 /// # Invariants
 ///
-/// - **The pass adds.** There is one lighting pass per light and they all draw into the
-///   same image, so a pass that replaced what was there would leave only the last light
-///   standing. Adding is what makes several lights into a sum rather than a choice, and
-///   the first pass to write the target clears it to black, which added to nothing is
-///   the same as replaced.
+/// - **The pass adds.** Every lighting pass of a scene draws into the same image, so a pass
+///   that replaced what was there would leave only the last group standing. Adding is what
+///   makes several passes into a sum rather than a choice, and the first pass to write the
+///   target clears it to black, which added to nothing is the same as replaced. The emission
+///   pass adds on the same grounds: what a surface emits is added to what was shaded.
 /// - **The comparison is `LessEqual` and the pass does not write.** A depth prepass
 ///   records the depth of every opaque fragment, and a later pass drawing the *same*
 ///   geometry lands on exactly those depths — so a comparison of `Less` rejects every one
 ///   of them, and the pass draws nothing at all. `LessEqual` keeps the nearer fragment,
 ///   which is what a prepass exists to establish, and not writing keeps the prepass's
 ///   depths rather than replacing them with the same numbers.
+/// - **The state is honoured only through a depth attachment.** A pipeline reads this state
+///   off the depth texture its pass renders into, so a pass that declares it and names no
+///   depth format among its targets is a declaration nothing keeps: it was built with no
+///   test at all for as long as the lighting and emission passes named one target, and the
+///   frames that came out of it read as a style rather than as a defect. Both passes name
+///   the depth buffer as a target, and the renderer now refuses a depth state it cannot
+///   attach; see `WgpuRenderer::run_rasterize`.
 fn lighting_state() -> PipelineStateFields {
     let (blend, depth) = (
         Value::variant("Add", []),

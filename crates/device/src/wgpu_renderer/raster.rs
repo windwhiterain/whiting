@@ -9,6 +9,9 @@
 //!   stage to write is rejected by the backend.
 //! - A target is cleared by the first pass that writes it and loaded by the rest, or the
 //!   second pass into a shared target would erase the first pass's contribution.
+//! - A pass that declares a depth state has a depth attachment to honour it, refused rather
+//!   than dropped: a state that reaches no pipeline is a frame with no occlusion in it and
+//!   nothing to say so.
 //! - A target that is one layer of a texture array is cleared and resolved as **that
 //!   layer**, keyed by the layer as well as the instance entry. Keying on the entry alone
 //!   would make the second pass into a pool load the first one's page rather than clearing
@@ -88,6 +91,23 @@ impl WgpuRenderer {
         // antialiased edge. A pass that names none of them builds the pipeline it always
         // built.
         let state = graphics::PipelineState::read(pass).map_err(RenderError::Graphics)?;
+        // A depth state reaches a pipeline through a depth attachment and nowhere else, so a
+        // pass that declares one and renders into no depth texture would be built with no
+        // test at all while its own document says it is tested. That is the one failure in
+        // this area that is silent: both documents are valid, the pipeline is valid, and the
+        // frame merely lacks the occlusion. The lighting and emission passes were built that
+        // way for as long as they named a colour target alone, and the frames read as a style
+        // rather than as a defect.
+        if depth.is_none() && pass.optional(graphics::DEPTH).is_some() {
+            return Err(RenderError::Backend(format!(
+                "the pass `{label}` declares a depth state and renders into no depth texture. \
+                 A pipeline takes its depth test from the attachment it was given, so this \
+                 pass would be built with no depth test at all while the document says it is \
+                 tested: a surface would be drawn over the surfaces in front of it and \
+                 nothing would report it. A pass that wants the test names a depth format \
+                 among its targets, which is the only way the state reaches a pipeline."
+            )));
+        }
         let samples = state.samples;
 
         // A shader names its resources and its vertices by hand, in its own source, and

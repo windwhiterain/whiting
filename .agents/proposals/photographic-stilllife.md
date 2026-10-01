@@ -33,6 +33,9 @@ and the frame is 1536 by 1024, nine window lights and two fills, 105 passes, abo
 > image the renderer produces. **Nothing here should be read as a second claim**, and the
 > mechanism is not repeated. What this scene adds is an independent confirmation from a different
 > pipeline stage and a measurement that is the cleanest form of the same fact.
+>
+> **Fixed since**: that proposal has landed, so the measurement below records what the defect did
+> rather than what the pipeline does. The two jugs are one jug drawn once now.
 
 ### Why it is worth a second entry
 
@@ -287,8 +290,9 @@ count table's entry for a new scene, which the test's own comment requires.
 ## Still owed
 
 - **Migrating this scene onto an `Environment` light.** Findings 3 and 6 both end there.
-- **The depth test.** Everything in finding 1 is a change to `emit.rs` and to the gallery's
-  binding numbers, and none of it has been built.
+- ~~**The depth test.**~~ **Landed** on `feature/depth-test`, exactly as
+  [lighting-pass-has-no-depth-test.md](lighting-pass-has-no-depth-test.md) scoped it, and the
+  emission stage with it. Finding 1's two jugs are now one jug drawn once.
 - **`shift` on the camera** (the previous effort's gap) is still a field the post uniform would
   have to carry, and a still life is exactly the kind of picture that uses one.
 - **A normal map, or any texture that is not albedo.** Every surface detail in this scene is

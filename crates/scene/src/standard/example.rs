@@ -332,13 +332,17 @@ struct SpotCone {
     limits: vec4<f32>,
 };
 
+// The numbers are the pass's binding points in name order, and the pass's own render targets
+// are among them: `color_target` and `depth_buffer` take three and four, which is why the
+// names below are not consecutive. A vertex or instance buffer takes no number at all, so
+// `instance_data` is absent from the list rather than numbered.
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> cluster_light_counts: array<f32>;
 @group(0) @binding(2) var<storage, read> cluster_light_indices: array<f32>;
-@group(0) @binding(4) var environment_map: texture_2d<f32>;
-@group(0) @binding(5) var<storage, read> light_records: array<LightRecord>;
-@group(0) @binding(6) var shadow_pool: texture_depth_2d_array;
-@group(0) @binding(7) var<storage, read> spot_cones: array<SpotCone>;
+@group(0) @binding(5) var environment_map: texture_2d<f32>;
+@group(0) @binding(6) var<storage, read> light_records: array<LightRecord>;
+@group(0) @binding(7) var shadow_pool: texture_depth_2d_array;
+@group(0) @binding(8) var<storage, read> spot_cones: array<SpotCone>;
 
 struct Vertex {
     @builtin(position) position: vec4<f32>,
