@@ -9,8 +9,15 @@
 //! - a buffer whose usage is `vertex` is a vertex buffer, at the slot of its binding
 //!   point, with its layout derived from the schema it carries;
 //! - a buffer whose usage is `instance` is the same, stepping once per instance;
+//! - a buffer whose usage is `storage` is bound to the shader as a read only storage
+//!   buffer, and one that also declares `storage_write` is bound so a shader may write it;
 //! - every other buffer and every texture is bound to the shader, and its binding index
 //!   is its position among the bound points, in name order.
+//!
+//! A usage word this module does not know is an error rather than a buffer of some
+//! default kind, for the reason the rest of the module takes the same position: a word
+//! that was misspelled and bound as a uniform produces a frame that is quietly wrong,
+//! which is a worse answer than a frame that is refused.
 //!
 //! # Invariants
 //!
@@ -19,7 +26,9 @@
 //!   names. What this module adds is the gpu side of that agreement: a vertex layout
 //!   derived from the same schema the bytes were packed with.
 //! - A texture is created once per instance entry and shared by every pass that binds it,
-//!   which is what lets one pass write a shadow map and the next read it.
+//!   which is what lets one pass write a shadow map and the next read it. A bound buffer
+//!   is shared the same way, which is what lets a compute pass write one and a later pass
+//!   read what it wrote rather than the bytes that were uploaded.
 
 use std::collections::BTreeMap;
 
@@ -38,6 +47,75 @@ pub const VERTEX: &str = "vertex";
 
 /// The usage that makes a buffer step once per instance.
 pub const INSTANCE: &str = "instance";
+
+/// The usage that makes a buffer a read only storage buffer.
+///
+/// A storage buffer is what a data set that does not fit in a uniform is bound as: the
+/// device requests [`wgpu::Limits::downlevel_defaults`], which caps a uniform binding at
+/// sixteen kibibytes, and there is no other way to put a large data set where a shader can
+/// reach it.
+pub const STORAGE: &str = "storage";
+
+/// The usage that lets a shader write a storage buffer.
+///
+/// It is a second word rather than a third kind because it is a permission on a storage
+/// buffer and not a kind of buffer: a read only storage buffer and a writable one are the
+/// same buffer with a different answer to one question, which is whether a shader may
+/// store into it.
+pub const STORAGE_WRITE: &str = "storage_write";
+
+/// How a shader reaches a bound buffer, which the layout has to declare exactly.
+///
+/// # Invariants
+///
+/// The three cases are the three ways a backend will let a buffer be bound, and the
+/// declaration follows from the document rather than from the shader: a buffer says what
+/// it is and a shader says what it reads, and the two are compared as buffer against
+/// buffer, so the level a buffer is bound at is a fact about the buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufferKind {
+    /// A uniform buffer, which the backend caps at sixteen kibibytes here.
+    Uniform,
+    /// A storage buffer a shader may read but not write.
+    ReadOnlyStorage,
+    /// A storage buffer a shader may read and write.
+    ReadWriteStorage,
+}
+
+impl BufferKind {
+    /// Returns the binding type the layout declares for this kind of buffer.
+    pub fn binding_type(self) -> wgpu::BufferBindingType {
+        match self {
+            Self::Uniform => wgpu::BufferBindingType::Uniform,
+            Self::ReadOnlyStorage => wgpu::BufferBindingType::Storage { read_only: true },
+            Self::ReadWriteStorage => wgpu::BufferBindingType::Storage { read_only: false },
+        }
+    }
+
+    /// Returns the usage a buffer of this kind is created with.
+    ///
+    /// # Invariants
+    ///
+    /// A read only and a writable storage buffer are created with the same
+    /// [`wgpu::BufferUsages::STORAGE`]: the backend distinguishes the two at the binding,
+    /// not at creation, so a buffer that one pass writes and another reads is one buffer
+    /// and not two.
+    pub fn usages(self) -> wgpu::BufferUsages {
+        match self {
+            Self::Uniform => wgpu::BufferUsages::UNIFORM,
+            Self::ReadOnlyStorage | Self::ReadWriteStorage => wgpu::BufferUsages::STORAGE,
+        }
+    }
+
+    /// Returns how a kind is named in an error, so a reader is told which buffer it is.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Uniform => "a uniform",
+            Self::ReadOnlyStorage => "a read only storage buffer",
+            Self::ReadWriteStorage => "a writable storage buffer",
+        }
+    }
+}
 
 /// A buffer bound to the vertex stage.
 pub struct VertexSlot {
@@ -62,8 +140,12 @@ pub struct VertexSlot {
 
 /// A resource bound to the shader.
 pub enum Bound {
-    /// A buffer, bound as a uniform.
-    Buffer(wgpu::Buffer),
+    /// A buffer, and the way the shader reaches it.
+    ///
+    /// The kind travels with the buffer rather than being read back off the layout,
+    /// because the layout is derived from this and the two cannot be allowed to disagree
+    /// about which of the three buffer bindings a buffer is.
+    Buffer(wgpu::Buffer, BufferKind),
     /// A texture, bound as a sampled texture.
     Texture(TextureSlot),
 }
@@ -221,8 +303,8 @@ impl Bindings {
                 binding: numbers[index],
                 visibility,
                 ty: match resource {
-                    Bound::Buffer(_) => wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
+                    Bound::Buffer(_, kind) => wgpu::BindingType::Buffer {
+                        ty: kind.binding_type(),
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -259,12 +341,12 @@ impl Bindings {
         for (index, resource) in self.bound.iter().enumerate() {
             let sampler = match resource {
                 Bound::Texture(texture) => texture.sampler.as_ref(),
-                Bound::Buffer(_) => None,
+                Bound::Buffer(_, _) => None,
             };
             entries.push(wgpu::BindGroupEntry {
                 binding: numbers[index],
                 resource: match resource {
-                    Bound::Buffer(buffer) => {
+                    Bound::Buffer(buffer, _) => {
                         wgpu::BindingResource::Buffer(buffer.as_entire_buffer_binding())
                     }
                     Bound::Texture(texture) => wgpu::BindingResource::TextureView(&texture.view),
@@ -365,6 +447,53 @@ impl Bindings {
     }
 }
 
+/// Reads a buffer payload's usage words as the kind of buffer it is.
+///
+/// # Invariants
+///
+/// A buffer with no words at all is a uniform, which is what every document that predates
+/// the `storage` word means and what a payload that declares no usage has always been
+/// read as. A vertex or instance buffer is a uniform here too, because the caller has
+/// already taken it off this path by the time the words reach the level that matters.
+///
+/// Every other word must be known. A word that is not is reported rather than taken for
+/// a uniform, for the reason the rest of the module takes the same position: a misspelled
+/// `storage` would otherwise bind a uniform, and a shader reading a storage buffer that
+/// was handed a uniform gets a frame that is quietly wrong. `storage_write` without
+/// `storage` is refused for the same reason, since a buffer nothing declared to be a
+/// storage buffer cannot be one a shader writes.
+fn buffer_kind(usage: &[&str], source: &str) -> Result<BufferKind, RenderError> {
+    let storage = usage.contains(&STORAGE);
+    let writable = usage.contains(&STORAGE_WRITE);
+    if writable && !storage {
+        return Err(RenderError::Backend(format!(
+            "the buffer `{source}` declares `{STORAGE_WRITE}` without `{STORAGE}`. A buffer a \
+             shader writes is a storage buffer, and the two words are what say so. Binding it \
+             as a uniform would look right and read the wrong bytes."
+        )));
+    }
+    let mut unknown = usage
+        .iter()
+        .copied()
+        .filter(|word| !matches!(*word, VERTEX | INSTANCE | STORAGE | STORAGE_WRITE));
+    let Some(word) = unknown.next() else {
+        return Ok(if writable {
+            BufferKind::ReadWriteStorage
+        } else if storage {
+            BufferKind::ReadOnlyStorage
+        } else {
+            BufferKind::Uniform
+        });
+    };
+    Err(RenderError::Backend(format!(
+        "the buffer `{source}` declares the usage `{word}`, which is not a usage a buffer can \
+         be bound with. A buffer's usage is `vertex`, `instance`, `storage`, or `storage_write`, \
+         and a buffer that declares none of them is bound as a uniform. Reading an unrecognised \
+         word as a uniform would give a frame that is quietly wrong, which is a worse answer \
+         than this error."
+    )))
+}
+
 /// Maps a component count onto the vertex format a backend reads it as.
 fn vertex_format(components: usize) -> wgpu::VertexFormat {
     match components {
@@ -379,6 +508,51 @@ fn vertex_format(components: usize) -> wgpu::VertexFormat {
 #[derive(Default)]
 pub struct TextureCache(BTreeMap<String, TextureSlot>);
 
+/// A buffer created once for an instance entry, and what it was created as.
+///
+/// # Invariants
+///
+/// The kind is the kind the *first* pass that named the entry asked for, and it is
+/// reported when a later pass asks for a different one. It is not what the later pass
+/// binds at: a read only and a writable binding of a storage buffer share this buffer
+/// and differ only in the bind group layout entry.
+pub struct BufferSlot {
+    /// The buffer itself.
+    pub buffer: wgpu::Buffer,
+    /// The usages the backend gave it at creation, which cannot be widened afterwards.
+    pub usages: wgpu::BufferUsages,
+    /// The kind the buffer was created for, kept only to name it in a disagreement.
+    kind: BufferKind,
+}
+
+impl BufferSlot {
+    /// Returns the kind the buffer was created for.
+    pub fn kind(&self) -> BufferKind {
+        self.kind
+    }
+}
+
+/// Buffers created during one render, keyed by the instance entry they hold.
+///
+/// # Invariants
+///
+/// One entry is one buffer however many passes bind it, which is what makes a storage
+/// buffer a channel between passes: a compute pass that writes one and a later pass that
+/// reads it share the same bytes rather than two uploads of the same initial ones.
+///
+/// The level a buffer is bound at is *not* part of the cache. It belongs to the pass,
+/// because a read only and a writable binding of one buffer are the same buffer: the
+/// backend distinguishes them at the bind group, and both are created with
+/// [`wgpu::BufferUsages::STORAGE`]. So a buffer bound as read only by one pass and as
+/// writable by another needs no reconciliation here, and the one entry serves both.
+///
+/// What the cache does record is the usage set, because that *is* fixed at creation. One
+/// entry cannot be a uniform in one pass and a storage buffer in another, because a
+/// backend gives a buffer its usages once and a second set would mean two buffers under
+/// one name. That is a document that contradicts itself, and it is reported as one.
+#[derive(Default)]
+pub struct BufferCache(BTreeMap<String, BufferSlot>);
+
 impl WgpuRenderer {
     /// Resolves every binding point of a pass against the instance.
     pub(super) fn bind_pass(
@@ -386,6 +560,7 @@ impl WgpuRenderer {
         pass: &PassView<'_>,
         instance: &Value,
         cache: &mut TextureCache,
+        buffers: &mut BufferCache,
     ) -> Result<Bindings, RenderError> {
         // The pass is checked against the interface its shader declares first, so a
         // mismatch is a render error with a message about the data, rather than a layout
@@ -393,6 +568,11 @@ impl WgpuRenderer {
         verify_pass_inputs(pass, instance)?;
 
         let packed = uniform_bytes_for(pass, instance)?;
+        // This uniform is the pass's own, packed from the fields this pass declares, so it
+        // is built fresh for every pass and is deliberately not in the buffer cache: it has
+        // no instance entry to key it by, and two passes that packed the same bytes would
+        // still be two passes. The uniform a *binder* names is a different thing and is
+        // cached, because that one does come from an instance entry.
         let uniform = self.upload(&packed, wgpu::BufferUsages::UNIFORM, "whiting uniform");
 
         let mut bindings = Bindings {
@@ -414,7 +594,14 @@ impl WgpuRenderer {
             let payload = declaration.bind(instance)?;
             match payload.kind() {
                 Some(BinderKind::Buffer) => {
-                    self.bind_buffer(declaration.point(), payload.value(), &mut bindings)?;
+                    let source = declaration.source()?;
+                    self.bind_buffer(
+                        source,
+                        declaration.point(),
+                        payload.value(),
+                        &mut bindings,
+                        buffers,
+                    )?;
                 }
                 Some(BinderKind::Texture) => {
                     let texture = self.texture(declaration, instance, cache)?;
@@ -440,11 +627,14 @@ impl WgpuRenderer {
                         .ok_or_else(|| {
                             RenderError::Backend("a uniform payload needs `data`".to_owned())
                         })?;
-                    bindings.bound.push(Bound::Buffer(self.upload(
-                        data,
-                        wgpu::BufferUsages::UNIFORM,
-                        "whiting uniform",
-                    )));
+                    // A uniform is one instance entry like any other, so it is cached under
+                    // its own name: two passes binding the same uniform block are binding
+                    // the same bytes, and uploading them twice buys nothing.
+                    let source = declaration.source()?;
+                    let buffer = self.resolve_buffer(source, data, BufferKind::Uniform, buffers)?;
+                    bindings
+                        .bound
+                        .push(Bound::Buffer(buffer, BufferKind::Uniform));
                 }
                 _ => {
                     return Err(RenderError::Backend(format!(
@@ -459,16 +649,27 @@ impl WgpuRenderer {
     }
 
     /// Resolves a buffer payload into a vertex slot or a bound buffer.
+    ///
+    /// # Invariants
+    ///
+    /// Every word the payload declares is one this module knows, checked before anything
+    /// is created. A word that fell through to the uniform path would produce a buffer
+    /// that is the right size and the wrong kind: a typo would cost a frame that is
+    /// quietly wrong rather than a message naming the entry, and the same is true of a
+    /// `storage_write` on a buffer that never said it was a storage buffer.
     fn bind_buffer(
         &self,
+        source: &str,
         point: &str,
         payload: &Value,
         bindings: &mut Bindings,
+        cache: &mut BufferCache,
     ) -> Result<(), RenderError> {
         let usage: Vec<&str> = field(payload, USAGE)
             .and_then(Value::as_list)
             .map(|entries| entries.iter().filter_map(Value::as_str).collect())
             .unwrap_or_default();
+        let kind = buffer_kind(&usage, source)?;
         let data = field(payload, DATA)
             .and_then(bytes)
             .ok_or_else(|| RenderError::Backend("a buffer payload needs `data`".to_owned()))?;
@@ -501,12 +702,57 @@ impl WgpuRenderer {
             return Ok(());
         }
 
-        bindings.bound.push(Bound::Buffer(self.upload(
-            data,
-            wgpu::BufferUsages::UNIFORM,
-            "whiting storage",
-        )));
+        let buffer = self.resolve_buffer(source, data, kind, cache)?;
+        bindings.bound.push(Bound::Buffer(buffer, kind));
         Ok(())
+    }
+
+    /// Returns the buffer an instance entry holds, uploading it the first time.
+    ///
+    /// # Invariants
+    ///
+    /// One entry is one buffer for the whole frame, so a pass that writes a storage buffer
+    /// and a pass that reads it later see the same bytes. The usage set a buffer was
+    /// created with is recorded rather than assumed, because a backend grants a buffer its
+    /// usages once: an entry that wants a usage the cached buffer does not carry is a
+    /// document asking for two different buffers under one name, and is reported rather
+    /// than served by quietly making a second one.
+    fn resolve_buffer(
+        &self,
+        source: &str,
+        data: &[u8],
+        kind: BufferKind,
+        cache: &mut BufferCache,
+    ) -> Result<wgpu::Buffer, RenderError> {
+        // The usage is the kind's alone, so a uniform entry is created exactly as it was
+        // before this cache existed. Nothing here needs `COPY_DST`: the upload goes
+        // through mapped at creation, and a buffer a shader writes is written by a shader.
+        let usages = kind.usages();
+        if let Some(existing) = cache.0.get(source) {
+            if !existing.usages.contains(usages) {
+                return Err(RenderError::Backend(format!(
+                    "the buffer `{source}` is bound as {} here and as {} elsewhere in this \
+                     frame. A backend gives a buffer its usages once, so one entry cannot be \
+                     two kinds of buffer: give the second one its own entry, or bind both \
+                     passes to the same kind.",
+                    existing.kind().name(),
+                    kind.name()
+                )));
+            }
+            // The buffer is shared; the level it is bound at is this pass's own business,
+            // and a read only and a writable binding of one buffer are the same buffer.
+            return Ok(existing.buffer.clone());
+        }
+        let buffer = self.upload(data, usages, source);
+        cache.0.insert(
+            source.to_owned(),
+            BufferSlot {
+                buffer: buffer.clone(),
+                usages,
+                kind,
+            },
+        );
+        Ok(buffer)
     }
 
     /// Returns the texture a declaration names, creating it the first time.

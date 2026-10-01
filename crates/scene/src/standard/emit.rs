@@ -970,7 +970,7 @@ fn finish_mesh(
         buffer_payload(
             found.points.bytes().to_vec(),
             found.point_schema.to_value(),
-            "vertex",
+            &["vertex"],
             topology.tag(),
         ),
     );
@@ -1306,7 +1306,7 @@ impl Group<'_> {
         buffer_payload(
             self.bytes(),
             self.members[0].instance_schema.to_value(),
-            "instance",
+            &["instance"],
             self.mesh.topology.tag(),
         )
     }
@@ -1748,7 +1748,7 @@ fn post_pass(
     let bytes = pack_points(point_schema.as_ref(), &points, &Path::root().key("points"))?;
     let vertex_entry = format!("{FULLSCREEN_MESH}_vertices");
     let size_bytes = bytes.len() as i64;
-    let entry = buffer_payload(bytes, point_schema.to_value(), "vertex", "Triangles");
+    let entry = buffer_payload(bytes, point_schema.to_value(), &["vertex"], "Triangles");
 
     let uniform = Value::structure([
         (CAMERA.to_owned(), camera_value(projection)),
@@ -2255,14 +2255,25 @@ fn texture_binding(source: &str, width: i64, height: i64, format: &str) -> Value
 }
 
 /// Builds a buffer payload, which carries the schema it was packed with.
-fn buffer_payload(bytes: Vec<u8>, schema: Value, usage: &str, topology: &str) -> Value {
+///
+/// # Invariants
+///
+/// The usage is a list because a buffer may need more than one word: a storage buffer a
+/// shader writes declares `storage` and `storage_write` together, and a vertex layout is
+/// built from the schema the bytes were packed with either way.
+fn buffer_payload(bytes: Vec<u8>, schema: Value, usage: &[&str], topology: &str) -> Value {
     Value::variant(
         "Buffer",
         [
             (SIZE_BYTES.to_owned(), Value::Int(bytes.len() as i64)),
             (
                 graphics::binders::USAGE.to_owned(),
-                Value::List(vec![Value::String(usage.to_owned())]),
+                Value::List(
+                    usage
+                        .iter()
+                        .map(|word| Value::String((*word).to_owned()))
+                        .collect(),
+                ),
             ),
             (graphics::binders::SCHEMA.to_owned(), schema),
             (

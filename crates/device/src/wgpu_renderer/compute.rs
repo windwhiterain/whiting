@@ -8,7 +8,7 @@ use definition::Value;
 use graphics::{PassView, resolve_for_pass};
 
 use super::WgpuRenderer;
-use super::bindings::TextureCache;
+use super::bindings::{BufferCache, TextureCache};
 use crate::render::RenderError;
 
 impl WgpuRenderer {
@@ -18,6 +18,7 @@ impl WgpuRenderer {
         pass: &PassView<'_>,
         instance: &Value,
         cache: &mut TextureCache,
+        buffers: &mut BufferCache,
     ) -> Result<(), RenderError> {
         let label = pass.label().unwrap_or("<unlabelled>").to_owned();
         let shader = resolve_for_pass(&label, instance, pass.shader_binder()?)
@@ -26,7 +27,7 @@ impl WgpuRenderer {
         if let Some(schema) = graphics::uniform_schema(pass, instance)? {
             self.check_uniform_layout(&shader, &schema, &label)?;
         }
-        let bindings = self.bind_pass(pass, instance, cache)?;
+        let bindings = self.bind_pass(pass, instance, cache, buffers)?;
 
         let workgroup: Vec<u32> = pass
             .workgroup()?

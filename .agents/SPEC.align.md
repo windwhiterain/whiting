@@ -321,6 +321,30 @@ graphics computation, as data.
   a shader reads its point at the low locations and the instance data above. Every other
   buffer and every texture is a binding, numbered from one in name order, with the uniform
   at binding zero.
+- **decision**: a buffer whose usage is `storage` is a binding bound as a storage buffer,
+  and one that also declares `storage_write` is bound so a shader may write it. The
+  writable case is a **second word rather than a third kind**, because it is a permission on
+  a storage buffer and not a kind of buffer: a uniform at sixteen kibibytes is the only
+  other binding a buffer can be, and thousands of light records do not fit in it.
+  - **invariant**: a read only and a writable storage buffer are created with the same
+    `STORAGE` usage, because a backend tells them apart at the bind group and not at
+    creation. One buffer therefore serves a compute pass that writes it and a later pass
+    that reads it, which is the whole point of the word existing.
+  - **invariant**: one instance entry is one gpu resource for a frame, for a buffer exactly
+    as for a texture. A compute pass that writes a storage buffer and a rasterize pass that
+    reads it must share the buffer, or the reader sees the bytes that were uploaded and not
+    the bytes that were written. A per frame cache keyed by the instance entry is what makes
+    that hold, and it is the buffer analogue of the texture cache, not an optimisation.
+  - **invariant**: an unrecognised usage word is an error, not a uniform. The list is
+    unconstrained by schema, so a misspelled `storage` validates and would otherwise bind a
+    uniform: a frame that is quietly wrong rather than a message naming the entry. An
+    *absent* usage list is still a uniform, so no document changes meaning. The same
+    position the module already takes for an unfilterable format and for mip levels.
+  - **invariant**: one entry cannot be two kinds of buffer within a frame. A backend grants
+    a buffer its usages once, so an entry that is a uniform in one pass and a storage buffer
+    in another is a document asking for two buffers under one name, and it is reported
+    rather than served by quietly making a second one.
+
 - **decision**: a texture whose payload declares `sampled` takes a sampler at the binding
   after its own, and a texture that declares nothing takes nothing. The need is **declared,
   never inferred from the format**: the post stage reads a colour texture with
