@@ -33,7 +33,7 @@
 use std::collections::BTreeMap;
 
 use definition::Value;
-use graphics::binders::{BinderKind, DATA, FORMAT, HEIGHT, SCHEMA, SIZE_BYTES, USAGE, WIDTH};
+use graphics::binders::{BinderKind, DATA, FORMAT, HEIGHT, LAYERS, SCHEMA, SIZE_BYTES, USAGE, WIDTH};
 use graphics::layout::{VertexLayout, vertex_layout};
 use graphics::{
     Declaration, PassView, SamplerAddress, SamplerSettings, is_sampled, verify_pass_inputs,
@@ -165,9 +165,7 @@ pub struct TextureSlot {
     /// A view of it, for binding and for attachment.
     pub view: wgpu::TextureView,
     /// The size the instance declared.
-    pub width: u32,
-    /// The size the instance declared.
-    pub height: u32,
+    pub shape: TextureShape,
     /// The sampler that reads it, when the payload declares that it is sampled.
     ///
     /// The settings belong to the image rather than to the pass, so the sampler is built
@@ -188,11 +186,12 @@ impl TextureSlot {
     /// # Invariants
     ///
     /// The type follows the texture's *role* rather than its format. A depth texture is
-    /// read as depth whatever it is for. An attachment is filtered by nothing: a backend
-    /// forbids filtering a texture a pass is writing. A bound colour texture is filterable
-    /// exactly when the payload asked for a sampler, which is why the same
-    /// `rgba8unorm` target pictures as a filterable image and as an unfilterable one
-    /// depending on which it is.
+    /// read as depth whatever it is for, and a depth *array* is read as depth too: the
+    /// shape changes the type a shader names and the arguments a `textureLoad` takes, not
+    /// what a texel of it is. An attachment is filtered by nothing: a backend forbids
+    /// filtering a texture a pass is writing. A bound colour texture is filterable exactly
+    /// when the payload asked for a sampler, which is why the same `rgba8unorm` target
+    /// pictures as a filterable image and as an unfilterable one depending on which it is.
     pub fn sample_type(&self) -> wgpu::TextureSampleType {
         if WgpuRenderer::is_depth_format(self.format) {
             wgpu::TextureSampleType::Depth
@@ -201,6 +200,204 @@ impl TextureSlot {
                 filterable: !self.attachment && self.sampler.is_some(),
             }
         }
+    }
+
+    /// Returns the view dimension a shader must declare to read this texture.
+    ///
+    /// # Invariants
+    ///
+    /// The shape is the payload's own and is not restated here, so the layout entry and the
+    /// view a pass draws into are derived from one number and cannot disagree about it. A
+    /// flat texture is `D2` and an array is `D2Array`, which is the difference the
+    /// interface check compares the two sides on.
+    pub fn view_dimension(&self) -> wgpu::TextureViewDimension {
+        self.shape.view_dimension()
+    }
+}
+
+/// The shape a texture payload declares: how wide, how tall, and how many layers.
+///
+/// # Invariants
+///
+/// - **The layer count comes from the variant, not from a field that might be absent.** A
+///   `Texture` payload is one layer and has no count to read; a `TextureArray` payload has
+///   one and is that many. Reading a count out of whichever variant declared it is what
+///   keeps a document from being able to state a number that is then ignored, which is the
+///   disagreement the two kinds exist to make impossible.
+/// - **A count this device cannot build is refused by name, never clamped.** A clamped pool
+///   is a document that asked for pages it does not have, and the light that lost its page
+///   would be lit wrongly with nothing to show for it in the document that caused it.
+/// - **The texture dimension is `D2` for every shape here.** An array of two dimensional
+///   images *is* a two dimensional texture whose depth is its layer count, which is what
+///   `depth_or_array_layers` is for. A volume would be `D3`, and no document in this
+///   binding model declares one, so nothing here would know what view to create for it.
+/// - **A flat texture produces exactly the descriptors it produced before any of this
+///   existed.** A view of one layer is the default view descriptor and the layout dimension
+///   is `D2`, so a document that says nothing is byte for byte the document it was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TextureShape {
+    /// The width in pixels that each layer is.
+    pub width: u32,
+    /// The height in pixels that each layer is.
+    pub height: u32,
+    /// How many layers the texture has, which is one for a flat texture.
+    pub layers: u32,
+}
+
+impl TextureShape {
+    /// Reads the shape a texture payload declares, refusing a layer count the device
+    /// cannot build.
+    ///
+    /// `max_layers` is what this device allows, and it is passed in rather than read from a
+    /// constant here so that the number in an error is the number the device was created
+    /// with. See [`WgpuRenderer::max_texture_array_layers`].
+    pub fn read(source: &str, payload: &Value, max_layers: u32) -> Result<Self, RenderError> {
+        let fields = payload
+            .variant_fields()
+            .ok_or_else(|| RenderError::Backend(format!("`{source}` is not a texture payload")))?;
+        let number = |name: &str| {
+            fields
+                .get(name)
+                .and_then(Value::as_int)
+                .ok_or_else(|| RenderError::Backend(format!("the texture `{source}` needs a `{name}`")))
+        };
+        // A size of zero is rounded up rather than refused, as it always has been: a
+        // document asking for no pixels is asking for a very small image, and a backend
+        // cannot be given a zero extent. A count of layers is a different question — see
+        // below — and is refused rather than rounded.
+        let width = number(WIDTH)?.max(1) as u32;
+        let height = number(HEIGHT)?.max(1) as u32;
+        let kind = BinderKind::from_tag(payload.variant_tag().unwrap_or_default());
+        let layers = if kind == Some(BinderKind::TextureArray) {
+            let declared = number(LAYERS)?;
+            if declared < 1 {
+                return Err(RenderError::Backend(format!(
+                    "the texture array `{source}` declares `layers` of {declared}, and a \
+                     texture has at least one layer. A count of zero names an image that \
+                     holds nothing, which is not a smaller texture but no texture at all."
+                )));
+            }
+            if declared > i64::from(max_layers) {
+                return Err(RenderError::Backend(format!(
+                    "the texture array `{source}` declares `layers` of {declared}, and this \
+                     device allows {max_layers} at most, which is the \
+                     `max_texture_array_layers` it was created with. A deeper pool is refused \
+                     rather than clamped, because a clamped one is a document that asked for \
+                     pages it does not have."
+                )));
+            }
+            declared as u32
+        } else {
+            1
+        };
+        Ok(Self {
+            width,
+            height,
+            layers,
+        })
+    }
+
+    /// Returns the descriptor this shape is created with.
+    ///
+    /// # Invariants
+    ///
+    /// Every texture in this binding model is created with the same usages, so the set
+    /// lives with the descriptor rather than at each call site: a texture is written by a
+    /// pass, read by a shader, and copied back for a frame, and a texture missing one of
+    /// those would be a texture the model cannot express rather than a document's choice.
+    pub fn descriptor<'a>(
+        &self,
+        label: &'a str,
+        format: wgpu::TextureFormat,
+        levels: u32,
+    ) -> wgpu::TextureDescriptor<'a> {
+        wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: self.layers,
+            },
+            mip_level_count: levels,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        }
+    }
+
+    /// Returns the view a shader reads the whole texture through, every layer included.
+    ///
+    /// # Invariants
+    ///
+    /// One layer is the *default* descriptor rather than a spelled out one, because the
+    /// default is a `D2` view of the single layer and a flat texture is exactly the
+    /// resource every document before a layer count existed described.
+    pub fn view_descriptor(&self) -> wgpu::TextureViewDescriptor<'_> {
+        if self.layers == 1 {
+            return wgpu::TextureViewDescriptor::default();
+        }
+        wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            base_array_layer: 0,
+            array_layer_count: Some(self.layers),
+            ..Default::default()
+        }
+    }
+
+    /// Returns the view of one layer, which is what a pass draws into.
+    ///
+    /// # Invariants
+    ///
+    /// A layer is drawn into as a flat image however deep the array is, because a render
+    /// pass attaches a two dimensional view and names no layer of its own: the layer is the
+    /// view, not an argument to the draw. Naming it in the view rather than in the
+    /// attachment is also what lets one cached texture serve every pass that writes a
+    /// different page of it.
+    pub fn layer_view_descriptor(&self, layer: u32) -> wgpu::TextureViewDescriptor<'_> {
+        wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2),
+            base_array_layer: layer,
+            array_layer_count: Some(1),
+            ..Default::default()
+        }
+    }
+
+    /// Returns the view dimension a shader must declare to read this shape.
+    pub fn view_dimension(&self) -> wgpu::TextureViewDimension {
+        if self.layers == 1 {
+            wgpu::TextureViewDimension::D2
+        } else {
+            wgpu::TextureViewDimension::D2Array
+        }
+    }
+
+    /// Checks that a pass may draw into this layer, and returns the index it may use.
+    ///
+    /// # Invariants
+    ///
+    /// A layer at or beyond the count is refused rather than clamped, for the same reason
+    /// the count itself is: a pass that drew into page four of a pool of four would write
+    /// the first page again, and the shadow it thinks it gave a light would be another
+    /// light's.
+    pub fn check_layer(
+        &self,
+        source: &str,
+        point: &str,
+        layer: i64,
+    ) -> Result<u32, RenderError> {
+        if layer < 0 || layer >= i64::from(self.layers) {
+            return Err(RenderError::Backend(format!(
+                "the pass renders into `{point}`, which names layer {layer} of the texture \
+                 array `{source}`, and that array has {} layers counted from zero.",
+                self.layers
+            )));
+        }
+        Ok(layer as u32)
     }
 }
 
@@ -311,9 +508,14 @@ impl Bindings {
                     Bound::Texture(texture) => wgpu::BindingType::Texture {
                         // A depth texture is sampled as depth, not as float: a shader
                         // that declares `texture_depth_2d` is bound to one, and a
-                        // float sample type would not match it.
+                        // float sample type would not match it. An array is bound as
+                        // depth too; the shape is the view dimension below.
                         sample_type: texture.sample_type(),
-                        view_dimension: wgpu::TextureViewDimension::D2,
+                        // The shape is the payload's own, so a flat texture is declared
+                        // flat and an array is declared as the array a shader reads with
+                        // `texture_depth_2d_array` and a `textureLoad` that takes a
+                        // layer.
+                        view_dimension: texture.view_dimension(),
                         multisampled: false,
                     },
                 },
@@ -603,7 +805,7 @@ impl WgpuRenderer {
                         buffers,
                     )?;
                 }
-                Some(BinderKind::Texture) => {
+                Some(BinderKind::Texture) | Some(BinderKind::TextureArray) => {
                     let texture = self.texture(declaration, instance, cache)?;
                     // A pass that renders into a texture cannot also read it: a backend
                     // treats an attachment as an exclusive use of it. The declaration is
@@ -772,25 +974,24 @@ impl WgpuRenderer {
         }
 
         let payload = declaration.bind(instance)?;
-        let fields = payload
+        // The shape is read before anything is created, and a layer count the device cannot
+        // build is refused here rather than reaching a driver, where the message would name
+        // neither the entry nor the limit.
+        let shape = TextureShape::read(&source, payload.value(), self.max_texture_array_layers())?;
+        let format = payload
             .value()
             .variant_fields()
-            .ok_or_else(|| RenderError::Backend(format!("`{source}` is not a texture payload")))?;
-        let number = |name: &str| {
-            fields.get(name).and_then(Value::as_int).ok_or_else(|| {
-                RenderError::Backend(format!("the texture `{source}` needs a `{name}`"))
-            })
-        };
-        let width = number(WIDTH)?.max(1) as u32;
-        let height = number(HEIGHT)?.max(1) as u32;
-        let format = fields.get(FORMAT).and_then(Value::as_str).ok_or_else(|| {
-            RenderError::Backend(format!("the texture `{source}` needs a `format`"))
-        })?;
+            .and_then(|fields| fields.get(FORMAT))
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                RenderError::Backend(format!("the texture `{source}` needs a `format`"))
+            })?;
         let format = WgpuRenderer::format_of(format)?;
 
         // The declaration decides whether there is a sampler; the payload decides how it
         // filters. A texture the payload does not call sampled is read with `textureLoad`
-        // and gets none, whatever its format is.
+        // and gets none, whatever its format is. An array is read the same way as the flat
+        // texture of the same format, with the layer as one more argument.
         let sampled = is_sampled(payload.value());
         if sampled && WgpuRenderer::is_depth_format(format) {
             return Err(RenderError::Backend(format!(
@@ -814,33 +1015,35 @@ impl WgpuRenderer {
         // level: a pass is about to write its base level, so a chain built here would be
         // stale, and silently wrong levels are worse than none.
         let data = field(payload.value(), DATA).and_then(bytes);
+        if data.is_some() && shape.layers > 1 {
+            return Err(RenderError::Backend(format!(
+                "the texture array `{source}` carries `data`. Filling a texture averages \
+                 neighbouring texels to make the next level down, and it cannot tell a layer \
+                 boundary from a row, so an array has no uploaded form here: a page pool is \
+                 written by passes and never read from the instance."
+            )));
+        }
         let levels = if data.is_some() {
-            levels_for(width, height)
+            levels_for(shape.width, shape.height)
         } else {
             1
         };
 
-        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(&source),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: levels,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
+        let texture = self
+            .device
+            .create_texture(&shape.descriptor(&source, format, levels));
         if let Some(data) = data {
-            self.fill_texture(&source, &texture, format, width, height, levels, data)?;
+            self.fill_texture(
+                &source,
+                &texture,
+                format,
+                shape.width,
+                shape.height,
+                levels,
+                data,
+            )?;
         }
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = texture.create_view(&shape.view_descriptor());
         let sampler = sampled.then(|| {
             let settings = SamplerSettings::read(payload.value());
             self.device.create_sampler(&wgpu::SamplerDescriptor {
@@ -860,13 +1063,25 @@ impl WgpuRenderer {
             format,
             texture: texture.clone(),
             view: view.clone(),
-            width,
-            height,
+            shape,
             sampler,
             attachment: false,
         };
         cache.0.insert(source, slot.clone());
         Ok(slot)
+    }
+
+    /// Returns the most layers a texture may have on this device.
+    ///
+    /// # Invariants
+    ///
+    /// The number is read from the device rather than written here, because it is a
+    /// property of what was asked for when the device was created: the floor this renderer
+    /// requests puts it at 256, and a renderer that asked for the adapter's own limits
+    /// would read a different number from this same line. A document is refused against
+    /// whatever the device in hand allows, which is the only number that means anything.
+    fn max_texture_array_layers(&self) -> u32 {
+        self.device.limits().max_texture_array_layers
     }
 
     /// Writes a texture's pixels, and the levels a box filter derives from them.

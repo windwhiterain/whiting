@@ -234,8 +234,8 @@ impl WgpuRenderer {
 
         Ok(colour.map(|entry| RenderedTarget {
             texture: entry.slot.texture.clone(),
-            width: entry.slot.width,
-            height: entry.slot.height,
+            width: entry.slot.shape.width,
+            height: entry.slot.shape.height,
         }))
     }
 
@@ -249,8 +249,8 @@ impl WgpuRenderer {
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(&format!("{label} multisample")),
             size: wgpu::Extent3d {
-                width: slot.width,
-                height: slot.height,
+                width: slot.shape.width,
+                height: slot.shape.height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,

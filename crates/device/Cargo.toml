@@ -55,3 +55,10 @@ required-features = ["wgpu"]
 [[test]]
 name = "texture_array_interface"
 required-features = ["wgpu"]
+
+# The shape a payload declares is arithmetic over a document and a limit, so what reaches
+# the descriptor, the view and the layout is checkable with no adapter. What a device then
+# does with those descriptors is not.
+[[test]]
+name = "texture_array_shape"
+required-features = ["wgpu"]
