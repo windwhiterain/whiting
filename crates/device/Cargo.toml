@@ -30,3 +30,10 @@ png = { workspace = true, optional = true }
 [[example]]
 name = "render"
 required-features = ["wgpu"]
+
+# The sampled texture channel is only meaningful against a real device: what it checks is
+# that a sampler reaches the gpu at the number the document implies, and that the pixels a
+# texture was uploaded with are the ones a shader reads back.
+[[test]]
+name = "texture_channel_render"
+required-features = ["wgpu"]

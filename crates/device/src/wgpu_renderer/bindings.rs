@@ -92,8 +92,6 @@ pub struct TextureSlot {
     /// once with the texture and cloned out of the cache on every later hit: one instance
     /// entry yields one sampler however many passes bind it.
     pub sampler: Option<wgpu::Sampler>,
-    /// How many levels of detail the texture holds.
-    pub levels: u32,
     /// Whether this slot is one of the pass's own render targets.
     ///
     /// An attachment is never sampled and is never filtered, so its sample type does not
@@ -619,7 +617,6 @@ impl WgpuRenderer {
             width,
             height,
             sampler,
-            levels,
             attachment: false,
         };
         cache.0.insert(source, slot.clone());
