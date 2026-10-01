@@ -664,12 +664,10 @@ Stated rather than left to be discovered:
     the fit, so the crop is a blunt instrument. The wet-ground reflection is a Fresnel
     stand-in rather than a reflection pass, which is why the ground is drawn as geometry
     instead of a clear colour.
-  - **The instance layout is not checked by the device.** Only the uniform is, against the
-    parsed shader. A shader that reads its instance row at the wrong locations gets no error,
-    and the gallery's shaders write their locations out in `shaders.rs` for exactly that
-    reason. This is the same gap the uniform check was built to close, one level down.
   - **No textures.** A mesh carries texcoords and a material carries a `tint`, but nothing
-    samples an image, because a binding carries a texture and no sampler.
+    samples an image, because a binding carries a texture and no sampler. This is the one
+    structural gap left between the pipeline and a photograph, and closing it means a binding
+    has to be able to name two resources — see [proposals/texture-channel.md](proposals/texture-channel.md).
 
 ### Invariants to keep
 
@@ -681,6 +679,18 @@ Stated rather than left to be discovered:
     fields into, and the device checks it against the parsed shader and will say so. It caught
     two real mistakes: a stage declaring a uniform its pass does not supply, and a struct
     written in the wrong order.
+  - **A shader's resources and its vertices are checked the same way, and by the same
+    parse.** The framework owns three numberings — the uniform's field offsets, the binding a
+    resource is at, and the location a vertex is read at — and it now derives the last two
+    and compares all three against the parsed shader. A shader that names a binding or a
+    location the pass did not lay out is a render error naming the pass, the shader's own
+    variable and both numbers, rather than a backend message about a view dimension that
+    names neither document. This closed a gap the gallery had been working around by
+    transcribing its own attribute list by hand: the transcription was unchecked, and a
+    transcription that is one field out draws nothing at all, or draws something wrongly.
+  - **The comparison is one-directional.** The shader is checked against the pass, never the
+    reverse: a layout may declare a binding no shader reads, which is legal and common, and
+    reporting it would make every shader that ignores a binding an error.
   - A surface body is written into the body of the lighting stage's fragment function, so it
     cannot redeclare a name the template or another surface already uses. A scene's helper
     functions go in the `helpers` argument, because `WGSL` has no nested functions.
