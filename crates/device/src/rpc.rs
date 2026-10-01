@@ -156,19 +156,37 @@ pub struct ReloadResponse {
     pub cross_checked: bool,
 }
 
-/// A rendered frame, returned as raw pixels.
+/// One rendered image, returned as raw texels.
+///
+/// # Invariants
+///
+/// The bytes are the format's own, so a float image arrives as floats and not as a picture of
+/// them: `format` is what says how to read them, and it is the name the graphics document
+/// declared rather than a name this surface invented.
+#[derive(Debug, Facet)]
+pub struct RenderOutput {
+    /// The name the graphics document declares the image under.
+    pub name: String,
+    /// The format the image was drawn in.
+    pub format: String,
+    /// Width in pixels.
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+    /// The texels, row major, with no padding between rows.
+    pub bytes: Vec<u8>,
+}
+
+/// Every image a render produced.
 #[derive(Debug, Facet)]
 pub struct RenderResponse {
-    /// Name of the renderer that produced the frame.
+    /// Name of the renderer that produced the images.
     pub renderer: String,
     /// Whether that renderer can produce real pixels.
     pub available: bool,
-    /// Frame width in pixels.
-    pub width: u32,
-    /// Frame height in pixels.
-    pub height: u32,
-    /// Red, green, blue and alpha bytes, row major.
-    pub rgba: Vec<u8>,
+    /// The images, in the order the graphics document declared them. The frame is the one named
+    /// `present`.
+    pub outputs: Vec<RenderOutput>,
 }
 
 /// A snapshot or restore target path.
@@ -365,9 +383,17 @@ async fn render(
     Ok(Json(RenderResponse {
         renderer: rendered.renderer.to_owned(),
         available: device.renderer().available(),
-        width: rendered.frame.width,
-        height: rendered.frame.height,
-        rgba: rendered.frame.rgba,
+        outputs: rendered
+            .images
+            .iter()
+            .map(|image| RenderOutput {
+                name: image.name.clone(),
+                format: image.format.clone(),
+                width: image.width,
+                height: image.height,
+                bytes: image.bytes.clone(),
+            })
+            .collect(),
     }))
 }
 

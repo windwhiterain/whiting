@@ -1757,6 +1757,7 @@ dependencies = [
  "facet",
  "facet-axum",
  "facet-json",
+ "half",
  "png",
  "thiserror",
  "tokio",

@@ -216,6 +216,7 @@
 
 pub mod camera;
 mod compiler;
+mod debug;
 mod emit;
 mod example;
 pub mod frame;
@@ -226,6 +227,7 @@ mod scene_schema;
 
 pub use camera::{Camera, DEFAULT_FIELD_OF_VIEW, Projection, ProjectionKind, projection_value};
 pub use compiler::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema};
+pub use debug::DebugChannel;
 pub use emit::{
     COLOR_TARGET_ENTRY, DEPTH_BUFFER_ENTRY, Emitted, FULLSCREEN_INSTANCE, FULLSCREEN_MESH,
     PRESENT_TARGET_ENTRY, Stage, emit,

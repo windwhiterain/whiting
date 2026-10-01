@@ -34,3 +34,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 wgpu = "30"
 thiserror = "2"
 png = "0.17"
+# Half floats, for reading back an `rgba16float` target: a debug image is a measurement and is
+# read as the float it was written as rather than as a byte. `wgpu` already depends on this
+# version, so the tree does not grow.
+half = "2"

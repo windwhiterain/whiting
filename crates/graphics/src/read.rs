@@ -7,7 +7,7 @@ use definition::{Path, Resolved, Value};
 
 use crate::binders::Declaration;
 use crate::pass::{BINDERS, CLEAR_COLOR, ENTRY_POINT, LABEL, SHADER, TARGETS, UNIFORM, WORKGROUP};
-use crate::{GraphicsError, PASSES_FIELD, malformed};
+use crate::{GraphicsError, OUTPUTS_FIELD, PASSES_FIELD, malformed};
 
 /// Which kind of pass a [`PassView`] is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,6 +160,62 @@ impl<'document> PassView<'document> {
     pub fn entry_point(&self) -> Result<&'document str, GraphicsError> {
         self.text(ENTRY_POINT)
     }
+}
+
+/// One image a graphics document says a render produces.
+///
+/// A name and the binding point a pass renders it into, which is what lets a caller ask for
+/// an image by what it *is* rather than by where it happens to be written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Output<'document> {
+    /// The name the image is looked up under. The frame is [`crate::PRESENT_OUTPUT`].
+    pub name: &'document str,
+    /// The binding point of a pass's `targets` that the image is written into.
+    pub point: &'document str,
+}
+
+/// Reads the images a graphics document says it produces.
+///
+/// # Invariants
+///
+/// An **absent** field is an empty list rather than an error, and it means what every document
+/// written before this field existed meant: the colour target of the last pass that wrote one is
+/// the frame. That default belongs to the renderer, because which target is a colour target is a
+/// question about the resolved payloads rather than about the document, so this reader answers
+/// only what the document actually declares.
+///
+/// Nothing here checks that some pass renders into a declared point. A point no pass targets is
+/// a document asking for an image nothing writes, and it is reported by the renderer that was
+/// asked to produce it, where the passes it did write are known.
+pub fn outputs(graphics: &Value) -> Result<Vec<Output<'_>>, GraphicsError> {
+    let path = Path::root().key(OUTPUTS_FIELD);
+    // The output map is a field of the document's own root, so it is a real borrow of the tree
+    // and never a value decoded out of a run. A root that carried a packed map could not answer
+    // with borrowed names, and a name has to be borrowed to be handed back.
+    let found = match graphics.at(&path) {
+        None => return Ok(Vec::new()),
+        Some(Resolved::Borrowed(value)) => value,
+        Some(Resolved::Owned(_)) => {
+            return Err(malformed(&path, OUTPUTS_FIELD, "a dict", None));
+        }
+    };
+    let Some(entries) = found.as_dict() else {
+        return Err(malformed(&path, OUTPUTS_FIELD, "a dict", Some(found)));
+    };
+
+    let mut outputs = Vec::with_capacity(entries.len());
+    for (name, value) in entries {
+        let Some(point) = value.as_str() else {
+            return Err(malformed(
+                &path.key(name),
+                OUTPUTS_FIELD,
+                "a binding point",
+                Some(value),
+            ));
+        };
+        outputs.push(Output { name, point });
+    }
+    Ok(outputs)
 }
 
 /// Reads every pass out of a graphics document, in execution order.

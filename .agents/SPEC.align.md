@@ -463,6 +463,19 @@ graphics computation, as data.
   `ValidationError`. It is a distinct `BindingError` raised by the renderer when it
   builds a pass. `Graphics` and `GraphicsInstance` can each validate against their
   own schema and still fail to bind.
+- `outputs`: an optional `Dict` of the graphics root, mapping the **name** a caller looks an
+  image up under to the **binding point** a pass renders it into. The frame is the one named
+  `present`.
+  - **decision**: a document declares what it produces, rather than the renderer inferring it
+    from pass order. The rule it replaces — the colour target of the last pass that wrote one —
+    is a convention about position in a list, and any pass appended after the last one would
+    silently become the frame. This is the same position the project takes everywhere else: a
+    valid document that produces a result nobody asked for is the failure worth spending a field
+    to remove.
+  - **invariant**: an **absent** field is the old rule, so no document written before the field
+    existed changes meaning, and a document that declares an output some pass does not write is
+    an error rather than an image quietly missing from the result. See
+    [proposals/agent-debug-scenes.md](proposals/agent-debug-scenes.md).
 
 ### `device` crate
 
@@ -473,8 +486,17 @@ a server that can hot reload `Graphics`, `GraphicsInstance`, incrementally apply
   to disk on demand. There is no filesystem watcher.
 - `Renderer`: a trait the hot-reload path depends on, so the gpu backend is an
   injection point.
-  - `fn render(&self, graphics: &Value, instance: &Value) -> Result<Frame>`
+  - `fn render_outputs(&self, graphics: &Value, instance: &Value) -> Result<Vec<RenderedImage>>`:
+    every image the document declares, each in the format its target was drawn in.
+  - `fn render(&self, graphics: &Value, instance: &Value) -> Result<Frame>`: a provided
+    convenience returning the image declared as `present`, over the **same** execution, so a
+    caller that wants the picture and a caller that wants a debug image do not run the pass list
+    twice.
   - `fn available(&self) -> bool`
+  - `RenderedImage`: a name, the format a document spells, and the texels. `Frame` stays the
+    eight bit RGBA image a png is made of; an image whose values are **read** is a different
+    type from one that is looked at, and quantising a position into eight bits a channel would
+    answer which region a pixel is in rather than where it is.
 - `WgpuRenderer`: executes `Rasterize` and `Compute` passes headlessly and reads the
   framebuffer back. Behind the optional `wgpu` feature.
   - a rasterize pass binds one shader for both stages, because a pass has one `shader`
@@ -482,9 +504,15 @@ a server that can hot reload `Graphics`, `GraphicsInstance`, incrementally apply
     mean. The two entry points are `vertex_main` and `fragment_main`: WGSL has one
     namespace for functions, so a shader cannot name both `main`.
   - every pass runs in the order the document lists them, into textures shared by the
-    instance entry they come from, and what comes back is the colour target of the last
-    pass that drew into one. A pass whose targets are all depth formats has no image, and a
-    document with no colour pass reports that rather than returning a placeholder.
+    instance entry they come from, and what comes back is what the document **declares** —
+    each named output read back in its own format. A document that declares nothing is answered
+    by the old rule, the colour target of the last pass that wrote one, named `present`; a
+    declared output no pass wrote is refused rather than dropped from the list, and a document
+    with no colour pass reports that rather than returning a placeholder.
+  - the bytes copied back are the **format's** own: eight byte texels are read as eight byte
+    texels, and a float image is decoded to `f32` rather than handed over as raw bytes. A
+    readback that assumed four bytes would ask the backend for a copy narrower than the texels
+    it is copying, which the backend refuses rather than truncates.
   - a target is cleared by the first pass that writes it and loaded by the rest, or the
     second pass into a shared target would erase the first pass's contribution.
   - the device is created with an error handler and drains it into the render result, so a
@@ -556,6 +584,28 @@ incremental compile.
   - the scene document: a `name`, a list of `cameras`, a list of `lights`, a list of `shaders`,
     a list of `meshes`, a list of `mesh_materials`, a list of `screen_materials`, a list of
     `post_processes`, and the `instances` bucketed by pass.
+  - `DebugChannel`: an extra image the pipeline can be asked to draw, and **not** a field of the
+    scene document: a channel is a question the *caller* is asking rather than a fact about the
+    scene, so it travels as `StandardScene::with_debug`, beside the camera, which is the other
+    input a compile has that the scene does not express by itself.
+    - enum of: `Position` — the world position of the nearest surface each pixel shows, and none
+      where it shows none.
+    - **decision**: the image is a **float** target (`rgba16float`), not a position normalized
+      into eight bits with a key to decode it. The numbers a caller reads are then the answer,
+      and there is no encoding for a caller to get wrong.
+    - **invariant**: every channel writes a target of its own, so asking for one cannot move a
+      pixel of the picture. Verified by rendering: `studio` and `tidewater` produce byte for byte
+      identical frames with a channel and without.
+    - **invariant**: a channel covers **what the `depthing` bucket drew**, because a position is
+      recovered from the depth buffer. A scene whose lit stages draw an instance its `depthing`
+      bucket does not has pixels no channel will name a position for, and a scene with no
+      `depthing` instance gets a compiler note rather than an empty image with no explanation.
+    - **why reconstructed from depth**: a depth buffer for the frame already exists and every
+      post stage already binds it, so a channel is one fullscreen pass with no second geometry
+      pass and no change to any material. A channel that cannot be answered this way — a normal,
+      an identifier — needs a G-buffer, which is a change to the graphics schema and the
+      renderer rather than a channel. See
+      [proposals/agent-debug-scenes.md](proposals/agent-debug-scenes.md).
     - `Light`: an enum of the kinds of light, because what a light is is its kind rather
       than a field it may or may not have.
       - `Point`: `label`, `position`, `color`, `intensity`, `radius`,
