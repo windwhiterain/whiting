@@ -38,16 +38,17 @@ const FRAME: u32 = 64;
 
 /// The binding the sampler takes when the payload declares `sampled`.
 ///
-/// The pass declares five binders, and which of them reach the shader is decided by their
-/// usage rather than by their names: `frame` is the pass's target, `row` and `triangle`
-/// carry an instance or vertex usage so they become vertex buffers, and `padding` and
-/// `sampled_image` are the two bound resources, in name order. The image is therefore at two
-/// and its sampler at three.
+/// The pass declares five binders, and what each of them becomes is decided by its usage
+/// rather than by its name: `row` and `triangle` carry an instance or vertex usage so they
+/// become vertex buffers and take no binding number, and `frame`, `padding` and
+/// `sampled_image` take one each in name order. `frame` is the pass's target, so it takes a
+/// number with no entry behind it, which is what the numbering rule says: the image is at
+/// three and its sampler at four.
 ///
 /// Worth a comment rather than being worked out at the call site, because it is the whole
 /// point of the numbering: a buffer's usage decides whether it reaches the shader at all, so
 /// a shader's number depends on something other than the declaration list.
-const SAMPLER_BINDING: u32 = 3;
+const SAMPLER_BINDING: u32 = 4;
 
 /// The bytes three two dimensional points of three floats each occupy.
 const TRIANGLE_BYTES: i64 = 3 * 3 * 4;
@@ -221,9 +222,9 @@ fn a_shader_that_names_the_wrong_binding_is_reported_as_that() {
         println!("{NO_ADAPTER}");
         return;
     };
-    // The sampler is declared at binding one, where the pass bound the buffer the shader does
-    // not read. A wrong numbering rule is meant to arrive here, as a message naming the pass
-    // and the shader's own variable, rather than as a backend error naming a view dimension.
+    // The sampler is declared where the pass bound the buffer the shader does not read. A
+    // wrong numbering rule is meant to arrive here, as a message naming the pass and the
+    // shader's own variable, rather than as a backend error naming a view dimension.
     let stage = Stage::sampling(PADDING_BINDING);
     let failure = renderer
         .render(
@@ -233,7 +234,7 @@ fn a_shader_that_names_the_wrong_binding_is_reported_as_that() {
         .expect_err("a shader reading the wrong binding is refused");
     let message = failure.to_string();
     assert!(
-        message.contains("binding 1"),
+        message.contains(&format!("binding {PADDING_BINDING}")),
         "the message names the number: {message}"
     );
     assert!(
@@ -456,11 +457,12 @@ fn shader(source: &str) -> Value {
 
 /// The binding the bound buffer the shader does not read takes.
 ///
-/// `padding` precedes `sampled_image` in name order, so it is the first bound resource.
-const PADDING_BINDING: u32 = 1;
+/// `frame` precedes `padding` in name order and is the pass's target, so the target takes
+/// binding one with no entry behind it and `padding` takes two.
+const PADDING_BINDING: u32 = 2;
 
 /// The binding the image itself takes, which does not move between the cases.
-const IMAGE_BINDING: u32 = 2;
+const IMAGE_BINDING: u32 = 3;
 
 /// Builds the wgsl of the test shader.
 ///

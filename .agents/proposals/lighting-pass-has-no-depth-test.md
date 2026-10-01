@@ -1,5 +1,13 @@
 # The lighting pass is not depth tested, and every piece of it except the attachment says it should be
 
+**Landed on `feature/depth-test`, on top of `main` at `7aeaae9`.** This is now the record of the
+defect and of the change that fixed it, in the shape
+[photographic-scenes.md](photographic-scenes.md) has. Two things the change turned up are not in
+the proposal below and are recorded here: the **emission pass had the identical defect** (the
+proposal was written before the emission stage existed as its own stage, and the same
+`lighting_state()` is on the pass that adds what a surface emits), and the **`raster.rs` check**
+the last section asks for is implemented.
+
 A depth prepass runs for every gallery scene, writes a depth buffer, and the shading stage never
 reads it. Nothing in the renderer reports this, and the resulting images look like a deliberate
 style until a scene puts a saturated surface in front of a brightly lit one.
@@ -35,16 +43,17 @@ and then not finished.
   either field.
 - **The WGSL template reserves the binding.** `lighting_bindings` in `crates/gallery/src/shaders.rs`
   opens with `cluster_light_counts`, `cluster_light_indices`, and then an **empty placeholder**
-  whose comment reads: *"The depth buffer is next in name order, so it takes binding three. The
-  pass binds it because a fragment is tested against it and no fragment here reads it, so it has
-  no line of WGSL: the empty name is the number it consumes and nothing else."* The template is
-  written for a pass that is depth tested.
+  whose comment read: *"The depth buffer is next in name order, so it takes binding three. The
+  pass binds it because a fragment is tested against it and no fragment here reads it, so it
+  has no line of WGSL: the empty name is the number it consumes and nothing else."* The template
+  was written for a pass that is depth tested. That placeholder is not there any more, and the
+  reason is change 2 below.
 - **The prepass is emitted and paid for.** Every scene runs one depthing pass per group into
   `DEPTH_BUFFER` at full cost, and the result is never sampled.
 
-## What it looks like
+## What it looked like
 
-Rendered on this machine, with the gallery as it stands:
+Rendered on this machine, with the gallery as it stood:
 
 - `dunes` — the dark foreground boxes are drawn **additively over** the lit sand with no depth
   test, so the dune is visible straight through them. They read as translucent panels.
@@ -72,7 +81,7 @@ horizon and washed out below it, which is additive blending over a bright backgr
 a depth failure: if depth were rejecting fragments, intensity would not change the shape of the
 object.
 
-## Why the one line fix does not work
+## Why naming the target alone did not work
 
 Adding `DEPTH_BUFFER` to the lighting pass's targets is the obvious change and it is **wrong on
 its own**, because it produces a different failure:
@@ -84,42 +93,84 @@ dimensional texture, and this pass binds a buffer there.
 
 `WgpuRenderer::bind_pass` routes a texture that is one of the pass's targets into
 `bindings.targets` and **not** into `bindings.bound` (`bindings.rs`), while `binding_numbers`
-numbers only `bound`. Making the depth buffer a target therefore removes it from the numbering
-and every binder after it moves down one — straight into the slot the template reserved for it.
+numbered only `bound`. Making the depth buffer a target therefore removed it from the numbering
+and every binder after it moved down one — straight into the slot the template reserved for it.
 
-The fix is two coupled changes:
+## The fix, as it landed
 
-1. `lighting_pass` names `DEPTH_BUFFER` among its targets, so an attachment exists and wgpu builds
-   the depth state the pass already declares.
-2. `binding_numbers` gives a target the same number it would have had as a bound resource, so a
-   resource that is both bound and written keeps its place. This is the device's numbering rule
-   changing, and it moves the binding number of **every** resource in **every** pass: shadowing,
-   depthing, lighting and post. Every WGSL template reserves numbers in the same name order, so
-   all of them move together and the two sides stay in agreement — but the whole gallery is
-   re-rendered and re-baselined as a result, and the change is better reviewed on its own.
+Four changes, and the first is the one that mattered:
 
-## What landing it will change
+1. `binding_numbers` numbers a pass's **binding points**, not its bound resources. Every
+   declaration that is not a vertex or instance buffer takes the next number in name order,
+   whether the pass binds it or renders into it; a point the pass renders into takes its number
+   and emits no layout entry, so the numbering has holes exactly where a pass draws into one of
+   its own declarations. `Bindings` carries the order it numbered, recorded by the same
+   operation that files a resource under `vertices`, `bound` or `attachments`, so the two cannot
+   disagree. **A pass's `targets` is therefore no longer an input to any shader's numbering**,
+   which is the property whose absence made this defect possible at all: naming the depth buffer
+   as a target now moves no number in any pass.
+2. `lighting_pass` names `DEPTH_BUFFER` among its targets, so an attachment exists and wgpu
+   builds the depth state the pass already declares. `emission_pass` names it too.
+3. Every hand-written shader whose numbers moved: `lighting_bindings` and the emission template
+   (`crates/gallery/src/shaders.rs`), `QUAD_SOURCE` (`crates/scene/src/standard/example.rs`),
+   and the `texture_channel_render` test's three constants.
+4. `raster.rs` refuses to build a pass whose document declares a `depth` state and whose targets
+   resolve to no depth texture, which is the check the last section asks for.
 
-Occlusion starts working, so:
+## What landing it changed
 
-- `dunes` stops being transparent and the sand stops showing through the boxes.
-- `spotlight` stops washing out; the boxes become solid and the cone shaped shadows they cast
-  become the thing the scene is for.
-- Every scene gets correct mutual occlusion, which may expose **new** problems that were
-  invisible while nothing occluded anything: shadow acne where a surface shadows itself, missing
-  shadows where a caster is outside the prepass, and geometry that was relying on additive
-  overdraw to be visible at all.
+Measured on the adapter: every gallery scene rendered before and after, one frame each at the
+scene's own time, compared channel by channel over all four channels of the png.
 
-That last list is the reason this is a proposal and not a change. Turning occlusion on is a
-correctness fix whose blast radius is every image the renderer produces, and the first render
-after it should be expected to need work rather than to be a clean win.
+| scene | mean absolute difference | largest difference | channels differing by 8 or more |
+| --- | --- | --- | --- |
+| `dunes` | 0.010 | 85 | 0.02% |
+| `lanterns` | 1.850 | 195 | 2.79% |
+| `monoliths` | 0.552 | 191 | 0.73% |
+| `spotlight` | 2.682 | 136 | 5.98% |
+| `stilllife` | 4.879 | 200 | 8.54% |
+| `studio` | 0.000 | 0 | 0.00% |
+| `sunlight` | 3.680 | 142 | 8.10% |
+| `terraces` | 0.392 | 151 | 1.26% |
+| `tidewater`, wide camera | 11.160 | 198 | 46.38% |
+| `tidewater`, long lens | 7.197 | 196 | 30.00% |
+| `tiles` | 0.000 | 0 | 0.00% |
 
-## The one line that would have caught it
+`studio` and `tiles` are **byte identical**. That is the measurement that says the renumbering is
+faithful rather than merely plausible: change 1 moves every binding number in every pass, and
+both scenes still produce exactly the frame they produced before. `tiles` is the useful one of
+the two, because its surface detail comes from a **sampled image**, so the image at binding
+three and its sampler at four are exercised and land where the template says.
+
+The five scenes that changed are the five with surfaces that were being added over other
+surfaces:
+
+- `spotlight` is the proposal's own case and it is fixed: the boxes are solid, the far interior
+  wall is gone, and the cone-shaped shadows the scene was built for are the thing in the frame.
+- `lanterns` and `sunlight` stop being transparent in the same way: a lantern's near face no
+  longer has its own far face added under it, and the boxes of `sunlight` are solids with their
+  cast shadows intact.
+- `tidewater` changes the most, and this is the one finding that is **not** fixed by the change:
+  the near bank (or the water plane in front of it) was previously drawn additively over the
+  water, and it now occludes it as a hard-edged dark tongue covering the lower left of the wide
+  frame. This is the scene's own loose end — the one the still life proposal already recorded as
+  *"the near bank reads as a sandbar rather than as the corner it was placed to be"* — and it is
+  the shape a scene takes when it has been relying on additive overdraw to be visible at all.
+  It needs a scene-level look, not a framework one.
+- No shadow acne, no missing shadow and no self-shadowing artifact was visible in any of the ten
+  frames, which is the other half of what the proposal expected to need work.
+
+## The check that would have caught it
 
 Nothing in the emitter can assert that a pass which declares a depth state has a depth
 attachment, because the two are built in different crates from different inputs. A check in
-`raster.rs` that refuses to build a pipeline whose `state.depth` is present while no depth
-attachment was resolved would have turned this into an error at the first scene rather than a
-style choice nobody questioned. The `check_resources` machinery already exists for exactly this
-class of disagreement between what a pass declares and what it is built from, and this is the
-same class: a declaration that nothing honours.
+`raster.rs` that refuses to build a pipeline whose depth state is declared while no depth
+attachment was resolved turns this into an error at the first scene rather than a style choice
+nobody questioned. The `check_resources` machinery already exists for exactly this class of
+disagreement between what a pass declares and what it is built from, and this is the same class:
+a declaration that nothing honours.
+
+It is implemented, and it reads the pass's own `depth` field rather than the state
+`PipelineState::read` returns, because the reader fills an absent field in with the defaults —
+`write: true`, `compare: Less` — and the question the check asks is whether the *document*
+declared a state, not what the state defaults to.
