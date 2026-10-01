@@ -564,6 +564,24 @@ difference, and three defects surfaced underneath them.
 
   - `math::perspective` and `math::perspective_of` sit beside the orthographic path, which
     remains and is what a camera asks for by name.
+  - **A scene may name the `frame` it is drawn into.** The frame used to be a constant of the
+    pipeline — 1024 square, for the shaded image, the present target and the depth buffer
+    alike — and that was a fact about the pipeline rather than about the picture. A valley
+    drawn into a square is cropped at the sides, and the same valley drawn wide keeps the
+    ridges that were outside it.
+    - **a scene that names no frame is drawn into the one it was always drawn into.** Both
+      fields are optional and both default to the square, so every scene that existed before
+      a frame was a field draws the frame it always drew.
+    - a dimension of zero or less is the default as well: a texture a backend cannot
+      allocate is a render that cannot happen, and a compile error about a pixel count is
+      not a useful one.
+    - the three images are the size of the frame **together**, because a post stage reads the
+      shaded image and the depth that produced it and writes the present target, and a
+      sample of one read at the coordinates of another is a frame of the wrong picture rather
+      than a wrong picture.
+    - the frame is read before the camera, because the field of view is widened by its
+      aspect. **A wide frame is wider rather than cropped**, which is the rule the camera
+      already followed and the reason a scene can now choose one.
   - A scene carries an optional `camera` of `eye`, `target`, `up`, `field_of_view`,
     `projection` and `padding`. **A scene with no camera is drawn by the convention it was
     always drawn by** — parallel, dead ahead, framing everything that is drawn — so every
