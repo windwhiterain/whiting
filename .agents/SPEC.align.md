@@ -568,6 +568,24 @@ difference, and three defects surfaced underneath them.
     `projection` and `padding`. **A scene with no camera is drawn by the convention it was
     always drawn by** — parallel, dead ahead, framing everything that is drawn — so every
     scene that existed before a camera existed still draws as it did.
+  - **A camera may also name `near` and `far`, and then it is drawn from the eye it wrote.**
+    Fitting is the right default for a diagram, where the whole scene has to be in frame by
+    definition; it is the wrong one for a landscape, where the subject is a view and the
+    extent of the ground decides nothing about where a photographer stood. A camera on a
+    hillside looking down a valley cannot have its viewpoint pulled back until the valley
+    fits a lens.
+    - **the two are read as a pair or not at all.** What a projection needs is where the
+      depth range starts and ends, and a near plane on its own is a number with nothing to
+      be measured against.
+    - **a camera that names neither is fitted exactly as before.** The corner-based bracket
+      for the fitted path is unchanged, so a scene that says nothing about its depth planes
+      draws byte for byte what it drew before either field existed.
+    - the `Projection` carries the two planes, and a post pass receives them as
+      `depth_range`. Turning a depth back into a distance divides by a quantity the stage is
+      not otherwise given, and `WGSL` cannot recover it for the same reason it cannot invert
+      the matrix the camera's basis stands in for. The post template gained
+      `distance_to(depth)` for it, and a stage that walks through air along a ray divides the
+      result by `dot(ray, forward)`.
   - `time` is a field of the scene, on every pass uniform. A render is a pure function of
     the documents and that one number, so a frame taken at `t = 2.5` is reproduced by
     rendering the same documents at `t = 2.5` again.
