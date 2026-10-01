@@ -294,6 +294,7 @@ struct Projection {
 
 struct Uniforms {
     cluster_grid: vec4<f32>,
+    environment: vec4<f32>,
     frame_size: vec2<f32>,
     projection: Projection,
     time: f32,
@@ -310,11 +311,23 @@ struct LightRecord {
     shadow_projection: mat4x4<f32>,
 };
 
+/// One light's cone. Two vectors of four because a `WGSL` `array<T>` in a storage buffer lays
+/// its elements out at `roundUp(align_of_T, size_of_T)`, and a struct holding a vector is
+/// aligned to sixteen: a `vec3` and two `f32` are twenty bytes packed and thirty two to a
+/// shader. A light that is not a spot light carries two equal cosines, which is the whole
+/// sphere, so the same loop reads a point light and a spot light without a branch on the kind.
+struct SpotCone {
+    axis: vec4<f32>,
+    limits: vec4<f32>,
+};
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> cluster_light_counts: array<f32>;
 @group(0) @binding(2) var<storage, read> cluster_light_indices: array<f32>;
-@group(0) @binding(4) var<storage, read> light_records: array<LightRecord>;
-@group(0) @binding(5) var shadow_pool: texture_depth_2d_array;
+@group(0) @binding(4) var environment_map: texture_2d<f32>;
+@group(0) @binding(5) var<storage, read> light_records: array<LightRecord>;
+@group(0) @binding(6) var shadow_pool: texture_depth_2d_array;
+@group(0) @binding(7) var<storage, read> spot_cones: array<SpotCone>;
 
 struct Vertex {
     @builtin(position) position: vec4<f32>,
@@ -413,6 +426,82 @@ fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) ->
     return lit / 9.0;
 }
 
+/// Returns the texel of the environment map a direction falls in, at one level.
+/// Returns how much of this light reaches a surface in the given direction, which is the unit
+/// vector from the light towards the surface.
+///
+/// The two limits are cosines of the cone's half angles, so the comparison is against a dot
+/// product and needs no inverse cosine. Two equal cosines are the whole sphere, which is what a
+/// light that is not a spot light carries — and that case is tested first, so the answer does
+/// not rest on the cosine of a half turn being exactly minus one.
+fn cone_attenuation(cone: SpotCone, to_surface: vec3<f32>) -> f32 {
+    let inner = cone.limits.x;
+    let outer = cone.limits.y;
+    if inner <= outer {
+        return 1.0;
+    }
+    let facing = dot(to_surface, cone.axis.xyz);
+    if facing <= outer {
+        return 0.0;
+    }
+    if facing >= inner {
+        return 1.0;
+    }
+    return (facing - outer) / (inner - outer);
+}
+
+/// Returns the texel of the environment map a direction falls in, at one level.
+///
+/// This is the same octahedral fold the gallery's lighting template uses, and it is written
+/// out again here because this example has to compile without the gallery: `scene` is the
+/// crate below it and a dependency that way is a cycle. The gallery template is the full
+/// version and the one to read; what is repeated here is the two halves that are easy to get
+/// wrong — the fold is a seam, so the read is a `textureLoad` at a computed texel rather than
+/// a filtered one, and the texel is clamped into the image because a direction on the square's
+/// edge computes a coordinate of exactly its size.
+fn octahedral(direction: vec3<f32>, level: i32) -> vec2<i32> {
+    var planar = direction.xy / max(
+        abs(direction.x) + abs(direction.y) + abs(direction.z),
+        1e-8,
+    );
+    if direction.z < 0.0 {
+        let folded = vec2<f32>(1.0) - abs(planar.yx);
+        planar = vec2<f32>(
+            select(-folded.x, folded.x, planar.x >= 0.0),
+            select(-folded.y, folded.y, planar.y >= 0.0),
+        );
+    }
+    let uv = vec2<f32>(planar.x * 0.5 + 0.5, 0.5 - planar.y * 0.5);
+    let extent = vec2<i32>(textureDimensions(environment_map, level));
+    return clamp(
+        vec2<i32>(uv * vec2<f32>(extent)),
+        vec2<i32>(0),
+        extent - vec2<i32>(1),
+    );
+}
+
+/// Returns what a surface facing this normal receives from the environment.
+///
+/// One ambient term, fed by the scene's environment when it names one and by the two colour
+/// hemisphere when it does not, and chosen on the uniform's flag rather than on the colour that
+/// was sampled: a scene naming no environment binds a **black** map, so a shader that decided
+/// on the colour could not tell no environment from a black one.
+fn environment_radiance(normal: vec3<f32>, roughness: f32) -> vec3<f32> {
+    if uniforms.environment.w < 0.5 {
+        return mix(
+            vec3<f32>(0.014, 0.017, 0.026),
+            vec3<f32>(0.055, 0.072, 0.110),
+            normal.y * 0.5 + 0.5,
+        );
+    }
+    // The level is the roughness scaled by the chain the map actually has and clamped into it,
+    // so a roughness of one lands on the last level rather than one past the end of it.
+    let levels = i32(textureNumLevels(environment_map));
+    let level = clamp(i32(roughness * f32(levels - 1)), 0, levels - 1);
+    return textureLoad(environment_map, octahedral(normal, level), level).rgb
+        * uniforms.environment.rgb;
+}
+
 @fragment
 fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {
     let normal = normalize(in.normal);
@@ -421,11 +510,17 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {
     let row = cluster * u32(uniforms.cluster_grid.w);
     var color = vec3<f32>(0.0);
     for (var slot = 0u; slot < count; slot = slot + 1u) {
-        let light = light_records[u32(cluster_light_indices[row + slot])];
+        let index = u32(cluster_light_indices[row + slot]);
+        let light = light_records[index];
         let to_light = light.position - in.world_position;
         let lambert = max(dot(normal, normalize(to_light)), 0.0);
-        color = color + light.color * lambert * shadowed(light, in.world_position, normal);
+        color = color + light.color * lambert * cone_attenuation(spot_cones[index], -normalize(to_light))
+            * shadowed(light, in.world_position, normal);
     }
+    // One ambient term, added once whatever the cluster holds, and the material's own tint
+    // still reaching it: a term that stopped multiplying by the tint would be a material that
+    // had stopped responding to its own colour.
+    color = color + environment_radiance(normal, 0.5);
     return vec4<f32>(color.r, color.g, color.b, 1.0);
 }
 "#;

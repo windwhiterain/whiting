@@ -20,12 +20,13 @@
 //!   render dunes out/dunes 0 6 0.1  --video   the same range, as an mp4
 //! ```
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use gallery::Gallery;
 use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
-use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
+use scene::{CompileContext, CompileNote, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
 use whiting_device::{RenderedFrame, Renderer, WgpuRenderer};
 
 /// Field the scene's time is written under.
@@ -86,6 +87,10 @@ async fn run() -> Result<(), String> {
     // cameras is compiled and drawn twice; a scene naming none is drawn once, by the stated
     // convention, exactly as it always was.
     let cameras = camera_count(&authored);
+    // The notes already reported, so that one fact about the documents is said once rather than
+    // once per image of a range. See `print_notes` for why that is not the same as one per
+    // compile.
+    let mut reported = HashSet::new();
     for camera in 0..cameras {
         let mut moments = Vec::with_capacity(request.times.len());
         let mut previous: Option<Compiled> = None;
@@ -116,16 +121,11 @@ async fn run() -> Result<(), String> {
                 .map_err(|error| format!("the scene does not compile: {error}"))?;
             let compiled_at = started.elapsed();
 
-            // What the compiler learned and could not refuse on. A note is not an error: a
-            // scene lit less than it was drawn still renders, and the render is wrong in a way
-            // nobody sees until the frame is looked at. A host that keeps the field to itself
-            // is a host that hands over a wrong image without a word, so it is printed here —
-            // once per camera, because the notes are about the view that camera compiles.
-            if camera == 0 {
-                for note in &compiled.notes {
-                    println!("note at {}: {}", note.path, note.message);
-                }
-            }
+            // The notes are printed **here**, at the compile that produced them, rather than
+            // beside the writing of the images below. A note is a fact about this compile, and
+            // a note printed once per image would be printed once per image of a range for a
+            // fact that was established on the first one.
+            print_notes(&mut reported, &compiled.notes, camera, cameras);
 
             let frame = renderer
                 .render(&compiled.graphics.value, &compiled.instance.value)
@@ -186,6 +186,54 @@ async fn run() -> Result<(), String> {
         write_moments(&target, &moments)?;
     }
     Ok(())
+}
+
+/// Prints what a compile wants the author of the documents to know about it, once each.
+///
+/// # Invariants
+///
+/// The **path** is printed with the message, and it is the half that makes a note worth
+/// reading: a note that says the page pool ran out is actionable only if it says which field
+/// of which block to raise. They go to the standard output beside the timing line rather than
+/// to the standard error, because a note is part of what the run reported rather than a
+/// failure of it — the frame this compile produced is still on its way to disk.
+///
+/// Nothing is printed for a compile with no notes, so a scene that compiles exactly as written
+/// says nothing at all.
+///
+/// # Why a note is printed once and not once per compile
+///
+/// A compile happens per camera **and** per moment, so a run over a ten moment animation makes
+/// ten compiles per camera. Cluster assignment depends on the camera and not on the moment, so
+/// those ten compiles produce the same notes, and printing each of them says the same sentence
+/// ten times. Deduping on the path and the message together removes that without losing
+/// anything: a note that is **new** at a later moment is still printed, at the compile that
+/// first raised it.
+///
+/// The camera is in the line whenever a scene names more than one, because two cameras
+/// genuinely can differ — a cluster overflow is a statement about what that camera can see, so
+/// suppressing the second camera's overflow on the grounds that it is "the same note" would
+/// lose a real one. The dedup key deliberately does not include it.
+fn print_notes(
+    reported: &mut HashSet<(String, String)>,
+    notes: &[CompileNote],
+    camera: usize,
+    cameras: usize,
+) {
+    for note in notes {
+        if reported.insert((note.path.to_string(), note.message.clone())) {
+            println!(
+                "note{}: at {}: {}",
+                if cameras > 1 {
+                    format!(" (camera {camera})")
+                } else {
+                    String::new()
+                },
+                note.path,
+                note.message,
+            );
+        }
+    }
 }
 
 /// Inserts a suffix before a path's extension.

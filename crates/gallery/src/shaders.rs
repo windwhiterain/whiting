@@ -61,15 +61,21 @@ struct Uniforms {
 /// The uniform the clustered lighting stage reads.
 ///
 /// The fields are in the order the interface schema sorts them into, which is by name:
-/// `cluster_grid`, `frame_size`, `projection`, `time`. The order is not cosmetic — a three
-/// component vector is padded to sixteen bytes, so a field written second starts at sixteen
-/// either way, and a struct written in any other order puts the wrong thing there.
+/// `cluster_grid`, `environment`, `frame_size`, `projection`, `time`. The order is not
+/// cosmetic — a three component vector is padded to sixteen bytes, so a field written second
+/// starts at sixteen either way, and a struct written in any other order puts the wrong thing
+/// there.
 ///
 /// **Nothing here names a light.** The four per light fields this struct used to carry — the
 /// light's position, its colour, its own projection and the size of its shadow map's texel —
 /// are a field of the light's *record*, read from a storage buffer per light inside the
 /// loop. That is the whole change: a uniform is sixteen kilobytes, which cannot hold a
 /// thousand light records however they are packed.
+///
+/// `environment` is the one light this struct does carry, and it is a light rather than a
+/// record because it is not one of the clustered kind at all: it stands nowhere, it takes no
+/// cluster slot, and every fragment reads the same one. Three components are its colour scaled
+/// by its intensity and the fourth says whether the scene named it.
 const LIGHTING_UNIFORM: &str = r#"
 struct Projection {
     position: vec3<f32>,
@@ -78,6 +84,7 @@ struct Projection {
 
 struct Uniforms {
     cluster_grid: vec4<f32>,
+    environment: vec4<f32>,
     frame_size: vec2<f32>,
     projection: Projection,
     time: f32,
@@ -96,6 +103,22 @@ struct LightRecord {
     position: vec3<f32>,
     radius: f32,
     shadow_projection: mat4x4<f32>,
+};
+
+/// One light's cone, as the clustered loop reads it out of the cone buffer.
+///
+/// # Why this is two vectors of four and not a direction and two angles
+///
+/// A `WGSL` `array<T>` in a storage buffer lays its elements out at
+/// `roundUp(align_of_T, size_of_T)`, and a struct holding a vector is aligned to sixteen
+/// bytes. A struct of a `vec3` and two `f32` is twenty bytes packed and **thirty two** to a
+/// shader, so a shader reading the compiler's tightly packed run would read the second light's
+/// direction as the first light's outer angle. Thirty two bytes is the smallest record that is
+/// a whole number of sixteen byte blocks, and these two vectors are thirty two — which is the
+/// same argument the light record above makes about its own ninety six.
+struct SpotCone {
+    axis: vec4<f32>,
+    limits: vec4<f32>,
 };
 "#;
 
@@ -292,12 +315,25 @@ fn lighting_bindings(image: bool) -> String {
         ("", "", ""),
     ];
     let mut number = 1;
+    // The environment map is bound by every lighting pass, including one whose scene names no
+    // `Environment` light — the pass then binds a one texel black map and the uniform's flag
+    // is zero. It is bound unconditionally for the same reason the list is in name order: a
+    // binding that came and went with the document would move every number after it, so a
+    // shader would have to be written for one scene and not for another.
+    resources.push(("environment_map", "", "texture_2d<f32>"));
     if image {
         resources.push(("image", "", "texture_2d<f32>"));
         resources.push(("image_sampler", "", "sampler"));
     }
     resources.push(("light_records", "<storage, read>", "array<LightRecord>"));
     resources.push(("shadow_pool", "", "texture_depth_2d_array"));
+    // The cone buffer is bound by every lighting pass, including one whose scene names no
+    // `Spot` light — the pass then binds a single whole sphere that no cluster points at.
+    // Bound unconditionally for the same reason the environment map is above: a binding that
+    // came and went with the document would move every number after it, so a shader would
+    // have to be written for one scene and not for another. A scene with no spot light reads
+    // nothing, so the bandwidth is zero and the only cost is a bound buffer.
+    resources.push(("spot_cones", "<storage, read>", "array<SpotCone>"));
 
     let mut declarations = String::new();
     for (source, access, ty) in resources {
@@ -437,6 +473,170 @@ fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) ->
 }}
 
 {helpers}
+/// Returns how much of this light reaches a surface in the given direction.
+///
+/// `to_surface` is the unit vector **from the light towards the surface**, which is the
+/// negative of the one the loop already has: the cone's axis is the way the light shines, and
+/// a surface in front of the light is in front of it along that axis, not behind it.
+///
+/// # Why the limits are cosines
+///
+/// The number being compared is a dot product, so the two numbers compared against it are
+/// cosines of the two half angles, and the falloff needs no inverse cosine to find the angle it
+/// is at. The ramp between them is a straight line in the cosine, which is a curve in the angle
+/// — and which curve it is belongs to the author, who picks it by where the two angles are.
+/// A cone with the two cosines equal is the whole sphere, and that is what a light that is not
+/// a spot light carries.
+///
+/// # Why the degenerate case is tested first
+///
+/// A cone with no range is a light with no cone, and it is recognised by the two limits being
+/// equal rather than by either of them having a particular value. That is deliberate: the
+/// whole sphere is written as a half turn, and whether the cosine of a half turn is exactly
+/// minus one is a fact about rounding that this answer should not rest on. Tested second, the
+/// single direction exactly opposite a point light would be *outside* a cone whose outer cosine
+/// came out a rounding above minus one, and one unlit texel on a sphere is a bug rather than a
+/// detail.
+fn cone_attenuation(cone: SpotCone, to_surface: vec3<f32>) -> f32 {{
+    let inner = cone.limits.x;
+    let outer = cone.limits.y;
+    if inner <= outer {{
+        return 1.0;
+    }}
+    // The cosine of the angle between the light's axis and the surface. Beyond the outer
+    // cosine the surface is outside the cone and gets nothing at all; short of the inner one it
+    // is inside the full strength region and gets all of it.
+    let facing = dot(to_surface, cone.axis.xyz);
+    if facing <= outer {{
+        return 0.0;
+    }}
+    if facing >= inner {{
+        return 1.0;
+    }}
+    return (facing - outer) / (inner - outer);
+}}
+
+/// Returns the texel of the environment map a direction falls in, at one level.
+///
+/// # Why a two dimensional octahedral map
+///
+/// A cube map is the usual container for a direction, and this renderer's interface check
+/// already has a shape for one — but it can only **recognise** a cube a shader declares.
+/// Nothing here can build one: the device's texture shape answers `D2` or `D2Array` and there
+/// is no third answer, so a cube would need a payload variant, a view descriptor, a layout
+/// entry and a six face upload before a shader could name one, and a prefiltered specular
+/// cube on top of that.
+///
+/// A two dimensional octahedral map folds the sphere into a square instead. That needs
+/// nothing this device does not already do — one uploaded image is one flat texture with a
+/// box filtered level chain behind it — and the chain is what makes roughness free: a rough
+/// surface wants a blurrier environment, and a blurrier environment is the next level down.
+///
+/// The convention the map is authored to, which a scene needs to know to draw one: the
+/// **centre** of the square is the world's `+z` direction, the **top** row is `+y`, and the
+/// four edges are the seams the fold puts there.
+///
+/// # Why the fold is read at a texel and not through a sampler
+///
+/// The fold is a seam, and the two sides of it are as far apart in direction as the map is
+/// wide. A filtered read across one blends a texel from each side, which is a direction
+/// averaged with the direction almost opposite it, so the seam shows as a dark or a bright
+/// line that no amount of resolution removes. `textureLoad` at a texel computed here takes
+/// exactly one texel, so the only question left is whether that texel is inside the image.
+///
+/// Which is the second half of the bug this shape has to get right: a direction **on** the
+/// square's edge gives a coordinate of exactly the map's size, and the first texel past the
+/// end is a row of the next line of memory or a fault, depending on the backend. The answer
+/// at a seam is continuous — the two texels either side of it face almost the same direction
+/// — so clamping the coordinate to the last texel is not a rounding of the answer, it *is*
+/// the answer.
+fn octahedral(direction: vec3<f32>, level: i32) -> vec2<i32> {{
+    // The octahedron's own projection, divided by the sum of the magnitudes so that the whole
+    // sphere lands in the square rather than in a disc inscribed in it. The divisor is floored
+    // away from zero because a zero direction has no direction to place, and the origin of the
+    // square is a legal answer for it.
+    var planar = direction.xy / max(
+        abs(direction.x) + abs(direction.y) + abs(direction.z),
+        1e-8,
+    );
+    // The half of the sphere behind the centre is mirrored back into the square, and that
+    // mirror is the entire fold: four triangles folded onto the one the front covers. The sign
+    // is taken as it is rather than as `sign`, because `sign(0.0)` is zero in WGSL and a zero
+    // component has to land on the positive edge of the square, not on its middle.
+    if direction.z < 0.0 {{
+        let folded = vec2<f32>(1.0) - abs(planar.yx);
+        planar = vec2<f32>(
+            select(-folded.x, folded.x, planar.x >= 0.0),
+            select(-folded.y, folded.y, planar.y >= 0.0),
+        );
+    }}
+    // A square's `+y` is the map's top, and an image's rows run down, so the vertical half of
+    // the mapping is flipped. The horizontal half is not: `+x` is the map's right, which is
+    // where an image's columns run too.
+    let uv = vec2<f32>(planar.x * 0.5 + 0.5, 0.5 - planar.y * 0.5);
+    // The map's own size **at this level**, not the size of level zero. A coarse level of a
+    // 256 texel map is four texels across, and indexing it with the level zero size reads four
+    // times past the end of it.
+    let extent = vec2<i32>(textureDimensions(environment_map, level));
+    // Truncated rather than rounded, so a coordinate is the texel whose square contains it
+    // rather than the nearest one, and clamped to the last texel on each axis because of the
+    // seam. The coordinate is never negative — `uv` is a square — and the clamp says so rather
+    // than leaving it to the arithmetic.
+    return clamp(
+        vec2<i32>(uv * vec2<f32>(extent)),
+        vec2<i32>(0),
+        extent - vec2<i32>(1),
+    );
+}}
+
+/// Returns what a surface facing this normal receives from the environment.
+///
+/// # The environment replaces the stand-in, and the flag is what says so
+///
+/// There is **one** ambient term in this shader, and what feeds it is the scene's environment
+/// when the scene names an `Environment` light and the two colour hemisphere when it does not.
+/// Not both: a scene that named an environment and also had the hemisphere under it would be
+/// counting an author's environment twice and adding a sky of this renderer's own that the
+/// author had no way to turn off, which is exactly what the hemisphere was — a stand-in for
+/// something the shader could not yet read.
+///
+/// The choice is made on `uniforms.environment.w` and on nothing else. A scene naming no
+/// environment binds a one texel **black** map, so a shader that decided on the colour it
+/// sampled could not tell "there is no environment" from "the environment is black", and a
+/// frame's darkness would be a property of a texture rather than of a decision anybody made.
+///
+/// # Why the level is the roughness, and why it is clamped
+///
+/// A rough surface wants a blurrier environment, and the map's level chain is already blurred
+/// — the device derives every level from the one above by a box filter, averaging in linear
+/// light. So the level is the roughness scaled by the chain and clamped into it. The clamp is
+/// what decides the question of whether a document can ask for something impossible: a
+/// roughness of one maps to the **last** level rather than one past it, so the top of the
+/// range is the top of the chain and no material is refused for wanting a blurer environment
+/// than the map has.
+///
+/// The stand-in is returned unchanged, from the same two colours it has always been mixed
+/// from, so a scene that names no environment light renders byte for byte what it rendered
+/// before this stage. The tint and the metalness are applied by the caller and not here, and
+/// that is deliberate: they are the material's own, and a term that stopped multiplying by
+/// them would be a material that had stopped responding to its own colour.
+fn environment_radiance(normal: vec3<f32>, roughness: f32) -> vec3<f32> {{
+    if uniforms.environment.w < 0.5 {{
+        return mix(
+            vec3<f32>(0.014, 0.017, 0.026),
+            vec3<f32>(0.055, 0.072, 0.110),
+            normal.y * 0.5 + 0.5,
+        );
+    }}
+    // How many levels the map **has**, read rather than written: the chain is the device's to
+    // build and it is a function of the image's size, so a number written here would be right
+    // for one map and past the end of another.
+    let levels = i32(textureNumLevels(environment_map));
+    let level = clamp(i32(roughness * f32(levels - 1)), 0, levels - 1);
+    return textureLoad(environment_map, octahedral(normal, level), level).rgb
+        * uniforms.environment.rgb;
+}}
+
 struct Vertex {{
     @builtin(position) position: vec4<f32>,
     @location(0) world_position: vec3<f32>,
@@ -538,11 +738,21 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
 
     var color = vec3<f32>(0.0);
     for (var slot = 0u; slot < count; slot = slot + 1u) {{
-        let light = light_records[u32(cluster_light_indices[row + slot])];
+        // One index into both runs: the record and the cone are packed in the same order, so
+        // a light's cone is the same number away as the light itself.
+        let index = u32(cluster_light_indices[row + slot]);
+        let light = light_records[index];
+        let cone = spot_cones[index];
         let to_light = light.position - in.world_position;
         let light_range = max(length(to_light), 0.0001);
         let direction = to_light / light_range;
-        let lit = shadowed(light, in.world_position, normal);
+        // The cone is an **extra** attenuation, not a replacement for the culling that put
+        // this light in this cluster at all: a light outside the cone is already absent from
+        // the list by its radius, and a light inside the radius but outside the cone is here
+        // and scaled to nothing. A light that is not a spot light carries the whole sphere and
+        // is scaled by exactly one, so a point light's arithmetic is unchanged.
+        let lit = shadowed(light, in.world_position, normal)
+            * cone_attenuation(cone, -direction);
 
         // A point light falls off with the square of its distance. The constants are the
         // gentlest that still read as a falloff over a scene a couple of hundred units
@@ -560,16 +770,22 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
         color = color + fresnel * specular * radiance * 3.0;
     }}
 
-    // A hemisphere of ambient light, brighter from above, which stands in for the
-    // environment a surface would otherwise have nothing to reflect. It is added **once**,
-    // whatever the cluster holds, because it is not one light's contribution: while the
-    // stage ran once per light this term was inside the loop and a scene of three lights
-    // added it three times, which is a bug the clustered pass happens to fix.
-    let sky = mix(
-        vec3<f32>(0.014, 0.017, 0.026),
-        vec3<f32>(0.055, 0.072, 0.110),
-        normal.y * 0.5 + 0.5,
-    );
+    // **The ambient term, and what feeds it.** It is added **once**, whatever the cluster
+    // holds, because it is not one light's contribution: while the stage ran once per light
+    // this term was inside the loop and a scene of three lights added it three times, which is
+    // a bug the clustered pass happens to fix.
+    //
+    // `environment_radiance` is the whole of what is decided about the source, and the
+    // decision is spelled out there: the scene's own environment map when it names an
+    // `Environment` light, the two colour hemisphere that stood in for one when it does not,
+    // and never both.
+    //
+    // The multiplication that follows is unchanged and is the reason it is here rather than
+    // inside that function. The tint and the metalness are the **material's own**, the same
+    // two the cluster loop uses, and a term that had stopped reaching them would be a
+    // material that had stopped responding to its own colour — which is a regression nobody
+    // asked for and the one thing this stage must not do.
+    let sky = environment_radiance(normal, roughness);
     let ambient = sky * mix(vec3<f32>(1.0), in.tint, metallic);
     color = color + ambient * diffuse_color;
     // What the surface emits is not added here either, for the same reason: the lighting
@@ -643,6 +859,141 @@ pub fn tile_pixels(size: i64) -> Vec<u8> {
                 value,
                 (value as f64 * 0.85) as u8,
                 (value as f64 * 0.7) as u8,
+                255,
+            ]);
+        }
+    }
+    pixels
+}
+
+/// Returns the direction one texel of an octahedral map stands for.
+///
+/// # Invariants
+///
+/// This is the shader's fold **run backwards**, and it is written out here rather than shared
+/// with it because the two live in different languages and because a generator that used the
+/// shader's own arithmetic would agree with a fold that is wrong. A test that builds a map this
+/// way and samples it with the shader proves the two are inverses, which is the only property
+/// that matters and the one neither can check alone.
+///
+/// The overshoot is subtracted along each axis' own sign rather than reflected. Reflection is
+/// what a reader would reach for, and it is the wrong one: it sends the point through the
+/// origin and out the other side, which is why a decode written that way and an encode written
+/// this way are not inverses.
+fn octahedral_direction(column: i64, row: i64, size: i64) -> [f64; 3] {
+    // The texel's place in the square, in the units the fold works in: minus one to one, with
+    // the image's first row at the **top**, which is the mirror of the shader's own mapping and
+    // is why the vertical half is negated here.
+    let planar = [
+        (column as f64 + 0.5) / size as f64 * 2.0 - 1.0,
+        1.0 - (row as f64 + 0.5) / size as f64 * 2.0,
+    ];
+    // The front of the sphere is the triangle the square's interior covers, and its height
+    // above the centre plane is what is left of the square after the two coordinates have
+    // taken their share.
+    let depth = 1.0 - planar[0].abs() - planar[1].abs();
+    // Outside that triangle — the four corners of the square — the point is behind, and the
+    // fold brings it back by pulling each coordinate in by however far past the edge it went.
+    let overshoot = if depth < 0.0 { -depth } else { 0.0 };
+    let folded = [
+        planar[0]
+            - if planar[0] >= 0.0 {
+                overshoot
+            } else {
+                -overshoot
+            },
+        planar[1]
+            - if planar[1] >= 0.0 {
+                overshoot
+            } else {
+                -overshoot
+            },
+    ];
+    let length = (folded[0] * folded[0] + folded[1] * folded[1] + depth * depth).sqrt();
+    [folded[0] / length, folded[1] / length, depth / length]
+}
+
+/// Returns an octahedral environment map as pixels, four bytes a texel, top row first.
+///
+/// # What the map is
+///
+/// A **sky above and a ground below**, and nothing else: the value of a texel is a function of
+/// the direction it stands for, and only of that direction's height, so the top row of the
+/// square is as bright as it goes and the bottom row is as dark as it goes. That is the whole
+/// point of generating it this way rather than drawing a gradient by hand — a hand drawn
+/// gradient is bright at the top and dark at the bottom *as an image*, which is a claim about
+/// rows, whereas this is a claim about directions, and the two differ by exactly the fold the
+/// shader has to get right.
+///
+/// The middle row of the square is the seam, and it is the half of the map the other half is
+/// folded onto, so it holds the horizon **twice**: once for the direction just above it and once
+/// for the direction just below. A generator that could not produce that row could not be
+/// testing the fold.
+pub fn octahedral_pixels(size: i64) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity((size * size * 4) as usize);
+    for row in 0..size {
+        for column in 0..size {
+            let direction = octahedral_direction(column, row, size);
+            // A number in zero to one from the direction's height, and nothing else: no noise,
+            // no colour, no detail. A map with detail in it would make a blurrier level and a
+            // sharper one differ for a reason that has nothing to do with which one was read.
+            let height = (direction[1] * 0.5 + 0.5).clamp(0.0, 1.0);
+            let value = (height * 255.0).round() as u8;
+            pixels.extend_from_slice(&[value, value, value, 255]);
+        }
+    }
+    pixels
+}
+
+/// The colours a [`sunset_pixels`] map is mixed from, as they appear in the map.
+///
+/// They are a function of the direction's **height** and not of where the sun is, which is what
+/// makes a map a scene can write without a rotation: the horizon runs the whole way round the
+/// square, so a warm band at the horizon is warm in every direction and needs nothing placed.
+const ZENITH: [f64; 3] = [0.20, 0.30, 0.52];
+const HORIZON: [f64; 3] = [0.92, 0.52, 0.26];
+const GROUND: [f64; 3] = [0.16, 0.12, 0.12];
+
+/// Returns a sunset environment map as pixels, four bytes a texel, top row first.
+///
+/// # What the map is, and why it is not a hemisphere
+///
+/// A cold dim zenith, a warm and much brighter band along the horizon, and a dark warm ground
+/// below it. The band is the part that matters: it is **brighter than the zenith**, so the
+/// brightest thing in this environment is not overhead. The two colour hemisphere it replaces
+/// is darkest overhead and brightest at the zenith, so a frame lit by this map and a frame lit
+/// by the stand-in differ in more than brightness — they differ in which way is bright, and a
+/// surface tilted towards the horizon picks up more light than one tilted at the sky.
+///
+/// The colours are mixed by a curve over the direction's height rather than written per texel,
+/// so the map is a function of directions and survives the fold: the four corners of the square
+/// hold the horizon too, and they hold it because of the arithmetic rather than because anybody
+/// drew a corner.
+pub fn sunset_pixels(size: i64) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity((size * size * 4) as usize);
+    for row in 0..size {
+        for column in 0..size {
+            let height = octahedral_direction(column, row, size)[1];
+            // Below the horizon is the ground, which is not black: a real one is lit by the sky
+            // above it, and a black underside is the thing that makes a render look like it was
+            // drawn rather than lit.
+            let colour = if height < 0.0 {
+                GROUND
+            } else {
+                // A band that peaks at the horizon and falls away towards the zenith. The curve
+                // is a squared falloff rather than a linear one because a linear one puts half
+                // the range at the zenith, which is the shape the hemisphere already has.
+                let toward_horizon = (1.0 - height).powi(2);
+                [
+                    ZENITH[0] + (HORIZON[0] - ZENITH[0]) * toward_horizon,
+                    ZENITH[1] + (HORIZON[1] - ZENITH[1]) * toward_horizon,
+                    ZENITH[2] + (HORIZON[2] - ZENITH[2]) * toward_horizon,
+                ]
+            };
+            pixels.extend_from_slice(&[
+                (colour[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (colour[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (colour[2].clamp(0.0, 1.0) * 255.0).round() as u8,
                 255,
             ]);
         }

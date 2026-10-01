@@ -1,10 +1,17 @@
-# A still life, and the six things the framework could not say while drawing one
+# A still life, and the things the framework could not say while drawing one
 
 `stilllife` is a lake's opposite: the first gallery scene whose subject is **light on
-material** rather than geometry, and the first that is lit by something the pipeline does not
-have. Building it found one defect that makes any scene's occlusion a matter of luck, one that
-made the first four frames look like a tile floor, and four gaps that cost the picture
-something a still life cannot do without.
+material** rather than geometry, and the first that is lit by something the pipeline did not
+have when it was begun. Building it found a second sighting of a defect that makes any scene's
+occlusion a matter of luck, one gap that made the first four frames look like a tile floor, and
+four more that cost the picture something a still life cannot do without.
+
+**This was written against `b998f89` and corrected after merging `main` at `cf125c4`.** The
+lighting effort's checkpoints 4, 5 and 6 landed in between and brought `Spot`, `Directional`
+and `Environment` lights, an octahedral environment map, and the printer for
+`CompileOutput.notes`. Two of the findings below were written before that and are **corrected in
+place**, marked where they stand: the framework gained, during this stretch, exactly what items
+3, 5 and 6 said it lacked. What the scene predates, and what is still true, is stated in each.
 
 Everything below was measured on the adapter. The scene is
 [`crates/gallery/src/stilllife.rs`](../../crates/gallery/src/stilllife.rs), the harness is
@@ -17,90 +24,43 @@ and the frame is 1536 by 1024, nine window lights and two fills, 105 passes, abo
 
 ---
 
-## 1. The lighting stage does not test depth, and says that it does
+## 1. The lighting stage does not test depth: a second sighting, and a measurement
 
-**This is a defect and not a gap.** An occluded surface is not discarded in the lighting
-stage; it is **added** to whatever is in front of it. Which surface wins a pixel is decided by
-the order the passes and the instances happen to be drawn in, and the order is an artefact of
-how a scene lists its instances.
+> **Already recorded, and better, by the lighting effort**:
+> [lighting-pass-has-no-depth-test.md](lighting-pass-has-no-depth-test.md), found from the
+> `spotlight` scene. That proposal has the mechanism, the three places the design says the
+> opposite, the two coupled changes a fix needs, and what turning occlusion on would do to every
+> image the renderer produces. **Nothing here should be read as a second claim**, and the
+> mechanism is not repeated. What this scene adds is an independent confirmation from a different
+> pipeline stage and a measurement that is the cleanest form of the same fact.
 
-### The evidence
+### Why it is worth a second entry
 
-The emitter gives a lighting pass a depth *state* and not a depth *target*
-([`emit.rs`](../../crates/scene/src/standard/emit.rs), `lighting_state`):
-
-```rust
-// "The comparison is `LessEqual` and the pass does not write. A depth prepass records the
-//  depth of every opaque fragment, and a later pass drawing the *same* geometry lands on
-//  exactly those depths ..."
-(depth, {write: false, compare: LessEqual})
-```
-
-but the pass it builds names one target, and it is the colour one:
-`rasterize(..., vec![COLOR_TARGET], ...)`. The depth buffer is instead **bound as a sampled
-texture** — it is the binding the gallery's shader leaves a deliberate gap for.
-
-The device builds a pipeline's depth-stencil state **only** from a depth-format *attachment*
-among the pass's targets ([`raster.rs`](../../crates/device/src/wgpu_renderer/raster.rs)):
-
-```rust
-let depth = attachments.iter().find(|entry| entry.depth);   // from bindings.targets
-depth_stencil: depth.map(|entry| wgpu::DepthStencilState { .. })
-```
-
-With an instrumented `run_rasterize` the two kinds of pass print this:
-
-```text
-depth/depthing/bowl    targets ["depth_buffer"] depth attachment true   compare Less       write true
-lighting/ceramic/jug   targets ["color_target"] depth attachment false  depth stencil false  compare LessEqual  write false
-```
-
-So on the lighting passes the declared state is inert: the render pass has no depth attachment
-and the pipeline has no depth-stencil state. (The depth prepass itself is real — it writes the
-buffer, and the post stage reads it, which is what the defocus needs. Nothing is wasted; the
-shader that *claims* to test it simply never does.)
+The two sightings were made independently, on different scenes, in the same week, and neither
+session knew about the other's. That is worth recording: this is not one scene's oddity, it is a
+trap the next author will fall into as well. The lighting effort found it in a scene whose
+*purpose* is a shadow.
 
 ### The measurement
 
-One frame's pixels are not enough to see it, because a scene's instance order usually happens
-to agree with its depth order. The measurement that cannot be explained away is **the same
-mesh, in the same pass, twice, 0.3 m apart along the camera's own line of sight**, the far one
-drawn after the near one:
+A frame's pixels are not enough to see the defect, because a scene's instance order usually
+happens to agree with its depth order — which is why this scene rendered eighteen times before
+anything looked wrong. The measurement that cannot be explained away is **the same mesh, in the
+same pass, twice, 0.3 m apart along the camera's own line of sight**, the far one drawn after
+the near one:
 
 | frame | the near jug's belly, red channel |
 | --- | --- |
 | one jug | 66 |
 | two jugs | **201** |
 
-A `LessEqual` test rejects the far one and leaves the pixel alone. It went up by a factor of
-three: the far jug was added. Over the whole frame 6.5% of the pixels change, by up to 453 of
-765.
+A `LessEqual` test rejects the far one and leaves the pixel alone. It rose by a factor of three:
+the far jug was added. Across the frame 6.5% of the pixels change, by up to 453 of 765.
 
-**Why the gallery never noticed.** Every earlier scene is either a field of small separated
-objects (`dunes`, `tiles`), a set of boxes at clearly different depths (`lanterns`,
-`monoliths`), or a landscape whose instance order happens to run near-to-far. The defect is
-invisible until two surfaces *overlap on screen* and the order disagrees. It is also why the
-ceramics of this frame are so bright and flat: every closed pot is drawn with its own far inner
-wall added under its near wall. Removing the jug's inside changes 0.3% of the frame — the mouth
-only, which is the one place the inside is legitimately seen.
-
-### What to do about it, in increasing order of usefulness
-
-- **Refuse it.** A pass that declares a depth state and names no depth target is a document
-  that cannot mean what it says. Refusing it in `graphics::pass` turns a silent wrong frame
-  into a compile error, and costs nothing.
-- **Attach and do not bind.** The lighting pass names `depth_buffer` among its **targets** and
-  drops it from its binders. wgpu forbids one texture being sampled and attached in the same
-  pass, so the two cannot both stay; the pass does not read the buffer, so the binding is doing
-  nothing but holding a binding number. The consequence is that everything numbered after it
-  moves down by one, so `lighting_bindings` in the gallery loses its deliberate gap and
-  `light_record`/`shadow_pool` move from 4/5 to 3/4. That is the whole change, and it is the
-  one that makes the renderer mean what its own comments say.
-- **A depth-only pass per group** would also work and costs a pass per group, which is the
-  wrong direction in an effort that has been removing passes.
-
-**Decided: recorded, not built.** The superior's ruling on this stretch is that the framework
-is not edited here, and `.worktrees/lighting` owns the emitter.
+The same fact, stated in a way that matters for a still life: **a closed pot is drawn with its
+own far inner wall added under its near wall**, which is why the ceramics of this frame are
+bright and flat and why nothing has any modelling to it. Removing the jug's inside changes 0.3%
+of the frame — its mouth, the one place the inside is legitimately seen.
 
 ---
 
@@ -152,28 +112,39 @@ is a cluster whose box does not describe the view.
 
 ---
 
-## 3. There is no environment, and a still life is mostly environment
+## 3. There was no environment, and a still life is mostly environment
+
+> **Corrected after the merge.** This was written when the pipeline had no environment at all,
+> and it does now: checkpoint 4/5 carries an `Environment` light — one per scene, an image the
+> scene generates, sampled as a two dimensional octahedral map — and the lighting stage's
+> ambient term is `environment_radiance(normal, roughness)`, which reads that map when a scene
+> names one and falls back to the two-colour hemisphere when it does not. **This scene predates
+> it and still hand-writes its room.** What follows is therefore not a request but a record of
+> what the workaround cost, and the comparison it makes available.
 
 A still life is what things show of one another: the window in a glaze, the table in the
-underside of a bowl, the wall in a jug, the room in a spoon. The pipeline has no image based
-lighting, no probe and no environment light — `read_lights` refuses `Environment` — so this
+underside of a bowl, the wall in a jug, the room in a spoon. With no environment to name, this
 scene **writes the room as a function**, `room_environment`, and every surface body samples it.
 That is the honest workaround and it produced the best thing in the frame: the brass spoon is a
 dark object with the window burning along it, which is what a metal in a dark room is.
 
-Two consequences are worth recording because they are not obvious from inside the scene:
+What the workaround costs, and what an `Environment` light would have bought:
 
 - **A reflection's radiance and the lights' irradiance share no scale.** The window's radiance
-  is `26` in the environment function and the window's lights put out `11` of irradiance
-  between them; nothing derives either from the other, and the ratio between them is a number
-  the author picked. A glaze shows four percent of the first and all of the second, so the
-  picture's highlights are as bright as the author's guess. With one environment per scene this
-  is a tuning problem; with the `Environment` light of the lighting effort's stage 5 it
-  would be a physical one, because the same number would light the scene and appear in it.
-- **The room's light is not the stage's ambient.** See finding 6.
+  is written as `11` in the environment function and the window's lights put out `11` of
+  irradiance between them, and nothing derives either from the other. A glaze shows four percent
+  of the first and all of the second, so the frame's highlights are as bright as the author's
+  guess. An `Environment` light is a *light*: the same number that lights the scene appears in
+  it, which is the whole reason it is a kind and not a field.
+- **The room's light and the stage's ambient were two things to keep in step.** See finding 6.
+- **One environment per scene, from one image, is exactly the shape this scene wants** — a dark
+  room with one bright rectangle in it. The scene's function is that image; the image is the
+  function's four constants plus a fold.
 
-`Environment` is lighting stage 5 and is untouched. This scene is evidence for what it is for
-rather than a request to move it up.
+**Still owed here:** migrating `stilllife` onto an `Environment` light, which is mechanical
+(`room_environment` becomes a generator of octahedral pixels using the same folding the shader
+uses, and the bodies call `environment_radiance` instead) and needs a re-tune of the exposure,
+because the ambient stops being the scene's to choose.
 
 ---
 
@@ -197,12 +168,18 @@ picture has the falloff it needs. Two notes:
 
 ---
 
-## 5. A window is thirty-five point lights, and an area light is what a still life is lit by
+## 5. A window is nine scattered point lights, and a window is what a still life is lit by
 
-The pipeline has `Point`, `Spot`, `Directional` and `Environment` in its schema and emits only
-`Point`. To get the light a still life actually has, this scene stands **nine point lights in
-the window's opening**, scattered inside their own cells rather than set on a lattice. What
-that buys and what it costs:
+> **Corrected after the merge.** The kinds are no longer the gap. When this stretch began the
+> emitter refused everything but `Point`; it now emits `Spot`, `Directional` and `Environment`.
+> What none of the four kinds is, and what a still life is actually lit by, is a **rectangle** —
+> an area light with a shape and a size. So the nine scattered point lights stay, and so do
+> their consequences.
+
+The pipeline has `Point`, `Spot`, `Directional` and `Environment`, and not one of them has an
+extent. To get the light a still life actually has, this scene stands **nine point lights in the
+window's opening**, scattered inside their own cells rather than set on a lattice. What that
+buys and what it costs:
 
 | bought | cost |
 | --- | --- |
@@ -212,7 +189,9 @@ that buys and what it costs:
 
 The number of lights is therefore a *composition* decision — how many steps a soft edge is
 allowed — and it belongs in the same class as the cluster grid. A `SoftLight` with a rectangle,
-a couple of samples and one pass is what this picture would use if the pipeline had one.
+a couple of samples and one pass is what this picture would use if the pipeline had one; a
+`Spot` is closer than a `Point` in that it has an axis, and it is the wrong axis — a cone cannot
+be a window.
 
 **The 3×3 kernel and the 1.6-unit normal offset are literals in the gallery's shader**
 ([`shaders.rs`](../../crates/gallery/src/shaders.rs), `shadowed`). The offset is a *world*
@@ -222,10 +201,14 @@ thousandth of the gallery's size would have to change a number it cannot reach.
 
 ---
 
-## 6. The ambient is a fixed hemisphere of sky, and a body can only add to it
+## 6. With no environment named, the ambient is a fixed hemisphere of sky, and a body can only add to it
 
-The lighting stage adds `mix(vec3(0.014, 0.017, 0.026), vec3(0.055, 0.072, 0.110), normal.y)`
-before a surface body runs. Outdoors that is a decent stand-in for the sky. **Indoors it is the
+> **Corrected after the merge.** The design is now the right one: the hemisphere is a **stand-in
+> that steps aside**, and a scene that names an `Environment` light gets its own environment in
+> that term instead. What is left of the finding is what happens to a scene that names none —
+> which is every gallery scene except `spotlight` — and the one line of apology such a body owes.
+
+The lighting stage adds `environment_radiance(normal, roughness)` before a surface body runs. Outdoors that is a decent stand-in for the sky. **Indoors it is the
 wrong colour, the wrong size and the wrong shape** — a room's ambient is warm and comes off the
 table, and a blue-grey floor of light under every shadow side is the difference between a
 still life and a diagram.
@@ -237,12 +220,11 @@ it and put the room's own in:
 color = color - ambient * diffuse_color + room_bounce(in.world_position, normal) * diffuse_color;
 ```
 
-That is a scene reaching around the model to undo something the model did — the same phrase the
-previous effort used for the specular, and the same shape of problem. Measured across the
-frame: 15% of the pixels move by more than two of 255, the largest by 60. It is a small change
-and it is the right one, but the fact that every body in the scene carries that line is the
-finding. **A material field saying "the ambient is mine" is what it wants**, and it belongs
-with the environment of finding 3 rather than beside it.
+Measured across the frame: 15% of the pixels move by more than two of 255, the largest by 60. It
+is a small change and it is the right one, but the fact that six surface bodies each carry that
+line is the finding — a scene reaching around the model to undo something the model did, the
+same phrase the previous effort used for the specular. **Naming an `Environment` light removes
+the need for it entirely**, which is why that migration is the first thing this scene owes.
 
 ---
 
@@ -279,12 +261,12 @@ until the table is in frame, which is the one composition a still life cannot ha
 
 | item | state |
 | --- | --- |
-| the lighting stage does not test depth | **recorded, not built** — proposal only, by ruling |
+| the lighting stage does not test depth | **recorded by the lighting effort**; this scene is a second sighting with a measurement, not built |
 | the cluster grid loses lights on a wide depth range | worked around in the scene (tight planes); the cause is recorded |
-| no environment | the scene writes its own room; `Environment` is stage 5's |
+| no environment | **superseded during the stretch** by the `Environment` light; the scene still hand-writes its room, and the migration is owed |
 | the falloff is absolute | worked around (the scene is 100 units across); recorded |
-| no area light | worked around (nine scattered point lights); recorded |
-| the sky ambient indoors | corrected in every surface body, at the cost of a line per body |
+| no area light | worked around (nine scattered point lights); `Spot`, `Directional` and `Environment` landed during the stretch, and a *rectangle* is still not a kind |
+| the sky ambient indoors | corrected in every surface body; an `Environment` light removes the need for the correction |
 | no tone mapping or exposure field | the post stage, in one pass, for the 8-bit reason above |
 
 Landed in code, all additive:
@@ -295,11 +277,16 @@ Landed in code, all additive:
 | `crates/gallery/src/geometry.rs` | `lathe`, a surface of revolution about the y axis, with normals from the profile's own tangent. Every object in a still life is a profile turned, and the gallery had no generator for one |
 | `crates/gallery/src/kit.rs` | `light_with_radius`: a light that says how far it reaches, because the default is one box radius of *what the scene draws* and a window two metres outside the subject reaches nothing under it |
 | `crates/gallery/examples/clusters.rs` | **new** — dumps the cluster counts, the light records and the pass order of a gallery scene. It is how finding 2 was found, and the framework has no other way to see what the assignment did |
-| `crates/device/examples/render.rs` | prints `CompileOutput.notes`. The note channel has had a filler and no printer since the lighting effort, and this is the exact host the lighting handoff named |
-| `crates/scene/tests/clustered_lights.rs` | the new scene added to the pass count table, which the test's own comment requires |
+
+Two things this stretch needed were landed by the lighting effort's checkpoints 5 and 6 while
+it was running, and are no longer this branch's to do: the printer for `CompileOutput.notes`,
+which the lighting handoff had asked for and which
+[`render.rs`](../../crates/device/examples/render.rs) now has as `print_notes`, and the pass
+count table's entry for a new scene, which the test's own comment requires.
 
 ## Still owed
 
+- **Migrating this scene onto an `Environment` light.** Findings 3 and 6 both end there.
 - **The depth test.** Everything in finding 1 is a change to `emit.rs` and to the gallery's
   binding numbers, and none of it has been built.
 - **`shift` on the camera** (the previous effort's gap) is still a field the post uniform would

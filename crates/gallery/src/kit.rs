@@ -59,13 +59,15 @@ pub fn image(label: &str, width: i64, height: i64, pixels: impl IntoIterator<Ite
 /// # Invariants
 ///
 /// A light names the kind it is, so this builder writes the `Point` tag rather than taking
-/// a kind: every light in the gallery is a point light, and a builder that made each call
-/// site name a kind they all share would be a kind spelled nine times. A kind with fields of
-/// its own is a sibling of this one rather than a parameter of it.
+/// a kind: every point light in the gallery is a point light, and a builder that made each
+/// call site name a kind they all share would be a kind spelled nine times. A kind with
+/// fields of its own is a sibling of this one rather than a parameter of it.
 ///
-/// The other kinds have no builder here, because a light they built is a document the
-/// compiler refuses: this is a gallery of scenes that compile, and a builder whose only
-/// effect is to write a scene that does not is a builder for a stage that has not landed.
+/// [`environment_light`] and [`spot`] are those siblings, and they are here now because those
+/// paths have landed. A `Directional` light still has no builder, because a light it built is
+/// a document the compiler refuses: this is a gallery of scenes that compile, and a builder
+/// whose only effect is to write a scene that does not is a builder for a stage that has not
+/// landed.
 pub fn light(
     label: &str,
     position: [f64; 3],
@@ -89,12 +91,12 @@ pub fn light(
 ///
 /// # Why a scene has to say
 ///
-/// The cluster assignment tests a light against the boxes it can reach, and a light that
-/// names no `radius` is given one box radius of everything the scene draws. That default is
-/// right for a lamp standing inside the scene and wrong for a light **outside** it: a window
-/// two and a half metres from the table reaches the table and is not inside the box around
-/// it, so a scene that leaves the radius out gets a light that lights nothing, which renders
-/// as a frame with one light missing and no complaint.
+/// The cluster assignment tests a light against the boxes it can reach, and a light that names
+/// no `radius` is given one box radius of everything the scene draws. That default is right for
+/// a lamp standing inside the scene and wrong for a light **outside** it: a window two and a
+/// half metres from the table reaches the table and is not inside the box around it, so a scene
+/// that leaves the radius out gets a light that lights nothing, which renders as a frame with
+/// one light missing and no complaint.
 ///
 /// The value is the distance the light is meant to carry over, so it wants to be at least the
 /// distance from the light to the furthest surface it is supposed to light.
@@ -112,6 +114,68 @@ pub fn light_with_radius(
     };
     fields.insert(scene::standard::RADIUS.to_owned(), Value::Float(radius));
     Value::Enum { tag, fields }
+}
+
+/// Builds one spot light of a scene: a point light with a cone.
+///
+/// # Invariants
+///
+/// The two angles are **half** angles in radians, and both are written rather than one being
+/// derived: the pair is what draws the cone, and a default angle would be a number chosen once
+/// in this source rather than a number the author of a scene chooses. `direction` is the way
+/// the light shines, so the cone opens away from the light rather than towards it, and its
+/// length does not matter.
+///
+/// The builder takes no `radius`. A spot light's reach is its cone, and a `Spot` declares no
+/// radius of its own to be inconsistent with: the compiler culls it by one box radius of the
+/// scene, which is the whole scene, and the cone scales what survives. A scene that needs a
+/// reach narrower than that is asking a spot light to do a point light's job.
+pub fn spot(
+    label: &str,
+    position: [f64; 3],
+    direction: [f64; 3],
+    color: [f64; 3],
+    intensity: f64,
+    inner_angle: f64,
+    outer_angle: f64,
+    shadow_extent: f64,
+) -> Value {
+    Value::variant(
+        "Spot",
+        [
+            ("label".to_owned(), Value::String(label.to_owned())),
+            ("position".to_owned(), triple(position)),
+            ("direction".to_owned(), triple(direction)),
+            ("color".to_owned(), triple(color)),
+            ("intensity".to_owned(), Value::Float(intensity)),
+            ("inner_angle".to_owned(), Value::Float(inner_angle)),
+            ("outer_angle".to_owned(), Value::Float(outer_angle)),
+            ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
+        ],
+    )
+}
+
+/// Builds one environment light of a scene, reading the image the label names.
+///
+/// # Invariants
+///
+/// It declares neither a position nor a volume, because it stands nowhere and casts no shadow:
+/// the fields the kind has are the fields it writes, and a document carrying one of the others
+/// would be a document asking for a point light by another name.
+///
+/// The image is a **label** into the scene's own image list rather than pixels, which is the
+/// same reason a material's image is: one map is shared by every surface of a scene, and the
+/// scene's `images` list is where it is written down once.
+pub fn environment_light(label: &str, image: &str, color: [f64; 3], intensity: f64) -> Value {
+    Value::variant(
+        "Environment",
+        [
+            ("label".to_owned(), Value::String(label.to_owned())),
+            ("image".to_owned(), Value::String(image.to_owned())),
+            ("color".to_owned(), triple(color)),
+            ("intensity".to_owned(), Value::Float(intensity)),
+        ],
+    )
 }
 
 /// Builds one mesh of a scene: its label, how its points are read, and the points.

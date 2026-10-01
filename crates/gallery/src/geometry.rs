@@ -300,6 +300,45 @@ pub fn heightfield(divisions: usize, extent: f64, height: impl Fn(f64, f64) -> f
     points.finish()
 }
 
+/// Builds a flat horizontal plane at one height, as packed shaded points.
+///
+/// # Invariants
+///
+/// Every point's normal is the same way, and `facing_up` decides which: a plane whose normal
+/// points **down** is the only way to put a down-facing surface in a frame from a camera that
+/// is looking sideways, and a scene that wants to see how a surface is lit from below needs
+/// one. A heightfield cannot do it, because a heightfield's normals come from its own gradient
+/// and always point up.
+///
+/// The winding follows the normal rather than being fixed, so the surface faces the direction
+/// it claims to face: a back facing triangle is one a rasterizer culls, and a ceiling that
+/// vanished would be a scene that could not be asked the question at all.
+pub fn plane_facing(extent: f64, height: f64, facing_up: bool) -> PackedList {
+    let normal = if facing_up {
+        [0.0, 1.0, 0.0]
+    } else {
+        [0.0, -1.0, 0.0]
+    };
+    let (a, b, c, d) = (
+        [-extent, height, -extent],
+        [extent, height, -extent],
+        [-extent, height, extent],
+        [extent, height, extent],
+    );
+    let mut points = Shaded::with_capacity(6);
+    // The same two triangles either way round, because the corners are the same and only which
+    // one is in front changes.
+    let (first, second) = if facing_up {
+        ([a, b, c], [b, d, c])
+    } else {
+        ([a, c, b], [b, c, d])
+    };
+    for corner in first.into_iter().chain(second) {
+        points.push(corner, normal, [0.0, 0.0]);
+    }
+    points.finish()
+}
+
 /// Builds a sphere as a stack of triangles, as packed shaded points.
 ///
 /// # Invariants

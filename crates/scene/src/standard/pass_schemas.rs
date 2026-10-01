@@ -18,7 +18,9 @@ use graphics::binders::{
 use graphics::layout::components_schema;
 use graphics::pass::{BINDERS, UNIFORM};
 
-use crate::lighting::{CLUSTER_COUNTS_ENTRY, CLUSTER_INDICES_ENTRY, LIGHT_RECORDS_ENTRY};
+use crate::lighting::{
+    CLUSTER_COUNTS_ENTRY, CLUSTER_INDICES_ENTRY, LIGHT_RECORDS_ENTRY, SPOT_CONES_ENTRY,
+};
 
 /// Binding point holding the depth buffer a depthing pass renders into.
 pub const DEPTH_BUFFER: &str = "depth_buffer";
@@ -53,7 +55,7 @@ pub const PROJECTION: &str = "projection";
 /// with the page its own light record carries.
 ///
 /// It is called a pool rather than `shadow_pages` on purpose: `shadow_pages` is the count a
-/// scene's `clustering` block declares, and two different things in one name is a name an
+/// scene's `frame` block declares, and two different things in one name is a name an
 /// author reads as one of them.
 pub const SHADOW_POOL: &str = "shadow_pool";
 
@@ -71,6 +73,30 @@ pub const CLUSTER_GRID: &str = "cluster_grid";
 /// pixels only means a column and a row once the frame's size divides it. The depth needs no
 /// size, because the view's depth runs zero to one whatever the frame is.
 pub const FRAME_SIZE: &str = "frame_size";
+
+/// Field holding the environment a lighting pass is shaded against.
+///
+/// # Invariants
+///
+/// It is **four** numbers and not three: the light's colour scaled by its intensity, and then
+/// whether the scene named an `Environment` light at all. The flag is in the same vector rather
+/// than beside it because two numbers a shader could disagree about are one too many — the
+/// shader reads the vector and the flag is already in it — and because a colour of zero is a
+/// perfectly good environment to want, so a shader that inferred presence from a black map
+/// would be reading the wrong question.
+///
+/// The field is written for every lighting pass, whether the scene names an environment or
+/// not, because the uniform's layout is the same for every scene. A field that came and went
+/// with the document would put every field after it somewhere else.
+pub const ENVIRONMENT: &str = "environment";
+
+/// Binding point the environment map is read at.
+///
+/// The name is what puts it at its binding number: a pass's binders are numbered in name
+/// order, so this point sits between `depth_buffer` and any image a material names. It is
+/// bound by every lighting pass — see [`ENVIRONMENT`] for why — and it declares no sampler,
+/// because the map is read with `textureLoad` at a texel the shader computes.
+pub const ENVIRONMENT_MAP: &str = "environment_map";
 
 /// Field holding the time a pass is drawn at, in seconds.
 ///
@@ -147,8 +173,9 @@ pub fn camera_schema() -> Schema {
 /// Format every shadow page is rendered in.
 ///
 /// A page is a depth map like any other. Its **size** is not a constant: it is
-/// `shadow_page_width` and `shadow_page_height` on the scene's `clustering` block, and the
-/// same rule the depth buffer's size follows. See [`crate::standard::frame`].
+/// `shadow_page_width` and `shadow_page_height` on the scene's `frame` block, beside the
+/// size of the image and the depth buffer, and the same rule their sizes follow. See
+/// [`crate::standard::frame`].
 pub const SHADOW_MAP_FORMAT: &str = "depth32float";
 
 /// Format the depth buffer is rendered in.
@@ -328,6 +355,15 @@ pub fn light_pass_schema() -> Schema {
                 ),
             ),
             (
+                SPOT_CONES_ENTRY,
+                buffer_binding_schema().with_documentation(
+                    "One cone per light, indexed by the same numbers as the records. Bound by \
+                     every lighting pass including one whose scene names no spot light, which \
+                     then binds a single whole sphere that no cluster points at, so the \
+                     binding numbers are the same either way.",
+                ),
+            ),
+            (
                 CLUSTER_COUNTS_ENTRY,
                 buffer_binding_schema().with_documentation(
                     "How many lights each cluster kept, which is the bound \
@@ -347,6 +383,14 @@ pub fn light_pass_schema() -> Schema {
                      itself with the page each record carries.",
                 ),
             ),
+            (
+                ENVIRONMENT_MAP,
+                texture_binding_schema().with_documentation(
+                    "The scene's environment, as a two dimensional octahedral map read with \
+                     `textureLoad`. A scene naming no environment light binds a one texel black \
+                     map here rather than nothing, so the binding numbers are the same either way.",
+                ),
+            ),
         ],
         vec![
             (
@@ -358,6 +402,13 @@ pub fn light_pass_schema() -> Schema {
                 components_schema(4).with_documentation(
                     "How the view is divided: how many clusters across, how many up, how many \
                      depth slices, and how many lights one cluster keeps.",
+                ),
+            ),
+            (
+                ENVIRONMENT,
+                components_schema(4).with_documentation(
+                    "The environment light's colour scaled by its intensity, and whether the \
+                     scene named one at all. Written for every lighting pass.",
                 ),
             ),
             (

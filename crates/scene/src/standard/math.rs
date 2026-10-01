@@ -57,6 +57,24 @@
 /// A four by four matrix, column major.
 pub type Matrix = [f64; 16];
 
+/// The matrix a record or a light that is never looked through carries.
+///
+/// # Invariants
+///
+/// It is the **identity** rather than a zero matrix because a zero matrix reads as a projection
+/// that collapses everything to a point, and a light whose page index is [`NO_PAGE`] — or a
+/// placeholder record no cluster points at — already says in one number that it is not to be
+/// looked through. Sixteen floats, column major, which is the order [`projection_of`] and the
+/// WGSL `mat4x4<f32>` both read.
+///
+/// [`NO_PAGE`]: ../../lighting/buffers.rs
+pub const IDENTITY: Matrix = [
+    1.0, 0.0, 0.0, 0.0, //
+    0.0, 1.0, 0.0, 0.0, //
+    0.0, 0.0, 1.0, 0.0, //
+    0.0, 0.0, 0.0, 1.0,
+];
+
 /// An axis aligned box, in world space.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bounds {

@@ -44,14 +44,18 @@ use graphics::pass::{BINDERS, CLEAR_COLOR, LABEL, SHADER, TARGETS, UNIFORM};
 use graphics::{derived_instance_schema, layout::packed_layout, verify_pass_inputs};
 
 use crate::lighting::{self as lighting_pool, ClusterLight, Clustering, LightPool};
+use crate::lighting::{SPOT_CONES_ENTRY, SpotCone, spot_cone_schema, spot_cones, storage};
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
 use crate::standard::frame::Frame;
-use crate::standard::math::{Bounds, Matrix, apply, projection_of, transform_matrix};
+use crate::standard::math::{
+    Bounds, IDENTITY, Matrix, add, apply, dot, look_at, multiply, normalize, perspective,
+    projection_of, transform_matrix,
+};
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     CAMERA, CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, DEPTH_RANGE,
-    FORWARD, FRAME_SIZE, HALF_EXTENT, INSTANCE_DATA, POSITION, PRESENT_TARGET, PROJECTION, RIGHT,
-    SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, UP, VERTICES,
+    ENVIRONMENT, ENVIRONMENT_MAP, FORWARD, FRAME_SIZE, HALF_EXTENT, INSTANCE_DATA, POSITION,
+    PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, UP, VERTICES,
 };
 use crate::standard::scene_schema;
 use crate::{CompileError, CompileNote};
@@ -294,9 +298,20 @@ struct LightRead {
     /// present, so a document naming a kind it cannot render is refused by name.
     kind: LightKind,
     label: String,
-    position: [f64; 3],
+    /// Where a light that stands somewhere stands, and `None` for a kind that stands nowhere.
+    ///
+    /// # Invariants
+    ///
+    /// A field is here exactly when the kind declares it, and the kind is what says: an
+    /// environment light names an image and no position, so there is nothing to read into
+    /// this and a default of the origin would be a light that appears to stand in the middle
+    /// of the scene. What is `None` is reached through [`LightRead::record_position`] and
+    /// [`LightRead::shadow_projection`], which are the two places a record wants a number
+    /// where a kind has none, and both say in words what they did.
+    position: Option<[f64; 3]>,
     colour: [f64; 3],
-    shadow_extent: f64,
+    /// The half width of the volume a light shadows, and `None` for a kind that casts none.
+    shadow_extent: Option<f64>,
     /// How far the light reaches, when the document says.
     ///
     /// It is a field of the light because a light's reach is the light's own, and a scene
@@ -305,12 +320,95 @@ struct LightRead {
     /// scene draws, and what the scene draws is not known until the meshes have been read.
     /// [`LightRead::radius`] resolves the two, once the bounds are.
     radius: Option<f64>,
+    /// The cone the light shines in.
+    ///
+    /// # Invariants
+    ///
+    /// It is a cone for a spot light and [`SpotCone::whole_sphere`] for every other kind, so
+    /// the run of cones has one record per light whatever kinds a scene mixes. A light with
+    /// no cone is not one whose cone is absent: the record run is indexed by the same number
+    /// as the light record run, and a hole in one of them is a fragment that has to test
+    /// before it can read.
+    cone: SpotCone,
 }
 
 impl LightRead {
-    /// Returns how far this light reaches, falling back to one box radius of what is drawn.
+    /// Returns how far this light reaches, falling back to what the kind itself says.
+    ///
+    /// # Invariants
+    ///
+    /// A light that names a radius has said how far it reaches and that is the answer. One that
+    /// does not has it worked out, and the two kinds that can be in that position want different
+    /// answers:
+    ///
+    /// - A **spot** light's reach is its own cone. The volume that cone cuts out of a scene of
+    ///   half width `shadow_extent` ends in a disc, and the distance from the light to the rim
+    ///   of that disc is what the cone reaches — see [`SpotCone::reach`]. Falling back to the
+    ///   box radius here would be a light whose **culling** sphere is smaller than the cone it
+    ///   is drawing, so the light would be dropped from the clusters at the edge of its own
+    ///   cone and the outer angle would never be seen. A lamp standing higher above the floor
+    ///   than the box is wide hits this on the first try, and what the author sees is a
+    ///   grid-aligned rectangle where the cone's own circle should be.
+    /// - Everything else is a point light's reach, and a light the size of the scene it stands
+    ///   in reaches across it.
     fn radius(&self, bounds: &Bounds) -> f64 {
-        self.radius.unwrap_or_else(|| bounds.largest_half_width())
+        if let Some(radius) = self.radius {
+            return radius;
+        }
+        match (self.kind, self.shadow_extent) {
+            (LightKind::Spot, Some(extent)) => self.cone.reach(extent),
+            _ => bounds.largest_half_width(),
+        }
+    }
+
+    /// Returns the position this light's record carries.
+    ///
+    /// # Invariants
+    ///
+    /// A light that stands nowhere has no position, and the record has a slot for one
+    /// whatever the kind is: the record's layout is the same for every light because the
+    /// clustered loop indexes it by a light and not by a kind. The origin is written rather
+    /// than a value that could be mistaken for a place, and nothing reads it: an exempt
+    /// light is in no cluster list, so no fragment ever loads its record.
+    fn record_position(&self) -> [f64; 3] {
+        self.position.unwrap_or([0.0; 3])
+    }
+
+    /// Returns the projection a fragment looks this light's page up through.
+    ///
+    /// A light that casts no shadow is the identity, which is the same answer the light
+    /// record's own documentation gives for "a light of a kind that casts no shadow". It is
+    /// the identity rather than a zero matrix because a zero matrix reads as a projection
+    /// that collapses everything to a point, and a page index of minus one is already the
+    /// sentinel that says this record is not to be looked through.
+    fn shadow_projection(&self, bounds: &Bounds) -> Matrix {
+        self.shadow_volume(bounds)
+            .map_or(IDENTITY, |(matrix, _)| matrix)
+    }
+
+    /// Returns the projection and the eye a shadowing pass draws this light's page through, or
+    /// nothing for a light that casts no shadow.
+    ///
+    /// # Invariants
+    ///
+    /// A light has a shadow volume or it has not, and the two fields that say so are read
+    /// together rather than one after the other: a kind with a position and no volume would be
+    /// a document whose two answers had come to disagree, and one check is the place that
+    /// cannot.
+    ///
+    /// The **kind** chooses the shape, because a point light's volume is a box looked at from
+    /// where it stands and a spot light's is a cone: the same two numbers, read as two
+    /// different shapes. Which is why a spot light's cone reaches this function at all, and
+    /// why a point light's is never read: the cone of a point light is the whole sphere and
+    /// [`spot_projection`] would put a near plane and a far plane around a volume with no
+    /// sides.
+    fn shadow_volume(&self, bounds: &Bounds) -> Option<(Matrix, [f64; 3])> {
+        let position = self.position?;
+        let extent = self.shadow_extent?;
+        Some(match self.kind {
+            LightKind::Spot => spot_projection(position, &self.cone, extent, bounds),
+            _ => light_projection(position, extent, bounds),
+        })
     }
 }
 
@@ -348,12 +446,33 @@ impl LightKind {
     /// equally and a cluster slot spent on one is a slot not spent on culling anything. They
     /// take no slot here and get a path of their own, which stage 3b builds.
     ///
-    /// Only a point light reaches this compiler: `read_lights` refuses the other three rather
-    /// than drawing them as a point. The two answers that agree with nothing today are here
-    /// because the exemption is a statement about the design, and the kind it is stated on is
-    /// the kind that decides it.
+    /// A point light and a spot light reach this compiler, and they are the two kinds that
+    /// take a slot: a spot light is a point light with a cone, and it is culled by its reach
+    /// exactly as one is, with the cone scaling what survives rather than replacing the
+    /// culling. A directional light is the one kind here that is exempt and still refused.
     const fn takes_cluster_slot(self) -> bool {
         matches!(self, Self::Point | Self::Spot)
+    }
+
+    /// Returns whether this compiler draws a light of this kind.
+    ///
+    /// # Invariants
+    ///
+    /// A point light stands somewhere and is drawn through a cluster list. A **spot** light
+    /// does the same thing through the same list, and differs only in the cone the shading
+    /// loop scales it by: it takes a cluster slot by exactly the rule a point light does, so
+    /// there is one list and one loop rather than two.
+    ///
+    /// An environment light is an image, and it is drawn by the one ambient term every fragment
+    /// computes beside that loop: it is exempt from clustering, so it takes no record a fragment
+    /// would load and no page, and it is a **stated** input of the lighting pass rather than
+    /// something the loop stumbles on.
+    ///
+    /// A directional light is refused rather than approximated, and the refusal lands before
+    /// the field reads: it declares no `position`, so reading the fields first would report a
+    /// missing field instead of the mistake that is there.
+    const fn is_emitted(self) -> bool {
+        matches!(self, Self::Point | Self::Spot | Self::Environment)
     }
 }
 
@@ -409,9 +528,24 @@ fn read_topology(mesh: &Value, path: &Path) -> Result<Topology, CompileError> {
 /// one mesh contributes one vertex buffer and one shader contributes one entry, however
 /// many passes draw with them.
 pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError> {
-    let lights = read_lights(scene)?;
-    let shaders = read_shaders(scene)?;
+    // The images come before the lights because an environment light names one of them by
+    // label, and a label resolved against a list that had not been read is a label resolved
+    // against nothing. Nothing else about the two reads depends on the other.
     let images = read_images(scene)?;
+    let (lights, environment) = read_lights(scene, &images)?;
+    // The environment a lighting pass is bound, whether the scene named one or not. It is
+    // resolved here so that the image is moved rather than looked up a second time, and so
+    // that the one branch deciding which map it is is the branch that also knows the flag.
+    let environment = match environment {
+        Some(environment) => EnvironmentMap {
+            entry: image_entry(&environment.image.label),
+            image: environment.image,
+            colour: environment.colour,
+            present: true,
+        },
+        None => EnvironmentMap::absent(),
+    };
+    let shaders = read_shaders(scene)?;
     let materials = read_materials(scene, &shaders)?;
     let (meshes, mut instance) = read_meshes(scene, &shaders)?;
     let instances = read_instances(scene, &meshes, &materials, &shaders, &images)?;
@@ -447,13 +581,13 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
         .iter()
         .map(|light| ClusterLight {
             label: light.label.clone(),
-            position: light.position,
+            position: light.record_position(),
             colour: light.colour,
             radius: light.radius(&bounds),
             // The projection is computed here rather than in the lighting module, because
             // building one is a property of a view and the lighting module deliberately has
             // no view. It is the same matrix the shadowing pass draws its page through.
-            shadow_projection: light_projection(light, &bounds).0,
+            shadow_projection: light.shadow_projection(&bounds),
             clustered: light.kind.takes_cluster_slot(),
         })
         .collect();
@@ -466,9 +600,29 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
     ));
 
     add_targets(&mut instance, frame);
+    // The environment's map is an **image**, so its instance entry is the entry that image
+    // already has and a material naming the same image would name: one map, uploaded once,
+    // however many things read it. It is therefore written only when it is not already there,
+    // which is the one place in this function that inserts an entry that may already exist.
+    insert_entry_once(
+        &mut instance,
+        environment.entry.clone(),
+        environment_payload(&environment.image),
+    );
     for (entry, payload) in clusters.entries() {
         insert_entry(&mut instance, entry.to_owned(), payload)?;
     }
+    // The cone run is packed here rather than by the assignment, because a cone is a property of
+    // the light and the assignment knows nothing about cones: what reaches which cluster, which
+    // page was bought and which light was dropped are three other questions. What it shares with
+    // the record run is its **order** — one record per light in the order the scene lists them —
+    // and that is what lets a cluster index be an index into both.
+    let cones = spot_cones(&lights.iter().map(|light| light.cone).collect::<Vec<_>>())?;
+    insert_entry(
+        &mut instance,
+        SPOT_CONES_ENTRY.to_owned(),
+        storage(cones.bytes(), &spot_cone_schema()),
+    )?;
     insert_entry(
         &mut instance,
         SHADOW_POOL.to_owned(),
@@ -528,7 +682,9 @@ pub fn emit(scene: &Value, camera_index: usize) -> Result<Emitted, CompileError>
             &camera,
             &clustering,
             &clusters,
+            &cones,
             &light_pool,
+            &environment,
             frame,
             time,
             &images,
@@ -626,7 +782,108 @@ fn read_time(scene: &Value) -> Result<f64, CompileError> {
     }
 }
 
-/// Reads the lights of the scene.
+/// The environment one lighting pass is shaded against, which is what an `Environment` light is.
+///
+/// # Invariants
+///
+/// It is returned beside the lights rather than found again in [`emit`], because resolving an
+/// environment light's image is the one part of reading a light that can fail: the label has to
+/// name an image the scene declares. A second lookup would be a second answer to a question that
+/// has already been asked and answered, and the failure it would have to handle cannot happen.
+struct Environment {
+    /// The image the light names, copied out of the scene's images.
+    ///
+    /// It is **copied** rather than borrowed so that the map a pass binds and the map a uniform
+    /// describes are one value, moved rather than looked up again. The copy is one image, once
+    /// per compile.
+    image: ImageRead,
+    /// The light's colour scaled by its intensity, which is how bright the environment is.
+    colour: [f64; 3],
+}
+
+/// What one lighting pass binds and declares for the environment.
+///
+/// # Invariants
+///
+/// This is never absent. The scene's own environment image when the scene names an
+/// `Environment` light, and a one texel black image when it names none, because the binding
+/// point is bound by **every** lighting pass: a binding that came and went with the document
+/// would move every binding number after it, since the device numbers a pass's binders in name
+/// order, and a shader would then have to be written for one scene and not for another.
+///
+/// `present` is the flag the shader tests, and it is written rather than inferred. A scene with
+/// no environment light samples a black map, and a shader that could not tell that from an
+/// environment that happens to be black would make the darkness of a frame a property of a
+/// texture rather than of a decision anybody made.
+struct EnvironmentMap {
+    /// The image the map is uploaded from and the shader samples.
+    image: ImageRead,
+    /// The instance entry the map's pixels are uploaded from.
+    ///
+    /// For the scene's own environment this is the entry its **image** already has, so an
+    /// environment map that is also a material's texture is one upload; see
+    /// [`insert_entry_once`]. The absent map is not a scene image and is given a name of its
+    /// own rather than one built from [`image_entry`], because an entry named after an image
+    /// an author never declared is a name in the image namespace that means nothing.
+    entry: String,
+    /// The light's colour scaled by its intensity, or zero when the scene names no environment.
+    colour: [f64; 3],
+    /// Whether the scene named an `Environment` light at all.
+    present: bool,
+}
+
+impl EnvironmentMap {
+    /// Returns the map a scene naming no environment light is bound, which is black.
+    fn absent() -> Self {
+        Self {
+            image: ImageRead {
+                label: ABSENT_ENVIRONMENT_LABEL.to_owned(),
+                width: 1,
+                height: 1,
+                format: COLOR_FORMAT.to_owned(),
+                pixels: vec![0, 0, 0, 255],
+            },
+            entry: ABSENT_ENVIRONMENT_ENTRY.to_owned(),
+            colour: [0.0; 3],
+            present: false,
+        }
+    }
+
+    /// Returns the four numbers the lighting pass's uniform carries.
+    ///
+    /// Three of them are the colour and the fourth is [`Self::present`]. A single four
+    /// component vector rather than a colour and a flag beside it, because two numbers the
+    /// shader could disagree about are one too many: the shader reads the vector and the flag
+    /// is already in it.
+    fn uniform(&self) -> Value {
+        let present = if self.present { 1.0 } else { 0.0 };
+        Value::List(
+            [self.colour[0], self.colour[1], self.colour[2], present]
+                .into_iter()
+                .map(Value::Float)
+                .collect(),
+        )
+    }
+}
+
+/// The label the absent environment's image is given, which nothing samples and nothing names.
+///
+/// It is a name rather than nothing so that the payload and the declaration are written from
+/// one value; it is not a label an author could collide with, because no author writes one.
+const ABSENT_ENVIRONMENT_LABEL: &str = "environment_absent";
+
+/// The instance entry the absent environment's map is uploaded under.
+///
+/// # Invariants
+///
+/// It is **not** [`image_entry`] of anything. Every other entry that carries pixels is named
+/// after the image it holds, because the entry *is* that image; the absent map has no image,
+/// and a name in the `image_` namespace standing for a thing no author declared is a name a
+/// reader of the instance would go looking for. Entry names are generated from labels and a
+/// scene cannot author one, so a fixed name cannot collide.
+const ABSENT_ENVIRONMENT_ENTRY: &str = "environment_absent_map";
+
+/// Reads the lights of the scene, and the environment among them.
 ///
 /// # Invariants
 ///
@@ -638,10 +895,21 @@ fn read_time(scene: &Value) -> Result<f64, CompileError> {
 /// fields first would report a missing field instead of the mistake that is actually there,
 /// and a light quietly drawn as a point is a wrong image nobody sees until the render is
 /// finished.
-fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
+///
+/// An environment light is read against the scene's **images**, which is why the images come
+/// first: the one field it declares is a label into that list, and a label resolved against a
+/// list that had not been read yet would be a label resolved against nothing.
+fn read_lights(
+    scene: &Value,
+    images: &[ImageRead],
+) -> Result<(Vec<LightRead>, Option<Environment>), CompileError> {
     let path = Path::root().key(scene_schema::LIGHTS);
     let lights = list_at(scene, &Path::root(), scene_schema::LIGHTS)?;
     let mut read = Vec::with_capacity(lights.len());
+    // The label of the environment light already read, and the environment itself. One
+    // environment is what a lighting pass carries, so a second one is a document naming two
+    // things the pass has one binding for.
+    let mut environment: Option<Environment> = None;
     for (index, light) in lights.iter().enumerate() {
         let path = path.index(index);
         let label = text(light, &path, "label")?.to_owned();
@@ -652,7 +920,7 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
             });
         }
         let kind = read_light_kind(light, &path, &label)?;
-        if kind != LightKind::Point {
+        if !kind.is_emitted() {
             return Err(CompileError::UnsupportedLightKind {
                 path: path.clone(),
                 label,
@@ -661,28 +929,186 @@ fn read_lights(scene: &Value) -> Result<Vec<LightRead>, CompileError> {
         }
         let intensity = number(light, &path, "intensity")?;
         let colour = triple(light, &path, "color")?;
-        let radius = optional_number(light, &path, "radius")?;
-        if let Some(reach) = radius.filter(|reach| *reach <= 0.0) {
-            return Err(CompileError::EmptyLightRadius {
-                path: path.key("radius"),
-                label,
-                radius: reach,
-            });
-        }
-        read.push(LightRead {
-            kind,
-            label,
-            position: triple(light, &path, "position")?,
-            radius,
-            shadow_extent: number(light, &path, "shadow_extent")?,
-            colour: [
-                colour[0] * intensity,
-                colour[1] * intensity,
-                colour[2] * intensity,
-            ],
+        // Scaled here rather than in the reader of each term, so that a colour means the
+        // brightness a surface is lit by everywhere it is used: a record, an environment, and
+        // a note about which lights were dropped all compare the same number.
+        let colour = [
+            colour[0] * intensity,
+            colour[1] * intensity,
+            colour[2] * intensity,
+        ];
+        read.push(match kind {
+            LightKind::Environment => {
+                if let Some(first) = &environment {
+                    return Err(CompileError::SecondEnvironmentLight {
+                        path: path.clone(),
+                        label,
+                        first: first.image.label.clone(),
+                    });
+                }
+                let found = read_environment_image(light, &path, &label, images)?;
+                environment = Some(Environment {
+                    image: found,
+                    colour,
+                });
+                LightRead {
+                    kind,
+                    label,
+                    position: None,
+                    colour,
+                    shadow_extent: None,
+                    radius: None,
+                    // An environment light is in no cluster list, so no fragment ever loads
+                    // its record or its cone. The whole sphere is written rather than nothing
+                    // because the run has one record per light and this one is a light.
+                    cone: SpotCone::whole_sphere(),
+                }
+            }
+            // `is_emitted` has already refused every other kind, so reaching this arm with
+            // anything but a point or a spot light would mean the two answers above had come
+            // to disagree, which is a bug in the compiler rather than in the document. The
+            // cone is the one field set the two kinds do not share, and it is read by the
+            // kind rather than beside the fields they do share: a point light declares no
+            // `direction`, so a read that asked for one would report a missing field on a
+            // document that is in no way missing one.
+            _ => {
+                let radius = optional_number(light, &path, "radius")?;
+                if let Some(reach) = radius.filter(|reach| *reach <= 0.0) {
+                    return Err(CompileError::EmptyLightRadius {
+                        path: path.key("radius"),
+                        label,
+                        radius: reach,
+                    });
+                }
+                let cone = if kind == LightKind::Spot {
+                    read_spot_cone(light, &path, &label)?
+                } else {
+                    SpotCone::whole_sphere()
+                };
+                LightRead {
+                    kind,
+                    label,
+                    position: Some(triple(light, &path, "position")?),
+                    colour,
+                    shadow_extent: Some(number(light, &path, "shadow_extent")?),
+                    radius,
+                    cone,
+                }
+            }
         });
     }
-    Ok(read)
+    Ok((read, environment))
+}
+
+/// Reads the cone of a spot light, refusing a cone that could not be drawn.
+///
+/// # Invariants
+///
+/// The four refusals are all the same fact seen from four sides: **the two angles describe one
+/// shape, so a document whose numbers do not describe a shape is a document whose two answers
+/// disagree.** A cone whose outside is inside its own inside is inverted; a full strength
+/// region below the axis is not inside the cone at all; a half angle of a right angle is the
+/// whole sphere, which a point light already is and which the page a shadow is rendered
+/// through cannot be drawn as; and a direction of zero is not a direction, and normalising it
+/// divides by nothing.
+///
+/// The direction is **normalised here**, where it is read, rather than in the shader, because
+/// the shader is given the axis and not the vector the author typed. The schema says the
+/// length does not matter, so a document may write `[0, -20, 0]` and get the same cone as
+/// `[0, -1, 0]`. That is the one number about a light that is answered before it is packed.
+///
+/// The angles are carried as they are written, and the cosine the shader compares against is
+/// taken where the run is packed: this is a refusal about a document and that is a decision
+/// about bytes, and a refusal reached across two modules is a refusal that can be forgotten.
+fn read_spot_cone(light: &Value, path: &Path, label: &str) -> Result<SpotCone, CompileError> {
+    let direction = triple(light, path, "direction")?;
+    if dot(direction, direction) == 0.0 {
+        return Err(CompileError::ZeroLightDirection {
+            path: path.key("direction"),
+            label: label.to_owned(),
+        });
+    }
+    let inner_angle = number(light, path, "inner_angle")?;
+    let outer_angle = number(light, path, "outer_angle")?;
+    if outer_angle <= inner_angle {
+        return Err(CompileError::InvertedSpotCone {
+            path: path.key("outer_angle"),
+            label: label.to_owned(),
+            inner_angle,
+            outer_angle,
+        });
+    }
+    if inner_angle < 0.0 {
+        return Err(CompileError::NegativeSpotAngle {
+            path: path.key("inner_angle"),
+            label: label.to_owned(),
+            angle: inner_angle,
+        });
+    }
+    if outer_angle >= MAX_SPOT_HALF_ANGLE {
+        return Err(CompileError::SpotConeTooWide {
+            path: path.key("outer_angle"),
+            label: label.to_owned(),
+            outer_angle,
+            limit: MAX_SPOT_HALF_ANGLE,
+        });
+    }
+    Ok(SpotCone {
+        axis: normalize(direction),
+        inner_angle,
+        outer_angle,
+    })
+}
+
+/// The widest cone a spot light may be written with, as a half angle in radians.
+///
+/// # Invariants
+///
+/// A **quarter turn**, which is a right angle, and the limit is a hard one for two reasons
+/// that happen to agree. Past a right angle the shape is no longer a cone: at a right angle it
+/// is the whole sphere and past it the "outside" folds back inside, so a document naming one is
+/// asking for a light that already exists under another name. And the page a spot light's
+/// shadow is rendered through is a perspective frustum, whose field of view is `1 / tan(half)`
+/// and therefore has no value at a right angle at all — `perspective` silently clamps there,
+/// and a clamped page is a page that does not cover the cone it was asked to cover, which is a
+/// shadow that is missing where nobody was told it would be.
+///
+/// This is **not** the bound the handoff named, which was a half turn. A half turn is a wider
+/// shape than the shadow volume can be drawn as, so honouring it would mean compiling a
+/// document whose shading is right and whose shadow is silently absent.
+const MAX_SPOT_HALF_ANGLE: f64 = std::f64::consts::FRAC_PI_2;
+
+/// Reads the image an environment light is read from, and refuses a label that names nothing.
+///
+/// # Invariants
+///
+/// The image must be one the scene **declares** and one that carries pixels. An environment
+/// light whose image had no pixels would be a light the pass binds an empty texture for, and
+/// an empty texture is a black frame rather than an error; the same refusal a material meets
+/// for the same reason is the one it meets here.
+///
+/// The image is **returned** rather than its label, so the caller resolves the name once.
+fn read_environment_image(
+    light: &Value,
+    path: &Path,
+    label: &str,
+    images: &[ImageRead],
+) -> Result<ImageRead, CompileError> {
+    let image = text(light, path, "image")?;
+    let found = images
+        .iter()
+        .find(|found| found.label == image)
+        .ok_or_else(|| CompileError::UnknownImage {
+            path: path.key("image"),
+            material: label.to_owned(),
+            image: image.to_owned(),
+        })?;
+    if found.pixels.is_empty() {
+        return Err(CompileError::ImageWithoutData {
+            path: path.key("image"),
+        });
+    }
+    Ok(found.clone())
 }
 
 /// Reads the kind of one light, which the schema writes as the light's variant tag.
@@ -736,6 +1162,11 @@ fn read_light_kind(light: &Value, path: &Path, label: &str) -> Result<LightKind,
 /// An image is read without being checked for a label collision, because a label no material
 /// names cannot collide with anything. `material_images` is where a name is resolved, and it
 /// is where a duplicate is reported.
+///
+/// It is `Clone` because an environment light **takes** one rather than borrowing it: the map
+/// a lighting pass binds and the map its uniform describes have to be the same value, and a
+/// borrow would leave the pass holding a reference into the scene's own list.
+#[derive(Clone)]
 struct ImageRead {
     label: String,
     width: i64,
@@ -894,7 +1325,40 @@ fn image_point(field: &str) -> String {
 
 /// Builds the instance entry one image's pixels are uploaded from.
 fn image_payload(image: &ImageRead) -> Value {
-    texture_with_data(&image.format, image.width, image.height, &image.pixels)
+    texture_with_data(
+        &image.format,
+        image.width,
+        image.height,
+        &image.pixels,
+        true,
+    )
+}
+
+/// Builds the instance entry the environment map's pixels are uploaded from.
+///
+/// # Invariants
+///
+/// It is the same size, format and pixels as the image a material would upload, and it
+/// declares **no `sampled` key** — which is a difference in the binding rather than in the
+/// texture. A texture that says it is sampled takes a sampler at the binding immediately after
+/// its own, and the environment map is read with `textureLoad` at a texel the shader computes,
+/// so it has no sampler to take; asking for one pushes every binding number below it along by
+/// one, and a shader written for the number without one is then reading somebody else's
+/// resource.
+///
+/// A scene whose environment map is *also* a material's texture writes whichever payload came
+/// first, because the entry is named after the image and one image is one entry. The
+/// environment is written before any pass binds a material image, so the map is read with
+/// `textureLoad`; a material that then samples the same texture finds no sampler, and the
+/// interface check reports that by naming both sides rather than letting the frame draw.
+fn environment_payload(image: &ImageRead) -> Value {
+    texture_with_data(
+        &image.format,
+        image.width,
+        image.height,
+        &image.pixels,
+        false,
+    )
 }
 
 /// Builds the pass declaration one image is bound with.
@@ -907,8 +1371,17 @@ fn image_binding(image: &ImageRead) -> Value {
     )
 }
 
-/// Builds a texture payload that carries its own pixels, to be sampled.
-fn texture_with_data(format: &str, width: i64, height: i64, pixels: &[u8]) -> Value {
+/// Builds a texture payload that carries its own pixels.
+///
+/// # Invariants
+///
+/// `sampled` is a unit key whose **presence** is the whole declaration, so it is written for
+/// a texture a shader filters through a sampler and left out for one a shader reads at a texel
+/// of its own choosing. It is a parameter rather than always written because format cannot
+/// carry the distinction: the same `rgba8unorm` is a filtered surface texture in one pass and
+/// the frame itself in the next, and the difference is one binding number. A texture a pass
+/// renders into is the pipeline's own and is declared where it is emitted, not here.
+fn texture_with_data(format: &str, width: i64, height: i64, pixels: &[u8], sampled: bool) -> Value {
     let mut fields = BTreeMap::new();
     fields.insert(graphics::binders::WIDTH.to_owned(), Value::Int(width));
     fields.insert(graphics::binders::HEIGHT.to_owned(), Value::Int(height));
@@ -920,10 +1393,9 @@ fn texture_with_data(format: &str, width: i64, height: i64, pixels: &[u8]) -> Va
         graphics::binders::DATA.to_owned(),
         Value::Bytes(pixels.to_vec()),
     );
-    // `sampled` is a unit key: its presence is the whole declaration, and an image a scene
-    // declares is an image a shader samples. A texture a pass renders into is the pipeline's
-    // own and is declared where it is emitted, not here.
-    fields.insert(graphics::binders::SAMPLED.to_owned(), Value::Unit);
+    if sampled {
+        fields.insert(graphics::binders::SAMPLED.to_owned(), Value::Unit);
+    }
     Value::Enum {
         tag: "Texture".to_owned(),
         fields,
@@ -1509,7 +1981,9 @@ impl Group<'_> {
 ///
 /// The entry is named after the image, so a second group naming the same image finds the entry
 /// already there and does not upload it again. That is what makes two materials naming one
-/// image bind one texture rather than two copies of it.
+/// image bind one texture rather than two copies of it — and the write is *skipped* rather
+/// than refused, because an image reached twice is the same image: one entry, one upload, and
+/// no reason to call it a collision. See [`insert_entry_once`].
 fn declare_images(
     instance: &mut BTreeMap<String, Value>,
     group: &Group<'_>,
@@ -1539,7 +2013,7 @@ fn declare_read_images(
                 ),
             });
         };
-        insert_entry(instance, image_entry(&image.label), image_payload(image))?;
+        insert_entry_once(instance, image_entry(&image.label), image_payload(image));
         declared.push((image_point(&binding.field), image_binding(image)));
     }
     Ok(declared)
@@ -1834,6 +2308,26 @@ fn insert_entry(
     Ok(())
 }
 
+/// Adds one instance entry **unless the name already holds one**.
+///
+/// # Invariants
+///
+/// An entry named after an *image* is reached once per reader, and two readers of one image
+/// are not a collision: the entry is the image's, it carries the image's bytes, and the second
+/// reader wanted exactly the entry the first one wrote. This is what lets two materials name
+/// one image and lets an environment light and a material name the same one, which is the
+/// ordinary case of a sky that is also a backdrop.
+///
+/// The entry it declines to write is the one already there, so a caller cannot get a different
+/// picture by having written it first. Where two readers genuinely want the same name to hold
+/// two different things, [`insert_entry`] still refuses, and that is where a real collision is
+/// reported.
+fn insert_entry_once(instance: &mut BTreeMap<String, Value>, entry: String, value: Value) {
+    if !instance.contains_key(&entry) {
+        instance.insert(entry, value);
+    }
+}
+
 /// Reads the `instance_schema` the emitted declarations imply.
 fn derive_instance_schema(graphics: &Value) -> Result<Value, CompileError> {
     derived_instance_schema(graphics)
@@ -2017,7 +2511,13 @@ fn shadowing_pass(
     time: f64,
     images: &[(String, Value)],
 ) -> Value {
-    let (light_matrix, light_eye) = light_projection(light, bounds);
+    // A shadowing pass is only emitted for a light that was given a page, and a light that
+    // casts no shadow is given none, so the volume is there by the time it is asked for. A
+    // light with no volume is a page the pool was never going to hand it, so the two facts
+    // cannot come apart here.
+    let (light_matrix, light_eye) = light
+        .shadow_volume(bounds)
+        .expect("a shadowing pass is only emitted for a light with a shadow volume");
     rasterize(
         &group.label(),
         group.shader,
@@ -2092,13 +2592,23 @@ fn depthing_pass(
 /// The grid and the frame are carried so a fragment can resolve its own cluster. It could not
 /// derive the extents from anything, and it derives its own three indices from them with a
 /// multiply and a cast each — the depth being the one number a fragment already carries.
+///
+/// The cone run is bound **unconditionally**, by a scene that names no spot light as much as by
+/// one that names a hundred. The device numbers a pass's binders in name order, so a binding
+/// that came and went with the document would move every number after it and a shader would
+/// have to be written for one scene and not for another — the same argument the environment
+/// map is bound on, and the same answer it is given by binding a black one texel map. A scene
+/// with no spot light writes one whole sphere that no cluster's light points at, so the cost is
+/// one bound buffer nothing reads rather than a shader that cannot be written.
 #[allow(clippy::too_many_arguments)]
 fn lighting_pass(
     group: &Group<'_>,
     camera: &Value,
     clustering: &Clustering,
     clusters: &lighting_pool::Clusters,
+    cones: &PackedList,
     pool: &LightPool,
+    environment: &EnvironmentMap,
     frame: Frame,
     time: f64,
     images: &[(String, Value)],
@@ -2121,6 +2631,15 @@ fn lighting_pass(
                     .map(Value::Float)
                     .collect(),
                 ),
+            ),
+            (
+                ENVIRONMENT.to_owned(),
+                // The field is written for every scene, present or not, because the uniform's
+                // layout is the same for every scene and a field that came and went would put
+                // everything after it somewhere else. What a scene with no environment light
+                // writes is a zero colour and a zero flag, and the shader takes the stand-in
+                // path on the flag rather than on the colour: see `EnvironmentMap`.
+                environment.uniform(),
             ),
             (
                 FRAME_SIZE.to_owned(),
@@ -2165,10 +2684,34 @@ fn lighting_pass(
                     .into_iter()
                     .map(|(name, value)| (name.to_owned(), value)),
             )
+            .chain([(
+                SPOT_CONES_ENTRY.to_owned(),
+                lighting_pool::declaration(SPOT_CONES_ENTRY, cones.bytes().len() as i64),
+            )])
+            .chain([environment_binding(environment)])
             .chain(images.iter().cloned()),
         vec![COLOR_TARGET],
         COLOUR_CLEAR,
         lighting_state(),
+    )
+}
+
+/// Builds the binding point the environment map is read at, whatever the scene's environment is.
+///
+/// # Invariants
+///
+/// The map declares **no sampler**. It is read with `textureLoad` at a texel the shader
+/// computes, which is what keeps a filtered read from bleeding across the octahedral fold's
+/// seam, and a texture that declares no `sampled` takes exactly one binding number.
+fn environment_binding(environment: &EnvironmentMap) -> (String, Value) {
+    (
+        ENVIRONMENT_MAP.to_owned(),
+        texture_binding(
+            &environment.entry,
+            environment.image.width,
+            environment.image.height,
+            &environment.image.format,
+        ),
     )
 }
 
@@ -2225,22 +2768,131 @@ fn emission_pass(
 /// A light gets a matrix and an eye and nothing else: it is not a camera, and nothing
 /// draws through it as though it were.
 ///
-/// Every light that reaches this function is a point light, because `read_lights` refuses
-/// every other kind rather than approximating it as a point. So the eye below is a position
-/// the document declared, and a directional light — whose shadow volume is a box seen along
-/// a direction rather than a box looked at from somewhere — is not a light this function
-/// can be asked about.
-fn light_projection(light: &LightRead, bounds: &Bounds) -> (Matrix, [f64; 3]) {
-    debug_assert!(matches!(light.kind, LightKind::Point));
+/// This is asked of a light that **stands somewhere**. An environment light stands nowhere,
+/// casts no shadow and is given no page, so it never reaches here: [`LightRead::shadow_projection`]
+/// answers for it with the identity rather than building a volume around a position it does
+/// not have. A directional light — whose shadow volume is a box seen along a direction rather
+/// than a box looked at from somewhere — is not a light this function can be asked about
+/// either, and `read_lights` refuses it before this is reached.
+fn light_projection(position: [f64; 3], shadow_extent: f64, bounds: &Bounds) -> (Matrix, [f64; 3]) {
     let centre = bounds.centre();
     (
         projection_of(
-            &Bounds::around(centre, light.shadow_extent),
-            light.position,
+            &Bounds::around(centre, shadow_extent),
+            position,
             centre,
             FRAMING_PADDING,
         ),
-        light.position,
+        position,
+    )
+}
+
+/// The near plane of a spot light's page, as a fraction of its far plane.
+///
+/// # Invariants
+///
+/// **Not** the light itself. A page that starts at the light has a depth range of thousands to
+/// one, and a depth comparison over such a range cannot be biased: the constant a shadow lookup
+/// subtracts is in the page's own normalised depth, where one world unit near the far plane is
+/// a millionth of it, so the bias that fixes acne near the light detaches every shadow from its
+/// caster by tens of units near the far one. A fiftieth of the far plane is a range a bias can
+/// be written for.
+///
+/// The cost of that choice is stated rather than hidden: a fragment nearer the light than this is
+/// clipped out of the page, and the shader reads a fragment whose depth is **below** the page's
+/// near plane as unshadowed, because its depth compares less than anything the page recorded.
+/// So the sliver of scene right under a lamp has no shadow, which is a missing shadow rather
+/// than one in the wrong place, and a cone's own attenuation has already zeroed everything
+/// outside the cone besides.
+const SPOT_NEAR_FRACTION: f64 = 0.05;
+
+/// Returns the perspective projection a spot light's page is drawn through, and the eye it is
+/// made from.
+///
+/// # Invariants
+///
+/// **The page is the narrower of the cone and the column of half width `shadow_extent`, reaching
+/// from near the light to where the scene ends along the cone's axis.** That is the whole
+/// decision, and it is made here rather than in the schema because it is a decision about which
+/// box a projection covers, which is what this file answers.
+///
+/// It has to be one of them rather than the other, and the reason is which way each one fails.
+///
+/// - The cone is the light's own shape. Cutting it short to reach a `shadow_extent` the author
+///   wrote narrow would leave the outer band of the cone with **no shadow at all**, and a
+///   missing shadow is a shadow that is not there rather than one that is wrong.
+/// - The column is how much of the scene the author said this light shadows. Ignoring it would
+///   render the page from a light aimed at a scene smaller than the author asked for. A fragment
+///   beyond the **far** plane is the dangerous case and not the near one: the shader returns
+///   unshadowed for a fragment whose page coordinate falls outside the page, but a fragment
+///   past the far plane still lands *inside* the page and is compared against a depth recorded
+///   from nearer, so it reads as fully shadowed. The far plane is therefore **never** inside
+///   the scene, whatever the extent says — which is why the extent narrows the angle and never
+///   shortens the reach.
+///
+/// Taking the narrower half angle rather than the shorter of the two volumes is what makes both
+/// of those hold at once: at every distance the page is as wide as the smaller of what the cone
+/// would be and what the column would be, and it reaches the whole scene either way.
+///
+/// The far plane is the scene's **support interval** along the axis, which is the furthest the
+/// box reaches in the direction the light shines, and not the axis-aligned box's own far face:
+/// a box corner is the far end along an axis only when that axis points at the box, and a spot
+/// light aimed across its own scene — which is the case that matters — is not.
+///
+/// The page is fitted to the whole drawn box, which over-covers when the box is much larger than
+/// the pool of light. That is the same trade [`light_projection`] makes, and it is taken for
+/// the same reason: an exact cone and box intersection is a harder answer than a scene whose
+/// shadow page is a little larger than the shadow in it.
+///
+/// The aspect is one, so the page is a square that **circumscribes** the cone's disc at the far
+/// plane rather than being inscribed in it. The corners of a page are the parts of it furthest
+/// from the axis, so a page inscribed in the cone would render occluders that are outside the
+/// cone into a page whose middle is empty.
+fn spot_projection(
+    position: [f64; 3],
+    cone: &SpotCone,
+    shadow_extent: f64,
+    bounds: &Bounds,
+) -> (Matrix, [f64; 3]) {
+    // The furthest point of the box along the axis, which is the **sum** of each axis's own
+    // furthest end: a point of the box is a choice on every axis, so the furthest point is the
+    // one that takes the far end of all three at once. Taking the largest single term instead
+    // is a page that stops inside the scene, and everything beyond it reads as fully shadowed.
+    // Floored above a hand's width, because a light standing inside its own scene and aimed at
+    // a wall it is almost touching still has a page.
+    let far_plane = (0..3)
+        .map(|axis| cone.axis[axis])
+        .zip(0..3)
+        .map(|(direction, axis)| {
+            let low = direction * (bounds.minimum[axis] - position[axis]);
+            let high = direction * (bounds.maximum[axis] - position[axis]);
+            low.max(high)
+        })
+        .sum::<f64>()
+        .max(1e-2);
+    // The half angle the author's column subtends at that distance, which is the width it asks
+    // for written as a shape. The `min` of the two is the whole decision.
+    let half_angle = cone
+        .outer_angle
+        .min((shadow_extent.max(1e-3) / far_plane).atan())
+        .max(1e-3);
+    (
+        multiply(
+            &perspective(
+                2.0 * half_angle,
+                1.0,
+                (far_plane * SPOT_NEAR_FRACTION).max(1e-3),
+                far_plane,
+            ),
+            // The eye is the light and the target is a point along the cone's axis, so the
+            // basis is built from the direction the light shines rather than from a point the
+            // scene happens to have. A cone is symmetric about its axis, so which of the two
+            // perpendicular directions becomes "up" cannot be wrong; that is also what makes a
+            // light aimed straight up or straight down safe, where `look_at`'s up is parallel to
+            // the direction and its right hand axis falls back to a unit x.
+            &look_at(position, add(position, cone.axis), [0.0, 1.0, 0.0]),
+        ),
+        position,
     )
 }
 

@@ -281,7 +281,7 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
             Value::String("clustered_shadow".to_owned()),
         ),
         (
-            "clustering".to_owned(),
+            "frame".to_owned(),
             Value::structure([("shadow_pages".to_owned(), Value::Int(pages))]),
         ),
         (

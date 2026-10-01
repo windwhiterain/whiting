@@ -58,6 +58,7 @@ pub mod shaders;
 mod dunes;
 mod lanterns;
 mod monoliths;
+mod spotlight;
 mod stilllife;
 mod terraces;
 mod tidewater;
@@ -66,6 +67,7 @@ mod tiles;
 pub use dunes::dunes;
 pub use lanterns::lanterns;
 pub use monoliths::monoliths;
+pub use spotlight::spotlight;
 pub use stilllife::stilllife;
 pub use terraces::terraces;
 pub use tidewater::tidewater;
@@ -81,6 +83,7 @@ impl Gallery {
             "dunes",
             "lanterns",
             "monoliths",
+            "spotlight",
             "stilllife",
             "studio",
             "terraces",
@@ -98,6 +101,7 @@ impl Gallery {
             "dunes" => dunes(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
+            "spotlight" => spotlight(),
             "stilllife" => stilllife(),
             "studio" => scene::standard::example_standard_scene(),
             "terraces" => terraces(),
