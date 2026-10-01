@@ -58,6 +58,9 @@ pub const NEAR: &str = "near";
 /// Field holding how far from the eye the far plane of the camera is.
 pub const FAR: &str = "far";
 
+/// Field holding the image the scene is drawn into.
+pub const FRAME: &str = "frame";
+
 /// Field holding the time the scene is drawn at, in seconds.
 pub const TIME: &str = "time";
 
@@ -155,8 +158,42 @@ pub fn standard_scene_schema() -> Schema {
                      reproducible: the same documents at the same time give the same frame.",
                 ),
         ),
+        (
+            FRAME.to_owned(),
+            frame_schema().optional().with_documentation(
+                "How large the image is. A scene that names no frame is drawn into the \
+                 square the pipeline has always drawn into.",
+            ),
+        ),
     ]))
     .with_documentation("The conventional lit scene: lights, shaders, geometry, and what draws it.")
+}
+
+/// Builds the schema of the image a scene is drawn into.
+///
+/// # Invariants
+///
+/// Both fields are optional, and a field that is absent falls back to the square the
+/// pipeline has always drawn into, so a scene that names no frame draws the frame it
+/// always drew. The frame is a property of the scene rather than a constant of the
+/// backend because its aspect is part of the composition: a wide valley drawn into a
+/// square is cropped at the sides, and the same valley drawn wide is not.
+pub fn frame_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            "width".to_owned(),
+            Schema::new(SchemaKind::Int)
+                .optional()
+                .with_documentation("How wide the shaded image is, in pixels."),
+        ),
+        (
+            "height".to_owned(),
+            Schema::new(SchemaKind::Int)
+                .optional()
+                .with_documentation("How tall the shaded image is, in pixels."),
+        ),
+    ]))
+    .with_documentation("The image a scene is drawn into.")
 }
 
 /// Builds the schema of a camera.

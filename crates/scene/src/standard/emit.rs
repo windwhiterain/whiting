@@ -34,13 +34,14 @@ use graphics::{derived_instance_schema, layout::packed_layout, verify_pass_input
 
 use crate::CompileError;
 use crate::standard::camera::{Camera, Projection, matrix_projection, projection_value};
+use crate::standard::frame::Frame;
 use crate::standard::math::{Bounds, Matrix, apply, projection_of, transform_matrix};
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
-    CAMERA, COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
-    DEPTH_HEIGHT, DEPTH_RANGE, DEPTH_WIDTH, FORWARD, HALF_EXTENT, INSTANCE_DATA, LIGHT_COLOR,
-    LIGHT_POSITION, LIGHT_PROJECTION, LIGHT_SHADOW_TEXEL, POSITION, PRESENT_TARGET, PROJECTION,
-    RIGHT, SHADOW_MAP, SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, TIME, UP, VERTICES,
+    CAMERA, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, DEPTH_RANGE, FORWARD,
+    HALF_EXTENT, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, LIGHT_PROJECTION, LIGHT_SHADOW_TEXEL,
+    POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP, SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT,
+    SHADOW_MAP_WIDTH, TIME, UP, VERTICES,
 };
 use crate::standard::scene_schema;
 use graphics::layout::components;
@@ -289,11 +290,15 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     // may place its mesh anywhere and a mesh no instance names is not drawn at all.
     let bounds = bounds_of_instances(&meshes, &instances);
     let time = read_time(scene)?;
-    let camera = Camera::read(scene, &bounds, COLOR_WIDTH as f64 / COLOR_HEIGHT as f64)?;
+    // The frame is read before the camera because the camera's field of view is widened by
+    // the frame's aspect: a wide frame is wider rather than cropped, and which frame a
+    // scene is drawn into is the scene's decision.
+    let frame = Frame::read(scene);
+    let camera = Camera::read(scene, &bounds, frame.aspect())?;
     let camera_basis = camera.projection();
     let camera = projection_value(&camera_basis);
 
-    add_targets(&mut instance);
+    add_targets(&mut instance, frame);
     for light in &lights {
         insert_entry(
             &mut instance,
@@ -322,7 +327,7 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
     }
     for group in groups(&instances, &meshes, &shaders, Stage::Depthing, None) {
         insert_entry(&mut instance, group.entry(), group.payload())?;
-        passes.push(depthing_pass(&group, &camera, time));
+        passes.push(depthing_pass(&group, &camera, frame, time));
     }
     for light in &lights {
         for group in groups(
@@ -333,13 +338,13 @@ pub fn emit(scene: &Value) -> Result<Emitted, CompileError> {
             Some(&light.label),
         ) {
             insert_entry(&mut instance, group.entry(), group.payload())?;
-            passes.push(lighting_pass(&group, light, &camera, &bounds, time));
+            passes.push(lighting_pass(&group, light, &camera, &bounds, frame, time));
         }
     }
     // The post stage, if the scene declares one, is the last pass: everything it reads was
     // written above it, and the frame is read back from what it writes.
     if let Some(shader) = shaders.iter().find(|shader| shader.stage == Stage::Post) {
-        let (pass, entry, vertex_entry) = post_pass(shader, &camera_basis, time)?;
+        let (pass, entry, vertex_entry) = post_pass(shader, &camera_basis, frame, time)?;
         insert_entry(&mut instance, vertex_entry, entry)?;
         passes.push(pass);
     }
@@ -1054,18 +1059,25 @@ fn camera_value(projection: &Projection) -> Value {
 }
 
 /// Adds the depth buffer and the shaded image to the instance.
-fn add_targets(instance: &mut BTreeMap<String, Value>) {
+///
+/// # Invariants
+///
+/// The three images are the size of the frame, and the present target is the same size as
+/// the image it is written from. A post stage reads the shaded image and the depth that
+/// produced it and writes the present target, and a sample of one read at the coordinates
+/// of another is a frame of the wrong picture rather than a wrong picture.
+fn add_targets(instance: &mut BTreeMap<String, Value>, frame: Frame) {
     instance.insert(
         DEPTH_BUFFER_ENTRY.to_owned(),
-        texture(DEPTH_WIDTH, DEPTH_HEIGHT, DEPTH_FORMAT),
+        texture(frame.width, frame.height, DEPTH_FORMAT),
     );
     instance.insert(
         COLOR_TARGET_ENTRY.to_owned(),
-        texture(COLOR_WIDTH, COLOR_HEIGHT, COLOR_FORMAT),
+        texture(frame.width, frame.height, COLOR_FORMAT),
     );
     instance.insert(
         PRESENT_TARGET_ENTRY.to_owned(),
-        texture(COLOR_WIDTH, COLOR_HEIGHT, COLOR_FORMAT),
+        texture(frame.width, frame.height, COLOR_FORMAT),
     );
 }
 
@@ -1102,6 +1114,7 @@ fn fullscreen_point_schema() -> Rc<Schema> {
 fn post_pass(
     scene_shader: &ShaderRead,
     projection: &Projection,
+    frame: Frame,
     time: f64,
 ) -> Result<(Value, Value, String), CompileError> {
     // The vertex buffer is packed once and entered into the instance, the same way a
@@ -1142,18 +1155,18 @@ fn post_pass(
             ),
             (
                 COLOR_TARGET.to_owned(),
-                texture_binding(COLOR_TARGET_ENTRY, COLOR_WIDTH, COLOR_HEIGHT, COLOR_FORMAT),
+                texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
             ),
             (
                 DEPTH_BUFFER.to_owned(),
-                texture_binding(DEPTH_BUFFER_ENTRY, DEPTH_WIDTH, DEPTH_HEIGHT, DEPTH_FORMAT),
+                texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
             ),
             (
                 PRESENT_TARGET.to_owned(),
                 texture_binding(
                     PRESENT_TARGET_ENTRY,
-                    COLOR_WIDTH,
-                    COLOR_HEIGHT,
+                    frame.width,
+                    frame.height,
                     COLOR_FORMAT,
                 ),
             ),
@@ -1202,7 +1215,7 @@ fn shadowing_pass(group: &Group<'_>, light: &LightRead, bounds: &Bounds, time: f
 }
 
 /// Builds the depthing pass of one group.
-fn depthing_pass(group: &Group<'_>, camera: &Value, time: f64) -> Value {
+fn depthing_pass(group: &Group<'_>, camera: &Value, frame: Frame, time: f64) -> Value {
     rasterize(
         &group.label(),
         group.shader,
@@ -1212,7 +1225,7 @@ fn depthing_pass(group: &Group<'_>, camera: &Value, time: f64) -> Value {
         ]),
         mesh_bindings(group).chain([(
             DEPTH_BUFFER.to_owned(),
-            texture_binding(DEPTH_BUFFER_ENTRY, DEPTH_WIDTH, DEPTH_HEIGHT, DEPTH_FORMAT),
+            texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
         )]),
         vec![DEPTH_BUFFER],
         DEPTH_CLEAR,
@@ -1234,6 +1247,7 @@ fn lighting_pass(
     light: &LightRead,
     camera: &Value,
     bounds: &Bounds,
+    frame: Frame,
     time: f64,
 ) -> Value {
     rasterize(
@@ -1276,11 +1290,11 @@ fn lighting_pass(
         mesh_bindings(group).chain([
             (
                 COLOR_TARGET.to_owned(),
-                texture_binding(COLOR_TARGET_ENTRY, COLOR_WIDTH, COLOR_HEIGHT, COLOR_FORMAT),
+                texture_binding(COLOR_TARGET_ENTRY, frame.width, frame.height, COLOR_FORMAT),
             ),
             (
                 DEPTH_BUFFER.to_owned(),
-                texture_binding(DEPTH_BUFFER_ENTRY, DEPTH_WIDTH, DEPTH_HEIGHT, DEPTH_FORMAT),
+                texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
             ),
             (
                 SHADOW_MAP.to_owned(),

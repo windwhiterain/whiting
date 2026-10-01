@@ -205,6 +205,7 @@ mod camera;
 mod compiler;
 mod emit;
 mod example;
+pub mod frame;
 pub mod math;
 mod packing;
 mod pass_schemas;
@@ -217,12 +218,12 @@ pub use emit::{
     PRESENT_TARGET_ENTRY, Stage, emit, shadow_map_entry,
 };
 pub use example::example_standard_scene;
+pub use frame::Frame;
 pub use math::{Bounds, apply as project_point, transform_matrix};
 pub use pass_schemas::{
-    COLOR_FORMAT, COLOR_HEIGHT, COLOR_TARGET, COLOR_WIDTH, DEPTH_BUFFER, DEPTH_FORMAT,
-    DEPTH_HEIGHT, DEPTH_WIDTH, INSTANCE_DATA, LIGHT_COLOR, LIGHT_POSITION, LIGHT_PROJECTION,
-    LIGHT_SHADOW_TEXEL, PRESENT_TARGET, PROJECTION, SHADOW_MAP, SHADOW_MAP_FORMAT,
-    SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, TIME, VERTICES, depthing_pass_schema,
+    COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, INSTANCE_DATA, LIGHT_COLOR,
+    LIGHT_POSITION, LIGHT_PROJECTION, LIGHT_SHADOW_TEXEL, PRESENT_TARGET, PROJECTION, SHADOW_MAP,
+    SHADOW_MAP_FORMAT, SHADOW_MAP_HEIGHT, SHADOW_MAP_WIDTH, TIME, VERTICES, depthing_pass_schema,
     lighting_pass_schema, post_pass_schema, projection_schema, shadowing_pass_schema,
 };
 pub use scene_schema::{

@@ -148,20 +148,13 @@ pub const SHADOW_MAP_HEIGHT: i64 = 2048;
 /// Format every shadow map is rendered in.
 pub const SHADOW_MAP_FORMAT: &str = "depth32float";
 
-/// Width in pixels of the depth buffer the standard pipeline renders.
-pub const DEPTH_WIDTH: i64 = 1024;
-
-/// Height in pixels of the depth buffer the standard pipeline renders.
-pub const DEPTH_HEIGHT: i64 = 1024;
-
 /// Format the depth buffer is rendered in.
+///
+/// The buffer's size is not a constant: the shaded image, this and the present target are
+/// all the size of the scene's `frame`, because a post stage reads the first two at the
+/// coordinates of the pixel it is writing to the third. See
+/// [`crate::standard::frame`].
 pub const DEPTH_FORMAT: &str = "depth32float";
-
-/// Width in pixels of the image the standard pipeline shades into.
-pub const COLOR_WIDTH: i64 = 1024;
-
-/// Height in pixels of the image the standard pipeline shades into.
-pub const COLOR_HEIGHT: i64 = 1024;
 
 /// Format the shaded image is rendered in.
 pub const COLOR_FORMAT: &str = "rgba8unorm";
