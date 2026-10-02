@@ -73,6 +73,8 @@ mod schema_document;
 mod value;
 mod version;
 
+pub mod bytes;
+
 pub use definition::Definition;
 pub use delta::{Appended, Delta, PrimitiveDelta, Removed};
 pub use error::{DeltaError, HistoryError, LoadError, RegistryError, SchemaError, ValidationError};
@@ -81,7 +83,7 @@ pub use identifier::{DefinitionIdentifier, SchemaIdentifier};
 pub use loaded::{
     FileContent, Loaded, Node, NodeId, Origin, RegistryStore, Slot, Store, Target, Wanted,
 };
-pub use packed::{PackedBuilder, PackedError, PackedLayout, PackedList};
+pub use packed::{PackedBuilder, PackedError, PackedLayout, PackedList, PackedListProxy};
 pub use path::{Path, PathError, PathSegment, Resolved};
 pub use reference::{FilePath, Reference, ReferenceError};
 pub use registry::Registry;

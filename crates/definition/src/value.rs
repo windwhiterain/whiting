@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use facet::Facet;
 
+use crate::bytes::BytesText;
 use crate::packed::PackedList;
 use crate::path::Path;
 use crate::schema::{Schema, SchemaKind};
@@ -41,7 +42,13 @@ pub enum Value {
     Int(i64),
     Float(f64),
     String(String),
-    Bytes(Vec<u8>),
+    /// A byte sequence, written as the base64 text of [`BytesText`].
+    ///
+    /// This is the bulk form of data that has no structure to walk: the pixels of an image, and
+    /// anything else a shader reads as a run. It is a `proxy` rather than the field's own
+    /// spelling because a decimal number per octet costs about 2.6 text bytes per byte of data
+    /// and a parse per octet; see [`bytes`](crate::bytes).
+    Bytes(#[facet(proxy = BytesText)] Vec<u8>),
     /// Named fields, closed by the schema that validates it.
     Struct(FieldMap),
     /// A variant tag plus the fields that variant carries.
