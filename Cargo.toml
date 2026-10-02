@@ -27,7 +27,7 @@ device = { path = "crates/device", package = "whiting-device" }
 # here resolved the facade to 0.44.4 against a 0.45.0 core, and the derive impls no
 # longer satisfied the serializer's bound.
 facet = "0.45"
-facet-json = "0.44"
+facet-json = { version = "0.44", features = ["fast"] }
 facet-axum = "0.44"
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
