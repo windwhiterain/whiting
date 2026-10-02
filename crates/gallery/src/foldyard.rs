@@ -595,13 +595,38 @@ fn cut_heightfield(
 
 /// The height of the far range, which is its own mesh placed beyond the valley's.
 ///
+/// The far range as a mass of its own: the same [`Ridge`] the valley's own range is, and not
+/// a closed form along the line.
+///
 /// # Invariants
 ///
-/// The crest line along the range is [`crest_profile`], a closed form of two periods, and
-/// not a fractal: what this is for is a **skyline**, and a skyline the eye reads as a line
-/// of crests and saddles rather than as a mass with detail on it. A fractal is the right
-/// answer for the valley's own range, thirty units nearer, and the two together are the
-/// argument for having both.
+/// **This is a body and the closed form is for a line.** The range is five hundred and
+/// thirty-six units across and sixty-odd tall, seen from two hundred and fifty, and every
+/// part of it the eye can resolve is a **surface** with a shape: a face with a light side and
+/// a dark one, a gully between two spurs. [`land::crest_profile`] is two smooth arches
+/// multiplied
+/// together, and a product of two arches has no crease in it anywhere, so over five hundred
+/// units of it the range came out as two soft swells and a long even slope between them,
+/// which reads as a painted backdrop rather than as rock. [`Ridge`] answers the same question
+/// with a fractal along the axis and creasing across it, and the creasing is the half that
+/// does the work here: it is what puts a saddle between two crests instead of one more
+/// swell.
+///
+/// That both forms are in the module is not redundancy. `land::crest_profile`'s own
+/// documentation says a mass wants the fractal, a skyline wants the closed form, and that
+/// neither substitutes for the other. This range was on the wrong side of that line, and the
+/// comment that put it there gave as its reason that a skyline is what a far range is, which
+/// is true of a range seen end-on and not of one spread across half the horizon. It has no
+/// caller now, and it keeps its place in the module for the skyline it is the right answer
+/// for.
+///
+/// Four octaves and not five, and the reason is the mesh rather than the taste. The far
+/// range's own grid is a hundred and fifty divisions over six hundred units, so its cell is
+/// four units, and a feature has to be worth about **twice** that to be geometry at all: at
+/// five octaves the finest wave along the axis is five and a half units, which is under one
+/// and a half cells, and a ridge sampled at one and a half samples per cycle is not a ridge,
+/// it is a moiré. Four octaves puts the finest at ten and a bit units, two and a half cells,
+/// and the range is drawn by the grid it is actually given.
 ///
 /// The line dies at both ends of its own mesh, before the mesh stops, which is the same
 /// rule the terrain's own high ground is held to and for the same reason: a range whose
@@ -612,16 +637,70 @@ fn cut_heightfield(
 /// and it is now tapered to nothing before the terrain's own mesh ends, so this is the only
 /// thing standing on the horizon, and a range of a hundred and twenty units would not be a
 /// far range: from the yard it would be a wall across the whole frame, and the only thing
-/// it would hide is the sky. At this height it reads as what it is — a body of hills lying
-/// in the afternoon's haze, close enough to the eye to have a shape and far enough away
-/// that nothing in it has an edge.
+/// it would hide is the sky.
+///
+/// The height is the one number here that was not chosen by reading the formula, because the
+/// two forms do not have the same distribution and a ratio of one to the other means nothing.
+/// Measured over the range's own hundred and fifty by a hundred and fifty of ground — the
+/// part [`land::edge_taper`] leaves at full strength, and not the whole six hundred units of its
+/// mesh — the closed form came out at a **peak of 61.2 and a mean of 14.9**, and the first
+/// creased mass at a peak of 42.1 and a mean of 13.3: the peak fell by nearly a third and the
+/// range all but disappeared behind the near hill, which is a regression dressed as an
+/// improvement. [`crest_profile`] never returns below 0.45, so it was a solid body all the
+/// way along, and a product of a fractal and a crease drops into its gullies instead. So
+/// **two** constants move and not one: the height carries the peak back, to 59.7, and the
+/// crease floor carries the mass back up out of the gullies, from 0.36 to 0.45, which is the
+/// closed form's own floor arrived at from the other direction. The mean then lands at 20.1,
+/// a third **above** what the closed form held, and that is the price of the creases rather
+/// than a mistake in the setting: a mass with gullies in it is fuller between its crests than
+/// a pair of smooth swells at the same height, and a far range that is only there to be
+/// distant wants to be full. All of these are measured, not derived, and the closed form's
+/// numbers are recorded here because the next person to retune this will otherwise repeat the
+/// measurement rather than read it.
+///
+/// At this height it reads as what it is — a body of hills
+/// lying in the afternoon's haze, close enough to the eye to have a shape and far enough
+/// away that nothing in it has an edge.
+fn far_body() -> Ridge {
+    Ridge {
+        axis: [1.0, 0.0],
+        // k3's own mountain measured its profile along the axis at 0.012, and that is the
+        // number that made the ridgelines there read as ridgelines. Held rather than
+        // invented, because this is the same question asked of a wider field.
+        along_scale: 0.0120,
+        across_scale: [0.0160, 0.0110],
+        // Both of the two this scene could not have got from the formula, and both are argued
+        // above: `height` restores the peak the creases had taken away and `crease_floor`
+        // keeps the gullies from swallowing the body between the crests.
+        height: 100.0,
+        floor: 6.0,
+        crease_floor: 0.45,
+        profile_seed: 503,
+        crease_seed: 509,
+        octaves: 4,
+    }
+}
+
+/// The far range as the height of a mesh, with nothing cut into it: the mass, thinned to
+/// nothing towards its own front and back so that it is a range and not a slab, and dying
+/// before its mesh does.
+///
+/// # Invariants
+///
+/// The thinning is the composition and the mass is the subject, and they are separate on
+/// purpose. The lens across the line is what decides the range is a **wall of hills and not
+/// a ribbon standing on its edge**, and it has to keep deciding that whatever the mass inside
+/// it is made of, so it multiplies the [`Ridge`] whole rather than reaching into it. The
+/// hollow in front of the line is the same move one step on: a range that comes up level with
+/// the ground in front of it has nothing to be far about, and a few units of dip is what says
+/// there is distance here.
 fn far_range() -> impl Fn(f64, f64) -> (f64, f64) {
+    let body = far_body();
     move |x: f64, z: f64| {
-        let crest = land::crest_profile(x * 0.30);
         // The mass across the line, so the range is a wall of hills and not a ribbon
         // standing on its edge.
         let across = (1.0 - (z / 150.0).powi(2)).max(0.0);
-        let rise = 54.0 * crest * across.powf(1.35) - 10.0 * (1.0 - across);
+        let rise = body.height_at([x, z]) * across.powf(1.35) - 10.0 * (1.0 - across);
         let height = rise * land::edge_taper([x, z], 150.0, 268.0);
         (height, 0.0)
     }
