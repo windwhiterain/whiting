@@ -162,11 +162,17 @@ fn the_bar_sits_between_a_scene_that_is_reported_and_one_that_is_not() {
 #[test]
 fn the_gallery_says_how_often_a_scene_is_reported() {
     // The threshold was chosen from this table and not from taste, so the set it names is
-    // pinned. Measured over the ten gallery scenes, the fold at the half diagonal of each
+    // pinned. Measured over the eleven gallery scenes, the fold at the half diagonal of each
     // scene's own box runs: studio 1.01, sunlight 1.05, spotlight 1.05, tiles 1.07, dunes 2.91,
-    // terraces 3.51, stilllife 4.79, lanterns 6.09, monoliths 7.31, tidewater 86.35. Three
-    // clusters and two gaps; the bar of two sits in the first one, and the second is left
-    // alone because a bar above it would report `tidewater` and nothing else.
+    // terraces 3.51, stilllife 4.79, lanterns 6.09, monoliths 7.31, foldyard 11.14, tidewater
+    // 86.35. Three clusters and two gaps; the bar of two sits in the first one, and the second is
+    // left alone because a bar above it would report `tidewater` and nothing else.
+    //
+    // `foldyard` is the eleventh, and it is the first scene in the gallery whose own size is the
+    // reason it is here: a valley three hundred units across with a range five hundred beyond it,
+    // so the box the fold is measured over is a thousand and the note's own words — the distance
+    // is a box and not a surface — are the whole of the story. It lands between `monoliths` and
+    // `tidewater` and so it moves neither gap.
     let reported: Vec<&str> = Gallery::names()
         .iter()
         .copied()
@@ -181,13 +187,14 @@ fn the_gallery_says_how_often_a_scene_is_reported() {
         reported,
         [
             "dunes",
+            "foldyard",
             "lanterns",
             "monoliths",
             "stilllife",
             "terraces",
             "tidewater"
         ],
-        "the six scenes at or above a one-stop fold are the ones reported, in the gallery's own \
+        "the seven scenes at or above a one-stop fold are the ones reported, in the gallery's own \
          order. A bar moved into the second gap would report `tidewater` alone, which is a bar \
          fitted to a single observation rather than chosen from the data"
     );
@@ -197,8 +204,8 @@ fn the_gallery_says_how_often_a_scene_is_reported() {
         "and the four scenes the constant does nothing to are the four the note leaves alone: a \
          scene four units across and a scene twenty-four units across are the same answer"
     );
-    // The largest fold among the quiet four is 1.07 and the smallest among the reported six is
-    // 2.91, so any bar between them names this same six. The bar is two because a doubling of
+    // The largest fold among the quiet four is 1.07 and the smallest among the reported seven is
+    // 2.91, so any bar between them names this same seven. The bar is two because a doubling of
     // light is the smallest difference a photograph is named for, and because it is a meaning
     // rather than a number somebody picked out of the gap. Both edges are written as the sums
     // the note itself prints, so the claim and the arithmetic cannot drift apart.

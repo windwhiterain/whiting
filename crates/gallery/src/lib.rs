@@ -58,6 +58,7 @@ pub mod land;
 pub mod shaders;
 
 mod dunes;
+mod foldyard;
 mod lanterns;
 mod monoliths;
 mod spotlight;
@@ -68,6 +69,7 @@ mod tidewater;
 mod tiles;
 
 pub use dunes::dunes;
+pub use foldyard::foldyard;
 pub use lanterns::lanterns;
 pub use monoliths::monoliths;
 pub use spotlight::spotlight;
@@ -85,6 +87,7 @@ impl Gallery {
     pub fn names() -> &'static [&'static str] {
         &[
             "dunes",
+            "foldyard",
             "lanterns",
             "monoliths",
             "spotlight",
@@ -104,6 +107,7 @@ impl Gallery {
     pub fn build(name: &str) -> Value {
         match name {
             "dunes" => dunes(),
+            "foldyard" => foldyard(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
             "spotlight" => spotlight(),

@@ -191,6 +191,29 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
                 other: 1,
             },
         ),
+        // `foldyard` is the widest scene in the gallery — thirteen meshes, one pass each for
+        // the depthing and lighting stages — and its shadowing count is larger than either,
+        // because a caster is a pass for **each** light that casts one, and two of its three
+        // lights cast. The counts are measured rather than predicted, and they say the thing
+        // this table exists to say: they are a function of the scene's **geometry** and not of
+        // its light count in any other way. This scene has three lights and its depthing and
+        // lighting counts are the thirteen another scene with one light and thirteen meshes
+        // would have.
+        //
+        // The enclosure is why thirteen and not sixteen. Its runs were at first separate
+        // meshes, one per wall band, and composing each run into a single mesh through
+        // `built::push_wall_run` took three of them out without changing a vertex. The
+        // shadowing count fell with them, which is the point of recording it: fewer meshes is
+        // fewer passes in every stage that draws per mesh, and none of it is visible.
+        (
+            "foldyard",
+            Stages {
+                shadowing: 20,
+                depthing: 13,
+                lighting: 13,
+                other: 1,
+            },
+        ),
         (
             "lanterns",
             Stages {

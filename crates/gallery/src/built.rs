@@ -9,9 +9,10 @@
 //! # Invariants
 //!
 //! - Every form here is a generator, and a generator **returns** a
-//!   [`PackedList`](definition::PackedList) rather than appending into a caller's run. Which
-//!   forms share one mesh is a fact about a scene and not about the forms, so a scene that
-//!   wants a wall and its coping in a single buffer composes them itself.
+//!   [`PackedList`](definition::PackedList). Which forms share one mesh is a fact about a
+//!   scene and not about the forms, so a scene that wants a wall and its coping in a single
+//!   buffer appends both into one [`Shaded`] through [`push_wall_run`] rather than calling
+//!   [`wall_run`] twice and living with two meshes and two passes.
 //! - Every face is wound to the normal it is **told**, through
 //!   [`quad_normal`](crate::geometry::quad_normal), and never to one derived from the order
 //!   its corners happen to be listed in. The faces of a composed form are the faces of a
@@ -36,11 +37,19 @@ const WALL_FACES: usize = 5;
 ///
 /// # Invariants
 ///
-/// The answer is `along` turned a quarter turn, so it is a **horizontal** normal that
+/// The answer is `up` crossed with the run's direction, so it is a **horizontal** normal that
 /// ignores the height of either end: a run's faces stand up whatever the ground does under
-/// them. Which way it points is fixed by the order the ring is walked in, not by anything
-/// about this pair of points, and the ring is walked so that the answer is away from the
-/// middle — anticlockwise on plan, seen from above.
+/// them.
+///
+/// **The rule for which way that points is that the ground a ring encloses is on the walker's
+/// left.** The formula is `up × along`, so a ring walked with its interior on the left faces
+/// outward, and the same ring walked the other way faces **inward** — every face of the wall
+/// is then back-facing, and the wall is not drawn. Nothing in the frame distinguishes a wall
+/// that was culled from a wall that was never built, so a ring walked the wrong way is a
+/// missing building rather than a visible fault. Stated as a crossing product because that is
+/// what it is, and not as a direction on a drawing: a plan's anticlockwise and a right-handed
+/// `y`-up quarter turn are **not** the same handedness, and a rule written in map terms
+/// describes the walk this one does not accept.
 ///
 /// It is turned rather than tested against a reference point because a side test needs a
 /// point to test against, and a wall run's middle is not a point a ring with chamfered
@@ -101,7 +110,18 @@ pub fn wall_run(
 
 /// Appends one wall run into a run of shaded points, so a form built out of several bands of
 /// wall can be one mesh rather than three.
-fn push_wall_run(
+///
+/// # Invariants
+///
+/// This is the composer's half of [`wall_run`], and it is public because the module promises a
+/// caller can put a wall, its coping and a third band in **one** mesh, and that promise is only
+/// true if there is a way to append. Two [`wall_run`] calls are two [`PackedList`]s, and a
+/// [`PackedList`] cannot be read back and rejoined, so a scene with no appender has no choice
+/// but two meshes and two passes for what the picture calls one wall.
+///
+/// The run is placed exactly as [`wall_run`] places it, so a caller composing bands gets the
+/// same faces, the same winding and the same ends as one that called the generator twice.
+pub fn push_wall_run(
     points: &mut Shaded,
     from: [f64; 3],
     to: [f64; 3],
@@ -315,6 +335,15 @@ pub fn wall_ring(
 /// profile that divides by zero returns no surface at all rather than a flat one. Beyond
 /// the eave the fall stops at `rise`, so the profile can be swept past its own edge without
 /// folding over.
+///
+/// **A roof built from this is single sided.** A [`heightfield`](crate::geometry::heightfield)
+/// takes each point's normal from the height function itself, and this one rises outward from
+/// the ridge and falls again, so every normal it produces points up and there is no face
+/// turned down at all. A camera below the eave line therefore looks straight through the roof
+/// and sees the inside of the far slope, and the eave itself has nothing to cap it. Closing
+/// that is a separate band — a fascia run along the eave, or a second sheet under this one —
+/// and it is the caller's, because whether a roof needs a ceiling is a fact about the
+/// building and not about its pitch.
 pub fn roof_ridge(length: f64, rise: f64) -> impl Fn(f64, f64) -> f64 {
     move |x: f64, z: f64| {
         let run = z.abs();

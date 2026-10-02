@@ -2314,9 +2314,21 @@ with either, and both are capabilities with no user yet.
   the mesh origin at the ridge height, so the eaves stood a rise above it: a trough, dressed as
   a roof. The trap is the framework's rather than that scene's, and it is the reason
   `roof_ridge` measures the fall *down* from the ridge and says so in its own documentation.
-- **Nothing calls any of it.** `land` and `built` compile and are type-checked and not one of
-  their functions has been executed, because no scene in the gallery builds a valley, a wall or
-  a roof. A generator with no caller is a generator with no test, and the framework has no way
-  to notice that either. Landing one scene is what would exercise all of it, and it is now much
-  cheaper than it was: the terrain, the walls and the vessels are generators, so a scene is a
-  placement document rather than four thousand lines of geometry.
+- **`foldyard` calls all of it, and building it found four things the modules got wrong.** The
+  point of a generator with no caller is that nothing executes it, and the first scene to use
+  `land` and `built` turned up defects that no amount of type-checking would have: a roof that
+  grew into a trough, a profile whose documentation promised a closed vessel it did not give, a
+  module doc promising one-mesh wall composition that privacy made impossible, and an
+  `edge_normal` whose stated winding contradicted its own crossing product. Two of the three
+  scenes that produced these modules also registered a scene called `bamboo` and would have
+  collided had both landed. This is the argument for landing a scene early and in a separate
+  branch with the modules read-only: read-only turns a silent patch into a report, and a scene
+  built on a module is the only thing that will ever find out that the module is wrong.
+- **A smooth gradient written out at eight bits is drawn in contour rings.** The hillside
+  banding was never in the land. The land shades slowly and always along a level, so where a
+  whole slope falls inside one or two quantisation steps the steps *are* the image, and they
+  come out as marbling following isolines across ground that is perfectly smooth. A reviewer
+  reads that as a bug in the terrain and goes looking for a region gate to remove, and finds
+  nothing, because there is nothing to find: the error is introduced at the write. The fix is
+  a triangular dither of one step seeded on the pixel, added as the last arithmetic the frame
+  does, and it is invisible everywhere the image was not already wrong.
