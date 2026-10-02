@@ -577,6 +577,337 @@ pub fn cuboid(width: f64, height: f64, depth: f64) -> PackedList {
     points.finish()
 }
 
+/// Builds one culm of bamboo: a tapering stem with a ringed joint at every node.
+///
+/// # Invariants
+///
+/// The profile is a **cycle of four entries per internode** — the base of the internode, the
+/// joint, the far side of the joint and the base of the next one — because a bamboo stem's
+/// whole silhouette is those joints. A smooth taper turns to a point and reads as a reed;
+/// the rings are what make it a culm, and they are what the light catches.
+///
+/// A joint bulges **outward** by [`JOINT`] of the radius on either side of the seam and no
+/// more. A deeper ring reads as a bamboo fly rod: a real culm's joint is a swelling of the
+/// wall, a few percent of the radius, and at the distance a grove is seen from that is one
+/// or two pixels of highlight rather than a shape.
+///
+/// The radius falls with the height so the stem is a taper, and the taper is steeper over
+/// the top third, where a culm's own weight bends it and a grown stem puts out its branches.
+pub fn culm(nodes: usize, radius: f64, height: f64) -> PackedList {
+    let points = Shaded::with_capacity((nodes + 1) * 4 * 6);
+    if nodes == 0 || radius <= 0.0 || height <= 0.0 {
+        return points.finish();
+    }
+    let joint = 0.055;
+    let taper = |fraction: f64| -> f64 {
+        // A linear taper to two thirds, and a fuller fall over the top third.
+        let gentle = 1.0 - 0.30 * fraction;
+        let tip = if fraction > 0.66 {
+            1.0 - 0.30 * (fraction - 0.66) / 0.34
+        } else {
+            1.0
+        };
+        radius * gentle * tip
+    };
+    let mut profile: Vec<[f64; 2]> = Vec::with_capacity(nodes * 4 + 1);
+    for node in 0..nodes {
+        let base = node as f64 / nodes as f64;
+        let top = (node + 1) as f64 / nodes as f64;
+        let mut at = |fraction: f64, swell: f64| {
+            let r = taper(fraction.min(1.0));
+            profile.push([r * (1.0 + swell), height * fraction.min(1.0)]);
+        };
+        at(base, 0.0);
+        at(base + 0.003, joint);
+        at(base + 0.010, joint);
+        at(base + 0.013, 0.0);
+        let _ = top;
+    }
+    profile.push([taper(1.0) * 0.55, height]);
+    lathe(&profile, 6)
+}
+
+/// Builds one blade of a grass or bamboo leaf: a tapered ribbon along the **x** axis.
+///
+/// # Invariants
+///
+/// The blade starts at the origin, runs to `length` along `+x`, and its width is a curve of
+/// the distance along it rather than a constant: a blade is widest at a third of its length
+/// and comes to a hair at its tip, and a ribbon of constant width reads as a strip of paper.
+///
+/// The blade lies in the **xz plane** and its normal is `+y`, so a leaf cluster is built by
+/// placing one of these with a rotation. `curve` droops the blade: the height falls with the
+/// square of the distance along it, so a leaf that starts level bends down the way a leaf
+/// carrying water does.
+///
+/// The blade is one sided. A leaf seen from behind is not drawn, which at the scale of a
+/// grove is the correct trade: the alternative is a second run of points per leaf, and the
+/// leaves that matter are the ones facing a light.
+pub fn blade(length: f64, width: f64, curve: f64) -> PackedList {
+    const STEPS: usize = 4;
+    let mut points = Shaded::with_capacity(STEPS * 6);
+    // The half width at each station along the blade: nothing at the stem, widest at a
+    // third, and a hair at the tip.
+    let half_width = |fraction: f64| -> f64 {
+        let opened = (fraction / 0.32).min(1.0);
+        let closed = 1.0 - ((fraction - 0.32) / 0.68).max(0.0).powf(1.35);
+        width * 0.5 * opened * closed
+    };
+    let at = |fraction: f64, side: f64| -> [f64; 3] {
+        let along = length * fraction;
+        [
+            along,
+            -curve * fraction * fraction,
+            side * half_width(fraction),
+        ]
+    };
+    for step in 0..STEPS {
+        let (from, to) = (step as f64 / STEPS as f64, (step + 1) as f64 / STEPS as f64);
+        let (a, b) = (at(from, -1.0), at(from, 1.0));
+        let (c, d) = (at(to, 1.0), at(to, -1.0));
+        // The normal leans with the blade's own droop, because the surface does: a leaf
+        // lit by a straight-up normal in the middle of its bend is lit as a flat card.
+        let lean = curve * (from + to);
+        let normal = normalized([-lean, 1.0, 0.0]);
+        for (corner, side) in [(a, 0.0), (b, 1.0), (c, 1.0), (a, 0.0), (c, 1.0), (d, 0.0)] {
+            points.push(corner, normal, [from, side]);
+        }
+    }
+    points.finish()
+}
+
+/// Builds the ring of blades a bamboo twig carries: a spray of leaves about a stem end.
+///
+/// # Invariants
+///
+/// `blades` leaves are placed by the golden angle about the stem, at declining heights, each
+/// turned so its own length runs outwards and droops. The golden angle is what keeps a spray
+/// from being a star: leaves at equal angles around a circle are a flower, and the
+/// incommensurate turn is what a plant does.
+///
+/// The spray is authored in the frame a branch end stands in — up is `+y` — so a scene
+/// places one with a rotation rather than with arithmetic of its own.
+pub fn leaf_spray(blades: usize, length: f64, width: f64, droop: f64) -> PackedList {
+    let mut points = Shaded::with_capacity(blades * 4 * 6);
+    for index in 0..blades.max(1) {
+        let fraction = index as f64 / blades.max(1) as f64;
+        let turn = index as f64 * 2.3999632;
+        // Each leaf hangs a little lower than the one before it, so the spray is a cone
+        // opening downwards rather than a disc.
+        let drop = -droop * fraction;
+        let lean = (0.30 + 0.55 * fraction).min(1.35);
+        let scale = 0.55 + 0.45 * (1.0 - fraction);
+        for segment in blade_stations(length * scale, width, lean * 0.55) {
+            let normal = {
+                // The blade's own normal, turned into the spray's frame. `blade_stations` writes
+                // the surface, and the normal is the one that surface has: a drooping blade's
+                // leans along its own fall.
+                let lean_x = -lean * 0.55 * 0.5;
+                normalized([lean_x * turn.cos(), 1.0, lean_x * turn.sin()])
+            };
+            // One quad, as the two triangles the winding asks for: `a b c` and `a c d`.
+            let swing = |corner: [f64; 3]| -> [f64; 3] {
+                [
+                    corner[0] * turn.cos() - corner[2] * turn.sin(),
+                    corner[1] + drop,
+                    corner[0] * turn.sin() + corner[2] * turn.cos(),
+                ]
+            };
+            let [a, b, c, d] = segment.map(swing);
+            for corner in [a, b, c, a, c, d] {
+                let across = corner[2] / width.max(1e-6);
+                points.push(corner, normal, [fraction, across * 0.5 + 0.5]);
+            }
+        }
+    }
+    points.finish()
+}
+
+/// Returns the points of one blade, as `(along, up, across)` triples, for a spray or a tuft.
+///
+/// # Invariants
+///
+/// The run is **twenty four points**, which is four segments of six, in the same winding
+/// [`blade`] writes: a caller that turns one of these can therefore build the same surface the
+/// generator would have built, which is the whole reason this exists rather than a caller
+/// unpacking a finished run. The first `STEPS * 6` entries are the blade and the rest are the
+/// same displacement turned about the blade's root, so a caller can **fan** one blade into a
+/// spray without recomputing the taper it is fanning.
+fn blade_stations(length: f64, width: f64, curve: f64) -> Vec<[[f64; 3]; 4]> {
+    const STEPS: usize = 4;
+    let half_width = |fraction: f64| -> f64 {
+        let opened = (fraction / 0.32).min(1.0);
+        let closed = 1.0 - ((fraction - 0.32) / 0.68).max(0.0).powf(1.35);
+        width * 0.5 * opened * closed
+    };
+    let at = |fraction: f64, side: f64| -> [f64; 3] {
+        [
+            length * fraction,
+            -curve * fraction * fraction,
+            side * half_width(fraction),
+        ]
+    };
+    let mut out = Vec::with_capacity(STEPS);
+    for step in 0..STEPS {
+        let (from, to) = (step as f64 / STEPS as f64, (step + 1) as f64 / STEPS as f64);
+        // One quad per segment, as the four corners it is made of: the near side, the far
+        // side, and the pair the second triangle needs.
+        out.push([at(from, -1.0), at(from, 1.0), at(to, 1.0), at(to, -1.0)]);
+    }
+    out
+}
+
+/// Builds a tuft of grass: `blades` ribbons rising from one root and fanning outward.
+///
+/// Grass is drawn as a tuft rather than as a blade for the same reason a grove is drawn as a
+/// culm rather than as a leaf: a pass draws one mesh however many points it has, so the
+/// count that matters is the number of **instances**, and a tuft of nine blades is one of
+/// them. A meadow of single blades is nine times the instances for the same pixels.
+pub fn tuft(blades: usize, height: f64, spread: f64) -> PackedList {
+    let mut points = Shaded::with_capacity(blades * 4 * 6);
+    for index in 0..blades.max(1) {
+        let turn = index as f64 * 2.3999632;
+        let seed = index as i64;
+        let lean = spread * (0.35 + 0.65 * hash01(seed, 3, 71));
+        let length = height * (0.55 + 0.65 * hash01(seed, 7, 73));
+        for segment in blade_stations(length, height * 0.085, 0.30) {
+            // A blade stands up rather than lying flat: its own length is turned from the
+            // horizontal towards the vertical by `lean`, and then swung about the root.
+            let upright = |corner: [f64; 3]| -> [f64; 3] {
+                let raised = [
+                    corner[0] * (1.0 - lean * lean).sqrt(),
+                    corner[1] + corner[0] * lean,
+                    corner[2],
+                ];
+                [
+                    raised[0] * turn.cos() - raised[2] * turn.sin(),
+                    raised[1],
+                    raised[0] * turn.sin() + raised[2] * turn.cos(),
+                ]
+            };
+            let normal = normalized([
+                lean * turn.cos(),
+                (1.0 - lean * lean).sqrt(),
+                lean * turn.sin(),
+            ]);
+            let [a, b, c, d] = segment.map(upright);
+            for corner in [a, b, c, a, c, d] {
+                points.push(corner, normal, [seed as f64 / blades as f64, 0.5]);
+            }
+        }
+    }
+    points.finish()
+}
+
+/// Builds a flat blade of foliage seen from both sides: two ribbons back to back.
+///
+/// A broad leaf is the one place the single sided trade [`blade`] makes is visible, because
+/// a banana or a reed leaf is wide enough to be seen from behind at the distance a courtyard
+/// is drawn from. This is that leaf: the same taper, run twice with the normals opposed, so
+/// whichever side faces the camera is lit.
+pub fn double_blade(length: f64, width: f64, curve: f64) -> PackedList {
+    let mut points = Shaded::with_capacity(8 * 6);
+    let half_width = |fraction: f64| -> f64 {
+        let opened = (fraction / 0.30).min(1.0);
+        let closed = 1.0 - ((fraction - 0.30) / 0.70).max(0.0).powf(1.30);
+        width * 0.5 * opened * closed
+    };
+    let at = |fraction: f64, side: f64| -> [f64; 3] {
+        let along = length * fraction;
+        [
+            along,
+            -curve * fraction * fraction,
+            side * half_width(fraction),
+        ]
+    };
+    for facing in [1.0, -1.0] {
+        for step in 0..4 {
+            let (from, to) = (step as f64 / 4.0, (step + 1) as f64 / 4.0);
+            let lean = curve * (from + to);
+            let normal = normalized([-lean * facing, facing, 0.0]);
+            let corners = [
+                (from, -1.0),
+                (from, 1.0),
+                (to, 1.0),
+                (from, -1.0),
+                (to, 1.0),
+                (to, -1.0),
+            ];
+            for (fraction, side) in corners {
+                points.push(at(fraction, side), normal, [fraction, side * 0.5 + 0.5]);
+            }
+        }
+    }
+    points.finish()
+}
+
+/// Builds a heightfield whose points carry a **surface mask** in the normal's third component.
+///
+/// # Why the normal's own free component
+///
+/// A terrain has two things to say about a point that the other generators do not: where the
+/// surface is, and **what kind of surface it is** — paving inside a courtyard's wall, bank
+/// outside it, crop where it is farmed. The second is a property of the point and it has to
+/// reach a fragment, because a mask recomputed in the shader from the world position is the
+/// same arithmetic written twice, and the two copies are free to disagree at exactly the seam
+/// a courtyard's paving ends at.
+///
+/// A point has no field to spare, so it goes where there is room: a surface's shading normal
+/// is always `(nx, ny, nz)` with `nx² + ny² + nz² = 1`, and a terrain rolled out of a height
+/// field never has `nz = 1` except on a face pointing exactly along `z`, which no ground does.
+/// The third component is therefore free for a mask that is not one, and the caller reads it
+/// back with `mask_at` rather than reconstructing it.
+///
+/// # Invariants
+///
+/// A heightfield whose normal is written as `(0, 1, mask)` is **not** shaded by that normal —
+/// [`crate::courtyard`]'s ground body reassigns the normal from the mask and the gradient
+/// before anything reads it. This is a generator for a body that knows it is reading one.
+pub fn masked_heightfield(
+    divisions: usize,
+    extent: f64,
+    height: impl Fn(f64, f64) -> f64,
+    mask: impl Fn(f64, f64) -> f64,
+) -> PackedList {
+    let mut points = Shaded::with_capacity(divisions * divisions * 6);
+    if divisions == 0 {
+        return points.finish();
+    }
+    let step = 2.0 * extent / divisions as f64;
+    let corner = |row: usize, column: usize| -> ([f64; 3], f64) {
+        let x = -extent + column as f64 * step;
+        let z = -extent + row as f64 * step;
+        ([x, height(x, z), z], mask(x, z).clamp(0.0, 1.0))
+    };
+    for row in 0..divisions {
+        for column in 0..divisions {
+            let (near_left, left_mask) = corner(row, column);
+            let (far_right, right_mask) = corner(row + 1, column + 1);
+            let (near_right, near_mask) = corner(row, column + 1);
+            let (far_left, far_mask) = corner(row + 1, column);
+            // One quad, wound counter clockwise seen from above, as the same two triangles every
+            // other generator writes. The first index of the pair repeats because it is where a
+            // quad is split, and a field whose cells are wound unlike its neighbours is a field
+            // with a hole in every other cell — which reads as a shading artefact and is not.
+            for (position, value) in [
+                (near_left, left_mask),
+                (near_right, near_mask),
+                (far_right, right_mask),
+                (near_left, left_mask),
+                (far_right, right_mask),
+                (far_left, far_mask),
+            ] {
+                points.push(
+                    position,
+                    [0.0, 1.0, value],
+                    [position[0] * 0.5, position[2] * 0.5],
+                );
+            }
+        }
+    }
+    points.finish()
+}
+
 /// Builds a gable roof: a triangular prism with its ridge along the depth axis.
 ///
 /// The eaves sit on the ground at the two sides and the ridge rises to `height` along

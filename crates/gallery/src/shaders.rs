@@ -1581,8 +1581,22 @@ pub fn emission_shader<'text>(
     body: impl Into<Block<'text>>,
     helpers: impl Into<Block<'text>>,
 ) -> Value {
+    emission_shader_with_schema(label, body, helpers, kit::gallery_custom_schema())
+}
+
+/// The same emission shader, over a custom schema of the scene's own.
+///
+/// See [`lighting_shader_with_schema`] for why the schema is a parameter rather than a
+/// constant: an emission body that reads a field of the row needs the row to carry it, and a
+/// body that does not is unaffected by where in the merge that field sits.
+pub fn emission_shader_with_schema<'text>(
+    label: &str,
+    body: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+    custom_schema: Schema,
+) -> Value {
     let point = kit::shaded_point_schema();
-    let inputs = crate::attributes::gallery_vertex_inputs(&point);
+    let inputs = crate::attributes::gallery_vertex_inputs_with(&point, &custom_schema);
     kit::shader(
         Stage::Emission,
         label,
@@ -1590,8 +1604,46 @@ pub fn emission_shader<'text>(
         emission_pass_schema(),
         point,
         kit::gallery_instance_schema(),
-        kit::gallery_custom_schema(),
+        custom_schema,
     )
+}
+
+/// Builds the two stage shaders that place a point rather than colour it, over a custom schema
+/// of the scene's own.
+///
+/// # Why a placement shader declares a schema it never reads
+///
+/// A shadowing or depthing shader's fragment stage never reads the row — it writes depth — but
+/// its `custom_schema` is what the row is verified against, and its **locations** come from the
+/// same merge, so a scene whose materials carry a field of their own declares that field here
+/// too. See [`lighting_shader_with_schema`].
+///
+/// This is the two of the four that [`mesh_shaders_with_normal`] declares. A scene supplying
+/// its own lighting and emission bodies names those beside these rather than in place of them,
+/// so that the three stages still agree about the point layout they all read.
+pub fn placement_shaders_with_schema(label: &str, custom_schema: Schema) -> Vec<Value> {
+    let point = kit::shaded_point_schema();
+    let inputs = crate::attributes::gallery_vertex_inputs_with(&point, &custom_schema);
+    vec![
+        kit::shader(
+            Stage::Shadowing,
+            &format!("{label}_shadowing"),
+            &shadowing(&inputs),
+            shadow_pass_schema(),
+            point.clone(),
+            kit::gallery_instance_schema(),
+            custom_schema.clone(),
+        ),
+        kit::shader(
+            Stage::Depthing,
+            &format!("{label}_depthing"),
+            &depthing(&inputs),
+            depth_pass_schema(),
+            point,
+            kit::gallery_instance_schema(),
+            custom_schema,
+        ),
+    ]
 }
 
 /// Builds a lighting shader of a scene's own, which displaces the normal it is lit by.
@@ -1609,8 +1661,39 @@ pub fn displaced_lighting_shader<'text>(
     surface: impl Into<Block<'text>>,
     helpers: impl Into<Block<'text>>,
 ) -> Value {
+    lighting_shader_with_schema(
+        label,
+        displace,
+        surface,
+        helpers,
+        kit::gallery_custom_schema(),
+    )
+}
+
+/// Builds a lighting shader over a custom schema of the scene's own.
+///
+/// # Why the schema is a parameter
+///
+/// A shader declares the shape of the material's `custom_data` it reads, and the row is
+/// verified against it at compile time. A scene that adds a field to its own row — which is
+/// exactly what a scene with more than a handful of surfaces has to do, because the
+/// alternative is one shader per material — therefore has to declare it here, or every
+/// material is refused by name.
+///
+/// This is the whole of what [`displaced_lighting_shader`] leaves out: the two differ in the
+/// row they are verified against and in the **locations** that row lays out, and a list
+/// written from the gallery's own schema would name the wrong attribute at every location
+/// below a field the scene added. Nothing checks a vertex layout, so that is a draw that
+/// reads a normal where a matrix is.
+pub fn lighting_shader_with_schema<'text>(
+    label: &str,
+    displace: impl Into<Block<'text>>,
+    surface: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+    custom_schema: Schema,
+) -> Value {
     let point = kit::shaded_point_schema();
-    let inputs = crate::attributes::gallery_vertex_inputs(&point);
+    let inputs = crate::attributes::gallery_vertex_inputs_with(&point, &custom_schema);
     kit::shader(
         Stage::Lighting,
         label,
@@ -1618,7 +1701,7 @@ pub fn displaced_lighting_shader<'text>(
         light_pass_schema(),
         point,
         kit::gallery_instance_schema(),
-        kit::gallery_custom_schema(),
+        custom_schema,
     )
 }
 

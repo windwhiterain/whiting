@@ -141,6 +141,12 @@ pub const MESH: &str = "mesh";
 /// Field holding where an instance is.
 pub const TRANSFORM: &str = "transform";
 
+/// Field holding where a transform puts its instance, in world space.
+///
+/// The sibling of [`TRANSFORM`], and named here for the same reason that one is: a caller
+/// reading a placement back out of a document should not have to spell the field to reach it.
+pub const TRANSLATION: &str = "translation";
+
 /// Field holding the label of a mesh.
 pub const LABEL: &str = "label";
 
@@ -975,7 +981,7 @@ pub fn instance_schema() -> Schema {
 pub fn transform_schema() -> Schema {
     Schema::new(SchemaKind::structure([
         (
-            "translation".to_owned(),
+            TRANSLATION.to_owned(),
             float_triple("Offset from the origin, in world space."),
         ),
         (

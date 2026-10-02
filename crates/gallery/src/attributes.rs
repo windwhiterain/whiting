@@ -42,6 +42,21 @@ pub fn gallery_vertex_inputs(point: &Schema) -> String {
     vertex_inputs(point, &gallery_row_schema())
 }
 
+/// Returns the same list for a scene whose materials carry a custom schema of their own.
+///
+/// # Why a scene needs this
+///
+/// The row is `instance_schema` merged with `custom_schema`, and a location is a position in
+/// that merge. A scene that adds a field to its own schema — which is what a scene with more
+/// than a handful of surfaces has to do, because the alternative is one shader and one pass per
+/// material — moves every field that sorts after it, and a list written from the **gallery's**
+/// schema would then name the wrong attribute at every location below the new one. Nothing
+/// checks a vertex layout: the failure is a draw that reads a normal where a matrix is, or a
+/// renderer that refuses an attribute of one component where the shader asked for four.
+pub fn gallery_vertex_inputs_with(point: &Schema, custom: &Schema) -> String {
+    vertex_inputs(point, &merge(&gallery_instance_schema(), custom))
+}
+
 /// Returns the schema one gallery material's instance row is packed with.
 ///
 /// # Invariants

@@ -117,6 +117,161 @@ impl Gallery {
             ),
         }
     }
+
+    /// Reports what a named scene holds, in the terms its own document is written in.
+    ///
+    /// # Why this is worth a function
+    ///
+    /// A scene is a document of lists and one dictionary of instances bucketed by pass, so this
+    /// is the count of every list and of every bucket. It is the answer to a question a scene
+    /// author asks constantly — how many instances did that grove actually place, and how many
+    /// passes did they become — and it costs no gpu work at all, because building a document is
+    /// the cheap half of anything.
+    ///
+    /// # Invariants
+    ///
+    /// It reads the document and never the frame, so it is available for a scene that does not
+    /// compile and for one that has never been drawn. That is the whole of its use: the two
+    /// ways to find out what a scene placed are to render a frame and guess from the picture,
+    /// or to read the placements back, and only the second one is a measurement.
+    ///
+    /// A field the document does not carry is **not** reported as zero. An absent field is a
+    /// field the scene said nothing about, and a zero beside it reads as a claim about the
+    /// scene rather than about this report. `exposure` is the one number an author reaches for
+    /// when a frame is too bright or too dark, so it is printed by name when the document
+    /// carries it and omitted when it does not.
+    pub fn census(name: &str) -> String {
+        let scene = Self::build(name);
+        let mut report = format!("{name}\n");
+        let Some(fields) = scene.as_field_map() else {
+            report.push_str("  the scene is not a field map, so it holds no lists\n");
+            return report;
+        };
+        // Every top level list, in the order the document writes them, so two scenes read side
+        // by side line up. Sorted, because the field map is not in schema order and a report
+        // whose lines move between runs cannot be diffed against itself.
+        let mut lists: Vec<(&String, &Value)> = fields
+            .iter()
+            .filter(|(_, value)| value.as_list().is_some())
+            .collect();
+        lists.sort_by(|left, right| left.0.cmp(right.0));
+        for (key, value) in lists {
+            let Some(entries) = value.as_list() else {
+                continue;
+            };
+            report.push_str(&format!("  {key}: {}\n", entries.len()));
+        }
+        // The instance buckets, which is the count a scene author is usually after: the number
+        // of placements that became a pass.
+        if let Some(buckets) = fields
+            .get(scene::standard::INSTANCES)
+            .and_then(Value::as_dict)
+        {
+            let mut buckets: Vec<(&String, &Value)> = buckets.iter().collect();
+            buckets.sort_by(|left, right| left.0.cmp(right.0));
+            for (pass, held) in buckets {
+                let count = held.as_list().map_or(0, |list| list.len());
+                report.push_str(&format!("  {pass}: {count} placements\n"));
+            }
+        }
+        // The exposure, because it is the frame's brightness and it is a number an author
+        // changes by hand. It used to live as a `const … f32` inside the post stage's WGSL,
+        // where a census could only have reached it by scraping the source text; it is a
+        // declared field now, so it is read the way every other fact here is.
+        if let Some(exposure) = fields.get(scene::standard::EXPOSURE) {
+            let shown = match exposure {
+                Value::Float(number) => format!("{number}"),
+                Value::Int(number) => format!("{number}"),
+                other => format!("{other:?}"),
+            };
+            report.push_str(&format!("  exposure: {shown}\n"));
+        }
+        report
+    }
+
+    /// Reports the box every placement a scene makes occupies, bucket by bucket.
+    ///
+    /// # Why this is worth a function
+    ///
+    /// A scene author places things by arithmetic and then has to know where they ended up. This
+    /// is the same measurement the render harness makes of a debug channel, taken on the
+    /// document instead of on a frame.
+    ///
+    /// # Invariants
+    ///
+    /// The box is of **translation only**. A placement's rotation and scale are not folded in,
+    /// so the box is where a placement's origin stands rather than the whole of its geometry,
+    /// and it is a lower bound on what the scene draws. Folding them in would need each
+    /// placement's matrix against each mesh's own extent, which is a different measurement and
+    /// a more expensive one; an origin box is what tells an author their arithmetic was wrong.
+    ///
+    /// A placement carrying no transform, or a transform with no translation, is counted in
+    /// the bucket and left out of the box, so the two numbers can disagree. They are printed
+    /// together because the disagreement is the finding.
+    pub fn bounds(name: &str) -> String {
+        let scene = Self::build(name);
+        let mut report = String::new();
+        let Some(buckets) = scene
+            .as_field_map()
+            .and_then(|fields| fields.get(scene::standard::INSTANCES))
+            .and_then(Value::as_dict)
+        else {
+            return report;
+        };
+        let mut buckets: Vec<(&String, &Value)> = buckets.iter().collect();
+        buckets.sort_by(|left, right| left.0.cmp(right.0));
+        for (pass, held) in buckets {
+            let Some(list) = held.as_list() else {
+                continue;
+            };
+            let (mut low, mut high) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+            let mut placed = 0usize;
+            for entry in list {
+                let Some(fields) = entry.as_field_map() else {
+                    continue;
+                };
+                let Some(at) = fields
+                    .get(scene::standard::TRANSFORM)
+                    .and_then(Value::as_field_map)
+                    .and_then(|transform| transform.get(scene::standard::TRANSLATION))
+                    .and_then(Value::as_list)
+                else {
+                    continue;
+                };
+                let mut point = [0.0; 3];
+                for (axis, component) in at.iter().take(3).enumerate() {
+                    match component {
+                        Value::Float(number) => point[axis] = *number,
+                        Value::Int(number) => point[axis] = *number as f64,
+                        _ => {}
+                    }
+                }
+                for axis in 0..3 {
+                    low[axis] = low[axis].min(point[axis]);
+                    high[axis] = high[axis].max(point[axis]);
+                }
+                placed += 1;
+            }
+            if placed == 0 {
+                report.push_str(&format!(
+                    "{pass}: {} placements, no translation to measure\n",
+                    list.len()
+                ));
+                continue;
+            }
+            report.push_str(&format!(
+                "{pass}: {} placements, {placed} measured, x [{:.2}, {:.2}], y [{:.2}, {:.2}], z [{:.2}, {:.2}]\n",
+                list.len(),
+                low[0],
+                high[0],
+                low[1],
+                high[1],
+                low[2],
+                high[2],
+            ));
+        }
+        report
+    }
 }
 
 /// The shader labels a gallery scene uses, so a scene names one rather than a string.

@@ -2196,3 +2196,52 @@ where it was written.
   and `shader_entry` drops the stage tag, so the device cannot check it either. Carrying the
   splice points' stages in the marker and the shader's own stage through the emitter is the
   smallest change that would, and the first half of it is in `crates/scene`.
+## A scene's own schema, and the geometry that needed it
+
+Recorded at `7f5ff03`, from the framework half of three parallel attempts at one brief. No
+scene lands with it, so this is a capability with no user yet — which is stated here rather
+than left to be found.
+
+- **A scene with more than a handful of surfaces has to put a field of its own in the instance
+  row**, because the alternative is one shader and one pass per material, and a pass is the
+  unit of render cost. The row is `instance_schema` merged with `custom_schema`, and a location
+  is a position in that merge — so a field the scene adds **moves every field that sorts after
+  it**. Nothing checks a vertex layout: the failure is a draw that reads a normal where a
+  matrix is, or a renderer that refuses a one-component attribute where the shader asked for
+  four. `attributes::gallery_vertex_inputs_with` is the fix, and it is a function rather than a
+  discipline because the list is derived, not written.
+- **The three `_with_schema` builders are one shape, not three features.**
+  `lighting_shader_with_schema`, `emission_shader_with_schema` and
+  `placement_shaders_with_schema` each differ from its sibling in exactly two places: the row
+  they are verified against, and the locations that row lays out. The placement pair needs it
+  for a reason worth stating — a shadowing or depthing fragment stage never reads the row, it
+  writes depth, but its `custom_schema` is what the row is still verified against. They were
+  written against the pre-`Block` shader API and **re-expressed** rather than merged.
+- **A surface mask belongs in the normal's third component.** A shading normal always satisfies
+  `nx² + ny² + nz² = 1`, and a terrain rolled out of a heightfield never has `nz = 1` except at
+  a face pointing exactly along z, which ground does not. The component is therefore free for a
+  value that is not a normal, and the caller reads it back with `mask_at` rather than
+  reconstructing it. The reason to do it there rather than in a second attribute is that a mask
+  recomputed in the shader from the world position is the same arithmetic written twice, and the
+  two copies are free to disagree at exactly a courtyard's paving edge.
+- **`Gallery::census` and `Gallery::bounds` answer for any name, not for a scene's own.** Both
+  arrived written against six scenes that were not merged, and as landed they would have been
+  dead code with six dead names in them. They read the **document**, never the frame, so they
+  are available for a scene that does not compile — which is the half of the time a scene
+  author needs them. `bounds` is of translation only: an origin box, not a geometry box.
+  Folding in rotation and scale would need each placement's matrix against each mesh's own
+  extent, and an origin box is what tells an author their arithmetic was wrong.
+- **`INSTANCES` and `TRANSLATION` are now names rather than strings.** `INSTANCES` was a `pub
+  const` in the private `scene_schema` module that the `pub use` list had never caught up with,
+  and `TRANSLATION` did not exist at all: `transform_schema` spelled it inline while its sibling
+  `TRANSFORM` had a const beside it. **Twelve more consts are in the same state** — `FAR`,
+  `FOCAL_LENGTH`, `LIGHTS`, `MESHES`, `NAME`, `NEAR`, `POINT_SCHEMA_FIELD`, `POST_PROCESSES`,
+  `PROJECTION`, `ROLL`, `SCREEN_MATERIALS`, `SENSOR_WIDTH`, `TIME` — and are left alone here,
+  because that is one manual list falling behind rather than thirteen separate oversights, and
+  it wants one pass rather than a change smuggled in beside a merge.
+- **Not fixed, and still in the tree: fog on a sky pixel.** A post stage recovers a world
+  position from the depth buffer, and for a sky pixel nothing was drawn, so the recovery runs
+  out to its clamp — `terraces.rs:1015` reads `min(t, 2400.0)` — and the aerial term integrates
+  2400 units of air. The honest fix is to divide height fog from Rayleigh air so each is
+  integrable along an open ray in closed form. Recorded in
+  [proposals/sky-fog-distance.md](../proposals/sky-fog-distance.md).

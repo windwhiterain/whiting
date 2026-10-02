@@ -179,6 +179,17 @@ async fn run() -> Result<(), String> {
     // and every moment of this run is compiled with them.
     .with_debug(request.debug.iter().copied());
     let source_identifier = DefinitionIdentifier::new("gallery.source");
+
+    // `--census` answers how big a scene is before any of it is drawn: every list's count, every
+    // instance bucket, the box the placements occupy and the post stage's own constants. It is
+    // the number "the grove looks thin" wants beside it, and it costs no gpu work at all — the
+    // document is the cheap half of anything, and a scene that will not compile still has one.
+    if request.census {
+        print!("{}", Gallery::census(&name));
+        print!("{}", Gallery::bounds(&name));
+        return Ok(());
+    }
+
     let authored = Gallery::build(&name);
 
     // Every camera a scene names is rendered. A camera decides the projection every pass draws
@@ -444,12 +455,14 @@ fn parse_arguments() -> Result<Request, String> {
     let mut mode = Mode::Frames;
     let mut times: Vec<String> = Vec::new();
     let mut debug: Vec<DebugChannel> = Vec::new();
+    let mut census = false;
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
             "--sheet" => mode = Mode::Sheet { step: SHEET_STEP },
             "--sheet-full" => mode = Mode::Sheet { step: FULL_STEP },
             "--video" => mode = Mode::Video,
+            "--census" => census = true,
             "--debug" => {
                 index += 1;
                 let asked = rest
@@ -507,6 +520,7 @@ fn parse_arguments() -> Result<Request, String> {
         mode,
         times: moments,
         debug,
+        census,
     })
 }
 
@@ -532,6 +546,8 @@ struct Request {
     times: Vec<f64>,
     /// The debug channels every compile of this run is asked to draw.
     debug: Vec<DebugChannel>,
+    /// Whether to report what the scene holds rather than drawing it.
+    census: bool,
 }
 
 /// How the moments of a render are written out.
@@ -1742,7 +1758,7 @@ fn set_time(scene: &mut Value, time: f64) {
 fn usage() -> String {
     concat!(
         "usage: render <scene> <out> [start [stop [step]]] ",
-        "[--sheet | --sheet-full | --video] [--debug <channel>]"
+        "[--sheet | --sheet-full | --video] [--debug <channel>] [--census]"
     )
     .to_owned()
 }
