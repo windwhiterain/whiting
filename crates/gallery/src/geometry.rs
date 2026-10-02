@@ -40,13 +40,20 @@ fn shaded_layout() -> PackedLayout {
 }
 
 /// A run of shaded points, built without ever building a point as a value.
-struct Shaded {
+///
+/// # Invariants
+///
+/// Public because a generator that composes other generators' shapes — a wall run, a swept
+/// pole, anything that is not one primitive — needs to append its own points into the same
+/// run rather than building a list of points and concatenating. The layout is fixed by
+/// [`shaded_point`], so every run a gallery builds agrees with every other one's.
+pub struct Shaded {
     points: PackedBuilder,
 }
 
 impl Shaded {
     /// Creates a run of shaded points.
-    fn with_capacity(count: usize) -> Self {
+    pub fn with_capacity(count: usize) -> Self {
         let mut points = PackedBuilder::new(shaded_layout());
         points.reserve(count);
         Self { points }
@@ -59,7 +66,7 @@ impl Shaded {
     /// The fields are written in layout order with the literal widths the layout declares, so
     /// this cannot fail: a refusal here is a bug in the generator rather than a document to
     /// report, and it is reported as one rather than swallowed.
-    fn push(&mut self, position: [f64; 3], normal: [f64; 3], texture: [f64; 2]) {
+    pub fn push(&mut self, position: [f64; 3], normal: [f64; 3], texture: [f64; 2]) {
         let written = self
             .points
             .field(NORMAL, &normal)
@@ -69,7 +76,7 @@ impl Shaded {
     }
 
     /// Ends the run.
-    fn finish(self) -> PackedList {
+    pub fn finish(self) -> PackedList {
         self.points
             .finish()
             .expect("every generator writes whole elements of its own layout")
@@ -533,6 +540,46 @@ fn quad(points: &mut Shaded, corner: [f64; 3], u: [f64; 3], v: [f64; 3]) {
     points.push(corner, normal, [0.0, 0.0]);
     points.push(far, normal, [1.0, 1.0]);
     points.push(add(corner, v), normal, [0.0, 1.0]);
+}
+
+/// Appends one quad to a run of shaded points, as two triangles, from four corners and the
+/// normal they are meant to face.
+///
+/// # Invariants
+///
+/// The winding is fixed — `a b c` and `a c d`, counter clockwise seen from the side `normal`
+/// points to — and the **supplied** normal is written, rather than one derived from the
+/// corners. That is the whole difference from [`quad`], and it is what a composed form needs:
+/// the four faces of a wall run are not planar quads with convenient edge vectors, they are
+/// four faces of a box, and a box's face is `up` and `outward` whatever order its corners
+/// happen to be listed in. A generator that supplied the corners in the wrong order would get
+/// a correct normal from [`quad`] and a face pointing the wrong way.
+///
+/// The texture coordinate still runs `a b c d` as a unit square, so a face is a unit square of
+/// texture whatever its shape.
+pub fn quad_normal(points: &mut Shaded, corners: [[f64; 3]; 4], normal: [f64; 3]) {
+    let [a, b, c, d] = corners;
+    points.push(a, normal, [0.0, 0.0]);
+    points.push(b, normal, [1.0, 0.0]);
+    points.push(c, normal, [1.0, 1.0]);
+    points.push(a, normal, [0.0, 0.0]);
+    points.push(c, normal, [1.0, 1.0]);
+    points.push(d, normal, [0.0, 1.0]);
+}
+
+/// Smoothly ramps `value` from zero at `low` to one at `high`, matching the WGSL builtin's
+/// shape.
+///
+/// # Invariants
+///
+/// This is the WGSL `smoothstep`, and it is here rather than left to each scene because every
+/// height function in a landscape is built out of ramps, and a ramp written slightly
+/// differently in two places is a landscape whose two halves do not meet. `high` below `low`
+/// is **not** handled: the builtin does not handle it either, and a reversed ramp is a caller's
+/// arithmetic rather than something to paper over.
+pub fn smoothstep(low: f64, high: f64, value: f64) -> f64 {
+    let t = ((value - low) / (high - low)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// Builds a box standing on the ground, centred on its footprint.
