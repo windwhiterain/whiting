@@ -587,6 +587,164 @@ impl Projection {
             ],
         }
     }
+
+    /// Returns how far in front of the eye a world point is, along the view's own axis.
+    ///
+    /// # Invariants
+    ///
+    /// The measure is **along the axis** rather than straight-line, because that is the axis
+    /// the near plane stands perpendicular to: a point off to one side of the frame is
+    /// clipped by its depth and not by how far away it happens to be. A parallel view has no
+    /// divide and measures the same thing.
+    ///
+    /// A point behind the eye is negative rather than refused, so a caller asking where
+    /// something is can see that it is behind rather than having to compare it against a
+    /// distance it never had.
+    ///
+    /// ```
+    /// use definition::{Path, Value};
+    /// use whiting_scene::standard::math::Bounds;
+    /// use whiting_scene::standard::Camera;
+    ///
+    /// let triple = |v: [f64; 3]| Value::List(v.into_iter().map(Value::Float).collect());
+    /// let projection = Camera::read(
+    ///     Some(&Value::structure([
+    ///         ("eye".to_owned(), triple([0.0, 0.0, 10.0])),
+    ///         ("target".to_owned(), triple([0.0, 0.0, 0.0])),
+    ///         ("projection".to_owned(), Value::variant("Perspective", [])),
+    ///         ("near".to_owned(), Value::Float(1.0)),
+    ///         ("far".to_owned(), Value::Float(21.0)),
+    ///     ])),
+    ///     &Path::root(),
+    ///     &Bounds::around([0.0; 3], 4.0),
+    ///     1.0,
+    /// )
+    /// .expect("a perspective camera reads")
+    /// .projection();
+    ///
+    /// // The target is ten units in front of the eye, and so is a point five units to one
+    /// // side of it: the frame's width is not the distance a near plane is measured by.
+    /// assert!((projection.distance_to([0.0, 0.0, 0.0]) - 10.0).abs() < 1e-9);
+    /// assert!((projection.distance_to([5.0, 0.0, 0.0]) - 10.0).abs() < 1e-9);
+    /// // A point behind the eye is negative, which is the answer a caller comparing it
+    /// // against the near plane needs.
+    /// assert!(projection.distance_to([0.0, 0.0, 20.0]) < 0.0);
+    /// ```
+    pub fn distance_to(&self, point: [f64; 3]) -> f64 {
+        dot(subtract(point, self.eye), self.forward)
+    }
+
+    /// Returns how much of the frame a box covers, as a fraction between zero and one, or
+    /// `None` when the box reaches the eye and there is nothing to measure.
+    ///
+    /// # Invariants
+    ///
+    /// **This is a bound and not a measurement of what is drawn.** The eight corners of the
+    /// box are projected and the rectangle they reach is what is compared with the frame, so
+    /// a box turned away from the axes is counted by the axis aligned box around it and a
+    /// long thin one is counted by the square it spans. Both read high, which is the
+    /// acceptable direction: a note that says a box covers more of the frame than it does
+    /// sends an author to look at a box that was worth looking at.
+    ///
+    /// A box the eye is inside, or one with a corner at or behind the eye, has **no** answer
+    /// rather than a wrong one. A perspective projection divides by the distance in front of
+    /// the eye, so the near face of such a box flips over the whole frame and any number
+    /// computed from it is a statement about the divide. A box the eye is inside is a box
+    /// the notes about a frame name separately and better, by label and by depth.
+    ///
+    /// The frame is minus one to one on both axes, so its area is four, and the fraction is
+    /// the part of that rectangle the box's own reaches. A box entirely outside the frame
+    /// covers nothing of it and returns zero rather than a negative share of it.
+    ///
+    /// ```
+    /// use definition::{Path, Value};
+    /// use whiting_scene::standard::math::Bounds;
+    /// use whiting_scene::standard::Camera;
+    ///
+    /// let triple = |v: [f64; 3]| Value::List(v.into_iter().map(Value::Float).collect());
+    /// let projection = Camera::read(
+    ///     Some(&Value::structure([
+    ///         ("eye".to_owned(), triple([0.0, 0.0, 10.0])),
+    ///         ("target".to_owned(), triple([0.0, 0.0, 0.0])),
+    ///         ("projection".to_owned(), Value::variant("Perspective", [])),
+    ///         ("near".to_owned(), Value::Float(1.0)),
+    ///         ("far".to_owned(), Value::Float(21.0)),
+    ///     ])),
+    ///     &Path::root(),
+    ///     &Bounds::around([0.0; 3], 4.0),
+    ///     1.0,
+    /// )
+    /// .expect("a perspective camera reads")
+    /// .projection();
+    ///
+    /// // A box two units across, five units in front of the eye, through a sixty degree
+    /// // lens: the frame is 5.8 units wide at the box's near face, so a sixth of it by area.
+    /// // The same box twice as far off covers a fifth as much, and the fall is a little
+    /// // steeper than the square of the range because the box's own near face is nearer
+    /// // than its centre.
+    /// let near = projection
+    ///     .frame_coverage(&Bounds::around([0.0, 0.0, 5.0], 1.0))
+    ///     .expect("a box in front of the eye has a coverage");
+    /// let far = projection
+    ///     .frame_coverage(&Bounds::around([0.0, 0.0, 0.0], 1.0))
+    ///     .expect("so does a box twice as far away");
+    /// assert!((near - 0.1875).abs() < 1e-6, "a two unit box at five units covers {near}");
+    /// assert!((far - 0.037).abs() < 1e-3, "and the same box at ten units covers {far}");
+    ///
+    /// // A wall twenty units across and two thick, four units in front of the eye, holds
+    /// // all of the frame and none of the eye. One the eye is inside is not measured at
+    /// // all.
+    /// assert_eq!(
+    ///     projection.frame_coverage(&Bounds {
+    ///         minimum: [-10.0, -10.0, 4.0],
+    ///         maximum: [10.0, 10.0, 6.0],
+    ///     }),
+    ///     Some(1.0)
+    /// );
+    /// assert_eq!(
+    ///     projection.frame_coverage(&Bounds::around([0.0, 0.0, 9.0], 2.0)),
+    ///     None,
+    ///     "the eye is inside this box, so its share of the frame is not a thing to measure"
+    /// );
+    /// assert_eq!(
+    ///     projection.frame_coverage(&Bounds::around([0.0, 0.0, 20.0], 0.5)),
+    ///     None,
+    ///     "and a box behind the eye is behind the frame"
+    /// );
+    /// ```
+    pub fn frame_coverage(&self, box_of: &Bounds) -> Option<f64> {
+        if box_of.depth_of(self.eye).is_some() {
+            return None;
+        }
+        // The reach of the box in the frame's own units, as minus one to one on each axis.
+        // Starting outside the frame's range is a seed rather than a box: the first corner
+        // then moves both ends of both axes to where it actually is.
+        let mut reach = [
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ];
+        for corner in corners(box_of) {
+            let clip = apply(&self.matrix, corner);
+            // The clip `w` is the distance in front of the eye, and a parallel view carries
+            // one whatever is where. A divide by it is the whole of what a perspective
+            // projection is, so a corner at or behind the eye leaves nothing to divide.
+            if clip[3] <= 1e-9 {
+                return None;
+            }
+            let point = [clip[0] / clip[3], clip[1] / clip[3]];
+            if !point[0].is_finite() || !point[1].is_finite() {
+                return None;
+            }
+            reach[0] = reach[0].min(point[0]);
+            reach[1] = reach[1].min(point[1]);
+            reach[2] = reach[2].max(point[0]);
+            reach[3] = reach[3].max(point[1]);
+        }
+        let share = |from: f64, to: f64| (to.min(1.0) - from.max(-1.0)).max(0.0);
+        Some(share(reach[0], reach[2]) * share(reach[1], reach[3]) / 4.0)
+    }
 }
 
 /// The standard camera seen as the readings a clustered grid measures a view by.

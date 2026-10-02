@@ -3,9 +3,10 @@
 //! These views parse the tree on demand. They are a read-side convenience only; the
 //! document remains the single representation and no typed copy of it is ever stored.
 
-use definition::{Path, Resolved, Value};
+use definition::{FieldMap, Path, Resolved, Value};
 
 use crate::binders::Declaration;
+use crate::output::{LOCATION_FIELD, POINT_FIELD, TYPE_FIELD};
 use crate::pass::{BINDERS, CLEAR_COLOR, ENTRY_POINT, LABEL, SHADER, TARGETS, UNIFORM, WORKGROUP};
 use crate::{GraphicsError, OUTPUTS_FIELD, PASSES_FIELD, malformed};
 
@@ -164,14 +165,30 @@ impl<'document> PassView<'document> {
 
 /// One image a graphics document says a render produces.
 ///
-/// A name and the binding point a pass renders it into, which is what lets a caller ask for
-/// an image by what it *is* rather than by where it happens to be written.
+/// # Invariants
+///
+/// - **The point is where the image is rendered, and the location is which fragment output
+///   carries it.** They are two facts rather than one, and the second is stated rather than
+///   derived: a pass numbers its colour targets from zero in attachment order, so a location
+///   inferred from where a name sits in the map would move every name below it the moment one
+///   was inserted — and the failure would be a wrong picture rather than an error.
+/// - **The type is the spelling, borrowed.** It is carried as the text the document wrote and
+///   is not resolved here, because the resolution has a consequence this reader cannot report:
+///   a type no format can hold is a refusal, and a refusal has to name the location and the
+///   shader that would have written it. That is the device's [`Output`] check, which parses the
+///   spelling once and answers for all three fields at once.
+/// - All three borrows come from the document tree. A declaration is a struct of scalars, so
+///   they are real borrows and never values decoded out of a run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Output<'document> {
     /// The name the image is looked up under. The frame is [`crate::PRESENT_OUTPUT`].
     pub name: &'document str,
     /// The binding point of a pass's `targets` that the image is written into.
     pub point: &'document str,
+    /// The `@location` of the writing shader's fragment output that carries the image.
+    pub location: u32,
+    /// The type of one texel, spelled as [`crate::TexelType`] spells it.
+    pub ty: &'document str,
 }
 
 /// Reads the images a graphics document says it produces.
@@ -184,14 +201,18 @@ pub struct Output<'document> {
 /// question about the resolved payloads rather than about the document, so this reader answers
 /// only what the document actually declares.
 ///
-/// Nothing here checks that some pass renders into a declared point. A point no pass targets is
-/// a document asking for an image nothing writes, and it is reported by the renderer that was
-/// asked to produce it, where the passes it did write are known.
+/// Nothing here checks that some pass renders into a declared point, or that the shader at the
+/// other end writes it. A point no pass targets is a document asking for an image nothing
+/// writes, and a location no shader fills is a target a render returns holding whatever was in
+/// a texture nobody wrote. Both are reported by the device that was asked to produce the image,
+/// where the passes and the shaders it did run are known.
 pub fn outputs(graphics: &Value) -> Result<Vec<Output<'_>>, GraphicsError> {
     let path = Path::root().key(OUTPUTS_FIELD);
     // The output map is a field of the document's own root, so it is a real borrow of the tree
     // and never a value decoded out of a run. A root that carried a packed map could not answer
-    // with borrowed names, and a name has to be borrowed to be handed back.
+    // with borrowed names, and a name has to be borrowed to be handed back. The same holds one
+    // level down: a declaration is a struct of scalars, so its fields are borrows of the same
+    // tree and a declaration is never copied out to be read.
     let found = match graphics.at(&path) {
         None => return Ok(Vec::new()),
         Some(Resolved::Borrowed(value)) => value,
@@ -205,17 +226,45 @@ pub fn outputs(graphics: &Value) -> Result<Vec<Output<'_>>, GraphicsError> {
 
     let mut outputs = Vec::with_capacity(entries.len());
     for (name, value) in entries {
-        let Some(point) = value.as_str() else {
-            return Err(malformed(
-                &path.key(name),
-                OUTPUTS_FIELD,
-                "a binding point",
-                Some(value),
-            ));
+        let at = path.key(name);
+        let Some(fields) = value.as_struct() else {
+            return Err(malformed(&at, name, "an output declaration", Some(value)));
         };
-        outputs.push(Output { name, point });
+        let point = field(&at, fields, POINT_FIELD, "a binding point")?;
+        let ty = field(&at, fields, TYPE_FIELD, "a texel type")?;
+        let declared = fields.get(LOCATION_FIELD);
+        let location = declared
+            .and_then(Value::as_int)
+            .and_then(|number| u32::try_from(number).ok())
+            .ok_or_else(|| {
+                malformed(
+                    &at.key(LOCATION_FIELD),
+                    LOCATION_FIELD,
+                    "a non-negative location",
+                    declared,
+                )
+            })?;
+        outputs.push(Output {
+            name,
+            point,
+            location,
+            ty,
+        });
     }
     Ok(outputs)
+}
+
+/// Borrows one string field of an output declaration, or reports which shape it is not.
+fn field<'document>(
+    at: &Path,
+    fields: &'document FieldMap,
+    name: &'static str,
+    expected: &'static str,
+) -> Result<&'document str, GraphicsError> {
+    let found = fields.get(name);
+    found
+        .and_then(Value::as_str)
+        .ok_or_else(|| malformed(&at.key(name), name, expected, found))
 }
 
 /// Reads every pass out of a graphics document, in execution order.

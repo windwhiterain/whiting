@@ -464,8 +464,11 @@ graphics computation, as data.
   builds a pass. `Graphics` and `GraphicsInstance` can each validate against their
   own schema and still fail to bind.
 - `outputs`: an optional `Dict` of the graphics root, mapping the **name** a caller looks an
-  image up under to the **binding point** a pass renders it into. The frame is the one named
-  `present`.
+  image up under to an **output declaration**. The frame is the one named `present`.
+  - a declaration is a closed `Struct` of three fields, all required:
+    - `point`: the **binding point** a pass renders the image into.
+    - `location`: the `@location` of the writing shader's fragment output that carries it.
+    - `type`: the type of a texel, spelled `f32` or `vec4<f32>`.
   - **decision**: a document declares what it produces, rather than the renderer inferring it
     from pass order. The rule it replaces — the colour target of the last pass that wrote one —
     is a convention about position in a list, and any pass appended after the last one would
@@ -476,6 +479,80 @@ graphics computation, as data.
     existed changes meaning, and a document that declares an output some pass does not write is
     an error rather than an image quietly missing from the result. See
     [proposals/agent-debug-scenes.md](proposals/agent-debug-scenes.md).
+  - **decision** (2026-10-02, supersedes the mapping-to-a-bare-point shape above): the entry is
+    a declaration rather than a point, from
+    [proposals/typed-outputs.md](proposals/typed-outputs.md). Without a type there is nothing to
+    check, and the value in an image was previously something a reader had to infer from the
+    bytes.
+  - **invariant**: **the `location` is stated and never inferred** from a name's position in the
+    map. A pass numbers its colour targets from zero in attachment order, so a location derived
+    from map order would mis-bind the instant a name was inserted or removed, and the failure
+    would be a wrong picture rather than an error.
+  - **decision**: the type vocabulary is **closed at three spellings** — `f32`, `vec3<f32>` and
+    `vec4<f32>` — and the unit of the type-to-format table is *a format this device can create
+    **and read back***. A real WGSL type that fails either half is **refused by name with its
+    reason** rather than accepted and then failing later:
+    - a whole number (`u32`, `i32`) has a format (`r32uint`, `r32sint`) that this device does
+      not create, and `RenderedImage::texel` returns four `f32`, which a number above 2^24 is
+      not one of. Supporting it is a change to that method's contract and belongs with the
+      identifier work [handoffs/gbuffer-channels.md](handoffs/gbuffer-channels.md) scoped.
+    - **decision** (2026-10-02, supersedes both the refusal of a narrower vector and the
+      "at least as wide" rule that replaced it): **two questions, asked against two different
+      numbers.** A declaration states how many numbers a texel **is**; the row it resolves to
+      decides how wide the image holding them is drawn, and an image is filled one whole texel at
+      a time. So *can the shader's fragment output fill that image?* is asked against the
+      **resolved format's width** (`TexelType::image_width`) and the answer must be **exact**, and
+      *how many components does the declaration claim carry meaning?* is asked against the
+      **declared count** (`TexelType::components`), which is never more than the image holds.
+      Everything from the declared count onward is **padding**: written, present in the file,
+      meaning nothing. A `vec3<f32>` normal is therefore declared with three numbers, drawn four
+      wide, and its fourth channel is padding. The reason is the one that made `vec3` a row at
+      all: a scene says what its value is, and a rule about how an image is written belongs to
+      the layer underneath.
+    - `vec2<f32>` is **not** given a reason from underneath: it is answered as an unknown
+      spelling, which is true, and adding it is one row. It is the one width the vocabulary
+      does not carry, and the reason is that the table's rows are claims about values the
+      emitted passes actually write.
+    - **decision** (2026-10-02, closing the open question the width rule above left): the
+      fragment output is measured against **the width of the image the declaration resolves to**,
+      and not against the declared count. The defect that forced it was found on the adapter
+      rather than reasoned out: a `vec3<f32>` declaration filled by a `vec3<f32>` fragment output
+      satisfied the old check and then failed at pipeline creation, because the image is drawn
+      four components wide. So "declare three, write three" is not a document that draws; the row
+      that draws is "declare three, write four", and the fourth is padding.
+  - **invariant**: the device **checks every declared output against the shader that writes
+    it** — `check_outputs` in `wgpu_renderer/shader_interface.rs`, a free function over a
+    `naga::Module` so it is checkable with no adapter, as `check_resources` is. It refuses
+    (1) a declared type no format can hold, (2) a location the fragment entry point does not
+    write, (3) a fragment output that is not **exactly** the width of the image the declaration
+    resolves to, (4) a declared count larger than that image, and (5) a type that is not a float
+    at all. The order is the order of what each makes moot, and **the declaration's own facts are
+    asked first**: whether a format can hold the type, whether the declared count fits the image
+    it resolves to, and where the point sits in this pass's attachment order.
+  - **invariant**: a declaration's `location` is **cross-checked against the pass's attachment
+    order**, and the mapping is established rather than assumed. A pass reads its `targets` list
+    in the order the document wrote it — no sort, no deduplication, only the depth attachment
+    dropped — and `raster.rs` builds one `ColorTargetState` per attachment in that same order,
+    which is the numbering a shader's `@location(i)` resolves against. So **a point's index in
+    that list is the index its declaration must claim**, and two attachments of the same type
+    whose declarations have their locations swapped are now refused. A point more than one pass
+    writes has to sit at the same location in each of them, which is stated in the message.
+  - **invariant**: the surplus component of a `vec3<f32>` declaration is **padding and never a
+    marker**, and the sidecar machinery says so. Marking is a reading convention rather than a
+    value, so nothing in a declaration can ask for one; the built-in `Position` and `Depth`
+    images keep `vec4<f32>` **because** they own a marker, and their own description is what
+    tells a reader what their fourth channel means. The harness therefore measures a
+    scene-declared image over every texel and prints a `-` line only for a built-in.
+  - **invariant**: every message names **the shader's own variable and the location**. A bound
+    shader entry has no name and its source is a wall of text; the variable and the number are
+    the two things a reader can go and look at. **No message names a rule from underneath**: the
+    single place a format appears is the pre-existing refusal for a type this device cannot
+    read back, which is phrased about the device.
+  - **not done**: the **format an image is read back in** is the format its target was created
+    with, which the document's own instance payload declares. The table governs the format a
+    **compiler-created** target is built from, and refuses a type no format can hold. A
+    document that created an `rgba8unorm` target and declared `vec4<f32>` renders an eight bit
+    image and reports `rgba8unorm`; that is a payload decision, not a declaration one.
 
 ### `device` crate
 
@@ -584,28 +661,103 @@ incremental compile.
   - the scene document: a `name`, a list of `cameras`, a list of `lights`, a list of `shaders`,
     a list of `meshes`, a list of `mesh_materials`, a list of `screen_materials`, a list of
     `post_processes`, and the `instances` bucketed by pass.
-  - `DebugChannel`: an extra image the pipeline can be asked to draw, and **not** a field of the
-    scene document: a channel is a question the *caller* is asking rather than a fact about the
-    scene, so it travels as `StandardScene::with_debug`, beside the camera, which is the other
-    input a compile has that the scene does not express by itself.
+  - `DebugChannel`: a **registry of built-in outputs** — an extra image the pipeline can be
+    asked to draw without the scene's help — and **not** a field of the scene document: a
+    channel is a question the *caller* is asking rather than a fact about the scene, so it
+    travels as `StandardScene::with_debug`, beside the camera, which is the other input a
+    compile has that the scene does not express by itself.
+    - **decision** (2026-10-02, from [proposals/typed-outputs.md](proposals/typed-outputs.md)):
+      the set is **built-in**, not closed. A scene may declare an output of its own beside these,
+      type-checked against its own fragment shader, and a caller looks both up the same way out
+      of one `outputs` map and one list of images. The enum was not melted into a table of
+      constants: it already *is* a registry of named, scene-independent entries, and melting it
+      would touch six landed test files and buy no behaviour. **This is the decision a reviewer
+      should look at hardest.**
+    - each entry carries its own `ty()`, its own `location()`, its own compiler-supplied WGSL and
+      its own coverage contract, and `format()` is **derived** from `ty()` rather than matched on
+      the variant — the format-inferred-from-the-channel that the proposal superseded.
+    - **invariant**: a built-in is **never compared against a shader by the type check**. Its
+      WGSL is the compiler's own, so there is nothing a scene can get wrong about it and nothing
+      to compare. It still *states* its type, because the declaration is what a caller and the
+      sidecar read.
     - enum of: `Position` — the world position of the nearest surface each pixel shows, and none
-      where it shows none.
+      where it shows none. `Depth` — the depth buffer itself: the value the depth test compared
+      against at each pixel, and none where the scene drew nothing.
     - **decision**: the image is a **float** target (`rgba16float`), not a position normalized
       into eight bits with a key to decode it. The numbers a caller reads are then the answer,
-      and there is no encoding for a caller to get wrong.
+      and there is no encoding for a caller to get wrong. `Depth` is drawn in the same format for
+      a different reason: a depth value in zero to one quantised to eight bits steps by four
+      thousandths, which is enough to see *that* a fragment lost a depth test and not enough to
+      say how near it was. The format is now reached through `TexelType::format`, which is where
+      that reasoning lives.
     - **invariant**: every channel writes a target of its own, so asking for one cannot move a
       pixel of the picture. Verified by rendering: `studio` and `tidewater` produce byte for byte
       identical frames with a channel and without.
-    - **invariant**: a channel covers **what the `depthing` bucket drew**, because a position is
-      recovered from the depth buffer. A scene whose lit stages draw an instance its `depthing`
-      bucket does not has pixels no channel will name a position for, and a scene with no
-      `depthing` instance gets a compiler note rather than an empty image with no explanation.
+    - **invariant**: `Position` and `Depth` cover **what the `depthing` bucket drew**, because a
+      position is recovered from the depth buffer and `Depth` *is* the depth buffer. A scene whose
+      lit stages draw an instance its `depthing` bucket does not has pixels no channel will name a
+      position for, and a scene with no `depthing` instance gets a compiler note rather than an
+      empty image with no explanation.
+    - **invariant** (2026-10-02): **the coverage contract has two sources of truth and they are
+      kept distinguishable in code, not only in prose.** A **built-in** is bounded by *what the
+      pipeline has* — a buffer — so its header and its compile-time note name that buffer. A
+      **scene-declared** output is bounded by *which buckets the writing pass enumerated*, so
+      there is no buffer to name: `RenderError::UnwrittenOutput` says "not a missing buffer",
+      names the passes that **did** draw (which is what separates an emitter that never
+      enumerated a bucket from a shader that does not write the location), and
+      `scene::declared_description` writes the enumeration's contract into the sidecar header.
+      The harness's `describe_outputs` is the one place the two are chosen between, by name.
+    - **invariant**: `Depth` reports the buffer verbatim, including `1.0` at a pixel nothing was
+      drawn on, and marks the background in **alpha** rather than by zeroing the colour — the
+      same marker `Position` uses, so a caller reading two channels together reads one rule.
+      Zeroing it would report the *near* plane where there is no surface, which is the same class
+      of wrong answer as giving a background pixel a position at the far plane.
+    - **a channel that does not read the depth buffer does not inherit that contract.** One drawn
+      by a geometry pass of its own covers exactly what it drew and owes a different statement:
+      which buckets the pass enumerated. Recorded in `standard/debug.rs` so the day a G-buffer
+      channel is built the contract is written rather than discovered. **`Grade` is the third
+      case and it is a buffer case, not a drawn case**: it copies the shaded image, so it covers
+      exactly what the lighting and emission passes accumulated into it, and `reads_depth()` is
+      the predicate that keeps the empty-image note off it. The predicate is on the channel
+      rather than on one call site, which is what keeps the note true as channels are added.
+    - **invariant**: `Grade` is the frame **before** the post stage's grade, copied verbatim —
+      no camera, no matrix, no test, no branch, and `textureLoad` rather than a sampler so the
+      copy moves no pixel of its own. It is `rgba16float` for the **sidecar** and not for
+      precision: the shaded image is itself `rgba8unorm`, so a wider target cannot recover what
+      the lighting stage clipped. Three things are therefore stated on the file rather than left
+      to be discovered — **the sky is black** because a post stage draws it, **a value at one
+      was clipped** before any grade saw it, and **alpha marks nothing**, because the lighting
+      stage writes one everywhere and the pipeline clears it to one. The `depth` channel is the
+      one that says which pixels have a surface at all. Measured on `tidewater`: the beauty is a
+      blue-hour lake and the grade image is a black sky, a thin treeline and a glitter path, so
+      the sky, the lake's blue and the glow column are all the grade's — which is the comparison
+      two runs each paid ninety minutes and a pixel-sampling script to make by hand.
+    - **invariant**: what a channel's image *is* is said by the channel, through
+      `DebugChannel::description()`, and not by whatever program writes the file out. Every float
+      image a render produced may be written with a header, and a header written by the harness
+      was a claim about the **format** — which cannot make it, because `Position` and `Depth` are
+      the same `rgba16float` with the same marker and nothing in the bytes tells them apart. That
+      is not a hypothetical: the harness shipped one line reading "world position of the nearest
+      surface … in scene units" above every float image, so a depth file claimed world positions
+      and a caller reading it put the sky at 1.0 units instead of the far plane. A file that is
+      valid, a render that succeeds, and a result nobody asked for. The description answers the
+      three questions a reader brings to a file of numbers — what the numbers are, what the alpha
+      means, and what the normalization ranges below it stand for — and an image no channel drew
+      is described as exactly that rather than with the nearest channel's words.
+    - **invariant**: the numbers a sidecar prints are the numbers the shader wrote, and changing
+      what it says about them changes no number in it. Verified by diffing a real `dunes` render
+      before and after: the 81 data lines and the png are byte for byte identical, and only the
+      header prose differs.
     - **why reconstructed from depth**: a depth buffer for the frame already exists and every
       post stage already binds it, so a channel is one fullscreen pass with no second geometry
       pass and no change to any material. A channel that cannot be answered this way — a normal,
-      an identifier — needs a G-buffer, which is a change to the graphics schema and the
-      renderer rather than a channel. See
+      an identifier — needs a G-buffer. See
       [proposals/agent-debug-scenes.md](proposals/agent-debug-scenes.md).
+    - **a G-buffer needs no graphics-schema change, only a renderer one.** `pass.targets` was
+      already a list and the binding layer already carried several; `raster.rs` collapsed them in
+      two places. A pass now builds one `ColorTargetState` per colour attachment in attachment
+      order, and a shader's `@location(i)` is that order. See
+      [handoffs/gbuffer-channels.md](handoffs/gbuffer-channels.md).
     - `Light`: an enum of the kinds of light, because what a light is is its kind rather
       than a field it may or may not have.
       - `Point`: `label`, `position`, `color`, `intensity`, `radius`,
@@ -1017,14 +1169,70 @@ cargo run --release -p whiting-device --features wgpu --example render -- <scene
 
   render dunes out/dunes                    one frame, at the time the scene carries
   render dunes out/dunes 0 5 0.25           twenty-one frames, a quarter second apart
-  render dunes out/dunes 0 5 0.25 --sheet   the same range as one contact sheet
-  render dunes out/dunes 0 5 0.25 --video   the same range as an mp4, encoded with ffmpeg
+  render dunes out/dunes 0 5 0.25 --sheet         the same range as one contact sheet
+  render dunes out/dunes 0 5 0.25 --sheet-full    the same sheet, at every pixel of each frame
+  render dunes out/dunes 0 5 0.25 --video         the same range as an mp4, encoded with ffmpeg
 ```
 
 `--release` matters, though less than it did: the compile is no longer the bottleneck, but a
 debug build is still several times it. The harness reports clone, validate, compile and render
 apart, which is the measurement [proposals/compile-cost.md](proposals/compile-cost.md) rests on.
 `ffmpeg` must be on the path for `--video`; the frames are written either way.
+
+### The render manifest
+
+Every run of the harness writes `<out>-manifest.json` beside the images it wrote — one file per
+camera, named through the same `with_stem_suffix` a channel image is named by — holding, per
+output: the scene, the camera, the `time`, a SHA-256 of the two emitted documents, a SHA-256 of
+the frame's pixels, the pass count, and a SHA-256 of the executable that drew it. The next run
+reads that file **before** it renders and says what changed.
+
+- **three hashes, because one cannot answer the question.** The build, the documents and the
+  image are three separate facts, and they give four answers that are four different situations:
+  nothing ran and nothing changed (a stale build); the build took and the edit still did not
+  reach the documents; the documents changed and this camera's draw does not read what changed;
+  or it worked, which says nothing. The image hash is the deepest of the three and the one no
+  earlier version had — it is what makes "the document changed and this picture did not" a
+  statement the framework makes rather than one every caller re-derives.
+- **It is harness state and not a `CompileNote`.** A note is a fact about one compile of one
+  document. This is a comparison against the caller's *previous run*, which is history, and
+  history is the harness's. No library crate is involved and none was added for it.
+- **The build id is the hash of the executable, not a timestamp.** The scenes are compiled *into*
+  the example, so the binary is the only provenance there is, and a clock that moved is not
+  evidence of anything.
+- **Nothing about the picture moves.** The manifest is read and written beside the render, never
+  into it, and a render with it is byte-identical without it — checked by SHA-256 over the PNGs.
+  A run naming no debug channel writes the files it wrote before, plus this one.
+- The first run of a scene has no previous and **says so** rather than warning: silence about a
+  missing manifest is wrong, and a warning on a fresh scene is noise.
+- The document hash covers content, not provenance: identifier, schema and value, with a float
+  hashed by its bits. The definition's version counter is excluded, because it is bookkeeping
+  about how a document arrived rather than something the document says.
+
+### The contact sheet
+
+`--sheet` puts a range of frames in one grid, and it is the only view in which the range itself is
+visible: three frames of a range composed alike, or one that drifts off and comes back, cannot be
+seen one frame at a time. It samples every **fourth** pixel. `--sheet-full` asks for every pixel
+instead. A sheet is a composition of frames that were already drawn, and nothing about any
+individual frame's rendering changes either way.
+
+- **The step is a choice and not a consequence.** A tile is the frame divided by the step and
+  nothing else, so its size does not move when a range gets longer: the same frame is drawn at the
+  same size in a six-frame sheet and a thirteen-frame one. Scaling the sheet to land inside a
+  target size would be elegant and would give that up — the tile would become a function of how
+  many frames were asked for, and a range read across runs would change resolution under the
+  reader.
+- **The quarter stays the default, and the objection to dropping it is sound.** A dozen frames of a
+  thousand pixels each is a sheet nobody can see, so full resolution is a flag rather than the
+  default: six 1024² frames are a 3072×2048 sheet, and thirteen are 4096×4096. Every invocation
+  that does not name the flag writes the sheet it wrote before it, byte for byte.
+- **A tile is a sample of the frame's own pixels, never a resize.** Nothing is interpolated, so a
+  sheet cannot say something about a frame the frame does not say.
+- **The line that reports a sheet says how far apart it read**, and the size it reports is the size
+  of the **file**: it used to report the grid the frames would have made unsampled — a 3072x2048
+  number beside a 768x512 png — which is the resolution of a thumbnail claimed as the resolution of
+  a picture.
 
 ### A surface may displace the normal it is lit by
 
@@ -1804,3 +2012,187 @@ stated inputs.
 A directional light costs **nothing** in the clustered buffers: the record is still ninety six
 bytes and the cone run still thirty two, because its data is a uniform field rather than
 record fields. The test that says so is the same one the spot cone run needed.
+
+## A camera that is inside something is named, and drawn
+
+Three agents ran one task against this framework and each of them put a camera inside geometry:
+one left it in a pond and got a water jar filling the frame, one grew a ridge on the camera side
+and left two cameras inside a hundred metre hill, and one spent twelve rounds on a single camera
+without ever getting it right. Every one of those is a fact the compile holds at the moment it
+emits the frame — the eye is a field, the target is a field, and the box every instance covers
+came out of the walk the camera is framed from. The scene compiler now says so in three
+`CompileNote`s, and says **nothing** about the picture.
+
+| the condition | the note points at | it names |
+| --- | --- | --- |
+| the eye is inside an instance's bounds | `cameras[i].eye` | the instances drawing that box, and how far in the eye is |
+| one instance holds the frame and stands between the eye and the target | **that instance** | the instance, and the share of the frame it takes |
+| the target is nearer than the near plane | `cameras[i].target` | the distance aimed at, and the plane |
+
+- **All three are notes. None of them refuses to compile.** This is the page pool's policy
+  generalised: *a count above what the machine has is bounded and named; a count below one is
+  refused.* A machine being too small is a fact about this run; a wrong image on every machine is
+  a fact about the document. All three of these are facts about this run and this camera, so all
+  three are named and all three are drawn — and what a note distinguishes here is *this picture
+  is degenerate* from *this picture is fine and the number is just unusual*. A scene may
+  legitimately want a camera inside a volume, inside foliage, inside a building.
+- **The path names the field the note is about, and the message names everything else.** A note
+  that names an instance and points at the camera sends the reader past the thing the message
+  just told them about, so the frame note points at the instance and the other two at the camera
+  field that is wrong.
+- **A camera the scene did not write says nothing at all.** `chosen` is `None` when the scene
+  names no camera, or names fewer than the compile was asked for, and the frame is then the
+  convention's: pulled back until the whole box fits, which puts the eye three half widths off the
+  centre of the box and outside every instance's box by construction. A note about that camera
+  would point at a field the document does not have and ask for a change nobody can make.
+- **The share of the frame is a bound and the note says so.** The eight corners of an instance's
+  box are projected and the rectangle they reach is compared with the frame, so a box turned away
+  from the axes is counted by the axis aligned box around it. It reads high, which is the
+  acceptable direction. A box the eye is inside, or one with a corner at or behind the eye, is
+  **not measured at all**: a perspective projection divides by the distance in front of the eye,
+  so the near face of such a box flips over the whole frame and any number computed from it is a
+  statement about the divide.
+- **Holding the frame is only a fault in front of the subject.** A still life's backdrop wall
+  covers every pixel and is what a backdrop is for; the water jar filled dsf's frame because it
+  stood between the eye and the target. So the note needs both halves — at least ninety percent
+  of the frame, and nearer to the eye than the target is — and `stilllife` and `spotlight` are
+  silent under it while the covered-frame case fires.
+- **One note per box rather than one per instance.** A mesh drawn in three stages is three
+  instances of one box: `terraces` draws its terrain as `terrain-depth`, `terrain-shade` and
+  `terrain-cast`, which are one valley three times, and the note names all three and says so once.
+- **It costs one walk that was already happening.** The per instance boxes come out of the same
+  pass of `bounds_of_instances` that frames the camera, so nothing re-reads the scene document —
+  which is the most expensive thing a compile can do ([`compile-cost.md`](proposals/compile-cost.md)).
+  The three measurements are `Bounds::depth_of`, `Bounds::distance_from` and two methods on
+  `Projection`, all of them in the `scene` crate.
+- **Nothing about the picture moves.** A scene that raises one of these renders byte-identical to
+  the same scene without it, checked by SHA-256 over the PNGs, and the harness's own manifest
+  reports `documents identical` / `pixels identical` with the binary hash moved. Seven of the ten
+  gallery scenes say nothing at all; the two that do are `terraces` and `tidewater`, whose
+  heightfield is a box around a valley that the eye is inside while standing in open air — a true
+  statement about a box and not a fault, which is the price of measuring bounds rather than
+  surfaces, and the reason the numbers are in the message.
+## A scene's size is measured, and what a pipeline constant costs at it
+
+Three agents ran one task against this framework and two of them inherited a light falloff they
+could neither see nor set — `1 / (1 + 0.0035r + 0.00002r²)`, whose own comment places it in "a
+scene a couple of hundred units across" — and applied it to scenes five and fourteen times that
+size, so their suns were attenuated by factors of twenty and eighty. A third built a roof from a
+rise in metres against a ridge in world coordinates, computed "a 6.6-meter-tall roof in a
+14-meter-wide house", and found it with a world-position image rather than by reading the code.
+The compiler knows every scene's extent at the moment it emits the frame. It now says what that
+extent costs, in one `CompileNote`, and says **nothing** about the picture.
+
+- **The note points at `instances`**, because the transforms there are the only thing in the
+  document that sets how far apart anything is. It names the scene's span, the fold the
+  template's falloff gives at the **half diagonal of the scene's box** — the only distance the
+  document determines on its own, since where a scene's lights stand is a fact about its lights —
+  the same fold in stops, and the reference it is measured against.
+- **It is a note and never a refusal.** A scene is legitimately any size: a still life wants a
+  falloff across its table and a lake wants the same constant to be a factor of eighty. Neither
+  is a fault, and refusing either would be a compiler ruling on a scene's subject.
+- **The threshold was measured, and it is two** — one stop, the smallest difference in light a
+  photograph is named for. The ten gallery scenes have three clusters: `studio` 1.01, `sunlight`
+  1.05, `spotlight` 1.05, `tiles` 1.07; then `dunes` 2.91, `terraces` 3.51, `stilllife` 4.79,
+  `lanterns` 6.09, `monoliths` 7.31; then `tidewater` 86.35. Six of ten are reported. The bar
+  sits in the **first** gap, because the four small scenes are ones the constant does nothing to
+  at all; the second gap was left alone, since a bar above it would report `tidewater` and
+  nothing else, which is a bar fitted to one observation.
+- **It is measured against the template's own constant.** The numbers are a copy, held to the
+  gallery's WGSL by a test, because a note cannot be honest about a constant it does not hold
+  and a copy is only honest while it is a copy. The lighting stage is being rewritten elsewhere
+  and the constant lives in the arithmetic that rewrite replaces, so this is where the copy goes
+  when the falloff becomes a field a scene sets.
+- **It is a box and not a surface**, the same limitation the camera notes carry. `tidewater`'s
+  box is nearly three thousand units across and its far shore is a few hundred away, so the box
+  says 86.4 and the picture may hold a fold of two. The number is quoted rather than the verdict.
+- **Nothing about the picture moves.** Verified by SHA-256 over the PNGs with the note's own code
+  path disabled and enabled, on `dunes` and both `tidewater` cameras.
+
+## A photograph is exposed once, in linear light, before the curve
+
+Two runs lost hours to exposure, both to a transform they could neither observe nor query: one
+cut it 44% and the image barely moved because a sun glow term in the grade was adding to the
+sky, and found this by sampling its own PNG from PowerShell; the other darkened a clay albedo
+60% and the pumpkins stayed orange, because ACES pushes bright red towards yellow-white at the
+high end — 92 minutes. `exposure` is a scene field, and what it means is stated rather than
+inferred.
+
+- **It is a linear multiplier on the radiance the post stage reads, applied before that stage's
+  own curve, and it is not a curve parameter.** A document that can name one number must not be
+  able to mean two things; a scene that wants to move the curve names a different field.
+- **It is written into the post uniform only when the scene names it**, and the post interface
+  comes in two forms for that reason: `post_pass_schema()` and `post_pass_schema_exposed()`
+  differ by exactly that one field. A field that came and went with the document would move every
+  field after it — the layout is derived from the names — so a scene that names no exposure emits
+  the documents it emitted before the field existed.
+- **Naming it is a three-place opt-in**: the field on the scene, `post_pass_schema_exposed()` as
+  the post shader's `pass_schema`, and `exposure: f32` in that shader's own uniform, declared in
+  name order between `depth_range` and `projection`.
+- **A scene that names it without declaring it is refused, and the refusal says why.** This was
+  measured rather than designed: a pass's uniform is uploaded with the layout its own shader
+  declares, so an undeclared field is a field the **upload drops** — the first version of this
+  compiled clean and drew an unexposed frame, which is the exact class of failure the field
+  exists to remove.
+- **It cannot brighten what is already at one, and the field says so.** The shaded image is an
+  `rgba8unorm` target, so the lighting stage clipped it before any grade saw it: an exposure above
+  one brightens only what was below one. Lowering the light moves a clipped pixel; nothing an
+  exposure can do will.
+- **A scene that names it and runs no post process is noted**, because a field nothing reads is a
+  state this project calls out as one to avoid — and the frame of a scene with no grade *is* the
+  shaded image.
+- **Verified on the adapter**, through a pass-through grade so the frame is the linear value:
+  no exposure named and an exposure of `1.0` give a **byte-identical** frame, and `0.5`, `0.25`
+  and `0.01` scale the mean channel to 0.497, 0.250 and 0.007 of it, within the rounding of an
+  eight bit target. A scene's own curve is not proportional in display space, and that is the
+  point of the decision rather than a defect in it.
+
+## A shader says which file and line each of its blocks was written at
+
+A gallery shader is a template with a scene's own WGSL spliced into it, so the string the device
+parses is a module that exists on no disk. Three of the failures in the dsf run were that: a
+block of **function definitions** written where a function body wanted statements, reported as
+``lighting/lighting/ground` does not parse as wgsl: expected assignment or increment/decrement,
+found "c_sun_share"``, which names the shader and nothing about the cause. The source is the only
+part of a shader that survives the trip from a scene document to a device — the scene emitter
+rebuilds the instance entry from a shader's fields with `source` and `schema` and nothing else —
+so the map travels **inside** the source, as one WGSL comment line above each block that declared
+where it was written.
+
+- **The declaration is the scene's, and it is a `wgsl!` invocation.** `file!()` and `line!()` read
+  as the macro expands, so the origin cannot drift from the text it describes; nothing counts
+  lines and nothing is written down twice. A block written as a plain `&str` declares nothing,
+  and a plain `&str` is still what every existing scene passes, so the whole mechanism is opt-in
+  per block.
+- **The block's first line is the line after the one the macro was invoked on**, which is where
+  a literal opening on the next line puts the block's first line of text. The marker carries
+  that line, and the reader adds only the offset within the block, so nothing in
+  `graphics::provenance` reads a declaration.
+- **There is one shape, and it is the one `cargo fmt` writes.** The literal must open on the
+  line below the invocation. `line!()` reports where the invocation starts and cannot see where
+  the literal opens, and two invocations holding the same literal and starting on the same line
+  put the block's first line of text on different lines — so no arithmetic can be right for
+  both. A literal on the invocation's own line is reported one line high, and `cargo fmt`
+  rewrites it into the supported shape; the arithmetic that assumed it (`invoked_at` itself) was
+  a line high for every block in the shipped scene, which named the middle of a neighbouring
+  statement and, once, a WGSL comment. A test reads every `wgsl!` declaration in the gallery's
+  sources and holds it to the shape.
+- **The marker names the splice point as well as the file**: the same text is a `surface` in the
+  lighting stage and a `grade` in the post one, and a line in a scene file of some thousands of
+  lines is not a location without that.
+- **A line no marker covers is reported exactly as it was.** `graphics::provenance::explain`
+  returns nothing for one, which is the whole of the message when nothing declared anything. The
+  scan runs only after a parse has already failed, so a shader that compiles never pays for it.
+- **Nothing about a frame moves.** The marker is a comment. Verified by SHA-256 over the PNGs
+  with the marker written and not written, on `dunes` and both `tidewater` cameras: three
+  identical pairs.
+- **It changes the text of an error, and there is no note.** The camera and scale notes describe a
+  legitimate scene — the render succeeds and the frame is a smaller one than was asked for. This
+  is a scene that cannot render as assembled, so the error already exists and what changes is
+  where it points.
+- **What it does not fix: stage scoping.** A helper block injected into every shader that uses a
+  post-only symbol is a missing symbol in an unrelated stage, and nothing here prevents it: the
+  gallery's builders return `Vec<Value>` rather than a `Result` so there is nowhere to refuse from,
+  and `shader_entry` drops the stage tag, so the device cannot check it either. Carrying the
+  splice points' stages in the marker and the shader's own stage through the emitter is the
+  smallest change that would, and the first half of it is in `crates/scene`.

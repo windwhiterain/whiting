@@ -13,13 +13,39 @@
 //! ```text
 //! cargo run -p whiting-device --features wgpu --example render -- <scene> <out> [times] [mode]
 //!
-//!   render dunes out/dunes                    one frame, at the time the scene carries
-//!   render dunes out/dunes 2.5                one frame, at t = 2.5
-//!   render dunes out/dunes 0 6 0.25           thirteen frames, a quarter second apart
-//!   render dunes out/dunes 0 6 0.25 --sheet   the same range, as one contact sheet
-//!   render dunes out/dunes 0 6 0.1  --video   the same range, as an mp4
-//!   render dunes out/dunes --debug position   and one image of where each pixel is
+//!   render dunes out/dunes                          one frame, at the time the scene carries
+//!   render dunes out/dunes 2.5                      one frame, at t = 2.5
+//!   render dunes out/dunes 0 6 0.25                 thirteen frames, a quarter second apart
+//!   render dunes out/dunes 0 6 0.25 --sheet         the same range, as one contact sheet
+//!   render dunes out/dunes 0 6 0.25 --sheet-full    the same sheet, at every pixel of each frame
+//!   render dunes out/dunes 0 6 0.1  --video         the same range, as an mp4
+//!   render dunes out/dunes --debug position         and one image of where each pixel is
 //! ```
+//!
+//! # The contact sheet
+//!
+//! `--sheet` puts a range of frames in one grid, and it is the only view in which **the range
+//! itself** is visible: three frames of a range composed alike, or one that drifts off and comes
+//! back, cannot be seen one frame at a time. It is worth reaching for.
+//!
+//! It samples every **fourth** pixel, which is a deliberate default and not an accident — a dozen
+//! frames of a thousand pixels each is a sheet nobody can see, and a range is read for its shape
+//! more often than for its pixels — and what it samples is the frame rather than resizing it: a
+//! tile is made of pixels the frame already had, so no sheet can say something about a frame the
+//! frame does not say. The line that reports a sheet says how far apart it read, because a sheet
+//! that does not say is a picture whose resolution is a guess.
+//!
+//! `--sheet-full` asks for every pixel instead, and it is for the judgement being made **on** the
+//! sheet rather than for the finding of it: the last look before a range is delivered, or a crop
+//! out of one tile afterwards. Six 1024² frames are a 3072×2048 sheet, which is a real image and
+//! a real cost, and thirteen are 4096×4096 — which is why this is a flag and not the default.
+//!
+//! The step is a **choice rather than a consequence**: a tile is the frame divided by the step
+//! and nothing else, so it does not move when a range gets longer, and the same frame is drawn at
+//! the same size in a six-frame sheet and a thirteen-frame one. Scaling the sheet to land inside
+//! some target size would be elegant and would give that up — a tile would become a function of
+//! how many frames were asked for, and a range read across runs would change resolution under
+//! the reader.
 //!
 //! # Debug images
 //!
@@ -29,16 +55,40 @@
 //! scene**, because it is a question the caller is asking rather than a fact about the scene;
 //! nothing about the picture changes either way, and that is checked by rendering both.
 //!
-//! A position image holds floats, and a png cannot: the png written beside it is normalized for
-//! viewing and is therefore a picture of the positions rather than the positions. The numbers
-//! travel in a sidecar of the same name, `<out>-<channel>.txt`, which names the mapping it used
-//! and gives the world position at a grid of pixels. That is what a caller reads to find out
-//! where a pixel it is looking at actually is.
+//! A channel image holds floats, and a png cannot: the png written beside it is normalized for
+//! viewing and is therefore a picture of the values rather than the values. The numbers travel
+//! in a sidecar of the same name, `<out>-<channel>.txt`, which gives them at a grid of pixels.
+//! The sidecar's header is written by the **declaration**, not by this harness, because the
+//! declaration is what knows what its image is and a file format does not: a png and a text
+//! file cannot tell a world position from a depth, and a file that claims to hold the wrong one
+//! is a measurement nobody can trust.
+//!
+//! **The header says which of the two coverage contracts applies, because they are different
+//! claims.** A built-in channel reads a frame resource, so its header names the buffer and is
+//! bounded by what the pipeline has. A scene-declared output is bounded by which buckets the
+//! writing pass enumerated, so its header names that instead — there is no buffer to be missing
+//! and saying so would send a reader looking for a depth buffer a normal never touched. Every
+//! float image is written with one of the two, and an image nothing described is written with a
+//! header that says it is undescribed rather than borrowing either.
+//!
+//! # The manifest
+//!
+//! Every run writes `<out>-manifest.json` beside the images: per frame, the hash of the
+//! documents the compile emitted, the hash of the pixels that came back, the pass count, and
+//! the identity of the binary that drew it. The next run reads that file before it renders and
+//! says what changed — **including that nothing did**, which is the case that has cost three
+//! separate runs of this harness ten minutes each. See [`report_against`] for what each
+//! combination of the three hashes means.
+//!
+//! Nothing about the picture depends on any of it: the manifest is read and written beside the
+//! render, never into it.
 
 use std::collections::HashSet;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
+use definition::{Definition, DefinitionIdentifier, FieldMap, Registry, SchemaIdentifier, Value};
+use facet::Facet;
 use gallery::Gallery;
 use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 use scene::{
@@ -56,12 +106,34 @@ const TIME: &str = "time";
 /// on a sample.
 const PROBE_SIDE: u32 = 9;
 
+/// The suffix the manifest is named with, beside the images it describes.
+const MANIFEST: &str = "manifest";
+
+/// The shape of the manifest this harness reads and writes.
+///
+/// A number rather than nothing, so a manifest written by a harness that has changed its shape
+/// is reported rather than half-read: a reader that quietly misreads a record is worse than one
+/// that says it cannot.
+const MANIFEST_FORMAT: u32 = 1;
+
 /// A moment a scene is drawn at.
 struct Moment {
     /// The time the scene was patched to, when the range named one.
     time: f64,
     /// Every image the moment rendered, the frame among them.
     rendered: RenderedFrame,
+    /// What each declared image **is**, keyed by its name, as prose written beside its numbers.
+    ///
+    /// # Invariants
+    ///
+    /// **It is read from the compiled document rather than from the image.** A sidecar's header
+    /// is a claim about what the numbers mean, and the two claims a caller could make — a
+    /// built-in channel's, which is bounded by a buffer, and a scene-declared output's, which is
+    /// bounded by the writing pass's enumeration — come from different places and must not be
+    /// blurred into one sentence about "coverage". The document is where the distinction is
+    /// written down, so it is read from there and carried as owned text because the compiled
+    /// documents are moved into the next moment's delta.
+    described: Vec<(String, String)>,
 }
 
 /// The two documents one moment compiled to, carried to the next as its previous state.
@@ -118,9 +190,40 @@ async fn run() -> Result<(), String> {
     // The notes already reported, so that one fact about the documents is said once rather than
     // once per image of a range. See `print_notes` for why that is not the same as one per
     // compile.
+    // The identity of the executable this run is executing, read once. The scenes are compiled
+    // **into** this example, so the binary is the only thing standing between an edit and a
+    // frame, and comparing it against the one the last run used is the difference between
+    // "the build did not take" and a ten minute argument about whether it did.
+    let build = build_id();
     let mut reported = HashSet::new();
     for camera in 0..cameras {
+        // Where this camera's images go, and the manifest that describes them. Both are named
+        // before the first moment is compiled rather than after the last, because the
+        // comparison below has to read what the last run left at that path.
+        //
+        // A scene with one camera writes where it always wrote, so every existing invocation
+        // of the harness names the files it named before, and a scene with several says which
+        // view each set is.
+        //
+        // The suffix goes **before** the extension. Appended after it, `with_extension` in
+        // `numbered` reads `png-camera0` as the extension and replaces it with `png` again,
+        // so every camera writes the same file and the last one silently overwrites the
+        // rest — which is how a two camera scene produces one image and no complaint.
+        let target = if cameras > 1 {
+            Request {
+                path: with_stem_suffix(&request.path, &format!("camera{camera}")),
+                ..request.clone()
+            }
+        } else {
+            request.clone()
+        };
+        let manifest = manifest_path(&target.path);
+        // Read before the first frame is drawn, and said out loud either way: a first render
+        // of a scene has nothing to compare against, and that is a fact about the run rather
+        // than something to pass over in silence.
+        let recorded = read_manifest(&manifest);
         let mut moments = Vec::with_capacity(request.times.len());
+        let mut outputs = Vec::with_capacity(request.times.len());
         let mut previous: Option<Compiled> = None;
         for &time in &request.times {
             let started = std::time::Instant::now();
@@ -160,6 +263,14 @@ async fn run() -> Result<(), String> {
             // fact that was established on the first one.
             print_notes(&mut reported, &compiled.notes, camera, cameras);
 
+            // What each declared image **is**, read from the document rather than guessed from
+            // the bytes. A built-in channel says which buffer it is bounded by and a
+            // scene-declared output says which buckets the writing pass enumerated; the two are
+            // different claims and a header that made only one of them would be wrong about the
+            // other. An image the document does not declare at all — the convention's `present`
+            // in a document with no `outputs` field — has no claim to make, which is said.
+            let described = describe_outputs(&compiled.graphics.value);
+
             // Every image the document declares, from **one** run of the pass list: the frame is
             // one of them and a debug channel is another, and rendering twice to get both would
             // be two frames of a scene that a channel cannot change and a doubled render cost.
@@ -174,6 +285,25 @@ async fn run() -> Result<(), String> {
             let passes = graphics::passes(&compiled.graphics.value)
                 .map_err(|error| format!("the emitted passes do not read: {error}"))?
                 .len();
+
+            // What this frame is, against what the last run recorded at the same path. The
+            // report is made here, before the timing line and long before the image is written
+            // below, because a warning nobody sees before they open the picture is a warning
+            // that costs the ten minutes it exists to save.
+            let record = RenderRecord {
+                scene: name.clone(),
+                camera: camera as u64,
+                // A scene that carries a time of its own is recorded as carrying no time,
+                // rather than as a time no json can spell.
+                time: (!time.is_nan()).then_some(time),
+                document: document_hash(&compiled.graphics, &compiled.instance),
+                image: image_hash(&rendered),
+                passes: passes as u64,
+                build: build.clone(),
+            };
+            report_against(recorded.as_ref(), &record, &manifest);
+            outputs.push(record);
+
             // The three are reported apart because they are three different costs, and only
             // one of them is the delta's business: a delta is small or large, and the work
             // that finds it is the same size either way.
@@ -193,7 +323,11 @@ async fn run() -> Result<(), String> {
                 started.elapsed().as_millis() - compiled_at.as_millis(),
             );
 
-            moments.push(Moment { time, rendered });
+            moments.push(Moment {
+                time,
+                rendered,
+                described,
+            });
             previous = Some(Compiled {
                 graphics: compiled.graphics,
                 instance: compiled.instance,
@@ -203,20 +337,16 @@ async fn run() -> Result<(), String> {
         // A scene with one camera writes where it always wrote, so every existing invocation
         // of the harness names the files it named before, and a scene with several says which
         // view each set is.
-        //
-        // The suffix goes **before** the extension. Appended after it, `with_extension` in
-        // `numbered` reads `png-camera0` as the extension and replaces it with `png` again,
-        // so every camera writes the same file and the last one silently overwrites the
-        // rest — which is how a two camera scene produces one image and no complaint.
-        let target = if cameras > 1 {
-            Request {
-                path: with_stem_suffix(&request.path, &format!("camera{camera}")),
-                ..request.clone()
-            }
-        } else {
-            request.clone()
-        };
         write_moments(&target, &moments)?;
+        // Written last, and only once every frame is on disk: a manifest that describes an
+        // image which was never written is evidence of nothing.
+        write_manifest(
+            &manifest,
+            &RenderManifest {
+                format: MANIFEST_FORMAT,
+                outputs,
+            },
+        )?;
     }
     Ok(())
 }
@@ -307,15 +437,18 @@ fn parse_arguments() -> Result<Request, String> {
     let path = arguments.next().unwrap_or_else(|| "out".to_owned());
     let rest: Vec<String> = arguments.collect();
 
-    // `--video`, `--sheet` and `--debug` are flags, and every bare number after the path is a
-    // time, so the times are whatever is left once the flags and their values are taken out.
+    // `--video`, `--sheet`, `--sheet-full` and `--debug` are flags, and every bare number after
+    // the path is a time, so the times are whatever is left once the flags and their values are
+    // taken out. `--sheet-full` is `--sheet` with a step of one rather than a mode of its own,
+    // because it is the same picture at another resolution and there is nothing else to choose.
     let mut mode = Mode::Frames;
     let mut times: Vec<String> = Vec::new();
     let mut debug: Vec<DebugChannel> = Vec::new();
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
-            "--sheet" => mode = Mode::Sheet,
+            "--sheet" => mode = Mode::Sheet { step: SHEET_STEP },
+            "--sheet-full" => mode = Mode::Sheet { step: FULL_STEP },
             "--video" => mode = Mode::Video,
             "--debug" => {
                 index += 1;
@@ -406,8 +539,9 @@ struct Request {
 enum Mode {
     /// One image per moment.
     Frames,
-    /// One image holding every moment in a grid.
-    Sheet,
+    /// One image holding every moment in a grid, each tile reading every `step`-th pixel of the
+    /// frame rather than all of them. See [`SHEET_STEP`] for what the step is for.
+    Sheet { step: usize },
     /// A video encoded from the moments with `ffmpeg`.
     Video,
 }
@@ -442,20 +576,24 @@ fn write_moments(request: &Request, moments: &[Moment]) -> Result<(), String> {
             }
             Ok(())
         }
-        Mode::Sheet => {
+        Mode::Sheet { step } => {
             let present = moments.first().and_then(|moment| moment.rendered.present());
             let (width, height) = present
                 .map(|image| (image.width, image.height))
                 .unwrap_or((0, 0));
-            let encoded = contact_sheet(moments)?;
+            let encoded = contact_sheet(moments, step)?;
+            // The size of the **file**, and not the size of the grid the frames would make if
+            // nothing were sampled: a report that names a 3072x2048 sheet beside a 768x512 png is
+            // the resolution of a thumbnail claimed as the resolution of a picture.
+            let (cell_width, cell_height) = tile(width, height, step);
             let path = numbered(&request.path, 0, 1);
             write_png(&path, &encoded)?;
             println!(
-                "wrote {} ({} frames, {}x{})",
+                "wrote {} ({} frames, {}x{}, sampled 1/{step})",
                 path.display(),
                 moments.len(),
-                width as usize * columns(moments.len()),
-                height as usize * rows(moments.len())
+                cell_width * columns(moments.len()),
+                cell_height * rows(moments.len())
             );
             Ok(())
         }
@@ -468,9 +606,10 @@ fn write_moments(request: &Request, moments: &[Moment]) -> Result<(), String> {
 /// # Invariants
 ///
 /// A channel that holds **floats** is written twice, and both halves are needed: a png, because
-/// the shape of where things are is what a viewer reads, and a text file of the values at a grid
-/// of pixels, because a position normalized into eight bits is a picture of the positions rather
-/// than the positions. The text names the mapping the png used, so the two cannot be read apart.
+/// the shape of what the channel holds is what a viewer reads, and a text file of the values at
+/// a grid of pixels, because values normalized into eight bits are a picture of them rather
+/// than the values. The text carries the channel's own description and the mapping the png
+/// used, so the two cannot be read apart and neither can be read as the other.
 fn write_channels(request: &Request, moments: &[Moment]) -> Result<(), String> {
     for (index, moment) in moments.iter().enumerate() {
         for image in &moment.rendered.images {
@@ -482,10 +621,14 @@ fn write_channels(request: &Request, moments: &[Moment]) -> Result<(), String> {
                 index,
                 moments.len(),
             );
-            write_png(&path, &viewable(image)?)?;
+            write_png(&path, &viewable(image, marks_alpha(&image.name))?)?;
             println!("wrote {} ({})", path.display(), describe(moment.time));
 
-            if let Some(probe) = probe(image) {
+            if let Some(probe) = probe(
+                image,
+                described(moment, &image.name),
+                marks_alpha(&image.name),
+            ) {
                 let sidecar = with_extension(&path, "txt");
                 write_text(&sidecar, &probe)?;
                 println!("wrote {} ({})", sidecar.display(), describe(moment.time));
@@ -495,6 +638,80 @@ fn write_channels(request: &Request, moments: &[Moment]) -> Result<(), String> {
     Ok(())
 }
 
+/// Returns whether an image's fourth component **marks** the pixels the pass drew on.
+///
+/// # Invariants
+///
+/// **Only a built-in's fourth component marks anything**, and the registry is what says so —
+/// `Position` and `Depth` fill their own fourth channel, and it is the fact that no surface was
+/// drawn on a pixel. Nothing in a declaration can ask for a marker, so a scene-declared
+/// output's fourth component is either the fourth number its shader wrote or **padding the
+/// compiler defined**, and treating it as a marker would drop texels a rule invented rather
+/// than a render left out: for a `vec3<f32>` whose padding is low, that is every texel in the
+/// image, and the sidecar beside it would be a file of zeros.
+///
+/// **The declared count does not drive this, and asking it to would invert the truth.** The
+/// declared count is now what decides where the padding starts, so it is a fact about the image
+/// — `f32` is one number in a one wide image, `vec3<f32>` is three numbers in a four wide one —
+/// and a reader keyed on it would call a `vec4<f32>` scene output a marker and an `f32` one not,
+/// which is the opposite of what either of them is: a `vec4<f32>` has four declared values and
+/// its fourth is one of them, and an `f32` image has no fourth component at all. Padding is by
+/// definition not a marker, so the number that says "this component means nothing" cannot also be
+/// the number that says "this component is a marker". Marking is a **reading convention**, and the
+/// only thing in this workspace that owns one is the built-in registry.
+///
+/// The fact is read from the name because the registry is keyed by name and this file already
+/// asks it the same question to choose a header: a name the registry does not hold is a scene's
+/// own value by the decision above, and one it does hold takes the built-in's convention along
+/// with the built-in's own description saying so.
+fn marks_alpha(name: &str) -> bool {
+    DebugChannel::from_output(name).is_some()
+}
+
+/// Returns what a moment's image is, from the description the document earned it.
+///
+/// A name the document did not describe — the convention's frame in a document with no
+/// `outputs` field, which the harness never writes a sidecar for — falls back to saying so
+/// rather than borrowing another image's claim.
+fn described<'moment>(moment: &'moment Moment, name: &str) -> Option<&'moment str> {
+    moment
+        .described
+        .iter()
+        .find(|(declared, _)| declared == name)
+        .map(|(_, description)| description.as_str())
+}
+
+/// Reads what each image a document declares **is**, as prose a sidecar can carry.
+///
+/// # Invariants
+///
+/// The two halves of `outputs` are answered from two different places, and this is where that
+/// is decided rather than at the point of writing:
+///
+/// - A **built-in** names a buffer, so its own description is used verbatim. It is the
+///   channel's claim about the frame resource it reads, and the emitter's note about a scene
+///   with no `depthing` bucket is the same claim made at compile time.
+/// - A **scene-declared** output names no buffer, so the compiler's own vocabulary is used:
+///   the declared type, the location, and the contract that it covers exactly what the writing
+///   pass enumerated.
+/// - **An image the document does not declare** gets neither. It is described as unclaimed,
+///   which is the one header that names its own ignorance rather than filling the gap.
+fn describe_outputs(document: &Value) -> Vec<(String, String)> {
+    let Ok(declared) = graphics::outputs(document) else {
+        return Vec::new();
+    };
+    declared
+        .iter()
+        .map(|output| {
+            let description = match DebugChannel::from_output(output.name) {
+                Some(channel) => channel.description().to_owned(),
+                None => scene::declared_description(output.name, output.ty, output.location),
+            };
+            (output.name.to_owned(), description)
+        })
+        .collect()
+}
+
 /// Returns the image as a png that can be looked at.
 ///
 /// # Invariants
@@ -502,13 +719,16 @@ fn write_channels(request: &Request, moments: &[Moment]) -> Result<(), String> {
 /// An eight bit image is written as it stands. A float image has no eight bit form, so it is
 /// normalized over the texels the scene **drew**: a value at a pixel the scene never reached is
 /// not part of the picture, and including it would compress everything that is into a corner of
-/// the range. The mapping is returned by [`probe`] beside the file, because a picture whose scale
-/// is private to the code that made it is a picture nobody can read a number from.
-fn viewable(image: &RenderedImage) -> Result<Vec<u8>, String> {
+/// the range. **"Drew" is a marker's word, and only a built-in image has one** — see
+/// [`marks_alpha`]. For a scene-declared output every texel counts, because its fourth
+/// component is not a marker and there is nothing in it that says a texel was skipped. The
+/// mapping is returned by [`probe`] beside the file, because a picture whose scale is private to
+/// the code that made it is a picture nobody can read a number from.
+fn viewable(image: &RenderedImage, marks: bool) -> Result<Vec<u8>, String> {
     if let Some(frame) = image.as_frame() {
         return encode_png(frame.width, frame.height, &frame.rgba);
     }
-    let (minimum, maximum) = covered_range(image).ok_or_else(|| {
+    let (minimum, maximum) = covered_range(image, marks).ok_or_else(|| {
         format!(
             "`{}` holds no texel the scene drew, so there is nothing to write",
             image.name
@@ -520,7 +740,7 @@ fn viewable(image: &RenderedImage) -> Result<Vec<u8>, String> {
             let texel = image
                 .texel(x, y)
                 .ok_or_else(|| format!("`{}` does not read at ({x}, {y})", image.name))?;
-            let covered = texel[3] > 0.5;
+            let covered = !marks || texel[3] > 0.5;
             for axis in 0..3 {
                 let span = maximum[axis] - minimum[axis];
                 let value = if covered && span > 0.0 {
@@ -538,14 +758,18 @@ fn viewable(image: &RenderedImage) -> Result<Vec<u8>, String> {
 
 /// Returns the smallest and largest value each of the first three channels holds over the texels
 /// the scene drew.
-fn covered_range(image: &RenderedImage) -> Option<([f32; 3], [f32; 3])> {
+///
+/// **An image with no marker is measured over every texel it has**, which is the other half of
+/// what [`marks_alpha`] says: there is no fourth component that could mean "nothing was drawn
+/// here", so there is nothing to exclude on.
+fn covered_range(image: &RenderedImage, marks: bool) -> Option<([f32; 3], [f32; 3])> {
     let mut minimum = [f32::INFINITY; 3];
     let mut maximum = [f32::NEG_INFINITY; 3];
     let mut covered = false;
     for y in 0..image.height {
         for x in 0..image.width {
             let texel = image.texel(x, y)?;
-            if texel[3] <= 0.5 {
+            if marks && texel[3] <= 0.5 {
                 continue;
             }
             covered = true;
@@ -563,22 +787,41 @@ fn covered_range(image: &RenderedImage) -> Option<([f32; 3], [f32; 3])> {
 /// # Invariants
 ///
 /// Every value is printed as the number the shader wrote and never as a normalized one, because
-/// this file is the half of the pair a caller reads a position out of. The header names the
-/// mapping the png beside it used, so a caller comparing the two knows what the colours mean.
-fn probe(image: &RenderedImage) -> Option<String> {
+/// this file is the half of the pair a caller reads the numbers out of.
+///
+/// **The header is the document's and not this file's.** A built-in channel knows what its image
+/// is and a scene-declared output knows what it declared; a format says nothing. `position` and
+/// `depth` are both `rgba16float` and hold genuinely different things, and a `vec4<f32>` normal
+/// and a `vec4<f32>` colour are the same four floats in the same target, so a sentence written
+/// here would be a claim about every float image this harness writes and the one that is wrong
+/// is a file that says it holds world positions and holds depths instead. The one image nothing
+/// described is described as exactly that.
+///
+/// The header also names the mapping the png beside it used, so a caller comparing the two
+/// knows what the colours mean. **A `-` in the grid is a texel the pass drew nothing on, and
+/// only an image with a marker has any**: for a scene-declared output the fourth component is
+/// not one, so every sampled texel is printed and the legend says so rather than promising a
+/// line that can never appear.
+fn probe(image: &RenderedImage, claimed: Option<&str>, marks: bool) -> Option<String> {
     if !matches!(
         image.format.as_str(),
         "rgba16float" | "rgba32float" | "r32float"
     ) {
         return None;
     }
-    let (minimum, maximum) = covered_range(image)?;
+    let (minimum, maximum) = covered_range(image, marks)?;
+    let described = claimed.map_or_else(|| unclaimed(image, marks), str::to_owned);
+    let legend = if marks {
+        "`-` is a pixel the scene drew nothing on"
+    } else {
+        "every sampled texel below is a value the pass wrote; this image has no marker, so there \
+is no `-` line and no texel is dropped for want of one"
+    };
     let mut text = format!(
         "{}: {}x{}, {}\n\
-         world position of the nearest surface each pixel shows, in scene units\n\
-         `-` is a pixel the scene drew nothing on\n\
-         the png beside this file is the same values normalized, red over [{:.3}, {:.3}], \
-         green over [{:.3}, {:.3}], blue over [{:.3}, {:.3}]\n\n",
+         {described}\n\
+         red over [{:.3}, {:.3}], green over [{:.3}, {:.3}], blue over [{:.3}, {:.3}]\n\
+         {legend}\n\n",
         image.name,
         image.width,
         image.height,
@@ -597,7 +840,7 @@ fn probe(image: &RenderedImage) -> Option<String> {
             let Some(texel) = image.texel(x, y) else {
                 continue;
             };
-            if texel[3] <= 0.5 {
+            if marks && texel[3] <= 0.5 {
                 text.push_str(&format!("({x}, {y}) -\n"));
             } else {
                 text.push_str(&format!(
@@ -608,6 +851,44 @@ fn probe(image: &RenderedImage) -> Option<String> {
         }
     }
     Some(text)
+}
+
+/// Describes a float image that no channel drew and no declaration described.
+///
+/// # Invariants
+///
+/// It is the one header that names its own ignorance rather than filling the gap, because the
+/// alternatives are the two failures this file was fixed for: borrowing a channel's sentences
+/// and being wrong, or saying nothing and leaving the numbers to be read by their format. What
+/// it states is true of every float image — the numbers are what the pass wrote — and what it
+/// cannot state is what the alpha means, so it says that too. **It therefore measures over every
+/// texel rather than over the ones a marker would have picked**, because an image nothing
+/// described is exactly the image whose fourth component nobody can vouch for, and dropping
+/// texels on a guess about it is the failure this header exists next to.
+///
+/// It is reached by an image the render returned under a name the document declared nothing
+/// about, which is a document that named an output the compiler has no description for. It is
+/// not the header a **scene-declared** output gets: one of those is described, by its own
+/// declaration, in the enumeration's own words.
+fn unclaimed(image: &RenderedImage, marks: bool) -> String {
+    let ranges = if marks {
+        "the three ranges below are the smallest and the largest value each colour holds across \
+the pixels whose alpha is above one half, and they are the range the png beside this file was \
+normalized by."
+    } else {
+        "the three ranges below are the smallest and the largest value each colour holds across \
+every texel of this image, because nothing here says which of them a pass left alone."
+    };
+    format!(
+        "no debug channel is named `{name}`, so this file does not say what the numbers mean.
+They are the values the pass that wrote this image wrote, as it wrote them: nothing is
+normalized and nothing has to be decoded to read one. They are to be read against the pass
+that draws them.
+alpha carries whatever that pass put there, and this file does not claim to know what it
+stands for.
+{ranges}",
+        name = image.name
+    )
 }
 
 /// Encodes an 8 bit RGBA image as a png.
@@ -741,6 +1022,609 @@ fn write_png(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .map_err(|error| format!("writing {} failed: {error}", path.display()))
 }
 
+/// What one run produced for one scene, camera and moment.
+///
+/// # Invariants
+///
+/// Every field is a fact about **what the run used**, never about what it was asked for. The
+/// document hash covers the two emitted definitions as the compile produced them, the pixel
+/// hash covers the frame as the gpu returned it, and the build covers the executable that asked
+/// for both. A record reconstructed from a source file's timestamp or from the scene's name
+/// answers a question nobody asked, which is how three separate runs of this harness ended up
+/// bisecting by hand.
+#[derive(Debug, Clone, PartialEq, Facet)]
+struct RenderRecord {
+    /// The scene the image is of.
+    scene: String,
+    /// The camera the image was drawn through.
+    camera: u64,
+    /// The time drawn, and null when the scene carried a time of its own.
+    time: Option<f64>,
+    /// Hash of the emitted graphics and instance documents.
+    document: String,
+    /// Hash of the frame's pixels, and null when the frame is not eight bit a channel.
+    image: Option<String>,
+    /// The passes the graphics document declared.
+    passes: u64,
+    /// Hash of the executable that drew it, which is where the scenes are compiled into.
+    build: String,
+}
+
+/// The record of one render, written beside the images it describes.
+#[derive(Debug, Clone, PartialEq, Facet)]
+struct RenderManifest {
+    /// The shape of this file.
+    format: u32,
+    /// Every output this run produced, in the order it produced them.
+    outputs: Vec<RenderRecord>,
+}
+
+impl RenderManifest {
+    /// Returns the record this manifest holds of one output, if it holds one.
+    ///
+    /// A frame is identified by what it is of and not by where it was written, so a render
+    /// aimed at a different path still compares against the run that drew the same moment.
+    fn record(&self, wanted: &RenderRecord) -> Option<&RenderRecord> {
+        self.outputs.iter().find(|record| {
+            record.scene == wanted.scene
+                && record.camera == wanted.camera
+                && record.time == wanted.time
+        })
+    }
+}
+
+/// Returns where the manifest of a render is written, beside the images it describes.
+///
+/// The stem carries the suffix and the extension is added after it, the same way
+/// [`numbered`] derives an image's name — a suffix appended after the extension is read as
+/// part of the extension by every writer that replaces it.
+fn manifest_path(output: &str) -> PathBuf {
+    with_extension(&PathBuf::from(with_stem_suffix(output, MANIFEST)), "json")
+}
+
+/// Reads the record the last run of this output left at `path`.
+///
+/// # Invariants
+///
+/// A file that is not there is reported rather than passed over, and it is not a warning: "no
+/// previous render" is the ordinary state of a scene being rendered for the first time, and
+/// saying so is what tells a caller the comparison below did not run rather than that it found
+/// nothing.
+///
+/// A file that is there and does not read — because it is a different shape, or because it was
+/// edited — is reported too, and then this run replaces it. Overwriting a record in silence is
+/// how a record stops being evidence, and the next run would then compare against a file that
+/// claims to be history and is not.
+fn read_manifest(path: &Path) -> Option<RenderManifest> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            println!(
+                "manifest: {} holds no previous render; this run writes the first one",
+                path.display()
+            );
+            return None;
+        }
+        Err(error) => {
+            println!(
+                "manifest: {} cannot be read ({error}); this run writes a new one",
+                path.display()
+            );
+            return None;
+        }
+    };
+    match facet_json::from_str::<RenderManifest>(&text) {
+        Ok(manifest) if manifest.format == MANIFEST_FORMAT => Some(manifest),
+        Ok(manifest) => {
+            println!(
+                "manifest: {} is written in format {} and this harness reads {MANIFEST_FORMAT}; \
+                 this run replaces it",
+                path.display(),
+                manifest.format
+            );
+            None
+        }
+        Err(error) => {
+            println!(
+                "manifest: {} does not read as a manifest ({error}); this run replaces it",
+                path.display()
+            );
+            None
+        }
+    }
+}
+
+/// Writes the record of this run beside the images it describes.
+fn write_manifest(path: &Path, manifest: &RenderManifest) -> Result<(), String> {
+    let text = facet_json::to_string_pretty(manifest)
+        .map_err(|error| format!("the manifest does not encode: {error}"))?;
+    write_text(path, &text)
+}
+
+/// Says what this frame is against the frame the last run recorded for the same moment.
+///
+/// # Invariants
+///
+/// The build, the documents and the pixels are read as **three separate facts**, because the
+/// four answers they give are four different situations, and a caller who cannot tell them
+/// apart is back to checking file timestamps by hand:
+///
+/// | build | documents | pixels | what it means |
+/// | --- | --- | --- | --- |
+/// | same | same | same | nothing ran, or nothing changed. A stale build. |
+/// | new | same | same | the edit did not reach the documents this camera reads |
+/// | any | same | new | the render is not a function of the documents alone |
+/// | any | new | same | the edit is real and this camera's draw does not read it |
+/// | any | new | new | it worked, and this says nothing at all |
+///
+/// The last row is silence, because the timing line is already the report of a run that did
+/// what it was asked.
+///
+/// The first two are warnings, and they go to the standard error rather than beside the timing
+/// line: the run succeeds in both, the image is written in both, and a note on the standard
+/// output is too easy to read past. The fourth is a note, not a warning — the change *did*
+/// reach the compile and simply does not reach this frame, which is a real edit and a frame
+/// that is unchanged on purpose, and being told so is the whole point of hashing the pixels.
+fn report_against(recorded: Option<&RenderManifest>, record: &RenderRecord, path: &Path) {
+    let Some(previous) = recorded else {
+        return;
+    };
+    let Some(before) = previous.record(record) else {
+        println!(
+            "manifest: {} holds no record of {}; there is nothing to compare it against",
+            path.display(),
+            describe_record(record)
+        );
+        return;
+    };
+    let (Some(image), Some(was_image)) = (&record.image, &before.image) else {
+        println!(
+            "note: {} has no eight bit frame recorded, so the pixels are not compared",
+            describe_record(record)
+        );
+        return;
+    };
+    let documents_moved = before.document != record.document;
+    let pixels_moved = was_image != image;
+    let build_moved = before.build != record.build;
+    if documents_moved && pixels_moved {
+        return;
+    }
+
+    // Each case says which stream it goes to, rather than the caller working it out from the
+    // booleans: a warning is a claim about the run, and a note is a claim about the scene.
+    let (warning, lines) = if !documents_moved && !pixels_moved {
+        let mut lines = format!(
+            "warning: {} is the last render again — nothing changed\n  \
+             documents  identical\n  \
+             pixels     identical\n  \
+             binary     {}{}\n  \
+             recorded in {}\n",
+            describe_record(record),
+            short(&record.build),
+            if build_moved {
+                format!(", was {}", short(&before.build))
+            } else {
+                ", the same one that drew the last render".to_owned()
+            },
+            path.display(),
+        );
+        lines.push_str(if build_moved {
+            "  the build took and the change still did not reach the documents this camera reads"
+        } else {
+            "  if you just edited a scene, the edit did not reach the picture: check that the \
+             build took"
+        });
+        (true, lines)
+    } else if !documents_moved {
+        (
+            true,
+            format!(
+                "warning: {} has the last render's documents and a different picture\n  \
+                 documents  identical\n  \
+                 pixels     {}, was {}\n  \
+                 binary     {}\n  \
+                 recorded in {}\n  \
+                 the same documents drew a different frame, so the renderer is not a function of \
+                 them alone: another machine, another adapter, or a document the hash does not \
+                 cover",
+                describe_record(record),
+                short(image),
+                short(was_image),
+                short(&record.build),
+                path.display(),
+            ),
+        )
+    } else {
+        (
+            false,
+            format!(
+                "note: {} has new documents and the same picture\n  \
+                 documents  {}, was {}\n  \
+                 pixels     identical\n  \
+                 binary     {}, was {}\n  \
+                 recorded in {}\n  \
+                 the edit reached the compile and not this frame: this camera does not read what \
+                 changed, so the picture is unchanged on purpose and the change is real",
+                describe_record(record),
+                short(&record.document),
+                short(&before.document),
+                short(&record.build),
+                short(&before.build),
+                path.display(),
+            ),
+        )
+    };
+    if warning {
+        eprintln!("{lines}");
+    } else {
+        println!("{lines}");
+    }
+}
+
+/// Returns how a record names the image it is about.
+fn describe_record(record: &RenderRecord) -> String {
+    format!(
+        "{} at camera {}, {}",
+        record.scene,
+        record.camera,
+        describe(record.time.unwrap_or(f64::NAN))
+    )
+}
+
+/// Returns the identity of the executable this run is executing.
+///
+/// # Invariants
+///
+/// The scenes are compiled **into** this example, so there is no scene file to stamp: the
+/// binary is the provenance, and hashing the bytes on disk is the only statement about it that
+/// is a fact rather than an inference. A timestamp is not used — a build that produced the
+/// same bytes is not a different build, and a clock that moved is not evidence of anything.
+fn build_id() -> String {
+    let unknown = || "unknown".to_owned();
+    let Ok(path) = std::env::current_exe() else {
+        return unknown();
+    };
+    let Ok(file) = std::fs::File::open(&path) else {
+        return unknown();
+    };
+    // Read in chunks rather than in one: a debug build of this example is tens of megabytes,
+    // and the id is wanted from every run including the first one, which has nothing to
+    // compare it against.
+    let mut reader = std::io::BufReader::with_capacity(1 << 16, file);
+    let mut hash = Sha256::new();
+    let mut chunk = [0u8; 1 << 16];
+    while let Ok(read) = reader.read(&mut chunk) {
+        if read == 0 {
+            break;
+        }
+        hash.update(&chunk[..read]);
+    }
+    hash.finish()
+}
+
+/// Returns the hash of the two documents one compile emitted.
+///
+/// # Invariants
+///
+/// Both documents are covered, and each is covered **as content**: the identifier and schema it
+/// was emitted under, and the value itself, walked rather than formatted. The version counter is
+/// left out on purpose — it is bookkeeping about how a document arrived, and this asks what the
+/// document says.
+///
+/// A float is hashed by its bits, not by its shortest decimal form, so two documents that hold
+/// the same number are the same document and two that hold numbers that print alike are not.
+fn document_hash(graphics: &Definition, instance: &Definition) -> String {
+    let mut hash = Sha256::new();
+    for definition in [graphics, instance] {
+        feed(
+            &mut hash,
+            definition.definition_identifier.as_str().as_bytes(),
+        );
+        feed(&mut hash, definition.schema_identifier.as_str().as_bytes());
+        feed_value(&mut hash, &definition.value);
+    }
+    hash.finish()
+}
+
+/// Returns the hash of a frame's pixels, or none when the frame is not eight bit a channel.
+///
+/// # Invariants
+///
+/// The pixels are hashed as they came back from the gpu, before any png is encoded, and the
+/// width and the height go in beside them so that two frames of different sizes cannot hash as
+/// one. This is the deepest of the three hashes and the one no previous run of this harness
+/// had: a document can change in a field this camera never reads, and "the document changed
+/// and this frame did not" is a statement the framework can now make rather than one every
+/// caller has to re-derive.
+fn image_hash(rendered: &RenderedFrame) -> Option<String> {
+    let present = rendered.present()?;
+    let frame = present.as_frame()?;
+    let mut hash = Sha256::new();
+    feed(&mut hash, present.format.as_bytes());
+    hash.update(&frame.width.to_le_bytes());
+    hash.update(&frame.height.to_le_bytes());
+    hash.update(&frame.rgba);
+    Some(hash.finish())
+}
+
+/// Feeds bytes to a hash with their length in front of them.
+///
+/// Without the length, `("ab", "c")` and `("a", "bc")` are the same stream of bytes to the
+/// hash, and two documents that differ would hash as one document.
+fn feed(hash: &mut Sha256, bytes: &[u8]) {
+    hash.update(&(bytes.len() as u64).to_le_bytes());
+    hash.update(bytes);
+}
+
+/// Feeds one value to a hash, in a form that is decided here rather than by a formatter.
+///
+/// # Invariants
+///
+/// Each kind of value has its own tag, so a string holding `"3"` and an integer holding `3` are
+/// not the same document, and each is fed its length. A field map is walked in its own order,
+/// which is sorted (`definition::FieldMap` is a `BTreeMap` for exactly this reason), so the same
+/// document hashes the same on every run and in every process.
+///
+/// A packed list is hashed as its layout and its bytes rather than as the tree it stands for:
+/// it is a representation of the same data, and this is the representation the compile emitted.
+fn feed_value(hash: &mut Sha256, value: &Value) {
+    match value {
+        Value::Unit => hash.update(&[0]),
+        Value::Bool(value) => hash.update(&[1, u8::from(*value)]),
+        Value::Int(value) => {
+            hash.update(&[2]);
+            hash.update(&value.to_le_bytes());
+        }
+        Value::Float(value) => {
+            hash.update(&[3]);
+            hash.update(&value.to_bits().to_le_bytes());
+        }
+        Value::String(value) => {
+            hash.update(&[4]);
+            feed(hash, value.as_bytes());
+        }
+        Value::Bytes(value) => {
+            hash.update(&[5]);
+            feed(hash, value);
+        }
+        Value::Struct(fields) => feed_fields(hash, 6, fields),
+        Value::Enum { tag, fields } => {
+            hash.update(&[7]);
+            feed(hash, tag.as_bytes());
+            feed_fields(hash, 0, fields);
+        }
+        Value::List(values) => {
+            hash.update(&[8]);
+            hash.update(&(values.len() as u64).to_le_bytes());
+            for value in values {
+                feed_value(hash, value);
+            }
+        }
+        Value::Packed(run) => {
+            hash.update(&[9]);
+            hash.update(&(run.len() as u64).to_le_bytes());
+            hash.update(&(run.layout().stride_bytes() as u64).to_le_bytes());
+            for (field, _) in run.layout().fields() {
+                feed(hash, field.as_bytes());
+            }
+            hash.update(run.bytes());
+        }
+        Value::Dict(fields) => feed_fields(hash, 10, fields),
+    }
+}
+
+/// Feeds a field map to a hash, under `tag`, in the map's own order.
+fn feed_fields(hash: &mut Sha256, tag: u8, fields: &FieldMap) {
+    hash.update(&[tag]);
+    hash.update(&(fields.len() as u64).to_le_bytes());
+    for (name, value) in fields {
+        feed(hash, name.as_bytes());
+        feed_value(hash, value);
+    }
+}
+
+/// Returns the first few characters of a hash.
+///
+/// Enough to compare two lines of output by eye, and no more: a line of output is read, not
+/// diffed, and the whole hash is in the file beside it for anything that needs it.
+fn short(hash: &str) -> &str {
+    &hash[..hash.len().min(12)]
+}
+
+/// SHA-256, over bytes, as the hex a person can put next to another one.
+///
+/// # Why this is here
+///
+/// A hash is four operations and a constant table, and this harness needs exactly one of them,
+/// exactly once per run. A dependency would be a second thing to keep current for a use this
+/// file has one of, and the whole of it is below where a reader can check it against the
+/// published vectors — which the tests at the bottom of this file do.
+///
+/// The implementation follows FIPS 180-4 and is the standard one: eight words of state, a
+/// sixty four byte block, and a length in bits appended to the message.
+struct Sha256 {
+    /// The chaining value, one word per round of the compression.
+    state: [u32; 8],
+    /// The block being filled.
+    block: [u8; 64],
+    /// How much of `block` holds bytes of the message.
+    filled: usize,
+    /// How many bytes of the message have been absorbed, padding not yet included.
+    length: u64,
+}
+
+impl Sha256 {
+    /// Starts a hash.
+    fn new() -> Self {
+        Self {
+            state: [
+                0x6a09_e667,
+                0xbb67_ae85,
+                0x3c6e_f372,
+                0xa54f_f53a,
+                0x510e_527f,
+                0x9b05_688c,
+                0x1f83_d9ab,
+                0x5be0_cd19,
+            ],
+            block: [0; 64],
+            filled: 0,
+            length: 0,
+        }
+    }
+
+    /// Absorbs bytes, which may be of any length.
+    fn update(&mut self, bytes: &[u8]) {
+        self.length = self.length.wrapping_add(bytes.len() as u64);
+        self.absorb(bytes);
+    }
+
+    /// Absorbs bytes without counting them, which is what the padding needs.
+    fn absorb(&mut self, mut bytes: &[u8]) {
+        while !bytes.is_empty() {
+            let take = (64 - self.filled).min(bytes.len());
+            self.block[self.filled..self.filled + take].copy_from_slice(&bytes[..take]);
+            self.filled += take;
+            bytes = &bytes[take..];
+            if self.filled == 64 {
+                let block = self.block;
+                self.compress(&block);
+                self.filled = 0;
+            }
+        }
+    }
+
+    /// Folds one block into the state.
+    fn compress(&mut self, block: &[u8; 64]) {
+        let mut words = [0u32; 64];
+        for (word, chunk) in words.iter_mut().zip(block.chunks_exact(4)) {
+            *word = u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        }
+        for index in 16..64 {
+            let before = words[index - 15];
+            let earlier = words[index - 2];
+            let spread = before.rotate_right(7) ^ before.rotate_right(18) ^ (before >> 3);
+            let mix = earlier.rotate_right(17) ^ earlier.rotate_right(19) ^ (earlier >> 10);
+            words[index] = words[index - 16]
+                .wrapping_add(spread)
+                .wrapping_add(words[index - 7])
+                .wrapping_add(mix);
+        }
+
+        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = self.state;
+        for index in 0..64 {
+            let first = h
+                .wrapping_add(e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25))
+                .wrapping_add((e & f) ^ ((!e) & g))
+                .wrapping_add(ROUND_CONSTANTS[index])
+                .wrapping_add(words[index]);
+            let second = (a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22))
+                .wrapping_add((a & b) ^ (a & c) ^ (b & c));
+            (h, g, f, e, d, c, b, a) = (
+                g,
+                f,
+                e,
+                d.wrapping_add(first),
+                c,
+                b,
+                a,
+                first.wrapping_add(second),
+            );
+        }
+        for (held, added) in self.state.iter_mut().zip([a, b, c, d, e, f, g, h]) {
+            *held = held.wrapping_add(added);
+        }
+    }
+
+    /// Finishes the hash and returns it as hex.
+    fn finish(mut self) -> String {
+        let bits = self.length.wrapping_mul(8);
+        self.absorb(&[0x80]);
+        // Pad to the length that leaves room for the length itself: a block that has just been
+        // filled starts a fresh one, so this is never a loop that cannot end.
+        while self.filled != 56 {
+            self.absorb(&[0x00]);
+        }
+        let mut last = self.block;
+        last[56..].copy_from_slice(&bits.to_be_bytes());
+        self.compress(&last);
+        self.state
+            .iter()
+            .map(|word| format!("{word:08x}"))
+            .collect()
+    }
+}
+
+/// The first thirty two bits of the fractional parts of the cube roots of the first sixty four
+/// primes, which is what the compression's round constants are made of.
+const ROUND_CONSTANTS: [u32; 64] = [
+    0x428a_2f98,
+    0x7137_4491,
+    0xb5c0_fbcf,
+    0xe9b5_dba5,
+    0x3956_c25b,
+    0x59f1_11f1,
+    0x923f_82a4,
+    0xab1c_5ed5,
+    0xd807_aa98,
+    0x1283_5b01,
+    0x2431_85be,
+    0x550c_7dc3,
+    0x72be_5d74,
+    0x80de_b1fe,
+    0x9bdc_06a7,
+    0xc19b_f174,
+    0xe49b_69c1,
+    0xefbe_4786,
+    0x0fc1_9dc6,
+    0x240c_a1cc,
+    0x2de9_2c6f,
+    0x4a74_84aa,
+    0x5cb0_a9dc,
+    0x76f9_88da,
+    0x983e_5152,
+    0xa831_c66d,
+    0xb003_27c8,
+    0xbf59_7fc7,
+    0xc6e0_0bf3,
+    0xd5a7_9147,
+    0x06ca_6351,
+    0x1429_2967,
+    0x27b7_0a85,
+    0x2e1b_2138,
+    0x4d2c_6dfc,
+    0x5338_0d13,
+    0x650a_7354,
+    0x766a_0abb,
+    0x81c2_c92e,
+    0x9272_2c85,
+    0xa2bf_e8a1,
+    0xa81a_664b,
+    0xc24b_8b70,
+    0xc76c_51a3,
+    0xd192_e819,
+    0xd699_0624,
+    0xf40e_3585,
+    0x106a_a070,
+    0x19a4_c116,
+    0x1e37_6c08,
+    0x2748_774c,
+    0x34b0_bcb5,
+    0x391c_0cb3,
+    0x4ed8_aa4a,
+    0x5b9c_ca4f,
+    0x682e_6ff3,
+    0x748f_82ee,
+    0x78a5_636f,
+    0x84c8_7814,
+    0x8cc7_0208,
+    0x90be_fffa,
+    0xa450_6ceb,
+    0xbef9_a3f7,
+    0xc671_78f2,
+];
+
 /// Returns how many images one row of a contact sheet holds.
 fn columns(count: usize) -> usize {
     (count as f64).sqrt().ceil().max(1.0) as usize
@@ -751,11 +1635,46 @@ fn rows(count: usize) -> usize {
     count.div_ceil(columns(count))
 }
 
+/// How many pixels apart a contact sheet reads a frame, unless a caller asks for every pixel.
+///
+/// Four is the step every sheet written so far was written at, and it stays the default for the
+/// reason `contact_sheet` gives: a range is read for its shape, and a sheet of thirteen
+/// thousand-pixel frames is not read at all. `--sheet-full` is the way to ask for
+/// [`FULL_STEP`], and the arithmetic here is the same either way — the step is a number
+/// this harness was already dividing by, not a second code path.
+const SHEET_STEP: usize = 4;
+
+/// The step that reads every pixel, which makes a tile the frame itself.
+const FULL_STEP: usize = 1;
+
+/// Returns the size of one tile of a sheet holding a `width` by `height` frame.
+///
+/// # Invariants
+///
+/// A tile is the frame **divided by the step** and never smaller than a pixel, because a frame
+/// too small to divide down is still a frame and is shown as itself rather than as nothing. The
+/// division is on the frame's own pixels rather than a resize: a tile holds pixels the frame
+/// already had, so the grid cannot hold a frame saying something the frame does not say.
+///
+/// `step` of zero is read as one rather than refused, because a caller of this function is this
+/// harness's own flag parsing and a sheet is a picture — a picture is worth more than the check
+/// that would have stopped it.
+fn tile(width: u32, height: u32, step: usize) -> (usize, usize) {
+    let step = step.max(1);
+    (
+        (width as usize / step).max(1),
+        (height as usize / step).max(1),
+    )
+}
+
 /// Lays every frame out in a grid, so a range of times is one image to look at.
 ///
-/// A sheet is sampled every fourth pixel: a dozen frames of a thousand pixels each is a
-/// sheet nobody can see, and a range is read for its shape rather than for its pixels.
-fn contact_sheet(moments: &[Moment]) -> Result<Vec<u8>, String> {
+/// A sheet is sampled every [`SHEET_STEP`]th pixel by default, because a dozen frames of a
+/// thousand pixels each is a sheet nobody can see, and a range is read for its shape rather than
+/// for its pixels. `step` is that number rather than a choice between two ways of building the
+/// grid, so a sheet asked for at full resolution is the same composition at every pixel and not
+/// a second way of laying frames out.
+fn contact_sheet(moments: &[Moment], step: usize) -> Result<Vec<u8>, String> {
     let Some(first) = moments.first() else {
         return Err("a contact sheet of no frames is not an image".to_owned());
     };
@@ -765,10 +1684,7 @@ fn contact_sheet(moments: &[Moment]) -> Result<Vec<u8>, String> {
         .and_then(RenderedImage::as_frame)
         .ok_or_else(|| "the frame of this render is not an image a sheet is made of".to_owned())?;
     let (columns, rows) = (columns(moments.len()), rows(moments.len()));
-    let (cell_width, cell_height) = (
-        (first.width / 4).max(1) as usize,
-        (first.height / 4).max(1) as usize,
-    );
+    let (cell_width, cell_height) = tile(first.width, first.height, step);
     let (sheet_width, sheet_height) = (cell_width * columns, cell_height * rows);
     let mut pixels = vec![0u8; sheet_width * sheet_height * 4];
 
@@ -783,8 +1699,11 @@ fn contact_sheet(moments: &[Moment]) -> Result<Vec<u8>, String> {
             })?;
         for y in 0..cell_height {
             for x in 0..cell_width {
-                let source_x = (x * 4).min(source.width as usize - 1);
-                let source_y = (y * 4).min(source.height as usize - 1);
+                // A frame is read rather than scaled, so the source is `step` pixels along and
+                // the last column of an uneven division reads the last pixel there is instead
+                // of running off the end of the row.
+                let source_x = (x * step).min(source.width as usize - 1);
+                let source_y = (y * step).min(source.height as usize - 1);
                 let from = (source_y * source.width as usize + source_x) * 4;
                 let to = ((row * cell_height + y) * sheet_width + column * cell_width + x) * 4;
                 pixels[to..to + 4].copy_from_slice(&source.rgba[from..from + 4]);
@@ -821,6 +1740,271 @@ fn set_time(scene: &mut Value, time: f64) {
 
 /// Returns the usage this harness was run with.
 fn usage() -> String {
-    "usage: render <scene> <out> [start [stop [step]]] [--sheet | --video] [--debug <channel>]"
-        .to_owned()
+    concat!(
+        "usage: render <scene> <out> [start [stop [step]]] ",
+        "[--sheet | --sheet-full | --video] [--debug <channel>]"
+    )
+    .to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A definition holding one field, which is the smallest thing two documents can differ by.
+    fn definition(value: Value) -> Definition {
+        Definition::new(
+            DefinitionIdentifier::new("test.graphics"),
+            SchemaIdentifier::new("test.schema"),
+            value,
+        )
+    }
+
+    /// A field map holding one named field.
+    fn holding(name: &str, value: Value) -> Value {
+        let mut fields = FieldMap::new();
+        fields.insert(name.to_owned(), value);
+        Value::Struct(fields)
+    }
+
+    /// Returns the hash of one value as both documents hold it.
+    fn hash_of(value: &Value) -> String {
+        document_hash(&definition(value.clone()), &definition(Value::Unit))
+    }
+
+    /// The hash has to be SHA-256, or a record means nothing across machines.
+    ///
+    /// The three vectors are the published ones for the empty message, for a message shorter
+    /// than one block, and for one that is shorter than two and longer than one — the last is
+    /// the one a padding bug passes.
+    #[test]
+    fn the_hash_is_sha_256() {
+        let hash = |bytes: &[u8]| {
+            let mut hasher = Sha256::new();
+            hasher.update(bytes);
+            hasher.finish()
+        };
+        assert_eq!(
+            hash(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            hash(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(
+            hash(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+            "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+        );
+    }
+
+    /// A message longer than one block, fed in pieces, is the case a block loop gets wrong.
+    #[test]
+    fn the_hash_covers_a_long_message_fed_in_pieces() {
+        let mut hasher = Sha256::new();
+        for _ in 0..1_000_000 {
+            hasher.update(b"a");
+        }
+        assert_eq!(
+            hasher.finish(),
+            "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
+        );
+    }
+
+    /// The same document twice is the same hash, which is the whole claim the manifest rests
+    /// on, and two documents that differ are not.
+    #[test]
+    fn the_document_hash_separates_documents_that_differ() {
+        let dunes = holding("dunes", Value::Float(12.5));
+        assert_eq!(hash_of(&dunes), hash_of(&dunes.clone()));
+        assert_ne!(
+            hash_of(&dunes),
+            hash_of(&holding("dunes", Value::Float(12.5001)))
+        );
+        // A number and the string that spells it are different documents, and a field map
+        // walked in its own order hashes the same however it was built.
+        assert_ne!(
+            hash_of(&holding("count", Value::Int(3))),
+            hash_of(&holding("count", Value::String("3".to_owned())))
+        );
+        let mut one = FieldMap::new();
+        one.insert("b".to_owned(), Value::Int(1));
+        one.insert("a".to_owned(), Value::Int(2));
+        let mut other = FieldMap::new();
+        other.insert("a".to_owned(), Value::Int(2));
+        other.insert("b".to_owned(), Value::Int(1));
+        assert_eq!(hash_of(&Value::Struct(one)), hash_of(&Value::Struct(other)));
+        // The two documents are covered apart, so swapping them is a change.
+        let left = document_hash(
+            &definition(holding("which", Value::String("graphics".to_owned()))),
+            &definition(Value::Unit),
+        );
+        let right = document_hash(
+            &definition(Value::Unit),
+            &definition(holding("which", Value::String("graphics".to_owned()))),
+        );
+        assert_ne!(left, right);
+    }
+
+    /// A record has to survive the file it is written to, or the next run compares against
+    /// nothing and says so instead of warning.
+    #[test]
+    fn a_manifest_survives_its_own_encoding() {
+        let manifest = RenderManifest {
+            format: MANIFEST_FORMAT,
+            outputs: vec![
+                RenderRecord {
+                    scene: "dunes".to_owned(),
+                    camera: 0,
+                    time: None,
+                    document: "a".repeat(64),
+                    image: Some("b".repeat(64)),
+                    passes: 6,
+                    build: "c".repeat(64),
+                },
+                RenderRecord {
+                    scene: "tidewater".to_owned(),
+                    camera: 2,
+                    time: Some(2.5),
+                    document: "d".repeat(64),
+                    image: None,
+                    passes: 11,
+                    build: "e".repeat(64),
+                },
+            ],
+        };
+        let text = facet_json::to_string_pretty(&manifest).expect("the manifest encodes");
+        let read = facet_json::from_str::<RenderManifest>(&text).expect("the manifest reads");
+        assert_eq!(read, manifest);
+        assert_eq!(
+            read.record(&manifest.outputs[1]),
+            Some(&manifest.outputs[1])
+        );
+        // A record is found by what it is of, not by where it sits in the file.
+        let mut renamed = manifest.outputs[1].clone();
+        renamed.scene = "dunes".to_owned();
+        assert_eq!(read.record(&renamed), None);
+    }
+
+    /// Returns a moment whose frame is a `width` by `height` ramp starting at its own time, which
+    /// is enough to tell one pixel from another and one frame from another.
+    ///
+    /// Nothing is drawn: a sheet is a composition of frames that were already drawn, so copying
+    /// their pixels is the whole of what it has to get right, and they can be handed to it
+    /// without an adapter.
+    fn moment(time: f64, width: u32, height: u32) -> Moment {
+        Moment {
+            time,
+            rendered: RenderedFrame {
+                renderer: "test",
+                images: vec![RenderedImage {
+                    name: graphics::PRESENT_OUTPUT.to_owned(),
+                    format: "rgba8unorm".to_owned(),
+                    width,
+                    height,
+                    bytes: (0..width as usize * height as usize * 4)
+                        .map(|index| ((index + time as usize) % 251) as u8)
+                        .collect(),
+                }],
+            },
+        }
+    }
+
+    /// Returns the size and the pixels of a sheet, as the png it was written as holds them.
+    fn decoded(sheet: Vec<u8>) -> (u32, u32, Vec<u8>) {
+        let mut reader = ::png::Decoder::new(sheet.as_slice())
+            .read_info()
+            .expect("the sheet is a png that reads");
+        let (width, height) = reader.info().size();
+        let mut pixels = vec![0; reader.output_buffer_size()];
+        reader
+            .next_frame(&mut pixels)
+            .expect("the sheet is a png that decodes");
+        (width, height, pixels)
+    }
+
+    /// Returns the pixels of one tile of a decoded sheet.
+    ///
+    /// A tile is not a contiguous run of the sheet's bytes: its rows are the sheet's rows cut to
+    /// the tile's width, and a sheet of more than one column has the next tile's pixels on the
+    /// same line.
+    fn tile_of(
+        sheet: &[u8],
+        sheet_width: usize,
+        cell: (usize, usize),
+        index: usize,
+        across: usize,
+    ) -> Vec<u8> {
+        let (cell_width, cell_height) = cell;
+        let (column, row) = (index % across, index / across);
+        (0..cell_height)
+            .flat_map(|y| {
+                let start = ((row * cell_height + y) * sheet_width + column * cell_width) * 4;
+                sheet[start..start + cell_width * 4].to_vec()
+            })
+            .collect()
+    }
+
+    /// Returns the rgba of a moment's frame, which is what a tile of it is made of.
+    fn frame_rgba(moment: &Moment) -> Vec<u8> {
+        moment
+            .rendered
+            .present()
+            .and_then(RenderedImage::as_frame)
+            .expect("the ramp is a frame")
+            .rgba
+    }
+
+    /// A tile is the frame divided by the step, and the step a sheet defaults to is the one
+    /// every sheet written so far was written at.
+    #[test]
+    fn a_tile_is_the_frame_divided_by_the_step() {
+        assert_eq!(tile(1024, 1024, SHEET_STEP), (256, 256));
+        // A step of one is the frame itself, which is what `--sheet-full` asks for.
+        assert_eq!(tile(1024, 1024, FULL_STEP), (1024, 1024));
+        // A frame too small to divide down is shown as itself rather than as nothing, and a step
+        // of zero is a step of one rather than a division by nothing.
+        assert_eq!(tile(3, 2, SHEET_STEP), (1, 1));
+        assert_eq!(tile(1024, 1024, 0), (1024, 1024));
+    }
+
+    /// A sheet asked for at full resolution is the same composition of the same frames rather
+    /// than a resampling of it, which is the whole claim `--sheet-full` makes.
+    #[test]
+    fn a_full_sheet_holds_the_frames_and_the_default_holds_a_sample_of_them() {
+        let moments: Vec<Moment> = (0..4).map(|index| moment(index as f64, 8, 4)).collect();
+        let across = columns(moments.len());
+
+        // A step of one is every frame whole, in the same grid the default step uses.
+        let (width, height, whole) =
+            decoded(contact_sheet(&moments, FULL_STEP).expect("four frames make a sheet"));
+        assert_eq!((width, height), ((8 * across) as u32, (4 * rows(4)) as u32));
+        for index in 0..moments.len() {
+            // Every tile is the frame it holds, byte for byte, and the frames are four different
+            // ramps, so a tile holding the wrong one cannot pass for the right one.
+            assert_eq!(
+                tile_of(&whole, width as usize, tile(8, 4, FULL_STEP), index, across),
+                frame_rgba(&moments[index]),
+                "tile {index} is not the frame it holds"
+            );
+        }
+
+        // The default step is a quarter of that, and every pixel of the smaller tile is a pixel
+        // the frame had — sampled, never interpolated.
+        let (width, height, sampled) =
+            decoded(contact_sheet(&moments, SHEET_STEP).expect("four frames make a sheet"));
+        assert_eq!((width, height), ((2 * across) as u32, (1 * rows(4)) as u32));
+        let cell = tile(8, 4, SHEET_STEP);
+        for index in 0..moments.len() {
+            let held = tile_of(&sampled, width as usize, cell, index, across);
+            let frame = frame_rgba(&moments[index]);
+            for y in 0..cell.1 {
+                for x in 0..cell.0 {
+                    let at = (y * cell.0 + x) * 4;
+                    let from = (y * SHEET_STEP * 8 + x * SHEET_STEP) * 4;
+                    assert_eq!(&held[at..at + 4], &frame[from..from + 4]);
+                }
+            }
+        }
+    }
 }

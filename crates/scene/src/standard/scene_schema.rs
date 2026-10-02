@@ -109,6 +109,32 @@ pub const RADIUS: &str = "radius";
 /// Field holding the time the scene is drawn at, in seconds.
 pub const TIME: &str = "time";
 
+/// Field holding what the post stage multiplies the frame by before its own grade.
+///
+/// # What this field means, and what it does not
+///
+/// **It is a linear multiplier on the radiance the post stage reads, and nothing else.** It is
+/// not a brightness, not a contrast, and not a parameter of the tone mapping curve: a
+/// photograph is exposed once, in linear light, and the curve that follows turns the exposed
+/// radiance into a pixel. A scene that wants to move the curve names a different field, and
+/// one that wants to move this one cannot reach the curve through it.
+///
+/// The three places a scene opts in, and all three or the compile is refused:
+///
+/// 1. this field, on the scene;
+/// 2. [`crate::standard::post_pass_schema_exposed`], as the post shader's `pass_schema`;
+/// 3. an `exposure: f32` in that shader's own `WGSL` uniform, multiplied into the colour it
+///    samples from the shaded image and **before** the grade's curve runs.
+///
+/// **What it cannot do is stated rather than left to be discovered**, and it is the reason
+/// this field exists: the shaded image the post stage reads is an `rgba8unorm` target, so
+/// everything above one was clipped by the lighting stage before any grade saw it. An
+/// exposure above one therefore brightens only what was already below one, and a scene whose
+/// light reaches one comes back unchanged however high the number goes. Lowering the light is
+/// what moves a clipped pixel, and a scene that wants to brighten one needs a wider target
+/// rather than a larger multiplier.
+pub const EXPOSURE: &str = "exposure";
+
 /// Field holding the label of a mesh an instance draws.
 pub const MESH: &str = "mesh";
 
@@ -262,6 +288,24 @@ pub fn standard_scene_schema() -> Schema {
                     "Seconds since the scene started, which every pass carries to its shader. \
                      A scene that does not write one is a still, and a scene that does is \
                      reproducible: the same documents at the same time give the same frame.",
+                ),
+        ),
+        (
+            EXPOSURE.to_owned(),
+            Schema::new(SchemaKind::Float)
+                .optional()
+                .with_documentation(
+                    "What the post stage multiplies the frame by before its own grade: a \
+                     **linear** multiplier on the radiance the grade reads, where 1 is no change \
+                     and 2 is one stop brighter. It is not a curve parameter and cannot reach \
+                     the tone mapping curve; a scene that wants to move the curve names \
+                     something else. Naming it here also obliges the scene's post shader to \
+                     declare the field — in its `pass_schema` and in its own uniform — and a \
+                     shader that does not is refused rather than quietly left unexposed. A scene \
+                     that names no exposure is drawn exactly as it was before the field \
+                     existed, byte for byte. **It cannot brighten what is already at one**: the \
+                     shaded image is an eight bit target, so a light that reached one was \
+                     clipped before the grade saw it.",
                 ),
         ),
         (

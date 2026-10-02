@@ -56,9 +56,9 @@ use crate::standard::math::{
 use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     CAMERA, CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, DEPTH_RANGE,
-    DIRECTIONAL, ENVIRONMENT, ENVIRONMENT_MAP, FORWARD, FRAME_SIZE, GLOBAL_COUNT, HALF_EXTENT,
-    INSTANCE_DATA, POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP_FORMAT, SHADOW_POOL,
-    TIME, UP, VERTICES,
+    DIRECTIONAL, ENVIRONMENT, ENVIRONMENT_MAP, EXPOSURE, FORWARD, FRAME_SIZE, GLOBAL_COUNT,
+    HALF_EXTENT, INSTANCE_DATA, POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP_FORMAT,
+    SHADOW_POOL, TIME, UP, VERTICES,
 };
 use crate::standard::scene_schema;
 use crate::standard::scene_schema::RADIUS;
@@ -245,6 +245,15 @@ struct MeshRead {
 /// One instance, read out of the scene document: a mesh, where it is, and what draws it.
 struct InstanceRead {
     label: String,
+    /// Where this instance was read from, for a message about it.
+    ///
+    /// # Invariants
+    ///
+    /// The path is kept rather than rebuilt where a note is written, because a note that
+    /// names an instance has to be able to point at the row the author will edit, and the
+    /// row is `instances` then a bucket then an index — a path assembled from a label would
+    /// be a guess about where in the list the instance fell.
+    path: Path,
     /// The index of the mesh this instance draws, resolved from its label.
     mesh: usize,
     /// The index of the shader it is drawn by, resolved from the material's label.
@@ -704,9 +713,16 @@ pub fn emit(
     let (meshes, mut instance) = read_meshes(scene, &shaders)?;
     let instances = read_instances(scene, &meshes, &materials, &shaders, &images)?;
     // The camera frames what is drawn rather than what is authored, because an instance
-    // may place its mesh anywhere and a mesh no instance names is not drawn at all.
-    let bounds = bounds_of_instances(&meshes, &instances);
+    // may place its mesh anywhere and a mesh no instance names is not drawn at all. The
+    // same walk leaves each instance's own box behind, which is what the notes about this
+    // frame are read off — see `camera_notes`.
+    let instance_bounds = bounds_of_instances(&meshes, &instances);
+    let bounds = instance_bounds.scene;
     let time = read_time(scene)?;
+    // What the post stage multiplies the frame by before its own grade, or nothing at all
+    // for a scene that names none — which is the answer that keeps the field additive. See
+    // `read_exposure` and `scene_schema::EXPOSURE` for what the number means.
+    let exposure = read_exposure(scene)?;
     // The frame is read before the camera because the camera's field of view is widened by
     // the frame's aspect: a wide frame is wider rather than cropped, and which frame a
     // scene is drawn into is the scene's decision. Its notes come with it, so the note list
@@ -722,6 +738,36 @@ pub fn emit(
         .and_then(|cameras| cameras.get(camera_index));
     let camera = Camera::read(chosen, &camera_path, &bounds, frame.aspect())?;
     let camera_basis = camera.projection();
+    // What this frame is of, said out loud. Three runs of one task each put a camera inside
+    // geometry and each found out by looking at a broken picture — a pond filling the frame
+    // with a water jar, a hundred metre hill with the eye in it, a gatehouse nobody could see
+    // past — and every one of those is a fact this function already holds: the eye is a
+    // field, the target is a field, and the box every instance covers came out of the walk
+    // above. A note is the whole of the answer, and none of these three refuses to compile,
+    // because a scene may legitimately want a camera inside a volume. See `camera_notes`.
+    //
+    // **A camera the scene did not write says nothing at all.** `chosen` is `None` when the
+    // scene names no camera, or names fewer than the compile was asked for, and the frame is
+    // then the convention's: pulled back until the whole box fits, which is by construction
+    // the camera least able to bury itself — its eye stands three half widths off the centre
+    // of the box, and no instance's box reaches there. A note about a camera nobody wrote
+    // points at a field that is not in the document and asks for a change nobody can make.
+    if chosen.is_some() {
+        camera_notes(
+            &camera_basis,
+            camera.target,
+            &camera_path,
+            &instances,
+            &instance_bounds,
+            &mut notes,
+        );
+    }
+    // What the scene's own size does to a constant the document cannot set. **This one is
+    // not about a camera**, so it is not behind the `chosen` gate above: a scene that names
+    // no camera is still a scene with a size, and the falloff is a function of the size
+    // whether or not anybody chose where to stand. It reads the box the walk above already
+    // left behind, so it costs one square root.
+    scale_notes(&bounds, &mut notes);
     let camera = projection_value(&camera_basis);
 
     // Which lights reach which part of the view, and the three buffers that say so. This is
@@ -896,7 +942,50 @@ pub fn emit(
     // the frame, and each one between reads what the one before it wrote. A chain of two is
     // therefore two passes over the frame rather than two passes reading the same image.
     let post = read_post_processes(scene, &shaders, &images)?;
+    // An exposure is a field the **post** uniform carries, so a scene that names one and runs
+    // no post process has named a number nothing reads. That is said rather than refused and
+    // rather than applied somewhere else: the frame of a scene with no grade is the shaded
+    // image itself, and a multiplier the pipeline had nowhere to put would have to be either
+    // dropped silently or folded into a light, which is the guessing this field exists to
+    // replace. The path is the field, which is the one thing in the document to change.
+    if let Some(exposure) = exposure.filter(|_| post.is_empty()) {
+        notes.push(CompileNote {
+            path: Path::root().key(scene_schema::EXPOSURE),
+            message: format!(
+                "this scene names an exposure of {exposure} but declares no post process, so \
+                 nothing reads it: the frame is the shaded image the lighting and emission \
+                 passes accumulated, and no grade multiplies it. This compile draws it as \
+                 written"
+            ),
+        });
+    }
     for (index, process) in post.iter().enumerate() {
+        // A post shader that cannot read the exposure is **refused**, and this is the check
+        // that makes the field mean one thing.
+        //
+        // A pass's uniform is uploaded with the layout its **own shader declares**
+        // (`graphics::inputs::uniform_schema`), so a field the interface does not declare is
+        // not a field the frame disagrees about: it is a field the upload drops. A scene that
+        // named an exposure and got a clean compile and an unexposed frame is the exact shape
+        // of failure this whole field exists to remove — a number that does not do what its
+        // name says, in a transform the author can neither observe nor query — so the document
+        // is refused with the two places to change rather than drawn and forgotten.
+        if exposure.is_some()
+            && !declares_uniform_field(&shaders[process.shader].pass_schema, EXPOSURE)
+        {
+            return Err(CompileError::Emission {
+                reason: format!(
+                    "at {}: this scene names an exposure, which the compiler stamps into the \
+                     uniform of every post pass, but the post shader `{}` does not declare it. A \
+                     pass's uniform is uploaded with the layout its own shader declares, so the \
+                     number would be dropped and the frame drawn unexposed. Build that shader's \
+                     `pass_schema` with `post_pass_schema_exposed()` and declare `exposure: f32` \
+                     in its uniform, or take the field off the scene",
+                    Path::root().key(scene_schema::EXPOSURE),
+                    shaders[process.shader].label,
+                ),
+            });
+        }
         let source = if index == 0 {
             COLOR_TARGET_ENTRY.to_owned()
         } else {
@@ -918,6 +1007,7 @@ pub fn emit(
             &camera_basis,
             frame,
             time,
+            exposure,
             &source,
             &target,
             &binders,
@@ -943,7 +1033,11 @@ pub fn emit(
     // saying: the image is empty because no depth was written, not because the scene draws
     // nothing, and a caller looking at a blank image has no way to tell those apart. The path is
     // the bucket, because that is the field to change.
-    if !debug.is_empty()
+    //
+    // **The gate is on the channels that read depth rather than on there being one.** A `grade`
+    // image is a copy of the shaded image and holds a full frame of a scene that draws nothing
+    // at all, so this note would be false about it.
+    if debug.iter().any(|channel| channel.reads_depth())
         && !instances
             .iter()
             .any(|instance| instance.stage == Stage::Depthing)
@@ -2278,6 +2372,7 @@ fn read_instance(
         instance_schema: row_schema,
         instance_bytes,
         label,
+        path: path.clone(),
         mesh,
         shader: material.shader,
         stage,
@@ -2652,6 +2747,62 @@ struct ScreenRead {
     images: Vec<ImageBinding>,
 }
 
+/// Returns whether a shader's declared interface carries a named field in its uniform.
+///
+/// # Invariants
+///
+/// The question is asked of the **interface** rather than of the uniform value, because the
+/// interface is the layout: a field the interface does not declare is a field the upload drops
+/// however carefully the emitter wrote it. See the call in [`emit`].
+fn declares_uniform_field(interface: &Schema, field: &str) -> bool {
+    let SchemaKind::Struct { fields } = &interface.kind else {
+        return false;
+    };
+    let Some(SchemaKind::Struct { fields }) = fields.get(UNIFORM).map(|block| &block.kind) else {
+        return false;
+    };
+    fields.contains_key(field)
+}
+
+/// Reads the exposure a scene names, which is `None` for a scene that names none.
+///
+/// # Why the absent case is `None` and not one
+///
+/// The post uniform is the **layout the pass is uploaded with**, so an `exposure` written into
+/// every post uniform would be a field every scene's post shader would have to declare. One
+/// that is written only when the document names it is what makes the field additive: a scene
+/// that names no exposure emits the bytes it emitted before the field existed, and one that
+/// names it opts in deliberately, in three places at once — see
+/// [`scene_schema::EXPOSURE`].
+fn read_exposure(scene: &Value) -> Result<Option<f64>, CompileError> {
+    let path = Path::root().key(scene_schema::EXPOSURE);
+    let Some(value) = field(scene, scene_schema::EXPOSURE) else {
+        return Ok(None);
+    };
+    let exposure = value
+        .as_float()
+        .or_else(|| value.as_int().map(|number| number as f64))
+        .ok_or_else(|| CompileError::MalformedScene {
+            path: path.clone(),
+            expected: "a linear multiplier, where 1 is no change",
+            found: value.kind_name(),
+        })?;
+    // A negative exposure has no meaning as a multiplier of light and a zero one is a black
+    // frame, so both are refused rather than clamped: a clamp would hand back a picture and
+    // say nothing, and a document that names one of these numbers is a document that is wrong
+    // on every machine. The page pool's line is *a count below one is refused*, and an
+    // exposure of zero is a count below one. The finiteness test is written first because it
+    // is also what catches a NaN, which every comparison below would answer `false` to.
+    if !exposure.is_finite() || exposure <= 0.0 {
+        return Err(CompileError::MalformedScene {
+            path,
+            expected: "a positive linear multiplier, where 1 is no change",
+            found: "a number that is not",
+        });
+    }
+    Ok(Some(exposure))
+}
+
 /// Reads the shaders of the scene, which every material names by label.
 fn read_shaders(scene: &Value) -> Result<Vec<ShaderRead>, CompileError> {
     let path = Path::root().key(scene_schema::SHADERS);
@@ -2860,11 +3011,19 @@ fn fullscreen_point_schema() -> Rc<Schema> {
 }
 
 /// Builds the pass a post stage draws with, when the scene declares one.
+///
+/// A pass builder's arguments are the pass's inputs, and every one of these is a different
+/// thing rather than two ways of saying one: the shader, what the pass draws through, how
+/// large the images are, the two numbers the scene carries into the stage, and the pair of
+/// images the pass moves between. The allowance is the same one `lighting_pass` and `rasterize`
+/// take, for the same reason.
+#[allow(clippy::too_many_arguments)]
 fn post_pass(
     scene_shader: &ShaderRead,
     projection: &Projection,
     frame: Frame,
     time: f64,
+    exposure: Option<f64>,
     source: &str,
     target: &str,
     images: &[(String, Value)],
@@ -2878,7 +3037,7 @@ fn post_pass(
     let size_bytes = bytes.len() as i64;
     let entry = buffer_payload(bytes, point_schema.to_value(), &["vertex"], "Triangles");
 
-    let uniform = Value::structure([
+    let mut uniform = vec![
         (CAMERA.to_owned(), camera_value(projection)),
         (PROJECTION.to_owned(), projection_value(projection)),
         (TIME.to_owned(), Value::Float(time)),
@@ -2895,7 +3054,15 @@ fn post_pass(
                     .collect(),
             ),
         ),
-    ]);
+    ];
+    // The exposure is written **only** when the scene named one. The uniform is the layout
+    // the pass is uploaded with, so an always-present field would be a field every post
+    // shader would have to declare and every existing scene would have to change; this way
+    // a scene that names none emits the documents it emitted before the field existed.
+    if let Some(exposure) = exposure {
+        uniform.push((EXPOSURE.to_owned(), Value::Float(exposure)));
+    }
+    let uniform = Value::structure(uniform);
     let pass = rasterize(
         &format!("post/{}", scene_shader.label),
         &scene_shader.label,
@@ -2997,20 +3164,43 @@ fn debug_passes(
                 (CAMERA.to_owned(), camera_value(camera)),
                 (PROJECTION.to_owned(), projection_value(camera)),
             ]),
-            [
-                (
+            {
+                // The binders are the channel's own and not one list for all of them: a `grade`
+                // pass copies the shaded image and never reads the depth, and a binder its
+                // source cannot read would be a number in the layout that means nothing — and
+                // worse, a name in the sorted order that moves the ones it does read. The list
+                // a depth channel gets is the one it got before this, in the same order.
+                let mut binders = vec![(
                     channel.point().to_owned(),
                     texture_binding(channel.point(), frame.width, frame.height, channel.format()),
-                ),
-                (
-                    DEPTH_BUFFER.to_owned(),
-                    texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
-                ),
-                (
+                )];
+                if channel.reads_depth() {
+                    binders.push((
+                        DEPTH_BUFFER.to_owned(),
+                        texture_binding(
+                            DEPTH_BUFFER_ENTRY,
+                            frame.width,
+                            frame.height,
+                            DEPTH_FORMAT,
+                        ),
+                    ));
+                } else {
+                    binders.push((
+                        COLOR_TARGET.to_owned(),
+                        texture_binding(
+                            COLOR_TARGET_ENTRY,
+                            frame.width,
+                            frame.height,
+                            COLOR_FORMAT,
+                        ),
+                    ));
+                }
+                binders.push((
                     VERTICES.to_owned(),
                     buffer_binding(&vertex_entry, vertex_bytes),
-                ),
-            ],
+                ));
+                binders
+            },
             vec![channel.point()],
             DEBUG_CLEAR,
             PipelineStateFields::default_state(),
@@ -3029,16 +3219,36 @@ fn debug_passes(
 /// image would silently stop the picture coming back. `frame_target` is the point that *would*
 /// have been the frame under that rule, so a document that declares this is not a document that
 /// changed its picture.
+///
+/// **Every entry is a full declaration** — point, location and type — rather than a bare point.
+/// The three are written from one place so that the location the compiler built the pass at and
+/// the type the compiler drew it in are the same two numbers a reader finds in the document, and
+/// the device's check compares the third against the shader rather than against this function's
+/// opinion. A built-in takes its declaration from the registry ([`DebugChannel::declaration`]),
+/// so a new built-in cannot declare one thing and be drawn as another.
+///
+/// The frame's own type is `vec4<f32>` because that is what every shader in this pipeline
+/// returns at location zero: the post stage's colour, and a lighting pass's shaded image when
+/// there is no post stage at all. It is stated rather than left to the convention so that the
+/// frame is checked by the same rule as every other output — a pipeline whose frame shader
+/// stopped returning a `vec4` would be caught here rather than arriving as a picture.
 fn debug_outputs(frame_target: &str, channels: &[DebugChannel]) -> Value {
     let mut outputs = FieldMap::new();
     outputs.insert(
         graphics::PRESENT_OUTPUT.to_owned(),
-        Value::String(frame_target.to_owned()),
+        graphics::OutputDeclaration {
+            point: frame_target,
+            // Every shader in this pipeline writes one colour target per pass at location zero,
+            // and the frame is the first and only colour target of the pass that draws it.
+            location: 0,
+            ty: graphics::TexelType::Vec4Float.name(),
+        }
+        .to_value(),
     );
     for &channel in channels {
         outputs.insert(
             channel.output().to_owned(),
-            Value::String(channel.point().to_owned()),
+            channel.declaration().to_value(),
         );
     }
     Value::Dict(outputs)
@@ -3618,7 +3828,21 @@ fn directional_projection(
     )
 }
 
-/// Returns the box the instanced meshes of a scene cover.
+/// The boxes the instances of a scene cover: the scene's own, and one box per instance.
+struct InstanceBounds {
+    /// The box over everything that is drawn, which is what the camera frames.
+    scene: Bounds,
+    /// What each instance covers, in the order the instances were read.
+    ///
+    /// # Invariants
+    ///
+    /// One entry per instance, and `None` for an instance whose mesh has no points to cover
+    /// anything with — so the list indexes by instance rather than carrying a label of its
+    /// own, and a note about the third instance cannot be about the second.
+    each: Vec<Option<Bounds>>,
+}
+
+/// Returns the box the instanced meshes of a scene cover, and what each instance covers.
 ///
 /// # Invariants
 ///
@@ -3626,10 +3850,18 @@ fn directional_projection(
 /// names is not drawn, and an instance places its mesh wherever its transform says. A scene
 /// with nothing drawn covers a unit box, so a projection is still well defined.
 ///
+/// The per instance boxes come out of **the same walk**, which is the whole reason the notes
+/// about a frame are cheap. Every point of every instance is read exactly once here, and a
+/// second pass to recover the box one instance covers would be the most expensive thing a
+/// compile could do — see [`compile-cost.md`](../../../../.agents/proposals/compile-cost.md),
+/// where the same walk is the row that fell from forty three milliseconds to a strided read
+/// when the points were packed.
+///
 /// The positions are read a component at a time out of the packed run, so the whole loop is a
 /// strided walk of bytes with no map lookup and no per point allocation.
-fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> Bounds {
-    let mut bounds: Option<Bounds> = None;
+fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> InstanceBounds {
+    let mut scene: Option<Bounds> = None;
+    let mut each = Vec::with_capacity(instances.len());
     for instance in instances {
         let mesh = &meshes[instance.mesh];
         let mut covered = Bounds {
@@ -3643,14 +3875,360 @@ fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> Bound
                 covered.maximum[axis] = covered.maximum[axis].max(world[axis]);
             }
         }
-        if covered.minimum.iter().all(|value| value.is_finite()) {
-            bounds = Some(match bounds {
+        let finite = covered.minimum.iter().all(|value| value.is_finite());
+        if finite {
+            scene = Some(match scene {
                 None => covered,
                 Some(previous) => previous.union(covered),
             });
         }
+        each.push(finite.then_some(covered));
     }
-    bounds.unwrap_or_else(|| Bounds::around([0.0; 3], 1.0))
+    InstanceBounds {
+        scene: scene.unwrap_or_else(|| Bounds::around([0.0; 3], 1.0)),
+        each,
+    }
+}
+
+/// The share of the frame one instance has to cover before the frame is called that
+/// instance's.
+///
+/// # Invariants
+///
+/// Ninety percent rather than half, and for two reasons that point the same way. The share
+/// is an over-estimate — a box turned away from the axes is counted by the axis aligned box
+/// around it — so the bar has to sit above the degenerate case rather than on it. And the
+/// condition is for a frame that **is** one object, not for a close one: a subject that
+/// fills most of the frame is a composition somebody chose, and a note about every close-up
+/// is a note nobody reads. This is the water jar, not the lantern beside it.
+const OWNED_FRAME: f64 = 0.9;
+
+/// Says what this camera is of, when the frame it draws is one a scene probably did not mean.
+///
+/// # Why none of these refuses to compile
+///
+/// A scene may legitimately want a camera inside a volume, inside foliage, inside a
+/// building, or pointed at something nearer than its own near plane. The policy the shadow
+/// page pool established — *"a count above what the machine has is bounded and named; a
+/// count below one is refused"* — generalises to **a machine being too small is a fact about
+/// this run, a wrong image on every machine is a fact about the document**, and all three of
+/// these are facts about this run and this camera. So all three are named and all three are
+/// drawn, which is the half of that sentence that matters: a note here distinguishes *this
+/// picture is degenerate* from *this picture is fine and the number is just unusual*.
+///
+/// # What the path names
+///
+/// The field the note is about, which is the half that makes a note worth reading: the
+/// camera's `eye` when the eye is what is wrong, its `target` when the target is, and **the
+/// instance** when one instance is — a note that names an instance and points at the camera
+/// sends the reader past the thing the message just told them about.
+///
+/// # What this reads
+///
+/// Nothing that is not already in hand. The eye, the target and the near plane are fields of
+/// the camera, and each instance's box came out of the single walk in `bounds_of_instances`.
+/// Nothing here re-reads the scene document, which is the most expensive thing a compile can
+/// do.
+fn camera_notes(
+    projection: &Projection,
+    target: [f64; 3],
+    camera_path: &Path,
+    instances: &[InstanceRead],
+    bounds: &InstanceBounds,
+    notes: &mut Vec<CompileNote>,
+) {
+    // The eye inside a box. **One note per box rather than one per instance**, because a mesh
+    // drawn in three stages is three instances of one box and the reader is owed one fact and
+    // not three: `terraces` draws its terrain as `terrain-depth`, `terrain-shade` and
+    // `terrain-cast`, which are the same valley three times, and three sentences saying so is
+    // the noise this is meant not to be. Every box is still named, in the order the document
+    // lists them: two nested boxes are two facts, and moving out of the near one may leave the
+    // eye inside the far one, which is a different fix.
+    let mut buried: Vec<(f64, Bounds, Vec<&str>)> = Vec::new();
+    for (instance, covered) in instances.iter().zip(&bounds.each) {
+        let Some(covered) = covered else {
+            continue;
+        };
+        let Some(depth) = covered.depth_of(projection.eye) else {
+            continue;
+        };
+        // The depth is not compared as well as the box: the same box and the same eye give
+        // the same depth by the same arithmetic, so the box alone is the identity.
+        let same_box = |held: &Bounds| *held == *covered;
+        match buried.iter_mut().find(|(_, held, _)| same_box(held)) {
+            Some((_, _, labels)) => labels.push(&instance.label),
+            None => buried.push((depth, *covered, vec![&instance.label])),
+        }
+    }
+    for (depth, _, labels) in buried {
+        // The agreement is the note's, not the format's: one instance draws one box and
+        // three instances draw one box between them, and "which are the box that instances
+        // draws" is a sentence nobody reads twice.
+        let held = if labels.len() == 1 {
+            "which is the box that instance draws"
+        } else {
+            "which are the boxes that instances draw"
+        };
+        notes.push(CompileNote {
+            path: camera_path.key(scene_schema::EYE),
+            message: format!(
+                "the eye of this camera is {depth:.3} units inside the bounds of {}, {held}, \
+                 so the frame is drawn from within that box rather than from outside it. This \
+                 compile draws it as written",
+                quoted(&labels),
+            ),
+        });
+    }
+
+    // One instance holding the frame, and standing between the eye and what the camera was
+    // aimed at. **Both halves are load bearing.** A backdrop wall covers the whole frame in
+    // any still life, and that is what a backdrop is for; the jar that filled dsf's frame was
+    // not a background but the thing in front of the subject. Only the largest is named: a
+    // frame is dominated by one thing or by nothing, and naming every instance over the bar
+    // would be the same fact several times. A box the eye is inside is not measured at all —
+    // the divide decides there, and the note above has already said where it is.
+    let aimed_at = projection.distance_to(target);
+    let mut owned: Option<(f64, &InstanceRead)> = None;
+    for (instance, covered) in instances.iter().zip(&bounds.each) {
+        let Some(share) = covered
+            .as_ref()
+            .and_then(|box_of| projection.frame_coverage(box_of))
+            .filter(|share| *share >= OWNED_FRAME)
+        else {
+            continue;
+        };
+        let in_front = covered
+            .as_ref()
+            .and_then(|box_of| box_of.distance_from(projection.eye))
+            .is_some_and(|away| away < aimed_at);
+        if !in_front {
+            continue;
+        }
+        let larger = match owned {
+            Some((best, _)) => share > best,
+            None => true,
+        };
+        if larger {
+            owned = Some((share, instance));
+        }
+    }
+    if let Some((share, instance)) = owned {
+        notes.push(CompileNote {
+            path: instance.path.clone(),
+            message: format!(
+                "`{}` covers {:.1}% of this frame and stands between the eye and what this \
+                 camera was aimed at, so the picture is that one box and whatever is behind \
+                 it. The share is the box projected to the frame rather than the pixels it \
+                 drew, so it is an upper bound for anything turned away from the axes",
+                instance.label,
+                share * 100.0
+            ),
+        });
+    }
+
+    // The target behind the near plane, which is the one of the three that is about a number
+    // rather than a place: the camera was aimed at something the frame cannot hold.
+    if aimed_at < projection.near {
+        notes.push(CompileNote {
+            path: camera_path.key(scene_schema::TARGET),
+            message: format!(
+                "this camera's target is {aimed_at:.3} units in front of the eye, which is \
+                 nearer than the near plane at {:.3}, so the target and everything between it \
+                 and the eye is clipped away and the frame holds what is behind the target",
+                projection.near
+            ),
+        });
+    }
+}
+
+/// The linear term of the falloff the standard shading template applies to a point light.
+///
+/// # Invariants
+///
+/// **This is a statement about a constant of the template, and not a field of a scene.** The
+/// standard pipeline has no light falloff of its own: a lighting pass runs the scene's own
+/// `WGSL`, and the gallery's shading template multiplies a light's radiance by
+/// `1 / (1 + 0.0035r + 0.00002r²)`. The number is recorded here because the note below is a
+/// statement about **what that constant means at a scene's own size**, and a compiler cannot
+/// make that statement without holding the number.
+///
+/// It is a copy, deliberately and visibly: the lighting stage is being rewritten elsewhere and
+/// the constant lives in the per-light arithmetic that rewrite replaces, so this is the place
+/// to delete when the falloff becomes a field a scene sets. `scale_falloff_matches_the_gallery`
+/// in the tests holds the copy to the template, so a change to one without the other is a
+/// failed test rather than a quietly wrong note.
+const FALLOFF_LINEAR: f64 = 0.0035;
+
+/// The quadratic term of that same falloff. See [`FALLOFF_LINEAR`].
+const FALLOFF_QUADRATIC: f64 = 0.00002;
+
+/// The scene the falloff above was tuned for, which is the scene whose gradient is unremarkable.
+///
+/// # Invariants
+///
+/// The template's own comment places its constants in "a scene a couple of hundred units
+/// across", and two hundred is the number this note measures other scenes against. It is
+/// written down rather than left in a sentence in another crate, because a bar with no
+/// reference beside it is a bar somebody re-picks by feel.
+const FALLOFF_TUNED_SPAN: f64 = 200.0;
+
+/// Returns the fold the same constant gives a scene about [`FALLOFF_TUNED_SPAN`] units across.
+///
+/// The measure is the one [`scale_notes`] uses, so the reference and the number beside it are
+/// the same quantity: a cube of that span rather than a distance of that length, because a
+/// scene two hundred units across has a half diagonal of a hundred and seventy.
+fn tuned_fold() -> f64 {
+    falloff_fold(half_diagonal(&Bounds::around(
+        [0.0; 3],
+        FALLOFF_TUNED_SPAN / 2.0,
+    )))
+}
+
+/// The fold beyond which a scene's size is reported, in units of attenuation.
+///
+/// # Why two, and what the gallery says about it
+///
+/// **Two is one stop**: a doubling of the brightness, which is the smallest difference in
+/// light a photograph is named for. It is a bar with a meaning rather than a bar with a
+/// number, and it happens to be the right one on the evidence.
+///
+/// Measured across the ten gallery scenes — the numbers are pinned by
+/// `the_gallery_says_how_often_a_scene_is_reported`, which is where this table comes from:
+///
+/// ```text
+/// scene       span   half diagonal   fold
+/// studio          4              2.1   1.01
+/// sunlight       17             12.2   1.05
+/// spotlight      18             12.9   1.05
+/// tiles          24             17.0   1.07
+/// dunes         330            233.6   2.91
+/// terraces      380            277.7   3.51
+/// stilllife     700            356.4   4.79
+/// lanterns      600            424.3   6.09
+/// monoliths     680            480.9   7.31
+/// tidewater    2800           1980.1  86.35
+/// ```
+///
+/// The data has three clusters and two gaps, and the bar sits in the **first** one. Four
+/// scenes are small enough that the constant does nothing at all — a fold of `1.05` is five
+/// percent across the whole scene, and no picture has ever noticed five percent. The next
+/// scene is `dunes` at `2.91`, and a bar anywhere between `1.07` and `2.91` gives the same
+/// six scenes; two has a margin of 1.9 below the loudest quiet scene and 1.5 above the
+/// quietest reported one.
+///
+/// **The second gap was left alone.** `tidewater` at `86.35` is the case the note exists for
+/// — the scene a thousand units deep whose sun is attenuated by twenty — and a bar placed in
+/// the gap above `monoliths` would report that one scene and nothing else, which is a bar
+/// fitted to a single observation rather than chosen from the data.
+///
+/// **Six of ten firing is a lot, and it is the honest count.** The five scenes between the
+/// gaps are outdoor scenes a third of a thousand units across, where the falloff is a real
+/// part of the light; `stilllife`'s own file says it wants that, because a window lighting a
+/// table is a gradient. A scene that wants its gradient is told the number and carries on,
+/// which is what a note is for: this compile draws it as written, and the sentence says so.
+const FALLOFF_FOLD_BAR: f64 = 2.0;
+
+/// Returns the fraction of its radiance the template's falloff leaves a light at `reach`.
+///
+/// # Invariants
+///
+/// The same arithmetic the template's own `WGSL` does, so the number a note quotes is the
+/// number the frame was drawn with. A distance of zero is left alone rather than treated as a
+/// degenerate one: the law is continuous at zero and a light inside a surface is a scene's
+/// own doing.
+fn falloff(reach: f64) -> f64 {
+    1.0 / (1.0 + FALLOFF_LINEAR * reach + FALLOFF_QUADRATIC * reach * reach)
+}
+
+/// Returns how far the template's falloff is from flat, at `reach`.
+///
+/// One is no falloff at all and anything above one is a brightness gradient the scene's own
+/// distances produce: the reciprocal of [`falloff`], so it reads as the factor by which a
+/// surface at that distance is dimmer than one at the light.
+fn falloff_fold(reach: f64) -> f64 {
+    1.0 / falloff(reach)
+}
+
+/// Returns the furthest a point at the centre of `box_of` is from one of its corners.
+fn half_diagonal(box_of: &Bounds) -> f64 {
+    (0..3)
+        .map(|axis| box_of.half_width(axis).powi(2))
+        .sum::<f64>()
+        .sqrt()
+}
+
+/// Says what this scene's size means for a constant of the pipeline the scene cannot set.
+///
+/// # Why this is a note and never an error
+///
+/// The page pool's policy — *"a count above what the machine has is bounded and named; a
+/// count below one is refused"* — separates *a machine being too small, a fact about this
+/// run* from *a wrong image on every machine, a fact about the document*. A scene is a
+/// **legitimately** any size: a still life a hundred units across wants a falloff across its
+/// table, and a lake two thousand eight hundred units across wants the same constant to be a
+/// factor of eighty. Neither is a fault, and refusing either would be a compiler ruling on a
+/// scene's subject. So the consequence is named and the frame is drawn.
+///
+/// # What the measure is, and why it is a box
+///
+/// The distance is from the **centre of the scene's box to its furthest corner** — the
+/// half diagonal — because that is the only distance the document determines on its own: where
+/// a scene's lights stand is a fact about its lights, and a light at one end of a lake is two
+/// thousand units from the other. A light at the middle of the scene therefore has its
+/// brightness set by the scene's own size before a single intensity is chosen, and the fold
+/// is what that size costs.
+///
+/// **So this is a box, and a box is not a surface**, which is the same limitation the camera
+/// notes have and the same reason their numbers are in their messages: the compiler knows the
+/// box every instance covers and knows nothing about which part of it is visible from where
+/// the camera stands. `tidewater`'s box is nearly three thousand units across, and its far
+/// shore is a few hundred away, so the box says a fold of eighty-six and the picture may have
+/// a fold of two. The number is quoted rather than the verdict, so a reader can see `86.4`
+/// and disagree with it.
+///
+/// # What this reads
+///
+/// The box, which came out of the single walk in [`bounds_of_instances`]. Nothing here re-reads
+/// the scene document, which is the most expensive thing a compile can do.
+fn scale_notes(bounds: &Bounds, notes: &mut Vec<CompileNote>) {
+    let span = (0..3)
+        .map(|axis| bounds.half_width(axis) * 2.0)
+        .fold(0.0f64, f64::max);
+    let fold = falloff_fold(half_diagonal(bounds));
+    if fold < FALLOFF_FOLD_BAR {
+        return;
+    }
+    notes.push(CompileNote {
+        // The path is the **instances**, because the transforms there are the only thing in
+        // the document that sets how far apart anything is. A note that pointed at the camera
+        // would send the reader after a field that has nothing to do with a falloff.
+        path: Path::root().key(scene_schema::INSTANCES),
+        message: format!(
+            "this scene spans {span:.0} units across its largest axis, and the standard \
+             shading template's light falloff leaves a point light {fold:.1} times dimmer at \
+             the half diagonal of that box than at its centre — about {stops:.1} stops. The \
+             constants are the gentlest that read as a falloff over a scene about \
+             {FALLOFF_TUNED_SPAN:.0} units across, where the same fold is {reference:.1}, so at \
+             this size the brightness across the scene comes from how far its own lights stand \
+             from its own surfaces rather than from anything the document says. The distance is \
+             a **box** and not a surface, and the compile knows no more than the box: this is \
+             drawn as written",
+            stops = fold.log2(),
+            reference = tuned_fold(),
+        ),
+    });
+}
+
+/// Returns names as a list a sentence can carry: one name bare, two joined by *and*, and a
+/// longer list with an *and* before the last.
+fn quoted(labels: &[&str]) -> String {
+    let quoted: Vec<String> = labels.iter().map(|label| format!("`{label}`")).collect();
+    match quoted.split_last() {
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) if rest.len() == 1 => format!("{} and {last}", rest[0]),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+        None => String::new(),
+    }
 }
 
 /// Returns the position one packed point carries.

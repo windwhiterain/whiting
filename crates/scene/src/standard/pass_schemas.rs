@@ -189,6 +189,16 @@ pub const CAMERA: &str = "camera";
 /// `WGSL` has no matrix inverse to recover it with.
 pub const DEPTH_RANGE: &str = "depth_range";
 
+/// Field holding what a post pass multiplies the radiance it read by, before its own grade.
+///
+/// It is the **name the post uniform's own field is written under**, which is the same string
+/// the scene names its exposure by: a scene that says `exposure: 0.5` and a shader that says
+/// `uniforms.exposure` are agreeing about one number, and two spellings of it would be one
+/// more thing to keep in step. So there is one constant and not two — it is re-exported from
+/// [`crate::standard::scene_schema`], where the document's own field lives. See
+/// [`post_pass_schema_exposed`] for the interface that carries it.
+pub(crate) const EXPOSURE: &str = "exposure";
+
 /// Field holding the direction the camera looks along.
 pub const FORWARD: &str = "forward";
 
@@ -528,6 +538,69 @@ pub fn light_pass_schema() -> Schema {
 /// it is drawn over, and a pass that both tested against that buffer and sampled it would
 /// be reading and writing one texture at once.
 pub fn post_pass_schema() -> Schema {
+    post_interface(false)
+}
+
+/// Builds the interface of a post pass of a scene that names an `exposure`.
+///
+/// # Why this is a second function and not a flag
+///
+/// **The uniform is the layout the pass is uploaded with**, so a field that came and went
+/// with the document would not be a field that came and went: it would move every field
+/// after it, and a scene that names no exposure would be drawn with a layout its own shader
+/// does not describe. `post_pass_schema` therefore answers for a scene that names none, and
+/// this answers for a scene that does, and the two are the same function with one more field.
+///
+/// # Invariants
+///
+/// - **The field sits where the layout puts it**, which is by name: `camera`, `depth_range`,
+///   `exposure`, `projection`, `time`. A shader that declares the same field anywhere else
+///   is a shader whose offsets are wrong, and the interface check is what says so.
+/// - **It is a float and not a vector.** An exposure is one number for the whole frame, and a
+///   three component vector would be three exposures a scene cannot tell apart.
+pub fn post_pass_schema_exposed() -> Schema {
+    post_interface(true)
+}
+
+/// Builds either post interface, which is one function so the two cannot drift apart.
+fn post_interface(exposed: bool) -> Schema {
+    let mut uniform = vec![
+        (
+            CAMERA,
+            camera_schema().with_documentation(
+                "The camera this pass draws through, which is what a sky is built from.",
+            ),
+        ),
+        (
+            PROJECTION,
+            projection_schema().with_documentation("The camera's own projection."),
+        ),
+        (
+            TIME,
+            time().with_documentation("Seconds since the scene started."),
+        ),
+        (
+            DEPTH_RANGE,
+            vector2().with_documentation(
+                "The distance to the near and far planes, which is what turns a depth into a \
+                 distance.",
+            ),
+        ),
+    ];
+    if exposed {
+        // Placed in name order rather than appended, so the vector reads the way the layout
+        // it produces does. It is a `BTreeMap` either way; this is for the reader.
+        uniform.push((
+            EXPOSURE,
+            Schema::new(SchemaKind::Float).with_documentation(
+                "What this pass multiplies the radiance it read by, before its own grade: a \
+                 linear multiplier where 1 is no change. It is not a parameter of the curve \
+                 that follows, and it cannot brighten a value the shaded image already holds \
+                 at one.",
+            ),
+        ));
+        uniform.sort_by_key(|(field, _)| *field);
+    }
     interface(
         "A post pass, which draws over the whole frame.",
         vec![
@@ -551,29 +624,7 @@ pub fn post_pass_schema() -> Schema {
                     .with_documentation("The image this pass renders into, and the frame."),
             ),
         ],
-        vec![
-            (
-                CAMERA,
-                camera_schema().with_documentation(
-                    "The camera this pass draws through, which is what a sky is built from.",
-                ),
-            ),
-            (
-                PROJECTION,
-                projection_schema().with_documentation("The camera's own projection."),
-            ),
-            (
-                TIME,
-                time().with_documentation("Seconds since the scene started."),
-            ),
-            (
-                DEPTH_RANGE,
-                vector2().with_documentation(
-                    "The distance to the near and far planes, which is what turns a depth into \
-                     a distance.",
-                ),
-            ),
-        ],
+        uniform,
     )
 }
 

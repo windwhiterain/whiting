@@ -3,3 +3,6 @@
 
 # Worktrees made by .worktrees, which are each a checkout of their own branch.
 /.worktrees/
+
+# Worktrees made by worktrees, which two agents made outside the directory above.
+/worktrees/

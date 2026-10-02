@@ -138,6 +138,94 @@ impl Bounds {
             ],
         }
     }
+
+    /// Returns how far inside the box a point is, or `None` when the point is outside it.
+    ///
+    /// # Invariants
+    ///
+    /// The distance is to the **nearest face**, which is the number that says how much room
+    /// there is before the point leaves the box rather than how big the box is. A point in
+    /// the middle of a wide flat pond and a point half a unit from its edge are both
+    /// "inside the pond", and the second is the one worth naming: it is the one a move of
+    /// the camera fixes.
+    ///
+    /// A face the point is exactly on is inside, at distance nothing. An eye exactly on a
+    /// water surface is half under it, and a box a camera is standing on the boundary of is
+    /// a boundary the frame is drawn from.
+    ///
+    /// A box with both ends of an axis at one number is not empty, so a point at that number
+    /// is inside it and its depth is nothing rather than no answer at all.
+    ///
+    /// ```
+    /// use whiting_scene::standard::math::Bounds;
+    ///
+    /// let pond = Bounds {
+    ///     minimum: [-8.0, -8.0, 1.6],
+    ///     maximum: [8.0, 8.0, 7.6],
+    /// };
+    /// // A camera at z = 4.2 is in the pond and two and a half units clear of its bottom
+    /// // face, which is nearer than any of the other five.
+    /// assert!((pond.depth_of([0.0, 0.0, 4.2]).expect("the eye is in the pond") - 2.6).abs() < 1e-9);
+    /// assert_eq!(pond.depth_of([0.0, 0.0, 8.0]), None, "a point past the top face is outside");
+    /// assert_eq!(
+    ///     pond.depth_of([0.0, 0.0, 1.6]),
+    ///     Some(0.0),
+    ///     "a point on a face is on the edge of the box rather than outside it"
+    /// );
+    /// ```
+    pub fn depth_of(&self, point: [f64; 3]) -> Option<f64> {
+        let mut depth = f64::INFINITY;
+        for ((value, minimum), maximum) in point.iter().zip(&self.minimum).zip(&self.maximum) {
+            let to_minimum = value - minimum;
+            let to_maximum = maximum - value;
+            if to_minimum < 0.0 || to_maximum < 0.0 {
+                return None;
+            }
+            depth = depth.min(to_minimum).min(to_maximum);
+        }
+        depth.is_finite().then_some(depth)
+    }
+
+    /// Returns how far a point is from the box, or nothing when the point is inside it.
+    ///
+    /// # Invariants
+    ///
+    /// The measure is to the **nearest face** rather than to the centre, because the question
+    /// this answers is "how close does this get to the eye", and a box the eye is ten units
+    /// from and a box it is a hundred units from are both nearer than the scene behind them
+    /// however big either box is. A box whose centre is close and whose near face is far is
+    /// a box the eye is not near.
+    ///
+    /// This is [`Bounds::depth_of`] read from outside: a point the eye is inside of has no
+    /// distance to the box, which is why there is no zero here to return.
+    ///
+    /// ```
+    /// use whiting_scene::standard::math::Bounds;
+    ///
+    /// let wall = Bounds {
+    ///     minimum: [-7.0, 0.0, 3.0],
+    ///     maximum: [7.0, 4.0, 3.5],
+    /// };
+    /// // An eye at z = 10 is six and a half units from the wall's near face and nothing at
+    /// // all from the middle of it.
+    /// assert!((wall.distance_from([0.0, 1.0, 10.0]).expect("outside the wall") - 6.5).abs() < 1e-9);
+    /// assert_eq!(wall.distance_from([0.0, 1.0, 3.25]), None, "inside the wall");
+    /// ```
+    pub fn distance_from(&self, point: [f64; 3]) -> Option<f64> {
+        let mut away = f64::NEG_INFINITY;
+        let mut outside = false;
+        for ((value, minimum), maximum) in point.iter().zip(&self.minimum).zip(&self.maximum) {
+            // How far past this axis's near face, or its far one, the point is: negative
+            // while the point is between them, and the largest of the three is therefore
+            // the axis it is outside on.
+            let past = (minimum - value).max(value - maximum);
+            if past >= 0.0 {
+                outside = true;
+                away = away.max(past);
+            }
+        }
+        outside.then_some(away)
+    }
 }
 
 /// Returns an orthographic projection of `box` looked at from `eye` towards `target`.

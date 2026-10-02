@@ -65,3 +65,20 @@ required-features = ["wgpu"]
 [[test]]
 name = "texture_array_shape"
 required-features = ["wgpu"]
+
+# A debug channel and a pass with more than one colour target are both claims about what a
+# fragment writes, and neither is checkable without an adapter to read the pixels back. Without
+# this entry the target builds an empty binary under a plain `cargo test --workspace`, which
+# reports a passing run that ran nothing.
+[[test]]
+name = "multi_attachment_render"
+required-features = ["wgpu"]
+
+# A declared output is checked against the shader that writes it, and the check itself is a
+# parse and a comparison over three small WGSL strings. The mutation tests need no adapter and
+# run on a machine with no gpu, which is where a scene's shader is actually written; the two
+# render tests skip with a printed note. Without this entry the target builds an empty binary
+# under a plain `cargo test --workspace`, which reports a passing run that ran nothing.
+[[test]]
+name = "typed_outputs"
+required-features = ["wgpu"]

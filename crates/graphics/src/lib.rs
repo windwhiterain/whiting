@@ -11,7 +11,7 @@
 //! {
 //!     passes: [ Pass, ... ],
 //!     instance_schema: <schema document>,
-//!     outputs: { <name>: <binding point>, ... },
+//!     outputs: { <name>: { point: <binding point>, location: <int>, type: <texel type> }, ... },
 //! }
 //! ```
 //!
@@ -23,8 +23,18 @@
 //!
 //! `outputs` says which of the images a document draws are **answers**: a render returns
 //! what it names, rather than whichever target the last pass to write one happened to
-//! fill. A document that omits it means what it always meant, and the last colour target
-//! is the frame; see [`outputs`].
+//! fill. Each entry names three things — the point it is rendered into, the `@location`
+//! of the writing shader's fragment output that carries it, and the type of a texel of
+//! it — so the value in the image is something the document states rather than something
+//! a reader has to infer from the bytes. A document that omits the field means what it
+//! always meant, and the last colour target is the frame; see [`outputs`].
+//!
+//! ```ron
+//! outputs: {
+//!     present: { point: "present_target", location: 0, type: "vec4<f32>" },
+//!     normal:  { point: "debug_normal",   location: 1, type: "vec3<f32>" },
+//! }
+//! ```
 //!
 //! # Example
 //!
@@ -92,8 +102,10 @@ pub mod image;
 mod inputs;
 mod instance;
 pub mod layout;
+pub mod output;
 pub mod pass;
 mod pipeline;
+pub mod provenance;
 mod read;
 
 pub use binders::{
@@ -110,11 +122,16 @@ pub use layout::{
     LayoutError, VertexAttribute, VertexLayout, components, packed_layout, uniform_bytes,
     value_bytes, vertex_layout,
 };
+pub use output::{
+    LOCATION_FIELD, OutputDeclaration, POINT_FIELD, TYPE_FIELD, TexelError, TexelType,
+    output_schema,
+};
 pub use pass::{
     BINDERS, BLEND, CLEAR_COLOR, DEPTH, ENTRY_POINT, LABEL, SAMPLES, SHADER, TARGETS, UNIFORM,
     WORKGROUP, pass_schema,
 };
 pub use pipeline::{Blend, Compare, MAX_SAMPLES, PipelineState};
+pub use provenance::Origin;
 pub use read::{Output, PassKind, PassView, outputs, passes};
 
 /// Name of the schema a graphics document is verified against.
@@ -180,15 +197,17 @@ pub fn graphics_schema() -> Schema {
         ),
         (
             OUTPUTS_FIELD.to_owned(),
-            Schema::new(SchemaKind::dictionary(Schema::new(SchemaKind::String)))
+            Schema::new(SchemaKind::dictionary(output_schema()))
                 .optional()
                 .with_documentation(
                     "The images a render produces, keyed by the name a caller looks one up \
-                     under and holding the binding point a pass renders it into. The frame is \
-                     the one called `present`. Absent means the document does not say, and the \
-                     colour target of the last pass that wrote one is the frame — which is what \
-                     every document written before this field existed means, so none of them \
-                     changes.",
+                     under. Each entry says the point a pass renders it into, the \
+                     `@location` of the writing shader's fragment output that carries it, and \
+                     the type of a texel of it, so what the image holds is stated rather than \
+                     left to be read out of the bytes. The frame is the one called `present`. \
+                     Absent means the document does not say, and the colour target of the last \
+                     pass that wrote one is the frame — which is what every document written \
+                     before this field existed means, so none of them changes.",
                 ),
         ),
     ]))

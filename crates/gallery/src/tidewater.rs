@@ -46,7 +46,10 @@ use crate::kit::{
     camera_placed_on_lens, environment_light, image, instance, instances, light_with_radius, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{emission_shader, mesh_shaders_with_normal, post_shader, sunset_pixels};
+use crate::shaders::{
+    Block, emission_shader, mesh_shaders_with_normal, post_shader, sunset_pixels,
+};
+use crate::wgsl;
 
 use std::f64::consts::TAU;
 
@@ -695,7 +698,8 @@ fn water_body() -> String {
 /// the silhouette is still and only the shading breathes. A scene that wanted the outline to
 /// move as well would be displacing in the vertex stage, which is a different hook and is
 /// what the proposal asks for.
-const REED_SWAY: &str = r#"
+const REED_SWAY: Block = wgsl!(
+    r#"
     let sway = sin(uniforms.time * 0.85
         + in.world_position.x * 0.42
         + in.world_position.z * 0.27) * 0.055;
@@ -703,7 +707,8 @@ const REED_SWAY: &str = r#"
         normal.x * cos(sway) + normal.z * sin(sway),
         -normal.x * sin(sway) + normal.z * cos(sway));
     normal = normalize(vec3<f32>(turned.x, normal.y, turned.y));
-"#;
+"#
+);
 
 /// What the lighting stage makes of a fragment of shore or reed.
 ///
@@ -714,7 +719,8 @@ const REED_SWAY: &str = r#"
 /// tint is nearly black on purpose: a silhouette is not a dark object but an object with
 /// the sky's colour *around* it and very little of its own, and a shore given a legible
 /// surface colour reads as a painted backdrop instead.
-const SHORE: &str = r#"
+const SHORE: Block = wgsl!(
+    r#"
     // A backlit shore is a silhouette, and a silhouette is mostly the air in front of it.
     //
     // The shading is scaled down rather than the tint taken to nothing, and the reason is
@@ -735,7 +741,8 @@ const SHORE: &str = r#"
     let facing = 1.0 - clamp(dot(normal, view), 0.0, 1.0);
     let penetration = aerial_penetration(from_eye, in.world_position.y, facing);
     color = mix(color, aerial_colour(eye, in.world_position), clamp(penetration, 0.0, 0.985));
-"#;
+"#
+);
 
 /// What the post stage does to the frame the scene produced.
 ///
@@ -752,7 +759,8 @@ const SHORE: &str = r#"
 ///   scene. Grain over a clean gradient is the whole difference between an image and a
 ///   picture of an image: a frame without it has a mathematical smoothness the eye has no
 ///   other way to account for than by deciding it is not a photograph.
-const GRADE: &str = r#"
+const GRADE: Block = wgsl!(
+    r#"
     // The sky, and only the sky: the pixels no geometry covered. A depth of one is the far
     // plane, which is where a depth buffer is cleared.
     if depth >= 1.0 {
@@ -798,4 +806,5 @@ const GRADE: &str = r#"
     let seed = floor(in.uv * size) + vec2<f32>(fract(uniforms.time * 0.37) * 311.0);
     let grain = (hash(seed) - 0.5) * 0.055 * smoothstep(0.0, 0.28, dot(color, vec3<f32>(0.33)));
     color = color + vec3<f32>(grain);
-"#;
+"#
+);

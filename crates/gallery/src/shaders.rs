@@ -41,6 +41,8 @@
 //! *stated* inputs of the pass rather than records, because neither is a lamp — one is an
 //! image and one is a direction.
 
+use std::borrow::Cow;
+
 use definition::{Schema, SchemaKind, Value};
 
 use scene::standard::{
@@ -49,6 +51,134 @@ use scene::standard::{
 };
 
 use super::kit;
+
+/// Declares a block of WGSL, and with it where the block was written.
+///
+/// # Invariants
+///
+/// - **The file is the invocation's own**, read by `file!()` as the macro expands, so it cannot
+///   drift from the text it describes. Nothing counts lines and nothing is written down twice.
+/// - **The line is the line after the one the macro was invoked on**, which is where a literal
+///   opening on the next line puts the block's first line of WGSL. The literal must therefore
+///   open on the line below the invocation, as it is written below and as `cargo fmt` writes it:
+///   `line!()` reads the invocation and cannot see where the literal opens, so a literal opened
+///   on the invocation's own line is reported one line high. Nothing in the expansion says which
+///   of the two shapes it was given, and no rule can be right for both — two invocations holding
+///   the same literal and starting on the same line put the block's text on different lines. The
+///   arithmetic is stated for the one the formatter writes, and a test in
+///   `tests/shader_provenance.rs` holds every declaration in this crate to it.
+/// - **A block's text must not contain a line beginning [`graphics::provenance::MARKER`]**,
+///   which is reserved and would be read as a declaration of its own.
+///
+/// ```ignore
+/// const SHORE: Block = wgsl!(
+///     r#"
+///     color = color * (0.4 + 0.6 * shore_tint);
+/// "#
+/// );
+/// ```
+///
+/// A block written as a plain `&str` says nothing about where it came from, and that is the
+/// other half of the contract: see [`Block`].
+#[macro_export]
+macro_rules! wgsl {
+    ($wgsl:literal) => {
+        $crate::shaders::Block::declared(file!(), line!(), $wgsl)
+    };
+}
+
+/// A block of WGSL a scene hands to a stage, and where it was written when it says.
+///
+/// # Why a block is a type rather than a string
+///
+/// A scene's WGSL is spliced into a template, and the string that reaches the device is a
+/// module that exists nowhere on disk — so a parse error in it names a line no reader can
+/// open. A block that knows the file and line it was written at is spliced with one comment
+/// line above it saying so, and a parse error in it is reported against **that** file and line
+/// rather than against the assembled string.
+///
+/// # Invariants
+///
+/// - **A block that declared no origin is spliced in unchanged, byte for byte.** The marker is
+///   what a declaration buys, and a scene that writes a plain `&str` — which every scene did
+///   before this type existed, and which is still accepted — gets the module it always got and
+///   the error message it always got.
+/// - **`spliced` is where the marker is written**, so every splice point names its block the
+///   same way and no template has to know whether the block it was handed declared anything.
+/// - **The origin is declared by the scene, never inferred.** The alternative — reading the
+///   caller's line with `#[track_caller]` — names the line the scene *called the builder* on,
+///   which is a different line from the one holding the WGSL, and is exactly the kind of
+///   inferred rule that points somewhere that is not the mistake.
+#[derive(Debug, Clone, Copy)]
+pub struct Block<'text> {
+    wgsl: &'text str,
+    declared: Option<(&'static str, u32)>,
+}
+
+impl<'text> Block<'text> {
+    /// Returns the block a [`wgsl!`] invocation declares.
+    ///
+    /// `invoked_at` is the line the macro was invoked on, and the block's **first** line of WGSL
+    /// is the line after it: a literal opening on that next line puts the block's first line of
+    /// text — an empty one — there, and every line of the block after it is one line on. That is
+    /// the one number, and a literal opening on the invocation's own line is a line off it,
+    /// because nothing in a `macro_rules!` expansion can see where the literal begins.
+    ///
+    /// A `const fn`, so a block is a `const` rather than a value built per scene: a block of
+    /// WGSL is a constant, and a scene that wrote one out gets the same declaration it wrote
+    /// before this type existed with an origin attached to it.
+    pub const fn declared(file: &'static str, invoked_at: u32, wgsl: &'text str) -> Self {
+        Self {
+            wgsl,
+            declared: Some((file, invoked_at)),
+        }
+    }
+
+    /// Returns the WGSL as a module holds it: the block, and above it a marker naming where it
+    /// came from — or the block alone, when nothing declared it.
+    ///
+    /// `name` is what the block is called at the splice point it is written into, which is
+    /// where its meaning is: the same text is a `surface` in the lighting stage and a `grade`
+    /// in the post one, and a reader told only "line 217" is told nothing.
+    ///
+    /// The marker carries the line the block's **first line of WGSL** is on, which is the line
+    /// after the one [`declared`] was given: see the `wgsl!` doc for why that is one on.
+    pub fn spliced(&self, name: &str) -> Cow<'text, str> {
+        let Some((file, invoked_at)) = self.declared else {
+            return Cow::Borrowed(self.wgsl);
+        };
+        Cow::Owned(graphics::provenance::mark(
+            name,
+            file,
+            invoked_at + 1,
+            self.wgsl,
+        ))
+    }
+
+    /// Returns the block's own WGSL, with no marker above it.
+    ///
+    /// This is for the block a scene builds by composition rather than by writing out: the
+    /// text of such a block is a `format!` of three others, and there is no line of any file
+    /// that is the start of it, so declaring one would be a number nobody could check.
+    pub fn text(&self) -> &'text str {
+        self.wgsl
+    }
+}
+
+impl<'text> From<&'text str> for Block<'text> {
+    fn from(wgsl: &'text str) -> Self {
+        Self {
+            wgsl,
+            declared: None,
+        }
+    }
+}
+
+impl<'text> From<&'text String> for Block<'text> {
+    fn from(wgsl: &'text String) -> Self {
+        Self::from(wgsl.as_str())
+    }
+}
 
 /// The uniform the shadowing and depth stages read.
 ///
@@ -191,7 +321,15 @@ struct SpotCone {
 /// The two points still take the binding numbers their names sort them to — that is the
 /// device's rule and it applies to a point whatever the pass does with it — so the template
 /// declares the uniform alone and leaves those numbers unread.
-pub fn emission(vertex_inputs: &str, emission: &str, helpers: &str) -> String {
+pub fn emission<'text>(
+    vertex_inputs: &str,
+    emission: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+) -> String {
+    let emission = emission.into();
+    let helpers = helpers.into();
+    let emission = emission.spliced("emission");
+    let helpers = helpers.spliced("helpers");
     format!(
         r#"{PLACEMENT_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -298,7 +436,11 @@ fn vertex_main(
 /// `vertex_inputs` is the attribute list [`crate::attributes`] writes out from the
 /// two schemas the stages and the mesh all declare, so a scene that changes its point schema
 /// gets the attributes for it without writing them out.
-pub fn lighting(vertex_inputs: &str, surface: &str, helpers: &str) -> String {
+pub fn lighting<'text>(
+    vertex_inputs: &str,
+    surface: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+) -> String {
     lighting_with_normal(vertex_inputs, "", surface, helpers)
 }
 
@@ -315,17 +457,17 @@ pub fn lighting(vertex_inputs: &str, surface: &str, helpers: &str) -> String {
 /// `displace` runs where the normal arrives and before anything reads it, and may reassign
 /// `normal` — declared `var` for exactly that. An empty body changes nothing, so
 /// [`lighting`] is this with an empty `displace`.
-pub fn lighting_with_normal(
+pub fn lighting_with_normal<'text>(
     vertex_inputs: &str,
-    displace: &str,
-    surface: &str,
-    helpers: &str,
+    displace: impl Into<Block<'text>>,
+    surface: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
 ) -> String {
     lighting_stage(
         vertex_inputs,
-        displace,
-        surface,
-        helpers,
+        displace.into(),
+        surface.into(),
+        helpers.into(),
         lighting_bindings(false),
     )
 }
@@ -411,13 +553,16 @@ fn lighting_bindings(image: bool) -> String {
 /// is not bounded that way, so the lights move into one and the pass reads the ones its own
 /// fragment needs — which is a handful, because the cluster lists are what the culling was
 /// for.
-fn lighting_stage(
+fn lighting_stage<'text>(
     vertex_inputs: &str,
-    displace: &str,
-    surface: &str,
-    helpers: &str,
+    displace: Block<'text>,
+    surface: Block<'text>,
+    helpers: Block<'text>,
     bindings: String,
 ) -> String {
+    let displace = displace.spliced("displace");
+    let surface = surface.spliced("surface");
+    let helpers = helpers.spliced("helpers");
     format!(
         r#"{LIGHTING_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -1036,13 +1181,14 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
 /// The image is declared in the custom schema under the name `image`, so the compiler binds it at
 /// that point and the shader reads it there. It is the one place a scene's document and a shader's
 /// source meet, and it is a name rather than a number.
-pub fn textured(vertex_inputs: &str, helpers: &str) -> String {
+pub fn textured<'text>(vertex_inputs: &str, helpers: impl Into<Block<'text>>) -> String {
     lighting_stage(
         vertex_inputs,
-        "",
+        "".into(),
         "let pattern = textureSample(image, image_sampler, in.texture);\n    \
-         color = color * (0.25 + 1.5 * pattern.rgb);",
-        helpers,
+         color = color * (0.25 + 1.5 * pattern.rgb);"
+            .into(),
+        helpers.into(),
         lighting_bindings(true),
     )
 }
@@ -1236,7 +1382,11 @@ pub fn sunset_pixels(size: i64) -> Vec<u8> {
 /// declared at module level beside `ray_through`, because `WGSL` has no nested functions
 /// and `grade` is written into the body of one. It is the same arrangement the lighting
 /// stage has, and for the same reason.
-pub fn post(grade: &str, helpers: &str) -> String {
+pub fn post<'text>(grade: impl Into<Block<'text>>, helpers: impl Into<Block<'text>>) -> String {
+    let grade = grade.into();
+    let helpers = helpers.into();
+    let grade = grade.spliced("grade");
+    let helpers = helpers.spliced("helpers");
     format!(
         r#"
 struct Camera {{
@@ -1344,7 +1494,10 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
 /// The attributes are derived from the point schema this passes, so the three stages and
 /// the mesh a scene draws all read one layout, and a scene that declares a different point
 /// schema gets the attributes for it without writing them out.
-pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
+pub fn mesh_shaders<'text>(
+    surface: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+) -> Vec<Value> {
     mesh_shaders_with_normal("", surface, helpers)
 }
 
@@ -1357,9 +1510,18 @@ pub fn mesh_shaders(surface: &str, helpers: &str) -> Vec<Value> {
 /// agreement by hand. A scene that displaces a normal declares its own lighting shader
 /// beside these rather than in place of them, and only the instances listed under `lighting`
 /// with that material are drawn by it.
-pub fn mesh_shaders_with_normal(displace: &str, surface: &str, helpers: &str) -> Vec<Value> {
+pub fn mesh_shaders_with_normal<'text>(
+    displace: impl Into<Block<'text>>,
+    surface: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+) -> Vec<Value> {
     let point = kit::shaded_point_schema();
     let inputs = crate::attributes::gallery_vertex_inputs(&point);
+    // One block each, handed to every stage that takes it: a block declared once is the same
+    // text in all of them, and converting per stage would clone the same WGSL four times.
+    let displace = displace.into();
+    let surface = surface.into();
+    let helpers = helpers.into();
     vec![
         kit::shader(
             Stage::Shadowing,
@@ -1414,7 +1576,11 @@ pub fn mesh_shaders_with_normal(displace: &str, surface: &str, helpers: &str) ->
 /// `helpers` is the module level `WGSL` the body is written against — a sky, a mist, a
 /// noise — and it is what lets a body that reflects something be written against the same
 /// copy of that something the rest of the scene uses.
-pub fn emission_shader(label: &str, body: &str, helpers: &str) -> Value {
+pub fn emission_shader<'text>(
+    label: &str,
+    body: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+) -> Value {
     let point = kit::shaded_point_schema();
     let inputs = crate::attributes::gallery_vertex_inputs(&point);
     kit::shader(
@@ -1437,11 +1603,11 @@ pub fn emission_shader(label: &str, body: &str, helpers: &str) -> Value {
 /// that share a point schema, a row schema and a vertex layout. That is the arrangement the
 /// pipeline is built for: what differs between two surfaces is a shader and a row, not a
 /// pipeline.
-pub fn displaced_lighting_shader(
+pub fn displaced_lighting_shader<'text>(
     label: &str,
-    displace: &str,
-    surface: &str,
-    helpers: &str,
+    displace: impl Into<Block<'text>>,
+    surface: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
 ) -> Value {
     let point = kit::shaded_point_schema();
     let inputs = crate::attributes::gallery_vertex_inputs(&point);
@@ -1460,7 +1626,10 @@ pub fn displaced_lighting_shader(
 ///
 /// `helpers` is handed to [`post`] unchanged: the WGSL the grade's arithmetic is written
 /// against, declared at module level.
-pub fn post_shader(grade: &str, helpers: &str) -> Value {
+pub fn post_shader<'text>(
+    grade: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+) -> Value {
     // A screen shader's variant carries a `stage` naming the stage it belongs to, which
     // the three mesh variants do not: they are named by their own tag, and a fourth one
     // that was not would leave a document with no way to say which stage a shader reads.

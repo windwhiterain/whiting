@@ -107,7 +107,7 @@ pub mod standard;
 pub use limits::DeviceLimits;
 pub use reference::{REFERENCE_SCENE_SCHEMA, ReferenceScene, register_scene_schema};
 pub use standard::{
-    CAMERAS, DebugChannel, MESH_SCHEMA, STANDARD_SCENE_SCHEMA, StandardScene,
+    CAMERAS, DebugChannel, MESH_SCHEMA, STANDARD_SCENE_SCHEMA, StandardScene, declared_description,
     register_standard_scene_schema, standard_scene_schema,
 };
 

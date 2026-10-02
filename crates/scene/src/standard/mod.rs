@@ -227,7 +227,7 @@ mod scene_schema;
 
 pub use camera::{Camera, DEFAULT_FIELD_OF_VIEW, Projection, ProjectionKind, projection_value};
 pub use compiler::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema};
-pub use debug::DebugChannel;
+pub use debug::{DebugChannel, declared_description};
 pub use emit::{
     COLOR_TARGET_ENTRY, DEPTH_BUFFER_ENTRY, Emitted, FULLSCREEN_INSTANCE, FULLSCREEN_MESH,
     PRESENT_TARGET_ENTRY, Stage, emit,
@@ -239,12 +239,12 @@ pub use pass_schemas::{
     CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, FRAME_SIZE,
     INSTANCE_DATA, PRESENT_TARGET, PROJECTION, SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, VERTICES,
     depth_pass_schema, emission_pass_schema, light_pass_schema, post_pass_schema,
-    projection_schema, shadow_pass_schema,
+    post_pass_schema_exposed, projection_schema, shadow_pass_schema,
 };
 pub use scene_schema::{
-    CAMERAS, CLUSTERING, CUSTOM_DATA, CUSTOM_SCHEMA, DATA, DEPTH_EXTENTS, EYE, FIELD_OF_VIEW,
-    FORMAT, FRAME, HEIGHT, HEIGHT_EXTENTS, IMAGE_SCHEMA, IMAGES, INSTANCE_SCHEMA, LABEL,
-    LIGHTS_PER_CLUSTER, MATERIAL, MESH, MESH_MATERIALS, MESH_SCHEMA, PADDING, PASS_SCHEMA,
+    CAMERAS, CLUSTERING, CUSTOM_DATA, CUSTOM_SCHEMA, DATA, DEPTH_EXTENTS, EXPOSURE, EYE,
+    FIELD_OF_VIEW, FORMAT, FRAME, HEIGHT, HEIGHT_EXTENTS, IMAGE_SCHEMA, IMAGES, INSTANCE_SCHEMA,
+    LABEL, LIGHTS_PER_CLUSTER, MATERIAL, MESH, MESH_MATERIALS, MESH_SCHEMA, PADDING, PASS_SCHEMA,
     POINT_SCHEMA, POINTS, RADIUS, SHADER, SHADERS, SOURCE, STAGE, TARGET, TOPOLOGY, TRANSFORM, UP,
     WIDTH, WIDTH_EXTENTS, camera_schema, clustering_schema, default_custom_schema,
     default_instance_schema, default_point_schema, image_schema, instance_schema, light_schema,

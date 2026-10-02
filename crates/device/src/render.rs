@@ -436,6 +436,48 @@ pub enum RenderError {
     NoPresentImage,
     #[error("the output `{name}` renders into `{point}`, and no pass in this document writes it")]
     MissingOutput { name: String, point: String },
+    /// A declared output that no pass rendered into, reported against the contract that
+    /// applies to it rather than as a missing point.
+    ///
+    /// # Why this is not [`RenderError::MissingOutput`]
+    ///
+    /// The two coverage contracts are different facts and a message that blurred them would be
+    /// wrong about one of the two images. A **built-in** is bounded by *what the pipeline has* —
+    /// no depth buffer, no image — and the existing note in the emitter says so, naming the
+    /// `depthing` bucket, which is a buffer the pipeline either has or does not. A
+    /// **scene-declared** output is bounded by *which buckets the writing pass enumerated*, so
+    /// the thing missing is not a buffer and there is no buffer to name: the pass is not there.
+    ///
+    /// The message therefore says which passes **did** draw, because that is what separates the
+    /// two defects underneath it — an emitter that never enumerated a bucket, from a shader
+    /// whose fragment output does not carry the location — and it says the declared type and
+    /// location, so the reader can compare them against the shader they are about to open. It
+    /// names no format, no rule and nothing underneath either, for the reason every message in
+    /// the output path is held to: a document states what a value is, and a scene author who is
+    /// sent to a rule about how an image is written is sent to edit a file that is already right.
+    #[error(
+        "the output `{name}` is declared as `{ty}` at location {location} of `{point}`, and no \
+         pass in this document writes it. This is not a missing buffer: a declared output \
+         covers exactly what the writing pass enumerated, and the writing pass is not among the \
+         {count} that drew ({drawn}). A pass renders into a point only if some bucket asked it \
+         to, so either no bucket enumerated `{point}` at all, or the pass that did does not list \
+         it among the points it renders into. An image the render would have returned for it is \
+         whatever was in the image nobody wrote.",
+        count = labels.len(),
+        drawn = if labels.is_empty() { "none".to_owned() } else { labels.join(", ") },
+    )]
+    UnwrittenOutput {
+        /// The name the document declared the image under.
+        name: String,
+        /// The binding point it declared.
+        point: String,
+        /// The type of a texel, as the document spelled it.
+        ty: String,
+        /// The location it declared.
+        location: u32,
+        /// The labels of the passes that did draw into a colour target.
+        labels: Vec<String>,
+    },
     #[error("the frame is drawn in `{format}`, and a frame is read as an 8 bit rgba image")]
     FrameFormat { format: String },
     #[error("`{format}` is not a texture format a texel can be read out of")]

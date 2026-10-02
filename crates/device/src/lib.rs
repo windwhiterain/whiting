@@ -170,4 +170,4 @@ pub use snapshot::{NamedDefinition, NamedSchema, Snapshot};
 pub use state::{Device, DeviceError, ReloadReport};
 
 #[cfg(feature = "wgpu")]
-pub use wgpu_renderer::{TextureShape, WgpuRenderer, check_resources};
+pub use wgpu_renderer::{TextureShape, WgpuRenderer, check_outputs, check_resources};

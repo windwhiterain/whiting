@@ -65,8 +65,7 @@ pub struct RenderedTarget {
 }
 
 impl WgpuRenderer {
-    /// Executes one rasterize pass, returning the colour target it drew into when it drew
-    /// into one.
+    /// Executes one rasterize pass, returning the colour targets it drew into.
     pub(super) fn run_rasterize(
         &self,
         pass: &PassView<'_>,
@@ -74,7 +73,8 @@ impl WgpuRenderer {
         cache: &mut TextureCache,
         buffers: &mut BufferCache,
         cleared: &mut Vec<String>,
-    ) -> Result<Option<RenderedTarget>, RenderError> {
+        declared: &[graphics::Output<'_>],
+    ) -> Result<Vec<RenderedTarget>, RenderError> {
         let label = pass.label().unwrap_or("<unlabelled>").to_owned();
         let shader = resolve_for_pass(&label, instance, pass.shader_binder()?)
             .map_err(RenderError::Graphics)?;
@@ -88,9 +88,14 @@ impl WgpuRenderer {
         let bindings = self.bind_pass(pass, instance, cache, buffers)?;
 
         let attachments = attachments(&bindings)?;
-        let colour = attachments.iter().find(|entry| !entry.depth);
+        // Every colour attachment, in attachment order, and the first depth one. wgpu takes
+        // the colour targets as a list, and a shader writes them by `@location(i)`, so the
+        // order here is the order a G-buffer's shader numbers its outputs in. Taking only the
+        // first — which is what this did — made a second attachment unreachable: a shader that
+        // declared `@location(1)` would have had no target behind it.
+        let colour: Vec<&Attachment<'_>> =
+            attachments.iter().filter(|entry| !entry.depth).collect();
         let depth = attachments.iter().find(|entry| entry.depth);
-        let format = colour.map_or(wgpu::TextureFormat::Rgba8Unorm, |entry| entry.slot.format);
         let clear = clear_color(pass);
         // What a pass does with blending, depth and samples is on the pass, so a document
         // can express an additive pass, a pass that draws over the depth it reads, and an
@@ -124,6 +129,21 @@ impl WgpuRenderer {
             bindings.layout_entries(wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT);
         self.check_bindings(&shader, &entries, &label)?;
 
+        // The other end of the same agreement. This pass's colour targets are the points a
+        // declaration can name, and this pass's fragment shader is what fills them, so the two
+        // are compared here — before the pipeline is built, and against the parse this renderer
+        // already caches for the checks above.
+        //
+        // **Only the declarations naming one of this pass's own colour points are compared.** A
+        // declaration at another pass's point is that pass's to answer for, and one at no
+        // pass's point is not a disagreement between this shader and anything: it is an image
+        // the render cannot produce, and `render_outputs` reports it once every pass has run.
+        let points: Vec<&str> = colour
+            .iter()
+            .map(|entry| entry.slot.point.as_str())
+            .collect();
+        self.check_outputs(&shader, declared, &points, &label)?;
+
         let bind_group_layout =
             self.device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -152,14 +172,26 @@ impl WgpuRenderer {
             .into_iter()
             .map(Some)
             .collect();
-        // The colour target and the module both have to outlive the pipeline, so the
-        // descriptor borrows locals rather than building them inline.
-        let colour_targets = [Some(wgpu::ColorTargetState {
-            format,
-            blend: Some(blend_of(state.blend)),
-            write_mask: wgpu::ColorWrites::ALL,
-        })];
-        let fragment = colour.map(|_| wgpu::FragmentState {
+        // The colour targets and the module both have to outlive the pipeline, so the
+        // descriptor borrows locals rather than building them inline. There is one target
+        // per colour attachment, in the same order, because a shader's `@location(i)` is
+        // numbered in that order and a target that were somewhere else would put a frame's
+        // normal where its identifier should be. The formats differ per target, which is the
+        // whole point: a G-buffer wants a float normal beside an 8 bit identifier.
+        let colour_targets: Vec<Option<wgpu::ColorTargetState>> = colour
+            .iter()
+            .map(|entry| {
+                Some(wgpu::ColorTargetState {
+                    format: entry.slot.format,
+                    blend: Some(blend_of(state.blend)),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })
+            })
+            .collect();
+        // A pass that writes no colour gets no fragment stage: a pipeline that declares a
+        // colour target it has no stage to write is rejected by the backend. The list is
+        // empty here and the `targets` below is empty with it.
+        let fragment = (!colour_targets.is_empty()).then(|| wgpu::FragmentState {
             module: &module,
             entry_point: Some(FRAGMENT_ENTRY),
             compilation_options: Default::default(),
@@ -220,10 +252,14 @@ impl WgpuRenderer {
             } else {
                 BTreeMap::new()
             };
-            // The view a pass draws into, and where a multisampled draw resolves to.
+            // The view a pass draws into, and where a multisampled draw resolves to. One
+            // entry per colour attachment, in attachment order, because that is the order
+            // `color_attachments` is read in and therefore the order `@location(i)` resolves
+            // against.
             let colour_attachments: Vec<Option<wgpu::RenderPassColorAttachment>> = colour
+                .iter()
                 .map(|entry| {
-                    let (view, resolve_target) = drawing_into(&multisampled, &entry.slot);
+                    let (view, resolve_target) = drawing_into(&multisampled, entry.slot);
                     let key = entry.slot.clear_key();
                     Some(wgpu::RenderPassColorAttachment {
                         view,
@@ -235,7 +271,6 @@ impl WgpuRenderer {
                         },
                     })
                 })
-                .into_iter()
                 .collect();
             let depth_attachment = depth.map(|entry| {
                 let (view, _) = drawing_into(&multisampled, &entry.slot);
@@ -271,13 +306,20 @@ impl WgpuRenderer {
         }
         self.queue.submit(Some(encoder.finish()));
 
-        Ok(colour.map(|entry| RenderedTarget {
-            point: entry.slot.point.clone(),
-            texture: entry.slot.texture.clone(),
-            width: entry.slot.shape.width,
-            height: entry.slot.shape.height,
-            layer: entry.slot.layer,
-        }))
+        // Every colour target this pass drew into, in attachment order, so a caller can look
+        // a declared output up by the point it was written. A pass with one attachment
+        // answers exactly what it always answered, because a one-element list has one last
+        // element and that is the one the old convention named.
+        Ok(colour
+            .into_iter()
+            .map(|entry| RenderedTarget {
+                point: entry.slot.point.clone(),
+                texture: entry.slot.texture.clone(),
+                width: entry.slot.shape.width,
+                height: entry.slot.shape.height,
+                layer: entry.slot.layer,
+            })
+            .collect())
     }
 
     /// Creates a view of an attachment's texture with several samples, which a pass that

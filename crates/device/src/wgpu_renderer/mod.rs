@@ -50,7 +50,7 @@ mod shader_interface;
 mod uniform;
 
 pub use bindings::TextureShape;
-pub use shader_interface::check_resources;
+pub use shader_interface::{check_outputs, check_resources};
 
 /// How many vertex attributes the pipeline asks an adapter for.
 ///
@@ -324,6 +324,14 @@ impl WgpuRenderer {
     /// `label` names the pass in a parse failure, because a bound shader entry has no
     /// name of its own and the source of a shader is a wall of text that a reader cannot
     /// find a pass in.
+    ///
+    /// # Why a parse failure may name a second file
+    ///
+    /// The source is a module assembled from a template and a scene's own WGSL, so a line
+    /// number in it is a line of a string on no disk. An assembler that knew where each
+    /// block came from said so in the source, and a line the source cannot account for is
+    /// reported exactly as it always was — which is the whole of the message when nothing
+    /// declared anything.
     pub(super) fn parsed_module(
         &self,
         source: &str,
@@ -338,7 +346,13 @@ impl WgpuRenderer {
             return Ok(found);
         }
         let module = Arc::new(naga::front::wgsl::parse_str(source).map_err(|error| {
-            RenderError::Backend(format!("`{label}` does not parse as wgsl: {error}"))
+            let line = error
+                .location(source)
+                .map_or(0, |where_| where_.line_number);
+            RenderError::Backend(format!(
+                "`{label}` does not parse as wgsl: {error}{}",
+                graphics::provenance::explain(source, line)
+            ))
         })?);
         if let Ok(mut parsed) = self.parsed.lock() {
             parsed.insert(source.to_owned(), Arc::clone(&module));
@@ -346,25 +360,46 @@ impl WgpuRenderer {
         Ok(module)
     }
 
-    /// Executes every pass, in order, and returns the colour target each one wrote into.
+    /// Executes every pass, in order, and returns the colour targets each one wrote into.
     ///
     /// # Invariants
     ///
-    /// The list is in **write order** and keeps one entry per pass that drew into a colour
-    /// target, so the same point appears once per pass that wrote it. That is what lets a caller
-    /// read the two rules apart without either being inferred from the other: the frame under the
-    /// convention is the *last* entry, and an image a document declared is the last entry **for
-    /// that point**. Collapsing the duplicates here would answer the first question and lose the
-    /// second.
-    fn execute(
+    /// The list is in **write order** and keeps one entry per colour target a pass drew into,
+    /// so the same point appears once per pass that wrote it and a pass with several
+    /// attachments contributes one entry each. That is what lets a caller read the two rules
+    /// apart without either being inferred from the other: the frame under the convention is
+    /// the *last* entry, and an image a document declared is the last entry **for that point**.
+    /// Collapsing the duplicates here would answer the first question and lose the second.
+    ///
+    /// **A pass with several attachments and no declared outputs changes which entry is the
+    /// frame.** The convention — the last colour target of the last colour pass — is now
+    /// answered by the *last* of that pass's attachments rather than the first, because the
+    /// list is the attachments in order and the last entry is the last attachment. Every
+    /// document that exists today has one colour attachment per pass, so every one of them
+    /// answers exactly as it did; the change is only visible to a document that writes a
+    /// G-buffer, and the answer a document declares in `outputs` is unaffected either way.
+    fn execute<'document>(
         &self,
-        graphics: &Value,
+        graphics: &'document Value,
         instance: &Value,
-    ) -> Result<Vec<RenderedTarget>, RenderError> {
+    ) -> Result<
+        (
+            Vec<RenderedTarget>,
+            Vec<graphics::Output<'document>>,
+            Vec<String>,
+        ),
+        RenderError,
+    > {
         let mut cache = TextureCache::default();
         let mut buffers = BufferCache::default();
         let mut cleared: Vec<String> = Vec::new();
         let mut colour: Vec<RenderedTarget> = Vec::new();
+        // Read once, here, rather than per pass: the declarations are what the writing pass is
+        // checked against, so every pass needs the same list and none of them owns it. The
+        // labels are read for the same reason and only used once, but they cannot be read inside
+        // the `ok_or_else` below, which is a closure rather than a function.
+        let declared = graphics::outputs(graphics)?;
+        let labels = written_labels(graphics)?;
 
         for pass in passes(graphics)? {
             match pass.kind() {
@@ -372,23 +407,24 @@ impl WgpuRenderer {
                 // be a prerequisite for the passes that follow.
                 PassKind::Compute => self.run_compute(&pass, instance, &mut cache, &mut buffers)?,
                 PassKind::Rasterize => {
-                    let target = self.run_rasterize(
+                    let targets = self.run_rasterize(
                         &pass,
                         instance,
                         &mut cache,
                         &mut buffers,
                         &mut cleared,
+                        &declared,
                     )?;
-                    if let Some(target) = target {
-                        colour.push(target);
-                    }
+                    colour.extend(targets);
                 }
             }
         }
         if let Some(error) = self.drain_errors() {
             return Err(error);
         }
-        Ok(colour)
+        // The labels travel back with the targets so that the one error that needs them is
+        // raised against the passes that actually ran rather than against the whole document.
+        Ok((colour, declared, labels))
     }
 }
 
@@ -422,8 +458,7 @@ impl Renderer for WgpuRenderer {
         graphics: &Value,
         instance: &Value,
     ) -> Result<Vec<RenderedImage>, RenderError> {
-        let written = self.execute(graphics, instance)?;
-        let declared = graphics::outputs(graphics)?;
+        let (written, declared, labels) = self.execute(graphics, instance)?;
 
         // A document that says nothing about its outputs means what every document written
         // before the field existed meant, and is answered exactly as it was: the colour target of
@@ -436,16 +471,20 @@ impl Renderer for WgpuRenderer {
         let mut images = Vec::with_capacity(declared.len());
         for output in &declared {
             // The last write to the point, because an image is what the last pass left there. A
-            // point no pass wrote is refused rather than skipped: a caller that asked for an
-            // image and was handed a shorter list would read the missing one as an image with
-            // nothing in it.
+            // point no pass wrote is refused rather than skipped, and it is refused **as the
+            // other coverage contract**: the writing pass is not there to be asked, so what is
+            // missing is a bucket the emitter's enumeration never reached rather than a buffer
+            // the pipeline does not have. See `RenderError::UnwrittenOutput`.
             let target = written
                 .iter()
                 .rev()
                 .find(|target| target.point == output.point)
-                .ok_or_else(|| RenderError::MissingOutput {
+                .ok_or_else(|| RenderError::UnwrittenOutput {
                     name: output.name.to_owned(),
                     point: output.point.to_owned(),
+                    ty: output.ty.to_owned(),
+                    location: output.location,
+                    labels: labels.clone(),
                 })?;
             images.push(self.read_back(output.name, target)?);
         }
@@ -454,4 +493,30 @@ impl Renderer for WgpuRenderer {
         }
         Ok(images)
     }
+}
+
+/// Returns the labels of the passes that did draw into a colour target, for an error about an
+/// output none of them wrote.
+///
+/// The list is what makes the message say **which** enumeration came up short. A declared
+/// output is bounded by the buckets the writing pass enumerated, so "nothing wrote it" is only
+/// actionable next to the passes that did run: a scene whose geometry passes all ran and whose
+/// declared normal is still missing has a shader that does not write it, and a scene with no
+/// geometry pass at all has an emitter that never enumerated one. Those are different defects
+/// and they get the same sentence without it.
+fn written_labels(graphics: &Value) -> Result<Vec<String>, RenderError> {
+    let mut labels = Vec::new();
+    for pass in passes(graphics)? {
+        if pass.kind() != graphics::PassKind::Rasterize {
+            continue;
+        }
+        if pass
+            .targets()
+            .map(|targets| !targets.is_empty())
+            .unwrap_or(false)
+        {
+            labels.push(pass.label().unwrap_or("<unlabelled>").to_owned());
+        }
+    }
+    Ok(labels)
 }
