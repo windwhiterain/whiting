@@ -2245,3 +2245,78 @@ than left to be found.
   2400 units of air. The honest fix is to divide height fog from Rayleigh air so each is
   integrable along an open ray in closed form. Recorded in
   [proposals/sky-fog-distance.md](../proposals/sky-fog-distance.md).
+
+## The objects a scene is put together from, and the law about joining them
+
+Recorded at `0a7dfe4`, from the object half of three parallel attempts at one brief. The
+framework half is under *A scene's own schema, and the geometry that needed it*; no scene lands
+with either, and both are capabilities with no user yet.
+
+- **A skyline is a line of crests and saddles, not a wander**, and the sawtooth is smoothed
+  *before* it is folded. A bare fold is a triangle wave, and a triangle wave along a skyline
+  reads as saw teeth rather than as rock. Two folded periods, differing by a little under a
+  factor of two, give crests and saddles that are not all the same size.
+- **A ridge is a 1D profile along its axis multiplied by a 2D crease across it, and the two
+  carry different seeds on purpose.** Sampling the along-axis noise across the ridge as well
+  makes it a field of swells whose high points are wherever two coordinates happened to agree,
+  and a range built from that is a field rather than a line of mountains. Two agents built this
+  same landscape independently and both reached seed 131 along the axis and 139 across it,
+  neither having seen the other's code; a shape two people reach separately with the same
+  constants is a shape the eye already has a name for. **A mass wants a fractal profile and a
+  skyline wants the closed form**, and neither substitutes for the other.
+- **A heightfield's silhouette has to die down to nothing before the mesh stops**, or the far
+  ground is a cliff of cut earth standing against the sky, and the only thing that can hide a
+  cliff is what is drawn beyond it. Every scene that ends in weather needs this, and one
+  without it has a stage set standing on a table.
+- **High ground in a quarter is a valley; high ground all the way round is a bowl**, and a bowl
+  puts its own wall between a camera and its subject on every side, which is a hole in the
+  world rather than a valley.
+- **How far out a mass stands is the whole of what makes it a range rather than a wall.** A mass
+  rising from fifty units fills half the frame above the roofline at forty degrees of elevation,
+  and forty degrees is a cliff three hundred metres high with a house at its foot; from a
+  hundred and fifty it subtends twenty, which is a mountain in a valley.
+- **A cut platform blends over a *distance*, not under a mask on the rectangle.** A mask stops
+  at the edge, the bank begins as a discontinuity, and a heightfield takes its normal from its
+  own height function — so a discontinuity has no normal to give, and the bank shades as a hard
+  line where the paving meets the ground. Note the consequence: a blend of this kind can only
+  ever ease *toward* a level, so a generator that multiplies the land by a ramp rather than
+  easing it to a level cannot lift a pad to a height above the ground it is cut into.
+- **A bare `floor` tears a terraced surface, and a tear shades as noise.** The heightfield's
+  normals come from the height function, so the riser needs a width *in the height function* —
+  which is the only place a riser can have a width at all. And nobody terraces a cliff: a
+  contour stripe on a steep slope reads as snow, so the terracing is gated by slope.
+- **A wall's top face is the whole reason it reads as a wall.** A run with no top is a folded
+  sheet, and from any camera above the coping you look straight through it into the inside of
+  the run, which in an enclosed yard is three of the six views. The two end faces are there so
+  a run that stops mid-wall shows a face rather than a hole — which is what makes a gate.
+- **A gate is a gap in a run rather than a boolean cut**, so there is no interior face to get
+  the winding of wrong; the two runs' end faces *are* the reveal, and the gate is drawn by the
+  same rule that draws the wall. The ring is one mesh because the sides are one wall as far as
+  the picture is concerned: a seam at a chamfer is a seam in the only unbroken horizontal line
+  in the frame.
+- **Two boxes must never stop on the same plane.** A lintel run a centimetre past its posts
+  buries its own end faces inside them; flush, the two runs leave coincident faces and a gate
+  pier shows it as a bright vertical line up the corner of the opening, which is the one thing
+  in the whole form that cannot be explained as a shadow. A coping must be **wider** than the
+  wall it caps, because a cap flush with its wall is a lid, and a lid throws no shadow line of
+  its own along the top of the band it caps.
+- **A feature smaller than about twice the mesh cell must not be geometry.** A tile is a quarter
+  of a metre and a roof's own cell is a twentieth of the run, so a ripple modelled into the
+  surface is sampled twice a cycle exactly at the distances a roof is looked at from, and
+  aliases into a moiré. It belongs in the surface body, drawn from the world position, where it
+  can be faded out as the feature falls below a pixel.
+- **A turned vessel's profile is closed**, so the inside is a real surface and the rim is a lip
+  rather than an edge. An open profile gives an inside made of the outside's back faces and a
+  seam at the rim. `BASKET` as first written ended at a radius rather than on the axis while
+  its own documentation claimed it was closed.
+- **A height function has no way to say which way is up, and a roof profile naturally reads as
+  "distance from the ridge".** One of the three grew its fall *away* from the ridge and placed
+  the mesh origin at the ridge height, so the eaves stood a rise above it: a trough, dressed as
+  a roof. The trap is the framework's rather than that scene's, and it is the reason
+  `roof_ridge` measures the fall *down* from the ridge and says so in its own documentation.
+- **Nothing calls any of it.** `land` and `built` compile and are type-checked and not one of
+  their functions has been executed, because no scene in the gallery builds a valley, a wall or
+  a roof. A generator with no caller is a generator with no test, and the framework has no way
+  to notice that either. Landing one scene is what would exercise all of it, and it is now much
+  cheaper than it was: the terrain, the walls and the vessels are generators, so a scene is a
+  placement document rather than four thousand lines of geometry.
