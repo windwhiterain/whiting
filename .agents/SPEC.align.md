@@ -2332,3 +2332,38 @@ with either, and both are capabilities with no user yet.
   nothing, because there is nothing to find: the error is introduced at the write. The fix is
   a triangular dither of one step seeded on the pixel, added as the last arithmetic the frame
   does, and it is invisible everywhere the image was not already wrong.
+- **A modelled far range is erased by the air long before it is far, and the fix is not to
+  model it nearer.** `f645805` gave `foldyard` a properly creased far range with a saddle
+  between two crests, and the frame could not show it: it landed within **zero to five
+  luminance levels of the sky**, and over one stretch *brighter* than the sky. The two causes
+  compound. The range's material was a near-neutral grey deliberately matched to the haze,
+  which is the correct choice and is why it has no value of its own to lose; and
+  `air_closure` at three hundred and forty units is **0.615**, so sixty-one percent of it is
+  replaced by the air's own colour, which by construction is the sky's colour. Three rules
+  come out of it, and each is a trap rather than a bug:
+  - **A far range must be **darker** than the sky behind it, not lighter.** Aerial perspective
+    lifts a distant range *towards* the sky from below. A range that arrives at or past the
+    sky's own value has no silhouette, and no amount of crest detail will give it one.
+  - **A material chosen to match the haze and air chosen to close over it are individually
+    correct and jointly fatal.** The scene is not wrong anywhere; the horizon is a patch of
+    sky a shade off.
+  - **The way out is to stop asking the air to carry the horizon**, not to move the range
+    closer. Painted into the sky in the post stage, a ridge is *after* the air and so is inked
+    rather than lit, and a mark on a surface is not hazed by that surface's own depth. That is
+    `ridges::RIDGES`, which `terraces` had written privately and k3 had written before that.
+- **A backdrop's height in the frame is a fact about the camera, and one scene's number is
+  wrong in the next scene's frame.** `ridges` draws its layers at fixed elevations tuned for
+  a camera looking level. `foldyard`'s cameras all look **down** on the yard, which puts its
+  whole horizon high in the picture, so at the shared scale the painted ranges crested at
+  `ray.y ≈ 0.15` against a real far range at `0.091` — the painted ones stood **taller than the
+  real one behind them**, and read as a cloud bank. Hence the one parameter, and a rule
+  behind it: **a shared generator's constants belong to the idea, and anything a second
+  caller can reasonably want differently has to be a parameter or it will be a defect in the
+  second scene wearing the first scene's clothes.**
+- **A claim about a picture is measured on the picture the viewer gets.** "The silhouette now
+  carries a saddle" was true of a two-times upscale made for inspection and false of the
+  delivered frame, and the gap was not close: the range measured 0–5 levels against the sky
+  and the crop made it look like a range. The same work, measured on the full frame at the
+  size it is delivered, gave 32 levels — and it also showed the right of the same frame still
+  at 7–8, which a flattering crop had hidden completely. **Judging a change by a crop is
+  judging a different image.**

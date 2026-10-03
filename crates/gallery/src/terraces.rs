@@ -1,4 +1,4 @@
-//! Flooded rice terraces under a morning sun: a Chinese mountain valley in spring.
+﻿//! Flooded rice terraces under a morning sun: a Chinese mountain valley in spring.
 //!
 //! The scene is one heightfield, a village, and a stand of China firs, and what makes it
 //! read as a photograph of a place rather than as terrain is four decisions, all of them
@@ -33,6 +33,7 @@ use crate::kit::{
     camera, gallery_custom_schema, gallery_instance_schema, instance, instances, light_with_radius,
     mesh, mesh_material, post_processes, screen_material, shaded_point_schema, shader, surface,
 };
+use crate::ridges;
 use crate::shaders::{lighting, mesh_shaders, post_shader};
 use scene::standard::{Stage, light_pass_schema};
 
@@ -261,7 +262,7 @@ fn build_shaders() -> Vec<Value> {
     ));
     set.push(post_shader(
         &fill(GRADE),
-        &fill(&[NOISE_WGSL, SKY_WGSL, RIDGE_WGSL, FOG_WGSL].concat()),
+        &fill(&[NOISE_WGSL, SKY_WGSL, ridges::RIDGES, FOG_WGSL].concat()),
     ));
     set
 }
@@ -868,16 +869,6 @@ fn fractal(point: vec2<f32>) -> f32 {
     }
     return total * 1.14;
 }
-
-/// Returns one dimensional value noise in zero to one, for the ridge lines.
-fn ridge_noise(value: f32) -> f32 {
-    let cell = floor(value);
-    let within = fract(value);
-    let blend = within * within * (3.0 - 2.0 * within);
-    let near = fract(sin(cell * 127.1) * 43758.5453);
-    let far = fract(sin((cell + 1.0) * 127.1) * 43758.5453);
-    return mix(near, far, blend);
-}
 "#;
 
 /// The sky, as a function of the ray it is seen along.
@@ -930,57 +921,10 @@ fn sky_colour(ray: vec3<f32>) -> vec3<f32> {
 }
 "#;
 
-/// The far mountains, drawn where no geometry reached.
-///
-/// # Invariants
-///
-/// A ridge line is a function of the ray's azimuth, not of the pixel: a silhouette in
-/// screen space is a backdrop, and a backdrop does not hold still when the camera moves.
-/// Each layer is inked deeper than the one behind it, because what separates the layers
-/// is the air between them.
-const RIDGE_WGSL: &str = r#"
-/// Returns the elevation of a ridge line at an azimuth, and which layer it is.
-fn ridge_at(azimuth: f32, layer: f32) -> vec2<f32> {
-    // Creased noise, so the line is crests and saddles rather than swells: a smooth bump
-    // the width of the frame is a volcano, and these are the far ranges. Two creases at
-    // incommensurate frequencies, multiplied: a single crease saturates at its summit
-    // and a saturated crease is a plateau, which reads as a wall, not a ridge.
-    let swell = ridge_noise(azimuth * (1.6 + layer * 0.9) + layer * 17.0);
-    let crest = 1.0 - abs(swell * 2.0 - 1.0);
-    let second = 1.0 - abs(ridge_noise(azimuth * (3.7 + layer * 2.1) + layer * 41.0) * 2.0 - 1.0);
-    let spur = ridge_noise(azimuth * (6.1 + layer * 2.3) + layer * 29.0);
-    let elevation = 0.012 + layer * 0.020
-        + crest * second * (0.030 + layer * 0.020)
-        + spur * 0.008;
-    return vec2<f32>(elevation, layer);
-}
-
-/// Draws the ridge lines into `sky` along `ray`, nearest last.
-fn ridges(sky: vec3<f32>, ray: vec3<f32>) -> vec3<f32> {
-    let azimuth = atan2(ray.x, -ray.z);
-    var result = sky;
-    // Farthest first, so the nearer line overwrites the farther where they cross. The
-    // inks are the haze itself deepened a step per layer: nothing out there has a colour
-    // of its own any more, only less air than the sky behind it.
-    for (var layer = 2.0; layer >= 0.0; layer = layer - 1.0) {
-        let line = ridge_at(azimuth, layer);
-        if ray.y < line.x && ray.y > -0.05 {
-            let depth_haze = 0.88 - line.y * 0.18;
-            let ink = mix(
-                vec3<f32>(0.44, 0.48, 0.58),
-                vec3<f32>(0.34, 0.39, 0.50),
-                line.y * 0.45,
-            );
-            // The top edge is the silhouette; the bottom fades into the valley's own
-            // haze, because the ridge's foot is in the mist, not behind a hard line.
-            let top = 1.0 - smoothstep(line.x - 0.0035, line.x, ray.y);
-            let foot = smoothstep(-0.05, -0.012, ray.y);
-            result = mix(result, mix(result, ink, depth_haze), top * foot);
-        }
-    }
-    return result;
-}
-"#;
+// The far mountains this scene draws where no geometry reached are [`ridges::RIDGES`], and
+// every rule behind them lives with the idea rather than here: a second scene wanted a
+// backdrop behind a horizon the air had already closed over, and a backdrop written twice is
+// two backdrops that will drift apart.
 
 /// The valley's mist, as an exponential height fog.
 ///
@@ -1078,7 +1022,7 @@ const GRADE: &str = r#"
     let ray = ray_through(in.uv);
     if depth >= 1.0 {
         var sky = sky_colour(ray);
-        sky = ridges(sky, ray);
+        sky = ridges(sky, ray, 1.0);
         color = sky;
     }
 

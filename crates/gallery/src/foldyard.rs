@@ -66,6 +66,7 @@ use crate::kit::{
     surface_reflecting,
 };
 use crate::land::{self, Ridge, Valley};
+use crate::ridges;
 use crate::shaders::{displaced_lighting_shader, mesh_shaders, post_shader};
 
 // ---------------------------------------------------------------------------
@@ -1373,7 +1374,10 @@ fn shaders() -> Vec<Value> {
         GROUND_SURFACE,
         NOISE,
     ));
-    set.push(post_shader(GRADE, &(atmosphere().wgsl() + POST_HELPERS)));
+    set.push(post_shader(
+        GRADE,
+        &(atmosphere().wgsl() + ridges::RIDGES + POST_HELPERS),
+    ));
     set
 }
 
@@ -1392,7 +1396,7 @@ fn atmosphere() -> Atmosphere {
         .ground(SKY_GROUND)
         .sun(SUN_TOWARD, [0.52, 0.34, 0.17], 110.0, 0.85)
         .disc([1.0, 0.90, 0.74], 0.99995)
-        .density(0.0034)
+        .density(0.0030)
         .scale_height(190.0)
 }
 
@@ -1594,10 +1598,40 @@ fn hash(pixel: vec2<f32>) -> f32 {
 /// whatever the pixel shows **and not over the sky**, which has already been drawn as the
 /// air's own colour: hazing it a second time would flatten the gradient the sky exists to
 /// have.
+///
+/// The one number this scene passes the painted ranges is [`RIDGE_SCALE`], and it is a fact
+/// about the cameras rather than about the ranges: two of the three look **down** on the yard
+/// from a height, which puts the whole horizon high in the picture, and layers scaled for a
+/// camera looking level come out as a band of colour across the upper sky rather than as a
+/// skyline standing on it.
 const GRADE: &str = r#"
+    /// How tall the painted ranges stand, as a fraction of the height the shared ridges draw
+    /// them at for a camera looking level.
+    ///
+    /// A yard is a **horizontal** subject and all three of this scene's cameras were placed to
+    /// read it as one: two stand above it and look down, and the third is on the far side of
+    /// the valley looking down the fall. A camera looking down puts the horizon high in the
+    /// picture, and a range scaled for a level camera therefore crests **above the modelled
+    /// far range's own silhouette** — the relationship backwards, and a painted range
+    /// standing taller than the real one behind it reads as a cloud bank rather than as
+    /// distance. Half puts the topmost layer just under the far range's own crest, which is
+    /// what leaves the painted ones showing only where the modelled silhouette dips: the
+    /// skyline gains two more ranges behind it in the places the real one has a saddle.
+    const RIDGE_SCALE: f32 = 0.50;
+
     let ray = ray_through(in.uv);
     if depth >= 1.0 {
-        color = air_sky(ray);
+        // The sky, and behind it the ranges the air has already closed over.
+        //
+        // The modelled far range is a hundred and seventy units off and comes out within a
+        // few levels of the sky it stands against — the closure there is over sixty percent
+        // and its own material is a near-neutral grey chosen to match the haze, so the two
+        // together leave a silhouette no wider than the quantisation. **So it is not asked
+        // to carry the horizon.** `ridges` paints three layers into the sky itself, which is
+        // drawn *after* the air, and where the modelled range's own silhouette dips they come
+        // through above it: three ridges receding, each a step deeper than the one behind,
+        // which is what a far range looks like and what one flat cut-out never does.
+        color = ridges(air_sky(ray), ray, RIDGE_SCALE);
     } else {
         let world = world_position(in.uv, depth);
         color = mix(color, air_colour(), air_closure(uniforms.camera.position, world));

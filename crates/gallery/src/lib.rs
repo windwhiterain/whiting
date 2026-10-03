@@ -16,6 +16,8 @@
 //!   an image, a camera, an instance.
 //! - [`air`] — the air a scene is drawn through, written once and handed to every stage, so
 //!   the sky and the haze a distant surface fades into are the same number.
+//! - [`ridges`] — far ranges painted into the sky behind whatever the air has already closed
+//!   over, for a horizon that is otherwise a patch of sky a shade off.
 //! - [`geometry`] — the generators that produce points: a heightfield, a sphere, a cuboid, and the
 //!   noise a heightfield is usually given.
 //! - [`shaders`] — WGSL the standard stages are written from, and the vertex attribute lists they
@@ -55,6 +57,7 @@ pub mod built;
 pub mod geometry;
 pub mod kit;
 pub mod land;
+pub mod ridges;
 pub mod shaders;
 
 mod dunes;
