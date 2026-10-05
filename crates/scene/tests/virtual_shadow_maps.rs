@@ -258,7 +258,16 @@ fn a_caster_is_recorded_at_its_own_level_and_at_every_one_coarser_than_it() {
     )
     .expect("two casters of two densities size one grid");
     let levels = allocation.lights[0].levels;
-    let own = caster_level(200.0, 400.0, levels);
+    // The grid's own width, read the way [`allocate`] reads it rather than written out, so the
+    // level the allocator chose and the level this asserts about are the same number.
+    let (_, far) = lamp().near_far();
+    let [half_x, _] = lamp().half_tangent();
+    let own = caster_level(
+        200.0,
+        2.0 * far * half_x,
+        allocation.lights[0].pages_per_side,
+        levels,
+    );
     assert_eq!(own, 1, "half the finest density is exactly one level down");
 
     for level in own..levels {

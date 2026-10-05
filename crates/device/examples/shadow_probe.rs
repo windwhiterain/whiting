@@ -242,12 +242,15 @@ const WALL: Caster = Caster {
 /// points of the ladder came back **byte for byte identical** while their pass counts fell from
 /// seven hundred and eighty nine to four hundred and seventy seven.
 ///
-/// The reason is the resolution rule rather than an arithmetic slip: a fragment walks finest to
-/// coarsest and stops at the first level that has a page, and a page is drawn with *every* caster
-/// whose projection covers it. So a fine page allocated for one caster also carries its neighbours,
-/// and a neighbouring caster's shadow is found at the neighbour's resolution whatever the
-/// neighbour asked for. **The density a caster declares decides the finest page it asks for; it does
-/// not decide how finely its own shadow is recorded wherever a finer page already exists.**
+/// The reason is the resolution rule rather than an arithmetic slip, and it is two rules meeting.
+/// A caster is drawn into its own level and every coarser one, never into a page finer than the
+/// density it asked for, so the wall — three levels coarser than this holder — is **not drawn into
+/// the level-zero pages the holder's footprint opened**. Those pages are empty where the wall's
+/// shadow falls. And the walk went from finest to coarsest and stopped at the first page that
+/// *existed*, read that emptiness as "nothing blocks the light", and returned, so the wall's own
+/// pages were allocated, drawn and paid for and then read by nobody. The rule the other half of
+/// the invariant needs is that a level which recorded nothing at this point has no opinion about
+/// it, and the walk goes on.
 const HOLDER: Caster = Caster {
     label: "holder",
     size: [0.30, 3.4, 0.8],
@@ -287,6 +290,12 @@ struct Measurement {
     /// A short fingerprint of the pixels, so "the picture did not change" is measured rather than
     /// inferred from two soft shares agreeing.
     fingerprint: String,
+    /// What each measurable caster's own share of the shadow was.
+    ///
+    /// The totals above are the sum over casters, which is the wrong number to compare when the
+    /// question is whether *one* caster's shadow survived a change to a neighbour: a frame that
+    /// gains a caster changes the total for reasons that have nothing to do with it.
+    casters: Vec<CasterShare>,
     /// Whether the offstage caster was in this camera's frame, when the scene placed one.
     caster_visible: Option<bool>,
     /// The casters this frame could not measure, each with why.
@@ -294,6 +303,16 @@ struct Measurement {
     /// A caster with no shadow and a caster whose shadow could not be measured are different
     /// answers, and a table that prints `0` for both cannot tell a reader which it is giving them.
     skipped: Vec<String>,
+}
+
+/// One caster's own share of a frame's shadow, counted over its own footprint.
+struct CasterShare {
+    /// The caster's name, as the probe names it.
+    label: String,
+    /// How much of its own shadow carried a shadow at all, in pixels.
+    shadow: u64,
+    /// How much of that was a partial shadow rather than a full one.
+    soft: u64,
 }
 
 /// The shape one light's virtual map was given, read out of the page table it answered with.
@@ -416,6 +435,7 @@ async fn run() -> Result<(), String> {
         probe_page_seams,
         probe_camera_clipping,
         probe_caster_height,
+        probe_level_walk,
     ] {
         for rendered in probe(&compiler, &registry, &renderer)? {
             if let Some(frame) = &rendered.frame {
@@ -482,10 +502,11 @@ fn probe_coin_and_castle(
 /// orders of magnitude and is the only one of the two that can tell a level from its neighbour.
 ///
 /// The grid is held by a caster standing **eight pages away** rather than by one standing beside the
-/// wall, for the reason [`HOLDER`] gives: a fine page allocated for a neighbour also carries this
-/// caster, and a fragment that finds a neighbour's page stops there. **It fails** if the four
-/// fingerprints are equal under both cameras, which would mean the level a caster is recorded at
-/// does not reach its own shadow even with nothing else in range.
+/// wall, for the reason [`HOLDER`] gives: a caster coarser than the holder is not drawn into the
+/// holder's finest pages, so the two rules this probe exists to separate — which level a caster is
+/// recorded at, and which level a receiver is answered from — are not the same question. **It
+/// fails** if the four fingerprints are equal under both cameras, which would mean the level a
+/// caster is recorded at does not reach its own shadow even with nothing else in range.
 fn probe_level_ladder(
     compiler: &StandardScene,
     registry: &Registry,
@@ -710,16 +731,22 @@ fn control_row(compiler: &StandardScene, registry: &Registry, renderer: &WgpuRen
 
 /// Probe six: the height at which a caster stops casting.
 ///
-/// `shadowed_pages` samples the shadow at the receiver **pushed along its own normal**, one and a
-/// half world units up, so that a surface does not shadow itself. For a flat floor that puts the
-/// lookup point in the air one and a half units above the ground, and **a caster shorter than that
-/// is not between the lamp and the point being sampled** — so its shadow is not soft, or absent, or
-/// found at the wrong level. It is simply not there.
+/// # The bug this was built for, and what is left of it
 ///
-/// This is a measurement of a number written in a shader, against two casters that differ in
-/// nothing but their height, and it is here because four of the five probes above were measuring a
-/// scene in which one of its two casters was casting nothing at all. **It fails** if the two frames
-/// are byte identical, and it is the one probe whose expectation is a *difference*.
+/// `shadowed_pages` samples the shadow at the receiver pushed along its own normal so that a
+/// surface does not shadow itself, and the push used to be a constant in world space. A constant is
+/// not a bias: at one and a half units it put the lookup point that far into the air, and **a caster
+/// shorter than the push was not between the lamp and the point being sampled** — so its shadow was
+/// not soft, or faint, or found at the wrong level. It was simply not there, and the frame said so
+/// with a hard edge where a soft one belonged. The push is one texel of the recording now, measured
+/// from the light's own projection, so no height is below it.
+///
+/// The ladder is kept because the measurement is the evidence: a 1.3-high caster casting a complete
+/// hard-edged shadow is the fact that the push is a texel and not a world constant, and it is the
+/// one row that would move first if the push ever became a constant again.
+///
+/// **It fails** if the frames are byte identical, which would mean the height no longer reaches the
+/// recording at all.
 fn probe_caster_height(
     compiler: &StandardScene,
     registry: &Registry,
@@ -741,6 +768,81 @@ fn probe_caster_height(
         )?);
     }
     Ok(rendered)
+}
+
+/// The slab: a coarse caster large enough to measure, standing where [`WALL`] stands.
+///
+/// Wider and taller than the wall because the wall's own shadow is 48 pixels in frame and a
+/// measurement needs 64. The height is the one probe six showed to be inside the cone, and the
+/// width is what makes the footprint larger than that floor.
+const SLAB: Caster = Caster {
+    label: "slab",
+    size: [2.2, 2.1, 2.2],
+    at: [2.2, 0.0, -1.9],
+    tint: [1.0, 0.55, 0.05],
+    density: Some(COARSE_DENSITY),
+};
+
+/// Probe seven: a coarse caster whose shadow lands inside a finer caster's pages.
+///
+/// # What it separates
+///
+/// [`probe_level_ladder`] varies the density of a caster while the grid is held by another, and it
+/// cannot tell a shadow that was lost from a shadow that was recorded coarsely. This one holds the
+/// **slab** fixed — the same density, the same size, the same spot, in all three frames — and varies
+/// only the neighbour standing next to it, so every difference between the frames is a difference in
+/// what the neighbour did to the slab's shadow.
+///
+/// Three frames, and the middle one is the control that makes the outer two mean something:
+///
+/// - **alone.** Nothing sets the grid but the slab, so the slab is at level zero and the walk finds
+///   its page on the first step. This is the reference: the shadow the slab is owed.
+/// - **beside a coarse neighbour.** The neighbour asks for the slab's own density, so it is drawn
+///   into the same pages the slab is, neither page is empty, and the slab's share must be the
+///   reference's. A difference here would be the walk itself and nothing to do with the levels.
+/// - **under a fine neighbour.** The neighbour asks for the finest density, so it opens pages the
+///   slab is not drawn into, and those pages are empty across the whole of the slab's shadow. The
+///   walk has to step over them to reach the slab's own level.
+///
+/// **It fails** if the slab's own share is smaller under the fine neighbour than it is beside the
+/// coarse one, and **it fails** if the coarse neighbour moved it at all. The first is the shadow
+/// being lost; the second is a walk that answers somewhere it should not have.
+fn probe_level_walk(
+    compiler: &StandardScene,
+    registry: &Registry,
+    renderer: &WgpuRenderer,
+) -> Result<Vec<Rendered>, String> {
+    let coarse_neighbour = Caster {
+        label: "neighbour-coarse",
+        density: Some(COARSE_DENSITY),
+        ..HOLDER
+    };
+    Ok(vec![
+        render_one(
+            compiler,
+            registry,
+            renderer,
+            "probe7-slab-alone",
+            &[SLAB],
+            0,
+        )?,
+        render_one(
+            compiler,
+            registry,
+            renderer,
+            "probe7-slab-beside-coarse",
+            &[coarse_neighbour, SLAB],
+            0,
+        )?,
+        render_one(
+            compiler,
+            registry,
+            renderer,
+            "probe7-slab-under-fine",
+            &[HOLDER, SLAB],
+            0,
+        )?,
+    ])
 }
 
 /// Builds the scene one probe renders.
@@ -964,6 +1066,7 @@ fn render_one(
                     leaks: 0,
                     floor_pixels: 0,
                     fingerprint: "--------".to_owned(),
+                    casters: Vec::new(),
                     caster_visible: None,
                     skipped: Vec::new(),
                 },
@@ -993,7 +1096,8 @@ fn render_one(
         })?;
 
     let floor = resolve_floor(present, positions, casters);
-    let (shadow_pixels, soft_pixels, leaks, skipped) = measure_shadow(&floor, casters);
+    let (shadow_pixels, soft_pixels, leaks, casters_measured, skipped) =
+        measure_shadow(&floor, casters);
 
     Ok(Rendered {
         measurement: Measurement {
@@ -1006,6 +1110,7 @@ fn render_one(
             leaks,
             floor_pixels: floor.pixels.iter().filter(|pixel| pixel.is_some()).count() as u64,
             fingerprint: frame_fingerprint(&frame),
+            casters: casters_measured,
             caster_visible: casters
                 .iter()
                 .find(|caster| caster.label == OFFSTAGE.label)
@@ -1321,10 +1426,14 @@ fn distance_to_quad(point: (f32, f32), quad: [(f64, f64); 4]) -> f64 {
 /// something: a shadow is a small region with a large internal contrast against its surroundings,
 /// which is the one shape in which "how much of this is a partial" is a fact about resolution
 /// rather than about the lamp.
-fn measure_shadow(floor: &Floor, casters: &[Caster]) -> (u64, u64, u64, Vec<String>) {
+fn measure_shadow(
+    floor: &Floor,
+    casters: &[Caster],
+) -> (u64, u64, u64, Vec<CasterShare>, Vec<String>) {
     let mut shadow_pixels = 0;
     let mut soft_pixels = 0;
     let mut leaks = 0;
+    let mut shares = Vec::new();
     let mut skipped = Vec::new();
     for caster in casters {
         let footprint = shadow_footprint(caster);
@@ -1368,16 +1477,25 @@ fn measure_shadow(floor: &Floor, casters: &[Caster]) -> (u64, u64, u64, Vec<Stri
         }
         let dark_edge = darkest + DARK_EDGE * (lit - darkest);
         let lit_edge = darkest + LIT_EDGE * (lit - darkest);
+        let mut own_shadow = 0;
+        let mut own_soft = 0;
         for (_, _, value) in &region {
             if *value <= dark_edge {
                 shadow_pixels += 1;
+                own_shadow += 1;
             } else if *value < lit_edge {
                 soft_pixels += 1;
+                own_soft += 1;
             }
         }
+        shares.push(CasterShare {
+            label: caster.label.to_owned(),
+            shadow: own_shadow,
+            soft: own_soft,
+        });
         leaks += count_leaks(floor, &region, dark_edge, lit_edge);
     }
-    (shadow_pixels, soft_pixels, leaks, skipped)
+    (shadow_pixels, soft_pixels, leaks, shares, skipped)
 }
 
 /// Returns why a caster's shadow cannot be lit at all, which is a statement about the lamp rather
@@ -1461,7 +1579,7 @@ fn count_leaks(floor: &Floor, region: &[(i64, i64, f32)], dark_edge: f32, lit_ed
 /// The question is one of two: **did the picture change at all** when a density moved. That is a
 /// change detector, and a sixty four bit FNV over four million pixels puts a collision between two
 /// frames of one run far below anything a reader would act on. `render.rs` carries a full SHA-256
-/// because it compares frames across runs and across machines; a probe comparing six frames of one
+/// because it compares frames across runs and across machines; a probe comparing the frames of one
 /// run does not need two hundred lines of FIPS 180-4 to answer the question, and the column is
 /// here so that "the level ladder changed nothing" is a **measured** statement rather than one
 /// inferred from two soft shares agreeing to the digit.
@@ -1564,6 +1682,12 @@ say which one it is cannot be read.
         ));
         for reason in &measurement.skipped {
             report.push_str(&format!("{:<23}   not measured: {reason}\n", ""));
+        }
+        for share in &measurement.casters {
+            report.push_str(&format!(
+                "{:<23}   {}: {} px shadow, {} px soft\n",
+                "", share.label, share.shadow, share.soft
+            ));
         }
     }
 

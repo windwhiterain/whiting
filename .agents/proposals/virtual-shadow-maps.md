@@ -78,11 +78,27 @@ level `k` is the same grid with pages covering `2^k × 2^k` finest pages each
 
 ### 3. Adaptive precision: a caster lands on the level its density buys
 
-Following `caster_level(density, max_density, levels)`: a caster at full density is a
-level-0 caster; one at a quarter of it lands on level 2. Its pages are allocated at its
-own level **and at every finer level down to 0**, so a receiver asking for fine data
-where only coarse exists falls back along a chain that is never broken. The number of
-pages a caster covers at level `k` is the span of its projection on the grid —
+`caster_level(density, plane_width, pages_per_side, levels)` puts a caster on the coarsest
+level whose texel is still no finer than it asked for, measured against the grid that was
+actually built rather than against the density the light was asked for: level `k` covers
+`plane_width * 2^k / (pages_per_side * PAGE_SIZE)` world units at the far plane, and a caster
+asking for `density` is recorded no coarser than `1 / density`. The grid's side is rounded up
+to a whole power of two, so the two differ and the grid is the one that decides.
+
+Its pages are allocated at its own level **and at every coarser level**. Never at a finer one:
+a page holds one depth per texel, so a caster cannot be recorded into a resolution finer than
+the one it declared. That is what makes the reading end a **walk** rather than a lookup — a
+receiver goes from finest to coarsest and a level that recorded nothing at its point does not
+answer, so it reaches the coarse caster the neighbour's finer page did not carry. The two
+halves are one rule: a page that merely *exists* is not a page that recorded this point.
+
+> Superseded: this section originally said pages were allocated at the caster's own level and
+> at every **finer** level down to 0. That was never implemented, and it is the opposite of what
+> the design needs — it would put every coarse caster's geometry into every fine page over it,
+> which is the page explosion section 5 is about. The chain the sentence was reaching for is
+> unbroken by the walk, not by a caster appearing in pages it declined.
+
+The number of pages a caster covers at level `k` is the span of its projection on the grid —
 `ceil(2 * radius / world_per_page) + 2` — clamped to the grid.
 
 ### 4. Frustum clipping of the distribution region

@@ -43,8 +43,12 @@
 //!   [`Shortfall`] naming the light and the demand. The alternative is a scene that renders and
 //!   quietly records its shadows at a fraction of the resolution it asked for.
 //! - **A caster's chain of levels is never broken.** A caster is drawn into its own level and
-//!   every coarser one, so the coarsest level a light has always holds it and a receiver that
-//!   finds nothing at a finer level always finds something further down the walk.
+//!   every coarser one, never into a page finer than the density it asked for, so the coarsest
+//!   level a light has always holds it. The reading end is the other half of the same promise: a
+//!   receiver walks the levels from finest to coarsest and a level that recorded **nothing** at
+//!   its point does not answer, so a receiver that finds nothing at a finer level always finds
+//!   something further down the walk. The two halves are one rule, and a page that merely exists
+//!   is not the same as a page that recorded this point's caster.
 //! - **The table is the only lookup a shader is given**, and it is laid out so that resolving a
 //!   page is one mask test and one popcount. See [`table_words`] and [`Allocation::resolve`],
 //!   which is that walk written in Rust so the two ends of the encoding are tested against each
@@ -772,23 +776,43 @@ pub fn mask_word(pages_per_side: u32, level: u32, faces: u32, face: u32, row: u3
     base_word(pages_per_side, level, faces, face, row) + 1
 }
 
-/// The level a caster of this density is recorded at, given the finest density the light saw.
+/// The level a caster of this density is recorded at, given the grid the light was given.
 ///
-/// A caster at the light's maximum density is level zero; one at half of it cannot tell level
-/// zero from level one, so it is level one, and a quarter is level two. A density of zero or less
-/// is the **coarsest** level the grid has rather than the finest one: such a caster still shadows,
-/// and it must not be the reason a page is allocated finer than anything asked for.
-pub fn caster_level(density: f64, max_density: f64, levels: u32) -> u32 {
+/// # The constraint, stated as a resolution and not as a ratio
+///
+/// A level-`k` texel is the light's own plane divided by `pages_per_side` pages of `PAGE_SIZE`
+/// texels and then doubled `k` times, so at the far plane — the widest the plane ever is, and
+/// therefore the depth at which a texel is coarsest — it is
+///
+/// ```text
+/// world_units(k) = plane_width * 2^k / (pages_per_side * PAGE_SIZE)
+/// ```
+///
+/// A caster asking for `density` texels a world unit asked for a texel of `1 / density`, and is
+/// recorded no coarser than it asked for when `world_units(k) <= 1 / density`. The level is the
+/// **largest** one that still holds, because that is the cheapest recording that keeps the
+/// promise: a level finer than this one would hand the caster a precision it declined.
+///
+/// The density the constraint is measured against is the grid's own, not the density the light
+/// was asked for. `grid_side_for` rounds a whole number of pages up to a power of two, so the
+/// built level zero is *finer* than `1 / finest_density_asked` and a ratio measured against the
+/// ask would keep a caster a level above the one its own declaration pays for.
+///
+/// A density of zero or less is the **coarsest** level the grid has rather than the finest one:
+/// such a caster still shadows, and it must not be the reason a page is allocated finer than
+/// anything asked for. It is a sentinel rather than a number, and it is the one case the
+/// constraint cannot evaluate.
+pub fn caster_level(density: f64, plane_width: f64, pages_per_side: u32, levels: u32) -> u32 {
     let levels = levels.max(1);
     if density <= 0.0 {
         return levels - 1;
     }
-    if max_density <= density {
-        return 0;
-    }
-    let ratio = (max_density / density).floor().max(1.0);
+    // The grid's own density at level zero, in texels a world unit, read off the grid rather than
+    // off the demand that sized it. Level `k` halves that `k` times, and the level wanted is the
+    // last one whose density the caster's own would not have wanted to be finer than.
+    let finest = f64::from(pages_per_side) * f64::from(PAGE_SIZE) / plane_width.max(1e-9);
     let mut level = 0_u32;
-    while level + 1 < levels && f64::from(1_u32 << (level + 1)) <= ratio {
+    while level + 1 < levels && f64::from(1_u32 << (level + 1)) <= finest / density {
         level += 1;
     }
     level
@@ -1025,7 +1049,7 @@ pub fn allocate(plans: &[LightPlan], budget: &Budget) -> Result<Allocation, Shor
 
         let mut wanted: HashMap<(u32, u32, u32, u32), Vec<u32>> = HashMap::new();
         for caster in &live {
-            let own = caster_level(caster.density, max_density, levels);
+            let own = caster_level(caster.density, width, pages_per_side, levels);
             let rect = footprint(&plan.volume, caster);
             for level in own..levels {
                 let (x0, x1, y0, y1) = cover(pages_per_side, level, &rect);
