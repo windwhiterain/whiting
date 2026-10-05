@@ -532,22 +532,30 @@ fn a_point_outside_the_volume_has_no_answer_and_one_inside_it_falls_down_the_cha
         "the caster's own place on the plane was not answered at the level it asked for"
     );
 
-    // A place the caster does **not** cover still has an answer, and it is the coarsest one the
-    // chain reached rather than no answer at all. This is the invariant "a caster's chain of
-    // levels is never broken" doing its work: a caster is recorded at its own level and at every
-    // coarser one, and a coarse page covers a wide slice of the plane, so a receiver far from
-    // every fine page finds something further down the walk and reads it blurred.
+    // A place this caster does not cover has **no** answer, and that is the answer.
     //
-    // The middle of the cone is the point that shows this, and it is also the shared corner of
-    // every page of the coarsest level — which is why the claim is about *which level* answers and
-    // not about whether one does.
+    // This used to be asserted the other way round, and the margin is why. The caster stands at
+    // `[0.8, 0.8]` with a radius of two hundredths, so its silhouette is a small disc over there
+    // and the middle of the cone is nowhere near anything it could shadow; a one page margin at
+    // the coarsest level covered the whole of a two by two grid and handed the middle of the cone
+    // a page anyway. The assertion said that a receiver far from every fine page falls down the
+    // chain and reads something blurred, and it was really asserting that *some page somewhere in
+    // the cone* answers — which is not a property the design wants, because a page that recorded
+    // nothing is a shadow for a place nothing was drawn into.
+    //
+    // The property worth having is the other one, and
+    // `a_caster_is_recorded_at_its_own_level_and_at_every_one_coarser_than_it` is where it lives:
+    // **the caster's own shadow is answered at every level from its own down to the coarsest**, so
+    // nothing inside its footprint ever falls off the end of the walk. A point outside that
+    // footprint has no caster over it, reads nothing, and is lit — which is what the walk's
+    // "a level that recorded nothing does not answer" rule is for.
     assert_eq!(
         allocation
             .resolve(&volume, 0, place(&volume, [0.0, 0.0], 2.0))
             .map(|found| found.level),
-        Some(3),
-        "the middle of the cone answered at a level no page of the caster's covers, which is a \
-         shadow for a place nothing was drawn into at that resolution"
+        None,
+        "the middle of the cone answered, and nothing is drawn there: a page that recorded no \
+         caster is a shadow for a place that has no caster"
     );
 
     // And the two places that genuinely have no page anywhere: outside the cone's own plane, and

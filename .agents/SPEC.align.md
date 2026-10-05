@@ -2396,15 +2396,27 @@ measured that no reading of the design would have predicted.
   (`shadow_atlas_side_pages`), but an author reading it for the first time will take a budget for
   a bug. A feature whose first increment is "you must now also raise a second number" has two
   knobs, not one, whatever the schema says.
-- **Padding a caster's footprint by two pages of its own level is what keeps the level chain
-  unbroken, and it also means the map is not sparse where it looks sparse.** On an 8-page grid the
-  margin alone is five pages across, so four casters cover all sixty-four level-zero pages between
-  them and the coarsest level is allocated whole. The consequence is a *cost* at the default: 85
-  pages where the pool had one texture, and 242 shadowing passes where it had 4, at the same
-  resolution, because a page is a render pass and passes do not come free. What the grid buys at
-  the default is nothing at all; it buys the levels an author asks for. **A virtual map is not a
-  cheaper shadow map, it is a more adjustable one**, and any pitch that promises otherwise will be
-  falsified by the first scene that declares nothing.
+- **A caster's footprint was padded by a page a side, and the padding bought nothing anybody had
+  measured.** The margin was one page of the level being covered, which is a twelfth of the plane at
+  level zero and half of it at the coarsest, so four casters in a small cone covered the whole
+  pyramid. Removing it: `spotlight` goes from 242 shadowing passes to 189, a probe's five-caster
+  scene from 85 passes to 43 and from 50 pages to 27 with its atlas from 8 to 6 a side, and
+  **twenty eight of the twenty nine rendered frames come back byte for byte identical** with every
+  per-caster shadow count unchanged and `leaks` at zero in both. The one frame that moves is the
+  grazing camera looking away from the scene, and it moves by pixels the thresholds do not see —
+  which is a receiver just outside a caster's footprint finding no page and reading a coarser one,
+  the exact case the margin was insuring against, and a case worth a few penumbra pixels.
+  **A blanket margin answers one unmeasured case with slack every caster in the scene pays for.**
+- **`spotlight` allocates all eighty five of its grid's pages, and the padding was not why.** The
+  measurement that removed the padding left this scene's page count exactly where it was while a
+  probe's halved, so the binding constraint here is something else: a floor eighteen units across is
+  a caster, and `footprint` gives a sphere whose cone is wider than the plane the answer returns for
+  it — a radius larger than its own distance clamps the ratio and the whole grid belongs to the
+  receiver. So the cost at the default is **the receiver being a caster**, which is the price of a
+  floor whose own shadow is not missing, and not page arithmetic. What the grid buys at the default
+  is nothing; it buys the levels an author asks for. **A virtual map is not a cheaper shadow map, it
+  is a more adjustable one**, and any pitch that promises otherwise is falsified by the first scene
+  that declares nothing.
 - **There is no fifth storage buffer, so the page table lives inside the record buffer, so the
   record run can no longer be declared as the struct array it is.** Four is
   `max_storage_buffers_per_shader_stage` and the clustered pass spends all four. The table is
