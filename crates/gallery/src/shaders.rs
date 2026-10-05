@@ -846,34 +846,24 @@ const PUSH_TEXELS: f32 = 1.0;
 ///
 /// The light's projection puts the surface somewhere in the light's normalised plane, and the
 /// plane is a grid of pages whose finest side the compiler worked out from what its casters asked
-/// for. A caster is drawn into its own level and every coarser one, and never into a finer page
-/// than it asked for, so the page that holds this point's shadow is not simply the finest page
-/// that exists — it is the finest page that **recorded something here**. The chain is walked from
-/// the finest level down and a level answers only if its row says the page was allocated *and*
-/// the page recorded a caster at this point; a level that recorded nothing here has no opinion
-/// about this point and the walk goes on to the next one down.
+/// for. A caster is drawn into **the one level its own density buys** and into no other, so a level
+/// holds only the casters that asked for that level and no page answers about anything else. The
+/// chain is therefore walked from the finest level down and **stops at the first level that shadows
+/// this point**: a level that does not shadow it, whether because it has no page or because its
+/// page holds no caster covering this point, is passed through rather than answered from.
 ///
-/// # Why the two conditions are one condition
+/// # Why passing a level through is not the same as answering from it
 ///
-/// The finest level that has a caster over a point is exactly the finest of the levels its
-/// covering casters asked for, and every caster coarser than that level is drawn into that level
-/// as well. So the page that answers carries *every* caster that could shadow this point, at the
-/// resolution of the finest of them. Stopping at the first page that merely **exists** instead
-/// would stop at a page a neighbour's footprint opened and this point's own caster was never
-/// drawn into, read its emptiness as "nothing blocks the light", and lose the shadow — which is
-/// the failure `vshadow.rs` names as forbidden.
+/// A page a neighbour's footprint opened is **empty** where a coarser caster's shadow falls, and an
+/// empty page reads as lit. Answering there — which is what stopping at the first page that exists
+/// does — loses the coarser caster's shadow entirely, and the walk would never reach the level it
+/// was actually drawn into. Reading through to it instead is what makes a caster's single level
+/// enough. Neither half survives alone: a caster in every level from its own down would make the
+/// first page answer, and a caster in one level needs a walk that keeps going past an empty one.
 ///
 /// It is one mask test, one popcount and at most nine taps per level, four levels at most, and
-/// the reason a table exists rather than a search.
-///
-/// # What a level that recorded a caster still does not answer
-///
-/// A page holds one depth per texel, so a caster recorded there occupies it. Where a finer caster
-/// is rasterized over a point and a coarser one would also have covered it, the coarser one is
-/// not in that page and this walk cannot reach it. That is the consequence of keeping casters out
-/// of pages finer than they asked for, and it is a resolution the design spends rather than a
-/// shadow it drops: the coarser caster is still in the frame, at its own level, wherever no finer
-/// page stands over it.
+/// the reason a table exists rather than a search. A fragment in shadow costs one level; a
+/// fragment in none of them costs all of them, because only a shadow breaks the walk.
 ///
 /// A page's slot is not its number in the grid but its rank among the pages of its own row, which
 /// is what lets the popcount be the answer and the atlas be filled by whatever order the compiler
@@ -1025,10 +1015,6 @@ fn shadowed_pages(
         let bias = (0.0006 + 0.003 * slope) * f32(1u << level);
         let layer = i32(address.y);
         var lit = 0.0;
-        // How many of the nine taps found a page texel that a caster wrote, as against the clear
-        // the atlas layer carries where nothing drew. A page that recorded nothing here has no
-        // opinion about this point, and the walk below is what asks the next level.
-        var held = 0.0;
         for (var r = -1; r <= 1; r = r + 1) {{
             for (var c = -1; c <= 1; c = c + 1) {{
                 let tap = clamp(
@@ -1036,15 +1022,23 @@ fn shadowed_pages(
                     origin,
                     origin + vec2<i32>(i32(PAGE_TEXELS) - 1),
                 );
-                let depth = textureLoad(shadow_atlas, tap, layer, 0);
-                held = held + select(0.0, 1.0, depth >= 1.0);
-                lit = lit + select(0.0, 1.0, at.z - bias <= depth);
+                lit = lit + select(0.0, 1.0, at.z - bias
+                    <= textureLoad(shadow_atlas, tap, layer, 0));
             }}
         }}
-        if held == 9.0 {{
-            continue;
+        // **Once shadowed, stop.** A caster is drawn into the one level its density buys, so a
+        // level that does not shadow this point holds no caster that does, and the next level down
+        // is the only place the rest of them can be. A level with no page, and a level whose page
+        // recorded nothing at this point, both read as nine lit taps and fall out of here by the
+        // same test — which is why there is no separate emptiness check to keep in step with this
+        // one.
+        //
+        // The fraction is this level's, not a sum over the levels: the first level that registers
+        // a shadow is the one whose resolution the answer is stated at, and a coarse level is never
+        // blended into a fine one.
+        if lit < 9.0 {{
+            return lit / 9.0;
         }}
-        return lit / 9.0;
     }}
     return 1.0;
 }}

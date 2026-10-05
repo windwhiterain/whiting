@@ -246,12 +246,12 @@ fn finest_level(allocation: &Allocation, handle: u32) -> Option<u32> {
 }
 
 #[test]
-fn a_caster_is_recorded_at_its_own_level_and_at_every_one_coarser_than_it() {
+fn a_caster_is_recorded_at_the_one_level_its_density_buys_and_at_no_other() {
     let allocation = allocate(
         &[plan(vec![
             caster(1, [0.3, 0.0], 2.0, 0.05, 400.0),
             // Half the finest density, so one level down, and a ball big enough to cover a span of
-            // pages at every level it is drawn into.
+            // pages there.
             caster(2, [-0.2, 0.1], 2.5, 0.3, 200.0),
         ])],
         &spendable(Vec::new()),
@@ -270,14 +270,29 @@ fn a_caster_is_recorded_at_its_own_level_and_at_every_one_coarser_than_it() {
     );
     assert_eq!(own, 1, "half the finest density is exactly one level down");
 
-    for level in own..levels {
+    assert!(
+        allocation
+            .pages
+            .iter()
+            .any(|page| page.level == own && page.casters.contains(&2)),
+        "the coarse caster has no page at the one level its density buys, so a receiver walking \
+         down to it finds nothing anywhere and the shadow is lost"
+    );
+    // **And at no other level.** This is the whole of the design and it is a claim about absence,
+    // not about presence: a caster copied into every level from its own down would be recorded
+    // four times over, its finest copy would answer for a receiver standing far from it, and the
+    // level it asked for would be a statement about the cheapest copy rather than about the caster.
+    for level in 0..levels {
+        if level == own {
+            continue;
+        }
         assert!(
-            allocation
+            !allocation
                 .pages
                 .iter()
                 .any(|page| page.level == level && page.casters.contains(&2)),
-            "the sparse caster vanished at level {level} of {levels}, so a receiver asking for its \
-             shadow there falls off the end of a chain that was supposed to be unbroken"
+            "the coarse caster was drawn into level {level} as well as its own, so the walk stops at \
+             a copy of it recorded at a resolution it declined"
         );
     }
     assert_eq!(

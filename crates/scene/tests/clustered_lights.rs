@@ -253,15 +253,14 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             // the virtual map exists to refuse. A scene that wants the old count asks for it by
             // naming a lower `shadow_density`, and the pages come down with it.
             //
-            // It was 242 until a caster's footprint stopped being padded by a page a side. A page
-            // is a twelfth of the plane at level zero and half of it at the coarsest, so the
-            // margin was covering most of the pyramid on its own and this scene allocated all
-            // eighty five of its grid's pages. The bounding sphere is already wider than the
-            // silhouette it bounds, and it is the one statement of how much of the plane a caster
-            // reaches, so nothing is added to it.
+            // It was 242, and 179 until a caster stopped being drawn into every level from its own
+            // down. `SPEC/render/virtual_shadow.md` puts each instance in the one layer its
+            // required resolution buys and nothing else, so the copies at the coarser levels are
+            // gone and with them the passes that drew them. A caster copied four ways is recorded
+            // four times over and its finest copy answers for a receiver standing far from it.
             "spotlight",
             Stages {
-                shadowing: 179,
+                shadowing: 123,
                 depthing: 4,
                 lighting: 4,
                 other: 1,

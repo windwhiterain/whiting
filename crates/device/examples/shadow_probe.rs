@@ -242,15 +242,13 @@ const WALL: Caster = Caster {
 /// points of the ladder came back **byte for byte identical** while their pass counts fell from
 /// seven hundred and eighty nine to four hundred and seventy seven.
 ///
-/// The reason is the resolution rule rather than an arithmetic slip, and it is two rules meeting.
-/// A caster is drawn into its own level and every coarser one, never into a page finer than the
-/// density it asked for, so the wall — three levels coarser than this holder — is **not drawn into
-/// the level-zero pages the holder's footprint opened**. Those pages are empty where the wall's
-/// shadow falls. And the walk went from finest to coarsest and stopped at the first page that
-/// *existed*, read that emptiness as "nothing blocks the light", and returned, so the wall's own
-/// pages were allocated, drawn and paid for and then read by nobody. The rule the other half of
-/// the invariant needs is that a level which recorded nothing at this point has no opinion about
-/// it, and the walk goes on.
+/// The reason was the reading rule rather than an arithmetic slip. A caster is drawn into **the one
+/// level its density asks for** and into no other, so the wall — three levels coarser than this
+/// holder — is nowhere in the level-zero pages the holder's footprint opened, and those pages are
+/// empty across the whole of the wall's shadow. The walk went from finest to coarsest and stopped at
+/// the first page that *existed*, read that emptiness as "nothing blocks the light", and returned,
+/// so the wall's own page was allocated, drawn and paid for and then read by nobody. Passing a level
+/// through instead of answering from it is what makes one layer per caster enough.
 const HOLDER: Caster = Caster {
     label: "holder",
     size: [0.30, 3.4, 0.8],
@@ -502,11 +500,11 @@ fn probe_coin_and_castle(
 /// orders of magnitude and is the only one of the two that can tell a level from its neighbour.
 ///
 /// The grid is held by a caster standing **eight pages away** rather than by one standing beside the
-/// wall, for the reason [`HOLDER`] gives: a caster coarser than the holder is not drawn into the
-/// holder's finest pages, so the two rules this probe exists to separate — which level a caster is
-/// recorded at, and which level a receiver is answered from — are not the same question. **It
-/// fails** if the four fingerprints are equal under both cameras, which would mean the level a
-/// caster is recorded at does not reach its own shadow even with nothing else in range.
+/// wall, for the reason [`HOLDER`] gives: a caster coarser than the holder is in **no** page the
+/// holder opened, so the two things this probe exists to separate — which level a caster is recorded
+/// at, and which level a receiver is answered from — are not the same question. **It fails** if the
+/// four fingerprints are equal under both cameras, which would mean the level a caster is recorded at
+/// does not reach its own shadow even with nothing else in range.
 fn probe_level_ladder(
     compiler: &StandardScene,
     registry: &Registry,
@@ -801,12 +799,13 @@ const SLAB: Caster = Caster {
 ///   into the same pages the slab is, neither page is empty, and the slab's share must be the
 ///   reference's. A difference here would be the walk itself and nothing to do with the levels.
 /// - **under a fine neighbour.** The neighbour asks for the finest density, so it opens pages the
-///   slab is not drawn into, and those pages are empty across the whole of the slab's shadow. The
-///   walk has to step over them to reach the slab's own level.
+///   slab is in no part of, and those pages are empty across the whole of the slab's shadow. The
+///   walk reads them, finds nothing shadowing, and goes on to the level the slab is in.
 ///
 /// **It fails** if the slab's own share is smaller under the fine neighbour than it is beside the
-/// coarse one, and **it fails** if the coarse neighbour moved it at all. The first is the shadow
-/// being lost; the second is a walk that answers somewhere it should not have.
+/// coarse one, and **it fails** if the coarse neighbour moved it at all. The first is a level that
+/// answered about a caster it does not contain; the second is a walk that answers somewhere it
+/// should not have.
 fn probe_level_walk(
     compiler: &StandardScene,
     registry: &Registry,
