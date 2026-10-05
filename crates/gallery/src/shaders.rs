@@ -831,6 +831,15 @@ fn shadowed(
 /// each other.
 const PAGE_TEXELS: u32 = 128u;
 
+/// How many levels a light's table carries offsets for, which is the length of the second offset
+/// array in it.
+///
+/// **This is a constant of the layout and not a number the record carries.** The offsets are read
+/// before the walk knows how many levels this light has, and a light with fewer than the maximum
+/// simply has offsets it never reads. It is `MAX_LEVELS` in `crates/scene/src/vshadow.rs`, and
+/// `crates/scene/tests/spot_lights.rs` holds the two against each other.
+const LEVELS_TABLE: u32 = 4u;
+
 /// How many of the light's own plane texels a receiver is read off its own surface by.
 ///
 /// One, because a texel is the smallest thing the recording can say: a point read a whole texel
@@ -990,6 +999,21 @@ fn shadowed_pages(
         let across = max(pages_per_side >> level, 1u);
         let page_x = min(texel.x / shift, across - 1u);
         let page_y = min(texel.y / shift, across - 1u);
+        // **Nothing at this level or below, and the walk is over.** The level above carries a mask
+        // over this level's grid, one bit per page, set where this level and every coarser one are
+        // empty over that page — so one bit test replaces reading the page and then, if it recorded
+        // nothing, reading every level under it as well. The mask is a statement about *all* the
+        // levels below and never about the one above, which is what makes stopping here safe: an
+        // empty level says nothing about the levels beneath it, since a caster that asked for a
+        // coarse level casts quite happily where a fine one does not.
+        if level > 0u {{
+            let sparse_section = bitcast<u32>(light_records[header + 2u + LEVELS_TABLE + level - 1u]);
+            let sparse_index = page_y * across + page_x;
+            let sparse_bits = bitcast<u32>(light_records[header + sparse_section + sparse_index / 32u]);
+            if (sparse_bits & (1u << (sparse_index % 32u))) != 0u {{
+                return 1.0;
+            }}
+        }}
         // One base slot, then the mask words of a row of `across` pages.
         let words = 1u + (across + 31u) / 32u;
         let section = bitcast<u32>(light_records[header + 2u + level]);

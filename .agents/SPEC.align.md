@@ -2451,6 +2451,18 @@ measured that no reading of the design would have predicted.
   branch. That is what happens when a rule is stated as a property of the *answer* rather than as a
   proxy for it: a proxy needs its own bookkeeping, and the bookkeeping drifts from the property the
   moment the design moves.
+- **A `Sparsity` bit is per page, and the cost that remains is a page that exists and recorded
+  nothing at the receiver.** The mask is correct, free and provably answer-preserving — twenty eight
+  of twenty eight frames byte identical, pages and passes unchanged — and it does **not** deliver
+  what it was added for. It cannot, and the arithmetic is the reason: an empty level already cost
+  one word read, because "no page here" is one mask test, so the mask replaces *N* tests over an
+  empty tail with one. In `spotlight` that tail is three levels, so it saves two word reads. The
+  nine taps of a level whose page exists but recorded nothing at this texel are untouched, and a bit
+  per page cannot see them, because the page is not empty — it is empty **here**. Cutting that needs
+  a mask finer than a page, and a caster's footprint rectangle is enough to build one on the CPU
+  without a GPU pass: mark a sub-tile clear when no caster's rectangle reaches it, which is
+  conservative in the direction that matters. **An optimisation aimed at a cost should be measured
+  against that cost before it is built, and this one was aimed at the wrong number.**
 - **There is no fifth storage buffer, so the page table lives inside the record buffer, so the
   record run can no longer be declared as the struct array it is.** Four is
   `max_storage_buffers_per_shader_stage` and the clustered pass spends all four. The table is

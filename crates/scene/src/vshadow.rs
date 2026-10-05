@@ -133,9 +133,11 @@ pub const MAX_PAGES_PER_SIDE: u32 = 512;
 /// then the level count and the face count packed into one.
 pub const TABLE_HEAD_WORDS: u32 = 2;
 
-/// Words between the header and the first row of any level: one offset per level, so a shader
-/// walks straight into a section without repeating this module's cumulative arithmetic.
-pub const PREFIX_WORDS: u32 = MAX_LEVELS;
+/// Words between the header and the first row of any level: one offset per level for the level's
+/// rows and one for the level's **sparsity** mask, so a shader walks straight into either without
+/// repeating this module's cumulative arithmetic. They are two arrays of the same length and the
+/// second one is the answer to "is there anything at all at this level or below".
+pub const PREFIX_WORDS: u32 = MAX_LEVELS * 2;
 
 /// How many bits a header field is packed into.
 const PACK: u32 = 16;
@@ -590,16 +592,43 @@ impl Allocation {
         Some(self.table[grid.base(level, face, row)] + rank)
     }
 
+    /// Whether this level's sparsity mask says there is nothing at it or below, read out of the
+    /// table rather than recomputed, so this and the shader are held against the same bytes.
+    ///
+    /// The mask is indexed on the level **above** the one it is written for, because a level's mask
+    /// is a statement about the level the walk reaches next. A level with no level above it in the
+    /// walk has no mask, and asking about it answers "no" — there is nothing further to find.
+    fn sparse_at(
+        &self,
+        grid: &Grid,
+        pages_per_side: u32,
+        levels: u32,
+        level: u32,
+        page_x: u32,
+        page_y: u32,
+    ) -> bool {
+        if level == 0 || level >= levels {
+            return false;
+        }
+        let across = pages_at_level(pages_per_side, level);
+        if page_x >= across || page_y >= across {
+            return false;
+        }
+        let at =
+            grid.table_offset + sparsity_section(pages_per_side, level - 1, grid.faces) as usize;
+        let index = (page_y * across + page_x) as usize;
+        self.table[at + index / 32] & (1 << (index % 32)) != 0
+    }
+
     /// The first page a world point's shadow is read from, mirroring the walk the table is laid out
     /// for.
     ///
     /// This is the shader's side of the encoding written out in Rust, and it exists so that the two
     /// ends of it are tested against each other rather than each against itself. The chain is walked
-    /// from the finest level down and the first **mapped** page is returned, which is one more than
-    /// the walk stops at: a level the walk passes through is mapped, and whether the walk goes on
-    /// past it depends on what that page recorded, which is a question about depth and this side of
-    /// the encoding has no depth. So this answers *where the walk starts*, and the page the shadow
-    /// is finally read from is a later one whenever this one holds no caster covering the point.
+    /// from the finest level down, a level the sparsity mask has nothing to find at is **passed
+    /// through** rather than read, and the first mapped page after that is returned. A page that is
+    /// mapped but recorded nothing is still returned: whether the walk goes on past it depends on
+    /// depth, and this side of the encoding has none.
     pub fn resolve(&self, volume: &LightVolume, light: usize, point: [f64; 3]) -> Option<Lookup> {
         let map = self.lights.get(light)?;
         // A cube's face is the one thing this walk does not do yet, and the answer for a light with
@@ -629,6 +658,12 @@ impl Allocation {
                 (texel[0] as u32 / shift).min(pages_at_level(map.pages_per_side, level) - 1);
             let page_y =
                 (texel[1] as u32 / shift).min(pages_at_level(map.pages_per_side, level) - 1);
+            // The level above's mask, tested before this level's own page: a set bit says nothing
+            // is at this level or below, and the walk stops there rather than reading a page that
+            // cannot shadow the point. A shader pays one mask test here in place of nine taps.
+            if self.sparse_at(&grid, map.pages_per_side, map.levels, level, page_x, page_y) {
+                return None;
+            }
             let Some(slot) = self.slot_of(&grid, level, 0, page_y, page_x) else {
                 continue;
             };
@@ -740,21 +775,50 @@ fn row_words(pages_per_side: u32, level: u32) -> u32 {
     1 + pages_at_level(pages_per_side, level).div_ceil(32)
 }
 
-/// Words one level's whole section costs, across every face it has.
+/// A level count, from the grid side it is a function of.
+///
+/// [`allocate`] reads it this way rather than carrying its own, and every offset below it depends
+/// on it, so a light whose recorded level count disagreed with its grid side would lay its table out
+/// at a width nothing else agrees with.
+fn levels_of(pages_per_side: u32) -> u32 {
+    levels_for(pages_per_side)
+}
+
+/// How many words one level's **sparsity** mask costs: one bit per page of the level above it, since
+/// that is the grid a shader tests this mask on.
+///
+/// **It is a whole level's mask and not a row's**, because the level above is a *grid* and a row can
+/// only be indexed on one axis of it. Rows are where the slot rank lives and that arithmetic must
+/// stay exactly as it is; the sparsity mask has no rank, so it costs nothing to keep it flat.
+///
+/// A level with no level above it in the walk has no mask, and the coarsest level of a grid is the
+/// one walk steps that find nothing left to find.
+fn sparsity_words(pages_per_side: u32, level: u32) -> u32 {
+    if level + 1 >= levels_of(pages_per_side) {
+        return 0;
+    }
+    let across = pages_at_level(pages_per_side, level + 1);
+    (across * across).div_ceil(32)
+}
+
+/// Words one level's whole section costs, across every face it has: its rows, then its sparsity mask.
 fn level_words(pages_per_side: u32, level: u32, faces: u32) -> u32 {
     row_words(pages_per_side, level) * pages_at_level(pages_per_side, level) * faces.max(1)
+        + sparsity_words(pages_per_side, level)
 }
 
 /// How many words one light's whole table section costs.
 ///
 /// Every row of every level is laid out whether or not anything lands in it, because a shader
 /// finds a row by arithmetic on its page coordinate and cannot know in advance whether the row was
-/// wanted. The cost is `pages_per_side² / 32` words per level, which at the ceiling of
-/// [`MAX_PAGES_PER_SIDE`] is under twelve thousand words for all four levels together — the price
-/// of a lookup that is a mask test and a popcount rather than a search.
-pub fn table_words(pages_per_side: u32, levels: u32, faces: u32) -> usize {
+/// wanted, and the same is true of every level's sparsity mask. The cost is
+/// `pages_per_side² / 32` words per level for the rows plus one bit per page of the level above for
+/// the mask, which at the ceiling of [`MAX_PAGES_PER_SIDE`] is under thirteen thousand words for all
+/// four levels together — the price of a lookup that is a mask test and a popcount rather than a
+/// search.
+pub fn table_words(pages_per_side: u32, _levels: u32, faces: u32) -> usize {
     let mut words = (TABLE_HEAD_WORDS + PREFIX_WORDS) as usize;
-    for level in 0..levels {
+    for level in 0..levels_of(pages_per_side) {
         words += level_words(pages_per_side, level, faces) as usize;
     }
     words
@@ -767,6 +831,12 @@ fn level_section(pages_per_side: u32, level: u32, faces: u32) -> u32 {
         at += level_words(pages_per_side, earlier, faces);
     }
     at
+}
+
+/// Where one level's sparsity mask starts, which is the word after that level's last row.
+pub fn sparsity_section(pages_per_side: u32, level: u32, faces: u32) -> u32 {
+    level_section(pages_per_side, level, faces)
+        + row_words(pages_per_side, level) * pages_at_level(pages_per_side, level) * faces.max(1)
 }
 
 /// The word holding the first slot of one row.
@@ -893,6 +963,84 @@ fn footprint(volume: &LightVolume, caster: &Caster) -> [f64; 4] {
         half[0] * 2.0,
         half[1] * 2.0,
     ]
+}
+
+/// How many cells one level's grid has, which is what a flat mask over it is sized by.
+fn cell_count(pages_per_side: u32, level: u32) -> usize {
+    let across = pages_at_level(pages_per_side, level) as usize;
+    across * across
+}
+
+/// The one cell of a flat mask a page coordinate names.
+fn cell(pages_per_side: u32, level: u32, page_x: u32, page_y: u32) -> usize {
+    let across = pages_at_level(pages_per_side, level) as usize;
+    page_y as usize * across + page_x as usize
+}
+
+/// Whether no page at this level or any coarser one covers the world a cell of this level holds.
+///
+/// # Why it is every level below and not the level above
+///
+/// A caster is drawn into the one level its density buys, so an empty level says **nothing** about
+/// the levels below it: a caster that asked for a coarse level casts quite happily where a fine one
+/// does not. A mask that only asked "is the level above empty" would be the one reading a fragment
+/// must not break on, and would cost a shadow every time it did.
+///
+/// So a bit is set only when the level **and every level coarser than it** is empty over that cell,
+/// which is what makes "once masked, break" the same statement as "there is nothing left to find".
+/// The walk stops at the first level whose mask says so, having paid one mask test rather than
+/// nine taps per level it did not need to read.
+fn nothing_from(
+    pages_per_side: u32,
+    levels: u32,
+    exists: &[Vec<bool>],
+    level: u32,
+    page_x: u32,
+    page_y: u32,
+) -> bool {
+    for coarser in level..levels {
+        // A cell of this level begins `2^k` cells into the one above it, and the last cell of a
+        // level is clamped rather than scaled off the end of the grid.
+        let across = pages_at_level(pages_per_side, coarser);
+        let step = coarser - level;
+        let cell_x = (page_x << step).min(across - 1);
+        let cell_y = (page_y << step).min(across - 1);
+        if exists[coarser as usize][cell(pages_per_side, coarser, cell_x, cell_y)] {
+            return false;
+        }
+    }
+    true
+}
+
+/// Writes every level's sparsity mask, one bit per page of the level above it.
+///
+/// **A level's mask is written after its rows**, so the slot rank — a popcount over a row's own
+/// mask, which is what finds a page in one word and one count — is laid out exactly as it was and
+/// has nothing new to be right about.
+fn write_sparsity(
+    table: &mut [u32],
+    grid: &Grid,
+    pages_per_side: u32,
+    levels: u32,
+    exists: &[Vec<bool>],
+) {
+    for level in 0..levels {
+        if sparsity_words(pages_per_side, level) == 0 {
+            continue;
+        }
+        let base = (grid.table_offset
+            + sparsity_section(pages_per_side, level, grid.faces) as usize)
+            as usize;
+        let across = pages_at_level(pages_per_side, level + 1);
+        for page_y in 0..across {
+            for page_x in 0..across {
+                if nothing_from(pages_per_side, levels, exists, level + 1, page_x, page_y) {
+                    let index = (page_y * across + page_x) as usize;
+                    table[base + index / 32] |= 1 << (index % 32);
+                }
+            }
+        }
+    }
 }
 
 /// The window of one page, in the light's normalised plane.
@@ -1125,7 +1273,23 @@ pub fn allocate(plans: &[LightPlan], budget: &Budget) -> Result<Allocation, Shor
         for level in 0..levels {
             out.table[table_offset + (TABLE_HEAD_WORDS + level) as usize] =
                 level_section(pages_per_side, level, faces);
+            out.table[table_offset + (TABLE_HEAD_WORDS + MAX_LEVELS + level) as usize] =
+                sparsity_section(pages_per_side, level, faces);
         }
+        // Which page of each level exists, before it is folded into the table's rows, because the
+        // sparsity mask is a statement about all of the levels at once and the rows are written one
+        // at a time.
+        //
+        // The pages path serves spot lights, which have one face, and the handle list is read off the
+        // same rows, so one grid per level is the whole of what a mask here describes. A cube light
+        // that reached this table would need one mask per face, and `resolve` refuses one today.
+        let mut exists: Vec<Vec<bool>> = (0..levels)
+            .map(|level| vec![false; cell_count(pages_per_side, level)])
+            .collect();
+        for (level, _, page_y, page_x, _) in &wanted {
+            exists[*level as usize][cell(pages_per_side, *level, *page_x, *page_y)] = true;
+        }
+        write_sparsity(&mut out.table, &grid, pages_per_side, levels, &exists);
 
         let mut row: Option<(u32, u32, u32)> = None;
         let mut row_first = 0_u32;
