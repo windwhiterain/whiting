@@ -2451,3 +2451,22 @@ measured that no reading of the design would have predicted.
   that broke it on purpose: forcing the page walk to return unshadowed moved 1337 pixels, and every
   caster at a density of 5 moved 149 of the same ones. **A migration verified by an unchanged image
   has to be paired with an edit that is supposed to change it, and the change measured.**
+- **A page that exists and a page that recorded this point are two different facts, and a walk that
+  cannot tell them apart loses shadows.** A caster is drawn into its own level and every coarser
+  one, never into a page finer than the density it declared, so a level-0 page opened by a fine
+  neighbour is *empty* where a coarse caster's shadow falls. The walk that stopped at the first
+  page whose mask bit was set read that emptiness as "nothing blocks the light" and returned —
+  which is the one failure `vshadow.rs` names as forbidden, arriving through the front door. The
+  "this is a caster's chain of levels is never broken" invariant was written down with both halves
+  and implemented with one; the halves are only true together, and the compiler's own proposal
+  document meanwhile described the opposite allocation rule (`own` level and every **finer** level),
+  which was never implemented either. **Three files agreed with each other and disagreed with the
+  fourth; a doc that describes a mechanism is not a test of it.**
+- **A level chosen by a ratio is a level chosen against the wrong number.** `caster_level` decided
+  with `2^k <= finest_density_asked / density`, but the grid's side is rounded **up** to a whole
+  power of two, so the texel the grid actually has is finer than `1 / finest_density_asked` and the
+  ratio keeps a caster a level above the one its own declaration pays for. The constraint is
+  `plane_width * 2^k / (pages_per_side * PAGE_SIZE) <= 1 / density`, measured on the grid that was
+  built. The same rounding is what makes the atlas ceiling a cliff, so the number being rounded
+  away is not academic: it is the difference between a caster sitting where it asked and a page
+  nobody needed.

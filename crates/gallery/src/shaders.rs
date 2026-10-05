@@ -735,18 +735,50 @@ fn shadowed(
     if page < 0 {{
         return 1.0;
     }}
-    // A surface is pushed away from the page by a constant in world space. Displacing along
-    // the normal rather than along the light is what keeps the shadow attached: a surface is
-    // pushed away from the map by the same amount everywhere, so a slope and a flat both
-    // move by one page texel and neither detaches.
-    let lookup = world_position + normal * 1.6;
-    let from_light = shadow_projection * vec4<f32>(lookup, 1.0);
+    // The page's own size, not one carried in the uniform: the pool is a schema field, so a
+    // scene that changed the page size changed this with it and there is nothing to keep in
+    // step by hand. It is read before the push because the push is measured in these texels.
+    let size = vec2<f32>(textureDimensions(shadow_pool));
     // A point behind the light has no shadow, and dividing by a negative w would fold it
     // back into the page from behind. This is the **perspective** case alone: a page built as
     // `orthographic × look_at` has a bottom row of exactly `(0, 0, 0, 1)`, so every point
     // keeps a `w` of one and this never fires. A point light and a directional one are both
     // drawn that way; only a spot light's cone gives its page a field of view, and only that
     // one takes this branch.
+    //
+    // The surface is projected once unpushed to measure the page's texel, and again pushed to
+    // read through it. A single projection cannot do both, because the width of a texel is
+    // itself a function of where on the page the point lands.
+    let measured = shadow_projection * vec4<f32>(world_position, 1.0);
+    if measured.w <= 0.0 {{
+        return 1.0;
+    }}
+    let measured_ndc = measured.xyz / measured.w;
+    // A surface is pushed away from the page by one texel **of that page**, and a world constant
+    // cannot say how far that is: this pool's page is a fixed number of texels across a light
+    // plane this size, and 1.6 units against it is 126 to 166 texels — not a bias but a walk
+    // into a different part of the scene, after which the page answers about whatever stands
+    // there rather than about the surface that asked.
+    //
+    // Displacing along the normal rather than along the light is what keeps the shadow attached:
+    // a surface is pushed away from the map by the same amount everywhere, so a slope and a flat
+    // both move by one page texel and neither detaches. How wide one texel is comes from the
+    // light's own projection, measured along whichever world axis lies further across the light's
+    // view — a step along the normal of a surface standing square to the lamp does not move in
+    // the plane at all, and the reciprocal of no movement is not a distance. Where the page is
+    // not square the **larger** of its two texel counts is the one divided by, so the push is
+    // the finer of the two texels and never the coarser.
+    let axis = select(
+        vec3<f32>(1.0, 0.0, 0.0),
+        vec3<f32>(0.0, 0.0, 1.0),
+        abs(to_light.x) >= abs(to_light.z),
+    );
+    let across_world = normalize(cross(to_light, axis));
+    let span = shadow_projection * vec4<f32>(across_world, 0.0);
+    let per_unit = length((span.xy - measured_ndc.xy * span.w) / measured.w);
+    let texel_world = 2.0 / (max(size.x, size.y) * max(per_unit, 1e-6));
+    let from_light = shadow_projection
+        * vec4<f32>(world_position + normal * (texel_world * PUSH_TEXELS), 1.0);
     if from_light.w <= 0.0 {{
         return 1.0;
     }}
@@ -756,10 +788,6 @@ fn shadowed(
     if any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) {{
         return 1.0;
     }}
-    // The page's own size, not one carried in the uniform: the pool is a schema field, so a
-    // scene that changed the page size changed this with it and there is nothing to keep in
-    // step by hand.
-    let size = vec2<f32>(textureDimensions(shadow_pool));
     // A surface is its own depth and the recorded value is the depth of whatever was
     // nearest the light, so the comparison is biased. The bias scales with how obliquely
     // the light strikes the surface, because a surface's own rasterised faces disagree
@@ -818,12 +846,34 @@ const PUSH_TEXELS: f32 = 1.0;
 ///
 /// The light's projection puts the surface somewhere in the light's normalised plane, and the
 /// plane is a grid of pages whose finest side the compiler worked out from what its casters asked
-/// for. Which page holds this point's shadow is not that page: it is the finest page **that
-/// exists**, because a caster that asked for a coarse recording is not drawn into a fine page at
-/// all, and a fragment that read the empty one would compare against nothing and call the point
-/// lit. So the chain is walked from the finest level down and the first row whose bit says the
-/// page was allocated wins — which is one mask test and one popcount per level, four at most, and
+/// for. A caster is drawn into its own level and every coarser one, and never into a finer page
+/// than it asked for, so the page that holds this point's shadow is not simply the finest page
+/// that exists — it is the finest page that **recorded something here**. The chain is walked from
+/// the finest level down and a level answers only if its row says the page was allocated *and*
+/// the page recorded a caster at this point; a level that recorded nothing here has no opinion
+/// about this point and the walk goes on to the next one down.
+///
+/// # Why the two conditions are one condition
+///
+/// The finest level that has a caster over a point is exactly the finest of the levels its
+/// covering casters asked for, and every caster coarser than that level is drawn into that level
+/// as well. So the page that answers carries *every* caster that could shadow this point, at the
+/// resolution of the finest of them. Stopping at the first page that merely **exists** instead
+/// would stop at a page a neighbour's footprint opened and this point's own caster was never
+/// drawn into, read its emptiness as "nothing blocks the light", and lose the shadow — which is
+/// the failure `vshadow.rs` names as forbidden.
+///
+/// It is one mask test, one popcount and at most nine taps per level, four levels at most, and
 /// the reason a table exists rather than a search.
+///
+/// # What a level that recorded a caster still does not answer
+///
+/// A page holds one depth per texel, so a caster recorded there occupies it. Where a finer caster
+/// is rasterized over a point and a coarser one would also have covered it, the coarser one is
+/// not in that page and this walk cannot reach it. That is the consequence of keeping casters out
+/// of pages finer than they asked for, and it is a resolution the design spends rather than a
+/// shadow it drops: the coarser caster is still in the frame, at its own level, wherever no finer
+/// page stands over it.
 ///
 /// A page's slot is not its number in the grid but its rank among the pages of its own row, which
 /// is what lets the popcount be the answer and the atlas be filled by whatever order the compiler
@@ -975,6 +1025,10 @@ fn shadowed_pages(
         let bias = (0.0006 + 0.003 * slope) * f32(1u << level);
         let layer = i32(address.y);
         var lit = 0.0;
+        // How many of the nine taps found a page texel that a caster wrote, as against the clear
+        // the atlas layer carries where nothing drew. A page that recorded nothing here has no
+        // opinion about this point, and the walk below is what asks the next level.
+        var held = 0.0;
         for (var r = -1; r <= 1; r = r + 1) {{
             for (var c = -1; c <= 1; c = c + 1) {{
                 let tap = clamp(
@@ -982,9 +1036,13 @@ fn shadowed_pages(
                     origin,
                     origin + vec2<i32>(i32(PAGE_TEXELS) - 1),
                 );
-                lit = lit + select(0.0, 1.0, at.z - bias
-                    <= textureLoad(shadow_atlas, tap, layer, 0));
+                let depth = textureLoad(shadow_atlas, tap, layer, 0);
+                held = held + select(0.0, 1.0, depth >= 1.0);
+                lit = lit + select(0.0, 1.0, at.z - bias <= depth);
             }}
+        }}
+        if held == 9.0 {{
+            continue;
         }}
         return lit / 9.0;
     }}
