@@ -289,6 +289,11 @@ struct Measurement {
     fingerprint: String,
     /// Whether the offstage caster was in this camera's frame, when the scene placed one.
     caster_visible: Option<bool>,
+    /// The casters this frame could not measure, each with why.
+    ///
+    /// A caster with no shadow and a caster whose shadow could not be measured are different
+    /// answers, and a table that prints `0` for both cannot tell a reader which it is giving them.
+    skipped: Vec<String>,
 }
 
 /// The shape one light's virtual map was given, read out of the page table it answered with.
@@ -960,6 +965,7 @@ fn render_one(
                     floor_pixels: 0,
                     fingerprint: "--------".to_owned(),
                     caster_visible: None,
+                    skipped: Vec::new(),
                 },
                 frame: None,
             });
@@ -987,7 +993,7 @@ fn render_one(
         })?;
 
     let floor = resolve_floor(present, positions, casters);
-    let (shadow_pixels, soft_pixels, leaks) = measure_shadow(&floor, casters);
+    let (shadow_pixels, soft_pixels, leaks, skipped) = measure_shadow(&floor, casters);
 
     Ok(Rendered {
         measurement: Measurement {
@@ -1004,6 +1010,7 @@ fn render_one(
                 .iter()
                 .find(|caster| caster.label == OFFSTAGE.label)
                 .map(|caster| is_visible(positions, caster)),
+            skipped,
         },
         frame: Some(frame),
     })
@@ -1314,13 +1321,22 @@ fn distance_to_quad(point: (f32, f32), quad: [(f64, f64); 4]) -> f64 {
 /// something: a shadow is a small region with a large internal contrast against its surroundings,
 /// which is the one shape in which "how much of this is a partial" is a fact about resolution
 /// rather than about the lamp.
-fn measure_shadow(floor: &Floor, casters: &[Caster]) -> (u64, u64, u64) {
+fn measure_shadow(floor: &Floor, casters: &[Caster]) -> (u64, u64, u64, Vec<String>) {
     let mut shadow_pixels = 0;
     let mut soft_pixels = 0;
     let mut leaks = 0;
+    let mut skipped = Vec::new();
     for caster in casters {
         let footprint = shadow_footprint(caster);
+        if let Some(reason) = outside_the_cone(caster) {
+            skipped.push(format!("{}: {}", caster.label, reason));
+            continue;
+        }
         let Some(lit) = lit_reference(floor, footprint, RING_MARGIN) else {
+            skipped.push(format!(
+                "{}: no lit floor beside its shadow to measure it against",
+                caster.label
+            ));
             continue;
         };
         let region: Vec<(i64, i64, f32)> = (0..floor.height as i64)
@@ -1331,12 +1347,23 @@ fn measure_shadow(floor: &Floor, casters: &[Caster]) -> (u64, u64, u64) {
             })
             .collect();
         if region.len() < MINIMUM_SHADOW_PIXELS {
+            skipped.push(format!(
+                "{}: {} pixels of its shadow are in frame, and {} are needed to measure one",
+                caster.label,
+                region.len(),
+                MINIMUM_SHADOW_PIXELS
+            ));
             continue;
         }
         let mut ordered: Vec<f32> = region.iter().map(|(_, _, value)| *value).collect();
         ordered.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
         let darkest = ordered[ordered.len() / 20];
         if lit - darkest < MINIMUM_SHADOW_SPREAD {
+            skipped.push(format!(
+                "{}: its shadow is not in this frame ({} of brightness across it)",
+                caster.label,
+                lit - darkest
+            ));
             continue;
         }
         let dark_edge = darkest + DARK_EDGE * (lit - darkest);
@@ -1350,7 +1377,50 @@ fn measure_shadow(floor: &Floor, casters: &[Caster]) -> (u64, u64, u64) {
         }
         leaks += count_leaks(floor, &region, dark_edge, lit_edge);
     }
-    (shadow_pixels, soft_pixels, leaks)
+    (shadow_pixels, soft_pixels, leaks, skipped)
+}
+
+/// Returns why a caster's shadow cannot be lit at all, which is a statement about the lamp rather
+/// than about the frame.
+///
+/// # Why this is asked before anything is measured
+///
+/// A tall caster throws its shadow far from the lamp, and past the outer angle there is no light,
+/// so there is no shadow to find however the frame is drawn. The first version of this harness
+/// discovered that by accident: it reported **zero** shadow pixels for a caster whose shadow is
+/// plainly visible, because the analytic region it measured was thirteen units from the lamp and
+/// the harness read the absence as the answer. **A measurement that cannot distinguish "there is
+/// nothing there" from "there is nothing to measure" is worse than no measurement**, and a zero in
+/// this table is exactly that ambiguity.
+fn outside_the_cone(caster: &Caster) -> Option<String> {
+    let [lamp_x, lamp_y, lamp_z] = LAMP_POSITION;
+    let t = lamp_y / (lamp_y - caster.size[1]);
+    let centre = (
+        lamp_x + t * (caster.at[0] - lamp_x),
+        lamp_z + t * (caster.at[2] - lamp_z),
+    );
+    let from_lamp = [centre.0 - lamp_x, -lamp_y, centre.1 - lamp_z];
+    let length = from_lamp.iter().map(|axis| axis * axis).sum::<f64>().sqrt();
+    if length == 0.0 {
+        return None;
+    }
+    let direction = LAMP_DIRECTION;
+    let direction_length = direction.iter().map(|axis| axis * axis).sum::<f64>().sqrt();
+    let cosine = from_lamp
+        .iter()
+        .zip(direction.iter())
+        .map(|(axis, along)| axis * along)
+        .sum::<f64>()
+        / (length * direction_length);
+    // An angle rather than a cosine, because the outer angle is the one number the scene states.
+    let angle = cosine.clamp(-1.0, 1.0).acos();
+    (angle > LAMP_OUTER).then(|| {
+        format!(
+            "its shadow lands {:.1}° from the lamp, past the {:.1}° the cone opens",
+            angle.to_degrees(),
+            LAMP_OUTER.to_degrees()
+        )
+    })
 }
 
 /// Returns how many lit pixels of one shadow are ringed by that same shadow, which is what a page
@@ -1446,6 +1516,10 @@ resolution: a coarser page makes a wider edge, so a rod that asks for more densi
 levels is meant to change how sharp a shadow is and never whether there is one. `leaks` is lit
 floor ringed by shadow, which is what a page boundary that lets the receiver through leaves.
 
+A caster this frame could not measure says so on the line below its own, because a caster with no
+shadow and a caster whose shadow cannot be measured are different answers and a `0` that does not
+say which one it is cannot be read.
+
 "#,
     );
     report.push_str(
@@ -1488,6 +1562,9 @@ floor ringed by shadow, which is what a page boundary that lets the receiver thr
             measurement.floor_pixels,
             measurement.fingerprint,
         ));
+        for reason in &measurement.skipped {
+            report.push_str(&format!("{:<23}   not measured: {reason}\n", ""));
+        }
     }
 
     let refusals: Vec<&Measurement> = results
