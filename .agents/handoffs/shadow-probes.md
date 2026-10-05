@@ -19,7 +19,10 @@ the chain changes how sharp a shadow is and never whether there is one.
 **A caster shorter than the receiver's normal offset casts nothing, and the offset is 1.6 world
 units.** `shadowed_pages` samples the shadow at `world_position + normal * 1.6`, so on a flat floor
 the lookup point is in the air a unit and a half above the ground, and a caster below that height is
-not between the lamp and the point being sampled. Measured on one box at one standing, one density
+not between the lamp and the point being sampled. **Fixed** in
+[shadow-texel-push.md](shadow-texel-push.md), which measures that push at a hundred and thirty
+texels of the page and reads the point one texel off the surface instead; the table below is
+what it was before. Measured on one box at one standing, one density
 and one grid, varying only its height:
 
 | height | shadow px | soft | pixels |
