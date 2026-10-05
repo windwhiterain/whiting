@@ -2417,6 +2417,40 @@ measured that no reading of the design would have predicted.
   is nothing; it buys the levels an author asks for. **A virtual map is not a cheaper shadow map, it
   is a more adjustable one**, and any pitch that promises otherwise is falsified by the first scene
   that declares nothing.
+- **A caster in one layer and a walk that reads past an empty one are one rule, and neither half is
+  safe alone.** `SPEC/render/virtual_shadow.md` puts each instance in the layer its required
+  resolution buys and nothing else, and samples from the smallest layer to the largest, breaking
+  once shadowed. The landed allocator instead drew every caster into every level from its own down,
+  and the landed walk returned the first level that *recorded something* — so a level-0 page opened
+  by a fine neighbour answered for a coarse caster that was not in it and that shadow was lost. The
+  handoff wrote the residual down rather than papering over it; the spec is the answer to it.
+  Passing a level through instead of answering from it is what makes one layer enough, and a caster
+  copied four ways would make the first page answer and turn its own level into a statement about
+  the cheapest copy. The empty-page test the previous fix needed is now **dead code**: an empty page
+  reads as nine lit taps and falls out of the same branch.
+- **Removing the coarse copies empties the upper pyramid, and that is where the cost was.**
+  `spotlight` allocates **64 pages where it allocated 85** — exactly level zero of an eight a side
+  grid, because the scene names no density so every caster is level zero and **nothing at all is
+  allocated at levels one to three**. Its atlas is 8 a side rather than 10, and its shadowing passes
+  go 242 → 179 → **123**. A probe's 232 density frame goes 458 pages to 256 and 480 passes to 262.
+  The cost at the default is the receiver being a caster: a floor eighteen units across has a
+  bounding sphere whose cone is wider than the plane, and `footprint` hands it the whole grid, so
+  no amount of page arithmetic moves the level-zero count.
+- **Nothing was lost, and the penumbras that moved got slightly bigger rather than smaller.** Every
+  measured caster share is unchanged or a couple of pixels larger — the wall 4026 → 4028, 4004 →
+  4006, 3956 → 3962, an offstage caster 3193 → 3200 — and `leaks` is zero in all twenty nine frames
+  in both runs. A caster is no longer recorded at coarse levels, so a receiver standing in a
+  penumbra that used to read a blurred coarse copy now reads the caster's own level instead. The
+  three level-walk frames are bit for bit what they were, 11307 / 11307 / 11478, which is the
+  pass-through rule holding under a fine neighbour. The fingerprints do move on most frames, which
+  is the coarse copies disappearing and not a shadow changing.
+- **A page exists, a page recorded this point, and a page answered here are three facts, and the
+  design only ever needed the third.** The walk was fixed twice in a row — first to distinguish a
+  page that merely exists from one that recorded something, then to pass a level through rather than
+  answer from it — and the second fix made the first one's counter unnecessary. The two are now one
+  branch. That is what happens when a rule is stated as a property of the *answer* rather than as a
+  proxy for it: a proxy needs its own bookkeeping, and the bookkeeping drifts from the property the
+  moment the design moves.
 - **There is no fifth storage buffer, so the page table lives inside the record buffer, so the
   record run can no longer be declared as the struct array it is.** Four is
   `max_storage_buffers_per_shader_stage` and the clustered pass spends all four. The table is

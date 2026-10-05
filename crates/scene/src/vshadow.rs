@@ -42,13 +42,15 @@
 //!   whose pages do not fit its atlas layer, and a shadowing light with nothing to cast are each a
 //!   [`Shortfall`] naming the light and the demand. The alternative is a scene that renders and
 //!   quietly records its shadows at a fraction of the resolution it asked for.
-//! - **A caster's chain of levels is never broken.** A caster is drawn into its own level and
-//!   every coarser one, never into a page finer than the density it asked for, so the coarsest
-//!   level a light has always holds it. The reading end is the other half of the same promise: a
-//!   receiver walks the levels from finest to coarsest and a level that recorded **nothing** at
-//!   its point does not answer, so a receiver that finds nothing at a finer level always finds
-//!   something further down the walk. The two halves are one rule, and a page that merely exists
-//!   is not the same as a page that recorded this point's caster.
+//! - **A caster lives in exactly one level, and a receiver reads every level until one of them
+//!   shadows it.** Those two are one rule and neither is safe alone. A caster is drawn into the
+//!   single level its density buys, so its shadow exists at one resolution and nowhere else; a page
+//!   at any other level therefore holds no claim over its point, and answering from the finest such
+//!   page would be a page answering about a caster it does not contain. So the walk goes from the
+//!   finest level to the coarsest and **stops at the first level that shadows the point**, and a
+//!   level that does not — because it has no page, or because it holds only casters that do not
+//!   cover this point — is passed through rather than answered from. A caster can then never be
+//!   hidden by a neighbour that happens to be recorded at a finer level than it is.
 //! - **The table is the only lookup a shader is given**, and it is laid out so that resolving a
 //!   page is one mask test and one popcount. See [`table_words`] and [`Allocation::resolve`],
 //!   which is that walk written in Rust so the two ends of the encoding are tested against each
@@ -588,12 +590,16 @@ impl Allocation {
         Some(self.table[grid.base(level, face, row)] + rank)
     }
 
-    /// Where a world point's shadow is read, mirroring the walk the table is laid out for.
+    /// The first page a world point's shadow is read from, mirroring the walk the table is laid out
+    /// for.
     ///
-    /// This is the shader's side of the encoding written out in Rust, and it exists so that the
-    /// two ends of it are tested against each other rather than each against itself. The chain is
-    /// walked from the finest level down and the first mapped page wins, which is what makes a
-    /// caster drawn only at a coarse level still shade a receiver in a fine page's neighbourhood.
+    /// This is the shader's side of the encoding written out in Rust, and it exists so that the two
+    /// ends of it are tested against each other rather than each against itself. The chain is walked
+    /// from the finest level down and the first **mapped** page is returned, which is one more than
+    /// the walk stops at: a level the walk passes through is mapped, and whether the walk goes on
+    /// past it depends on what that page recorded, which is a question about depth and this side of
+    /// the encoding has no depth. So this answers *where the walk starts*, and the page the shadow
+    /// is finally read from is a later one whenever this one holds no caster covering the point.
     pub fn resolve(&self, volume: &LightVolume, light: usize, point: [f64; 3]) -> Option<Lookup> {
         let map = self.lights.get(light)?;
         // A cube's face is the one thing this walk does not do yet, and the answer for a light with
@@ -1025,11 +1031,11 @@ fn kept(volume: &LightVolume, rect: &[f64; 4], clip: &Clip) -> bool {
 
 /// Decides which pages exist.
 ///
-/// Each light is sized from the density its own casters asked for, has each of them placed on the
-/// level their density buys, covers the pages their projections span at every level from theirs
-/// down to the coarsest, and drops the pages no camera can see. The rows that survive are numbered
-/// into the light's atlas slots in the order a shader walks them, and every word of the table is
-/// written from that numbering rather than from a second count of anything.
+/// Each light is sized from the density its own casters asked for, places each of them on the one
+/// level their density buys, covers the pages their projections span there, and drops the pages no
+/// camera can see. The rows that survive are numbered into the light's atlas slots in the order a
+/// shader walks them, and every word of the table is written from that numbering rather than from a
+/// second count of anything.
 pub fn allocate(plans: &[LightPlan], budget: &Budget) -> Result<Allocation, Shortfall> {
     let clip = Clip::new(budget.clip.clone());
     let mut out = Allocation::empty();
@@ -1061,17 +1067,24 @@ pub fn allocate(plans: &[LightPlan], budget: &Budget) -> Result<Allocation, Shor
 
         let mut wanted: HashMap<(u32, u32, u32, u32), Vec<u32>> = HashMap::new();
         for caster in &live {
+            // **One level, not a chain of them.** A caster is drawn into the single level its own
+            // density buys and into no other, so its shadow exists at exactly one resolution and
+            // nowhere else. The read end is what makes that safe: a receiver walks every level from
+            // finest to coarsest and stops at the first that shadows it, so a level holding no
+            // caster for this point cannot answer for it — it can only be passed through.
+            //
+            // The alternative, drawing every caster into every level from its own down, would put
+            // the same geometry into four times the pages and make the level a caster is recorded
+            // at a fact about the cheapest copy rather than about the caster.
             let own = caster_level(caster.density, width, pages_per_side, levels);
             let rect = footprint(&plan.volume, caster);
-            for level in own..levels {
-                let (x0, x1, y0, y1) = cover(pages_per_side, level, &rect);
-                for page_y in y0..y1 {
-                    for page_x in x0..x1 {
-                        wanted
-                            .entry((level, 0, page_y, page_x))
-                            .or_default()
-                            .push(caster.handle);
-                    }
+            let (x0, x1, y0, y1) = cover(pages_per_side, own, &rect);
+            for page_y in y0..y1 {
+                for page_x in x0..x1 {
+                    wanted
+                        .entry((own, 0, page_y, page_x))
+                        .or_default()
+                        .push(caster.handle);
                 }
             }
         }
