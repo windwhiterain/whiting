@@ -917,18 +917,30 @@ fn window_of(pages_per_side: u32, level: u32, page_x: u32, page_y: u32) -> [f64;
 /// into the plane allocates the corner page of every level for a shadow the cone cannot cast. One
 /// such caster per light is harmless; one per object in a scene with a dozen lamps is the atlas.
 ///
-/// The one page of margin a silhouette's bounding sphere is padded by is asked **in the plane**, in
-/// units of the level being covered, so that the margin is one page at every level rather than one
-/// fine page that a coarse level rounds away from nothing.
+/// **The footprint is the whole of the claim, and nothing is added to it.** A caster arrives as a
+/// bounding sphere, and the rectangle [`footprint`] builds is the cone of rays that touch that
+/// sphere — already wider than the silhouette of any geometry the sphere bounds. That sphere is
+/// the single statement of how much of the light's plane this caster can reach, and a page range
+/// is that statement rounded out to page boundaries. A margin is not a rounding.
+///
+/// A margin was once added here, one page wide at every level, and it is the reason a map at the
+/// default density allocated **every** page its grid held: a page is a twelfth of the plane at
+/// level zero and half of it at the coarsest, so one page around four casters covered the whole
+/// pyramid — 85 pages of 85, and a sparse map that was not sparse. It bought one thing, which is
+/// that a receiver standing just outside a silhouette still has its lookup point — pushed one
+/// texel off its own surface — land on an allocated page. That is an argument about the
+/// **bounding shape** and not about page arithmetic. A receiver pushed out of its own shadow means
+/// the sphere is too small for that caster, and the sphere is where that is fixed and where it is
+/// argued about. A blanket margin answers the case with slack nobody has measured and charges
+/// every caster in the scene for it.
 fn cover(pages_per_side: u32, level: u32, rect: &[f64; 4]) -> (u32, u32, u32, u32) {
     let side = f64::from(pages_per_side * PAGE_SIZE);
     let shift = PAGE_SIZE << level;
     let pages = pages_at_level(pages_per_side, level);
-    let margin = f64::from(shift) * 2.0 / side;
-    let left = (rect[0] - margin).clamp(-1.0, 1.0);
-    let right = (rect[0] + rect[2] + margin).clamp(-1.0, 1.0);
-    let bottom = (rect[1] - margin).clamp(-1.0, 1.0);
-    let top = (rect[1] + rect[3] + margin).clamp(-1.0, 1.0);
+    let left = rect[0].clamp(-1.0, 1.0);
+    let right = (rect[0] + rect[2]).clamp(-1.0, 1.0);
+    let bottom = rect[1].clamp(-1.0, 1.0);
+    let top = (rect[1] + rect[3]).clamp(-1.0, 1.0);
     if right <= left || top <= bottom {
         return (0, 0, 0, 0);
     }
