@@ -803,6 +803,14 @@ fn shadowed(
 /// each other.
 const PAGE_TEXELS: u32 = 128u;
 
+/// How many of the light's own plane texels a receiver is read off its own surface by.
+///
+/// One, because a texel is the smallest thing the recording can say: a point read a whole texel
+/// off its own surface is not in the neighbourhood that recorded it, and a point read a
+/// *hundred* texels off it — which is what a world constant is, on a grid this fine — is in a
+/// different part of the scene entirely.
+const PUSH_TEXELS: f32 = 1.0;
+
 /// Returns how lit a surface is by a light whose shadow is recorded as **pages** rather than as
 /// one pool image.
 ///
@@ -839,6 +847,34 @@ const PAGE_TEXELS: u32 = 128u;
 /// The taps are clamped to their own page, which a pool page does not need and a slot in an atlas
 /// does: the texel outside a page belongs to a different rectangle of the same light's plane, and
 /// comparing a depth recorded there is a wrong answer rather than an absent one.
+///
+/// # Why the receiver is read one texel off its own surface
+///
+/// A surface is recorded in the page **as itself**, so a point compared against its own depth
+/// without being moved first is a comparison of a depth with itself and reads as shadowed. The
+/// pool path moves it, and this path was moving it too — in **world units**, which is the one
+/// unit in which a shadow's own scale is never stated. A grid eight pages a side over a cone
+/// seventeen units wide holds a thousand and twenty four texels across it, so a texel of that
+/// plane on the floor is about a hundredth of a world unit, and the constant this path carried
+/// was a push of **a hundred and thirty texels**.
+///
+/// A push that size does not soften a shadow; it moves the point being read so far off the
+/// surface that the caster which should be between the lamp and that point is not there any
+/// more. A wall shorter than the push casts nothing at all — not a soft shadow and not a
+/// misplaced one, no shadow — and the height at which it stops is the number in the shader,
+/// which is how that was found.
+///
+/// So the push is measured in the recording's own unit instead, and read out of the light's own
+/// projection: that is the same matrix that placed the point, so it is the one that knows how
+/// wide a texel is **where this fragment is**, and a light with a wider cone or a nearer page
+/// gets a wider texel and a wider push without anything here knowing it. It is one texel rather
+/// than a fraction of one, because the tap that has to be moved is the one that reads the
+/// surface's own depth.
+///
+/// The push is in **level zero's** texels and does not follow the level, because the level is
+/// not known until the page has been found and the page is found from this point. What a coarse
+/// page needs beyond that is what the bias above is for, and it already scales: a level `k`
+/// page's own error is `2^k` times as large and its bias is `2^k` times as large with it.
 fn shadowed_pages(
     address: vec4<f32>,
     shadow_projection: mat4x4<f32>,
@@ -846,8 +882,7 @@ fn shadowed_pages(
     world_position: vec3<f32>,
     normal: vec3<f32>,
 ) -> f32 {{
-    let lookup = world_position + normal * 1.6;
-    let from_light = shadow_projection * vec4<f32>(lookup, 1.0);
+    let from_light = shadow_projection * vec4<f32>(world_position, 1.0);
     if from_light.w <= 0.0 {{
         return 1.0;
     }}
@@ -866,11 +901,46 @@ fn shadowed_pages(
     let levels = second & 0xFFFFu;
     // The whole grid, in texels of the light's plane: level zero's own resolution.
     let side = pages_per_side * PAGE_TEXELS;
+    // How wide one texel of that plane is **in world units, measured here**: the plane is two of
+    // its own normalised units across and `side` texels wide, and the light's own projection
+    // says how far apart two world points one texel apart land in it. The direction measured
+    // across is whichever of the two world axes lies further across the light's own view,
+    // because a step along the normal of a surface standing square to the lamp does not move in
+    // the plane at all, and the reciprocal of no movement is not a distance.
+    let axis = select(
+        vec3<f32>(1.0, 0.0, 0.0),
+        vec3<f32>(0.0, 0.0, 1.0),
+        abs(to_light.x) >= abs(to_light.z),
+    );
+    let across_world = normalize(cross(to_light, axis));
+    // What one world unit along that direction is worth in the plane's own units: a point is
+    // read as its normalised coordinate over its own `w`, so a world step arrives as its own
+    // contribution less that coordinate times its share of `w`.
+    let span = shadow_projection * vec4<f32>(across_world, 0.0);
+    let per_unit = length((span.xy - ndc.xy * span.w) / from_light.w);
+    let texel_world = 2.0 / (f32(side) * max(per_unit, 1e-6));
+    // The point the shadow is read **at**, off the surface by the push above and by nothing
+    // else. It is the one point the whole walk below reads, the page it names and the texel
+    // within that page alike, because a walk that named the page from one point and the texel
+    // from another would wrap its own page arithmetic at every boundary and read a texel up to
+    // a page away from the one it chose.
+    let pushed = shadow_projection
+        * vec4<f32>(world_position + normal * (texel_world * PUSH_TEXELS), 1.0);
+    if pushed.w <= 0.0 {{
+        return 1.0;
+    }}
+    let at = pushed.xyz / pushed.w;
+    // Tested before the conversion rather than after, because a negative normalised coordinate
+    // turned into an unsigned one is not a defined answer, and the plane's own edge is the
+    // boundary of this light's shadow either way.
+    if at.x < -1.0 || at.x > 1.0 || at.y < -1.0 || at.y > 1.0 {{
+        return 1.0;
+    }}
     // Clip space y runs up and a texture's rows run down, which is the same fold the pool path
     // makes in its `uv`, and the same one the compiler makes when it lays pages out.
     let texel = vec2<u32>(
-        u32((ndc.x * 0.5 + 0.5) * f32(side)),
-        u32((0.5 - ndc.y * 0.5) * f32(side)),
+        u32((at.x * 0.5 + 0.5) * f32(side)),
+        u32((0.5 - at.y * 0.5) * f32(side)),
     );
     if texel.x >= side || texel.y >= side {{
         return 1.0;
@@ -912,7 +982,7 @@ fn shadowed_pages(
                     origin,
                     origin + vec2<i32>(i32(PAGE_TEXELS) - 1),
                 );
-                lit = lit + select(0.0, 1.0, ndc.z - bias
+                lit = lit + select(0.0, 1.0, at.z - bias
                     <= textureLoad(shadow_atlas, tap, layer, 0));
             }}
         }}
