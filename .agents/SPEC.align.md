@@ -2009,9 +2009,14 @@ a light silently dropped to make room is a light an author wrote and nobody sees
 lives in `read_lights` beside `SecondEnvironmentLight` because both are the same fact about two
 stated inputs.
 
-A directional light costs **nothing** in the clustered buffers: the record is still ninety six
+A directional light costs **nothing** in the clustered buffers: the record was ninety six
 bytes and the cone run still thirty two, because its data is a uniform field rather than
 record fields. The test that says so is the same one the spot cone run needed.
+
+*Amended.* The record has since grown to **one hundred twelve bytes**, by four floats of virtual
+page address that every kind of light now carries; see *A shadow recorded as pages*. The claim
+above survives the growth in the only way it can — a directional light still costs nothing
+*beyond* what a point light costs, because the address is in the record for all of them.
 
 ## A camera that is inside something is named, and drawn
 
@@ -2367,3 +2372,82 @@ with either, and both are capabilities with no user yet.
   size it is delivered, gave 32 levels — and it also showed the right of the same frame still
   at 7–8, which a flattering crop had hidden completely. **Judging a change by a crop is
   judging a different image.**
+
+## A shadow recorded as pages, and what replacing a page with a grid costs
+
+From [virtual-shadow-maps.md](proposals/virtual-shadow-maps.md), landed in five stages. The design
+is the proposal's; what follows is where the landed thing differs from it, and what the work
+measured that no reading of the design would have predicted.
+
+- **The default density has to be the resolution being replaced, or the migration is a regression
+  wearing the clothes of a feature.** The proposal sized a light's grid at `page_width /
+  (2 · shadow_extent)` texels per world unit. For a cone that is wrong by the cone's own angle:
+  `shadow_extent` is the near plane's half-height, and the grid is measured at the far plane, so
+  the default put level zero a factor of `tan θ` away from the page it replaced and `spotlight`
+  came out far coarser than it had been. The landed default is the pool's page width across the
+  width of the cone **at the depth the grid is measured at**, which makes a scene that names no
+  density render the shadows it rendered before, to the texel — and that is checkable, because the
+  frames come out the same.
+- **A power-of-two grid turns the atlas ceiling into a cliff, and the cliff is one density step
+  wide.** `spotlight`'s lamp defaults to 58.07 texels a world unit and allocates 85 pages. At 60 —
+  three percent finer — the side doubles from 8 pages to 16, and a four-level pyramid over 16 is
+  340 pages against an atlas layer of 256, so the compile is **refused**. The refusal is the
+  designed behaviour and the message names both numbers and the field to raise
+  (`shadow_atlas_side_pages`), but an author reading it for the first time will take a budget for
+  a bug. A feature whose first increment is "you must now also raise a second number" has two
+  knobs, not one, whatever the schema says.
+- **Padding a caster's footprint by two pages of its own level is what keeps the level chain
+  unbroken, and it also means the map is not sparse where it looks sparse.** On an 8-page grid the
+  margin alone is five pages across, so four casters cover all sixty-four level-zero pages between
+  them and the coarsest level is allocated whole. The consequence is a *cost* at the default: 85
+  pages where the pool had one texture, and 242 shadowing passes where it had 4, at the same
+  resolution, because a page is a render pass and passes do not come free. What the grid buys at
+  the default is nothing at all; it buys the levels an author asks for. **A virtual map is not a
+  cheaper shadow map, it is a more adjustable one**, and any pitch that promises otherwise will be
+  falsified by the first scene that declares nothing.
+- **There is no fifth storage buffer, so the page table lives inside the record buffer, so the
+  record run can no longer be declared as the struct array it is.** Four is
+  `max_storage_buffers_per_shader_stage` and the clustered pass spends all four. The table is
+  appended after the records and a record's `virtual_page.x` is an absolute word offset into the
+  same bytes, which a WGSL `array<LightRecord>` cannot reach past its own element count. The
+  landing declares the run as a flat `array<f32>` and assembles a record from twenty eight words by
+  hand — which is a net gain: **the offsets are now written down in one place and tested against
+  the rust stride**, instead of being agreed with the compiler through an alignment that happens to
+  work. The mask words are read through `bitcast<u32>`, bit exact and non-trapping, where a numeric
+  cast of the same bits would be a conversion of a value that is not a number.
+- **A binding number is a property of a pass's document, so a resource that comes and goes moves
+  every number behind it.** That is why both depth arrays are bound by every shadowing pass and
+  every lighting pass, whether or not the scene has a light of the kind that uses one, and why the
+  atlas instance entry always exists — one page by one page by one layer, sixty four kilobytes, when
+  a scene allocates nothing. It is the `SPOT_CONES` rule restated one level up, and the second time
+  the same rule has had to be discovered. If a third resource arrives with the same shape, the rule
+  belongs in `bindings.rs`'s documentation rather than in a fourth comment.
+- **A hand-written copy of a generated shader drifts, and the validator cannot see it.** The
+  example scene's `QUAD_SOURCE` spells its binding numbers as literals; when the atlas took number 7
+  it still had the pool at 8 and the cones at 9, and only a real GPU frame refused it.
+  `check_resources` compares what a shader *declares* with what a pass *binds* — not the order the
+  numbers came out in, which is the whole of the rule. The CPU-side guard is a test that reads the
+  generated source's declarations in order and holds them against the name-sorted numbering.
+- **A viewport is where a fragment lands, not what depth it carries.** A page drawn with a viewport
+  alone holds the depth of the light's whole plane scaled into a corner of a texture, and the
+  fragment reading it has no way to know. The vertex stage has to map the light's clip output
+  through the page's window; the window is then the identity `[-1, -1, 2, 2]` for a pool page, which
+  is why one shader serves both paths and why `view_page` is supplied by every shadowing pass rather
+  than by the page passes only.
+- **A page's neighbour is a different rectangle of the same plane, so a PCF tap that leaves the page
+  is wrong rather than missing.** The pool path's taps run off the edge of one page into whatever the
+  array holds next; the page path clamps to its own 128 texels. The two are deliberately different,
+  and the difference is the argument for keeping a soft edge soft in one and a hard page boundary
+  hard in the other.
+- **The record decides whether there is a table, not the light's kind.** A spot light every page of
+  which fell outside the camera is a spot light with a sentinel in its record, and a shader that
+  branched on the kind would walk an all-zero mask and fall off the end of the chain into whatever
+  the atlas held before this frame drew it. The kind is a scene's word for a light; the record is
+  the compiler's answer about it, and they can disagree.
+- **Two paths agreeing is not evidence that either of them draws anything.** The migrated frame was
+  within 17 of 255 of the old one across 742 pixels of a million, which reads as a pass and proves
+  only that both paths answer the same question the same way — including, if the shadow term had
+  been dead in both, "no shadow". The controls that made the result mean something were the ones
+  that broke it on purpose: forcing the page walk to return unshadowed moved 1337 pixels, and every
+  caster at a density of 5 moved 149 of the same ones. **A migration verified by an unchanged image
+  has to be paired with an edit that is supposed to change it, and the change measured.**

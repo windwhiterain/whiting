@@ -103,6 +103,7 @@ pub mod lighting;
 mod limits;
 mod reference;
 pub mod standard;
+pub mod vshadow;
 
 pub use limits::DeviceLimits;
 pub use reference::{REFERENCE_SCENE_SCHEMA, ReferenceScene, register_scene_schema};

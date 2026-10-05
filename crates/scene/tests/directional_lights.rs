@@ -38,10 +38,10 @@ const SPOT_CONES: &str = "spot_cones";
 /// The uniform field carrying the scene's directional light.
 const DIRECTIONAL: &str = "directional";
 
-/// A light record is six four byte blocks: a colour and a page, a position and a radius, and a
-/// four by four projection. A directional light is a **stated input of the pass** and not a
-/// record, so this is the size it still costs.
-const RECORD_BYTES: i64 = 96;
+/// A light record is seven four byte blocks: a colour and a page, a position and a radius, a four
+/// by four projection, and the address of the light's virtual shadow pages. A directional light is
+/// a **stated input of the pass** and not a record, so this is the size it still costs.
+const RECORD_BYTES: i64 = 112;
 
 /// A cone record is two four component vectors, because a `WGSL` `array<T>` in a storage buffer
 /// lays its elements out at `roundUp(align_of_T, size_of_T)` and a struct holding a vector is
@@ -122,8 +122,8 @@ fn a_page_given_to_a_sun_is_drawn_through_a_parallel_projection() {
 #[test]
 fn a_directional_light_costs_nothing_in_the_clustered_buffers() {
     // Three lights, one of them a sun. Its data is a uniform field rather than record fields,
-    // so the record is still ninety six bytes and the cone run is still thirty two — a scene
-    // of a thousand point lights pays nothing for a sun it does not have.
+    // so the record is still one per light and the cone run is still thirty two bytes of it — a
+    // scene of a thousand point lights pays nothing for a sun it does not have.
     let compiled = compiled(&scene(&[
         point("first"),
         directional("sun", [0.0, -1.0, 0.0]),

@@ -14,6 +14,8 @@
 //!   dropped by a full pool, because nothing was dropped — it was never a candidate;
 //! - a light of a kind that takes no cluster slot, which casts no shadow and so is given no
 //!   page however bright it is;
+//! - a light whose shadow is recorded as a grid of pages, which asks the pool for nothing at all
+//!   and so is neither given a page nor reported as having missed one;
 //! - the pool's own shape, bounded rather than refused, with a note naming what was lost.
 
 use definition::{Definition, DefinitionIdentifier, Path, Registry, SchemaIdentifier, Value};
@@ -97,6 +99,8 @@ fn a_light_that_reaches_nothing_is_not_reported_as_dropped_by_a_full_pool() {
         clustered: true,
         global: false,
         casts_shadow: true,
+        virtual_shadow: false,
+        virtual_page: [NO_PAGE; 4],
     };
     let clusters =
         assign(&grid(), &[behind.clone()], &parallel(), &pool_of(1)).expect("the assignment runs");
@@ -121,6 +125,8 @@ fn a_light_that_takes_no_cluster_slot_and_casts_no_shadow_is_given_no_page() {
         clustered: false,
         global: false,
         casts_shadow: false,
+        virtual_shadow: false,
+        virtual_page: [NO_PAGE; 4],
     };
     let clusters =
         assign(&grid(), &[sky.clone()], &parallel(), &pool_of(4)).expect("the assignment runs");
@@ -148,6 +154,8 @@ fn a_light_that_takes_no_cluster_slot_but_casts_a_shadow_is_still_given_a_page()
         clustered: false,
         global: false,
         casts_shadow: true,
+        virtual_shadow: false,
+        virtual_page: [NO_PAGE; 4],
     };
     let clusters =
         assign(&grid(), &[sun.clone()], &parallel(), &pool_of(4)).expect("the assignment runs");
@@ -160,6 +168,52 @@ fn a_light_that_takes_no_cluster_slot_but_casts_a_shadow_is_still_given_a_page()
     assert!(
         notes(&[sun], &pool_of(4), &clusters).is_empty(),
         "a light the pool ranked first was not dropped"
+    );
+}
+
+#[test]
+fn a_light_recorded_as_pages_asks_the_pool_for_nothing_and_is_not_missed() {
+    // The migration's one place a note could lie. A virtual light is still a light that casts a
+    // shadow, so the candidate walk would rank it with the rest — and on a pool of one page,
+    // with a lamp bright enough to win the ranking, that page would be spent on a shadow already
+    // drawn as eighty five of them, the one page that was actually needed would go to the dimmer
+    // light, and the note would tell the author the pool dropped a light that has a better
+    // shadow than anything in the pool. So it is not a candidate at all, and this says so.
+    let lamp = ClusterLight {
+        label: "lamp".to_owned(),
+        position: [0.0, 0.0, 0.0],
+        colour: [1.0, 1.0, 1.0],
+        radius: 100.0,
+        shadow_projection: identity(),
+        clustered: true,
+        global: false,
+        casts_shadow: true,
+        virtual_shadow: true,
+        virtual_page: [0.0, 0.0, NO_PAGE, NO_PAGE],
+    };
+    let pool_of_one = pool_of(1);
+    let clusters = assign(
+        &grid(),
+        &[lamp.clone(), light("candle", 0.5)],
+        &parallel(),
+        &pool_of_one,
+    )
+    .expect("the assignment runs");
+
+    assert_eq!(
+        clusters.page_of(0),
+        None,
+        "a light with a grid takes no pool page: the fixed path is replaced for a kind that moved, \
+         not kept beside it"
+    );
+    assert_eq!(
+        clusters.page_of(1),
+        Some(0),
+        "and the page the lamp did not spend is the candle's"
+    );
+    assert!(
+        notes(&[lamp, light("candle", 0.5)], &pool_of_one, &clusters).is_empty(),
+        "a light that never asked the pool is not a light the pool turned away"
     );
 }
 
@@ -345,6 +399,13 @@ fn the_lighting_pass_count_does_not_move_when_a_light_is_added() {
 /// more lights than pages emits no more shadowing passes than it has pages. That is the part
 /// of the old `lights * groups` that survived, and this is what bounds it: the scene's
 /// `shadow_pages` field is the whole budget.
+///
+/// The bound is the pool's, and only the pool's. A light recorded as a grid is not in this
+/// arithmetic at all — its pass count is its own pages times the groups that cast into them, and
+/// the ceiling on that is the atlas rather than the pool — which is why the scene below is
+/// `lanterns`, whose lights are all of the kind that stayed on the pool. The other half of that
+/// claim, that a grid's pages and its table cannot come apart, is
+/// `the_pages_a_spot_light_emits_are_the_pages_its_table_answers` in `spot_lights.rs`.
 #[test]
 fn the_shadowing_pass_count_is_bounded_by_the_pool_and_not_by_the_light_count() {
     let scene = with_a_pool_of_one_page(Gallery::build("lanterns"));
@@ -495,6 +556,8 @@ fn light(label: &str, brightness: f64) -> ClusterLight {
         clustered: true,
         global: false,
         casts_shadow: true,
+        virtual_shadow: false,
+        virtual_page: [NO_PAGE; 4],
     }
 }
 

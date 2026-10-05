@@ -18,6 +18,7 @@
 //!     binders: { "shadow_map": Resource(Texture(..)), .. },
 //!     targets: [ "depth32float" ],
 //!     clear_color: [ 1.0, 1.0, 1.0, 1.0 ],
+//!     viewport: [ 256, 128, 128, 128 ],
 //! )
 //! Compute(
 //!     label: "blur",
@@ -64,6 +65,9 @@ pub const DEPTH: &str = "depth";
 /// Field holding how many samples a rasterize pass takes per pixel.
 pub const SAMPLES: &str = "samples";
 
+/// Field holding which region of its targets a rasterize pass draws into.
+pub const VIEWPORT: &str = "viewport";
+
 /// Field holding whether a rasterize pass writes depth.
 pub const DEPTH_WRITE: &str = "write";
 
@@ -77,7 +81,14 @@ pub fn pass_schema() -> Schema {
             "Rasterize".to_owned(),
             variant(
                 shared_fields(),
-                [targets(), clear_color(), blend(), depth(), samples()],
+                [
+                    targets(),
+                    clear_color(),
+                    blend(),
+                    depth(),
+                    samples(),
+                    viewport(),
+                ],
             ),
         ),
         (
@@ -251,6 +262,39 @@ fn samples() -> (String, Schema) {
             "How many samples each pixel takes, which is how many edges are covered. \
                  Defaults to one, which is one sample and a hard edge.",
         ),
+    )
+}
+
+/// Builds the schema of the region a rasterize pass draws into.
+///
+/// # Why a pass is allowed to draw into part of a target
+///
+/// A target is often a container for many separate drawings rather than one picture: a shadow
+/// atlas holds a grid of depth pages, and each page is the whole render target of the pass that
+/// fills it. Without a region, either every page is a texture of its own — and a frame that
+/// wants a hundred of them binds a hundred times — or the pages share a texture and every pass
+/// into it erases the ones already there.
+///
+/// # Invariants
+///
+/// The region is **one rectangle, honoured twice**: it is where the fragment coordinates land
+/// and it is what rasterization is cut off at. A backend that only moved the coordinates would
+/// let a triangle that overhangs the rectangle paint the neighbouring page, which is the failure
+/// this field exists to make impossible, so a renderer reads it as both a viewport and a scissor
+/// rect and never as one alone.
+///
+/// An absent field is the whole target, which is what every document written before this field
+/// existed asked for.
+fn viewport() -> (String, Schema) {
+    (
+        VIEWPORT.to_owned(),
+        Schema::new(SchemaKind::list(Schema::new(SchemaKind::Int)))
+            .optional()
+            .with_documentation(
+                "Origin x, origin y, width and height, in texels of the target. A pass that \
+                 names none draws into the whole of it. The rectangle both places what the pass \
+                 draws and clips it, so nothing spills into the region beside it.",
+            ),
     )
 }
 

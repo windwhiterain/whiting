@@ -237,9 +237,9 @@ pub use frame::Frame;
 pub use math::{Bounds, apply as project_point, transform_matrix};
 pub use pass_schemas::{
     CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, FRAME_SIZE,
-    INSTANCE_DATA, PRESENT_TARGET, PROJECTION, SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, VERTICES,
-    depth_pass_schema, emission_pass_schema, light_pass_schema, post_pass_schema,
-    post_pass_schema_exposed, projection_schema, shadow_pass_schema,
+    INSTANCE_DATA, PRESENT_TARGET, PROJECTION, SHADOW_ATLAS, SHADOW_MAP_FORMAT, SHADOW_POOL, TIME,
+    VERTICES, VIEW_PAGE, depth_pass_schema, emission_pass_schema, light_pass_schema,
+    post_pass_schema, post_pass_schema_exposed, projection_schema, shadow_pass_schema,
 };
 pub use scene_schema::{
     CAMERAS, CLUSTERING, CUSTOM_DATA, CUSTOM_SCHEMA, DATA, DEPTH_EXTENTS, EXPOSURE, EYE,

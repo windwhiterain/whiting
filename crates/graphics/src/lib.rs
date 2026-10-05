@@ -128,9 +128,9 @@ pub use output::{
 };
 pub use pass::{
     BINDERS, BLEND, CLEAR_COLOR, DEPTH, ENTRY_POINT, LABEL, SAMPLES, SHADER, TARGETS, UNIFORM,
-    WORKGROUP, pass_schema,
+    VIEWPORT, WORKGROUP, pass_schema,
 };
-pub use pipeline::{Blend, Compare, MAX_SAMPLES, PipelineState};
+pub use pipeline::{Blend, Compare, MAX_SAMPLES, PipelineState, Viewport};
 pub use provenance::Origin;
 pub use read::{Output, PassKind, PassView, outputs, passes};
 

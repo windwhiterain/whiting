@@ -229,6 +229,7 @@ struct Projection {
 struct Uniforms {
     projection: Projection,
     time: f32,
+    view_page: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -243,7 +244,14 @@ fn vertex_main(
     @location(5) m3: vec4<f32>,
 ) -> @builtin(position) vec4<f32> {
     let model = mat4x4<f32>(m0, m1, m2, m3);
-    return uniforms.projection.view_projection * model * vec4<f32>(position, 1.0);
+    let placed = uniforms.projection.view_projection * model * vec4<f32>(position, 1.0);
+    // Which rectangle of the light's plane this pass records, stretched to fill the viewport. The
+    // example's light is a point one and is drawn into one pool page, so the rectangle is the
+    // whole plane and this multiply is the identity — but it is the identity *stated*, which is
+    // the only way this is the same shader a virtual page would need.
+    let centre = uniforms.view_page.xy + uniforms.view_page.zw * 0.5;
+    let spread = vec2<f32>(2.0) / uniforms.view_page.zw;
+    return vec4<f32>((placed.xy - centre * placed.w) * spread, placed.z, placed.w);
 }
 
 @fragment
@@ -323,12 +331,21 @@ struct Uniforms {
 /// One light, as the clustered loop reads it. The offsets need no padding written here: a
 /// three component vector is sixteen byte aligned and twelve bytes long, so the `f32` after
 /// each is the padding that aligns the next one.
+///
+/// `virtual_page` is the address of the light's **page table**, and this example reads none: the
+/// scene below lights its stage with a point light, which is drawn into one pool page, so the
+/// field is minus four and nothing here looks at it. A scene that added a spot light would find
+/// it casting no shadow from this shader, and the way to fix that is the walk in
+/// `crates/gallery/src/shaders.rs`, not a second copy of it written here. What the field is
+/// *for* — and why a record has to carry it even in a shader that ignores it — is that the run is
+/// twenty eight words wide and this pass's own buffer is packed at that width.
 struct LightRecord {
     color: vec3<f32>,
     page: f32,
     position: vec3<f32>,
     radius: f32,
     shadow_projection: mat4x4<f32>,
+    virtual_page: vec4<f32>,
 };
 
 /// One light's cone. Two vectors of four because a `WGSL` `array<T>` in a storage buffer lays
@@ -345,13 +362,19 @@ struct SpotCone {
 // are among them: `color_target` and `depth_buffer` take three and four, which is why the
 // names below are not consecutive. A vertex or instance buffer takes no number at all, so
 // `instance_data` is absent from the list rather than numbered.
+//
+// `shadow_atlas` takes seven and declares nothing here, which is the one place the rule that
+// numbers the points by name shows through: a binding point the pass offers costs a number
+// whether or not this shader reads it, and `shadow_pool` sits at eight rather than where it
+// was. A shader that declared the pool at seven would be refused by the device as reading a
+// binding the pass offers to something else.
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> cluster_light_counts: array<f32>;
 @group(0) @binding(2) var<storage, read> cluster_light_indices: array<f32>;
 @group(0) @binding(5) var environment_map: texture_2d<f32>;
 @group(0) @binding(6) var<storage, read> light_records: array<LightRecord>;
-@group(0) @binding(7) var shadow_pool: texture_depth_2d_array;
-@group(0) @binding(8) var<storage, read> spot_cones: array<SpotCone>;
+@group(0) @binding(8) var shadow_pool: texture_depth_2d_array;
+@group(0) @binding(9) var<storage, read> spot_cones: array<SpotCone>;
 
 struct Vertex {
     @builtin(position) position: vec4<f32>,

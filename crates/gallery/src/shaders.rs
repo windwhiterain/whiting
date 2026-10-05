@@ -198,6 +198,30 @@ struct Uniforms {
 };
 "#;
 
+/// The uniform the shadowing stage reads: the placement above and the page it is drawing.
+///
+/// # Invariants
+///
+/// **The fields are in this order because the interface sorts them by name.** `projection`,
+/// `time`, `view_page` is that order, and it is the order the device's own layout puts the bytes
+/// in: `projection` is a nested struct of a three component vector and a matrix, so it runs to
+/// eighty bytes, `time` lands at eighty, and the four component vector wants a sixteen byte
+/// boundary and so lands at ninety six. [`PLACEMENT_UNIFORM`] is this with the last field absent,
+/// which is why the two are written apart: a depthing pass that carried a page would be a depthing
+/// pass with a page to draw into, and it has none.
+const SHADOW_UNIFORM: &str = r#"
+struct Projection {
+    position: vec3<f32>,
+    view_projection: mat4x4<f32>,
+};
+
+struct Uniforms {
+    projection: Projection,
+    time: f32,
+    view_page: vec4<f32>,
+};
+"#;
+
 /// The uniform the clustered lighting stage reads.
 ///
 /// The fields are in the order the interface schema sorts them into, which is by name:
@@ -262,18 +286,36 @@ struct Uniforms {
 
 /// One light, as the clustered loop reads it out of the record buffer.
 ///
-/// The offsets are the ones the compiler packs, and they need no padding written here: a
-/// three component vector is sixteen byte aligned and twelve bytes long, so the single
-/// `f32` after each of them is exactly the padding that puts the next field on its own
-/// boundary. `color` at 0, `page` at 12, `position` at 16, `radius` at 28, and the matrix
-/// at 32 — a whole record of ninety six bytes, a whole number of sixteen byte blocks.
+/// # Why this is not the buffer's element type
+///
+/// The buffer is declared `array<f32>` and a record is read out of it by [`light_record`], which
+/// writes the word offsets down. The reason is at the end of the same buffer: a light's **page
+/// table** is appended to the record run, because the clustered pass has no fifth storage binding
+/// to put it in, and an `array<LightRecord>` has a length the driver computes from the buffer's
+/// size and stops at the last whole record — so the words past it are a different array by
+/// WGSL's own arithmetic and nothing declared here could reach them. One flat run of words, read
+/// through two accessors, is the only shape that reaches both halves of it.
+///
+/// The second reason is weaker but real: the struct-array form agreed with the compiler's packing
+/// by a coincidence of alignment — a three component vector is sixteen byte aligned and twelve
+/// bytes long, so the scalar after each of them was exactly the pad the next field wanted. Here
+/// the offsets are said, and a record that grew would have to be edited in the one place that
+/// says them.
+///
+/// `color` at word 0, `page` at 3, `position` at 4, `radius` at 7, the sixteen words of
+/// `shadow_projection` at 8, and `virtual_page` at 24 — twenty eight words, a record of one
+/// hundred and twelve bytes, a whole number of sixteen byte blocks.
 struct LightRecord {
     color: vec3<f32>,
     page: f32,
     position: vec3<f32>,
     radius: f32,
     shadow_projection: mat4x4<f32>,
+    virtual_page: vec4<f32>,
 };
+
+/// How many words one light record is, and where within it each field sits.
+const LIGHT_RECORD_WORDS: u32 = 28u;
 
 /// One light's cone, as the clustered loop reads it out of the cone buffer.
 ///
@@ -382,16 +424,38 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
 ///
 /// `vertex_inputs` is the attribute list [`crate::attributes`] writes out from the
 /// two schemas, rather than a transcription of it.
+///
+/// # Why the vertex stage remaps before it returns
+///
+/// A shadowing pass draws **one page** of a light's view, and the light's projection answers for
+/// the whole of it. The pass's `viewport` says which rectangle of the atlas the page occupies,
+/// which moves the whole cone's worth of geometry into that rectangle and leaves it no finer
+/// there; what makes a page a *page* is the rectangle of the light's plane it records, and only a
+/// multiply can say that. So `view_page` scales about the page's own centre in the light's normal
+/// device coordinates, which puts the page's rectangle over the whole of the viewport's, and the
+/// rasteriser's divide by `w` lands on the same result as a divide first and a remap after —
+/// because the remap is affine in `x` and `y` and touches neither `z` nor `w`.
+///
+/// A light drawn into **one pool page** passes the whole plane, `[-1, -1, 2, 2]`, whose centre is
+/// the origin and whose half extent is one, which is to say this multiply is the identity and the
+/// pass places its points exactly as it did before the field existed. That is the reason one
+/// template serves both shapes of pass rather than two.
 pub fn shadowing(vertex_inputs: &str) -> String {
     format!(
-        r#"{PLACEMENT_UNIFORM}
+        r#"{SHADOW_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 @vertex
 fn vertex_main(
 {vertex_inputs}) -> @builtin(position) vec4<f32> {{
     let model = mat4x4<f32>(model0, model1, model2, model3);
-    return uniforms.projection.view_projection * model * vec4<f32>(position, 1.0);
+    let placed = uniforms.projection.view_projection * model * vec4<f32>(position, 1.0);
+    // The page's own rectangle of the light's plane, stretched to fill the whole viewport. The
+    // depth is the light's own and does not move: two pages of one light disagree about where a
+    // point is in the plane and agree about how far it is.
+    let centre = uniforms.view_page.xy + uniforms.view_page.zw * 0.5;
+    let spread = vec2<f32>(2.0) / uniforms.view_page.zw;
+    return vec4<f32>((placed.xy - centre * placed.w) * spread, placed.z, placed.w);
 }}
 
 @fragment
@@ -521,7 +585,12 @@ fn lighting_bindings(image: bool) -> String {
         resources.push(("image", "", "texture_2d<f32>"));
         resources.push(("image_sampler", "", "sampler"));
     }
-    resources.push(("light_records", "<storage, read>", "array<LightRecord>"));
+    resources.push(("light_records", "<storage, read>", "array<f32>"));
+    // The atlas is bound by every lighting pass and read by only the fragments of a light that
+    // was given a virtual grid, for the same reason the cone buffer below is: a binding point is
+    // numbered by its name's position, so one that came and went with the document would move
+    // `shadow_pool` and `spot_cones` off the numbers the shader declares them at.
+    resources.push(("shadow_atlas", "", "texture_depth_2d_array"));
     resources.push(("shadow_pool", "", "texture_depth_2d_array"));
     // The cone buffer is bound by every lighting pass, including one whose scene names no
     // `Spot` light — the pass then binds a single whole sphere that no cluster points at.
@@ -567,6 +636,35 @@ fn lighting_stage<'text>(
         r#"{LIGHTING_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 {bindings}
+/// Returns one light's record, read out of the flat run the page table shares a buffer with.
+///
+/// The offsets are written here rather than left to a struct declaration because the run is
+/// **tightly packed four bytes per component**, and this is the one place that can say so: an
+/// `array<LightRecord>` would be laid out by WGSL's own alignment rules and be right only while
+/// the compiler's packing happened to need no padding that WGSL did not also want.
+fn light_record(index: u32) -> LightRecord {{
+    let at = index * LIGHT_RECORD_WORDS;
+    let m = at + 8u;
+    return LightRecord(
+        vec3<f32>(light_records[at], light_records[at + 1u], light_records[at + 2u]),
+        light_records[at + 3u],
+        vec3<f32>(light_records[at + 4u], light_records[at + 5u], light_records[at + 6u]),
+        light_records[at + 7u],
+        mat4x4<f32>(
+            vec4<f32>(light_records[m], light_records[m + 1u], light_records[m + 2u], light_records[m + 3u]),
+            vec4<f32>(light_records[m + 4u], light_records[m + 5u], light_records[m + 6u], light_records[m + 7u]),
+            vec4<f32>(light_records[m + 8u], light_records[m + 9u], light_records[m + 10u], light_records[m + 11u]),
+            vec4<f32>(light_records[m + 12u], light_records[m + 13u], light_records[m + 14u], light_records[m + 15u]),
+        ),
+        vec4<f32>(
+            light_records[at + 24u],
+            light_records[at + 25u],
+            light_records[at + 26u],
+            light_records[at + 27u],
+        ),
+    );
+}}
+
 /// Returns which cluster of the grid a fragment is in.
 ///
 /// # Why this costs three multiplies
@@ -694,6 +792,171 @@ fn shadowed(
     return lit / 9.0;
 }}
 
+/// The side of one virtual shadow page, in texels.
+///
+/// It is written out here, rather than read from the texture, because a page's size is the one
+/// fact the atlas's own dimensions do not carry: an atlas layer is `atlas_side` pages across, and
+/// dividing its side by that would give the answer only for the pages that were allocated, which
+/// is the question and not the constant. The same number is `PAGE_SIZE` in
+/// `crates/scene/src/vshadow.rs`, and the walk below is that module's `Allocation::resolve`
+/// translated; `crates/scene/tests/virtual_shadow_maps.rs` is where the two are checked against
+/// each other.
+const PAGE_TEXELS: u32 = 128u;
+
+/// Returns how lit a surface is by a light whose shadow is recorded as **pages** rather than as
+/// one pool image.
+///
+/// # What the walk is
+///
+/// The light's projection puts the surface somewhere in the light's normalised plane, and the
+/// plane is a grid of pages whose finest side the compiler worked out from what its casters asked
+/// for. Which page holds this point's shadow is not that page: it is the finest page **that
+/// exists**, because a caster that asked for a coarse recording is not drawn into a fine page at
+/// all, and a fragment that read the empty one would compare against nothing and call the point
+/// lit. So the chain is walked from the finest level down and the first row whose bit says the
+/// page was allocated wins — which is one mask test and one popcount per level, four at most, and
+/// the reason a table exists rather than a search.
+///
+/// A page's slot is not its number in the grid but its rank among the pages of its own row, which
+/// is what lets the popcount be the answer and the atlas be filled by whatever order the compiler
+/// allocated pages in.
+///
+/// # Why a point with no page is lit rather than shadowed
+///
+/// The same rule the pool path holds to: no answer is not an answer of "blocked". A point outside
+/// the light's plane, and a point whose every level came up empty, are both outside this light's
+/// shadow, and the alternative is a dark region in the shape of a grid gap.
+///
+/// # Why the bias scales with the level and the taps do not
+///
+/// A page of level `k` covers `2^k` times as much of the world as a page of level zero in the same
+/// number of texels, so the depth its geometry disagrees with the receiver by is `2^k` times as
+/// large, and a constant bias is either nothing at the coarsest level or a detached shadow at the
+/// finest. The kernel stays three by three: its taps are whole texels **of the page**, so a coarse
+/// page's shadow edge is soft over as much world as a coarse page covers, which is the softness
+/// the level was chosen to be able to afford.
+///
+/// The taps are clamped to their own page, which a pool page does not need and a slot in an atlas
+/// does: the texel outside a page belongs to a different rectangle of the same light's plane, and
+/// comparing a depth recorded there is a wrong answer rather than an absent one.
+fn shadowed_pages(
+    address: vec4<f32>,
+    shadow_projection: mat4x4<f32>,
+    to_light: vec3<f32>,
+    world_position: vec3<f32>,
+    normal: vec3<f32>,
+) -> f32 {{
+    let lookup = world_position + normal * 1.6;
+    let from_light = shadow_projection * vec4<f32>(lookup, 1.0);
+    if from_light.w <= 0.0 {{
+        return 1.0;
+    }}
+    let ndc = from_light.xyz / from_light.w;
+    // Tested before the conversion rather than after, because a negative normalised coordinate
+    // turned into an unsigned one is not a defined answer, and the plane's own edge is the
+    // boundary of this light's shadow either way.
+    if ndc.x < -1.0 || ndc.x > 1.0 || ndc.y < -1.0 || ndc.y > 1.0 {{
+        return 1.0;
+    }}
+    let header = u32(address.x);
+    let first = bitcast<u32>(light_records[header]);
+    let second = bitcast<u32>(light_records[header + 1u]);
+    let pages_per_side = first & 0xFFFFu;
+    let atlas_side = max(first >> 16u, 1u);
+    let levels = second & 0xFFFFu;
+    // The whole grid, in texels of the light's plane: level zero's own resolution.
+    let side = pages_per_side * PAGE_TEXELS;
+    // Clip space y runs up and a texture's rows run down, which is the same fold the pool path
+    // makes in its `uv`, and the same one the compiler makes when it lays pages out.
+    let texel = vec2<u32>(
+        u32((ndc.x * 0.5 + 0.5) * f32(side)),
+        u32((0.5 - ndc.y * 0.5) * f32(side)),
+    );
+    if texel.x >= side || texel.y >= side {{
+        return 1.0;
+    }}
+    for (var level = 0u; level < levels; level = level + 1u) {{
+        let shift = PAGE_TEXELS << level;
+        let across = max(pages_per_side >> level, 1u);
+        let page_x = min(texel.x / shift, across - 1u);
+        let page_y = min(texel.y / shift, across - 1u);
+        // One base slot, then the mask words of a row of `across` pages.
+        let words = 1u + (across + 31u) / 32u;
+        let section = bitcast<u32>(light_records[header + 2u + level]);
+        let row = header + section + page_y * words;
+        let bit = page_x % 32u;
+        let column = page_x / 32u;
+        let bits = bitcast<u32>(light_records[row + 1u + column]);
+        if (bits & (1u << bit)) == 0u {{
+            continue;
+        }}
+        var rank = countOneBits(bits & ((1u << bit) - 1u));
+        for (var earlier = 0u; earlier < column; earlier = earlier + 1u) {{
+            rank = rank + countOneBits(bitcast<u32>(light_records[row + 1u + earlier]));
+        }}
+        let slot = bitcast<u32>(light_records[row]) + rank;
+        let origin = vec2<i32>(
+            i32((slot % atlas_side) * PAGE_TEXELS),
+            i32((slot / atlas_side) * PAGE_TEXELS),
+        );
+        let within = vec2<u32>((texel.x % shift) >> level, (texel.y % shift) >> level);
+        let centre = origin + vec2<i32>(i32(within.x), i32(within.y));
+        let slope = 1.0 - abs(dot(normal, to_light));
+        let bias = (0.0006 + 0.003 * slope) * f32(1u << level);
+        let layer = i32(address.y);
+        var lit = 0.0;
+        for (var r = -1; r <= 1; r = r + 1) {{
+            for (var c = -1; c <= 1; c = c + 1) {{
+                let tap = clamp(
+                    centre + vec2<i32>(c, r),
+                    origin,
+                    origin + vec2<i32>(i32(PAGE_TEXELS) - 1),
+                );
+                lit = lit + select(0.0, 1.0, ndc.z - bias
+                    <= textureLoad(shadow_atlas, tap, layer, 0));
+            }}
+        }}
+        return lit / 9.0;
+    }}
+    return 1.0;
+}}
+
+/// Returns how lit a surface is by one light, whichever of the two shapes its shadow has.
+///
+/// # Why the record decides and not the kind
+///
+/// A light's record carries **one** of the two addresses and minus one in the other, because a
+/// kind that has moved to pages takes no pool page at all — the design replaces the fixed path
+/// rather than keeping it as a fallback, and a light drawn twice would be a light shaded by the
+/// sum of two shadows. So the test is on the address and not on the light's kind, which is what
+/// lets a point light and a directional one move to pages later with no edit here at all: they
+/// arrive carrying an address, and this reads it.
+fn shadow_term(
+    shadow_projection: mat4x4<f32>,
+    page_index: f32,
+    address: vec4<f32>,
+    to_light: vec3<f32>,
+    world_position: vec3<f32>,
+    normal: vec3<f32>,
+) -> f32 {{
+    if address.x < 0.0 {{
+        return shadowed(
+            shadow_projection,
+            page_index,
+            to_light,
+            world_position,
+            normal,
+        );
+    }}
+    return shadowed_pages(
+        address,
+        shadow_projection,
+        to_light,
+        world_position,
+        normal,
+    );
+}}
+
 /// Returns what one light adds to a surface, given which way it arrives and how bright it is.
 ///
 /// # Why this is shared and not written out twice
@@ -779,9 +1042,12 @@ fn directional_radiance(
     // The uniform carries the direction the light **travels along**, which is the way it comes
     // **from**, so the vector towards it is the negative.
     let to_light = -normalize(uniforms.directional.direction.xyz);
-    let lit = shadowed(
+    let lit = shadow_term(
         uniforms.directional.shadow_projection,
         uniforms.directional.direction.w,
+        // A sun is still on the pool, so it carries no address at all and the test below routes
+        // it to the one-page path. Its grid is the next stage of this migration.
+        vec4<f32>(-1.0),
         to_light,
         world_position,
         normal,
@@ -864,7 +1130,7 @@ fn record_contribution(
     fresnel: vec3<f32>,
     roughness: f32,
 ) -> vec3<f32> {{
-    let light = light_records[index];
+    let light = light_record(index);
     let cone = spot_cones[index];
     let to_light = light.position - world_position;
     let light_range = max(length(to_light), 0.0001);
@@ -875,8 +1141,14 @@ fn record_contribution(
     // and scaled to nothing. A light that is not a spot light carries the whole sphere and
     // is scaled by exactly one, so a point light's arithmetic is unchanged — which is what
     // lets a global point light be evaluated by the same body as a clustered one.
-    let lit = shadowed(light.shadow_projection, light.page, direction, world_position, normal)
-        * cone_attenuation(cone, -direction);
+    let lit = shadow_term(
+        light.shadow_projection,
+        light.page,
+        light.virtual_page,
+        direction,
+        world_position,
+        normal,
+    ) * cone_attenuation(cone, -direction);
 
     // A point light falls off with the square of its distance. The constants are the
     // gentlest that still read as a falloff over a scene a couple of hundred units

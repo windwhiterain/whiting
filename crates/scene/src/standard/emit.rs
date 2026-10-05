@@ -57,11 +57,12 @@ use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     CAMERA, CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, DEPTH_RANGE,
     DIRECTIONAL, ENVIRONMENT, ENVIRONMENT_MAP, EXPOSURE, FORWARD, FRAME_SIZE, GLOBAL_COUNT,
-    HALF_EXTENT, INSTANCE_DATA, POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_MAP_FORMAT,
-    SHADOW_POOL, TIME, UP, VERTICES,
+    HALF_EXTENT, INSTANCE_DATA, POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_ATLAS,
+    SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, UP, VERTICES, VIEW_PAGE,
 };
 use crate::standard::scene_schema;
 use crate::standard::scene_schema::RADIUS;
+use crate::vshadow::{self, LightVolume};
 use crate::{CompileError, CompileNote};
 use graphics::layout::components;
 use graphics::pass::{BLEND, DEPTH, DEPTH_COMPARE, DEPTH_WRITE};
@@ -266,6 +267,19 @@ struct InstanceRead {
     model: Matrix,
     /// The images this instance's material names, and the fields it names them in.
     images: Vec<ImageBinding>,
+    /// How finely this instance wants its own shadow recorded, in texels per world unit.
+    ///
+    /// # Invariants
+    ///
+    /// `None` means the document said nothing, which is not the same question as "zero": an
+    /// absent field takes the scene's own default density, and a zero asks to be drawn only
+    /// into the coarsest pages there are. The two are kept apart because they are the two
+    /// different things an author can mean, and reading one as the other is a hillside either
+    /// rendered at the resolution of a coin or not rendered at all.
+    ///
+    /// It is `None` for an instance of any other stage, which is what makes a `shadow_density`
+    /// on a lighting instance a refusal rather than a field nothing reads.
+    shadow_density: Option<f64>,
 }
 
 /// One mesh material, read out of the scene document: a shader, and the data it reads.
@@ -523,6 +537,32 @@ impl LightRead {
             }
         }
     }
+
+    /// Returns the space this light's **virtual page grid** is measured in, or nothing for a
+    /// kind whose grid has not landed.
+    ///
+    /// # Invariants
+    ///
+    /// **Only a spot light comes through here**, and that is a staging decision rather than a
+    /// fact about cones: a point light's grid is a cube of six faces and a directional light's is
+    /// a clipmap centred on the camera, and neither is a grid this compiler can build yet. A kind
+    /// that returns nothing keeps the one pool page it always drew, which is why the two paths
+    /// coexist rather than one of them being wrong.
+    ///
+    /// The volume is the **same two matrices** [`spot_projection`] multiplies into the record's
+    /// `shadow_projection`, from the same function, and that is the whole reason this is a method
+    /// on the light rather than a grid built where the pages are allocated: a grid sized from one
+    /// copy of the cone arithmetic and a page drawn through another samples every shadow at the
+    /// wrong place the day either one is edited.
+    fn virtual_volume(&self, bounds: &Bounds) -> Option<LightVolume> {
+        if self.kind != LightKind::Spot {
+            return None;
+        }
+        let extent = self.shadow_extent?;
+        let position = self.position?;
+        let (projection, view) = spot_matrices(position, &self.cone, extent, bounds);
+        Some(LightVolume { view, projection })
+    }
 }
 
 /// Which kind of light a scene names.
@@ -779,6 +819,13 @@ pub fn emit(
     let clustering = Clustering::read(scene)?;
     let (light_pool, pool_notes) = lighting_pool::read_light_pool(scene, limits)?;
     notes.extend(pool_notes);
+    // The ceilings of the **virtual** shadow atlas, read beside the pool because both are shadow
+    // resources of this frame and a scene that has both a spot lamp and a sun declares both. These
+    // are ceilings rather than sizes on purpose: a virtual light is given exactly the pages its own
+    // casters ask for, so the only thing a scene can say about the atlas is how far it may be
+    // allowed to go before this stops being a document any machine can hold.
+    let (shadow_atlas, atlas_notes) = lighting_pool::read_shadow_atlas(scene, limits)?;
+    notes.extend(atlas_notes);
     // The light list, with the **global** lights first, and every other run built from that
     // one order. The order is not a preference: a shading pass reaches a global light by
     // index rather than through a cluster list, and the records, the cones, the cluster
@@ -794,9 +841,34 @@ pub fn emit(
         })
         .collect();
     ordered.sort_by_key(|(membership, _)| membership != &Membership::Global);
-    let cluster_lights: Vec<ClusterLight> = ordered
+    // The document's own light run, in the order the records above were written in. Every
+    // later index into it — the shadowing pass per light, the directional light's page, the
+    // cone run — is an index into this list, so the two cannot come apart.
+    let memberships: Vec<Membership> = ordered.iter().map(|(membership, _)| *membership).collect();
+    let lights: Vec<LightRead> = ordered.into_iter().map(|(_, light)| light).collect();
+    // Which lights are drawn as virtual pages, and what that came to. Planned here rather than
+    // inside the lighting module for the same reason a light's projection is built here: a page
+    // grid is a fact about a view, a box of casters and a camera frustum, and the lighting module
+    // deliberately holds none of those three. It runs before the records so that a record can
+    // carry the address of the table it indexes.
+    let virtual_shadow = plan_virtual_pages(
+        &lights,
+        &instances,
+        &instance_bounds,
+        &camera_basis,
+        &light_pool,
+        &shadow_atlas,
+        &bounds,
+    )?;
+    // Where the page table will sit once the records have been packed, which is the number a
+    // record's absolute table offset is measured from. Read off the whole light run rather than
+    // off the virtual subset, because the table is appended to the end of every record there is.
+    let table_base = lighting_pool::record_table_base(lights.len());
+    let cluster_lights: Vec<ClusterLight> = lights
         .iter()
-        .map(|(membership, light)| ClusterLight {
+        .enumerate()
+        .zip(&memberships)
+        .map(|((index, light), membership)| ClusterLight {
             label: light.label.clone(),
             position: light.record_position(),
             colour: light.colour,
@@ -817,13 +889,25 @@ pub fn emit(
             // the pool had no room for and a light that casts nothing both carry a matrix
             // nothing looks through, and the page ranking has to tell them apart.
             casts_shadow: light.shadow_extent.is_some(),
+            // Which of the two shadows this light has. A virtual one takes no pool page at all —
+            // the design replaces the fixed path rather than keeping it as a fallback — and
+            // carries the address of its own table section beside a `page` of minus one, so a
+            // shader branches on the address and not on a kind it cannot see.
+            virtual_shadow: virtual_shadow.lights.contains(&index),
+            virtual_page: virtual_shadow
+                .address_of(index, table_base)
+                .unwrap_or([lighting_pool::NO_PAGE; 4]),
         })
         .collect();
-    // The document's own light run, in the order the records above were written in. Every
-    // later index into it — the shadowing pass per light, the directional light's page, the
-    // cone run — is an index into this list, so the two cannot come apart.
-    let lights: Vec<LightRead> = ordered.into_iter().map(|(_, light)| light).collect();
-    let clusters = lighting_pool::assign(&clustering, &cluster_lights, &camera_basis, &light_pool)?;
+    let mut clusters =
+        lighting_pool::assign(&clustering, &cluster_lights, &camera_basis, &light_pool)?;
+    // The page table goes at the end of the record run it indexes into, which is the one place
+    // both halves of the address can be checked against each other: the offsets a record carries
+    // were computed from [`lighting_pool::record_table_base`] over this light run, and the buffer
+    // this appends to is the run itself.
+    if !virtual_shadow.allocation.table.is_empty() {
+        clusters.attach_shadow_table(&virtual_shadow.allocation.table, table_base);
+    }
     notes.extend(clusters.notes(&clustering, &Path::root().key(scene_schema::CLUSTERING)));
     notes.extend(lighting_pool::pool_notes(
         &cluster_lights,
@@ -865,6 +949,27 @@ pub fn emit(
             SHADOW_MAP_FORMAT,
         ),
     )?;
+    // The virtual atlas, beside the pool and sized by what was allocated rather than by the
+    // ceiling the scene declared. The two are one texture array apiece and the difference is the
+    // whole reason both exist during the migration: a pool is a fixed grid of pages a light is
+    // ranked into, and an atlas is one layer per virtual light holding exactly the pages that
+    // light's own casters asked for.
+    //
+    // A scene that allocated no pages still gets an entry, one page of one layer, and every
+    // shadowing pass binds it: a binding point is numbered by its **name's position** in the pass,
+    // so an atlas that came and went would move `shadow_pool` and `vertices` off the numbers the
+    // shadowing shader declares them at. This is the same reason [`SPOT_CONES_ENTRY`] is bound by a
+    // lighting pass whose scene names no spot light, and the cost here is sixty four kilobytes.
+    let atlas = virtual_shadow.allocation.atlas().unwrap_or(vshadow::Atlas {
+        side_pages: 1,
+        layers: 1,
+    });
+    let side = i64::from(atlas.side_texels());
+    insert_entry(
+        &mut instance,
+        SHADOW_ATLAS.to_owned(),
+        texture_array(side, side, i64::from(atlas.layers), SHADOW_MAP_FORMAT),
+    )?;
     for shader in &shaders {
         insert_entry(&mut instance, shader.label.clone(), shader_entry(shader))?;
     }
@@ -872,10 +977,18 @@ pub fn emit(
     // One pass per group, and one instance entry per group, because the instances in a group are
     // drawn together by one instanced draw rather than one draw apiece.
     let mut passes = Vec::new();
+    // The shadowing instances grouped once for the whole virtual run, because the grouping key is
+    // the same for every page and rebuilding it per page would be the same walk a hundred times.
+    let shadowing_groups = shadow_groups(&instances, &meshes, &shaders);
     // A shadowing pass per light that was **given a page**. A light the pool turned away is
     // drawn into nothing, and drawing it into page zero would hand it a neighbour's shadow,
-    // so it is lit unshadowed instead and there is no pass for it at all.
+    // so it is lit unshadowed instead and there is no pass for it at all. A light drawn as
+    // virtual pages is never in this list: it was refused a pool page on purpose, and its
+    // passes are the ones below.
     for (index, light) in lights.iter().enumerate() {
+        if virtual_shadow.lights.contains(&index) {
+            continue;
+        }
         let Some(page) = clusters.page_of(index) else {
             continue;
         };
@@ -893,11 +1006,31 @@ pub fn emit(
                 light,
                 &bounds,
                 &light_pool,
+                atlas,
                 page,
                 time,
                 &images,
             ));
         }
+    }
+    // One pass per page of every virtual light, in plan order so that the pass list is stable and
+    // a scene compiled twice emits the same bytes twice. A scene that allocated no pages has no
+    // virtual lights in this list, so the loop is what stands in for a test on the atlas: the one
+    // it binds when nothing was allocated is never drawn into.
+    for (plan, light_index) in virtual_shadow.lights.iter().enumerate() {
+        virtual_shadow_passes(
+            plan,
+            &lights[*light_index],
+            &virtual_shadow.allocation,
+            &shadowing_groups,
+            &mut instance,
+            atlas,
+            &light_pool,
+            &bounds,
+            &images,
+            time,
+            &mut passes,
+        )?;
     }
     for group in groups(&instances, &meshes, &shaders, Stage::Depthing, None) {
         let images = declare_images(&mut instance, &group, &images)?;
@@ -920,6 +1053,7 @@ pub fn emit(
             &clusters,
             &cones,
             &light_pool,
+            atlas,
             &environment,
             &directional,
             frame,
@@ -2378,7 +2512,62 @@ fn read_instance(
         stage,
         model,
         images,
+        shadow_density: read_shadow_density(instance, path, stage)?,
     })
+}
+
+/// Reads the shadow resolution one instance asked for, and refuses one asked for by a stage that
+/// draws no shadow.
+///
+/// # Invariants
+///
+/// The field belongs to the `shadowing` bucket alone, and asking for it elsewhere is refused
+/// rather than ignored, because a document carrying a number nothing reads is a document whose
+/// author believes the number is doing something. Every other optional field in an instance is
+/// read by whichever stage happens to look; this one is read by the allocator, which is given
+/// only the instances that cast.
+///
+/// **Zero is a request and not an error**: it says "cast, but never drive a page finer than the
+/// root". A negative number is refused because it asks for a resolution below no resolution, and
+/// the only reading available for it is the one zero already has — which an author who meant zero
+/// can write.
+fn read_shadow_density(
+    instance: &Value,
+    path: &Path,
+    stage: Stage,
+) -> Result<Option<f64>, CompileError> {
+    let declared = optional_number(instance, path, scene_schema::SHADOW_DENSITY)?;
+    let Some(density) = declared else {
+        return Ok(None);
+    };
+    let field = path.key(scene_schema::SHADOW_DENSITY);
+    if stage != Stage::Shadowing {
+        return Err(CompileError::Emission {
+            reason: format!(
+                "at {field}: `shadow_density` is what a caster asks to be recorded at, and this \
+                 instance is drawn in the `{}` pass, which records nothing. Move it to the \
+                 `shadowing` bucket, or take it out.",
+                stage.suffix()
+            ),
+        });
+    }
+    if !density.is_finite() {
+        return Err(CompileError::Emission {
+            reason: format!(
+                "at {field}: a density of `{density}` is not a number of texels to place along \
+                 a world unit, and a grid sized from one is a grid sized from nothing."
+            ),
+        });
+    }
+    if density < 0.0 {
+        return Err(CompileError::Emission {
+            reason: format!(
+                "at {field}: a density of {density} asks for a resolution finer than none. Zero \
+                 is the number that means \"cast, but coarsely\", and it is already taken."
+            ),
+        });
+    }
+    Ok(Some(density))
 }
 
 /// Returns the schema one instance row is read with: what the shader reads per instance, and the
@@ -3269,11 +3458,19 @@ fn debug_outputs(frame_target: &str, channels: &[DebugChannel]) -> Value {
 /// because a fragment finds the page by carrying its world position through that matrix. A
 /// pair of functions that each built "the light's projection" would agree until one of them
 /// was edited, and until then every shadow in the scene would be sampled at the wrong place.
+///
+/// The two numbers that make this pass a **whole** page rather than one of a grid are the
+/// identity window and the absence of a viewport, and both are said rather than left out:
+/// [`VIEW_PAGE`] carries the whole of the light's plane because one shader body serves this pass
+/// and a page pass, and the remap that turns a light's clip output into a slot is the identity
+/// when the slot is the whole of it. The atlas is bound with no layer and read by nothing, for
+/// the reason [`SPOT_CONES_ENTRY`] is bound by a lighting pass whose scene names no spot light.
 fn shadowing_pass(
     group: &Group<'_>,
     light: &LightRead,
     bounds: &Bounds,
     pool: &LightPool,
+    atlas: vshadow::Atlas,
     page: usize,
     time: f64,
     images: &[(String, Value)],
@@ -3293,6 +3490,18 @@ fn shadowing_pass(
                 PROJECTION.to_owned(),
                 matrix_projection(light_matrix, light_eye),
             ),
+            // The whole of the light's plane, which is the identity of the mapping a virtual
+            // page's vertex stage applies: this pass fits one projection to one page covering
+            // everything, so it remaps nothing and says so with the same field.
+            (
+                VIEW_PAGE.to_owned(),
+                Value::List(vec![
+                    Value::Float(-1.0),
+                    Value::Float(-1.0),
+                    Value::Float(2.0),
+                    Value::Float(2.0),
+                ]),
+            ),
             (TIME.to_owned(), Value::Float(time)),
         ]),
         mesh_bindings(group)
@@ -3305,6 +3514,17 @@ fn shadowing_pass(
                     pool.pages as i64,
                     SHADOW_MAP_FORMAT,
                     Some(page as i64),
+                ),
+            )])
+            .chain([(
+                SHADOW_ATLAS.to_owned(),
+                texture_array_binding(
+                    SHADOW_ATLAS,
+                    i64::from(atlas.side_texels()),
+                    i64::from(atlas.side_texels()),
+                    i64::from(atlas.layers),
+                    SHADOW_MAP_FORMAT,
+                    None,
                 ),
             )])
             .chain(images.iter().cloned()),
@@ -3382,6 +3602,7 @@ fn lighting_pass(
     clusters: &lighting_pool::Clusters,
     cones: &PackedList,
     pool: &LightPool,
+    atlas: vshadow::Atlas,
     environment: &EnvironmentMap,
     directional: &DirectionalLight,
     frame: Frame,
@@ -3463,6 +3684,21 @@ fn lighting_pass(
                         pool.page_width,
                         pool.page_height,
                         pool.pages as i64,
+                        SHADOW_MAP_FORMAT,
+                        None,
+                    ),
+                ),
+                (
+                    SHADOW_ATLAS.to_owned(),
+                    // No layer, for the same reason the pool has none: this pass only reads the
+                    // atlas, and a fragment picks the layer out of the record of the light it is
+                    // shading. Bound whatever the scene allocated, because the binding point is
+                    // numbered by its name's position — see [`SHADOW_ATLAS`].
+                    texture_array_binding(
+                        SHADOW_ATLAS,
+                        i64::from(atlas.side_texels()),
+                        i64::from(atlas.side_texels()),
+                        i64::from(atlas.layers),
                         SHADOW_MAP_FORMAT,
                         None,
                     ),
@@ -3656,6 +3892,29 @@ fn spot_projection(
     shadow_extent: f64,
     bounds: &Bounds,
 ) -> (Matrix, [f64; 3]) {
+    let (perspective, view) = spot_matrices(position, cone, shadow_extent, bounds);
+    (multiply(&perspective, &view), position)
+}
+
+/// The two matrices a spot light's page is drawn through, kept apart.
+///
+/// # Invariants
+///
+/// [`spot_projection`] returns their product because that is what a shader samples with and what
+/// a light record carries. This returns the pair because a **page grid is measured in view
+/// space**: the cone's half angle, its near and far planes and its eye are each a slot of one of
+/// the two, and multiplying them smears every one of those across a row. See
+/// [`vshadow::LightVolume`] for the same argument from the other end.
+///
+/// The two functions share one body rather than restating the half angle and the far plane,
+/// because a grid sized from one copy of that arithmetic and a page drawn through another is a
+/// shadow sampled at the wrong place the day either one is edited.
+fn spot_matrices(
+    position: [f64; 3],
+    cone: &SpotCone,
+    shadow_extent: f64,
+    bounds: &Bounds,
+) -> (Matrix, Matrix) {
     // The furthest point of the box along the axis, which is the **sum** of each axis's own
     // furthest end: a point of the box is a choice on every axis, so the furthest point is the
     // one that takes the far end of all three at once. Taking the largest single term instead
@@ -3678,23 +3937,465 @@ fn spot_projection(
         .outer_angle
         .min((shadow_extent.max(1e-3) / far_plane).atan())
         .max(1e-3);
+    // The eye is the light and the target is a point along the cone's axis, so the basis is
+    // built from the direction the light shines rather than from a point the scene happens to
+    // have. A cone is symmetric about its axis, so which of the two perpendicular directions
+    // becomes "up" cannot be wrong; that is also what makes a light aimed straight up or
+    // straight down safe, where `look_at`'s up is parallel to the direction and its right hand
+    // axis falls back to a unit x.
     (
-        multiply(
-            &perspective(
-                2.0 * half_angle,
-                1.0,
-                (far_plane * SPOT_NEAR_FRACTION).max(1e-3),
-                far_plane,
-            ),
-            // The eye is the light and the target is a point along the cone's axis, so the
-            // basis is built from the direction the light shines rather than from a point the
-            // scene happens to have. A cone is symmetric about its axis, so which of the two
-            // perpendicular directions becomes "up" cannot be wrong; that is also what makes a
-            // light aimed straight up or straight down safe, where `look_at`'s up is parallel to
-            // the direction and its right hand axis falls back to a unit x.
-            &look_at(position, add(position, cone.axis), [0.0, 1.0, 0.0]),
+        perspective(
+            2.0 * half_angle,
+            1.0,
+            (far_plane * SPOT_NEAR_FRACTION).max(1e-3),
+            far_plane,
         ),
-        position,
+        look_at(position, add(position, cone.axis), [0.0, 1.0, 0.0]),
+    )
+}
+
+/// The eight corners of everything a camera can see, in the order [`vshadow::Frustum`] reads.
+///
+/// # Invariants
+///
+/// **The corners are built from the camera's own basis rather than by unprojecting the eight
+/// corners of clip space**, because unprojecting needs the inverse of a matrix this file only ever
+/// builds forwards, and a 4×4 inverse written here would be a second implementation of the
+/// camera's shape that disagrees with the first the day the camera grows a roll or a lens. The
+/// half width at a distance is a method on the projection precisely so that a parallel view and a
+/// perspective one come out of the same four lines.
+///
+/// The **near** plane is included rather than the eye being used as the apex. A frustum whose
+/// near face is the eye is a pyramid, and a pyramid's six planes are five distinct ones — its
+/// four edges and its far face, with the near face degenerate — so a page standing between the eye
+/// and the near plane would be tested against a plane that separates nothing. The face as it is
+/// built here cuts that band off, which is correct: nothing nearer than the near plane is drawn
+/// into a frame, so a page whose only reach into the view is behind it shades no pixel.
+fn camera_frustum(camera: &Projection) -> vshadow::Frustum {
+    let mut corners = [[0.0; 3]; 8];
+    for (index, corner) in corners.iter_mut().enumerate() {
+        // The bit order is the frustum's own: low bit horizontal, next vertical, top bit near or
+        // far. `Frustum::planes` picks its three points per face out of that order, so a corner
+        // written in another order is a frustum with the wrong faces rather than one that fails.
+        let distance = if index & 4 == 0 {
+            camera.near
+        } else {
+            camera.far
+        };
+        let [wide, tall] = camera.half_width_at(distance);
+        let horizontal = if index & 1 == 0 { -wide } else { wide };
+        let vertical = if index & 2 == 0 { -tall } else { tall };
+        *corner = add(
+            add(camera.eye, scale(camera.forward, distance)),
+            add(scale(camera.right, horizontal), scale(camera.up, vertical)),
+        );
+    }
+    vshadow::Frustum::new(corners)
+}
+
+/// How far a box reaches from its own centre, which is the radius a caster is allocated by.
+///
+/// The allocator is given spheres, not boxes, because the silhouette of a sphere on a light's
+/// plane is one line of arithmetic and conservative for whatever the box stood in for. The
+/// **circumscribed** sphere is the conservative one: a box's corner is the point furthest from
+/// its centre, and a caster whose pages are allocated by a sphere that reaches it cannot have a
+/// shadow clipped off at its own edge.
+fn bounding_radius(box_of: &Bounds) -> f64 {
+    (0..3)
+        .map(|axis| box_of.half_width(axis).powi(2))
+        .sum::<f64>()
+        .sqrt()
+}
+
+/// What a scene's virtual shadow maps came to.
+///
+/// # Invariants
+///
+/// The two halves are one decision written twice and must not be read apart. A page belongs to a
+/// **plan**, and a plan belongs to a light by [`VirtualShadow::lights`], so an atlas layer number
+/// is a plan index and not a light index: a scene that mixes a sun with three lamps holds three
+/// layers rather than four, and a shader that read a light index as a layer would sample the
+/// wrong lamp.
+struct VirtualShadow {
+    /// Which light each plan belongs to, in plan order.
+    lights: Vec<usize>,
+    /// Every page that exists, the table that maps them, and the atlas that holds them.
+    allocation: vshadow::Allocation,
+}
+
+impl VirtualShadow {
+    /// The address one light's virtual pages are recorded at, as its record carries it, or
+    /// nothing for a light drawn on the pool rather than as pages.
+    ///
+    /// # Invariants
+    ///
+    /// `table_base` is [`lighting_pool::record_table_base`] over the scene's **whole light run**,
+    /// not over the virtual ones: the table is appended to the end of the record buffer, so its
+    /// first word is wherever the last record ends, and a light count that had been the number of
+    /// plans would put the table on top of the third record of a scene with nine lights. The
+    /// allocator's own offsets are relative to a light's own section, so the two are added here
+    /// and nowhere else.
+    ///
+    /// A light whose grid exists but holds **no page** carries the sentinel rather than a valid
+    /// table offset with nothing in it. Every one of its pages was outside the camera's view, and
+    /// a shader that walked an empty table would find no mask set, fall off the end of the chain
+    /// and read a texel of whatever was left in the atlas — which is a shadow in the wrong place,
+    /// the exact failure the sentinel exists to route around.
+    fn address_of(&self, light: usize, table_base: u32) -> Option<[f64; 4]> {
+        let plan = self.lights.iter().position(|index| *index == light)?;
+        let map = self.allocation.lights.get(plan)?;
+        if map.slots == 0 {
+            return Some([lighting_pool::NO_PAGE; 4]);
+        }
+        Some([
+            f64::from(table_base + map.table_offset as u32),
+            plan as f64,
+            lighting_pool::NO_PAGE,
+            lighting_pool::NO_PAGE,
+        ])
+    }
+}
+
+/// Decides which pages a scene's shadowing spot lights draw, and where.
+///
+/// # Invariants
+///
+/// - **Every shadowing instance is a caster of every virtual light**, whatever its density. The
+///   allocator decides which of them covers which page; a compiler that pre-filtered casters by
+///   the light's reach would be answering the question the footprints are built to ask, and
+///   answering it by a sphere that is the instance's own rather than by the silhouette it throws
+///   on the light's plane.
+/// - **An instance that names no density is drawn at the density the pool used to give it**, which
+///   is the pool's own page width across the width of the light's cone at the depth the grid is
+///   measured at. That is the number a scene was already rendering at, so a scene that declares
+///   nothing allocates a grid whose finest level is no finer and no coarser than the one page it
+///   replaced. The levels below it hold the casters that asked for less than that.
+/// - **The camera frustum is the only clip there is**, and there is exactly one of it. A scene
+///   with three cameras is compiled three times, once per camera, so a page list is a fact about
+///   this compile and not about the scene; and a compile that passed no frustum at all would keep
+///   every page of every light, which is the behaviour the proposal replaces rather than a
+///   fallback to it.
+/// - **A light the atlas has no layer for is refused, not dropped.** The ceiling is the scene's
+///   `shadow_atlas_layers` and the demand is its own light list, so the fix is a number in the
+///   document; drawing the lamp unshadowed is the silent wrong picture this whole stage exists to
+///   make impossible.
+fn plan_virtual_pages(
+    lights: &[LightRead],
+    instances: &[InstanceRead],
+    covered: &InstanceBounds,
+    camera: &Projection,
+    pool: &LightPool,
+    atlas: &lighting_pool::ShadowAtlas,
+    bounds: &Bounds,
+) -> Result<VirtualShadow, CompileError> {
+    // The handles are indices into `instances` rather than into a list of shadowing instances,
+    // because the emitter that reads a page's casters back out has to reach the mesh, the shader
+    // and the packed row of each one, and all three live at that index.
+    let casters: Vec<usize> = instances
+        .iter()
+        .enumerate()
+        .filter(|(_, instance)| instance.stage == Stage::Shadowing)
+        .map(|(index, _)| index)
+        .collect();
+    let mut plans = Vec::new();
+    let mut owners = Vec::new();
+    for (index, light) in lights.iter().enumerate() {
+        let Some(volume) = light.virtual_volume(bounds) else {
+            continue;
+        };
+        // The density a caster with no opinion of its own is recorded at: **the texel size the
+        // pool gave this light**, which is its page width across the width of the cone at the
+        // depth the grid is measured at. Sizing the grid at the cone's own far width is what
+        // makes that exactly true — `shadow_extent` is the author's number for the light's reach
+        // and the far plane is derived from it *and* from the scene's bounds, so a default built
+        // from the extent alone put level zero a factor of the cone's angle away from the page it
+        // replaced. A scene that declares nothing therefore renders the shadows it rendered
+        // before, at the same resolution, and gets the finer levels only where it asks for them.
+        let (_near, far) = volume.near_far();
+        let plane_width = 2.0 * far * volume.half_tangent()[0];
+        let default = pool.page_width.max(1) as f64 / plane_width.max(1e-3);
+        let casters_of = casters
+            .iter()
+            .filter_map(|handle| {
+                let box_of = covered.each[*handle]?;
+                Some(vshadow::Caster {
+                    handle: *handle as u32,
+                    position: box_of.centre(),
+                    radius: bounding_radius(&box_of),
+                    density: instances[*handle].shadow_density.unwrap_or(default),
+                })
+            })
+            .collect::<Vec<_>>();
+        plans.push(vshadow::LightPlan {
+            label: light.label.clone(),
+            volume,
+            faces: 1,
+            casters: casters_of,
+        });
+        owners.push(index);
+    }
+    if plans.len() > atlas.layers as usize {
+        let names = owners
+            .iter()
+            .skip(atlas.layers as usize)
+            .map(|index| lights[*index].label.as_str())
+            .collect::<Vec<_>>();
+        return Err(CompileError::Emission {
+            reason: format!(
+                "at {}: this scene draws {} shadowing spot lights as virtual pages and the atlas \
+                 has {} layers, so {} of them have nowhere to be recorded: {}. Raise \
+                 `shadow_atlas_layers` on the scene's `frame`, which is a ceiling the allocator is \
+                 told rather than a size it fills, or take `shadow_extent` off a lamp that should \
+                 not cast one. Nothing here drops a page, because a dropped page is a shadow that \
+                 quietly stops existing.",
+                Path::root().key(scene_schema::LIGHTS),
+                plans.len(),
+                atlas.layers,
+                names.len(),
+                quoted(&names),
+            ),
+        });
+    }
+    let budget = vshadow::Budget {
+        atlas_side_pages: atlas.side_pages.max(1) as u32,
+        clip: vec![camera_frustum(camera)],
+    };
+    let allocation =
+        vshadow::allocate(&plans, &budget).map_err(|shortfall| CompileError::Emission {
+            reason: format!(
+                "at {}: {}",
+                Path::root().key(scene_schema::LIGHTS),
+                shortfall
+            ),
+        })?;
+    Ok(VirtualShadow {
+        lights: owners,
+        allocation,
+    })
+}
+
+/// The instances of the shadowing stage, grouped by the pass that could draw them together.
+///
+/// # Why this is not [`groups`]
+///
+/// A page of a virtual map draws a **subset** of a group, and the subset is named by the handles
+/// the allocator echoed back — which are indices into the scene's whole instance run, because that
+/// is where a mesh, a shader and a packed row are all reachable from. [`Group`] holds borrowed
+/// instances and no index, so a caller that wanted the number back would have to search the
+/// instance list for a pointer it already has. This keeps the number beside the row, and the
+/// grouping key is the same three facts [`groups`] keys by, so the two cannot come apart.
+struct ShadowGroup<'read> {
+    /// Every instance the group could draw, each with the handle the allocator knows it by.
+    members: Vec<(usize, &'read InstanceRead)>,
+    /// The mesh they draw.
+    mesh: &'read MeshRead,
+    /// The label of the shader they draw with.
+    shader: &'read str,
+    /// The images every member names, which is also what makes them one group.
+    images: Vec<ImageBinding>,
+}
+
+impl<'read> ShadowGroup<'read> {
+    /// Returns a [`Group`] drawing some of this group's instances for one page of one light.
+    ///
+    /// The page is appended to the light in the group's own light name, so a pass label and an
+    /// instance entry name are both unique per page without either being a second naming scheme.
+    /// The borrow is of the caller's `owner` rather than of `Self`'s own lifetime, because the name
+    /// is made per page inside a loop and the group outlives every page it is asked about.
+    fn for_page<'a>(&'a self, members: Vec<&'a InstanceRead>, owner: &'a str) -> Group<'a> {
+        Group {
+            members,
+            mesh: self.mesh,
+            shader: self.shader,
+            stage: Stage::Shadowing,
+            light: Some(owner),
+            images: self.images.clone(),
+        }
+    }
+}
+
+/// Groups the shadowing instances the way [`groups`] groups any stage's.
+fn shadow_groups<'read>(
+    instances: &'read [InstanceRead],
+    meshes: &'read [MeshRead],
+    shaders: &'read [ShaderRead],
+) -> Vec<ShadowGroup<'read>> {
+    let mut found: Vec<ShadowGroup<'read>> = Vec::new();
+    for (index, instance) in instances
+        .iter()
+        .enumerate()
+        .filter(|(_, instance)| instance.stage == Stage::Shadowing)
+    {
+        let mesh = &meshes[instance.mesh];
+        let shader = shaders[instance.shader].label.as_str();
+        match found.iter_mut().find(|group| {
+            group.shader == shader
+                && group.mesh.label == mesh.label
+                && group.images == instance.images
+        }) {
+            Some(group) => group.members.push((index, instance)),
+            None => found.push(ShadowGroup {
+                members: vec![(index, instance)],
+                mesh,
+                shader,
+                images: instance.images.clone(),
+            }),
+        }
+    }
+    found
+}
+
+/// Builds one shadowing pass per page of one virtual light, drawing the casters that cover it.
+///
+/// # Invariants
+///
+/// - **One pass per (page, group), not per page.** A pass binds one vertex buffer and one instance
+///   buffer, so casters of different meshes cannot share one; and a group's rows are the subset
+///   that reaches this page rather than the whole group, because a row drawn into a page its
+///   caster does not cover costs a full triangle setup for a fragment the scissor rect discards.
+/// - **The pass writes one slot of one layer**, as a viewport and a scissor rect over the atlas
+///   ([`PipelineStateFields::atlas_page`]) with the layer named on the binder's declaration. The
+///   viewport is what makes one layer hold a whole grid: without it every page of a light would
+///   draw over every other, and the last pass in the list would be the only shadow in the frame.
+/// - **The instance entry is keyed by the page as well as the group**, because the rows differ per
+///   page and two passes cannot bind two different meanings of one name.
+/// - **A page with no casters in a group emits no pass for that group**, and a page with no
+///   casters at all does not exist: the allocator only opens a page a caster covers.
+fn virtual_shadow_passes<'read>(
+    plan: usize,
+    light: &LightRead,
+    allocation: &vshadow::Allocation,
+    groups: &[ShadowGroup<'read>],
+    instance: &mut BTreeMap<String, Value>,
+    atlas: vshadow::Atlas,
+    pool: &LightPool,
+    bounds: &Bounds,
+    images: &[ImageRead],
+    time: f64,
+    passes: &mut Vec<Value>,
+) -> Result<(), CompileError> {
+    let map = allocation
+        .lights
+        .get(plan)
+        .expect("a light an allocation was built for has a map");
+    let (light_matrix, light_eye) = light
+        .shadow_volume(bounds)
+        .expect("a light with a virtual grid has a shadow volume");
+    for page in allocation.pages.iter().filter(|page| page.light == plan) {
+        // The slot's own corner of the layer, in texels. A slot is counted across every level of
+        // the light and laid out in a grid `atlas_side` pages wide, which is the same arithmetic
+        // [`vshadow::Allocation::resolve`] does from the other end; the two are one formula and the
+        // page is wrong the day either is edited.
+        let origin = [
+            (page.slot % map.atlas_side) as i64 * vshadow::PAGE_SIZE as i64,
+            (page.slot / map.atlas_side) as i64 * vshadow::PAGE_SIZE as i64,
+        ];
+        // The light and the page together name the pass, and the page is the slot rather than the
+        // level and coordinates because the slot is what is unique and what a reader looks for.
+        let owner = format!("{}/page{}", light.label, page.slot);
+        for group in groups {
+            let members: Vec<&InstanceRead> = group
+                .members
+                .iter()
+                .filter(|(handle, _)| page.casters.contains(&(*handle as u32)))
+                .map(|(_, member)| *member)
+                .collect();
+            if members.is_empty() {
+                continue;
+            }
+            let page_group = group.for_page(members, &owner);
+            let declared = declare_images(instance, &page_group, images)?;
+            insert_entry(instance, page_group.entry(), page_group.payload())?;
+            passes.push(page_pass(
+                &page_group,
+                &page.window,
+                light_matrix,
+                light_eye,
+                plan,
+                origin,
+                atlas,
+                pool,
+                time,
+                &declared,
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Builds the shadowing pass that draws one page of one virtual light.
+///
+/// # Invariants
+///
+/// The projection is the **light's whole one**, not a projection fitted to the page, and the page
+/// is carried beside it as a rectangle of the light's own normalised plane ([`VIEW_PAGE`]). That is
+/// what lets one matrix serve every level of a grid: a page's vertex stage maps the light's clip
+/// output through the page's window, and a page that instead had its own projection would need its
+/// near and far planes derived per page from a depth range that is the light's, which is the second
+/// copy of an arithmetic this file already refuses to have twice.
+///
+/// The window is the same [`vshadow::Page::window`] the allocator computed to decide the page
+/// exists, so the rectangle a caster is drawn into and the rectangle the shader samples out of are
+/// one number rather than two that agree.
+///
+/// The pool is bound with **no layer**, read by nothing, for the reason [`SPOT_CONES_ENTRY`] is
+/// bound by a lighting pass whose scene names no spot light: a binding point is numbered by its
+/// name's position in the pass, so a page pass that left the pool out would move `shadow_atlas`
+/// and every point after it off the numbers the shadowing shader declares them at.
+fn page_pass(
+    group: &Group<'_>,
+    window: &[f64; 4],
+    light_matrix: Matrix,
+    light_eye: [f64; 3],
+    plan: usize,
+    origin: [i64; 2],
+    atlas: vshadow::Atlas,
+    pool: &LightPool,
+    time: f64,
+    images: &[(String, Value)],
+) -> Value {
+    let side = vshadow::PAGE_SIZE as i64;
+    rasterize(
+        &group.label(),
+        group.shader,
+        Value::structure([
+            (
+                PROJECTION.to_owned(),
+                matrix_projection(light_matrix, light_eye),
+            ),
+            (
+                VIEW_PAGE.to_owned(),
+                Value::List(window.iter().copied().map(Value::Float).collect()),
+            ),
+            (TIME.to_owned(), Value::Float(time)),
+        ]),
+        mesh_bindings(group)
+            .chain([(
+                SHADOW_POOL.to_owned(),
+                texture_array_binding(
+                    SHADOW_POOL,
+                    pool.page_width,
+                    pool.page_height,
+                    pool.pages as i64,
+                    SHADOW_MAP_FORMAT,
+                    None,
+                ),
+            )])
+            .chain([(
+                SHADOW_ATLAS.to_owned(),
+                texture_array_binding(
+                    SHADOW_ATLAS,
+                    atlas.side_texels() as i64,
+                    atlas.side_texels() as i64,
+                    atlas.layers as i64,
+                    SHADOW_MAP_FORMAT,
+                    Some(plan as i64),
+                ),
+            )])
+            .chain(images.iter().cloned()),
+        vec![SHADOW_ATLAS],
+        DEPTH_CLEAR,
+        PipelineStateFields::atlas_page(origin[0], origin[1], side),
     )
 }
 
@@ -4342,23 +5043,41 @@ fn rasterize(
             Value::List(clear.into_iter().map(Value::Float).collect()),
         ),
     ];
-    let (blend, depth) = state.into_fields();
+    let PipelineStateFields {
+        blend,
+        depth,
+        viewport,
+    } = state;
     if let Some(blend) = blend {
         fields.push((BLEND.to_owned(), blend));
     }
     if let Some(depth) = depth {
         fields.push((DEPTH.to_owned(), depth));
     }
+    if let Some(region) = viewport {
+        fields.push((graphics::VIEWPORT.to_owned(), region));
+    }
     Value::variant("Rasterize", fields)
 }
 
-/// The blend and depth a pass declares, or the absence of either.
+/// The blend, depth and region a pass declares, or the absence of each.
 ///
 /// A pass that names neither builds the pipeline it always built: it replaces what is
 /// there, it records the depth of what it draws, and it keeps the nearer fragment.
 struct PipelineStateFields {
     blend: Option<Value>,
     depth: Option<Value>,
+    /// Which rectangle of its targets the pass draws into, as `[ x, y, width, height ]` in texels.
+    ///
+    /// # Invariants
+    ///
+    /// It is a **field of the pass** rather than a property of the target because the target is
+    /// shared: one shadow atlas layer holds every page of one light, and a pass that wrote its
+    /// whole target would overwrite the pages its neighbours had already drawn. The renderer
+    /// applies the region as a viewport *and* a scissor rect — see
+    /// `graphics::pass::VIEWPORT` — so a triangle overhanging the rectangle is cut rather than
+    /// smeared into the next page.
+    viewport: Option<Value>,
 }
 
 impl PipelineStateFields {
@@ -4367,12 +5086,18 @@ impl PipelineStateFields {
         Self {
             blend: None,
             depth: None,
+            viewport: None,
         }
     }
 
-    /// Returns the two fields, for a pass that declares them.
-    fn into_fields(self) -> (Option<Value>, Option<Value>) {
-        (self.blend, self.depth)
+    /// The state of a pass that draws one page of the shadow atlas into one slot of its layer.
+    fn atlas_page(x: i64, y: i64, side: i64) -> Self {
+        Self {
+            viewport: Some(Value::List(
+                [x, y, side, side].into_iter().map(Value::Int).collect(),
+            )),
+            ..Self::default_state()
+        }
     }
 }
 
@@ -4409,6 +5134,7 @@ fn lighting_state() -> PipelineStateFields {
     PipelineStateFields {
         blend: Some(blend),
         depth: Some(depth),
+        viewport: None,
     }
 }
 

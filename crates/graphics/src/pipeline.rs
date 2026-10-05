@@ -1,10 +1,12 @@
-//! How a rasterize pass is built: what it blends, how it uses depth, and how finely it samples.
+//! How a rasterize pass is built: what it blends, how it uses depth, how finely it samples,
+//! and which part of its target it draws into.
 //!
 //! # Why this is data rather than a constant of the renderer
 //!
-//! These three were fixed in the backend, which meant a document could not express an
-//! additive pass, a pass that draws over the depth it is drawn over, or an antialiased
-//! edge. Each of those is a statement about how a frame is put together, so each belongs
+//! These were fixed in the backend, which meant a document could not express an
+//! additive pass, a pass that draws over the depth it is drawn over, an antialiased
+//! edge, or a pass that fills one tile of a shared target. Each of those is a statement
+//! about how a frame is put together, so each belongs
 //! on the pass that makes it rather than in the code that runs it.
 //!
 //! # Invariants
@@ -12,16 +14,16 @@
 //! - **A field that is absent is the behaviour the backend always had.** A document that
 //!   names nothing builds the pipeline it built before any of this was a field, so every
 //!   existing pass renders as it did. The defaults are therefore not a policy: they are
-//!   what `Replace`, depth written and `Less`, and one sample mean.
+//!   what `Replace`, depth written and `Less`, one sample, and the whole target mean.
 //! - **Depth and blend are independent.** A pass may write depth without testing it, test
 //!   without writing, or do neither. A fullscreen pass that samples the depth buffer it is
 //!   drawn over needs `Always` and no write, and cannot be expressed as a variation of
 //!   either half.
 
-use definition::Value;
+use definition::{Path, Value};
 
 use crate::GraphicsError;
-use crate::pass::{BLEND, DEPTH, DEPTH_COMPARE, DEPTH_WRITE, SAMPLES};
+use crate::pass::{BLEND, DEPTH, DEPTH_COMPARE, DEPTH_WRITE, SAMPLES, VIEWPORT};
 use crate::read::PassView;
 
 /// How what a pass draws is combined with what is already in its target.
@@ -65,6 +67,85 @@ pub enum Compare {
     Always,
 }
 
+/// Which part of its targets a rasterize pass draws into, in texels of the target.
+///
+/// # Invariants
+///
+/// The origin is measured from the top left of the target, which is where a backend measures a
+/// viewport and a scissor rect from, so the rectangle a document names is the one the pass is
+/// clipped to without a conversion between the two that could be wrong in one direction only.
+///
+/// A width or a height of zero is refused rather than read as "draw nothing": a pass that covers
+/// no texels is a document that miscounted the region it meant to name, and a render that quietly
+/// produced nothing would leave whatever was already in the target standing as the answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Viewport {
+    /// How far from the left edge of the target the region starts, in texels.
+    pub x: u32,
+    /// How far from the top edge it starts, in texels.
+    pub y: u32,
+    /// How wide it is, in texels.
+    pub width: u32,
+    /// How tall it is, in texels.
+    pub height: u32,
+}
+
+/// The side a viewport is measured along, for a message about one that has no length.
+const SIDES: [&str; 2] = ["width", "height"];
+
+impl Viewport {
+    /// Reads a viewport out of the `[ x, y, width, height ]` a pass declares.
+    fn read(declared: &Value, path: &Path) -> Result<Self, GraphicsError> {
+        let Some(edges) = declared.as_list() else {
+            return Err(GraphicsError::Malformed {
+                path: path.clone(),
+                field: VIEWPORT.to_owned(),
+                expected: "a list of four integers",
+                found: declared.kind_name().to_owned(),
+            });
+        };
+        let [x, y, width, height] = edges else {
+            return Err(GraphicsError::Malformed {
+                path: path.clone(),
+                field: VIEWPORT.to_owned(),
+                expected: "four integers: origin x, origin y, width and height",
+                found: format!("{} numbers", edges.len()),
+            });
+        };
+        let edge = |value: &Value, at: usize| -> Result<u32, GraphicsError> {
+            let number = value.as_int().ok_or_else(|| GraphicsError::Malformed {
+                path: path.index(at),
+                field: VIEWPORT.to_owned(),
+                expected: "a texel count",
+                found: value.kind_name().to_owned(),
+            })?;
+            u32::try_from(number).map_err(|_| GraphicsError::Malformed {
+                path: path.index(at),
+                field: VIEWPORT.to_owned(),
+                expected: "a texel offset or count",
+                found: number.to_string(),
+            })
+        };
+        let out = Self {
+            x: edge(x, 0)?,
+            y: edge(y, 1)?,
+            width: edge(width, 2)?,
+            height: edge(height, 3)?,
+        };
+        for (side, length) in SIDES.iter().zip([out.width, out.height]) {
+            if length == 0 {
+                return Err(GraphicsError::Malformed {
+                    path: path.clone(),
+                    field: VIEWPORT.to_owned(),
+                    expected: "a region with a nonzero side",
+                    found: format!("{side} is zero"),
+                });
+            }
+        }
+        Ok(out)
+    }
+}
+
 /// Everything about a rasterize pass that decides how its pixels are produced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PipelineState {
@@ -76,6 +157,8 @@ pub struct PipelineState {
     pub depth_compare: Compare,
     /// How many samples each pixel takes.
     pub samples: u32,
+    /// Which region of its target the pass draws into, or `None` for the whole of it.
+    pub viewport: Option<Viewport>,
 }
 
 impl Default for PipelineState {
@@ -86,6 +169,7 @@ impl Default for PipelineState {
             depth_write: true,
             depth_compare: Compare::Less,
             samples: 1,
+            viewport: None,
         }
     }
 }
@@ -125,8 +209,17 @@ impl PipelineState {
             },
         };
 
+        let declared = match pass.optional(VIEWPORT) {
+            None => None,
+            Some(value) => Some(Viewport::read(value, &path.key(VIEWPORT))?),
+        };
+
         let Some(depth) = pass.optional(DEPTH) else {
-            return Ok(Self { blend, ..defaults });
+            return Ok(Self {
+                blend,
+                viewport: declared,
+                ..defaults
+            });
         };
         let field = |name: &str| depth.as_field_map().and_then(|fields| fields.get(name));
         let depth_write = field(DEPTH_WRITE)
@@ -173,6 +266,7 @@ impl PipelineState {
             depth_write,
             depth_compare,
             samples,
+            viewport: declared,
         })
     }
 }

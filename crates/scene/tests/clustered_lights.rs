@@ -30,7 +30,7 @@ use whiting_scene::CompileOutput;
 use whiting_scene::Compiler;
 use whiting_scene::lighting::{
     CLUSTER_COUNTS_ENTRY, CLUSTER_INDICES_ENTRY, ClusterLight, Clustering, Clusters,
-    LIGHT_RECORDS_ENTRY, LightPool, assign,
+    LIGHT_RECORDS_ENTRY, LightPool, NO_PAGE, assign,
 };
 use whiting_scene::standard::{
     Bounds, CLUSTERING, Camera, DEPTH_EXTENTS, LIGHTS_PER_CLUSTER, Projection, WIDTH_EXTENTS,
@@ -77,15 +77,21 @@ fn an_all_point_scene_still_emits_the_passes_it_emitted_before() {
         );
     }
 
-    // And the three this stage adds: one record of twenty four floats for the one light —
-    // colour, page, position, radius and the light's own projection — one count per cluster of
-    // the default grid, and one row of the default cap per cluster.
+    // And the three this stage adds: one record of twenty eight floats for the one light —
+    // colour, page, position, radius, the light's own projection and the address of its virtual
+    // shadow pages — one count per cluster of the default grid, and one row of the default cap per
+    // cluster.
+    //
+    // The record grew by one `vec4` when a light's shadow became a grid rather than a page, and it
+    // grew by four rather than by two because a record has to stay a whole number of sixteen byte
+    // blocks: the two numbers a virtual lookup needs are eight bytes with eight more of pad beside
+    // them whether they are wanted or not.
     let clusters = Clustering::convention().cluster_count() as i64;
     let stride = whiting_scene::lighting::light_record_stride() as i64;
     assert_eq!(
         stride * 4,
-        96,
-        "the record is twenty four floats, and the stride is stated rather than written down \
+        112,
+        "the record is twenty eight floats, and the stride is stated rather than written down \
          so the assertion and the packing read one number"
     );
     for (entry, size) in [
@@ -233,9 +239,22 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // The one gallery scene whose light is a spot, so the one whose shadow is now a
+            // **grid of pages** rather than one page — and the count is what that costs. Its lamp
+            // reaches a cone seventeen and a half world units across at the far plane, which at
+            // the pool's own resolution is a grid eight pages per side, and the whole pyramid of
+            // four levels is eighty five pages. Every one of them emits a pass per caster group
+            // that covers it, so eighty five pages and four groups come to two hundred and
+            // forty two, against four when the light was one page.
+            //
+            // It is recorded here rather than in a comment on the emitter because it is the cost
+            // of the design and not a bug in this scene: the alternative to a page per region is
+            // one texel size for a coin and a wall standing in the same cone, which is the thing
+            // the virtual map exists to refuse. A scene that wants the old count asks for it by
+            // naming a lower `shadow_density`, and the pages come down with it.
             "spotlight",
             Stages {
-                shadowing: 4,
+                shadowing: 242,
                 depthing: 4,
                 lighting: 4,
                 other: 1,
@@ -502,6 +521,8 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
         clustered: true,
         global: false,
         casts_shadow: true,
+        virtual_shadow: false,
+        virtual_page: [NO_PAGE; 4],
     };
     let bright = ClusterLight {
         label: "bright".to_owned(),
@@ -512,6 +533,8 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
         clustered: true,
         global: false,
         casts_shadow: true,
+        virtual_shadow: false,
+        virtual_page: [NO_PAGE; 4],
     };
     let clusters =
         assign(&grid, &[dim, bright], &parallel(), &pool()).expect("the assignment runs");
@@ -571,6 +594,8 @@ fn a_light_that_covers_the_view_takes_no_cluster_slot() {
         clustered: false,
         global: true,
         casts_shadow: true,
+        virtual_shadow: false,
+        virtual_page: [NO_PAGE; 4],
     };
     let clusters = assign(&grid, &[sun], &parallel(), &pool()).expect("the assignment runs");
 
@@ -633,6 +658,11 @@ fn pool() -> LightPool {
 }
 
 /// Returns a point light with the reach the tests need.
+///
+/// Every light these tests build is drawn on the **pool**, which is the path the page ranking
+/// belongs to: `virtual_shadow` false is what says so, and it is the flag rather than the
+/// sentinel address that says it, because a light with no address could be either a pool light or
+/// a virtual one whose camera saw nothing.
 fn light(label: &str, position: [f64; 3], radius: f64) -> ClusterLight {
     ClusterLight {
         label: label.to_owned(),
@@ -643,6 +673,8 @@ fn light(label: &str, position: [f64; 3], radius: f64) -> ClusterLight {
         clustered: true,
         global: false,
         casts_shadow: true,
+        virtual_shadow: false,
+        virtual_page: [NO_PAGE; 4],
     }
 }
 

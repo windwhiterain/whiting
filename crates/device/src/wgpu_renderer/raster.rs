@@ -16,11 +16,15 @@
 //!   layer**, keyed by the layer as well as the instance entry. Keying on the entry alone
 //!   would make the second pass into a pool load the first one's page rather than clearing
 //!   its own, and two lights would cast the same shadow.
+//! - A pass that names a `viewport` draws into that rectangle of every target, and is clipped
+//!   to it. The region is applied as a viewport *and* a scissor rect, never as one alone: a
+//!   viewport moves where a fragment lands without cutting off what overhangs, and a pass that
+//!   believes a region contains it is wrong by however much of its geometry crossed the edge.
 
 use std::collections::BTreeMap;
 
 use definition::Value;
-use graphics::{PassView, resolve_for_pass};
+use graphics::{PassView, Viewport, resolve_for_pass};
 
 use super::WgpuRenderer;
 use super::bindings::{Bindings, BufferCache, TextureCache, TextureSlot};
@@ -120,6 +124,35 @@ impl WgpuRenderer {
             )));
         }
         let samples = state.samples;
+        // A region is a promise about the target as much as about the draw. A rectangle that
+        // reaches past the attachment has no texel for its far edge to land on, which is a
+        // document that miscounted its tiles rather than a render that can be quietly clipped:
+        // clipped, the page comes back part recorded and part whatever an earlier pass left in
+        // the same texture, and a shadow that is half missing reads as a shadow that is soft.
+        if let Some(region) = state.viewport {
+            let over = attachments
+                .iter()
+                .map(|entry| (entry.slot.shape.width, entry.slot.shape.height))
+                .find(|(width, height)| {
+                    u64::from(region.x) + u64::from(region.width) > u64::from(*width)
+                        || u64::from(region.y) + u64::from(region.height) > u64::from(*height)
+                });
+            if let Some((wide, tall)) = over {
+                let Viewport {
+                    x,
+                    y,
+                    width,
+                    height,
+                } = region;
+                return Err(RenderError::Backend(format!(
+                    "the pass `{label}` draws into the region [{x}, {y}, {width}, {height}] of a \
+                     target {wide} wide and {tall} tall. A viewport that reaches outside its \
+                     attachment is a miscounted tile, not a render to clip: the region would \
+                     come back partly recorded and partly whatever an earlier pass left in the \
+                     same texture."
+                )));
+            }
+        }
 
         // A shader names its resources and its vertices by hand, in its own source, and
         // the pass numbers both without consulting it. The two are compared here, against
@@ -297,6 +330,22 @@ impl WgpuRenderer {
             pass_encoder.set_bind_group(0, &bind_group, &[]);
             for vertex in &bindings.vertices {
                 pass_encoder.set_vertex_buffer(vertex.slot, vertex.buffer.slice(..));
+            }
+            // The region a pass names is honoured twice, because the two are the two halves of
+            // one promise: the viewport puts what the pass draws inside the rectangle, and the
+            // scissor rect cuts off the part of a triangle that overhangs it. A viewport alone
+            // would let a wide triangle paint the tile beside it, which is the failure the
+            // document believes it cannot have when it names a region.
+            if let Some(region) = state.viewport {
+                pass_encoder.set_viewport(
+                    region.x as f32,
+                    region.y as f32,
+                    region.width as f32,
+                    region.height as f32,
+                    0.0,
+                    1.0,
+                );
+                pass_encoder.set_scissor_rect(region.x, region.y, region.width, region.height);
             }
             if let Some(count) = bindings.vertex_count() {
                 if count > 0 {

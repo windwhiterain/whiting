@@ -94,16 +94,47 @@ pub const LIGHT_PAGE_FIELD: &str = "page";
 /// needs about that light in one read.
 pub const LIGHT_SHADOW_PROJECTION_FIELD: &str = "shadow_projection";
 
+/// Field of the light record naming where a light's **virtual** shadow pages live.
+///
+/// # Invariants
+///
+/// It is a `vec4` and not two `f32`s for the reason [`light_record_schema`] states: the record
+/// has to stay a whole number of sixteen byte blocks, and the two numbers a virtual lookup
+/// needs — which section of the page table is this light's, and which layer of the atlas holds
+/// its pages — are eight bytes with eight more of pad beside them whether they are wanted or
+/// not. `.x` is the word offset, `.y` the layer, and the last two components are that pad, so
+/// they carry [`NO_PAGE`] too rather than zero: a shader that reads one of them by mistake gets
+/// the sentinel rather than the first page.
+///
+/// A light drawn on the **pool** rather than on an atlas — the kinds whose virtual grid has not
+/// landed yet — carries [`NO_PAGE`] in both, which is the same sentinel `page` already says and
+/// means the same thing here: this record is not to be looked up that way.
+pub const LIGHT_VIRTUAL_FIELD: &str = "virtual_page";
+
 /// How many floats one light record is wide.
 ///
 /// # Invariants
 ///
 /// It is derived from [`light_record_schema`] rather than written down, because a stride the
 /// schema and the packing could disagree about is a stride that reads the wrong light's
-/// colour. The count is `3 + 1 + 3 + 1 + 16`: colour, page, position, radius and the
-/// projection.
+/// colour. The count is `3 + 1 + 3 + 1 + 16 + 4`: colour, page, position, radius, the
+/// projection and the virtual page address.
 pub fn light_record_stride() -> usize {
-    24
+    28
+}
+
+/// The word a shadow page table begins at, in the buffer [`Clusters`] packs.
+///
+/// # Invariants
+///
+/// A record carries its light's table offset **absolute**, because a shader that had to add a
+/// base of its own would have to be told it and the whole point of an index inside a record is
+/// that nothing beside it has to be true. That base is the length of the record run, which the
+/// emitter has to know before the run exists — the offset is a field of a record — so this is
+/// the same arithmetic done from the one number that decides it, and
+/// [`Clusters::attach_shadow_table`] checks the two answers against each other.
+pub fn record_table_base(lights: usize) -> u32 {
+    (lights.max(1) * light_record_stride()) as u32
 }
 
 /// Field of the cluster count record naming the count.
@@ -180,9 +211,45 @@ pub struct Clusters {
     /// four clusters was missing four times over, and the cost of that is four regions lit by
     /// nothing rather than one.
     pub lights_dropped: usize,
+    /// The lights' **shadow page table**, appended to the record run rather than bound beside it.
+    ///
+    /// # Why it shares a buffer with the records
+    ///
+    /// A clustered shading pass already binds four storage buffers — records, counts, indices,
+    /// cones — and [`crate::lighting`] states that four is the whole budget a downlevel device
+    /// admits to, with the cone run being the one that spent it. A fifth would be a document
+    /// that validates against a schema and fails on a driver's limit, and the page table is
+    /// read by precisely the pass with no room left in it. So it rides on the end of the records
+    /// it indexes into, and a record's `virtual_page` is a word offset into that one buffer
+    /// rather than into a table of its own.
+    ///
+    /// Empty for a scene no light of which is drawn on an atlas, which leaves the record run the
+    /// size it always was.
+    pub table: Vec<u8>,
 }
 
 impl Clusters {
+    /// Puts a shadow page table at the end of the record run and returns the word it begins at.
+    ///
+    /// # Invariants
+    ///
+    /// The base is read off the records that were actually packed rather than recomputed from
+    /// the light count, because the offset a record carries and the bytes the shader walks have
+    /// to agree to the word, and the one place that knows where the records end is the run
+    /// itself. A caller that has to write an offset **before** packing — which is the only kind
+    /// of caller there is, since the offset is a field of a record — is given
+    /// [`record_table_base`] to ask the same question in advance, and this is where the two
+    /// answers are checked against each other.
+    pub fn attach_shadow_table(&mut self, words: &[u32], base: u32) {
+        debug_assert_eq!(
+            self.records.bytes().len() / 4,
+            base as usize,
+            "the page table was told to start at word {base}, which is not where the records \
+             it indexes into end"
+        );
+        self.table = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+    }
+
     /// Returns the three instance entries this assignment contributes, in a fixed order.
     ///
     /// # Invariants
@@ -193,7 +260,7 @@ impl Clusters {
         [
             (
                 LIGHT_RECORDS_ENTRY,
-                storage(self.records.bytes(), &light_record_schema()),
+                storage(&self.record_bytes(), &light_record_schema()),
             ),
             (
                 CLUSTER_COUNTS_ENTRY,
@@ -204,6 +271,17 @@ impl Clusters {
                 storage(self.indices.bytes(), &cluster_list_schema()),
             ),
         ]
+    }
+
+    /// Returns the record run with the shadow page table on the end of it.
+    ///
+    /// One function owns the concatenation because the entry and the declaration beside it are
+    /// two views of the same bytes, and a size that came from one and not the other is a pass
+    /// that binds a buffer of a length the instance never had.
+    fn record_bytes(&self) -> Vec<u8> {
+        let mut bytes = self.records.bytes().to_vec();
+        bytes.extend_from_slice(&self.table);
+        bytes
     }
 
     /// Returns the three binder declarations a clustered shading pass carries, in the same
@@ -220,7 +298,7 @@ impl Clusters {
         [
             (
                 LIGHT_RECORDS_ENTRY,
-                declaration(LIGHT_RECORDS_ENTRY, self.records.bytes().len() as i64),
+                declaration(LIGHT_RECORDS_ENTRY, self.record_bytes().len() as i64),
             ),
             (
                 CLUSTER_COUNTS_ENTRY,
@@ -412,6 +490,7 @@ pub(super) fn pack(
         reached,
         overflows,
         lights_dropped,
+        table: Vec::new(),
     })
 }
 
@@ -561,10 +640,94 @@ pub fn read_light_pool(
     ))
 }
 
+/// How large the atlas a light's virtual shadow pages are drawn into may be, as a scene
+/// document decides it.
+///
+/// # Invariants
+///
+/// These are two **ceilings** rather than two sizes. A page is `PAGE_SIZE` texels and a light
+/// is given exactly the pages its casters ask for, so the atlas is filled to whatever the scene
+/// needs and no more; what these two numbers bound is the point at which a scene's ask stops
+/// being something this machine can hold, which is a refusal rather than a clamp. That is the
+/// opposite of the pool's rule, and deliberately so: a pool that is too small still draws every
+/// light it has room for, whereas an atlas that is too small would have to drop pages, and a
+/// dropped page is a shadow that silently disappears.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShadowAtlas {
+    /// How many pages wide and tall one layer may be.
+    pub side_pages: i64,
+    /// How many lights the atlas may hold layers for.
+    pub layers: i64,
+}
+
+impl ShadowAtlas {
+    /// The texel side of one layer, which is what the depth array is created at.
+    pub fn side_texels(&self) -> i64 {
+        self.side_pages * crate::vshadow::PAGE_SIZE as i64
+    }
+}
+
+/// What a scene that names no atlas is given, in pages.
+///
+/// # Why sixteen rather than eight
+///
+/// A light at the density the pool used to give it — one page of a thousand texels across the
+/// column it shadows — is sized to a grid of **eight pages per side**, and a caster that fills that
+/// grid is drawn into its own level and every coarser one, which is `64 + 16 + 4 + 1` pages. A
+/// ceiling of eight would refuse the very first light the replacement was built for, at exactly
+/// the resolution the scene already had, and the whole point of a ceiling is that a scene only
+/// meets it by asking for more than it had.
+const ATLAS_SIDE_PAGES: i64 = 16;
+
+/// How many lights an atlas that names no count holds layers for.
+const ATLAS_LAYERS: i64 = 8;
+
+/// Reads the shadow atlas a scene declares, bounding it to what the machine can hold.
+///
+/// # Invariants
+///
+/// The side is bounded in **pages** rather than in texels, because the number an author raises
+/// is the one the allocator compares against, and a ceiling that arrives already divided by a
+/// page size cannot disagree with the divide the allocator does.
+///
+/// Both counts are bounded rather than refused, which is the one half of the atlas that is not
+/// a refusal: a scene asking for a layer deeper than any adapter can make is asking for a
+/// number on the wrong machine, and the note says so. A scene whose *pages* do not fit inside
+/// these bounds is refused by [`crate::vshadow`], because that is a document no machine could
+/// draw rather than a machine too small for this one.
+pub fn read_shadow_atlas(
+    scene: &Value,
+    limits: DeviceLimits,
+) -> Result<(ShadowAtlas, Vec<CompileNote>), CompileError> {
+    let path = Path::root().key(FRAME);
+    let mut notes = Vec::new();
+    let page = crate::vshadow::PAGE_SIZE as i64;
+    let side_pages = pool_count(
+        scene,
+        SHADOW_ATLAS_SIDE_PAGES,
+        ATLAS_SIDE_PAGES,
+        (limits.texture_side_ceiling() / page).max(1),
+        "Every page of a light whose atlas would not fit at this size is refused rather than \
+         dropped, and the compile error names the light whose demand passed it.",
+        &path,
+        &mut notes,
+    )?;
+    let layers = pool_count(
+        scene,
+        SHADOW_ATLAS_LAYERS,
+        ATLAS_LAYERS,
+        limits.texture_layer_ceiling(),
+        "A spot light past the last layer is refused by name, so the scene does not draw a \
+         shadowless lamp and say nothing about it.",
+        &path,
+        &mut notes,
+    )?;
+    Ok((ShadowAtlas { side_pages, layers }, notes))
+}
+
 /// What a page drawn at the size given rather than the size asked for costs a frame.
 const PAGE_SIDE_CONSEQUENCE: &str = "Every page in the pool is rendered at the size given rather than the size asked for, so \
      every shadow in the frame is coarser than this document says.";
-
 /// What a page count given rather than asked for costs a frame.
 const PAGE_COUNT_CONSEQUENCE: &str = "A light that got no page is lit by the approximation rather than by a real shadow map, \
      and the pool overflow note names which of them those are.";
@@ -577,6 +740,12 @@ pub const SHADOW_PAGE_HEIGHT: &str = "shadow_page_height";
 
 /// Field holding how many shadow pages the pool holds.
 pub const SHADOW_PAGES: &str = "shadow_pages";
+
+/// Field holding how many pages wide the shadow atlas is.
+pub const SHADOW_ATLAS_SIDE_PAGES: &str = "shadow_atlas_side_pages";
+
+/// Field holding how many atlas layers the machine is asked for.
+pub const SHADOW_ATLAS_LAYERS: &str = "shadow_atlas_layers";
 
 /// Reads one count of the pool, refusing a count of nothing and bounding it to the machine.
 fn pool_count(
@@ -634,6 +803,10 @@ fn pool_count(
 /// author to raise a pool that was never the problem is worse than saying nothing. A scene
 /// drawn with fewer real shadows than it has candidate lights is a wrong image, and the count
 /// of what went missing is the only thing an author can act on.
+///
+/// A light drawn as **virtual pages** is out of the count as well, for the same reason in the
+/// other direction: it was refused a pool page on purpose, and a note telling the reader to
+/// raise `shadow_pages` for it points at a number that would change nothing.
 pub fn pool_notes(
     lights: &[ClusterLight],
     pool: &LightPool,
@@ -642,7 +815,9 @@ pub fn pool_notes(
     let candidates: Vec<usize> = lights
         .iter()
         .enumerate()
-        .filter(|(index, light)| light.clustered && assignment.reached[*index])
+        .filter(|(index, light)| {
+            light.clustered && !light.virtual_shadow && assignment.reached[*index]
+        })
         .map(|(index, _)| index)
         .collect();
     let without: Vec<&str> = candidates
@@ -703,6 +878,7 @@ fn light_records(lights: &[ClusterLight], pages: &[usize]) -> Result<PackedList,
             light.position,
             light.radius,
             light.shadow_projection,
+            light.virtual_page,
         )?;
     }
     if lights.is_empty() {
@@ -714,21 +890,29 @@ fn light_records(lights: &[ClusterLight], pages: &[usize]) -> Result<PackedList,
         // is never read — it is in no cluster list, so no fragment looks a page up through it.
         // What makes this one unreadable is structural rather than numerical: with an empty
         // light list every cluster's count is zero, so the loop that would load it never runs.
-        write_record(&mut records, [0.0; 3], NO_PAGE, [0.0; 3], 0.0, IDENTITY)?;
+        write_record(
+            &mut records,
+            [0.0; 3],
+            NO_PAGE,
+            [0.0; 3],
+            0.0,
+            IDENTITY,
+            [NO_PAGE; 4],
+        )?;
     }
     records
         .finish()
         .map_err(|error| unpacked(LIGHT_RECORDS_ENTRY, error))
 }
 
-/// Writes one record's five fields into a run under construction.
+/// Writes one record's six fields into a run under construction.
 ///
 /// # Invariants
 ///
 /// The fields are written in the layout's order — `color`, `page`, `position`, `radius`,
-/// `shadow_projection` — because the builder refuses a field written out of order, which is
-/// what makes the run mean what its layout says. `page` sorts before `position`, so the sorted
-/// order and the writing order are the same run.
+/// `shadow_projection`, `virtual_page` — because the builder refuses a field written out of
+/// order, which is what makes the run mean what its layout says. `page` sorts before
+/// `position`, so the sorted order and the writing order are the same run.
 fn write_record(
     records: &mut PackedBuilder,
     colour: [f64; 3],
@@ -736,6 +920,7 @@ fn write_record(
     position: [f64; 3],
     radius: f64,
     projection: Matrix,
+    virtual_page: [f64; 4],
 ) -> Result<(), CompileError> {
     records
         .field(LIGHT_COLOR_FIELD, &colour)
@@ -743,6 +928,7 @@ fn write_record(
         .and_then(|builder| builder.field(LIGHT_POSITION_FIELD, &position))
         .and_then(|builder| builder.field(LIGHT_RADIUS_FIELD, &[radius]))
         .and_then(|builder| builder.field(LIGHT_SHADOW_PROJECTION_FIELD, &projection))
+        .and_then(|builder| builder.field(LIGHT_VIRTUAL_FIELD, &virtual_page))
         .map_err(|error| unpacked(LIGHT_RECORDS_ENTRY, error))?;
     Ok(())
 }
@@ -825,10 +1011,10 @@ fn unpacked(entry: &str, error: PackedError) -> CompileError {
 /// # Invariants
 ///
 /// The record is a point light's: where it is, what colour it is, the radius it was assigned
-/// by, the shadow page it was given, and the projection that finds the page. The fields sort
-/// as `color`, `page`, `position`, `radius`, `shadow_projection`, which is the order the
-/// packed layout derives from the schema, so the bytes and the layout cannot disagree about
-/// a stride.
+/// by, the shadow page it was given, the projection that finds the page, and where its
+/// virtual pages are. The fields sort as `color`, `page`, `position`, `radius`,
+/// `shadow_projection`, `virtual_page`, which is the order the packed layout derives from the
+/// schema, so the bytes and the layout cannot disagree about a stride.
 ///
 /// The page is in the record because that is the only place a shading loop can reach it from:
 /// the loop is over a cluster's light indices, and an index has to resolve to everything the
@@ -839,10 +1025,11 @@ fn unpacked(entry: &str, error: PackedError) -> CompileError {
 /// sixteen byte aligned and twelve bytes long, so the field after it must start four bytes
 /// later for the next one to be aligned — and each of this record's two vectors is followed
 /// by exactly one `f32`, which is precisely that four bytes. The projection is a matrix at
-/// offset thirty two, which is aligned, and the record is ninety six bytes, a whole number of
-/// sixteen byte blocks. A field added to this schema that does not keep that property would
-/// be read by a shader at the wrong offset, and the packed layout is the one place the bytes
-/// are described, so this is where the claim is made.
+/// offset thirty two, which is aligned, and the record is then a hundred bytes with twelve of
+/// pad to add; the virtual address beside it is a `vec4`, so the record is **one hundred and
+/// twelve** bytes, a whole number of sixteen byte blocks. A field added to this schema that
+/// does not keep that property would be read by a shader at the wrong offset, and the packed
+/// layout is the one place the bytes are described, so this is where the claim is made.
 pub fn light_record_schema() -> Schema {
     Schema::new(SchemaKind::structure([
         (
@@ -873,6 +1060,14 @@ pub fn light_record_schema() -> Schema {
                 "The light's own view projection, sixteen floats in column major order. A \
                  fragment carries its world position through this matrix to find the light's \
                  page, which is what a shadow lookup is.",
+            ),
+        ),
+        (
+            LIGHT_VIRTUAL_FIELD.to_owned(),
+            graphics::layout::components_schema(4).with_documentation(
+                "Where this light's virtual shadow pages are: the word its page table section \
+                 starts at, and the atlas layer its pages live in. Either is minus one for a \
+                 light drawn on the pool rather than on an atlas.",
             ),
         ),
     ]))

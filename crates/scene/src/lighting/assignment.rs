@@ -280,6 +280,26 @@ pub struct ClusterLight {
     /// pool had no room for and a light that casts nothing both carry a matrix nothing looks
     /// through, and one of them is still worth a page.
     pub casts_shadow: bool,
+    /// Whether this light's shadow is drawn as **virtual pages** rather than as one pool page.
+    ///
+    /// # Invariants
+    ///
+    /// It is a flag and not a test on [`Self::virtual_page`], because the two ends of the
+    /// sentence have to be said by the same half: a light whose grid has landed carries an
+    /// address, and one whose kind has not carries the sentinel — but the question "may this
+    /// light have a pool page" has to be answerable before anybody knows whether an address was
+    /// found for it, and a sentinel that doubles as the answer would be one number carrying two
+    /// decisions.
+    ///
+    /// A light with this true takes **no page from the pool at all**, and that is not a saving
+    /// to be had twice: it is drawn into an atlas whose pages are 128 texels and it is shaded
+    /// through the page table, so a pool page beside it would be a page no shader reads.
+    pub virtual_shadow: bool,
+    /// Where this light's virtual pages are, as the record carries them: the word its page
+    /// table section starts at, and the atlas layer its pages live in.
+    ///
+    /// [`super::buffers::NO_PAGE`] in both for a light whose shadow is still one pool page.
+    pub virtual_page: [f64; 4],
 }
 
 impl ClusterLight {
@@ -303,7 +323,15 @@ impl ClusterLight {
     ///   cluster's cap, and a page is not a cluster slot: one page is paid for once for the
     ///   whole image however many clusters there are, which is exactly why a light too wide to
     ///   list is still worth shadowing.
+    /// - A light drawn as **virtual pages** is worth no pool page whatever else is true of it,
+    ///   because its shadow is recorded somewhere else entirely and a page it holds in the pool
+    ///   is a page some other light could have cast with. This is asked **first** rather than
+    ///   folded into the two halves below, because a spot light is clustered and casts, and
+    ///   either of those read on its own would hand it a page it will never draw into.
     pub fn wants_page(&self, reached: bool) -> bool {
+        if self.virtual_shadow {
+            return false;
+        }
         if self.clustered {
             reached
         } else {

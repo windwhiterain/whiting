@@ -59,6 +59,44 @@ pub const PROJECTION: &str = "projection";
 /// author reads as one of them.
 pub const SHADOW_POOL: &str = "shadow_pool";
 
+/// Binding point holding the **atlas** a light's virtual shadow pages are drawn into.
+///
+/// # Invariants
+///
+/// It sits beside [`SHADOW_POOL`] rather than replacing it, because the two are one texture array
+/// apiece and the migration is per **kind**: a spot light's shadow lives in the atlas and a
+/// directional or point light's still lives in the pool, and a scene with both draws both kinds
+/// with one shader. The pool goes when the last kind moves, and until then a shader branches on
+/// which of a light's two addresses was written rather than on its kind, so a kind that moves
+/// later needs no shader edit.
+///
+/// It is bound by **every** shadowing pass, including one drawing a pool page and one belonging to
+/// a scene that allocated no pages at all, for the reason [`SPOT_CONES_ENTRY`] is bound by a
+/// lighting pass whose scene names no spot light: a binding point is numbered by its name's
+/// position in the pass, so a pass that left this one out would move every point after it.
+///
+/// One instance entry for the whole scene, layers named on a shadowing pass's **declaration** of
+/// it exactly as a pool page is — and the same argument applies: a payload naming a layer would
+/// name it for the whole image. Which layer a light's pages live in is its record's
+/// `virtual_page.y`, and a fragment that read the wrong one would shade against a neighbour lamp.
+pub const SHADOW_ATLAS: &str = "shadow_atlas";
+
+/// Field holding which rectangle of a light's own normalised plane one shadow page covers.
+///
+/// # Invariants
+///
+/// It is `[ minimum x, minimum y, width, height ]` in the light's device coordinates, which is the
+/// form [`crate::vshadow::Page::window`] is stored in and the form a vertex stage wants: the pass
+/// carries the **light's whole projection** rather than a projection fitted to the page, so the
+/// page's job is to map the clip output of that one projection into the slot it was given. A page
+/// of its own would mean a near and far plane per page derived from a depth range that belongs to
+/// the light, which is the second copy of one arithmetic this pipeline refuses.
+///
+/// Absent from no shadowing pass: one that draws a light's whole volume into one pool page carries
+/// the whole plane, `[-1, -1, 2, 2]`, which is the identity of this mapping. Which of the two a
+/// pass is told apart by the texture it names as its target, never by whether this field is there.
+pub const VIEW_PAGE: &str = "view_page";
+
 /// Field holding how the view is divided for clustered lighting, as four whole numbers.
 ///
 /// Across, up, deep, and how many lights one cluster keeps, in that order. They are one
@@ -296,14 +334,28 @@ pub fn projection_schema() -> Schema {
 ///
 /// # Invariants
 ///
-/// A shadowing pass draws **one light's depth into one page of the pool**, and the page is
-/// named on the declaration of [`SHADOW_POOL`] rather than anywhere else. That is why this
-/// interface declares the pool as a texture array: a flat texture is a `D2` view and an
-/// array is a `D2Array` view, they are different types to a shader, and a schema that
-/// accepted both would let a document draw into a pool no shader can read.
+/// A shadowing pass draws **one light's depth into one page**, and the page is named on the
+/// declaration of the texture rather than anywhere else. That is why this interface declares the
+/// target as a texture array: a flat texture is a `D2` view and an array is a `D2Array` view, they
+/// are different types to a shader, and a schema that accepted both would let a document draw into
+/// a pool no shader can read.
+///
+/// - **Both arrays are bound by every shadowing pass, and both are required.** A light whose
+///   shadow is one page of the pool and a light whose shadow is a grid of atlas pages are drawn by
+///   two passes of one shader, and a binding point is numbered by its **name's position** in the
+///   pass's own list: a pass that dropped one of the two would put `vertices` at a different
+///   number than the shader declares it at, which is not a lighter document but a wrong one. So
+///   the array a pass does not draw into is still there, named with no layer, read by nothing —
+///   exactly how [`SPOT_CONES_ENTRY`] is bound by a lighting pass whose scene names no spot light.
+/// - **`view_page` is always supplied.** A pass that draws a whole volume into one page carries the
+///   whole plane, `[-1, -1, 2, 2]`, which is the identity of the mapping a page's vertex stage
+///   applies — so one shader body serves both paths and the field is not a branch a scene can
+///   forget to declare. The alternative was an optional uniform field, which is a field a packed
+///   upload has to guess the size of.
 pub fn shadow_pass_schema() -> Schema {
     interface(
-        "A shadowing pass, which renders one light's depth into one page of the pool.",
+        "A shadowing pass, which renders one light's depth into one page of the pool or one page \
+         of a light's own virtual atlas.",
         vec![
             (
                 VERTICES,
@@ -315,15 +367,35 @@ pub fn shadow_pass_schema() -> Schema {
                 buffer_binding_schema().with_documentation("Per instance data of those meshes."),
             ),
             (
+                SHADOW_ATLAS,
+                texture_array_binding_schema().with_documentation(
+                    "The atlas of virtual pages. Bound by every shadowing pass, and drawn into by \
+                     the ones that record a virtual page; a scene that allocated no pages at all \
+                     still carries one layer of it, because a binding point is numbered by name \
+                     and a pass that bound nothing here would move every point after it.",
+                ),
+            ),
+            (
                 SHADOW_POOL,
-                texture_array_binding_schema()
-                    .with_documentation("The pool of pages, and the page this pass draws into."),
+                texture_array_binding_schema().with_documentation(
+                    "The pool of fixed pages, and the page a pool pass draws \
+                                         into. Read by nothing that draws a virtual page, and \
+                                         bound for the same reason the atlas is.",
+                ),
             ),
         ],
         vec![
             (
                 PROJECTION,
                 projection_schema().with_documentation("Looking down the light's direction."),
+            ),
+            (
+                VIEW_PAGE,
+                vector4().with_documentation(
+                    "Which rectangle of the light's own normalised plane this page covers, as \
+                     minimum x, minimum y and the two extents. The whole plane for a pass that \
+                     draws a light's one pool page.",
+                ),
             ),
             (
                 TIME,
@@ -458,6 +530,17 @@ pub fn light_pass_schema() -> Schema {
                 CLUSTER_INDICES_ENTRY,
                 buffer_binding_schema().with_documentation(
                     "The lights of each cluster, a row of the cap wide for each one.",
+                ),
+            ),
+            (
+                SHADOW_ATLAS,
+                texture_array_binding_schema().with_documentation(
+                    "The pages of every light recorded as a grid, which the shader indexes with \
+                     the address each record carries. Bound by every lighting pass, including \
+                     one whose scene allocated no pages at all, because a binding point is \
+                     numbered by its name's position and one that came and went would move \
+                     [`SHADOW_POOL`] and [`SPOT_CONES_ENTRY`] off the numbers the shader \
+                     declares them at.",
                 ),
             ),
             (
@@ -675,6 +758,11 @@ fn vector() -> Schema {
 /// Builds the schema of a two component vector.
 fn vector2() -> Schema {
     graphics::layout::components_schema(2).with_documentation("Two components.")
+}
+
+/// Builds the schema of a four component vector.
+fn vector4() -> Schema {
+    graphics::layout::components_schema(4).with_documentation("Four components.")
 }
 
 /// Builds the schema of a time in seconds.

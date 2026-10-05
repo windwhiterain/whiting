@@ -52,7 +52,9 @@ pub use buffers::{
     CLUSTER_COUNT_FIELD, CLUSTER_COUNTS_ENTRY, CLUSTER_INDICES_ENTRY, CLUSTER_LIGHT_FIELD,
     CONE_AXIS_FIELD, CONE_LIMITS_FIELD, Clusters, LIGHT_COLOR_FIELD, LIGHT_PAGE_FIELD,
     LIGHT_POSITION_FIELD, LIGHT_RADIUS_FIELD, LIGHT_RECORDS_ENTRY, LIGHT_SHADOW_PROJECTION_FIELD,
-    LightPool, NO_PAGE, SHADOW_PAGE_HEIGHT, SHADOW_PAGE_WIDTH, SHADOW_PAGES, SPOT_CONES_ENTRY,
-    SpotCone, cluster_count_schema, cluster_list_schema, declaration, light_record_schema,
-    light_record_stride, pool_notes, read_light_pool, spot_cone_schema, spot_cones, storage,
+    LIGHT_VIRTUAL_FIELD, LightPool, NO_PAGE, SHADOW_ATLAS_LAYERS, SHADOW_ATLAS_SIDE_PAGES,
+    SHADOW_PAGE_HEIGHT, SHADOW_PAGE_WIDTH, SHADOW_PAGES, SPOT_CONES_ENTRY, ShadowAtlas, SpotCone,
+    cluster_count_schema, cluster_list_schema, declaration, light_record_schema,
+    light_record_stride, pool_notes, read_light_pool, read_shadow_atlas, record_table_base,
+    spot_cone_schema, spot_cones, storage,
 };

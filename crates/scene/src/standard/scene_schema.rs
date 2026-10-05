@@ -16,7 +16,10 @@
 
 use definition::{Schema, SchemaKind, SchemaMap};
 
-use crate::lighting::{SHADOW_PAGE_HEIGHT, SHADOW_PAGE_WIDTH, SHADOW_PAGES};
+use crate::lighting::{
+    SHADOW_ATLAS_LAYERS, SHADOW_ATLAS_SIDE_PAGES, SHADOW_PAGE_HEIGHT, SHADOW_PAGE_WIDTH,
+    SHADOW_PAGES,
+};
 
 /// Field holding the name of the scene.
 pub const NAME: &str = "name";
@@ -161,6 +164,9 @@ pub const POINTS: &str = "points";
 
 /// Field holding the material an instance is drawn with.
 pub const MATERIAL: &str = "material";
+
+/// Field holding how finely an instance wants its own shadow recorded.
+pub const SHADOW_DENSITY: &str = "shadow_density";
 
 /// Field holding the shader a material is drawn with.
 pub const SHADER: &str = "shader";
@@ -405,12 +411,14 @@ pub fn clustering_schema() -> Schema {
 ///
 /// # What is here and why
 ///
-/// The two sizes of the image, and the three numbers of the shadow page pool. The pool is here
-/// rather than beside the cluster grid because a page's size and count are properties of the
-/// frame being rendered — a pool is a set of render targets this view draws its pages into,
-/// beside the depth buffer of the same frame — and a reader of their own document should be
-/// able to tell which numbers are about this view and which are about how lights are sorted
-/// into it.
+/// The two sizes of the image, the three numbers of the shadow page pool, and the two ceilings of
+/// the shadow atlas. The pool is here rather than beside the cluster grid because a page's size and
+/// count are properties of the frame being rendered — a pool is a set of render targets this view
+/// draws its pages into, beside the depth buffer of the same frame — and a reader of their own
+/// document should be able to tell which numbers are about this view and which are about how lights
+/// are sorted into it. The atlas is here for the same reason and behaves the other way round: its
+/// two fields are **ceilings** rather than sizes, because a virtual light is given exactly the
+/// pages its own casters ask for and nothing else decides how many there are.
 ///
 /// # Invariants
 ///
@@ -456,6 +464,27 @@ pub fn frame_schema() -> Schema {
                      layers the compiler admits to. A light the pool did not buy a page for \
                      is lit unshadowed rather than wrongly shadowed, and a scene that wants \
                      more real shadows raises this.",
+            ),
+        ),
+        (
+            SHADOW_ATLAS_SIDE_PAGES.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How many pages wide and tall one layer of the **virtual** shadow atlas may be, \
+                     a page being 128 texels. Defaults to 16, so one layer holds two hundred and \
+                     fifty-six pages, and a scene may not ask past what the machine's texture side \
+                     allows. This is a ceiling rather than a size: a light is given the pages its \
+                     own casters asked for and the atlas is no bigger than the largest of them. A \
+                     light whose pages do not fit is a compile error naming the light, because a \
+                     page dropped is a shadow silently lost rather than a coarse one.",
+            ),
+        ),
+        (
+            SHADOW_ATLAS_LAYERS.to_owned(),
+            Schema::new(SchemaKind::Int).optional().with_documentation(
+                "How many lights the virtual shadow atlas may hold layers for, one layer per \
+                     light. Defaults to 8. The same rule as the side: a ceiling, not a size, and \
+                     a shadowing spot light past the last layer is refused by name rather than \
+                     drawn without a shadow.",
             ),
         ),
     ]))
@@ -972,6 +1001,28 @@ pub fn instance_schema() -> Schema {
                  drawn in is the bucket it is listed under, not the material: the material \
                  says how it is drawn there.",
             ),
+        ),
+        (
+            SHADOW_DENSITY.to_owned(),
+            Schema::new(SchemaKind::Float)
+                .optional()
+                .with_documentation(
+                    "How finely this instance's shadow is recorded, in **texels per world \
+                     unit**, for an instance listed under `shadowing`. It is a per object \
+                     ask rather than a per light one, because the coin at a lamp's feet and \
+                     the wall behind it are drawn by one light and want two \
+                     resolutions.\n\n\
+                     Absent is the scene's own default: the density the old one page per light \
+                     pool drew at, so a scene that names nothing gets the resolution it got \
+                     before the field existed. A density **higher** than that buys finer \
+                     pages around this instance; a lower one puts it on a coarser level of \
+                     the same grid, which is cheaper and blurrier.\n\n\
+                     **Zero means \"cast, but never drive a page finer than the root\"** — the \
+                     instance is drawn into the coarsest level only, which is what a distant \
+                     hillside or a foliage billboard wants. A negative number is refused \
+                     rather than read as zero, because the two are different requests and only \
+                     one of them can be written down by mistake.",
+                ),
         ),
     ]))
     .with_documentation("A mesh placed in the scene, listed under every pass that draws it.")
