@@ -400,6 +400,25 @@ pub enum CompileError {
     #[error("at {path}: `{topology}` is not a topology a mesh is drawn as")]
     UnknownTopology { path: Path, topology: String },
     #[error(
+        "at {path}: the scene declares the type `{spelled}`, and {reason}. A declared output \
+         whose type this device cannot create and read back would render a picture of nothing, so \
+         it is refused here rather than passed into a document the device would refuse with the \
+         same words several steps later"
+    )]
+    UndeclaredTexelType {
+        path: Path,
+        spelled: String,
+        reason: String,
+    },
+    #[error(
+        "at {path}: the scene's declared outputs take the locations {found:?}, and they must \
+         run 1, 2, 3 … with none twice and no gaps. A pass numbers its colour targets from zero \
+         in attachment order and the frame already holds zero, so a location is both an address \
+         the shader writes and a position in that order. A gap would leave a shader writing a \
+         target no pass has, and a repeat would leave two outputs on one attachment"
+    )]
+    OutputLocations { path: Path, found: Vec<u32> },
+    #[error(
         "at {path}: the light `{label}` names no kind, and a flat light is not a point one. \
          Say whether it is a Point, a Spot, a Directional or an Environment light."
     )]

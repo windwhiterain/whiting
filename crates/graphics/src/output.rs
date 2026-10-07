@@ -299,6 +299,19 @@ pub enum TexelError {
 }
 
 impl TexelError {
+    /// Returns the spelling the document used, which is the half of the error a message needs
+    /// before it can say anything else.
+    ///
+    /// **Both variants carry it, and that is what makes one accessor enough.** The two differ in
+    /// why the spelling failed — a format this device cannot read back, or a vocabulary that does
+    /// not carry it — and a caller reporting either has to name what was written, because that is
+    /// the string it is about to go and fix.
+    pub fn spelled(&self) -> &str {
+        match self {
+            Self::Unreadable { spelled, .. } | Self::Unknown { spelled } => spelled,
+        }
+    }
+
     /// Returns the whole reason, as a sentence a message can carry after its own facts.
     ///
     /// It is prose rather than a bare name because **the reason is the actionable part**. A

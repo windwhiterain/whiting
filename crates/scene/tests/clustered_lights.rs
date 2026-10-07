@@ -221,6 +221,19 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // One sun, one point light and two groups: the massif and the plain it stands on,
+            // each drawn in two stages. **Two shadowing passes rather than one per light** — the
+            // plain is a flat sheet that cannot occlude itself, so it is left out of the cast and
+            // spends none of the shadow page's extent on ground that has nothing to say.
+            "landscape",
+            Stages {
+                shadowing: 2,
+                depthing: 2,
+                lighting: 2,
+                other: 1,
+            },
+        ),
+        (
             "lanterns",
             Stages {
                 shadowing: 9,
