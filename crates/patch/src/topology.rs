@@ -1,8 +1,17 @@
-//! Which mesh edges a triangle has, which faces meet at each one, and how one face's control net
-//! addresses its own three edges.
+//! Which mesh edges a quad has, which faces meet at each one, and how one face's control net
+//! addresses its own four edges.
 //!
 //! Nothing here knows about continuity. It is the indexing that continuity needs, kept separate so
 //! a mesh can be walked without a surface in sight.
+//!
+//! A quad's corners are in winding order, and the net addresses them as
+//!
+//! ```text
+//!   q3 --- q2        q3 = (0, degree)      q2 = (degree, degree)
+//!   |  v=1 |         q0 = (0, 0)           q1 = (degree, 0)
+//!   q0 --- q1
+//!   u=0    u=degree
+//! ```
 
 use std::collections::BTreeMap;
 
@@ -13,66 +22,81 @@ pub type FaceId = u32;
 /// same way without either having to know the other's winding.
 pub type EdgeKey = (VertexId, VertexId);
 
-/// Which barycentric index vanishes along one edge of a triangle.
+/// Which parameter is fixed along one edge of a quad.
 ///
-/// A face's corners are `(alpha, beta, gamma)` in that order, so the `OppositeAlpha` edge is the
-/// one that does not touch `corners[0]`, and `corners[0]` is the vertex on the far side of it.
+/// Naming the edge by the parameter it fixes rather than by a corner keeps the boundary and
+/// adjacent-row mappings total: every slot has the same shape, so no case is special.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum EdgeSlot {
-    OppositeAlpha,
-    OppositeBeta,
-    OppositeGamma,
+    MinU,
+    MaxU,
+    MinV,
+    MaxV,
 }
 
 impl EdgeSlot {
-    pub const ALL: [Self; 3] = [Self::OppositeAlpha, Self::OppositeBeta, Self::OppositeGamma];
+    pub const ALL: [Self; 4] = [Self::MinU, Self::MaxU, Self::MinV, Self::MaxV];
 }
 
-/// The mesh vertices at local boundary positions `0` and `degree` of this face's edge, in that
-/// order.
+/// The mesh vertices at local positions `0` and `degree` of this face's edge, in that order.
 ///
 /// Position 0 comes first in this pair and the edge's other end last, which is what lets two faces
 /// that disagree about winding be reconciled by comparing these.
-pub fn edge_endpoints(corners: [VertexId; 3], slot: EdgeSlot) -> [VertexId; 2] {
+pub fn edge_endpoints(corners: [VertexId; 4], slot: EdgeSlot) -> [VertexId; 2] {
     match slot {
-        EdgeSlot::OppositeAlpha => [corners[2], corners[1]],
-        EdgeSlot::OppositeBeta => [corners[2], corners[0]],
-        EdgeSlot::OppositeGamma => [corners[0], corners[1]],
+        EdgeSlot::MinU => [corners[0], corners[3]],
+        EdgeSlot::MaxU => [corners[1], corners[2]],
+        EdgeSlot::MinV => [corners[0], corners[1]],
+        EdgeSlot::MaxV => [corners[3], corners[2]],
     }
 }
 
-/// Where local boundary position `t` sits in the face's net, as `(i, j)`. The third barycentric
-/// index is `degree - i - j` and is zero here, because this is the boundary row.
+/// Where local boundary position `t` sits in the face's net, as `(i, j)`.
 ///
-/// `t` runs `0..=degree`, giving `degree + 1` positions.
+/// `t` runs `0..=degree`, giving `degree + 1` positions. Positions `0` and `degree` are the two
+/// mesh vertices at this edge's ends.
 pub fn boundary_index(degree: usize, slot: EdgeSlot, t: usize) -> (usize, usize) {
     match slot {
-        EdgeSlot::OppositeAlpha => (0, t),
-        EdgeSlot::OppositeBeta => (t, 0),
-        EdgeSlot::OppositeGamma => (degree - t, t),
+        EdgeSlot::MinU => (0, t),
+        EdgeSlot::MaxU => (degree, t),
+        EdgeSlot::MinV => (t, 0),
+        EdgeSlot::MaxV => (t, degree),
     }
 }
 
 /// Where the control point one step in from local boundary position `t` sits.
 ///
-/// This is the row the soft-edge invariant ties: the only control points that determine the
-/// tangent plane at the boundary.
+/// This is the row a soft edge's invariant ties: the control points that determine the tangent
+/// plane along the boundary.
 ///
-/// **`t` runs `0..degree`, not `0..=degree`.** The row beside a boundary has one entry fewer than
-/// the boundary, so the last boundary position has no interior point beside it. Passing `t ==
-/// degree` returns an index outside the net.
+/// **`t` runs `0..=degree` here, and that is the whole reason the rectangle was chosen.** The row
+/// has exactly as many entries as the boundary beside it, so position `t` on one face and position
+/// `t` on the other name the same place along the edge. A degree-`n` triangle cannot do this: one
+/// side of its edges carries `n` interior positions and the other `n - 1`.
+///
+/// Positions `0` and `degree` are *not* private to this edge. `(1, 0)` on a `MinU` row is also on
+/// the face's `MinV` boundary, one step along it from the corner. A continuity invariant must leave
+/// those two alone — they belong to the perpendicular edge's boundary — so the private interior of
+/// an edge is positions `1..=degree - 1`, and [`PatchMesh::set_control_point`](crate::PatchMesh::set_control_point)
+/// is where that becomes a refusal rather than a silent overwrite.
+///
+/// Requires `degree >= 1`; a degree-0 patch has no interior row and `degree - 1` would wrap.
 pub fn interior_index(degree: usize, slot: EdgeSlot, t: usize) -> (usize, usize) {
+    debug_assert!(degree >= 1, "a patch has no adjacent row at degree 0");
     match slot {
-        EdgeSlot::OppositeAlpha => (1, t),
-        EdgeSlot::OppositeBeta => (t, 1),
-        EdgeSlot::OppositeGamma => (degree - 1 - t, t),
+        EdgeSlot::MinU => (1, t),
+        EdgeSlot::MaxU => (degree - 1, t),
+        EdgeSlot::MinV => (t, 1),
+        EdgeSlot::MaxV => (t, degree - 1),
     }
 }
 
 /// The position on `there`'s copy of the same edge that names the same place as `t` on `here`'s.
 ///
 /// Two faces sharing an edge may run along it in the same direction or in opposite ones, and the
-/// only reliable way to tell is to compare which mesh vertex each end sits on.
+/// only reliable way to tell is to compare which mesh vertex each end sits on. Because both rows
+/// span `0..=degree`, this is a bijection on every position — there is no position it can send out
+/// of range.
 pub fn mirrored_position(
     degree: usize,
     here: [VertexId; 2],
@@ -99,16 +123,16 @@ pub struct Topology {
     /// deciding what a crease means across three faces is a product question, and refusing to build
     /// would hide the mesh instead of surfacing it.
     ///
-    /// Faces appear in ascending id, so the first entry is a deterministic owner for the edges
+    /// Faces appear in ascending id, so the first entry is a deterministic master for the edges
     /// where that has to be decided.
     pub edge_faces: BTreeMap<EdgeKey, Vec<(FaceId, EdgeSlot)>>,
 }
 
 impl Topology {
-    /// Enumerates the edges of every triangle.
-    pub fn build(triangles: &[[VertexId; 3]]) -> Self {
+    /// Enumerates the edges of every quad.
+    pub fn build(quads: &[[VertexId; 4]]) -> Self {
         let mut edge_faces: BTreeMap<EdgeKey, Vec<(FaceId, EdgeSlot)>> = BTreeMap::new();
-        for (face_id, corners) in triangles.iter().enumerate() {
+        for (face_id, corners) in quads.iter().enumerate() {
             for slot in EdgeSlot::ALL {
                 let key = canonical(edge_endpoints(*corners, slot));
                 edge_faces
@@ -120,13 +144,9 @@ impl Topology {
         Self { edge_faces }
     }
 
-    /// The three edges of one face, with their canonical keys and slots.
-    pub fn of_face(corners: [VertexId; 3]) -> [(EdgeKey, EdgeSlot); 3] {
-        let mut result = [(canonical([corners[0], corners[1]]), EdgeSlot::OppositeAlpha); 3];
-        for (slot, entry) in EdgeSlot::ALL.into_iter().zip(result.iter_mut()) {
-            *entry = (canonical(edge_endpoints(corners, slot)), slot);
-        }
-        result
+    /// The four edges of one face, with their canonical keys and slots.
+    pub fn of_face(corners: [VertexId; 4]) -> [(EdgeKey, EdgeSlot); 4] {
+        EdgeSlot::ALL.map(|slot| (canonical(edge_endpoints(corners, slot)), slot))
     }
 
     /// Edges no second face shares. These cannot be creases between two surfaces, because there
