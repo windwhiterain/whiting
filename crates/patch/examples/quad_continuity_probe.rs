@@ -18,6 +18,8 @@
 //! 10. The corner stencil's algebra, on the real mesh: how many independent chains a vertex has,
 //!     what its consistency condition is, and what `mu` a valence-3 centroid actually needs.
 //! 11. What a higher degree buys: **nothing**, on either count, and that is measured.
+//! 12. What the two skipped row ends actually cost: **nothing at all**, unless two seams write the
+//!     same shared place. The obstruction is one degree of freedom per such place.
 //!
 //! ## Why measurement 3 fails, and what it costs
 //!
@@ -32,26 +34,36 @@
 //! ```
 //!
 //! — the **whole** adjacent row, `j = 0..=degree`. The invariant runs over `j = 1..degree` only,
-//! because positions 0 and degree are points of the perpendicular edge's shared boundary and
-//! forcing them would demand `mu == -1`. But `B(degree-1, 0, v)` and `B(degree-1, degree, v)` are
-//! positive at **every** `v` in the interior, so those two unconstrained offsets enter `D` along the
-//! whole edge, not only at its ends.
+//! because positions 0 and degree are points of the perpendicular edge's shared boundary. But
+//! `B(degree-1, 0, v)` and `B(degree-1, degree, v)` are positive at **every** `v` in the interior,
+//! so those two unconstrained offsets enter `D` along the whole edge, not only at its ends.
 //!
 //! The measured consequence at degree 3 is a tangent-plane gap of **4.8e-2 rad** at the interior
 //! positions and **1.3e-1 rad** at the ends, against **1.8e-1 rad** for a hard edge. So a soft edge
-//! is measurably smoother than a crease and is not smooth. Raising the degree does not fix it: the
-//! end weights shrink but never vanish.
+//! is measurably smoother than a crease and is not smooth.
 //!
-//! Fixing it means solving the **corner stencil**: at a mesh vertex the corner-adjacent control
-//! points satisfy `q_i = -mu_i * q_{i-1}` around the cycle of incident faces, where `q` is measured
-//! from the vertex itself. Closing the cycle needs `(-1)^valence * product(mu) == 1`. A Doo–Sabin
-//! centroid has valence 3, so all-`mu == 1` forces `(-1)^3 == 1`, which fails; the only consistent
-//! solution is `q == 0`, i.e. every corner-adjacent point collapsed onto the vertex — smooth, and a
-//! pinch. That is a real constraint on what `mu` a user may choose, not something a formula can
-//! absorb.
+//! ## The two ends are not the obstruction, and an earlier claim to the contrary is withdrawn
 //!
-//! Until that is built, the implementation deliberately leaves the row ends to boundary sharing
-//! rather than applying the invariant over them. A crack is worse than a crease.
+//! [`crate::continuity`] used to argue that enforcing the invariant at positions 0 and `degree` is
+//! contradictory and forces `mu == -1`, so the ends were left to the boundary sharing and the gap
+//! above was accepted as the price. **Measurement 12 refutes that.** Run the same invariant over the
+//! whole row and a lone soft edge comes out exactly G1 — a gap of `0.000e0` at the interior
+//! positions and `2.107e-8` at the ends, the latter being the `acos` floor, with the boundary sharing
+//! reclaiming `5.0e-16` of what the soft write moved.
+//!
+//! What does fail is specific and countable. A row end is one step in from its own edge, which puts
+//! it on the **perpendicular** edge's boundary row, one step along. When two soft seams meet at a
+//! mesh vertex, their two row ends land on the *same place on the same shared edge*: two equations,
+//! one value, and the boundary sharing can only give it to one of them. Measurement 12 counts those
+//! places — none for a lone seam, one for the minimal two-seam case, thirteen on the full sample —
+//! and across all three a seam is exactly continuous **if and only if** no shared place is written
+//! by two seams.
+//!
+//! So the missing thing is not a parameter per edge. It is one degree of freedom per place where two
+//! seams land on the same shared point, which is what a corner scale `kappa` would buy.
+//!
+//! Until that exists, the implementation deliberately leaves the row ends to boundary sharing rather
+//! than applying the invariant over them. A crack is worse than a crease.
 
 mod support;
 use std::collections::{BTreeMap, BTreeSet};
@@ -63,7 +75,7 @@ use whiting_patch::subdivide::{Origin, QuadMesh, subdivide};
 use whiting_patch::topology::{
     EdgeKey, EdgeSlot, boundary_index, canonical, edge_endpoints, interior_index, mirrored_position,
 };
-use whiting_patch::{Edit, PatchMesh, RectNet};
+use whiting_patch::{Continuity, Edit, PatchMesh, RectNet, slave_interior};
 
 /// A gap this small is indistinguishable from continuous, whatever the arithmetic says.
 const CONTINUOUS: f64 = 1.0e-6;
@@ -210,24 +222,29 @@ fn inside_parameters(degree: usize, slot: EdgeSlot, t: usize, h: f64) -> (f64, f
 }
 
 /// The worst tangent-plane gap across an edge over an explicit set of boundary positions.
+///
+/// Takes the nets rather than the model, so a probe can measure a scratch copy it has edited
+/// directly. A measurement that can only see the enforced state cannot see what an alternative
+/// would have been.
 fn edge_gap_over(
-    mesh: &PatchMesh,
+    nets: &[RectNet],
+    quads: &[[u32; 4]],
+    degree: usize,
     faces: [(u32, EdgeSlot); 2],
     step: f64,
     positions: impl IntoIterator<Item = usize>,
 ) -> f64 {
-    let degree = mesh.degree();
     let (master, slave) = (faces[0], faces[1]);
-    let here = edge_endpoints(mesh.quads()[master.0 as usize], master.1);
-    let there = edge_endpoints(mesh.quads()[slave.0 as usize], slave.1);
+    let here = edge_endpoints(quads[master.0 as usize], master.1);
+    let there = edge_endpoints(quads[slave.0 as usize], slave.1);
     positions
         .into_iter()
         .filter(|t| *t <= degree)
         .map(|t| {
             let other_t = mirrored_position(degree, here, there, t);
             folded_angle(
-                edge_normal(mesh.net(master.0), degree, master.1, t, step),
-                edge_normal(mesh.net(slave.0), degree, slave.1, other_t, step),
+                edge_normal(&nets[master.0 as usize], degree, master.1, t, step),
+                edge_normal(&nets[slave.0 as usize], degree, slave.1, other_t, step),
             )
         })
         .fold(0.0f64, f64::max)
@@ -418,6 +435,209 @@ fn greatest_common_divisor(a: usize, b: usize) -> usize {
     a
 }
 
+/// Makes every shared boundary identical on both sides, the first face on each edge winning.
+///
+/// This is [`PatchMesh::enforce`]'s hard pass, lifted out so a probe can run it on a scratch copy
+/// of the nets. It is here because a whole-row soft write lands on a **boundary** point of the
+/// perpendicular edge, and nothing is shared unless the neighbour is told.
+fn share_every_boundary(mesh: &PatchMesh, nets: &mut [RectNet]) {
+    let degree = mesh.degree();
+    for faces in mesh.topology().edge_faces.values() {
+        let (owner, follower) = match faces.as_slice() {
+            [owner, follower] => (*owner, *follower),
+            _ => continue,
+        };
+        let owner_ends = edge_endpoints(mesh.quads()[owner.0 as usize], owner.1);
+        let follower_ends = edge_endpoints(mesh.quads()[follower.0 as usize], follower.1);
+        for t in 0..=degree {
+            let follower_t = mirrored_position(degree, owner_ends, follower_ends, t);
+            let (oi, oj) = boundary_index(degree, owner.1, t);
+            let (fi, fj) = boundary_index(degree, follower.1, follower_t);
+            let point = nets[owner.0 as usize][(oi, oj)];
+            nets[follower.0 as usize].set_point(fi, fj, point);
+        }
+    }
+}
+
+/// The worst soft-edge gap of `mesh` at the interior positions and at the two ends, read from
+/// `nets` rather than from the model, so a scratch copy can be measured.
+fn soft_gap_pair(mesh: &PatchMesh, nets: &[RectNet]) -> (f64, f64) {
+    let degree = mesh.degree();
+    let mut interior = 0.0f64;
+    let mut ends = 0.0f64;
+    for edge in mesh.soft_edges() {
+        let faces = [edge.master, edge.slave];
+        interior = interior.max(edge_gap_over(
+            nets,
+            mesh.quads(),
+            degree,
+            faces,
+            STEP,
+            1..degree,
+        ));
+        ends = ends.max(edge_gap_over(
+            nets,
+            mesh.quads(),
+            degree,
+            faces,
+            STEP,
+            [0, degree],
+        ));
+    }
+    (interior, ends)
+}
+
+/// The largest distance between two faces' copies of one point on a shared boundary.
+fn worst_split_over_all(mesh: &PatchMesh, nets: &[RectNet]) -> f64 {
+    let degree = mesh.degree();
+    mesh.topology()
+        .edge_faces
+        .values()
+        .filter_map(|faces| match faces.as_slice() {
+            [owner, follower] => Some((*owner, *follower)),
+            _ => None,
+        })
+        .flat_map(|(owner, follower)| (0..=degree).map(move |t| (owner, follower, t)))
+        .map(|(owner, follower, t)| {
+            boundary_split_over(nets, mesh.quads(), degree, [owner, follower], t)
+        })
+        .fold(0.0f64, f64::max)
+}
+
+/// The soft invariant over the **whole** row, `t = 0..=degree`, with boundaries re-shared between
+/// rounds, and the largest single-point movement of each round.
+///
+/// The shipped model runs the invariant over `t = 1..degree` because `crate::continuity` argues the
+/// two ends are contradictory and force `mu == -1`. That argument is what this measures: if the
+/// feedback settles, there is no contradiction and the end positions were simply skipped; if it
+/// does not, the argument stands and the movement per round says by how much.
+/// The soft invariant over the **whole** row, `t = 0..=degree`, run in [`PatchMesh::enforce`]'s own
+/// order: the boundaries are shared first, then the soft edges write, so a soft edge has the last
+/// word exactly as it does in the shipped model.
+///
+/// Returns the state after each round, the distance the soft writes wanted to move, and the distance
+/// the sharing took back. Those are two different questions and the shipped model's own order is the
+/// only reason they can be asked apart: if the sharing gives nothing back, a row end is compatible
+/// with shared geometry and the soft edge can keep it.
+///
+/// The other reason the order matters is that a row end is a **boundary** point of the perpendicular
+/// edge, so writing one moves shared geometry. Writing after the sharing is what lets a measurement
+/// see whether that geometry survives, rather than measuring only that the sharing undid it.
+fn whole_row_enforcement(
+    mesh: &PatchMesh,
+    rounds: usize,
+) -> (Vec<Vec<RectNet>>, Vec<f64>, Vec<f64>) {
+    let degree = mesh.degree();
+    let mut nets = mesh.nets().to_vec();
+    let mut history = Vec::new();
+    let mut written = Vec::new();
+    let mut reclaimed = Vec::new();
+    for _ in 0..rounds {
+        share_every_boundary(mesh, &mut nets);
+        let mut moved = 0.0f64;
+        for edge in mesh.soft_edges() {
+            let Some(mu) = mesh.continuity(&edge.edge).and_then(Continuity::mu) else {
+                continue;
+            };
+            let master_ends = edge_endpoints(mesh.quads()[edge.master.0 as usize], edge.master.1);
+            let slave_ends = edge_endpoints(mesh.quads()[edge.slave.0 as usize], edge.slave.1);
+            for t in 0..=degree {
+                let slave_t = mirrored_position(degree, master_ends, slave_ends, t);
+                let (mi, mj) = boundary_index(degree, edge.master.1, t);
+                let (ai, aj) = interior_index(degree, edge.master.1, t);
+                let (si, sj) = interior_index(degree, edge.slave.1, slave_t);
+                let boundary = nets[edge.master.0 as usize][(mi, mj)];
+                let master_interior = nets[edge.master.0 as usize][(ai, aj)];
+                let target = slave_interior(boundary, master_interior, mu);
+                moved = moved.max(nets[edge.slave.0 as usize][(si, sj)].distance(target));
+                nets[edge.slave.0 as usize].set_point(si, sj, target);
+            }
+        }
+        let after_soft = nets.clone();
+        share_every_boundary(mesh, &mut nets);
+        written.push(moved);
+        reclaimed.push(nets_distance(&after_soft, &nets));
+        history.push(nets.clone());
+    }
+    (history, written, reclaimed)
+}
+
+/// The largest distance any control point moved between two states.
+fn nets_distance(first: &[RectNet], second: &[RectNet]) -> f64 {
+    let mut worst = 0.0f64;
+    for (was, now) in first.iter().zip(second) {
+        let (degree_u, degree_v) = now.degrees();
+        for i in 0..=degree_u {
+            for j in 0..=degree_v {
+                worst = worst.max(was.point(i, j).unwrap().distance(now.point(i, j).unwrap()));
+            }
+        }
+    }
+    worst
+}
+
+/// The places on a **shared boundary** that two different soft seams both write as a row end.
+///
+/// A row end is one step in from the boundary, which puts it on the *perpendicular* edge's boundary
+/// row at position one step along. So the key is not the face and the net index — two faces on
+/// opposite sides of a shared edge hold the same place under different indices — it is
+/// `(shared edge, position along it)`, normalised to the canonical end order so that both faces name
+/// one place the same way.
+///
+/// Counting per face instead would find nothing, and would find nothing honestly: with one soft
+/// edge per face no face can ever write a row end twice, and the conflict is not on a face at all.
+fn contested_row_ends(mesh: &PatchMesh) -> Vec<(EdgeKey, usize)> {
+    let degree = mesh.degree();
+    let mut claims: BTreeMap<(EdgeKey, usize), usize> = BTreeMap::new();
+    for edge in mesh.soft_edges() {
+        let (face, slot) = edge.slave;
+        let corners = mesh.quads()[face as usize];
+        for t in [0, degree] {
+            let point = interior_index(degree, slot, t);
+            for other in EdgeSlot::ALL {
+                if other == slot {
+                    continue;
+                }
+                let Some(position) =
+                    (0..=degree).find(|p| boundary_index(degree, other, *p) == point)
+                else {
+                    continue;
+                };
+                let ends = edge_endpoints(corners, other);
+                let key = canonical(ends);
+                let normalised = if ends[0] == key.0 {
+                    position
+                } else {
+                    degree - position
+                };
+                *claims.entry((key, normalised)).or_default() += 1;
+            }
+        }
+    }
+    claims
+        .into_iter()
+        .filter(|(_, count)| *count > 1)
+        .map(|(place, _)| place)
+        .collect()
+}
+
+/// How far apart two points on the same edge are when read from its two faces, read from nets.
+fn boundary_split_over(
+    nets: &[RectNet],
+    quads: &[[u32; 4]],
+    degree: usize,
+    faces: [(u32, EdgeSlot); 2],
+    t: usize,
+) -> f64 {
+    let (master, slave) = (faces[0], faces[1]);
+    let here = edge_endpoints(quads[master.0 as usize], master.1);
+    let there = edge_endpoints(quads[slave.0 as usize], slave.1);
+    let other_t = mirrored_position(degree, here, there, t);
+    let (mi, mj) = boundary_index(degree, master.1, t);
+    let (si, sj) = boundary_index(degree, slave.1, other_t);
+    nets[master.0 as usize][(mi, mj)].distance(nets[slave.0 as usize][(si, sj)])
+}
+
 fn main() {
     let (positions, triangles) = grid();
     let derived = subdivide(&positions, &triangles);
@@ -515,8 +735,22 @@ fn main() {
     let mut hard_worst = 0.0f64;
     let mut along_worst = 0.0f64;
     for (edge, faces) in &edges {
-        let interior = edge_gap_over(&mesh, *faces, STEP, 1..DEGREE);
-        let ends = edge_gap_over(&mesh, *faces, STEP, [0, DEGREE]);
+        let interior = edge_gap_over(
+            mesh.nets(),
+            mesh.quads(),
+            mesh.degree(),
+            *faces,
+            STEP,
+            1..DEGREE,
+        );
+        let ends = edge_gap_over(
+            mesh.nets(),
+            mesh.quads(),
+            mesh.degree(),
+            *faces,
+            STEP,
+            [0, DEGREE],
+        );
         if soft_edges.contains(edge) {
             soft_interior = soft_interior.max(interior);
             soft_ends = soft_ends.max(ends);
@@ -646,7 +880,16 @@ fn main() {
     let after_elevation = interior_edges(&tall)
         .iter()
         .filter(|(edge, _)| soft_edges.contains(edge))
-        .map(|(_, faces)| edge_gap_over(&tall, *faces, STEP, 1..DEGREE + 1))
+        .map(|(_, faces)| {
+            edge_gap_over(
+                tall.nets(),
+                tall.quads(),
+                tall.degree(),
+                *faces,
+                STEP,
+                1..DEGREE + 1,
+            )
+        })
         .fold(0.0f64, f64::max);
     if worst_residual > EXACT {
         failures.push("6  elevation preserves every tag");
@@ -679,7 +922,14 @@ fn main() {
     let grab = DEGREE / 2;
     let grab_index = boundary_index(DEGREE, slot, grab);
     let split_before = boundary_split(&mesh, &soft_edge, face, slot, grab);
-    let gap_before = edge_gap_over(&mesh, soft_faces, STEP, 1..DEGREE);
+    let gap_before = edge_gap_over(
+        mesh.nets(),
+        mesh.quads(),
+        mesh.degree(),
+        soft_faces,
+        STEP,
+        1..DEGREE,
+    );
     let mut edited = build_with(&derived, &soft_edges);
     let start = edited.net(face)[grab_index];
     let outcome = edited.set_control_point(
@@ -690,7 +940,14 @@ fn main() {
     );
     let drag_distance = start.distance(edited.net(face)[grab_index]);
     let split_after = boundary_split(&edited, &soft_edge, face, slot, grab);
-    let gap_after = edge_gap_over(&edited, soft_faces, STEP, 1..DEGREE);
+    let gap_after = edge_gap_over(
+        edited.nets(),
+        edited.quads(),
+        edited.degree(),
+        soft_faces,
+        STEP,
+        1..DEGREE,
+    );
     if outcome != Edit::Applied {
         failures.push("7  a drag on a shared boundary is applied");
     }
@@ -922,7 +1179,16 @@ fn main() {
         let gap = interior_edges(&model)
             .iter()
             .filter(|(edge, _)| soft_edges.contains(edge))
-            .map(|(_, faces)| edge_gap_over(&model, *faces, STEP, 1..degree))
+            .map(|(_, faces)| {
+                edge_gap_over(
+                    model.nets(),
+                    model.quads(),
+                    model.degree(),
+                    *faces,
+                    STEP,
+                    1..degree,
+                )
+            })
             .fold(0.0f64, f64::max);
         let mut all_soft = PatchMesh::build(derived.positions.clone(), derived.quads.clone());
         for (key, _) in interior_edges(&bare) {
@@ -970,8 +1236,182 @@ fn main() {
         ),
     );
 
+    // 12. Run the invariant over the whole row, ends included, and see what that costs.
+    //
+    //     `crate::continuity` leaves positions 0 and degree to the boundary sharing because forcing
+    //     them would demand `mu == -1`, and measurement 3's 4.8e-2 gap is the price of that decision.
+    //     That is an argument, and it is the only thing standing between the model and exact G1.
+    //     This is the measurement: run the invariant over `0..=degree`, re-share the boundaries in
+    //     between, and see whether the feedback settles or fights itself.
+    //
+    //     A row end is a **boundary** point of the perpendicular edge, so writing one moves shared
+    //     geometry. Whether that is a contradiction is not one question but three, and the cases are
+    //     separated because they have different answers:
+    //
+    //     - **one** soft edge has no other seam to argue with;
+    //     - **two** soft edges meeting at a mesh vertex is the smallest arrangement that can argue;
+    //     - the full sample is every such arrangement at once.
+    //
+    //     Running only the full sample says "it does not settle" without saying where, and the
+    //     distinction decides whether the corner stencil is a per-vertex condition or a per-edge one.
+    let shared_vertex_pair = {
+        let pair = matching_edges(&bare);
+        let mut found = None;
+        for (index, first) in pair.iter().enumerate() {
+            for second in &pair[index + 1..] {
+                let touches = first.0 == second.0
+                    || first.0 == second.1
+                    || first.1 == second.0
+                    || first.1 == second.1;
+                if touches {
+                    found = Some((*first, *second));
+                    break;
+                }
+            }
+            if found.is_some() {
+                break;
+            }
+        }
+        found
+    };
+    let first_edge = interior_edges(&bare)[0].0;
+    let cases: Vec<(&str, PatchMesh)> = vec![
+        ("one soft edge", build_with(&derived, &[first_edge])),
+        (
+            "two soft edges at one vertex",
+            build_with(
+                &derived,
+                &shared_vertex_pair.map_or_else(Vec::new, |p| vec![p.0, p.1]),
+            ),
+        ),
+        ("the full sample", mesh.clone()),
+    ];
+    let mut rows: Vec<String> = Vec::new();
+    let mut lone_exact = false;
+    let mut lone_gap = f64::NAN;
+    let mut pair_exact = false;
+    let mut full_exact = false;
+    let mut pair_contested = 0usize;
+    let mut full_contested = 0usize;
+    for (name, model) in &cases {
+        let (history, written, reclaimed) = whole_row_enforcement(model, 4);
+        let nets = history.last().expect("four rounds were asked for");
+        let settled = nets_distance(&history[history.len() - 2], nets) <= MOVED;
+        let (interior, ends) = soft_gap_pair(model, nets);
+        let split = worst_split_over_all(model, nets);
+        let exact = interior.max(ends) <= CONTINUOUS;
+        let contested = contested_row_ends(model);
+        let verdict = if exact {
+            "EXACT"
+        } else if settled {
+            "not exact"
+        } else {
+            "does not settle"
+        };
+        rows.push(format!(
+            "   {name:<24} {verdict:<15} gap {interior:.3e} / {ends:.3e} rad   split {split:.3e}   \
+             {}",
+            if contested.is_empty() {
+                "no shared place is written by two seams".to_string()
+            } else {
+                format!(
+                    "{} shared {} written by two seams, e.g. edge {:?} at position {}",
+                    contested.len(),
+                    if contested.len() == 1 {
+                        "place"
+                    } else {
+                        "places"
+                    },
+                    contested[0].0,
+                    contested[0].1
+                )
+            }
+        ));
+        rows.push(format!(
+            "   {:<24} the soft writes move up to {} per round; the boundary sharing takes back {}",
+            "",
+            written
+                .iter()
+                .map(|value| format!("{value:.1e}"))
+                .collect::<Vec<String>>()
+                .join(" "),
+            reclaimed
+                .iter()
+                .map(|value| format!("{value:.1e}"))
+                .collect::<Vec<String>>()
+                .join(" "),
+        ));
+        match *name {
+            "one soft edge" => {
+                lone_exact = exact;
+                lone_gap = interior;
+            }
+            "two soft edges at one vertex" => {
+                pair_exact = exact;
+                pair_contested = contested.len();
+            }
+            _ => {
+                full_exact = exact;
+                full_contested = contested.len();
+            }
+        }
+        if split > EXACT {
+            failures.push("12  whole-row enforcement cracks a boundary somewhere in the sample");
+        }
+        // The claim worth making is the equivalence, not the three data points: a seam is exactly
+        // continuous if and only if no shared place is written by two of them.
+        if exact != contested.is_empty() {
+            failures.push("12  a seam is exact exactly when no shared place is written twice");
+        }
+    }
+    if !lone_exact {
+        failures.push("12  one soft edge on its own cannot be made exactly continuous");
+    }
+    if lone_exact && lone_gap > CONTINUOUS {
+        failures.push("12  a lone soft edge cannot be made exactly continuous");
+    }
+    if pair_exact {
+        failures.push(
+            "12  two soft edges meeting at a vertex would both be exact, which is the surprise",
+        );
+    }
+    if !full_exact {
+        failures.push("12  the whole-row invariant is not exact on the full sample");
+    }
+    report(
+        "12  running the invariant over the row ends",
+        &format!(
+            "{}\n\
+             ONE soft edge comes out EXACT at {lone_gap:.3e} rad, with the boundary sharing giving\n\
+             nothing back. the whole-row invariant is therefore not impossible, and the 4.8e-2 of\n\
+             measurement 3 is not a limit of the representation: it is the price of `crate::continuity`\n\
+             choosing not to enforce the two ends, and it is being paid for nothing. the module's\n\
+             argument that forcing them demands `mu == -1` does not survive this measurement.\n\
+             TWO soft edges meeting at a vertex is the smallest arrangement that fails, and it has\n\
+             {} shared {} that two seams write as a row end. one place with two equations and one\n\
+             value: the sharing hands it to whichever seam wrote last and the other seam loses its row\n\
+             end. that is the obstruction, counted rather than argued.\n\
+             the full sample has {} such places, and its soft writes are taken back almost exactly as\n\
+             far as they reach — the sharing and the invariant are cancelling, which is why the gap\n\
+             stays open rather than merely being large.\n\
+             the three cases line up with nothing left over: exact when and only when no shared place\n\
+             is written by two seams. that equivalence is asserted, not just observed.\n\
+             so the thing that is missing is not a parameter per edge. it is one degree of freedom per\n\
+             place where two seams land on the same shared point, which is what a corner scale kappa\n\
+             would buy — and on this evidence it is the only thing kappa would buy",
+            rows.join("\n"),
+            pair_contested,
+            if pair_contested == 1 {
+                "place"
+            } else {
+                "places"
+            },
+            full_contested,
+        ),
+    );
+
     if failures.is_empty() {
-        println!("\nall 11 measurements passed");
+        println!("\nall 12 measurements passed");
     } else {
         println!("\nFAILED:");
         for failure in &failures {
