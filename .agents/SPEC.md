@@ -61,6 +61,10 @@ provide a schema of `Definition` that represents instruction set of lowlevel gra
 
 a server that can hot reload `Graphics`, `GraphicsInstance`, increntally apply `Graphics` and `GraphicsInstance`'s `Delta`, do headless rendering using http RPC.
 
+### `mountain` crate
+
+author a mountain massif as a ridge/valley polyline `Skeleton` and expand it into a planar-facet triangle `FacetMesh`. see [SPEC/mountain.md](SPEC/mountain.md).
+
 ### `scene` crate
 
 provide utility to build compilers to compile `Definition` with certain schema into `Graphics` and corresponding `GraphicsInstance`, and its `Delta` version for incremental compile.
