@@ -1,9 +1,10 @@
 # Content identity: a rendered pixel resolves to the code that authored it
 
-Status: **the measurement and one of the two framework changes have landed.** `r32float` is
-drawable as a colour attachment and reads an integer back exactly, and a pass's blend is now a
-property of each attachment's format rather than of the pass — see *Landed* at the end. Everything
-else below is the design, not yet built.
+Status: **landed.** The measurement, the framework's two changes, the belt's parameter space, the
+shader template, the landscape scene and `locate` are all built, and every step of it was checked
+additively by rendering before and after. This file is the design and the argument for it; the
+*decisions that were wrong at first* are under *What the building found*, and those are the part
+worth reading.
 
 ## The gap
 
@@ -223,39 +224,91 @@ The last line is the point of the whole thing. Not "can look it up" — **cannot
   table that defines it, and the manifest says which table that is.
 - **Naming inside `Massif`.** See decision 1.
 
-## Landed
+## One hop that stayed off the pixels
 
-**The measurement.** [crates/device/tests/r32float_attachment.rs](../../../crates/device/tests/r32float_attachment.rs)
-draws a pass writing `rgba8unorm` beside `r32float`, with a bare `f32` fragment output carrying
-**4093** — a value `rgba16float` cannot represent, chosen so that a readback of 4092 would say the
-target is the wrong format and 4093 would say it is the right one. It was written before the
-change below and **failed**, with the backend's own words:
+The design put `id` and `(u, v)` in the image and looked up the belt from the id. What shipped
+puts the **belt** on the CPU too, through `FacetMesh::locate`, and that is worth stating as a
+decision rather than left implicit: the image carries the three numbers that **cannot** be
+recovered elsewhere, and the belt is a lookup in data the crate already holds. Baking it in would
+have been a fifth number with to agree with that table forever.
 
-```text
-In Device::create_render_pipeline, label = 'identity'
-  Color state [1] is invalid
-    Format R32Float is not blendable
-```
+## What the building found
 
-So both facts the design rests on are measured on the adapter in this repository: `r32float` is a
-renderable colour attachment, and a `f32` fragment output survives the round trip exactly.
+Six things the design above did not say, five of which cost a red run. They are the part of this
+document worth reading, because each is a rule the design was relying on without knowing it.
 
-**The blend change.** A backend refuses to build a pipeline when an attachment names a blend its
-format does not support, and it refuses **the whole pipeline**, not the one attachment — so
-`blend` could not stay a property of the pass. Two things were found by measurement rather than by
-reading: the backend's test is whether a blend state is *present*, not whether its factors discard
-the destination, so `Replace` is refused on `r32float` exactly as `Alpha` is; and the three 32 bit
-float formats are the whole of the unblendable set, under the `float32-blendable` feature this
-device does not request.
+### 1. A blend is judged on whether it is *present*, not on what it does
 
-**Verified**: `whiting-device` with `wgpu` is green on the adapter (50 tests), and SHA-256 of
-`dunes`, `landscape`, `tidewater-camera0` and `tidewater-camera1` is **identical** against the
-same four rendered with the change reverted — measured, not argued.
+`raster.rs` built every attachment of a pass with one `blend_of(state.blend)`, and `r32float`
+refused the pipeline with `Format R32Float is not blendable`. The obvious repair — give an
+unblendable target a `Replace` state — **is refused with the same message**, because the backend
+tests `cs.blend.is_some()` rather than whether the factors happen to discard the destination. An
+unblendable attachment gets no state at all. The three 32 bit float formats are the whole of the
+unblendable set, under the `float32-blendable` feature this device does not request.
+
+### 2. `components_schema(1)` produced a schema its own reader refused
+
+A one component field was a one element `List<Float>` with the `components` extension left off,
+and `layout::components` **rejects** a list with no declared count because it has no layout. So
+the one function that writes point fields produced one its own reader would not take. It is a bare
+`Float` now, which is what the workspace's rule already says a one component field is in a
+document. Nothing had called it with one until a scene declared a field of its own.
+
+### 3. An identity must be carried `@interpolate(flat)`
+
+A varying is interpolated, perspective-correctly, so the first version answered **99.999985** for
+a face that is 99, and a caller that rounded it would be *choosing* a face rather than reading
+one. Flat takes one vertex's value whole, which is exact and the only thing that is true — a
+triangle is one facet of one element, so its three corners carry the same identity and there was
+nothing to interpolate. The belt's `u` and `v` stay smooth, because a place on a surface is
+exactly what interpolation computes.
+
+### 4. Two meshes need two sets of four stage shaders
+
+The stages read the **point layout of the mesh they draw**. A plain drawn by a shader built over
+the massif's wider point schema reads three attributes of somebody else's vertices, and nothing
+checks that, so the device caught it as a layout disagreement — the good outcome, and not one to
+rely on. `mesh_shaders_over` takes a prefix so the two sets' labels do not collide, which is
+what made the first attempt a silent overwrite rather than an error.
+
+### 5. A declared output's binding point moves every number after it
+
+`output_authored_id` sorts between `light_records` and `shadow_atlas`, so appending it to the end
+of a hand-ordered list put `shadow_atlas` one lower than the pass built it. That is a frame of
+the wrong numbers rather than a failure, and it is the mistake that once left the lighting pass
+with no depth test at all. `lighting_bindings` now **sorts its list by name and reads the numbers
+off the sort**, which makes a number a function of the name — the thing the device actually sorts
+by. The list was already in name order by hand, so this is additive.
+
+### 6. The point name is a rule three places would each have to agree on
+
+The compiler creates the entry, the pass binds it, and the scene's shader must **declare** it in
+its interface — a target is a binder the pass has and the shader reads nothing, exactly as
+`color_target` is. That is one name in three places. `scene::standard::output_point` is the one
+place it is written, and a disagreement is a compile error rather than a wrong picture, which is
+at least honest.
+
+## Verification
+
+Every step was checked additively on the adapter by rendering before and after: `dunes`,
+`landscape`, `tidewater-camera0` and `tidewater-camera1` are byte for byte the same across every
+commit. `whiting-device --features wgpu`, `whiting-scene`, `whiting-gallery`, `whiting-mountain`
+and `whiting-graphics` are green. The before/after renders were checked to have actually
+differed, by confirming each revert took effect before rendering the baseline — an inconclusive
+before/after is worse than none.
+
+Two stale test pins were fixed on the way, both from `landscape` having been added to the gallery
+without them: `clustered_lights.rs` and `scale_notes.rs`. Both were verified to fail with the
+changes stashed, and both are updated rather than weakened, which is the same update
+[agent-scene-iteration-loop.md](agent-scene-iteration-loop.md) records k3 making.
 
 ## Still owed
 
-- The scene-declared `outputs` field, its emitter, and the three targets.
-- `FacetMesh::belt_uv`.
-- The content side: the id allocator, the `landscape` shader writing `@location(1..3)`, the tables.
-- `locate(x, y)`.
-- `SPEC.align.md`'s account of the scene-declared output shape.
+Nothing in the design. Two things are *available* and not built, and neither is a gap in this:
+
+- **the join tables and the manifest stamping.** `Identity::of` is the one place ids and paths are
+  produced together, so writing them beside the images is a call rather than a design. `locate`
+  rebuilds the massif rather than reading a table, which is correct and O(one build) — a table is
+  what makes it O(1) and what makes a stale answer detectable.
+- **a second scene with its own naming**, which is what turns `identity::locate`'s `scene ==
+  "landscape"` into a registry. One match arm is honest at one scene.

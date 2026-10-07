@@ -46,8 +46,8 @@ use std::borrow::Cow;
 use definition::{Schema, SchemaKind, Value};
 
 use scene::standard::{
-    Stage, depth_pass_schema, emission_pass_schema, light_pass_schema, post_pass_schema,
-    shadow_pass_schema,
+    Stage, depth_pass_schema, emission_pass_schema, light_pass_schema, light_pass_schema_over,
+    post_pass_schema, shadow_pass_schema,
 };
 
 use super::kit;
@@ -532,7 +532,7 @@ pub fn lighting_with_normal<'text>(
         displace.into(),
         surface.into(),
         helpers.into(),
-        lighting_bindings(false),
+        lighting_bindings(false, &Extras::NONE.binding_points()),
         &Extras::NONE,
     )
 }
@@ -558,9 +558,50 @@ pub fn lighting_declaring<'text>(
         displace.into(),
         surface.into(),
         helpers.into(),
-        lighting_bindings(false),
+        lighting_bindings(false, &extras.binding_points()),
         extras,
     )
+}
+
+/// Where one declared output's value comes from.
+///
+/// # Invariants
+///
+/// **These are the only two ways a fragment can know a value**, and choosing between them is a
+/// fact about the geometry rather than about the shader. A surface that *is* an authored element
+/// carries its identity in its points, because two faces of one flank are two different answers
+/// and only the geometry knows which. A surface that is *not* one — the plain a massif stands on,
+/// the sky, a frame the scene put there for its own reasons — writes a constant, because there is
+/// nothing per-vertex about it to read.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Authored {
+    /// Read from a point field, which the point schema then has to carry.
+    Field {
+        /// The point field, in the schema's own naming.
+        name: String,
+        /// How many components it is, which decides how the shader reads it.
+        components: u32,
+        /// Whether the value is carried **flat** — taken from one vertex rather than
+        /// interpolated across the face.
+        ///
+        /// # Invariants
+        ///
+        /// **Set it for anything that names rather than measures, and unset it for the rest.**
+        /// A varying is interpolated — perspective-correctly, which is a non-linear function of
+        /// the pixel — so a value read as one arrives at a pixel as a number *between* the
+        /// corners'. An identity read that way is 99.999985 where the face is 100, and a caller
+        /// that rounds it is choosing a face rather than reading one. `@interpolate(flat)` takes
+        /// one vertex's value whole, which is both exact and the only thing that is true: a
+        /// triangle is one facet of one element, so all three of its corners carry the same
+        /// identity and there was nothing to interpolate.
+        ///
+        /// **The first reading of this did not set it**, and the number in the sidecar is what
+        /// caught it. Nothing is wrong with an interpolated coordinate — a belt's `u` and `v`
+        /// want interpolation and get it — and everything is wrong with an interpolated id.
+        flat: bool,
+    },
+    /// A constant, for geometry that is not an authored element.
+    Constant(f64),
 }
 
 /// The extra fragment outputs a scene's own lighting shader writes beside the frame.
@@ -580,52 +621,73 @@ pub fn lighting_declaring<'text>(
 ///   only the frame returns a bare `vec4<f32>`. Both are legal WGSL and both are checked the
 ///   same way by `check_outputs`; the struct is not a nicer shape, it is the only way a fragment
 ///   stage can name a second output at all.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Extras {
     /// The scene's declared outputs, in location order.
     outputs: Vec<Extra>,
-    /// The point fields each output is read from, in the same order.
-    fields: Vec<(String, u32)>,
 }
 
-/// One declared output and the point field that carries it through the vertex stage.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One declared output and where its value comes from.
+#[derive(Debug, Clone, PartialEq)]
 struct Extra {
     name: String,
     location: u32,
-    field: String,
+    source: Authored,
+}
+
+/// One output's point field, borrowed from the [`Authored`] that named it.
+///
+/// It is its own type because the four places that read it — the schema, the varying, the
+/// assignment and the read — all want the field's name and its width and neither wants to know
+/// which of the two halves of [`Authored`] it came from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PointField<'text> {
+    field: &'text str,
     components: u32,
+    flat: bool,
 }
 
 impl Extras {
     /// What a scene that declares no outputs gets.
     pub const NONE: Self = Self {
         outputs: Vec::new(),
-        fields: Vec::new(),
     };
 
-    /// Returns the outputs a scene declares, paired with the point field each is read from.
+    /// Returns the outputs a scene declares, each paired with where its value comes from.
     ///
     /// # Invariants
     ///
-    /// **The two lists are built together and cannot disagree about order.** A varying numbered
-    /// by one list and a fragment output numbered by the other would be a shader whose two halves
-    /// describe different pictures, and the failure would be an image of somebody else's numbers
-    /// rather than an error. The scene's own `outputs` map is the only ordering authority, and
-    /// `location` is the number both sides are written from.
-    pub fn new(entries: impl IntoIterator<Item = (String, u32, String, u32)>) -> Self {
-        let mut outputs = Vec::new();
-        let mut fields = Vec::new();
-        for (name, location, field, components) in entries {
-            fields.push((field.clone(), location));
-            outputs.push(Extra {
-                name,
-                location,
-                field,
-                components,
-            });
+    /// **The list is the scene's own `outputs` map in the declared locations' order, and it is
+    /// the only ordering authority.** A varying numbered by one list and a fragment output
+    /// numbered by the other would be a shader whose two halves describe different pictures, and
+    /// the failure would be an image of somebody else's numbers rather than an error.
+    pub fn new(entries: impl IntoIterator<Item = (String, u32, Authored)>) -> Self {
+        Self {
+            outputs: entries
+                .into_iter()
+                .map(|(name, location, source)| Extra {
+                    name,
+                    location,
+                    source,
+                })
+                .collect(),
         }
-        Self { outputs, fields }
+    }
+
+    /// Returns the binding points a fragment that writes these outputs has in its pass.
+    ///
+    /// # Invariants
+    ///
+    /// **The names come from [`scene::standard::output_point`], which is the same function the
+    /// compiler creates the instance entry with.** A target is a binder the pass has and the
+    /// shader reads nothing, exactly as `color_target` is, so a shader's interface has to
+    /// declare it or the two halves of the document disagree — and the point name written in two
+    /// places would be two things that can differ.
+    pub fn binding_points(&self) -> Vec<String> {
+        self.outputs
+            .iter()
+            .map(|extra| scene::standard::output_point(&extra.name))
+            .collect()
     }
 
     /// Returns whether this shader writes anything beside the frame.
@@ -647,13 +709,39 @@ impl Extras {
             SchemaKind::Struct { fields } => fields.clone(),
             other => return Schema::new(other.clone()),
         };
-        for extra in &self.outputs {
+        for extra in self.read_from_points() {
             fields.insert(
-                extra.field.clone(),
+                extra.field.to_owned(),
                 graphics::layout::components_schema(extra.components as usize),
             );
         }
         Schema::new(SchemaKind::Struct { fields })
+    }
+
+    /// Returns the outputs whose value is read from the points rather than written as a constant.
+    ///
+    /// # Invariants
+    ///
+    /// **A constant adds no field to the point schema, no attribute to the layout and no varying
+    /// to the vertex stage.** That is what lets a scene whose second surface is a plain — which is
+    /// most of them — declare the same outputs as the one whose surface is authored, without the
+    /// plain's geometry carrying three numbers that are the same at every vertex.
+    fn read_from_points(&self) -> Vec<PointField<'_>> {
+        self.outputs
+            .iter()
+            .filter_map(|extra| match &extra.source {
+                Authored::Field {
+                    name,
+                    components,
+                    flat,
+                } => Some(PointField {
+                    field: name.as_str(),
+                    components: *components,
+                    flat: *flat,
+                }),
+                Authored::Constant(_) => None,
+            })
+            .collect()
     }
 
     /// Returns the varyings the vertex stage carries and the fragment stage reads.
@@ -672,11 +760,20 @@ impl Extras {
     /// which point only one of the two is still what the compiler built.
     fn varyings(&self) -> String {
         let mut lines = String::new();
-        for (index, extra) in self.outputs.iter().enumerate() {
+        for (index, field) in self.read_from_points().iter().enumerate() {
+            // **Flat is written on the declaration, not on the value**, and a field that is not
+            // flat says so rather than leaving the default to be guessed. WGSL's default is
+            // smooth, which is the right answer for a coordinate and the wrong one for an
+            // identity, so the one that has to be asked for is the one that is asked for.
+            let flat = if field.flat {
+                "@interpolate(flat) "
+            } else {
+                ""
+            };
             lines.push_str(&format!(
-                "    @location({}) {}: f32,\n",
+                "    @location({}) {flat}{}: f32,\n",
                 FIRST_EXTRA_LOCATION + index as u32,
-                extra.field
+                field.field
             ));
         }
         lines
@@ -685,17 +782,17 @@ impl Extras {
     /// Returns the assignments that carry each output's point field to its varying.
     fn assigns(&self) -> String {
         let mut lines = String::new();
-        for extra in &self.outputs {
+        for field in self.read_from_points() {
             lines.push_str(&format!(
                 "    out.{} = {};\n",
-                extra.field,
-                self.read(extra)
+                field.field,
+                Self::read(&field)
             ));
         }
         lines
     }
 
-    /// Returns how one output is read out of the point, given its component count.
+    /// Returns how one point field is read, given its component count.
     ///
     /// # Invariants
     ///
@@ -703,14 +800,14 @@ impl Extras {
     /// attributes**, which is the same rule `crate::attributes` lays the vertex out by. Reading a
     /// one component field as a `vec3` would consume the two attributes after it and shift every
     /// one of them, which is a vertex reading somebody else's data rather than an error.
-    fn read(&self, extra: &Extra) -> String {
-        if extra.components == 1 {
-            extra.field.clone()
+    fn read(field: &PointField<'_>) -> String {
+        if field.components == 1 {
+            field.field.to_owned()
         } else {
-            let parts: Vec<String> = (0..extra.components)
-                .map(|component| format!("{}{component}", extra.field))
+            let parts: Vec<String> = (0..field.components)
+                .map(|component| format!("{}{component}", field.field))
                 .collect();
-            format!("vec{}<f32>({})", extra.components, parts.join(", "))
+            format!("vec{}<f32>({})", field.components, parts.join(", "))
         }
     }
 
@@ -742,6 +839,15 @@ impl Extras {
     }
 
     /// Returns the frame and every declared output, written into the struct a fragment returns.
+    ///
+    /// # Invariants
+    ///
+    /// **An output read from a point takes the varying the vertex stage carried it in, and an
+    /// output written as a constant writes the constant.** Those are the two halves of
+    /// [`Authored`], and the fragment reads the field's own name because the varying *is* that
+    /// name: a fragment that mixed the two cases up would name a varying nothing writes, which
+    /// `naga` rejects rather than draws — so both are written from the one value that decided
+    /// which case they are, never from a name that could be either.
     fn writes(&self) -> String {
         if self.is_empty() {
             return String::new();
@@ -749,7 +855,11 @@ impl Extras {
         let mut lines =
             String::from("    var out: Written;\n    out.frame = vec4<f32>(color, 1.0);\n");
         for extra in &self.outputs {
-            lines.push_str(&format!("    out.{} = in.{};\n", extra.name, extra.field));
+            let value = match &extra.source {
+                Authored::Constant(number) => format!("{number}"),
+                Authored::Field { name, .. } => format!("in.{name}"),
+            };
+            lines.push_str(&format!("    out.{} = {};\n", extra.name, value));
         }
         lines
     }
@@ -794,19 +904,17 @@ const FIRST_EXTRA_LOCATION: u32 = 6;
 /// An image is a texture **and** the sampler that reads it, at the position immediately after
 /// its own, so adding one shifts everything below it. That is why the declarations are
 /// generated from a flag rather than spliced into the source with a string replacement.
-fn lighting_bindings(image: bool) -> String {
+fn lighting_bindings(image: bool, outputs: &[String]) -> String {
     // Each entry is the access an address space needs written on `var` itself, and the type
     // that follows the name. A storage buffer is the one that needs the first, and needing
-    // it is why a plain `var` is not enough for these three.
+    // it is why a plain `var` is not enough for these three. **An empty type takes a number
+    // and declares nothing** — that is what a target is.
     let mut resources: Vec<(&str, &str, &str)> = vec![
         ("cluster_light_counts", "<storage, read>", "array<f32>"),
         ("cluster_light_indices", "<storage, read>", "array<f32>"),
-        // `color_target` and `depth_buffer` are next in name order, so they take bindings
-        // three and four. The empty name is the number each consumes and nothing else.
-        ("", "", ""),
-        ("", "", ""),
+        ("color_target", "", ""),
+        ("depth_buffer", "", ""),
     ];
-    let mut number = 1;
     // The environment map is bound by every lighting pass, including one whose scene names no
     // `Environment` light — the pass then binds a one texel black map and the uniform's flag
     // is zero. It is bound unconditionally for the same reason the list is in name order: a
@@ -818,6 +926,11 @@ fn lighting_bindings(image: bool) -> String {
         resources.push(("image_sampler", "", "sampler"));
     }
     resources.push(("light_records", "<storage, read>", "array<f32>"));
+    // A scene's own declared outputs are **targets the shader writes and never reads**, so they
+    // take a number and emit no declaration — exactly what `color_target` above is.
+    for point in outputs {
+        resources.push((point.as_str(), "", ""));
+    }
     // The atlas is bound by every lighting pass and read by only the fragments of a light that
     // was given a virtual grid, for the same reason the cone buffer below is: a binding point is
     // numbered by its name's position, so one that came and went with the document would move
@@ -832,14 +945,24 @@ fn lighting_bindings(image: bool) -> String {
     // nothing, so the bandwidth is zero and the only cost is a bound buffer.
     resources.push(("spot_cones", "<storage, read>", "array<SpotCone>"));
 
+    // **Sorted by name, and the numbers read off the sort.** The device numbers a pass's binding
+    // points by their names' order, so a list written in name order by hand is a number that has
+    // to be maintained by editing it in the right place — and a scene's declared outputs sort
+    // between `light_records` and `shadow_atlas`, so appending them where they were written
+    // would put `shadow_atlas` one lower than the pass built it. That is a frame of the wrong
+    // numbers rather than a failure, and it is the mistake that left the lighting pass without a
+    // depth test at all. Sorting makes the number a function of the **name**, which is the thing
+    // the device actually sorts by, and the list above no longer has to be kept in order.
+    resources.sort_by(|left, right| left.0.cmp(right.0));
+
     let mut declarations = String::new();
-    for (source, access, ty) in resources {
-        if !source.is_empty() {
+    for (number, (source, access, ty)) in resources.iter().enumerate() {
+        if !ty.is_empty() {
             declarations.push_str(&format!(
-                "@group(0) @binding({number}) var{access} {source}: {ty};\n"
+                "@group(0) @binding({}) var{access} {source}: {ty};\n",
+                number + 1
             ));
         }
-        number += 1;
     }
     declarations
 }
@@ -1845,7 +1968,7 @@ pub fn textured<'text>(vertex_inputs: &str, helpers: impl Into<Block<'text>>) ->
          color = color * (0.25 + 1.5 * pattern.rgb);"
             .into(),
         helpers.into(),
-        lighting_bindings(true),
+        lighting_bindings(true, &Extras::NONE.binding_points()),
         &Extras::NONE,
     )
 }
@@ -2172,17 +2295,54 @@ pub fn mesh_shaders_with_normal<'text>(
     surface: impl Into<Block<'text>>,
     helpers: impl Into<Block<'text>>,
 ) -> Vec<Value> {
-    let point = kit::shaded_point_schema();
+    mesh_shaders_over("", displace, surface, helpers, kit::shaded_point_schema())
+}
+
+/// The same four shaders, for a mesh whose points carry more than the gallery's own three fields.
+///
+/// # Invariants
+///
+/// - **`prefix` names each shader `<prefix>_<stage>`, and an empty prefix gives the bare stage
+///   name every existing scene already names.** A scene with two meshes needs two sets, because
+///   the stages read the *point layout of the mesh they draw* — a plain drawn by a shader built
+///   over a massif's wider point schema reads three attributes of somebody else's vertices, and
+///   the failure is a mesh whose depth stage is looking at the wrong numbers rather than an
+///   error. Two sets need two labels, and a shared name would be one entry silently
+///   overwriting the other.
+///
+///   The prefix is empty for every caller that has one mesh, so nothing that exists changes
+///   name.
+///
+/// - **All four are built from the one point schema, and the mesh declares that same one.** The
+///   stages have to agree about the attribute locations they read, and they get that agreement
+///   from a shared schema rather than from four shaders that happen to name the same fields.
+/// - **Only the lighting stage's WGSL knows about the extra fields.** The shadowing and depthing
+///   stages read position and nothing else, and their inputs are generated from the same schema,
+///   so they skip the fields rather than being told they are there.
+pub fn mesh_shaders_over<'text>(
+    prefix: &str,
+    displace: impl Into<Block<'text>>,
+    surface: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+    point: Schema,
+) -> Vec<Value> {
     let inputs = crate::attributes::gallery_vertex_inputs(&point);
     // One block each, handed to every stage that takes it: a block declared once is the same
     // text in all of them, and converting per stage would clone the same WGSL four times.
     let displace = displace.into();
     let surface = surface.into();
     let helpers = helpers.into();
+    let named = |stage: &'static str| {
+        if prefix.is_empty() {
+            stage.to_owned()
+        } else {
+            format!("{prefix}_{stage}")
+        }
+    };
     vec![
         kit::shader(
             Stage::Shadowing,
-            "shadowing",
+            &named("shadowing"),
             &shadowing(&inputs),
             shadow_pass_schema(),
             point.clone(),
@@ -2191,7 +2351,7 @@ pub fn mesh_shaders_with_normal<'text>(
         ),
         kit::shader(
             Stage::Depthing,
-            "depthing",
+            &named("depthing"),
             &depthing(&inputs),
             depth_pass_schema(),
             point.clone(),
@@ -2200,7 +2360,7 @@ pub fn mesh_shaders_with_normal<'text>(
         ),
         kit::shader(
             Stage::Lighting,
-            "lighting",
+            &named("lighting"),
             &lighting_with_normal(&inputs, displace, surface, helpers),
             light_pass_schema(),
             point.clone(),
@@ -2213,7 +2373,7 @@ pub fn mesh_shaders_with_normal<'text>(
         // costs nothing.
         kit::shader(
             Stage::Emission,
-            "emission",
+            &named("emission"),
             &emission(&inputs, "", helpers),
             emission_pass_schema(),
             point,
@@ -2386,7 +2546,7 @@ pub fn lighting_shader_declaring<'text>(
         Stage::Lighting,
         label,
         &lighting_declaring(&inputs, displace, surface, helpers, extras),
-        light_pass_schema(),
+        light_pass_schema_over(&extras.binding_points()),
         point,
         kit::gallery_instance_schema(),
         custom_schema,

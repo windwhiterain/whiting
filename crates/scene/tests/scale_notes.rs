@@ -173,6 +173,13 @@ fn the_gallery_says_how_often_a_scene_is_reported() {
     // so the box the fold is measured over is a thousand and the note's own words — the distance
     // is a box and not a surface — are the whole of the story. It lands between `monoliths` and
     // `tidewater` and so it moves neither gap.
+    //
+    // `landscape` is the twelfth, and it is the extreme of the whole table at a fold of about
+    // 1365: a plain nine times the massif's radius, so the box is a thousand units across and
+    // the point light standing in it is attenuated by three orders of magnitude across the
+    // scene. It lands in the **second** gap, above `tidewater` and nothing else — so it changes
+    // neither gap the bar was fitted to, which is why adding it moved no bar and only the
+    // pinned list.
     let reported: Vec<&str> = Gallery::names()
         .iter()
         .copied()
@@ -188,6 +195,7 @@ fn the_gallery_says_how_often_a_scene_is_reported() {
         [
             "dunes",
             "foldyard",
+            "landscape",
             "lanterns",
             "monoliths",
             "stilllife",

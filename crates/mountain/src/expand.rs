@@ -185,13 +185,45 @@ pub fn build(skeleton: &Skeleton, tessellation: Tessellation) -> Result<FacetMes
     Ok(mesh)
 }
 
+/// Returns every belt of a skeleton, in the one order they are enumerated in.
+///
+/// # Invariants
+///
+/// - **The order is valley id, then left side before right, then segment index**, and it is
+///   written down **here**, once, rather than restated by each consumer. [`enumerate`] walks it,
+///   and a caller that numbers the belts for any reason walks it too — so an id assigned from
+///   this list and a mesh built from [`enumerate`] are the same numbering by construction rather
+///   than by two loops that have been kept in step. A caller that wrote the triple loop out
+///   itself would be right today and wrong the first time the order changed for a reason.
+/// - **A belt a valley too short to have is absent**, because there is none to enumerate: a
+///   valley of one node has no segment, and a belt of no segment is not a belt with an empty
+///   range.
+pub fn belt_references(skeleton: &Skeleton) -> Vec<BeltRef> {
+    let mut references = Vec::new();
+    for (index, valley) in skeleton.valleys.iter().enumerate() {
+        if valley.nodes.len() < 2 {
+            continue;
+        }
+        for side in [Side::Left, Side::Right] {
+            for segment in 0..valley.nodes.len() - 1 {
+                references.push(BeltRef {
+                    valley: ValleyId(index),
+                    side,
+                    segment,
+                });
+            }
+        }
+    }
+    references
+}
+
 /// Enumerates the belts of a skeleton, in a fixed order, with whatever stopped one being made.
 ///
 /// # Invariants
 ///
-/// The order is valley id, then left side before right, then segment index. Every consumer of
-/// the belt list — the expander and the coverage check — reads them in that one order, so
-/// neither can see a different mesh from the other.
+/// The order is valley id, then left side before right, then segment index, and it is
+/// [`belt_references`]'s rather than this function's — see there. Every consumer of the belt list
+/// reads them in that one order, so none can see a different mesh from another.
 pub fn enumerate(skeleton: &Skeleton, sampling: &Sampling) -> (Vec<Belt>, Vec<Problem>) {
     let mut belts = Vec::new();
     let mut problems = Vec::new();
@@ -203,44 +235,39 @@ pub fn enumerate(skeleton: &Skeleton, sampling: &Sampling) -> (Vec<Belt>, Vec<Pr
         }
     }
     for (index, valley) in skeleton.valleys.iter().enumerate() {
-        let valley_id = ValleyId(index);
-        let line = LineRef::Valley(valley_id);
         if valley.nodes.len() < 2 {
-            problems.push(Problem::ThinValley { valley: valley_id });
-            continue;
+            problems.push(Problem::ThinValley {
+                valley: ValleyId(index),
+            });
         }
-        for side in [Side::Left, Side::Right] {
-            for segment in 0..valley.nodes.len() - 1 {
-                let reference = BeltRef {
-                    valley: valley_id,
-                    side,
-                    segment,
-                };
-                let from = valley.nodes[segment].station(side);
-                let to = valley.nodes[segment + 1].station(side);
-                let top = match sampling.path(from, to) {
-                    Ok(path) => path,
-                    Err(unresolved) => {
-                        problems.push(Problem::Unresolved(unresolved));
-                        continue;
-                    }
-                };
-                let bottom = match valley_run(skeleton, sampling, line, segment) {
-                    Some(run) => run,
-                    None => {
-                        problems.push(Problem::Unresolved(Unresolved::NoSuchSample {
-                            station: Station::new(line, 0.0),
-                        }));
-                        continue;
-                    }
-                };
-                belts.push(Belt {
-                    reference,
-                    top,
-                    bottom,
-                });
+    }
+    for reference in belt_references(skeleton) {
+        let valley_id = reference.valley;
+        let line = LineRef::Valley(valley_id);
+        let segment = reference.segment;
+        let from = skeleton.valleys[valley_id.0].nodes[segment].station(reference.side);
+        let to = skeleton.valleys[valley_id.0].nodes[segment + 1].station(reference.side);
+        let top = match sampling.path(from, to) {
+            Ok(path) => path,
+            Err(unresolved) => {
+                problems.push(Problem::Unresolved(unresolved));
+                continue;
             }
-        }
+        };
+        let bottom = match valley_run(skeleton, sampling, line, segment) {
+            Some(run) => run,
+            None => {
+                problems.push(Problem::Unresolved(Unresolved::NoSuchSample {
+                    station: Station::new(line, 0.0),
+                }));
+                continue;
+            }
+        };
+        belts.push(Belt {
+            reference,
+            top,
+            bottom,
+        });
     }
     (belts, problems)
 }

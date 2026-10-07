@@ -358,16 +358,16 @@ pub fn shadow_pass_schema() -> Schema {
          of a light's own virtual atlas.",
         vec![
             (
-                VERTICES,
+                VERTICES.to_owned(),
                 buffer_binding_schema()
                     .with_documentation("Vertex data of the shadow casting meshes."),
             ),
             (
-                INSTANCE_DATA,
+                INSTANCE_DATA.to_owned(),
                 buffer_binding_schema().with_documentation("Per instance data of those meshes."),
             ),
             (
-                SHADOW_ATLAS,
+                SHADOW_ATLAS.to_owned(),
                 texture_array_binding_schema().with_documentation(
                     "The atlas of virtual pages. Bound by every shadowing pass, and drawn into by \
                      the ones that record a virtual page; a scene that allocated no pages at all \
@@ -376,7 +376,7 @@ pub fn shadow_pass_schema() -> Schema {
                 ),
             ),
             (
-                SHADOW_POOL,
+                SHADOW_POOL.to_owned(),
                 texture_array_binding_schema().with_documentation(
                     "The pool of fixed pages, and the page a pool pass draws \
                                          into. Read by nothing that draws a virtual page, and \
@@ -386,11 +386,11 @@ pub fn shadow_pass_schema() -> Schema {
         ],
         vec![
             (
-                PROJECTION,
+                PROJECTION.to_owned(),
                 projection_schema().with_documentation("Looking down the light's direction."),
             ),
             (
-                VIEW_PAGE,
+                VIEW_PAGE.to_owned(),
                 vector4().with_documentation(
                     "Which rectangle of the light's own normalised plane this page covers, as \
                      minimum x, minimum y and the two extents. The whole plane for a pass that \
@@ -398,7 +398,7 @@ pub fn shadow_pass_schema() -> Schema {
                 ),
             ),
             (
-                TIME,
+                TIME.to_owned(),
                 time().with_documentation("Seconds since the scene started."),
             ),
         ],
@@ -411,26 +411,26 @@ pub fn depth_pass_schema() -> Schema {
         "A depthing pass, which renders the depth of every mesh in the scene.",
         vec![
             (
-                VERTICES,
+                VERTICES.to_owned(),
                 buffer_binding_schema().with_documentation("Vertex data of the meshes."),
             ),
             (
-                INSTANCE_DATA,
+                INSTANCE_DATA.to_owned(),
                 buffer_binding_schema().with_documentation("Per instance data of those meshes."),
             ),
             (
-                DEPTH_BUFFER,
+                DEPTH_BUFFER.to_owned(),
                 texture_binding_schema()
                     .with_documentation("The depth buffer this pass renders into."),
             ),
         ],
         vec![
             (
-                PROJECTION,
+                PROJECTION.to_owned(),
                 projection_schema().with_documentation("Looking at the scene from the camera."),
             ),
             (
-                TIME,
+                TIME.to_owned(),
                 time().with_documentation("Seconds since the scene started."),
             ),
         ],
@@ -452,30 +452,30 @@ pub fn emission_pass_schema() -> Schema {
         "An emission pass, which adds what every mesh in the scene emits.",
         vec![
             (
-                VERTICES,
+                VERTICES.to_owned(),
                 buffer_binding_schema().with_documentation("Vertex data of the meshes."),
             ),
             (
-                INSTANCE_DATA,
+                INSTANCE_DATA.to_owned(),
                 buffer_binding_schema().with_documentation("Per instance data of those meshes."),
             ),
             (
-                COLOR_TARGET,
+                COLOR_TARGET.to_owned(),
                 texture_binding_schema().with_documentation("The image this pass adds into."),
             ),
             (
-                DEPTH_BUFFER,
+                DEPTH_BUFFER.to_owned(),
                 texture_binding_schema()
                     .with_documentation("The depth the earlier passes produced."),
             ),
         ],
         vec![
             (
-                PROJECTION,
+                PROJECTION.to_owned(),
                 projection_schema().with_documentation("Looking at the scene from the camera."),
             ),
             (
-                TIME,
+                TIME.to_owned(),
                 time().with_documentation("Seconds since the scene started."),
             ),
         ],
@@ -483,117 +483,149 @@ pub fn emission_pass_schema() -> Schema {
 }
 
 /// Builds the interface of a lighting pass.
+///
+/// # Invariants
+///
+/// **It declares the frame and the depth buffer even though no lighting shader reads either**,
+/// because a target is a binding point that takes a number and emits no layout entry. A pass
+/// that binds something the shader's interface does not declare is a compile error from
+/// `verify_pass_inputs`, which is the point: the two halves have to agree rather than one of them
+/// being generous.
 pub fn light_pass_schema() -> Schema {
+    light_pass_schema_over(&[])
+}
+
+/// The same interface, for a pass that also renders into the scene's own declared outputs.
+///
+/// # Invariants
+///
+/// **One entry per declared output, by the point [`output_point`] names it under** — the same
+/// function the compiler creates the entry with, so a shader cannot declare a point the emitter
+/// did not build. The entries are **appended after everything else**, which is what keeps every
+/// other binding at the number it already had: a target takes its number from its name's
+/// position among the pass's points, and inserting one in the middle would move the light records
+/// under a shader that declares them by hand.
+pub fn light_pass_schema_over(outputs: &[String]) -> Schema {
+    let mut binders = vec![
+        (
+            VERTICES.to_owned(),
+            buffer_binding_schema().with_documentation("Vertex data of the meshes."),
+        ),
+        (
+            INSTANCE_DATA.to_owned(),
+            buffer_binding_schema().with_documentation("Per instance data of those meshes."),
+        ),
+        (
+            COLOR_TARGET.to_owned(),
+            texture_binding_schema().with_documentation("The image this pass renders into."),
+        ),
+        (
+            DEPTH_BUFFER.to_owned(),
+            texture_binding_schema().with_documentation("The depth the earlier passes produced."),
+        ),
+        (
+            LIGHT_RECORDS_ENTRY.to_owned(),
+            buffer_binding_schema().with_documentation(
+                "One record per light, which is what a cluster's indices point into.",
+            ),
+        ),
+        (
+            SPOT_CONES_ENTRY.to_owned(),
+            buffer_binding_schema().with_documentation(
+                "One cone per light, indexed by the same numbers as the records. Bound by \
+                 every lighting pass including one whose scene names no spot light, which \
+                 then binds a single whole sphere that no cluster points at, so the \
+                 binding numbers are the same either way.",
+            ),
+        ),
+        (
+            CLUSTER_COUNTS_ENTRY.to_owned(),
+            buffer_binding_schema().with_documentation(
+                "How many lights each cluster kept, which is the bound \
+                 of the loop.",
+            ),
+        ),
+        (
+            CLUSTER_INDICES_ENTRY.to_owned(),
+            buffer_binding_schema().with_documentation(
+                "The lights of each cluster, a row of the cap wide for each one.",
+            ),
+        ),
+        (
+            SHADOW_ATLAS.to_owned(),
+            texture_array_binding_schema().with_documentation(
+                "The pages of every light recorded as a grid, which the shader indexes with \
+                 the address each record carries. Bound by every lighting pass, including \
+                 one whose scene allocated no pages at all, because a binding point is \
+                 numbered by its name's position and one that came and went would move \
+                 [`SHADOW_POOL`] and [`SPOT_CONES_ENTRY`] off the numbers the shader \
+                 declares them at.",
+            ),
+        ),
+        (
+            SHADOW_POOL.to_owned(),
+            texture_array_binding_schema().with_documentation(
+                "The pages of every light that was given one, which the shader indexes \
+                 itself with the page each record carries.",
+            ),
+        ),
+        (
+            ENVIRONMENT_MAP.to_owned(),
+            texture_binding_schema().with_documentation(
+                "The scene's environment, as a two dimensional octahedral map read with \
+                 `textureLoad`. A scene naming no environment light binds a one texel black \
+                 map here rather than nothing, so the binding numbers are the same either way.",
+            ),
+        ),
+    ];
+    for point in outputs {
+        binders.push((
+            point.clone(),
+            texture_binding_schema().with_documentation(
+                "An image this scene's own fragment shader writes beside the frame. The shader \
+                 reads nothing here; a target is a binding point that takes a number and emits \
+                 no layout entry, and the number is what has to agree with the pass's.",
+            ),
+        ));
+    }
     interface(
         "A lighting pass, which shades every mesh in the scene.",
+        binders,
         vec![
             (
-                VERTICES,
-                buffer_binding_schema().with_documentation("Vertex data of the meshes."),
-            ),
-            (
-                INSTANCE_DATA,
-                buffer_binding_schema().with_documentation("Per instance data of those meshes."),
-            ),
-            (
-                COLOR_TARGET,
-                texture_binding_schema().with_documentation("The image this pass renders into."),
-            ),
-            (
-                DEPTH_BUFFER,
-                texture_binding_schema()
-                    .with_documentation("The depth the earlier passes produced."),
-            ),
-            (
-                LIGHT_RECORDS_ENTRY,
-                buffer_binding_schema().with_documentation(
-                    "One record per light, which is what a cluster's indices point into.",
-                ),
-            ),
-            (
-                SPOT_CONES_ENTRY,
-                buffer_binding_schema().with_documentation(
-                    "One cone per light, indexed by the same numbers as the records. Bound by \
-                     every lighting pass including one whose scene names no spot light, which \
-                     then binds a single whole sphere that no cluster points at, so the \
-                     binding numbers are the same either way.",
-                ),
-            ),
-            (
-                CLUSTER_COUNTS_ENTRY,
-                buffer_binding_schema().with_documentation(
-                    "How many lights each cluster kept, which is the bound \
-                     of the loop.",
-                ),
-            ),
-            (
-                CLUSTER_INDICES_ENTRY,
-                buffer_binding_schema().with_documentation(
-                    "The lights of each cluster, a row of the cap wide for each one.",
-                ),
-            ),
-            (
-                SHADOW_ATLAS,
-                texture_array_binding_schema().with_documentation(
-                    "The pages of every light recorded as a grid, which the shader indexes with \
-                     the address each record carries. Bound by every lighting pass, including \
-                     one whose scene allocated no pages at all, because a binding point is \
-                     numbered by its name's position and one that came and went would move \
-                     [`SHADOW_POOL`] and [`SPOT_CONES_ENTRY`] off the numbers the shader \
-                     declares them at.",
-                ),
-            ),
-            (
-                SHADOW_POOL,
-                texture_array_binding_schema().with_documentation(
-                    "The pages of every light that was given one, which the shader indexes \
-                     itself with the page each record carries.",
-                ),
-            ),
-            (
-                ENVIRONMENT_MAP,
-                texture_binding_schema().with_documentation(
-                    "The scene's environment, as a two dimensional octahedral map read with \
-                     `textureLoad`. A scene naming no environment light binds a one texel black \
-                     map here rather than nothing, so the binding numbers are the same either way.",
-                ),
-            ),
-        ],
-        vec![
-            (
-                PROJECTION,
+                PROJECTION.to_owned(),
                 projection_schema().with_documentation("Looking at the scene from the camera."),
             ),
             (
-                CLUSTER_GRID,
+                CLUSTER_GRID.to_owned(),
                 components_schema(4).with_documentation(
                     "How the view is divided: how many clusters across, how many up, how many \
                      depth slices, and how many lights one cluster keeps.",
                 ),
             ),
             (
-                ENVIRONMENT,
+                ENVIRONMENT.to_owned(),
                 components_schema(4).with_documentation(
                     "The environment light's colour scaled by its intensity, and whether the \
                      scene named one at all. Written for every lighting pass.",
                 ),
             ),
             (
-                DIRECTIONAL,
+                DIRECTIONAL.to_owned(),
                 directional_schema().with_documentation(
                     "The directional light, which stands nowhere and so is in no cluster list. \
                      Written for every lighting pass, present or not.",
                 ),
             ),
             (
-                FRAME_SIZE,
+                FRAME_SIZE.to_owned(),
                 vector2().with_documentation(
                     "The frame's width and height in pixels, which is what turns a fragment's \
                      own position into a column and a row.",
                 ),
             ),
             (
-                GLOBAL_COUNT,
+                GLOBAL_COUNT.to_owned(),
                 Schema::new(SchemaKind::Float).with_documentation(
                     "How many of the leading light records are global lights, which every \
                      fragment evaluates whatever cluster it is in. Zero for a scene whose \
@@ -601,7 +633,7 @@ pub fn light_pass_schema() -> Schema {
                 ),
             ),
             (
-                TIME,
+                TIME.to_owned(),
                 time().with_documentation("Seconds since the scene started."),
             ),
         ],
@@ -649,21 +681,21 @@ pub fn post_pass_schema_exposed() -> Schema {
 fn post_interface(exposed: bool) -> Schema {
     let mut uniform = vec![
         (
-            CAMERA,
+            CAMERA.to_owned(),
             camera_schema().with_documentation(
                 "The camera this pass draws through, which is what a sky is built from.",
             ),
         ),
         (
-            PROJECTION,
+            PROJECTION.to_owned(),
             projection_schema().with_documentation("The camera's own projection."),
         ),
         (
-            TIME,
+            TIME.to_owned(),
             time().with_documentation("Seconds since the scene started."),
         ),
         (
-            DEPTH_RANGE,
+            DEPTH_RANGE.to_owned(),
             vector2().with_documentation(
                 "The distance to the near and far planes, which is what turns a depth into a \
                  distance.",
@@ -674,7 +706,7 @@ fn post_interface(exposed: bool) -> Schema {
         // Placed in name order rather than appended, so the vector reads the way the layout
         // it produces does. It is a `BTreeMap` either way; this is for the reader.
         uniform.push((
-            EXPOSURE,
+            EXPOSURE.to_owned(),
             Schema::new(SchemaKind::Float).with_documentation(
                 "What this pass multiplies the radiance it read by, before its own grade: a \
                  linear multiplier where 1 is no change. It is not a parameter of the curve \
@@ -682,27 +714,27 @@ fn post_interface(exposed: bool) -> Schema {
                  at one.",
             ),
         ));
-        uniform.sort_by_key(|(field, _)| *field);
+        uniform.sort_by(|left, right| left.0.cmp(&right.0));
     }
     interface(
         "A post pass, which draws over the whole frame.",
         vec![
             (
-                VERTICES,
+                VERTICES.to_owned(),
                 buffer_binding_schema()
                     .with_documentation("The fullscreen triangle this pass draws."),
             ),
             (
-                COLOR_TARGET,
+                COLOR_TARGET.to_owned(),
                 texture_binding_schema().with_documentation("The shaded image this pass reads."),
             ),
             (
-                DEPTH_BUFFER,
+                DEPTH_BUFFER.to_owned(),
                 texture_binding_schema()
                     .with_documentation("The depth that produced the shaded image."),
             ),
             (
-                PRESENT_TARGET,
+                PRESENT_TARGET.to_owned(),
                 texture_binding_schema()
                     .with_documentation("The image this pass renders into, and the frame."),
             ),
@@ -719,27 +751,19 @@ fn post_interface(exposed: bool) -> Schema {
 /// has no author on the other side.
 pub(crate) fn interface(
     documentation: &str,
-    binders: Vec<(&str, Schema)>,
-    uniform: Vec<(&str, Schema)>,
+    binders: Vec<(String, Schema)>,
+    uniform: Vec<(String, Schema)>,
 ) -> Schema {
     Schema::new(SchemaKind::structure([
         (
             UNIFORM.to_owned(),
-            Schema::new(SchemaKind::structure(
-                uniform
-                    .into_iter()
-                    .map(|(field, schema)| (field.to_owned(), schema)),
-            ))
-            .with_documentation("Uniform data, uploaded verbatim."),
+            Schema::new(SchemaKind::structure(uniform))
+                .with_documentation("Uniform data, uploaded verbatim."),
         ),
         (
             BINDERS.to_owned(),
-            Schema::new(SchemaKind::structure(
-                binders
-                    .into_iter()
-                    .map(|(point, schema)| (point.to_owned(), schema)),
-            ))
-            .with_documentation("What the pass binds, keyed by binding point."),
+            Schema::new(SchemaKind::structure(binders))
+                .with_documentation("What the pass binds, keyed by binding point."),
         ),
     ]))
     .with_documentation(documentation)

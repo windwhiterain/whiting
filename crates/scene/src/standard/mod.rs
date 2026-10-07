@@ -228,6 +228,26 @@ mod scene_schema;
 pub use camera::{Camera, DEFAULT_FIELD_OF_VIEW, Projection, ProjectionKind, projection_value};
 pub use compiler::{STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema};
 pub use debug::{DebugChannel, declared_description};
+
+/// Returns the binding point a **scene-declared output** is created under.
+///
+/// # Invariants
+///
+/// - **This is the only place the name is written.** The compiler creates the instance entry
+///   and the pass binds it, and a scene's shader has to *declare* it in its interface — the
+///   output is a binder the pass has and the shader reads nothing, exactly as `color_target` is.
+///   Three of those are three places that would each have to agree, and a name they disagreed
+///   about is a compile error rather than a wrong picture, which is at least honest.
+/// - **The prefix keeps it out of the way of everything else in the instance.** A point lives in
+///   the same namespace as a mesh, a material and every pipeline entry, and a scene may name a
+///   material anything at all. A declared output's name comes from the scene as well, so the
+///   prefix is what stops `outputs: { color_target: … }` from colliding with the frame.
+pub fn output_point(name: &str) -> String {
+    format!("{}{name}", OUTPUT_POINT_PREFIX)
+}
+
+/// The prefix [`output_point`] gives every generated point.
+pub const OUTPUT_POINT_PREFIX: &str = "output_";
 pub use emit::{
     COLOR_TARGET_ENTRY, DEPTH_BUFFER_ENTRY, Emitted, FULLSCREEN_INSTANCE, FULLSCREEN_MESH,
     PRESENT_TARGET_ENTRY, Stage, emit,
@@ -239,7 +259,8 @@ pub use pass_schemas::{
     CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, FRAME_SIZE,
     INSTANCE_DATA, PRESENT_TARGET, PROJECTION, SHADOW_ATLAS, SHADOW_MAP_FORMAT, SHADOW_POOL, TIME,
     VERTICES, VIEW_PAGE, depth_pass_schema, emission_pass_schema, light_pass_schema,
-    post_pass_schema, post_pass_schema_exposed, projection_schema, shadow_pass_schema,
+    light_pass_schema_over, post_pass_schema, post_pass_schema_exposed, projection_schema,
+    shadow_pass_schema,
 };
 pub use scene_schema::{
     CAMERAS, CLUSTERING, CUSTOM_DATA, CUSTOM_SCHEMA, DATA, DEPTH_EXTENTS, EXPOSURE, EYE,

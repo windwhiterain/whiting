@@ -55,8 +55,10 @@ pub mod air;
 pub mod attributes;
 pub mod built;
 pub mod geometry;
+pub mod identity;
 pub mod kit;
 pub mod land;
+pub mod locate;
 pub mod ridges;
 pub mod shaders;
 

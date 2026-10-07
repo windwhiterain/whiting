@@ -195,15 +195,28 @@ fn declared_components(name: &str, field: &Schema) -> Result<usize, LayoutError>
     Ok(count as usize)
 }
 
-/// Builds a list schema of `count` floats, with the component count declared.
+/// Builds the schema of a point field of `count` floats, with the component count declared.
 ///
 /// This is the one a point schema is written with, because a list without it has no
 /// layout and a buffer packed from it cannot be drawn.
+///
+/// # Invariants
+///
+/// - **A count of one is a bare `Float`, not a one element list.** It used to be a `List<Float>`
+///   with the extension left off, which is a schema [`components`] **refuses** — a list with no
+///   declared count has no layout, so the one function that writes point fields produced one its
+///   own reader would not take. Nothing called it with one until a scene declared a one component
+///   field of its own, so the hole was open from the day it was written.
+///
+///   A bare `Float` is the right answer on its own terms and not only as a repair: the workspace's
+///   rule is that **a field of one component is a bare number in a document and a field of
+///   several is a list**, and a one element list would break that rule for the case where it is
+///   least needed — a document writer would have to write `[1.0]` where every other scalar is
+///   written `1.0`, and a reader would have to accept both.
 pub fn components_schema(count: usize) -> Schema {
-    let schema = Schema::new(SchemaKind::list(Schema::new(SchemaKind::Float)));
     match count {
-        1 => schema,
-        _ => schema.with_attributes(
+        1 => Schema::new(SchemaKind::Float),
+        _ => Schema::new(SchemaKind::list(Schema::new(SchemaKind::Float))).with_attributes(
             definition::Attributes::new().with_extension(COMPONENTS, Value::Int(count as i64)),
         ),
     }
