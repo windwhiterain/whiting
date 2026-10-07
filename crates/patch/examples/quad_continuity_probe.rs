@@ -15,6 +15,8 @@
 //! 7. Dragging a shared boundary moves both faces and keeps the tag.
 //! 8. `mu` places the slave's private row exactly, and the plane gap follows from it.
 //! 9. A point two soft edges own is refused, and a refused edit changes nothing.
+//! 10. The corner stencil's algebra, on the real mesh: how many independent chains a vertex has,
+//!     what its consistency condition is, and what `mu` a valence-3 centroid actually needs.
 //!
 //! ## Why measurement 3 fails, and what it costs
 //!
@@ -51,14 +53,14 @@
 //! rather than applying the invariant over them. A crack is worse than a crease.
 
 mod support;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use support::{ANGLE_FLOOR, COLUMNS, EXACT, grid};
 
 use whiting_patch::Point3;
 use whiting_patch::subdivide::{Origin, QuadMesh, subdivide};
 use whiting_patch::topology::{
-    EdgeKey, EdgeSlot, boundary_index, edge_endpoints, interior_index, mirrored_position,
+    EdgeKey, EdgeSlot, boundary_index, canonical, edge_endpoints, interior_index, mirrored_position,
 };
 use whiting_patch::{Edit, PatchMesh, RectNet};
 
@@ -245,6 +247,61 @@ fn boundary_split(mesh: &PatchMesh, edge: &EdgeKey, face: u32, slot: EdgeSlot, t
 
 fn report(name: &str, detail: &str) {
     println!("\n== {name} ==\n{detail}");
+}
+
+/// The two edges of a quad meeting at `corner`, as (incoming, outgoing) going with the winding.
+///
+/// Corner `c` is reached along the edge from `c-1` and left along the edge to `c+1`, which is what
+/// makes the walk below a walk and not a sort.
+fn edges_at(corner: usize) -> [EdgeSlot; 2] {
+    match corner {
+        0 => [EdgeSlot::MinU, EdgeSlot::MinV],
+        1 => [EdgeSlot::MinV, EdgeSlot::MaxU],
+        2 => [EdgeSlot::MaxU, EdgeSlot::MaxV],
+        _ => [EdgeSlot::MaxV, EdgeSlot::MinU],
+    }
+}
+
+/// The faces meeting at `vertex`, in cyclic order, each with its corner index.
+///
+/// Built by walking across the outgoing edge, which needs no geometry and no sort: every face agrees
+/// on the winding, so "the other face across this edge" is unambiguous.
+fn faces_around(mesh: &PatchMesh, vertex: u32) -> Vec<(u32, usize)> {
+    let mut order = Vec::new();
+    let Some(start) = mesh.quads().iter().position(|quad| quad.contains(&vertex)) else {
+        return order;
+    };
+    let start = start as u32;
+    let mut face = start;
+    while order.len() <= mesh.quads().len() {
+        let quad = mesh.quads()[face as usize];
+        let Some(corner) = quad.iter().position(|index| *index == vertex) else {
+            break;
+        };
+        order.push((face, corner));
+        let key = canonical(edge_endpoints(quad, edges_at(corner)[1]));
+        let Some(faces) = mesh.topology().edge_faces.get(&key) else {
+            break;
+        };
+        let Some(&(next, _)) = faces.iter().find(|(id, _)| *id != face) else {
+            break;
+        };
+        if next == start {
+            break;
+        }
+        face = next;
+    }
+    order
+}
+
+fn greatest_common_divisor(a: usize, b: usize) -> usize {
+    let (mut a, mut b) = (a, b);
+    while b != 0 {
+        let remainder = a % b;
+        a = b;
+        b = remainder;
+    }
+    a
 }
 
 fn main() {
@@ -672,6 +729,137 @@ fn main() {
              smooth patch is entitled to more than one smooth seam",
             refused.map_or("none".to_string(), |(outcome, _)| format!("{outcome:?}")),
             refused.is_some_and(|(_, changed)| changed),
+        ),
+    );
+
+    // 10. The corner stencil's algebra, on the real mesh rather than on a diagram.
+    //
+    //     At a vertex with `n` faces in cyclic order, writing `q_i` for the corner-adjacent point of
+    //     the `i`-th seam measured from the vertex itself, the invariant at the corner says
+    //     `q_(i+1) = -m_i * q_(i-1)`. Two things follow that a diagram hides.
+    //
+    //     The recursion steps by **two**, so the `n` equations split into `gcd(2, n)` independent
+    //     chains rather than one coupled system. Each chain closes on its own scalar condition.
+    //
+    //     And `m_i` is **not** `mu_i`. A seam's master is whichever of its two faces has the lower
+    //     id, which does not go round a vertex consistently, so `m_i` is `mu_i` on some seams and
+    //     `1 / mu_i` on others.
+    let mut full = PatchMesh::build(derived.positions.clone(), derived.quads.clone());
+    for (key, _) in interior_edges(&bare) {
+        full.set_soft(key);
+    }
+    let mut tally: BTreeMap<usize, [usize; 3]> = BTreeMap::new();
+    let mut chain_mismatch = 0usize;
+    let mut centroid_mu: BTreeSet<String> = BTreeSet::new();
+    for vertex in 0..derived.vertex_count() as u32 {
+        let around = faces_around(&full, vertex);
+        let n = around.len();
+        if n < 2
+            || n != full
+                .quads()
+                .iter()
+                .filter(|quad| quad.contains(&vertex))
+                .count()
+        {
+            continue;
+        }
+        let mut mu = vec![1.0f64; n];
+        let mut master_is_left = vec![true; n];
+        for (step, (face, corner)) in around.iter().enumerate() {
+            let quad = full.quads()[*face as usize];
+            let key = canonical(edge_endpoints(quad, edges_at(*corner)[1]));
+            mu[step] = full.continuity(&key).and_then(|c| c.mu()).unwrap_or(1.0);
+            master_is_left[step] = full.topology().edge_faces[&key][0].0 == *face;
+        }
+        let mut projected = mu.clone();
+        let mut visited = vec![false; n];
+        let mut chains = 0usize;
+        let mut feasible = true;
+        for start in 0..n {
+            if visited[start] {
+                continue;
+            }
+            chains += 1;
+            let mut index = start;
+            let mut factor = 1.0f64;
+            let seam = loop {
+                visited[index] = true;
+                let seam = (index + 1) % n;
+                let m = if master_is_left[seam] {
+                    projected[seam]
+                } else {
+                    1.0 / projected[seam]
+                };
+                factor *= -m;
+                let next = (index + 2) % n;
+                index = next;
+                if next == start {
+                    break seam;
+                }
+            };
+            if (factor - 1.0).abs() > 1.0e-12 {
+                feasible = false;
+                projected[seam] *= if master_is_left[seam] {
+                    factor
+                } else {
+                    1.0 / factor
+                };
+            }
+        }
+        if chains != greatest_common_divisor(2, n) {
+            chain_mismatch += 1;
+        }
+        let entry = tally.entry(n).or_insert([0, 0, 0]);
+        entry[0] += 1;
+        if feasible {
+            entry[1] += 1;
+        } else {
+            entry[2] += 1;
+        }
+        if n == 3 {
+            centroid_mu.insert(format!(
+                "{:.3} {:.3} {:.3}",
+                projected[0], projected[1], projected[2]
+            ));
+        }
+    }
+    if chain_mismatch != 0 {
+        failures.push("10  the corner system splits into gcd(2, valence) chains");
+    }
+    let rows: Vec<String> = tally
+        .iter()
+        .map(|(valence, [total, feasible, needs_projection])| {
+            format!(
+                "   valence {valence}: {total} interior vertices, {feasible} feasible at mu = 1, \
+                 {needs_projection} needing projection"
+            )
+        })
+        .collect();
+    report(
+        "10  the corner stencil's algebra",
+        &format!(
+            "vertices whose chain count disagreed with gcd(2, valence)   {chain_mismatch}\n{}\n\
+             projected mu at a valence-3 centroid: {}\n\
+             the recursion steps by two, so the equations split into gcd(2, valence) chains and each\n\
+             closes on its own scalar condition. odd valence needs the product of the m's to be -1;\n\
+             even valence needs it to be +1. the m's are mu on some seams and 1/mu on others, because\n\
+             a seam's master is the lower face id and that does not go round a vertex consistently\n\
+             a vertex is never unsolvable -- when the product is wrong the only solution is q == 0,\n\
+             the pinch. it is NON-degenerate solutions that the condition decides\n\
+             and that is the part that matters: every mu and every 1/mu is positive when mu is\n\
+             positive, so the product is positive and an odd-valence vertex can never be\n\
+             non-degenerate at any positive mu. projecting it onto feasibility means driving one mu\n\
+             negative -- a fold in the row -- and it then propagates to the vertex at the other end\n\
+             of that seam. the {} valence-3 vertices here are Doo-Sabin face centroids, so that is one\n\
+             pinch per face of the source mesh",
+            rows.join("\n"),
+            if centroid_mu.is_empty() {
+                "no valence-3 interior vertex in this sample".to_string()
+            } else {
+                let all: Vec<&String> = centroid_mu.iter().collect();
+                format!("{} distinct outcomes, e.g. {}", all.len(), all[0])
+            },
+            tally.get(&3).map_or(0, |entry| entry[0]),
         ),
     );
 
