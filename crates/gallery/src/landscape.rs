@@ -29,17 +29,88 @@
 //! meet along the rim rather than one hovering over the other, and the seam between them is the
 //! massif's own boundary rather than a crack between two pieces of arithmetic.
 
-use definition::{PackedList, Value};
-use mountain::{FacetMesh, LineRef, Massif, RidgeId, Starter, Tessellation};
+use definition::{Schema, Value};
+use mountain::line::Side;
+use mountain::tessellation::BeltRef;
+use mountain::{LineRef, Massif, RidgeId, Starter, Tessellation};
 use scene::standard::Stage;
 
 use crate::air::Atmosphere;
-use crate::geometry::{Shaded, fractal_noise, heightfield, smoothstep};
+use crate::geometry::{fractal_noise, heightfield, smoothstep};
+use crate::identity::{self, Identity, massif_extras, outputs_field, plain_extras};
 use crate::kit::{
     camera_placed, directional, instance, instances, light_with_radius, mesh, mesh_material,
     post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{lighting_shader_with_schema, mesh_shaders, post_shader};
+use crate::shaders::{Block, Extras, lighting_shader_declaring, mesh_shaders_over, post_shader};
+
+/// The scene document's `outputs` field, whose name the compiler's schema fixes.
+const OUTPUTS: &str = "outputs";
+
+/// Returns one mesh's four stage shaders, with the lighting one writing beside the frame.
+///
+/// # Invariants
+///
+/// - **A scene with two meshes needs two of these, and they cannot be merged.** The stages read
+///   the *point layout of the mesh they draw*, so a plain drawn by a shader built over the
+///   massif's wider point schema reads three attributes of somebody else's vertices. Nothing
+///   checks a vertex layout against the mesh a pass draws, so the device catches it as a layout
+///   disagreement — which is the good outcome, and not one to rely on.
+///
+/// - **The three other stages are the shared ones, not replacements.** They are kept rather than
+///   rewritten because they have to stay on the same attribute numbering the mesh's layout has,
+///   and they are generated from the same point schema this function is given.
+///
+/// - **`prefix` keeps the two sets' names apart**, because a shared label is one entry silently
+///   overwriting the other. A material names a shader by label, so the label is how the two
+///   halves of a scene find each other.
+fn stage_set<'text>(
+    prefix: &str,
+    body: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+    point: &Schema,
+    extras: &Extras,
+) -> Vec<Value> {
+    let body = body.into();
+    let helpers = helpers.into();
+    let mut shaders = mesh_shaders_over(prefix, "", body, helpers, point.clone());
+    // Retained from **this set only** — the function returns one mesh's four, so a second
+    // call's replacement cannot be removed by the first call's filter.
+    shaders.retain(|shader| stage_of(shader) != Some(Stage::Lighting));
+    let label = format!("{prefix}_lighting");
+    shaders.push(lighting_shader_declaring(
+        &label,
+        "",
+        body,
+        helpers,
+        crate::kit::gallery_custom_schema(),
+        extras,
+    ));
+    shaders
+}
+
+/// Returns the stage a shader belongs to, read from its own variant tag.
+///
+/// # Invariants
+///
+/// **It is the tag, and the tag is [`Stage::tag`] of the stage itself.** A shader's label says
+/// which mesh stage wrote it and a scene may reuse one across two meshes, so a filter keyed on
+/// the label would drop or keep the wrong one. Going through `Stage::tag` rather than spelling
+/// `"LightShader"` is what keeps this correct if a tag is ever renamed — the same reason the
+/// emitter reads the tag through the same function.
+fn stage_of(shader: &Value) -> Option<Stage> {
+    match shader {
+        Value::Enum { tag, .. } => [
+            Stage::Shadowing,
+            Stage::Depthing,
+            Stage::Lighting,
+            Stage::Emission,
+        ]
+        .into_iter()
+        .find(|stage| stage.tag() == tag),
+        _ => None,
+    }
+}
 
 /// How finely the skeleton is sampled, in world units.
 ///
@@ -114,6 +185,10 @@ const SUN_ELEVATION: f64 = 0.50;
 pub fn landscape() -> Value {
     let massif = massif();
     let raised = massif.build().expect("the authored massif expands");
+    // One walk numbers every belt and records the row that names it. It happens before the mesh
+    // is read so that the number a fragment writes and the row a reader looks up come from the
+    // same pass — see `identity`.
+    let identity = Identity::of(&massif, belt_path);
     let (low, high) = raised.bounds();
     let radius = (((high[0] - low[0]).powi(2) + (high[2] - low[2]).powi(2)) as f64).sqrt() * 0.5;
     let summit = high[1] as f64;
@@ -174,8 +249,30 @@ pub fn landscape() -> Value {
         constants(radius, summit),
     );
 
+    let mut shaders: Vec<Value> = Vec::new();
+    shaders.extend(stage_set(
+        "massif",
+        MASSIF,
+        &helpers,
+        &massif_extras().point_schema(),
+        &massif_extras(),
+    ));
+    shaders.extend(stage_set(
+        "plain",
+        GROUND,
+        &helpers,
+        &shaded_point_schema(),
+        &plain_extras(),
+    ));
+    shaders.push(post_shader(GRADE, &helpers));
+
     Value::structure([
         ("name".to_owned(), Value::String("landscape".to_owned())),
+        // The three images this scene's **own** shaders write, beside the frame. The massif's
+        // read them from its points; the plain's write the reserved zero, because a plain has no
+        // authored element of its own. Both have to write them: a stage that drew geometry and
+        // did not would leave the image holding whatever an earlier fragment put there.
+        (OUTPUTS.to_owned(), outputs_field()),
         (
             "cameras".to_owned(),
             Value::List(vec![camera_placed(
@@ -232,34 +329,18 @@ pub fn landscape() -> Value {
                 ),
             ]),
         ),
-        (
-            "shaders".to_owned(),
-            Value::List(
-                mesh_shaders(MASSIF, &helpers)
-                    .into_iter()
-                    // The plain is drawn by the same pipeline and a different law: it holds no
-                    // snow and no rock, and the body above reads per face facts the plain's
-                    // heightfield does not carry. A second lighting shader under its own label is
-                    // one shader more and one branch fewer.
-                    .chain(std::iter::once(lighting_shader_with_schema(
-                        "ground_lighting",
-                        "",
-                        GROUND,
-                        &helpers,
-                        crate::kit::gallery_custom_schema(),
-                    )))
-                    .chain(std::iter::once(post_shader(GRADE, &helpers)))
-                    .collect(),
-            ),
-        ),
+        ("shaders".to_owned(), Value::List(shaders)),
         (
             "meshes".to_owned(),
             Value::List(vec![
                 mesh(
                     "massif",
                     "Triangles",
-                    shaded_point_schema(),
-                    faceted(&raised),
+                    // The point schema is **the one the outputs' fields make**, so the vertex
+                    // layout and the shader's parameter list are derived from one schema rather
+                    // than two that have to agree.
+                    massif_extras().point_schema(),
+                    identity::faceted(&raised, &identity),
                 ),
                 mesh(
                     "plain",
@@ -277,17 +358,21 @@ pub fn landscape() -> Value {
         (
             "mesh_materials".to_owned(),
             Value::List(vec![
-                // One material per stage, because a material names one shader and a shader belongs
-                // to one pass. The shadowing and depthing stages read no custom data, so theirs is
-                // a placeholder those shaders ignore.
+                // One material per stage **per mesh**, because a material names one shader and
+                // each mesh has its own four. The shadowing and depthing stages read no custom
+                // data, so theirs is a placeholder those shaders ignore.
+                //
+                // The plain's lighting material is under the same name it always was, because a
+                // scene's own naming is its own; what changed is that the shader behind it now
+                // also writes the three outputs, all of them the reserved zero.
                 mesh_material(
                     "cast",
-                    "shadowing",
+                    "massif_shadowing",
                     surface([1.0, 1.0, 1.0], 0.0, 1.0, [0.0; 3]),
                 ),
                 mesh_material(
                     "depth",
-                    "depthing",
+                    "massif_depthing",
                     surface([1.0, 1.0, 1.0], 0.0, 1.0, [0.0; 3]),
                 ),
                 // The stone, which the surface body replaces entirely: the tint is **white** and
@@ -296,17 +381,17 @@ pub fn landscape() -> Value {
                 // two decisions about one surface and the sort that drift apart.
                 mesh_material(
                     "shade",
-                    "lighting",
+                    "massif_lighting",
                     surface([1.0, 1.0, 1.0], 0.0, 0.86, [0.0; 3]),
                 ),
                 mesh_material(
                     "ground_depth",
-                    "depthing",
+                    "plain_depthing",
                     surface([1.0, 1.0, 1.0], 0.0, 1.0, [0.0; 3]),
                 ),
                 mesh_material(
                     "ground_shade",
-                    "ground_lighting",
+                    "plain_lighting",
                     surface([1.0, 1.0, 1.0], 0.0, 0.95, [0.0; 3]),
                 ),
             ]),
@@ -600,40 +685,32 @@ fn deepen_a_valley(massif: &mut Massif) {
     }
 }
 
-/// Turns the massif's facets into the points the standard pipeline draws.
+/// Returns the path a belt is named by, in this scene's own hierarchy.
 ///
 /// # Invariants
 ///
-/// - **The normal is the face's own, written at all three corners.** A face is one planar block
-///   face, and giving its corners a shared averaged normal would shade it as part of a smooth
-///   surface — which is the one thing the expansion produced it not to be.
-/// - **A point is written per corner and never shared between faces.** Sharing a vertex between
-///   two faces that carry different normals is exactly the averaging this refuses, and the
-///   pipeline's meshes are not indexed, so a shared vertex is not expressible anyway.
-/// - The texture coordinate carries the face's **ruggedness** and its **steepness**. This mesh
-///   samples no texture, and those two are the numbers the crate knows about a face that a shader
-///   could not recover from its position and its normal: how sharp the crest above it was
-///   authored, and how far over it leans. The steepness is the dip angle as a fraction of a right
-///   angle, so one is a vertical face, and it is written that way rather than in radians because
-///   the slot is a pair of unitless parameters and a reader should not have to know pi.
-fn faceted(mesh: &FacetMesh) -> PackedList {
-    let mut points = Shaded::with_capacity(mesh.faces.len() * 3);
-    for face in &mesh.faces {
-        let corners = mesh.triangle(face);
-        let normal = mesh.normal(face);
-        let texture = [
-            face.attributes.ruggedness as f64,
-            (face.attributes.dip_angle as f64 / std::f64::consts::FRAC_PI_2).clamp(0.0, 1.0),
-        ];
-        for corner in corners {
-            points.push(
-                [corner[0] as f64, corner[1] as f64, corner[2] as f64],
-                [normal[0] as f64, normal[1] as f64, normal[2] as f64],
-                texture,
-            );
+/// - **The path is the content's and not the crate's.** `Massif` has no naming and no grouping
+///   and is not asked for any; a path is a fact about the code that built the massif, which is
+///   the only place a hierarchy exists. `SPEC/mountain.md` is human-editable only, and a naming
+///   tree inside the crate would be a requirement change rather than an implementation.
+/// - **The path is a function of the `BeltRef` alone**, so the same belt is named the same way
+///   in every build of the same skeleton, and an id means the same thing on either side of an
+///   edit. A path built from anything that varies between builds would be a path that answers a
+///   different question each time it is asked.
+///
+/// The hierarchy is this scene's, and it is deliberately shallow until there is a second
+/// massif to nest: a massif, the valley that carries the flank, and which side of it. Growing it
+/// is a matter of changing this one function, which is the property that keeps the id space
+/// separable from the geometry.
+fn belt_path(belt: BeltRef) -> String {
+    format!(
+        "landscape/valley_{}/{}",
+        belt.valley.0,
+        match belt.side {
+            Side::Left => "left_flank",
+            Side::Right => "right_flank",
         }
-    }
-    points.finish()
+    )
 }
 
 /// Returns the plain's height at a point.

@@ -383,14 +383,14 @@ impl DebugChannel {
     ///   disagree, and the emitter is not the thing this module gets to change per channel.
     pub fn pass_schema(self) -> Schema {
         let target = (
-            self.point(),
+            self.point().to_owned(),
             texture_binding_schema().with_documentation(
                 "The image this pass renders into. It is a target, so it takes a \
                  binding number with no entry behind it.",
             ),
         );
         let shaded = (
-            COLOR_TARGET,
+            COLOR_TARGET.to_owned(),
             texture_binding_schema().with_documentation(
                 "The image the lighting and emission passes accumulated, which is the one \
                  the post stage's grade reads. Read with `textureLoad`, so it declares no \
@@ -398,7 +398,7 @@ impl DebugChannel {
             ),
         );
         let depth = (
-            DEPTH_BUFFER,
+            DEPTH_BUFFER.to_owned(),
             texture_binding_schema().with_documentation(
                 "The depth of the scene, which is what a pixel's position is recovered \
                  from. Read with `textureLoad`, so it declares no sampler.",
@@ -413,21 +413,21 @@ impl DebugChannel {
             binders
                 .into_iter()
                 .chain([(
-                    VERTICES,
+                    VERTICES.to_owned(),
                     buffer_binding_schema()
                         .with_documentation("The fullscreen triangle this pass draws."),
                 )])
                 .collect(),
             vec![
                 (
-                    CAMERA,
+                    CAMERA.to_owned(),
                     camera_schema().with_documentation(
                         "The camera this pass draws through, which is what a ray through a \
                          pixel is recovered from.",
                     ),
                 ),
                 (
-                    PROJECTION,
+                    PROJECTION.to_owned(),
                     projection_schema().with_documentation(
                         "The camera's own projection, whose last two rows are what a depth \
                          becomes a position through. It is the **whole** view-projection and \

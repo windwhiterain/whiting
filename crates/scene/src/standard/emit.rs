@@ -3453,12 +3453,9 @@ struct SceneOutput {
 }
 
 impl SceneOutput {
-    /// The prefix every generated binding point carries.
-    const POINT_PREFIX: &'static str = "output_";
-
     /// Returns the binding point a name of this shape is created under.
     fn point_for(name: &str) -> String {
-        format!("{}{name}", Self::POINT_PREFIX)
+        super::output_point(name)
     }
 
     /// Returns the declaration the emitted document carries, which is the scene's own request with
