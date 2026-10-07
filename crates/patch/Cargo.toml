@@ -1,0 +1,11 @@
+[package]
+name = "whiting-patch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Freeform patches over a mesh: one tensor-product patch per face, one hard/soft continuity tag per shared edge."
+
+# Nothing yet. Evaluation and elevation are closed-form arithmetic on control points; the first
+# dependency is whatever supplies a point-on-surface inversion, and nothing before that is needed.
+[dependencies]
