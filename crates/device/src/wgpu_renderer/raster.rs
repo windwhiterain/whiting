@@ -216,7 +216,7 @@ impl WgpuRenderer {
             .map(|entry| {
                 Some(wgpu::ColorTargetState {
                     format: entry.slot.format,
-                    blend: Some(blend_of(state.blend)),
+                    blend: blend_for(entry.slot.format, state.blend),
                     write_mask: wgpu::ColorWrites::ALL,
                 })
             })
@@ -521,6 +521,52 @@ fn drawing_into<'view>(
         Some(view) => (view, Some(&slot.view)),
         None => (&slot.view, None),
     }
+}
+
+/// Returns the blend one attachment of a pass is drawn with.
+///
+/// # Invariants
+///
+/// - **The blend is the pass's, unless the attachment's own format cannot take it, in which case
+///   there is none.** A backend refuses to build a pipeline whose attachment names a blend the
+///   format does not support, and it refuses the whole pipeline rather than the one attachment —
+///   so a pass that writes a `rgba8unorm` frame beside a `r32float` id and declares `Alpha` is
+///   not a pass with one blended and one unblended target, it is a pass that does not draw. The
+///   blend therefore cannot be a property of the pass alone.
+/// - **An unblendable attachment gets no blend state at all, rather than a state that replaces.**
+///   The backend's own test is whether a blend is *present*, not whether its factors happen to
+///   discard the destination, so a `Replace` state on a `r32float` target is refused with the
+///   same message as an `Alpha` one. This is measured, not read: see `r32float_attachment.rs`.
+/// - **No blend is the right answer for a format that cannot blend**, and not merely the only
+///   one. What such a target holds is a value a fragment computed rather than light accumulated
+///   onto what was there: an identifier, a normal, a parameter. Blending two of them is a
+///   weighted average of two unrelated answers, and the depth test has already decided which
+///   fragment is the one on screen.
+/// - A format that can blend is **not** overridden. The frame beside an unblendable id keeps the
+///   blend its pass declared, which is the case this function exists to stop breaking.
+fn blend_for(format: wgpu::TextureFormat, blend: graphics::Blend) -> Option<wgpu::BlendState> {
+    blendable(format).then(|| blend_of(blend))
+}
+
+/// Returns whether a backend will blend a colour target of this format.
+///
+/// # Invariants
+///
+/// - **The three 32 bit float formats are the answer, and the list is the backend's rule rather
+///   than a preference.** A float32 target is renderable in core WebGPU and blendable only under
+///   the `float32-blendable` feature, which this device does not request — the same empty feature
+///   set that already decides a float texture cannot be filtered. A half float target is
+///   blendable, which is why an `rgba16float` channel blends and an `r32float` one does not.
+/// - **A format that is not listed is blendable.** The rule is a property of the float32 family
+///   and nothing else, so an unlisted format is one the backend blends rather than one this
+///   function has not heard of.
+fn blendable(format: wgpu::TextureFormat) -> bool {
+    !matches!(
+        format,
+        wgpu::TextureFormat::R32Float
+            | wgpu::TextureFormat::Rg32Float
+            | wgpu::TextureFormat::Rgba32Float
+    )
 }
 
 /// Returns the blend a pass's declared blend becomes.

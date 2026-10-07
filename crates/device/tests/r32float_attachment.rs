@@ -116,10 +116,22 @@ fn graphics() -> Value {
             (
                 "binders".to_owned(),
                 Value::dictionary(vec![
-                    ("frame".to_owned(), texture_declaration("frame", "rgba8unorm")),
-                    ("identity".to_owned(), texture_declaration("identity", "r32float")),
-                    ("row".to_owned(), buffer_declaration("row", INSTANCE_ROW_BYTES)),
-                    ("triangle".to_owned(), buffer_declaration("triangle", TRIANGLE_BYTES)),
+                    (
+                        "frame".to_owned(),
+                        texture_declaration("frame", "rgba8unorm"),
+                    ),
+                    (
+                        "identity".to_owned(),
+                        texture_declaration("identity", "r32float"),
+                    ),
+                    (
+                        "row".to_owned(),
+                        buffer_declaration("row", INSTANCE_ROW_BYTES),
+                    ),
+                    (
+                        "triangle".to_owned(),
+                        buffer_declaration("triangle", TRIANGLE_BYTES),
+                    ),
                 ]),
             ),
             (
@@ -168,11 +180,11 @@ fn instance() -> Value {
         (
             "entries".to_owned(),
             Value::dictionary(vec![
-                ("row".to_owned(), packed_buffer(&[0.0, 0.0, 0.0], "filler", "instance")),
                 (
-                    "frame".to_owned(),
-                    target_payload("rgba8unorm"),
+                    "row".to_owned(),
+                    packed_buffer(&[0.0, 0.0, 0.0], "filler", "instance"),
                 ),
+                ("frame".to_owned(), target_payload("rgba8unorm")),
                 ("identity".to_owned(), target_payload("r32float")),
                 ("shader".to_owned(), shader()),
                 (
