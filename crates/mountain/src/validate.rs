@@ -42,24 +42,40 @@ pub enum Violation {
         /// How many nodes it has.
         nodes: usize,
     },
-    /// A ridge joins its parent outside the parent's length.
-    AttachOutOfRange {
-        /// The child.
-        ridge: RidgeId,
+    /// A line's end is outside the line it names.
+    EndOutOfRange {
+        /// The line whose end it is.
+        line: LineRef,
+        /// Whether it is the far end.
+        far: bool,
         /// The parameter it asked for.
         t: f32,
     },
-    /// A ridge joins a parent that is not in the skeleton.
-    AttachTargetMissing {
-        /// The child.
-        ridge: RidgeId,
-        /// The parent it named.
-        parent: RidgeId,
+    /// A line's end names a line that is not in the skeleton.
+    EndNamesMissingLine {
+        /// The line whose end it is.
+        line: LineRef,
+        /// Whether it is the far end.
+        far: bool,
+        /// The line it named.
+        named: LineRef,
     },
-    /// Ridges join each other in a ring, so no ridge is a root.
-    AttachCycle {
-        /// A ridge on the ring.
-        ridge: RidgeId,
+    /// A ring of ends closes on itself, so no end on it has a point to stand at.
+    EndRing {
+        /// A line on the ring.
+        line: LineRef,
+    },
+    /// The ridge lines do not form one tree or network.
+    RidgesDisconnected {
+        /// How many separate pieces they fall into.
+        components: usize,
+    },
+    /// The expanded mesh is not a closed disc.
+    MeshOpen {
+        /// How many boundary loops it has; a disc has one, and it is the rim.
+        boundaries: usize,
+        /// Its Euler characteristic; a disc's is one.
+        euler: i64,
     },
     /// A line rises from one node to the next.
     ElevationRises {
@@ -71,15 +87,6 @@ pub enum Violation {
         from: f32,
         /// The higher one.
         to: f32,
-    },
-    /// A child ridge's first node does not stand at the parent's elevation where it joins.
-    ChildElevationMismatch {
-        /// The child.
-        ridge: RidgeId,
-        /// The elevation the child's first node has.
-        child: f32,
-        /// The elevation the parent has at the join.
-        parent: f32,
     },
     /// A station names a parameter off its line.
     StationOutOfRange {
@@ -169,14 +176,15 @@ pub enum Violation {
 pub fn validate(skeleton: &Skeleton, tessellation: Tessellation) -> Vec<Violation> {
     let mut violations = Vec::new();
     check_shape(skeleton, &mut violations);
-    check_attach(skeleton, &mut violations);
+    check_ends(skeleton, &mut violations);
     check_stations(skeleton, &mut violations);
+    check_ridge_network(skeleton, &mut violations);
     if violations.iter().any(blocks_sampling) {
         return violations;
     }
     check_elevations(skeleton, &mut violations);
 
-    let sampling = Sampling::of(skeleton, tessellation);
+    let sampling = Sampling::of(skeleton, tessellation.clone());
     let (belts, problems) = crate::expand::enumerate(skeleton, &sampling);
     for problem in problems {
         if let crate::expand::Problem::Unresolved(unresolved) = problem {
@@ -188,8 +196,30 @@ pub fn validate(skeleton: &Skeleton, tessellation: Tessellation) -> Vec<Violatio
         check_self_intersection(skeleton, &mut violations);
         check_ribs(skeleton, &sampling, &belts, &mut violations);
         check_inside(skeleton, &sampling, &mut violations);
+        check_mesh(skeleton, tessellation, &mut violations);
     }
     violations
+}
+
+/// Checks that the expanded mesh is a closed disc.
+///
+/// # Invariants
+///
+/// This is the check the **plan area cannot make**. A hole with no area — which is exactly what a
+/// junction left unwelded produces, because the triangles that would have sewn it shut have two
+/// corners at one point — contributes nothing to the area and so nothing to the difference the
+/// expander's own check compares. Counting boundary loops and the Euler characteristic is not a
+/// measurement of the picture; it is a measurement of what the surface *is*, and a disc has one
+/// boundary loop and characteristic one.
+fn check_mesh(skeleton: &Skeleton, tessellation: Tessellation, violations: &mut Vec<Violation>) {
+    let Ok(mesh) = crate::expand::build(skeleton, tessellation) else {
+        return;
+    };
+    let boundaries = mesh.boundary_loops();
+    let euler = mesh.euler_characteristic();
+    if boundaries != 1 || euler != 1 {
+        violations.push(Violation::MeshOpen { boundaries, euler });
+    }
 }
 
 /// Returns whether a violation stops the checks that read lines by index.
@@ -197,7 +227,7 @@ fn blocks_sampling(violation: &Violation) -> bool {
     matches!(
         violation,
         Violation::TooFewNodes { .. }
-            | Violation::AttachTargetMissing { .. }
+            | Violation::EndNamesMissingLine { .. }
             | Violation::StationNamesMissingLine { .. }
     )
 }
@@ -212,46 +242,85 @@ fn check_shape(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
     }
 }
 
-/// Checks that the ridge forest is a forest.
-fn check_attach(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
-    for (index, ridge) in skeleton.ridges.iter().enumerate() {
-        let Some(attach) = ridge.attach else {
+/// Checks that the ridge set is one piece.
+///
+/// # Invariants
+///
+/// The spec asks for the ridge lines to form **a tree or a network**, and neither of those is a set
+/// of lines that happen to meet. This is the check that distinguishes them: two ridges are
+/// connected when one's *end names a station on the other*, not when the two ends stand at the same
+/// coordinates. A generated fan whose eight ridges all stood at the origin without naming anything
+/// would pass every other check in this file and still be eight ridge lines rather than a mountain's
+/// ridge network.
+fn check_ridge_network(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
+    let components = skeleton.ridge_components();
+    if skeleton.ridges.len() > 1 && components > 1 {
+        violations.push(Violation::RidgesDisconnected { components });
+    }
+}
+
+/// Checks that every end names something that exists, and that no ring of ends closes on itself.
+fn check_ends(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
+    for line in skeleton.lines() {
+        for far in [false, true] {
+            let Some(station) = skeleton.end(line, far).station() else {
+                continue;
+            };
+            if !(0.0..=1.0).contains(&station.t) {
+                violations.push(Violation::EndOutOfRange {
+                    line,
+                    far,
+                    t: station.t,
+                });
+            }
+            if !line_exists(skeleton, station.line) {
+                violations.push(Violation::EndNamesMissingLine {
+                    line,
+                    far,
+                    named: station.line,
+                });
+            }
+        }
+    }
+    // A ring of ends — A's start on B's start, B's start on A's start — has no point to stand at,
+    // and the walk that resolves ends would follow it as far as its bound allows and stop there.
+    for line in skeleton.lines() {
+        let Some(first) = skeleton.end(line, false).station() else {
             continue;
         };
-        let ridge_id = RidgeId(index);
-        if attach.parent.0 >= skeleton.ridges.len() {
-            violations.push(Violation::AttachTargetMissing {
-                ridge: ridge_id,
-                parent: attach.parent,
-            });
-            continue;
-        }
-        if !(0.0..=1.0).contains(&attach.t) {
-            violations.push(Violation::AttachOutOfRange {
-                ridge: ridge_id,
-                t: attach.t,
-            });
-        }
-        // A ring is found by walking up from each ridge: a forest reaches a root in at most
-        // one step per ridge, so a walk longer than that has come back round.
-        let mut current = attach.parent;
-        for _ in 0..skeleton.ridges.len() {
-            match skeleton.ridges[current.0].attach {
-                Some(next) => current = next.parent,
-                None => break,
-            }
-            if current == ridge_id {
-                violations.push(Violation::AttachCycle { ridge: ridge_id });
+        let mut current = first.line;
+        for _ in 0..skeleton.lines().len() {
+            if current == line {
+                violations.push(Violation::EndRing { line });
                 break;
             }
+            let Some(next) = skeleton.end(current, false).station() else {
+                break;
+            };
+            current = next.line;
         }
     }
 }
 
 /// Checks that nothing rises as it runs away from a summit.
+///
+/// # Invariants
+///
+/// The elevations checked are the **authored** ones, and an end that stands on a station is skipped
+/// for the node it overrides — its elevation is the station's and is therefore already the other
+/// line's. There is no "the child does not meet its parent" check any more, and that is not an
+/// omission: an end naming a station *is* that station's point, so the two cannot disagree. The
+/// check was possible only while the join was a stored position.
 fn check_elevations(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
     for (index, ridge) in skeleton.ridges.iter().enumerate() {
+        let standing = [
+            ridge.start.station().is_some(),
+            ridge.end.station().is_some(),
+        ];
         for node in 0..ridge.nodes.len().saturating_sub(1) {
+            if (node == 0 && standing[0]) || (node + 1 == ridge.nodes.len() - 1 && standing[1]) {
+                continue;
+            }
             let (from, to) = (ridge.nodes[node].elevation, ridge.nodes[node + 1].elevation);
             if to > from {
                 violations.push(Violation::ElevationRises {
@@ -261,22 +330,6 @@ fn check_elevations(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
                     to,
                 });
             }
-        }
-        let Some(attach) = ridge.attach else {
-            continue;
-        };
-        let (Some(child), Some(parent)) = (
-            ridge.nodes.first(),
-            skeleton.station_point(crate::line::Station::ridge(attach.parent, attach.t)),
-        ) else {
-            continue;
-        };
-        if (child.elevation - parent[1]).abs() > ELEVATION_EPSILON {
-            violations.push(Violation::ChildElevationMismatch {
-                ridge: RidgeId(index),
-                child: child.elevation,
-                parent: parent[1],
-            });
         }
     }
     for (index, valley) in skeleton.valleys.iter().enumerate() {
@@ -296,15 +349,6 @@ fn check_elevations(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
         }
     }
 }
-
-/// How far a child's first node may stand off the parent's elevation at the join.
-///
-/// # Invariants
-///
-/// It is a **height** tolerance on a massif measured in hundreds of units, where a hundredth
-/// is far below anything a frame can show. Widening it to hide a modelling error would be
-/// widening it past the error.
-const ELEVATION_EPSILON: f32 = 1.0e-2;
 
 /// Checks that every station names something that exists.
 fn check_stations(skeleton: &Skeleton, violations: &mut Vec<Violation>) {

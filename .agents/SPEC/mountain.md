@@ -17,6 +17,9 @@ An agent-driven editing and authoring system that expands a polyline tree/networ
 - The ridge distribution of a massif is authored as a set of polylines forming a tree or network.
 - Each polyline is one ridge line. Branching expresses the hierarchy from main ridge down to spur ridges.
 - The polylines carry elevation, so the skeleton is a 2.5D object: plan-view polylines plus heights.
+- Adjacency is **authored**: an end of a polyline names a point on another polyline. Two lines that
+  merely pass through each other's endpoints are not connected, and a set of lines that is not
+  connected is neither a tree nor a network.
 
 ### R2: dual-line control — ridges and valleys
 

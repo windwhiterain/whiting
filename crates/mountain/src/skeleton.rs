@@ -60,40 +60,65 @@ impl RidgeNode {
     }
 }
 
-/// Where a child ridge joins its parent.
+/// Where one **end** of a line stands.
 ///
 /// # Invariants
 ///
-/// The child's first node sits on the parent polyline at plan arc-length parameter `t`, and
-/// its position and elevation are read from the parent rather than stored. The join is
-/// therefore structural: it cannot come adrift when the parent moves, and moving the
-/// junction is editing one number.
+/// This is the whole of the connectivity model, and it replaces the single `Attach` a ridge used
+/// to carry. An end either stands where its own node stands, or it stands **on another line, at a
+/// station of it** — and a station is the same vocabulary a rib uses. Two consequences follow,
+/// and they are the reason it is one enum rather than two mechanisms:
+///
+/// - A junction is a **shared vertex** and not a coincidence of coordinates. Eight ridge ends that
+///   all name `On(Ridge(0), 0.0)` resolve to one sample of one line, so the apex is a single mesh
+///   vertex, the ring of triangles around it closes, and the mesh has no hole in it. Eight ends
+///   that merely happened to be at one point would leave sixteen vertices and a slit.
+/// - Because the station may name **any** line, a line whose two ends name two other lines is a
+///   tie edge, and a set of those is a **network with cycles** rather than a tree. A loop is
+///   authored by naming lines that already connect; nothing about it is special.
+///
+/// The end's position and elevation are **derived** from the station it names and never stored,
+/// which is the same rule a station and a child ridge's join already followed.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Attach {
-    /// The ridge this one grows out of.
-    pub parent: RidgeId,
-    /// Where on the parent, as the parent's plan arc-length parameter.
-    pub t: f32,
+pub enum End {
+    /// The line's own first or last node stands here.
+    Free,
+    /// The end stands on another line, at a point of it.
+    On(Station),
+}
+
+impl End {
+    /// Returns the station an end stands on, if it stands on one.
+    pub fn station(&self) -> Option<Station> {
+        match self {
+            Self::Free => None,
+            Self::On(station) => Some(*station),
+        }
+    }
 }
 
 /// A ridge line: one crest, summit-first.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ridge {
-    /// The authored nodes, summit-first.
+    /// The authored nodes, summit-first. The first and last nodes carry attributes, and the two
+    /// ends' **positions** are overridden wherever the ends name a station.
     pub nodes: Vec<RidgeNode>,
     /// Sampling density multiplier for this polyline.
     pub step_scale: f32,
-    /// Where this ridge joins its parent, and `None` for a root ridge.
-    pub attach: Option<Attach>,
+    /// Where the summit end of this ridge stands.
+    pub start: End,
+    /// Where the tip end of this ridge stands.
+    pub end: End,
 }
 
 impl Ridge {
-    /// Builds a root ridge from its nodes.
+    /// Builds a ridge whose two ends stand where its own nodes do.
     pub fn root(nodes: Vec<RidgeNode>) -> Self {
         Self {
             nodes,
             step_scale: 1.0,
-            attach: None,
+            start: End::Free,
+            end: End::Free,
         }
     }
 
@@ -102,13 +127,21 @@ impl Ridge {
         Self {
             nodes,
             step_scale: 1.0,
-            attach: Some(Attach { parent, t }),
+            start: End::On(Station::ridge(parent, t)),
+            end: End::Free,
         }
     }
 
     /// Sets the sampling density multiplier.
     pub fn with_step_scale(mut self, step_scale: f32) -> Self {
         self.step_scale = step_scale;
+        self
+    }
+
+    /// Sets where the two ends stand.
+    pub fn with_ends(mut self, start: End, end: End) -> Self {
+        self.start = start;
+        self.end = end;
         self
     }
 }
@@ -169,30 +202,47 @@ impl ValleyNode {
 ///
 /// # Invariants
 ///
-/// A valley is deliberately not a tree. The valley network is the hydrological dual of the
-/// ridge tree and has its own branching, so forcing one structure on both would couple two
-/// things the author controls separately. It carries no attributes beyond elevation and its
-/// nodes' correspondence.
+/// A valley is deliberately not a tree. The valley network is the hydrological dual of the ridge
+/// network and has its own branching, so forcing one structure on both would couple two things
+/// the author controls separately. It carries no attributes beyond elevation, its nodes'
+/// correspondence, and where its two ends stand.
+///
+/// Its ends are [`End`]s for the same reason a ridge's are: every valley in a fan starts at the
+/// summit, and a valley whose start **names** a station of the ridge that owns the summit ends up
+/// sharing the summit's vertex rather than merely standing at its coordinates.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Valley {
     /// The authored nodes, in the order the sides are read in.
     pub nodes: Vec<ValleyNode>,
     /// Sampling density multiplier for this polyline.
     pub step_scale: f32,
+    /// Where the start end of this valley stands.
+    pub start: End,
+    /// Where the far end of this valley stands.
+    pub end: End,
 }
 
 impl Valley {
-    /// Builds a valley from its nodes.
+    /// Builds a valley whose two ends stand where its own nodes do.
     pub fn new(nodes: Vec<ValleyNode>) -> Self {
         Self {
             nodes,
             step_scale: 1.0,
+            start: End::Free,
+            end: End::Free,
         }
     }
 
     /// Sets the sampling density multiplier.
     pub fn with_step_scale(mut self, step_scale: f32) -> Self {
         self.step_scale = step_scale;
+        self
+    }
+
+    /// Sets where the two ends stand.
+    pub fn with_ends(mut self, start: End, end: End) -> Self {
+        self.start = start;
+        self.end = end;
         self
     }
 }
@@ -310,23 +360,28 @@ impl Skeleton {
         Some(lift(position, elevation))
     }
 
-    /// Returns the children of a ridge, ordered by where on the parent they join.
+    /// Returns the ridges whose start stands on a ridge, ordered by where.
     ///
     /// # Invariants
     ///
-    /// The order is the **parameter order and not the list order**, and ties are broken by
-    /// the child's own id. Two children joining at one parameter is a legal skeleton — a
-    /// crest that splits in two — and a walk that read them in list order would visit them
-    /// in whatever order they happened to be authored, which is a mesh that changes when an
-    /// unrelated line is inserted.
+    /// The order is the **parameter order and not the list order**, and ties are broken by the
+    /// child's own id. Two children joining at one parameter is a legal skeleton — a crest that
+    /// splits in two, and the eight ridges of a fan are one case of it — and a walk that read them
+    /// in list order would visit them in whatever order they happened to be authored, which is a
+    /// mesh that changes when an unrelated line is inserted.
     pub fn children_of(&self, parent: RidgeId) -> Vec<(f32, RidgeId)> {
         let mut children: Vec<(f32, RidgeId)> = self
             .ridges
             .iter()
             .enumerate()
             .filter_map(|(index, ridge)| {
-                let attach = ridge.attach?;
-                (attach.parent == parent).then_some((attach.t, RidgeId(index)))
+                let station = ridge.start.station()?;
+                match station.line {
+                    LineRef::Ridge(named) if named == parent && index != parent.0 => {
+                        Some((station.t, RidgeId(index)))
+                    }
+                    _ => None,
+                }
             })
             .collect();
         children.sort_by(|left, right| {
@@ -335,6 +390,86 @@ impl Skeleton {
                 .then_with(|| left.1.cmp(&right.1))
         });
         children
+    }
+
+    /// Returns where an end of a line stands.
+    pub fn end(&self, line: LineRef, far: bool) -> End {
+        match line {
+            LineRef::Ridge(ridge) => {
+                let ridge = &self.ridges[ridge.0];
+                if far { ridge.end } else { ridge.start }
+            }
+            LineRef::Valley(valley) => {
+                let valley = &self.valleys[valley.0];
+                if far { valley.end } else { valley.start }
+            }
+            LineRef::Footprint => End::Free,
+        }
+    }
+
+    /// Sets where an end of a line stands.
+    pub fn set_end(&mut self, line: LineRef, far: bool, end: End) -> Option<()> {
+        match line {
+            LineRef::Ridge(ridge) => {
+                let ridge = self.ridges.get_mut(ridge.0)?;
+                if far {
+                    ridge.end = end;
+                } else {
+                    ridge.start = end;
+                }
+            }
+            LineRef::Valley(valley) => {
+                let valley = self.valleys.get_mut(valley.0)?;
+                if far {
+                    valley.end = end;
+                } else {
+                    valley.start = end;
+                }
+            }
+            LineRef::Footprint => return None,
+        }
+        Some(())
+    }
+
+    /// Returns how many connected pieces the ridge set falls into.
+    ///
+    /// # Invariants
+    ///
+    /// Two ridges are connected when either one's **end names a station on the other**. A ridge
+    /// whose ends merely stand at another ridge's coordinates is not connected to it, and that is
+    /// the distinction this counts: the spec asks for a tree or a network, and a set of ridges that
+    /// happen to meet is neither. One is a tree or a network; more than one is a scatter.
+    pub fn ridge_components(&self) -> usize {
+        let count = self.ridges.len();
+        if count == 0 {
+            return 0;
+        }
+        let mut parent: Vec<usize> = (0..count).collect();
+        fn find(parent: &mut [usize], mut index: usize) -> usize {
+            while parent[index] != index {
+                index = parent[index];
+            }
+            index
+        }
+        for (index, ridge) in self.ridges.iter().enumerate() {
+            for end in [ridge.start, ridge.end] {
+                let Some(station) = end.station() else {
+                    continue;
+                };
+                let LineRef::Ridge(named) = station.line else {
+                    continue;
+                };
+                if named.0 >= count || named.0 == index {
+                    continue;
+                }
+                let (a, b) = (find(&mut parent, index), find(&mut parent, named.0));
+                parent[a] = b;
+            }
+        }
+        (0..count)
+            .map(|index| find(&mut parent, index))
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
     }
 
     /// Returns whether a ridge has any child joining it.

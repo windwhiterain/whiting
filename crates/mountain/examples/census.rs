@@ -27,6 +27,14 @@ fn main() {
         massif.skeleton.footprint.len(),
         massif.tessellation.step,
     );
+    println!(
+        "ridge lines: {} connected piece(s), so they are {}",
+        massif.skeleton.ridge_components(),
+        match massif.skeleton.ridge_components() {
+            0 | 1 => "a tree or a network",
+            _ => "a scatter, which is neither",
+        },
+    );
 
     let violations = massif.validate();
     println!("violations: {}", violations.len());
@@ -48,6 +56,14 @@ fn main() {
                 mesh.plan_area(),
                 massif.footprint_area(),
                 mesh.plan_area() - massif.footprint_area(),
+            );
+            // What the surface *is*, which the area cannot say: a hole with no area leaves the
+            // difference above at zero and the surface open.
+            println!(
+                "surface: {} boundary loop(s), euler {}, manifold {}",
+                mesh.boundary_loops(),
+                mesh.euler_characteristic(),
+                mesh.is_manifold(),
             );
             println!(
                 "bounds x [{:.1}, {:.1}], y [{:.1}, {:.1}], z [{:.1}, {:.1}]",

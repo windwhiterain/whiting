@@ -25,25 +25,20 @@ the document.
 
 ### `Skeleton`
 
-- `ridges: Vec<Ridge>`: a forest of ridge trees.
+- `ridges: Vec<Ridge>`: a network of ridge lines.
   - `Ridge`
     - `nodes: Vec<RidgeNode>`: a polyline, summit-first.
     - `step_scale: f32`: sampling density multiplier for this polyline.
-    - `attach: Option<Attach>`: `None` for a root ridge.
-      - `Attach { parent: RidgeId, t: f32 }`: the child ridge's first node sits on the
-        parent polyline at arc-length parameter `t`. Its position and elevation are
-        derived from the parent edge, never stored — this makes the "child joins the
-        parent flank" relation structural instead of coincidental, and moving the
-        junction is editing `t`.
+    - `start: End`, `end: End`: where the two ends stand. See below.
   - `RidgeNode`
-    - `position: Vec2`: plan position.
-    - `elevation: f32`
+    - `position: Vec2`: plan position, **overridden at an end that names a station**.
+    - `elevation: f32`, likewise overridden at such an end.
     - `half_width: f32`: flank width hint, consumed by sampling and valley derivation.
     - `sharpness: f32`: 0 = rounded ridge, 1 = knife-edge arete.
   - node attributes interpolate linearly along edges.
 - `valleys: Vec<Valley>`: free polylines (no tree structure), the low control lines
   between ridges.
-  - `Valley`: `nodes: Vec<ValleyNode>`, `step_scale: f32`
+  - `Valley`: `nodes: Vec<ValleyNode>`, `step_scale: f32`, `start: End`, `end: End`
   - `ValleyNode`: `position: Vec2`, `elevation: f32`, `left: Station`, `right: Station`.
     **The two stations are the correspondence**; see below.
 - `footprint: Vec<FootprintNode>`: closed boundary polyline with elevations. Delimits
@@ -51,15 +46,34 @@ the document.
   terrain without a skirt heuristic.
   - `FootprintNode`: `position: Vec2`, `elevation: f32`
 
+### `End`
+
+Where one end of a line stands.
+
+- `End::Free`: the line's own first or last node stands there.
+- `End::On(Station)`: the end stands on another line, at that station.
+
 Design notes:
 
-- Valleys are deliberately *not* a tree. A valley network is the hydrological dual of
-  the ridge tree and often has its own branching logic; forcing one tree structure on
-  both couples two things the author wants to control separately. Free polylines keep
-  the model honest.
-- The **network** case (loops: cirques, calderas, spur loops) needs no new mechanism
-  under the correspondence: a tie edge is a ridge line that is not in the tree, and
-  elevation ordering over it is a separate check. Deferred; tree-first.
+- **`End` replaces `Attach`.** The old `Attach { parent: RidgeId, t: f32 }` said one thing — a
+  child ridge's start sits on a parent's flank — and the model needs that thing *for both ends of
+  both kinds of line*, so it is one enum rather than two mechanisms. A spur on a parent's flank is
+  `On(Station::ridge(parent, t))`; a valve mouth on the rim is `On(Station::footprint(p))`; a
+  **tie edge** is a line whose two ends are both `On`, which is the network case.
+- **An end that names a station is the same vertex as that station.** This is not a nicety of the
+  representation, it is the reason a junction is a junction: eight ridge ends all naming one
+  ridge's summit resolve to *one sample of that ridge*, so the ring of triangles round the apex
+  shares a vertex and the surface closes. Eight ends that merely stood at the summit's coordinates
+  would leave sixteen vertices and a **zero-area slit** — a hole that the plan-area comparison
+  cannot see, because a hole with no area contributes no area. The old model had exactly that bug
+  and its eight roots were eight connected components, which is neither a tree nor a network.
+- Valleys are deliberately *not* a tree. A valley network is the hydrological dual of the ridge
+  network and often has its own branching logic; forcing one structure on both couples two things
+  the author wants to control separately. Free polylines keep the model honest.
+- The **network** case (loops: cirques, calderas, spur loops) is therefore expressible with no new
+  mechanism, and `tie_ridge` is the op that makes one. What it still needs is the valleys that
+  flank the tie: a tie drawn across a wedge lands inside a region another valley already tiles, so
+  an author adding one hand-binds its two flanks. The generator does not derive them.
 
 ## The correspondence
 
@@ -73,7 +87,7 @@ A point named on a polyline, by arc-length parameter.
   - `LineRef`: `Ridge(RidgeId)`, `Valley(ValleyId)` or `Footprint`.
   - `t`: arc-length parameter, `0.0` at the line's first node, `1.0` at its last.
 - A station's plan position and elevation are **derived** from the named line, never
-  stored. This is the same rule `Attach.t` already follows, and it is why moving a ridge
+  stored. This is the same rule `Station` already follows, and it is why moving a ridge
   moves everything pinned to it: there is no second copy to move.
 - **Every line is listed, including valleys.** A valley-valley pair is what closes the
   region beyond a ridge tip, so a station that could only name a ridge would leave that
@@ -93,7 +107,7 @@ adds spurs — the coupling the tree was supposed to avoid.
 
 Consequences of a node-level correspondence:
 
-- A child ridge's first station *is* its `attach.t`, so a belt whose two stations name
+- A child ridge's first station *is* its `Station`, so a belt whose two stations name
   parent-then-child has a top path that turns through the junction. Its first row
   collapses to a triangle exactly where the spur is born. No junction machinery.
 - A summit closes the same way: the first valley node of every valley leaving the summit
@@ -108,7 +122,7 @@ make legitimate multi-step edits (e.g. lowering a summit below its child before 
 the child) impossible to express.
 
 - elevation is non-increasing along every root-to-leaf ridge path, and along every valley.
-- a child ridge's first node elevation equals the parent edge elevation at `attach.t`.
+- a child ridge's first node elevation equals the parent edge elevation at `Station`.
 - **the station parameters on each side of each line tile that line's `[0, 1]`**: no gap
   (which would be a hole in the mesh) and no overlap (which would be a doubled surface).
   The two flanks of a ridge are tiled independently, because the two valleys facing one
@@ -142,9 +156,10 @@ and the child's two flanks. The triangles there must:
 
 Under a CDT, (1) and (2) are the hard part and are why the junction had to be
 *re-materialized* as a vertex of the parent polyline before triangulating. Under the
-correspondence they are free: the junction vertex is a sample of the parent line that the
-child's attach anchors, one vertex with one position, and both the parent's belt and the
-child's belt are built from it.
+correspondence they are free: the junction vertex is **the sample of the parent line that the
+child's end names**, one vertex with one position, and both the parent's belt and the child's
+belt are built from it. Nothing has to be welded afterwards, because nothing was ever two
+things.
 
 (3) remains a shading question and is answered by the same thing that answers it for any
 crest: the two belts on either side of the child ridge are separate planar facets, and the
@@ -153,7 +168,7 @@ crease between them is the child ridge.
 Sub-problems that survive, in reduced form:
 
 - **Sampling alignment.** A ridge's samples must include every station parameter that
-  names it *and* every child's `attach.t`, so a station resolves to an actual vertex. The
+  names it *and* every end that stands on it, so an end resolves to an actual vertex. The
   intervals between anchors are subdivided independently. Deterministic, and a local edit
   re-samples locally.
 - **Facet handoff.** Near a junction a belt spans "parent-flank" and "child-flank"
@@ -166,7 +181,7 @@ Sub-problems that survive, in reduced form:
 ## Expansion: `build()`
 
 1. **Sample.** Every line becomes a vertex run: its own nodes, plus an anchor at every
-   parameter that some station or attach names on it, plus a subdivision of each interval
+   parameter that some station or line end names on it, plus a subdivision of each interval
    at `tessellation.step * line.step_scale`. Anchors are why a station resolves to a
    vertex and not to a point on an edge. Elevation and node attributes interpolate
    linearly along each edge.
@@ -236,7 +251,7 @@ something concrete to edit, which is exactly R3.
 
 plain rust functions on `Massif`; small, explicit, composable.
 
-- skeleton: `add_ridge`, `attach_ridge(parent, t)`, `move_node`, `insert_node`,
+- skeleton: `add_ridge`, `attach_ridge(parent, t), tie_ridge(from, to)`, `move_node`, `insert_node`,
   `remove_node`, `remove_ridge`, `set_node`, `set_step_scale`
 - correspondence: `bind(valley, node, side, station)`, `unbind`, `slide_station`
 - valleys and footprint: the same polyline ops

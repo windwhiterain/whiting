@@ -60,7 +60,7 @@ pub use facet::{Face, FaceAttributes, FacetMesh};
 pub use line::{LineRef, Node, Side, Station};
 pub use sampling::{Sample, SampledLine, Sampling, Vertex};
 pub use skeleton::{
-    Attach, FootprintNode, Ridge, RidgeId, RidgeNode, Skeleton, Valley, ValleyId, ValleyNode,
+    End, FootprintNode, Ridge, RidgeId, RidgeNode, Skeleton, Valley, ValleyId, ValleyNode,
 };
 pub use tessellation::{BeltRef, DiagonalOverride, DiagonalRule, Tessellation};
 pub use validate::{Violation, validate};

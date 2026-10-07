@@ -18,7 +18,7 @@
 use crate::Massif;
 use crate::line::{LineRef, Side, Station};
 use crate::math::Vec2;
-use crate::skeleton::{Attach, Ridge, RidgeId, RidgeNode, Valley, ValleyId, ValleyNode};
+use crate::skeleton::{End, Ridge, RidgeId, RidgeNode, Valley, ValleyId, ValleyNode};
 use crate::tessellation::{BeltRef, DiagonalOverride, DiagonalRule};
 
 impl Massif {
@@ -32,24 +32,45 @@ impl Massif {
     ///
     /// # Invariants
     ///
-    /// The child's first node is **not** placed on the parent here. Its position and elevation
-    /// are derived from `attach` when the massif is sampled, so placing it would be a second copy
-    /// of the same fact and the copy is the one that goes stale.
+    /// The child's start is an **end naming a station** and its position is not placed here. It is
+    /// derived from the station when the massif is sampled, so placing it would be a second copy of
+    /// the same fact and the copy is the one that goes stale.
     pub fn attach_ridge(&mut self, parent: RidgeId, t: f32, nodes: Vec<RidgeNode>) -> RidgeId {
         self.skeleton.ridges.push(Ridge::child(parent, t, nodes));
         RidgeId(self.skeleton.ridges.len() - 1)
     }
 
-    /// Moves a ridge to a new parent, or to none at all.
-    pub fn set_attach(&mut self, ridge: RidgeId, attach: Option<Attach>) -> Option<()> {
-        self.skeleton.ridges.get_mut(ridge.0)?.attach = attach;
+    /// Adds a **tie ridge**: one whose two ends both stand on other lines.
+    ///
+    /// # Invariants
+    ///
+    /// This is what makes the ridge set a network rather than a tree, and it is the only place a
+    /// cycle can come from. Nothing distinguishes a tie from any other ridge afterwards — its ends
+    /// are `End::On` like a spur's — and that is deliberate: a tie is a connection and not a kind
+    /// of line.
+    pub fn tie_ridge(&mut self, from: Station, to: Station, nodes: Vec<RidgeNode>) -> RidgeId {
+        self.skeleton
+            .ridges
+            .push(Ridge::root(nodes).with_ends(End::On(from), End::On(to)));
+        RidgeId(self.skeleton.ridges.len() - 1)
+    }
+
+    /// Sets where a ridge's start stands.
+    pub fn set_ridge_start(&mut self, ridge: RidgeId, end: End) -> Option<()> {
+        self.skeleton.ridges.get_mut(ridge.0)?.start = end;
         Some(())
     }
 
-    /// Moves the junction where a ridge joins its parent.
+    /// Moves the junction where a ridge's start stands along the line it names.
     pub fn set_attach_parameter(&mut self, ridge: RidgeId, t: f32) -> Option<()> {
-        self.skeleton.ridges.get_mut(ridge.0)?.attach.as_mut()?.t = t;
+        let named = self.skeleton.ridges.get(ridge.0)?.start.station()?;
+        self.skeleton.ridges.get_mut(ridge.0)?.start = End::On(Station::new(named.line, t));
         Some(())
+    }
+
+    /// Sets where either end of a line stands.
+    pub fn set_end(&mut self, line: LineRef, far: bool, end: End) -> Option<()> {
+        self.skeleton.set_end(line, far, end)
     }
 
     /// Adds a valley, returning its id.
@@ -81,7 +102,17 @@ impl Massif {
                 if doomed.contains(&id) {
                     continue;
                 }
-                if self.skeleton.ridges[candidate].attach.map(|a| a.parent) == Some(parent) {
+                // A ridge hangs off another when one of its ends **names** it. Reading the ends and
+                // not a parent field is what makes a tie ridge behave: removing either ridge it ties
+                // leaves the other one standing, and neither of them is the other's parent.
+                let hangs = [
+                    self.skeleton.ridges[candidate].start,
+                    self.skeleton.ridges[candidate].end,
+                ]
+                .into_iter()
+                .filter_map(|end| end.station())
+                .any(|station| station.line == LineRef::Ridge(parent));
+                if hangs {
                     doomed.push(id);
                 }
             }

@@ -28,7 +28,7 @@ use crate::Massif;
 use crate::line::{LineRef, Station};
 use crate::math::{Vec2, distance, offset};
 use crate::skeleton::{
-    FootprintNode, Ridge, RidgeId, RidgeNode, Skeleton, Valley, ValleyId, ValleyNode,
+    End, FootprintNode, Ridge, RidgeId, RidgeNode, Skeleton, Valley, ValleyId, ValleyNode,
 };
 use crate::tessellation::Tessellation;
 
@@ -244,6 +244,20 @@ impl Fan {
     }
 
     /// Returns every ridge of the fan.
+    ///
+    /// # Invariants
+    ///
+    /// Ridge 0 is the **trunk** and every other ridge's start **names a station on it** — its
+    /// summit, at parameter zero. That one choice is the whole of the fan's connectivity, and it is
+    /// what makes the ridge set a tree rather than eight lines that happen to meet:
+    ///
+    /// - the ridge graph is connected, so it is a tree or a network as the spec asks and not a
+    ///   scatter;
+    /// - the summit is **one vertex**, because eight ends naming one station resolve to one sample,
+    ///   so the triangles around the apex share it and the surface closes instead of leaving a
+    ///   zero-area slit that no area check can find.
+    ///
+    /// A fan drawn with eight roots at the origin has neither property and looks identical.
     fn ridges(&self) -> Vec<Ridge> {
         (0..self.bearings.len())
             .map(|index| {
@@ -259,7 +273,11 @@ impl Fan {
                         .with_sharpness(0.55)
                     })
                     .collect();
-                Ridge::root(ridge_nodes)
+                if index == 0 {
+                    Ridge::root(ridge_nodes)
+                } else {
+                    Ridge::child(RidgeId(0), 0.0, ridge_nodes)
+                }
             })
             .collect()
     }
@@ -421,8 +439,17 @@ struct Wedge {
 
 impl Wedge {
     /// Returns the wedge as a valley, with its mouth bound to the footprint.
+    ///
+    /// # Invariants
+    ///
+    /// The valley's **start names the trunk's summit** rather than standing at the same coordinates.
+    /// Every valley in a fan begins at the one apex, and a valley that merely stood there would put
+    /// its own vertex a hair off the ridges' — three vertices at a point instead of one, which is
+    /// the slit the whole `End` vocabulary exists to avoid. Its own first node is then derived and
+    /// is not read.
     fn into_valley(self, mouth_parameter: f32) -> Valley {
         let mouth = Station::new(LineRef::Footprint, mouth_parameter);
+        let start = End::On(Station::ridge(RidgeId(0), 0.0));
         let mut nodes: Vec<ValleyNode> = self
             .nodes
             .into_iter()
@@ -436,7 +463,7 @@ impl Wedge {
             mouth,
             mouth,
         ));
-        Valley::new(nodes)
+        Valley::new(nodes).with_ends(start, End::Free)
     }
 }
 

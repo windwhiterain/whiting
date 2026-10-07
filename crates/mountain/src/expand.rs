@@ -240,16 +240,17 @@ fn valley_run(
 ) -> Option<Vec<Vertex>> {
     let from = sampling.node_vertex(skeleton, line, segment)?;
     let to = sampling.node_vertex(skeleton, line, segment + 1)?;
-    Some(if from.index <= to.index {
-        (from.index..=to.index)
-            .map(|index| Vertex { line, index })
-            .collect()
+    // A node that stands at another line's vertex has no index on this line to walk from, so the
+    // run is asked for by **sample index on the line the vertex belongs to** and the ends are
+    // substituted by the sampler. That is what keeps a valley's first vertex the summit's own.
+    let count = sampling.run(line).samples.len();
+    let start = if from.line == line { from.index } else { 0 };
+    let finish = if to.line == line {
+        to.index
     } else {
-        (to.index..=from.index)
-            .rev()
-            .map(|index| Vertex { line, index })
-            .collect()
-    })
+        count.saturating_sub(1)
+    };
+    Some(sampling.run_between(line, start, finish))
 }
 
 /// Returns the cells of a belt the author has overridden.

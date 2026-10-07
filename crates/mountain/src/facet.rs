@@ -14,6 +14,8 @@
 //! - A face carries its own provenance and never an index into a previous build, because
 //!   every edit re-expands and every index moves.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use crate::line::LineRef;
 use crate::math::{Vec2, Vec3, distance};
 use crate::tessellation::BeltRef;
@@ -120,5 +122,85 @@ impl FacetMesh {
             }
         }
         shortest
+    }
+
+    /// Returns every edge with how many faces use it, keyed by its two vertex indices.
+    ///
+    /// # Invariants
+    ///
+    /// The key is ordered, so the three edges of a triangle are the same three however the
+    /// triangle is wound and two faces sharing an edge agree on it. That is what makes the count a
+    /// count of faces per edge rather than of directed half-edges, which is the number that decides
+    /// whether the surface is a manifold.
+    fn edges(&self) -> BTreeMap<(u32, u32), usize> {
+        let mut edges: BTreeMap<(u32, u32), usize> = BTreeMap::new();
+        for face in &self.faces {
+            for corner in 0..3 {
+                let (a, b) = (face.indices[corner], face.indices[(corner + 1) % 3]);
+                *edges.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+            }
+        }
+        edges
+    }
+
+    /// Returns how many closed loops of boundary the surface has.
+    ///
+    /// # Invariants
+    ///
+    /// A closed surface has none, and a **disc** — which is what a massif cut out of a footprint is
+    /// meant to be — has exactly one, its rim. This is the number that catches a hole the plan area
+    /// cannot: a junction left unwelded leaves triangles collapsed at one point, and a collapsed
+    /// triangle encloses no area at all, so the area check passes and the surface has a slit.
+    pub fn boundary_loops(&self) -> usize {
+        let mut neighbours: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+        for ((a, b), count) in self.edges() {
+            if count != 1 {
+                continue;
+            }
+            neighbours.entry(a).or_default().push(b);
+            neighbours.entry(b).or_default().push(a);
+        }
+        let mut seen: BTreeSet<u32> = BTreeSet::new();
+        let mut loops = 0;
+        for start in neighbours.keys().copied() {
+            if !seen.insert(start) {
+                continue;
+            }
+            loops += 1;
+            let mut stack = vec![start];
+            while let Some(vertex) = stack.pop() {
+                for next in neighbours.get(&vertex).into_iter().flatten() {
+                    if seen.insert(*next) {
+                        stack.push(*next);
+                    }
+                }
+            }
+        }
+        loops
+    }
+
+    /// Returns the Euler characteristic of the surface: vertices less edges plus faces.
+    ///
+    /// # Invariants
+    ///
+    /// It is read over the mesh's **own** vertices — the pair of line and sample the expander
+    /// assigned — and not over positions welded afterwards. Welding coincident positions would
+    /// report a slit as closed, which is exactly the failure this is here to find.
+    ///
+    /// A disc is one, a closed surface with no boundary is two less twice its genus, and an annulus
+    /// is zero.
+    pub fn euler_characteristic(&self) -> i64 {
+        self.points.len() as i64 - self.edges().len() as i64 + self.faces.len() as i64
+    }
+
+    /// Returns whether every edge is shared by exactly two faces.
+    ///
+    /// # Invariants
+    ///
+    /// A closed surface is a manifold only if no edge carries three faces, which is what a
+    /// duplicated sheet or a folded flap looks like. An edge used once is a boundary and is not
+    /// asked about here; [`FacetMesh::boundary_loops`] counts those.
+    pub fn is_manifold(&self) -> bool {
+        self.edges().values().all(|count| *count <= 2)
     }
 }

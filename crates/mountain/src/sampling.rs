@@ -120,6 +120,9 @@ pub struct Sampling {
     ridges: Vec<SampledLine>,
     valleys: Vec<SampledLine>,
     footprint: SampledLine,
+    /// Where each line's two ends stand, resolved. `None` means the end stands where its own node
+    /// does; `Some(vertex)` means it stands at **that** vertex, which belongs to another line.
+    ends: Vec<(Option<Vertex>, Option<Vertex>)>,
     welded: HashMap<(i64, i64), Vec<Vertex>>,
 }
 
@@ -128,19 +131,17 @@ impl Sampling {
     ///
     /// # Invariants
     ///
-    /// Every parameter that any station or attach names is a sample of the line it names.
-    /// That is what lets a station be looked up rather than interpolated, and it is why the
-    /// junction vertex of a child ridge is the same vertex as the parent's: they are the same
-    /// parameter and therefore the same sample.
+    /// Every parameter that any station or line end names is a sample of the line it names. That is
+    /// what lets a station be looked up rather than interpolated, and it is why two lines that name
+    /// one point end up sharing one vertex: an end that stands on a station resolves to *that
+    /// station's* sample, so eight ridges starting on one ridge's summit are one vertex and not
+    /// eight that happen to coincide. A mesh built the other way has a slit at every junction.
     pub fn of(skeleton: &Skeleton, tessellation: Tessellation) -> Self {
         let step = tessellation.step.max(0.0);
         let mut ridges = Vec::with_capacity(skeleton.ridges.len());
         for (index, ridge) in skeleton.ridges.iter().enumerate() {
             let line = LineRef::Ridge(crate::skeleton::RidgeId(index));
-            let mut named = station_parameters(skeleton, line);
-            if let Some(attach) = ridge.attach {
-                named.push(attach.t.clamp(0.0, 1.0));
-            }
+            let named = station_parameters(skeleton, line);
             ridges.push(sample_line(
                 &skeleton.nodes(line),
                 step * ridge.step_scale.max(f32::EPSILON),
@@ -171,10 +172,103 @@ impl Sampling {
             ridges,
             valleys,
             footprint,
+            ends: Vec::new(),
             welded: HashMap::new(),
         };
+        sampling.ends = sampling.resolve_ends(skeleton);
         sampling.weld();
         sampling
+    }
+
+    /// Resolves every line's two ends to the vertex each stands at.
+    ///
+    /// # Invariants
+    ///
+    /// An end that names a station resolves to the **vertex of the line the station names**, which
+    /// is what makes a junction one vertex rather than several that coincide. A chain of ends — one
+    /// naming a line whose own end names a third — is followed to the far end of it, because
+    /// stopping at the middle would put a copy of the middle line's vertex at the far line's
+    /// coordinates and the junction would be two vertices again.
+    fn resolve_ends(&self, skeleton: &Skeleton) -> Vec<(Option<Vertex>, Option<Vertex>)> {
+        let count = self.count();
+        let mut raw = vec![(None, None); count];
+        for line in skeleton.lines() {
+            for far in [false, true] {
+                let Some(station) = skeleton.end(line, far).station() else {
+                    continue;
+                };
+                let Some(vertex) = self.own_vertex(station) else {
+                    continue;
+                };
+                let slot = self.slot(line);
+                if far {
+                    raw[slot].1 = Some(vertex);
+                } else {
+                    raw[slot].0 = Some(vertex);
+                }
+            }
+        }
+        let mut settled = raw.clone();
+        for slot in 0..count {
+            for far in [false, true] {
+                let mut current = if far { raw[slot].1 } else { raw[slot].0 };
+                // At most one step per line, so the walk cannot spin on a cycle of ends. A cycle
+                // of ends is not a junction but an inconsistency, and `validate` reports it.
+                for _ in 0..count {
+                    let Some(vertex) = current else { break };
+                    let samples = self.run(vertex.line).samples.len();
+                    let at_far = vertex.index + 1 == samples;
+                    if vertex.index != 0 && !at_far {
+                        break;
+                    }
+                    let next = if at_far {
+                        raw[self.slot(vertex.line)].1
+                    } else {
+                        raw[self.slot(vertex.line)].0
+                    };
+                    match next {
+                        Some(followed) if followed != vertex => current = Some(followed),
+                        _ => break,
+                    }
+                }
+                if far {
+                    settled[slot].1 = current;
+                } else {
+                    settled[slot].0 = current;
+                }
+            }
+        }
+        settled
+    }
+
+    /// Returns how many lines have a slot in the end table.
+    fn count(&self) -> usize {
+        self.ridges.len() + self.valleys.len() + 1
+    }
+
+    /// Returns a line's slot in the end table.
+    fn slot(&self, line: LineRef) -> usize {
+        match line {
+            LineRef::Ridge(ridge) => ridge.0,
+            LineRef::Valley(valley) => self.ridges.len() + valley.0,
+            LineRef::Footprint => self.ridges.len() + self.valleys.len(),
+        }
+    }
+
+    /// Returns the vertex a station names, ignoring end resolution.
+    fn own_vertex(&self, station: Station) -> Option<Vertex> {
+        self.run(station.line)
+            .index_at(station.t)
+            .map(|index| Vertex {
+                line: station.line,
+                index,
+            })
+    }
+
+    /// Returns where an end of a line stands, if it stands at another line's vertex.
+    fn end_vertex(&self, line: LineRef, far: bool) -> Option<Vertex> {
+        let (start, end) = self.ends[self.slot(line)];
+        if far { end } else { start }
     }
 
     /// Returns a line's run.
@@ -209,35 +303,77 @@ impl Sampling {
     }
 
     /// Returns the vertex a station resolves to.
+    ///
+    /// # Invariants
+    ///
+    /// A station landing on a line's **end** resolves to the vertex that end stands at. That is the
+    /// whole of how a junction becomes one vertex: a rib naming a ridge's summit and the ridge's
+    /// own start both resolve to the same sample of whichever line owns the summit, so the triangles
+    /// around it share it and the ring closes.
     pub fn vertex(&self, station: Station) -> Result<Vertex, Unresolved> {
-        self.run(station.line)
+        let index = self
+            .run(station.line)
             .index_at(station.t)
-            .map(|index| Vertex {
-                line: station.line,
-                index,
-            })
-            .ok_or(Unresolved::NoSuchSample { station })
+            .ok_or(Unresolved::NoSuchSample { station })?;
+        Ok(self.settled(station.line, index))
+    }
+
+    /// Returns the vertex a sample index of a line settles to.
+    fn settled(&self, line: LineRef, index: usize) -> Vertex {
+        let samples = self.run(line).samples.len();
+        let far = samples > 0 && index + 1 == samples;
+        if index == 0 || far {
+            if let Some(vertex) = self.end_vertex(line, far) {
+                return vertex;
+            }
+        }
+        Vertex { line, index }
     }
 
     /// Returns the vertex an authored node of a skeleton line resolves to.
     ///
     /// # Invariants
     ///
-    /// A line's own nodes are samples by construction, so this is exact rather than nearest.
-    /// It is what lets a belt's lower boundary be the valley the author drew instead of a
-    /// re-sample of it.
+    /// A line's own nodes are samples by construction, so this is exact rather than nearest. It is
+    /// what lets a belt's lower boundary be the valley the author drew instead of a re-sample of it
+    /// — and it is where a line's two ends become another line's vertices, so a lower boundary that
+    /// starts at a summit starts at the summit's own vertex.
     pub fn node_vertex(&self, skeleton: &Skeleton, line: LineRef, node: usize) -> Option<Vertex> {
         let nodes = skeleton.nodes(line);
         if node >= nodes.len() {
             return None;
         }
+        if node == 0
+            && let Some(vertex) = self.end_vertex(line, false)
+        {
+            return Some(vertex);
+        }
+        if node + 1 == nodes.len()
+            && let Some(vertex) = self.end_vertex(line, true)
+        {
+            return Some(vertex);
+        }
         let (span, total) = arc_lengths(&nodes);
         if total <= f32::EPSILON {
-            return Some(Vertex { line, index: 0 });
+            return Some(self.settled(line, 0));
         }
         self.run(line)
             .index_at(span[node] / total)
-            .map(|index| Vertex { line, index })
+            .map(|index| self.settled(line, index))
+    }
+
+    /// Returns a line's vertices between two of its samples, in walk order.
+    ///
+    /// # Invariants
+    ///
+    /// Every vertex run in this crate is built here, and that is what keeps end resolution from
+    /// being something each caller has to remember: a run that reaches a line's end reaches the
+    /// vertex that end stands at, whichever line that vertex belongs to.
+    pub fn run_between(&self, line: LineRef, from: usize, to: usize) -> Vec<Vertex> {
+        run_indices(from, to)
+            .into_iter()
+            .map(|index| self.settled(line, index))
+            .collect()
     }
 
     /// Returns the sampled run between two stations, as vertices in walk order.
@@ -255,18 +391,14 @@ impl Sampling {
     /// meet — a junction, a ridge tip meeting the rim, or a valley mouth. Two lines that do
     /// not meet is [`Unresolved::Disjoint`] rather than a path across the gap.
     pub fn path(&self, from: Station, to: Station) -> Result<Vec<Vertex>, Unresolved> {
-        let start = self.vertex(from)?;
-        let end = self.vertex(to)?;
+        let missing = |station: Station| Unresolved::NoSuchSample { station };
         if from.line == to.line {
-            return Ok(run_indices(start.index, end.index)
-                .into_iter()
-                .map(|index| Vertex {
-                    line: from.line,
-                    index,
-                })
-                .collect());
+            let start = self.run(from.line).index_at(from.t).ok_or(missing(from))?;
+            let end = self.run(to.line).index_at(to.t).ok_or(missing(to))?;
+            return Ok(self.run_between(from.line, start, end));
         }
 
+        let end = self.vertex(to)?;
         // The corner is one of the leaving line's ends, and which one is decided by the point
         // the path is aiming at, so the walk turns the short way rather than the long way
         // round a loop.
@@ -284,22 +416,22 @@ impl Sampling {
                     to: to.line,
                 })?;
 
-        let mut path: Vec<Vertex> = run_indices(start.index, leaving.index)
+        let head = self.run(from.line).index_at(from.t).ok_or(missing(from))?;
+        let tail = self.run(to.line).index_at(to.t).ok_or(missing(to))?;
+        let mut path: Vec<Vertex> = self.run_between(from.line, head, leaving.index);
+        // The corner is reached twice — once as the leaving line's end and once as the joining
+        // line's sample — and at a junction those are the same vertex, so the second reading is
+        // dropped. Kept, every belt at a corner would open with a zero-width row.
+        let corner = self.settled(to.line, joining.index);
+        let mut arc: Vec<Vertex> = self
+            .arc_vertices(to.line, joining.index, tail)
             .into_iter()
-            .map(|index| Vertex {
-                line: from.line,
-                index,
-            })
+            .map(|index| self.settled(to.line, index))
             .collect();
-        // The corner vertex is reached twice — once as the leaving line's end and once as the
-        // joining line's sample — and it is one vertex, so the second reading is dropped. Kept,
-        // every belt at a corner would open with a zero-width row.
-        let tail = self.arc_vertices(to.line, joining.index, end.index);
-        let skip = usize::from(tail.first() == Some(&joining.index));
-        path.extend(tail.into_iter().skip(skip).map(|index| Vertex {
-            line: to.line,
-            index,
-        }));
+        if arc.first() == Some(&corner) {
+            arc.remove(0);
+        }
+        path.extend(arc);
         Ok(path)
     }
 
