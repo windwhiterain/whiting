@@ -17,6 +17,7 @@
 //! 9. A point two soft edges own is refused, and a refused edit changes nothing.
 //! 10. The corner stencil's algebra, on the real mesh: how many independent chains a vertex has,
 //!     what its consistency condition is, and what `mu` a valence-3 centroid actually needs.
+//! 11. What a higher degree buys: **nothing**, on either count, and that is measured.
 //!
 //! ## Why measurement 3 fails, and what it costs
 //!
@@ -114,11 +115,15 @@ fn matching_edges(mesh: &PatchMesh) -> Vec<EdgeKey> {
 }
 
 fn build_with(derived: &QuadMesh, edges: &[EdgeKey]) -> PatchMesh {
+    build_at(derived, edges, DEGREE)
+}
+
+fn build_at(derived: &QuadMesh, edges: &[EdgeKey], degree: usize) -> PatchMesh {
     let mut mesh = PatchMesh::build(derived.positions.clone(), derived.quads.clone());
     for edge in edges {
         mesh.set_soft(*edge);
     }
-    for _ in 1..DEGREE {
+    for _ in 1..degree {
         mesh.elevate();
     }
     mesh
@@ -292,6 +297,115 @@ fn faces_around(mesh: &PatchMesh, vertex: u32) -> Vec<(u32, usize)> {
         face = next;
     }
     order
+}
+
+/// What the corner algebra says about every interior vertex of a mesh.
+struct CornerSurvey {
+    /// valence -> [interior vertices, non-degenerate at the model's mu, needing projection]
+    by_valence: BTreeMap<usize, [usize; 3]>,
+    /// vertices whose chain count disagreed with `gcd(2, valence)`.
+    chain_mismatch: usize,
+    /// the distinct projected `mu` triples seen at valence 3.
+    centroid_mu: BTreeSet<String>,
+}
+
+impl CornerSurvey {
+    fn non_degenerate_at_valence_3(&self) -> (usize, usize) {
+        match self.by_valence.get(&3) {
+            Some([total, non_degenerate, _]) => (*non_degenerate, *total),
+            None => (0, 0),
+        }
+    }
+}
+
+/// Runs the corner recursion over every vertex where the walk closes, which is every vertex whose
+/// incident edges are all interior. A vertex on the boundary cannot close the cycle, so it has no
+/// corner condition to check and is skipped rather than half-checked.
+fn corner_survey(mesh: &PatchMesh) -> CornerSurvey {
+    let mut by_valence: BTreeMap<usize, [usize; 3]> = BTreeMap::new();
+    let mut chain_mismatch = 0usize;
+    let mut centroid_mu: BTreeSet<String> = BTreeSet::new();
+
+    for vertex in 0..mesh.positions().len() as u32 {
+        let around = faces_around(mesh, vertex);
+        let n = around.len();
+        if n < 2
+            || n != mesh
+                .quads()
+                .iter()
+                .filter(|quad| quad.contains(&vertex))
+                .count()
+        {
+            continue;
+        }
+        let mut mu = vec![1.0f64; n];
+        let mut master_is_left = vec![true; n];
+        for (step, (face, corner)) in around.iter().enumerate() {
+            let key = canonical(edge_endpoints(
+                mesh.quads()[*face as usize],
+                edges_at(*corner)[1],
+            ));
+            mu[step] = mesh.continuity(&key).and_then(|c| c.mu()).unwrap_or(1.0);
+            master_is_left[step] = mesh.topology().edge_faces[&key][0].0 == *face;
+        }
+
+        let mut projected = mu.clone();
+        let mut visited = vec![false; n];
+        let mut chains = 0usize;
+        let mut feasible = true;
+        for start in 0..n {
+            if visited[start] {
+                continue;
+            }
+            chains += 1;
+            let mut index = start;
+            let mut factor = 1.0f64;
+            let seam = loop {
+                visited[index] = true;
+                let seam = (index + 1) % n;
+                let m = if master_is_left[seam] {
+                    projected[seam]
+                } else {
+                    1.0 / projected[seam]
+                };
+                factor *= -m;
+                let next = (index + 2) % n;
+                index = next;
+                if next == start {
+                    break seam;
+                }
+            };
+            if (factor - 1.0).abs() > 1.0e-12 {
+                feasible = false;
+                projected[seam] *= if master_is_left[seam] {
+                    factor
+                } else {
+                    1.0 / factor
+                };
+            }
+        }
+        if chains != greatest_common_divisor(2, n) {
+            chain_mismatch += 1;
+        }
+        let entry = by_valence.entry(n).or_insert([0, 0, 0]);
+        entry[0] += 1;
+        if feasible {
+            entry[1] += 1;
+        } else {
+            entry[2] += 1;
+        }
+        if n == 3 {
+            centroid_mu.insert(format!(
+                "{:.3} {:.3} {:.3}",
+                projected[0], projected[1], projected[2]
+            ));
+        }
+    }
+    CornerSurvey {
+        by_valence,
+        chain_mismatch,
+        centroid_mu,
+    }
 }
 
 fn greatest_common_divisor(a: usize, b: usize) -> usize {
@@ -733,6 +847,8 @@ fn main() {
     );
 
     // 10. The corner stencil's algebra, on the real mesh rather than on a diagram.
+
+    // 10. The corner stencil's algebra, on the real mesh rather than on a diagram.
     //
     //     At a vertex with `n` faces in cyclic order, writing `q_i` for the corner-adjacent point of
     //     the `i`-th seam measured from the vertex itself, the invariant at the corner says
@@ -748,97 +864,24 @@ fn main() {
     for (key, _) in interior_edges(&bare) {
         full.set_soft(key);
     }
-    let mut tally: BTreeMap<usize, [usize; 3]> = BTreeMap::new();
-    let mut chain_mismatch = 0usize;
-    let mut centroid_mu: BTreeSet<String> = BTreeSet::new();
-    for vertex in 0..derived.vertex_count() as u32 {
-        let around = faces_around(&full, vertex);
-        let n = around.len();
-        if n < 2
-            || n != full
-                .quads()
-                .iter()
-                .filter(|quad| quad.contains(&vertex))
-                .count()
-        {
-            continue;
-        }
-        let mut mu = vec![1.0f64; n];
-        let mut master_is_left = vec![true; n];
-        for (step, (face, corner)) in around.iter().enumerate() {
-            let quad = full.quads()[*face as usize];
-            let key = canonical(edge_endpoints(quad, edges_at(*corner)[1]));
-            mu[step] = full.continuity(&key).and_then(|c| c.mu()).unwrap_or(1.0);
-            master_is_left[step] = full.topology().edge_faces[&key][0].0 == *face;
-        }
-        let mut projected = mu.clone();
-        let mut visited = vec![false; n];
-        let mut chains = 0usize;
-        let mut feasible = true;
-        for start in 0..n {
-            if visited[start] {
-                continue;
-            }
-            chains += 1;
-            let mut index = start;
-            let mut factor = 1.0f64;
-            let seam = loop {
-                visited[index] = true;
-                let seam = (index + 1) % n;
-                let m = if master_is_left[seam] {
-                    projected[seam]
-                } else {
-                    1.0 / projected[seam]
-                };
-                factor *= -m;
-                let next = (index + 2) % n;
-                index = next;
-                if next == start {
-                    break seam;
-                }
-            };
-            if (factor - 1.0).abs() > 1.0e-12 {
-                feasible = false;
-                projected[seam] *= if master_is_left[seam] {
-                    factor
-                } else {
-                    1.0 / factor
-                };
-            }
-        }
-        if chains != greatest_common_divisor(2, n) {
-            chain_mismatch += 1;
-        }
-        let entry = tally.entry(n).or_insert([0, 0, 0]);
-        entry[0] += 1;
-        if feasible {
-            entry[1] += 1;
-        } else {
-            entry[2] += 1;
-        }
-        if n == 3 {
-            centroid_mu.insert(format!(
-                "{:.3} {:.3} {:.3}",
-                projected[0], projected[1], projected[2]
-            ));
-        }
-    }
-    if chain_mismatch != 0 {
+    let survey = corner_survey(&full);
+    if survey.chain_mismatch != 0 {
         failures.push("10  the corner system splits into gcd(2, valence) chains");
     }
-    let rows: Vec<String> = tally
+    let rows: Vec<String> = survey
+        .by_valence
         .iter()
         .map(|(valence, [total, feasible, needs_projection])| {
             format!(
-                "   valence {valence}: {total} interior vertices, {feasible} feasible at mu = 1, \
-                 {needs_projection} needing projection"
+                "   valence {valence}: {total} interior vertices, {feasible} non-degenerate at \
+                 mu = 1, {needs_projection} needing projection"
             )
         })
         .collect();
     report(
         "10  the corner stencil's algebra",
         &format!(
-            "vertices whose chain count disagreed with gcd(2, valence)   {chain_mismatch}\n{}\n\
+            "vertices whose chain count disagreed with gcd(2, valence)   {}\n{}\n\
              projected mu at a valence-3 centroid: {}\n\
              the recursion steps by two, so the equations split into gcd(2, valence) chains and each\n\
              closes on its own scalar condition. odd valence needs the product of the m's to be -1;\n\
@@ -852,19 +895,83 @@ fn main() {
              negative -- a fold in the row -- and it then propagates to the vertex at the other end\n\
              of that seam. the {} valence-3 vertices here are Doo-Sabin face centroids, so that is one\n\
              pinch per face of the source mesh",
+            survey.chain_mismatch,
             rows.join("\n"),
-            if centroid_mu.is_empty() {
+            if survey.centroid_mu.is_empty() {
                 "no valence-3 interior vertex in this sample".to_string()
             } else {
-                let all: Vec<&String> = centroid_mu.iter().collect();
+                let all: Vec<&String> = survey.centroid_mu.iter().collect();
                 format!("{} distinct outcomes, e.g. {}", all.len(), all[0])
             },
-            tally.get(&3).map_or(0, |entry| entry[0]),
+            survey.by_valence.get(&3).map_or(0, |entry| entry[0]),
+        ),
+    );
+
+    // 11. Does a higher degree buy the corner its freedom, and does it lower the gap?
+    //
+    //     The prediction was no on the first, and a fall on the second. **The second was wrong.**
+    //     The worst measurement sits at the first interior position, where the contaminating end
+    //     weight is `B(degree-1, 0, 1/degree) = (1 - 1/degree)^(degree-1)`, and that tends to
+    //     `e^-1` rather than to zero — 0.444 at degree 3, 0.402 at degree 6. The defect does not
+    //     shrink with degree; it is asymptotically a fixed fraction of the seam.
+    let mut sweep = String::new();
+    let mut drifted = 0.0f64;
+    let mut reference = f64::NAN;
+    for degree in 3..=6 {
+        let model = build_at(&derived, &soft_edges, degree);
+        let gap = interior_edges(&model)
+            .iter()
+            .filter(|(edge, _)| soft_edges.contains(edge))
+            .map(|(_, faces)| edge_gap_over(&model, *faces, STEP, 1..degree))
+            .fold(0.0f64, f64::max);
+        let mut all_soft = PatchMesh::build(derived.positions.clone(), derived.quads.clone());
+        for (key, _) in interior_edges(&bare) {
+            all_soft.set_soft(key);
+        }
+        for _ in 1..degree {
+            all_soft.elevate();
+        }
+        let swept = corner_survey(&all_soft);
+        let (non_degenerate, total) = swept.non_degenerate_at_valence_3();
+        let end_weight = (1.0 - 1.0 / degree as f64).powi(degree as i32 - 1);
+        if reference.is_nan() {
+            reference = gap;
+        } else {
+            drifted = drifted.max((gap - reference).abs() / reference);
+        }
+        sweep.push_str(&format!(
+            "   degree {degree}: worst soft gap {gap:.3e} rad   end weight at t=1 {end_weight:.3}   \
+             valence-3 non-degenerate {non_degenerate} of {total}   chain mismatches {}\n",
+            swept.chain_mismatch
+        ));
+        if swept.chain_mismatch != 0 {
+            failures
+                .push("11  the corner system splits into gcd(2, valence) chains at every degree");
+        }
+        if non_degenerate != 0 {
+            failures.push("11  a higher degree would make odd valence non-degenerate");
+        }
+    }
+    if drifted >= 0.1 {
+        failures.push("11  the soft gap is flat across degree");
+    }
+    report(
+        "11  what a higher degree buys: nothing",
+        &format!(
+            "{sweep}   worst relative drift of the gap across degrees 3 to 6   {drifted:.3}\n\
+             the corner constraint never sees more than the row's first entry: at a corner the\n\
+             derivative is degree * (A[0] - Q[0]), because B(degree-1, j, 0) is non-zero only at j = 0.\n\
+             so raising the degree cannot free an odd-valence vertex, and the row of zeroes above is\n\
+             the answer, not a failure to look hard enough\n\
+             and the gap does NOT fall either. the worst measurement is at the first interior\n\
+             position, where the contaminating end weight is (1 - 1/degree)^(degree-1): 0.444 at\n\
+             degree 3, 0.402 at degree 6, heading for e^-1 and not for zero. the defect is\n\
+             asymptotically a fixed fraction of the seam, so degree buys nothing here either"
         ),
     );
 
     if failures.is_empty() {
-        println!("\nall 9 measurements passed");
+        println!("\nall 11 measurements passed");
     } else {
         println!("\nFAILED:");
         for failure in &failures {
