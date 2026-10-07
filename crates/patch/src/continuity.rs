@@ -82,15 +82,34 @@
 //! shared place is written by two seams. That equivalence is asserted by the probe, not merely
 //! observed.
 //!
-//! # What would fix it
+//! # What is shipped, and what is not
 //!
-//! Not a parameter per edge. **One degree of freedom per shared place that two seams write as a row
-//! end** — which is exactly what a corner scale `kappa`, independent of the edge's `mu`, would
-//! buy, and on this evidence the only thing it would buy.
+//! Accepted on 2026-10-07, after every route to closing the gap was measured and closed.
 //!
-//! Until that exists, the module deliberately leaves the row ends to boundary sharing rather than
-//! applying the invariant over them. A crack is worse than a crease, so the failure mode here is a
-//! bounded smoothness defect, measured by `examples/quad_continuity_probe.rs` measurements 3 and 12.
+//! **Shipped.** A soft edge is **measurably smoother than a crease, never a crack, and
+//! tangent-plane continuous along the edge** — the two faces' along-edge derivatives agree to
+//! `2.107e-8` rad, which is the `acos` floor of the probe. At degree 3 the tangent-plane gap is
+//! `4.771e-2` rad along the interior and `1.307e-1` rad at the two ends, against `1.780e-1` rad for
+//! a hard edge.
+//!
+//! **Not shipped.** A soft edge is **not** continuous across the seam, and the number above is the
+//! accepted cost. `quad_continuity_probe` measurement 3 asserts the promise that is actually made and
+//! guards the gap against a regression ceiling, so a future change cannot make it worse unnoticed.
+//!
+//! That gap is **not a limit of the representation.** Measurement 12 runs this same invariant over the
+//! whole row and measures exact G1 — `0.000e0` rad — on any seam that no other seam collides with. The
+//! cost being paid is the price of leaving the row ends alone where two soft seams meet at a mesh
+//! vertex and write the same shared point. Measurements 13, 14 and 15 measured and closed every route
+//! found for closing it: deriving one master's corner repairs *fewer* seams, a corner scale is inert
+//! across four orders of magnitude, and lazy subdivision cannot remove the collision at all.
+//!
+//! # What would reopen it
+//!
+//! Not a formula. Measurements 12 to 15 are kept as **guards**, not as history: each one passes while
+//! the route it rules out stays ruled out, and any of them going red means the decision is stale and
+//! the question is worth measuring again. The routes they rule out are, in order: the whole-row
+//! invariant over a crowded sample, deriving the contested corner, a corner scale, and lazy
+//! subdivision.
 
 use crate::point::Point3;
 use crate::topology::{EdgeKey, EdgeSlot, FaceId};
