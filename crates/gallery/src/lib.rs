@@ -62,6 +62,7 @@ pub mod shaders;
 
 mod dunes;
 mod foldyard;
+mod landscape;
 mod lanterns;
 mod monoliths;
 mod spotlight;
@@ -73,6 +74,7 @@ mod tiles;
 
 pub use dunes::dunes;
 pub use foldyard::foldyard;
+pub use landscape::landscape;
 pub use lanterns::lanterns;
 pub use monoliths::monoliths;
 pub use spotlight::spotlight;
@@ -91,6 +93,7 @@ impl Gallery {
         &[
             "dunes",
             "foldyard",
+            "landscape",
             "lanterns",
             "monoliths",
             "spotlight",
@@ -111,6 +114,7 @@ impl Gallery {
         match name {
             "dunes" => dunes(),
             "foldyard" => foldyard(),
+            "landscape" => landscape(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
             "spotlight" => spotlight(),

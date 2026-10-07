@@ -1803,6 +1803,7 @@ version = "0.1.0"
 dependencies = [
  "whiting-definition",
  "whiting-graphics",
+ "whiting-mountain",
  "whiting-scene",
 ]
 
@@ -1814,6 +1815,10 @@ dependencies = [
  "thiserror",
  "whiting-definition",
 ]
+
+[[package]]
+name = "whiting-mountain"
+version = "0.1.0"
 
 [[package]]
 name = "whiting-scene"

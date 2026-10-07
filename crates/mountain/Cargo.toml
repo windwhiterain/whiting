@@ -1,0 +1,11 @@
+[package]
+name = "whiting-mountain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Author a mountain massif as a ridge and valley polyline skeleton, and expand it into a planar-facet triangle mesh."
+
+# Nothing. The expansion walks a correspondence the author wrote down rather than searching for
+# one, so there is no triangulation to depend on — see .agents/SPEC/mountain.md R4.1.
+[dependencies]

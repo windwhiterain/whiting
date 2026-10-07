@@ -34,6 +34,19 @@ An agent-driven editing and authoring system that expands a polyline tree/networ
 - Each triangle is one planar block face; ridge flanks read as facet fans meeting at the ridge line.
 - The mesh is the expanded form of the edited lines: every face traces back to the skeleton, and editing the skeleton re-expands the mesh.
 
+### R4.1: the correspondence is authored, so expansion is direct
+
+- The two families of lines carry an explicit, editable **correspondence**: a valley node
+  names the station it faces on each side.
+- Because the correspondence is authored rather than inferred, expansion is a direct walk
+  of paired stations. There is no triangulation search, no constraint insertion, and no
+  intersection test over the whole line set.
+- The correspondence is therefore also what makes the mesh watertight: two faces meet
+  along a rib because they were built from the same rib, not because two independent
+  triangulations happened to agree.
+- A correspondence the author has left incomplete is reported by `validate()`, not
+  repaired by the expander.
+
 ### R5: pure rust crate, rust api
 
 - The system is a pure rust crate with a rust api. It has no editor frontend and no runtime service of its own.

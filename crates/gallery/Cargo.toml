@@ -10,3 +10,6 @@ description = "Builders for standard scene documents, and the scenes built with 
 definition = { workspace = true }
 graphics = { workspace = true }
 scene = { workspace = true }
+# The `landscape` scene is the mountain crate's first caller: it authors a massif as a ridge and
+# valley skeleton, expands it, and draws the facets.
+mountain = { workspace = true }

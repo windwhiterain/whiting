@@ -1,0 +1,712 @@
+//! What an edit may get wrong, and the check that names it.
+//!
+//! # Why this is a separate call and not a rule
+//!
+//! An edit may pass through invalid states, and it has to be allowed to: lowering a summit
+//! before raising the spur that hangs off it is a legitimate two-step edit whose intermediate
+//! state has the spur above its parent. Enforcing the invariants per step would make that edit
+//! inexpressible, so they are checked when the author asks instead.
+//!
+//! # Why coverage is the check that matters
+//!
+//! Every other violation here is local to one line. Coverage is the one that decides whether
+//! the mesh has a hole, and it is a statement about the whole correspondence: for each line, on
+//! each side, the stations facing it must account for its whole length exactly once. A gap is a
+//! hole in the massif; an overlap is a surface drawn twice. Both are invisible in a list of
+//! lines and both are a number here.
+
+use std::collections::BTreeMap;
+
+use crate::line::{LineRef, Side, Station};
+use crate::math::{Vec2, distance};
+use crate::sampling::{Sampling, Unresolved, WELD};
+use crate::skeleton::{RidgeId, Skeleton, ValleyId};
+use crate::tessellation::{BeltRef, Tessellation};
+
+/// How much of a line's length may be left over before it is a gap.
+///
+/// # Invariants
+///
+/// It is a **parameter** tolerance on a line's own `[0, 1]`, so it does not scale with the
+/// massif. It is wide enough to absorb the rounding of a station computed from an arc length
+/// and narrow enough that a gap a person would see is far above it.
+const COVERAGE_EPSILON: f32 = 1.0e-4;
+
+/// Something an author has got wrong.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Violation {
+    /// A line has too few nodes to have a direction.
+    TooFewNodes {
+        /// The line.
+        line: LineRef,
+        /// How many nodes it has.
+        nodes: usize,
+    },
+    /// A ridge joins its parent outside the parent's length.
+    AttachOutOfRange {
+        /// The child.
+        ridge: RidgeId,
+        /// The parameter it asked for.
+        t: f32,
+    },
+    /// A ridge joins a parent that is not in the skeleton.
+    AttachTargetMissing {
+        /// The child.
+        ridge: RidgeId,
+        /// The parent it named.
+        parent: RidgeId,
+    },
+    /// Ridges join each other in a ring, so no ridge is a root.
+    AttachCycle {
+        /// A ridge on the ring.
+        ridge: RidgeId,
+    },
+    /// A line rises from one node to the next.
+    ElevationRises {
+        /// The line.
+        line: LineRef,
+        /// The node it rises from.
+        node: usize,
+        /// The lower elevation.
+        from: f32,
+        /// The higher one.
+        to: f32,
+    },
+    /// A child ridge's first node does not stand at the parent's elevation where it joins.
+    ChildElevationMismatch {
+        /// The child.
+        ridge: RidgeId,
+        /// The elevation the child's first node has.
+        child: f32,
+        /// The elevation the parent has at the join.
+        parent: f32,
+    },
+    /// A station names a parameter off its line.
+    StationOutOfRange {
+        /// The valley the node belongs to.
+        valley: ValleyId,
+        /// The node.
+        node: usize,
+        /// Which side.
+        side: Side,
+        /// The parameter it asked for.
+        t: f32,
+    },
+    /// A station names a line that is not in the skeleton.
+    StationNamesMissingLine {
+        /// The valley the node belongs to.
+        valley: ValleyId,
+        /// The node.
+        node: usize,
+        /// Which side.
+        side: Side,
+        /// The line it named.
+        line: LineRef,
+    },
+    /// Two stations a belt has to walk between name lines that do not meet.
+    Unwalkable(Unresolved),
+    /// A line's side is not accounted for exactly once by the stations facing it.
+    NotCovered {
+        /// The line.
+        line: LineRef,
+        /// Which side of it.
+        side: Side,
+        /// Where the uncovered or doubly covered stretch begins.
+        from: f32,
+        /// Where it ends.
+        to: f32,
+    },
+    /// A rib crosses a line on the way up the flank.
+    RibCrossesLine {
+        /// The belt the rib belongs to.
+        belt: BeltRef,
+        /// The line it crossed.
+        line: LineRef,
+    },
+    /// Two ribs cross, which is two flanks that intersect.
+    RibCrossesRib {
+        /// The belt one rib belongs to.
+        first: BeltRef,
+        /// The belt the other belongs to.
+        second: BeltRef,
+    },
+    /// A polyline crosses itself.
+    SelfIntersects {
+        /// The line.
+        line: LineRef,
+        /// The edge the crossing starts on.
+        from: usize,
+        /// The edge it crosses.
+        to: usize,
+    },
+    /// A line leaves the footprint.
+    OutsideFootprint {
+        /// The line.
+        line: LineRef,
+        /// The node that is outside.
+        node: usize,
+    },
+}
+
+/// Checks a skeleton, returning everything wrong with it.
+///
+/// # Invariants
+///
+/// The structural checks run first and, while any of **them** is failing, the rest are skipped:
+/// every check below this point reads a line by index, and a station naming a line that is not
+/// there is a violation to report rather than an index to follow. Reporting coverage for a
+/// skeleton that cannot be sampled would be a report about a document that is not the one
+/// written.
+///
+/// The result is ordered by the check that raised it and then by the line it is about, so two
+/// runs over one skeleton report the same list in the same order and an author can diff two
+/// edits by their violation lists.
+///
+/// The geometric checks — a rib crossing a line, a polyline leaving the footprint — compare
+/// every rib against every segment, which is quadratic in the size of the skeleton. That is the
+/// right cost here and the wrong one anywhere else: this is called by an author asking what is
+/// wrong, a few times a second at most, and never by `build`.
+pub fn validate(skeleton: &Skeleton, tessellation: Tessellation) -> Vec<Violation> {
+    let mut violations = Vec::new();
+    check_shape(skeleton, &mut violations);
+    check_attach(skeleton, &mut violations);
+    check_stations(skeleton, &mut violations);
+    if violations.iter().any(blocks_sampling) {
+        return violations;
+    }
+    check_elevations(skeleton, &mut violations);
+
+    let sampling = Sampling::of(skeleton, tessellation);
+    let (belts, problems) = crate::expand::enumerate(skeleton, &sampling);
+    for problem in problems {
+        if let crate::expand::Problem::Unresolved(unresolved) = problem {
+            violations.push(Violation::Unwalkable(unresolved));
+        }
+    }
+    check_coverage(skeleton, &belts, &mut violations);
+    if skeleton.footprint.len() >= 3 {
+        check_self_intersection(skeleton, &mut violations);
+        check_ribs(skeleton, &sampling, &belts, &mut violations);
+        check_inside(skeleton, &sampling, &mut violations);
+    }
+    violations
+}
+
+/// Returns whether a violation stops the checks that read lines by index.
+fn blocks_sampling(violation: &Violation) -> bool {
+    matches!(
+        violation,
+        Violation::TooFewNodes { .. }
+            | Violation::AttachTargetMissing { .. }
+            | Violation::StationNamesMissingLine { .. }
+    )
+}
+
+/// Checks that every line has the nodes to have a direction.
+fn check_shape(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
+    for line in skeleton.lines() {
+        let nodes = skeleton.node_count(line);
+        if nodes < 2 {
+            violations.push(Violation::TooFewNodes { line, nodes });
+        }
+    }
+}
+
+/// Checks that the ridge forest is a forest.
+fn check_attach(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
+    for (index, ridge) in skeleton.ridges.iter().enumerate() {
+        let Some(attach) = ridge.attach else {
+            continue;
+        };
+        let ridge_id = RidgeId(index);
+        if attach.parent.0 >= skeleton.ridges.len() {
+            violations.push(Violation::AttachTargetMissing {
+                ridge: ridge_id,
+                parent: attach.parent,
+            });
+            continue;
+        }
+        if !(0.0..=1.0).contains(&attach.t) {
+            violations.push(Violation::AttachOutOfRange {
+                ridge: ridge_id,
+                t: attach.t,
+            });
+        }
+        // A ring is found by walking up from each ridge: a forest reaches a root in at most
+        // one step per ridge, so a walk longer than that has come back round.
+        let mut current = attach.parent;
+        for _ in 0..skeleton.ridges.len() {
+            match skeleton.ridges[current.0].attach {
+                Some(next) => current = next.parent,
+                None => break,
+            }
+            if current == ridge_id {
+                violations.push(Violation::AttachCycle { ridge: ridge_id });
+                break;
+            }
+        }
+    }
+}
+
+/// Checks that nothing rises as it runs away from a summit.
+fn check_elevations(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
+    for (index, ridge) in skeleton.ridges.iter().enumerate() {
+        for node in 0..ridge.nodes.len().saturating_sub(1) {
+            let (from, to) = (ridge.nodes[node].elevation, ridge.nodes[node + 1].elevation);
+            if to > from {
+                violations.push(Violation::ElevationRises {
+                    line: LineRef::Ridge(RidgeId(index)),
+                    node,
+                    from,
+                    to,
+                });
+            }
+        }
+        let Some(attach) = ridge.attach else {
+            continue;
+        };
+        let (Some(child), Some(parent)) = (
+            ridge.nodes.first(),
+            skeleton.station_point(crate::line::Station::ridge(attach.parent, attach.t)),
+        ) else {
+            continue;
+        };
+        if (child.elevation - parent[1]).abs() > ELEVATION_EPSILON {
+            violations.push(Violation::ChildElevationMismatch {
+                ridge: RidgeId(index),
+                child: child.elevation,
+                parent: parent[1],
+            });
+        }
+    }
+    for (index, valley) in skeleton.valleys.iter().enumerate() {
+        for node in 0..valley.nodes.len().saturating_sub(1) {
+            let (from, to) = (
+                valley.nodes[node].elevation,
+                valley.nodes[node + 1].elevation,
+            );
+            if to > from {
+                violations.push(Violation::ElevationRises {
+                    line: LineRef::Valley(ValleyId(index)),
+                    node,
+                    from,
+                    to,
+                });
+            }
+        }
+    }
+}
+
+/// How far a child's first node may stand off the parent's elevation at the join.
+///
+/// # Invariants
+///
+/// It is a **height** tolerance on a massif measured in hundreds of units, where a hundredth
+/// is far below anything a frame can show. Widening it to hide a modelling error would be
+/// widening it past the error.
+const ELEVATION_EPSILON: f32 = 1.0e-2;
+
+/// Checks that every station names something that exists.
+fn check_stations(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
+    for (index, valley) in skeleton.valleys.iter().enumerate() {
+        let valley_id = ValleyId(index);
+        for (node, entry) in valley.nodes.iter().enumerate() {
+            for side in [Side::Left, Side::Right] {
+                let station = entry.station(side);
+                if !(0.0..=1.0).contains(&station.t) {
+                    violations.push(Violation::StationOutOfRange {
+                        valley: valley_id,
+                        node,
+                        side,
+                        t: station.t,
+                    });
+                }
+                if !line_exists(skeleton, station.line) {
+                    violations.push(Violation::StationNamesMissingLine {
+                        valley: valley_id,
+                        node,
+                        side,
+                        line: station.line,
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Returns whether a skeleton holds a line.
+fn line_exists(skeleton: &Skeleton, line: LineRef) -> bool {
+    match line {
+        LineRef::Ridge(ridge) => ridge.0 < skeleton.ridges.len(),
+        LineRef::Valley(valley) => valley.0 < skeleton.valleys.len(),
+        LineRef::Footprint => !skeleton.footprint.is_empty(),
+    }
+}
+
+/// Checks that the stations facing each line's two sides account for it exactly once.
+///
+/// # Invariants
+///
+/// Only a line that **something faces** has to be accounted for by stations. A line nothing names
+/// is a valley floor, and a valley floor is covered by the two belts that hang off it rather than
+/// by ribs from elsewhere — requiring it to be faced would report every fan ever generated, in
+/// which no valley names another. A valley that *is* faced on one side and not the other is
+/// reported, because that is a region with a belt on one side of it and nothing on the other.
+fn check_coverage(
+    skeleton: &Skeleton,
+    belts: &[crate::expand::Belt],
+    violations: &mut Vec<Violation>,
+) {
+    let mut faced: std::collections::BTreeSet<LineRef> = std::collections::BTreeSet::new();
+    for valley in &skeleton.valleys {
+        for node in &valley.nodes {
+            faced.insert(node.left.line);
+            faced.insert(node.right.line);
+        }
+    }
+
+    let mut tiled: BTreeMap<(LineRef, Side), Vec<(f32, f32)>> = BTreeMap::new();
+    for belt in belts {
+        let valley = &skeleton.valleys[belt.reference.valley.0];
+        let node = belt.reference.segment;
+        let (left, right) = (valley.nodes[node], valley.nodes[node + 1]);
+        let middle = crate::math::lerp(left.position, right.position, 0.5);
+        let from = left.station(belt.reference.side);
+        let to = right.station(belt.reference.side);
+        if from.line == to.line {
+            let side = skeleton.side_of(from.line, from.t, middle);
+            for (low, high) in crate::line::arc_spans(from.t, to.t, from.line == LineRef::Footprint)
+            {
+                tiled
+                    .entry((from.line, side))
+                    .or_default()
+                    .push((low, high));
+            }
+            continue;
+        }
+        // Two lines that meet: the belt's upper boundary leaves the first at the end nearest the
+        // second and joins the second at the point where they touch, so each line is covered from
+        // its station to that corner. Reading the second line's *end* instead of its corner would
+        // report the whole of a rim as uncovered, because a rim's two ends are one vertex and
+        // every mouth is far from it.
+        //
+        // On a loop the arc is the **shorter** of the two, the same one the expander walks, and it
+        // is split at the seam when it crosses it. A set of parameters that wraps is not an
+        // interval, and reading it as one would report the rim's seam as a hole and its far side
+        // as covered twice.
+        let Some(to_point) = skeleton.station_point(to) else {
+            continue;
+        };
+        let leaving = end_nearer(skeleton, from.line, to_point);
+        let Some(corner) = skeleton.station_point(Station::new(from.line, leaving)) else {
+            continue;
+        };
+        let closed = from.line == LineRef::Footprint;
+        for (line, station, reach, line_closed) in [
+            (from.line, from.t, leaving, closed),
+            (
+                to.line,
+                to.t,
+                parameter_at(skeleton, to.line, corner),
+                to.line == LineRef::Footprint,
+            ),
+        ] {
+            // The side is asked **of each line and at that line's own station**. Asking it once
+            // from the line the path leaves would file the rim's arc under the side its ridge
+            // happens to be on, which alternates round a fan and splits the rim's coverage across
+            // both halves of every line in it.
+            let side = skeleton.side_of(line, station, middle);
+            for (low, high) in crate::line::arc_spans(station, reach, line_closed) {
+                tiled.entry((line, side)).or_default().push((low, high));
+            }
+        }
+    }
+
+    for ((line, side), spans) in &tiled {
+        let mut spans = spans.clone();
+        spans.sort_by(|left, right| left.0.total_cmp(&right.0));
+        let mut reached = 0.0f32;
+        for (low, high) in spans {
+            // An interval of no length covers nothing and decides nothing: it is what a corner
+            // leaves behind when both of a belt's stations name the same point, which is how a
+            // summit and a spur junction close.
+            if high - low <= COVERAGE_EPSILON {
+                continue;
+            }
+            // A stretch starting after what is already covered is a hole; one starting before it
+            // is a surface drawn twice over the overlap and no more.
+            if low > reached + COVERAGE_EPSILON {
+                violations.push(Violation::NotCovered {
+                    line: *line,
+                    side: *side,
+                    from: reached,
+                    to: low,
+                });
+            } else if low < reached - COVERAGE_EPSILON {
+                violations.push(Violation::NotCovered {
+                    line: *line,
+                    side: *side,
+                    from: low,
+                    to: reached.min(high),
+                });
+            }
+            reached = reached.max(high);
+        }
+        if reached < 1.0 - COVERAGE_EPSILON {
+            violations.push(Violation::NotCovered {
+                line: *line,
+                side: *side,
+                from: reached,
+                to: 1.0,
+            });
+        }
+    }
+    // A line that something faces but that no interval mentions is uncovered from end to end,
+    // and the walk above never starts on it because there was no interval to start one. The
+    // footprint is exempt: it is the domain the massif is cut into, and the land reaches it
+    // rather than facing it.
+    for line in skeleton.lines() {
+        if line == LineRef::Footprint || !faced.contains(&line) {
+            continue;
+        }
+        for side in [Side::Left, Side::Right] {
+            if !tiled.contains_key(&(line, side)) {
+                violations.push(Violation::NotCovered {
+                    line,
+                    side,
+                    from: 0.0,
+                    to: 1.0,
+                });
+            }
+        }
+    }
+}
+
+/// Returns the end of a line, as a parameter, nearer a point.
+fn end_nearer(skeleton: &Skeleton, line: LineRef, aim: [f32; 3]) -> f32 {
+    let plan = [aim[0], aim[2]];
+    let start = skeleton.station_position(Station::new(line, 0.0));
+    let end = skeleton.station_position(Station::new(line, 1.0));
+    match (start, end) {
+        (Some(start), Some(end)) => {
+            if distance(start, plan) <= distance(end, plan) {
+                0.0
+            } else {
+                1.0
+            }
+        }
+        _ => 0.0,
+    }
+}
+
+/// Returns the parameter of the point on a line nearest a station point.
+///
+/// # Invariants
+///
+/// This is the corner's parameter on the line a path is joining, and it is a **search** rather
+/// than a comparison of the line's two ends: a rim's ends are one vertex, so which end is nearer
+/// says nothing about where round the loop a corner is. The search is `O(nodes)` and is made once
+/// per line transition — a junction, a ridge tip reaching the rim — rather than once per face.
+fn parameter_at(skeleton: &Skeleton, line: LineRef, point: [f32; 3]) -> f32 {
+    let nodes = skeleton.nodes(line);
+    if nodes.len() < 2 {
+        return 0.0;
+    }
+    let (span, total) = crate::skeleton::arc_lengths(&nodes);
+    crate::skeleton::parameter_of(&nodes, &span, total, [point[0], point[2]])
+}
+
+/// Checks that no polyline crosses itself.
+fn check_self_intersection(skeleton: &Skeleton, violations: &mut Vec<Violation>) {
+    for line in skeleton.lines() {
+        let nodes = skeleton.nodes(line);
+        if nodes.len() < 4 {
+            continue;
+        }
+        let last = nodes.len() - 2;
+        for from in 0..=last {
+            for to in from + 2..=last {
+                // Edges that share a node are neighbours and meet by construction.
+                if from + 1 == to {
+                    continue;
+                }
+                if crosses(
+                    nodes[from].position,
+                    nodes[from + 1].position,
+                    nodes[to].position,
+                    nodes[to + 1].position,
+                ) {
+                    violations.push(Violation::SelfIntersects { line, from, to });
+                }
+            }
+        }
+    }
+}
+
+/// Checks that no rib crosses a line on its way up the flank, and that no two ribs cross.
+fn check_ribs(
+    skeleton: &Skeleton,
+    sampling: &Sampling,
+    belts: &[crate::expand::Belt],
+    violations: &mut Vec<Violation>,
+) {
+    let mut ribs: Vec<(BeltRef, LineRef, Vec2, Vec2)> = Vec::new();
+    for belt in belts {
+        let valley = &skeleton.valleys[belt.reference.valley.0];
+        for (offset, station) in [
+            (
+                0usize,
+                valley.nodes[belt.reference.segment].station(belt.reference.side),
+            ),
+            (
+                1,
+                valley.nodes[belt.reference.segment + 1].station(belt.reference.side),
+            ),
+        ] {
+            let (Some(foot), Some(head)) = (
+                sampling.node_vertex(
+                    skeleton,
+                    LineRef::Valley(belt.reference.valley),
+                    belt.reference.segment + offset,
+                ),
+                sampling.vertex(station).ok(),
+            ) else {
+                continue;
+            };
+            ribs.push((
+                belt.reference,
+                station.line,
+                sampling.sample(foot).position,
+                sampling.sample(head).position,
+            ));
+        }
+    }
+
+    for (reference, named, foot, head) in &ribs {
+        for line in skeleton.lines() {
+            if line == *named {
+                continue;
+            }
+            let nodes = skeleton.nodes(line);
+            for pair in nodes.windows(2) {
+                if crosses(*foot, *head, pair[0].position, pair[1].position) {
+                    violations.push(Violation::RibCrossesLine {
+                        belt: *reference,
+                        line,
+                    });
+                    break;
+                }
+            }
+        }
+    }
+    for (index, (reference, _, foot, head)) in ribs.iter().enumerate() {
+        for (other, _, other_foot, other_head) in ribs.iter().skip(index + 1) {
+            if crosses(*foot, *head, *other_foot, *other_head) {
+                violations.push(Violation::RibCrossesRib {
+                    first: *reference,
+                    second: *other,
+                });
+                break;
+            }
+        }
+    }
+}
+
+/// Checks that every sample of every line is inside the footprint.
+fn check_inside(skeleton: &Skeleton, sampling: &Sampling, violations: &mut Vec<Violation>) {
+    let outline: Vec<Vec2> = skeleton
+        .footprint
+        .iter()
+        .map(|node| node.position)
+        .collect();
+    for line in skeleton.lines() {
+        if line == LineRef::Footprint {
+            continue;
+        }
+        for (node, sample) in sampling.run(line).samples.iter().enumerate() {
+            if inside(&outline, sample.position) {
+                continue;
+            }
+            violations.push(Violation::OutsideFootprint { line, node });
+        }
+    }
+}
+
+/// Returns whether a plan point is inside a simple closed polygon, by ray casting.
+///
+/// # Invariants
+///
+/// A point **on** the outline counts as inside. Every ridge tip and every valley mouth is a
+/// footprint vertex, so a boundary point is the ordinary case here and not a degenerate one: a
+/// test that called it outside would report every ridge in the massif, at the node where it
+/// reaches the rim.
+///
+/// The polygon is the authored loop **without** the repeat [`crate::Skeleton::nodes`] adds, so the
+/// closing edge is counted once. The ray is along `+x` and a vertex is counted by the half-open
+/// rule `(a.z > p.z) != (b.z > p.z)`, which is what stops a vertex the ray passes exactly through
+/// being counted twice.
+pub fn inside(outline: &[Vec2], point: Vec2) -> bool {
+    if outline.len() < 3 {
+        return false;
+    }
+    for index in 0..outline.len() {
+        let from = outline[index];
+        let to = outline[(index + 1) % outline.len()];
+        if distance_to_segment(point, from, to) <= WELD {
+            return true;
+        }
+    }
+    let mut inside = false;
+    let mut previous = outline[outline.len() - 1];
+    for &current in outline {
+        if (current[1] > point[1]) != (previous[1] > point[1]) {
+            let width = previous[1] - current[1];
+            if width.abs() > f32::EPSILON {
+                let crossing =
+                    current[0] + (point[1] - current[1]) / width * (previous[0] - current[0]);
+                if point[0] < crossing {
+                    inside = !inside;
+                }
+            }
+        }
+        previous = current;
+    }
+    inside
+}
+
+/// Returns how far a plan point is from a plan segment.
+fn distance_to_segment(point: Vec2, from: Vec2, to: Vec2) -> f32 {
+    let edge = crate::math::difference(to, from);
+    let length_squared = crate::math::dot(edge, edge);
+    let amount = if length_squared > f32::EPSILON {
+        crate::math::clamp(
+            crate::math::dot(crate::math::difference(point, from), edge) / length_squared,
+            0.0,
+            1.0,
+        )
+    } else {
+        0.0
+    };
+    distance(point, crate::math::lerp(from, to, amount))
+}
+
+/// Returns whether two plan segments cross in their interiors.
+///
+/// # Invariants
+///
+/// A shared endpoint is **not** a crossing, and neither is a proper touch when the two are
+/// welded apart by less than [`WELD`]: a rib meets the line it climbs to by construction, and a
+/// test that called that a crossing would report every rib in the skeleton. That is what the
+/// tolerance is for, and it is the same tolerance the corner resolution uses.
+fn crosses(a: Vec2, b: Vec2, c: Vec2, d: Vec2) -> bool {
+    let first = crate::math::cross(crate::math::difference(b, a), crate::math::difference(c, a));
+    let second = crate::math::cross(crate::math::difference(b, a), crate::math::difference(d, a));
+    let third = crate::math::cross(crate::math::difference(d, c), crate::math::difference(a, c));
+    let fourth = crate::math::cross(crate::math::difference(d, c), crate::math::difference(b, c));
+    let straddles = |left: f32, right: f32, tolerance: f32| {
+        (left > tolerance && right < -tolerance) || (left < -tolerance && right > tolerance)
+    };
+    let scale = (distance(a, b) * distance(c, d)).max(f32::EPSILON);
+    let tolerance = WELD * scale;
+    straddles(first, second, tolerance) && straddles(third, fourth, tolerance)
+}
