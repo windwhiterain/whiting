@@ -466,3 +466,87 @@ Three things the design above does not say, found while adding it:
   two crates say *soft edge* for one intent and mean different mechanisms by it, and a soft edge
   in neither is C1.
 
+## Amendments (2026-10-07, two ranges and a valley between them)
+
+Rewriting `landscape` as a corridor rather than a subject. Full argument in
+[proposals/valley-corridor.md](../proposals/valley-corridor.md). Two of these are about the
+massif; the rest are about the scene and the kit and are recorded here because they were found
+through this crate.
+
+### Relief is a function of the distance to the eye, not of the massif's own width
+
+`SUMMIT_ELEVATION` was a number chosen so that **one massif photographed from outside** looked
+right: low against its own width, so that the silhouette is a mountain and not a spire. Standing
+the same massif twice and putting the eye **between** the two copies changes what the number is
+for. The picture is now governed by the angle the summit makes from the eye — the summit over the
+distance to it — and a summit chosen to look right as an object puts the walls far too low in the
+frame. It went from 720 to 1044, and every crest node with it.
+
+The cost is measurable and worth stating next to the change. A flank's cells are bounded across by
+a rib and along by the crest step, so raising the relief without changing the plan makes the same
+step produce a taller triangle for the same width: median aspect 5.2 → 6.7, worst 125 → 375, and
+545 of 1005 facets over 6. **A heightfield's coarseness budget and a skeleton's step budget are
+the same budget**, and relief is spent out of it.
+
+### A range that is one blob in the plan is a thing in the frame, not a wall of it
+
+Measured, and the measurement is printed by `alpine_probe`:
+
+```
+framing from the eye, half frame 35.5 degrees off the axis:
+  west: summit at 37.6 degrees, nearest point at 35.8
+  east: summit at 28.8 degrees, nearest point at 26.4
+```
+
+A range's **nearest point and its summit are both on the ray from the eye through the range's own
+centre**, so the two agree to within a degree or two, and the whole range occupies **one narrow
+slice of azimuth** — about two degrees here, against a half-frame of thirty-five. To be a wall a
+range has to reach from the axis out past the edge of the frame, which is the whole width of the
+frame; to have its summit inside the frame it has to stay well within it. One blob in the plan
+cannot do both at any relief and at any focal length, and the two numbers moving together is why:
+they are the same ray.
+
+This closes the "a fan is not a massif" open question above from the other side. Authoring
+genuinely different crests removes the *cone* from a fan of equal ridges, and it does not make a
+range any less a **single blob**. A wall needs the plan itself elongated, which for this skeleton
+means the reaches — and the plan area is a function of the reaches, so elongating a range grows
+`radius`, which is the multiplier half the gallery's scene constants are written in. It is a
+change to the shape of the object and not to the shape of one of its faces.
+
+One thing this turned up while measuring it: `stood_at` centres a range on its **bounding box**,
+and this massif's bounding box is not centred on its summit, so the two copies are translations
+rather than mirrors and the valley is lopsided — the east wall reads nearer and larger than the
+west one. That is a better picture than a mirror would be and it is left alone, but a scene whose
+argument rests on a symmetrical corridor cannot assume it.
+
+### A painted horizon's depth is the caller's, and a creased noise needs an envelope
+
+Two things in `ridges`, both of which the same scene found at once. **How many ranges close a
+horizon is a fact about the land in front of the eye** — a valley that recedes through four ranges
+and a plateau that stops at the first are the same backdrop at two depths — so the layer count is
+a parameter and not a constant; a constant forces a scene to lie about either how far its horizon
+is or how far the air has closed. And **a creased noise with nothing under it is a row of tents**:
+peaks need a broad envelope at a third of the crease's own frequency to stand *on*, which is what
+makes two peaks a massif and six peaks a chain. The existing note already said a smooth bump the
+width of the frame is a volcano; the same argument one octave down says an even row of creases is
+a row of pyramids.
+
+### Three facts about the frame, found while trying to stand in one
+
+Not about the crate, and recorded because they are the kind of thing that costs a day each.
+
+- **A backlit surface is black and a second lamp cannot fix it.** The pipeline carries one
+  directional light; the second is a point light, and in a scene sixty times its own size what
+  reaches a surface is a fact about how far the lamp stands, not how bright it is. A face's own
+  share of the sky has to be decided where the face's normal and the sun's bearing both are —
+  in the surface body, from a constant the scene already has.
+- **A world-space pattern on a floor the eye is standing on has to fold back into its own mean.**
+  A value-noise cell is a fixed length of ground, so under the eye it is a cell across a third of
+  the frame and at the far end it is a pixel. Neither reads, and a per-pixel pattern that would
+  fix it slides across the picture when the camera moves.
+- **A plain's undulation has to be coarser than the plain's grid.** A ripple the grid cannot carry
+  comes back as the grid: a hundred-unit ripple sampled every four hundred units is four hundred
+  unrelated cells, and near the eye — where one cell is a sixth of the frame — it is a floor tiled
+  in rectangles. The wavelength has to stay several cells at every octave.
+
+

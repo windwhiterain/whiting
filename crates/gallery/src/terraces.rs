@@ -1022,7 +1022,10 @@ const GRADE: &str = r#"
     let ray = ray_through(in.uv);
     if depth >= 1.0 {
         var sky = sky_colour(ray);
-        sky = ridges(sky, ray, 1.0);
+        // **Three** ranges, and not a receding series: this scene's horizon is the valley's own
+        // mist, so the painted ranges are the one step of distance beyond it rather than the
+        // several a valley looked into needs.
+        sky = ridges(sky, ray, 1.0, 3);
         color = sky;
     }
 

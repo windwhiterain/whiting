@@ -1619,6 +1619,11 @@ const GRADE: &str = r#"
     /// skyline gains two more ranges behind it in the places the real one has a saddle.
     const RIDGE_SCALE: f32 = 0.50;
 
+    /// How many painted ranges stand behind the modelled one, which is three: the yard is closed
+    /// on three sides and the ranges that show are the ones showing through the gaps in it, and a
+    /// fourth would only ever be a fourth step of ink behind two others.
+    const RIDGE_LAYERS: i32 = 3;
+
     let ray = ray_through(in.uv);
     if depth >= 1.0 {
         // The sky, and behind it the ranges the air has already closed over.
@@ -1631,7 +1636,7 @@ const GRADE: &str = r#"
         // drawn *after* the air, and where the modelled range's own silhouette dips they come
         // through above it: three ridges receding, each a step deeper than the one behind,
         // which is what a far range looks like and what one flat cut-out never does.
-        color = ridges(air_sky(ray), ray, RIDGE_SCALE);
+        color = ridges(air_sky(ray), ray, RIDGE_SCALE, RIDGE_LAYERS);
     } else {
         let world = world_position(in.uv, depth);
         color = mix(color, air_colour(), air_closure(uniforms.camera.position, world));

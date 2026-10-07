@@ -88,6 +88,34 @@ fn main() {
         Err(failure) => println!("build failed: {failure}"),
     }
     write_plan(&massif);
+    write_framing();
+}
+
+/// Reports where the two ranges stand in the frame, seen from the eye.
+///
+/// # Invariants
+///
+/// **The two azimuths per range come out within a degree or two of each other**, and the report
+/// says so rather than leaving it to be spotted. A range's nearest point and its summit are both
+/// on the ray from the eye through the range's own centre, so one blob in the plan subtends one
+/// narrow slice of azimuth — measured here at about two degrees, against a half-frame of
+/// thirty-five. A two-degree object is a thing standing in the frame, not a wall of it: to be a
+/// wall the range would have to reach from the axis out past the edge, which is the whole width of
+/// the frame. No relief and no focal length changes that number's order of magnitude, and having
+/// it printed means a change to any of them can be seen not to.
+fn write_framing() {
+    let half = landscape::field_of_view() * 0.5 * 180.0 / std::f64::consts::PI;
+    println!("framing from the eye, half frame {half:.1} degrees off the axis:");
+    for (name, summit, nearest) in landscape::framing() {
+        let verdict = if nearest > half {
+            "past the edge"
+        } else {
+            "inside"
+        };
+        println!(
+            "  {name}: summit at {summit:.1} degrees, nearest point at {nearest:.1} — {verdict}"
+        );
+    }
 }
 
 /// Reports the faces that are long and thin, and where they are.
