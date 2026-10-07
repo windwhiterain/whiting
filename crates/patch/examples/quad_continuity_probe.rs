@@ -210,24 +210,29 @@ fn inside_parameters(degree: usize, slot: EdgeSlot, t: usize, h: f64) -> (f64, f
 }
 
 /// The worst tangent-plane gap across an edge over an explicit set of boundary positions.
+///
+/// Takes the nets rather than the model, so a probe can measure a scratch copy it has edited
+/// directly. A measurement that can only see the enforced state cannot see what an alternative
+/// would have been.
 fn edge_gap_over(
-    mesh: &PatchMesh,
+    nets: &[RectNet],
+    quads: &[[u32; 4]],
+    degree: usize,
     faces: [(u32, EdgeSlot); 2],
     step: f64,
     positions: impl IntoIterator<Item = usize>,
 ) -> f64 {
-    let degree = mesh.degree();
     let (master, slave) = (faces[0], faces[1]);
-    let here = edge_endpoints(mesh.quads()[master.0 as usize], master.1);
-    let there = edge_endpoints(mesh.quads()[slave.0 as usize], slave.1);
+    let here = edge_endpoints(quads[master.0 as usize], master.1);
+    let there = edge_endpoints(quads[slave.0 as usize], slave.1);
     positions
         .into_iter()
         .filter(|t| *t <= degree)
         .map(|t| {
             let other_t = mirrored_position(degree, here, there, t);
             folded_angle(
-                edge_normal(mesh.net(master.0), degree, master.1, t, step),
-                edge_normal(mesh.net(slave.0), degree, slave.1, other_t, step),
+                edge_normal(&nets[master.0 as usize], degree, master.1, t, step),
+                edge_normal(&nets[slave.0 as usize], degree, slave.1, other_t, step),
             )
         })
         .fold(0.0f64, f64::max)
@@ -515,8 +520,22 @@ fn main() {
     let mut hard_worst = 0.0f64;
     let mut along_worst = 0.0f64;
     for (edge, faces) in &edges {
-        let interior = edge_gap_over(&mesh, *faces, STEP, 1..DEGREE);
-        let ends = edge_gap_over(&mesh, *faces, STEP, [0, DEGREE]);
+        let interior = edge_gap_over(
+            mesh.nets(),
+            mesh.quads(),
+            mesh.degree(),
+            *faces,
+            STEP,
+            1..DEGREE,
+        );
+        let ends = edge_gap_over(
+            mesh.nets(),
+            mesh.quads(),
+            mesh.degree(),
+            *faces,
+            STEP,
+            [0, DEGREE],
+        );
         if soft_edges.contains(edge) {
             soft_interior = soft_interior.max(interior);
             soft_ends = soft_ends.max(ends);
@@ -646,7 +665,16 @@ fn main() {
     let after_elevation = interior_edges(&tall)
         .iter()
         .filter(|(edge, _)| soft_edges.contains(edge))
-        .map(|(_, faces)| edge_gap_over(&tall, *faces, STEP, 1..DEGREE + 1))
+        .map(|(_, faces)| {
+            edge_gap_over(
+                tall.nets(),
+                tall.quads(),
+                tall.degree(),
+                *faces,
+                STEP,
+                1..DEGREE + 1,
+            )
+        })
         .fold(0.0f64, f64::max);
     if worst_residual > EXACT {
         failures.push("6  elevation preserves every tag");
@@ -679,7 +707,14 @@ fn main() {
     let grab = DEGREE / 2;
     let grab_index = boundary_index(DEGREE, slot, grab);
     let split_before = boundary_split(&mesh, &soft_edge, face, slot, grab);
-    let gap_before = edge_gap_over(&mesh, soft_faces, STEP, 1..DEGREE);
+    let gap_before = edge_gap_over(
+        mesh.nets(),
+        mesh.quads(),
+        mesh.degree(),
+        soft_faces,
+        STEP,
+        1..DEGREE,
+    );
     let mut edited = build_with(&derived, &soft_edges);
     let start = edited.net(face)[grab_index];
     let outcome = edited.set_control_point(
@@ -690,7 +725,14 @@ fn main() {
     );
     let drag_distance = start.distance(edited.net(face)[grab_index]);
     let split_after = boundary_split(&edited, &soft_edge, face, slot, grab);
-    let gap_after = edge_gap_over(&edited, soft_faces, STEP, 1..DEGREE);
+    let gap_after = edge_gap_over(
+        edited.nets(),
+        edited.quads(),
+        edited.degree(),
+        soft_faces,
+        STEP,
+        1..DEGREE,
+    );
     if outcome != Edit::Applied {
         failures.push("7  a drag on a shared boundary is applied");
     }
@@ -922,7 +964,16 @@ fn main() {
         let gap = interior_edges(&model)
             .iter()
             .filter(|(edge, _)| soft_edges.contains(edge))
-            .map(|(_, faces)| edge_gap_over(&model, *faces, STEP, 1..degree))
+            .map(|(_, faces)| {
+                edge_gap_over(
+                    model.nets(),
+                    model.quads(),
+                    model.degree(),
+                    *faces,
+                    STEP,
+                    1..degree,
+                )
+            })
             .fold(0.0f64, f64::max);
         let mut all_soft = PatchMesh::build(derived.positions.clone(), derived.quads.clone());
         for (key, _) in interior_edges(&bare) {
