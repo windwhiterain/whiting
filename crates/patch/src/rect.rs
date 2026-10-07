@@ -25,7 +25,7 @@
 use core::fmt;
 
 use crate::bernstein::basis;
-use crate::simplex::Point3;
+use crate::point::Point3;
 
 /// The number of control points in a net of the given degrees.
 pub const fn count(degree_u: usize, degree_v: usize) -> usize {

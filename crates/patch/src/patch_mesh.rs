@@ -3,7 +3,8 @@
 use std::collections::BTreeMap;
 
 use crate::continuity::{Continuity, SoftEdge, slave_interior};
-use crate::simplex::{Point3, SimplexNet};
+use crate::point::Point3;
+use crate::simplex::SimplexNet;
 use crate::topology::{
     EdgeKey, EdgeSlot, FaceId, Topology, VertexId, boundary_index, canonical, edge_endpoints,
     interior_index, mirrored_position,

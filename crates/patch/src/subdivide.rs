@@ -19,7 +19,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::simplex::Point3;
+use crate::point::Point3;
 use crate::topology::{EdgeKey, FaceId, VertexId, canonical};
 
 /// Where a quad-mesh vertex came from.

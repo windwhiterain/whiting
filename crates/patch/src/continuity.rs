@@ -8,7 +8,7 @@
 //! A hard edge is therefore *not* "no relation between the two sides". It is a shared curve with
 //! independent interiors.
 
-use crate::simplex::Point3;
+use crate::point::Point3;
 use crate::topology::{EdgeKey, EdgeSlot, FaceId};
 
 /// How an edge joins the faces on it.
