@@ -48,14 +48,8 @@
 //!
 //! [`interior_index`](crate::topology::interior_index) hands out positions `0..=degree`, but the
 //! invariant is applied only at `1..=degree - 1`. The two end positions are not this edge's to
-//! decide: `(1, 0)` on a `MinU` row is also a point of the same face's `MinV` boundary, and the
-//! boundary is shared geometry.
-//!
-//! Those two demands are not merely in tension, they are contradictory. Shared, `(1, 0)` on the
-//! slave equals `(1, 0)` on the master. Written by the invariant at `t = 0`, it would instead equal
-//! `C[0] + mu * (C[0] - A[0])`, and equating the two forces `mu = -1` — the case where the slave's
-//! row is the master's row copied rather than reflected, which is the wrong side of the seam. So
-//! the ends are left to the boundary, and the private interior is what the invariant owns.
+//! decide on their own: `(1, 0)` on a `MinU` row is also a point of the same face's `MinV`
+//! boundary, and the boundary is shared geometry.
 //!
 //! What that costs is **more than the ends of the seam**. The cross-boundary derivative sums over
 //! the *whole* adjacent row, and the Bernstein weights at positions `0` and `degree` are positive
@@ -66,24 +60,37 @@
 //!
 //! Raising the degree does not fix this. The end weights shrink but never reach zero.
 //!
+//! ## The ends themselves are not the obstruction, and an earlier claim is withdrawn
+//!
+//! This module previously argued that enforcing the invariant at `t = 0` and `t = degree` is
+//! contradictory — that the two positions are shared geometry, that writing one as
+//! `C + mu * (C - A)` while sharing demands it equal `A` forces `mu == -1`, and that `mu == -1` puts
+//! the slave's row on the master's side of the seam. **That argument does not survive measurement.**
+//!
+//! Run the same invariant over `0..=degree`, in [`PatchMesh::enforce`]'s own order, and a lone soft
+//! edge comes out exactly G1: **0.000e0 rad** at the interior positions and **2.107e-8 rad** at the
+//! ends, the second being the `acos` floor of the probe, with the boundary sharing reclaiming
+//! `5.0e-16` of what the soft write moved. The gap above is therefore *not* a limit of the
+//! representation. It is the price of this decision, and it is being paid for nothing.
+//!
+//! What does fail is narrower, and it is countable. A row end is one step in from its own edge,
+//! which puts it on the **perpendicular** edge's boundary row, one step along. So when two soft
+//! seams meet at a mesh vertex, their two row ends land on the *same place on the same shared edge*:
+//! two equations, one value, and the boundary sharing can only give it to one of them. On the probe's
+//! sample that is **0** such places for a lone seam, **1** for the minimal two-seam case and **13**
+//! on the full sample — and across all three, a seam is exactly continuous **if and only if** no
+//! shared place is written by two seams. That equivalence is asserted by the probe, not merely
+//! observed.
+//!
 //! # What would fix it
 //!
-//! The **corner stencil**. At a mesh vertex the corner-adjacent control points satisfy
-//! `q_i = -mu_i * q_(i-1)` around the cycle of incident faces, where `q` is measured from the vertex
-//! itself, so closing the cycle requires
+//! Not a parameter per edge. **One degree of freedom per shared place that two seams write as a row
+//! end** — which is exactly what a corner scale `kappa`, independent of the edge's `mu`, would
+//! buy, and on this evidence the only thing it would buy.
 //!
-//! ```text
-//! (-1)^valence * product of the mu's around the vertex == 1
-//! ```
-//!
-//! A Doo–Sabin face centroid has valence 3, so every-`mu == 1` asks for `(-1)^3 == 1` and fails. The
-//! only consistent solution is `q == 0` — every corner-adjacent control point collapsed onto the
-//! vertex, which is smooth and is a pinch. That is a real constraint on what `mu` a user may choose,
-//! not something a formula absorbs.
-//!
-//! Until the stencil exists, this module deliberately leaves the row ends to boundary sharing
-//! rather than applying the invariant over them. A crack is worse than a crease, so the failure mode
-//! here is a bounded smoothness defect, measured by `examples/quad_continuity_probe.rs` measurement 3.
+//! Until that exists, the module deliberately leaves the row ends to boundary sharing rather than
+//! applying the invariant over them. A crack is worse than a crease, so the failure mode here is a
+//! bounded smoothness defect, measured by `examples/quad_continuity_probe.rs` measurements 3 and 12.
 
 use crate::point::Point3;
 use crate::topology::{EdgeKey, EdgeSlot, FaceId};
