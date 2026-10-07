@@ -707,6 +707,38 @@ incremental compile.
       enumerated a bucket from a shader that does not write the location), and
       `scene::declared_description` writes the enumeration's contract into the sidecar header.
       The harness's `describe_outputs` is the one place the two are chosen between, by name.
+    - `outputs`: an **optional** `Dict` on the scene document, keyed by the name a caller looks an
+      image up under, of a closed `Struct` of `location` and `type`. This is the half of the
+      typed-outputs split a scene can reach; see
+      [proposals/agent-content-identity.md](proposals/agent-content-identity.md).
+      - **decision**: a scene declares a `location` and a `type` and **never a `point`**. A
+        point names an instance entry the compiler has to create, so a scene naming one would be
+        naming a resource rather than asking for a picture, and could name one that does not
+        exist. The compiler generates `output_<name>`, sizes the texture to the frame and takes
+        the format from the type through `TexelType::format`, so the three numbers that have to
+        agree — point, location, type — are written from one place on the compiler's side.
+      - **invariant**: the locations must run **1, 2, 3 … with none twice and no gaps**, and a
+        document that does not is refused by name. Location zero is the frame, and a location is
+        both the address a shader writes and a position in the pass's colour attachment order. A
+        gap would leave a shader writing a target no pass has, and a repeat would leave two
+        outputs on one attachment. The targets are therefore **built in the declared locations'
+        order**, not in the order the dictionary iterates, which is what makes `@location(i)` and
+        the declaration the same number by construction rather than by an author keeping two
+        lists in step — the same lesson `texture-channel.md` records from an **inferred** rule
+        that broke six gallery scenes at once.
+      - **invariant**: **every stage that draws the scene's geometry writes them** — lighting and
+        emission alike — because a declared output is a claim about every pixel and an emissive
+        surface is a surface the picture shows. A stage that drew and did not name them would
+        leave the image holding whatever an earlier fragment put there, which is a wrong answer
+        wearing the right one. This is enforced rather than documented: `check_outputs` refuses a
+        shader that declares an output and does not write its location, and `render_outputs`
+        refuses a declared output no pass wrote.
+      - **invariant**: an **absent** field is no declared outputs, so a scene that names none
+        emits the documents it emitted before the field existed. Verified: every gallery scene's
+        sha256 is unchanged.
+      - the harness needs nothing for this. `describe_outputs` already routes a name the registry
+        does not hold to `scene::declared_description`, and `marks_alpha` already keeps a
+        scene-declared output's padding from being read as a marker.
     - **invariant**: `Depth` reports the buffer verbatim, including `1.0` at a pixel nothing was
       drawn on, and marks the background in **alpha** rather than by zeroing the colour — the
       same marker `Position` uses, so a caller reading two channels together reads one rule.
