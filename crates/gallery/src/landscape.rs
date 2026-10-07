@@ -516,6 +516,16 @@ pub fn landscape() -> Value {
     ])
 }
 
+/// How many nodes a crest is written with.
+///
+/// It is a node count and not a distance because a crest that wanders needs the nodes to wander
+/// with: the wander is written into the node positions, so a crest sampled coarsely from a
+/// straight bearing would lose the very thing that makes it not a radius.
+const CREST_NODES: usize = 17;
+
+/// How many crests this massif has.
+const CREST_COUNT: usize = 10;
+
 /// One hand-placed crest.
 ///
 /// # Invariants
@@ -523,15 +533,10 @@ pub fn landscape() -> Value {
 /// Every field is a number the author chose, and none of them is derivable from another. That is
 /// the point of the table: the fields are deliberately **uncorrelated**, so the crests do not
 /// sort into a family of similar ridges the way a generator's parameters do.
-/// [`Crest::reach`] and [`Crest::tip`] in particular are independent, which is what puts a short
-/// crest high and a long one low — a shoulder beside the summit rather than another skirt of it.
+/// [`Crest::reach`] and the last entry of [`Crest::heights`] in particular are independent, which
+/// is what puts a short crest high and a long one low — a shoulder beside the summit rather than
+/// another skirt of it.
 ///
-/// - **`profile` shapes the fall.** Elevation at a fraction `f` is
-///   `tip + (summit - tip) * (1 - f)^profile`, so a profile above one gives most of the height
-///   away in the first third and runs out nearly level, which is a shoulder; below one and the
-///   crest carries its height out and drops at the end, which is a cliff above the foot. Both
-///   ends are exact whatever the exponent, so a crest still leaves the summit at the summit's
-///   height and still reaches the rim at the rim's.
 /// - **`sharpness` is read twice.** It is the stone the face is cut from, which travels to the
 ///   shader as the belt's ruggedness, and it sets [`Crest::sampling`]. One number, one decision:
 ///   the crests that are cut to be read as rock are the ones sampled finely enough to read.
@@ -551,25 +556,23 @@ struct Crest {
     half_width: f32,
     /// How far it wanders off its own bearing at its middle, as a fraction of its reach.
     bend: f32,
-    /// Where it meets the rim, and how high it is there.
-    tip: f32,
-    /// The elevations it is at a quarter, a half and three quarters along.
+    /// The elevation of every one of its nodes, first to last.
     ///
     /// # Invariants
     ///
-    /// **Written out rather than shaped by an exponent**, and that is the difference between a
-    /// mountain and a tent. One smooth curve from summit to foot is a ruled surface: a crest and
-    /// a valley that both descend evenly are nearly parallel, the surface between them is nearly
-    /// planar, and ten nearly planar surfaces meeting at one point are folded paper however good
-    /// the silhouette is. Three heights are enough to put a **bench** — two of them close
-    /// together, so the crest runs out nearly level for a stretch — or a **headwall**, where the
-    /// crest holds its height and then goes down all at once. Both are the shapes a real crest is
-    /// made of, and both break a flank into faces that are not one plane.
+    /// **One number per node, with no curve behind them.** A crest is [`CREST_NODES`] elevations
+    /// from the summit to the rim and the mesh is sampled at exactly these values, so a bench an
+    /// author writes is a bench in the geometry rather than a shape a formula happens to produce.
+    /// A single curve from summit to foot cannot promise the two shapes a real crest is made of —
+    /// a **bench**, where two of its numbers sit close together and the crest runs out nearly
+    /// level for a stretch, and a **headwall**, where it holds its height and then goes down all
+    /// at once — and it is that promise, not the silhouette, that separates a mountain from a
+    /// tent.
     ///
-    /// The three are **strictly decreasing**, so the line stays non-increasing whatever is
-    /// interpolated between them. The fourth height is [`Crest::tip`], so a crest still arrives at
-    /// the rim at exactly the rim's elevation.
-    heights: [f32; 3],
+    /// The column is **non-increasing**, which is what a line leaving a summit must be. Its first
+    /// entry is [`SUMMIT_ELEVATION`] because every crest starts at the one apex, and its last is
+    /// where the crest meets the rim.
+    heights: [f32; CREST_NODES],
 }
 
 impl Crest {
@@ -584,26 +587,32 @@ impl Crest {
         1.15 - 0.55 * self.sharpness
     }
 
-    /// Returns the elevation this crest has at a fraction of its run.
+    /// Returns the authored elevation of one of this crest's nodes.
     ///
     /// # Invariants
     ///
-    /// **Piecewise linear between the authored heights, and non-increasing throughout.** The
-    /// knots are the summit followed by [`Crest::heights`], and the last of them is the tip, so
-    /// the line still leaves at the summit's height and still arrives at the rim's — an exponent
-    /// cannot promise both and a table of heights can.
-    fn elevation(&self, fraction: f32) -> f32 {
-        let knots = [
-            SUMMIT_ELEVATION,
-            self.heights[0],
-            self.heights[1],
-            self.heights[2],
-            self.tip,
-        ];
-        let position = fraction.clamp(0.0, 1.0) * (knots.len() - 1) as f32;
-        let low = (position.floor() as usize).min(knots.len() - 2);
+    /// It is the table read and nothing else, because the mesh samples a crest at exactly these
+    /// nodes. The read between two of them is [`Crest::height_at`]'s job and exists for the
+    /// correspondence between a valley's station and a crest's parameter, not for the mesh.
+    fn height(&self, node: usize) -> f32 {
+        self.heights[node]
+    }
+
+    /// Returns the elevation this crest is at between two of its nodes.
+    ///
+    /// # Invariants
+    ///
+    /// **Piecewise linear in the authored numbers, and non-increasing throughout** because they
+    /// are. A valley names its stations by *parameter* along each crest it runs beside rather
+    /// than by node index, so the floor under such a station is this read and not
+    /// [`Crest::height`] — which is what lets "the valley runs below the rock on both sides of it"
+    /// be checked against the table instead of argued about.
+    fn height_at(&self, fraction: f32) -> f32 {
+        let position = fraction.clamp(0.0, 1.0) * (CREST_NODES - 1) as f32;
+        let low = (position.floor() as usize).min(CREST_NODES - 2);
         let amount = position - low as f32;
-        knots[low] + (knots[low + 1] - knots[low]) * amount
+        let (from, to) = (self.heights[low], self.heights[low + 1]);
+        from + (to - from) * amount
     }
 
     /// Returns where this crest stands at a fraction of its run.
@@ -638,25 +647,33 @@ impl Crest {
 /// of it are the two things a real foot is made of; what is forbidden is the jump *between*
 /// neighbours, which is a fact about the walk rather than about the mountain.
 ///
-/// **The reaches run from 295 to 820 and the tips from 7 to 64**, and the two are placed
-/// independently of each other. The reach sets where the foot is, and the tip sets how much of
-/// the mountain is still standing there, so a short crest with a high tip is a horn over a
-/// shoulder and a long crest with a low tip is a tongue running out to the plain. Those two
+/// **The reaches run from 295 to 820 and the last heights from 7 to 64**, and the two are placed
+/// independently of each other. The reach sets where the foot is, and the last height sets how
+/// much of the mountain is still standing there, so a short crest that ends high is a horn over a
+/// shoulder and a long crest that ends low is a tongue running out to the plain. Those two
 /// readings are what a fan cannot produce, because in a fan they are the same number.
 ///
 /// **The three horns — 2, 5 and 6 — are the crests that make the skyline.** Each is short and
 /// holds its height well past its middle, so each stands beside the summit as a crest of its own
 /// with a saddle between, and the silhouette stops being a triangle. They are the reason the
 /// picture reads as a mountain rather than as a cone with facets on it.
-const CRESTS: [Crest; 10] = [
+///
+/// **Each column of heights is a different fall**, read across rather than down: crest 2 runs out
+/// nearly level for its first half before turning down, crest 5 drops away early and carries on
+/// as a tail, and crest 6 — the shortest of all — holds above five hundred until its last
+/// third. A column of evenly spaced numbers is a ruled surface, and ten of those meeting at one
+/// point is the tent this scene was rewritten to stop being, whatever else is done to them.
+const CRESTS: [Crest; CREST_COUNT] = [
     Crest {
         bearing: 0.0,
         reach: 820.0,
         sharpness: 0.40,
         half_width: 0.030,
         bend: 0.075,
-        tip: 18.0,
-        heights: [655.0, 400.0, 300.0],
+        heights: [
+            720.0, 690.0, 655.0, 616.0, 574.0, 528.0, 478.0, 424.0, 372.0, 336.0, 306.0, 284.0,
+            268.0, 250.0, 214.0, 140.0, 18.0,
+        ],
     },
     Crest {
         bearing: 42.0,
@@ -664,8 +681,10 @@ const CRESTS: [Crest; 10] = [
         sharpness: 0.52,
         half_width: 0.038,
         bend: -0.065,
-        tip: 11.0,
-        heights: [600.0, 330.0, 190.0],
+        heights: [
+            720.0, 676.0, 632.0, 590.0, 548.0, 504.0, 458.0, 408.0, 356.0, 320.0, 296.0, 286.0,
+            278.0, 272.0, 250.0, 172.0, 11.0,
+        ],
     },
     Crest {
         bearing: 73.0,
@@ -673,8 +692,10 @@ const CRESTS: [Crest; 10] = [
         sharpness: 0.94,
         half_width: 0.022,
         bend: 0.045,
-        tip: 58.0,
-        heights: [700.0, 620.0, 300.0],
+        heights: [
+            720.0, 716.0, 712.0, 707.0, 700.0, 690.0, 676.0, 658.0, 636.0, 608.0, 574.0, 534.0,
+            488.0, 438.0, 396.0, 330.0, 58.0,
+        ],
     },
     Crest {
         bearing: 111.0,
@@ -682,8 +703,10 @@ const CRESTS: [Crest; 10] = [
         sharpness: 0.66,
         half_width: 0.032,
         bend: -0.085,
-        tip: 16.0,
-        heights: [500.0, 470.0, 180.0],
+        heights: [
+            720.0, 672.0, 624.0, 578.0, 536.0, 500.0, 472.0, 452.0, 438.0, 426.0, 412.0, 392.0,
+            364.0, 330.0, 300.0, 218.0, 16.0,
+        ],
     },
     Crest {
         bearing: 140.0,
@@ -691,8 +714,10 @@ const CRESTS: [Crest; 10] = [
         sharpness: 0.44,
         half_width: 0.040,
         bend: 0.070,
-        tip: 7.0,
-        heights: [450.0, 430.0, 110.0],
+        heights: [
+            720.0, 656.0, 596.0, 540.0, 488.0, 440.0, 396.0, 356.0, 320.0, 288.0, 258.0, 230.0,
+            204.0, 178.0, 152.0, 104.0, 7.0,
+        ],
     },
     Crest {
         bearing: 184.0,
@@ -700,8 +725,10 @@ const CRESTS: [Crest; 10] = [
         sharpness: 0.84,
         half_width: 0.026,
         bend: -0.050,
-        tip: 43.0,
-        heights: [640.0, 560.0, 240.0],
+        heights: [
+            720.0, 706.0, 686.0, 660.0, 628.0, 590.0, 546.0, 498.0, 448.0, 400.0, 356.0, 316.0,
+            280.0, 248.0, 214.0, 148.0, 43.0,
+        ],
     },
     Crest {
         bearing: 217.0,
@@ -709,8 +736,10 @@ const CRESTS: [Crest; 10] = [
         sharpness: 0.90,
         half_width: 0.024,
         bend: 0.045,
-        tip: 64.0,
-        heights: [660.0, 430.0, 310.0],
+        heights: [
+            720.0, 714.0, 706.0, 694.0, 678.0, 658.0, 634.0, 606.0, 574.0, 540.0, 504.0, 468.0,
+            430.0, 392.0, 356.0, 300.0, 64.0,
+        ],
     },
     Crest {
         bearing: 253.0,
@@ -718,8 +747,10 @@ const CRESTS: [Crest; 10] = [
         sharpness: 0.60,
         half_width: 0.034,
         bend: -0.075,
-        tip: 13.0,
-        heights: [520.0, 480.0, 160.0],
+        heights: [
+            720.0, 668.0, 618.0, 570.0, 524.0, 480.0, 438.0, 398.0, 360.0, 324.0, 290.0, 258.0,
+            228.0, 198.0, 170.0, 118.0, 13.0,
+        ],
     },
     Crest {
         bearing: 294.0,
@@ -727,8 +758,10 @@ const CRESTS: [Crest; 10] = [
         sharpness: 0.40,
         half_width: 0.042,
         bend: 0.080,
-        tip: 7.0,
-        heights: [420.0, 400.0, 95.0],
+        heights: [
+            720.0, 648.0, 580.0, 516.0, 456.0, 400.0, 348.0, 300.0, 256.0, 216.0, 182.0, 156.0,
+            136.0, 120.0, 102.0, 68.0, 7.0,
+        ],
     },
     Crest {
         bearing: 328.0,
@@ -736,8 +769,10 @@ const CRESTS: [Crest; 10] = [
         sharpness: 0.74,
         half_width: 0.028,
         bend: -0.060,
-        tip: 27.0,
-        heights: [600.0, 540.0, 240.0],
+        heights: [
+            720.0, 684.0, 646.0, 608.0, 570.0, 532.0, 494.0, 456.0, 418.0, 384.0, 356.0, 334.0,
+            318.0, 306.0, 268.0, 178.0, 27.0,
+        ],
     },
 ];
 
@@ -812,14 +847,24 @@ const WEDGE_STEPS: usize = 11;
 /// a wedge's corner is only closed-form when both ridges reach their tips at the same point on
 /// the bisector. [`wedge`] is the same walk with that one assumption dropped.
 pub fn massif() -> Massif {
-    let wedges: Vec<Wedge> = (0..CRESTS.len())
-        .map(|index| wedge(index, (index + 1) % CRESTS.len()))
+    let wedges: Vec<Wedge> = (0..CREST_COUNT)
+        .map(|index| wedge(index, (index + 1) % CREST_COUNT))
         .collect();
     let outline = footprint(&wedges);
     let mut massif = Massif::new(Skeleton::new(ridges(), bound(wedges, &outline), outline))
         .with_tessellation(Tessellation::default().with_step(STEP));
 
     stand_on_the_plain(&mut massif);
+
+    // The heights in the two tables are numbers an author typed, so they are checked against each
+    // other before anything is built from them. A valley floor at or above either crest it runs
+    // between is not a valley: the flank beside it stops being a flank and the picture loses the
+    // one relationship the whole massif is drawn from.
+    debug_assert!(
+        check_the_authored_heights().is_empty(),
+        "the authored heights disagree with each other: {:#?}",
+        check_the_authored_heights()
+    );
 
     // The skeleton here is written by hand, so the correspondence it wrote is checked before it is
     // expanded. A rib that crosses a line, or a stretch of a line that no station faces, builds a
@@ -836,6 +881,55 @@ pub fn massif() -> Massif {
     massif
 }
 
+/// Checks that the two tables of heights can be drawn together.
+///
+/// # Invariants
+///
+/// Three things are checked, and all three are about the tables being edited against each other
+/// rather than about the mesh:
+///
+/// - **A valley's first node is the summit.** Every valley begins at the one apex and the ten of
+///   them are separate vertices that happen to stand on it, so a first column that disagreed
+///   would tear the apex open rather than build a different mountain.
+/// - **A valley floor is strictly below both crests it runs between, at every station.** A station
+///   names a parameter rather than a node, so this compares against [`Crest::height_at`] and it is
+///   the check that would otherwise be impossible to make by eye.
+/// - **Neither table rises.** `validate` checks this for the skeleton, but only after it is built
+///   and only for the lines it was handed; saying it here names the table as the thing that has to
+///   hold.
+fn check_the_authored_heights() -> Vec<String> {
+    let mut problems = Vec::new();
+    for wedge in 0..CREST_COUNT {
+        let right = (wedge + 1) % CREST_COUNT;
+        if VALLEY_HEIGHTS[wedge][0] != SUMMIT_ELEVATION {
+            problems.push(format!(
+                "valley {wedge} starts at {} rather than at the summit's {SUMMIT_ELEVATION}",
+                VALLEY_HEIGHTS[wedge][0]
+            ));
+        }
+        for node in 1..VALLEY_NODES {
+            let floor = VALLEY_HEIGHTS[wedge][node];
+            if node > 0 && floor > VALLEY_HEIGHTS[wedge][node - 1] {
+                problems.push(format!(
+                    "valley {wedge} rises from {} to {floor} at node {node}",
+                    VALLEY_HEIGHTS[wedge][node - 1]
+                ));
+            }
+            for (side, crest) in [(Side::Left, wedge), (Side::Right, right)] {
+                let station = valley_station(node);
+                let rock = CRESTS[crest].height_at(station);
+                if floor >= rock {
+                    problems.push(format!(
+                        "valley {wedge} node {node} is at {floor}, which is not below crest \
+                         {crest}'s {rock:.1} on its {side:?}"
+                    ));
+                }
+            }
+        }
+    }
+    problems
+}
+
 /// Returns the crest lines, the first one the root and the rest its children.
 fn ridges() -> Vec<Ridge> {
     CRESTS
@@ -845,7 +939,7 @@ fn ridges() -> Vec<Ridge> {
             let nodes: Vec<RidgeNode> = (0..CREST_NODES)
                 .map(|step| {
                     let fraction = step as f32 / (CREST_NODES - 1) as f32;
-                    RidgeNode::new(crest.position(fraction), crest.elevation(fraction))
+                    RidgeNode::new(crest.position(fraction), crest.height(step))
                         .with_half_width(crest.half_width * crest.reach)
                         .with_sharpness(crest.sharpness)
                 })
@@ -860,21 +954,12 @@ fn ridges() -> Vec<Ridge> {
         .collect()
 }
 
-/// How many nodes a crest is written with.
-///
-/// It is a node count and not a distance because a crest that wanders needs the nodes to wander
-/// with: the wander is written into the node positions, so a crest sampled coarsely from a
-/// straight bearing would lose the very thing that makes it not a radius.
-const CREST_NODES: usize = 17;
-
 /// One wedge's plan, before its mouth can be bound to the rim.
 struct Wedge {
     /// Where the mouth stands on the rim.
     mouth: [f32; 2],
-    /// The elevation at the mouth.
-    mouth_elevation: f32,
     /// The nodes, each with the two crest stations it faces.
-    nodes: Vec<([f32; 2], f32, Station, Station)>,
+    nodes: Vec<([f32; 2], Station, Station)>,
 }
 
 /// Returns the wedge between two crests that are neighbours in bearing.
@@ -902,15 +987,14 @@ fn wedge(left: usize, right: usize) -> Wedge {
     let mouth = corner * (1.0 + MOUTH_BULGE);
     let swing = VALLEY_SWING * (left as f32 * 2.3).sin();
 
-    let mut nodes = Vec::with_capacity(WEDGE_STEPS + 2);
+    let mut nodes = Vec::with_capacity(VALLEY_NODES);
     nodes.push((
         SUMMIT,
-        SUMMIT_ELEVATION,
         Station::ridge(RidgeId(left), 0.0),
         Station::ridge(RidgeId(right), 0.0),
     ));
     for step in 1..=WEDGE_STEPS {
-        let fraction = step as f32 / WEDGE_STEPS as f32;
+        let fraction = valley_station(step);
         let radius = valley_radius(fraction, left, right, corner);
         // The floor **wanders across its own wedge** rather than running down its bisector.
         //
@@ -936,7 +1020,6 @@ fn wedge(left: usize, right: usize) -> Wedge {
                 SUMMIT[0] + direction[0] * radius - direction[1] * lateral,
                 SUMMIT[1] + direction[1] * radius + direction[0] * lateral,
             ],
-            valley_elevation(fraction, left, right),
             Station::ridge(RidgeId(left), fraction),
             Station::ridge(RidgeId(right), fraction),
         ));
@@ -946,9 +1029,21 @@ fn wedge(left: usize, right: usize) -> Wedge {
             SUMMIT[0] + direction[0] * mouth,
             SUMMIT[1] + direction[1] * mouth,
         ],
-        mouth_elevation: valley_elevation(1.0, left, right),
         nodes,
     }
+}
+
+/// Returns the parameter along a valley's run that one of its nodes stands at.
+///
+/// # Invariants
+///
+/// The mouth **clamps to the run's end** rather than reaching past it. The mouth is on the rim
+/// beyond the corner, so there is no fraction of this valley's own run that is also the fraction
+/// of the crests beside it — and reading it as one puts a mouth's height under a crest that has
+/// already ended, which is the only way a table row can pass the check in
+/// [`check_the_authored_heights`] while still saying something untrue.
+fn valley_station(node: usize) -> f32 {
+    node.min(WEDGE_STEPS) as f32 / WEDGE_STEPS as f32
 }
 
 /// Returns where a valley's node stands at a fraction of its run.
@@ -983,36 +1078,77 @@ const VALLEY_MOUTH_OPENING: f64 = 0.70;
 /// inside that and well outside invisible.
 const VALLEY_SWING: f32 = 0.07;
 
-/// Returns the elevation the valley between two crests has at a fraction of its run.
+/// Returns the authored elevation of one of a wedge's nodes.
 ///
 /// # Invariants
 ///
-/// **It is a fraction of the lower of the two crests it runs between**, so the valley floor is
-/// below the rock on both sides of it at every station — which is what makes it a valley and not
-/// a line drawn across a flank.
-///
-/// **The fraction holds high and then cuts in, and that is the whole of the massif's shape.** It
-/// is near its maximum through the first fifth of the run, so the summit and everything under it
-/// is one connected mass with shallow ribs in it, and it only closes hard over the second half,
-/// where the real valleys are. A fraction that fell evenly instead — high at the summit, low at
-/// the rim, cutting all the way — would put a deep notch under the summit on every one of the
-/// massif's ten sides, and ten notches under one apex is a bundle of blades rather than a
-/// mountain.
-///
-/// Both the factor and the two crest profiles are non-increasing, so the product is too: an edit
-/// here cannot make the massif invalid.
-fn valley_elevation(fraction: f32, left: usize, right: usize) -> f32 {
-    let floor = CRESTS[left]
-        .elevation(fraction)
-        .min(CRESTS[right].elevation(fraction));
-    floor * (VALLEY_HOLD - VALLEY_CUT * smoothstep(0.18, 0.90, fraction as f64) as f32)
+/// It is the table read and nothing else. The floor is the author's own number rather than a
+/// fraction of the two crests beside it, which is the change that stops the massif's valleys from
+/// being one shape repeated ten times — under a formula, every floor was the lower of its two
+/// crests times the same curve, and rows that shared a crest came out identical to the digit.
+fn valley_elevation(node: usize, wedge: usize) -> f32 {
+    VALLEY_HEIGHTS[wedge][node]
 }
 
-/// How close under its crests a valley runs at the summit, as a fraction of them.
-const VALLEY_HOLD: f32 = 0.85;
+/// How many nodes a valley is written with: the summit, one per step, and the mouth.
+///
+/// The mouth is counted rather than left to the walk that binds the valleys to the rim, so that
+/// [`VALLEY_HEIGHTS`] is indexed by the same numbers the finished [`Valley`] carries.
+const VALLEY_NODES: usize = WEDGE_STEPS + 2;
 
-/// How much of that closeness the valley gives back over the lower part of its run.
-const VALLEY_CUT: f32 = 0.80;
+/// The elevation of every node of every valley, wedge by wedge.
+///
+/// # Invariants
+///
+/// Row `i` is the valley between crest `i` and crest `i + 1`, so the last row runs back to the
+/// first crest and the table has no gap in it. Each row is [`VALLEY_NODES`] numbers read from the
+/// summit outwards, and the last two are the corner and the mouth standing beyond it.
+///
+/// - **The first column is the summit.** Every valley begins at the one apex, so this column is
+///   [`SUMMIT_ELEVATION`] ten times over and [`check_the_authored_heights`] says so.
+/// - **Every other column is strictly below both crests it runs between.** That is what makes a
+///   floor a floor. The floor is also **never a fixed fraction of the lower of its two crests**,
+///   because that is a plane: the same ratio under the same falling crest is a straight line from
+///   end to end, and a flank with one across it is a sheet of card. Every row here separates from
+///   its lower crest by a different amount at every node, which is what turns a belt into ground.
+/// - **Each row is a different cut.** Rows 1 and 2 both run under crest 2's plateau and make a
+///   cirque floor and a col out of it; rows 3 and 4 share crest 4 as their lower crest and share
+///   nothing else, one being a gorge that goes down early and one a hanging valley that stops
+///   over a lip; rows 7 and 8 share crest 8 the same way. A formula gave every row the same
+///   curve, and a massif whose ten valleys are the same curve is a massif of ten copies of one
+///   valley.
+const VALLEY_HEIGHTS: [[f32; VALLEY_NODES]; CREST_COUNT] = [
+    [
+        720.0, 590.0, 528.0, 462.0, 396.0, 322.0, 260.0, 223.0, 199.0, 172.0, 111.0, 5.0, 5.0,
+    ],
+    [
+        720.0, 620.0, 530.0, 455.0, 390.0, 330.0, 272.0, 216.0, 166.0, 120.0, 80.0, 4.0, 4.0,
+    ],
+    [
+        720.0, 600.0, 528.0, 462.0, 400.0, 344.0, 292.0, 244.0, 196.0, 148.0, 100.0, 6.0, 6.0,
+    ],
+    [
+        720.0, 514.0, 424.0, 338.0, 266.0, 207.0, 163.0, 126.0, 98.0, 73.0, 47.0, 3.0, 3.0,
+    ],
+    [
+        720.0, 570.0, 480.0, 400.0, 330.0, 268.0, 214.0, 168.0, 128.0, 94.0, 62.0, 3.0, 3.0,
+    ],
+    [
+        720.0, 557.0, 509.0, 454.0, 393.0, 329.0, 268.0, 216.0, 172.0, 137.0, 94.0, 20.0, 20.0,
+    ],
+    [
+        720.0, 586.0, 516.0, 451.0, 387.0, 325.0, 253.0, 179.0, 124.0, 84.0, 49.0, 4.0, 4.0,
+    ],
+    [
+        720.0, 520.0, 424.0, 340.0, 268.0, 208.0, 160.0, 122.0, 92.0, 68.0, 48.0, 3.0, 3.0,
+    ],
+    [
+        720.0, 518.0, 417.0, 331.0, 253.0, 190.0, 138.0, 101.0, 75.0, 58.0, 35.0, 3.0, 3.0,
+    ],
+    [
+        720.0, 572.0, 507.0, 444.0, 364.0, 286.0, 224.0, 181.0, 150.0, 123.0, 76.0, 7.0, 7.0,
+    ],
+];
 
 /// Binds every wedge's mouth to the rim that was threaded through it.
 ///
@@ -1045,12 +1181,13 @@ fn bound(wedges: Vec<Wedge>, outline: &[FootprintNode]) -> Vec<Valley> {
             let nodes: Vec<ValleyNode> = wedge
                 .nodes
                 .into_iter()
-                .map(|(position, elevation, left, right)| {
-                    ValleyNode::new(position, elevation, left, right)
+                .enumerate()
+                .map(|(node, (position, left, right))| {
+                    ValleyNode::new(position, valley_elevation(node, index), left, right)
                 })
                 .chain(std::iter::once(ValleyNode::new(
                     wedge.mouth,
-                    wedge.mouth_elevation,
+                    valley_elevation(VALLEY_NODES - 1, index),
                     mouth,
                     mouth,
                 )))
@@ -1088,14 +1225,21 @@ const VALLEY_SAMPLING: f32 = 0.80;
 /// - **It is wound so the inside is on its left.** The expansion winds every face to look up, so a
 ///   rim wound the other way would put the mesh's plan area at the negation of the footprint's
 ///   and make the coverage check read a covered massif as inside out.
+/// - **Every vertex's height is the last number of a table row**, a crest tip from
+///   [`CRESTS`] and a mouth from [`VALLEY_HEIGHTS`]. The rim's vertices are the same points as the
+///   crests' and the valleys' last nodes, so reading them from anywhere else would put two
+///   elevations on one point and split the foot of the mountain along it.
 fn footprint(wedges: &[Wedge]) -> Vec<FootprintNode> {
     wedges
         .iter()
         .enumerate()
         .flat_map(|(index, wedge)| {
             [
-                FootprintNode::new(CRESTS[index].position(1.0), CRESTS[index].tip),
-                FootprintNode::new(wedge.mouth, wedge.mouth_elevation),
+                FootprintNode::new(
+                    CRESTS[index].position(1.0),
+                    CRESTS[index].height(CREST_NODES - 1),
+                ),
+                FootprintNode::new(wedge.mouth, valley_elevation(VALLEY_NODES - 1, index)),
             ]
         })
         .collect()

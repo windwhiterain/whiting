@@ -401,3 +401,37 @@ valley floor has to run with its crests and only open out near its mouth** (a fl
 same parameter as the two crest stations beside it, on a wedge whose reaches differ, puts its
 ribs mostly *along* the flank instead of across it).
 
+### A station names a parameter, so a table of floors is checked against an interpolation
+
+Rewriting the same scene so every node's elevation is an authored number exposed a gap between what
+a table says and what `validate` sees. A valley's node carries `Station { t }`, not a node index:
+`t = 1/11` on a crest written with seventeen nodes falls *between* two of them, so "this floor is
+below the rock on both sides of it" is a claim about a piecewise-linear read of the crest's own
+numbers. Nothing in the crate can check it — `validate` checks each line's monotonicity and its
+correspondence, not the two lines against each other — and it cannot be checked by eye either, since
+the column being compared is not a column.
+
+So the scene now keeps a second read, `Crest::height_at(fraction)`, that exists **only** to make
+that comparison expressible, and asserts the two tables against each other before the skeleton is
+built. The general form: once a caller is allowed to author two lines' elevations independently,
+some relationship that used to hold by construction now holds only if somebody checks it, and the
+check needs a read of the form the mesh itself never takes.
+
+### A floor derived from the crests it runs between is one shape repeated
+
+The valley floors used to be `min(two crests at t) * (0.85 - 0.80 * smoothstep(t))`, which reads
+like a relationship and is not one. It is a **fixed ratio against whichever crest happens to be
+lower**, and two consequences follow that are worth stating separately.
+
+- **Two valleys sharing a lower crest came out identical to the decimal**, because the product
+  collapsed to the same number. Three of the ten rows were duplicates, so the massif had fewer
+  valleys than it appeared to.
+- **A fixed ratio against a falling crest is a plane.** Where the floor holds its ratio, the floor
+  and the crest are two parallel lines in section, so the belt between them is one flat face — the
+  folded-paper failure again, produced this time by *constancy* rather than by smoothness. Every
+  row of an authored table has to break its ratio at a different rate.
+
+Neither is visible in a plan diagram or a validate report. Both are obvious the moment the numbers
+are written out side by side, which is the argument for the table over the formula and the whole of
+what the table is for.
+
