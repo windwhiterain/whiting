@@ -1740,8 +1740,122 @@ fn main() {
         ),
     );
 
+    // 15. Lazy subdivision: subdivide only the faces a soft edge actually needs.
+    //
+    //     Hard edges need nothing, soft edges need a quad, and the contested places only ever come
+    //     from soft edges. So the rule under test is the obvious one: **a triangle is subdivided if
+    //     and only if it carries a soft edge.** Everything else stays a triangle and a crease.
+    //
+    //     Two counts decide it, and neither of them is the contested-place count, because the rule
+    //     cannot change that:
+    //
+    //       - how many triangles does it actually save;
+    //       - how many T-junctions it introduces at the frontier, which is the price the design
+    //         currently refuses outright.
+    let (_points, faces) = grid();
+    let same_row = |a: u32, b: u32| a as usize / COLUMNS == b as usize / COLUMNS;
+    let corners = |tri: [u32; 3]| [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])];
+    let mut soft_capable: BTreeSet<EdgeKey> = BTreeSet::new();
+    let mut must_subdivide = vec![false; faces.len()];
+    let mut edge_faces: BTreeMap<EdgeKey, Vec<usize>> = BTreeMap::new();
+    for (id, tri) in faces.iter().enumerate() {
+        for (u, v) in corners(*tri) {
+            let key = canonical([u, v]);
+            edge_faces.entry(key).or_default().push(id);
+            if same_row(u, v) {
+                soft_capable.insert(key);
+                must_subdivide[id] = true;
+            }
+        }
+    }
+    let saved = must_subdivide.iter().filter(|flag| !**flag).count();
+    let quads_avoided = saved * 3;
+    let frontier = edge_faces
+        .iter()
+        .filter(|(_, owners)| {
+            owners.iter().any(|id| must_subdivide[*id])
+                && owners.iter().any(|id| !must_subdivide[*id])
+        })
+        .count();
+    // The linchpin: a soft edge needs **both** of its faces to be quads, so the rule can never drop a
+    // soft edge. If it could, a contested place might disappear and the whole idea would be worth
+    // another look. This checks that it cannot.
+    let soft_keeps_both_faces = soft_capable
+        .iter()
+        .all(|edge| edge_faces[edge].iter().all(|id| must_subdivide[*id]));
+    // One tag pattern is one point on a curve, and this sample sits at its unfavourable end. What
+    // decides whether the rule is ever worth its T-junctions is how the saving grows as soft edges
+    // are tagged one at a time, so sweep the count rather than reporting the sample's own.
+    let ordered: Vec<EdgeKey> = soft_capable.iter().copied().collect();
+    let curve: Vec<String> = [1usize, 2, 4, 8, ordered.len()]
+        .iter()
+        .filter(|count| **count <= ordered.len())
+        .map(|count| {
+            let tagged: BTreeSet<EdgeKey> = ordered.iter().take(*count).copied().collect();
+            let subdivide: Vec<bool> = faces
+                .iter()
+                .map(|tri| {
+                    corners(*tri)
+                        .iter()
+                        .any(|(u, v)| tagged.contains(&canonical([*u, *v])))
+                })
+                .collect();
+            let kept = subdivide.iter().filter(|flag| !**flag).count();
+            let frontier = edge_faces
+                .iter()
+                .filter(|(_, owners)| {
+                    owners.iter().any(|id| subdivide[*id])
+                        && owners.iter().any(|id| !subdivide[*id])
+                })
+                .count();
+            format!(
+                "   {count:>2} soft edges   faces saved {kept:>2} of {}   quads avoided {:>3}   T-junctions {frontier}",
+                faces.len(),
+                kept * 3
+            )
+        })
+        .collect();
+    if saved == 0 {
+        failures.push("15  lazy subdivision saves no face on this sample");
+    }
+    if !soft_keeps_both_faces {
+        failures.push("15  the lazy rule would drop a soft edge, which invalidates its counting");
+    }
+    report(
+        "15  lazy subdivision: only the faces a soft edge needs",
+        &format!(
+            "triangles in the source mesh            {face_count}\n\
+             soft-capable original edges            {edge_count}\n\
+             triangles the rule subdivides          {subdivided}\n\
+             triangles it would leave alone         {saved}\n\
+             quads avoided                          {quads_avoided}\n\
+             T-junctions at the frontier            {frontier}\n\
+             every soft edge keeps both its faces   {soft_keeps_both_faces}\n\
+             {curve}\n\
+             the rule is 'subdivide a triangle if and only if it carries a soft edge', because hard\n\
+             edges need nothing and only soft edges can create a contested place.\n\
+             the rule cannot remove a soft edge, because a soft edge needs BOTH its faces to be quads.\n\
+             so it cannot remove a contested place either, and those stay at {contested}. that is the\n\
+             whole of what it was proposed for, and it buys none of it.\n\
+             this sample sits at the unfavourable end of the curve and the reason is structural: every\n\
+             triangle of a grid triangulation carries a row-aligned edge, and row-aligned edges are\n\
+             what is soft here, so the rule selects all {face_count}. the curve above is the regime\n\
+             where it would pay -- a handful of tagged edges in a mostly-hard mesh -- and it is a real\n\
+             option there, at one T-junction per frontier edge",
+            face_count = faces.len(),
+            edge_count = soft_capable.len(),
+            subdivided = faces.len() - saved,
+            saved = saved,
+            quads_avoided = quads_avoided,
+            frontier = frontier,
+            curve = curve.join("\n"),
+            soft_keeps_both_faces = soft_keeps_both_faces,
+            contested = places.len(),
+        ),
+    );
+
     if failures.is_empty() {
-        println!("\nall 14 measurements passed");
+        println!("\nall 15 measurements passed");
     } else {
         println!("\nFAILED:");
         for failure in &failures {
