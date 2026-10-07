@@ -329,3 +329,75 @@ author is an agent iterating on code, and a violation list is more use than a ba
   what the crate is for and what `landscape` does by editing the generated fan — and, for
   `starter`, a wedge walk that measures the ridge tree's planar embedding rather than assuming a
   fan.
+
+## Amendments (2026-10-07, rewriting `landscape`)
+
+Three things the scene work found that the design above does not say, recorded here because each
+one changed what could be built rather than only how.
+
+### A spur hung off a parent's flank cannot be built, and the reason is structural
+
+`attach_ridge(parent, t > 0, …)` and `Ridge::child(parent, t, …)` both take a parameter for a
+position along the parent, so the model reads as though a ridge may leave a parent's flank
+anywhere along it. **It cannot.** Two independent reasons:
+
+1. **Elevation.** Non-increasing along every root-to-leaf path means a connected skeleton has
+   exactly one summit, and a parent and a spur at `t > 0` do not share it.
+2. **The wedge doubles on itself**, which is the one that is not obvious. The fan of triangles
+   around a junction closes only when the wedge between the parent and the spur has its **first
+   row collapsed onto the summit** — a degenerate row is what closes it. But that row leaves a
+   boundary edge running from the summit to the spur's junction, and that edge lies *along the
+   parent ridge*, whose own flank the same wedge is simultaneously covering on its other side.
+   The surface folds onto itself along the parent's upper segment.
+
+So the reachable topology is a **fan of tips**: every ridge from the one summit, wedges between
+angular neighbours, and asymmetry carried by the crests being genuinely different from each other
+rather than by branching. The hierarchy is still authored — every ridge after the first is a
+`Ridge::child` of the first, at `t = 0.0` — and it is what the hierarchy is *for* in this model,
+but it is a naming of parenthood and not a statement about geometry.
+
+**Whether a spur is worth a mechanism.** The argument above is a statement about this expansion,
+not a proof that a spur is inexpressible. A `t > 0` spur becomes buildable if the wedge's first
+row is allowed to collapse onto the junction rather than the summit — which means the parent and
+the spur share a summit by construction (a child whose first station is its parent's summit, and a
+parent that runs a *second* crest line along the spur's flank). That is a different model, not a
+bug fix, and it would need its own requirement.
+
+### `sample_line` read a line's own nodes back interpolated
+
+Found while authoring unequal reaches, and the symptom was a `Disjoint` whose cause was invisible:
+a crest tip that is also a rim vertex is the same authored point on two lines, and both lines'
+samplers were returning it about a ten-thousandth of a unit apart. `weld_key` quantizes at
+`1/1024`, so whether the two agreed on a cell was arithmetic rather than intent — and the massif
+validated on one set of crest numbers and not on another.
+
+The parameter is a rounded `arc / total` and `edge_at` recovers the amount from it, so at a node
+the amount lands a rounding error short of exactly zero or exactly one, and the lerp returns a
+point beside the node rather than the node. **Fixed**: a break within `PARAMETER_EPSILON` of a
+node's end of an edge is read from that node. The general form of the rule is that a node is a
+vertex of the mesh and the mesh may only have one of it.
+
+### `WELD` is documented as `1.0e-2` and `weld_key` implements `1/1024`
+
+Not changed, and it should be a decision rather than a patch. `WELD` says how far apart two plan
+points may be and still be one corner; `weld_key` hashes on `round(position * 1024)`, which welds
+only within about `9.8e-4` — **ten times tighter than the constant that names the tolerance**, and
+the mismatch is invisible because both sides of a corner are usually exact. Now that node samples
+are exact the two agree in practice, but the constant and the key should say the same number, or
+the key should say why it is deliberately tighter.
+
+### What the gallery scene found about facet scale
+
+`STEP` has to be measured against the massif's **relief**, not its width. A belt's cells are
+bounded across by a rib, and a rib is the whole drop from crest to valley floor — a couple of
+hundred units on a massif of a thousand. Sampling the crests at a tenth of that gives triangles
+ten times longer than they are wide however the silhouette is drawn, and a massif of those reads
+as folded paper. Sixty units puts a facet at about a quarter of a rib.
+
+Two smaller things the scene found the same way: **a crest profile has to be written out rather
+than shaped by one exponent** (a single smooth curve from summit to foot is a ruled surface, and
+ten nearly planar surfaces meeting at one point are a tent however good the silhouette), and **a
+valley floor has to run with its crests and only open out near its mouth** (a floor placed at the
+same parameter as the two crest stations beside it, on a wedge whose reaches differ, puts its
+ribs mostly *along* the flank instead of across it).
+

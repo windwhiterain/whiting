@@ -578,6 +578,13 @@ fn station_parameters(skeleton: &Skeleton, line: LineRef) -> Vec<f32> {
 /// another parameter, or on a uniform step is one sample and every station naming it resolves
 /// to it. Sampling each anchor separately and concatenating would put two vertices at one
 /// point, which is the T-junction the correspondence exists to avoid.
+///
+/// **"Exactly" is positional and not only parametric.** A break that lands on one of the
+/// line's own nodes is read from that node, because a parameter is a rounded `arc / total` and
+/// the amount `edge_at` recovers from it does not come back as exactly zero or exactly one. An
+/// interpolated read there is a ten-thousandth of a unit away from the node, which is nothing
+/// on its own and is a missing shared vertex when a second line has the same authored point as
+/// one of its own nodes.
 pub fn sample_line(nodes: &[Node], step: f32, named: &[f32]) -> SampledLine {
     if nodes.len() < 2 {
         return SampledLine {
@@ -627,10 +634,34 @@ pub fn sample_line(nodes: &[Node], step: f32, named: &[f32]) -> SampledLine {
                 let (index, amount) = edge_at(&span, total, t);
                 let from = nodes[index];
                 let to = nodes[index + 1];
+                // A break that lands on a node is read **from that node** and not interpolated.
+                // `edge_at` recovers the amount from a parameter that is itself a rounded
+                // `span / total`, so at a node the amount lands a rounding error short of one
+                // and the lerp returns a point about a ten-thousandth of a unit away from the
+                // node it was supposed to be reading.
+                //
+                // That matters because a node is a vertex, and a vertex has to be one point and
+                // not two nearly-equal ones. The case that breaks without this is a crest tip
+                // that is also a rim vertex: both are nodes of their own line, both are read
+                // back a hair off, and whether the two errors land in the same cell of the weld
+                // index is arithmetic rather than intent. A massif whose crest tips meet its rim
+                // is then a mesh with a crack at every tip, or a `Disjoint` from the walk that
+                // was supposed to close the rim — decided by which side of a cell boundary a
+                // float happened to fall on.
+                let node = if amount <= PARAMETER_EPSILON {
+                    Some(from)
+                } else if amount >= 1.0 - PARAMETER_EPSILON {
+                    Some(to)
+                } else {
+                    None
+                };
                 Sample {
                     t,
-                    position: point_at(nodes, &span, t),
-                    elevation: elevation_at(nodes, &span, total, t),
+                    position: node.map_or_else(|| point_at(nodes, &span, t), |node| node.position),
+                    elevation: node.map_or_else(
+                        || elevation_at(nodes, &span, total, t),
+                        |node| node.elevation,
+                    ),
                     half_width: from.half_width + (to.half_width - from.half_width) * amount,
                     sharpness: from.sharpness + (to.sharpness - from.sharpness) * amount,
                 }

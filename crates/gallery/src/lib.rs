@@ -64,7 +64,12 @@ pub mod shaders;
 
 mod dunes;
 mod foldyard;
-mod landscape;
+/// The mountain scene, and the massif it stands on.
+///
+/// Public so that `examples/alpine_probe.rs` can report on the skeleton without compiling the
+/// whole document: the massif is this crate's one authored geometry, and the cheap half of the
+/// authoring loop is the only way to iterate on it.
+pub mod landscape;
 mod lanterns;
 mod monoliths;
 mod spotlight;
