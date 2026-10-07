@@ -22,14 +22,13 @@
 //! the shared one separately, because the difference is a property of the representation and not
 //! something a probe should hide by choosing its numbers well.
 
+mod support;
+use support::{ANGLE_FLOOR, COLUMNS, EXACT, grid};
+
 use whiting_patch::topology::{
     EdgeKey, boundary_index, edge_endpoints, interior_index, mirrored_position,
 };
 use whiting_patch::{EdgeSlot, Edit, PatchMesh, Point3, SimplexNet};
-
-/// A measured angle floors at about this, because two unit vectors that close have a dot product
-/// `f64` cannot resolve below `1 - 1e-16` and `acos` turns that into `sqrt(2e-16)`.
-const ANGLE_FLOOR: f64 = 1.4e-8;
 
 /// A gap this small is indistinguishable from continuous, whatever the arithmetic says.
 const CONTINUOUS: f64 = 1.0e-6;
@@ -39,40 +38,6 @@ const CREASE: f64 = 1.0e-2;
 
 /// A distance this small is indistinguishable from nothing happening.
 const MOVED: f64 = 1.0e-6;
-
-/// Exact, for geometry that was never asked to change.
-const EXACT: f64 = 1.0e-12;
-
-const COLUMNS: usize = 5;
-const ROWS: usize = 4;
-
-/// A grid triangulated into `2 (columns-1)(rows-1)` faces, bowed so the surface is not a plane.
-fn grid() -> (Vec<Point3>, Vec<[u32; 3]>) {
-    let mut positions = Vec::new();
-    for row in 0..ROWS {
-        for column in 0..COLUMNS {
-            let x = column as f64 / (COLUMNS - 1) as f64;
-            let y = row as f64 / (ROWS - 1) as f64;
-            positions.push(Point3::new(
-                4.0 * x - 2.0,
-                3.0 * y - 1.5,
-                0.6 * (x * x + y * y),
-            ));
-        }
-    }
-    let mut triangles = Vec::new();
-    for row in 0..ROWS - 1 {
-        for column in 0..COLUMNS - 1 {
-            let a = (row * COLUMNS + column) as u32;
-            let b = a + 1;
-            let c = a + COLUMNS as u32;
-            let d = c + 1;
-            triangles.push([a, b, d]);
-            triangles.push([a, d, c]);
-        }
-    }
-    (positions, triangles)
-}
 
 /// Horizontal edges soft, vertical and diagonal edges hard. Both kinds are always present.
 fn is_soft(edge: &EdgeKey) -> bool {

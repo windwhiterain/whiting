@@ -14,52 +14,20 @@
 //! Subdivision is only worth doing if it is free. If the quads of a triangle did not cover it
 //! exactly, then every model built on the quad mesh would start with construction error to absorb,
 //! and the whole point of storing control points rather than fitting a surface would be gone. The
-//! bilinear map written below is the probe's own, not the crate's: a check that reuses the code
-//! under test proves only that the code is self-consistent.
+//! bilinear map this probe measures against is `support::bilinear` — written out separately from
+//! the crate's evaluator, because a check that reuses the code under test proves only that the code
+//! is self-consistent.
 
 use std::collections::BTreeMap;
+
+mod support;
+use support::{EXACT, barycentric, bilinear, grid};
 
 use whiting_patch::Point3;
 use whiting_patch::subdivide::{Origin, QuadMesh, subdivide};
 
-/// Exact, for geometry that was never asked to change.
-const EXACT: f64 = 1.0e-12;
-
-const COLUMNS: usize = 5;
-const ROWS: usize = 4;
-
 /// Samples per quad side in measurement 2.
 const SAMPLES: usize = 8;
-
-/// A grid triangulated into `2 (columns-1)(rows-1)` faces, bowed so the surface is not a plane.
-///
-/// The same grid `continuity_probe` uses, so the two probes report on the same mesh.
-fn grid() -> (Vec<Point3>, Vec<[u32; 3]>) {
-    let mut positions = Vec::new();
-    for row in 0..ROWS {
-        for column in 0..COLUMNS {
-            let x = column as f64 / (COLUMNS - 1) as f64;
-            let y = row as f64 / (ROWS - 1) as f64;
-            positions.push(Point3::new(
-                4.0 * x - 2.0,
-                3.0 * y - 1.5,
-                0.6 * (x * x + y * y),
-            ));
-        }
-    }
-    let mut triangles = Vec::new();
-    for row in 0..ROWS - 1 {
-        for column in 0..COLUMNS - 1 {
-            let a = (row * COLUMNS + column) as u32;
-            let b = a + 1;
-            let c = a + COLUMNS as u32;
-            let d = c + 1;
-            triangles.push([a, b, d]);
-            triangles.push([a, d, c]);
-        }
-    }
-    (positions, triangles)
-}
 
 /// Every undirected edge of the quads, with how many faces use it.
 fn quad_edges(quads: &[[u32; 4]]) -> BTreeMap<(u32, u32), usize> {
@@ -110,42 +78,10 @@ fn triangle_edges(triangles: &[[u32; 3]]) -> BTreeMap<(u32, u32), usize> {
     counts
 }
 
-/// The bilinear map of a quad, with `(0, 0)` at `Q0` and `(1, 1)` at `Q2`.
-///
-/// This is the probe's own evaluator. A rectangle's control net at degree 1 is this map, which is
-/// why a flat quad of coplanar corners is exactly the quadrilateral it names.
-fn bilinear(corners: [Point3; 4], u: f64, v: f64) -> Point3 {
-    corners[0] * ((1.0 - u) * (1.0 - v))
-        + corners[1] * (u * (1.0 - v))
-        + corners[2] * (u * v)
-        + corners[3] * ((1.0 - u) * v)
-}
-
 /// The area of a planar convex quad, split along the `Q0`–`Q2` diagonal.
 fn quad_area(corners: [Point3; 4]) -> f64 {
     let [q0, q1, q2, q3] = corners;
     0.5 * (q1 - q0).cross(q2 - q0).length() + 0.5 * (q2 - q0).cross(q3 - q0).length()
-}
-
-/// Barycentric weights of `point` over the triangle, and how far off its plane the point lies.
-///
-/// The weights always sum to one by construction, so the plane residual is reported separately
-/// rather than inferred from them.
-fn barycentric(corners: [Point3; 3], point: Point3) -> ([f64; 3], f64) {
-    let [a, b, c] = corners;
-    let u = b - a;
-    let v = c - a;
-    let w = point - a;
-    let uu = u.dot(u);
-    let uv = u.dot(v);
-    let vv = v.dot(v);
-    let wu = w.dot(u);
-    let wv = w.dot(v);
-    let denominator = uu * vv - uv * uv;
-    let beta = (vv * wu - uv * wv) / denominator;
-    let gamma = (uu * wv - uv * wu) / denominator;
-    let residual = w - (u * beta + v * gamma);
-    ([1.0 - beta - gamma, beta, gamma], residual.length())
 }
 
 /// The quads that came from one source face, found through the provenance map rather than by
@@ -258,8 +194,9 @@ fn main() {
              worst excursion outside the triangle   {worst_outside:.3e}\n\
              worst relative area error              {worst_area_error:.3e}\n\
              measured over {} triangles x 3 quads x {}x{} bilinear samples, with the probe's own\n\
-             evaluator. coplanar, contained, and equal in area means the three convex quads tile\n\
-             the triangle with no gap and no overlap, so level 0 of a quad patch is the mesh",
+             evaluator in `support`. coplanar, contained, and equal in area means the three convex\n\
+             quads tile the triangle with no gap and no overlap, so level 0 of a quad patch is the\n\
+             mesh",
             triangles.len(),
             SAMPLES + 1,
             SAMPLES + 1,

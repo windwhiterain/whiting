@@ -21,6 +21,8 @@
 use core::fmt;
 use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 
+use crate::bernstein::multinomial;
+
 /// The number of control points in a degree-`degree` net over a triangle.
 pub const fn count(degree: usize) -> usize {
     (degree + 1) * (degree + 2) / 2
@@ -171,28 +173,6 @@ impl std::error::Error for SimplexNetError {}
 /// Row `i` starts here and holds `degree + 1 - i` points, `j` running from `0`.
 const fn row_start(degree: usize, i: usize) -> usize {
     i * (degree + 1) - i * i.saturating_sub(1) / 2
-}
-
-/// `C(n, k)`, accumulated as a product so no factorial overflows.
-///
-/// Exact for every `n` whose binomial coefficients stay under `2^53`, which covers any degree a
-/// hand-edited ladder reaches; degrees are small here because elevation is the only way to add a
-/// control point.
-fn binomial(n: usize, k: usize) -> f64 {
-    if k > n {
-        return 0.0;
-    }
-    let k = k.min(n - k);
-    let mut result = 1.0;
-    for step in 1..=k {
-        result = result * (n - k + step) as f64 / step as f64;
-    }
-    result
-}
-
-/// `n! / (i! j! k!)` for `i + j + k == n`, as two binomials so nothing overflows.
-fn multinomial(n: usize, i: usize, j: usize) -> f64 {
-    binomial(n, i) * binomial(n - i, j)
 }
 
 /// A Bernstein control net over a triangle.

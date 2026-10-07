@@ -8,14 +8,17 @@
 //!
 //! Nothing here fits or approximates a mesh. A freshly built model reproduces its mesh exactly.
 
+pub mod bernstein;
 pub mod continuity;
 pub mod patch_mesh;
+pub mod rect;
 pub mod simplex;
 pub mod subdivide;
 pub mod topology;
 
 pub use continuity::{Continuity, SoftEdge, slave_interior};
 pub use patch_mesh::{Edit, PatchMesh};
+pub use rect::{RectNet, RectNetError};
 pub use simplex::{Point3, SimplexNet, SimplexNetError, count};
 pub use subdivide::{Origin, QuadMesh, subdivide};
 pub use topology::{EdgeKey, EdgeSlot, FaceId, Topology, VertexId};
