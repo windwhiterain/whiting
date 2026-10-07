@@ -14,7 +14,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use crate::facet::{Face, FaceAttributes, FacetMesh};
 use crate::line::{LineRef, Side, Station};
-use crate::math::Vec3;
+use crate::math::{Vec3, span};
 use crate::sampling::{Sampling, Unresolved, Vertex};
 use crate::skeleton::{RidgeId, Skeleton, ValleyId};
 use crate::tessellation::{BeltRef, Tessellation};
@@ -138,16 +138,30 @@ pub fn build(skeleton: &Skeleton, tessellation: Tessellation) -> Result<FacetMes
         let top_line = belt.top[0].line;
         let bottom_line = belt.bottom[0].line;
 
+        // The belt's own coordinates, normalised once per boundary rather than per face: `u` is
+        // how far along the crest, by distance, and `v` is how far down the strip. See
+        // `Face::uv`, which is where what these two mean is written down.
+        let along_top = fractions(&top);
+        let along_bottom = fractions(&bottom);
+
         let (mut high, mut low) = (0usize, 0usize);
         for step in walked {
             let corners = match step {
                 Step::Top => {
-                    let face = [belt.top[high], belt.top[high + 1], belt.bottom[low]];
+                    let face = [
+                        crest(belt.top[high], along_top[high]),
+                        crest(belt.top[high + 1], along_top[high + 1]),
+                        floor(belt.bottom[low], along_bottom[low]),
+                    ];
                     high += 1;
                     face
                 }
                 Step::Bottom => {
-                    let face = [belt.top[high], belt.bottom[low], belt.bottom[low + 1]];
+                    let face = [
+                        crest(belt.top[high], along_top[high]),
+                        floor(belt.bottom[low], along_bottom[low]),
+                        floor(belt.bottom[low + 1], along_bottom[low + 1]),
+                    ];
                     low += 1;
                     face
                 }
@@ -275,6 +289,59 @@ fn mean_sharpness(sampling: &Sampling, top: &[Vertex]) -> f32 {
     total / top.len() as f32
 }
 
+/// One point of a strip, carrying the belt coordinate it is written at.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Corner {
+    /// Which sample of which line this is.
+    vertex: Vertex,
+    /// The belt's own `(u, v)`: how far along the boundary, and how far down the strip.
+    uv: [f32; 2],
+}
+
+/// Returns one point of a strip at the crest, where `v` is zero.
+fn crest(vertex: Vertex, u: f32) -> Corner {
+    Corner {
+        vertex,
+        uv: [u, 0.0],
+    }
+}
+
+/// Returns one point of a strip at the valley, where `v` is one.
+fn floor(vertex: Vertex, u: f32) -> Corner {
+    Corner {
+        vertex,
+        uv: [u, 1.0],
+    }
+}
+
+/// Returns, for each point of a boundary, the fraction of the boundary's **length** already walked.
+///
+/// # Invariants
+///
+/// - **By distance, not by index.** A belt's top path turns a corner where a spur leaves its
+///   parent's flank, and at that corner the two disagree: the path walks a different line, and a
+///   different line's samples are spaced by its own `step_scale`. An index fraction would make
+///   `u` a fact about the tessellation, and the same belt re-tessellated would answer a
+///   different `u` for the same piece of crest.
+/// - **A boundary of one point is all zero**, rather than a division by a length of nothing. The
+///   strip it belongs to has no interior to walk, so the number is never read.
+fn fractions(boundary: &[Vec3]) -> Vec<f32> {
+    if boundary.len() < 2 {
+        return vec![0.0; boundary.len()];
+    }
+    let mut walked = Vec::with_capacity(boundary.len());
+    let mut total = 0.0f32;
+    for index in 1..boundary.len() {
+        total += span(boundary[index - 1], boundary[index]);
+        walked.push(total);
+    }
+    let scale = if total > 0.0 { 1.0 / total } else { 0.0 };
+    let mut fractions = Vec::with_capacity(boundary.len());
+    fractions.push(0.0);
+    fractions.extend(walked.into_iter().map(|value| value * scale));
+    fractions
+}
+
 /// Appends a face, wound to look up, and drops one that has collapsed.
 ///
 /// # Invariants
@@ -291,24 +358,28 @@ fn mean_sharpness(sampling: &Sampling, top: &[Vertex]) -> f32 {
 fn push_face(
     mesh: &mut FacetMesh,
     table: &mut HashMap<Vertex, u32>,
-    corners: [Vertex; 3],
+    corners: [Corner; 3],
     sampling: &Sampling,
     attributes: FaceAttributes,
 ) {
-    let points = corners.map(|vertex| sampling.point(vertex));
+    let points = corners.map(|corner| sampling.point(corner.vertex));
     let plan = points.map(|point| [point[0], point[2]]);
     let area = crate::math::signed_area(plan[0], plan[1], plan[2]);
     if area.abs() <= AREA_EPSILON {
         return;
     }
-    let ordered = if area > 0.0 {
+    // The winding is fixed here rather than by the order the strip produced the corners in, and
+    // **the uv is flipped with it**. They are one list about one face: permuting the indices
+    // without permuting the uv would leave every reversed face reporting a point on the far side
+    // of the belt, which is exactly the kind of answer that looks plausible.
+    let corners = if area > 0.0 {
         corners
     } else {
         [corners[0], corners[2], corners[1]]
     };
-    let indices = ordered.map(|vertex| {
-        *table.entry(vertex).or_insert_with(|| {
-            mesh.points.push(sampling.point(vertex));
+    let indices = corners.map(|corner| {
+        *table.entry(corner.vertex).or_insert_with(|| {
+            mesh.points.push(sampling.point(corner.vertex));
             (mesh.points.len() - 1) as u32
         })
     });
@@ -319,6 +390,7 @@ fn push_face(
     attributes.dip_angle = normal[1].clamp(-1.0, 1.0).acos();
     mesh.faces.push(Face {
         indices,
+        uv: corners.map(|corner| corner.uv),
         attributes,
     });
 }

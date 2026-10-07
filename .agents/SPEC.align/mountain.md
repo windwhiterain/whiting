@@ -223,13 +223,44 @@ Sub-problems that survive, in reduced form:
 
 ### `FacetMesh`
 
-- `points: Vec<Vec3>`, `faces: Vec<Face>`, `Face { indices: [u32; 3], attributes: FaceAttributes }`
+- `points: Vec<Vec3>`, `faces: Vec<Face>`, `Face { indices: [u32; 3], uv: [[f32; 2]; 3], attributes: FaceAttributes }`
 - guarantee: every face is exactly planar. Elevation is only ever sampled on skeleton
   lines; triangle interiors are linear interpolations, never displaced. This is the
   contract that keeps the block-face look intact for downstream pipelines.
 - guarantee: the mesh is watertight, and its plan area equals the footprint's. A hole or
   an overlap is a number that disagrees, which is a test, not a judgement. This is the
   check that makes "the author got the correspondence right" measurable.
+- `uv`: **where the face is in its belt's own parameter space**, one pair per corner, in
+  `indices` order. `u` is the fraction of the belt's upper boundary walked **by distance**,
+  `v` the fraction from that boundary down to the lower one — crest zero, valley one.
+
+  It is written beside the indices rather than beside the attributes because it is a fact
+  about the same three points, and a caller zipping two lists by hand would have a second
+  thing to get wrong.
+
+  - **decision**: `u` is **distance, not sample index** (2026-10-03). A belt's top path turns a
+    corner where a spur leaves its parent's flank, and there the two disagree — the path walks a
+    different line, spaced by that line's own `step_scale`. An index fraction would make `u` a
+    fact about the tessellation, so re-tessellating the same crest would answer a different `u`
+    for the same piece of rock. "62% along the crest" is the sentence an author means.
+  - **invariant**: the uv is **permuted with the winding**. `push_face` fixes a face's winding by
+    its own plan area, and reversing the indices without reversing the uv would leave every
+    reversed face reporting a point on the far side of its belt — an answer that looks entirely
+    plausible and is the wrong half of the surface.
+  - **invariant**: the space is defined **once, here**, and a scene writes what
+    [`FacetMesh::locate`]'s inverse reads rather than choosing its own. A definition written
+    down twice is wrong silently, and wrong by a rotation of the triangle.
+- `fn locate(&self, face: &Face, uv: [f32; 2]) -> BeltPoint`: the inverse, **O(1)** per pixel.
+  It reads the three corners a rasteriser interpolated between and returns the belt and the
+  position on it, barycentric by subtriangle area so it needs no assumption about the winding.
+  A degenerate uv triangle — which is what a summit that closes produces, a whole row of corners
+  sharing one coordinate — falls back to the corner rather than dividing by nothing.
+
+  - **why it is in this crate**: the mesh is **already the index**. A face carries its belt and
+    the two lines that bound it, so the only hop that did not exist was *pixel → that face*.
+    Putting the belt id in the image instead would add a fifth number that has to agree with
+    this table forever, which is the one thing the arrangement is designed to prevent. See
+    [proposals/agent-content-identity.md](../proposals/agent-content-identity.md).
 
 ## Derivation (the "no guarantee" defaults)
 

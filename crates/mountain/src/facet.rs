@@ -25,8 +25,41 @@ use crate::tessellation::BeltRef;
 pub struct Face {
     /// The three points, wound so the face looks up.
     pub indices: [u32; 3],
+    /// The belt's own parameter space at each of those three points.
+    ///
+    /// # Invariants
+    ///
+    /// - **Entry `i` is the point `indices[i]` is**, in that order and no other, because the
+    ///   winding is fixed by the face's own plan area and a pair of lists an author has to zip
+    ///   by hand is a second thing that can disagree with the first. A face stores its uv
+    ///   beside its indices for the same reason [`FaceAttributes::belt`] is stored beside both:
+    ///   they are one fact about one face.
+    /// - **`u` is the fraction of the belt's upper boundary already walked, by distance**, and
+    ///   `v` is the fraction from that boundary down to the lower one. Distance rather than
+    ///   sample index because a belt's top path turns a corner where a spur leaves its parent's
+    ///   flank, and at that corner the two differ — and "62% of the way along the crest" is the
+    ///   sentence an author means, where "62% of the samples" is a fact about the tessellation.
+    /// - **`v` is zero on the crest and one on the valley** for every face of a belt, so `v` says
+    ///   how far down a flank a point is rather than how far along a row of one tessellation.
+    pub uv: [[f32; 2]; 3],
     /// What the face is, for whatever reads the mesh after this crate.
     pub attributes: FaceAttributes,
+}
+
+/// One face, in the belt's own coordinates.
+///
+/// # Invariants
+///
+/// This is a **point on a belt**, not a point in space: it says where on the surface between one
+/// valley and the line it faces the point lies, and the mesh turns it into a position. It is the
+/// answer a caller reading a rendered pixel needs, because a position says where the surface is
+/// and a belt coordinate says **which authored line and which station** that surface came from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BeltPoint {
+    /// Which belt.
+    pub belt: BeltRef,
+    /// How far along its upper boundary, and how far down the strip.
+    pub uv: [f32; 2],
 }
 
 /// What a face is, in the skeleton's own terms.
@@ -203,4 +236,64 @@ impl FacetMesh {
     pub fn is_manifold(&self) -> bool {
         self.edges().values().all(|count| *count <= 2)
     }
+
+    /// Returns where on its belt a face is, given a point's uv in the belt's own coordinates.
+    ///
+    /// This is the **inverse of reading a face's uv**, and it is the half of that pair a caller
+    /// holding a rendered pixel needs: the rasteriser hands back the three corner uv of the face
+    /// it covered, interpolated across the triangle, and this turns that one pair of numbers into
+    /// the belt and the position on it.
+    ///
+    /// # Invariants
+    ///
+    /// - **It reads the face's own three corners and nothing else**, so a uv written by the same
+    ///   [`Face::uv`] a scene's point data carries comes back to the belt it came from. A
+    ///   definition of the belt's parameter space written down twice is a second thing that can
+    ///   be wrong, and it would be wrong silently and by a rotation of the triangle.
+    /// - **A uv outside the triangle is clamped to the triangle**, because a rasteriser
+    ///   interpolates a varying linearly and a point on a shared edge legitimately carries
+    ///   either side's value. The result is therefore the closest belt coordinate on this face,
+    ///   which is what a caller asking "where is that pixel on this face" means.
+    /// - **It is O(1)**: three corners, one triangle. A caller locating a whole contact sheet
+    ///   pays a constant per pixel rather than a walk of the mesh.
+    pub fn locate(&self, face: &Face, uv: [f32; 2]) -> BeltPoint {
+        // Barycentric coordinates of the point within the face's own uv triangle, by the areas
+        // the three subtriangles cut off — the standard construction, and the one that needs no
+        // assumption about the winding because a subtraction of a signed area is signed either
+        // way.
+        let [a, b, c] = face.uv;
+        let whole = area_of(a, b, c);
+        let (wa, wb, wc) = if whole.abs() <= AREA_EPSILON {
+            // A degenerate uv triangle has no interior to interpolate in, which happens where a
+            // summit closes: every corner of the collapsed row carries the same uv. The corner is
+            // then as good an answer as any, and it is a point on the belt rather than a division
+            // by nothing.
+            (1.0, 0.0, 0.0)
+        } else {
+            (
+                area_of(uv, b, c) / whole,
+                area_of(a, uv, c) / whole,
+                area_of(a, b, uv) / whole,
+            )
+        };
+        BeltPoint {
+            belt: face.attributes.belt,
+            uv: [
+                wa * a[0] + wb * b[0] + wc * c[0],
+                wa * a[1] + wb * b[1] + wc * c[1],
+            ],
+        }
+    }
+}
+
+/// How small a uv triangle's area must be before it is treated as having no interior.
+///
+/// It is the same threshold the expander drops a collapsed face at, on purpose: a face that was
+/// not emitted and a uv triangle that cannot be interpolated in are the same condition reached
+/// two ways, and one number for both is one fewer place for them to disagree.
+const AREA_EPSILON: f32 = 1.0e-6;
+
+/// Returns the signed area of a triangle in a two dimensional parameter space.
+fn area_of(a: [f32; 2], b: [f32; 2], c: [f32; 2]) -> f32 {
+    (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])
 }

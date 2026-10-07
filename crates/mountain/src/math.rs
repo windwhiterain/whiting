@@ -62,6 +62,24 @@ pub fn distance(from: Vec2, to: Vec2) -> f32 {
     length(difference(to, from))
 }
 
+/// Returns the distance between two space points.
+///
+/// # Invariants
+///
+/// **In three dimensions, not the plan distance of the same two points.** A crest is a line
+/// that climbs, and "62% of the way along it" is a fraction of the line's real length; a plan
+/// distance would flatten it, and a steep flank would read as shorter than a shallow one of the
+/// same footprint. It is a separate function rather than a generalisation of [`distance`]
+/// because every existing caller wanted the plan one, and a silent switch would move every
+/// tessellation step in the crate.
+pub fn span(from: Vec3, to: Vec3) -> f32 {
+    let squared = (0..3)
+        .map(|axis| to[axis] - from[axis])
+        .map(|d| d * d)
+        .sum::<f32>();
+    squared.sqrt()
+}
+
 /// Returns a unit plan vector, falling back to east for one with no length.
 ///
 /// # Invariants

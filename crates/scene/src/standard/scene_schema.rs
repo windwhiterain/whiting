@@ -201,6 +201,52 @@ pub const CUSTOM_SCHEMA: &str = "custom_schema";
 /// Field naming the stage a screen shader belongs to.
 pub const STAGE: &str = "stage";
 
+/// Field holding the extra images the scene's own shaders write.
+pub const OUTPUTS: &str = "outputs";
+
+/// Field holding the `@location` a declared output's shader writes it at.
+pub const LOCATION: &str = "location";
+
+/// Field holding the type of a texel a declared output holds.
+pub const TYPE: &str = "type";
+
+/// Builds the schema of one **scene-declared output**: where its shader writes it and what a
+/// texel of it is.
+///
+/// # Invariants
+///
+/// - **A declaration names a `location` and a `type` and never a binding point.** A point is a
+///   name the compiler has to create an instance entry for, so a scene that named one would be
+///   naming a resource rather than asking for a picture. The compiler generates the point from
+///   the name, sizes the texture to the frame, and takes the format from the type, so the three
+///   numbers that have to agree — the point, the location and the type — are written from one
+///   place on the compiler's side.
+/// - **The type is a texel type and nothing else.** It is the same closed vocabulary the emitted
+///   declaration is checked against, so a scene cannot spell a type that would be refused later
+///   with the same words at a different end of the pipeline.
+pub fn scene_output_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            LOCATION.to_owned(),
+            Schema::new(SchemaKind::Int).with_documentation(
+                "The `@location` of the writing fragment shader's output that carries it. It is \
+                 stated and never inferred from the order of this map: a pass numbers its colour \
+                 targets from zero in attachment order, so a location derived from map order \
+                 would mis-bind the moment a name was inserted or removed — and the failure would \
+                 be a wrong image rather than an error.",
+            ),
+        ),
+        (
+            TYPE.to_owned(),
+            Schema::new(SchemaKind::String).with_documentation(
+                "The type of a texel, spelled `f32`, `vec3<f32>` or `vec4<f32>`. The format the \
+                 image is drawn in follows from it rather than being chosen beside it, and a type \
+                 no format in this device can create **and read back** is refused by name.",
+            ),
+        ),
+    ]))
+}
+
 /// Builds the schema of a standard scene document.
 pub fn standard_scene_schema() -> Schema {
     Schema::new(SchemaKind::structure([
@@ -278,6 +324,23 @@ pub fn standard_scene_schema() -> Schema {
                  entries with the same transform and a material per stage. A key that is not \
                  a mesh stage is an error.",
             ),
+        ),
+        (
+            OUTPUTS.to_owned(),
+            Schema::new(SchemaKind::dictionary(scene_output_schema()))
+                .optional()
+                .with_documentation(
+                    "Extra images this scene's **own** shaders write, keyed by the name a caller \
+                     looks each up under. The frame and the built-in channels are not listed here: \
+                     they are the pipeline's, and a scene asking for them by name would be asking \
+                     for a picture that exists whatever it declares. A declared output is filled by \
+                     the scene's own fragment shader, so **every stage that draws geometry into \
+                     the frame must write it** — a stage that did not would leave the image \
+                     showing whatever an earlier fragment wrote there, and that is a wrong answer \
+                     rather than a missing one. A shader that declares the output and never writes \
+                     its location is refused by name. The locations must run 1, 2, 3 … with no \
+                     gaps, because location zero is the frame.",
+                ),
         ),
         (
             CAMERAS.to_owned(),

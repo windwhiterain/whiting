@@ -915,7 +915,12 @@ pub fn emit(
         &clusters,
     ));
 
-    add_targets(&mut instance, frame);
+    // Read before anything is built, because two of the three places it is used come later and one
+    // of them — the instance entries — has to be in place before the passes that bind them. A
+    // scene whose declarations are refused stops the compile here rather than after a document has
+    // been half assembled.
+    let scene_outputs = read_scene_outputs(scene)?;
+    add_targets(&mut instance, frame, &scene_outputs);
     // The environment's map is an **image**, so its instance entry is the entry that image
     // already has and a material naming the same image would name: one map, uploaded once,
     // however many things read it. It is therefore written only when it is not already there,
@@ -1059,6 +1064,7 @@ pub fn emit(
             frame,
             time,
             &images,
+            &scene_outputs,
         ));
     }
     // Emission runs once per instance rather than once per light, which is the whole reason it
@@ -1069,7 +1075,14 @@ pub fn emit(
     for group in groups(&instances, &meshes, &shaders, Stage::Emission, None) {
         let images = declare_images(&mut instance, &group, &images)?;
         insert_entry(&mut instance, group.entry(), group.payload())?;
-        passes.push(emission_pass(&group, &camera, frame, time, &images));
+        passes.push(emission_pass(
+            &group,
+            &camera,
+            frame,
+            time,
+            &images,
+            &scene_outputs,
+        ));
     }
     // The post processes are the last passes, in the order the scene lists them. Everything
     // each reads was written above it: the first reads the shaded image and the last writes
@@ -1200,7 +1213,7 @@ pub fn emit(
     );
     fields.insert(
         graphics::OUTPUTS_FIELD.to_owned(),
-        debug_outputs(frame_target, debug),
+        debug_outputs(frame_target, debug, &scene_outputs),
     );
     let graphics = Value::Struct(fields);
 
@@ -3155,7 +3168,7 @@ fn camera_value(projection: &Projection) -> Value {
 /// the image it is written from. A post stage reads the shaded image and the depth that
 /// produced it and writes the present target, and a sample of one read at the coordinates
 /// of another is a frame of the wrong picture rather than a wrong picture.
-fn add_targets(instance: &mut BTreeMap<String, Value>, frame: Frame) {
+fn add_targets(instance: &mut BTreeMap<String, Value>, frame: Frame, declared: &[SceneOutput]) {
     instance.insert(
         DEPTH_BUFFER_ENTRY.to_owned(),
         texture(frame.width, frame.height, DEPTH_FORMAT),
@@ -3168,6 +3181,16 @@ fn add_targets(instance: &mut BTreeMap<String, Value>, frame: Frame) {
         PRESENT_TARGET_ENTRY.to_owned(),
         texture(frame.width, frame.height, COLOR_FORMAT),
     );
+    // A declared output is the frame's size, like every other target, because it is filled by the
+    // same draw and a texel of it is a texel of the same pixel. The format is the declared type's,
+    // reached through `TexelType::format` rather than spelled here, so the document and the image
+    // cannot be drawn in two different formats.
+    for output in declared {
+        instance.insert(
+            output.point.clone(),
+            texture(frame.width, frame.height, output.ty.format()),
+        );
+    }
 }
 
 /// Builds the three points that cover the frame.
@@ -3398,6 +3421,122 @@ fn debug_passes(
     Ok(passes)
 }
 
+/// One **scene-declared output**: an extra image the scene's own fragment shaders fill.
+///
+/// # Invariants
+///
+/// - **The binding point is the compiler's, derived from the name, and never the scene's.** A
+///   point names an instance entry the compiler has to create, so a scene that named one would be
+///   naming a resource rather than asking for a picture — and could name one that does not exist.
+///   The prefix keeps a declared output from colliding with a mesh, a material or a pipeline entry,
+///   because the point lives in the same instance namespace as all of them.
+/// - **The type is the authority for the format, and the format is reached through it.** There is
+///   no second place to spell a format, so a declaration cannot say `f32` and be drawn as
+///   something else; see [`graphics::TexelType::format`] for the table and for the formats it
+///   refuses on the grounds that this device cannot read them back.
+/// - **The order is the declared `location` order, not the map's.** `outputs` is a dictionary and
+///   iterates by name, so a scene whose two declarations were read in name order would have its
+///   attachments built in an order its shader did not write. Sorting by the stated location is what
+///   makes `@location(i)` and the declaration the same number by construction rather than by the
+///   author keeping two lists in step — which is the same lesson `texture-channel.md` records
+///   from the other direction, where an **inferred** sampler rule broke six gallery scenes at once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SceneOutput {
+    /// The name a caller looks the image up under.
+    name: String,
+    /// The binding point the compiler created for it.
+    point: String,
+    /// The `@location` the writing shader fills it at.
+    location: u32,
+    /// The type of a texel, as [`graphics::TexelType`] resolved the scene's spelling.
+    ty: graphics::TexelType,
+}
+
+impl SceneOutput {
+    /// The prefix every generated binding point carries.
+    const POINT_PREFIX: &'static str = "output_";
+
+    /// Returns the binding point a name of this shape is created under.
+    fn point_for(name: &str) -> String {
+        format!("{}{name}", Self::POINT_PREFIX)
+    }
+
+    /// Returns the declaration the emitted document carries, which is the scene's own request with
+    /// the compiler's point filled in.
+    fn declaration(&self) -> Value {
+        graphics::OutputDeclaration {
+            point: &self.point,
+            location: self.location,
+            ty: self.ty.name(),
+        }
+        .to_value()
+    }
+}
+
+/// Reads the extra images a scene asks to be filled by its own shaders.
+///
+/// # Invariants
+///
+/// - **The locations must be exactly `1..N`, in the order the attachments are built.** Location
+///   zero is the frame and a pass numbers its colour targets from zero in attachment order, so a
+///   gap leaves a shader writing a target no pass has and a repeat leaves two outputs on one
+///   attachment. Both are refused here rather than caught by the device, because the device's
+///   message would be about a pass the author never wrote.
+/// - **An absent field is no outputs**, so a scene that declares none emits the documents it
+///   emitted before this field existed.
+/// - **The names come from the map, the types from the vocabulary.** A spelling the closed type
+///   vocabulary does not carry is refused here with the reason
+///   [`graphics::TexelType::parse`] gives, rather than being passed into a document the device
+///   would refuse with the same words several steps later.
+fn read_scene_outputs(scene: &Value) -> Result<Vec<SceneOutput>, CompileError> {
+    let path = Path::root().key(scene_schema::OUTPUTS);
+    let Some(declared) = scene
+        .as_field_map()
+        .and_then(|fields| fields.get(scene_schema::OUTPUTS))
+        .and_then(Value::as_dict)
+    else {
+        return Ok(Vec::new());
+    };
+    let mut outputs: Vec<SceneOutput> = Vec::with_capacity(declared.len());
+    for (name, request) in declared {
+        let at = path.key(name);
+        let fields = request
+            .as_struct()
+            .ok_or_else(|| malformed(&at, "an output declaration"))?;
+        let Some(Value::Int(location)) = fields.get(scene_schema::LOCATION) else {
+            return Err(malformed(
+                &at,
+                "an output declaring the @location it is written at",
+            ));
+        };
+        let Some(Value::String(spelled)) = fields.get(scene_schema::TYPE) else {
+            return Err(malformed(&at, "an output declaring the type of a texel"));
+        };
+        let location = u32::try_from(*location)
+            .map_err(|_| malformed(&at, "a @location that is a non-negative whole number"))?;
+        let ty = graphics::TexelType::parse(spelled).map_err(|error| {
+            CompileError::UndeclaredTexelType {
+                path: at,
+                spelled: error.spelled().to_owned(),
+                reason: error.reason(),
+            }
+        })?;
+        outputs.push(SceneOutput {
+            name: name.clone(),
+            point: SceneOutput::point_for(name),
+            location,
+            ty,
+        });
+    }
+    let mut found: Vec<u32> = outputs.iter().map(|output| output.location).collect();
+    found.sort_unstable();
+    let expected: Vec<u32> = (1..=outputs.len() as u32).collect();
+    if found != expected {
+        return Err(CompileError::OutputLocations { path, found });
+    }
+    Ok(outputs)
+}
+
 /// Builds the images an emitted document says a render produces.
 ///
 /// # Invariants
@@ -3421,7 +3560,7 @@ fn debug_passes(
 /// there is no post stage at all. It is stated rather than left to the convention so that the
 /// frame is checked by the same rule as every other output — a pipeline whose frame shader
 /// stopped returning a `vec4` would be caught here rather than arriving as a picture.
-fn debug_outputs(frame_target: &str, channels: &[DebugChannel]) -> Value {
+fn debug_outputs(frame_target: &str, channels: &[DebugChannel], declared: &[SceneOutput]) -> Value {
     let mut outputs = FieldMap::new();
     outputs.insert(
         graphics::PRESENT_OUTPUT.to_owned(),
@@ -3439,6 +3578,11 @@ fn debug_outputs(frame_target: &str, channels: &[DebugChannel]) -> Value {
             channel.output().to_owned(),
             channel.declaration().to_value(),
         );
+    }
+    // The scene's own come last and in declared-location order, so a reader of the emitted map
+    // finds the pipeline's own answers first and the scene's in the order its shader writes them.
+    for output in declared {
+        outputs.insert(output.name.clone(), output.declaration());
     }
     Value::Dict(outputs)
 }
@@ -3608,6 +3752,7 @@ fn lighting_pass(
     frame: Frame,
     time: f64,
     images: &[(String, Value)],
+    declared: &[SceneOutput],
 ) -> Value {
     rasterize(
         &group.label(),
@@ -3715,7 +3860,8 @@ fn lighting_pass(
                 lighting_pool::declaration(SPOT_CONES_ENTRY, cones.bytes().len() as i64),
             )])
             .chain([environment_binding(environment)])
-            .chain(images.iter().cloned()),
+            .chain(images.iter().cloned())
+            .chain(output_bindings(declared, frame)),
         // The depth buffer is named as a **target** and not only declared as a binder, which
         // is what makes this pass's own depth state real: a pipeline reads its depth state
         // off the depth attachment it was given, so a pass that declares `LessEqual` and is
@@ -3723,10 +3869,56 @@ fn lighting_pass(
         // existing. The point stays in the numbering while it is a target, because the device
         // numbers a pass's binding points rather than its bound resources; see
         // `Bindings::binding_numbers`.
-        vec![COLOR_TARGET, DEPTH_BUFFER],
+        //
+        // The scene's own outputs sit between the frame and the depth buffer, which is what makes
+        // a declared location of one, two, three the second, third and fourth **colour**
+        // attachment: the colour list is these names in order with the depth one dropped from it.
+        // The number the shader writes and the position the target is built at are therefore the
+        // same number by construction rather than by the author keeping two lists in step.
+        target_list(declared),
         COLOUR_CLEAR,
         lighting_state(),
     )
+}
+
+/// Returns the target names a geometry pass draws into: the frame, then the scene's own outputs,
+/// then the depth buffer.
+///
+/// # Invariants
+///
+/// **The order of this list is the `@location` numbering of every lighting shader in the scene.**
+/// The colour list a pass draws into is these names in that order with the depth attachment
+/// dropped, so what a shader writes at `location(1)` is the second name here and no other. It is
+/// therefore a fact about every shader rather than about one pass, which is why the frame is first
+/// and the scene's declarations follow in the order they were read.
+fn target_list<'declared>(declared: &'declared [SceneOutput]) -> Vec<&'declared str> {
+    let mut targets = Vec::with_capacity(declared.len() + 2);
+    targets.push(COLOR_TARGET);
+    targets.extend(declared.iter().map(|output| output.point.as_str()));
+    targets.push(DEPTH_BUFFER);
+    targets
+}
+
+/// Returns the bindings a scene's declared outputs are written through.
+///
+/// # Invariants
+///
+/// **Every pass that draws the scene's geometry declares them, not only the one whose shape gave
+/// them their meaning.** A declared output is a claim about every pixel, so a stage that drew
+/// geometry and did not name these would leave the image holding whatever an earlier fragment put
+/// there — a wrong answer wearing the right one. The device's `check_outputs` refuses a shader
+/// that declares an output and does not write its location, so a scene that opts in and forgets a
+/// stage is told which shader rather than handed a plausible image.
+fn output_bindings(declared: &[SceneOutput], frame: Frame) -> Vec<(String, Value)> {
+    declared
+        .iter()
+        .map(|output| {
+            (
+                output.point.clone(),
+                texture_binding(&output.point, frame.width, frame.height, output.ty.format()),
+            )
+        })
+        .collect()
 }
 
 /// Builds the binding point the environment map is read at, whatever the scene's environment is.
@@ -3764,6 +3956,7 @@ fn emission_pass(
     frame: Frame,
     time: f64,
     images: &[(String, Value)],
+    declared: &[SceneOutput],
 ) -> Value {
     rasterize(
         &group.label(),
@@ -3783,11 +3976,17 @@ fn emission_pass(
                     texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
                 ),
             ])
-            .chain(images.iter().cloned()),
+            .chain(images.iter().cloned())
+            .chain(output_bindings(declared, frame)),
         // Named as a target for the same reason the lighting pass names it: the depth state
         // this pass declares is honoured through the attachment or not at all, and a pass
         // that declares one and is given none is refused rather than drawn without it.
-        vec![COLOR_TARGET, DEPTH_BUFFER],
+        //
+        // The scene's own outputs are named for the same reason the lighting pass names them and
+        // not only the lighting pass's sake: **an emissive surface is a surface the picture
+        // shows**, so an emission pass that did not write them would leave the output holding the
+        // id of whatever opaque fragment happened to be behind it.
+        target_list(declared),
         COLOUR_CLEAR,
         lighting_state(),
     )
@@ -5015,12 +5214,12 @@ const DEBUG_CLEAR: [f64; 4] = [0.0, 0.0, 0.0, 0.0];
 /// and keeps the nearer fragment, which is what a pass into a depth map or a depth buffer
 /// wants.
 #[allow(clippy::too_many_arguments)]
-fn rasterize(
+fn rasterize<'target>(
     label: &str,
     shader_entry: &str,
     uniform: Value,
     binders: impl IntoIterator<Item = (String, Value)>,
-    targets: impl IntoIterator<Item = &'static str>,
+    targets: impl IntoIterator<Item = &'target str>,
     clear: [f64; 4],
     state: PipelineStateFields,
 ) -> Value {

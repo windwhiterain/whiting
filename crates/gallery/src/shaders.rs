@@ -533,8 +533,240 @@ pub fn lighting_with_normal<'text>(
         surface.into(),
         helpers.into(),
         lighting_bindings(false),
+        &Extras::NONE,
     )
 }
+
+/// Returns a lighting stage that writes the frame's extra outputs beside it.
+///
+/// # Invariants
+///
+/// **`Extras::NONE` is this with nothing declared**, and produces the same source the other
+/// builder does — the same six varyings, the same assignments, and a bare `@location(0)
+/// vec4<f32>` rather than a struct. Every gallery scene that declares no outputs therefore
+/// compiles to the WGSL it compiled to before, which is what makes the additive property a
+/// measurement: a scene's picture does not move because its source did not either.
+pub fn lighting_declaring<'text>(
+    vertex_inputs: &str,
+    displace: impl Into<Block<'text>>,
+    surface: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+    extras: &Extras,
+) -> String {
+    lighting_stage(
+        vertex_inputs,
+        displace.into(),
+        surface.into(),
+        helpers.into(),
+        lighting_bindings(false),
+        extras,
+    )
+}
+
+/// The extra fragment outputs a scene's own lighting shader writes beside the frame.
+///
+/// # Invariants
+///
+/// - **A scene that declares none gets `NONE`, and `NONE` reproduces the shader that existed
+///   before this type did**: the same six varyings, the same assignments, and a fragment that
+///   returns `@location(0) vec4<f32>` rather than a struct. Every other gallery scene's WGSL is
+///   therefore the WGSL it was, which is what makes the additive property measurable rather than
+///   argued — the file's sha256 does not move.
+/// - **The names are the scene's own, taken from its `outputs`, in the declared locations'
+///   order.** The varying, the vertex input and the fragment output all carry the same name, so a
+///   shader that names one and not the other is a shader `naga` refuses rather than a picture
+///   that is quietly wrong.
+/// - **A fragment that writes more than the frame returns a struct**, and a fragment that writes
+///   only the frame returns a bare `vec4<f32>`. Both are legal WGSL and both are checked the
+///   same way by `check_outputs`; the struct is not a nicer shape, it is the only way a fragment
+///   stage can name a second output at all.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Extras {
+    /// The scene's declared outputs, in location order.
+    outputs: Vec<Extra>,
+    /// The point fields each output is read from, in the same order.
+    fields: Vec<(String, u32)>,
+}
+
+/// One declared output and the point field that carries it through the vertex stage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Extra {
+    name: String,
+    location: u32,
+    field: String,
+    components: u32,
+}
+
+impl Extras {
+    /// What a scene that declares no outputs gets.
+    pub const NONE: Self = Self {
+        outputs: Vec::new(),
+        fields: Vec::new(),
+    };
+
+    /// Returns the outputs a scene declares, paired with the point field each is read from.
+    ///
+    /// # Invariants
+    ///
+    /// **The two lists are built together and cannot disagree about order.** A varying numbered
+    /// by one list and a fragment output numbered by the other would be a shader whose two halves
+    /// describe different pictures, and the failure would be an image of somebody else's numbers
+    /// rather than an error. The scene's own `outputs` map is the only ordering authority, and
+    /// `location` is the number both sides are written from.
+    pub fn new(entries: impl IntoIterator<Item = (String, u32, String, u32)>) -> Self {
+        let mut outputs = Vec::new();
+        let mut fields = Vec::new();
+        for (name, location, field, components) in entries {
+            fields.push((field.clone(), location));
+            outputs.push(Extra {
+                name,
+                location,
+                field,
+                components,
+            });
+        }
+        Self { outputs, fields }
+    }
+
+    /// Returns whether this shader writes anything beside the frame.
+    pub fn is_empty(&self) -> bool {
+        self.outputs.is_empty()
+    }
+
+    /// Returns the point schema a shader writing these outputs declares.
+    ///
+    /// # Invariants
+    ///
+    /// **The gallery's own point, with each output's field added to it.** A scene whose mesh
+    /// carries an id per face needs a point schema with that field in it, and deriving both the
+    /// layout and the shader's parameter list from the one schema is what makes them agree —
+    /// nothing checks a vertex layout, so a shader naming a location the layout does not have
+    /// reads somebody else's data rather than failing.
+    pub fn point_schema(&self) -> Schema {
+        let mut fields = match &kit::shaded_point_schema().kind {
+            SchemaKind::Struct { fields } => fields.clone(),
+            other => return Schema::new(other.clone()),
+        };
+        for extra in &self.outputs {
+            fields.insert(
+                extra.field.clone(),
+                graphics::layout::components_schema(extra.components as usize),
+            );
+        }
+        Schema::new(SchemaKind::Struct { fields })
+    }
+
+    /// Returns the varyings the vertex stage carries and the fragment stage reads.
+    ///
+    /// The locations **continue from the shader's own six**, because those are the six the
+    /// `Vertex` struct declares whatever this type is: a shader with outputs has the same
+    /// world position, normal, texture, emissive, tint and material as one without.
+    ///
+    /// # Invariants
+    ///
+    /// **These are the varying namespace's numbers, not the scene's declared ones.** A varying's
+    /// `@location` addresses an entry of the `Vertex` struct and has to be unique and unclaimed
+    /// within it; a fragment output's addresses a colour attachment and is the number the scene
+    /// declared. The two are different spaces and happen to run in the same order, so deriving
+    /// one from the other would be right until a scene declared its locations out of order — at
+    /// which point only one of the two is still what the compiler built.
+    fn varyings(&self) -> String {
+        let mut lines = String::new();
+        for (index, extra) in self.outputs.iter().enumerate() {
+            lines.push_str(&format!(
+                "    @location({}) {}: f32,\n",
+                FIRST_EXTRA_LOCATION + index as u32,
+                extra.field
+            ));
+        }
+        lines
+    }
+
+    /// Returns the assignments that carry each output's point field to its varying.
+    fn assigns(&self) -> String {
+        let mut lines = String::new();
+        for extra in &self.outputs {
+            lines.push_str(&format!(
+                "    out.{} = {};\n",
+                extra.field,
+                self.read(extra)
+            ));
+        }
+        lines
+    }
+
+    /// Returns how one output is read out of the point, given its component count.
+    ///
+    /// # Invariants
+    ///
+    /// **A field of one component is a bare `f32` and of more is assembled from consecutive
+    /// attributes**, which is the same rule `crate::attributes` lays the vertex out by. Reading a
+    /// one component field as a `vec3` would consume the two attributes after it and shift every
+    /// one of them, which is a vertex reading somebody else's data rather than an error.
+    fn read(&self, extra: &Extra) -> String {
+        if extra.components == 1 {
+            extra.field.clone()
+        } else {
+            let parts: Vec<String> = (0..extra.components)
+                .map(|component| format!("{}{component}", extra.field))
+                .collect();
+            format!("vec{}<f32>({})", extra.components, parts.join(", "))
+        }
+    }
+
+    /// Returns the struct a fragment returns when it writes more than the frame, and the type
+    /// the entry point is declared as.
+    ///
+    /// # Invariants
+    ///
+    /// **Each output is written at the `@location` the scene declared, never at its position in
+    /// this list.** The compiler builds the pass's colour targets in the declared locations'
+    /// order, so a declared location of two is the second attachment; deriving the location from
+    /// the index would be right for every scene that happens to declare 1, 2, 3 in order and wrong
+    /// for the first that does not — which is the failure `typed-outputs.md` records from an
+    /// inferred rule that broke six gallery scenes at once.
+    fn returns(&self) -> (String, String) {
+        if self.is_empty() {
+            return (String::new(), "@location(0) vec4<f32>".to_owned());
+        }
+        let mut declarations =
+            String::from("struct Written {\n    @location(0) frame: vec4<f32>,\n");
+        for extra in &self.outputs {
+            declarations.push_str(&format!(
+                "    @location({}) {}: f32,\n",
+                extra.location, extra.name
+            ));
+        }
+        declarations.push_str("};\n\n");
+        (declarations, "Written".to_owned())
+    }
+
+    /// Returns the frame and every declared output, written into the struct a fragment returns.
+    fn writes(&self) -> String {
+        if self.is_empty() {
+            return String::new();
+        }
+        let mut lines =
+            String::from("    var out: Written;\n    out.frame = vec4<f32>(color, 1.0);\n");
+        for extra in &self.outputs {
+            lines.push_str(&format!("    out.{} = in.{};\n", extra.name, extra.field));
+        }
+        lines
+    }
+
+    /// Returns what the fragment entry point returns, which is the struct when there is one.
+    fn return_value(&self) -> String {
+        if self.is_empty() {
+            "vec4<f32>(color, 1.0)".to_owned()
+        } else {
+            "out".to_owned()
+        }
+    }
+}
+
+/// The `@location` a scene's first own output's varying takes, which continues the six every
+/// lighting shader's `Vertex` struct declares.
+const FIRST_EXTRA_LOCATION: u32 = 6;
 
 /// Returns the binding declarations of the clustered lighting stage, numbered the way the
 /// pass binds them.
@@ -628,10 +860,16 @@ fn lighting_stage<'text>(
     surface: Block<'text>,
     helpers: Block<'text>,
     bindings: String,
+    extras: &Extras,
 ) -> String {
     let displace = displace.spliced("displace");
     let surface = surface.spliced("surface");
     let helpers = helpers.spliced("helpers");
+    let vertex_varyings = extras.varyings();
+    let vertex_assigns = extras.assigns();
+    let (fragment_returns, fragment_type) = extras.returns();
+    let fragment_writes = extras.writes();
+    let fragment_return = extras.return_value();
     format!(
         r#"{LIGHTING_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -1435,7 +1673,7 @@ struct Vertex {{
     @location(3) emissive: vec3<f32>,
     @location(4) tint: vec3<f32>,
     @location(5) material: vec3<f32>,
-}};
+{vertex_varyings}}};
 
 @vertex
 fn vertex_main(
@@ -1456,11 +1694,11 @@ fn vertex_main(
     out.emissive = emissive;
     out.tint = tint;
     out.material = vec3<f32>(metallic, roughness, reflect);
-    return out;
+{vertex_assigns}    return out;
 }}
 
-@fragment
-fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
+{fragment_returns}@fragment
+fn fragment_main(in: Vertex) -> {fragment_type} {{
     // The shading normal, and the one thing a scene may displace. Everything below is a
     // function of it, so displacing it here moves the diffuse term, the highlight, the
     // Fresnel term and the offset the shadow is looked up at together — which is what a
@@ -1580,7 +1818,7 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {{
     // stage runs once, so a term added here is a term added once, and emission is its own
     // stage.
 {surface}
-    return vec4<f32>(color, 1.0);
+{fragment_writes}    return {fragment_return};
 }}
 "#
     )
@@ -1608,6 +1846,7 @@ pub fn textured<'text>(vertex_inputs: &str, helpers: impl Into<Block<'text>>) ->
             .into(),
         helpers.into(),
         lighting_bindings(true),
+        &Extras::NONE,
     )
 }
 
@@ -2110,12 +2349,43 @@ pub fn lighting_shader_with_schema<'text>(
     helpers: impl Into<Block<'text>>,
     custom_schema: Schema,
 ) -> Value {
-    let point = kit::shaded_point_schema();
+    lighting_shader_declaring(
+        label,
+        displace,
+        surface,
+        helpers,
+        custom_schema,
+        &Extras::NONE,
+    )
+}
+
+/// Builds a lighting shader that also writes the frame's own extra outputs.
+///
+/// # Invariants
+///
+/// **The point schema is the one carrying the outputs' fields**, so `gallery_vertex_inputs_with`
+/// reads them at the locations the shader's `vertex_main` names — derived from the same schema
+/// rather than written beside it, which is what keeps a field that moved and a shader that reads
+/// it from drifting apart. Nothing checks a vertex layout, so this is the one place the two can
+/// be made to agree by construction.
+pub fn lighting_shader_declaring<'text>(
+    label: &str,
+    displace: impl Into<Block<'text>>,
+    surface: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+    custom_schema: Schema,
+    extras: &Extras,
+) -> Value {
+    let point = if extras.is_empty() {
+        kit::shaded_point_schema()
+    } else {
+        extras.point_schema()
+    };
     let inputs = crate::attributes::gallery_vertex_inputs_with(&point, &custom_schema);
     kit::shader(
         Stage::Lighting,
         label,
-        &lighting_with_normal(&inputs, displace, surface, helpers),
+        &lighting_declaring(&inputs, displace, surface, helpers, extras),
         light_pass_schema(),
         point,
         kit::gallery_instance_schema(),
