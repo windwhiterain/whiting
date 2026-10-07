@@ -56,7 +56,7 @@ pub mod zip;
 
 pub use derive::{Starter, derive_valleys, starter};
 pub use expand::{Belt, BuildError, Problem, build, enumerate};
-pub use facet::{Face, FaceAttributes, FacetMesh};
+pub use facet::{BlockFace, CornerNormals, Face, FaceAttributes, FacetMesh};
 pub use line::{LineRef, Node, Side, Station};
 pub use sampling::{Sample, SampledLine, Sampling, Vertex};
 pub use skeleton::{

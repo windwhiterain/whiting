@@ -435,3 +435,34 @@ Neither is visible in a plan diagram or a validate report. Both are obvious the 
 are written out side by side, which is the argument for the table over the formula and the whole of
 what the table is for.
 
+### The block face, and why it is not a quad
+
+The expanded form gained [`BlockFace`](../../../crates/mountain/src/facet.rs): the surface a belt
+spans between two of its ribs, corners `(crest a, crest b, valley a, valley b)` with `a` paired
+with `a`, and a triangle as the degenerate case where one boundary run is a single point. R5's
+"each triangle is one planar block face" stops being true; the triangles stay exactly planar and
+stop being the unit of surface. See
+[proposals/block-faces-and-soft-edges.md](../../proposals/block-faces-and-soft-edges.md); the spec
+itself is human-editable only and is **not** changed here.
+
+Three things the design above does not say, found while adding it:
+
+- **A belt is a general triangle strip, so a quad has to be asked for rather than recovered.**
+  Measured on the `landscape` massif: 16 of 240 belts are two triangles and the rest are three to
+  thirty, because R4.1 lets the two boundaries subdivide independently and they do — crest step
+  scales run 0.63–1.15 against the valleys' flat 0.80. Any design that wants a cell structure has
+  to give up R4.1 first. It did not: the block's ends are the **ribs**, which the author already
+  wrote as `ValleyNode.left` / `.right`, so "where does a block begin" needs no new surface at all
+  and writing fewer nodes on a line is also how an author coarsens the blocks.
+- **The primitive a mesh is drawn in and the primitive it is read as are different questions.** The
+  crate's pipeline is unindexed and writes three corners per triangle, so soft edges need **no
+  vertex splitting at all** — a corner is already its own vertex, and the whole change is writing
+  the averaged normal instead of the face normal three times. A mesh representation that had been
+  indexed would have needed a split pass and a second vertex array; this one needed neither.
+- **The corner stencil fails here for the same reason it fails in `patch`.** Angle-weighted
+  normals smooth a block's interior and leave its join to its neighbour a crease — measurably
+  softer than an unrelated hard edge, not continuous. `patch::continuity` documents the same
+  bounded defect for control points (4.8e-2 rad against 1.8e-1 rad) and the same reason. So the
+  two crates say *soft edge* for one intent and mean different mechanisms by it, and a soft edge
+  in neither is C1.
+

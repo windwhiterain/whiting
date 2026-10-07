@@ -20,7 +20,87 @@ use crate::line::LineRef;
 use crate::math::{Vec2, Vec3, distance};
 use crate::tessellation::BeltRef;
 
-/// One planar block face.
+/// One block face: the surface a belt spans between two of its ribs.
+///
+/// # Invariants
+///
+/// - **Its corners are `(crest a, crest b, valley a, valley b)`, and `a` pairs with `a`.** A rib
+///   is a node of the line the block's floor runs along together with the station that node names
+///   on this flank, so the corner order is the order the two ribs give: along the crest from `a` to
+///   `b`, across rib `b` to the floor, back along the floor from `b` to `a`, across rib `a` to the
+///   crest. Any other order makes the block's own two boundaries cross.
+///
+/// - **A triangle is this shape's degenerate case and not a different shape.** [`BlockFace::top`]
+///   and [`BlockFace::bottom`] are the block's own stretches of the two boundaries, so a block
+///   holds `top.len() + bottom.len() - 2` faces: two when both runs are two points long, which is
+///   the quad, and three or more when the crest and the valley floor were sampled at different
+///   rates — which is the common case, because nothing in this crate requires the two to agree.
+///   One of the runs being a single point makes the count one, and [`BlockFace::corners`] reports
+///   that by repeating the point rather than by returning three entries.
+///
+/// - **The ends are the author's, not this crate's.** A block's two ribs are two authored nodes of
+///   the line its floor runs along, so how coarse the blocks are is how coarsely that line was
+///   written: a skeleton with thirteen valley nodes per flank makes blocks no longer than what its
+///   own nodes describe. Nothing here chooses where a block begins or ends, because anything that
+///   did would be a second place for that decision to be made.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlockFace {
+    /// The block's own run of points on its upper boundary, crest a through crest b.
+    pub top: Vec<u32>,
+    /// Its own run on the lower boundary, valley a through valley b.
+    pub bottom: Vec<u32>,
+    /// The faces it is expanded into.
+    ///
+    /// # Invariants
+    ///
+    /// It is a **range and not a list** because one belt is expanded in one walk, so the faces of
+    /// one block are always consecutive — and a range cannot be read as an ordering of faces that
+    /// the expander does not guarantee.
+    pub faces: std::ops::Range<u32>,
+    /// What the block is, in the skeleton's own terms.
+    pub attributes: FaceAttributes,
+}
+
+impl BlockFace {
+    /// Returns the block's four corners, as `(crest a, crest b, valley a, valley b)`.
+    ///
+    /// # Invariants
+    ///
+    /// It is `None` for a block with **no point at all on one of its two boundaries**, which is a
+    /// block whose floor was never walked. Such a block has no shape to name, and reporting its
+    /// emptiness as a corner would put a vertex index of zero in an answer about the mesh.
+    ///
+    /// A triangle block answers with **four** entries, two of which are the same vertex: that is
+    /// the degenerate case this type exists to express, and shortening the answer would make the
+    /// caller work out which corner is missing.
+    pub fn corners(&self) -> Option<[u32; 4]> {
+        Some([
+            *self.top.first()?,
+            *self.top.last()?,
+            *self.bottom.first()?,
+            *self.bottom.last()?,
+        ])
+    }
+
+    /// Returns how many faces the block is expanded into.
+    pub fn len(&self) -> usize {
+        (self.faces.end - self.faces.start) as usize
+    }
+
+    /// Returns whether the block is expanded into nothing.
+    pub fn is_empty(&self) -> bool {
+        self.faces.start >= self.faces.end
+    }
+}
+
+/// One triangle of a block face.
+///
+/// # Invariants
+///
+/// **It is exactly planar and it is not the unit of surface.** The triangle is the primitive the
+/// belt's strip is walked in and the primitive a rasteriser draws; the surface a reader shades is
+/// the [`BlockFace`] it belongs to. Which of the two a caller is holding is the difference between
+/// a hard-edged mesh and a smooth one, and it is a question [`Face::block`] exists to answer.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Face {
     /// The three points, wound so the face looks up.
@@ -44,6 +124,21 @@ pub struct Face {
     pub uv: [[f32; 2]; 3],
     /// What the face is, for whatever reads the mesh after this crate.
     pub attributes: FaceAttributes,
+    /// Which block face this triangle is part of.
+    ///
+    /// # Invariants
+    ///
+    /// It indexes [`FacetMesh::blocks`], and this face's own index lies inside that block's
+    /// [`BlockFace::faces`]. The two are written together by the expander and can therefore not be
+    /// edited apart, which is what makes "average over the faces of one block" a lookup rather
+    /// than a walk over the mesh.
+    ///
+    /// **A block boundary is a crease.** Every vertex a block shares with another block is still
+    /// one vertex of the mesh, but its normal is read per block, so the two sides of a shared
+    /// edge interpolate different normals and the edge shows. That is the intent — the ribs and
+    /// the crest lines are the hard edges of the rock — and a caller that wants a block boundary
+    /// to vanish must join the blocks rather than smooth across them.
+    pub block: u32,
 }
 
 /// One face, in the belt's own coordinates.
@@ -87,6 +182,18 @@ pub struct FacetMesh {
     pub points: Vec<Vec3>,
     /// Every face.
     pub faces: Vec<Face>,
+    /// The block faces the triangles are grouped into, in the order they were expanded.
+    ///
+    /// # Invariants
+    ///
+    /// - **There is one block per belt that produced any faces**, so every index a
+    ///   [`Face::block`] holds is in range. A belt that produced none — a strip whose every row
+    ///   collapsed at a summit — has no block, because a block is a surface and a surface with
+    ///   no faces is not one.
+    /// - **Every face is in exactly one block**, and the blocks partition `faces`. A face outside
+    ///   every block would have no block to average its normals over, and would silently fall back
+    ///   to its own flat normal.
+    pub blocks: Vec<BlockFace>,
 }
 
 impl FacetMesh {
@@ -292,6 +399,118 @@ impl FacetMesh {
 /// not emitted and a uv triangle that cannot be interpolated in are the same condition reached
 /// two ways, and one number for both is one fewer place for them to disagree.
 const AREA_EPSILON: f32 = 1.0e-6;
+
+/// How small a corner's angle must be, in radians, before it counts as having none.
+const ANGLE_EPSILON: f32 = 1.0e-6;
+
+/// How small a triangle's corner must be, in radians, before its angle is read as a right angle.
+///
+/// The cosine of an angle just short of zero and of an angle just short of a full turn are the
+/// same number to a float's precision, and a collapsed triangle's corner is somewhere in between.
+/// A flat interior corner has a cosine of zero, so a right angle is the one answer that is right
+/// for the degenerate case and wrong by at most a quarter turn for the near-degenerate one.
+const FLAT_ANGLE: f32 = std::f32::consts::FRAC_PI_2;
+
+/// Returns the angle at one corner of a triangle, in radians.
+fn corner_angle(corners: [Vec3; 3], corner: usize) -> f32 {
+    let from = corners[corner];
+    let (one, other) = (
+        crate::math::normalized3(crate::math::subtract(corners[(corner + 1) % 3], from)),
+        crate::math::normalized3(crate::math::subtract(corners[(corner + 2) % 3], from)),
+    );
+    let cosine = crate::math::dot3(one, other);
+    if cosine.abs() <= f32::EPSILON {
+        return FLAT_ANGLE;
+    }
+    cosine.clamp(-1.0, 1.0).acos()
+}
+
+/// The normal at every corner of every face, averaged over the block that face belongs to.
+///
+/// # Invariants
+///
+/// - **Weighted by the corner's angle, not counted.** A sliver a hundred times longer than it is
+///   wide is one face of a block and its two vertices are worth barely anything to the surface,
+///   but a plain mean gives it a full vote each — and a belt zipped between two boundaries that
+///   descend at different rates produces exactly those. Weighting by the angle at the corner is
+///   what keeps a thin face from tilting its neighbours towards its own plane.
+///
+/// - **Averaged over one block only.** A vertex is read once per block that touches it, so two
+///   faces meeting across a block boundary get normals from their own sides and the shared edge
+///   stays a crease. Averaging over the whole mesh instead would round the crest lines off, and
+///   the crest lines are the rock.
+///
+/// - **A corner with no angle at it keeps its face's own normal.** A corner whose faces are all
+///   collapsed has nothing to average, and a normal of no length is not a normal.
+///
+/// - **It is a table, not a walk.** [`CornerNormals::of`] is the one pass, and
+///   [`CornerNormals::at`] is a constant-time read afterwards. A caller that shaded a mesh by
+///   re-walking it per corner would pay for the same sum once per corner of every face.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CornerNormals {
+    /// One entry per face, three to a face, in the face's own corner order.
+    normals: Vec<[Vec3; 3]>,
+}
+
+impl CornerNormals {
+    /// Reads every corner of every face of a mesh, in one pass.
+    pub fn of(mesh: &FacetMesh) -> Self {
+        let mut sums: BTreeMap<(u32, u32), ([f32; 3], f32)> = BTreeMap::new();
+        for face in &mesh.faces {
+            let unit = mesh.normal(face);
+            for corner in 0..3 {
+                let angle = corner_angle(mesh.triangle(face), corner);
+                let entry = sums
+                    .entry((face.block, face.indices[corner]))
+                    .or_insert(([0.0; 3], 0.0));
+                for axis in 0..3 {
+                    entry.0[axis] += unit[axis] * angle;
+                }
+                entry.1 += angle;
+            }
+        }
+        let normals = mesh
+            .faces
+            .iter()
+            .map(|face| {
+                std::array::from_fn(
+                    |corner| match sums.get(&(face.block, face.indices[corner])) {
+                        Some((sum, total)) if *total > ANGLE_EPSILON => {
+                            crate::math::normalized3(*sum)
+                        }
+                        _ => mesh.normal(face),
+                    },
+                )
+            })
+            .collect();
+        CornerNormals { normals }
+    }
+
+    /// Returns the normal at one corner of one face.
+    ///
+    /// # Invariants
+    ///
+    /// It is a **constant-time read** and a face index that does not exist is answered with `up`
+    /// rather than panicking, because a caller holding a face index holds a fact about the mesh
+    /// and a mesh this was not read from is that fact being about something else — which is a
+    /// caller bug, and a number is a better report of one than a backtrace.
+    pub fn at(&self, face: usize, corner: usize) -> Vec3 {
+        self.normals
+            .get(face)
+            .map(|corners| corners[corner % 3])
+            .unwrap_or([0.0, 1.0, 0.0])
+    }
+
+    /// Returns how many faces this was read over.
+    pub fn len(&self) -> usize {
+        self.normals.len()
+    }
+
+    /// Returns whether there are no faces at all.
+    pub fn is_empty(&self) -> bool {
+        self.normals.is_empty()
+    }
+}
 
 /// Returns the signed area of a triangle in a two dimensional parameter space.
 fn area_of(a: [f32; 2], b: [f32; 2], c: [f32; 2]) -> f32 {

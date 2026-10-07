@@ -12,7 +12,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use crate::facet::{Face, FaceAttributes, FacetMesh};
+use crate::facet::{BlockFace, Face, FaceAttributes, FacetMesh};
 use crate::line::{LineRef, Side, Station};
 use crate::math::{Vec3, span};
 use crate::sampling::{Sampling, Unresolved, Vertex};
@@ -145,6 +145,11 @@ pub fn build(skeleton: &Skeleton, tessellation: Tessellation) -> Result<FacetMes
         let along_bottom = fractions(&bottom);
 
         let (mut high, mut low) = (0usize, 0usize);
+        // The block's index is claimed **before** its faces exist, because every face has to name
+        // one. A belt whose every row collapses leaves the claim unused and the next belt takes
+        // it, so the blocks stay consecutive with no gap for a face to point into.
+        let block = mesh.blocks.len() as u32;
+        let first = mesh.faces.len() as u32;
         for step in walked {
             let corners = match step {
                 Step::Top => {
@@ -179,10 +184,40 @@ pub fn build(skeleton: &Skeleton, tessellation: Tessellation) -> Result<FacetMes
                     dip_angle: 0.0,
                     ruggedness,
                 },
+                block,
             );
+        }
+        let last = mesh.faces.len() as u32;
+        if last > first {
+            mesh.blocks.push(BlockFace {
+                // The runs are read back out of the vertex table **after** the walk, so a point
+                // whose only face collapsed is simply absent rather than inserted here. Reading
+                // them rather than indexing the belt's own boundary list is what keeps a collapse
+                // from adding a point to the mesh that no face uses, which would change the
+                // vertex count and with it the Euler characteristic the mesh reports.
+                top: run(&table, &belt.top),
+                bottom: run(&table, &belt.bottom),
+                faces: first..last,
+                attributes: FaceAttributes {
+                    belt: belt.reference,
+                    top: top_line,
+                    bottom: bottom_line,
+                    dip: [0.0, 0.0],
+                    dip_angle: 0.0,
+                    ruggedness,
+                },
+            });
         }
     }
     Ok(mesh)
+}
+
+/// Returns a boundary's points as mesh vertex indices, skipping any the walk never reached.
+fn run(table: &HashMap<Vertex, u32>, boundary: &[Vertex]) -> Vec<u32> {
+    boundary
+        .iter()
+        .filter_map(|v| table.get(v).copied())
+        .collect()
 }
 
 /// Returns every belt of a skeleton, in the one order they are enumerated in.
@@ -388,6 +423,7 @@ fn push_face(
     corners: [Corner; 3],
     sampling: &Sampling,
     attributes: FaceAttributes,
+    block: u32,
 ) {
     let points = corners.map(|corner| sampling.point(corner.vertex));
     let plan = points.map(|point| [point[0], point[2]]);
@@ -419,6 +455,7 @@ fn push_face(
         indices,
         uv: corners.map(|corner| corner.uv),
         attributes,
+        block,
     });
 }
 

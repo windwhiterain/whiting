@@ -107,6 +107,46 @@ pub fn subtract(to: Vec3, from: Vec3) -> Vec3 {
     [to[0] - from[0], to[1] - from[1], to[2] - from[2]]
 }
 
+/// Returns the unit direction of a space vector, and up when it has none.
+///
+/// # Invariants
+///
+/// **Up is the fallback and east is not**, which is where this differs from [`normalized`]: a
+/// two dimensional direction with no length still has a position to point away from, and this
+/// crate's plan directions are fall-line directions on a height field, so east is the honest
+/// answer there. A space direction has no such frame, and the only direction this crate's space
+/// is asked about in the absence of one is a surface's — so a caller multiplying by the fallback
+/// gets something that still looks like a normal rather than something lying on its side.
+pub fn normalized3(vector: Vec3) -> Vec3 {
+    let magnitude = crate::math::length3(vector);
+    if magnitude > f32::EPSILON {
+        [
+            vector[0] / magnitude,
+            vector[1] / magnitude,
+            vector[2] / magnitude,
+        ]
+    } else {
+        [0.0, 1.0, 0.0]
+    }
+}
+
+/// Returns how long a space vector is.
+pub fn length3(vector: Vec3) -> f32 {
+    (vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]).sqrt()
+}
+
+/// Returns the dot product of two space vectors.
+///
+/// # Invariants
+///
+/// It is the space counterpart of [`dot`] and it is **not** a cosine: neither argument is
+/// normalised here, so the answer is a length squared and only [`normalized3`] before it makes
+/// one. The two orders of argument are the two orders [`cross3`] takes, because all three of
+/// these are read together to recover a direction and its length.
+pub fn dot3(left: Vec3, right: Vec3) -> f32 {
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
 /// Returns the cross product of two space vectors.
 pub fn cross3(left: Vec3, right: Vec3) -> Vec3 {
     [

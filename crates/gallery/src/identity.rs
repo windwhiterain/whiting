@@ -311,10 +311,13 @@ fn coordinate(name: &str) -> Authored {
 ///
 /// # Invariants
 ///
-/// - **The normal, and the id and the belt coordinates, are written at all three corners.** All
-///   four are properties of a *face* rather than of a vertex, and this mesh is not indexed, so a
-///   value written at one corner is a value a rasteriser interpolates across the face and the
-///   other two corners would pull it somewhere else.
+/// - **The normal is read per corner, and the id and the belt coordinates at all three.** The id
+///   and the coordinates are properties of a *face* rather than of a vertex, and this mesh is not
+///   indexed, so a value written at one corner is a value a rasteriser interpolates across the
+///   face and the other two corners would pull it somewhere else. The normal is the exception that
+///   proves the rule: it is a property of a *block*, it is averaged over the block's own faces
+///   ([`mountain::CornerNormals`]), and writing it three times the same is exactly the hard edge
+///   the block face exists to remove.
 /// - **`(u, v)` is the face's own `uv`, copied.** The expander defines the belt's parameter
 ///   space once, in [`mountain::Face::uv`]; deriving it again here would be a second definition
 ///   that is wrong by a rotation of the triangle and wrong silently.
@@ -331,9 +334,9 @@ pub fn faceted(mesh: &FacetMesh, identity: &Identity) -> PackedList {
         .expect("the massif's own point schema is a struct of components");
     let mut points = PackedBuilder::new(layout);
     points.reserve(mesh.faces.len() * 3);
-    for face in &mesh.faces {
+    let normals = mountain::CornerNormals::of(mesh);
+    for (index, face) in mesh.faces.iter().enumerate() {
         let [a, b, c] = mesh.triangle(face);
-        let normal = mesh.normal(face).map(|value| value as f64);
         let texture = [
             face.attributes.ruggedness as f64,
             (face.attributes.dip_angle as f64 / std::f64::consts::FRAC_PI_2).clamp(0.0, 1.0),
@@ -345,8 +348,9 @@ pub fn faceted(mesh: &FacetMesh, identity: &Identity) -> PackedList {
             .id_of(face.attributes.belt)
             .expect("every face's belt was numbered by the same walk that built the mesh")
             as f64;
-        for (corner, uv) in [a, b, c].into_iter().zip(face.uv) {
-            let position = corner.map(|value| value as f64);
+        for (corner, (point, uv)) in [a, b, c].into_iter().zip(face.uv).enumerate() {
+            let position = point.map(|value| value as f64);
+            let normal = normals.at(index, corner).map(|value| value as f64);
             let written = points
                 .field(ID_OUTPUT, &[id])
                 .and_then(|points| points.field(U_OUTPUT, &[uv[0] as f64]))
