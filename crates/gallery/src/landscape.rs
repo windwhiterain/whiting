@@ -462,13 +462,17 @@ pub fn landscape() -> Value {
 
 /// Returns the massif this scene is of: a generated fan, then edited by hand.
 ///
+/// Public because the id a rendered pixel carries names something in *this* massif, and
+/// answering that means building it again — see [crate::identity::locate]. A caller that wanted
+/// only the path would still need the skeleton, so the two are published together.
+///
 /// # Why the generated massif is edited and not used as it comes
 ///
 /// [`Starter`] is a starting point and says so. What it cannot know is what the scene is *of*:
 /// that the massif has to stand on a plain, that one crest should be sharp and the rest rounded,
 /// that a flank should be sampled finer than the rest. Those are the author's decisions, and they
 /// are made here with the crate's own ops rather than baked into the generator.
-fn massif() -> Massif {
+pub fn massif() -> Massif {
     let params = Starter {
         ridges: 8,
         nodes: 15,
@@ -702,7 +706,7 @@ fn deepen_a_valley(massif: &mut Massif) {
 /// massif to nest: a massif, the valley that carries the flank, and which side of it. Growing it
 /// is a matter of changing this one function, which is the property that keeps the id space
 /// separable from the geometry.
-fn belt_path(belt: BeltRef) -> String {
+pub fn belt_path(belt: BeltRef) -> String {
     format!(
         "landscape/valley_{}/{}",
         belt.valley.0,

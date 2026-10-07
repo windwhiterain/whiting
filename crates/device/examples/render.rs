@@ -142,6 +142,75 @@ struct Compiled {
     instance: Definition,
 }
 
+/// Parses a `x,y` pixel, refusing a negative or non-numeric one by name.
+///
+/// # Invariants
+///
+/// **The error says what was asked for and what was written**, because a pixel is the one
+/// argument a caller gets wrong by being a column of a spreadsheet, and a message that only
+/// says "invalid" sends them looking at the flag rather than at their own numbers.
+fn parse_pixel(written: &str) -> Result<(u32, u32), String> {
+    let (x, y) = written
+        .split_once(',')
+        .ok_or_else(|| format!("`{written}` is not a pixel: write it x,y"))?;
+    let read = |part: &str, which: &str| {
+        part.trim()
+            .parse::<u32>()
+            .map_err(|_| format!("`{}` is not a {which} coordinate: write it x,y", written))
+    };
+    Ok((read(x, "x")?, read(y, "y")?))
+}
+
+/// Prints what one pixel is, in the terms the scene that drew it uses.
+///
+/// # Invariants
+///
+/// - **The generic half comes first and is always printed**: what every declared output holds at
+///   that pixel, read from the image itself rather than from anything beside it. A caller with a
+///   scene this harness has never heard of still gets an answer, and the numbers are the ones
+///   the shader wrote.
+///
+/// - **The domain half is the scene's, and the harness only asks.** What an id *means* is the
+///   content's own naming, which lives with the content and not here — this harness knows
+///   nothing about a ridge or a belt. `gallery::locate` is asked, and a scene it does not know
+///   says so rather than the harness guessing.
+fn locate(scene: &str, rendered: &RenderedFrame, x: u32, y: u32) {
+    println!("locate {scene} ({x}, {y}):");
+    let mut values: Vec<(String, f32)> = Vec::new();
+    for image in &rendered.images {
+        if image.name == graphics::PRESENT_OUTPUT {
+            continue;
+        }
+        match image.texel(x, y) {
+            Some(texel) => {
+                println!("  {:<20} {}", image.name, describe_texel(&texel));
+                values.push((image.name.clone(), texel[0]));
+            }
+            None => println!(
+                "  {:<20} outside the image, which is {} by {}",
+                image.name, image.width, image.height
+            ),
+        }
+    }
+    match gallery::locate::locate(scene, &values) {
+        Some(answer) => println!("  ->\n{answer}"),
+        None => println!(
+            "  -> this harness has no domain reading for `{scene}`. The numbers above are the \
+             ones the shader wrote, and they are the answer for a scene whose content does not \
+             name its own."
+        ),
+    }
+}
+
+/// Returns one texel as a line of numbers, dropping the trailing components a narrower
+/// declaration never wrote.
+fn describe_texel(texel: &[f32; 4]) -> String {
+    match texel.iter().rposition(|value| *value != 0.0) {
+        Some(last) => format!("{:?}", &texel[..=last]),
+        None => "0".to_owned(),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     if let Err(failure) = run().await {
@@ -315,6 +384,12 @@ async fn run() -> Result<(), String> {
             report_against(recorded.as_ref(), &record, &manifest);
             outputs.push(record);
 
+            // Where a pixel is, in the scene's own terms. Made **before** anything is written to
+            // disk, because the answer is worth most next to the picture and least without it.
+            if let Some((x, y)) = request.locate {
+                locate(&name, &rendered, x, y);
+            }
+
             // The three are reported apart because they are three different costs, and only
             // one of them is the delta's business: a delta is small or large, and the work
             // that finds it is the same size either way.
@@ -456,6 +531,7 @@ fn parse_arguments() -> Result<Request, String> {
     let mut times: Vec<String> = Vec::new();
     let mut debug: Vec<DebugChannel> = Vec::new();
     let mut census = false;
+    let mut locate_at: Option<(u32, u32)> = None;
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
@@ -463,6 +539,13 @@ fn parse_arguments() -> Result<Request, String> {
             "--sheet-full" => mode = Mode::Sheet { step: FULL_STEP },
             "--video" => mode = Mode::Video,
             "--census" => census = true,
+            "--locate" => {
+                index += 1;
+                let asked = rest
+                    .get(index)
+                    .ok_or_else(|| "--locate needs a pixel, written x,y".to_owned())?;
+                locate_at = Some(parse_pixel(asked)?);
+            }
             "--debug" => {
                 index += 1;
                 let asked = rest
@@ -521,6 +604,7 @@ fn parse_arguments() -> Result<Request, String> {
         times: moments,
         debug,
         census,
+        locate: locate_at,
     })
 }
 
@@ -548,6 +632,8 @@ struct Request {
     debug: Vec<DebugChannel>,
     /// Whether to report what the scene holds rather than drawing it.
     census: bool,
+    /// The pixel to say what it is, answered once per moment beside the picture it belongs to.
+    locate: Option<(u32, u32)>,
 }
 
 /// How the moments of a render are written out.

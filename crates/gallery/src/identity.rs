@@ -141,8 +141,8 @@ impl Identity {
 pub fn massif_extras() -> Extras {
     Extras::new([
         (ID_OUTPUT.to_owned(), 1, field(ID_OUTPUT)),
-        (U_OUTPUT.to_owned(), 2, field(U_OUTPUT)),
-        (V_OUTPUT.to_owned(), 3, field(V_OUTPUT)),
+        (U_OUTPUT.to_owned(), 2, coordinate(U_OUTPUT)),
+        (V_OUTPUT.to_owned(), 3, coordinate(V_OUTPUT)),
     ])
 }
 
@@ -192,10 +192,117 @@ fn declared(location: u32) -> Value {
     ])
 }
 
+/// Resolves a pixel of a rendered frame to the authored part of the landscape it shows.
+///
+/// Returns nothing for a scene this module has no naming for, and for a pixel the scene drew no
+/// authored element on — which is the plain, and is the answer `0` was reserved to give.
+///
+/// # Invariants
+///
+/// - **The four hops happen here and nowhere else.** The frame is read for its `id`, `u` and `v`;
+///   the `id` names a row of [`Identity::of`]'s table; the mesh turns that face and the `(u, v)`
+///   into a belt; and the skeleton names the lines and stations. A caller that chained them
+///   itself would be able to chain them wrong, and would be wrong in the middle, where the answer
+///   looks like an answer.
+/// - **It refuses rather than guessing when the two sides disagree.** The id comes from pixels and
+///   the mesh from a build, and a caller holding a frame from one build and a mesh from another
+///   would be told the id is unknown rather than handed another element's path.
+pub fn locate(scene: &str, id: Option<[f32; 4]>, u: f32, v: f32) -> Option<String> {
+    if scene != "landscape" {
+        return None;
+    }
+    let massif = crate::landscape::massif();
+    let mesh = massif.build().ok()?;
+    let identity = Identity::of(&massif, crate::landscape::belt_path);
+
+    // The value is the **first** component, which is where a one component image puts it: an
+    // `r32float` target is a single channel and the readback pads the row out to four floats.
+    // Taking the second would be a number that is always zero, and a scene whose ids all start
+    // at one would answer "not an authored element" for every pixel of itself.
+    let texel = id?;
+    let id = texel[0];
+    // **An id of no value is the reserved zero and is answered as itself**, not as "unknown": it
+    // is a real answer about a real pixel — this one is the plain — and a caller that is told
+    // "not an authored element" knows not to go looking for a crest there.
+    let Some(row) = identity.row(id as u32) else {
+        if id == NOT_AUTHORED as f32 {
+            return Some("not an authored element: the pixel is the plain".to_owned());
+        }
+        return Some(format!(
+            "id {id:.0} is not one of this massif's {} elements. The frame and the mesh are \
+             probably from different builds",
+            identity.rows().len()
+        ));
+    };
+    // The face is the one of the belt's own faces whose uv triangle holds the point. **It is
+    // found by the round trip, not by a containment test written here**: `locate` inverts the
+    // rasteriser's interpolation, so a point inside a triangle comes back as itself, and a point
+    // outside every one of them does not. That makes the containment rule the crate's rather
+    // than a second one, and a belt's faces are a handful so the walk is free.
+    let point = mesh
+        .faces
+        .iter()
+        .filter(|face| face.attributes.belt == row.belt)
+        .find_map(|face| {
+            let found = mesh.locate(face, [u, v]);
+            let close = (found.uv[0] - u).abs() < 1.0e-3 && (found.uv[1] - v).abs() < 1.0e-3;
+            close.then_some((face, found))
+        });
+    let Some((face, point)) = point else {
+        return Some(format!(
+            "{}  id {}  belt valley {} {:?} segment {}  u {:.3}  v {:.3}  — no face of that belt \
+             covers it, so the frame is probably from another build",
+            row.path, row.id, row.belt.valley.0, row.belt.side, row.belt.segment, u, v,
+        ));
+    };
+
+    // **The two valley nodes are the actionable part.** A belt is the surface between two
+    // consecutive nodes of one valley, and moving either of them is the edit an author makes;
+    // the crest it runs along is reached through the stations those two nodes carry. Naming the
+    // belt and its parameter would be true and would not answer "what do I change".
+    let valley = &massif.skeleton.valleys[row.belt.valley.0];
+    let segment = row.belt.segment;
+    let finish = segment + 1;
+    Some(format!(
+        "{}\n  \
+         id {}  face {}  u {:.3}  v {:.3}\n  \
+         top    {:?}, reached between the stations of valley {} nodes {segment} and {finish}\n  \
+         bottom valley {} nodes {segment} and {finish}, at elevation {:.1}\n  \
+         the edit: massif.skeleton.valleys[{}].nodes[{segment}].elevation  (or node {finish})",
+        row.path,
+        row.id,
+        face.indices[0],
+        point.uv[0],
+        point.uv[1],
+        face.attributes.top,
+        row.belt.valley.0,
+        row.belt.valley.0,
+        valley.nodes[segment].elevation,
+        row.belt.valley.0,
+    ))
+}
+
 fn field(name: &str) -> Authored {
     Authored::Field {
         name: name.to_owned(),
         components: 1,
+        flat: true,
+    }
+}
+
+/// Returns the two belt coordinates, which are **not** flat.
+///
+/// # Invariants
+///
+/// They are a place on a surface, and a place is exactly the thing interpolation computes: a
+/// pixel between two corners is between their parameters. Carried flat they would quantise the
+/// belt to its triangles, and a caller asking "where on this flank" would be answered with the
+/// nearest vertex rather than with the pixel they pointed at.
+fn coordinate(name: &str) -> Authored {
+    Authored::Field {
+        name: name.to_owned(),
+        components: 1,
+        flat: false,
     }
 }
 

@@ -581,6 +581,24 @@ pub enum Authored {
         name: String,
         /// How many components it is, which decides how the shader reads it.
         components: u32,
+        /// Whether the value is carried **flat** — taken from one vertex rather than
+        /// interpolated across the face.
+        ///
+        /// # Invariants
+        ///
+        /// **Set it for anything that names rather than measures, and unset it for the rest.**
+        /// A varying is interpolated — perspective-correctly, which is a non-linear function of
+        /// the pixel — so a value read as one arrives at a pixel as a number *between* the
+        /// corners'. An identity read that way is 99.999985 where the face is 100, and a caller
+        /// that rounds it is choosing a face rather than reading one. `@interpolate(flat)` takes
+        /// one vertex's value whole, which is both exact and the only thing that is true: a
+        /// triangle is one facet of one element, so all three of its corners carry the same
+        /// identity and there was nothing to interpolate.
+        ///
+        /// **The first reading of this did not set it**, and the number in the sidecar is what
+        /// caught it. Nothing is wrong with an interpolated coordinate — a belt's `u` and `v`
+        /// want interpolation and get it — and everything is wrong with an interpolated id.
+        flat: bool,
     },
     /// A constant, for geometry that is not an authored element.
     Constant(f64),
@@ -626,6 +644,7 @@ struct Extra {
 struct PointField<'text> {
     field: &'text str,
     components: u32,
+    flat: bool,
 }
 
 impl Extras {
@@ -711,9 +730,14 @@ impl Extras {
         self.outputs
             .iter()
             .filter_map(|extra| match &extra.source {
-                Authored::Field { name, components } => Some(PointField {
+                Authored::Field {
+                    name,
+                    components,
+                    flat,
+                } => Some(PointField {
                     field: name.as_str(),
                     components: *components,
+                    flat: *flat,
                 }),
                 Authored::Constant(_) => None,
             })
@@ -737,8 +761,17 @@ impl Extras {
     fn varyings(&self) -> String {
         let mut lines = String::new();
         for (index, field) in self.read_from_points().iter().enumerate() {
+            // **Flat is written on the declaration, not on the value**, and a field that is not
+            // flat says so rather than leaving the default to be guessed. WGSL's default is
+            // smooth, which is the right answer for a coordinate and the wrong one for an
+            // identity, so the one that has to be asked for is the one that is asked for.
+            let flat = if field.flat {
+                "@interpolate(flat) "
+            } else {
+                ""
+            };
             lines.push_str(&format!(
-                "    @location({}) {}: f32,\n",
+                "    @location({}) {flat}{}: f32,\n",
                 FIRST_EXTRA_LOCATION + index as u32,
                 field.field
             ));
