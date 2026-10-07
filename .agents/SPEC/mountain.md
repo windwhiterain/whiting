@@ -2,96 +2,51 @@
 
 crate `mountain` (publish name `whiting-mountain`).
 
-Author a mountain massif as a `Skeleton` of ridge and valley polylines, then expand it into a `FacetMesh` whose planar triangles are the rock facets. The triangle is the authoring unit: the faceted block faces of real rock are expressed directly as mesh faces, not approximated by noise.
+An agent-driven editing and authoring system that expands a polyline tree/network into a polygon mesh, for authoring complex realistic mountains.
 
-## Principles
+## Motivation
 
-- dual-line control: ridges (high) and valleys (low) are both first-class editable polylines.
-- derived defaults, no guarantee: generated content (`starter`, `derive_valleys`) is only an initial state for editing, never a correctness claim.
-- edit through rust code: the rust api is the authoring interface; agents author by writing rust against it. A DSL is out of scope.
-- the mesh mirrors the edit: `build()` reflects the current `Skeleton` exactly. No simulation, no beautification.
+- The ridge-line distribution of a real mountain must be *planned*: it has hierarchy (main ridge, spur ridges), direction, and rhythm. Noise functions cannot plan.
+- Noise also cannot express the block faces of real rock mass: a real mountain flank reads as a set of planar facets meeting at sharp edges.
+- Therefore the ridge distribution is authored as a polyline tree/network, and the polylines are then expanded into a polygon mesh. Triangles are the natural primitive for this: a triangle is exactly one planar block face, and the two flanks of a ridge are two fans of triangles meeting at the ridge line.
 
-## Terms
+## Requirements
 
-in pseudo rust code.
+### R1: a polyline tree/network plans the ridges
 
-### `Massif`
+- The ridge distribution of a massif is authored as a set of polylines forming a tree or network.
+- Each polyline is one ridge line. Branching expresses the hierarchy from main ridge down to spur ridges.
+- The polylines carry elevation, so the skeleton is a 2.5D object: plan-view polylines plus heights.
 
-the document.
+### R2: dual-line control — ridges and valleys
 
-- `skeleton: Skeleton`
-- `tessellation: Tessellation`
+- Both ridge lines (high) and valley lines (low) are authored and editable.
+- The ridge/valley line pair is the control structure of the massif: the block faces are the surfaces spanned between them.
 
-### `Skeleton`
+### R3: derivable default lines, no guarantee
 
-- `ridges: Vec<Ridge>`: a forest of ridge trees.
-  - `Ridge`
-    - `nodes: Vec<RidgeNode>`: a polyline, summit-first.
-    - `step_scale: f32`: sampling density multiplier for this polyline.
-    - `attach: Option<Attach>`: `None` for a root ridge.
-      - `Attach`: `{ parent: RidgeId, t: f32 }`: the child ridge's first node sits on the parent polyline at arc-length parameter `t`; its position is derived, never stored.
-  - `RidgeNode`
-    - `position: Vec2`: plan position.
-    - `elevation: f32`
-    - `half_width: f32`: flank width hint, consumed by sampling and valley derivation.
-    - `sharpness: f32`: 0 = rounded ridge, 1 = knife-edge arete.
-  - node attributes interpolate linearly along edges.
-- `valleys: Vec<Valley>`: free polylines (no tree structure), the low control lines between ridges.
-  - `Valley`: `nodes: Vec<ValleyNode>`, `step_scale: f32`
-  - `ValleyNode`: `position: Vec2`, `elevation: f32`
-- `footprint: Vec<FootprintNode>`: closed boundary polyline with elevations, delimits the massif domain and forms the mesh rim.
-  - `FootprintNode`: `position: Vec2`, `elevation: f32`
+- Default lines may be auto-generated (e.g. valley lines derived from the authored ridges, or a generated initial ridge tree).
+- Generated lines carry no correctness guarantee. Their only purpose is to produce an initial state for continued editing. Once generated they are ordinary editable lines.
 
-### Invariants
+### R4: expansion into a polygon mesh
 
-checked by `validate() -> Vec<Violation>`, never enforced mid-edit: an edit may pass through invalid states and the agent repairs them explicitly.
+- The polyline tree/network is expanded into a polygon mesh of triangles.
+- Each triangle is one planar block face; ridge flanks read as facet fans meeting at the ridge line.
+- The mesh is the expanded form of the edited lines: every face traces back to the skeleton, and editing the skeleton re-expands the mesh.
 
-- elevation is non-increasing along every root-to-leaf ridge path.
-- a child ridge's first node elevation equals the parent edge elevation interpolated at `attach.t`.
-- no polyline self-intersects; valleys never cross ridges; everything stays inside the footprint.
+### R5: pure rust crate, rust api
 
-### Derivation
+- The system is a pure rust crate with a rust api. It has no editor frontend and no runtime service of its own.
+- Agents author by writing and modifying rust construction code against this api.
+- A DSL for authoring is planned for the future and is out of scope now.
 
-- `starter(seed: u64, params: StarterParams) -> Massif`: a procedural initial ridge tree (main ridge with recursive spurs) plus derived valleys and a footprint. Initial state only.
-- `derive_valleys(massif: &mut Massif)`: regenerate `valleys` as the approximate dual of the ridge network (medial lines between neighboring ridges, clamped to the footprint). Replaces existing valleys. Initial state only.
+### R6: the output mesh mirrors the raw edit
 
-### `Tessellation`
+- Building outputs a mesh that reflects the raw editing result of the skeleton, without simulation or beautification passes.
+- Erosion and all further processing live in other, downstream pipelines and are out of scope for this crate.
 
-- `step: f32`: base sampling step along polylines; effective step per polyline is `step * step_scale`.
-- `diagonal: DiagonalRule`: default diagonal choice for interior quads.
-  - enum of: `StrataDip`, `Shortest`, `Alternate`
-- `overrides: Vec<DiagonalOverride>`: explicit diagonal choices from `flip_diagonal`; an override survives rebuilds while its quad still exists.
+## Out of scope
 
-### `FacetMesh`
-
-the output of `build()`.
-
-- `points: Vec<Vec3>`
-- `faces: Vec<Face>`
-  - `Face`: `{ indices: [u32; 3], attributes: FaceAttributes }`
-  - `FaceAttributes`: `{ strata: StrataId, dip: Vec2, dip_angle: f32, ruggedness: f32 }`
-- guarantee: every face is exactly planar. Elevation is only ever sampled on skeleton lines; triangle interiors are linear interpolations, never displaced.
-
-### `build()`
-
-1. sample ridges, valleys and footprint into constraint segments; elevation and attributes interpolate per sample.
-2. constrained Delaunay triangulation of the plan positions, constraint edges forced.
-3. resolve each interior quad diagonal by `Tessellation::diagonal`, then apply `overrides`.
-4. face attributes inherit from the enclosing skeleton region (which ridge flank, which valley side).
-5. deterministic: the same `Massif` always builds the same `FacetMesh`.
-
-### Ops
-
-plain rust functions on `Massif`; small, explicit, composable.
-
-- skeleton: `add_ridge`, `attach_ridge(parent, t)`, `move_node`, `insert_node`, `remove_node`, `remove_ridge`, `set_node`, `set_step_scale`
-- valleys and footprint: the same polyline ops
-- tessellation: `flip_diagonal(quad)`, `set_diagonal_rule`
-- derivation: `starter`, `derive_valleys`
-- `validate() -> Vec<Violation>`, `build() -> FacetMesh`
-
-### Out of scope
-
-- erosion, simulation, shading, texturing: downstream pipelines consume `FacetMesh`.
-- DSL, serialization, undo/redo, integration with `definition` / `scene` / `graphics`.
-- LOD and runtime streaming.
+- DSL and any serialization format.
+- Erosion, simulation, shading, texturing, and any other downstream processing.
+- Editor frontend, undo/redo service, renderer integration.
