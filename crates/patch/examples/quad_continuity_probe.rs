@@ -20,6 +20,12 @@
 //! 11. What a higher degree buys: **nothing**, on either count, and that is measured.
 //! 12. What the two skipped row ends actually cost: **nothing at all**, unless two seams write the
 //!     same shared place. The obstruction is one degree of freedom per such place.
+//! 13. Whether the cheaper fix works: it does not. Deriving one master's corner at a contested place
+//!     repairs **fewer** seams and puts six of thirteen corners exactly on their seam.
+//!
+//! **Measurements 3, 12 and 13 fail by design.** 3 is the known open problem, 12 is the same problem
+//! measured on the full sample rather than on one seam, and 13 is the negative result that says the
+//! zero-parameter route is closed and a corner scale is genuinely needed.
 //!
 //! ## Why measurement 3 fails, and what it costs
 //!
@@ -73,7 +79,8 @@ use support::{ANGLE_FLOOR, COLUMNS, EXACT, grid};
 use whiting_patch::Point3;
 use whiting_patch::subdivide::{Origin, QuadMesh, subdivide};
 use whiting_patch::topology::{
-    EdgeKey, EdgeSlot, boundary_index, canonical, edge_endpoints, interior_index, mirrored_position,
+    EdgeKey, EdgeSlot, Topology, boundary_index, canonical, edge_endpoints, interior_index,
+    mirrored_position,
 };
 use whiting_patch::{Continuity, Edit, PatchMesh, RectNet, slave_interior};
 
@@ -576,7 +583,23 @@ fn nets_distance(first: &[RectNet], second: &[RectNet]) -> f64 {
     worst
 }
 
-/// The places on a **shared boundary** that two different soft seams both write as a row end.
+/// One soft seam that writes a contested place, and the master row end it reads to do it.
+struct SeamClaim {
+    slave: (u32, EdgeSlot),
+    master: (u32, EdgeSlot),
+    /// The master's private-interior point at the same end of its own edge.
+    master_index: (usize, usize),
+    mu: f64,
+}
+
+/// A place on a shared boundary that two or more soft seams both write as a row end.
+struct ContestedPlace {
+    edge: EdgeKey,
+    position: usize,
+    claims: Vec<SeamClaim>,
+}
+
+/// The shared places that two or more soft seams write as a row end.
 ///
 /// A row end is one step in from the boundary, which puts it on the *perpendicular* edge's boundary
 /// row at position one step along. So the key is not the face and the net index — two faces on
@@ -586,16 +609,21 @@ fn nets_distance(first: &[RectNet], second: &[RectNet]) -> f64 {
 ///
 /// Counting per face instead would find nothing, and would find nothing honestly: with one soft
 /// edge per face no face can ever write a row end twice, and the conflict is not on a face at all.
-fn contested_row_ends(mesh: &PatchMesh) -> Vec<(EdgeKey, usize)> {
-    let degree = mesh.degree();
-    let mut claims: BTreeMap<(EdgeKey, usize), usize> = BTreeMap::new();
-    for edge in mesh.soft_edges() {
-        let (face, slot) = edge.slave;
-        let corners = mesh.quads()[face as usize];
+fn contested_places(model: &PatchMesh) -> Vec<ContestedPlace> {
+    let degree = model.degree();
+    let mut found: BTreeMap<(EdgeKey, usize), Vec<SeamClaim>> = BTreeMap::new();
+    for entry in model.soft_edges() {
+        let corners = model.quads()[entry.slave.0 as usize];
+        let slave_ends = edge_endpoints(corners, entry.slave.1);
+        let master_ends = edge_endpoints(model.quads()[entry.master.0 as usize], entry.master.1);
+        let mu = model
+            .continuity(&entry.edge)
+            .and_then(Continuity::mu)
+            .unwrap_or(1.0);
         for t in [0, degree] {
-            let point = interior_index(degree, slot, t);
+            let point = interior_index(degree, entry.slave.1, t);
             for other in EdgeSlot::ALL {
-                if other == slot {
+                if other == entry.slave.1 {
                     continue;
                 }
                 let Some(position) =
@@ -610,15 +638,170 @@ fn contested_row_ends(mesh: &PatchMesh) -> Vec<(EdgeKey, usize)> {
                 } else {
                     degree - position
                 };
-                *claims.entry((key, normalised)).or_default() += 1;
+                let master_t = mirrored_position(degree, slave_ends, master_ends, t);
+                found.entry((key, normalised)).or_default().push(SeamClaim {
+                    slave: entry.slave,
+                    master: entry.master,
+                    master_index: interior_index(degree, entry.master.1, master_t),
+                    mu,
+                });
             }
         }
     }
-    claims
+    found
         .into_iter()
-        .filter(|(_, count)| *count > 1)
-        .map(|(place, _)| place)
+        .filter(|(_, claims)| claims.len() > 1)
+        .map(|((edge, position), mut claims)| {
+            // The lower master id keeps its freedom, so which side is derived does not depend on the
+            // order the soft edges happened to be tagged in.
+            claims.sort_by_key(|claim| claim.master.0);
+            ContestedPlace {
+                edge,
+                position,
+                claims,
+            }
+        })
         .collect()
+}
+
+/// The shared boundary point at `position` of `edge`, read from the face that owns it.
+fn shared_point(
+    nets: &[RectNet],
+    topology: &Topology,
+    degree: usize,
+    edge: &EdgeKey,
+    position: usize,
+) -> Option<Point3> {
+    let (face, slot) = *topology.edge_faces.get(edge)?.first()?;
+    let (i, j) = boundary_index(degree, slot, position);
+    Some(nets[face as usize][(i, j)])
+}
+
+/// Makes every **hard** edge's boundary identical on both sides, the first face on each edge winning.
+///
+/// [`share_every_boundary`] copies soft edges too, which is what a whole-row soft write has to
+/// survive — and what a *derived master corner* cannot. A corner is one step in from its own edge,
+/// which puts it on the perpendicular edge's boundary row, so copying that edge from the far side
+/// restores the value the derivation just replaced. Soft edges are therefore left alone here and the
+/// soft pass writes them last, which is what [`PatchMesh::enforce`] already does.
+fn share_hard_boundaries(mesh: &PatchMesh, nets: &mut [RectNet]) {
+    let degree = mesh.degree();
+    for (key, faces) in &mesh.topology().edge_faces {
+        if mesh.continuity(key).is_some_and(Continuity::is_soft) {
+            continue;
+        }
+        let (owner, follower) = match faces.as_slice() {
+            [owner, follower] => (*owner, *follower),
+            _ => continue,
+        };
+        let owner_ends = edge_endpoints(mesh.quads()[owner.0 as usize], owner.1);
+        let follower_ends = edge_endpoints(mesh.quads()[follower.0 as usize], follower.1);
+        for t in 0..=degree {
+            let follower_t = mirrored_position(degree, owner_ends, follower_ends, t);
+            let (oi, oj) = boundary_index(degree, owner.1, t);
+            let (fi, fj) = boundary_index(degree, follower.1, follower_t);
+            let point = nets[owner.0 as usize][(oi, oj)];
+            nets[follower.0 as usize].set_point(fi, fj, point);
+        }
+    }
+}
+
+/// How many of `model`'s soft seams are exactly tangent-plane continuous in `nets`, and how many
+/// there are.
+///
+/// The worst gap alone cannot answer this. Resolving one contested place changes one seam, and the
+/// maximum over thirty-two seams can sit on an untouched one and report the same number either way.
+/// Counting the seams is what shows whether anything was fixed.
+fn soft_seams_exact(model: &PatchMesh, nets: &[RectNet]) -> (usize, usize) {
+    let degree = model.degree();
+    let exact = model
+        .soft_edges()
+        .iter()
+        .filter(|entry| {
+            let faces = [entry.master, entry.slave];
+            edge_gap_over(nets, model.quads(), degree, faces, STEP, 0..=degree) <= CONTINUOUS
+        })
+        .count();
+    (exact, model.soft_edges().len())
+}
+
+/// The whole-row invariant with each contested place resolved by **deriving one master's corner**.
+///
+/// At a contested place two seams want `mu_a * (Q - A_a) == mu_b * (Q - A_b)` on one shared value,
+/// so keeping `A_a` free forces `A_b = Q - (mu_a / mu_b) * (Q - A_a)`, which always has a solution.
+/// The question this measures is not whether that formula exists — it does — but whether it is
+/// **cheap**: what it does to the derived corner's geometry, and whether the seams come out exact
+/// afterwards. That is what decides whether a corner scale is needed at all.
+fn whole_row_with_derived_corners(
+    model: &PatchMesh,
+    places: &[ContestedPlace],
+    rounds: usize,
+) -> (Vec<RectNet>, Vec<(f64, f64)>) {
+    let degree = model.degree();
+    let topology = model.topology();
+    let mut nets = model.nets().to_vec();
+    let before = nets.clone();
+    for _ in 0..rounds {
+        share_hard_boundaries(model, &mut nets);
+        for place in places {
+            let keeper = &place.claims[0];
+            let keeper_point = nets[keeper.master.0 as usize][keeper.master_index];
+            let Some(anchor) = shared_point(&nets, topology, degree, &place.edge, place.position)
+            else {
+                continue;
+            };
+            for claim in &place.claims[1..] {
+                if claim.mu.abs() < f64::EPSILON {
+                    continue;
+                }
+                let target = anchor - (keeper_point - anchor) * (keeper.mu / claim.mu);
+                nets[claim.master.0 as usize].set_point(
+                    claim.master_index.0,
+                    claim.master_index.1,
+                    target,
+                );
+            }
+        }
+        for entry in model.soft_edges() {
+            let Some(mu) = model.continuity(&entry.edge).and_then(Continuity::mu) else {
+                continue;
+            };
+            let master_ends =
+                edge_endpoints(model.quads()[entry.master.0 as usize], entry.master.1);
+            let slave_ends = edge_endpoints(model.quads()[entry.slave.0 as usize], entry.slave.1);
+            for t in 0..=degree {
+                let slave_t = mirrored_position(degree, master_ends, slave_ends, t);
+                let (mi, mj) = boundary_index(degree, entry.master.1, t);
+                let (ai, aj) = interior_index(degree, entry.master.1, t);
+                let (si, sj) = interior_index(degree, entry.slave.1, slave_t);
+                let anchor = nets[entry.master.0 as usize][(mi, mj)];
+                let master_interior = nets[entry.master.0 as usize][(ai, aj)];
+                nets[entry.slave.0 as usize].set_point(
+                    si,
+                    sj,
+                    slave_interior(anchor, master_interior, mu),
+                );
+            }
+        }
+        share_hard_boundaries(model, &mut nets);
+    }
+    // For each derived corner: how far it had to move, and how far the moved point sits from the seam
+    // it is supposed to be one step off. The second number is the degenerate one — near zero means the
+    // point collapsed onto the seam, which is smooth and a pinch.
+    let mut cost = Vec::new();
+    for place in places {
+        let Some(anchor) = shared_point(&nets, topology, degree, &place.edge, place.position)
+        else {
+            continue;
+        };
+        for claim in place.claims.iter().skip(1) {
+            let index = claim.master_index;
+            let was = before[claim.master.0 as usize][index];
+            let now = nets[claim.master.0 as usize][index];
+            cost.push((was.distance(now), anchor.distance(now)));
+        }
+    }
+    (nets, cost)
 }
 
 /// How far apart two points on the same edge are when read from its two faces, read from nets.
@@ -1300,7 +1483,7 @@ fn main() {
         let (interior, ends) = soft_gap_pair(model, nets);
         let split = worst_split_over_all(model, nets);
         let exact = interior.max(ends) <= CONTINUOUS;
-        let contested = contested_row_ends(model);
+        let contested = contested_places(model);
         let verdict = if exact {
             "EXACT"
         } else if settled {
@@ -1322,8 +1505,8 @@ fn main() {
                     } else {
                         "places"
                     },
-                    contested[0].0,
-                    contested[0].1
+                    contested[0].edge,
+                    contested[0].position
                 )
             }
         ));
@@ -1410,16 +1593,79 @@ fn main() {
         ),
     );
 
+    // 13. Can the collision be resolved without a new parameter?
+    //
+    //     A corner scale kappa is the proposal on the table. Before building it, the cheaper question:
+    //     at a contested place two seams want `mu_a * (Q - A_a) == mu_b * (Q - A_b)` on one shared
+    //     value, so **keeping one master's corner free forces the other's**:
+    //     `A_b = Q - (mu_a / mu_b) * (Q - A_a)`. That always has a solution and adds no parameter.
+    //
+    //     What it costs is the only thing worth measuring. Three numbers:
+    //       - does the seam come out exact afterwards;
+    //       - how far the derived corner had to move from where the user had it;
+    //       - how far the moved corner sits from the seam, because a corner that collapses **onto**
+    //         the seam is smooth and a pinch, which is the failure the whole design keeps refusing.
+    let places = contested_places(&mesh);
+    let (resolved, cost) = whole_row_with_derived_corners(&mesh, &places, 4);
+    let (resolved_interior, resolved_ends) = soft_gap_pair(&mesh, &resolved);
+    let resolved_split = worst_split_over_all(&mesh, &resolved);
+    let (shipped_exact, seam_count) = soft_seams_exact(&mesh, mesh.nets());
+    let (whole_row_only, _, _) = whole_row_enforcement(&mesh, 4);
+    let (whole_row_exact, _) = soft_seams_exact(&mesh, whole_row_only.last().expect("four rounds"));
+    let (resolved_exact_count, _) = soft_seams_exact(&mesh, &resolved);
+    let pinched = cost.iter().filter(|(_, gap)| *gap <= MOVED).count();
+    let smallest_offset = cost
+        .iter()
+        .map(|(_, gap)| *gap)
+        .fold(f64::INFINITY, f64::min);
+    let largest_offset = cost.iter().map(|(_, gap)| *gap).fold(0.0f64, f64::max);
+    let same_face = places
+        .iter()
+        .filter(|place| place.claims[0].slave.0 == place.claims[1].slave.0)
+        .count();
+    if pinched > 0 {
+        failures.push("13  a derived corner collapses onto its seam");
+    }
+    if resolved_exact_count <= whole_row_exact {
+        failures.push("13  deriving a master's corner fixes no additional seam");
+    }
+    if same_face > 0 {
+        failures.push("13  two seams write a contested place on the SAME face");
+    }
+    report(
+        "13  resolving the collision by deriving a corner, with no new parameter",
+        &format!(
+            "contested places on the full sample   {places_len}\n\
+             of those, two seams on the same face   {same_face}\n\
+             seams exactly continuous   shipped {shipped_exact} of {seam_count}, \
+             whole row {whole_row_exact}, whole row plus derived corners {resolved_exact_count}\n\
+             soft gap, interior / ends            {resolved_interior:.3e} / {resolved_ends:.3e} rad\n\
+             worst boundary split                 {resolved_split:.3e}\n\
+             derived-corner distance from its seam {smallest_offset:.3e} .. {largest_offset:.3e}   \
+             ({pinched} of {derived_count} collapsed onto the seam)\n\
+             a contested place gives two seams `mu_a * (Q - A_a) == mu_b * (Q - A_b)` on ONE shared\n\
+             value, so holding the lower-id master's corner free forces the other's:\n\
+             `A_b = Q - (mu_a / mu_b) * (Q - A_a)`. no new parameter, always solvable.\n\
+             the two numbers to read are the third line and the last. the count says how many seams were\n\
+             actually repaired, which the worst gap cannot show; the offset says whether the repaired\n\
+             corners are still off their seam, because a corner ON the seam is smooth and a pinch",
+            places_len = places.len(),
+            derived_count = cost.len(),
+        ),
+    );
+
     if failures.is_empty() {
-        println!("\nall 12 measurements passed");
+        println!("\nall 13 measurements passed");
     } else {
         println!("\nFAILED:");
         for failure in &failures {
             println!("  - {failure}");
         }
         println!(
-            "\nmeasurement 3 is the known open problem and is meant to fail: see the module\n\
-             documentation, `crate::continuity`, and .agents/handoffs/ for the corner stencil."
+            "\nmeasurements 3, 12 and 13 are meant to fail: see the module documentation,\n\
+             `crate::continuity`, and .agents/handoffs/. 3 is the open problem, 12 is the same\n\
+             problem on the full sample, and 13 is the negative result that closes the\n\
+             zero-parameter route."
         );
         std::process::exit(1);
     }
