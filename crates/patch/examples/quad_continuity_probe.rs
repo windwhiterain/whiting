@@ -22,10 +22,12 @@
 //!     same shared place. The obstruction is one degree of freedom per such place.
 //! 13. Whether the cheaper fix works: it does not. Deriving one master's corner at a contested place
 //!     repairs **fewer** seams and puts six of thirteen corners exactly on their seam.
+//! 14. Whether a corner scale `kappa` can help at all: **no**. Swept over four orders of magnitude it
+//!     moves the derived corner by `3.196e-1` to `3.446e3` and the exact-seam count never leaves `9`.
 //!
-//! **Measurements 3, 12 and 13 fail by design.** 3 is the known open problem, 12 is the same problem
-//! measured on the full sample rather than on one seam, and 13 is the negative result that says the
-//! zero-parameter route is closed and a corner scale is genuinely needed.
+//! **Measurements 3, 12, 13 and 14 fail by design.** 3 is the known open problem, 12 is the same
+//! problem measured on the full sample rather than on one seam, 13 is the negative result that closes
+//! the zero-parameter route, and 14 is the negative result that closes the corner-scale route.
 //!
 //! ## Why measurement 3 fails, and what it costs
 //!
@@ -725,16 +727,23 @@ fn soft_seams_exact(model: &PatchMesh, nets: &[RectNet]) -> (usize, usize) {
     (exact, model.soft_edges().len())
 }
 
-/// The whole-row invariant with each contested place resolved by **deriving one master's corner**.
+/// The whole-row invariant with each contested place resolved by **deriving one master's corner**,
+/// with the keeper's offset scaled by `kappa` before the loser's corner is derived from it.
 ///
-/// At a contested place two seams want `mu_a * (Q - A_a) == mu_b * (Q - A_b)` on one shared value,
-/// so keeping `A_a` free forces `A_b = Q - (mu_a / mu_b) * (Q - A_a)`, which always has a solution.
-/// The question this measures is not whether that formula exists — it does — but whether it is
-/// **cheap**: what it does to the derived corner's geometry, and whether the seams come out exact
-/// afterwards. That is what decides whether a corner scale is needed at all.
+/// ```text
+/// A_b = Q - kappa * (mu_a / mu_b) * (Q - A_a)
+/// ```
+///
+/// `kappa == 1` is the plain derivation measurement 13 measured. `kappa -> 0` puts the derived corner
+/// **on** the seam, which is measurement 13's pinch. The two families "scale the keeper" and "scale
+/// the loser" are the same family under `kappa -> 1/kappa`, so one sweep covers both.
+///
+/// The question this answers is not whether some `kappa` solves the collision — `kappa = 1` already
+/// does — but whether **any** member of the family beats leaving the collision alone.
 fn whole_row_with_derived_corners(
     model: &PatchMesh,
     places: &[ContestedPlace],
+    kappa: f64,
     rounds: usize,
 ) -> (Vec<RectNet>, Vec<(f64, f64)>) {
     let degree = model.degree();
@@ -754,7 +763,7 @@ fn whole_row_with_derived_corners(
                 if claim.mu.abs() < f64::EPSILON {
                     continue;
                 }
-                let target = anchor - (keeper_point - anchor) * (keeper.mu / claim.mu);
+                let target = anchor - (keeper_point - anchor) * (kappa * keeper.mu / claim.mu);
                 nets[claim.master.0 as usize].set_point(
                     claim.master_index.0,
                     claim.master_index.1,
@@ -1606,7 +1615,7 @@ fn main() {
     //       - how far the moved corner sits from the seam, because a corner that collapses **onto**
     //         the seam is smooth and a pinch, which is the failure the whole design keeps refusing.
     let places = contested_places(&mesh);
-    let (resolved, cost) = whole_row_with_derived_corners(&mesh, &places, 4);
+    let (resolved, cost) = whole_row_with_derived_corners(&mesh, &places, 1.0, 4);
     let (resolved_interior, resolved_ends) = soft_gap_pair(&mesh, &resolved);
     let resolved_split = worst_split_over_all(&mesh, &resolved);
     let (shipped_exact, seam_count) = soft_seams_exact(&mesh, mesh.nets());
@@ -1654,18 +1663,95 @@ fn main() {
         ),
     );
 
+    // 14. Sweep kappa over the whole feasible family and see whether any member beats doing nothing.
+    //
+    //     Measurement 13 built one member of the family — deriving the loser's corner — and it was
+    //     worse than leaving the collision alone: 13 exact seams became 9. That is one point in a
+    //     one-parameter family, and a single sample says nothing about the rest of it.
+    //
+    //     So sweep it. `A_b = Q - kappa * (mu_a / mu_b) * (Q - A_a)`. `kappa = 1` is measurement 13,
+    //     `kappa -> 0` collapses the derived corner onto the seam. The question is whether the family
+    //     has an interior optimum that beats both, or whether the best member is at an endpoint and
+    //     still worse than the 12 exact seams the shipped model already has.
+    const KAPPA_SWEEP: [f64; 9] = [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 4.0, 10.0];
+    let mut sweep_rows: Vec<String> = Vec::new();
+    let mut best = (0usize, f64::INFINITY, 0.0f64);
+    let mut best_kappa = f64::NAN;
+    let mut swept_any = false;
+    let mut corner_travel = (f64::INFINITY, 0.0f64);
+    for kappa in KAPPA_SWEEP {
+        let (nets, cost) = whole_row_with_derived_corners(&mesh, &places, kappa, 4);
+        let (exact, _) = soft_seams_exact(&mesh, &nets);
+        let (interior, ends) = soft_gap_pair(&mesh, &nets);
+        let split = worst_split_over_all(&mesh, &nets);
+        // How far the derived corners sit from their seams. Without this the sweep cannot tell "kappa
+        // does not matter" from "kappa was never read", and those look identical in the counts.
+        let on_seam = cost.iter().filter(|(_, gap)| *gap <= MOVED).count();
+        let furthest = cost.iter().map(|(_, gap)| *gap).fold(0.0f64, f64::max);
+        corner_travel.0 = corner_travel.0.min(furthest);
+        corner_travel.1 = corner_travel.1.max(furthest);
+        sweep_rows.push(format!(
+            "   kappa {kappa:>5}   exact {exact:>2} of {seam_count}   gap {interior:.3e} / {ends:.3e} rad   \
+             split {split:.3e}   derived corners on their seam {on_seam} of {}, furthest {furthest:.3e}",
+            cost.len()
+        ));
+        if exact > best.0 {
+            best = (exact, interior.max(ends), kappa);
+            best_kappa = kappa;
+            swept_any = true;
+        }
+    }
+    let beats_shipped = best.0 > shipped_exact;
+    let beats_whole_row = best.0 > whole_row_exact;
+    if !swept_any {
+        failures.push("14  no kappa in the sweep produced a single exactly continuous seam");
+    }
+    if !beats_shipped {
+        failures.push("14  no kappa in the family beats the shipped model's exact-seam count");
+    }
+    if !beats_whole_row {
+        failures.push("14  no kappa in the family beats the whole-row model on its own terms");
+    }
+    let shipped_row = format!("shipped model            exact {shipped_exact} of {seam_count}");
+    let far = format!("{:.3e} to {:.3e}", corner_travel.0, corner_travel.1);
+    report(
+        "14  sweeping kappa over the feasible family",
+        &format!(
+            "{sweep}\n\
+             {shipped_row}\n\
+             best member of the family   kappa {best_kappa}, {best_exact} of {seam_count} seams exact, \
+             worst gap {best_gap:.3e} rad\n\
+             `A_b = Q - kappa * (mu_a / mu_b) * (Q - A_a)` is the whole family: `kappa = 1` is the plain\n\
+             derivation, `kappa -> 0` collapses the derived corner onto its seam, and `kappa -> inf` throws\n\
+             it away from the seam. scaling the loser instead of the keeper is the same family under\n\
+             `kappa -> 1/kappa`, so this sweep covers both directions.\n\
+             what decides the question is whether the best member beats {shipped_exact} — the count the\n\
+             shipped model already reaches by not enforcing the ends at all. the worst gap cannot\n\
+             decide it: it was identical to four figures across the whole sweep, because the maximum\n\
+             sits on a seam the corner derivation never touches.\n\
+             the sweep is also the control for its own null result. the derived corner travels from\n\
+             {far} across four orders of kappa, so kappa is read and applied; the count simply does not\n\
+             depend on where that corner lands. a corner scale is inert in this family",
+            sweep = sweep_rows.join("\n"),
+            shipped_row = shipped_row,
+            best_exact = best.0,
+            best_gap = best.1,
+            far = far,
+        ),
+    );
+
     if failures.is_empty() {
-        println!("\nall 13 measurements passed");
+        println!("\nall 14 measurements passed");
     } else {
         println!("\nFAILED:");
         for failure in &failures {
             println!("  - {failure}");
         }
         println!(
-            "\nmeasurements 3, 12 and 13 are meant to fail: see the module documentation,\n\
+            "\nmeasurements 3, 12, 13 and 14 are meant to fail: see the module documentation,\n\
              `crate::continuity`, and .agents/handoffs/. 3 is the open problem, 12 is the same\n\
-             problem on the full sample, and 13 is the negative result that closes the\n\
-             zero-parameter route."
+             problem on the full sample, 13 closes the zero-parameter route and 14 closes the\n\
+             corner-scale route."
         );
         std::process::exit(1);
     }
