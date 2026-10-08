@@ -175,8 +175,11 @@ pub fn split_over_shared_edges(mesh: &PatchMesh, level: &Level) -> Split {
 ///
 /// The counts are the whole answer to "is this mesh something a per-edge tag can be attached to": an
 /// edge with three triangles on it is not a crease, it is a fold, and nothing downstream can tag it.
-pub fn triangle_edges(triangles: &[[u32; 3]]) -> BTreeMap<EdgeKey, usize> {
-    let mut counts: BTreeMap<EdgeKey, usize> = BTreeMap::new();
+///
+/// Generic over the index type because two callers hold the same mesh under different numbering: a
+/// `FacetMesh` counts in `VertexId`, and a `Tessellation` counts positions in its own buffer.
+pub fn triangle_edges<K: Ord + Copy>(triangles: &[[K; 3]]) -> BTreeMap<(K, K), usize> {
+    let mut counts: BTreeMap<(K, K), usize> = BTreeMap::new();
     for triangle in triangles {
         for ends in [
             [triangle[0], triangle[1]],
@@ -203,7 +206,7 @@ pub fn quad_edges(quads: &[[u32; 4]]) -> BTreeMap<EdgeKey, usize> {
 }
 
 /// The unordered pair in ascending order, which is what makes two faces name the same edge.
-fn canonical(ends: [u32; 2]) -> EdgeKey {
+fn canonical<K: Ord + Copy>(ends: [K; 2]) -> (K, K) {
     if ends[0] <= ends[1] {
         (ends[0], ends[1])
     } else {
@@ -224,7 +227,8 @@ pub struct Incidence {
 }
 
 impl Incidence {
-    pub fn of(counts: &BTreeMap<EdgeKey, usize>) -> Self {
+    /// Generic over the index type for the same reason [`triangle_edges`] is.
+    pub fn of<K: Ord + Copy>(counts: &BTreeMap<(K, K), usize>) -> Self {
         let mut found = Incidence::default();
         for shared in counts.values() {
             found.worst = found.worst.max(*shared);

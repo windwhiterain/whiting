@@ -58,6 +58,37 @@ impl Tessellation {
         self.faces.get(face as usize)
     }
 
+    /// The whole surface as indexed triangles, wound to agree with the patch normal.
+    ///
+    /// # Winding is derived, not chosen
+    ///
+    /// A cell's corners are visited `(i, j)`, `(i + 1, j)`, `(i + 1, j + 1)`, `(i, j + 1)`, and the
+    /// two triangles split it along the first diagonal. The first triangle's edges are
+    /// `S_u` then `S_u + S_v` and the second's are `S_u + S_v` then `S_v`, so both geometric normals
+    /// come out as `S_u` cross `S_v` — the patch's own normal, at every cell of every face. That is
+    /// what makes a winding uniform rather than a convention some faces happen to satisfy: the
+    /// source quad's winding is inherited, and a mesh whose source quads were wound consistently
+    /// produces a consistent triangle soup here.
+    ///
+    /// Two triangles per cell, so `(side - 1)^2 * 2` per face.
+    pub fn triangles(&self) -> Vec<[usize; 3]> {
+        let last = self.side - 1;
+        let mut triangles = Vec::with_capacity(self.faces.len() * last * last * 2);
+        for face in &self.faces {
+            for i in 0..last {
+                for j in 0..last {
+                    let near = face.points[i * face.side + j];
+                    let along_u = face.points[(i + 1) * face.side + j];
+                    let far = face.points[(i + 1) * face.side + j + 1];
+                    let along_v = face.points[i * face.side + j + 1];
+                    triangles.push([near, along_u, far]);
+                    triangles.push([near, far, along_v]);
+                }
+            }
+        }
+        triangles
+    }
+
     /// Every face's grid, in face order.
     pub fn faces(&self) -> &[FaceGrid] {
         &self.faces

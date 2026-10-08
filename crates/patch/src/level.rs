@@ -14,7 +14,7 @@
 //! mean is [`crate::patch_mesh`]'s business.
 
 use crate::point::Point3;
-use crate::rect::{RectNet, count, evaluate_slice};
+use crate::rect::{RectNet, count, evaluate_slice, normal_slice};
 
 /// Where one face's points live inside a [`Level`], and what shape they are in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,6 +80,15 @@ impl<'a> Face<'a> {
     /// Evaluates this face at `(u, v)`. See [`RectNet::evaluate`] for the no-clamping contract.
     pub fn evaluate(&self, u: f64, v: f64) -> Point3 {
         evaluate_slice(self.degree_u, self.degree_v, self.points, u, v)
+    }
+
+    /// The surface normal of this face at `(u, v)`.
+    ///
+    /// **Read this from the composed level, never per level.** A normal is not a displacement: the
+    /// normal of `base + offset` is not the sum of the two normals, so a hierarchy that added them
+    /// would be reporting a direction that belongs to no surface. See [`normal_slice`].
+    pub fn normal(&self, u: f64, v: f64) -> Point3 {
+        normal_slice(self.degree_u, self.degree_v, self.points, u, v)
     }
 
     /// Copies this face into a [`RectNet`], which is one allocation. For callers that want a patch

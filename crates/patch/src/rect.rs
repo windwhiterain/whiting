@@ -169,6 +169,12 @@ impl RectNet {
         evaluate_slice(self.degree_u, self.degree_v, &self.points, u, v)
     }
 
+    /// The surface normal at `(u, v)`. See [`normal_slice`], which carries the contract: a normal is
+    /// not a displacement and does not sum across levels.
+    pub fn normal(&self, u: f64, v: f64) -> Point3 {
+        normal_slice(self.degree_u, self.degree_v, &self.points, u, v)
+    }
+
     /// Raises the `u` degree by one without moving the surface.
     ///
     /// The one-dimensional identity is `B(n+1, k) = k/(n+1) B(n, k-1) + (n+1-k)/(n+1) B(n, k)`,
@@ -266,6 +272,45 @@ pub fn evaluate_slice(
         }
     }
     sum
+}
+
+/// The surface normal of the Bernstein surface whose control points are `points`, laid out with `i`
+/// slowest.
+///
+/// The two partial derivatives, and the cross product between them:
+///
+/// ```text
+/// S_u = sum over i,j of  i * B(i, u) * P(i, j)
+/// S_v = sum over i,j of  j * B(j, v) * P(i, j)
+/// ```
+///
+/// The second basis drops out of each derivative because the weights sum to one, so each tangent is
+/// a weighted sum of the whole net rather than a weighted sum along a row.
+///
+/// # A normal is not a displacement
+///
+/// **Normals of levels do not add.** A displacement level contributes `dS`, and the normal of the
+/// sum is `normal(base + offset)`, which is not `normal(base) + normal(offset)` and not the length-
+/// weighted blend of the two either. So this is read from the **composed** level — see
+/// [`crate::PatchMesh::composed`] — and never summed per level the way a position is.
+///
+/// Returns zero where the surface has no tangent: a degree-0 direction, or a patch whose two
+/// tangents happen to be parallel there. A zero normal is a fact about the patch rather than a
+/// failure, and a caller shading from it has to decide what that means.
+pub fn normal_slice(degree_u: usize, degree_v: usize, points: &[Point3], u: f64, v: f64) -> Point3 {
+    let weights_u = basis(degree_u, u);
+    let weights_v = basis(degree_v, v);
+    let stride = degree_v + 1;
+    let mut tangent_u = Point3::ZERO;
+    let mut tangent_v = Point3::ZERO;
+    for i in 0..=degree_u {
+        for j in 0..=degree_v {
+            let point = points[i * stride + j];
+            tangent_u += point * (weights_u[i] * i as f64);
+            tangent_v += point * (weights_v[j] * j as f64);
+        }
+    }
+    tangent_u.cross(tangent_v)
 }
 
 /// Indexing panics on an index outside the net, which is the standard `Index` contract. Use

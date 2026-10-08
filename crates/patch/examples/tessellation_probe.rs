@@ -111,7 +111,7 @@ fn independent_boundary_split(mesh: &PatchMesh, side: usize) -> (f64, usize) {
     let degree = mesh.degree();
     let mut worst = 0.0f64;
     let mut positions = 0usize;
-    for (_, faces) in &mesh.topology().edge_faces {
+    for faces in mesh.topology().edge_faces.values() {
         if faces.len() != 2 {
             continue;
         }
@@ -226,7 +226,7 @@ fn main() {
     let shared_points = uses.iter().filter(|count| **count > 1).count();
     let mut unshared_edges = 0usize;
     let mut interior_edges = 0usize;
-    for (_, faces) in &mesh.topology().edge_faces {
+    for faces in mesh.topology().edge_faces.values() {
         if faces.len() != 2 {
             continue;
         }
