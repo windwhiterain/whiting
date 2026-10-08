@@ -45,7 +45,7 @@
 mod support;
 use std::collections::BTreeSet;
 
-use support::{EXACT, grid, level_distance, level_magnitude, split_over_shared_edges};
+use support::{EXACT, grid, level_distance, level_magnitude, scramble, split_over_shared_edges};
 
 use whiting_patch::enforce::enforce as enforce_level;
 use whiting_patch::subdivide::subdivide;
@@ -114,32 +114,6 @@ fn interior_edges(mesh: &PatchMesh) -> Vec<EdgeKey> {
         .filter(|(_, faces)| faces.len() == 2)
         .map(|(key, _)| *key)
         .collect()
-}
-
-/// Overwrites every point with a seeded ramp, which violates every tag in the level at once:
-/// neighbours disagree, so the shared boundaries are not shared and no soft edge's slave row is
-/// derived.
-///
-/// Deliberately **not** a rigid translation. A uniform offset already satisfies both invariants —
-/// sharing compares two equally shifted points, and `C + mu (C - A)` is unchanged when `C` and `A`
-/// move together — so a translated level would sail through enforcement untouched and every
-/// measurement here would pass without testing anything.
-fn scramble(level: &mut Level, seed: f64) {
-    let mut next = seed;
-    for face in 0..level.len() {
-        let (degree_u, degree_v) = level.layouts()[face].degrees();
-        for i in 0..=degree_u {
-            for j in 0..=degree_v {
-                next += 0.004;
-                level.set_point(
-                    face,
-                    i,
-                    j,
-                    Point3::new(next, -next * 0.5, seed * 0.5 + next * 0.25),
-                );
-            }
-        }
-    }
 }
 
 /// `(face, u, v)` triples spread over the mesh, for comparing surfaces rather than control points.
