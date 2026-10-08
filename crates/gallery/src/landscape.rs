@@ -562,11 +562,18 @@ pub fn landscape() -> Value {
                 // both of them, and set back over the plain's centre — which is where a fill
                 // usually goes, because that is where the subject was — it is a quarter of the
                 // way from the walls and reads as a lamp at the end of the valley.
+                //
+                // The power is the light's whole output, and this scene is thirty eight thousand
+                // units across, so the number is large in a way a reader should be able to
+                // check: the lamp stands about 23,000 units above the plain, and 23,000² is
+                // 5.4 × 10⁸. A power of 4.5 × 10⁵ therefore arrives as the same radiance the
+                // scene always had, which is what a lamp that far off has to be. See
+                // `.agents/proposals/physical-light-units.md`.
                 light_with_radius(
                     "sky",
                     [0.0, radius * 1.2, 0.0],
                     [0.40, 0.46, 0.64],
-                    9.0,
+                    450_000.0,
                     radius * 1.6,
                     plain * 2.0,
                 ),

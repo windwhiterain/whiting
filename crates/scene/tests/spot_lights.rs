@@ -184,7 +184,7 @@ fn spot(label: &str, direction: [f64; 3], inner: f64, outer: f64) -> Value {
             ("inner_angle".to_owned(), Value::Float(inner)),
             ("outer_angle".to_owned(), Value::Float(outer)),
             ("color".to_owned(), triple([1.0, 0.95, 0.9])),
-            ("intensity".to_owned(), Value::Float(1.0)),
+            ("power".to_owned(), Value::Float(1.0)),
             ("shadow_extent".to_owned(), Value::Float(2.5)),
         ],
     )
@@ -198,7 +198,7 @@ fn point(label: &str) -> Value {
             ("label".to_owned(), Value::String(label.to_owned())),
             ("position".to_owned(), triple([4.0, 6.0, 2.0])),
             ("color".to_owned(), triple([1.0, 0.95, 0.9])),
-            ("intensity".to_owned(), Value::Float(1.0)),
+            ("power".to_owned(), Value::Float(1.0)),
             ("shadow_extent".to_owned(), Value::Float(2.5)),
             // A point light is required to say how far it reaches; the field has no default.
             // The spot above deliberately names none: it is culled by the reach of its cone.

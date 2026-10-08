@@ -589,6 +589,22 @@ impl LightKind {
         }
     }
 
+    /// Returns the field this kind states its brightness in.
+    ///
+    /// The kinds are not interchangeable, so the name is not either: a lamp states a
+    /// `power`, a sun an `irradiance`, a sky a `radiance`. Reading one field for every kind
+    /// is what made a single `intensity` possible in the first place, and the single field is
+    /// what made a document's brightness mean different things in different variants. The
+    /// error a wrong name produces is a missing field, which is the refusal this whole split
+    /// is for.
+    const fn brightness_field(self) -> &'static str {
+        match self {
+            Self::Point | Self::Spot => "power",
+            Self::Directional => "irradiance",
+            Self::Environment => "radiance",
+        }
+    }
+
     /// Returns whether a light of this kind takes a slot in a cluster.
     ///
     /// # Invariants
@@ -802,12 +818,6 @@ pub fn emit(
             &mut notes,
         );
     }
-    // What the scene's own size does to a constant the document cannot set. **This one is
-    // not about a camera**, so it is not behind the `chosen` gate above: a scene that names
-    // no camera is still a scene with a size, and the falloff is a function of the size
-    // whether or not anybody chose where to stand. It reads the box the walk above already
-    // left behind, so it costs one square root.
-    scale_notes(&bounds, &mut notes);
     let camera = projection_value(&camera_basis);
 
     // Which lights reach which part of the view, and the three buffers that say so. This is
@@ -1547,15 +1557,15 @@ fn read_lights(
                 kind: kind.tag().to_owned(),
             });
         }
-        let intensity = number(light, &path, "intensity")?;
-        let colour = triple(light, &path, "color")?;
         // Scaled here rather than in the reader of each term, so that a colour means the
         // brightness a surface is lit by everywhere it is used: a record, an environment, and
         // a note about which lights were dropped all compare the same number.
+        let colour = triple(light, &path, "color")?;
+        let brightness = number(light, &path, kind.brightness_field())?;
         let colour = [
-            colour[0] * intensity,
-            colour[1] * intensity,
-            colour[2] * intensity,
+            colour[0] * brightness,
+            colour[1] * brightness,
+            colour[2] * brightness,
         ];
         read.push(match kind {
             LightKind::Environment => {
@@ -4936,184 +4946,6 @@ fn camera_notes(
             ),
         });
     }
-}
-
-/// The linear term of the falloff the standard shading template applies to a point light.
-///
-/// # Invariants
-///
-/// **This is a statement about a constant of the template, and not a field of a scene.** The
-/// standard pipeline has no light falloff of its own: a lighting pass runs the scene's own
-/// `WGSL`, and the gallery's shading template multiplies a light's radiance by
-/// `1 / (1 + 0.0035r + 0.00002r²)`. The number is recorded here because the note below is a
-/// statement about **what that constant means at a scene's own size**, and a compiler cannot
-/// make that statement without holding the number.
-///
-/// It is a copy, deliberately and visibly: the lighting stage is being rewritten elsewhere and
-/// the constant lives in the per-light arithmetic that rewrite replaces, so this is the place
-/// to delete when the falloff becomes a field a scene sets. `scale_falloff_matches_the_gallery`
-/// in the tests holds the copy to the template, so a change to one without the other is a
-/// failed test rather than a quietly wrong note.
-const FALLOFF_LINEAR: f64 = 0.0035;
-
-/// The quadratic term of that same falloff. See [`FALLOFF_LINEAR`].
-const FALLOFF_QUADRATIC: f64 = 0.00002;
-
-/// The scene the falloff above was tuned for, which is the scene whose gradient is unremarkable.
-///
-/// # Invariants
-///
-/// The template's own comment places its constants in "a scene a couple of hundred units
-/// across", and two hundred is the number this note measures other scenes against. It is
-/// written down rather than left in a sentence in another crate, because a bar with no
-/// reference beside it is a bar somebody re-picks by feel.
-const FALLOFF_TUNED_SPAN: f64 = 200.0;
-
-/// Returns the fold the same constant gives a scene about [`FALLOFF_TUNED_SPAN`] units across.
-///
-/// The measure is the one [`scale_notes`] uses, so the reference and the number beside it are
-/// the same quantity: a cube of that span rather than a distance of that length, because a
-/// scene two hundred units across has a half diagonal of a hundred and seventy.
-fn tuned_fold() -> f64 {
-    falloff_fold(half_diagonal(&Bounds::around(
-        [0.0; 3],
-        FALLOFF_TUNED_SPAN / 2.0,
-    )))
-}
-
-/// The fold beyond which a scene's size is reported, in units of attenuation.
-///
-/// # Why two, and what the gallery says about it
-///
-/// **Two is one stop**: a doubling of the brightness, which is the smallest difference in
-/// light a photograph is named for. It is a bar with a meaning rather than a bar with a
-/// number, and it happens to be the right one on the evidence.
-///
-/// Measured across the ten gallery scenes — the numbers are pinned by
-/// `the_gallery_says_how_often_a_scene_is_reported`, which is where this table comes from:
-///
-/// ```text
-/// scene       span   half diagonal   fold
-/// studio          4              2.1   1.01
-/// sunlight       17             12.2   1.05
-/// spotlight      18             12.9   1.05
-/// tiles          24             17.0   1.07
-/// dunes         330            233.6   2.91
-/// terraces      380            277.7   3.51
-/// stilllife     700            356.4   4.79
-/// lanterns      600            424.3   6.09
-/// monoliths     680            480.9   7.31
-/// tidewater    2800           1980.1  86.35
-/// ```
-///
-/// The data has three clusters and two gaps, and the bar sits in the **first** one. Four
-/// scenes are small enough that the constant does nothing at all — a fold of `1.05` is five
-/// percent across the whole scene, and no picture has ever noticed five percent. The next
-/// scene is `dunes` at `2.91`, and a bar anywhere between `1.07` and `2.91` gives the same
-/// six scenes; two has a margin of 1.9 below the loudest quiet scene and 1.5 above the
-/// quietest reported one.
-///
-/// **The second gap was left alone.** `tidewater` at `86.35` is the case the note exists for
-/// — the scene a thousand units deep whose sun is attenuated by twenty — and a bar placed in
-/// the gap above `monoliths` would report that one scene and nothing else, which is a bar
-/// fitted to a single observation rather than chosen from the data.
-///
-/// **Six of ten firing is a lot, and it is the honest count.** The five scenes between the
-/// gaps are outdoor scenes a third of a thousand units across, where the falloff is a real
-/// part of the light; `stilllife`'s own file says it wants that, because a window lighting a
-/// table is a gradient. A scene that wants its gradient is told the number and carries on,
-/// which is what a note is for: this compile draws it as written, and the sentence says so.
-const FALLOFF_FOLD_BAR: f64 = 2.0;
-
-/// Returns the fraction of its radiance the template's falloff leaves a light at `reach`.
-///
-/// # Invariants
-///
-/// The same arithmetic the template's own `WGSL` does, so the number a note quotes is the
-/// number the frame was drawn with. A distance of zero is left alone rather than treated as a
-/// degenerate one: the law is continuous at zero and a light inside a surface is a scene's
-/// own doing.
-fn falloff(reach: f64) -> f64 {
-    1.0 / (1.0 + FALLOFF_LINEAR * reach + FALLOFF_QUADRATIC * reach * reach)
-}
-
-/// Returns how far the template's falloff is from flat, at `reach`.
-///
-/// One is no falloff at all and anything above one is a brightness gradient the scene's own
-/// distances produce: the reciprocal of [`falloff`], so it reads as the factor by which a
-/// surface at that distance is dimmer than one at the light.
-fn falloff_fold(reach: f64) -> f64 {
-    1.0 / falloff(reach)
-}
-
-/// Returns the furthest a point at the centre of `box_of` is from one of its corners.
-fn half_diagonal(box_of: &Bounds) -> f64 {
-    (0..3)
-        .map(|axis| box_of.half_width(axis).powi(2))
-        .sum::<f64>()
-        .sqrt()
-}
-
-/// Says what this scene's size means for a constant of the pipeline the scene cannot set.
-///
-/// # Why this is a note and never an error
-///
-/// The page pool's policy — *"a count above what the machine has is bounded and named; a
-/// count below one is refused"* — separates *a machine being too small, a fact about this
-/// run* from *a wrong image on every machine, a fact about the document*. A scene is a
-/// **legitimately** any size: a still life a hundred units across wants a falloff across its
-/// table, and a lake two thousand eight hundred units across wants the same constant to be a
-/// factor of eighty. Neither is a fault, and refusing either would be a compiler ruling on a
-/// scene's subject. So the consequence is named and the frame is drawn.
-///
-/// # What the measure is, and why it is a box
-///
-/// The distance is from the **centre of the scene's box to its furthest corner** — the
-/// half diagonal — because that is the only distance the document determines on its own: where
-/// a scene's lights stand is a fact about its lights, and a light at one end of a lake is two
-/// thousand units from the other. A light at the middle of the scene therefore has its
-/// brightness set by the scene's own size before a single intensity is chosen, and the fold
-/// is what that size costs.
-///
-/// **So this is a box, and a box is not a surface**, which is the same limitation the camera
-/// notes have and the same reason their numbers are in their messages: the compiler knows the
-/// box every instance covers and knows nothing about which part of it is visible from where
-/// the camera stands. `tidewater`'s box is nearly three thousand units across, and its far
-/// shore is a few hundred away, so the box says a fold of eighty-six and the picture may have
-/// a fold of two. The number is quoted rather than the verdict, so a reader can see `86.4`
-/// and disagree with it.
-///
-/// # What this reads
-///
-/// The box, which came out of the single walk in [`bounds_of_instances`]. Nothing here re-reads
-/// the scene document, which is the most expensive thing a compile can do.
-fn scale_notes(bounds: &Bounds, notes: &mut Vec<CompileNote>) {
-    let span = (0..3)
-        .map(|axis| bounds.half_width(axis) * 2.0)
-        .fold(0.0f64, f64::max);
-    let fold = falloff_fold(half_diagonal(bounds));
-    if fold < FALLOFF_FOLD_BAR {
-        return;
-    }
-    notes.push(CompileNote {
-        // The path is the **instances**, because the transforms there are the only thing in
-        // the document that sets how far apart anything is. A note that pointed at the camera
-        // would send the reader after a field that has nothing to do with a falloff.
-        path: Path::root().key(scene_schema::INSTANCES),
-        message: format!(
-            "this scene spans {span:.0} units across its largest axis, and the standard \
-             shading template's light falloff leaves a point light {fold:.1} times dimmer at \
-             the half diagonal of that box than at its centre — about {stops:.1} stops. The \
-             constants are the gentlest that read as a falloff over a scene about \
-             {FALLOFF_TUNED_SPAN:.0} units across, where the same fold is {reference:.1}, so at \
-             this size the brightness across the scene comes from how far its own lights stand \
-             from its own surfaces rather than from anything the document says. The distance is \
-             a **box** and not a surface, and the compile knows no more than the box: this is \
-             drawn as written",
-            stops = fold.log2(),
-            reference = tuned_fold(),
-        ),
-    });
 }
 
 /// Returns names as a list a sentence can carry: one name bare, two joined by *and*, and a

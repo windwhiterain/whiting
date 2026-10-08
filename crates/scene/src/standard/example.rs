@@ -48,7 +48,10 @@ pub fn example_standard_scene() -> Value {
                         "color".to_owned(),
                         Value::List([1.0, 0.95, 0.9].into_iter().map(Value::Float).collect()),
                     ),
-                    ("intensity".to_owned(), Value::Float(1.0)),
+                    // A power, so the number reads as a squared distance: this lamp stands 7.5 units
+                    // from the origin, and 56 is that distance squared. See
+                    // `.agents/proposals/physical-light-units.md`.
+                    ("power".to_owned(), Value::Float(56.0)),
                     ("shadow_extent".to_owned(), Value::Float(2.5)),
                     // 8.1 is the distance to the far corner of a triangle two units across
                     // with a light standing off it, and 10 holds the whole scene — which is

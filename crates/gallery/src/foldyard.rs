@@ -269,10 +269,12 @@ pub fn foldyard() -> Value {
             Value::List(vec![
                 // The sun, as a point light standing a long way off along its own bearing,
                 // which is the gallery's idiom for a sun over a landscape this size: the
-                // standard shading's falloff is the gentlest that reads as one over a scene
-                // about two hundred units across, and a valley three hundred wide is past
-                // where a directional light's page is worth trusting. Its distance is part
-                // of how bright it is, so the intensity is a radiance at that distance.
+                // standard shading attenuates by the inverse square law, and a valley three
+                // hundred wide needs the sun far enough off that the falloff across it is a
+                // gradient rather than a cliff. Its distance is part of how bright it is, so
+                // what a scene states is a `power` and the number reads as a squared
+                // distance — this one stands about 400 units off. See
+                // `.agents/proposals/physical-light-units.md`.
                 //
                 // The radius is the distance to the far corner of the scene and no more, so
                 // this light is **not** promoted to a global one: the compiler culls it out of
@@ -288,7 +290,7 @@ pub fn foldyard() -> Value {
                 // the scene rather than the yard alone because the far range is in the
                 // scene's bounds, and a volume that stopped short of it would shadow-map
                 // nothing and shade it as though something stood in front of it.
-                light_with_radius("sun", SUN_AT, [1.62, 1.36, 1.02], 11.0, 260.0, 760.0),
+                light_with_radius("sun", SUN_AT, [1.62, 1.36, 1.02], 314_000.0, 260.0, 760.0),
                 // The sky's fill, from the opposite quarter and from above. Without it
                 // every face the sun has turned away from is black, and black is not what
                 // the inside of a wall run looks like at this hour. It is a **fill** and it

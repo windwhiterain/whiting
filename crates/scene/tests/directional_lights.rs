@@ -246,7 +246,7 @@ fn directional(label: &str, direction: [f64; 3]) -> Value {
             ("label".to_owned(), Value::String(label.to_owned())),
             ("direction".to_owned(), triple(direction)),
             ("color".to_owned(), triple([1.0, 0.95, 0.9])),
-            ("intensity".to_owned(), Value::Float(1.0)),
+            ("irradiance".to_owned(), Value::Float(1.0)),
             ("shadow_extent".to_owned(), Value::Float(6.0)),
         ],
     )
@@ -260,7 +260,7 @@ fn point(label: &str) -> Value {
             ("label".to_owned(), Value::String(label.to_owned())),
             ("position".to_owned(), triple([4.0, 6.0, 2.0])),
             ("color".to_owned(), triple([1.0, 0.95, 0.9])),
-            ("intensity".to_owned(), Value::Float(1.0)),
+            ("power".to_owned(), Value::Float(1.0)),
             // Wide enough to reach the geometry it stands over, which a point light is
             // required to say: the field has no default behind it.
             (RADIUS.to_owned(), Value::Float(20.0)),
@@ -280,7 +280,7 @@ fn spot(label: &str) -> Value {
             ("inner_angle".to_owned(), Value::Float(0.16)),
             ("outer_angle".to_owned(), Value::Float(0.56)),
             ("color".to_owned(), triple([1.0, 0.95, 0.9])),
-            ("intensity".to_owned(), Value::Float(1.0)),
+            ("power".to_owned(), Value::Float(1.0)),
             ("shadow_extent".to_owned(), Value::Float(6.0)),
         ],
     )
