@@ -87,7 +87,7 @@ use whiting_patch::topology::{
     EdgeKey, EdgeSlot, Topology, boundary_index, canonical, edge_endpoints, interior_index,
     mirrored_position,
 };
-use whiting_patch::{Continuity, Edit, PatchMesh, RectNet, slave_interior};
+use whiting_patch::{Continuity, Edit, Face, Level, PatchMesh, RectNet, slave_interior};
 
 /// A gap this small is indistinguishable from continuous, whatever the arithmetic says.
 const CONTINUOUS: f64 = 1.0e-6;
@@ -175,7 +175,7 @@ fn interior_edges(mesh: &PatchMesh) -> Vec<(EdgeKey, [(u32, EdgeSlot); 2])> {
 /// The along-edge and into-the-face derivative vectors at one boundary position, by finite
 /// difference. Second-order one-sided across the edge, central along it.
 fn edge_frame(
-    net: &RectNet,
+    face: &Face<'_>,
     degree: usize,
     slot: EdgeSlot,
     t: usize,
@@ -198,22 +198,32 @@ fn edge_frame(
     let mut after = at;
     after[along] += step;
     let along_vector =
-        (net.evaluate(after[0], after[1]) - net.evaluate(before[0], before[1])) / (2.0 * step);
+        (face.evaluate(after[0], after[1]) - face.evaluate(before[0], before[1])) / (2.0 * step);
 
     let mut one_step = at;
     one_step[across] += inward * step;
     let mut two_steps = at;
     two_steps[across] += inward * step * 2.0;
-    let across_vector = (net.evaluate(at[0], at[1]) * -3.0
-        + net.evaluate(one_step[0], one_step[1]) * 4.0
-        - net.evaluate(two_steps[0], two_steps[1]))
+    let across_vector = (face.evaluate(at[0], at[1]) * -3.0
+        + face.evaluate(one_step[0], one_step[1]) * 4.0
+        - face.evaluate(two_steps[0], two_steps[1]))
         / (2.0 * step);
 
     (along_vector, across_vector)
 }
 
-fn edge_normal(net: &RectNet, degree: usize, slot: EdgeSlot, t: usize, step: f64) -> Point3 {
-    let (along, across) = edge_frame(net, degree, slot, t, step);
+fn edge_normal(
+    level: &Level,
+    degree: usize,
+    face: u32,
+    slot: EdgeSlot,
+    t: usize,
+    step: f64,
+) -> Point3 {
+    let patch = level
+        .face(face as usize)
+        .expect("a face id below the count resolves");
+    let (along, across) = edge_frame(&patch, degree, slot, t, step);
     along.cross(across)
 }
 
@@ -249,7 +259,7 @@ fn inside_parameters(degree: usize, slot: EdgeSlot, t: usize, h: f64) -> (f64, f
 /// directly. A measurement that can only see the enforced state cannot see what an alternative
 /// would have been.
 fn edge_gap_over(
-    nets: &[RectNet],
+    level: &Level,
     quads: &[[u32; 4]],
     degree: usize,
     faces: [(u32, EdgeSlot); 2],
@@ -265,8 +275,8 @@ fn edge_gap_over(
         .map(|t| {
             let other_t = mirrored_position(degree, here, there, t);
             folded_angle(
-                edge_normal(&nets[master.0 as usize], degree, master.1, t, step),
-                edge_normal(&nets[slave.0 as usize], degree, slave.1, other_t, step),
+                edge_normal(level, degree, master.0, master.1, t, step),
+                edge_normal(level, degree, slave.0, slave.1, other_t, step),
             )
         })
         .fold(0.0f64, f64::max)
@@ -462,7 +472,7 @@ fn greatest_common_divisor(a: usize, b: usize) -> usize {
 /// This is [`PatchMesh::enforce`]'s hard pass, lifted out so a probe can run it on a scratch copy
 /// of the nets. It is here because a whole-row soft write lands on a **boundary** point of the
 /// perpendicular edge, and nothing is shared unless the neighbour is told.
-fn share_every_boundary(mesh: &PatchMesh, nets: &mut [RectNet]) {
+fn share_every_boundary(mesh: &PatchMesh, level: &mut Level) {
     let degree = mesh.degree();
     for faces in mesh.topology().edge_faces.values() {
         let (owner, follower) = match faces.as_slice() {
@@ -475,22 +485,22 @@ fn share_every_boundary(mesh: &PatchMesh, nets: &mut [RectNet]) {
             let follower_t = mirrored_position(degree, owner_ends, follower_ends, t);
             let (oi, oj) = boundary_index(degree, owner.1, t);
             let (fi, fj) = boundary_index(degree, follower.1, follower_t);
-            let point = nets[owner.0 as usize][(oi, oj)];
-            nets[follower.0 as usize].set_point(fi, fj, point);
+            let point = level.face(owner.0 as usize).expect("a face resolves")[(oi, oj)];
+            level.set_point(follower.0 as usize, fi, fj, point);
         }
     }
 }
 
 /// The worst soft-edge gap of `mesh` at the interior positions and at the two ends, read from
 /// `nets` rather than from the model, so a scratch copy can be measured.
-fn soft_gap_pair(mesh: &PatchMesh, nets: &[RectNet]) -> (f64, f64) {
+fn soft_gap_pair(mesh: &PatchMesh, level: &Level) -> (f64, f64) {
     let degree = mesh.degree();
     let mut interior = 0.0f64;
     let mut ends = 0.0f64;
     for edge in mesh.soft_edges() {
         let faces = [edge.master, edge.slave];
         interior = interior.max(edge_gap_over(
-            nets,
+            level,
             mesh.quads(),
             degree,
             faces,
@@ -498,7 +508,7 @@ fn soft_gap_pair(mesh: &PatchMesh, nets: &[RectNet]) -> (f64, f64) {
             1..degree,
         ));
         ends = ends.max(edge_gap_over(
-            nets,
+            level,
             mesh.quads(),
             degree,
             faces,
@@ -510,7 +520,7 @@ fn soft_gap_pair(mesh: &PatchMesh, nets: &[RectNet]) -> (f64, f64) {
 }
 
 /// The largest distance between two faces' copies of one point on a shared boundary.
-fn worst_split_over_all(mesh: &PatchMesh, nets: &[RectNet]) -> f64 {
+fn worst_split_over_all(mesh: &PatchMesh, level: &Level) -> f64 {
     let degree = mesh.degree();
     mesh.topology()
         .edge_faces
@@ -521,7 +531,7 @@ fn worst_split_over_all(mesh: &PatchMesh, nets: &[RectNet]) -> f64 {
         })
         .flat_map(|(owner, follower)| (0..=degree).map(move |t| (owner, follower, t)))
         .map(|(owner, follower, t)| {
-            boundary_split_over(nets, mesh.quads(), degree, [owner, follower], t)
+            boundary_split_over(level, mesh.quads(), degree, [owner, follower], t)
         })
         .fold(0.0f64, f64::max)
 }
@@ -545,12 +555,9 @@ fn worst_split_over_all(mesh: &PatchMesh, nets: &[RectNet]) -> f64 {
 /// The other reason the order matters is that a row end is a **boundary** point of the perpendicular
 /// edge, so writing one moves shared geometry. Writing after the sharing is what lets a measurement
 /// see whether that geometry survives, rather than measuring only that the sharing undid it.
-fn whole_row_enforcement(
-    mesh: &PatchMesh,
-    rounds: usize,
-) -> (Vec<Vec<RectNet>>, Vec<f64>, Vec<f64>) {
+fn whole_row_enforcement(mesh: &PatchMesh, rounds: usize) -> (Vec<Level>, Vec<f64>, Vec<f64>) {
     let degree = mesh.degree();
-    let mut nets = mesh.nets().to_vec();
+    let mut nets = mesh.level().clone();
     let mut history = Vec::new();
     let mut written = Vec::new();
     let mut reclaimed = Vec::new();
@@ -568,34 +575,33 @@ fn whole_row_enforcement(
                 let (mi, mj) = boundary_index(degree, edge.master.1, t);
                 let (ai, aj) = interior_index(degree, edge.master.1, t);
                 let (si, sj) = interior_index(degree, edge.slave.1, slave_t);
-                let boundary = nets[edge.master.0 as usize][(mi, mj)];
-                let master_interior = nets[edge.master.0 as usize][(ai, aj)];
+                let master_face = nets.face(edge.master.0 as usize).expect("a face resolves");
+                let boundary = master_face[(mi, mj)];
+                let master_interior = master_face[(ai, aj)];
                 let target = slave_interior(boundary, master_interior, mu);
-                moved = moved.max(nets[edge.slave.0 as usize][(si, sj)].distance(target));
-                nets[edge.slave.0 as usize].set_point(si, sj, target);
+                let slave_face = edge.slave.0 as usize;
+                let was = nets.face(slave_face).expect("a face resolves")[(si, sj)];
+                moved = moved.max(was.distance(target));
+                nets.set_point(slave_face, si, sj, target);
             }
         }
         let after_soft = nets.clone();
         share_every_boundary(mesh, &mut nets);
         written.push(moved);
-        reclaimed.push(nets_distance(&after_soft, &nets));
+        reclaimed.push(level_distance(&after_soft, &nets));
         history.push(nets.clone());
     }
     (history, written, reclaimed)
 }
 
 /// The largest distance any control point moved between two states.
-fn nets_distance(first: &[RectNet], second: &[RectNet]) -> f64 {
-    let mut worst = 0.0f64;
-    for (was, now) in first.iter().zip(second) {
-        let (degree_u, degree_v) = now.degrees();
-        for i in 0..=degree_u {
-            for j in 0..=degree_v {
-                worst = worst.max(was.point(i, j).unwrap().distance(now.point(i, j).unwrap()));
-            }
-        }
-    }
-    worst
+fn level_distance(first: &Level, second: &Level) -> f64 {
+    first
+        .points()
+        .iter()
+        .zip(second.points())
+        .map(|(was, now)| was.distance(*now))
+        .fold(0.0f64, f64::max)
 }
 
 /// One soft seam that writes a contested place, and the master row end it reads to do it.
@@ -681,7 +687,7 @@ fn contested_places(model: &PatchMesh) -> Vec<ContestedPlace> {
 
 /// The shared boundary point at `position` of `edge`, read from the face that owns it.
 fn shared_point(
-    nets: &[RectNet],
+    level: &Level,
     topology: &Topology,
     degree: usize,
     edge: &EdgeKey,
@@ -689,7 +695,7 @@ fn shared_point(
 ) -> Option<Point3> {
     let (face, slot) = *topology.edge_faces.get(edge)?.first()?;
     let (i, j) = boundary_index(degree, slot, position);
-    Some(nets[face as usize][(i, j)])
+    level.face(face as usize)?.point(i, j)
 }
 
 /// Makes every **hard** edge's boundary identical on both sides, the first face on each edge winning.
@@ -699,7 +705,7 @@ fn shared_point(
 /// which puts it on the perpendicular edge's boundary row, so copying that edge from the far side
 /// restores the value the derivation just replaced. Soft edges are therefore left alone here and the
 /// soft pass writes them last, which is what [`PatchMesh::enforce`] already does.
-fn share_hard_boundaries(mesh: &PatchMesh, nets: &mut [RectNet]) {
+fn share_hard_boundaries(mesh: &PatchMesh, level: &mut Level) {
     let degree = mesh.degree();
     for (key, faces) in &mesh.topology().edge_faces {
         if mesh.continuity(key).is_some_and(Continuity::is_soft) {
@@ -715,8 +721,8 @@ fn share_hard_boundaries(mesh: &PatchMesh, nets: &mut [RectNet]) {
             let follower_t = mirrored_position(degree, owner_ends, follower_ends, t);
             let (oi, oj) = boundary_index(degree, owner.1, t);
             let (fi, fj) = boundary_index(degree, follower.1, follower_t);
-            let point = nets[owner.0 as usize][(oi, oj)];
-            nets[follower.0 as usize].set_point(fi, fj, point);
+            let point = level.face(owner.0 as usize).expect("a face resolves")[(oi, oj)];
+            level.set_point(follower.0 as usize, fi, fj, point);
         }
     }
 }
@@ -727,14 +733,14 @@ fn share_hard_boundaries(mesh: &PatchMesh, nets: &mut [RectNet]) {
 /// The worst gap alone cannot answer this. Resolving one contested place changes one seam, and the
 /// maximum over thirty-two seams can sit on an untouched one and report the same number either way.
 /// Counting the seams is what shows whether anything was fixed.
-fn soft_seams_exact(model: &PatchMesh, nets: &[RectNet]) -> (usize, usize) {
+fn soft_seams_exact(model: &PatchMesh, level: &Level) -> (usize, usize) {
     let degree = model.degree();
     let exact = model
         .soft_edges()
         .iter()
         .filter(|entry| {
             let faces = [entry.master, entry.slave];
-            edge_gap_over(nets, model.quads(), degree, faces, STEP, 0..=degree) <= CONTINUOUS
+            edge_gap_over(level, model.quads(), degree, faces, STEP, 0..=degree) <= CONTINUOUS
         })
         .count();
     (exact, model.soft_edges().len())
@@ -758,16 +764,18 @@ fn whole_row_with_derived_corners(
     places: &[ContestedPlace],
     kappa: f64,
     rounds: usize,
-) -> (Vec<RectNet>, Vec<(f64, f64)>) {
+) -> (Level, Vec<(f64, f64)>) {
     let degree = model.degree();
     let topology = model.topology();
-    let mut nets = model.nets().to_vec();
+    let mut nets = model.level().clone();
     let before = nets.clone();
     for _ in 0..rounds {
         share_hard_boundaries(model, &mut nets);
         for place in places {
             let keeper = &place.claims[0];
-            let keeper_point = nets[keeper.master.0 as usize][keeper.master_index];
+            let keeper_point = nets
+                .face(keeper.master.0 as usize)
+                .expect("a face resolves")[keeper.master_index];
             let Some(anchor) = shared_point(&nets, topology, degree, &place.edge, place.position)
             else {
                 continue;
@@ -777,7 +785,8 @@ fn whole_row_with_derived_corners(
                     continue;
                 }
                 let target = anchor - (keeper_point - anchor) * (kappa * keeper.mu / claim.mu);
-                nets[claim.master.0 as usize].set_point(
+                nets.set_point(
+                    claim.master.0 as usize,
                     claim.master_index.0,
                     claim.master_index.1,
                     target,
@@ -796,9 +805,11 @@ fn whole_row_with_derived_corners(
                 let (mi, mj) = boundary_index(degree, entry.master.1, t);
                 let (ai, aj) = interior_index(degree, entry.master.1, t);
                 let (si, sj) = interior_index(degree, entry.slave.1, slave_t);
-                let anchor = nets[entry.master.0 as usize][(mi, mj)];
-                let master_interior = nets[entry.master.0 as usize][(ai, aj)];
-                nets[entry.slave.0 as usize].set_point(
+                let master_face = nets.face(entry.master.0 as usize).expect("a face resolves");
+                let anchor = master_face[(mi, mj)];
+                let master_interior = master_face[(ai, aj)];
+                nets.set_point(
+                    entry.slave.0 as usize,
                     si,
                     sj,
                     slave_interior(anchor, master_interior, mu),
@@ -818,8 +829,10 @@ fn whole_row_with_derived_corners(
         };
         for claim in place.claims.iter().skip(1) {
             let index = claim.master_index;
-            let was = before[claim.master.0 as usize][index];
-            let now = nets[claim.master.0 as usize][index];
+            let was = before
+                .face(claim.master.0 as usize)
+                .expect("a face resolves")[index];
+            let now = nets.face(claim.master.0 as usize).expect("a face resolves")[index];
             cost.push((was.distance(now), anchor.distance(now)));
         }
     }
@@ -828,7 +841,7 @@ fn whole_row_with_derived_corners(
 
 /// How far apart two points on the same edge are when read from its two faces, read from nets.
 fn boundary_split_over(
-    nets: &[RectNet],
+    level: &Level,
     quads: &[[u32; 4]],
     degree: usize,
     faces: [(u32, EdgeSlot); 2],
@@ -840,7 +853,8 @@ fn boundary_split_over(
     let other_t = mirrored_position(degree, here, there, t);
     let (mi, mj) = boundary_index(degree, master.1, t);
     let (si, sj) = boundary_index(degree, slave.1, other_t);
-    nets[master.0 as usize][(mi, mj)].distance(nets[slave.0 as usize][(si, sj)])
+    level.face(master.0 as usize).expect("a face resolves")[(mi, mj)]
+        .distance(level.face(slave.0 as usize).expect("a face resolves")[(si, sj)])
 }
 
 fn main() {
@@ -941,7 +955,7 @@ fn main() {
     let mut along_worst = 0.0f64;
     for (edge, faces) in &edges {
         let interior = edge_gap_over(
-            mesh.nets(),
+            mesh.level(),
             mesh.quads(),
             mesh.degree(),
             *faces,
@@ -949,7 +963,7 @@ fn main() {
             1..DEGREE,
         );
         let ends = edge_gap_over(
-            mesh.nets(),
+            mesh.level(),
             mesh.quads(),
             mesh.degree(),
             *faces,
@@ -964,9 +978,9 @@ fn main() {
                 let there = edge_endpoints(mesh.quads()[faces[1].0 as usize], faces[1].1);
                 let other_t = mirrored_position(DEGREE, here, there, t);
                 let (master_along, _) =
-                    edge_frame(mesh.net(faces[0].0), DEGREE, faces[0].1, t, STEP);
+                    edge_frame(&mesh.net(faces[0].0), DEGREE, faces[0].1, t, STEP);
                 let (slave_along, _) =
-                    edge_frame(mesh.net(faces[1].0), DEGREE, faces[1].1, other_t, STEP);
+                    edge_frame(&mesh.net(faces[1].0), DEGREE, faces[1].1, other_t, STEP);
                 along_worst = along_worst.max(folded_angle(master_along, slave_along));
             }
         } else {
@@ -1118,7 +1132,7 @@ fn main() {
         .filter(|(edge, _)| soft_edges.contains(edge))
         .map(|(_, faces)| {
             edge_gap_over(
-                tall.nets(),
+                tall.level(),
                 tall.quads(),
                 tall.degree(),
                 *faces,
@@ -1159,7 +1173,7 @@ fn main() {
     let grab_index = boundary_index(DEGREE, slot, grab);
     let split_before = boundary_split(&mesh, &soft_edge, face, slot, grab);
     let gap_before = edge_gap_over(
-        mesh.nets(),
+        mesh.level(),
         mesh.quads(),
         mesh.degree(),
         soft_faces,
@@ -1177,7 +1191,7 @@ fn main() {
     let drag_distance = start.distance(edited.net(face)[grab_index]);
     let split_after = boundary_split(&edited, &soft_edge, face, slot, grab);
     let gap_after = edge_gap_over(
-        edited.nets(),
+        edited.level(),
         edited.quads(),
         edited.degree(),
         soft_faces,
@@ -1417,7 +1431,7 @@ fn main() {
             .filter(|(edge, _)| soft_edges.contains(edge))
             .map(|(_, faces)| {
                 edge_gap_over(
-                    model.nets(),
+                    model.level(),
                     model.quads(),
                     model.degree(),
                     *faces,
@@ -1532,7 +1546,7 @@ fn main() {
     for (name, model) in &cases {
         let (history, written, reclaimed) = whole_row_enforcement(model, 4);
         let nets = history.last().expect("four rounds were asked for");
-        let settled = nets_distance(&history[history.len() - 2], nets) <= MOVED;
+        let settled = level_distance(&history[history.len() - 2], nets) <= MOVED;
         let (interior, ends) = soft_gap_pair(model, nets);
         let split = worst_split_over_all(model, nets);
         let exact = interior.max(ends) <= CONTINUOUS;
@@ -1665,7 +1679,7 @@ fn main() {
     let (resolved, cost) = whole_row_with_derived_corners(&mesh, &places, 1.0, 4);
     let (resolved_interior, resolved_ends) = soft_gap_pair(&mesh, &resolved);
     let resolved_split = worst_split_over_all(&mesh, &resolved);
-    let (shipped_exact, seam_count) = soft_seams_exact(&mesh, mesh.nets());
+    let (shipped_exact, seam_count) = soft_seams_exact(&mesh, mesh.level());
     let (whole_row_only, _, _) = whole_row_enforcement(&mesh, 4);
     let (whole_row_exact, _) = soft_seams_exact(&mesh, whole_row_only.last().expect("four rounds"));
     let (resolved_exact_count, _) = soft_seams_exact(&mesh, &resolved);

@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::continuity::{Continuity, SoftEdge, slave_interior};
+use crate::level::{Face, Level};
 use crate::point::Point3;
 use crate::rect::RectNet;
 use crate::topology::{
@@ -47,7 +48,9 @@ pub struct PatchMesh {
     positions: Vec<Point3>,
     quads: Vec<[VertexId; 4]>,
     topology: Topology,
-    nets: Vec<RectNet>,
+    /// Every face's control points, in one buffer. A `Vec<RectNet>` would be one allocation per face,
+    /// which elevation pays in full and a hierarchy would pay once per level.
+    level: Level,
     /// Every edge, so that a query can answer "is this edge soft" without searching.
     continuity: BTreeMap<EdgeKey, Continuity>,
     /// Soft edges only, in the order they were made soft. Enforced in this order.
@@ -61,7 +64,7 @@ impl PatchMesh {
     /// Builds a patch per quad at level 0, with every edge hard.
     pub fn build(positions: Vec<Point3>, quads: Vec<[VertexId; 4]>) -> Self {
         let topology = Topology::build(&quads);
-        let nets = quads
+        let nets: Vec<RectNet> = quads
             .iter()
             .map(|corners| {
                 // Winding order puts q0 at (0,0), q1 at (1,0), q2 at (1,1) and q3 at (0,1).
@@ -78,7 +81,7 @@ impl PatchMesh {
             positions,
             quads,
             topology,
-            nets,
+            level: Level::from_nets(&nets),
             continuity,
             soft: Vec::new(),
         }
@@ -97,21 +100,48 @@ impl PatchMesh {
     }
 
     /// Every patch, as it stands after the last edit or enforcement.
-    pub fn nets(&self) -> &[RectNet] {
-        &self.nets
+    ///
+    /// One allocation per face, so it is for model-wide work — measuring, reporting, saving. Code
+    /// that wants one patch should ask for it by name: [`PatchMesh::net`] lends and allocates
+    /// nothing.
+    pub fn nets(&self) -> Vec<RectNet> {
+        self.level.to_nets()
     }
 
-    pub fn net(&self, face: FaceId) -> &RectNet {
-        &self.nets[face as usize]
+    /// One patch, borrowed. The hot path.
+    pub fn net(&self, face: FaceId) -> Face<'_> {
+        self.level
+            .face(face as usize)
+            .expect("a face id below the face count always resolves")
+    }
+
+    /// The whole level, for bulk work that has to walk every point.
+    pub fn level(&self) -> &Level {
+        &self.level
+    }
+
+    pub fn level_mut(&mut self) -> &mut Level {
+        &mut self.level
     }
 
     /// The degree every patch carries. All of them move together, so the first one answers.
     pub fn degree(&self) -> usize {
-        self.nets.first().map_or(0, |net| net.degrees().0)
+        self.level.degrees().0
     }
 
     pub fn continuity(&self, edge: &EdgeKey) -> Option<&Continuity> {
         self.continuity.get(edge)
+    }
+
+    /// The point at `(i, j)` of `face`, indexed the way the topology indexes.
+    ///
+    /// Panics on an out-of-range face or point, which is what indexing a slice of nets did before the
+    /// points moved into one buffer. An enforcement pass that silently read a zero instead would be a
+    /// bug that looked like a smooth surface.
+    fn at(&self, face: usize, i: usize, j: usize) -> Point3 {
+        self.level
+            .face(face)
+            .expect("a face id below the face count resolves")[(i, j)]
     }
 
     /// The soft edges, in the order they were made soft.
@@ -126,9 +156,7 @@ impl PatchMesh {
     /// `mu` needs no adjustment, because it is one scalar for the whole edge and the edge did not
     /// gain positions.
     pub fn elevate(&mut self) {
-        for net in &mut self.nets {
-            *net = net.elevate();
-        }
+        self.level = self.level.elevated();
         self.enforce();
     }
 
@@ -177,14 +205,18 @@ impl PatchMesh {
         true
     }
 
-    /// Edits the nets directly, then re-establishes every continuity tag.
+    /// Edits the control points directly, then re-establishes every continuity tag.
     ///
     /// This bypasses the seam routing in [`PatchMesh::set_control_point`], so a write that lands on
     /// a shared boundary or on a slave's row will be undone by the enforcement that follows. It
     /// exists for bulk work — refining, rebuilding, loading — where the caller knows the whole
     /// model. Single-point editing should go through `set_control_point`.
-    pub fn edit(&mut self, edit: impl FnOnce(&mut [RectNet])) {
-        edit(&mut self.nets);
+    ///
+    /// The closure gets a [`Level`], not a slice of nets, because that is how the points are stored:
+    /// one buffer, one face each. Lend a face with [`Level::face`] rather than materialising the
+    /// whole level.
+    pub fn edit(&mut self, edit: impl FnOnce(&mut Level)) {
+        edit(&mut self.level);
         self.enforce();
     }
 
@@ -243,11 +275,11 @@ impl PatchMesh {
                 let other_ends = edge_endpoints(self.quads[other as usize], other_slot);
                 let other_t = mirrored_position(degree, ends, other_ends, t);
                 let (oi, oj) = boundary_index(degree, other_slot, other_t);
-                self.nets[other as usize].set_point(oi, oj, point);
+                self.level.set_point(other as usize, oi, oj, point);
             }
         }
 
-        if !self.nets[face as usize].set_point(i, j, point) {
+        if !self.level.set_point(face as usize, i, j, point) {
             return Edit::OutOfRange;
         }
 
@@ -266,11 +298,12 @@ impl PatchMesh {
             let master_ends = edge_endpoints(self.quads[edge.master.0 as usize], edge.master.1);
             let master_t = mirrored_position(degree, slave_ends, master_ends, t);
             let (bi, bj) = boundary_index(degree, edge.master.1, master_t);
-            let boundary = self.nets[edge.master.0 as usize][(bi, bj)];
+            let boundary = self.at(edge.master.0 as usize, bi, bj);
             // slave = C + mu (C - master)  =>  master = C - (slave - C) / mu
             let master_interior = boundary - (point - boundary) / mu;
             let (mi, mj) = interior_index(degree, edge.master.1, master_t);
-            self.nets[edge.master.0 as usize].set_point(mi, mj, master_interior);
+            self.level
+                .set_point(edge.master.0 as usize, mi, mj, master_interior);
         }
 
         self.enforce();
@@ -286,7 +319,7 @@ impl PatchMesh {
             (0..=degree)
                 .map(|t| {
                     let (i, j) = boundary_index(degree, slot, t);
-                    self.nets[face as usize][(i, j)]
+                    self.at(face as usize, i, j)
                 })
                 .collect(),
         )
@@ -340,8 +373,8 @@ impl PatchMesh {
             let slave_t = mirrored_position(degree, master_ends, slave_ends, t);
             let (mi, mj) = boundary_index(degree, edge.master.1, t);
             let (si, sj) = boundary_index(degree, edge.slave.1, slave_t);
-            let boundary = self.nets[master][(mi, mj)];
-            self.nets[slave].set_point(si, sj, boundary);
+            let boundary = self.at(master, mi, mj);
+            self.level.set_point(slave, si, sj, boundary);
         }
 
         // Then the private interior only. See `crate::continuity` for why positions 0 and degree
@@ -352,9 +385,10 @@ impl PatchMesh {
             let (mi, mj) = boundary_index(degree, edge.master.1, t);
             let (ai, aj) = interior_index(degree, edge.master.1, t);
             let (si, sj) = interior_index(degree, edge.slave.1, slave_t);
-            let boundary = self.nets[master][(mi, mj)];
-            let master_interior = self.nets[master][(ai, aj)];
-            self.nets[slave].set_point(si, sj, slave_interior(boundary, master_interior, mu));
+            let boundary = self.at(master, mi, mj);
+            let master_interior = self.at(master, ai, aj);
+            self.level
+                .set_point(slave, si, sj, slave_interior(boundary, master_interior, mu));
         }
     }
 
@@ -367,8 +401,8 @@ impl PatchMesh {
             let follower_t = mirrored_position(degree, owner_ends, follower_ends, t);
             let (oi, oj) = boundary_index(degree, owner.1, t);
             let (fi, fj) = boundary_index(degree, follower.1, follower_t);
-            let point = self.nets[owner.0 as usize][(oi, oj)];
-            self.nets[follower.0 as usize].set_point(fi, fj, point);
+            let point = self.at(owner.0 as usize, oi, oj);
+            self.level.set_point(follower.0 as usize, fi, fj, point);
         }
         debug_assert_eq!(self.topology.edge_faces.get(key).map(Vec::len), Some(2));
     }
@@ -397,7 +431,7 @@ impl PatchMesh {
                         continue;
                     }
                     let (i, j) = boundary_index(degree, slot, t);
-                    self.nets[face as usize].set_point(i, j, point);
+                    self.level.set_point(face as usize, i, j, point);
                 }
             }
         }
