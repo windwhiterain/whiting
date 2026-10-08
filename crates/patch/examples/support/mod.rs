@@ -8,7 +8,7 @@
 
 #![allow(dead_code)]
 
-use whiting_patch::Point3;
+use whiting_patch::{Level, Point3};
 
 /// Exact, for geometry that was never asked to change.
 pub const EXACT: f64 = 1.0e-12;
@@ -60,6 +60,35 @@ pub fn bilinear(corners: [Point3; 4], u: f64, v: f64) -> Point3 {
         + corners[1] * (u * (1.0 - v))
         + corners[2] * (u * v)
         + corners[3] * ((1.0 - u) * v)
+}
+
+/// The largest distance any control point moved between two states of a level.
+///
+/// Compares whole buffers, so it is the right question whenever the claim is about a level having
+/// changed or two routes to a level agreeing — not about one patch. Mismatched lengths are a probe
+/// bug and stop the run: zipping them would report a smaller maximum than either level contains,
+/// which reads exactly like a null result.
+pub fn level_distance(first: &Level, second: &Level) -> f64 {
+    assert_eq!(
+        first.point_count(),
+        second.point_count(),
+        "two levels compared by distance must hold the same number of points"
+    );
+    first
+        .points()
+        .iter()
+        .zip(second.points())
+        .map(|(was, now)| was.distance(*now))
+        .fold(0.0f64, f64::max)
+}
+
+/// The largest distance any component of any control point in `level` is from the origin.
+pub fn level_magnitude(level: &Level) -> f64 {
+    level
+        .points()
+        .iter()
+        .map(|point| point.length())
+        .fold(0.0f64, f64::max)
 }
 
 /// Barycentric weights of `point` over the triangle, and how far off its plane the point lies.

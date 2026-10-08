@@ -79,7 +79,7 @@
 mod support;
 use std::collections::{BTreeMap, BTreeSet};
 
-use support::{ANGLE_FLOOR, COLUMNS, EXACT, grid};
+use support::{ANGLE_FLOOR, COLUMNS, EXACT, grid, level_distance};
 
 use whiting_patch::Point3;
 use whiting_patch::subdivide::{Origin, QuadMesh, subdivide};
@@ -592,16 +592,6 @@ fn whole_row_enforcement(mesh: &PatchMesh, rounds: usize) -> (Vec<Level>, Vec<f6
         history.push(nets.clone());
     }
     (history, written, reclaimed)
-}
-
-/// The largest distance any control point moved between two states.
-fn level_distance(first: &Level, second: &Level) -> f64 {
-    first
-        .points()
-        .iter()
-        .zip(second.points())
-        .map(|(was, now)| was.distance(*now))
-        .fold(0.0f64, f64::max)
 }
 
 /// One soft seam that writes a contested place, and the master row end it reads to do it.

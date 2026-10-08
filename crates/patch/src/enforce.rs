@@ -20,7 +20,7 @@
 //! Nothing here reads the mesh's *positions*, only its shape and its tags. That is what lets the one
 //! pass enforce absolute levels and displacement levels alike.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::continuity::{Continuity, SoftEdge, slave_interior};
 use crate::level::Level;
@@ -119,6 +119,74 @@ pub fn enforce(rules: &Rules<'_>, level: &mut Level) {
     // without cloning; the earlier version cloned because it held `&mut self`.
     for edge in rules.soft {
         enforce_soft(rules, level, edge);
+    }
+    reconcile_vertices(rules, level);
+}
+
+/// Where each of a face's four corners sits in its own `(i, j)` indexing.
+///
+/// The winding puts `q0` at `(0, 0)`, `q1` at `(degree, 0)`, `q2` at `(degree, degree)` and `q3` at
+/// `(0, degree)`, which is the order `RectNet::from_corners` is given them in.
+fn corner_index(degree: usize, corner: usize) -> (usize, usize) {
+    match corner {
+        0 => (0, 0),
+        1 => (degree, 0),
+        2 => (degree, degree),
+        3 => (0, degree),
+        _ => panic!("a quad's corner index is 0 to 3, found {corner}"),
+    }
+}
+
+/// Writes one value to every control point that sits on the mesh vertex.
+///
+/// A face's corner is the shared boundary row of *each* of the two edges meeting there, so a vertex
+/// is held by several faces and several sharings, and a write that reached only one of them is how a
+/// vertex becomes a fan of disagreeing patches. Propagating through all of them at once is what stops
+/// a later pass from restoring a stale copy from a face that owns an incident edge.
+pub fn write_vertex(rules: &Rules<'_>, level: &mut Level, vertex: VertexId, point: Point3) {
+    let degree = rules.degree;
+    for (face, corners) in rules.quads.iter().enumerate() {
+        for (corner, at) in corners.iter().enumerate() {
+            if *at != vertex {
+                continue;
+            }
+            let (i, j) = corner_index(degree, corner);
+            level.set_point(face, i, j, point);
+        }
+    }
+}
+
+/// Gives every mesh vertex **one** value across all the faces around it.
+///
+/// Two edges meeting at a vertex each share their boundary row, and both of those rows end at that
+/// same corner, so the corner is written twice per enforcement and the later write wins. When the
+/// copies start out equal — which is why this never showed on a base level, where every face's corner
+/// is the same mesh vertex to begin with — the ordering does not matter. On a displacement level
+/// nothing forces them to start out equal, and the leftover disagreement is a crack at every
+/// contested vertex: measured at `3.666e-1` over 19 corners on the sample in `layers_probe`, all 19
+/// of them at a row end and none of them anywhere else in the row.
+///
+/// One value per vertex, read from the lowest incident face, so the choice does not depend on the
+/// order the edges happened to be visited in.
+fn reconcile_vertices(rules: &Rules<'_>, level: &mut Level) {
+    let mut vertices: BTreeSet<VertexId> = BTreeSet::new();
+    for corners in rules.quads {
+        vertices.extend(corners.iter().copied());
+    }
+    let degree = rules.degree;
+    for vertex in vertices {
+        let owner = rules.quads.iter().enumerate().find_map(|(face, corners)| {
+            corners
+                .iter()
+                .position(|corner| *corner == vertex)
+                .map(|corner| (face, corner))
+        });
+        let Some((face, corner)) = owner else {
+            continue;
+        };
+        let (i, j) = corner_index(degree, corner);
+        let held = at(level, face, i, j);
+        write_vertex(rules, level, vertex, held);
     }
 }
 

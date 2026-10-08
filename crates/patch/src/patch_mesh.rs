@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::continuity::{Continuity, SoftEdge};
-use crate::enforce::{Rules, enforce as enforce_level};
+use crate::enforce::{Rules, enforce as enforce_level, write_vertex};
 use crate::level::{Face, Level};
 use crate::point::Point3;
 use crate::rect::RectNet;
@@ -509,27 +509,16 @@ impl PatchMesh {
     /// leaving the rest is what lets the next enforcement pass restore a stale value from a face
     /// that owns an incident edge, so a corner is propagated through all of them at once.
     fn write_vertex(&mut self, vertex: VertexId, point: Point3) {
-        let degree = self.degree();
-        let incident: Vec<FaceId> = self
-            .quads
-            .iter()
-            .enumerate()
-            .filter(|(_, corners)| corners.contains(&vertex))
-            .map(|(face, _)| face as FaceId)
-            .collect();
-        for face in incident {
-            let corners = self.quads[face as usize];
-            for slot in EdgeSlot::ALL {
-                let ends = edge_endpoints(corners, slot);
-                for (t, end) in [(0usize, ends[0]), (degree, ends[1])] {
-                    if end != vertex {
-                        continue;
-                    }
-                    let (i, j) = boundary_index(degree, slot, t);
-                    self.level.set_point(face as usize, i, j, point);
-                }
-            }
-        }
+        let PatchMesh {
+            quads,
+            topology,
+            continuity,
+            soft,
+            level,
+            ..
+        } = self;
+        let rules = Rules::new(level.degrees().0, quads, topology, continuity, soft);
+        write_vertex(&rules, level, vertex, point);
     }
 }
 
