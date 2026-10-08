@@ -17,6 +17,11 @@ use whiting_patch::{Continuity, Level, PatchMesh, Point3};
 /// Exact, for geometry that was never asked to change.
 pub const EXACT: f64 = 1.0e-12;
 
+/// The floor this crate's own arithmetic measures in: two routes to the same number, evaluated
+/// differently, differ by about this much. A measurement of "nothing" that cannot be as large as this
+/// is measuring the floor rather than the geometry.
+pub const ROUNDING: f64 = 1.0e-12;
+
 /// A measured angle floors at about this, because two unit vectors that close have a dot product
 /// `f64` cannot resolve below `1 - 1e-16` and `acos` turns that into `sqrt(2e-16)`.
 pub const ANGLE_FLOOR: f64 = 1.4e-8;
