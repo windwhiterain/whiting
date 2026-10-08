@@ -2,7 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::continuity::{Continuity, SoftEdge, slave_interior};
+use crate::continuity::{Continuity, SoftEdge};
+use crate::enforce::{Rules, enforce as enforce_level, write_vertex};
 use crate::level::{Face, Level};
 use crate::point::Point3;
 use crate::rect::RectNet;
@@ -43,6 +44,19 @@ pub enum Edit {
 /// **Level 0 reproduces the mesh.** Every patch starts as a degree-1 bilinear net through its own
 /// four corners, so the assembled surface *is* the input mesh rather than an approximation of it.
 /// There is no construction error to absorb later.
+///
+/// # Reading the surface
+///
+/// A mesh is a base level plus any number of displacement levels, and the **surface** is their sum.
+/// Which accessor answers that depends on what the caller wants, because a computed sum is not
+/// borrowable:
+///
+/// - [`PatchMesh::evaluate`] adds the levels at one parameter pair. Zero allocations, `O(levels)`
+///   per point — the hot path.
+/// - [`PatchMesh::composed`] materialises the whole sum as one [`Level`]. One buffer, for measuring,
+///   saving, or handing to something that wants the levels as values.
+/// - [`PatchMesh::base_net`] borrows **one level's** points for one face and allocates nothing. It is
+///   the base alone, and the two coincide only while there are no displacements.
 #[derive(Clone, Debug)]
 pub struct PatchMesh {
     positions: Vec<Point3>,
@@ -51,14 +65,22 @@ pub struct PatchMesh {
     /// Every face's control points, in one buffer. A `Vec<RectNet>` would be one allocation per face,
     /// which elevation pays in full and a hierarchy would pay once per level.
     level: Level,
+    /// Displacement layers above the base, each a [`Level`] of the same shape.
+    ///
+    /// A layer holds a **displacement**, not a position, and the surface is the base plus all of
+    /// them. That is what makes a hierarchy: a layer can be edited, refined or thrown away without
+    /// touching the ones below it, and a model that uses none holds none — an unused layer costs no
+    /// memory at all, not merely no effect.
+    ///
+    /// Empty by default and never grown implicitly. Every layer is enforced by the same pass as the
+    /// base, against the same [`Rules`], because `mu` is an attribute of the edge rather than of a
+    /// level and the invariant is affine in the points it reads — see [`crate::enforce`].
+    offsets: Vec<Level>,
     /// Every edge, so that a query can answer "is this edge soft" without searching.
     continuity: BTreeMap<EdgeKey, Continuity>,
     /// Soft edges only, in the order they were made soft. Enforced in this order.
     soft: Vec<SoftEdge>,
 }
-
-/// A mesh edge and the two faces meeting on it, as `(face, which of its edges)`.
-type EdgeFace = (FaceId, EdgeSlot);
 
 impl PatchMesh {
     /// Builds a patch per quad at level 0, with every edge hard.
@@ -82,6 +104,7 @@ impl PatchMesh {
             quads,
             topology,
             level: Level::from_nets(&nets),
+            offsets: Vec::new(),
             continuity,
             soft: Vec::new(),
         }
@@ -99,29 +122,146 @@ impl PatchMesh {
         &self.topology
     }
 
-    /// Every patch, as it stands after the last edit or enforcement.
+    /// The base level's patches, as they stand after the last edit or enforcement.
     ///
     /// One allocation per face, so it is for model-wide work — measuring, reporting, saving. Code
-    /// that wants one patch should ask for it by name: [`PatchMesh::net`] lends and allocates
+    /// that wants one patch should ask for it by name: [`PatchMesh::base_net`] lends and allocates
     /// nothing.
-    pub fn nets(&self) -> Vec<RectNet> {
+    ///
+    /// This is level 0, **not** the surface. See the type documentation for which is which.
+    pub fn base_nets(&self) -> Vec<RectNet> {
         self.level.to_nets()
     }
 
-    /// One patch, borrowed. The hot path.
-    pub fn net(&self, face: FaceId) -> Face<'_> {
+    /// One patch of the base level, borrowed. Zero allocations.
+    ///
+    /// The base alone: with a displacement added this is no longer the surface, and
+    /// [`PatchMesh::evaluate`] is what answers for the surface at a point.
+    pub fn base_net(&self, face: FaceId) -> Face<'_> {
         self.level
             .face(face as usize)
             .expect("a face id below the face count always resolves")
     }
 
-    /// The whole level, for bulk work that has to walk every point.
+    /// The whole base level, for bulk work that has to walk every point.
     pub fn level(&self) -> &Level {
         &self.level
     }
 
     pub fn level_mut(&mut self) -> &mut Level {
         &mut self.level
+    }
+
+    /// What enforcement is allowed to read: the mesh's shape and its edge tags, and no control point.
+    ///
+    /// Lent out rather than taken, so a caller can run [`crate::enforce::enforce`] against a level of
+    /// its own — the total surface, for instance, which is a sum nobody stores.
+    pub fn rules(&self) -> Rules<'_> {
+        Rules::new(
+            self.level.degrees().0,
+            &self.quads,
+            &self.topology,
+            &self.continuity,
+            &self.soft,
+        )
+    }
+
+    // -- the displacement levels ---------------------------------------------------------------
+
+    /// How many displacement levels sit above the base.
+    pub fn offset_count(&self) -> usize {
+        self.offsets.len()
+    }
+
+    /// The displacement levels, in the order they were added.
+    pub fn offsets(&self) -> &[Level] {
+        &self.offsets
+    }
+
+    pub fn offsets_mut(&mut self) -> &mut [Level] {
+        &mut self.offsets
+    }
+
+    /// Adds an all-zero displacement level and returns its index.
+    ///
+    /// Zero rather than absent, so that filling it in is an assignment against the surface the user
+    /// already has, and a layer left alone keeps contributing nothing to it.
+    pub fn add_offset(&mut self) -> usize {
+        self.offsets.push(self.level.zeroed());
+        self.offsets.len() - 1
+    }
+
+    /// Puts a displacement level back to zero, exactly.
+    ///
+    /// The buffers are reused rather than reallocated, and every point is set to `0.000e+00` rather
+    /// than subtracted from what the surface had become, so clearing a layer returns the surface to
+    /// the base by construction rather than by a cancel that could leave residue.
+    pub fn clear_offset(&mut self, index: usize) -> bool {
+        match self.offsets.get_mut(index) {
+            Some(level) => {
+                level.points_mut().fill(Point3::ZERO);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Drops a displacement level, which is the difference between clearing one and not having it.
+    pub fn drop_offset(&mut self, index: usize) -> bool {
+        index < self.offsets.len() && {
+            self.offsets.remove(index);
+            true
+        }
+    }
+
+    /// The surface: the base with every displacement added into it.
+    pub fn compose_into(&self, out: &mut Level) {
+        *out = self.level.clone();
+        for offset in &self.offsets {
+            out.add_assign(offset);
+        }
+    }
+
+    /// The surface, materialised in one buffer. The cold-path counterpart of
+    /// [`PatchMesh::evaluate`].
+    pub fn composed(&self) -> Level {
+        let mut out = Level::new();
+        self.compose_into(&mut out);
+        out
+    }
+
+    /// The surface at `(u, v)` on `face`, as the sum of every level's patch.
+    ///
+    /// Allocation-free and `O(offset_count)` per point. While there are no displacements this is one
+    /// evaluation, and that is the whole point of starting a hierarchy empty.
+    pub fn evaluate(&self, face: FaceId, u: f64, v: f64) -> Point3 {
+        let index = face as usize;
+        let mut surface = self
+            .level
+            .face(index)
+            .expect("a face id below the face count always resolves")
+            .evaluate(u, v);
+        for offset in &self.offsets {
+            surface += offset
+                .face(index)
+                .expect("a displacement level describes the same mesh as the base")
+                .evaluate(u, v);
+        }
+        surface
+    }
+
+    /// The point at `(i, j)` of `face` **on the surface**: the base plus every displacement.
+    ///
+    /// Control points are linear in the level sum, so this is the control net of the summed surface
+    /// and not merely a point somewhere on it.
+    fn total_point(&self, face: usize, i: usize, j: usize) -> Point3 {
+        let mut total = self.at(face, i, j);
+        for offset in &self.offsets {
+            total += offset
+                .face(face)
+                .expect("a displacement level describes the same mesh as the base")[(i, j)];
+        }
+        total
     }
 
     /// The degree every patch carries. All of them move together, so the first one answers.
@@ -149,14 +289,24 @@ impl PatchMesh {
         &self.soft
     }
 
-    /// Raises every patch one degree without moving the surface.
+    /// Raises every patch one degree without moving the surface, on the base and on every
+    /// displacement.
+    ///
+    /// "Without moving the surface" is exact when every edge is hard, and approximate when soft edges
+    /// are present — see the elevation section of [`crate::continuity`], and `layers_probe`
+    /// measurement 5 for the numbers. The displacement levels are raised alongside the base so that
+    /// the hierarchy stays in step; there is no way to raise one without the others through this
+    /// entry point.
     ///
     /// Every soft edge's adjacent row is then re-derived, which is why this ends in an enforcement
     /// pass rather than doing the work twice: a slave's row is derived state, not stored intent.
     /// `mu` needs no adjustment, because it is one scalar for the whole edge and the edge did not
-    /// gain positions.
+    /// gain positions — and it is an attribute of the edge, so one value serves every level.
     pub fn elevate(&mut self) {
         self.level = self.level.elevated();
+        for offset in &mut self.offsets {
+            *offset = offset.elevated();
+        }
         self.enforce();
     }
 
@@ -310,7 +460,7 @@ impl PatchMesh {
         Edit::Applied
     }
 
-    /// The shared boundary curve of an edge, read from the face that owns it.
+    /// The shared boundary curve of an edge, read from the face that owns it, on the surface.
     pub fn boundary_points(&self, edge: &EdgeKey) -> Option<Vec<Point3>> {
         let faces = self.topology.edge_faces.get(edge)?;
         let (face, slot) = *faces.first()?;
@@ -319,92 +469,43 @@ impl PatchMesh {
             (0..=degree)
                 .map(|t| {
                     let (i, j) = boundary_index(degree, slot, t);
-                    self.at(face as usize, i, j)
+                    self.total_point(face as usize, i, j)
                 })
                 .collect(),
         )
     }
 
-    /// Re-establishes every edge tag: soft edges get their private rows derived, and every shared
-    /// boundary is made identical on both sides.
+    /// Re-establishes every edge tag, on every level: soft edges get their private rows derived, and
+    /// every shared boundary is made identical on both sides.
     ///
     /// Idempotent, and correct after any edit. Hard edges need only the boundary copy, because a
     /// crease is a shared curve with independent interiors — dropping that copy would make it a
     /// crack instead.
+    ///
+    /// The base and each displacement are enforced independently, by the same pass and against the
+    /// same [`Rules`]. `mu` is a property of the edge and every level uses the one value, so a
+    /// displacement field is as continuous as the shape under it. Enforcing the levels separately is
+    /// only *equivalent* to enforcing their sum once because every write here is an affine
+    /// combination of points already in the level; `layers_probe` measures that rather than assuming
+    /// it, and this session has before been wrong by believing an argument instead of a number.
     pub fn enforce(&mut self) {
-        // Hard edges first, soft edges last, for one reason: the soft invariant *reads* the shared
-        // boundary curve. Copying a hard edge's boundary after deriving a row from it would leave
-        // that row derived from a curve that has since moved, and the model would not be idempotent
-        // under a second pass.
-        //
-        // The other half of the old reason is gone. A soft edge now writes only its private interior,
-        // which is never a boundary point, so a soft pass can no longer overwrite a hard edge's copy
-        // the way it did on triangles.
-        let hard: Vec<(EdgeKey, EdgeFace, EdgeFace)> = self
-            .topology
-            .edge_faces
-            .iter()
-            .filter(|(key, faces)| {
-                faces.len() == 2 && !self.continuity.get(key).is_some_and(Continuity::is_soft)
-            })
-            .map(|(key, faces)| (*key, faces[0], faces[1]))
-            .collect();
-        for (key, owner, follower) in hard {
-            self.share_boundary(&key, owner, follower);
+        // Destructured so the read-only halves are borrowed apart from the buffers. `self.rules()`
+        // would borrow the whole mesh, and the level it would then have to borrow back is the very
+        // thing being written.
+        let PatchMesh {
+            quads,
+            topology,
+            continuity,
+            soft,
+            level,
+            offsets,
+            ..
+        } = self;
+        let rules = Rules::new(level.degrees().0, quads, topology, continuity, soft);
+        enforce_level(&rules, level);
+        for offset in offsets.iter_mut() {
+            enforce_level(&rules, offset);
         }
-        for edge in self.soft.clone() {
-            self.enforce_soft(&edge);
-        }
-    }
-
-    fn enforce_soft(&mut self, edge: &SoftEdge) {
-        let degree = self.degree();
-        let Some(mu) = self.continuity.get(&edge.edge).and_then(Continuity::mu) else {
-            return;
-        };
-        let master = edge.master.0 as usize;
-        let slave = edge.slave.0 as usize;
-        let master_ends = edge_endpoints(self.quads[edge.master.0 as usize], edge.master.1);
-        let slave_ends = edge_endpoints(self.quads[edge.slave.0 as usize], edge.slave.1);
-
-        // The boundary is shared and has `degree + 1` positions. Deriving it first is what makes
-        // this correct: the invariant reads the shared curve, not the slave's own stale copy.
-        for t in 0..=degree {
-            let slave_t = mirrored_position(degree, master_ends, slave_ends, t);
-            let (mi, mj) = boundary_index(degree, edge.master.1, t);
-            let (si, sj) = boundary_index(degree, edge.slave.1, slave_t);
-            let boundary = self.at(master, mi, mj);
-            self.level.set_point(slave, si, sj, boundary);
-        }
-
-        // Then the private interior only. See `crate::continuity` for why positions 0 and degree
-        // are the perpendicular edge's to decide: forcing them here would demand mu == -1, which is
-        // the master row copied rather than reflected.
-        for t in 1..degree {
-            let slave_t = mirrored_position(degree, master_ends, slave_ends, t);
-            let (mi, mj) = boundary_index(degree, edge.master.1, t);
-            let (ai, aj) = interior_index(degree, edge.master.1, t);
-            let (si, sj) = interior_index(degree, edge.slave.1, slave_t);
-            let boundary = self.at(master, mi, mj);
-            let master_interior = self.at(master, ai, aj);
-            self.level
-                .set_point(slave, si, sj, slave_interior(boundary, master_interior, mu));
-        }
-    }
-
-    fn share_boundary(&mut self, key: &EdgeKey, owner: EdgeFace, follower: EdgeFace) {
-        let degree = self.degree();
-        let owner_ends = edge_endpoints(self.quads[owner.0 as usize], owner.1);
-        let follower_ends = edge_endpoints(self.quads[follower.0 as usize], follower.1);
-
-        for t in 0..=degree {
-            let follower_t = mirrored_position(degree, owner_ends, follower_ends, t);
-            let (oi, oj) = boundary_index(degree, owner.1, t);
-            let (fi, fj) = boundary_index(degree, follower.1, follower_t);
-            let point = self.at(owner.0 as usize, oi, oj);
-            self.level.set_point(follower.0 as usize, fi, fj, point);
-        }
-        debug_assert_eq!(self.topology.edge_faces.get(key).map(Vec::len), Some(2));
     }
 
     /// Writes a mesh vertex position to every boundary control point that sits on it.
@@ -414,27 +515,16 @@ impl PatchMesh {
     /// leaving the rest is what lets the next enforcement pass restore a stale value from a face
     /// that owns an incident edge, so a corner is propagated through all of them at once.
     fn write_vertex(&mut self, vertex: VertexId, point: Point3) {
-        let degree = self.degree();
-        let incident: Vec<FaceId> = self
-            .quads
-            .iter()
-            .enumerate()
-            .filter(|(_, corners)| corners.contains(&vertex))
-            .map(|(face, _)| face as FaceId)
-            .collect();
-        for face in incident {
-            let corners = self.quads[face as usize];
-            for slot in EdgeSlot::ALL {
-                let ends = edge_endpoints(corners, slot);
-                for (t, end) in [(0usize, ends[0]), (degree, ends[1])] {
-                    if end != vertex {
-                        continue;
-                    }
-                    let (i, j) = boundary_index(degree, slot, t);
-                    self.level.set_point(face as usize, i, j, point);
-                }
-            }
-        }
+        let PatchMesh {
+            quads,
+            topology,
+            continuity,
+            soft,
+            level,
+            ..
+        } = self;
+        let rules = Rules::new(level.degrees().0, quads, topology, continuity, soft);
+        write_vertex(&rules, level, vertex, point);
     }
 }
 

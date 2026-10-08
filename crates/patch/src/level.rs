@@ -138,19 +138,16 @@ impl Level {
         Self { points, faces }
     }
 
-    /// An all-zero level over `nets`' shapes. The zero level: summing it changes nothing.
-    pub fn zeros_like(nets: &[RectNet]) -> Self {
-        let mut points = Vec::with_capacity(nets.iter().map(RectNet::len).sum());
-        let mut faces = Vec::with_capacity(nets.len());
-        for net in nets {
-            faces.push(FaceLayout::new(
-                net.degrees().0,
-                net.degrees().1,
-                points.len(),
-            ));
-            points.resize(points.len() + net.len(), Point3::ZERO);
+    /// This level's shapes with every point at zero: the zero level, which summing changes nothing.
+    ///
+    /// This is what a fresh displacement layer is, and the reason an unused layer in a hierarchy
+    /// costs nothing but its buffer — it adds nothing to the surface, before or after enforcement,
+    /// because every write enforcement makes is an affine combination of points already there.
+    pub fn zeroed(&self) -> Self {
+        Self {
+            points: vec![Point3::ZERO; self.points.len()],
+            faces: self.faces.clone(),
         }
-        Self { points, faces }
     }
 
     /// How many faces.
