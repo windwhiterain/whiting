@@ -87,7 +87,7 @@ pub fn light(
     label: &str,
     position: [f64; 3],
     color: [f64; 3],
-    intensity: f64,
+    power: f64,
     shadow_extent: f64,
 ) -> Value {
     Value::variant(
@@ -96,7 +96,7 @@ pub fn light(
             ("label".to_owned(), Value::String(label.to_owned())),
             ("position".to_owned(), triple(position)),
             ("color".to_owned(), triple(color)),
-            ("intensity".to_owned(), Value::Float(intensity)),
+            ("power".to_owned(), Value::Float(power)),
             ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
         ],
     )
@@ -121,11 +121,11 @@ pub fn light_with_radius(
     label: &str,
     position: [f64; 3],
     color: [f64; 3],
-    intensity: f64,
+    power: f64,
     shadow_extent: f64,
     radius: f64,
 ) -> Value {
-    let Value::Enum { tag, mut fields } = light(label, position, color, intensity, shadow_extent)
+    let Value::Enum { tag, mut fields } = light(label, position, color, power, shadow_extent)
     else {
         unreachable!("a light is an enum value")
     };
@@ -154,7 +154,7 @@ pub fn spot(
     position: [f64; 3],
     direction: [f64; 3],
     color: [f64; 3],
-    intensity: f64,
+    power: f64,
     inner_angle: f64,
     outer_angle: f64,
     shadow_extent: f64,
@@ -166,7 +166,7 @@ pub fn spot(
             ("position".to_owned(), triple(position)),
             ("direction".to_owned(), triple(direction)),
             ("color".to_owned(), triple(color)),
-            ("intensity".to_owned(), Value::Float(intensity)),
+            ("power".to_owned(), Value::Float(power)),
             ("inner_angle".to_owned(), Value::Float(inner_angle)),
             ("outer_angle".to_owned(), Value::Float(outer_angle)),
             ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
@@ -194,7 +194,7 @@ pub fn directional(
     label: &str,
     direction: [f64; 3],
     color: [f64; 3],
-    intensity: f64,
+    irradiance: f64,
     shadow_extent: f64,
 ) -> Value {
     Value::variant(
@@ -203,7 +203,7 @@ pub fn directional(
             ("label".to_owned(), Value::String(label.to_owned())),
             ("direction".to_owned(), triple(direction)),
             ("color".to_owned(), triple(color)),
-            ("intensity".to_owned(), Value::Float(intensity)),
+            ("irradiance".to_owned(), Value::Float(irradiance)),
             ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
         ],
     )
@@ -220,14 +220,14 @@ pub fn directional(
 /// The image is a **label** into the scene's own image list rather than pixels, which is the
 /// same reason a material's image is: one map is shared by every surface of a scene, and the
 /// scene's `images` list is where it is written down once.
-pub fn environment_light(label: &str, image: &str, color: [f64; 3], intensity: f64) -> Value {
+pub fn environment_light(label: &str, image: &str, color: [f64; 3], radiance: f64) -> Value {
     Value::variant(
         "Environment",
         [
             ("label".to_owned(), Value::String(label.to_owned())),
             ("image".to_owned(), Value::String(image.to_owned())),
             ("color".to_owned(), triple(color)),
-            ("intensity".to_owned(), Value::Float(intensity)),
+            ("radiance".to_owned(), Value::Float(radiance)),
         ],
     )
 }

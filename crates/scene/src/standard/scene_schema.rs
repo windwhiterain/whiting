@@ -701,7 +701,7 @@ pub fn camera_schema() -> Schema {
 ///     label: "key",
 ///     position: [ 4.0, 6.0, 2.0 ],
 ///     color: [ 1.0, 0.95, 0.9 ],
-///     intensity: 1.0,
+///     power: 544.0,
 ///     radius: 6.0,
 ///     shadow_extent: 2.5,
 /// )
@@ -709,10 +709,15 @@ pub fn camera_schema() -> Schema {
 ///     label: "sun",
 ///     direction: [ -0.3, -0.9, -0.2 ],
 ///     color: [ 1.0, 0.95, 0.85 ],
-///     intensity: 2.0,
+///     irradiance: 2.0,
 ///     shadow_extent: 60.0,
 /// )
 /// ```
+///
+/// **Each kind names its own brightness**, and the names are not interchangeable: a lamp has
+/// a `power`, a sun an `irradiance`, a sky a `radiance`. A document carrying the wrong one is
+/// a document whose units nobody can read, and the compiler cannot tell from the number
+/// alone which was meant.
 pub fn light_schema() -> Schema {
     Schema::new(SchemaKind::enumeration([
         ("Point".to_owned(), point_light()),
@@ -725,9 +730,16 @@ pub fn light_schema() -> Schema {
 
 /// The fields every light carries.
 ///
-/// A field belongs here when every light has it. A field that only the kinds that stand
-/// somewhere have — a position, a direction, a cone, an image — belongs in the variant that
-/// declares it, so a document carrying a directional light cannot also carry a position.
+/// A field belongs here when every light has it **and it means the same thing in every one**.
+/// A field that only the kinds that stand somewhere have — a position, a direction, a cone,
+/// an image — belongs in the variant that declares it, so a document carrying a directional
+/// light cannot also carry a position.
+///
+/// Brightness is deliberately **not** here. It used to be, as an `intensity` every kind
+/// shared, and that is the field this split exists to remove: a lamp's output, a sun's
+/// strength and a sky's brightness are three different physical quantities, and one field
+/// named for all three is one field whose unit depends on a tag two fields away. See
+/// `.agents/proposals/physical-light-units.md`.
 fn shared_fields() -> SchemaMap {
     [
         (
@@ -736,13 +748,58 @@ fn shared_fields() -> SchemaMap {
                 .with_documentation("Name used in pass labels and in errors."),
         ),
         ("color".to_owned(), float_triple("Colour in zero to one.")),
-        (
-            "intensity".to_owned(),
-            Schema::new(SchemaKind::Float).with_documentation("Brightness multiplier."),
-        ),
     ]
     .into_iter()
     .collect()
+}
+
+/// Builds the schema of a lamp's output.
+///
+/// **Total** radiant flux, and the unit is the same whatever the distance: it is what the
+/// lamp gives out altogether, and the inverse square law is what spreads it. A scene states a
+/// lamp by how far away it stands and how much it has to light at that distance, and the two
+/// together are the number — which is why the fallback law this replaced was tuned to a
+/// preferred scene span, and why a physical one is not.
+fn power() -> (String, Schema) {
+    (
+        "power".to_owned(),
+        Schema::new(SchemaKind::Float).with_documentation(
+            "The light's total output, spread over every direction by the inverse square \
+             law. It is not a brightness: a surface at distance `d` receives it over \
+             `d * d`, so moving a lamp twice as far off quarters what reaches the scene.",
+        ),
+    )
+}
+
+/// Builds the schema of a sun's strength.
+///
+/// The flux a surface perpendicular to the light receives per unit area, which is the
+/// quantity a directional light *is*: it has no distance to it, so there is nothing for a
+/// total to be a total of.
+fn irradiance() -> (String, Schema) {
+    (
+        "irradiance".to_owned(),
+        Schema::new(SchemaKind::Float).with_documentation(
+            "The light a surface facing it squarely receives per unit area. There is no \
+             distance involved, so this is the number a scene sets rather than one a \
+             position then reduces.",
+        ),
+    )
+}
+
+/// Builds the schema of a sky's brightness.
+///
+/// Radiance: the light leaving the image per unit area per unit solid angle, which is what a
+/// background is. It is the one kind that is not scaled by distance at all, because there is
+/// no direction from it.
+fn radiance() -> (String, Schema) {
+    (
+        "radiance".to_owned(),
+        Schema::new(SchemaKind::Float).with_documentation(
+            "The brightness of the image itself, per unit area and per unit solid angle. \
+             It reaches every distance equally, because a background has no distance.",
+        ),
+    )
 }
 
 /// Builds the schema of a point light.
@@ -755,7 +812,11 @@ fn shared_fields() -> SchemaMap {
 /// fragment evaluates it, and it is never culled short of the scene it is lighting. See
 /// [`radius`] for why that is the answer to a light standing outside what it lights.
 fn point_light() -> Schema {
-    light_variant(shared_fields(), [position(), radius(), shadow_extent()]).with_documentation(
+    light_variant(
+        shared_fields(),
+        [power(), position(), radius(), shadow_extent()],
+    )
+    .with_documentation(
         "A light at a position, falling off with distance from it. Shadows a box of \
              half the given extent, centred on what is drawn. A point light naming no \
              `radius` is a global light: it reaches every fragment rather than being \
@@ -772,6 +833,7 @@ fn spot_light() -> Schema {
     light_variant(
         shared_fields(),
         [
+            power(),
             position(),
             direction(),
             inner_angle(),
@@ -793,7 +855,11 @@ fn spot_light() -> Schema {
 /// concerned. It has no position because a direction is not somewhere, and a document that
 /// gave it a position would be a document asking for a point light by another name.
 fn directional_light() -> Schema {
-    light_variant(shared_fields(), [direction(), shadow_extent()]).with_documentation(
+    light_variant(
+        shared_fields(),
+        [irradiance(), direction(), shadow_extent()],
+    )
+    .with_documentation(
         "A light from a direction, reaching every distance equally. Shadows a box of \
              half the given extent, which is where its shadowing pass looks at all.",
     )
@@ -805,7 +871,7 @@ fn directional_light() -> Schema {
 /// smooth surface reflects. It stands nowhere and shines no direction, and it casts no
 /// shadow, so it declares neither a position nor a volume.
 fn environment_light() -> Schema {
-    light_variant(shared_fields(), [image()]).with_documentation(
+    light_variant(shared_fields(), [radiance(), image()]).with_documentation(
         "Light from an image the scene declares, sampled by a material rather than cast \
          from anywhere. It shadows nothing.",
     )

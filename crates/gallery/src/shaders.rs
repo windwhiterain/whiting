@@ -1657,11 +1657,14 @@ fn record_contribution(
         normal,
     ) * cone_attenuation(cone, -direction);
 
-    // A point light falls off with the square of its distance. The constants are the
-    // gentlest that still read as a falloff over a scene a couple of hundred units
-    // across: a steeper one puts the light's own volume inside the scene, and every
-    // surface near the light then reads as white no matter what its colour is.
-    let attenuation = 1.0 / (1.0 + 0.0035 * light_range + 0.00002 * light_range * light_range);
+    // A point light falls off with the square of its distance, which is the inverse square
+    // law and what makes a light's `power` a physical quantity rather than a brightness.
+    //
+    // The floor above is what keeps this finite at zero, and it is a floor rather than a
+    // softening term on purpose: a law softened to read well over one preferred scene size
+    // is a law normalised to that size, and the same document then renders differently
+    // under a different backend. See `.agents/proposals/physical-light-units.md`.
+    let attenuation = 1.0 / (light_range * light_range);
     let radiance = light.color * attenuation * lit;
 
     return light_contribution(direction, radiance, normal, to_view, diffuse, fresnel, roughness);

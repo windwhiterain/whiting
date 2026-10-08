@@ -141,11 +141,14 @@ pub fn monoliths() -> Value {
         ),
         (
             "lights".to_owned(),
+            // A `power` rather than a brightness: 82 units from the middle of the field, so
+            // the inverse square spreads this to what the old constant held flat over the
+            // whole span. See `.agents/proposals/physical-light-units.md`.
             Value::List(vec![light_with_radius(
                 "sun",
                 [-60.0, 30.0, 48.0],
                 [1.0, 0.72, 0.45],
-                4.0,
+                19_100.0,
                 90.0,
                 340.0,
             )]),

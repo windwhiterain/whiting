@@ -198,15 +198,17 @@ pub fn tidewater() -> Value {
             Value::List(vec![
                 // The sun, just behind the far shore and a long way off, so it is very
                 // nearly parallel and everything it lights is rimmed rather than filled.
-                // The intensity is large because the falloff below is a constant of the
-                // standard shading rather than anything the document can set: at this range
-                // it attenuates by something over twenty, and what a scene sets is therefore
-                // a radiance at a chosen distance, not a power. See the proposal.
+                // The power is large for the only reason a lamp's can be: it stands 716
+                // units off, and the inverse square spreads that over every square unit
+                // between. This comment used to say the number was a radiance at a chosen
+                // distance rather than a power, because the falloff it was calibrated
+                // against was a constant of the standard shading. It is a power now. See
+                // `.agents/proposals/physical-light-units.md`.
                 // The radius is the lake's own half width, which is what the convention used to
                 // answer with and what this picture is tuned around. It reaches short of the
                 // far corners — 2610 and 2413 — and the handoff records that as a scene-level
                 // look rather than a number to change here.
-                light_with_radius("sun", SUN, [1.0, 0.55, 0.28], 34.0, 900.0, 1400.0),
+                light_with_radius("sun", SUN, [1.0, 0.55, 0.28], 1_267_000.0, 900.0, 1400.0),
                 // The sky, which at this hour is doing most of the lighting. It is dim, cold
                 // and from above: a scene with one light leaves every shadowed slope black,
                 // and black is not what a shadow looks like outdoors.
@@ -221,7 +223,7 @@ pub fn tidewater() -> Value {
                     "sky",
                     [260.0, 420.0, 300.0],
                     [0.30, 0.42, 0.70],
-                    13.0,
+                    447_500.0,
                     1400.0,
                     1400.0,
                 ),

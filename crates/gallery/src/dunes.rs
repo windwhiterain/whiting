@@ -111,11 +111,16 @@ pub fn dunes() -> Value {
                 // is culling anything. Naming no radius at all would say the same thing and
                 // say it more directly; what the number buys is that the scene states the
                 // reach it means.
+                // The power is the light's whole output over every direction, and the inverse square
+                // law is what spreads it, so the number is a distance squared: it reads as
+                // "as bright as the old brightness was at 217 units", which is where this
+                // lamp stands from the middle of the field. See
+                // `.agents/proposals/physical-light-units.md`.
                 light_with_radius(
                     "sun",
                     [-150.0, 125.0, 95.0],
                     [1.0, 0.80, 0.55],
-                    3.6,
+                    62_800.0,
                     175.0,
                     430.0,
                 ),
@@ -123,11 +128,12 @@ pub fn dunes() -> Value {
                 // for the sky. One light with one falloff leaves every shadowed slope
                 // black, and black is not what a shadow looks like outdoors.
                 // 420 to the far corner. See the sun above for why it is written here.
+                // 220 units from the field's middle, against the sun's 217.
                 light_with_radius(
                     "sky",
                     [130.0, 150.0, -95.0],
                     [0.34, 0.44, 0.68],
-                    0.5,
+                    8_840.0,
                     175.0,
                     430.0,
                 ),

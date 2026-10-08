@@ -314,10 +314,9 @@ fn a_scene_that_raises_a_note_still_emits_the_pipeline_it_always_did() {
 /// A compile now also says what the scene's **size** costs — a falloff measured at the half
 /// diagonal of the same box these notes are read off — and that note points at `instances`
 /// rather than at a camera. Those two kinds are separate facts with separate paths, and this
-/// file asserts exactly which camera notes a scene raises; the size note is pinned in
-/// `scale_notes.rs`, against the same gallery. Filtering here is what keeps "a scene that
-/// buries nothing says nothing" a statement about cameras rather than about every note the
-/// compiler now knows how to raise.
+/// file asserts exactly which camera notes a scene raises. Filtering here is what keeps "a
+/// scene that buries nothing says nothing" a statement about cameras rather than about every
+/// note the compiler now knows how to raise.
 fn camera_notes_of(scene: &Value) -> Vec<whiting_scene::CompileNote> {
     compiled(scene)
         .notes

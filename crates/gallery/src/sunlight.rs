@@ -245,10 +245,11 @@ pub fn sunlight() -> Value {
                 // object is wide, and a shadow that short cannot be measured against another.
                 // The length of the vector does not matter; the compiler normalises it.
                 [0.46, -0.60, -0.66],
-                // Slightly warm and not very bright. There is no falloff to read, so the
-                // intensity is only "bright enough that the floor is not mud after the
-                // grade" — and a sun that clips the floor to white would hide the shadow's
-                // own gradient, which is half of what this scene is for.
+                // Slightly warm and not very bright. A sun reaches every distance equally, so there is no
+                // falloff to read and this number is an `irradiance` rather than a power — it
+                // is only "bright enough that the floor is not mud after the grade", and a sun
+                // that clips the floor to white would hide the shadow's own gradient, which is
+                // half of what this scene is for.
                 [1.0, 0.95, 0.86],
                 1.25,
                 // **The whole drawn scene, and this is the number to change first.** The page

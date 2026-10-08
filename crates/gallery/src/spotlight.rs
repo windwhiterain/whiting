@@ -230,8 +230,10 @@ pub fn spotlight() -> Value {
                 [1.0, 0.93, 0.80],
                 // Bright enough that the middle of the pool is not grey after the grade, and
                 // no brighter: a cone whose core clips to white is a cone whose falloff cannot
-                // be read, because the whole of the inner angle is one value.
-                1.15,
+                // be read, because the whole of the inner angle is one value. A power, so the
+                // number is a distance squared: this lamp stands about ten units over the
+                // pool. See `.agents/proposals/physical-light-units.md`.
+                103.0,
                 // A wide gap between the two angles, so the falloff is a ring rather than an
                 // edge: about nine degrees at full strength and thirty two at nothing.
                 0.16,

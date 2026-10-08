@@ -48,12 +48,12 @@ fn an_environment_light_reaches_the_pass_as_a_map_and_a_flag() {
         "the pass binds the image the light named rather than an entry of its own"
     );
 
-    // The uniform carries the colour scaled by the intensity and the flag saying the scene
+    // The uniform carries the colour scaled by the radiance and the flag saying the scene
     // named one, and the flag is the fourth number rather than a field beside it.
     assert_eq!(
         environment_uniform(&compiled),
         vec![2.0, 2.0, 2.0, 1.0],
-        "a white light at an intensity of two writes two in every channel and one in the flag"
+        "a white light at a radiance of two writes two in every channel and one in the flag"
     );
 }
 
@@ -130,7 +130,7 @@ fn point(label: &str) -> Value {
             ("label".to_owned(), Value::String(label.to_owned())),
             ("position".to_owned(), triple([4.0, 6.0, 2.0])),
             ("color".to_owned(), triple([1.0, 0.95, 0.9])),
-            ("intensity".to_owned(), Value::Float(1.0)),
+            ("power".to_owned(), Value::Float(1.0)),
             ("shadow_extent".to_owned(), Value::Float(2.5)),
             // A point light is required to say how far it reaches; the field has no default.
             (RADIUS.to_owned(), Value::Float(20.0)),
@@ -138,15 +138,15 @@ fn point(label: &str) -> Value {
     )
 }
 
-/// Builds an environment light naming an image, at an intensity.
-fn environment(label: &str, image: &str, intensity: f64) -> Value {
+/// Builds an environment light naming an image, at a radiance.
+fn environment(label: &str, image: &str, radiance: f64) -> Value {
     Value::variant(
         "Environment",
         [
             ("label".to_owned(), Value::String(label.to_owned())),
             ("image".to_owned(), Value::String(image.to_owned())),
             ("color".to_owned(), triple([1.0, 1.0, 1.0])),
-            ("intensity".to_owned(), Value::Float(intensity)),
+            ("radiance".to_owned(), Value::Float(radiance)),
         ],
     )
 }

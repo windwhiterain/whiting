@@ -14,13 +14,14 @@
 //!   edge, and the glaze of a bowl shows the window as a smear rather than as a dot. The lights
 //!   are **scattered** across the opening rather than set on a lattice, so the steps in a
 //!   penumbra do not line up into bands.
-//! - **The scene is a hundred units across, and it is a hundred units across because of the
-//!   attenuation.** The lighting template's falloff is `1 / (1 + 0.0035 r + 0.00002 r²)`, whose
-//!   constants its own comment places in "a scene a couple of hundred units across". At a
-//!   tabletop's true size that falloff is flat to within a percent and there is no gradient
-//!   down the table at all; at this size the near corner of the table is lit three times as hard
-//!   as the far one, which is what a window does to a table. A metre is therefore [`UNIT`]
-//!   units, and every number below is written in metres.
+//! - **The scene is a hundred units across, and it is a hundred units across because the lights
+//!   are metres.** The lighting template attenuates by the inverse square law, which is what a
+//!   window lighting a table actually does, so a scene written in metres needs no scale chosen
+//!   to flatter a constant: the near corner of the table is lit more than the far one because the
+//!   window is nearer to it. A metre is therefore [`UNIT`] units, and every number below is
+//!   written in metres. The falloff this replaced was tuned to "a scene a couple of hundred
+//!   units across" and was flat to within a percent at this size; see
+//!   `.agents/proposals/physical-light-units.md`.
 //! - **The light is placed where it models.** A window straight in front of the subject is a
 //!   flash and a window at right angles is a silhouette; this one stands about thirty degrees
 //!   off the camera's own axis and low enough that the light rakes across the table, which is
@@ -95,7 +96,11 @@ const WINDOW_Y: [f64; 2] = [0.32, 0.78];
 const WINDOW_COLUMNS: usize = 3;
 const WINDOW_ROWS: usize = 3;
 /// What the whole window puts out, divided among its lights.
-const WINDOW_INTENSITY: f64 = 11.0;
+///
+/// The window stands about 3.9 metres — 388 units — from the table, and the inverse square
+/// spreads its output over everything in between, so this is a distance squared rather than a
+/// brightness. See `.agents/proposals/physical-light-units.md`.
+const WINDOW_INTENSITY: f64 = 308_000.0;
 /// How far a window light is allowed to reach, which is further than the table is from it.
 const WINDOW_REACH: f64 = 4.2;
 /// The half width of the volume every light's shadow is rendered over: the region shadows have
@@ -457,7 +462,7 @@ fn window_lights() -> Vec<Value> {
         "bounce",
         place([-0.30, 0.26, 1.30]),
         [1.0, 0.72, 0.46],
-        0.45,
+        9_700.0,
         at(SHADOW_EXTENT),
         at(2.6),
     ));
@@ -468,7 +473,7 @@ fn window_lights() -> Vec<Value> {
         "room",
         place([-0.10, 1.45, 1.15]),
         [0.62, 0.68, 0.80],
-        0.35,
+        7_870.0,
         at(SHADOW_EXTENT),
         at(3.4),
     ));
