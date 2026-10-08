@@ -29,14 +29,20 @@
 //! second scene to need a backdrop behind its far ground should add the string to its post
 //! helpers and not write this again.
 //!
-//! # The one number a scene passes
+//! # The two numbers a scene passes
 //!
-//! [`ridges`] takes a **scale** on the elevation of the layers, because how high a far range
-//! stands in the frame is a fact about the scene's camera and its own horizon rather than
-//! about the idea. A scene whose camera looks **down** on its subject from a height has its
-//! whole horizon high in the picture, and layers scaled for a camera looking level sit above
-//! the top of the frame and come out as a band of colour across the sky rather than as
-//! mountains on a skyline. `1.0` is a camera looking level; less is a camera looking down.
+//! [`ridges`] takes a **scale** on the elevation of the layers and a **count** of them, because
+//! how high a far range stands in the frame and how many of them there are are both facts about
+//! the scene's camera and its own land, not about the idea. A scene whose camera looks **down**
+//! on its subject from a height has its whole horizon high in the picture, and layers scaled for
+//! a camera looking level sit above the top of the frame and come out as a band of colour across
+//! the sky rather than as mountains on a skyline. `1.0` is a camera looking level; less is a
+//! camera looking down.
+//!
+//! The **count** is how far the air closes. Each layer is a step of air between the eye and a
+//! ridge, so three is enough for a horizon that stops at one and not enough for a valley that
+//! has to recede through several — a deep horizon drawn too shallow reads as a single line with
+//! a shadow on it, and reads as shallow however far away it is put.
 
 /// The WGSL a post stage adds to its helpers to get [`ridges`](RIDGES).
 ///
@@ -89,24 +95,41 @@ fn ridge_at(azimuth: f32, layer: f32, scale: f32) -> vec2<f32> {
     let crest = 1.0 - abs(swell * 2.0 - 1.0);
     let second = 1.0 - abs(ridge_noise(azimuth * (3.7 + layer * 2.1) + layer * 41.0) * 2.0 - 1.0);
     let spur = ridge_noise(azimuth * (6.1 + layer * 2.3) + layer * 29.0);
+    // The **massif** the peaks stand on, at a third of the crease's own frequency. Without it the
+    // creases are all the same height and the skyline is a row of tents: every peak is the same
+    // size and evenly spaced, and that regularity is the thing the eye names as *tents* before it
+    // can say why. A range is peaks **on** something, and the something is what makes two peaks a
+    // massif and six peaks a chain. It also lowers the whole skyline where the land behind is
+    // low, which is what gives a horizon a shoulder to be seen over.
+    let massif = 0.30 + 0.70 * ridge_noise(azimuth * (0.53 + layer * 0.31) + layer * 7.0);
     let elevation = 0.012
         + scale * (
             layer * 0.020
-            + crest * second * (0.030 + layer * 0.020)
+            + massif * crest * second * (0.030 + layer * 0.020)
             + spur * 0.008
         );
     return vec2<f32>(elevation, layer);
 }
 
-/// Draws the ridge lines into `sky` along `ray`, nearest last, at the given scale.
-fn ridges(sky: vec3<f32>, ray: vec3<f32>, scale: f32) -> vec3<f32> {
+/// Draws the ridge lines into `sky` along `ray`, nearest last, `layers` deep, at the given scale.
+///
+/// # Invariants
+///
+/// **The depth is the caller's and not a constant.** How many ranges a horizon is made of is a
+/// fact about the land in front of the eye, not about the idea of a painted ridge: a valley that
+/// closes on a notch four ranges deep and a plateau that stops at the first are the same backdrop
+/// drawn at two different depths, and a constant would force one of them to lie about either
+/// how far away the horizon is or how far the air has closed over it. Nearer layers stand lower
+/// and are inked deeper, so adding a layer at the back is the same operation as adding one at
+/// the front and the order they are drawn in does the rest.
+fn ridges(sky: vec3<f32>, ray: vec3<f32>, scale: f32, layers: i32) -> vec3<f32> {
     let azimuth = atan2(ray.x, -ray.z);
     var result = sky;
     // Farthest first, so the nearer line overwrites the farther where they cross. The
     // inks are the haze itself deepened a step per layer: nothing out there has a colour
     // of its own any more, only less air than the sky behind it.
-    for (var layer = 2.0; layer >= 0.0; layer = layer - 1.0) {
-        let line = ridge_at(azimuth, layer, scale);
+    for (var layer = layers - 1; layer >= 0; layer = layer - 1) {
+        let line = ridge_at(azimuth, f32(layer), scale);
         if ray.y < line.x && ray.y > -0.05 * scale {
             let depth_haze = 0.88 - line.y * 0.18;
             let ink = mix(

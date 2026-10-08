@@ -33,8 +33,8 @@ use definition::{Schema, Value};
 use mountain::line::{Side, Station};
 use mountain::tessellation::BeltRef;
 use mountain::{
-    End, FootprintNode, LineRef, Massif, Ridge, RidgeId, RidgeNode, Skeleton, Tessellation, Valley,
-    ValleyNode,
+    End, FacetMesh, FootprintNode, LineRef, Massif, Ridge, RidgeId, RidgeNode, Skeleton,
+    Tessellation, Valley, ValleyNode,
 };
 use scene::standard::Stage;
 
@@ -174,12 +174,16 @@ const RIM: f64 = 0.0;
 
 /// How wide the frame is, in radians.
 ///
-/// **Long, and that is the choice that reads as distance.** A wide lens near a mountain makes it
-/// lean away from the eye and shows more ground than sky; a long lens from further back flattens
-/// the air between the two and stacks the massif against its own far ridges. Forty-five degrees
-/// is the point where the massif still fills the frame from far enough back that the plain it
-/// stands on is visible all the way to the horizon.
-const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_4;
+/// **Wide, and that is the choice that reads as a valley.** A long lens from far back is a
+/// photograph of a specimen: it stacks the ranges against their own far ridges and flattens the
+/// air between them. A valley is a corridor, and a corridor is only readable through a lens that
+/// takes in both walls at once and still leaves the ground between them running to the horizon —
+/// which is why this is wide enough that the near wall of each range stands past the edge of the
+/// frame, and the range is read as a wall rather than as a thing with a silhouette.
+///
+/// It is wide and the eye is **low**, which is the other half of the same reading: a wide lens
+/// raised up looks down into the valley and turns it into a bowl.
+const FIELD_OF_VIEW: f64 = 1.24;
 
 /// How high off the plain the eye stands, as a multiple of the massif's radius.
 ///
@@ -187,86 +191,250 @@ const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_4;
 /// camera raised to half the subject's own height looks **down** on it, and a mountain seen from
 /// above is a shape on a table. Every fraction of a radius above the ground the eye goes costs
 /// the sense of scale the picture is trying to have.
-const EYE_HEIGHT: f64 = 0.14;
+const EYE_HEIGHT: f64 = 0.24;
 
-/// How far the aim is pushed off the massif's own centre, sideways, as a multiple of its radius.
+/// How far along the valley the aim is taken, as a multiple of a range's radius.
 ///
-/// It is what puts the subject off the middle of the frame. A third of the way out is enough to
-/// break the symmetry without putting the summit at the edge, and the space it leaves is where
-/// the far ranges and the air go.
-const AIM_OFFSET: f64 = 0.22;
+/// **Along the axis and not across it.** Aiming across would put one wall in the middle of the
+/// frame and the other off the edge, which is a mountain shot again; aiming along puts the two
+/// walls at the edges and the corridor between them, which is the valley.
+const AIM_ALONG: f64 = 2.60;
 
 /// How far the aim is raised above the massif's own centre, as a multiple of its radius.
 ///
 /// Above the centre, not below it: the eye is near the ground, so an aim at the middle of the
 /// rock points the frame's centre into the massif's waist and leaves the summit in the top tenth.
-const AIM_HEIGHT: f64 = 0.16;
+const AIM_HEIGHT: f64 = 0.06;
 
 /// How far round from the eye's own bearing the sun stands, in radians.
 ///
 /// # Invariants
 ///
-/// It is a little over a quarter turn. A sun **behind the eye** lights every face of a flank
-/// within a few percent of every other, so the massif shades as the smooth cone its arithmetic
-/// would have produced and the facets the crate exists to make are invisible. A sun **behind the
-/// massif** draws a silhouette with the flanks on the fill light alone. A little over a quarter
-/// turn is the angle in between, where one flank is lit, the next is not, and the boundary between
-/// them is a crest.
-const SUN_OFFSET: f64 = 1.62;
+/// **Ahead of the eye, which is the whole reversal of what this scene used to do.** The eye looks
+/// **along** the valley's axis, so a sun at an offset of a quarter turn and more was behind the
+/// eye and lit every flank that faced the camera: the ranges came out as two bright brown cones,
+/// which is a massif shot. A sun **near the axis** is a sun the camera is looking at, and a
+/// camera looking at the sun sees the shadowed side of everything — the two walls go to silhouette
+/// and the brightest thing left in the frame is the water between them, which is the reading the
+/// valley is for.
+///
+/// It is not **zero**. A sun exactly down the axis makes the two walls identical in tone and
+/// leaves the picture bilateral to a fault; a quarter of a turn off it puts the sun out of the
+/// right of the frame, so one wall is a little darker than the other and the light has a side.
+const SUN_OFFSET: f64 = 0.46;
 
 /// How high the sun stands, in radians.
 ///
-/// **Low**, and low is the number that makes the facets legible rather than the one that makes
-/// the picture bright. A high sun is overhead, and an overhead sun lights the tops of things and
-/// leaves their sides at the fill's mercy — which flattens a massif into a plan view of itself.
-/// Near the horizon the light rakes along the flanks, so a facet turned a few degrees from it is
-/// markedly brighter than its neighbour, and the boundary between two facets is a line of light
-/// rather than a line of paint.
-const SUN_ELEVATION: f64 = 0.26;
+/// **Low, and lower than a mountain shot wants it.** Near the horizon the light rakes along the
+/// flanks, so a facet turned a few degrees from it is markedly brighter than its neighbour, and
+/// the boundary between two facets is a line of light rather than a line of paint. That is the
+/// job this number used to do alone, and now it has a second: the sun has to be low enough that
+/// it is **in** the sky the valley opens onto, because the glow around it is what the river
+/// reflects and the rays that come through the cloud gaps are drawn from.
+const SUN_ELEVATION: f64 = 0.34;
+
+/// One of the valley's two ranges, and where it stands in the plan.
+pub struct Range {
+    /// What the content calls it, which is also the first segment of every belt path it owns.
+    pub name: &'static str,
+    /// Where its own centre stands, as multiples of a range's radius either side of the axis.
+    pub centre: [f64; 2],
+}
+
+/// The two ranges the valley runs between, in the order their ids are numbered.
+///
+/// # Invariants
+///
+/// - **They are the same shape, stood in two places.** One massif is authored once and stood
+///   twice, so the two sides of the valley cannot drift apart: the shape of the valley is the
+///   shape of one range and where it was put. Two separately authored ranges would be two things
+///   to keep in step, and the valley would stop being a valley the first time one of them moved.
+///
+/// - **They stand either side of `x = 0`, which is the valley's axis.** The eye, the aim and the
+///   river all sit on that one line, and every layer of depth in this scene is read off it. A
+///   valley is a corridor, and a corridor is defined by the line down it rather than by what
+///   stands beside it.
+///
+/// - **They are close enough that the eye is between them.** Two ranges far enough apart to see
+///   between would frame a gap of empty plain; the whole reading of the shot depends on the walls
+///   being near enough to crop the frame, which is why the spacing is under two radii.
+///
+/// - **The order is the order their id runs follow one another**, so a caller numbering them walks
+///   this list rather than inventing an order, and two tables cannot be numbered out of step with
+///   the meshes they name.
+pub const RANGES: [Range; 2] = [
+    Range {
+        name: "west",
+        centre: [-1.20, 0.0],
+    },
+    Range {
+        name: "east",
+        centre: [1.20, 0.0],
+    },
+];
+
+/// Returns the valley's ranges, unscaled.
+///
+/// # Invariants
+///
+/// **It is [`RANGES`] and nothing else**, and the spacing it carries is a fraction of a range
+/// rather than a distance — so a caller scales it by whatever radius it is working at. Every
+/// consumer — the id numbering, the mesh list, the placements, the reverse lookup — walks this one
+/// list, and a range cannot be added to one of them and missed by another.
+pub fn ranges() -> &'static [Range] {
+    &RANGES
+}
+
+/// How far behind the ranges the eye stands, as a multiple of a range's radius.
+const EYE_SET_BACK: f64 = 1.85;
+
+/// Returns a massif stood with its own centre over a point in the plan.
+///
+/// # Invariants
+///
+/// - **It is a translation and nothing else.** The plan area, the winding and every topological
+///   number are unchanged, which is the whole reason the same authored range can serve as both
+///   walls of the valley: standing it somewhere is a fact about the picture, and a mesh that
+///   changed shape when it moved would be a second mountain.
+/// - **The height is not touched.** A valley floor is at one level on both sides of it, and a
+///   range that rose as it moved would tilt its own foot out of the plain it stands in.
+pub fn stood_at(mesh: &FacetMesh, at: [f64; 2]) -> FacetMesh {
+    let (low, high) = mesh.bounds();
+    let centre = [
+        ((low[0] + high[0]) * 0.5) as f64,
+        ((low[2] + high[2]) * 0.5) as f64,
+    ];
+    let mut moved = mesh.clone();
+    for point in &mut moved.points {
+        point[0] += (at[0] - centre[0]) as f32;
+        point[2] += (at[1] - centre[1]) as f32;
+    }
+    moved
+}
+
+/// Returns where the eye stands, so a caller can measure the picture from it.
+///
+/// # Invariants
+///
+/// **It is the one eye [`landscape`] compiles**, read back rather than written twice. A probe that
+/// placed its own eye to answer "how wide does this range stand in the frame" would be measuring
+/// a camera nobody renders, and every framing number it reported would be a number about that one.
+pub fn eye_at(radius: f64) -> [f64; 3] {
+    [0.0, RIM + radius * EYE_HEIGHT, -radius * EYE_SET_BACK]
+}
+
+/// Returns how wide the frame is, in radians, for the same reason as [`eye_at`].
+pub fn field_of_view() -> f64 {
+    FIELD_OF_VIEW
+}
+
+/// Returns, for each range, the azimuth of its summit and of its nearest point, in degrees off
+/// the view axis, read from the eye.
+///
+/// # Invariants
+///
+/// **Azimuth and not a position**, because the question this answers is whether a range fills the
+/// frame or sits in it — and a point's distance from the eye says nothing about that, while its
+/// angle off the view axis says exactly it. The half-frame is returned beside them, because a
+/// bearing is a number without one.
+///
+/// The two come out **within a degree or two of each other**, and that is the finding rather than
+/// a defect: a range's nearest point and its summit are both on the ray from the eye through the
+/// range's own centre, so a range that is one blob in the plan subtends **one narrow slice of
+/// azimuth** — two degrees here, against a half-frame of thirty-five. A two-degree object is a
+/// thing standing in the frame, not a wall of it, and no relief and no focal length changes that:
+/// to be a wall the range would have to reach from the axis out past the edge, which is the whole
+/// width of the frame. A range asked to do both wants a plan that is not a disc. See
+/// `.agents/proposals/valley-corridor.md`.
+pub fn framing() -> Vec<(&'static str, f64, f64)> {
+    let built = massif().build().expect("the authored massif expands");
+    let (low, high) = built.bounds();
+    let radius = (((high[0] - low[0]).powi(2) + (high[2] - low[2]).powi(2)) as f64).sqrt() * 0.5;
+    let eye = eye_at(radius);
+    let centre = [
+        ((low[0] + high[0]) * 0.5) as f64,
+        ((low[2] + high[2]) * 0.5) as f64,
+    ];
+    let square = |point: [f64; 3], from: [f64; 3]| {
+        (point[0] - from[0]).powi(2) + (point[1] - from[1]).powi(2) + (point[2] - from[2]).powi(2)
+    };
+    let azimuth = |point: [f64; 3], from: [f64; 3]| {
+        (point[0] - from[0]).atan2(point[2] - from[2]).abs() * 180.0 / std::f64::consts::PI
+    };
+
+    RANGES
+        .iter()
+        .map(|range| {
+            // `stood_at` is a translation, so a point of the stood range and a point of the
+            // authored one are the same point measured from two eyes: the eye is shifted back by
+            // the same amount rather than the range being shifted forward.
+            let shift = [
+                range.centre[0] * radius - centre[0],
+                range.centre[1] * radius - centre[1],
+            ];
+            let local_eye = [eye[0] - shift[0], eye[1], eye[2] - shift[1]];
+            let summit = built
+                .points
+                .iter()
+                .max_by(|left, right| left[1].total_cmp(&right[1]))
+                .map(|point| [point[0] as f64, point[1] as f64, point[2] as f64])
+                .unwrap_or([0.0, 0.0, 0.0]);
+            let nearest = built
+                .points
+                .iter()
+                .min_by(|left, right| {
+                    let left = [left[0] as f64, left[1] as f64, left[2] as f64];
+                    let right = [right[0] as f64, right[1] as f64, right[2] as f64];
+                    square(left, local_eye).total_cmp(&square(right, local_eye))
+                })
+                .map(|point| [point[0] as f64, point[1] as f64, point[2] as f64])
+                .unwrap_or([0.0, 0.0, 0.0]);
+            (
+                range.name,
+                azimuth(summit, local_eye),
+                azimuth(nearest, local_eye),
+            )
+        })
+        .collect()
+}
 
 /// Builds the landscape.
 pub fn landscape() -> Value {
-    let massif = massif();
-    let raised = massif.build().expect("the authored massif expands");
-    // One walk numbers every belt and records the row that names it. It happens before the mesh
-    // is read so that the number a fragment writes and the row a reader looks up come from the
-    // same pass — see `identity`.
-    let identity = Identity::of(&massif, belt_path);
-    let (low, high) = raised.bounds();
+    // One massif is authored once and **stood twice**, once for each side of the valley. That is
+    // the whole of what keeps the two ranges from being two things that can drift apart: the
+    // silhouette of the valley is the silhouette of one range and where it was put.
+    let authored = massif();
+    let built = authored.build().expect("the authored massif expands");
+    let (low, high) = built.bounds();
     let radius = (((high[0] - low[0]).powi(2) + (high[2] - low[2]).powi(2)) as f64).sqrt() * 0.5;
     let summit = high[1] as f64;
 
-    let centre = [
-        ((low[0] + high[0]) * 0.5) as f64,
-        ((low[1] + high[1]) * 0.5) as f64,
-        ((low[2] + high[2]) * 0.5) as f64,
-    ];
-    // The eye stands back and **low**, near the plain, and looks up at the massif. It is off to
-    // one side by more than a quarter turn, so the crests are seen obliquely: looked at down their
-    // own axis a fan of ridges reads as two faces and a fold, which is a tent.
-    //
-    // Every distance in it is a multiple of the massif's own radius, so a skeleton edited to a
-    // different size is framed the same way and the haze below stays the same fraction of the
-    // subject.
-    let eye = [
-        centre[0] + radius * 1.78,
-        RIM + radius * EYE_HEIGHT,
-        centre[2] + radius * 0.68,
-    ];
-    // The aim is pushed **sideways** rather than only up, which is what puts the massif off the
-    // middle of the frame. Centred, a mountain of this width is symmetrical about the vertical and
-    // reads as a specimen; a third off, the same mountain reads as something the eye is standing
-    // in front of, and the space left on one side is where the air and the far ranges have to go.
-    let camera_bearing = (eye[2] - centre[2]).atan2(eye[0] - centre[0]);
-    let sideways = [-camera_bearing.sin(), camera_bearing.cos()];
-    let target = [
-        centre[0] + sideways[0] * radius * AIM_OFFSET,
-        centre[1] + radius * AIM_HEIGHT,
-        centre[2] + sideways[1] * radius * AIM_OFFSET,
-    ];
-    let distance = ((eye[0] - centre[0]).powi(2)
-        + (eye[1] - centre[1]).powi(2)
-        + (eye[2] - centre[2]).powi(2))
+    // One walk numbers every belt and records the row that names it, and **the runs follow one
+    // another** rather than each beginning at one — two tables starting at one would hand the
+    // same number to a flank on each side, and a pixel would resolve to whichever one a reader
+    // asked about first.
+    let mut next_id = 1;
+    let mut ranges_built: Vec<(&'static str, FacetMesh, Identity)> =
+        Vec::with_capacity(RANGES.len());
+    for range in RANGES {
+        let identity = Identity::of(&authored, next_id, |belt| belt_path(range.name, belt));
+        next_id += identity.rows().len() as u32;
+        ranges_built.push((
+            range.name,
+            stood_at(&built, [range.centre[0] * radius, range.centre[1] * radius]),
+            identity,
+        ));
+    }
+
+    // The eye stands **in the valley**, on its own axis, and looks along it rather than at
+    // anything. That is the whole difference between a massif photographed and a valley walked
+    // into: a subject in the middle of the frame reads as a specimen, and a corridor with its
+    // walls at the edges reads as somewhere to be.
+    let eye = [0.0, RIM + radius * EYE_HEIGHT, -radius * EYE_SET_BACK];
+    let target = [0.0, RIM + radius * AIM_HEIGHT, radius * AIM_ALONG];
+    let distance = ((eye[0] - target[0]).powi(2)
+        + (eye[1] - target[1]).powi(2)
+        + (eye[2] - target[2]).powi(2))
     .sqrt();
 
     let plain = radius * PLAIN_REACH;
@@ -275,8 +443,11 @@ pub fn landscape() -> Value {
     // independently reads well for exactly one camera position and is behind the mountain for the
     // next, and the failure looks like a scene that has gone dark for no reason.
     //
-    // The offset is a little over a quarter turn, which is the angle that rakes across the flanks:
-    // a sun behind the eye flattens the facets, and one behind the massif draws a silhouette.
+    // The eye is **on the valley's axis looking along it**, so its bearing is the axis rather than
+    // a number of its own — and the sun is a little over a quarter turn off that, which puts it
+    // across the valley and low: a sun behind the eye flattens the ranges, and one behind them
+    // draws both walls as silhouettes with the river bright between them.
+    let camera_bearing = std::f64::consts::FRAC_PI_2;
     let sun_bearing = camera_bearing + SUN_OFFSET;
     let sun = [
         sun_bearing.cos() * SUN_ELEVATION.cos(),
@@ -298,7 +469,7 @@ pub fn landscape() -> Value {
         "{}\n{}\n{}",
         atmosphere.wgsl(),
         NOISE,
-        constants(radius, summit),
+        constants(radius, summit, sun),
     );
     // The far ranges are the post stage's alone, so they are handed to the post stage alone.
     // They are a backdrop the air has already closed over, and a surface shader has no use for a
@@ -357,8 +528,8 @@ pub fn landscape() -> Value {
                 directional(
                     "sun",
                     [-sun[0], -sun[1], -sun[2]],
-                    [1.0, 0.92, 0.80],
-                    2.1,
+                    [1.00, 0.86, 0.66],
+                    3.4,
                     radius * 1.6,
                 ),
                 // A fill from the opposite bearing and from above, dim and blue, standing in for
@@ -371,15 +542,31 @@ pub fn landscape() -> Value {
                 // ignoring half of it. A point light near the massif is the same fill to the
                 // mountain, and the plain it lights weakly is already lit by the sun.
                 //
+                // **It stands ahead of the eye and over it, which is where this scene's sky
+                // is.** With the sun down the valley the walls are all shadow side, and what
+                // stands between a wall in shadow and a black rectangle is the light coming off
+                // the bright sky the eye is looking into. Putting the fill behind the eye instead
+                // — where a fill usually goes, because that is where a subject is — would light
+                // the walls the camera cannot see and leave the ones it can see on the sun's own
+                // terms, which is nothing.
+                //
                 // The reach holds the whole scene, which promotes it to a global light: it takes
                 // no cluster slot and no fragment can be culled out of its reach. The number is
                 // therefore not a distance it lights to but a statement that it lights
                 // everything.
+                //
+                // It stands **over the valley rather than over the middle of the scene.** Its
+                // brightness at a surface goes as the square of the distance to it, and the scene
+                // is sixty times its own size, so where it stands is worth more to this picture
+                // than how bright it is: hung over the ground between the two walls it is near
+                // both of them, and set back over the plain's centre — which is where a fill
+                // usually goes, because that is where the subject was — it is a quarter of the
+                // way from the walls and reads as a lamp at the end of the valley.
                 light_with_radius(
                     "sky",
-                    [radius * 0.6, radius * 1.5, -radius * 0.7],
-                    [0.34, 0.44, 0.70],
-                    2.4,
+                    [0.0, radius * 1.2, 0.0],
+                    [0.40, 0.46, 0.64],
+                    9.0,
                     radius * 1.6,
                     plain * 2.0,
                 ),
@@ -388,23 +575,32 @@ pub fn landscape() -> Value {
         ("shaders".to_owned(), Value::List(shaders)),
         (
             "meshes".to_owned(),
-            Value::List(vec![
-                mesh(
-                    "massif",
-                    "Triangles",
-                    // The point schema is **the one the outputs' fields make**, so the vertex
-                    // layout and the shader's parameter list are derived from one schema rather
-                    // than two that have to agree.
-                    massif_extras().point_schema(),
-                    identity::faceted(&raised, &identity),
-                ),
-                mesh(
+            // **One mesh per range, and they are told apart by name.** A placement names a mesh
+            // by name, so two ranges drawn from one geometry still need two names — and the name
+            // has to be the range's, because the belt paths a pixel resolves to start with it.
+            Value::List({
+                let mut entries: Vec<Value> = ranges_built
+                    .iter()
+                    .map(|(name, geometry, identity)| {
+                        mesh(
+                            &format!("range_{name}"),
+                            "Triangles",
+                            // The point schema is **the one the outputs' fields make**, so the
+                            // vertex layout and the shader's parameter list are derived from one
+                            // schema rather than two that have to agree.
+                            massif_extras().point_schema(),
+                            identity::faceted(geometry, identity),
+                        )
+                    })
+                    .collect();
+                entries.push(mesh(
                     "plain",
                     "Triangles",
                     shaded_point_schema(),
                     heightfield(PLAIN_DIVISIONS, plain, |x, z| plain_height(x, z, radius)),
-                ),
-            ]),
+                ));
+                entries
+            }),
         ),
         (
             "screen_materials".to_owned(),
@@ -452,68 +648,59 @@ pub fn landscape() -> Value {
                 ),
             ]),
         ),
-        (
-            "instances".to_owned(),
-            // One placement per pass. The massif casts a shadow and the plain does not: a flat
-            // sheet cannot occlude itself, and putting it in the shadow map would spend the map's
-            // extent on ground that has nothing to say.
-            instances(vec![
-                (
-                    Stage::Shadowing,
-                    vec![instance(
-                        "massif_cast",
-                        "massif",
-                        [0.0, 0.0, 0.0],
-                        [0.0; 3],
-                        [1.0; 3],
-                        "cast",
-                    )],
-                ),
-                (
-                    Stage::Depthing,
-                    vec![
-                        instance(
-                            "massif_depth",
-                            "massif",
-                            [0.0, 0.0, 0.0],
-                            [0.0; 3],
-                            [1.0; 3],
-                            "depth",
-                        ),
-                        instance(
-                            "plain_depth",
-                            "plain",
-                            [0.0, 0.0, 0.0],
-                            [0.0; 3],
-                            [1.0; 3],
-                            "ground_depth",
-                        ),
-                    ],
-                ),
-                (
-                    Stage::Lighting,
-                    vec![
-                        instance(
-                            "massif_shade",
-                            "massif",
-                            [0.0, 0.0, 0.0],
-                            [0.0; 3],
-                            [1.0; 3],
-                            "shade",
-                        ),
-                        instance(
-                            "plain_shade",
-                            "plain",
-                            [0.0, 0.0, 0.0],
-                            [0.0; 3],
-                            [1.0; 3],
-                            "ground_shade",
-                        ),
-                    ],
-                ),
-            ]),
-        ),
+        ("instances".to_owned(), instances(instance_buckets())),
     ])
+}
+
+/// Returns one placement per pass, with the ranges walked rather than written out.
+///
+/// # Invariants
+///
+/// **Every range appears in all three buckets.** A material names one shader and a shader belongs
+/// to one stage, so the three lists are the same placements under three materials and three sets
+/// of labels — a label names one instance in the whole scene, not one per pass. A range left out
+/// of one of them is geometry that never draws, which is a scene that validates and renders an
+/// empty corridor.
+///
+/// **The plain is in two of the three.** A flat sheet cannot occlude itself, and putting it in the
+/// shadow map would spend the map's extent on ground that has nothing to say.
+fn instance_buckets() -> Vec<(Stage, Vec<Value>)> {
+    let placed = |suffix: &str, material: &str| -> Vec<Value> {
+        RANGES
+            .iter()
+            .map(|range| {
+                instance(
+                    format!("{}_{suffix}", range.name),
+                    &format!("range_{}", range.name),
+                    [0.0, 0.0, 0.0],
+                    [0.0; 3],
+                    [1.0; 3],
+                    material,
+                )
+            })
+            .collect()
+    };
+    let mut depth = placed("depth", "depth");
+    depth.push(plain_instance("plain_depth", "ground_depth"));
+    let mut shade = placed("shade", "shade");
+    shade.push(plain_instance("plain_shade", "ground_shade"));
+    vec![
+        (Stage::Shadowing, placed("cast", "cast")),
+        (Stage::Depthing, depth),
+        (Stage::Lighting, shade),
+    ]
+}
+
+/// Returns the plain's placement in one pass.
+fn plain_instance(label: &str, material: &str) -> Value {
+    instance(
+        label,
+        "plain",
+        [0.0, 0.0, 0.0],
+        [0.0; 3],
+        [1.0; 3],
+        material,
+    )
 }
 
 /// How many nodes a crest is written with.
@@ -671,8 +858,8 @@ const CRESTS: [Crest; CREST_COUNT] = [
         half_width: 0.030,
         bend: 0.075,
         heights: [
-            720.0, 690.0, 655.0, 616.0, 574.0, 528.0, 478.0, 424.0, 372.0, 336.0, 306.0, 284.0,
-            268.0, 250.0, 214.0, 140.0, 18.0,
+            1044.0, 1001.0, 950.0, 893.0, 832.0, 766.0, 693.0, 615.0, 539.0, 487.0, 444.0, 412.0,
+            389.0, 363.0, 310.0, 203.0, 26.0,
         ],
     },
     Crest {
@@ -682,8 +869,8 @@ const CRESTS: [Crest; CREST_COUNT] = [
         half_width: 0.038,
         bend: -0.065,
         heights: [
-            720.0, 676.0, 632.0, 590.0, 548.0, 504.0, 458.0, 408.0, 356.0, 320.0, 296.0, 286.0,
-            278.0, 272.0, 250.0, 172.0, 11.0,
+            1044.0, 980.0, 916.0, 856.0, 795.0, 731.0, 664.0, 592.0, 516.0, 464.0, 429.0, 415.0,
+            403.0, 394.0, 363.0, 249.0, 16.0,
         ],
     },
     Crest {
@@ -693,8 +880,8 @@ const CRESTS: [Crest; CREST_COUNT] = [
         half_width: 0.022,
         bend: 0.045,
         heights: [
-            720.0, 716.0, 712.0, 707.0, 700.0, 690.0, 676.0, 658.0, 636.0, 608.0, 574.0, 534.0,
-            488.0, 438.0, 396.0, 330.0, 58.0,
+            1044.0, 1038.0, 1032.0, 1025.0, 1015.0, 1001.0, 980.0, 954.0, 922.0, 882.0, 832.0,
+            774.0, 708.0, 635.0, 574.0, 479.0, 84.0,
         ],
     },
     Crest {
@@ -704,8 +891,8 @@ const CRESTS: [Crest; CREST_COUNT] = [
         half_width: 0.032,
         bend: -0.085,
         heights: [
-            720.0, 672.0, 624.0, 578.0, 536.0, 500.0, 472.0, 452.0, 438.0, 426.0, 412.0, 392.0,
-            364.0, 330.0, 300.0, 218.0, 16.0,
+            1044.0, 974.0, 905.0, 838.0, 777.0, 725.0, 684.0, 655.0, 635.0, 618.0, 597.0, 568.0,
+            528.0, 479.0, 435.0, 316.0, 23.0,
         ],
     },
     Crest {
@@ -715,8 +902,8 @@ const CRESTS: [Crest; CREST_COUNT] = [
         half_width: 0.040,
         bend: 0.070,
         heights: [
-            720.0, 656.0, 596.0, 540.0, 488.0, 440.0, 396.0, 356.0, 320.0, 288.0, 258.0, 230.0,
-            204.0, 178.0, 152.0, 104.0, 7.0,
+            1044.0, 951.0, 864.0, 783.0, 708.0, 638.0, 574.0, 516.0, 464.0, 418.0, 374.0, 334.0,
+            296.0, 258.0, 220.0, 151.0, 10.0,
         ],
     },
     Crest {
@@ -726,8 +913,8 @@ const CRESTS: [Crest; CREST_COUNT] = [
         half_width: 0.026,
         bend: -0.050,
         heights: [
-            720.0, 706.0, 686.0, 660.0, 628.0, 590.0, 546.0, 498.0, 448.0, 400.0, 356.0, 316.0,
-            280.0, 248.0, 214.0, 148.0, 43.0,
+            1044.0, 1024.0, 995.0, 957.0, 911.0, 856.0, 792.0, 722.0, 650.0, 580.0, 516.0, 458.0,
+            406.0, 360.0, 310.0, 215.0, 62.0,
         ],
     },
     Crest {
@@ -737,8 +924,8 @@ const CRESTS: [Crest; CREST_COUNT] = [
         half_width: 0.024,
         bend: 0.045,
         heights: [
-            720.0, 714.0, 706.0, 694.0, 678.0, 658.0, 634.0, 606.0, 574.0, 540.0, 504.0, 468.0,
-            430.0, 392.0, 356.0, 300.0, 64.0,
+            1044.0, 1035.0, 1024.0, 1006.0, 983.0, 954.0, 919.0, 879.0, 832.0, 783.0, 731.0, 679.0,
+            624.0, 568.0, 516.0, 435.0, 93.0,
         ],
     },
     Crest {
@@ -748,8 +935,8 @@ const CRESTS: [Crest; CREST_COUNT] = [
         half_width: 0.034,
         bend: -0.075,
         heights: [
-            720.0, 668.0, 618.0, 570.0, 524.0, 480.0, 438.0, 398.0, 360.0, 324.0, 290.0, 258.0,
-            228.0, 198.0, 170.0, 118.0, 13.0,
+            1044.0, 969.0, 896.0, 827.0, 760.0, 696.0, 635.0, 577.0, 522.0, 470.0, 421.0, 374.0,
+            331.0, 287.0, 247.0, 171.0, 19.0,
         ],
     },
     Crest {
@@ -759,8 +946,8 @@ const CRESTS: [Crest; CREST_COUNT] = [
         half_width: 0.042,
         bend: 0.080,
         heights: [
-            720.0, 648.0, 580.0, 516.0, 456.0, 400.0, 348.0, 300.0, 256.0, 216.0, 182.0, 156.0,
-            136.0, 120.0, 102.0, 68.0, 7.0,
+            1044.0, 940.0, 841.0, 748.0, 661.0, 580.0, 505.0, 435.0, 371.0, 313.0, 264.0, 226.0,
+            197.0, 174.0, 148.0, 99.0, 10.0,
         ],
     },
     Crest {
@@ -770,8 +957,8 @@ const CRESTS: [Crest; CREST_COUNT] = [
         half_width: 0.028,
         bend: -0.060,
         heights: [
-            720.0, 684.0, 646.0, 608.0, 570.0, 532.0, 494.0, 456.0, 418.0, 384.0, 356.0, 334.0,
-            318.0, 306.0, 268.0, 178.0, 27.0,
+            1044.0, 992.0, 937.0, 882.0, 827.0, 771.0, 716.0, 661.0, 606.0, 557.0, 516.0, 484.0,
+            461.0, 444.0, 389.0, 258.0, 39.0,
         ],
     },
 ];
@@ -791,7 +978,17 @@ const SUMMIT: [f32; 2] = [0.0, 0.0];
 /// carries four thousand metres over ten kilometres of mountain — and it is that proportion, more
 /// than any detail of the skeleton, that makes a picture read as a massif rather than as an
 /// object on a table.
-const SUMMIT_ELEVATION: f32 = 720.0;
+///
+/// It is still **low against the massif's width**, and that ratio is the constraint it is written
+/// under: a summit at four times the radius of its own foot is a spire, and no arrangement of
+/// crests about it stops the silhouette being a triangle. What changed here is not the ratio but
+/// **what the number is for**. It used to be the height at which a single massif was photographed
+/// from outside, and the eye was set to suit it. The massif is now one of two walls of a valley
+/// seen from between them, and the number that governs the picture is the angle the summit makes
+/// from the eye — which is the summit over the distance to it, and which a summit chosen to look
+/// right as an object puts far too low in the frame. The tables above are written to this number
+/// and the eye in [`landscape`] is set from the angle this one makes.
+const SUMMIT_ELEVATION: f32 = 1044.0;
 
 /// How far past the two tips a wedge's mouth stands on the rim.
 ///
@@ -1119,34 +1316,34 @@ const VALLEY_NODES: usize = WEDGE_STEPS + 2;
 ///   valley.
 const VALLEY_HEIGHTS: [[f32; VALLEY_NODES]; CREST_COUNT] = [
     [
-        720.0, 590.0, 528.0, 462.0, 396.0, 322.0, 260.0, 223.0, 199.0, 172.0, 111.0, 5.0, 5.0,
+        1044.0, 590.0, 528.0, 462.0, 396.0, 322.0, 260.0, 223.0, 199.0, 172.0, 111.0, 5.0, 5.0,
     ],
     [
-        720.0, 620.0, 530.0, 455.0, 390.0, 330.0, 272.0, 216.0, 166.0, 120.0, 80.0, 4.0, 4.0,
+        1044.0, 620.0, 530.0, 455.0, 390.0, 330.0, 272.0, 216.0, 166.0, 120.0, 80.0, 4.0, 4.0,
     ],
     [
-        720.0, 600.0, 528.0, 462.0, 400.0, 344.0, 292.0, 244.0, 196.0, 148.0, 100.0, 6.0, 6.0,
+        1044.0, 600.0, 528.0, 462.0, 400.0, 344.0, 292.0, 244.0, 196.0, 148.0, 100.0, 6.0, 6.0,
     ],
     [
-        720.0, 514.0, 424.0, 338.0, 266.0, 207.0, 163.0, 126.0, 98.0, 73.0, 47.0, 3.0, 3.0,
+        1044.0, 514.0, 424.0, 338.0, 266.0, 207.0, 163.0, 126.0, 98.0, 73.0, 47.0, 3.0, 3.0,
     ],
     [
-        720.0, 570.0, 480.0, 400.0, 330.0, 268.0, 214.0, 168.0, 128.0, 94.0, 62.0, 3.0, 3.0,
+        1044.0, 570.0, 480.0, 400.0, 330.0, 268.0, 214.0, 168.0, 128.0, 94.0, 62.0, 3.0, 3.0,
     ],
     [
-        720.0, 557.0, 509.0, 454.0, 393.0, 329.0, 268.0, 216.0, 172.0, 137.0, 94.0, 20.0, 20.0,
+        1044.0, 557.0, 509.0, 454.0, 393.0, 329.0, 268.0, 216.0, 172.0, 137.0, 94.0, 20.0, 20.0,
     ],
     [
-        720.0, 586.0, 516.0, 451.0, 387.0, 325.0, 253.0, 179.0, 124.0, 84.0, 49.0, 4.0, 4.0,
+        1044.0, 586.0, 516.0, 451.0, 387.0, 325.0, 253.0, 179.0, 124.0, 84.0, 49.0, 4.0, 4.0,
     ],
     [
-        720.0, 520.0, 424.0, 340.0, 268.0, 208.0, 160.0, 122.0, 92.0, 68.0, 48.0, 3.0, 3.0,
+        1044.0, 520.0, 424.0, 340.0, 268.0, 208.0, 160.0, 122.0, 92.0, 68.0, 48.0, 3.0, 3.0,
     ],
     [
-        720.0, 518.0, 417.0, 331.0, 253.0, 190.0, 138.0, 101.0, 75.0, 58.0, 35.0, 3.0, 3.0,
+        1044.0, 518.0, 417.0, 331.0, 253.0, 190.0, 138.0, 101.0, 75.0, 58.0, 35.0, 3.0, 3.0,
     ],
     [
-        720.0, 572.0, 507.0, 444.0, 364.0, 286.0, 224.0, 181.0, 150.0, 123.0, 76.0, 7.0, 7.0,
+        1044.0, 572.0, 507.0, 444.0, 364.0, 286.0, 224.0, 181.0, 150.0, 123.0, 76.0, 7.0, 7.0,
     ],
 ];
 
@@ -1308,18 +1505,24 @@ fn elevation(massif: &Massif, line: LineRef, node: usize) -> f32 {
 ///   and is not asked for any; a path is a fact about the code that built the massif, which is
 ///   the only place a hierarchy exists. `SPEC/mountain.md` is human-editable only, and a naming
 ///   tree inside the crate would be a requirement change rather than an implementation.
-/// - **The path is a function of the `BeltRef` alone**, so the same belt is named the same way
-///   in every build of the same skeleton, and an id means the same thing on either side of an
-///   edit. A path built from anything that varies between builds would be a path that answers a
-///   different question each time it is asked.
+/// - **The path is a function of the range and the `BeltRef` alone**, so the same belt is named
+///   the same way in every build of the same skeleton, and an id means the same thing on either
+///   side of an edit. A path built from anything that varies between builds would be a path that
+///   answers a different question each time it is asked.
+/// - **The range is the first segment, and it has to be.** This scene draws two massifs, each
+///   numbering its belts from its own walk, so a path leaving the range out would name two
+///   different flanks the same thing — and the id space is exactly what has to stay separable
+///   from the geometry. A reader resolving a pixel would be handed the far side's path while
+///   looking at the near one.
 ///
-/// The hierarchy is this scene's, and it is deliberately shallow until there is a second
-/// massif to nest: a massif, the valley that carries the flank, and which side of it. Growing it
-/// is a matter of changing this one function, which is the property that keeps the id space
-/// separable from the geometry.
-pub fn belt_path(belt: BeltRef) -> String {
+/// The hierarchy is this scene's, and it is deliberately shallow until there is a third range to
+/// nest: a range, the valley that carries its flank, and which side of it. Growing it is a matter
+/// of changing this one function, which is the property that keeps the id space separable from
+/// the geometry.
+pub fn belt_path(range: &str, belt: BeltRef) -> String {
     format!(
-        "landscape/valley_{}/{}",
+        "landscape/{}/valley_{}/{}",
+        range,
         belt.valley.0,
         match belt.side {
             Side::Left => "left_flank",
@@ -1346,15 +1549,24 @@ fn plain_height(x: f64, z: f64, radius: f64) -> f64 {
     // A two-unit roll inside the rim would cut through the foot of every flank and show as a
     // jagged seam where the mountain meets the ground.
     let beyond = smoothstep(radius * 0.95, radius * 1.25, distance);
-    let away = smoothstep(radius * 1.05, radius * 2.2, distance);
-    let roll = fractal_noise([x * 0.0016, z * 0.0018], 4, 41) - 0.5;
-    let near = (fractal_noise([x * 0.006, z * 0.0064], 3, 17) - 0.5) * radius * 0.02;
+    let away = smoothstep(radius * 1.30, radius * 3.2, distance);
+    // The undulation is **coarse on purpose, and coarser than it wants to be.** The plain is a
+    // grid of a few hundred units a cell, and anything the grid cannot carry comes back as the
+    // grid: a hundred-unit ripple sampled every four hundred units is not a ripple, it is four
+    // hundred unrelated cells, and near the eye — where one cell is a sixth of the frame — it is
+    // a floor tiled in rectangles. The wavelength here is several cells at every octave, which
+    // costs the floor its small relief and buys it back as a surface.
+    //
+    // It is also **off entirely across the floodplain**, which is a floodplain: the ground a
+    // braided river runs over is the flattest ground in the picture, and the only relief on it
+    // is the river's own bed and the benches cut beside it.
+    let roll = fractal_noise([x * 0.00040, z * 0.00044], 3, 41) - 0.5;
     let horizon = smoothstep(radius * 2.2, radius * PLAIN_REACH, distance);
-    RIM + beyond * (near + away * (roll * radius * 0.15 + horizon * radius * 0.22))
+    RIM + beyond * away * (roll * radius * 0.16 + horizon * radius * 0.22)
 }
 
 /// The constants the shader bodies are written against.
-fn constants(radius: f64, summit: f64) -> String {
+fn constants(radius: f64, summit: f64, sun: [f64; 3]) -> String {
     format!(
         "const SNOW_LINE: f32 = {:.3};\n\
          const SNOW_WOBBLE: f32 = {:.3};\n\
@@ -1362,11 +1574,19 @@ fn constants(radius: f64, summit: f64) -> String {
          const SCENE_RADIUS: f32 = {radius:.3};\n\
          const CLOUD_TOP: f32 = {CLOUD_TOP:.4};\n\
          const CLOUD_COVER: f32 = {CLOUD_COVER:.4};\n\
+         const CLOUD_FROM: f32 = {CLOUD_FROM:.4};\n\
+         const RIVER_HALF: f32 = {RIVER_HALF:.4};\n\
+         const RIVER_MEANDR: f32 = {RIVER_MEANDR:.4};\n\
          const RIDGE_SCALE: f32 = {RIDGE_SCALE:.4};\n\
-         const CIRRUS_COVER: f32 = {CIRRUS_COVER:.4};\n",
+         const RIDGE_LAYERS: i32 = {RIDGE_LAYERS};\n\
+         const CIRRUS_COVER: f32 = {CIRRUS_COVER:.4};\n\
+         const SUN_AHEAD: vec3<f32> = vec3<f32>({:.4}, {:.4}, {:.4});\n",
         summit * SNOW_LINE,
         summit * SNOW_WOBBLE,
         (summit * SNOW_FADE).max(1.0),
+        sun[0],
+        sun[1],
+        sun[2],
     )
 }
 
@@ -1383,6 +1603,36 @@ const CLOUD_COVER: f64 = 0.94;
 
 /// How much of the high sky the cirrus is allowed to take.
 const CIRRUS_COVER: f64 = 0.55;
+
+/// How far down the valley the cloud begins, as a multiple of a range's radius.
+///
+/// **A distance down the valley and not a height**, which is the whole of what moved the cloud
+/// out of the foreground. The cloud used to be a sea the massif came out of; here it is what
+/// closes the far end of the corridor, and the floor between the eye and it is left free to carry
+/// the river. A height could not do this job: the floor is flat, so every part of it is at the
+/// same height and a cloud keyed on height either covers all of it or none.
+const CLOUD_FROM: f64 = 5.2;
+
+/// How wide the wet ground either side of the river's own line is, as a multiple of a radius.
+///
+/// It is wide because a braided river is a **wet corridor rather than a channel**, and narrow
+/// because it has to stay a fraction of the valley's own width — at twice this the floodplain
+/// would reach the foot of both ranges and the corridor would be a plain with two mountains on it.
+///
+/// It is also **narrow enough to survive being walked on**. A band of a fixed width in world
+/// space is not a fixed width on the screen: the eye stands on its own near edge, so the metre
+/// under the eye is the metre that fills the bottom of the frame, and a band wide enough to look
+/// right at the far end of the corridor is a lake at the near end. Half this is the number that
+/// leaves a green floodplain either side of the thread all the way down.
+const RIVER_HALF: f64 = 0.085;
+
+/// How far the river's line wanders off the valley's axis, as a multiple of a radius.
+///
+/// A river on the axis exactly would be a stripe, and a stripe is the one shape that cannot read
+/// as water: it says where the water is without ever saying the water went. This is more than the
+/// half-width, so the line wanders **off the middle of its own wet ground** — which is what puts
+/// the wider side of the floodplain on the outside of each bend, where a real river puts it.
+const RIVER_MEANDR: f64 = 0.30;
 
 /// What the two surface bodies are written against.
 ///
@@ -1461,6 +1711,21 @@ const MASSIF: &str = r#"
     let floor_mix = 1.0 - smoothstep(0.0, SCENE_RADIUS * 0.45, in.world_position.y);
     color = color * mix(snowed, vec3<f32>(0.30, 0.29, 0.21), floor_mix * 0.75);
 
+    // The **sky a face stands in**, and on this massif it is most of the light there is. The sun
+    // in this scene is down the valley and low, so a wall that faces the eye is a face the sun
+    // never reaches, and the scene's second light cannot carry that alone: a point light in the
+    // middle of a plain sixty times its own size leaves behind it a number about how far away it
+    // stands rather than about the sky. A face's own share of the sky is therefore decided here,
+    // where the face's normal and the sun's bearing both are.
+    //
+    // **Upward-facing is what counts, and not merely sun-facing.** An overhang sees the same sky
+    // as the ground beneath it and a vertical wall sees half of it, and that gradient is most of
+    // what makes an unlit face read as a surface with a shape in it rather than as a hole cut in
+    // the picture. Without it a backlit range is a black paper cut-out with one lit facet on it.
+    let skyward = 0.35 + 0.65 * clamp(normal.y, 0.0, 1.0);
+    let from_sun = clamp(dot(normal, SUN_AHEAD), 0.0, 1.0);
+    color = color + air_colour() * skyward * (0.05 + 0.26 * (1.0 - from_sun));
+
     let eye = uniforms.projection.position;
     let view = normalize(in.world_position - eye);
     let facing = 1.0 - abs(dot(normal, view));
@@ -1481,24 +1746,122 @@ const MASSIF: &str = r#"
 /// atmosphere is one value handed to every stage: the plain meets the massif along the rim, and
 /// two bodies washing towards two slightly different colours would draw that seam as a bright
 /// line across the foot of the mountain.
+///
+/// **The floor carries the river, and it is the brightest thing in the frame.** A valley read as
+/// a corridor is a shape with nothing in it, and a corridor with a silver thread running away
+/// down it is a place — the eye follows the brightest thing in the picture to wherever it goes,
+/// and a thread that recedes is the cheapest depth there is. Everything else on the floor is
+/// graded *down* from it.
+///
+/// **The floodplain is graded by distance from the water**, green where it is wet and gold where
+/// it is dry, because that is the only thing that distinguishes a floodplain from a lawn, and it
+/// is what makes the river's course legible from above: the green is the river's history.
 const GROUND: &str = r#"
     let patches = 0.86 + 0.28 * noise(in.world_position.xz * 0.004, 4);
     let dry = smoothstep(0.0, SCENE_RADIUS * 1.6, in.world_position.y);
-    let albedo = mix(vec3<f32>(0.26, 0.29, 0.20), vec3<f32>(0.40, 0.36, 0.24), dry);
+    var albedo = mix(vec3<f32>(0.26, 0.29, 0.20), vec3<f32>(0.40, 0.36, 0.24), dry);
+
+    // The eye and the angle the ground is seen at, taken **once and before anything is decided by
+    // them**: a floor this flat is nearly all one thing seen at every angle from grazing at the
+    // far end of the corridor to steep underfoot, and every pattern cut into it has to know which
+    // of the two it is standing on.
+    let eye = uniforms.projection.position;
+    let view = normalize(in.world_position - eye);
+    let facing = 1.0 - abs(dot(normal, view));
+
+    // **The river**, running **down the valley's own axis** and nowhere else. The axis is `x = 0`,
+    // which is where the eye and the aim already are, so the thread of water runs out of the
+    // bottom of the frame and into the haze along the one line everything else is read against.
+    //
+    // It wanders by two octaves rather than one, because a single octave wanders at one scale and
+    // a river that meanders at exactly one scale reads as a sine wave. The second octave is a
+    // third of the first, which is the ratio that puts a bend inside a bend.
+    let run = in.world_position.z;
+    let wander = (noise(vec2<f32>(run * 0.00085, 4.2), 3) - 0.5) * RIVER_MEANDR
+               + (noise(vec2<f32>(run * 0.0031, 9.1), 2) - 0.5) * RIVER_MEANDR * 0.45;
+    let offset = (in.world_position.x - wander) / SCENE_RADIUS;
+    // The **wet band** the river wanders inside: wide enough that the channels have somewhere to
+    // be, and hard-edged enough that the floodplain ends rather than fading into the grass.
+    let band = 1.0 - smoothstep(RIVER_HALF * 0.45, RIVER_HALF, abs(offset));
+    // The braiding itself. A braided river is **one noise deciding water against gravel**, sampled
+    // anisotropically — sampled finely across the band and coarsely along it, which is the ratio
+    // that makes the features **channels and not blotches**. The gravel between them is what makes
+    // it braided rather than a single wandering line: that is the whole difference between a river
+    // and a stream, and it costs one threshold.
+    //
+    // The frequencies are in **world units and not in screen space**, which fixes their size on the
+    // ground and leaves them free to go wrong in one place: a lattice cell is a fixed length of
+    // river, so under the eye it is a cell across a third of the frame and at the far end of the
+    // corridor it is a cell a pixel wide. `near` is how much of the eye's own ground is close
+    // enough for that to be a lattice rather than texture, and the braiding is **folded back into
+    // its own mean** as the ground recedes — the one thing a distance-faded pattern can do that a
+    // pattern sampled per pixel cannot, and the reason the far end of the river is a silver line
+    // rather than a field of crawling squares.
+    let near = 1.0 - smoothstep(0.74, 0.99, facing);
+    // The lattice is **warped before it is read**, at a scale between the channel's and the
+    // bend's. Read straight, a value noise is a grid of axis-aligned cells, and a river cut by
+    // a grid of axis-aligned cells is a set of rectangles; pushed around first, the same cells
+    // become ribbons that lie along the run and break across it, which is what the channels
+    // look like. The warp is the cheap half and the anisotropy is the other half.
+    let warp = noise(vec2<f32>(run * 0.0022, offset * 6.0), 2) - 0.5;
+    let threads = mix(0.53, noise(vec2<f32>(run * 0.0060 + offset * 1.1 + warp * 0.9, offset * 74.0), 4), near);
+    let channel = smoothstep(0.40, 0.55, threads) * band;
+    let bar = clamp(band - channel, 0.0, 1.0);
+    // The **floodplain** is graded by how far the water is from where it stands, so the green is
+    // the river's own history written on the ground: widest where the river has wandered, which is
+    // widest where the noise says the threads are many.
+    let bank = abs(offset) / RIVER_HALF;
+    let wet = 1.0 - smoothstep(0.5, 5.0, bank);
+    albedo = mix(albedo, vec3<f32>(0.17, 0.28, 0.12), wet * 0.85);
+    // The **terrace risers**. A floodplain is not one sheet sloping to the water: it steps down to
+    // it in two or three benches, and the bench is the only thing on a flat floor that gives it
+    // the scale a person could stand in. It is keyed to how far the water is from where the
+    // ground stands, so the benches follow the river's own wander instead of running level
+    // across the valley — and it is **jittered by the ground's own noise**, because a bench whose
+    // edge is a clean line across a plain is a stripe drawn on a lawn and not a step in a field.
+    let jitter = (noise(in.world_position.xz * 0.0022, 3) - 0.5) * 0.9;
+    let riser = smoothstep(0.80, 1.12, bank + jitter) * (1.0 - smoothstep(1.90, 2.30, bank + jitter))
+        + smoothstep(2.90, 3.30, bank + jitter) * (1.0 - smoothstep(4.60, 5.10, bank + jitter));
+    albedo = mix(albedo, vec3<f32>(0.46, 0.42, 0.27), clamp(riser, 0.0, 1.0) * 0.30 * near);
+    // The **scrub and the bare ground** the benches are cut out of, at a scale of a couple of
+    // hundred units: a floodplain is not one colour, and a floor that is one colour is a floor
+    // with nothing on it for the eye to measure the river against.
+    let scrub = smoothstep(0.42, 0.78, noise(in.world_position.xz * 0.0016, 4));
+    albedo = mix(albedo, vec3<f32>(0.13, 0.19, 0.11), scrub * 0.55);
+    // The gravel **bars**, flat and grey, which is the one thing in a braided river that is not
+    // either water or grass. They are kept **darker than they look** on a bank: the water around
+    // them is what is bright, and a bar at the value of dry sand is the brightest thing in the
+    // frame, which puts the eye on the gravel instead of on the river running through it.
+    albedo = mix(albedo, vec3<f32>(0.34, 0.32, 0.28), bar * 0.9);
+
     color = color * albedo * patches;
 
-    // The valley this massif stands in is **full of cloud**, and the massif comes out of it.
+    // The floor's share of the **same sky the walls are lit by**, at a third of the walls' rate.
+    // The plain is flat and so faces the sky as squarely as a wall's shoulder does, and it is the
+    // ground the sun is behind: without this the corridor's floor is the one surface in the
+    // frame that is lit by nothing but a second light standing far away from it.
+    let skyward = 0.35 + 0.65 * clamp(normal.y, 0.0, 1.0);
+    color = color + air_colour() * skyward * 0.08;
+
+    // The **water** is drawn after the ground's own colour because it is not a colour: it is what
+    // the sky does to a flat mirror, and a flat mirror seen at a grazing angle is nearly all sky.
+    // That is the fresnel term, and on a plain seen from an eye near its own level it does the
+    // work on its own — the water brightens with distance on its own, without being told to.
     //
-    // It is drawn on the ground rather than into the air because the air is not a surface
-    // anything can stand in front of: there is no second mesh to put a cloud on, and a cloud
-    // painted over the sky would be in front of the ranges and behind the mountain at the same
-    // time. What is drawn here is the ground below a level, and the level is ragged — two
-    // octaves of noise on the world's own ground coordinate, so the top edge of the cloud is a
-    // coastline rather than a contour — which is the whole of what makes it read as a sea.
-    //
-    // It also does the composition's work: without it the massif stands on a flat green field
-    // that takes up a third of the frame, and with it the ground between the eye and the horizon
-    // is a surface that is going somewhere.
+    // It is **dark underneath and bright on top**, and the two are not the same mix. A river is
+    // the one surface in the frame that carries a colour of its own — silt, and cold deep water —
+    // and a term that returns sky *alone* paints the channel the colour of the sky, which is how
+    // a river turns into a strip of white paper laid down the middle of a valley. The body under
+    // the reflection is what lets the glint on top of it be a glint, and it is most of the water
+    // under the eye, where the grazing term has not yet taken over.
+    let reflected = mix(vec3<f32>(0.14, 0.19, 0.25), vec3<f32>(0.56, 0.61, 0.69), pow(facing, 2.2));
+    let water = vec3<f32>(0.02, 0.04, 0.05) + reflected * (0.34 + 0.46 * threads);
+    color = mix(color, water, channel);
+
+    // The valley is **full of cloud at its far end and clear at the eye's**, and the boundary is
+    // a distance down the valley rather than a height. A sea of cloud over the whole floor is a
+    // lake with a mountain round it; the same cloud pushed to where the valley narrows is what a
+    // valley looks like from inside one, and it leaves the floor free to carry the river.
     let swell = noise(in.world_position.xz * 0.0011, 4);
     let billow = noise(in.world_position.xz * 0.0045, 4);
     let crest = noise(in.world_position.xz * 0.0160, 3);
@@ -1509,11 +1872,9 @@ const GROUND: &str = r#"
     // is decided by the swell rather than by a normal the ground does not have.
     let shade = 0.52 + 0.36 * billow + 0.28 * crest;
     let cloud = vec3<f32>(0.95, 0.96, 0.99) * shade;
-    color = mix(color, cloud, sea * CLOUD_COVER);
+    let far = smoothstep(CLOUD_FROM * SCENE_RADIUS, CLOUD_FROM * SCENE_RADIUS * 2.4, run);
+    color = mix(color, cloud, sea * CLOUD_COVER * far);
 
-    let eye = uniforms.projection.position;
-    let view = normalize(in.world_position - eye);
-    let facing = 1.0 - abs(dot(normal, view));
     let haze = air_closure(eye, in.world_position);
     color = mix(color, air_colour(), clamp(haze * (0.45 + 0.55 * facing), 0.0, 0.98));
 "#;
@@ -1536,7 +1897,25 @@ const GRADE: &str = r#"
         // modelled because the air closes over modelled ground long before the eye can see it,
         // and a horizon made of one flat line is the thing that gives a landscape away as a
         // diorama.
-        color = ridges(air_sky(ray), ray, RIDGE_SCALE);
+        color = ridges(air_sky(ray), ray, RIDGE_SCALE, RIDGE_LAYERS);
+
+        // The **shafts**, which are what makes a low sun read as a low sun rather than as a
+        // bright patch of sky. A crepuscular ray is a gap in the cloud letting one beam of light
+        // through, so it is drawn as a streak radiating from the sun's own bearing — and the
+        // bearing is the only coordinate it is given, which is what makes the streak radial by
+        // construction rather than by a noise lattice that happens to line up.
+        //
+        // They go on **after** the ranges, because a shaft is airlight between the eye and
+        // whatever is behind it: a shaft drawn under a distant ridge is a ridge with a bright
+        // edge on it, and one drawn over the near ground would be a beam with nothing to come
+        // through.
+        let side = normalize(cross(SUN_AHEAD, vec3<f32>(0.0, 1.0, 0.0)));
+        let rise = cross(side, SUN_AHEAD);
+        let sweep = atan2(dot(ray, side), dot(ray, rise));
+        let towards = clamp(dot(ray, SUN_AHEAD), 0.0, 1.0);
+        let shaft = smoothstep(0.50, 0.88, noise(vec2<f32>(sweep * 2.4, 0.5), 3))
+            * pow(towards, 2.6);
+        color = color + vec3<f32>(1.00, 0.88, 0.70) * shaft * 0.18;
 
         // High cirrus above them, on the ray rather than on the pixel for the same reason the
         // ranges are: a sky drawn in screen space is a backdrop, and a backdrop behind a mountain
@@ -1573,3 +1952,13 @@ const GRADE: &str = r#"
 /// the middle of the frame — so the ranges are lifted to sit behind the massif's own shoulders
 /// instead of below its foot, which is where a level camera's skyline would put them.
 const RIDGE_SCALE: f32 = 1.35;
+
+/// How many painted ranges close the far end of the corridor, which is **five**.
+///
+/// More than the other two scenes take, and for the same reason this scene is not the other two
+/// scenes: the eye is looking **down a valley**, and what a valley does at its far end is recede.
+/// A painted horizon is a stack of steps of air, so a corridor that recedes through four ranges
+/// has four steps in it and one that recedes through two has two — and two, at a notch the
+/// distance the air has already closed, is a line with a shadow on it rather than a valley. The
+/// fifth is the layer the air has almost taken back.
+const RIDGE_LAYERS: i32 = 5;

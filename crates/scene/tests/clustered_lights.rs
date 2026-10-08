@@ -221,15 +221,20 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
-            // One sun, one point light and two groups: the massif and the plain it stands on,
-            // each drawn in two stages. **Two shadowing passes rather than one per light** — the
-            // plain is a flat sheet that cannot occlude itself, so it is left out of the cast and
-            // spends none of the shadow page's extent on ground that has nothing to say.
+            // One sun, one point light and three groups: the plain and the **two ranges** it runs
+            // between, each drawn in two stages. Three shadowing passes rather than one per light:
+            // the plain is a flat sheet that cannot occlude itself, so it is left out of the cast
+            // and spends none of the shadow page's extent on ground that has nothing to say.
+            //
+            // The count moved from two to three because the massif is **stood twice**, once for
+            // each wall of the valley, and a placement names a mesh by name: two ranges drawn from
+            // one geometry are still two meshes and still two passes in every stage. The rise is
+            // the scene's own shape and not a change in how a pass is counted.
             "landscape",
             Stages {
-                shadowing: 2,
-                depthing: 2,
-                lighting: 2,
+                shadowing: 4,
+                depthing: 3,
+                lighting: 3,
                 other: 1,
             },
         ),

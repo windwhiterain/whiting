@@ -80,13 +80,21 @@ pub struct Row {
 ///
 /// # Invariants
 ///
-/// - **The ids are `1..=belts` in [`belt_references`]' order, with no gaps**, so an id is a
-///   position in one list and the table is that list. A gap would make an id a range rather than
-///   a position, and a range is a thing a reader has to reason about to notice a missing row.
+/// - **The ids are a contiguous run starting at [`Identity::first_id`], with no gaps**, so an id
+///   is a position in one list and the table is that list. A gap would make an id a range rather
+///   than a position, and a range is a thing a reader has to reason about to notice a missing
+///   row.
+/// - **A run has to be stated rather than assumed to begin at one.** A scene drawing more than one
+///   massif numbers them one after another, and each is told where its run begins — because two
+///   tables that both started at one would hand the same number to two different flanks, and a
+///   pixel would resolve to whichever of them a reader happened to ask about first. That is the
+///   failure the reservation of zero above exists to make impossible, and starting every table at
+///   one makes it possible again.
 /// - **The table is a function of the skeleton alone**, so two builds of one skeleton give the
 ///   same ids — which is what lets an agent remember an id between two edits. What does *not*
 ///   survive an edit is the mesh, and nothing here depends on the mesh.
 pub struct Identity {
+    first_id: u32,
     rows: Vec<Row>,
     by_belt: BTreeMap<BeltRef, u32>,
 }
@@ -99,11 +107,15 @@ impl Identity {
     /// **The walk is [`belt_references`]'s and the table is written in the same pass**, so the
     /// number a fragment writes and the row a reader looks up are the same number by
     /// construction. There is no second function that returns one without the other.
-    pub fn of(massif: &Massif, path: impl Fn(BeltRef) -> String) -> Self {
+    ///
+    /// `first_id` is the id of the first belt and the run is `first_id ..= first_id + belts`. A
+    /// caller with one massif passes `1`; a caller with more numbers them one after another and
+    /// hands each the number the one before it ended on.
+    pub fn of(massif: &Massif, first_id: u32, path: impl Fn(BeltRef) -> String) -> Self {
         let mut rows = Vec::new();
         let mut by_belt = BTreeMap::new();
         for (index, belt) in belt_references(&massif.skeleton).into_iter().enumerate() {
-            let id = index as u32 + 1;
+            let id = first_id + index as u32;
             by_belt.insert(belt, id);
             rows.push(Row {
                 id,
@@ -111,7 +123,16 @@ impl Identity {
                 belt,
             });
         }
-        Self { rows, by_belt }
+        Self {
+            first_id,
+            rows,
+            by_belt,
+        }
+    }
+
+    /// Returns the number this table's run of ids begins at.
+    pub fn first_id(&self) -> u32 {
+        self.first_id
     }
 
     /// Returns the id of a belt, or none when it is not one this massif has.
@@ -119,10 +140,16 @@ impl Identity {
         self.by_belt.get(&belt).copied()
     }
 
-    /// Returns the row an id names, or none for the reserved zero and for anything above the
-    /// count.
+    /// Returns the row an id names, or none for the reserved zero, for an id below this table's
+    /// own run, and for anything above the count.
+    ///
+    /// # Invariants
+    ///
+    /// **The subtraction is what refuses.** An id outside this run is a number another massif's
+    /// row carries, and indexing with it would hand a reader the path of a flank standing
+    /// somewhere else in the scene entirely.
     pub fn row(&self, id: u32) -> Option<&Row> {
-        self.rows.get((id as usize).checked_sub(1)?)
+        self.rows.get(id.checked_sub(self.first_id)? as usize)
     }
 
     /// Returns every row, in id order.
@@ -212,8 +239,27 @@ pub fn locate(scene: &str, id: Option<[f32; 4]>, u: f32, v: f32) -> Option<Strin
         return None;
     }
     let massif = crate::landscape::massif();
-    let mesh = massif.build().ok()?;
-    let identity = Identity::of(&massif, crate::landscape::belt_path);
+    // **Both ranges are rebuilt and the id is asked of each**, because each numbers its belts
+    // from its own walk and only one of the two runs carries the number a pixel wrote. A reader
+    // that asked the wrong table first would be told the id is unknown, which is the right
+    // answer for a number nothing owns and the wrong one for a number the other flank has.
+    let authored = massif.build().ok()?;
+    let (low, high) = authored.bounds();
+    let radius = (((high[0] - low[0]).powi(2) + (high[2] - low[2]).powi(2)) as f64).sqrt() * 0.5;
+    // **Both ranges are rebuilt and the id is asked of each**, because each numbers its belts from
+    // its own walk and only one of the two runs carries the number a pixel wrote. A reader that
+    // asked one table and stopped would be told the id is unknown — the right answer for a number
+    // nothing owns, and the wrong one for a number the flank on the other side has.
+    let mut next = 1u32;
+    let mut tables = Vec::new();
+    for range in crate::landscape::ranges() {
+        let identity = Identity::of(&massif, next, |belt| {
+            crate::landscape::belt_path(range.name, belt)
+        });
+        next += identity.rows().len() as u32;
+        let at = [range.centre[0] * radius, range.centre[1] * radius];
+        tables.push((crate::landscape::stood_at(&authored, at), identity));
+    }
 
     // The value is the **first** component, which is where a one component image puts it: an
     // `r32float` target is a single channel and the readback pads the row out to four floats.
@@ -224,14 +270,20 @@ pub fn locate(scene: &str, id: Option<[f32; 4]>, u: f32, v: f32) -> Option<Strin
     // **An id of no value is the reserved zero and is answered as itself**, not as "unknown": it
     // is a real answer about a real pixel — this one is the plain — and a caller that is told
     // "not an authored element" knows not to go looking for a crest there.
-    let Some(row) = identity.row(id as u32) else {
-        if id == NOT_AUTHORED as f32 {
-            return Some("not an authored element: the pixel is the plain".to_owned());
-        }
+    if id == NOT_AUTHORED as f32 {
+        return Some("not an authored element: the pixel is the plain".to_owned());
+    }
+    let Some((mesh, row)) = tables
+        .iter()
+        .find_map(|(mesh, identity)| Some((mesh, identity.row(id as u32)?)))
+    else {
         return Some(format!(
-            "id {id:.0} is not one of this massif's {} elements. The frame and the mesh are \
+            "id {id:.0} is not one of this valley's {} elements. The frame and the mesh are \
              probably from different builds",
-            identity.rows().len()
+            tables
+                .iter()
+                .map(|(_, identity)| identity.rows().len())
+                .sum::<usize>()
         ));
     };
     // The face is the one of the belt's own faces whose uv triangle holds the point. **It is
