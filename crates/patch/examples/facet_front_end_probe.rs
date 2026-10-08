@@ -474,8 +474,12 @@ fn winding_split(facet: &FacetMesh, triangles: &[[VertexId; 3]]) -> Winding {
     let block_of: Vec<usize> = {
         let mut owner = vec![usize::MAX; triangles.len()];
         for (number, block) in facet.blocks.iter().enumerate() {
-            for face in block.faces.start as usize..block.faces.end as usize {
-                owner[face] = number;
+            for slot in owner
+                .iter_mut()
+                .take(block.faces.end as usize)
+                .skip(block.faces.start as usize)
+            {
+                *slot = number;
             }
         }
         owner
