@@ -1823,6 +1823,9 @@ version = "0.1.0"
 [[package]]
 name = "whiting-patch"
 version = "0.1.0"
+dependencies = [
+ "whiting-mountain",
+]
 
 [[package]]
 name = "whiting-scene"

@@ -9,3 +9,13 @@ description = "Freeform patches over a mesh: one tensor-product patch per face, 
 # Nothing yet. Evaluation and elevation are closed-form arithmetic on control points; the first
 # dependency is whatever supplies a point-on-surface inversion, and nothing before that is needed.
 [dependencies]
+
+# The front-end probe reads a real `FacetMesh`, because the sample every other probe uses is a
+# regular f64 grid and that is exactly the input this crate cannot claim to handle without checking:
+# terrain arrives as f32, and with slivers, a boundary and whatever valence the authoring produced.
+#
+# A dev-dependency and not a dependency on purpose. `whiting-patch` owns no mesh type — a caller
+# passes whatever mesh it has — so the only thing in this crate that may know what a `FacetMesh` is
+# is a probe.
+[dev-dependencies]
+whiting-mountain = { path = "../mountain" }
