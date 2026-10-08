@@ -1,4 +1,4 @@
-﻿//! Flooded rice terraces under a morning sun: a Chinese mountain valley in spring.
+//! Flooded rice terraces under a morning sun: a Chinese mountain valley in spring.
 //!
 //! The scene is one heightfield, a village, and a stand of China firs, and what makes it
 //! read as a photograph of a place rather than as terrain is four decisions, all of them
@@ -111,7 +111,14 @@ fn terraced_valley(materials: Vec<Value>, instances: Value) -> Value {
                 // same thing; the number is the scene's statement of the reach it means, and
                 // a light naming less than that draws its own edge as a staircase quantised
                 // to the cluster grid rather than as a terminator.
-                light_with_radius("sun", SUN_POSITION, [1.0, 0.66, 0.40], 5.4, 330.0, 700.0),
+                light_with_radius(
+                    "sun",
+                    SUN_POSITION,
+                    [1.0, 0.66, 0.40],
+                    7_269_599.0,
+                    330.0,
+                    700.0,
+                ),
                 // The sky's fill: a broad cool light from the opposite quarter, so a
                 // riser in its own shadow reads as shadowed earth rather than as black,
                 // and the backlit face of the mountain keeps its forest. It is 692 to the
@@ -120,7 +127,7 @@ fn terraced_valley(materials: Vec<Value>, instances: Value) -> Value {
                     "sky",
                     [-260.0, 320.0, 230.0],
                     [0.36, 0.47, 0.72],
-                    1.0,
+                    1_346_222.0,
                     340.0,
                     700.0,
                 ),

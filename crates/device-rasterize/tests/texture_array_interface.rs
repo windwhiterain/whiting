@@ -19,7 +19,6 @@
 //!
 //! [`WgpuRenderer`]: ../../src/wgpu_renderer/mod.rs
 
-
 use wgpu::naga;
 use whiting_device_rasterize::check_resources;
 

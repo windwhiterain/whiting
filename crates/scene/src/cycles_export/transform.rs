@@ -102,13 +102,42 @@ pub fn axis_angle(rotation: [f64; 3]) -> Option<([f64; 3], f64)> {
 ///
 /// The composition order matches the reading order of the document's `rotation` field,
 /// which is also the order the rasterised pipeline applies them in.
+///
+/// # Two of these four terms had the wrong sign
+///
+/// This was `w = cx*cy*cz - sx*sy*sz`, which is the scalar part of a **conjugate**, not of a
+/// composition. It is wrong for every rotation that turns about more than one axis, and the
+/// scalar part is the one that decides the *magnitude* of the rotation: a negative `w` takes the
+/// angle out through `atan2`, so a half turn comes back as 360 minus it.
+///
+/// The measured symptom: a camera at `(0, 0.7, 2.6)` looking at `(0, 0.1, -8)` is a half turn
+/// about `Y` followed by a small pitch. Composed correctly that is 180 degrees about an axis
+/// almost parallel to `Y`. This function produced `w = -0.1248`, and
+/// `2 * atan2(sin_half, w)` turned that into **353.5 degrees about an axis parallel to `X`** —
+/// a rotation that points the camera at nothing. The render came back black, with no error, no
+/// warning and a full sample count, because the document it was given was a scene with the
+/// camera aimed away from every surface in it.
+///
+/// The composition of three rotations about X, then Y, then Z, with `w` first, is:
+///
+/// ```text
+/// w = cx*cy*cz + sx*sy*sz
+/// x = sx*cy*cz - cx*sy*sz
+/// y = cx*sy*cz + sx*cy*sz
+/// z = cx*cy*sz - sx*sy*cz
+/// ```
 fn quaternion_from_euler(x: f64, y: f64, z: f64) -> [f64; 4] {
-    let (sx, cx) = (x.sin() * 0.5, x.cos() * 0.5);
-    let (sy, cy) = (y.sin() * 0.5, y.cos() * 0.5);
-    let (sz, cz) = (z.sin() * 0.5, z.cos() * 0.5);
+    // Halving the **argument** is what produces the half-angle. Writing it as `sin(x) * 0.5`
+    // instead — which is what this did — is not the same thing: it is only equal for the sine by
+    // the double-angle identity applied backwards, and it is not equal for the cosine at all.
+    // `cos(0)` became `0.5` rather than `1`, so a rotation about one axis was scaled by a factor
+    // that depended on how the other two happened to be zero.
+    let (sx, cx) = ((x * 0.5).sin(), (x * 0.5).cos());
+    let (sy, cy) = ((y * 0.5).sin(), (y * 0.5).cos());
+    let (sz, cz) = ((z * 0.5).sin(), (z * 0.5).cos());
     [
-        cx * cy * cz - sx * sy * sz,
-        sx * cy * cz + cx * sy * sz,
+        cx * cy * cz + sx * sy * sz,
+        sx * cy * cz - cx * sy * sz,
         cx * sy * cz + sx * cy * sz,
         cx * cy * sz - sx * sy * cz,
     ]

@@ -223,6 +223,7 @@ pub mod frame;
 pub mod math;
 mod packing;
 mod pass_schemas;
+pub mod photometry;
 mod scene_schema;
 
 pub use camera::{Camera, DEFAULT_FIELD_OF_VIEW, Projection, ProjectionKind, projection_value};

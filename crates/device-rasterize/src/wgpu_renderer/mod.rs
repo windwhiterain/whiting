@@ -39,8 +39,8 @@ use scene::DeviceLimits;
 use wgpu::naga;
 use wgpu::util::DeviceExt;
 
-use device::render::{RenderError, RenderedImage, Renderer};
 use bindings::{BufferCache, TextureCache};
+use device::render::{RenderError, RenderedImage, Renderer};
 use raster::RenderedTarget;
 
 mod bindings;

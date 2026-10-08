@@ -25,8 +25,8 @@
 //! the check that the image is being sampled by direction rather than merely added, and it is why
 //! the first test here renders four frames rather than one.
 
-
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
+use device::{Frame, Renderer};
 use gallery::geometry::plane_facing;
 use gallery::kit::{
     camera_placed, environment_light, gallery_custom_schema, gallery_instance_schema, image,
@@ -36,7 +36,6 @@ use gallery::kit::{
 use gallery::shaders::{depthing, lighting, octahedral_pixels, post_shader, shadowing};
 use scene::standard::Stage;
 use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
-use device::{Frame, Renderer};
 use whiting_device_rasterize::WgpuRenderer;
 
 /// A note printed when there is nothing to test on.

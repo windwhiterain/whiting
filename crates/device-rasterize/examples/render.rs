@@ -88,13 +88,13 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use definition::{Definition, DefinitionIdentifier, FieldMap, Registry, SchemaIdentifier, Value};
+use device::{RenderedFrame, RenderedImage, Renderer};
 use facet::Facet;
 use gallery::Gallery;
 use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 use scene::{
     CompileContext, CompileNote, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene,
 };
-use device::{RenderedFrame, RenderedImage, Renderer};
 use whiting_device_rasterize::rasterizer;
 
 /// Field the scene's time is written under.

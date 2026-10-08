@@ -18,7 +18,6 @@
 //! is therefore unexecuted, and what is checked here is that the values handed to it are
 //! the ones the document asked for.
 
-
 use definition::Value;
 use whiting_device_rasterize::TextureShape;
 

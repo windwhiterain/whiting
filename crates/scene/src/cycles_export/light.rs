@@ -150,11 +150,11 @@ fn brightness(kind: &str, fields: &definition::FieldMap, context: &str) -> EmitR
     // document whose lighting cannot be read, and answering it with `1.0` would render a picture
     // that is wrong in a way nothing reports.
     match read::field(fields, field) {
-        Some(value) => read::number(value, &format!("{context}'s {field}")).map_err(|_| {
-            EmitError::Malformed {
+        Some(value) => {
+            read::number(value, &format!("{context}'s {field}")).map_err(|_| EmitError::Malformed {
                 detail: format!("{context}'s {field} is not a number"),
-            }
-        }),
+            })
+        }
         None => Err(EmitError::Malformed {
             detail: format!("{context} states no `{field}`"),
         }),
@@ -396,7 +396,10 @@ fn light_rotation(light: &Light) -> [f64; 3] {
             if length < 1e-9 {
                 return [0.0; 3];
             }
-            direction_from_z(direction, length)
+            // **Aimed at the negated direction**, because a light travels along its own `-Z`.
+            // See [`direction_from_z`], which is where that is stated and derived; the negation
+            // is here so that the function keeps the one job its name describes.
+            direction_from_z([-direction[0], -direction[1], -direction[2]], length)
         }
         None => [0.0; 3],
     }
@@ -408,6 +411,32 @@ fn light_rotation(light: &Light) -> [f64; 3] {
 /// about the resulting `+X`. Composing them as Euler angles rather than as a quaternion pair
 /// keeps this consistent with the axis-angle conversion in the transform module, which is
 /// the one place the two parameterisations meet.
+///
+/// # A light travels along `-Z`, so the caller passes the negated direction
+///
+/// This is the one fact in this file that is not visible in the format. The kernel reads the
+/// light's own basis and negates it — `SpotLight::copy_to_kernel` in `src/scene/light.cpp`:
+///
+/// ```text
+/// const float3 dir = -transform_get_column(&object->get_tfm(), 2);
+/// ```
+///
+/// An identity transform's third column is `+Z`, so a light with no rotation at all travels
+/// along `-Z`, and a rotation that carries `+Z` onto a scene's stated `direction` points the
+/// light **exactly backwards**. Nothing says so: the scene loads, the light is built, the sun
+/// or the cone is in the scene, not one ray reaches a surface, and the render comes back with
+/// the world's own background in it and no error anywhere.
+///
+/// Measured on this build, with the two scenes that have a single directional or spot light
+/// and nothing else to light them. `sunlight` — one sun, `irradiance = 3.927`, on a floor
+/// fifteen units across — rendered `max = 0` over 2073600 texels. `spotlight` — one spot
+/// lamp, `power = 4066.3`, over the same pool — also `max = 0`. Both emitted their geometry
+/// and their `principled_bsdf` correctly, and both had a light that was pointing at the sky.
+///
+/// This is also not the camera's convention. The camera's rotation is built in
+/// `scene.rs` from an eye and a target, and its axis was established separately, by moving the
+/// camera and watching what came into frame; the two differ in the sign of the pitch. A light
+/// rotated by the camera's rule is wrong in a way that looks like a scene with no light in it.
 fn direction_from_z(direction: [f64; 3], length: f64) -> [f64; 3] {
     let normalized = [
         direction[0] / length,

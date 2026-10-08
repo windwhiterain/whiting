@@ -233,7 +233,7 @@ pub fn spotlight() -> Value {
                 // be read, because the whole of the inner angle is one value. A power, so the
                 // number is a distance squared: this lamp stands about ten units over the
                 // pool. See `.agents/proposals/physical-light-units.md`.
-                103.0,
+                4_066.3,
                 // A wide gap between the two angles, so the falloff is a ring rather than an
                 // edge: about nine degrees at full strength and thirty two at nothing.
                 0.16,

@@ -45,6 +45,7 @@ use std::borrow::Cow;
 
 use definition::{Schema, SchemaKind, Value};
 
+use scene::standard::photometry::FLUX_TO_RADIANCE_DIGITS;
 use scene::standard::{
     Stage, depth_pass_schema, emission_pass_schema, light_pass_schema, light_pass_schema_over,
     post_pass_schema, shadow_pass_schema,
@@ -993,10 +994,25 @@ fn lighting_stage<'text>(
     let (fragment_returns, fragment_type) = extras.returns();
     let fragment_writes = extras.writes();
     let fragment_return = extras.return_value();
+    // The one place the shader learns what a light's `power` means. It is interpolated as digits
+    // rather than written into the template, because the digits live next to the derivation in
+    // `scene::standard::photometry` and a copy of them here is a second thing to keep in step.
+    let flux_to_radiance = FLUX_TO_RADIANCE_DIGITS;
     format!(
         r#"{LIGHTING_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 {bindings}
+/// The factor that turns a lamp's stated radiant flux into the radiance a Lambertian surface
+/// returns from it: `1 / (4 pi^2)`.
+///
+/// Two divisions, and a document's `power` is upstream of both — a lamp's flux is spread over a
+/// sphere of area `4 pi d^2` to become an irradiance, and a Lambertian lobe returns over a
+/// hemisphere, which is another `pi`. Cycles' `PointLight::copy_to_kernel` already normalises on
+/// its side, so a lamp's `strength` there is flux and this renderer is the half that was
+/// missing. Written as digits rather than as an expression so the value can be checked against
+/// `scene::standard::photometry::FLUX_TO_RADIANCE` by reading it. See
+/// `.agents/investigate/cycles-light-units.md`.
+const FLUX_TO_RADIANCE: f32 = {flux_to_radiance};
 /// Returns one light's record, read out of the flat run the page table shares a buffer with.
 ///
 /// The offsets are written here rather than left to a struct declaration because the run is
@@ -1664,7 +1680,14 @@ fn record_contribution(
     // softening term on purpose: a law softened to read well over one preferred scene size
     // is a law normalised to that size, and the same document then renders differently
     // under a different backend. See `.agents/proposals/physical-light-units.md`.
-    let attenuation = 1.0 / (light_range * light_range);
+    //
+    // `FLUX_TO_RADIANCE` is what makes `power` a flux rather than a brightness, and it was
+    // missing here until the scenes were measured against a path tracer. A backend with a
+    // real BRDF — Cycles, whose `Light::strength` is radiant flux — divides by the same
+    // factor, and this scene's `power` now lands on the same radiance in both. Every power
+    // in the gallery is multiplied by `4 pi^2` in exchange, so the image this produces is
+    // the image it produced before. See `.agents/investigate/cycles-light-units.md`.
+    let attenuation = FLUX_TO_RADIANCE / (light_range * light_range);
     let radiance = light.color * attenuation * lit;
 
     return light_contribution(direction, radiance, normal, to_view, diffuse, fresnel, roughness);
@@ -1745,19 +1768,36 @@ fn octahedral(direction: vec3<f32>, level: i32) -> vec2<i32> {{
 
 /// Returns what a surface facing this normal receives from the environment.
 ///
-/// # The environment replaces the stand-in, and the flag is what says so
+/// # No environment light means no environment term
 ///
-/// There is **one** ambient term in this shader, and what feeds it is the scene's environment
-/// when the scene names an `Environment` light and the two colour hemisphere when it does not.
-/// Not both: a scene that named an environment and also had the hemisphere under it would be
-/// counting an author's environment twice and adding a sky of this renderer's own that the
-/// author had no way to turn off, which is exactly what the hemisphere was — a stand-in for
-/// something the shader could not yet read.
+/// There is **one** ambient term in this shader, and it is fed by the scene's environment and
+/// by nothing else. A scene that names an `Environment` light gets that light's map, at this
+/// material's roughness; a scene that names none gets **black**.
 ///
-/// The choice is made on `uniforms.environment.w` and on nothing else. A scene naming no
-/// environment binds a one texel **black** map, so a shader that decided on the colour it
-/// sampled could not tell "there is no environment" from "the environment is black", and a
-/// frame's darkness would be a property of a texture rather than of a decision anybody made.
+/// It used to get a two colour hemisphere instead, mixed from a dark blue and a lighter one
+/// by `normal.y`. That was a stand-in for something the shader could not yet read, and it was
+/// the wrong answer twice over.
+///
+/// The first wrongness is that no document asked for it. A scene is a description of a world,
+/// and a sky nobody declared is a decision the renderer made about that world. Nine of the
+/// twelve gallery scenes declare no environment light, and all nine were being lit by a
+/// hemisphere no scene contained.
+///
+/// The second is that it is not a small term. Measured on `tiles`: the rasterised frame's floor
+/// sits at a linear radiance of `0.132`, and the scene's one point lamp accounts for `0.011` of
+/// it. The remaining `0.12` was this. **The rasterised image of that scene was not a picture of
+/// its lamp.** A backend without a stand-in — Cycles, whose world background for a scene with no
+/// `Environment` light is black — renders it as the near-black frame the lamp actually makes,
+/// and the two backends disagreed about a scene rather than about a renderer.
+///
+/// Removing it makes nine gallery frames considerably darker. That is the honest picture, and it
+/// is what a scene that wants a sky now gets by declaring one.
+///
+/// # The choice is made on `uniforms.environment.w` and on nothing else
+///
+/// A scene naming no environment binds a one texel **black** map, so a shader that decided on the
+/// colour it sampled could not tell "there is no environment" from "the environment is black", and
+/// a frame's darkness would be a property of a texture rather than of a decision anybody made.
 ///
 /// # Why the level is the roughness, and why it is clamped
 ///
@@ -1769,18 +1809,12 @@ fn octahedral(direction: vec3<f32>, level: i32) -> vec2<i32> {{
 /// range is the top of the chain and no material is refused for wanting a blurer environment
 /// than the map has.
 ///
-/// The stand-in is returned unchanged, from the same two colours it has always been mixed
-/// from, so a scene that names no environment light renders byte for byte what it rendered
-/// before this stage. The tint and the metalness are applied by the caller and not here, and
-/// that is deliberate: they are the material's own, and a term that stopped multiplying by
-/// them would be a material that had stopped responding to its own colour.
+/// The tint and the metalness are applied by the caller and not here, and that is deliberate:
+/// they are the material's own, and a term that stopped multiplying by them would be a material
+/// that had stopped responding to its own colour.
 fn environment_radiance(normal: vec3<f32>, roughness: f32) -> vec3<f32> {{
     if uniforms.environment.w < 0.5 {{
-        return mix(
-            vec3<f32>(0.014, 0.017, 0.026),
-            vec3<f32>(0.055, 0.072, 0.110),
-            normal.y * 0.5 + 0.5,
-        );
+        return vec3<f32>(0.0);
     }}
     // How many levels the map **has**, read rather than written: the chain is the device's to
     // build and it is a function of the image's size, so a number written here would be right

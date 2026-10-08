@@ -63,6 +63,7 @@
 //!   quietly reporting a number about a setup that was never tested.
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
+use device::{RenderedFrame, RenderedImage, Renderer};
 use gallery::Gallery;
 use gallery::geometry::{cuboid, plane_facing};
 use gallery::kit::{
@@ -77,7 +78,6 @@ use scene::vshadow::{pages_at_level, unpack_high, unpack_low};
 use scene::{
     CompileContext, CompileOutput, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene,
 };
-use device::{RenderedFrame, RenderedImage, Renderer};
 use whiting_device_rasterize::rasterizer;
 
 /// Where the frames go, which `out` already keeps out of the tree.
@@ -701,11 +701,7 @@ resolution the old pool gave, and the first step past it already quadruples the 
 /// eighty five pages, an atlas ten to a side, and a refusal three percent finer — so a probe whose
 /// numbers cannot be reconciled with it is measuring something other than what it says. It is
 /// compiled and not drawn, because what is being reconciled is arithmetic.
-fn control_row(
-    compiler: &StandardScene,
-    registry: &Registry,
-    renderer: &dyn Renderer,
-) -> String {
+fn control_row(compiler: &StandardScene, registry: &Registry, renderer: &dyn Renderer) -> String {
     let scene = Gallery::build("spotlight");
     let mut report = String::from(
         r#"

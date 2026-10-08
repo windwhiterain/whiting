@@ -33,7 +33,7 @@ use super::error::{EmitError, EmitResult, UnsupportedField};
 use super::lossy::LossyReport;
 use super::read;
 use super::writer::Writer;
-use definition::{FieldMap, Value};
+use definition::{FieldMap, Schema, SchemaKind, Value};
 
 /// One mesh's geometry, read out of the document.
 pub struct Mesh {
@@ -45,8 +45,9 @@ pub struct Mesh {
     pub normals: Option<Vec<f64>>,
     /// Flat `u v` per vertex, when the document declared coordinates.
     pub uvs: Option<Vec<f64>>,
-    /// Indices into the vertex arrays, three per triangle.
-    pub indices: Vec<i64>,
+    /// Indices into the vertex arrays, three per triangle, or `None` for a mesh whose corners
+    /// are already its vertices in order.
+    pub indices: Option<Vec<i64>>,
 }
 
 /// Reads every mesh in a scene.
@@ -115,6 +116,20 @@ pub fn read_meshes(
 /// `positions.len() / 3` is the vertex count, and `normals` and `uvs` are either absent or
 /// the same length. The loader indexes all three by the same vertex number, so a mismatch
 /// would read past the end of the shorter array.
+///
+/// # Why packed points are read rather than refused
+///
+/// Every scene the gallery builds carries its points packed: `kit::mesh` writes
+/// `Value::Packed` and its own documentation says why — "a generator produces the run rather
+/// than a tree of maps, so the geometry a scene is built from never exists in the expensive
+/// form at all". So packed is not a compiled document's shape that a scene author might avoid;
+/// it is **the** shape a scene is written in, and an emitter that refuses it cannot render a
+/// single gallery scene.
+///
+/// Reading goes through [`definition::PackedList::component`], which is a strided read of one
+/// field of one element. That is what keeps this linear in the points read and not quadratic in
+/// the ones there are, and it is the same reader a strided gpu pass uses, so the emitter and the
+/// rasteriser agree on what a layout means rather than each having its own opinion.
 fn read_points(
     label: &str,
     fields: &FieldMap,
@@ -123,28 +138,20 @@ fn read_points(
     report: &mut LossyReport,
 ) -> EmitResult<(Vec<f64>, Option<Vec<f64>>, Option<Vec<f64>>)> {
     let points = read::require(fields, "points", &format!("mesh '{label}'"))?;
-    let elements = points.as_list().ok_or_else(|| EmitError::Malformed {
-        detail: match points.as_packed() {
-            // A compiled document carries points packed, against a layout this emitter does
-            // not have. Saying so is better than reading the buffer as a tree and producing
-            // geometry that looks fine and is wrong.
-            Some(_) => format!(
-                "mesh '{label}' carries packed points; emit the scene document, not a \
-                 compiled one, or unpack it first"
-            ),
-            None => format!("mesh '{label}' has no point list"),
-        },
-    })?;
-    if elements.is_empty() {
-        return Err(EmitError::Malformed {
-            detail: format!("mesh '{label}' has no points"),
-        });
-    }
 
-    // The declared field names decide which arrays to read. A document that declares no
-    // schema gets position alone, which is what `default_point_schema` says.
-    let declared: Vec<String> = match schema.and_then(Value::as_field_map) {
-        Some(schema) => schema.keys().cloned().collect(),
+    // The declared field names decide which arrays to read.
+    //
+    // A `point_schema` is written by `Schema::to_value`, so it arrives as a **schema document** —
+    // `{kind, attributes, fields}` — rather than as the bare field map a struct is. Reading it
+    // with `as_field_map` therefore returns the schema's own keys and never a point field, and a
+    // mesh whose points are perfectly readable comes back saying it declares no `position`.
+    // `Schema::from_value` is the reader that pairs with the writer; the field names then come
+    // out of the struct the schema describes.
+    //
+    // A mesh that declares no schema at all gets position alone, which is what
+    // `default_point_schema` says.
+    let declared: Vec<String> = match schema {
+        Some(value) => read_point_schema_fields(label, value)?,
         None => vec!["position".to_owned()],
     };
 
@@ -155,6 +162,19 @@ fn read_points(
         if !is_mappable(name) {
             handle_unsupported_point_attribute(name, label, mode, report)?;
         }
+    }
+
+    if points.as_packed().is_some() {
+        return read_packed_points(label, points, &declared);
+    }
+
+    let elements = points.as_list().ok_or_else(|| EmitError::Malformed {
+        detail: format!("mesh '{label}' has no point list"),
+    })?;
+    if elements.is_empty() {
+        return Err(EmitError::Malformed {
+            detail: format!("mesh '{label}' has no points"),
+        });
     }
 
     let mut positions = Vec::with_capacity(elements.len() * 3);
@@ -187,7 +207,7 @@ fn read_points(
             }
             normals.extend(read::triple(value, &format!("{where_}'s normal"))?);
         }
-        for name in ["uv", "texcoord", "uv_map"] {
+        for name in UV_FIELDS {
             if let Some(value) = read::field(point_fields, name) {
                 let pair = read::numbers(value, &format!("{where_}'s '{name}'"))?;
                 if pair.len() != 2 {
@@ -215,12 +235,140 @@ fn read_points(
     ))
 }
 
-/// Reads a mesh's triangle indices.
-fn read_indices(label: &str, fields: &FieldMap, vertex_count: usize) -> EmitResult<Vec<i64>> {
-    let Some(topology) = read::field(fields, "indices") else {
+/// Reads the field names out of a mesh's `point_schema`.
+///
+/// # Invariants
+///
+/// The schema is read with [`Schema::from_value`], the reader that pairs with the
+/// `Schema::to_value` that wrote it, and the names come out of the struct it describes. A schema
+/// that is not a struct is refused here: a point is a struct of named fields by definition, and a
+/// document whose `point_schema` says otherwise is not one whose points can be laid out.
+fn read_point_schema_fields(label: &str, value: &Value) -> EmitResult<Vec<String>> {
+    let schema = Schema::from_value(value).map_err(|error| EmitError::Malformed {
+        detail: format!("mesh '{label}' has a point_schema that is not a schema: {error}"),
+    })?;
+    let SchemaKind::Struct { fields } = &schema.kind else {
         return Err(EmitError::Malformed {
-            detail: format!("mesh '{label}' has no 'indices'"),
+            detail: format!(
+                "mesh '{label}' declares a point_schema of {}, and a point is a structure of \
+                 named fields",
+                schema.kind_name()
+            ),
         });
+    };
+    Ok(fields.iter().map(|(name, _)| name.clone()).collect())
+}
+
+/// The field names a point's texture coordinate may be written under, in the order they are
+/// tried.
+///
+/// This is one list rather than several literals so that the packed and unpacked readers cannot
+/// disagree about which spelling of a uv they accept — a divergence that would show as a mesh
+/// that renders without texture coordinates on one path and with them on the other.
+///
+/// `texture` is first because that is what the workspace's own point schema calls it
+/// (`kit::shaded_point_schema`); the rest are the spellings a document written by hand is likely
+/// to use, since nothing in the workspace writes those.
+const UV_FIELDS: &[&str] = &["texture", "uv", "texcoord", "uv_map"];
+
+/// Reads the same three arrays out of a packed run.
+///
+/// # Invariants
+///
+/// The layout is read from the run itself rather than from the schema, because the run carries
+/// the layout it was packed against and a layout derived separately is a second definition of
+/// the same thing. A field the layout does not have is reported by name: it means the mesh's
+/// declared schema and its packed layout disagree, which is a defect in the document rather
+/// than something to paper over with a default.
+fn read_packed_points(
+    label: &str,
+    points: &Value,
+    declared: &[String],
+) -> EmitResult<(Vec<f64>, Option<Vec<f64>>, Option<Vec<f64>>)> {
+    let packed = points.as_packed().ok_or_else(|| EmitError::Malformed {
+        detail: format!("mesh '{label}' has no packed run to read"),
+    })?;
+    let count = packed.len();
+    if count == 0 {
+        return Err(EmitError::Malformed {
+            detail: format!("mesh '{label}' has no points"),
+        });
+    }
+
+    if !declared.iter().any(|name| name == "position") {
+        return Err(EmitError::Malformed {
+            detail: format!("mesh '{label}' declares no 'position' to read"),
+        });
+    }
+
+    let triple_of = |field: &str| -> EmitResult<Vec<f64>> {
+        let mut values = Vec::with_capacity(count * 3);
+        for index in 0..count {
+            for component in 0..3 {
+                let value = packed.component(index, field, component).ok_or_else(|| {
+                    EmitError::Malformed {
+                        detail: format!(
+                            "mesh '{label}' point {index} has no '{field}' component {component}, \
+                             and its packed layout declares {:?}",
+                            packed.layout().field_names(),
+                        ),
+                    }
+                })?;
+                values.push(value);
+            }
+        }
+        Ok(values)
+    };
+
+    let positions = triple_of("position")?;
+    // A normal is optional, so its absence has to be distinguishable from a failure to read it:
+    // `triple_of` fails when the layout declares the field and the bytes do not hold it, and the
+    // two are different defects. The presence test is a single component read on the first point,
+    // which is what decides it.
+    let normals = packed
+        .component(0, "normal", 0)
+        .map(|_| triple_of("normal"))
+        .transpose()?;
+    let uvs = UV_FIELDS
+        .iter()
+        .find(|name| packed.component(0, name, 1).is_some())
+        .map(|name| {
+            let mut values = Vec::with_capacity(count * 2);
+            for index in 0..count {
+                for component in 0..2 {
+                    // The presence test above read component 1 of point 0, so the only way this
+                    // can be `None` is a run whose length disagrees with its own stride, which
+                    // `PackedList::new` refuses to construct.
+                    values.push(packed.component(index, name, component).unwrap_or_default());
+                }
+            }
+            values
+        });
+
+    Ok((positions, normals, uvs))
+}
+
+/// Reads a mesh's triangle indices.
+///
+/// # Why a mesh with none is not an error
+///
+/// A mesh that writes no indices is a **non-indexed** triangle list: three vertices per face, in
+/// order. That is how every scene in the gallery is built — `Shaded::push` appends a whole
+/// element per corner, and `kit::mesh` writes no index array at all — so refusing it would mean
+/// the emitter cannot render any of them.
+///
+/// The target format has a spelling for this that is genuinely smaller rather than a
+/// convenience: `verts` is a list of corner numbers, and omitting it entirely means the corners
+/// are the vertices in order. So this returns `None` for the non-indexed case and the writer
+/// leaves `verts` off, rather than synthesising an identity index that would say the same thing
+/// in more bytes.
+fn read_indices(
+    label: &str,
+    fields: &FieldMap,
+    vertex_count: usize,
+) -> EmitResult<Option<Vec<i64>>> {
+    let Some(topology) = read::field(fields, "indices") else {
+        return Ok(None);
     };
     let raw = read::numbers(topology, &format!("mesh '{label}''s indices"))?;
     let mut indices = Vec::with_capacity(raw.len());
@@ -243,7 +391,7 @@ fn read_indices(label: &str, fields: &FieldMap, vertex_count: usize) -> EmitResu
             ),
         });
     }
-    Ok(indices)
+    Ok(Some(indices))
 }
 
 /// Writes one mesh, with its material scope already open by the caller.
@@ -254,10 +402,18 @@ pub fn write_mesh(writer: &mut Writer, mesh: &Mesh) {
     // than passing polygons through. The loader would accept polygons, but our topology is
     // already triangles and writing them as such removes a fan that nothing downstream
     // needs.
-    let triangles = mesh.indices.len() / 3;
-    let nverts: Vec<i64> = vec![3; triangles];
+    //
+    // `verts` is written even for a mesh that has no index array of its own, because the loader
+    // indexes into it per corner and a mesh without one crashes it: it reads `verts` for corner
+    // zero of every polygon and dereferences whatever is there. So a non-indexed triangle list
+    // becomes the identity, which is what its corners already are.
+    let indices: Vec<i64> = match &mesh.indices {
+        Some(indices) => indices.clone(),
+        None => (0..(mesh.positions.len() / 3) as i64).collect(),
+    };
+    let nverts: Vec<i64> = vec![3; indices.len() / 3];
     attributes.push(("nverts", Writer::int_array(&nverts)));
-    attributes.push(("verts", Writer::int_array(&mesh.indices)));
+    attributes.push(("verts", Writer::int_array(&indices)));
 
     if let Some(normals) = &mesh.normals {
         attributes.push((
@@ -280,12 +436,19 @@ pub fn write_mesh(writer: &mut Writer, mesh: &Mesh) {
 /// The loader walks each polygon's corners and reads `UV` at `corner_index * 2`, where the
 /// corner index counts through the fan, not through the vertex array. So corner `k` of
 /// triangle `t` is vertex `indices[3t + k]`, and its UV is that vertex's pair.
+///
+/// A mesh with no indices is already in corner order, so its per-vertex UVs are already the
+/// per-corner array and are returned as they are. That is not a shortcut: the two arrays are the
+/// same sequence of pairs, and copying it through an identity index would produce the same bytes.
 fn per_corner_uvs(mesh: &Mesh) -> Vec<f64> {
     let Some(uvs) = &mesh.uvs else {
         return Vec::new();
     };
-    let mut out = Vec::with_capacity(mesh.indices.len() * 2);
-    for index in &mesh.indices {
+    let Some(indices) = &mesh.indices else {
+        return uvs.clone();
+    };
+    let mut out = Vec::with_capacity(indices.len() * 2);
+    for index in indices {
         let vertex = *index as usize;
         out.push(uvs.get(vertex * 2).copied().unwrap_or(0.0));
         out.push(uvs.get(vertex * 2 + 1).copied().unwrap_or(0.0));

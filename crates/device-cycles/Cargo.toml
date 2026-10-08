@@ -1,0 +1,29 @@
+[package]
+name = "whiting-device-cycles"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The Cycles Standalone offline renderer for the whiting device."
+
+[dependencies]
+definition = { workspace = true }
+graphics = { workspace = true }
+scene = { workspace = true }
+device = { workspace = true }
+
+# Cycles writes a png and this reads it back, so that a frame from this backend is the same type a
+# frame from the rasterising one is. The rasterising path encodes pngs for the same reason and has
+# never needed to read one; here the file is the renderer's only output, so decoding is what makes
+# the two comparable rather than merely coexisting.
+png = { workspace = true }
+thiserror = { workspace = true }
+
+# The render harness builds a scene by name and asks for a picture, so it needs the gallery the
+# same way the rasterising harness does. Nothing in the backend itself knows a scene by name.
+[dev-dependencies]
+gallery = { workspace = true }
+
+# Driving Cycles needs a binary and a scene, which is a question only a machine with one can answer.
+[[example]]
+name = "render_cycles"

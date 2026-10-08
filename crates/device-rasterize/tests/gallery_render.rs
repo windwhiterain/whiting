@@ -12,11 +12,10 @@
 //! so a frame drawn from it is a frame of several colours, and a frame drawn from a texture that
 //! never reached the gpu is one flat colour however the lighting went.
 
-
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier};
+use device::Renderer;
 use gallery::Gallery;
 use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
-use device::Renderer;
 use whiting_device_rasterize::WgpuRenderer;
 
 /// A note printed when there is nothing to test on.

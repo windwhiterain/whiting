@@ -532,17 +532,24 @@ fn octahedral(direction: vec3<f32>, level: i32) -> vec2<i32> {
 
 /// Returns what a surface facing this normal receives from the environment.
 ///
-/// One ambient term, fed by the scene's environment when it names one and by the two colour
-/// hemisphere when it does not, and chosen on the uniform's flag rather than on the colour that
-/// was sampled: a scene naming no environment binds a **black** map, so a shader that decided
-/// on the colour could not tell no environment from a black one.
+/// One ambient term, fed by the scene's environment and by nothing else, and chosen on the
+/// uniform's flag rather than on the colour that was sampled: a scene naming no environment binds
+/// a **black** map, so a shader that decided on the colour could not tell no environment from a
+/// black one.
+///
+/// A scene naming no environment gets **black**, not a stand-in. This used to return a two colour
+/// hemisphere, and it was a decision about the world that no document asked for: nine of the
+/// twelve gallery scenes declare no environment light, and all nine were being lit by a sky
+/// nobody wrote down. Measured on `tiles`, that term was `0.12` of a floor whose total linear
+/// radiance was `0.132` — the rasterised image of that scene was mostly a picture of this
+/// function. See `photometry` for the rest of what a backend without a stand-in disagrees about.
+///
+/// The gallery's copy of this function is the full one and is where the reasoning lives; this is
+/// the same body with the fold's seam handling, duplicated because `gallery` depends on `scene`
+/// and a dependency the other way would be a cycle.
 fn environment_radiance(normal: vec3<f32>, roughness: f32) -> vec3<f32> {
     if uniforms.environment.w < 0.5 {
-        return mix(
-            vec3<f32>(0.014, 0.017, 0.026),
-            vec3<f32>(0.055, 0.072, 0.110),
-            normal.y * 0.5 + 0.5,
-        );
+        return vec3<f32>(0.0);
     }
     // The level is the roughness scaled by the chain the map actually has and clamped into it,
     // so a roughness of one lands on the last level rather than one past the end of it.

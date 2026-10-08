@@ -32,7 +32,6 @@
 //! same rule `texture_channel_render.rs` follows, for the same reason: a silent pass would make
 //! this file worthless on a machine with no gpu.
 
-
 use std::sync::OnceLock;
 
 use definition::{
@@ -42,6 +41,7 @@ use gallery::geometry::heightfield;
 // Aliased rather than imported plainly: the document builders below already have helpers called
 // `instance` and `instances`, and two meanings in one file is a name that has to be read at
 // every use rather than at its definition.
+use device::{RenderedImage, Renderer};
 use gallery::kit::{
     camera_placed, directional, instance as plane_instance, instances as stage_instances, mesh,
     mesh_material, shaded_point_schema, surface,
@@ -49,7 +49,6 @@ use gallery::kit::{
 use gallery::shaders::mesh_shaders;
 use scene::standard::{Bounds, Camera, Projection, Stage};
 use scene::{CompileContext, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene};
-use device::{RenderedImage, Renderer};
 use whiting_device_rasterize::WgpuRenderer;
 
 /// The size of the frame.

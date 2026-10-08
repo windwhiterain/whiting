@@ -251,7 +251,7 @@ pub fn sunlight() -> Value {
                 // that clips the floor to white would hide the shadow's own gradient, which is
                 // half of what this scene is for.
                 [1.0, 0.95, 0.86],
-                1.25,
+                3.927,
                 // **The whole drawn scene, and this is the number to change first.** The page
                 // is a box of this half width fitted around the middle of everything drawn,
                 // and the floor is `FLOOR_EXTENT` either side, so a smaller extent than the

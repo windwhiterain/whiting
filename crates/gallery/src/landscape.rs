@@ -529,7 +529,7 @@ pub fn landscape() -> Value {
                     "sun",
                     [-sun[0], -sun[1], -sun[2]],
                     [1.00, 0.86, 0.66],
-                    3.4,
+                    10.681,
                     radius * 1.6,
                 ),
                 // A fill from the opposite bearing and from above, dim and blue, standing in for
@@ -573,7 +573,7 @@ pub fn landscape() -> Value {
                     "sky",
                     [0.0, radius * 1.2, 0.0],
                     [0.40, 0.46, 0.64],
-                    450_000.0,
+                    17_765_287.9,
                     radius * 1.6,
                     plain * 2.0,
                 ),

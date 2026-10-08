@@ -57,6 +57,7 @@ mod writer;
 
 pub use error::{EmitError, EmitResult, UnsupportedField};
 pub use lossy::LossyReport;
+pub use scene::render_size;
 
 use std::path::Path;
 
@@ -107,12 +108,18 @@ pub struct EmitOptions {
     ///
     /// # Units
     ///
-    /// A linear multiplier, on both sides. This was measured rather than assumed: a world
-    /// of constant `strength=1.0, color=0.5` rendered through exposures of `0.5`, `1.0` and
-    /// `2.0` produced 8-bit sRGB values of 64, 128 and 255, which is `0.25`, `0.5` and
-    /// `1.0` linear. A stop count would have produced 149 for the first. Our own
-    /// `scene_schema::EXPOSURE` documents the same quantity as a multiplier, so the value
-    /// passes through unconverted.
+    /// A linear multiplier, on both sides. This was measured rather than assumed, twice and
+    /// independently. A world of constant `strength=1.0, color=0.5` rendered through exposures of
+    /// `0.5`, `1.0` and `2.0` produced 8-bit png values of 64, 128 and 255, which is `0.25`,
+    /// `0.5` and `1.0` linear. A stop count would have produced 149 for the first.
+    ///
+    /// The same run also settles what the *output* is: with no OCIO configuration this build
+    /// writes **scene-linear radiance straight into the file**, with no view transform. A world
+    /// of `color=0.1, strength=1.0` came back as 26, which is `0.1 x 255 = 25.5` and not the
+    /// 89 an sRGB encode would give. A caller comparing a Cycles frame with a rasterised one is
+    /// therefore comparing radiance against a tone-mapped image unless it grades this one too.
+    /// Our own `scene_schema::EXPOSURE` documents the same quantity as a multiplier, so the
+    /// value passes through unconverted.
     pub exposure: f32,
     /// The integrator's `seed`, so a comparison render is reproducible.
     pub seed: i32,

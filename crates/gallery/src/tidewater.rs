@@ -208,7 +208,7 @@ pub fn tidewater() -> Value {
                 // answer with and what this picture is tuned around. It reaches short of the
                 // far corners — 2610 and 2413 — and the handoff records that as a scene-level
                 // look rather than a number to change here.
-                light_with_radius("sun", SUN, [1.0, 0.55, 0.28], 1_267_000.0, 900.0, 1400.0),
+                light_with_radius("sun", SUN, [1.0, 0.55, 0.28], 50_019_155.1, 900.0, 1400.0),
                 // The sky, which at this hour is doing most of the lighting. It is dim, cold
                 // and from above: a scene with one light leaves every shadowed slope black,
                 // and black is not what a shadow looks like outdoors.
@@ -223,7 +223,7 @@ pub fn tidewater() -> Value {
                     "sky",
                     [260.0, 420.0, 300.0],
                     [0.30, 0.42, 0.70],
-                    447_500.0,
+                    17_666_591.9,
                     1400.0,
                     1400.0,
                 ),

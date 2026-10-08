@@ -290,7 +290,14 @@ pub fn foldyard() -> Value {
                 // the scene rather than the yard alone because the far range is in the
                 // scene's bounds, and a volume that stopped short of it would shadow-map
                 // nothing and shade it as though something stood in front of it.
-                light_with_radius("sun", SUN_AT, [1.62, 1.36, 1.02], 314_000.0, 260.0, 760.0),
+                light_with_radius(
+                    "sun",
+                    SUN_AT,
+                    [1.62, 1.36, 1.02],
+                    12_396_223.1,
+                    260.0,
+                    760.0,
+                ),
                 // The sky's fill, from the opposite quarter and from above. Without it
                 // every face the sun has turned away from is black, and black is not what
                 // the inside of a wall run looks like at this hour. It is a **fill** and it
@@ -301,7 +308,7 @@ pub fn foldyard() -> Value {
                     "sky",
                     [-70.0, 150.0, -60.0],
                     [0.28, 0.34, 0.48],
-                    5.0,
+                    197.4,
                     260.0,
                     700.0,
                 ),

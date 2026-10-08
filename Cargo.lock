@@ -1797,6 +1797,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "whiting-device-cycles"
+version = "0.1.0"
+dependencies = [
+ "png",
+ "thiserror",
+ "whiting-definition",
+ "whiting-device",
+ "whiting-gallery",
+ "whiting-graphics",
+ "whiting-scene",
+]
+
+[[package]]
 name = "whiting-device-rasterize"
 version = "0.1.0"
 dependencies = [

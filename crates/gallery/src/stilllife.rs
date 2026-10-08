@@ -100,7 +100,7 @@ const WINDOW_ROWS: usize = 3;
 /// The window stands about 3.9 metres — 388 units — from the table, and the inverse square
 /// spreads its output over everything in between, so this is a distance squared rather than a
 /// brightness. See `.agents/proposals/physical-light-units.md`.
-const WINDOW_INTENSITY: f64 = 308_000.0;
+const WINDOW_INTENSITY: f64 = 12_159_352.6;
 /// How far a window light is allowed to reach, which is further than the table is from it.
 const WINDOW_REACH: f64 = 4.2;
 /// The half width of the volume every light's shadow is rendered over: the region shadows have
@@ -462,7 +462,7 @@ fn window_lights() -> Vec<Value> {
         "bounce",
         place([-0.30, 0.26, 1.30]),
         [1.0, 0.72, 0.46],
-        9_700.0,
+        382_940.7,
         at(SHADOW_EXTENT),
         at(2.6),
     ));
@@ -473,7 +473,7 @@ fn window_lights() -> Vec<Value> {
         "room",
         place([-0.10, 1.45, 1.15]),
         [0.62, 0.68, 0.80],
-        7_870.0,
+        310_695.1,
         at(SHADOW_EXTENT),
         at(3.4),
     ));

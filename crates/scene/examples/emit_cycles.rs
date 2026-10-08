@@ -29,8 +29,13 @@ fn point(normal: [f64; 3], position: [f64; 3], uv: [f64; 2]) -> Value {
 
 /// A quad standing in the plane the camera looks along, facing it.
 ///
-/// The quad faces `+Z` because that is the one normal both conventions agree on: the
-/// document's up axis is `+Y`, and Cycles' default camera looks down its own `+Z`.
+/// # Which way the camera faces
+///
+/// The quad faces `+Z`, and the camera stands at negative Z. That is not a guess: a camera at
+/// `translate="0, 0, -6"` with no rotation renders this quad, and the same document with the
+/// camera at `translate="0, 0, 6"` renders only the world background. So the loader's camera
+/// looks along its own `+Z` at identity, which is the same convention
+/// [`cycles_export::scene`](scene::cycles_export) writes a camera's rotation for.
 fn quad(centre: [f64; 3], half_width: f64, half_height: f64) -> Vec<Value> {
     let [cx, cy, cz] = centre;
     [

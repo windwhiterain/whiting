@@ -27,8 +27,8 @@
 //! where on the frame anything lands, which is what lets them be about the mechanism rather
 //! than about a picture.
 
-
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
+use device::{Frame, Renderer};
 use gallery::geometry::heightfield;
 use gallery::kit::{
     camera_placed, gallery_custom_schema, gallery_instance_schema, instance, instances,
@@ -38,7 +38,6 @@ use gallery::kit::{
 use gallery::shaders::{depthing, lighting, post_shader, shadowing};
 use scene::standard::Stage;
 use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
-use device::{Frame, Renderer};
 use whiting_device_rasterize::WgpuRenderer;
 
 /// A note printed when there is nothing to test on.

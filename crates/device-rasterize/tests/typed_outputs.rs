@@ -24,10 +24,9 @@
 //! The last two need an adapter and skip with a printed note without one, following
 //! `multi_attachment_render.rs`.
 
-
 use definition::{Schema, SchemaKind, Value};
-use graphics::Output;
 use device::{RenderError, Renderer};
+use graphics::Output;
 use whiting_device_rasterize::{WgpuRenderer, check_outputs};
 
 /// The size of the frame the end to end test draws.

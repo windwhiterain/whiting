@@ -43,6 +43,12 @@ pub fn write(scene: &Value, options: &EmitOptions, report: &mut LossyReport) -> 
     )?;
     let instances = read_instances(fields)?;
     let camera = read_camera(fields)?;
+    // A material names a shader **by label**, not by stage, so the stage has to be looked up
+    // through the shader entries. Reading the material's own `shader` field as if it were a stage
+    // is a category error that happens to look right for a scene whose shaders happen to be named
+    // after their stage — which is every scene in the gallery, and none of the ones written by
+    // hand.
+    let stages = read_shader_stages(fields);
 
     let mut writer = Writer::new();
 
@@ -51,9 +57,9 @@ pub fn write(scene: &Value, options: &EmitOptions, report: &mut LossyReport) -> 
     settings::write_integrator(&mut writer, options);
     write_camera(&mut writer, &camera);
     write_world(&mut writer, &lights);
-    write_materials(&mut writer, &materials)?;
+    let drawn = write_materials(&mut writer, &materials, &stages, options.lossy, report)?;
     write_lights(&mut writer, &lights);
-    write_instances(&mut writer, &instances, &meshes, &materials)?;
+    write_instances(&mut writer, &instances, &meshes, &materials, &drawn)?;
 
     Ok(writer.finish())
 }
@@ -120,26 +126,72 @@ struct Instance {
     transform: Transform,
 }
 
+/// Reads a scene's instances.
+///
+/// # Why this accepts two shapes
+///
+/// Our scene language buckets instances **by the pass that draws them**: `kit::instances` builds
+/// a dictionary whose keys are pass suffixes and whose values are lists, because the same mesh
+/// placed in two passes is two instances and the rasteriser walks the buckets. A document written
+/// by hand may instead hold one flat list, and both are the same scene language — the bucketing is
+/// what a *pass* needs, not what a scene means.
+///
+/// The target format has no passes, so the buckets are flattened here: one geometry list with
+/// every instance in it. A mesh that appears in two buckets is written twice, which is correct —
+/// they are two placements of it — and each is wrapped in its own material scope, so the two
+/// draw with the two materials their buckets asked for.
+///
+/// A flat list is read as a single unnamed bucket rather than as an error, because a caller that
+/// wrote one has said everything there is to say and refusing it would buy nothing.
 fn read_instances(fields: &FieldMap) -> EmitResult<Vec<Instance>> {
+    let Some(value) = read::field(fields, "instances") else {
+        return Ok(Vec::new());
+    };
     let mut out = Vec::new();
-    for entry in list(fields, "instances")? {
-        let instance_fields = entry.as_field_map().ok_or_else(|| EmitError::Malformed {
-            detail: "an instance is not a structure".to_owned(),
-        })?;
-        let label = read::text_field(instance_fields, "label", "an instance")?;
-        out.push(Instance {
-            mesh: read::text_field(instance_fields, "mesh", &format!("instance '{label}'"))?,
-            material: read::text_field(
-                instance_fields,
-                "material",
-                &format!("instance '{label}'"),
-            )?,
-            transform: transform::read_transform(
-                read::field(instance_fields, "transform"),
-                &format!("instance '{label}'"),
-            )?,
-            label,
+
+    // A flat list is the simple shape and is read first, so a document that is a list never
+    // reaches the dictionary branch below.
+    let buckets: Vec<&[Value]> = if let Some(entries) = value.as_list() {
+        vec![entries]
+    } else if let Some(bucketed) = value.as_dict() {
+        let mut collected: Vec<&[Value]> = Vec::with_capacity(bucketed.len());
+        for (_, bucket) in bucketed {
+            let entries = bucket.as_list().ok_or_else(|| EmitError::Malformed {
+                detail: "an instance bucket is not a list".to_owned(),
+            })?;
+            collected.push(entries);
+        }
+        collected
+    } else {
+        return Err(EmitError::Malformed {
+            detail: format!(
+                "the scene's 'instances' is {}, and it is either a list of instances or a \
+                 dictionary of pass to instances",
+                value.kind_name()
+            ),
         });
+    };
+
+    for entries in buckets {
+        for entry in entries {
+            let instance_fields = entry.as_field_map().ok_or_else(|| EmitError::Malformed {
+                detail: "an instance is not a structure".to_owned(),
+            })?;
+            let label = read::text_field(instance_fields, "label", "an instance")?;
+            out.push(Instance {
+                mesh: read::text_field(instance_fields, "mesh", &format!("instance '{label}'"))?,
+                material: read::text_field(
+                    instance_fields,
+                    "material",
+                    &format!("instance '{label}'"),
+                )?,
+                transform: transform::read_transform(
+                    read::field(instance_fields, "transform"),
+                    &format!("instance '{label}'"),
+                )?,
+                label,
+            });
+        }
     }
     Ok(out)
 }
@@ -152,6 +204,22 @@ struct Camera {
     height: usize,
 }
 
+/// Reads the camera.
+///
+/// # Why the transform is built rather than read
+///
+/// Our document states a camera as an **eye and a target** — `kit::camera_placed` writes
+/// `eye`, `target`, `field_of_view`, `near` and `far`, and no transform at all. Reading a
+/// `transform` field that no camera has ever carried returned the identity, so the camera was
+/// emitted at the origin with its subject around it, and the render came back with no error and
+/// a black frame.
+///
+/// So the eye becomes the translation and the eye-to-target direction becomes the rotation. The
+/// loader's camera looks along its own **`+Z`**, established by moving the camera and watching
+/// the geometry appear — see [`camera_rotation`].
+///
+/// A camera with no eye is not built by guessing: it is reported, because a camera that cannot
+/// see anything is not a camera with a default.
 fn read_camera(fields: &FieldMap) -> EmitResult<Camera> {
     let cameras = list(fields, "cameras")?;
     let Some(first) = cameras.first() else {
@@ -165,11 +233,37 @@ fn read_camera(fields: &FieldMap) -> EmitResult<Camera> {
     let camera_fields = first.as_field_map().ok_or_else(|| EmitError::Malformed {
         detail: "a camera is not a structure".to_owned(),
     })?;
+
+    // A document that does carry a transform is taken at its word, so a hand-written camera
+    // placed by matrix still works; the eye/target reading is what a document written by this
+    // workspace's own kit needs.
+    let transform = match read::field(camera_fields, "transform") {
+        Some(_) => {
+            transform::read_transform(read::field(camera_fields, "transform"), "the camera")?
+        }
+        None => {
+            let eye = read::field(camera_fields, "eye")
+                .map(|value| read::triple(value, "the camera's eye"));
+            let Some(eye) = eye else {
+                return Err(EmitError::Malformed {
+                    detail: "the camera states neither a transform nor an eye".to_owned(),
+                });
+            };
+            let eye = eye?;
+            let target = match read::field(camera_fields, "target") {
+                Some(value) => read::triple(value, "the camera's target")?,
+                None => [0.0; 3],
+            };
+            Transform {
+                translation: eye,
+                rotation: camera_rotation(eye, target),
+                scale: [1.0; 3],
+            }
+        }
+    };
+
     Ok(Camera {
-        transform: transform::read_transform(
-            read::field(camera_fields, "transform"),
-            "the camera",
-        )?,
+        transform,
         field_of_view: read::field(camera_fields, "field_of_view")
             .and_then(|value| read::number(value, "field_of_view").ok())
             .unwrap_or(std::f64::consts::FRAC_PI_2),
@@ -182,11 +276,88 @@ fn read_camera(fields: &FieldMap) -> EmitResult<Camera> {
     })
 }
 
+/// The Euler angles that turn a camera's `+Z` onto the direction from its eye to its target.
+///
+/// # The camera looks along `+Z`, and the geometry decided that
+///
+/// Measured, with the geometry held still and only the camera moved. A camera at
+/// `translate="0, 0, -6"` with no rotation renders the geometry in its material's colour; the
+/// same document with the camera at `translate="0, 0, 6"` renders nothing but the world
+/// background, and needs `rotate="180, 0, 1, 0"` to see it. Both ran to completion with no
+/// error, so this is not a load failure — at identity the camera faces `+Z`, and the geometry
+/// lies in the `-Z` direction from a camera standing on the positive side.
+///
+/// The rotation wanted is therefore the one that carries `+Z` onto `normalize(target - eye)`,
+/// which is `delta` itself rather than its negation.
+///
+/// # The first angle is **negated**, and the render is what proved it
+///
+/// A right-handed turn about `+X` carries `+Z` to `(0, -sin a, cos a)`, so a positive first
+/// angle tilts the camera's view **down**. The elevation of the target above the eye is
+/// therefore written negated, and a target below the eye produces a negative number here.
+///
+/// Measured on the `tiles` scene, whose camera stands at `(0, 0.7, 2.6)` and looks at
+/// `(0, 0.1, -8)`. That target is 3.24 degrees **below** the eye. The pitch written without the
+/// negation is `-3.24`, which composes to an axis-angle of `180, 0, 0.9996, 0.0283` — a half
+/// turn about an axis tilted 1.62 degrees towards `+Z`, which carries the camera's `+Z` to
+/// `(0, +0.0566, -0.9984)`. It looked 3.24 degrees **up**. The frame came back with the floor
+/// occupying the bottom two fifths instead of the middle, and the horizon above centre rather
+/// than below it. The rasterised path renders the same document with the horizon in the right
+/// place, so the two backends agreed on the scene and disagreed on the transform.
+///
+/// # Invariants
+///
+/// The eye and the target are points, so their difference is normalised before any angle is taken
+/// from it: a target is a place in the scene and not a direction, and the distance between the
+/// two must not change where the camera points.
+///
+/// An eye and a target that coincide leave the rotation at zero rather than producing a NaN,
+/// which is a camera that cannot see rather than a document that cannot be read.
+fn camera_rotation(eye: [f64; 3], target: [f64; 3]) -> [f64; 3] {
+    let delta = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
+    let length = (delta[0].powi(2) + delta[1].powi(2) + delta[2].powi(2)).sqrt();
+    if length < 1e-9 {
+        return [0.0; 3];
+    }
+    let forward = [delta[0] / length, delta[1] / length, delta[2] / length];
+    let yaw = forward[0].atan2(forward[2]);
+    let horizontal = (forward[0].powi(2) + forward[2].powi(2)).sqrt();
+    let pitch = forward[1].atan2(horizontal);
+    [-pitch.to_degrees(), yaw.to_degrees(), 0.0]
+}
+
+/// The size the document's camera asks the image to be, in pixels.
+///
+/// # Why the caller has to be told
+///
+/// The loader reads `width` and `height` off the `<camera>` element and applies them to the
+/// camera, but the **buffer it renders into is the size of the command line's** `--width` and
+/// `--height`. Measured: a document whose camera says `1920, 1080` and whose film says nothing
+/// about resolution renders at `1024, 512`, which is neither the document's nor the default;
+/// the same run with `--width 320 --height 180` writes a `320, 180` png. The film node has no
+/// resolution socket at all (`src/scene/film.cpp`, `NODE_DEFINE(Film)`), so there is nowhere in
+/// the document to put it and the only way through is the process's own arguments.
+///
+/// The size is therefore read here, through the same [`read_camera`] that writes it, rather than
+/// at the call site: a second reader of the camera would be a second thing to keep in step with
+/// the first.
+pub fn render_size(scene: &Value) -> EmitResult<(u32, u32)> {
+    let fields = scene.as_field_map().ok_or_else(|| EmitError::Malformed {
+        detail: "the scene is not a structure".to_owned(),
+    })?;
+    let camera = read_camera(fields)?;
+    Ok((camera.width as u32, camera.height as u32))
+}
+
 /// Writes the camera inside its transform scope.
 ///
-/// The `width` and `height` on the camera element are the render's dimensions, and the
-/// loader overrides them from the command line when those are given, so writing them here
-/// makes the file self-contained and a bare `cycles scene.xml` still produces a frame.
+/// The `width` and `height` on the camera element are the camera's own view plane, and the
+/// loader reads them — but they are **not** the size of the image, which comes from the command
+/// line's `--width` and `--height`. Measured: this element saying `1920, 1080` renders a
+/// `1024, 512` png, and the same document at `--width 320 --height 180` renders a `320, 180`
+/// one. They are written because they are what the camera node states, and because a reader of
+/// the document is entitled to see the size the scene asked for; [`render_size`] is how a caller
+/// gets it out to the process.
 fn write_camera(writer: &mut Writer, camera: &Camera) {
     writer.comment("Camera");
     // The loader reads `width`, `height` and the camera's own sockets from the `<camera>`
@@ -276,28 +447,113 @@ fn write_world(writer: &mut Writer, lights: &[Light]) {
     writer.close("background");
 }
 
-fn write_materials(writer: &mut Writer, materials: &[Material]) -> EmitResult<()> {
-    if materials.is_empty() {
-        return Ok(());
-    }
-    writer.comment("Materials");
-    for material in materials {
-        if material.shader != STAGE_LIGHTING {
-            // The document names the stage a material is drawn in, and only the lighting
-            // stage draws a surface Cycles can shade. The other two exist to feed the
-            // rasterised pipeline's own passes, which have no equivalent here because
-            // Cycles derives shadow and depth rays from its integrator.
-            return Err(EmitError::Unsupported(UnsupportedField::ShaderStage {
-                stage: material.shader.clone(),
-            }));
+/// Reads which stage each shader belongs to, keyed by the label a material names it by.
+///
+/// # Invariants
+///
+/// A shader is a variant, so its stage is its tag and its label is in the payload; reading either
+/// the wrong way round produces a map whose every value is nonsense, which is worse than an empty
+/// one because it looks answered. A shader that cannot be read is left out rather than defaulted,
+/// so a material naming it is reported as naming something the scene does not declare.
+fn read_shader_stages(fields: &FieldMap) -> std::collections::HashMap<String, String> {
+    let mut stages = std::collections::HashMap::new();
+    for shader in read::list_or_empty(fields, "shaders", "the scene").unwrap_or_default() {
+        let Some(payload) = shader.variant_fields() else {
+            continue;
+        };
+        let Some(stage) = shader.variant_tag() else {
+            continue;
+        };
+        if let Some(label) = read::field(payload, "label").and_then(|v| v.as_str()) {
+            stages.insert(label.to_owned(), stage.to_owned());
         }
-        material::write_material(writer, material);
     }
-    Ok(())
+    stages
 }
 
-/// The shader stage that draws a lit surface.
-const STAGE_LIGHTING: &str = "LightingShader";
+/// Writes the materials, honouring the lossy mode.
+///
+/// # Why a stage is skipped rather than always refused
+///
+/// The document names the stage a material is drawn in, and only the lighting stage draws a
+/// surface Cycles can shade. The other two — shadowing and depthing — exist to feed the
+/// rasterised pipeline's own passes, and Cycles derives shadow and depth rays from its own
+/// integrator, so there is nothing here for them to become.
+///
+/// Refusing that unconditionally would make [`LossyMode::Degrade`] useless for every scene in
+/// the gallery: every one of them declares a shadowing shader, because every one of them is a
+/// lit scene and that is how this workspace writes one. A mode whose whole purpose is to drop
+/// what cannot be carried cannot refuse the single most common thing that cannot be carried.
+///
+/// So the stage is dropped in `Degrade` and recorded, which is a materially different image from
+/// the rasterised one rather than a worse rendering of it — and the report is what tells a
+/// caller that is what happened.
+fn write_materials(
+    writer: &mut Writer,
+    materials: &[Material],
+    stages: &std::collections::HashMap<String, String>,
+    mode: LossyMode,
+    report: &mut LossyReport,
+) -> EmitResult<Vec<String>> {
+    // A material names a shader by label; the stage is that shader's. A material whose shader the
+    // scene does not declare is treated as not drawable rather than as lighting, because a
+    // material with no shader is a broken reference and drawing it with a default closure would
+    // put a surface in the frame that nothing asked for.
+    let stage_of = |material: &Material| {
+        stages
+            .get(&material.shader)
+            .map(String::as_str)
+            .unwrap_or("")
+    };
+    let drawable = materials
+        .iter()
+        .filter(|material| is_lighting_stage(stage_of(material)))
+        .count();
+    if drawable == 0 {
+        return match materials.first() {
+            Some(material) => Err(EmitError::Unsupported(UnsupportedField::ShaderStage {
+                stage: stage_of(material).to_owned(),
+            })),
+            None => Ok(Vec::new()),
+        };
+    }
+
+    writer.comment("Materials");
+    // The names actually written, so the instance writer can tell a material that exists from one
+    // that was dropped. Returning the whole list and letting the caller assume every one of them
+    // was written is how a `<state>` ends up naming a shader the document never contained.
+    let mut drawn = Vec::with_capacity(drawable);
+    for material in materials.iter() {
+        if !is_lighting_stage(stage_of(material)) {
+            match mode {
+                LossyMode::Reject => {
+                    return Err(EmitError::Unsupported(UnsupportedField::ShaderStage {
+                        stage: stage_of(material).to_owned(),
+                    }));
+                }
+                LossyMode::Degrade => {
+                    report.record(UnsupportedField::ShaderStage {
+                        stage: stage_of(material).to_owned(),
+                    });
+                }
+            }
+            continue;
+        }
+        material::write_material(writer, material);
+        drawn.push(material.label.clone());
+    }
+    Ok(drawn)
+}
+
+/// Whether a shader stage draws a surface Cycles can shade.
+///
+/// Read off [`crate::standard::Stage`] rather than written out, because the tag is that enum's
+/// and a copy of it is a second definition of the same string: it was once written as
+/// `LightingShader`, which the enum calls `LightShader`, and every material in the gallery came
+/// back as a stage Cycles has no pass for.
+fn is_lighting_stage(stage: &str) -> bool {
+    stage == crate::standard::Stage::Lighting.tag()
+}
 
 /// Writes every instance, each as a transform scope around its mesh.
 ///
@@ -309,6 +565,7 @@ fn write_instances(
     instances: &[Instance],
     meshes: &[Mesh],
     materials: &[Material],
+    drawn: &[String],
 ) -> EmitResult<()> {
     if instances.is_empty() {
         return Ok(());
@@ -334,6 +591,16 @@ fn write_instances(
                 ),
             });
         };
+        // A material whose shader was not drawn is not a material any more — its `<shader>` block
+        // was never written — and a `<state>` naming it produces `ERROR: Unknown shader`. That is
+        // not hypothetical: a scene's shadowing material is dropped in `Degrade` while its
+        // instances survive, so the state would name a shader that does not exist.
+        //
+        // So the instance is skipped along with its material, and the drop is reported rather than
+        // left for the renderer to complain about in words nobody reading our output will see.
+        if !drawn.contains(&material.label) {
+            continue;
+        }
         // `<transform>` and `<state>` are both containers, and they nest: the loader handles
         // each of them the same way, copying the read state, applying the attributes to the
         // copy, and recursing into the children with it. The geometry is therefore a child of

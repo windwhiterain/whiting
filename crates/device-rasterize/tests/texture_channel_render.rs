@@ -20,10 +20,9 @@
 //! silent pass would make this file worthless on a machine with no gpu, which is where it is
 //! most likely to be run.
 
-
 use definition::{Schema, SchemaKind, Value};
-use graphics::binders::SAMPLED;
 use device::Renderer;
+use graphics::binders::SAMPLED;
 use whiting_device_rasterize::WgpuRenderer;
 
 /// The colour one texel of the sampled texture carries.
