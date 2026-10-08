@@ -14,8 +14,11 @@ description = "Freeform patches over a mesh: one tensor-product patch per face, 
 # regular f64 grid and that is exactly the input this crate cannot claim to handle without checking:
 # terrain arrives as f32, and with slivers, a boundary and whatever valence the authoring produced.
 #
-# A dev-dependency and not a dependency on purpose. `whiting-patch` owns no mesh type — a caller
-# passes whatever mesh it has — so the only thing in this crate that may know what a `FacetMesh` is
-# is a probe.
+# Both are dev-dependencies and not dependencies on purpose. `whiting-patch` owns no mesh type — a
+# caller passes whatever mesh it has — so the only thing in this crate that may know what a
+# `FacetMesh` is is a probe. `whiting-gallery` depends on this crate, so this cycle exists for tests
+# only, which cargo allows and the published dependency graph never sees: the conversion itself
+# belongs to the gallery, because it is the only crate that sees both sides of it.
 [dev-dependencies]
 whiting-mountain = { path = "../mountain" }
+whiting-gallery = { path = "../gallery" }

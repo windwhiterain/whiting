@@ -24,6 +24,8 @@
 //!   read.
 //! - [`attributes`] — derives those attribute lists from the schemas a scene declares, so a scene
 //!   that changes its point schema gets matching shader input without writing it out.
+//! - [`patchmesh`] — a massif's facets as an editable patch surface. The one place this crate
+//!   joins `mountain` to `patch`, which is the only reason it is here rather than in either.
 //! - [`Gallery`] — the named scenes, built out of all of the above.
 //!
 //! # Why it is its own crate
@@ -59,6 +61,7 @@ pub mod identity;
 pub mod kit;
 pub mod land;
 pub mod locate;
+pub mod patchmesh;
 pub mod ridges;
 pub mod shaders;
 

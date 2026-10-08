@@ -1804,6 +1804,7 @@ dependencies = [
  "whiting-definition",
  "whiting-graphics",
  "whiting-mountain",
+ "whiting-patch",
  "whiting-scene",
 ]
 
@@ -1824,6 +1825,7 @@ version = "0.1.0"
 name = "whiting-patch"
 version = "0.1.0"
 dependencies = [
+ "whiting-gallery",
  "whiting-mountain",
 ]
 

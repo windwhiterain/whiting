@@ -28,8 +28,8 @@
 
 mod support;
 
+use whiting_gallery::patchmesh;
 use whiting_mountain::{FacetMesh, Starter, starter};
-use whiting_patch::subdivide::{QuadMesh, subdivide};
 use whiting_patch::{PatchMesh, Point3, VertexId};
 
 use support::{Incidence, quad_edges, split_over_shared_edges, triangle_edges};
@@ -101,10 +101,14 @@ fn main() {
              worst edge incidence       {}\n\
              degenerate triangles       {degenerate}\n\
              shortest edge              {shortest:.3e}\n\
-             largest coordinate         {largest:.3e}",
+             largest coordinate         {largest:.3e}\n\
+             \n\
+             Non-manifold edges are refused by the conversion rather than handled, because\n\
+             enforcement shares a boundary only when exactly two faces meet on it. This sample has\n\
+             none, and the count above is made independently of the conversion's own.",
             positions.len(),
             triangles.len(),
-            before.boundary + before.interior + before.non_manifold,
+            before.total(),
             before.boundary,
             before.interior,
             before.non_manifold,
@@ -123,9 +127,21 @@ fn main() {
             .push("1  the sample has no boundary, so the boundary case is untested".to_string());
     }
 
-    // 2 -- subdivision.
-    let derived: QuadMesh = subdivide(&positions, &triangles);
-    let after = Incidence::of(&quad_edges(&derived.quads));
+    // 2 -- the conversion itself. This is the production path, `gallery::patchmesh::from_facet`, not a
+    // second copy of it: the probe measures what a caller would actually get.
+    //
+    // Reaching here at all is also a check on the conversion's own fold count, which is written
+    // separately from the count printed above. Two independent implementations of "is this mesh
+    // folded" agreeing on a real mesh is worth having; an off-by-one in the one that guards would
+    // show up as a refusal of a mesh with nothing wrong with it.
+    let mut mesh = match patchmesh::from_facet(&facet) {
+        Ok(model) => model,
+        Err(problem) => {
+            eprintln!("the sample massif is not convertible: {problem}");
+            std::process::exit(1);
+        }
+    };
+    let after = Incidence::of(&quad_edges(mesh.quads()));
 
     if after.non_manifold != 0 {
         failures.push(format!(
@@ -143,9 +159,9 @@ fn main() {
              \x20  interior               {}\n\
              \x20  non-manifold           {}\n\
              worst edge incidence       {}",
-            derived.positions.len(),
+            mesh.positions().len(),
             positions.len(),
-            derived.quads.len(),
+            mesh.quads().len(),
             triangles.len(),
             after.boundary + after.interior + after.non_manifold,
             after.boundary,
@@ -156,7 +172,6 @@ fn main() {
     );
 
     // 3 -- the model, and the precision it has.
-    let mut mesh = PatchMesh::build(derived.positions.clone(), derived.quads.clone());
     let corner_error = worst_corner_error(&mesh);
 
     if corner_error != EXACT_REPRODUCTION {
@@ -178,8 +193,8 @@ fn main() {
              \x20  sits on an f32 grid, and adjacent ones are\n\
              \x20  {spacing:.3e} apart at this mesh's largest coordinate ({largest:.3e})\n\
              \x20  No f64 arithmetic downstream moves that floor. An edit smaller than it is not an\n\
-             \x20  edit anyone can see, and it is a thousand times coarser than the 1e-16 the rest\n\
-             \x20  of this crate measures in."
+             \x20  edit anyone can see, and it is eleven orders of magnitude coarser than the\n\
+             \x20  1e-16 the rest of this crate measures in."
         ),
     );
 
