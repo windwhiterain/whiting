@@ -42,7 +42,7 @@ use std::collections::BTreeMap;
 use definition::{PackedBuilder, PackedList, Value};
 use mountain::expand::belt_references;
 use mountain::tessellation::BeltRef;
-use mountain::{FacetMesh, Massif};
+use mountain::{Face, FacetMesh, Massif, Side};
 
 use crate::shaders::{Authored, Extras};
 
@@ -367,15 +367,18 @@ fn coordinate(name: &str) -> Authored {
 ///   and the coordinates are properties of a *face* rather than of a vertex, and this mesh is not
 ///   indexed, so a value written at one corner is a value a rasteriser interpolates across the
 ///   face and the other two corners would pull it somewhere else. The normal is the exception that
-///   proves the rule: it is a property of a *block*, it is averaged over the block's own faces
-///   ([`mountain::CornerNormals`]), and writing it three times the same is exactly the hard edge
-///   the block face exists to remove.
+///   proves the rule: it is a property of a *smoothing group*, it is averaged over that group's
+///   own faces ([`mountain::CornerNormals::of_grouped`]), and writing it three times the same is
+///   exactly the hard edge the group exists to remove.
+/// - **The smoothing group is passed in and this function has no opinion of its own.** Which edges
+///   of a massif are creases is a statement about the scene rather than about a mesh, and the two
+///   scenes that draw one disagree: see [`across_the_flank`] and [`across_the_belt`].
 /// - **`(u, v)` is the face's own `uv`, copied.** The expander defines the belt's parameter
 ///   space once, in [`mountain::Face::uv`]; deriving it again here would be a second definition
 ///   that is wrong by a rotation of the triangle and wrong silently.
 /// - **The id is the belt's**, not the face's, so two faces of one belt agree and a caller
 ///   reading either of them names the same authored surface.
-pub fn faceted(mesh: &FacetMesh, identity: &Identity) -> PackedList {
+pub fn faceted(mesh: &FacetMesh, identity: &Identity, smoothing: fn(&Face) -> u32) -> PackedList {
     let schema = massif_extras().point_schema();
     // The layout is **the schema's own**, through the same function the renderer reads it with.
     // Writing the field order out here would be a second copy of the rule that a field's
@@ -386,7 +389,7 @@ pub fn faceted(mesh: &FacetMesh, identity: &Identity) -> PackedList {
         .expect("the massif's own point schema is a struct of components");
     let mut points = PackedBuilder::new(layout);
     points.reserve(mesh.faces.len() * 3);
-    let normals = mountain::CornerNormals::of(mesh);
+    let normals = mountain::CornerNormals::of_grouped(mesh, smoothing);
     for (index, face) in mesh.faces.iter().enumerate() {
         let [a, b, c] = mesh.triangle(face);
         let texture = [
@@ -416,4 +419,46 @@ pub fn faceted(mesh: &FacetMesh, identity: &Identity) -> PackedList {
     points
         .finish()
         .expect("every generator writes whole elements of its own layout")
+}
+
+/// Returns the smoothing group that makes **one flank of one valley a single surface**.
+///
+/// # Invariants
+///
+/// - **It groups the strips of a flank and not the flank.** A flank is written as a run of belts,
+///   one per segment along its crest, and two consecutive strips meet along a rib. The rib is an
+///   edge of the correspondence and not a feature of the rock: the height field is continuous
+///   across it and the two strips either side are the same slope of the same mountain. Averaging
+///   per belt instead puts a crease on every one of them, and a massif of eleven strips to a flank
+///   comes out as a fan of straw laid down the hill rather than as a face of rock.
+///
+/// - **It stops at the crest and at the floor.** A ridge is named by the two flanks that face it,
+///   one from each side, so a crest vertex falls in two groups and keeps its crease — which is
+///   what the crest is. The valley floor is shared the same way, and a floor that is a line is
+///   what makes this a massif and not a lump.
+///
+/// - **Two groups never share an id**, which is the whole contract of a smoothing key: it is a
+///   valley's number and then which of its two sides, packed into the one number the averaging can
+///   compare.
+pub fn across_the_flank(face: &Face) -> u32 {
+    let belt = face.attributes.belt;
+    2 * u32::try_from(belt.valley.0)
+        .expect("a valley id counts valleys and a count of valleys is not a u64's worth")
+        + match belt.side {
+            Side::Left => 0,
+            Side::Right => 1,
+        }
+}
+
+/// Returns the smoothing group that makes **each belt its own surface**, every rib a crease.
+///
+/// # Invariants
+///
+/// **It is the belt's own block, read as it stands.** That is what [`mountain::CornerNormals::of`]
+/// would do without being told, and naming it here is the point: the choice is a scene's, and a
+/// scene whose rock is meant to read as cut into facets wants this one. It is the conservative
+/// reading, because a facet boundary is a real edge in every surface that has one, and this
+/// function is what a caller passes when it does not know better.
+pub fn across_the_belt(face: &Face) -> u32 {
+    face.block
 }

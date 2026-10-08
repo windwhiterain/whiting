@@ -550,3 +550,68 @@ Not about the crate, and recorded because they are the kind of thing that costs 
   in rectangles. The wavelength has to stay several cells at every octave.
 
 
+
+### A flank is one surface, and the ribs between its belts are not edges of the rock
+
+`CornerNormals::of` averaged each corner over the **block** its face belongs to, and a block is one
+belt. A flank is written as a run of belts — one per segment along its crest — so grouping by the
+block creases the normal at every rib *as well as* at every crest, and a massif of eleven strips
+to a flank came out as a fan of straw laid down the hill. `facet.rs` justified the block as "the
+ribs and the crest lines are the hard edges of the rock", and that is true of the crest lines and
+not of the ribs: a rib is an edge of the correspondence and the height field is continuous across
+it.
+
+Which edges of a massif are creases is a statement about the **surface**, and not about the mesh, so
+the group is now the caller's: `CornerNormals::of_grouped(mesh, key)` takes it, `of` keeps the block
+as the conservative default, and the gallery passes `across_the_flank` — a valley and a side — or
+`across_the_belt` for a scene whose rock is meant to read as cut. Measured over the landscape's own
+mesh, both groupings read at the same shared vertex of every interior edge:
+
+```
+creases across a flank: 1508 of 2977 interior edges, worst 158.1 degrees, total 59763 degrees
+creases across a belt:  1684 of 2977 interior edges, worst 158.1 degrees, total 62057 degrees
+```
+
+Which is the whole of the correction **and not more**: a flank removes the ribs and leaves the
+crest lines, the valley floors and whatever the mesh itself folds, and on this massif those are
+most of it.
+
+### A per-face number written at three corners is a per-triangle number, and it shows
+
+The massif's comb striping was not the normals at all. It was `in.texture.y` — the face's own
+`dip_angle` — read by the surface body to decide how bare the rock is and how much snow it holds.
+`dip_angle` is a property of a **face**, and the point list writes it at all three of a face's
+corners, so it is constant across each triangle and steps at every triangle edge. Two thousand
+triangles each carrying their own constant is a fan of straw at exactly the scale of the
+tessellation, and it looks identical to a crease.
+
+Three ways of being wrong here look the same in a render, and they need three different fixes:
+
+- `ruggedness` (also per face) — ruled out by rendering with the term removed.
+- a fifty-unit world-space noise on the albedo — ruled out the same way.
+- the smoothing group — **ruled out by rendering the normal as a colour**: the flank field is a
+  smooth gradient with a handful of hard seams at the crest lines, which is what it should be, and
+  every stripe in the lit frame is absent from it.
+
+So: **a quantity the rasteriser should interpolate has to arrive as a vertex quantity.** The body
+now reads steepness off `normal.y`, which is the same angle by another route and is the one of the
+two the pipeline interpolates. `dip_angle` stays on the point as a fact about the face for anything
+that wants the face's own answer.
+
+### The valley floor's drift is a fraction of the wedge, not of the radius
+
+`VALLEY_SWING` was a fraction of the valley node's own **radius**, which is a different share of
+the wedge in every wedge: seven percent of a radius is a third of the half width of a twelve-degree
+wedge and a seventh of the half width of a thirty-degree one. On the paired long walls — the two
+wedges this scene exists to look down — that share, added to each crest's own `bend`, carried the
+floor across the crest it was supposed to run between. `validate` reported it exactly, and the
+report is the argument for reading a scene constant against the thing it is a fraction of:
+
+```
+NotCovered { line: Ridge(RidgeId(2)), side: Left, from: 0.18181819, to: 0.36363637 }
+RibCrossesLine { belt: BeltRef { valley: ValleyId(1), side: Right, segment: 0 }, line: Ridge(RidgeId(3)) }
+```
+
+A number written as "a fraction of the radius" reads as small and is small only where the crests
+happen to be far apart. Normalised against the wedge's own half width it is the same quantity in
+every wedge, and the same scene then validates at zero violations.
