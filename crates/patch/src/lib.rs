@@ -10,6 +10,7 @@
 
 pub mod bernstein;
 pub mod continuity;
+pub mod level;
 pub mod patch_mesh;
 pub mod point;
 pub mod rect;
@@ -18,6 +19,7 @@ pub mod subdivide;
 pub mod topology;
 
 pub use continuity::{Continuity, SoftEdge, slave_interior};
+pub use level::{Face, Level};
 pub use patch_mesh::{Edit, PatchMesh};
 pub use point::Point3;
 pub use rect::{RectNet, RectNetError};

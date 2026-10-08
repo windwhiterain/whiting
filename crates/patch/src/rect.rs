@@ -166,16 +166,7 @@ impl RectNet {
     /// No clamping and no renormalising: a parameter outside `[0, 1]` is evaluated as given, so a
     /// caller bug shows up as a wrong answer instead of as a plausible one.
     pub fn evaluate(&self, u: f64, v: f64) -> Point3 {
-        let weights_u = basis(self.degree_u, u);
-        let weights_v = basis(self.degree_v, v);
-        let stride = self.degree_v + 1;
-        let mut sum = Point3::ZERO;
-        for (i, weight_u) in weights_u.iter().enumerate() {
-            for (j, weight_v) in weights_v.iter().enumerate() {
-                sum += self.points[i * stride + j] * (weight_u * weight_v);
-            }
-        }
-        sum
+        evaluate_slice(self.degree_u, self.degree_v, &self.points, u, v)
     }
 
     /// Raises the `u` degree by one without moving the surface.
@@ -251,6 +242,30 @@ impl RectNet {
     fn at_or_zero(&self, i: usize, j: usize) -> Point3 {
         self.point(i, j).unwrap_or(Point3::ZERO)
     }
+}
+
+/// Evaluates the Bernstein surface whose control points are `points`, laid out with `i` slowest.
+///
+/// Free rather than a method because a mesh keeps its control points in one flat buffer and lends
+/// out one face's slice of it — see [`crate::level::Level`]. A method on [`RectNet`] alone would
+/// force every such caller to materialise a net first, which is one allocation per face read.
+pub fn evaluate_slice(
+    degree_u: usize,
+    degree_v: usize,
+    points: &[Point3],
+    u: f64,
+    v: f64,
+) -> Point3 {
+    let weights_u = basis(degree_u, u);
+    let weights_v = basis(degree_v, v);
+    let stride = degree_v + 1;
+    let mut sum = Point3::ZERO;
+    for (i, weight_u) in weights_u.iter().enumerate() {
+        for (j, weight_v) in weights_v.iter().enumerate() {
+            sum += points[i * stride + j] * (weight_u * weight_v);
+        }
+    }
+    sum
 }
 
 /// Indexing panics on an index outside the net, which is the standard `Index` contract. Use
