@@ -296,7 +296,7 @@ fn boundary_split(mesh: &PatchMesh, edge: &EdgeKey, face: u32, slot: EdgeSlot, t
     let other_t = mirrored_position(degree, here, there, t);
     let (oi, oj) = boundary_index(degree, slot, t);
     let (fi, fj) = boundary_index(degree, other.1, other_t);
-    mesh.net(face)[(oi, oj)].distance(mesh.net(other.0)[(fi, fj)])
+    mesh.base_net(face)[(oi, oj)].distance(mesh.base_net(other.0)[(fi, fj)])
 }
 
 fn report(name: &str, detail: &str) {
@@ -884,7 +884,7 @@ fn main() {
     // 1. An all-hard model reproduces its mesh.
     let mut corner_error = 0.0f64;
     for (face, quad) in hard_model.quads().iter().enumerate() {
-        let net = hard_model.net(face as u32);
+        let net = hard_model.base_net(face as u32);
         for (index, corner) in quad.iter().enumerate() {
             let (u, v) = match index {
                 0 => (0.0, 0.0),
@@ -902,7 +902,7 @@ fn main() {
     for (face, quad) in hard_model.quads().iter().enumerate() {
         let [q0, q1, q2, q3] = quad.map(|index| derived.positions[index as usize]);
         let base = RectNet::from_corners(q0, q1, q3, q2);
-        let net = hard_model.net(face as u32);
+        let net = hard_model.base_net(face as u32);
         for step_u in 1..8 {
             for step_v in 1..8 {
                 let (u, v) = (step_u as f64 / 8.0, step_v as f64 / 8.0);
@@ -978,9 +978,14 @@ fn main() {
                 let there = edge_endpoints(mesh.quads()[faces[1].0 as usize], faces[1].1);
                 let other_t = mirrored_position(DEGREE, here, there, t);
                 let (master_along, _) =
-                    edge_frame(&mesh.net(faces[0].0), DEGREE, faces[0].1, t, STEP);
-                let (slave_along, _) =
-                    edge_frame(&mesh.net(faces[1].0), DEGREE, faces[1].1, other_t, STEP);
+                    edge_frame(&mesh.base_net(faces[0].0), DEGREE, faces[0].1, t, STEP);
+                let (slave_along, _) = edge_frame(
+                    &mesh.base_net(faces[1].0),
+                    DEGREE,
+                    faces[1].1,
+                    other_t,
+                    STEP,
+                );
                 along_worst = along_worst.max(folded_angle(master_along, slave_along));
             }
         } else {
@@ -1068,10 +1073,10 @@ fn main() {
         let (i, j) = interior_index(DEGREE, master_slot, t);
         let mut trial = build_with(&derived, &soft_edges);
         let (u, v) = inside_parameters(DEGREE, faces[1].1, t, INSIDE);
-        let before = trial.net(faces[1].0).evaluate(u, v);
-        let origin = trial.net(master)[(i, j)];
+        let before = trial.base_net(faces[1].0).evaluate(u, v);
+        let origin = trial.base_net(master)[(i, j)];
         trial.set_control_point(master, i, j, origin + Point3::new(0.0, 0.0, 0.5));
-        let moved = before.distance(trial.net(faces[1].0).evaluate(u, v));
+        let moved = before.distance(trial.base_net(faces[1].0).evaluate(u, v));
         if soft_edges.contains(edge) {
             followed_soft = followed_soft.max(moved);
         } else {
@@ -1120,9 +1125,9 @@ fn main() {
             let (bi, bj) = boundary_index(degree, entry.master.1, t);
             let (ai, aj) = interior_index(degree, entry.master.1, t);
             let (si, sj) = interior_index(degree, entry.slave.1, slave_t);
-            let boundary = tall.net(entry.master.0)[(bi, bj)];
-            let master_row = tall.net(entry.master.0)[(ai, aj)];
-            let slave_row = tall.net(entry.slave.0)[(si, sj)];
+            let boundary = tall.base_net(entry.master.0)[(bi, bj)];
+            let master_row = tall.base_net(entry.master.0)[(ai, aj)];
+            let slave_row = tall.base_net(entry.slave.0)[(si, sj)];
             worst_residual =
                 worst_residual.max(slave_row.distance(boundary + (boundary - master_row) * mu));
         }
@@ -1181,14 +1186,14 @@ fn main() {
         1..DEGREE,
     );
     let mut edited = build_with(&derived, &soft_edges);
-    let start = edited.net(face)[grab_index];
+    let start = edited.base_net(face)[grab_index];
     let outcome = edited.set_control_point(
         face,
         grab_index.0,
         grab_index.1,
         start + Point3::new(0.0, 0.0, 0.6),
     );
-    let drag_distance = start.distance(edited.net(face)[grab_index]);
+    let drag_distance = start.distance(edited.base_net(face)[grab_index]);
     let split_after = boundary_split(&edited, &soft_edge, face, slot, grab);
     let gap_after = edge_gap_over(
         edited.level(),
@@ -1235,9 +1240,9 @@ fn main() {
             let (bi, bj) = boundary_index(DEGREE, soft_faces[0].1, t);
             let (ai, aj) = interior_index(DEGREE, soft_faces[0].1, t);
             let (si, sj) = interior_index(DEGREE, soft_faces[1].1, slave_t);
-            let boundary = tuned.net(soft_faces[0].0)[(bi, bj)];
-            let master_row = tuned.net(soft_faces[0].0)[(ai, aj)];
-            let slave_row = tuned.net(soft_faces[1].0)[(si, sj)];
+            let boundary = tuned.base_net(soft_faces[0].0)[(bi, bj)];
+            let master_row = tuned.base_net(soft_faces[0].0)[(ai, aj)];
+            let slave_row = tuned.base_net(soft_faces[1].0)[(si, sj)];
             let wanted = boundary + (boundary - master_row) * mu;
             residual = residual.max(slave_row.distance(wanted));
             let offset = master_row - boundary;
@@ -1307,12 +1312,12 @@ fn main() {
     if let Some(face) = busiest {
         if contested != (0, 0) {
             let before: Vec<Point3> = crowded
-                .nets()
+                .base_nets()
                 .iter()
                 .flat_map(|net| net.points())
                 .copied()
                 .collect();
-            let origin = crowded.net(face)[contested];
+            let origin = crowded.base_net(face)[contested];
             let outcome = crowded.set_control_point(
                 face,
                 contested.0,
@@ -1320,7 +1325,7 @@ fn main() {
                 origin + Point3::new(0.0, 0.0, 0.9),
             );
             let after: Vec<Point3> = crowded
-                .nets()
+                .base_nets()
                 .iter()
                 .flat_map(|net| net.points())
                 .copied()
