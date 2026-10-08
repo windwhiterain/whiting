@@ -19,10 +19,9 @@
 //!
 //! [`WgpuRenderer`]: ../../src/wgpu_renderer/mod.rs
 
-#![cfg(feature = "wgpu")]
 
 use wgpu::naga;
-use whiting_device::check_resources;
+use whiting_device_rasterize::check_resources;
 
 /// The binding the texture is checked at. The uniform is binding zero, so the first bound
 /// resource is one.

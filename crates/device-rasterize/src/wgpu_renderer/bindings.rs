@@ -44,7 +44,7 @@ use graphics::{
 };
 
 use super::WgpuRenderer;
-use crate::render::RenderError;
+use device::render::RenderError;
 
 /// The usage that makes a buffer a vertex buffer.
 pub const VERTEX: &str = "vertex";

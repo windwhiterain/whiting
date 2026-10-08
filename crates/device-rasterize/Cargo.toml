@@ -1,0 +1,72 @@
+[package]
+name = "whiting-device-rasterize"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Rasterising render backends for the whiting device."
+
+[dependencies]
+definition = { workspace = true }
+graphics = { workspace = true }
+scene = { workspace = true }
+device = { workspace = true }
+
+wgpu = { workspace = true }
+png = { workspace = true }
+
+# The render harness writes the manifest that records what each frame hashed to, and the probes
+# read the pixel back through the same async runtime the device serves over. They are dependencies
+# of the harness rather than optional ones because a backend that cannot report what it rendered
+# is not a backend.
+facet = { workspace = true }
+facet-json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+gallery = { workspace = true }
+
+# Everything below draws on a real gpu and reads the pixels back, which is a question only an
+# adapter can answer. They are named here rather than auto-discovered so that a plain
+# `cargo test --workspace` on a machine with no gpu skips them by name instead of failing to
+# resolve `wgpu` at all.
+[[example]]
+name = "render"
+
+[[example]]
+name = "shadow_probe"
+
+[[test]]
+name = "gallery_render"
+
+[[test]]
+name = "texture_channel_render"
+
+[[test]]
+name = "clustered_shadow_render"
+
+[[test]]
+name = "environment_map_render"
+
+[[test]]
+name = "r32float_attachment"
+
+# These two check a parsed module's shape against a binding layout and need no adapter, so they
+# run on a machine with no gpu. They still live here because the check itself belongs to the
+# backend, and a check that could only run where a driver exists would go unchecked exactly where
+# a scene's shader is written.
+[[test]]
+name = "texture_array_interface"
+
+[[test]]
+name = "texture_array_shape"
+
+# A debug channel and a pass with more than one colour target are both claims about what a
+# fragment writes, and neither is checkable without an adapter to read the pixels back.
+[[test]]
+name = "multi_attachment_render"
+
+# The declared output is checked against the shader that writes it, and the check itself is a
+# parse and a comparison over three small WGSL strings.
+[[test]]
+name = "typed_outputs"

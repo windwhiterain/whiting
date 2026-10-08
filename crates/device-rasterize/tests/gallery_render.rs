@@ -12,12 +12,12 @@
 //! so a frame drawn from it is a frame of several colours, and a frame drawn from a texture that
 //! never reached the gpu is one flat colour however the lighting went.
 
-#![cfg(feature = "wgpu")]
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier};
 use gallery::Gallery;
 use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
-use whiting_device::{Renderer, WgpuRenderer};
+use device::Renderer;
+use whiting_device_rasterize::WgpuRenderer;
 
 /// A note printed when there is nothing to test on.
 const NO_ADAPTER: &str = "skipped: no gpu adapter is present";
@@ -78,7 +78,7 @@ fn renderer() -> Option<WgpuRenderer> {
 }
 
 /// Compiles a gallery scene and renders it.
-fn render(renderer: &WgpuRenderer, name: &str) -> Result<whiting_device::Frame, String> {
+fn render(renderer: &WgpuRenderer, name: &str) -> Result<device::Frame, String> {
     let mut registry = Registry::new();
     scene::register_standard_scene_schema(&mut registry);
     registry.put_schema(

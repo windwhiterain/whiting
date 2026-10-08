@@ -155,19 +155,21 @@
 
 #[cfg(feature = "png")]
 mod image;
-mod render;
+/// The renderer abstraction and the types it answers with.
+///
+/// This module is public because a renderer lives outside this crate: the rasterising backends
+/// and the offline ones are separate crates precisely so that neither one's dependencies — a gpu
+/// driver, or a path tracer's subprocess — are forced on a consumer that wants neither.
+pub mod render;
 mod resolve;
 mod rpc;
 mod snapshot;
 mod state;
 
-#[cfg(feature = "wgpu")]
-mod wgpu_renderer;
-
-pub use render::{Frame, NoopRenderer, RenderError, RenderedFrame, RenderedImage, Renderer};
+pub use render::{
+    Frame, NoopRenderer, RenderError, RenderedFrame, RenderedImage, Renderer, render_with,
+    texel_bytes, texture_shape,
+};
 pub use rpc::{router, serve};
 pub use snapshot::{NamedDefinition, NamedSchema, Snapshot};
 pub use state::{Device, DeviceError, ReloadReport};
-
-#[cfg(feature = "wgpu")]
-pub use wgpu_renderer::{TextureShape, WgpuRenderer, check_outputs, check_resources};

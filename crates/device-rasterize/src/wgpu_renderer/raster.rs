@@ -28,7 +28,7 @@ use graphics::{PassView, Viewport, resolve_for_pass};
 
 use super::WgpuRenderer;
 use super::bindings::{Bindings, BufferCache, TextureCache, TextureSlot};
-use crate::render::{RenderError, RenderedImage};
+use device::render::{RenderError, RenderedImage};
 
 /// Vertex entry point every rasterize shader must expose.
 pub const VERTEX_ENTRY: &str = "vertex_main";

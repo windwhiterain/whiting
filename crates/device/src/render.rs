@@ -1,4 +1,4 @@
-//! The renderer abstraction, and the no-operation implementation used without a gpu.
+//! The renderer abstraction: what a backend is handed, and what it answers with.
 
 use definition::Value;
 use graphics::binders::{BinderKind, FORMAT, HEIGHT, WIDTH};
@@ -183,20 +183,84 @@ pub trait Renderer: Send + Sync {
     }
 }
 
+impl<T> Renderer for &T
+where
+    T: Renderer + ?Sized,
+{
+    fn name(&self) -> &'static str {
+        (**self).name()
+    }
+
+    fn available(&self) -> bool {
+        (**self).available()
+    }
+
+    fn limits(&self) -> Option<DeviceLimits> {
+        (**self).limits()
+    }
+
+    fn render_outputs(
+        &self,
+        graphics: &Value,
+        instance: &Value,
+    ) -> Result<Vec<RenderedImage>, RenderError> {
+        (**self).render_outputs(graphics, instance)
+    }
+}
+
+/// A renderer's own default: the boxed form, which is what a factory returns.
+///
+/// # Why this is not the other impl
+///
+/// Auto-deref would hand a `Box<dyn Renderer>` to any method call, but a trait method is resolved
+/// statically: `box_dyn.render_outputs(..)` finds no impl and stops. Without this, every caller
+/// holding a factory's result has to write `&*box`, which is a spelling that says nothing about
+/// why and a place for a caller to get it wrong.
+impl Renderer for Box<dyn Renderer> {
+    fn name(&self) -> &'static str {
+        self.as_ref().name()
+    }
+
+    fn available(&self) -> bool {
+        self.as_ref().available()
+    }
+
+    fn limits(&self) -> Option<DeviceLimits> {
+        self.as_ref().limits()
+    }
+
+    fn render_outputs(
+        &self,
+        graphics: &Value,
+        instance: &Value,
+    ) -> Result<Vec<RenderedImage>, RenderError> {
+        self.as_ref().render_outputs(graphics, instance)
+    }
+}
+
 /// A renderer that performs no gpu work.
 ///
-/// This is the fallback when no adapter is present, so the server, the hot reload path
-/// and the rpc surface stay exercisable on a machine with no gpu. The images it returns are
-/// transparent black and [`Renderer::available`] reports `false`, so a placeholder can never be
-/// mistaken for a real render.
+/// # Why this lives here and not beside the gpu backend
 ///
-/// # What it answers about a shape
+/// [`Device`](crate::Device) takes a renderer by value and has no other way to be built, because
+/// "there is no gpu" is not a state the device can be in: it must be able to serve documents, apply
+/// deltas and answer a render with a named placeholder on a machine with no adapter at all. That
+/// is the invariant that lets this crate be tested and run on hardware it does not target, and it
+/// is why the placeholder is defined against the trait rather than against a driver.
 ///
-/// A document that declares its outputs is answered **at the shapes it declared**, read out of
-/// the instance's own texture payloads, so a caller sizing anything from the placeholder gets the
-/// size the real renderer would have produced. A document that declares nothing is answered by
-/// the first target its passes bind, which is what the placeholder has always answered: it has no
-/// frame to resolve, and inventing one would be a size nothing in the document states.
+/// It depends on nothing here that a driver provides, so keeping it in this crate costs a machine
+/// with no gpu nothing. The gpu backend re-exports it for the common case of "give me the best
+/// renderer this machine has".
+///
+/// # What it returns
+///
+/// Transparent black, and [`Renderer::available`] reports `false`, so a placeholder can never be
+/// mistaken for a real render. A document that declares its outputs is answered **at the shapes it
+/// declared**, read out of the instance's own texture payloads, so a caller sizing anything from
+/// the placeholder gets the size the real renderer would have produced. A document that declares
+/// nothing is answered by the first target its passes bind, which is what the placeholder has
+/// always answered: it has no frame to resolve, and inventing one would be a size nothing in the
+/// document states.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoopRenderer;
 
@@ -354,7 +418,14 @@ fn target_shape(
 /// the size of each of its layers: the question is which image this entry holds, and both shapes
 /// hold one. The kind test is therefore [`BinderKind::is_texture`] rather than one variant, so
 /// that a pool reports the size of a page and a frame is not sized from a default.
-pub(crate) fn texture_shape(value: &Value) -> Option<(u32, u32, String)> {
+///
+/// # Why it is public
+///
+/// A renderer that draws no pixels still has to answer what shape a frame would be, and reading
+/// that out of the instance is the same question however the pixels are produced. A rasterising
+/// backend and an offline one both ask it, so the answer lives here rather than in whichever
+/// backend happened to need it first.
+pub fn texture_shape(value: &Value) -> Option<(u32, u32, String)> {
     if !BinderKind::from_tag(value.variant_tag()?)?.is_texture() {
         return None;
     }

@@ -1790,8 +1790,23 @@ dependencies = [
  "png",
  "thiserror",
  "tokio",
+ "whiting-definition",
+ "whiting-gallery",
+ "whiting-graphics",
+ "whiting-scene",
+]
+
+[[package]]
+name = "whiting-device-rasterize"
+version = "0.1.0"
+dependencies = [
+ "facet",
+ "facet-json",
+ "png",
+ "tokio",
  "wgpu",
  "whiting-definition",
+ "whiting-device",
  "whiting-gallery",
  "whiting-graphics",
  "whiting-scene",

@@ -4,7 +4,7 @@
 //!
 //! Four things, in the order a reader meets them:
 //!
-//! 1. **The check itself, with no adapter.** [`whiting_device::check_outputs`] is a free
+//! 1. **The check itself, with no adapter.** [`whiting_device_rasterize::check_outputs`] is a free
 //!    function over a parsed `naga` module, on the same grounds `check_resources` is: a scene's
 //!    fragment shader is authored on a laptop far more often than it is drawn, and a check that
 //!    needed a gpu would only run where a gpu already is.
@@ -24,11 +24,11 @@
 //! The last two need an adapter and skip with a printed note without one, following
 //! `multi_attachment_render.rs`.
 
-#![cfg(feature = "wgpu")]
 
 use definition::{Schema, SchemaKind, Value};
 use graphics::Output;
-use whiting_device::{RenderError, Renderer, WgpuRenderer, check_outputs};
+use device::{RenderError, Renderer};
+use whiting_device_rasterize::{WgpuRenderer, check_outputs};
 
 /// The size of the frame the end to end test draws.
 const FRAME: u32 = 64;

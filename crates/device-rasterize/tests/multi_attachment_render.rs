@@ -32,7 +32,6 @@
 //! same rule `texture_channel_render.rs` follows, for the same reason: a silent pass would make
 //! this file worthless on a machine with no gpu.
 
-#![cfg(feature = "wgpu")]
 
 use std::sync::OnceLock;
 
@@ -50,7 +49,8 @@ use gallery::kit::{
 use gallery::shaders::mesh_shaders;
 use scene::standard::{Bounds, Camera, Projection, Stage};
 use scene::{CompileContext, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene};
-use whiting_device::{RenderedImage, Renderer, WgpuRenderer};
+use device::{RenderedImage, Renderer};
+use whiting_device_rasterize::WgpuRenderer;
 
 /// The size of the frame.
 const FRAME: u32 = 64;

@@ -106,7 +106,7 @@ use graphics::{Binder, Output};
 use wgpu::naga;
 
 use super::WgpuRenderer;
-use crate::render::RenderError;
+use device::render::RenderError;
 
 /// The shape of an image, which is the part of it a shader's *type* names.
 ///

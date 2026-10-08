@@ -77,7 +77,8 @@ use scene::vshadow::{pages_at_level, unpack_high, unpack_low};
 use scene::{
     CompileContext, CompileOutput, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene,
 };
-use whiting_device::{RenderedFrame, RenderedImage, Renderer, WgpuRenderer};
+use device::{RenderedFrame, RenderedImage, Renderer};
+use whiting_device_rasterize::rasterizer;
 
 /// Where the frames go, which `out` already keeps out of the tree.
 const OUTPUT: &str = "out/probe";
@@ -395,9 +396,8 @@ async fn main() {
 
 /// Runs every probe and prints what came back.
 async fn run() -> Result<(), String> {
-    let renderer = WgpuRenderer::new()
-        .await
-        .map_err(|error| format!("no gpu adapter: {error}"))?;
+    let owned = rasterizer().await;
+    let renderer: &dyn Renderer = &owned;
 
     let mut registry = Registry::new();
     registry.put_schema(
@@ -457,7 +457,7 @@ async fn run() -> Result<(), String> {
 fn probe_coin_and_castle(
     compiler: &StandardScene,
     registry: &Registry,
-    renderer: &WgpuRenderer,
+    renderer: &dyn Renderer,
 ) -> Result<Vec<Rendered>, String> {
     let rod = Caster {
         density: Some(FINE_DENSITY),
@@ -508,7 +508,7 @@ fn probe_coin_and_castle(
 fn probe_level_ladder(
     compiler: &StandardScene,
     registry: &Registry,
-    renderer: &WgpuRenderer,
+    renderer: &dyn Renderer,
 ) -> Result<Vec<Rendered>, String> {
     let mut rendered = Vec::new();
     for wall in [
@@ -547,7 +547,7 @@ fn probe_level_ladder(
 fn probe_budget_cliff(
     compiler: &StandardScene,
     registry: &Registry,
-    renderer: &WgpuRenderer,
+    renderer: &dyn Renderer,
 ) -> Result<Vec<Rendered>, String> {
     let mut rendered = Vec::new();
     for density in [5.0, COARSE_DENSITY, FINE_DENSITY, FINE_DENSITY * 2.0] {
@@ -577,7 +577,7 @@ fn probe_budget_cliff(
 fn probe_page_seams(
     compiler: &StandardScene,
     registry: &Registry,
-    renderer: &WgpuRenderer,
+    renderer: &dyn Renderer,
 ) -> Result<Vec<Rendered>, String> {
     Ok(vec![
         render_one(compiler, registry, renderer, "probe4-square-on", &[WALL], 0)?,
@@ -595,7 +595,7 @@ fn probe_page_seams(
 fn probe_camera_clipping(
     compiler: &StandardScene,
     registry: &Registry,
-    renderer: &WgpuRenderer,
+    renderer: &dyn Renderer,
 ) -> Result<Vec<Rendered>, String> {
     let casters = [OFFSTAGE, WALL];
     Ok(vec![
@@ -635,7 +635,7 @@ fn probe_camera_clipping(
 fn density_ladder(
     compiler: &StandardScene,
     registry: &Registry,
-    renderer: &WgpuRenderer,
+    renderer: &dyn Renderer,
 ) -> String {
     let mut report = String::from(
         r#"
@@ -701,7 +701,11 @@ resolution the old pool gave, and the first step past it already quadruples the 
 /// eighty five pages, an atlas ten to a side, and a refusal three percent finer — so a probe whose
 /// numbers cannot be reconciled with it is measuring something other than what it says. It is
 /// compiled and not drawn, because what is being reconciled is arithmetic.
-fn control_row(compiler: &StandardScene, registry: &Registry, renderer: &WgpuRenderer) -> String {
+fn control_row(
+    compiler: &StandardScene,
+    registry: &Registry,
+    renderer: &dyn Renderer,
+) -> String {
     let scene = Gallery::build("spotlight");
     let mut report = String::from(
         r#"
@@ -748,7 +752,7 @@ fn control_row(compiler: &StandardScene, registry: &Registry, renderer: &WgpuRen
 fn probe_caster_height(
     compiler: &StandardScene,
     registry: &Registry,
-    renderer: &WgpuRenderer,
+    renderer: &dyn Renderer,
 ) -> Result<Vec<Rendered>, String> {
     let mut rendered = Vec::new();
     for height in [1.3, 1.7, 2.1, 3.4] {
@@ -809,7 +813,7 @@ const SLAB: Caster = Caster {
 fn probe_level_walk(
     compiler: &StandardScene,
     registry: &Registry,
-    renderer: &WgpuRenderer,
+    renderer: &dyn Renderer,
 ) -> Result<Vec<Rendered>, String> {
     let coarse_neighbour = Caster {
         label: "neighbour-coarse",
@@ -1042,7 +1046,7 @@ fn at_density(placed: Value, density: Option<f64>) -> Value {
 fn render_one(
     compiler: &StandardScene,
     registry: &Registry,
-    renderer: &WgpuRenderer,
+    renderer: &dyn Renderer,
     label: &str,
     casters: &[Caster],
     camera: usize,
@@ -1124,7 +1128,7 @@ fn render_one(
 fn compile(
     compiler: &StandardScene,
     registry: &Registry,
-    renderer: &WgpuRenderer,
+    renderer: &dyn Renderer,
     scene: &Value,
     camera: usize,
 ) -> Result<CompileOutput, String> {

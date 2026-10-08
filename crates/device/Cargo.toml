@@ -9,7 +9,6 @@ description = "Hot-reloadable headless graphics device served over http RPC."
 [features]
 default = ["png"]
 png = ["dep:png"]
-wgpu = ["dep:wgpu"]
 
 [dependencies]
 definition = { workspace = true }
@@ -26,66 +25,9 @@ thiserror = { workspace = true }
 # conversion has one home instead of one per caller.
 half = { workspace = true }
 
-wgpu = { workspace = true, optional = true }
 png = { workspace = true, optional = true }
 
-# The gallery is what the render harness draws and what the render test reads, so it is a
-# development dependency: nothing in the device itself knows a scene by name.
+# The gallery is what the probes draw and what the render test reads, so it is a development
+# dependency: nothing in the device itself knows a scene by name.
 [dev-dependencies]
 gallery = { workspace = true }
-
-# The render harness drives the gpu backend, so it is only built when that backend is.
-[[example]]
-name = "render"
-required-features = ["wgpu"]
-
-# The shadow probes measure the virtual shadow map against rendered pixels, which is a question
-# only a real device can answer: the numbers are read back off a frame rather than out of a
-# document.
-[[example]]
-name = "shadow_probe"
-required-features = ["wgpu"]
-
-# The sampled texture channel is only meaningful against a real device: what it checks is
-# that a sampler reaches the gpu at the number the document implies, and that the pixels a
-# texture was uploaded with are the ones a shader reads back.
-[[test]]
-name = "texture_channel_render"
-required-features = ["wgpu"]
-
-# A scene that samples an image has to be drawn to be shown to work: the compiler's own
-# tests see the documents it emitted and not the frame that came out.
-[[test]]
-name = "gallery_render"
-required-features = ["wgpu"]
-
-# The interface check compares a parsed module against a layout and needs no adapter, so
-# this one runs on a machine with no gpu. It is what holds the check honest about a flat
-# texture against an array of them.
-[[test]]
-name = "texture_array_interface"
-required-features = ["wgpu"]
-
-# The shape a payload declares is arithmetic over a document and a limit, so what reaches
-# the descriptor, the view and the layout is checkable with no adapter. What a device then
-# does with those descriptors is not.
-[[test]]
-name = "texture_array_shape"
-required-features = ["wgpu"]
-
-# A debug channel and a pass with more than one colour target are both claims about what a
-# fragment writes, and neither is checkable without an adapter to read the pixels back. Without
-# this entry the target builds an empty binary under a plain `cargo test --workspace`, which
-# reports a passing run that ran nothing.
-[[test]]
-name = "multi_attachment_render"
-required-features = ["wgpu"]
-
-# A declared output is checked against the shader that writes it, and the check itself is a
-# parse and a comparison over three small WGSL strings. The mutation tests need no adapter and
-# run on a machine with no gpu, which is where a scene's shader is actually written; the two
-# render tests skip with a printed note. Without this entry the target builds an empty binary
-# under a plain `cargo test --workspace`, which reports a passing run that ran nothing.
-[[test]]
-name = "typed_outputs"
-required-features = ["wgpu"]

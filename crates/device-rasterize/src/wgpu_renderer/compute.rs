@@ -9,7 +9,7 @@ use graphics::{PassView, resolve_for_pass};
 
 use super::WgpuRenderer;
 use super::bindings::{BufferCache, TextureCache};
-use crate::render::RenderError;
+use device::render::RenderError;
 
 impl WgpuRenderer {
     /// Executes one compute pass.

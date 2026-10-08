@@ -94,7 +94,8 @@ use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 use scene::{
     CompileContext, CompileNote, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene,
 };
-use whiting_device::{RenderedFrame, RenderedImage, Renderer, WgpuRenderer};
+use device::{RenderedFrame, RenderedImage, Renderer};
+use whiting_device_rasterize::rasterizer;
 
 /// Field the scene's time is written under.
 const TIME: &str = "time";
@@ -224,9 +225,7 @@ async fn run() -> Result<(), String> {
     let request = parse_arguments()?;
     let name = &request.name;
 
-    let renderer = WgpuRenderer::new()
-        .await
-        .map_err(|error| format!("no gpu adapter: {error}"))?;
+    let renderer = rasterizer().await;
 
     let mut registry = Registry::new();
     registry.put_schema(

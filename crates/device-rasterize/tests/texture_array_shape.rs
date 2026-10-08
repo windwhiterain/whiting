@@ -18,10 +18,9 @@
 //! is therefore unexecuted, and what is checked here is that the values handed to it are
 //! the ones the document asked for.
 
-#![cfg(feature = "wgpu")]
 
 use definition::Value;
-use whiting_device::TextureShape;
+use whiting_device_rasterize::TextureShape;
 
 /// The most layers a device allows, which is what the floor this renderer requests puts it
 /// at. It is spelled out here because `TextureShape::read` is given the limit rather than

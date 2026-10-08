@@ -18,10 +18,10 @@
 //! without a feature the device does not request. A pipeline that failed here would not be a
 //! defect in this file; it would be the measurement saying the blend has to become per-attachment.
 
-#![cfg(feature = "wgpu")]
 
 use definition::Value;
-use whiting_device::{Renderer, WgpuRenderer};
+use device::Renderer;
+use whiting_device_rasterize::WgpuRenderer;
 
 /// The size of the frame.
 const FRAME: u32 = 16;

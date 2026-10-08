@@ -26,7 +26,7 @@ use graphics::{Binder, layout::UniformField};
 use wgpu::naga;
 
 use super::WgpuRenderer;
-use crate::render::RenderError;
+use device::render::RenderError;
 
 /// The binding a pass's uniform is at, for every shader.
 pub const UNIFORM_BINDING: u32 = 0;

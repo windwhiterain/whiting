@@ -39,7 +39,7 @@ use scene::DeviceLimits;
 use wgpu::naga;
 use wgpu::util::DeviceExt;
 
-use crate::render::{RenderError, RenderedImage, Renderer};
+use device::render::{RenderError, RenderedImage, Renderer};
 use bindings::{BufferCache, TextureCache};
 use raster::RenderedTarget;
 
