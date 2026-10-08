@@ -265,11 +265,11 @@ pub struct Range {
 pub const RANGES: [Range; 2] = [
     Range {
         name: "west",
-        centre: [-1.20, 0.0],
+        centre: [-0.58, 0.30],
     },
     Range {
         name: "east",
-        centre: [1.20, 0.0],
+        centre: [0.58, 0.30],
     },
 ];
 
@@ -286,7 +286,7 @@ pub fn ranges() -> &'static [Range] {
 }
 
 /// How far behind the ranges the eye stands, as a multiple of a range's radius.
-const EYE_SET_BACK: f64 = 1.85;
+const EYE_SET_BACK: f64 = 0.883;
 
 /// Returns a massif stood with its own centre over a point in the plan.
 ///
@@ -589,7 +589,10 @@ pub fn landscape() -> Value {
                             // vertex layout and the shader's parameter list are derived from one
                             // schema rather than two that have to agree.
                             massif_extras().point_schema(),
-                            identity::faceted(geometry, identity),
+                            // The flank, and not the belt: this massif is looked at from a long way
+                            // off and across, so its strips are read as one rock face and only its
+                            // crest lines are meant to catch the light. See `across_the_flank`.
+                            identity::faceted(geometry, identity, identity::across_the_flank),
                         )
                     })
                     .collect();
@@ -853,112 +856,112 @@ impl Crest {
 const CRESTS: [Crest; CREST_COUNT] = [
     Crest {
         bearing: 0.0,
-        reach: 820.0,
+        reach: 400.0,
         sharpness: 0.40,
         half_width: 0.030,
-        bend: 0.075,
+        bend: 0.060,
         heights: [
-            1044.0, 1001.0, 950.0, 893.0, 832.0, 766.0, 693.0, 615.0, 539.0, 487.0, 444.0, 412.0,
-            389.0, 363.0, 310.0, 203.0, 26.0,
+            1860.0, 1580.0, 1290.0, 1030.0, 800.0, 610.0, 440.0, 305.0, 200.0, 118.0, 70.0, 44.0,
+            30.0, 22.0, 18.0, 17.0, 16.0,
         ],
     },
     Crest {
-        bearing: 42.0,
-        reach: 520.0,
+        bearing: 44.0,
+        reach: 500.0,
         sharpness: 0.52,
         half_width: 0.038,
-        bend: -0.065,
+        bend: -0.055,
         heights: [
-            1044.0, 980.0, 916.0, 856.0, 795.0, 731.0, 664.0, 592.0, 516.0, 464.0, 429.0, 415.0,
-            403.0, 394.0, 363.0, 249.0, 16.0,
+            1860.0, 1510.0, 1215.0, 975.0, 780.0, 625.0, 500.0, 408.0, 332.0, 270.0, 220.0, 178.0,
+            150.0, 118.0, 92.0, 70.0, 24.0,
         ],
     },
     Crest {
-        bearing: 73.0,
-        reach: 330.0,
+        bearing: 78.0,
+        reach: 2200.0,
         sharpness: 0.94,
         half_width: 0.022,
-        bend: 0.045,
+        bend: 0.016,
         heights: [
-            1044.0, 1038.0, 1032.0, 1025.0, 1015.0, 1001.0, 980.0, 954.0, 922.0, 882.0, 832.0,
-            774.0, 708.0, 635.0, 574.0, 479.0, 84.0,
+            1860.0, 1760.0, 1670.0, 1590.0, 1520.0, 1460.0, 1410.0, 1370.0, 1335.0, 1310.0, 1285.0,
+            1265.0, 1240.0, 1205.0, 1130.0, 950.0, 28.0,
         ],
     },
     Crest {
-        bearing: 111.0,
-        reach: 530.0,
+        bearing: 102.0,
+        reach: 2200.0,
         sharpness: 0.66,
         half_width: 0.032,
-        bend: -0.085,
+        bend: -0.022,
         heights: [
-            1044.0, 974.0, 905.0, 838.0, 777.0, 725.0, 684.0, 655.0, 635.0, 618.0, 597.0, 568.0,
-            528.0, 479.0, 435.0, 316.0, 23.0,
+            1860.0, 1730.0, 1620.0, 1520.0, 1440.0, 1370.0, 1315.0, 1270.0, 1235.0, 1210.0, 1185.0,
+            1160.0, 1130.0, 1085.0, 1010.0, 830.0, 26.0,
         ],
     },
     Crest {
-        bearing: 140.0,
-        reach: 340.0,
+        bearing: 136.0,
+        reach: 500.0,
         sharpness: 0.44,
         half_width: 0.040,
-        bend: 0.070,
+        bend: 0.060,
         heights: [
-            1044.0, 951.0, 864.0, 783.0, 708.0, 638.0, 574.0, 516.0, 464.0, 418.0, 374.0, 334.0,
-            296.0, 258.0, 220.0, 151.0, 10.0,
+            1860.0, 1490.0, 1195.0, 955.0, 760.0, 605.0, 487.0, 392.0, 318.0, 258.0, 210.0, 170.0,
+            140.0, 114.0, 90.0, 68.0, 22.0,
         ],
     },
     Crest {
-        bearing: 184.0,
-        reach: 470.0,
+        bearing: 175.0,
+        reach: 400.0,
         sharpness: 0.84,
         half_width: 0.026,
         bend: -0.050,
         heights: [
-            1044.0, 1024.0, 995.0, 957.0, 911.0, 856.0, 792.0, 722.0, 650.0, 580.0, 516.0, 458.0,
-            406.0, 360.0, 310.0, 215.0, 62.0,
+            1860.0, 1610.0, 1340.0, 1090.0, 870.0, 685.0, 530.0, 405.0, 305.0, 228.0, 172.0, 134.0,
+            108.0, 86.0, 68.0, 52.0, 18.0,
         ],
     },
     Crest {
-        bearing: 217.0,
-        reach: 295.0,
+        bearing: 224.0,
+        reach: 500.0,
         sharpness: 0.90,
         half_width: 0.024,
         bend: 0.045,
         heights: [
-            1044.0, 1035.0, 1024.0, 1006.0, 983.0, 954.0, 919.0, 879.0, 832.0, 783.0, 731.0, 679.0,
-            624.0, 568.0, 516.0, 435.0, 93.0,
+            1860.0, 1520.0, 1230.0, 985.0, 785.0, 630.0, 508.0, 414.0, 338.0, 276.0, 230.0, 190.0,
+            156.0, 128.0, 102.0, 78.0, 22.0,
         ],
     },
     Crest {
-        bearing: 253.0,
-        reach: 460.0,
+        bearing: 258.0,
+        reach: 2200.0,
+        sharpness: 0.90,
+        half_width: 0.024,
+        bend: -0.014,
+        heights: [
+            1860.0, 1745.0, 1645.0, 1555.0, 1480.0, 1420.0, 1370.0, 1330.0, 1295.0, 1270.0, 1245.0,
+            1220.0, 1190.0, 1140.0, 1050.0, 870.0, 28.0,
+        ],
+    },
+    Crest {
+        bearing: 282.0,
+        reach: 2200.0,
         sharpness: 0.60,
         half_width: 0.034,
-        bend: -0.075,
+        bend: 0.018,
         heights: [
-            1044.0, 969.0, 896.0, 827.0, 760.0, 696.0, 635.0, 577.0, 522.0, 470.0, 421.0, 374.0,
-            331.0, 287.0, 247.0, 171.0, 19.0,
+            1860.0, 1700.0, 1590.0, 1495.0, 1415.0, 1350.0, 1295.0, 1255.0, 1220.0, 1195.0, 1170.0,
+            1145.0, 1115.0, 1065.0, 985.0, 810.0, 26.0,
         ],
     },
     Crest {
-        bearing: 294.0,
-        reach: 410.0,
+        bearing: 316.0,
+        reach: 500.0,
         sharpness: 0.40,
         half_width: 0.042,
-        bend: 0.080,
+        bend: -0.065,
         heights: [
-            1044.0, 940.0, 841.0, 748.0, 661.0, 580.0, 505.0, 435.0, 371.0, 313.0, 264.0, 226.0,
-            197.0, 174.0, 148.0, 99.0, 10.0,
-        ],
-    },
-    Crest {
-        bearing: 328.0,
-        reach: 640.0,
-        sharpness: 0.74,
-        half_width: 0.028,
-        bend: -0.060,
-        heights: [
-            1044.0, 992.0, 937.0, 882.0, 827.0, 771.0, 716.0, 661.0, 606.0, 557.0, 516.0, 484.0,
-            461.0, 444.0, 389.0, 258.0, 39.0,
+            1860.0, 1500.0, 1200.0, 960.0, 765.0, 610.0, 492.0, 396.0, 322.0, 262.0, 216.0, 176.0,
+            144.0, 118.0, 94.0, 72.0, 20.0,
         ],
     },
 ];
@@ -988,7 +991,7 @@ const SUMMIT: [f32; 2] = [0.0, 0.0];
 /// from the eye — which is the summit over the distance to it, and which a summit chosen to look
 /// right as an object puts far too low in the frame. The tables above are written to this number
 /// and the eye in [`landscape`] is set from the angle this one makes.
-const SUMMIT_ELEVATION: f32 = 1044.0;
+const SUMMIT_ELEVATION: f32 = 1860.0;
 
 /// How far past the two tips a wedge's mouth stands on the rim.
 ///
@@ -1112,19 +1115,37 @@ fn check_the_authored_heights() -> Vec<String> {
                     VALLEY_HEIGHTS[wedge][node - 1]
                 ));
             }
-            for (side, crest) in [(Side::Left, wedge), (Side::Right, right)] {
-                let station = valley_station(node);
-                let rock = CRESTS[crest].height_at(station);
-                if floor >= rock {
-                    problems.push(format!(
-                        "valley {wedge} node {node} is at {floor}, which is not below crest \
-                         {crest}'s {rock:.1} on its {side:?}"
-                    ));
-                }
+            let ceiling = valley_ceiling(wedge, node);
+            if floor >= ceiling {
+                problems.push(format!(
+                    "valley {wedge} node {node} is at {floor}, which is not below the lower of \
+                     crests {wedge} and {right}, whose rock is {ceiling:.1} there"
+                ));
             }
         }
     }
     problems
+}
+
+/// Returns the height of the lower of the two crests a wedge's floor runs between, at one of its
+/// nodes.
+///
+/// # Invariants
+///
+/// **The lower of the two, and not the one on a named side.** A floor is a valley because it is
+/// below *both* walls; the crest that binds is whichever of the two has fallen further at that
+/// station, and naming a side would report a number the floor is not measured against and quietly
+/// let a table be written too high on the other.
+///
+/// It is exported so that a probe can print the number an author writes the table **under**, and
+/// so that the report and [`check_the_authored_heights`] cannot disagree about it: one comparison,
+/// read twice.
+pub fn valley_ceiling(wedge: usize, node: usize) -> f32 {
+    let right = (wedge + 1) % CREST_COUNT;
+    let station = valley_station(node);
+    CRESTS[wedge]
+        .height_at(station)
+        .min(CRESTS[right].height_at(station))
 }
 
 /// Returns the crest lines, the first one the root and the rest its children.
@@ -1183,6 +1204,7 @@ fn wedge(left: usize, right: usize) -> Wedge {
     let corner = CRESTS[left].reach.max(CRESTS[right].reach) / half.to_radians().cos().max(1.0e-3);
     let mouth = corner * (1.0 + MOUTH_BULGE);
     let swing = VALLEY_SWING * (left as f32 * 2.3).sin();
+    let half_sine = half.to_radians().sin();
 
     let mut nodes = Vec::with_capacity(VALLEY_NODES);
     nodes.push((
@@ -1207,11 +1229,14 @@ fn wedge(left: usize, right: usize) -> Wedge {
         // zero at both ends of the run so the summit stays one vertex and the mouth stays on the
         // rim.
         //
-        // It is a fraction of the node's **own radius** and not of the wedge's corner, because a
-        // wedge is narrow in absolute terms near the summit and wide at the rim: a drift fixed in
-        // units is a large share of the wedge at one end and nothing at the other, and the share
-        // is the thing that has to stay inside it.
-        let lateral = swing * radius * (std::f32::consts::PI * fraction).sin();
+        // It is a fraction of the node's **own wedge** and not of its radius or of the wedge's
+        // corner. A wedge is narrow in absolute terms near the summit and wide at the rim, so a
+        // drift fixed in units is a large share of the wedge at one end and nothing at the other;
+        // and the same share of a radius means a different share of the width in a wedge of thirty
+        // degrees than in one of twelve. The wedge's own width is the only denominator under which
+        // the number below is the same quantity everywhere, which is what it has to be for the
+        // drift to stay inside the wedge on the long paired walls as well as on the short ones.
+        let lateral = swing * radius * half_sine * (std::f32::consts::PI * fraction).sin();
         nodes.push((
             [
                 SUMMIT[0] + direction[0] * radius - direction[1] * lateral,
@@ -1239,7 +1264,7 @@ fn wedge(left: usize, right: usize) -> Wedge {
 /// of the crests beside it — and reading it as one puts a mouth's height under a crest that has
 /// already ended, which is the only way a table row can pass the check in
 /// [`check_the_authored_heights`] while still saying something untrue.
-fn valley_station(node: usize) -> f32 {
+pub fn valley_station(node: usize) -> f32 {
     node.min(WEDGE_STEPS) as f32 / WEDGE_STEPS as f32
 }
 
@@ -1268,12 +1293,19 @@ fn valley_radius(fraction: f32, left: usize, right: usize, corner: f32) -> f32 {
 /// The fraction of a valley's run over which it opens out from its flank to its corner.
 const VALLEY_MOUTH_OPENING: f64 = 0.70;
 
-/// How far a valley floor drifts across its own wedge, as a fraction of the wedge's corner.
+/// How far a valley floor drifts across its own wedge, as a fraction of **the wedge's half width
+/// at that node**.
 ///
 /// It is small, and it has to be: the floor may wander as far as its wedge is wide and no
-/// further, or it crosses the crest it is supposed to be the floor of. Seven percent is well
-/// inside that and well outside invisible.
-const VALLEY_SWING: f32 = 0.07;
+/// further, or it crosses the crest it is supposed to be the floor of. A sixth of the half width is
+/// well inside that and well outside invisible.
+///
+/// It is a fraction of the half width rather than of the radius because that is what makes it the
+/// same quantity in every wedge. Seven percent of a radius is a third of the half width of a
+/// twelve-degree wedge and a seventh of the half width of a thirty-degree one, so a number that
+/// reads as "small" is small only where the crests happen to be far apart — and the paired long
+/// walls, which are the two wedges this scene is built to look down, are exactly where it is not.
+const VALLEY_SWING: f32 = 0.16;
 
 /// Returns the authored elevation of one of a wedge's nodes.
 ///
@@ -1291,6 +1323,21 @@ fn valley_elevation(node: usize, wedge: usize) -> f32 {
 ///
 /// The mouth is counted rather than left to the walk that binds the valleys to the rim, so that
 /// [`VALLEY_HEIGHTS`] is indexed by the same numbers the finished [`Valley`] carries.
+/// Returns how many nodes a valley floor is written with.
+///
+/// **It is the table's own width**, exported because a probe that measured the two tables against
+/// each other needs to say which columns it is walking. Authoring a floor is a comparison against
+/// the rock either side of it, and a tool that cannot say how many numbers there are cannot
+/// print the answer an author writes them under.
+/// Returns how many crests the massif is built from, which is how many valley floors it has.
+pub fn crest_count() -> usize {
+    CREST_COUNT
+}
+
+pub fn valley_nodes() -> usize {
+    VALLEY_NODES
+}
+
 const VALLEY_NODES: usize = WEDGE_STEPS + 2;
 
 /// The elevation of every node of every valley, wedge by wedge.
@@ -1308,42 +1355,48 @@ const VALLEY_NODES: usize = WEDGE_STEPS + 2;
 ///   because that is a plane: the same ratio under the same falling crest is a straight line from
 ///   end to end, and a flank with one across it is a sheet of card. Every row here separates from
 ///   its lower crest by a different amount at every node, which is what turns a belt into ground.
-/// - **Each row is a different cut.** Rows 1 and 2 both run under crest 2's plateau and make a
-///   cirque floor and a col out of it; rows 3 and 4 share crest 4 as their lower crest and share
-///   nothing else, one being a gorge that goes down early and one a hanging valley that stops
-///   over a lip; rows 7 and 8 share crest 8 the same way. A formula gave every row the same
-///   curve, and a massif whose ten valleys are the same curve is a massif of ten copies of one
-///   valley.
+/// - **Each row is a different cut.** Rows 1 and 2 both run under crest 2's long back, and they
+///   spend it differently: row 2 is the corridor **between** the paired long walls, a hanging
+///   meadow that gives way to a gorge and then runs out low for the whole length of the rim, while
+///   row 1 keeps high and stops over a lip before it ever arrives. Rows 7 and 8 make the same pair
+///   under crest 8 on the other side, with row 7 the one that goes down early and runs, and row 8 the
+///   one that keeps to the wall. A formula gave every row the same curve, and a massif whose ten
+///   valleys are the same curve is a massif of ten copies of one valley.
+/// - **Rows 2 and 7 are the two corridors**, and they are the reason the other eight rows are not
+///   allowed to be copies of them. The picture looks down one of them, so a floor that fell in one
+///   step would be a sheet of card across the frame; each holds its height over two nodes before it
+///   lets go, and then keeps a low, near-flat run all the way to the mouth.
 const VALLEY_HEIGHTS: [[f32; VALLEY_NODES]; CREST_COUNT] = [
     [
-        1044.0, 590.0, 528.0, 462.0, 396.0, 322.0, 260.0, 223.0, 199.0, 172.0, 111.0, 5.0, 5.0,
+        1860.0, 1293.0, 917.0, 637.0, 386.0, 204.0, 90.0, 35.0, 15.0, 7.0, 4.0, 3.0, 2.0,
     ],
     [
-        1044.0, 620.0, 530.0, 455.0, 390.0, 330.0, 272.0, 216.0, 166.0, 120.0, 80.0, 4.0, 4.0,
+        1860.0, 1280.0, 907.0, 630.0, 434.0, 306.0, 212.0, 144.0, 98.0, 61.0, 34.0, 16.0, 11.0,
     ],
     [
-        1044.0, 600.0, 528.0, 462.0, 400.0, 344.0, 292.0, 244.0, 196.0, 148.0, 100.0, 6.0, 6.0,
+        1860.0, 1596.0, 1422.0, 1274.0, 1140.0, 1008.0, 888.0, 779.0, 662.0, 517.0, 328.0, 20.0,
+        13.0,
     ],
     [
-        1044.0, 514.0, 424.0, 338.0, 266.0, 207.0, 163.0, 126.0, 98.0, 73.0, 47.0, 3.0, 3.0,
+        1860.0, 1248.0, 860.0, 584.0, 386.0, 253.0, 164.0, 106.0, 65.0, 38.0, 20.0, 12.0, 8.0,
     ],
     [
-        1044.0, 570.0, 480.0, 400.0, 330.0, 268.0, 214.0, 168.0, 128.0, 94.0, 62.0, 3.0, 3.0,
+        1860.0, 1261.0, 879.0, 598.0, 396.0, 260.0, 152.0, 84.0, 48.0, 26.0, 12.0, 10.0, 6.0,
     ],
     [
-        1044.0, 557.0, 509.0, 454.0, 393.0, 329.0, 268.0, 216.0, 172.0, 137.0, 94.0, 20.0, 20.0,
+        1860.0, 1263.0, 896.0, 627.0, 429.0, 284.0, 167.0, 94.0, 54.0, 29.0, 14.0, 9.0, 5.0,
     ],
     [
-        1044.0, 586.0, 516.0, 451.0, 387.0, 325.0, 253.0, 179.0, 124.0, 84.0, 49.0, 4.0, 4.0,
+        1860.0, 1305.0, 916.0, 634.0, 435.0, 303.0, 208.0, 143.0, 92.0, 57.0, 29.0, 15.0, 10.0,
     ],
     [
-        1044.0, 520.0, 424.0, 340.0, 268.0, 208.0, 160.0, 122.0, 92.0, 68.0, 48.0, 3.0, 3.0,
+        1860.0, 1535.0, 1324.0, 1127.0, 953.0, 797.0, 661.0, 548.0, 439.0, 328.0, 196.0, 18.0, 12.0,
     ],
     [
-        1044.0, 518.0, 417.0, 331.0, 253.0, 190.0, 138.0, 101.0, 75.0, 58.0, 35.0, 3.0, 3.0,
+        1860.0, 1269.0, 884.0, 610.0, 410.0, 275.0, 181.0, 117.0, 72.0, 42.0, 21.0, 12.0, 7.0,
     ],
     [
-        1044.0, 572.0, 507.0, 444.0, 364.0, 286.0, 224.0, 181.0, 150.0, 123.0, 76.0, 7.0, 7.0,
+        1860.0, 1228.0, 845.0, 574.0, 349.0, 179.0, 77.0, 29.0, 12.0, 6.0, 3.0, 2.0, 1.0,
     ],
 ];
 
@@ -1690,7 +1743,13 @@ const MASSIF: &str = r#"
     // The stone a facet is cut from, and it is *the* albedo rather than a multiplier on one: the
     // material's tint is white and this is the surface's colour. A body that scaled a tint would
     // be deciding the colour in two places, and the second place is the one that drifts.
-    let steep = smoothstep(0.25, 0.65, in.texture.y);
+    // **Steepness is read off the normal and not off the face's own `dip_angle`.** The two say the
+    // same thing — a face's dip is the angle its own normal makes with the horizon — and the normal
+    // is the one of them the rasteriser interpolates. `dip_angle` is a property of a face, written
+    // the same at all three of its corners, so it is constant across each triangle and steps at
+    // every triangle edge: a massif of two thousand of those reads as a fan of straw rather than
+    // as a face of rock, and it does so at exactly the scale of its own tessellation.
+    let steep = smoothstep(0.25, 0.65, 1.0 - clamp(normal.y, 0.0, 1.0));
     let wood = 0.78 + 0.44 * in.texture.x;
     let patches = 0.86 + 0.28 * noise(in.world_position.xz * 0.02, 3);
     let bare = mix(vec3<f32>(0.46, 0.42, 0.37), vec3<f32>(0.19, 0.17, 0.16), steep);
@@ -1703,7 +1762,7 @@ const MASSIF: &str = r#"
     let wobble = SNOW_WOBBLE * (noise(in.world_position.xz * 0.004, 3) * 2.0 - 1.0);
     let above = smoothstep(SNOW_LINE + wobble - SNOW_FADE, SNOW_LINE + wobble + SNOW_FADE,
                            in.world_position.y);
-    let snow = above * (1.0 - smoothstep(0.78, 0.98, in.texture.y));
+    let snow = above * (1.0 - smoothstep(0.78, 0.98, 1.0 - clamp(normal.y, 0.0, 1.0)));
     let snowed = mix(stone, vec3<f32>(0.93, 0.95, 1.00), snow);
 
     // The floor of a valley is soil and scrub rather than stone, and it is warmer for it. It is
@@ -1804,8 +1863,8 @@ const GROUND: &str = r#"
     // become ribbons that lie along the run and break across it, which is what the channels
     // look like. The warp is the cheap half and the anisotropy is the other half.
     let warp = noise(vec2<f32>(run * 0.0022, offset * 6.0), 2) - 0.5;
-    let threads = mix(0.53, noise(vec2<f32>(run * 0.0060 + offset * 1.1 + warp * 0.9, offset * 74.0), 4), near);
-    let channel = smoothstep(0.40, 0.55, threads) * band;
+    let threads = mix(0.53, noise(vec2<f32>(run * 0.0060 + offset * 1.1 + warp * 0.9, offset * 30.0), 2), near);
+    let channel = smoothstep(0.36, 0.60, threads) * band;
     let bar = clamp(band - channel, 0.0, 1.0);
     // The **floodplain** is graded by how far the water is from where it stands, so the green is
     // the river's own history written on the ground: widest where the river has wandered, which is
@@ -1813,6 +1872,14 @@ const GROUND: &str = r#"
     let bank = abs(offset) / RIVER_HALF;
     let wet = 1.0 - smoothstep(0.5, 5.0, bank);
     albedo = mix(albedo, vec3<f32>(0.17, 0.28, 0.12), wet * 0.85);
+    // The **dry ground beyond the benches**, in broad fields rather than in one sheet. A floodplain
+    // this wide is grazed or farmed, and either way it is not one colour — and a floor of a single
+    // green gives the eye nothing to measure the river's course against, which is the whole job the
+    // thread of water is doing. The scale is the scale of the fields, roughly a thousand units, and
+    // not the scale of the noise the water is cut from: ground that varies as fast as the channels
+    // reads as more water.
+    let field = smoothstep(0.44, 0.80, noise(in.world_position.xz * 0.00085, 3));
+    albedo = mix(albedo, vec3<f32>(0.47, 0.41, 0.22), field * 0.42 * near);
     // The **terrace risers**. A floodplain is not one sheet sloping to the water: it steps down to
     // it in two or three benches, and the bench is the only thing on a flat floor that gives it
     // the scale a person could stand in. It is keyed to how far the water is from where the
@@ -1822,7 +1889,7 @@ const GROUND: &str = r#"
     let jitter = (noise(in.world_position.xz * 0.0022, 3) - 0.5) * 0.9;
     let riser = smoothstep(0.80, 1.12, bank + jitter) * (1.0 - smoothstep(1.90, 2.30, bank + jitter))
         + smoothstep(2.90, 3.30, bank + jitter) * (1.0 - smoothstep(4.60, 5.10, bank + jitter));
-    albedo = mix(albedo, vec3<f32>(0.46, 0.42, 0.27), clamp(riser, 0.0, 1.0) * 0.30 * near);
+    albedo = mix(albedo, vec3<f32>(0.46, 0.42, 0.27), clamp(riser, 0.0, 1.0) * 0.55 * near);
     // The **scrub and the bare ground** the benches are cut out of, at a scale of a couple of
     // hundred units: a floodplain is not one colour, and a floor that is one colour is a floor
     // with nothing on it for the eye to measure the river against.
@@ -1832,7 +1899,7 @@ const GROUND: &str = r#"
     // either water or grass. They are kept **darker than they look** on a bank: the water around
     // them is what is bright, and a bar at the value of dry sand is the brightest thing in the
     // frame, which puts the eye on the gravel instead of on the river running through it.
-    albedo = mix(albedo, vec3<f32>(0.34, 0.32, 0.28), bar * 0.9);
+    albedo = mix(albedo, vec3<f32>(0.40, 0.37, 0.31), bar * 0.55);
 
     color = color * albedo * patches;
 
@@ -1854,8 +1921,8 @@ const GROUND: &str = r#"
     // a river turns into a strip of white paper laid down the middle of a valley. The body under
     // the reflection is what lets the glint on top of it be a glint, and it is most of the water
     // under the eye, where the grazing term has not yet taken over.
-    let reflected = mix(vec3<f32>(0.14, 0.19, 0.25), vec3<f32>(0.56, 0.61, 0.69), pow(facing, 2.2));
-    let water = vec3<f32>(0.02, 0.04, 0.05) + reflected * (0.34 + 0.46 * threads);
+    let reflected = mix(vec3<f32>(0.30, 0.38, 0.47), vec3<f32>(0.72, 0.76, 0.82), pow(facing, 2.2));
+    let water = vec3<f32>(0.06, 0.11, 0.16) + reflected * (0.55 + 0.30 * threads);
     color = mix(color, water, channel);
 
     // The valley is **full of cloud at its far end and clear at the eye's**, and the boundary is

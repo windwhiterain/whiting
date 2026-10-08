@@ -435,10 +435,14 @@ fn corner_angle(corners: [Vec3; 3], corner: usize) -> f32 {
 ///   descend at different rates produces exactly those. Weighting by the angle at the corner is
 ///   what keeps a thin face from tilting its neighbours towards its own plane.
 ///
-/// - **Averaged over one block only.** A vertex is read once per block that touches it, so two
-///   faces meeting across a block boundary get normals from their own sides and the shared edge
-///   stays a crease. Averaging over the whole mesh instead would round the crest lines off, and
-///   the crest lines are the rock.
+/// - **Averaged over one group, and the group is the caller's.** A vertex is read once per group
+///   that touches it, so two faces meeting across a group boundary get normals from their own
+///   sides and the shared edge stays a crease. The **block** is the default group, and it is a
+///   default rather than an answer: one belt is one block, so the default creases at every rib as
+///   well as at every crest, and a rib between two belts of one flank is an edge of the
+///   correspondence rather than a feature of the rock. [`CornerNormals::of_grouped`] is how a
+///   caller says which is which; averaging over the whole mesh instead would round the crest
+///   lines off, and the crest lines are the rock.
 ///
 /// - **A corner with no angle at it keeps its face's own normal.** A corner whose faces are all
 ///   collapsed has nothing to average, and a normal of no length is not a normal.
@@ -453,15 +457,47 @@ pub struct CornerNormals {
 }
 
 impl CornerNormals {
-    /// Reads every corner of every face of a mesh, in one pass.
+    /// Reads every corner of every face of a mesh, in one pass, averaging each corner over the
+    /// **block** its face belongs to.
+    ///
+    /// This is [`Self::of_grouped`] with the block as the group, and it is the conservative
+    /// default because a block is the one edge of the surface the caller did not choose: it is
+    /// there so that this crate can answer for itself, and it is finer than what most surfaces
+    /// want. A caller that knows which of its edges are features of the rock and which are only
+    /// edges of the correspondence should say so through [`Self::of_grouped`] instead.
     pub fn of(mesh: &FacetMesh) -> Self {
+        Self::of_grouped(mesh, |face| face.block)
+    }
+
+    /// Reads every corner of every face, averaging each corner over the faces that share its
+    /// **group**, and the group is the caller's.
+    ///
+    /// # Invariants
+    ///
+    /// - **The group is read once per face and never again**, into a table of the same length as
+    ///   the face list, so a caller may pass anything that reads the face — a closure over the
+    ///   flank a face belongs to, a lookup into a caller's own array — without it having to be
+    ///   cheap and without it being read a second time against a mesh it has already moved on
+    ///   from.
+    /// - **Two groups may not share an id.** The ids are compared, not the faces behind them, so
+    ///   two groups that were numbered alike are one group and the edge between them is smoothed.
+    ///   Nothing here can notice that, which is why the caller's key is the only place it can.
+    ///
+    /// Which group is right is a statement about the **surface**, and not about this mesh: rock is
+    /// smooth across the floor of its own gully and creased along its crest, and a mesh whose
+    /// finest grouping is the belt can only say that every rib is an edge. A caller whose surface
+    /// is smooth across several belts passes a group that spans them — a whole flank, so that the
+    /// strips of one flank are one surface and only the crest lines stay creased. Averaging over
+    /// the whole mesh instead would round the crest lines off, and the crest lines are the rock.
+    pub fn of_grouped(mesh: &FacetMesh, group: impl Fn(&Face) -> u32) -> Self {
+        let groups: Vec<u32> = mesh.faces.iter().map(&group).collect();
         let mut sums: BTreeMap<(u32, u32), ([f32; 3], f32)> = BTreeMap::new();
-        for face in &mesh.faces {
+        for (face, group) in mesh.faces.iter().zip(&groups) {
             let unit = mesh.normal(face);
             for corner in 0..3 {
                 let angle = corner_angle(mesh.triangle(face), corner);
                 let entry = sums
-                    .entry((face.block, face.indices[corner]))
+                    .entry((*group, face.indices[corner]))
                     .or_insert(([0.0; 3], 0.0));
                 for axis in 0..3 {
                     entry.0[axis] += unit[axis] * angle;
@@ -472,15 +508,12 @@ impl CornerNormals {
         let normals = mesh
             .faces
             .iter()
-            .map(|face| {
-                std::array::from_fn(
-                    |corner| match sums.get(&(face.block, face.indices[corner])) {
-                        Some((sum, total)) if *total > ANGLE_EPSILON => {
-                            crate::math::normalized3(*sum)
-                        }
-                        _ => mesh.normal(face),
-                    },
-                )
+            .zip(&groups)
+            .map(|(face, group)| {
+                std::array::from_fn(|corner| match sums.get(&(*group, face.indices[corner])) {
+                    Some((sum, total)) if *total > ANGLE_EPSILON => crate::math::normalized3(*sum),
+                    _ => mesh.normal(face),
+                })
             })
             .collect();
         CornerNormals { normals }

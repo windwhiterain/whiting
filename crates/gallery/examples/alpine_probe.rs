@@ -21,12 +21,15 @@
 //!
 //! It writes `out/alpine-plan.svg` and `out/alpine-skyline.svg`.
 
+use std::collections::BTreeMap;
+
 use mountain::tessellation::BeltRef;
 use mountain::{FacetMesh, Massif, ValleyId, derive};
 use whiting_gallery::landscape;
 
 fn main() {
     std::fs::create_dir_all("out").ok();
+    write_ceilings(landscape::crest_count());
     let massif = landscape::massif();
     println!(
         "{} ridges, {} valleys, {} footprint nodes, step {}",
@@ -83,12 +86,35 @@ fn main() {
                 println!("  valley {valley} faces {faces:?}");
             }
             report_slivers(&mesh);
+            report_creases(&mesh);
             write_skyline(&mesh, 300.0);
         }
         Err(failure) => println!("build failed: {failure}"),
     }
     write_plan(&massif);
+
     write_framing();
+}
+
+/// Prints, for every valley node, the height of the lower of the two crests it runs between.
+///
+/// # Invariants
+///
+/// **A ceiling and not a verdict.** `check_the_authored_heights` already refuses a floor that is
+/// not below the rock either side of it, and that is the rule the table has to satisfy — but a
+/// refusal names one number that is wrong, and authoring a table of a hundred and thirty numbers
+/// against a hundred and thirty refusals is guesswork with extra steps. The ceiling is the number
+/// the author needs: the highest the floor may stand and still be a valley rather than a second
+/// ridge, at that node, against **both** walls. The tightest one of the two is the one that binds,
+/// so a floor written just under this row is valid against the whole wedge.
+fn write_ceilings(wedges: usize) {
+    println!("\nvalley floor ceilings — the lower flanking crest at each node:");
+    for wedge in 0..wedges {
+        let cells: Vec<String> = (1..landscape::valley_nodes())
+            .map(|node| format!("{:.0}", landscape::valley_ceiling(wedge, node)))
+            .collect();
+        println!("  wedge {wedge}: {}", cells.join("  "));
+    }
 }
 
 /// Reports where the two ranges stand in the frame, seen from the eye.
@@ -176,6 +202,99 @@ fn report_slivers(mesh: &FacetMesh) {
         println!(
             "  sliver aspect {:.0} at [{:.0}, {:.0}, {:.0}] belt {:?}",
             entry.0, entry.2[0], entry.2[1], entry.2[2], entry.4
+        );
+    }
+}
+
+/// Reports where the shading normal jumps across a mesh edge, and whether the scene asked for it.
+///
+/// # Invariants
+///
+/// **It reports two groupings side by side**, because the number that matters is not "are there
+/// creases" — a crest line is a crease and wants to be — but **how many creases there are beyond
+/// the ones the scene named**. A belt is one strip of one flank, so grouping by it creases at
+/// every rib as well as at every crest; a flank is the whole face, so grouping by it creases at
+/// the crest and the valley floor and nowhere else. Both are counted here over the same edges, so
+/// the two numbers are comparable rather than two separate opinions.
+///
+/// An edge's normal jump is read **at one shared vertex, on both of its faces** — the pair the
+/// rasteriser interpolates towards each other across that edge. Reading it at each face's own end
+/// of the edge instead measures the surface's curvature between two different vertices and calls
+/// every curve a crease, which is a measurement of the mountain rather than of the mesh.
+fn report_creases(mesh: &FacetMesh) {
+    let flank =
+        mountain::CornerNormals::of_grouped(mesh, whiting_gallery::identity::across_the_flank);
+    let belt =
+        mountain::CornerNormals::of_grouped(mesh, whiting_gallery::identity::across_the_belt);
+
+    // Every edge, with the faces on it. The key is the edge's own two endpoints **in order**, so a
+    // face that walks the edge the other way — which every two do, or the mesh would not be
+    // manifold — lands on the same key.
+    let mut edges: BTreeMap<(u32, u32), Vec<usize>> = BTreeMap::new();
+    for (index, face) in mesh.faces.iter().enumerate() {
+        for corner in 0..3 {
+            let (here, next) = (face.indices[corner], face.indices[(corner + 1) % 3]);
+            edges
+                .entry((here.min(next), here.max(next)))
+                .or_default()
+                .push(index);
+        }
+    }
+    let corner_at = |face: usize, vertex: u32| -> usize {
+        (0..3)
+            .find(|corner| mesh.faces[face].indices[*corner] == vertex)
+            .expect("an edge endpoint is one of the face's own corners")
+    };
+
+    let angle = |one: [f32; 3], other: [f32; 3]| -> f64 {
+        let dot = one[0] * other[0] + one[1] * other[1] + one[2] * other[2];
+        f64::from(dot.clamp(-1.0, 1.0).acos()) * 180.0 / std::f64::consts::PI
+    };
+    let mut rows: Vec<(f64, f64, String)> = Vec::new();
+    for ((low, _), faces) in edges.iter().filter(|(_, on)| on.len() == 2) {
+        let [one, two] = faces.as_slice() else {
+            continue;
+        };
+        rows.push((
+            angle(
+                flank.at(*one, corner_at(*one, *low)),
+                flank.at(*two, corner_at(*two, *low)),
+            ),
+            angle(
+                belt.at(*one, corner_at(*one, *low)),
+                belt.at(*two, corner_at(*two, *low)),
+            ),
+            format!("{:?}", mesh.faces[*one].attributes.belt),
+        ));
+    }
+
+    let edges = rows.len();
+    for (name, jumps) in [
+        (
+            "across a flank",
+            rows.iter().map(|row| row.0).collect::<Vec<_>>(),
+        ),
+        (
+            "across a belt",
+            rows.iter().map(|row| row.1).collect::<Vec<_>>(),
+        ),
+    ] {
+        let creased: Vec<f64> = jumps.iter().copied().filter(|jump| *jump > 0.0).collect();
+        let total = creased.iter().sum::<f64>();
+        let worst = creased.iter().copied().fold(0.0, f64::max);
+        println!(
+            "creases {name}: {} of {edges} interior edges, worst {worst:.1} degrees, \
+             total {total:.0} degrees",
+            creased.len()
+        );
+    }
+    let mut worst: Vec<&(f64, f64, String)> = rows.iter().filter(|row| row.1 > 0.0).collect();
+    worst.sort_by(|left, right| right.1.total_cmp(&left.1));
+    println!("the largest jumps the belt grouping leaves behind:");
+    for row in worst.iter().take(6) {
+        println!(
+            "  belt jump {:.1} degrees, flank {:.1} degrees, on {}",
+            row.1, row.0, row.2
         );
     }
 }
