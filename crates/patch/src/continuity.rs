@@ -110,6 +110,25 @@
 //! the question is worth measuring again. The routes they rule out are, in order: the whole-row
 //! invariant over a crowded sample, deriving the contested corner, a corner scale, and lazy
 //! subdivision.
+//!
+//! # Elevation is not shape-preserving here, and this is why
+//!
+//! Degree elevation is exactly shape-preserving on its own — `rect_elevation_probe` measures it at
+//! `7.026e-16` — and it is exactly shape-preserving on a mesh of this crate whose edges are all hard.
+//! `layers_probe` measurement 5 measures `6.661e-16` there, and `2.176e-15` with a displacement level
+//! above it, so a hierarchy does not make it lossy either.
+//!
+//! With soft edges it is **not**. Elevating a mesh from degree 3 to 4 moves its surface by
+//! `8.170e-3`, and by `5.785e-2` when a displacement level sits on top. Both are the same defect as
+//! the gap above, one refinement further in: the invariant leaves the two ends of a slave's row
+//! un-derived, and elevation's blend pulls those un-derived ends into the *derived* interior
+//! positions, so the row that enforcement re-derives sits slightly off where the surface was. The
+//! movement is a seam effect, not a representation limit — nothing about degree elevation is
+//! approximate here.
+//!
+//! The practical consequence is that elevation is a **refinement with a price** on a model carrying
+//! soft edges, and a caller who needs the surface to hold still across it should refine before
+//! tagging the seams soft.
 
 use crate::point::Point3;
 use crate::topology::{EdgeKey, EdgeSlot, FaceId};

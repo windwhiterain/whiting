@@ -292,6 +292,12 @@ impl PatchMesh {
     /// Raises every patch one degree without moving the surface, on the base and on every
     /// displacement.
     ///
+    /// "Without moving the surface" is exact when every edge is hard, and approximate when soft edges
+    /// are present — see the elevation section of [`crate::continuity`], and `layers_probe`
+    /// measurement 5 for the numbers. The displacement levels are raised alongside the base so that
+    /// the hierarchy stays in step; there is no way to raise one without the others through this
+    /// entry point.
+    ///
     /// Every soft edge's adjacent row is then re-derived, which is why this ends in an enforcement
     /// pass rather than doing the work twice: a slave's row is derived state, not stored intent.
     /// `mu` needs no adjustment, because it is one scalar for the whole edge and the edge did not
