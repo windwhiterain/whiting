@@ -39,6 +39,27 @@
 //! | sun     | `angle`                                    |
 //! | area    | `sizeu`, `sizev`, `ellipse`, `spread`      |
 //!
+//! # `strength` is a factor, not a second statement of the same fact
+//!
+//! The kernel multiplies a light's `strength` into its shader rather than taking it from it:
+//!
+//! ```text
+//! eval = surface_shader_emission(emission_sd);
+//! eval *= rgb_to_spectrum(make_float3(klight->strength[0], ...));
+//! ```
+//!
+//! in `src/kernel/light/sample.h`. So the colour belongs on `strength` and on **nothing else**;
+//! writing it into the emission node as well renders the square of it. The error is invisible
+//! for a white light and obvious for a coloured one.
+//!
+//! # A light's brightness maps to ours without a conversion
+//!
+//! `normalize` defaults to true, and each `copy_to_kernel` divides by an `area()` chosen so that
+//! `strength` reads as a physical quantity: total radiant flux for a point or spot, irradiance
+//! for a sun, radiance for a background. Those are exactly the three quantities our schema names
+//! `power`, `irradiance` and `radiance`, so the mapping is the identity. [`brightness`] holds
+//! the derivation and the socket names behind it.
+//!
 //! # A point light here is a sphere light, not a delta light
 //!
 //! `PointLight` declares `radius` and `is_sphere`, which defaults to true, and the kernel
@@ -70,10 +91,10 @@ pub struct Light {
     /// because it comes from a `match` on our own variant tag and never from a string that
     /// travelled through the document.
     pub kind: &'static str,
-    /// The radiance the emission node is given, as a colour.
+    /// The radiance the light gives out, as a colour.
     pub color: [f64; 3],
-    /// How bright, as a multiplier.
-    pub intensity: f64,
+    /// How bright, in the unit this kind of light is measured in. See [`brightness`].
+    pub brightness: f64,
     /// Where a punctual light stands.
     pub position: Option<[f64; 3]>,
     /// Which way a directional or spot light points.
@@ -86,6 +107,58 @@ pub struct Light {
     pub image: Option<String>,
     /// How much an environment light is scaled by.
     pub strength: f64,
+}
+
+/// The field name each kind of light states its brightness under.
+///
+/// A light's brightness is not one quantity across the four kinds: a lamp has a total output, a
+/// sun an irradiance, a sky a radiance. The schema says the same thing by naming a different field
+/// per kind, and this is the one place in the emitter that knows which name belongs to which.
+fn brightness_field(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        "Point" | "Spot" => "power",
+        "Directional" => "irradiance",
+        "Environment" => "radiance",
+        _ => return None,
+    })
+}
+
+/// The unit a light's `strength` is in, per kind, and what it is in ours.
+///
+/// Cycles' `normalize` socket defaults to true (`SOCKET_BOOLEAN(normalize, "Normalize", true)`
+/// in `src/scene/light.cpp:108`), and each light's `copy_to_kernel` divides by an `area()` that
+/// is defined to make `strength` mean a physical quantity:
+///
+/// | kind   | `area()`                        | `eval_fac`      | so `strength` is |
+/// |--------|---------------------------------|-----------------|------------------|
+/// | point  | `4 * PI * r²`, or `4` at r = 0   | `invarea / PI`  | total flux       |
+/// | spot   | as point                        | as point        | total flux       |
+/// | sun    | `PI * sin²(angle/2)`, or `1`     | `invarea`       | irradiance       |
+/// | backgnd| `1`                             | `1`             | radiance         |
+///
+/// Our schema names those same three quantities `power`, `irradiance` and `radiance`, so the
+/// mapping is the **identity** and no conversion factor belongs here. That is a conclusion about
+/// this build of Cycles at commit `a456b76`; a different `normalize` default or a different
+/// `area()` would make it wrong, and the numbers above are what to re-read if it ever does.
+fn brightness(kind: &str, fields: &definition::FieldMap, context: &str) -> EmitResult<f64> {
+    let Some(field) = brightness_field(kind) else {
+        return Err(EmitError::Malformed {
+            detail: format!("{context} names an unknown kind"),
+        });
+    };
+    // Read through to the emitter's own reader rather than defaulting: a missing brightness is a
+    // document whose lighting cannot be read, and answering it with `1.0` would render a picture
+    // that is wrong in a way nothing reports.
+    match read::field(fields, field) {
+        Some(value) => read::number(value, &format!("{context}'s {field}")).map_err(|_| {
+            EmitError::Malformed {
+                detail: format!("{context}'s {field} is not a number"),
+            }
+        }),
+        None => Err(EmitError::Malformed {
+            detail: format!("{context} states no `{field}`"),
+        }),
+    }
 }
 
 /// Reads one light out of the document.
@@ -110,16 +183,18 @@ pub fn read_light(light: &Value) -> EmitResult<Light> {
         Some(value) => read::triple(value, &format!("{context}'s color"))?,
         None => [1.0, 1.0, 1.0],
     };
-    let intensity = read::field(fields, "intensity")
-        .and_then(|value| read::number(value, "intensity").ok())
-        .unwrap_or(1.0);
+    // The brightness is read here, before the match, because the field it lives under is decided
+    // by the variant's own tag: a point and a sun do not name it the same way, and neither of
+    // them names it `intensity`, which is what every light used to carry before the schema split
+    // brightness by quantity.
+    let brightness = brightness(tag, fields, &context)?;
 
     // The shared part of every light, before the tag decides which kind it is.
     let base = Light {
         label,
         kind: "point",
         color,
-        intensity,
+        brightness,
         position: None,
         direction: None,
         outer_angle: None,
@@ -191,6 +266,26 @@ fn read_angle(fields: &definition::FieldMap, name: &str) -> Option<f64> {
 ///
 /// The two blocks are written together because neither is meaningful alone: the `<shader>`
 /// block is what makes the light emit, and the `<state>` is what binds the two.
+///
+/// # Why the shader is white and the brightness is on the light
+///
+/// The kernel multiplies the two. `light_sample_shader_eval_nee_constant` and
+/// `light_sample_shader_eval_forward` in `src/kernel/light/sample.h` both end with
+///
+/// ```text
+/// eval = surface_shader_emission(emission_sd);
+/// eval *= rgb_to_spectrum(make_float3(klight->strength[0], ...));
+/// ```
+///
+/// so the light's `strength` is a **factor applied on top of** its shader, not a second way of
+/// saying the same thing. Writing the colour into both — which an earlier version of this file
+/// did — therefore renders `colour * colour`, and the error is invisible for a white light,
+/// because `1.0 * 1.0` is `1.0`. It only shows on a saturated one, which is why it survived every
+/// render that was checked.
+///
+/// The split below keeps each fact in one place: the shader says *that this emits*, and the
+/// light's `strength` says *what colour and how much*. The shader is left white and at unit
+/// strength so that the arithmetic above is exactly the multiplication the kernel does.
 pub fn write_light(writer: &mut Writer, light: &Light) {
     let shader_name = format!("{}_emission", light.label);
     let node_name = format!("{}_source", light.label);
@@ -200,11 +295,9 @@ pub fn write_light(writer: &mut Writer, light: &Light) {
         "emission",
         &[
             ("name", node_name.clone()),
-            (
-                "color",
-                Writer::color(light.color[0], light.color[1], light.color[2]),
-            ),
-            ("strength", light.intensity.to_string()),
+            // White at unit strength: a carrier, not a second statement of the light's colour.
+            ("color", Writer::color(1.0, 1.0, 1.0)),
+            ("strength", "1.0".to_owned()),
         ],
     );
     writer.leaf(
@@ -252,11 +345,17 @@ fn write_light_element(writer: &mut Writer, light: &Light) {
     let mut attributes: Vec<(&str, String)> = vec![
         ("name", light.label.clone()),
         ("light_type", light.kind.to_owned()),
-        // `strength` is a colour on every light kind, and it is not the emission node's
-        // strength: the node sets the radiance and this scales the whole source.
+        // `strength` is a colour on every light kind, and it carries the whole of the light:
+        // both its colour and its brightness, in one number per channel. The emission shader is
+        // white at unit strength precisely so that this multiplication is the only one, and the
+        // value the renderer computes is `brightness * colour` rather than its square.
         (
             "strength",
-            Writer::color(light.color[0], light.color[1], light.color[2]),
+            Writer::color(
+                light.color[0] * light.brightness,
+                light.color[1] * light.brightness,
+                light.color[2] * light.brightness,
+            ),
         ),
     ];
 

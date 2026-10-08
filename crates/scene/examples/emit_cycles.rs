@@ -214,11 +214,12 @@ fn main() {
                                 [1.0f64, 0.95, 0.85].into_iter().map(Value::Float).collect(),
                             ),
                         ),
-                        ("intensity".to_owned(), Value::Float(4.0)),
+                        ("irradiance".to_owned(), Value::Float(4.0)),
                     ],
                 ),
-                // Ours is an area source and Cycles' is a delta source, so this one is
-                // emitted as an area light sized from the radius.
+                // Cycles' point light is a sphere source once it has a radius, which is the same
+                // shape of thing ours is, so this one maps across directly and `radius` is not
+                // written: ours is how far the light reaches, not how big it is.
                 Value::variant(
                     "Point",
                     vec![
@@ -233,7 +234,7 @@ fn main() {
                             "color".to_owned(),
                             Value::List([1.0f64, 0.9, 0.8].into_iter().map(Value::Float).collect()),
                         ),
-                        ("intensity".to_owned(), Value::Float(120.0)),
+                        ("power".to_owned(), Value::Float(120.0)),
                         ("radius".to_owned(), Value::Float(0.5)),
                     ],
                 ),
@@ -245,7 +246,7 @@ fn main() {
                             "color".to_owned(),
                             Value::List([0.3f64, 0.4, 0.6].into_iter().map(Value::Float).collect()),
                         ),
-                        ("intensity".to_owned(), Value::Float(1.0)),
+                        ("radiance".to_owned(), Value::Float(1.0)),
                     ],
                 ),
             ]),
