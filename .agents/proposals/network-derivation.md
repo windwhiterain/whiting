@@ -136,7 +136,7 @@ flipping each dart gives a path from `end(dn)` back to `start(d0)`. So the fault
 are read, and **the next session should begin by asserting continuity outright** — that
 `start(dart[i + 1]) == end(dart[i])` for every wall — which turns a silently wrong wall into a message
 naming the crest ends that disagree. That check is missing, and its absence is most of why this took as
-long as it did.
+long as it did. Read `Graph::faces` and `split` before writing either of them again.
 
 ### What the attempt cost, in bugs that do not crash
 
