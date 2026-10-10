@@ -130,6 +130,47 @@ byte-for-byte what an emission of strength 0.7 renders. The same node with `valu
 **Socket names are matched case-insensitively.** `from="n value"` and `from="n Value"` both work and
 produce identical images.
 
+### A blind spot in the output-socket method, found by checking the documentation
+
+Deciding an output name by wiring it to an emission strength and looking for light **cannot
+distinguish a wrong name from a node whose value is legitimately zero** on the test surface. On a
+flat quad facing the camera, `backfacing` is zero and `pointiness` is zero, and both look exactly
+like a name that was refused.
+
+The Blender manual settles it: the Geometry node does have `Backfacing`, and the Attribute node has
+`Position`, `Normal`, `Tangent`, `True Normal`, `Incoming`, `Parametric` and `Backfacing`. **Two
+names this repository's earlier pass recorded as absent are in fact documented as present.** The
+method has to feed the node something that is not zero before it can say anything about an output.
+
+### The attribute node, settled from documentation
+
+The manual states the Attribute node has **no inputs**, one property called **Name**, and four
+outputs: `Color`, `Vector`, `Fac` and `Alpha`. It also states what happens when the lookup fails:
+
+> If a suitable property is not found, all sockets of the node, including Alpha, output 0.
+
+That is exactly what this repository's render measured — every candidate spelling returned zero. So
+the node and its socket names were never the problem.
+
+The node has a **Type** — Geometry, Object, Instancer or View Layer — and Cycles' XML has no way to
+write it, so it is Geometry, which reads mesh attributes. And this repository has already recorded
+what that means, quoting the loader:
+
+> we don't yet support arbitrary attributes, for now add vertex attributes
+
+The loader produces **exactly five**: position, normal, UV, UV tangent and tangent sign.
+
+**So the two independent lines agree, and the answer is definite: a per-face authored id cannot
+cross to this renderer.** The `landscape` massif varies its stone colour per block by reading
+`in.authored_id`; there is no attribute node that can carry it, because there is no attribute to
+read. What replaces it has to be built from what the node *does* have — the shading point's position
+and normal — or the variation is dropped and the massif reads as one uniform stone. That is a
+design decision about the picture, not about the file format.
+
+Source: the Blender manual's Attribute Node and Input Nodes pages, read 2026-10-10. Version drift is
+likely and unmeasured here; the loader's five-attribute limit is quoted in this repository's own
+source and is the stronger of the two claims for our purposes.
+
 ### The one rule this imposes on an emitter
 
 **Write every input explicitly.** `math` has three, and an input left unset keeps the node's own

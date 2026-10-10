@@ -142,11 +142,29 @@ that works today stops working.
    operation it cannot spell.
 5. not yet — the other four scenes.
 
-### Still unmeasured, and marked as such
+### The attribute node: settled, and the answer is no
 
-`attribute` produced nothing under any of `attribute_name` / `name` / `attribute` crossed with
-`fac` / `color` / `vector` / `alpha`. That node is what would carry a per-face authored id, and the
-massif's stone colour depends on one, so it has to be resolved before `landscape` can match. The
-likely cause is that the mesh carries no such attribute, which would be an emitter problem rather
-than a spelling one — Cycles' loader reads exactly five vertex attributes and has no way to add
-another.
+Checked against the Blender manual on 2026-10-10, after rendering had failed to settle it. The
+Attribute node has no inputs, one property called `Name`, and outputs `Color`, `Vector`, `Fac` and
+`Alpha` — so the socket names were never what was wrong. What the manual also says is why every
+candidate returned zero:
+
+> If a suitable property is not found, all sockets of the node, including Alpha, output 0.
+
+The node has a Type — Geometry, Object, Instancer, View Layer — that Cycles' XML cannot write, so it
+is Geometry, which reads mesh attributes. And the loader makes exactly five:
+
+> we don't yet support arbitrary attributes, for now add vertex attributes
+
+position, normal, UV, UV tangent, tangent sign.
+
+**Therefore the massif's per-block stone variation cannot cross.** It reads `in.authored_id`, and there
+is no attribute to read it from. The replacement has to be built from the shading point's position
+and normal, or the variation is dropped and the massif reads as one uniform stone. That is a decision
+about the picture rather than about the file format, and it belongs to the parent.
+
+Two names this branch had recorded as absent are in fact documented as present: the Geometry node
+has `Backfacing`, and `Pointiness` is a real output. The probe method could not see them because both
+are legitimately zero on a flat quad facing the camera, which is a blind spot in the method rather
+than a fact about the nodes. The method has to feed a node something non-zero before it can say
+anything about an output.
