@@ -19,10 +19,29 @@
 //! socket at emit time or it does not exist.
 //!
 //! **`custom_data` is the only place a material's parameters are written**, so it is the only
-//! place they are read from. `tint`, `metallic` and `roughness` each have a socket to land in
-//! and are folded into it; `emissive` and `reflect` have none that means the same thing and
-//! are recorded rather than dropped, because a tint that silently failed to apply is the same
-//! invisible-wrong-image failure this module is arranged to prevent.
+//! place they are read from. `tint`, `metallic`, `roughness` and `emissive` each land in a
+//! `principled_bsdf` socket and are folded into it; a field with no such socket is recorded
+//! rather than dropped, because a tint that silently failed to apply is the same invisible-wrong-
+//! image failure this module is arranged to prevent.
+//!
+//! **Everything that is written is written as a node attribute, not as a connection**, and that
+//! is not a style choice: a socket whose name contains a space cannot be connected at all — see
+//! [`UnsupportedField::MaterialImage`]. An emitter reaching for `<connect>` would fail on exactly
+//! the fields whose names are the most descriptive.
+//!
+//! # `reflect` has a socket and is still not written
+//!
+//! `principled_bsdf` carries `Specular IOR Level`, which sounds like ours, and the mapping was
+//! written and rendered before this line existed. It is wrong: ours is how much sky a surface
+//! shows **at a grazing angle** and that socket is the reflectance it has at **normal incidence**,
+//! with Fresnel supplying the rise towards grazing on its own. Measured on `landscape`, writing
+//! it drops the correlation against the rasterised frame from `+0.6223` to `+0.5733` on the whole
+//! frame and from `+0.6249` to `+0.5919` below the sky — the document's zero is not a dielectric,
+//! and writing it takes away the specular the sun and the sky were contributing.
+//!
+//! so the field stays in the report, where its absence is visible, rather than being written and
+//! read as honoured. That is the difference between an approximation and a mistake: both are
+//! defensible, and only the measurement says which one this is.
 //!
 //! # Why the dielectric parameters are not read
 //!
@@ -50,6 +69,12 @@ const METALLIC: &str = "metallic";
 
 /// The field a material's roughness travels in.
 const ROUGHNESS: &str = "roughness";
+
+/// The field a material's own colour travels in, the one no light reaches.
+const EMISSIVE: &str = "emissive";
+
+/// The field a material's image travels under.
+const IMAGE: &str = "image";
 
 /// The roughness a material that names none is drawn with.
 const DEFAULT_ROUGHNESS: f64 = 0.5;
@@ -79,6 +104,8 @@ pub struct Material {
     pub ior: f64,
     /// Transmission weight in zero to one, for glass.
     pub transmission: f64,
+    /// The colour the surface emits on its own, when the document wrote one.
+    pub emissive: Option<[f64; 3]>,
 }
 
 /// Reads every material in a scene.
@@ -104,6 +131,7 @@ pub fn read_materials(
         let shader = read::text_field(fields, "shader", &context)?;
 
         let mut tint = None;
+        let mut emissive = None;
         let mut roughness = DEFAULT_ROUGHNESS;
         let mut metallic = DEFAULT_METALLIC;
         if let Some(custom) = read::field(fields, "custom_data") {
@@ -113,6 +141,24 @@ pub fn read_materials(
                         TINT => tint = Some(read::triple(value, &format!("{context}'s tint"))?),
                         ROUGHNESS => roughness = parameter(value, ROUGHNESS, &context)?,
                         METALLIC => metallic = parameter(value, METALLIC, &context)?,
+                        EMISSIVE => {
+                            emissive = Some(read::triple(value, &format!("{context}'s emissive"))?)
+                        }
+                        // An image is not a number and is refused by name rather than folded, so
+                        // that the reason a textured surface came out flat is the one thing in
+                        // the report about it. The variant carries the reason.
+                        IMAGE => match mode {
+                            LossyMode::Reject => {
+                                return Err(EmitError::Unsupported(
+                                    UnsupportedField::MaterialImage {
+                                        material: label.clone(),
+                                    },
+                                ));
+                            }
+                            LossyMode::Degrade => report.record(UnsupportedField::MaterialImage {
+                                material: label.clone(),
+                            }),
+                        },
                         other => match mode {
                             LossyMode::Reject => {
                                 return Err(EmitError::Unsupported(UnsupportedField::CustomData {
@@ -138,6 +184,7 @@ pub fn read_materials(
             metallic,
             ior: DEFAULT_IOR,
             transmission: DEFAULT_TRANSMISSION,
+            emissive,
         });
     }
     Ok(out)
@@ -148,11 +195,16 @@ pub fn read_materials(
 /// The node is named after the material, and the connection to `output surface` is what
 /// makes the graph a closure rather than an orphan: the loader pre-binds `output` to the
 /// graph's output node, and socket names are matched case-insensitively.
+///
+/// a material declaring no `emissive` writes none, because the node's own default is then what
+/// the document meant and restating it would claim a decision nobody made. `reflect` is a
+/// separate decision and is not made here — see the module documentation for the measurement
+/// that settled it.
 pub fn write_material(writer: &mut Writer, material: &Material) {
     // A tint multiplies the base colour rather than replacing it, so a document that writes
     // only a tint gets white underneath and the tint as the result.
     let base = material.tint.unwrap_or([1.0, 1.0, 1.0]);
-    let attributes: Vec<(&str, String)> = vec![
+    let mut attributes: Vec<(&str, String)> = vec![
         // The node is named, and the connection below refers to it by that name. The loader
         // resolves `from` and `to` against the node names inside the graph, so a node with
         // no name is unreachable however well formed its sockets are.
@@ -163,6 +215,12 @@ pub fn write_material(writer: &mut Writer, material: &Material) {
         ("ior", format!("{}", material.ior)),
         ("transmission_weight", format!("{}", material.transmission)),
     ];
+    if let Some(emissive) = material.emissive {
+        attributes.push(("emission_color", Writer::color(emissive[0], emissive[1], emissive[2])));
+        // The colour is not a light on its own: `Emission Strength` keeps the node's own default
+        // of zero unless the document says otherwise, so a surface naming a colour and no
+        // strength emits nothing.
+    }
     writer.open("shader", &[("name", material.label.clone())]);
     writer.leaf("principled_bsdf", &attributes);
     writer.leaf(
