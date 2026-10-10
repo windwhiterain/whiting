@@ -499,8 +499,8 @@ impl CornerNormals {
                 let entry = sums
                     .entry((*group, face.indices[corner]))
                     .or_insert(([0.0; 3], 0.0));
-                for axis in 0..3 {
-                    entry.0[axis] += unit[axis] * angle;
+                for (axis, component) in unit.iter().enumerate() {
+                    entry.0[axis] += component * angle;
                 }
                 entry.1 += angle;
             }

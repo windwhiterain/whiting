@@ -44,14 +44,13 @@
 
 mod support;
 use std::collections::BTreeSet;
-use std::fmt;
 
-use support::{EXACT, grid, level_distance, level_magnitude};
+use support::{EXACT, grid, level_distance, level_magnitude, scramble, split_over_shared_edges};
 
 use whiting_patch::enforce::enforce as enforce_level;
 use whiting_patch::subdivide::subdivide;
-use whiting_patch::topology::{EdgeKey, boundary_index, edge_endpoints, mirrored_position};
-use whiting_patch::{Continuity, FaceId, Level, PatchMesh, Point3};
+use whiting_patch::topology::EdgeKey;
+use whiting_patch::{FaceId, Level, PatchMesh, Point3};
 
 /// A distance this small is indistinguishable from nothing having happened.
 const MOVED: f64 = 1.0e-6;
@@ -84,24 +83,9 @@ const DEGREE: usize = 3;
 /// over every corner of the mesh.
 const SOFT_EDGES: usize = 32;
 
+/// How much two faces of a shared hard edge disagree, in one line for a report.
 fn report(name: &str, detail: &str) {
     println!("\n== {name} ==\n{detail}");
-}
-
-/// How much two faces of a shared hard edge disagree, in one line for a report.
-struct Split {
-    worst: f64,
-    positions: usize,
-}
-
-impl fmt::Display for Split {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "{:.3e} over {} positions",
-            self.worst, self.positions
-        )
-    }
 }
 
 /// The sample every probe in this crate uses, subdivided once, at degree 3, with the first `soft`
@@ -132,32 +116,6 @@ fn interior_edges(mesh: &PatchMesh) -> Vec<EdgeKey> {
         .collect()
 }
 
-/// Overwrites every point with a seeded ramp, which violates every tag in the level at once:
-/// neighbours disagree, so the shared boundaries are not shared and no soft edge's slave row is
-/// derived.
-///
-/// Deliberately **not** a rigid translation. A uniform offset already satisfies both invariants —
-/// sharing compares two equally shifted points, and `C + mu (C - A)` is unchanged when `C` and `A`
-/// move together — so a translated level would sail through enforcement untouched and every
-/// measurement here would pass without testing anything.
-fn scramble(level: &mut Level, seed: f64) {
-    let mut next = seed;
-    for face in 0..level.len() {
-        let (degree_u, degree_v) = level.layouts()[face].degrees();
-        for i in 0..=degree_u {
-            for j in 0..=degree_v {
-                next += 0.004;
-                level.set_point(
-                    face,
-                    i,
-                    j,
-                    Point3::new(next, -next * 0.5, seed * 0.5 + next * 0.25),
-                );
-            }
-        }
-    }
-}
-
 /// `(face, u, v)` triples spread over the mesh, for comparing surfaces rather than control points.
 ///
 /// Levels of different degrees hold different numbers of points, so a surface that survived an
@@ -185,44 +143,6 @@ fn worst_distance(first: &[Point3], second: &[Point3]) -> f64 {
         .zip(second)
         .map(|(was, now)| was.distance(*now))
         .fold(0.0f64, f64::max)
-}
-
-/// The worst distance between the two faces of any shared hard edge's boundary rows.
-///
-/// A level whose every shared edge is genuinely shared measures zero here. This asks the question at
-/// the level's own control points rather than at the surface, because a surface can look right while
-/// the two sides disagree about where the edge is.
-/// The worst disagreement between the two faces of a shared hard edge, and how many positions
-/// disagree at all.
-///
-/// The count matters as much as the worst: one bad edge and one bad edge per vertex are different
-/// faults, and only the count tells them apart.
-fn split_over_shared_edges(mesh: &PatchMesh, level: &Level) -> Split {
-    let degree = level.degrees().0;
-    let rules = mesh.rules();
-    let mut worst = 0.0f64;
-    let mut positions = 0usize;
-    for (key, faces) in &mesh.topology().edge_faces {
-        if faces.len() != 2 || rules.continuity(key).is_some_and(Continuity::is_soft) {
-            continue;
-        }
-        let (owner, follower) = (faces[0], faces[1]);
-        let owner_ends = edge_endpoints(mesh.quads()[owner.0 as usize], owner.1);
-        let follower_ends = edge_endpoints(mesh.quads()[follower.0 as usize], follower.1);
-        for t in 0..=degree {
-            let follower_t = mirrored_position(degree, owner_ends, follower_ends, t);
-            let (oi, oj) = boundary_index(degree, owner.1, t);
-            let (fi, fj) = boundary_index(degree, follower.1, follower_t);
-            let held = level.face(owner.0 as usize).expect("a face resolves")[(oi, oj)];
-            let other = level.face(follower.0 as usize).expect("a face resolves")[(fi, fj)];
-            let gap = held.distance(other);
-            worst = worst.max(gap);
-            if gap > 0.0 {
-                positions += 1;
-            }
-        }
-    }
-    Split { worst, positions }
 }
 
 /// The worst disagreement between the faces around a mesh vertex about what that vertex is.

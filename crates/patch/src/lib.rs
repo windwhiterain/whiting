@@ -17,6 +17,7 @@ pub mod point;
 pub mod rect;
 pub mod simplex;
 pub mod subdivide;
+pub mod tessellate;
 pub mod topology;
 
 pub use continuity::{Continuity, SoftEdge, slave_interior};
@@ -27,4 +28,5 @@ pub use point::Point3;
 pub use rect::{RectNet, RectNetError};
 pub use simplex::{SimplexNet, SimplexNetError, count};
 pub use subdivide::{Origin, QuadMesh, subdivide};
+pub use tessellate::{FaceGrid, Tessellation};
 pub use topology::{EdgeKey, EdgeSlot, FaceId, Topology, VertexId};

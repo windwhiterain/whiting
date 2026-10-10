@@ -8,10 +8,19 @@
 
 #![allow(dead_code)]
 
-use whiting_patch::{Level, Point3};
+use std::collections::BTreeMap;
+use std::fmt;
+
+use whiting_patch::topology::{EdgeKey, boundary_index, edge_endpoints, mirrored_position};
+use whiting_patch::{Continuity, Level, PatchMesh, Point3};
 
 /// Exact, for geometry that was never asked to change.
 pub const EXACT: f64 = 1.0e-12;
+
+/// The floor this crate's own arithmetic measures in: two routes to the same number, evaluated
+/// differently, differ by about this much. A measurement of "nothing" that cannot be as large as this
+/// is measuring the floor rather than the geometry.
+pub const ROUNDING: f64 = 1.0e-12;
 
 /// A measured angle floors at about this, because two unit vectors that close have a dot product
 /// `f64` cannot resolve below `1 - 1e-16` and `acos` turns that into `sqrt(2e-16)`.
@@ -89,6 +98,157 @@ pub fn level_magnitude(level: &Level) -> f64 {
         .iter()
         .map(|point| point.length())
         .fold(0.0f64, f64::max)
+}
+
+/// Overwrites every point with a seeded ramp, which violates every tag in the level at once:
+/// neighbours disagree, so the shared boundaries are not shared and no soft edge's slave row is
+/// derived.
+///
+/// Deliberately **not** a rigid translation. A uniform offset already satisfies both invariants —
+/// sharing compares two equally shifted points, and `C + mu (C - A)` is unchanged when `C` and `A`
+/// move together — so a translated level would sail through enforcement untouched and every
+/// measurement that used it would pass without testing anything.
+pub fn scramble(level: &mut Level, seed: f64) {
+    let mut next = seed;
+    for face in 0..level.len() {
+        let (degree_u, degree_v) = level.layouts()[face].degrees();
+        for i in 0..=degree_u {
+            for j in 0..=degree_v {
+                next += 0.004;
+                level.set_point(
+                    face,
+                    i,
+                    j,
+                    Point3::new(next, -next * 0.5, seed * 0.5 + next * 0.25),
+                );
+            }
+        }
+    }
+}
+
+/// How much two faces of a shared hard edge disagree, in one line for a report.
+pub struct Split {
+    pub worst: f64,
+    pub positions: usize,
+}
+
+impl fmt::Display for Split {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{:.3e} over {} positions",
+            self.worst, self.positions
+        )
+    }
+}
+
+/// The worst disagreement between the two faces of a shared hard edge, and how many positions
+/// disagree at all.
+///
+/// The count matters as much as the worst: one bad edge and one bad edge per vertex are different
+/// faults, and only the count tells them apart. Measured at the control points rather than at the
+/// surface, because a surface can look right while the two sides disagree about where the edge is.
+pub fn split_over_shared_edges(mesh: &PatchMesh, level: &Level) -> Split {
+    let degree = level.degrees().0;
+    let rules = mesh.rules();
+    let mut worst = 0.0f64;
+    let mut positions = 0usize;
+    for (key, faces) in &mesh.topology().edge_faces {
+        if faces.len() != 2 || rules.continuity(key).is_some_and(Continuity::is_soft) {
+            continue;
+        }
+        let (owner, follower) = (faces[0], faces[1]);
+        let owner_ends = edge_endpoints(mesh.quads()[owner.0 as usize], owner.1);
+        let follower_ends = edge_endpoints(mesh.quads()[follower.0 as usize], follower.1);
+        for t in 0..=degree {
+            let follower_t = mirrored_position(degree, owner_ends, follower_ends, t);
+            let (oi, oj) = boundary_index(degree, owner.1, t);
+            let (fi, fj) = boundary_index(degree, follower.1, follower_t);
+            let held = level.face(owner.0 as usize).expect("a face resolves")[(oi, oj)];
+            let other = level.face(follower.0 as usize).expect("a face resolves")[(fi, fj)];
+            let gap = held.distance(other);
+            worst = worst.max(gap);
+            if gap > 0.0 {
+                positions += 1;
+            }
+        }
+    }
+    Split { worst, positions }
+}
+
+/// Every distinct edge of a triangle mesh, and how many triangles share it.
+///
+/// The counts are the whole answer to "is this mesh something a per-edge tag can be attached to": an
+/// edge with three triangles on it is not a crease, it is a fold, and nothing downstream can tag it.
+///
+/// Generic over the index type because two callers hold the same mesh under different numbering: a
+/// `FacetMesh` counts in `VertexId`, and a `Tessellation` counts positions in its own buffer.
+pub fn triangle_edges<K: Ord + Copy>(triangles: &[[K; 3]]) -> BTreeMap<(K, K), usize> {
+    let mut counts: BTreeMap<(K, K), usize> = BTreeMap::new();
+    for triangle in triangles {
+        for ends in [
+            [triangle[0], triangle[1]],
+            [triangle[1], triangle[2]],
+            [triangle[2], triangle[0]],
+        ] {
+            *counts.entry(canonical(ends)).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+/// Every distinct edge of a quad mesh, and how many quads share it.
+pub fn quad_edges(quads: &[[u32; 4]]) -> BTreeMap<EdgeKey, usize> {
+    let mut counts: BTreeMap<EdgeKey, usize> = BTreeMap::new();
+    for quad in quads {
+        for slot in 0..4 {
+            *counts
+                .entry(canonical([quad[slot], quad[(slot + 1) % 4]]))
+                .or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+/// The unordered pair in ascending order, which is what makes two faces name the same edge.
+fn canonical<K: Ord + Copy>(ends: [K; 2]) -> (K, K) {
+    if ends[0] <= ends[1] {
+        (ends[0], ends[1])
+    } else {
+        (ends[1], ends[0])
+    }
+}
+
+/// How a mesh's edges divide up: the boundary, the interior, and everything a per-edge tag cannot
+/// describe.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Incidence {
+    pub boundary: usize,
+    pub interior: usize,
+    /// Edges shared by three or more faces. `enforce` shares an edge when exactly two faces meet on
+    /// it, so these keep their own copies and crack silently.
+    pub non_manifold: usize,
+    pub worst: usize,
+}
+
+impl Incidence {
+    /// Generic over the index type for the same reason [`triangle_edges`] is.
+    pub fn of<K: Ord + Copy>(counts: &BTreeMap<(K, K), usize>) -> Self {
+        let mut found = Incidence::default();
+        for shared in counts.values() {
+            found.worst = found.worst.max(*shared);
+            match shared {
+                1 => found.boundary += 1,
+                2 => found.interior += 1,
+                _ => found.non_manifold += 1,
+            }
+        }
+        found
+    }
+
+    pub fn total(&self) -> usize {
+        self.boundary + self.interior + self.non_manifold
+    }
 }
 
 /// Barycentric weights of `point` over the triangle, and how far off its plane the point lies.

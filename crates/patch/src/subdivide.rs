@@ -43,6 +43,8 @@ pub enum Origin {
 pub struct QuadMesh {
     pub positions: Vec<Point3>,
     /// Corner indices in winding order, so a quad is traversed the way its source triangle was.
+    ///
+    /// **Inherited, not made consistent.** See [`subdivide`].
     pub quads: Vec<[VertexId; 4]>,
     /// Parallel to `positions`.
     pub origin: Vec<Origin>,
@@ -106,8 +108,11 @@ pub fn subdivide(positions: &[Point3], triangles: &[[VertexId; 3]]) -> QuadMesh 
             let centre = centroid_base + face as VertexId;
 
             // Each quad walks the source triangle's own winding, so the quads inherit whatever
-            // orientation that triangle had and the derived mesh stays consistently wound without
-            // a separate normal pass.
+            // orientation that triangle had. **That is a conditional, not a guarantee.** The derived
+            // mesh is consistently wound if and only if the source was, and nothing here makes it so:
+            // an input whose faces disagree about which way round they go comes out disagreeing too,
+            // at a ratio of three quads per bad triangle. `examples/facet_front_end_probe` measures
+            // the source's own winding rather than taking this comment's word for it.
             [
                 [alpha, alpha_beta, centre, gamma_alpha],
                 [beta, beta_gamma, centre, alpha_beta],

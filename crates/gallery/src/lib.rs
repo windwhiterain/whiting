@@ -24,6 +24,11 @@
 //!   read.
 //! - [`attributes`] — derives those attribute lists from the schemas a scene declares, so a scene
 //!   that changes its point schema gets matching shader input without writing it out.
+//! - [`patchmesh`] — a massif's facets as an editable patch surface. The one place this crate
+//!   joins `mountain` to `patch`, which is the only reason it is here rather than in either.
+//! - [`nurbs`] — a patch surface authored here rather than converted, with hard and soft edges and a
+//!   displacement layer, sampled into the triangles a scene document holds. The surface this whole
+//!   line of work is for, drawn end to end.
 //! - [`Gallery`] — the named scenes, built out of all of the above.
 //!
 //! # Why it is its own crate
@@ -59,6 +64,7 @@ pub mod identity;
 pub mod kit;
 pub mod land;
 pub mod locate;
+pub mod patchmesh;
 pub mod ridges;
 pub mod shaders;
 
@@ -84,6 +90,12 @@ pub use foldyard::foldyard;
 pub use landscape::landscape;
 pub use lanterns::lanterns;
 pub use monoliths::monoliths;
+/// The patch surface, and the model it is sampled from.
+///
+/// Public so that `examples/nurbs_probe.rs` can measure the model rather than the document it
+/// compiles to: what the scene is here to show is what the surface does, and a measurement of the
+/// document would say nothing about that.
+pub mod nurbs;
 pub use spotlight::spotlight;
 pub use stilllife::stilllife;
 pub use sunlight::sunlight;
@@ -103,6 +115,7 @@ impl Gallery {
             "landscape",
             "lanterns",
             "monoliths",
+            "nurbs",
             "spotlight",
             "stilllife",
             "studio",
@@ -124,6 +137,7 @@ impl Gallery {
             "landscape" => landscape(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
+            "nurbs" => nurbs::nurbs(),
             "spotlight" => spotlight(),
             "stilllife" => stilllife(),
             "studio" => scene::standard::example_standard_scene(),

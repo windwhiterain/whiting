@@ -13,3 +13,7 @@ scene = { workspace = true }
 # The `landscape` scene is the mountain crate's first caller: it authors a massif as a ridge and
 # valley skeleton, expands it, and draws the facets.
 mountain = { workspace = true }
+# The other direction out of a massif: `patchmesh` turns those same facets into an editable patch
+# surface. This crate is where the two meet, because it is the only crate that sees both — neither
+# `mountain` nor `patch` may know about the other, so the conversion has to live above them.
+patch = { workspace = true }
