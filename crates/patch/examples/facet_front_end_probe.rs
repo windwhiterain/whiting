@@ -325,8 +325,15 @@ fn main() {
         println!(
             "\nA non-manifold edge is the one failure here that would not be an error: enforce shares\n\
              an edge when exactly two faces meet on it, and a third face quietly keeps its own copy.\n\
-             Inconsistent winding is the other one: the mesh passes every count above and a rasteriser\n\
-             still draws half of it inside out."
+             Inconsistent winding is the other one, and its consequence is not the one usually\n\
+             claimed for it. An earlier version of this text said a rasteriser \"still draws half of\n\
+             it inside out\". Nothing is dropped: `Tessellation::triangles` and `Face::normal` both\n\
+             derive the winding from the same quad corner order, so they agree with each other\n\
+             whatever order the source quad had, and `raster_probe` measures `facing away 0` on the\n\
+             massif. What is real is that 48% of the patches carry a normal **opposite to their\n\
+             neighbours'**, so a lit render reverses shading across those 46 seams -- and any\n\
+             continuity asked for across them is meaningless, because the two sides do not share an\n\
+             orientation to be continuous in."
         );
         std::process::exit(1);
     }
