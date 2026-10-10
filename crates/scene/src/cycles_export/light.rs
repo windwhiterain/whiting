@@ -320,12 +320,15 @@ pub fn write_light(writer: &mut Writer, light: &Light) {
 fn write_light_scope(writer: &mut Writer, light: &Light) {
     let mut scope: Vec<(&str, String)> = Vec::with_capacity(2);
     if let Some(position) = light.position {
+        let position = super::axes::position(position);
         scope.push((
             "translate",
             Writer::color(position[0], position[1], position[2]),
         ));
     }
-    if let Some((axis, angle)) = super::transform::axis_angle(light_rotation(light)) {
+    if let Some((axis, angle)) =
+        super::transform::axis_angle(light_rotation(light), super::axes::Rotation::Frame)
+    {
         scope.push((
             "rotate",
             format!("{}, {}, {}, {}", angle, axis[0], axis[1], axis[2]),

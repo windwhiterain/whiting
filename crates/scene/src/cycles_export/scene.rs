@@ -6,6 +6,7 @@
 //! readable order therefore costs nothing and makes the file something a person can follow
 //! when a scene does not look right.
 
+use super::axes;
 use super::error::{EmitError, EmitResult, UnsupportedField};
 use super::geometry::{self, Mesh};
 use super::light::{self, Light};
@@ -389,7 +390,10 @@ fn write_camera(writer: &mut Writer, camera: &Camera) {
     // element, and takes the transform from the enclosing scope, so the camera is a sibling
     // of the transform rather than a child of it. `xml_read_camera` calls `cam->set_matrix`
     // with `state.tfm` and never looks at the element's own transform attributes.
-    writer.open("transform", &transform_attributes(&camera.transform));
+    writer.open(
+        "transform",
+        &transform_attributes(&camera.transform, axes::Rotation::Frame),
+    );
     writer.leaf(
         "camera",
         &[
@@ -886,7 +890,10 @@ fn write_instances(
         // `examples/scene_cube_surface.xml`, and the recursion is `xml_read_scene` in
         // `src/app/cycles_xml.cpp`.
         if instance_has_transform(&instance.transform) {
-            writer.open("transform", &transform_attributes(&instance.transform));
+            writer.open(
+                "transform",
+                &transform_attributes(&instance.transform, axes::Rotation::Points),
+            );
         }
         writer.open("state", &[("shader", material.label.clone())]);
         geometry::write_mesh(writer, mesh);
@@ -906,29 +913,31 @@ fn instance_has_transform(transform: &Transform) -> bool {
 }
 
 /// The attributes for one transform, as the loader reads them.
-fn transform_attributes(transform: &Transform) -> Vec<(&'static str, String)> {
+///
+/// `kind` is which of the two things a rotation is a rotation **of**, and it is a parameter
+/// rather than an inference because the two are written by the same function and disagree:
+/// see [`axes::Rotation`].
+fn transform_attributes(
+    transform: &Transform,
+    kind: axes::Rotation,
+) -> Vec<(&'static str, String)> {
     let mut attributes = Vec::with_capacity(3);
     if transform.translation != [0.0; 3] {
+        let translation = axes::position(transform.translation);
         attributes.push((
             "translate",
-            Writer::color(
-                transform.translation[0],
-                transform.translation[1],
-                transform.translation[2],
-            ),
+            Writer::color(translation[0], translation[1], translation[2]),
         ));
     }
-    if let Some((axis, angle)) = transform::axis_angle(transform.rotation) {
+    if let Some((axis, angle)) = transform::axis_angle(transform.rotation, kind) {
         attributes.push((
             "rotate",
             format!("{}, {}, {}, {}", angle, axis[0], axis[1], axis[2]),
         ));
     }
     if transform.scale != [1.0; 3] {
-        attributes.push((
-            "scale",
-            Writer::color(transform.scale[0], transform.scale[1], transform.scale[2]),
-        ));
+        let scale = axes::scale(transform.scale);
+        attributes.push(("scale", Writer::color(scale[0], scale[1], scale[2])));
     }
     attributes
 }

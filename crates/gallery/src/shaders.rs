@@ -1814,25 +1814,40 @@ fn environment_texel(direction: vec3<f32>, level: i32) -> vec2<i32> {{
 /// # The rectangle
 ///
 /// `u` runs once around the world and `v` runs from the zenith to the nadir, so the map is
-/// twice as wide as it is tall. The azimuth is measured from `+x` towards `+z`, which is the
-/// order the world axes already come in; `v` is inverted because texture space runs down and
-/// polar angle runs up.
+/// twice as wide as it is tall. The azimuth is measured from `+x` towards **`-z`**, which is
+/// the order the world axes come in once it has been carried onto the path tracer's z-up ones
+/// — see `scene::cycles_export::axes` — and it is the reader's `atan2(-direction.z,
+/// direction.x)` written the other way round.
 ///
-/// The poles are the other end of the problem: `sin(polar)` is zero there, so every azimuth
-/// lands on the same row, and the row is one texel tall whatever `u` says. That is not an
-/// approximation -- a direction at the zenith *is* one direction however it is described, and a
-/// map cannot spend more than one texel on it. Clamping to the map's own extent is what keeps a
-/// pole from reading one line past the end, which is the same seam answer the octahedral fold
-/// gives and for the same reason.
+/// `v` is not inverted: the polar angle already runs up, and the first row of the map is the
+/// zenith. That is the path tracer's own convention (`v = acos(dir.z) / pi`, and `v = 0` is
+/// row zero) and it is the one a map has to be built in to be read by both backends.
 fn latlong(direction: vec3<f32>, level: i32) -> vec2<i32> {{
     let horizontal = sqrt(direction.x * direction.x + direction.z * direction.z);
-    let turn = atan2(direction.z, direction.x) / 6.2831853 + 0.5;
-    let down = 1.0 - atan2(horizontal, direction.y) / 3.1415927;
+    let turn = atan2(-direction.z, direction.x) / 6.2831853;
+    let rise = atan2(horizontal, direction.y) / 3.1415927;
     let extent = vec2<i32>(textureDimensions(environment_map, level));
-    return clamp(
-        vec2<i32>(vec2<f32>(turn, down) * vec2<f32>(extent)),
-        vec2<i32>(0),
-        extent - vec2<i32>(1),
+    // The column **wraps** and the row **clamps**, and they are not the same question.
+    //
+    // `turn` runs `(-0.5, 0.5]` and carries **no** half turn added to it, because that is the
+    // path tracer's own rule and a map built to be read by both backends has to be built to
+    // it: its column is `floor(u * width)` repeating, so `u = 0` — the direction `+x` — is
+    // column zero, and adding half a turn here instead would put every texel of the map half
+    // a turn from where the path tracer looks for it. Measured: the seam showed as a hard
+    // vertical step where the ramp in the render jumped from 28 to 76 of 255.
+    //
+    // `floor` rather than a truncation, because `turn` is negative for half the world and
+    // truncating towards zero turns that half inside out. And the modulo twice, because WGSL's
+    // `%` takes the sign of the dividend.
+    //
+    // `rise` is in `[0, 1]` and reaches `1` only at the nadir, where `sin` is zero and every
+    // azimuth lands on the same row. A direction at a pole *is* one direction however it is
+    // described, so the answer for all of them is the same texel and clamping says that rather
+    // than reading one line past the end of the map.
+    let column = i32(floor(turn * f32(extent.x)));
+    return vec2<i32>(
+        ((column % extent.x) + extent.x) % extent.x,
+        clamp(i32(rise * f32(extent.y)), 0, extent.y - 1),
     );
 }}
 
@@ -2279,18 +2294,27 @@ const GROUND: [f64; 3] = [0.16, 0.12, 0.12];
 ///
 /// # The two halves of the convention, so that a generator can get one and not the other
 ///
-/// The **first row is the nadir** and the last row is the zenith: `v` runs from one to the
-/// other, a texture's rows run downwards, and the polar angle runs upwards. A generator that
-/// forgot that half wrote a map the reader sees upside down, which is a claim about the world
-/// rather than about rows and so nothing in the image gives it away.
+/// The **first row is the zenith** and the last row is the nadir. That is the path tracer's
+/// convention — `v = acos(dir.z) / pi`, so `v = 0` is the zenith and it is row zero — and it is
+/// the one a map has to be built in to be read the same way by both backends. This engine's own
+/// axes are y-up, so the height here is the `y` component and `polar` runs from zero at the top
+/// of the image.
 ///
-/// The **first column is `turn = -pi`** and the last is `turn = +pi`, so `u` runs once around
-/// the world in the same sense as the reader's `atan2(direction.z, direction.x)` reads it.
+/// The **first column is `turn = 0`** and the last is `turn = 2pi - 1/width`, so `u` runs once
+/// around the world in the same sense as the reader's `atan2(-direction.z, direction.x)` and
+/// starts where the path tracer starts it, at `+x`. Shifting the seam to `-x` — which is what
+/// a half turn here would do — moves every texel half a turn from where the other backend
+/// looks for it, and the only thing that shows is a step in the sky at the new seam.
 pub fn latlong_direction(column: i64, row: i64, width: i64, height: i64) -> [f64; 3] {
-    let turn = (column as f64 + 0.5) / width as f64 * 2.0 - std::f64::consts::PI;
-    let polar = (1.0 - (row as f64 + 0.5) / height as f64) * std::f64::consts::PI;
+    let turn = (column as f64 + 0.5) / width as f64 * 2.0;
+    let polar = (row as f64 + 0.5) / height as f64 * std::f64::consts::PI;
     let flat = polar.sin();
-    [flat * turn.cos(), polar.cos(), flat * turn.sin()]
+    // The `z` component is negated, so that `atan2(-z, x)` is `turn`: the azimuth runs from
+    // `+x` towards `-z` in this engine's axes, which is what it runs towards in the path
+    // tracer's once they are carried over. A generator that turned the other way would write
+    // a map that is not wrong anywhere in itself and is mirrored in every direction that
+    // reads it.
+    [flat * turn.cos(), polar.cos(), -flat * turn.sin()]
 }
 
 /// Returns a latlong environment map as pixels, four bytes a texel, top row first.

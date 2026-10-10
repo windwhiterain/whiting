@@ -130,18 +130,54 @@ mapping is decoration.
 see [.agents/investigate/cycles-world-axes.md](../../investigate/cycles-world-axes.md) for the
 measurements.
 
-### the exported world is not in Cycles' axes
+### the exported world is written in this engine's axes, and Cycles' are not the same
 
-**not implemented.** this engine is y-up and Cycles is z-up, and the exporter writes coordinates
-with no axis change: a camera at `(28, 14.244, 34)` is emitted as `translate="28, 14.244, 34"` and
-the ground's first vertex as `-150 0 -150`, a plane of constant `y = 0`.
+this engine is y-up and Cycles is z-up, and the format has no element that says which way up a
+scene is. so **every coordinate the emitter writes is carried across**, by `cycles_export::axes`
+and by nothing else:
 
-measured consequence: the sky comes out **turned a quarter turn**. the camera's up lands on Cycles'
-`+Y`, which is why the geometry reads correctly, and the sky — which Cycles indexes by `+Z` — is
-sampled across an axis that lies sideways in the frame. a camera's pitch is a turn about this
-engine's `X`, which for it is a turn about its own forward axis, so it arrives as a roll.
+```text
+(x, y, z)  ->  (x, -z, y)
+```
 
-the basis change is `(x, y, z) -> (x, -z, y)`, which sends up to `+z` and stays right-handed;
-rotations conjugate rather than translate, and a quaternion's vector part `(qx, qy, qz)` maps to
-`(qx, -qz, qy)` with its scalar part unchanged. the latlong row convention has to move with it,
-because Cycles puts `v = 0` — row zero — at the zenith and this engine puts it at the nadir.
+which sends this engine's `+y` (up) to `+z` and stays right-handed.
+
+**positions and normals** are points and take it directly. a normal is not a point, but the basis
+change is a rotation and a rotation carries a direction the same way it carries a point, so the
+same permutation is right for both.
+
+**a rotation takes it two different ways**, and this is the part that is easy to get wrong:
+
+- a rotation that moves **points** — an instance's — is **conjugated**, `A R A^-1`, because the
+  point is being placed in a world that has moved. On a quaternion that is the permutation
+  `(qx, qy, qz) -> (qx, -qz, qy)` with the scalar part alone.
+- a rotation that carries a **local frame both renderers already read the same way** — a
+  camera's view, a light's beam — takes it on the **world side only**, `A R`. Conjugating one of
+  these is not a near miss: the result is a valid rotation aimed `90` degrees from the place the
+  document named.
+
+`A R` is applied to the quaternion rather than to the Euler angles. the document's three angles
+compose as `Rz(c) Ry(b) Rx(a)`, so a turn put on the left does not land beside the turn about
+`X` it shares an axis with and cannot be folded into one of the three numbers.
+
+measured before the change: a camera's up landed on Cycles' `+Y`, which is why the geometry read
+correctly while the sky — which Cycles indexes by `+Z` — came out turned a quarter turn, and a
+camera's pitch arrived as a roll. the rasterised path is in this engine's own axes and is
+untouched by this; only what crosses the boundary moves.
+
+### the latlong convention is the path tracer's
+
+with the world converted, the path tracer's `v = acos(dir.z) / pi` puts **`v = 0`, which is row
+zero, at the zenith**. this engine's latlong had row zero at the nadir and the WGSL reader agreed
+with it, so a map was self-consistent here and upside down there. the two halves move together:
+
+- **the row** runs zenith to nadir, and the poles clamp;
+- **the column** is `floor(u * width)` with a wrapping modulo, where `u = atan2(-z, x) / 2pi`, so
+  `u = 0` — the direction `+x` — is column zero and the seam is where the path tracer's is.
+
+measured: with the seam shifted by half a turn the sky carried a hard vertical step where a
+scanline jumped from `(28, 51, 108)` to `(76, 83, 123)`; with it moved, the same scanline is
+symmetric and continuous.
+
+see [.agents/investigate/cycles-world-axes.md](../../investigate/cycles-world-axes.md) for the
+measurements and their sources, including the two sign mistakes that rendered without an error.

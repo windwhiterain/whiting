@@ -44,6 +44,7 @@
 //! is [`LossyMode`], and it is the one genuinely opinionated decision in this module.
 
 mod attribute_map;
+mod axes;
 mod error;
 mod geometry;
 mod light;

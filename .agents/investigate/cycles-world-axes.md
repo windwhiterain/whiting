@@ -83,40 +83,74 @@ emitted pitch is `-1.74` degrees, so the error is small there, but it is not zer
 the pitch. A camera with any real downward tilt comes out tilted by that much in Cycles and level
 in the rasterised path.
 
-## What it costs to fix
+## What it cost to get right
 
-The basis change that carries this engine's axes onto Cycles' is
+Three things were wrong on the first attempt and all three rendered without an error.
 
-```text
-(x, y, z)  ->  (x, -z, y)
-```
+### the azimuth seam is where the path tracer's is
 
-which sends this engine's `+y` (up) to `+z` and keeps the basis right-handed: the determinant of
-`[[1, 0, 0], [0, 0, -1], [0, 1, 0]]` is 1. Checked on `foldyard`: the ground `(x, 0, z)` becomes
-`(x, -z, 0)`, a plane of constant Cycles-z, which is the floor; the camera at `(28, 14.24, 34)`
-becomes `(28, -34, 14.24)`, above it; its forward `(-0.605, -0.308, -0.734)` becomes
-`(-0.605, 0.734, -0.308)`, which points down and towards the fold.
+The path tracer's column is `floor(u * width)` repeating, with `u = atan2(y, x) / 2pi` running
+`(-0.5, 0.5]` — so `u = 0`, the direction `+x`, is **column zero** and the seam is there. A
+reader that adds a half turn first puts the seam at `-x` and every texel half a turn from where
+the path tracer looks for it. Measured: with the seam shifted, the sky carried a hard vertical
+step where a scanline across the frame jumped from `(28, 51, 108)` to `(76, 83, 123)`. Moving
+the generator's seam to `turn = 0` and taking `floor` rather than truncating in the rasterised
+reader made the same scanline symmetric and continuous: `(60, 77, 116)` down to `(27, 50, 107)`
+and back to `(54, 72, 115)`.
 
-Rotations conjugate rather than translate. With `A` the matrix above and `R` this engine's rotation,
-the emitted one is `A R A^-1`; a quaternion's vector part maps by `A` and its scalar part does not,
-so the whole conversion is `(qx, qy, qz) -> (qx, -qz, qy)` in `transform::axis_angle` once the
-quaternion is already built. In Euler terms `Rx(a) Ry(b) Rz(c)` becomes `Rx(a) Rz(b) Ry(-c)`.
+### a quarter turn does not fold into one of the three Euler angles
 
-## Also measured: the row convention disagrees too
+The basis change is `Rx(90)`, and the obvious way to apply it is to add ninety degrees to the
+first angle. That is wrong: the document's three angles compose as `Rz(c) Ry(b) Rx(a)`, so a
+turn put on the **left** does not land beside the turn about `X` it shares an axis with. Applied
+to the quaternion instead — `quarter_turn ⊗ q` — it is exact and does not care what order the
+angles were composed in.
 
-Once the world is converted, Cycles' `v = acos(z) / pi` puts `v = 0` — and therefore **row 0** — at
-the **zenith**. `shaders::latlong_direction` puts **row 0 at the nadir**, and the WGSL `latlong()`
-reader agrees with it, so this engine's latlong is self-consistent and is the path tracer's upside
-down. The two halves move together or not at all:
+Two smaller variants of the same mistake, both of which ran and rendered:
 
-- `latlong_direction`: `polar = ((row + 0.5) / height) * pi` instead of `(1 - ...) * pi`;
-- the WGSL reader: `down` loses its `1 -`, becoming `atan2(horizontal, direction.y) / pi`.
+- adding `FRAC_PI_2` to a field that holds **degrees** is a turn of one and a half degrees;
+  the camera rotation moved from `135.4789` to `135.4736` degrees, which looks like nothing
+  happened, and the frame came back of a wall because the geometry around it had moved.
+- reading the composition as `Rx(a) Ry(b) Rz(c)` instead of `Rz(c) Ry(b) Rx(a)` swaps two
+  components of the result. Both readings are self-consistent and differ only in which axis a
+  two-axis rotation is taken about.
 
-The azimuth mirrors with them. `latlong_direction` turns with `atan2(z, x)`; after the basis change
-Cycles' is `atan2(-z, x)`, so the generator turns the other way, and the reader's
-`atan2(direction.z, direction.x)` becomes `atan2(-direction.z, direction.x)`.
+### the two kinds of rotation really are two kinds
 
-**Not measured**: the render after any of this. Nothing here has been applied yet.
+A rotation that moves **points** — a mesh's vertices, an instance's translation — is
+conjugated by the basis change, because the point is being placed in a world that has moved. A
+rotation that carries a **local frame both renderers already read the same way** — a camera's
+view axis, a light's beam, forward along `+Z` and up along `+Y` in both — takes the basis change
+on the world side only. Conjugating a camera is not a near miss; the result is a valid rotation
+aimed `90` degrees from the place the document named.
+
+## The row convention moves with it
+
+Once the world is converted, the path tracer's `v = acos(z) / pi` puts `v = 0` — and therefore
+**row 0** — at the **zenith**. This engine's latlong had **row 0 at the nadir**, and the WGSL
+reader agreed with it, so the map was self-consistent and was the path tracer's upside down.
+The two halves move together or not at all:
+
+- `latlong_direction`: `polar = ((row + 0.5) / height) * pi`, and the `z` component negated so
+  that `atan2(-z, x)` is the azimuth;
+- the WGSL reader: `turn = atan2(-direction.z, direction.x) / 2pi` with `floor` and a wrapping
+  modulo, and `rise = atan2(horizontal, direction.y) / pi` with a clamping modulo.
+
+## Verified
+
+Measured 2026-10-10, after the change above:
+
+- `foldyard` through `cycles.exe`: the sky is deep blue at the zenith fading to pale at the
+  horizon, no seam, no hard edge, horizon level, shadows consistent with the sun.
+- `tidewater`: a cold zenith, purple, an orange band along the horizon and dark ground below —
+  which is what `sunset_pixels` draws, and what it did not draw before.
+- the axis-ramp probe: `v` now varies with the screen's **vertical** axis and is constant along
+  a horizontal line, which is what an equirectangular lookup must do. Before, it ran from
+  `0.83` to `0.51` along one horizontal line.
+- all twelve gallery scenes render through `device-cycles` with no failure and a non-zero
+  maximum.
+- the rasterised path assembles, validates and renders the new WGSL, and its sky now runs the
+  same way as the path tracer's.
 
 ## Sources
 

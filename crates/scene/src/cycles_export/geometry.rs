@@ -396,7 +396,12 @@ fn read_indices(
 
 /// Writes one mesh, with its material scope already open by the caller.
 pub fn write_mesh(writer: &mut Writer, mesh: &Mesh) {
-    let mut attributes: Vec<(&str, String)> = vec![("P", Writer::float_array(&mesh.positions))];
+    // Positions and normals both go into Cycles' axes. A normal is not a point, but the basis
+    // change is a rotation, and a rotation carries a direction the same way it carries a point
+    // minus the translation — so the same permutation is right for both, and reading it as its
+    // own case would be a second definition of one mapping.
+    let mut attributes: Vec<(&str, String)> =
+        vec![("P", Writer::float_array(&into_cycles_axes(&mesh.positions)))];
 
     // `nverts` is a single 3 per triangle because the emitter expands to triangles rather
     // than passing polygons through. The loader would accept polygons, but our topology is
@@ -418,7 +423,7 @@ pub fn write_mesh(writer: &mut Writer, mesh: &Mesh) {
     if let Some(normals) = &mesh.normals {
         attributes.push((
             super::attribute_map::CYCLES_VERTEX_NORMAL,
-            Writer::float_array(normals),
+            Writer::float_array(&into_cycles_axes(normals)),
         ));
     }
     if mesh.uvs.is_some() {
@@ -429,6 +434,19 @@ pub fn write_mesh(writer: &mut Writer, mesh: &Mesh) {
     }
 
     writer.leaf("mesh", &attributes);
+}
+
+/// Returns a flat run of `xyz` triples in Cycles' axes.
+///
+/// The run is the loader's own shape — one long list, three numbers per element — so it is
+/// walked in threes rather than regrouped. A run whose length is not a multiple of three is
+/// left alone rather than dropped: it is a document that is already malformed, and saying so
+/// is the reader's job rather than this function's.
+fn into_cycles_axes(triples: &[f64]) -> Vec<f64> {
+    triples
+        .chunks_exact(3)
+        .flat_map(|triple| super::axes::position([triple[0], triple[1], triple[2]]))
+        .collect()
 }
 
 /// Expands per-vertex UVs into the per-corner array the loader reads.

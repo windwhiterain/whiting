@@ -79,12 +79,26 @@ fn triple_or(fields: &definition::FieldMap, name: &str, default: [f64; 3]) -> Em
 /// normalisation. Both steps are exact, so the emitted scene places instances where the
 /// document said they go.
 ///
+/// # What it rotates decides how the basis change reaches it
+///
+/// The angles are in this engine's axes and the axis and angle are Cycles', so the basis
+/// change has to be applied — and a rotation of **points** and a rotation that carries a
+/// **frame** take it differently. See [`super::axes::Rotation`]; this is the only place the
+/// two meet, so there is nowhere else for them to drift apart.
+///
 /// A zero rotation has no axis to name. It is written as no rotation at all rather than as
 /// some arbitrary axis, because a zero-length axis is a division by zero in the loader and
 /// an arbitrary one is a lie about the scene.
-pub fn axis_angle(rotation: [f64; 3]) -> Option<([f64; 3], f64)> {
-    let [rx, ry, rz] = rotation.map(f64::to_radians);
-    let quaternion = quaternion_from_euler(rx, ry, rz);
+pub fn axis_angle(rotation: [f64; 3], kind: super::axes::Rotation) -> Option<([f64; 3], f64)> {
+    let quaternion = quaternion_from_euler(
+        rotation[0].to_radians(),
+        rotation[1].to_radians(),
+        rotation[2].to_radians(),
+    );
+    let quaternion = match kind {
+        super::axes::Rotation::Points => super::axes::rotation_points(quaternion),
+        super::axes::Rotation::Frame => super::axes::rotation_frame(quaternion),
+    };
     let sin_half = (quaternion[1].powi(2) + quaternion[2].powi(2) + quaternion[3].powi(2)).sqrt();
     if sin_half < 1e-9 {
         return None;
