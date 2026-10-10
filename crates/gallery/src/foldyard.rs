@@ -329,7 +329,7 @@ pub fn foldyard() -> Value {
                 "air",
                 192,
                 96,
-                air_pixels(192, 96),
+                atmosphere().environment_pixels(192, 96),
                 Projection::Latlong,
             )]),
         ),
@@ -1428,61 +1428,6 @@ fn atmosphere() -> Atmosphere {
 const ZENITH: [f64; 3] = [0.105, 0.196, 0.420];
 const HORIZON: [f64; 3] = [0.600, 0.588, 0.560];
 const SKY_GROUND: [f64; 3] = [0.320, 0.296, 0.262];
-
-/// The environment map, as the latlong image the lighting stage samples.
-///
-/// # Invariants
-///
-/// The map is built by **decoding** every texel to the direction it stands for rather than by
-/// projecting directions onto it, and the decode is the only one of the two that is exact: a
-/// generator that instead painted a gradient onto rows would be making a claim about rows, and
-/// the reader inverts those rows into directions.
-///
-/// The horizon band and the sun's quarter are both added here rather than baked into the three
-/// colours above, so the two halves of the sky — what is overhead and what is underfoot — stay
-/// the single decision they are written down as.
-fn air_pixels(width: usize, height: usize) -> Vec<u8> {
-    let mut pixels = Vec::with_capacity(width * height * 4);
-    for row in 0..height {
-        for column in 0..width {
-            let direction = crate::shaders::latlong_direction(
-                column as i64,
-                row as i64,
-                width as i64,
-                height as i64,
-            );
-            // The sky itself: the horizon band between the zenith above and the ground
-            // below, and a broad warm glow in the quarter the sun stands in, so that a
-            // surface turned towards the sun's side of the sky is warm even where the sun
-            // itself does not reach it.
-            let sky = if direction[1] >= 0.0 {
-                mix3(HORIZON, ZENITH, smoothstep(0.0, 0.55, direction[1]))
-            } else {
-                mix3(HORIZON, SKY_GROUND, smoothstep(0.0, 0.30, -direction[1]))
-            };
-            let towards = (direction[0] * SUN_TOWARD[0]
-                + direction[1] * SUN_TOWARD[1]
-                + direction[2] * SUN_TOWARD[2])
-                .max(0.0)
-                .powf(6.0);
-            for channel in 0..3 {
-                let lit = sky[channel] + towards * [0.46, 0.30, 0.15][channel];
-                pixels.push((lit.min(1.0).max(0.0) * 255.0).round() as u8);
-            }
-            pixels.push(255);
-        }
-    }
-    pixels
-}
-
-/// Returns one colour's three channels mixed from one colour to another.
-fn mix3(from: [f64; 3], to: [f64; 3], amount: f64) -> [f64; 3] {
-    [
-        from[0] + (to[0] - from[0]) * amount,
-        from[1] + (to[1] - from[1]) * amount,
-        from[2] + (to[2] - from[2]) * amount,
-    ]
-}
 
 /// The noise the ground's own surface is read from, as WGSL.
 const NOISE: &str = r#"

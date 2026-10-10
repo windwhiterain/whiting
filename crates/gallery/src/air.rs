@@ -308,4 +308,89 @@ impl Atmosphere {
         }
         out
     }
+
+    /// The same sky, as a **latlong map** the image based lighting path samples.
+    ///
+    /// # Why this is beside [`wgsl`](Self::wgsl) and not written at the call site
+    ///
+    /// A scene that names an environment needs the sky as pixels, and a shader needs it as a
+    /// function of a direction. Those are the same sky, so they are evaluated from the same
+    /// fields here, term for term with [`air_sky`](Self::wgsl): the `pow(clamp(y, 0, 1), CURVE)`
+    /// ramp from the horizon to the zenith, the glow along the sun's bearing, the disc inside
+    /// it, and the below-horizon fall towards the ground colour.
+    ///
+    /// **Three call sites had this written out separately and all three disagreed with the
+    /// shader.** One ramped on `(1 - up)^2`, one on a `smoothstep`, and one hardcoded its glow
+    /// colour and its glow exponent rather than reading the sun the scene had already named —
+    /// so a scene's ambient came from one afternoon and its sky from another, which is the seam
+    /// this module exists to make impossible. One law here is what makes it impossible; a
+    /// fourth copy of it would not be.
+    ///
+    /// # Invariants
+    ///
+    /// Every texel is **decoded** to the direction it stands for, through
+    /// [`latlong_direction`](crate::shaders::latlong_direction), rather than having a gradient
+    /// painted onto rows. The decode is the exact one; a generator that painted rows would be
+    /// making a claim about rows, and the reader inverts those rows into directions.
+    ///
+    /// The below-horizon branch **replaces** the sky rather than tinting it, exactly as the
+    /// shader's `select` does, so the glow cannot leak under the horizon and light the ground.
+    ///
+    /// Output is RGBA, top row first, and is clamped into `0..=1` before it is quantised: a
+    /// sun disc sits at a colour well above one and a map that wrapped it would fold the
+    /// brightest thing in the sky into the darkest.
+    pub fn environment_pixels(&self, width: i64, height: i64) -> Vec<u8> {
+        let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+        for row in 0..height {
+            for column in 0..width {
+                let ray = crate::shaders::latlong_direction(column, row, width, height);
+                let towards_sun = self
+                    .sun
+                    .map(|sun| {
+                        (ray[0] * sun[0] + ray[1] * sun[1] + ray[2] * sun[2]).clamp(0.0, 1.0)
+                    })
+                    .unwrap_or(0.0);
+                let colour = if ray[1] > 0.0 {
+                    let above = ray[1].clamp(0.0, 1.0).powf(DEFAULT_CURVE);
+                    let mut lit = mix3(self.horizon, self.zenith, above);
+                    if let (Some(_), Some((glow, reach, strength))) = (self.sun, self.glow) {
+                        for channel in 0..3 {
+                            lit[channel] += glow[channel] * towards_sun.powf(reach) * strength;
+                        }
+                    }
+                    if let (Some(sun), Some((disc, sharpness))) = (self.sun, self.disc) {
+                        let alignment = ray[0] * sun[0] + ray[1] * sun[1] + ray[2] * sun[2];
+                        let lit_disc = smoothstep(sharpness, sharpness + DISC_EDGE, alignment);
+                        for channel in 0..3 {
+                            lit[channel] += disc[channel] * lit_disc;
+                        }
+                    }
+                    lit
+                } else {
+                    let below = (-ray[1] * 4.0).clamp(0.0, 1.0);
+                    mix3(self.horizon, self.ground, below)
+                };
+                for channel in colour {
+                    pixels.push((channel.clamp(0.0, 1.0) * 255.0).round() as u8);
+                }
+                pixels.push(255);
+            }
+        }
+        pixels
+    }
+}
+
+/// Returns one colour mixed from one to another, the way `mix` does in the shader.
+fn mix3(from: [f64; 3], to: [f64; 3], amount: f64) -> [f64; 3] {
+    [
+        from[0] + (to[0] - from[0]) * amount,
+        from[1] + (to[1] - from[1]) * amount,
+        from[2] + (to[2] - from[2]) * amount,
+    ]
+}
+
+/// Returns zero below `edge0`, one above `edge1`, and a smooth ramp between.
+fn smoothstep(edge0: f64, edge1: f64, value: f64) -> f64 {
+    let t = ((value - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }

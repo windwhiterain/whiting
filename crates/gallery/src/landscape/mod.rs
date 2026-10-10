@@ -41,7 +41,7 @@ use crate::air::Atmosphere;
 use crate::geometry::{fractal_noise, heightfield, smoothstep};
 use crate::identity::{self, Identity, massif_extras, outputs_field, plain_extras};
 use crate::kit::{
-    camera_placed, directional, instance, instances, light_with_radius, mesh, mesh_material,
+    camera_placed, directional, environment_light, image, instance, instances, mesh, mesh_material,
     post_processes, screen_material, shaded_point_schema, surface,
 };
 use crate::shaders::{Block, Extras, lighting_shader_declaring, mesh_shaders_over, post_shader};
@@ -550,6 +550,23 @@ pub fn landscape() -> Value {
             )]),
         ),
         (
+            // The sky as an **image**, which is what makes this scene render on a backend that has
+            // no shader stage of its own. Latlong, because that is the one a path tracer reads: an
+            // octahedral map handed to one is read as latlong and comes back as a plausible frame
+            // with half the sky black and a hard vertical seam.
+            //
+            // Two to one, because `u` goes once round the world and `v` once over it; a square
+            // latlong map is a distorted sky.
+            "images".to_owned(),
+            Value::List(vec![image(
+                "air",
+                256,
+                128,
+                atmosphere.environment_pixels(256, 128),
+                crate::shaders::Projection::Latlong,
+            )]),
+        ),
+        (
             "lights".to_owned(),
             Value::List(vec![
                 // The sun is a **directional** light and not a place, and here that is a correction
@@ -571,21 +588,19 @@ pub fn landscape() -> Value {
                     9.0,
                     radius * 4.0,
                 ),
-                // A fill from the sky, dim and blue, standing in for the whole dome. One light with
-                // one falloff leaves every shadowed facet black, and black is not what a shadow looks
-                // like outdoors — but it is also not what this scene wants, because a fill strong
-                // enough to see is a fill that lifts the dark facets to the brightness of the lit ones
-                // and erases the very difference the raking sun was placed to make. It is a **tenth**
-                // of what the corridor needed, and the corridor needed it because the walls were all
-                // shadow side.
-                light_with_radius(
-                    "sky",
-                    [0.0, radius * 2.0, 0.0],
-                    [0.36, 0.44, 0.62],
-                    9_000_000.0,
-                    radius * 3.0,
-                    plain * 2.0,
-                ),
+                // The ambient is an **environment light** reading this scene's own sky, and not a
+                // lamp standing in for it. One point light with one falloff leaves every shadowed
+                // facet black, which is why there was a fill here at all — but a fill strong enough
+                // to see lifts the dark facets to the brightness of the lit ones and erases the very
+                // difference the raking sun was placed to make. It is not a tuning problem: a point
+                // light cannot be a dome, because its brightness is the square of its distance and
+                // this scene's subject is two thousand metres across.
+                //
+                // The map is [`Atmosphere::environment_pixels`] — the same sky the post stage draws,
+                // term for term. An ambient from a different afternoon than the sky above it is a
+                // frame where a shadowed facet is one colour and the sky is another, and nothing in
+                // the picture says which of the two the author meant.
+                environment_light("air", "air", [1.0; 3], 0.55),
             ]),
         ),
         ("shaders".to_owned(), Value::List(shaders)),

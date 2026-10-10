@@ -433,6 +433,47 @@ mapping is decoration.
 see [.agents/investigate/cycles-world-axes.md](../../investigate/cycles-world-axes.md) for the
 measurements.
 
+### the map is the same sky as the shader, and it is one law rather than three
+
+a scene whose sky lives in a shader stage has **no sky at all** on this backend, because there is
+no shader stage to draw it: `landscape` carried its whole sky in its post grade and rendered here
+as an empty black field above the horizon. the fix is not a new kind of environment light — the
+format has had that all along — it is for a scene to declare the sky it already has **as an
+image**, and for that image to be the same sky.
+
+**it is evaluated from the same fields, term for term.** `air::Atmosphere` owns zenith, horizon,
+ground, the sun and its glow, and it now carries `environment_pixels`, which is the `WGSL`
+`air_sky` written in Rust: the same `pow(clamp(y, 0, 1), CURVE)` ramp, the same
+`glow * pow(toward, reach) * strength`, the same disc inside it, and the same below-horizon
+branch that **replaces** the sky rather than tinting it, so the glow cannot leak under the horizon
+and light the ground.
+
+**three call sites had this written out separately and all three disagreed with the shader.** one
+ramped on `(1 - up)^2`, one on a `smoothstep`, and one hardcoded its glow colour and its glow
+exponent rather than reading the sun the scene had already named. an ambient from one afternoon and
+a sky from another is exactly the seam `air.rs` exists to make impossible, and it was being
+produced by the module meant to prevent it. `foldyard`'s copy is gone; it calls the one law now.
+
+**a lamp is not a substitute and the scene says so.** `landscape` lit the massif's shadow side
+with a point light called `sky`, dim and blue, standing in for the dome. it cannot be a dome: a
+point light's brightness is the square of its distance, and this scene's subject is two thousand
+metres across on a plain nine times that, so the fill that lit the massif left the far plain
+black. it is now an `Environment` light over a `256 x 128` latlong map, which is **replacement
+rather than addition** — the rule `SPEC.align.md` states for the ambient term.
+
+measured on `landscape`, 1024×1024, 32 samples on CPU. pearson correlation against the
+rasterised frame:
+
+| band | before, as-is | before, flipped | after, as-is | after, flipped |
+|---|---|---|---|---|
+| whole frame | `+0.5119` | `+0.1987` | **`+0.6223`** | `+0.1025` |
+| ground band | `+0.6499` | `+0.1478` | **`+0.6701`** | `+0.1632` |
+
+`foldyard` is **unchanged** by the shared law, which is the check that matters for it: measured
+before and after on both backends, `+0.1044` against `+0.1050` on the whole frame, a difference
+inside the noise of sixteen samples. `foldyard` composes poorly across the two backends for its
+own reasons and did before this; it is a separate finding, not a regression here.
+
 ### the exported world is written in this engine's axes, and Cycles' are not the same
 
 this engine is y-up and Cycles is z-up, and the format has no element that says which way up a
