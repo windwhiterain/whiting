@@ -268,6 +268,37 @@ entirely on our side of the boundary and needs no external component. evidence, 
 fail silently, and the boundary of the OSL claim are in
 [investigate/cycles-procedural-materials.md](../../investigate/cycles-procedural-materials.md).
 
+a second sweep on 2026-10-10 confirmed the node the design leans on is really there, rather than
+assuming it from the ones already exercised: `geometry`, `attribute`, `camera`, `object_info`,
+`white_noise_texture`, `combine_xyz` and `separate_xyz` are all registered alongside the nodes listed
+above. `new_geometry`, `musgrave_texture`, `fractal_noise`, `cell_noise`, `bright_contrast` and
+`hsv_rgb` are **not**, so nothing in the design may rest on them.
+
+### how a procedural surface is carried, and what the fallback is
+
+decided 2026-10-10: the route is a **backend-neutral shader IR, compiled to the target's own node
+graph**. OSL is recorded as the fallback, not the plan.
+
+the IR is deliberately backend-neutral, because that is what keeps the fallback cheap. its node names
+describe what a node *does* and never name a Cycles node, so the same graph can be compiled to a
+Cycles node graph today and to OSL source text later. anything that puts `principled_bsdf` or
+`noise_texture` into the IR has made the fallback a rewrite instead of a second backend, and must be
+treated as a design error rather than a shortcut.
+
+the reason OSL is not the first choice is measured, not aesthetic. it is real and maintained — the
+Academy Software Foundation project, with 1.15.7.0 released 2026-09-07 — and Cycles lists it as an
+optional dependency that ships inside the precompiled libraries, so enabling it is a CMake flag
+rather than a patch. what it costs is not the flag. it is that whiting would have to **rewrite** the
+five shaders rather than compile them: WGSL and OSL are different languages, OSL has no light loop
+and requires the surface to be built from closures, and `n`/`p` reach the shader by different routes.
+The IR is the part that survives either choice, so it is built first.
+
+two limits of the OSL fallback are worth stating now rather than discovering later. Cycles runs OSL on
+**CPU only** — the GPU path is an unenabled patch — which costs us nothing, because we render on CPU
+already. And `oslc` is a real compiler with real diagnostics, which is a genuine advantage over the
+node graph's silent failures: on the node-graph path an unknown connect *source* raises nothing at
+all and leaves the surface black.
+
 ### how many scenes the fitting affected, corrected
 
 an earlier revision of this file said **nine** of the twelve gallery scenes were fitted. that was

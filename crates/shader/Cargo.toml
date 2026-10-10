@@ -1,0 +1,10 @@
+[package]
+name = "whiting-shader"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Backend-neutral surface shader graph, compiled to whatever the target device speaks."
+
+[dependencies]
+thiserror = { workspace = true }

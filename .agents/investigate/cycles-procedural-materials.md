@@ -87,6 +87,40 @@ writing down. Unless stated otherwise a wrong name is ignored and the socket kee
   destination at its default. A graph can therefore be half-connected with no error at all.
 - Every `ERROR:` line matters because the process still exits 0.
 
+## The arithmetic node vocabulary, measured 2026-10-10
+
+An emitter cannot be written from the names above alone. Each arithmetic node has its own input
+socket names, and **they are not the arithmetic node's** — the convention does not carry across node
+types. Enumerated by connecting a source whose output name is already known (`result` on the mix
+family) into each candidate in turn, and keeping the ones that do not raise:
+
+| Node | Input sockets found | Tried and **not** a socket |
+| --- | --- | --- |
+| `math` | `value1`, `value2`, `value3` | `value`, `value_001`, `value_002`, `a`, `b`, `factor` |
+| `vector_math` | `vector1`, `vector2`, `scale` | `value`, `value1`, `value2`, `vector` |
+| `map_range` | `value` | `value1`, `value2`, `scale`, `factor` |
+| `separate_xyz` | `vector` | `value`, `value1`, `vector1` |
+| `bump` | none of the candidates tried | `value`, `value1`, `scale`, `height`, `normal` |
+| `combine_xyz` | none of the candidates tried | `value`, `value1`, `x` was not tried |
+
+`vector_math` reporting that it has no `value1` is the clearest single result here: the socket names
+a developer would carry over from `math` are the wrong ones on the very next node.
+
+**Not yet measured, and therefore not yet writable:** the four bound sockets of `map_range`, the two
+inputs and two parameters of `bump`, the three inputs of `combine_xyz`, and — for every node — the
+attribute names, which are *not* the same as the socket names. Writing `value="-0.4"` on a `math`
+node produces the node's own default, silently, where writing `value1="..."` is read. Any emitter
+built before these are measured will render a black surface and report success.
+
+### How a node's value was measured
+
+The response of an emission strength to its input is linear only below roughly 1.2 and saturates
+above it, so a ladder of known strengths can only decode that range. Comparisons are therefore made
+between two *images* rather than against a decoded number: render the operation with known inputs,
+render an emission of strength equal to what it should produce, and compare pixels. Both images go
+through the same transfer, so nothing has to be known about it. A node left at its default is
+distinguished by comparing against a third image, an emission left at strength one.
+
 ## What this does not settle
 
 Whether whiting should gain a document-level expression for a procedural surface is a design
