@@ -67,7 +67,14 @@ pub fn write(
     write_camera(&mut writer, &camera);
     let images = referenced_images(fields, &lights);
     let mut referenced = Vec::new();
-    write_world(&mut writer, &lights, &images, &mut referenced);
+    write_world(
+        &mut writer,
+        &lights,
+        &images,
+        &mut referenced,
+        options.lossy,
+        report,
+    )?;
     let drawn = write_materials(&mut writer, &materials, &stages, options.lossy, report)?;
     write_lights(&mut writer, &lights);
     write_instances(&mut writer, &instances, &meshes, &materials, &drawn)?;
@@ -429,9 +436,11 @@ fn write_world(
     lights: &[Light],
     images: &[SceneImage],
     referenced: &mut Vec<String>,
-) {
+    mode: LossyMode,
+    report: &mut LossyReport,
+) -> EmitResult<()> {
     let Some(environment) = lights.iter().find(|light| light.kind == "background") else {
-        return;
+        return Ok(());
     };
     writer.comment("World");
     writer.open_bare("background");
@@ -451,6 +460,29 @@ fn write_world(
             );
             if images.iter().any(|image| image.label == *label) {
                 referenced.push(label.clone());
+            }
+            // Refused here rather than converted, and honoured by the lossy mode. Converting
+            // would put a second definition of how a map is laid out inside the emitter, which
+            // is the failure this case exists to prevent.
+            if let Some(image) = images.iter().find(|image| image.label == *label) {
+                if !image.projection.is_readable() {
+                    match mode {
+                        LossyMode::Reject => {
+                            return Err(EmitError::Unsupported(
+                                super::error::UnsupportedField::ImageProjection {
+                                    image: label.clone(),
+                                    projection: image.projection.tag().to_owned(),
+                                },
+                            ));
+                        }
+                        LossyMode::Degrade => {
+                            report.record(super::error::UnsupportedField::ImageProjection {
+                                image: label.clone(),
+                                projection: image.projection.tag().to_owned(),
+                            });
+                        }
+                    }
+                }
             }
             writer.leaf(
                 "background",
@@ -500,6 +532,7 @@ fn write_world(
         }
     }
     writer.close("background");
+    Ok(())
 }
 
 /// The `strength` of a world, as a colour: the light's own tint scaled by its radiance.
@@ -532,7 +565,57 @@ pub struct SceneImage {
     pub label: String,
     pub width: u32,
     pub height: u32,
+    pub projection: ImageProjection,
     pub pixels: Vec<u8>,
+}
+
+/// How a direction is turned into a texel of an image.
+///
+/// Only the one a path tracer reads is carried. The other is **refused**, and refusing is the
+/// point: a scene whose sky is an octahedral map and an exporter that read it as a latlong one
+/// would together produce a complete frame with half a sky in it, and nothing in the output would
+/// say which of the two was wrong. A scene that wants a sky everywhere declares a latlong map.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ImageProjection {
+    /// The rectangle, twice as wide as tall. The default, and the only one the loader reads.
+    #[default]
+    Latlong,
+    /// The square, the sphere folded onto one octahedron face.
+    Octahedral,
+}
+
+impl ImageProjection {
+    /// Reads a document's `projection`, defaulting to the portable one.
+    ///
+    /// An image that says nothing is latlong, which is what a document written before this field
+    /// meant by an image with no shape declared.
+    fn read(tag: &str) -> Self {
+        match tag {
+            "Octahedral" => ImageProjection::Octahedral,
+            _ => ImageProjection::Latlong,
+        }
+    }
+
+    /// The tag this projection is written under.
+    fn tag(self) -> &'static str {
+        match self {
+            ImageProjection::Latlong => "Latlong",
+            ImageProjection::Octahedral => "Octahedral",
+        }
+    }
+
+    /// Whether the loader can read this projection at all.
+    fn is_readable(self) -> bool {
+        matches!(self, ImageProjection::Latlong)
+    }
+}
+
+/// Reads an image's projection out of its fields.
+fn projection_of(fields: &FieldMap) -> ImageProjection {
+    read::field(fields, "projection")
+        .and_then(|value| value.variant_tag())
+        .map(ImageProjection::read)
+        .unwrap_or_default()
 }
 
 /// Reads the images an environment light names out of the document's own image list.
@@ -575,6 +658,7 @@ fn referenced_images(fields: &FieldMap, lights: &[Light]) -> Vec<SceneImage> {
             label: label.to_owned(),
             width: size("width"),
             height: size("height"),
+            projection: projection_of(fields),
             pixels: pixels.to_vec(),
         });
     }

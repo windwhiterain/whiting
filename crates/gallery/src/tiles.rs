@@ -19,7 +19,7 @@ use crate::kit::{
     instance, instances, light_with_radius, mesh, mesh_material, post_processes, screen_material,
     shaded_point_schema, shader, surface,
 };
-use crate::shaders::{depthing, post_shader, shadowing, textured, tile_pixels};
+use crate::shaders::{Projection, depthing, post_shader, shadowing, textured, tile_pixels};
 use scene::standard::Stage;
 
 /// The size of the generated texture, in texels a side.
@@ -129,7 +129,13 @@ pub fn tiles_of(pixels: Vec<u8>) -> Value {
         ("shaders".to_owned(), shaders),
         (
             "images".to_owned(),
-            Value::List(vec![image("tiles", SIZE, SIZE, pixels)]),
+            Value::List(vec![image(
+                "tiles",
+                SIZE,
+                SIZE,
+                pixels,
+                Projection::Latlong,
+            )]),
         ),
         (
             "meshes".to_owned(),

@@ -67,7 +67,7 @@ use crate::kit::{
 };
 use crate::land::{self, Ridge, Valley};
 use crate::ridges;
-use crate::shaders::{displaced_lighting_shader, mesh_shaders, post_shader};
+use crate::shaders::{Projection, displaced_lighting_shader, mesh_shaders, post_shader};
 
 // ---------------------------------------------------------------------------
 // The ground
@@ -325,7 +325,13 @@ pub fn foldyard() -> Value {
         ),
         (
             "images".to_owned(),
-            Value::List(vec![image("air", 96, 96, air_pixels(96))]),
+            Value::List(vec![image(
+                "air",
+                192,
+                96,
+                air_pixels(192, 96),
+                Projection::Latlong,
+            )]),
         ),
         ("shaders".to_owned(), Value::List(shaders())),
         ("meshes".to_owned(), Value::List(meshes())),
@@ -1423,36 +1429,28 @@ const ZENITH: [f64; 3] = [0.105, 0.196, 0.420];
 const HORIZON: [f64; 3] = [0.600, 0.588, 0.560];
 const SKY_GROUND: [f64; 3] = [0.320, 0.296, 0.262];
 
-/// The environment map, as the octahedral image the lighting stage samples.
+/// The environment map, as the latlong image the lighting stage samples.
 ///
 /// # Invariants
 ///
-/// The convention is the shader's own: the centre of the square is the world's `+z`, the
-/// top row is `+y`, and the four edges are the seams the fold puts there. The map is built
-/// by **decoding** every texel to the direction it stands for rather than by projecting
-/// directions onto it, because a square grid cannot sample the sphere evenly either way
-/// and the decode is the only one of the two that is exact at the centre row and column.
-fn air_pixels(size: usize) -> Vec<u8> {
-    let mut pixels = Vec::with_capacity(size * size * 4);
-    for row in 0..size {
-        for column in 0..size {
-            // The texel's own centre, in the square the fold lays the sphere out in.
-            let across = (column as f64 + 0.5) / size as f64 * 2.0 - 1.0;
-            let up = 1.0 - (row as f64 + 0.5) / size as f64 * 2.0;
-            let mut planar = [across, up, 0.0];
-            planar[2] = 1.0 - planar[0].abs() - planar[1].abs();
-            // The half of the sphere behind the centre folds back over the front, and the
-            // fold is the same mirror the shader's own projection undoes. A zero component
-            // takes the positive branch, because `sign(0.0)` is zero and zero has to land
-            // on the positive edge of the square rather than on its middle.
-            if planar[2] < 0.0 {
-                let behind = -planar[2];
-                planar[0] += if planar[0] >= 0.0 { -behind } else { behind };
-                planar[1] += if planar[1] >= 0.0 { -behind } else { behind };
-            }
-            let length =
-                (planar[0] * planar[0] + planar[1] * planar[1] + planar[2] * planar[2]).sqrt();
-            let direction = [planar[0] / length, planar[1] / length, planar[2] / length];
+/// The map is built by **decoding** every texel to the direction it stands for rather than by
+/// projecting directions onto it, and the decode is the only one of the two that is exact: a
+/// generator that instead painted a gradient onto rows would be making a claim about rows, and
+/// the reader inverts those rows into directions.
+///
+/// The horizon band and the sun's quarter are both added here rather than baked into the three
+/// colours above, so the two halves of the sky — what is overhead and what is underfoot — stay
+/// the single decision they are written down as.
+fn air_pixels(width: usize, height: usize) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity(width * height * 4);
+    for row in 0..height {
+        for column in 0..width {
+            let direction = crate::shaders::latlong_direction(
+                column as i64,
+                row as i64,
+                width as i64,
+                height as i64,
+            );
             // The sky itself: the horizon band between the zenith above and the ground
             // below, and a broad warm glow in the quarter the sun stands in, so that a
             // surface turned towards the sun's side of the sky is warm even where the sun

@@ -33,7 +33,7 @@ use gallery::kit::{
     instance, instances, mesh, mesh_material, post_processes, screen_material, shaded_point_schema,
     shader, surface,
 };
-use gallery::shaders::{depthing, lighting, octahedral_pixels, post_shader, shadowing};
+use gallery::shaders::{Projection, depthing, lighting, octahedral_pixels, post_shader, shadowing};
 use scene::standard::Stage;
 use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
 use whiting_device_rasterize::WgpuRenderer;
@@ -263,7 +263,13 @@ fn scene(environment: bool, roughness: f64) -> Value {
         ),
         (
             "images".to_owned(),
-            Value::List(vec![image("sky", MAP, MAP, octahedral_pixels(MAP))]),
+            Value::List(vec![image(
+                "sky",
+                MAP,
+                MAP,
+                octahedral_pixels(MAP),
+                Projection::Octahedral,
+            )]),
         ),
         (
             "cameras".to_owned(),
@@ -300,7 +306,7 @@ fn scene(environment: bool, roughness: f64) -> Value {
                 shader(
                     Stage::Lighting,
                     "lighting",
-                    &lighting(&inputs, "", ""),
+                    &lighting(&inputs, "", "", Projection::Octahedral),
                     scene::standard::light_pass_schema(),
                     shaded_point_schema(),
                     gallery_instance_schema(),

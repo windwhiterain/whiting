@@ -97,7 +97,7 @@ pub fn sunlight() -> Value {
         shader(
             Stage::Lighting,
             "lighting",
-            &lighting(&inputs, "", ""),
+            &lighting(&inputs, "", "", crate::shaders::Projection::Latlong),
             scene::standard::light_pass_schema(),
             point.clone(),
             gallery_instance_schema(),

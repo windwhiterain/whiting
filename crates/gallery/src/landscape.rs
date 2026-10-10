@@ -88,6 +88,7 @@ fn stage_set<'text>(
         helpers,
         crate::kit::gallery_custom_schema(),
         extras,
+        crate::shaders::Projection::Latlong,
     ));
     shaders
 }

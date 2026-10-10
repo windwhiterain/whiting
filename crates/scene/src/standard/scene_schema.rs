@@ -76,7 +76,14 @@ pub const SENSOR_WIDTH: &str = "sensor_width";
 /// Field holding how far the camera is turned about its own axis, in radians.
 pub const ROLL: &str = "roll";
 
-/// Field holding which projection the camera draws through.
+/// Field holding which projection something draws through.
+///
+/// **Two different value sets answer to this one name**, and that is deliberate. A camera is
+/// `Perspective` or `Orthographic`; an image is `Latlong` or `Octahedral`. A field name says
+/// what the field is, and which values are legal belongs to the schema it sits in, so a camera
+/// and an image can each be asked for their projection without either borrowing the other's
+/// vocabulary — and a reader who finds `Perspective` on a camera and `Latlong` on an image learns
+/// something true about both.
 pub const PROJECTION: &str = "projection";
 
 /// Field holding how much wider than its box the camera frames the scene.
@@ -1092,6 +1099,33 @@ pub fn image_schema() -> Schema {
             FORMAT.to_owned(),
             Schema::new(SchemaKind::String)
                 .with_documentation("How a texel is spelled, as the device names formats."),
+        ),
+        (
+            PROJECTION.to_owned(),
+            Schema::new(SchemaKind::enumeration([
+                ("Latlong".to_owned(), Schema::new(SchemaKind::structure([]))),
+                (
+                    "Octahedral".to_owned(),
+                    Schema::new(SchemaKind::structure([])),
+                ),
+            ]))
+            .optional()
+            .with_documentation(
+                "How a **direction** is turned into a texel of this image. `Latlong` is the \
+                     rectangle, twice as wide as tall, and is the default; `Octahedral` is the \
+                     square, the sphere folded onto one octahedron face. \
+                     \
+                     The default is latlong because it is the one a path tracer reads: Cycles' \
+                     `environment_texture` has no octahedral projection -- its mapping enum is \
+                     flat, cube, tube and sphere -- and its world lookup is equirectangular. An \
+                     octahedral map handed to one is read as latlong and comes out as a \
+                     plausible frame with half the sky black and a hard vertical seam. \
+                     \
+                     This is a field on the image rather than on the light that names it \
+                     because the shape is the map's: one map is shared by every surface that \
+                     samples it, and a scene that had to repeat the answer at each use would \
+                     eventually disagree with itself.",
+            ),
         ),
         (
             DATA.to_owned(),

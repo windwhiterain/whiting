@@ -328,7 +328,7 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
                 shader(
                     Stage::Lighting,
                     "lighting",
-                    &lighting(&inputs, "", ""),
+                    &lighting(&inputs, "", "", gallery::shaders::Projection::Latlong),
                     scene::standard::light_pass_schema(),
                     point.clone(),
                     gallery_instance_schema(),

@@ -12,6 +12,9 @@
 use definition::{PackedList, Schema, SchemaKind, Value};
 use graphics::layout::components_schema;
 
+use crate::shaders::Projection;
+use scene::standard::PROJECTION;
+
 /// The tint a material's shader multiplies its albedo by.
 pub const TINT: &str = "tint";
 /// The colour a surface emits on its own, which no light reaches.
@@ -41,12 +44,30 @@ pub fn triple(components: [f64; 3]) -> Value {
 ///
 /// The pixels are four bytes a texel, top row first, which is what the device uploads and what it
 /// derives a level chain from.
-pub fn image(label: &str, width: i64, height: i64, pixels: impl IntoIterator<Item = u8>) -> Value {
+///
+/// # `projection` is how a **direction** is read out of it
+///
+/// It is [`Projection::Latlong`] by default, and that default is the whole point of the
+/// parameter: a latlong map is the one a path tracer reads, so a scene that says nothing is
+/// carried by every backend rather than by the one that happens to like squares.
+///
+/// A map that is only ever sampled by **uv** — a tile texture on a floor, say — is not read by
+/// direction at all, and its projection is never consulted by anyone. `tiles` passes the
+/// default for the same reason a scene with no sky does: it is the answer that is right when the
+/// question is not being asked.
+pub fn image(
+    label: &str,
+    width: i64,
+    height: i64,
+    pixels: impl IntoIterator<Item = u8>,
+    projection: Projection,
+) -> Value {
     Value::structure([
         ("label".to_owned(), Value::String(label.to_owned())),
         ("width".to_owned(), Value::Int(width)),
         ("height".to_owned(), Value::Int(height)),
         ("format".to_owned(), Value::String("rgba8unorm".to_owned())),
+        (PROJECTION.to_owned(), Value::variant(projection.tag(), [])),
         (
             "data".to_owned(),
             Value::Bytes(pixels.into_iter().collect()),

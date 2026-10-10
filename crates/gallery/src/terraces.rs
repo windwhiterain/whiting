@@ -261,7 +261,12 @@ fn build_shaders() -> Vec<Value> {
         // The same attribute list the three stages above were given: a second lighting
         // shader reads the same points and rows, and a list of its own is a second
         // transcription to keep in step with the first.
-        &lighting(&gallery_vertex_inputs(&shaded_point_schema()), "", ""),
+        &lighting(
+            &gallery_vertex_inputs(&shaded_point_schema()),
+            "",
+            "",
+            crate::shaders::Projection::Latlong,
+        ),
         light_pass_schema(),
         shaded_point_schema(),
         gallery_instance_schema(),

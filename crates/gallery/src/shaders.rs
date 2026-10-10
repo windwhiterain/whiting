@@ -505,8 +505,9 @@ pub fn lighting<'text>(
     vertex_inputs: &str,
     surface: impl Into<Block<'text>>,
     helpers: impl Into<Block<'text>>,
+    projection: Projection,
 ) -> String {
-    lighting_with_normal(vertex_inputs, "", surface, helpers)
+    lighting_with_normal(vertex_inputs, "", surface, helpers, projection)
 }
 
 /// The lighting stage of a scene that displaces the normal it is lit by.
@@ -527,6 +528,7 @@ pub fn lighting_with_normal<'text>(
     displace: impl Into<Block<'text>>,
     surface: impl Into<Block<'text>>,
     helpers: impl Into<Block<'text>>,
+    projection: Projection,
 ) -> String {
     lighting_stage(
         vertex_inputs,
@@ -535,6 +537,7 @@ pub fn lighting_with_normal<'text>(
         helpers.into(),
         lighting_bindings(false, &Extras::NONE.binding_points()),
         &Extras::NONE,
+        projection,
     )
 }
 
@@ -553,6 +556,7 @@ pub fn lighting_declaring<'text>(
     surface: impl Into<Block<'text>>,
     helpers: impl Into<Block<'text>>,
     extras: &Extras,
+    projection: Projection,
 ) -> String {
     lighting_stage(
         vertex_inputs,
@@ -561,6 +565,7 @@ pub fn lighting_declaring<'text>(
         helpers.into(),
         lighting_bindings(false, &extras.binding_points()),
         extras,
+        projection,
     )
 }
 
@@ -968,9 +973,74 @@ fn lighting_bindings(image: bool, outputs: &[String]) -> String {
     declarations
 }
 
+/// How a direction is turned into a texel of an environment map.
+///
+/// # Why this is a parameter and not a constant in the template
+///
+/// The two projections give the same light in different places, and a shader that read one
+/// would be right about a scene that asked for the other. The **document** carries the answer
+/// as well, because a backend that cannot express it has to say so rather than render the
+/// wrong sky: `scene::cycles_export` refuses an octahedral map outright, because Cycles' world
+/// lookup is equirectangular and has no octahedral projection to offer.
+///
+/// So this is the one place the two meet, and a scene writes it once, in [`crate::kit::image`],
+/// which puts it in the document and into the template the shader is built from.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Projection {
+    /// The rectangle, twice as wide as tall. **The default**, and the one a path tracer reads.
+    #[default]
+    Latlong,
+    /// The square, the sphere folded onto one octahedron face.
+    Octahedral,
+}
+
+impl Projection {
+    /// The variant tag this projection is written under in a document.
+    pub fn tag(self) -> &'static str {
+        match self {
+            Projection::Latlong => "Latlong",
+            Projection::Octahedral => "Octahedral",
+        }
+    }
+
+    /// Reads a projection out of a document, defaulting to [`Projection::Latlong`].
+    ///
+    /// An image that says nothing gets latlong, which is the one both backends agree on. That
+    /// default is the whole reason the fold can be a constant in a generated shader: a scene
+    /// written before this field existed gets the projection a path tracer can read rather than
+    /// the one it happens to already have.
+    pub fn from_tag(tag: &str) -> Option<Self> {
+        match tag {
+            "Latlong" => Some(Projection::Latlong),
+            "Octahedral" => Some(Projection::Octahedral),
+            _ => None,
+        }
+    }
+
+    /// Whether this is the rectangle a path tracer's world lookup reads.
+    ///
+    /// The name is the question a backend has to ask, and answering it in one place is what
+    /// keeps "can Cycles carry this" from being a second guess at the same enum.
+    pub fn is_portable(self) -> bool {
+        matches!(self, Projection::Latlong)
+    }
+
+    /// The WGSL the template's fold is chosen by.
+    ///
+    /// A `const`, so the branch is resolved when the module is compiled and neither fold is
+    /// in the shader unless the scene asked for it. The alternative — deciding per fragment from
+    /// a uniform — would put both folds and both coordinate computations in every scene.
+    fn as_wgsl(self) -> &'static str {
+        match self {
+            Projection::Latlong => "true",
+            Projection::Octahedral => "false",
+        }
+    }
+}
+
 /// The lighting stage of the scene, with the bindings it draws with.
 ///
-/// # Why the loop and not a pass per light
+/// # The loop and not a pass per light
 ///
 /// A pass is a pipeline, a bind group and a draw, and there is one uniform per pass. A uniform
 /// is sixteen kilobytes under the limits this renderer requests, so a scene could hold a few
@@ -985,6 +1055,7 @@ fn lighting_stage<'text>(
     helpers: Block<'text>,
     bindings: String,
     extras: &Extras,
+    projection: Projection,
 ) -> String {
     let displace = displace.spliced("displace");
     let surface = surface.spliced("surface");
@@ -998,6 +1069,10 @@ fn lighting_stage<'text>(
     // rather than written into the template, because the digits live next to the derivation in
     // `scene::standard::photometry` and a copy of them here is a second thing to keep in step.
     let flux_to_radiance = FLUX_TO_RADIANCE_DIGITS;
+    // Which fold the environment map is read through. A `const`, so the other one is not in the
+    // module at all rather than branched over per fragment.
+    #[allow(non_snake_case)] // named for the WGSL const it becomes, not for Rust.
+    let LATLONG_MAP = projection.as_wgsl();
     format!(
         r#"{LIGHTING_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -1727,6 +1802,63 @@ fn record_contribution(
 /// at a seam is continuous — the two texels either side of it face almost the same direction
 /// — so clamping the coordinate to the last texel is not a rounding of the answer, it *is*
 /// the answer.
+fn environment_texel(direction: vec3<f32>, level: i32) -> vec2<i32> {{
+    if {LATLONG_MAP} {{
+        return latlong(direction, level);
+    }}
+    return octahedral(direction, level);
+}}
+
+/// Returns the texel of a **latlong** map a direction falls in, at one level.
+///
+/// # The rectangle
+///
+/// `u` runs once around the world and `v` runs from the zenith to the nadir, so the map is
+/// twice as wide as it is tall. The azimuth is measured from `+x` towards `+z`, which is the
+/// order the world axes already come in; `v` is inverted because texture space runs down and
+/// polar angle runs up.
+///
+/// The poles are the other end of the problem: `sin(polar)` is zero there, so every azimuth
+/// lands on the same row, and the row is one texel tall whatever `u` says. That is not an
+/// approximation -- a direction at the zenith *is* one direction however it is described, and a
+/// map cannot spend more than one texel on it. Clamping to the map's own extent is what keeps a
+/// pole from reading one line past the end, which is the same seam answer the octahedral fold
+/// gives and for the same reason.
+fn latlong(direction: vec3<f32>, level: i32) -> vec2<i32> {{
+    let horizontal = sqrt(direction.x * direction.x + direction.z * direction.z);
+    let turn = atan2(direction.z, direction.x) / 6.2831853 + 0.5;
+    let down = 1.0 - atan2(horizontal, direction.y) / 3.1415927;
+    let extent = vec2<i32>(textureDimensions(environment_map, level));
+    return clamp(
+        vec2<i32>(vec2<f32>(turn, down) * vec2<f32>(extent)),
+        vec2<i32>(0),
+        extent - vec2<i32>(1),
+    );
+}}
+
+/// Returns the texel of an **octahedral** map a direction falls in, at one level.
+///
+/// # Why the two projections, and which one is the default
+///
+/// A map is a square or a rectangle because a sphere fits in neither, and how a direction
+/// becomes a coordinate is the **projection**. There are two here.
+///
+/// An octahedral map folds the sphere onto one face of an octahedron. It is uniform, which is
+/// what makes the level chain worth having: one texel is one texel's worth of solid angle
+/// everywhere rather than stretching towards the poles. The convention a scene needs to draw
+/// one: the **centre** of the square is the world's `+z`, the **top** row is `+y`, and the four
+/// edges are the seams the fold puts there.
+///
+/// A latlong map is the rectangle: `u` around the world, `v` from zenith to nadir, twice as wide
+/// as tall.
+///
+/// **Latlong is the default, because it is the projection a path tracer reads.** Cycles'
+/// `environment_texture` has no octahedral option at all -- its `TextureMapping` projection enum
+/// is flat, cube, tube and sphere, and its world lookup is equirectangular. Measured: `foldyard`
+/// handed its octahedral sky as an octahedral map and came back with the left half of the sky
+/// black, the right half blue, and a hard vertical seam down the middle. Nothing warned. A
+/// scene that wants the fold asks for it; a scene that says nothing gets the one both backends
+/// read the same way.
 fn octahedral(direction: vec3<f32>, level: i32) -> vec2<i32> {{
     // The octahedron's own projection, divided by the sum of the magnitudes so that the whole
     // sphere lands in the square rather than in a disc inscribed in it. The divisor is floored
@@ -1821,7 +1953,7 @@ fn environment_radiance(normal: vec3<f32>, roughness: f32) -> vec3<f32> {{
     // for one map and past the end of another.
     let levels = i32(textureNumLevels(environment_map));
     let level = clamp(i32(roughness * f32(levels - 1)), 0, levels - 1);
-    return textureLoad(environment_map, octahedral(normal, level), level).rgb
+    return textureLoad(environment_map, environment_texel(normal, level), level).rgb
         * uniforms.environment.rgb;
 }}
 
@@ -2007,6 +2139,7 @@ pub fn textured<'text>(vertex_inputs: &str, helpers: impl Into<Block<'text>>) ->
         helpers.into(),
         lighting_bindings(true, &Extras::NONE.binding_points()),
         &Extras::NONE,
+        Projection::Latlong,
     )
 }
 
@@ -2137,56 +2270,84 @@ pub fn octahedral_pixels(size: i64) -> Vec<u8> {
 ///
 /// They are a function of the direction's **height** and not of where the sun is, which is what
 /// makes a map a scene can write without a rotation: the horizon runs the whole way round the
-/// square, so a warm band at the horizon is warm in every direction and needs nothing placed.
+/// rectangle, so a warm band at the horizon is warm in every direction and needs nothing placed.
 const ZENITH: [f64; 3] = [0.20, 0.30, 0.52];
 const HORIZON: [f64; 3] = [0.92, 0.52, 0.26];
 const GROUND: [f64; 3] = [0.16, 0.12, 0.12];
 
-/// Returns a sunset environment map as pixels, four bytes a texel, top row first.
+/// Returns the direction one texel of a **latlong** map stands for.
 ///
-/// # What the map is, and why it is not a hemisphere
+/// # The two halves of the convention, so that a generator can get one and not the other
 ///
-/// A cold dim zenith, a warm and much brighter band along the horizon, and a dark warm ground
-/// below it. The band is the part that matters: it is **brighter than the zenith**, so the
-/// brightest thing in this environment is not overhead. The two colour hemisphere it replaces
-/// is darkest overhead and brightest at the zenith, so a frame lit by this map and a frame lit
-/// by the stand-in differ in more than brightness — they differ in which way is bright, and a
-/// surface tilted towards the horizon picks up more light than one tilted at the sky.
+/// The **first row is the nadir** and the last row is the zenith: `v` runs from one to the
+/// other, a texture's rows run downwards, and the polar angle runs upwards. A generator that
+/// forgot that half wrote a map the reader sees upside down, which is a claim about the world
+/// rather than about rows and so nothing in the image gives it away.
 ///
-/// The colours are mixed by a curve over the direction's height rather than written per texel,
-/// so the map is a function of directions and survives the fold: the four corners of the square
-/// hold the horizon too, and they hold it because of the arithmetic rather than because anybody
-/// drew a corner.
-pub fn sunset_pixels(size: i64) -> Vec<u8> {
-    let mut pixels = Vec::with_capacity((size * size * 4) as usize);
-    for row in 0..size {
-        for column in 0..size {
-            let height = octahedral_direction(column, row, size)[1];
-            // Below the horizon is the ground, which is not black: a real one is lit by the sky
-            // above it, and a black underside is the thing that makes a render look like it was
-            // drawn rather than lit.
-            let colour = if height < 0.0 {
-                GROUND
+/// The **first column is `turn = -pi`** and the last is `turn = +pi`, so `u` runs once around
+/// the world in the same sense as the reader's `atan2(direction.z, direction.x)` reads it.
+pub fn latlong_direction(column: i64, row: i64, width: i64, height: i64) -> [f64; 3] {
+    let turn = (column as f64 + 0.5) / width as f64 * 2.0 - std::f64::consts::PI;
+    let polar = (1.0 - (row as f64 + 0.5) / height as f64) * std::f64::consts::PI;
+    let flat = polar.sin();
+    [flat * turn.cos(), polar.cos(), flat * turn.sin()]
+}
+
+/// Returns a latlong environment map as pixels, four bytes a texel, top row first.
+///
+/// # Why the rectangle is two to one
+///
+/// `u` goes once around the world and `v` once over it, and one turn of `u` at a given `v`
+/// covers a full circle of directions while a turn of `v` covers half of one. Twice as wide as
+/// tall is therefore the shape of the world rather than a choice about it, and a square latlong
+/// map is a distorted sky in the same way an octahedral one read as latlong is.
+///
+/// # Invariants
+///
+/// The map is a function of directions and no texel is special, which is what lets the shader
+/// read it at a roughness-selected level without a seam of its own: the poles are the only
+/// place two directions share a row, and a direction at a pole is one direction.
+pub fn latlong_pixels(
+    width: i64,
+    height: i64,
+    zenith: [f64; 3],
+    horizon: [f64; 3],
+    ground: [f64; 3],
+) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+    for row in 0..height {
+        for column in 0..width {
+            let up = latlong_direction(column, row, width, height)[1];
+            let colour = if up < 0.0 {
+                ground
             } else {
-                // A band that peaks at the horizon and falls away towards the zenith. The curve
-                // is a squared falloff rather than a linear one because a linear one puts half
-                // the range at the zenith, which is the shape the hemisphere already has.
-                let toward_horizon = (1.0 - height).powi(2);
+                let toward_horizon = (1.0 - up).powi(2);
                 [
-                    ZENITH[0] + (HORIZON[0] - ZENITH[0]) * toward_horizon,
-                    ZENITH[1] + (HORIZON[1] - ZENITH[1]) * toward_horizon,
-                    ZENITH[2] + (HORIZON[2] - ZENITH[2]) * toward_horizon,
+                    zenith[0] + (horizon[0] - zenith[0]) * toward_horizon,
+                    zenith[1] + (horizon[1] - zenith[1]) * toward_horizon,
+                    zenith[2] + (horizon[2] - zenith[2]) * toward_horizon,
                 ]
             };
-            pixels.extend_from_slice(&[
-                (colour[0].clamp(0.0, 1.0) * 255.0).round() as u8,
-                (colour[1].clamp(0.0, 1.0) * 255.0).round() as u8,
-                (colour[2].clamp(0.0, 1.0) * 255.0).round() as u8,
-                255,
-            ]);
+            for channel in colour {
+                pixels.push((channel.clamp(0.0, 1.0) * 255.0).round() as u8);
+            }
+            pixels.push(255);
         }
     }
     pixels
+}
+/// Returns a sunset environment map as pixels, four bytes a texel, top row first.
+///
+/// A cold dim zenith, a warm and much brighter band along the horizon, and a dark warm ground
+/// below it. The band is the part that matters: it is **brighter than the zenith**, so the
+/// brightest thing in this environment is not overhead, and a surface tilted towards the horizon
+/// picks up more light than one tilted at the sky.
+///
+/// This is [`latlong_pixels`] with this scene's three colours, and the colours are mixed by a
+/// curve over a direction's height rather than written per texel, so the map is a function of
+/// directions and holds the horizon the arithmetic puts there rather than one anybody drew.
+pub fn sunset_pixels(width: i64, height: i64) -> Vec<u8> {
+    latlong_pixels(width, height, ZENITH, HORIZON, GROUND)
 }
 
 /// The post stage, which draws over the whole frame.
@@ -2398,7 +2559,7 @@ pub fn mesh_shaders_over<'text>(
         kit::shader(
             Stage::Lighting,
             &named("lighting"),
-            &lighting_with_normal(&inputs, displace, surface, helpers),
+            &lighting_with_normal(&inputs, displace, surface, helpers, Projection::default()),
             light_pass_schema(),
             point.clone(),
             kit::gallery_instance_schema(),
@@ -2553,6 +2714,7 @@ pub fn lighting_shader_with_schema<'text>(
         helpers,
         custom_schema,
         &Extras::NONE,
+        Projection::default(),
     )
 }
 
@@ -2572,6 +2734,7 @@ pub fn lighting_shader_declaring<'text>(
     helpers: impl Into<Block<'text>>,
     custom_schema: Schema,
     extras: &Extras,
+    projection: Projection,
 ) -> Value {
     let point = if extras.is_empty() {
         kit::shaded_point_schema()
@@ -2582,7 +2745,7 @@ pub fn lighting_shader_declaring<'text>(
     kit::shader(
         Stage::Lighting,
         label,
-        &lighting_declaring(&inputs, displace, surface, helpers, extras),
+        &lighting_declaring(&inputs, displace, surface, helpers, extras, projection),
         light_pass_schema_over(&extras.binding_points()),
         point,
         kit::gallery_instance_schema(),

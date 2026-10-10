@@ -33,6 +33,19 @@ pub enum UnsupportedField {
     Segments { mesh: String },
     /// A light with no `light_type` mapping.
     Light { kind: String },
+    /// An environment map in a projection the loader cannot read.
+    ///
+    /// Cycles' world lookup is **equirectangular** and its `TextureMapping` projection enum is
+    /// flat, cube, tube and sphere — there is no octahedral option to ask for. A map folded
+    /// onto an octahedron is therefore not a map Cycles cannot reach, it is a map Cycles reads
+    /// as latlong: measured, `foldyard` handed its octahedral sky over and came back with the
+    /// left half of the sky black, the right half blue, and a hard vertical seam down the
+    /// middle. Exit status zero, no error, a complete frame.
+    ///
+    /// So this is refused rather than converted. Converting would mean the emitter holding a
+    /// second definition of how a map is laid out, which is the failure this whole case exists
+    /// to stop: two places that know the answer and eventually disagree.
+    ImageProjection { image: String, projection: String },
     /// A shader stage Cycles has no equivalent of.
     ///
     /// `ShadowingShader`, `DepthShader` and `ScreenShader` describe stages of the rasterised
@@ -69,6 +82,15 @@ impl fmt::Display for UnsupportedField {
                 write!(
                     formatter,
                     "light kind '{kind}' has no Cycles light_type mapping"
+                )
+            }
+            Self::ImageProjection { image, projection } => {
+                write!(
+                    formatter,
+                    "the image '{image}' is {projection}, and Cycles reads an environment map \
+                     as equirectangular only: its TextureMapping projection enum is flat, cube, \
+                     tube and sphere, with no octahedral option. Emitted as it stands it would \
+                     load, and the frame would have half a sky"
                 )
             }
             Self::ShaderStage { stage } => write!(

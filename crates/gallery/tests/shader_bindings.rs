@@ -91,7 +91,7 @@ fn constant(module: &str, name: &str) -> u32 {
 
 #[test]
 fn the_lighting_stage_declares_its_bindings_in_the_order_the_device_numbers_them() {
-    let module = shaders::lighting("", NOTHING, NOTHING);
+    let module = shaders::lighting("", NOTHING, NOTHING, shaders::Projection::Latlong);
     let declared = declarations(&module);
     assert!(
         declared.len() > 4,
@@ -120,7 +120,7 @@ fn the_lighting_stage_declares_its_bindings_in_the_order_the_device_numbers_them
 
 #[test]
 fn the_lighting_stage_reads_the_atlas_the_shadowing_stage_writes() {
-    let module = shaders::lighting("", NOTHING, NOTHING);
+    let module = shaders::lighting("", NOTHING, NOTHING, shaders::Projection::Latlong);
     let names: Vec<String> = declarations(&module)
         .into_iter()
         .map(|(_, name)| name)
@@ -139,7 +139,7 @@ fn the_lighting_stage_reads_the_atlas_the_shadowing_stage_writes() {
 
 #[test]
 fn a_record_reader_stays_inside_the_record_the_compiler_packed() {
-    let module = shaders::lighting("", NOTHING, NOTHING);
+    let module = shaders::lighting("", NOTHING, NOTHING, shaders::Projection::Latlong);
     let words = u32::try_from(light_record_stride()).expect("a stride that fits a u32");
     assert_eq!(
         constant(&module, "LIGHT_RECORD_WORDS"),
@@ -160,7 +160,7 @@ fn a_record_reader_stays_inside_the_record_the_compiler_packed() {
 
 #[test]
 fn a_page_is_the_size_the_allocator_allocates() {
-    let module = shaders::lighting("", NOTHING, NOTHING);
+    let module = shaders::lighting("", NOTHING, NOTHING, shaders::Projection::Latlong);
     assert_eq!(
         constant(&module, "PAGE_TEXELS"),
         PAGE_SIZE,

@@ -47,7 +47,7 @@ use crate::kit::{
     mesh_material, post_processes, screen_material, shaded_point_schema, surface,
 };
 use crate::shaders::{
-    Block, emission_shader, mesh_shaders_with_normal, post_shader, sunset_pixels,
+    Block, Projection, emission_shader, mesh_shaders_with_normal, post_shader, sunset_pixels,
 };
 use crate::wgsl;
 
@@ -191,7 +191,13 @@ pub fn tidewater() -> Value {
             // reeds through a grazing Fresnel term, which is a specular job that an ambient
             // term is not.
             "images".to_owned(),
-            Value::List(vec![image("dusk", 64, 64, sunset_pixels(64))]),
+            Value::List(vec![image(
+                "dusk",
+                128,
+                64,
+                sunset_pixels(128, 64),
+                Projection::Latlong,
+            )]),
         ),
         (
             "lights".to_owned(),
