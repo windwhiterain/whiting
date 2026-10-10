@@ -67,7 +67,8 @@
 //! `C + mu * (C - A)` while sharing demands it equal `A` forces `mu == -1`, and that `mu == -1` puts
 //! the slave's row on the master's side of the seam. **That argument does not survive measurement.**
 //!
-//! Run the same invariant over `0..=degree`, in [`PatchMesh::enforce`]'s own order, and a lone soft
+//! Run the same invariant over `0..=degree`, in [`PatchMesh::enforce`](crate::patch_mesh::PatchMesh::enforce)'s own
+//! order, and a lone soft
 //! edge comes out exactly G1: **0.000e0 rad** at the interior positions and **2.107e-8 rad** at the
 //! ends, the second being the `acos` floor of the probe, with the boundary sharing reclaiming
 //! `5.0e-16` of what the soft write moved. The gap above is therefore *not* a limit of the
@@ -81,6 +82,14 @@
 //! on the full sample — and across all three, a seam is exactly continuous **if and only if** no
 //! shared place is written by two seams. That equivalence is asserted by the probe, not merely
 //! observed.
+//!
+//! **The same contest exists inside a face, and it is arbitrated rather than left to chance.** Two
+//! adjacent soft edges on one face meet too: `interior_index` puts a face's `MinU` and `MinV` rows on
+//! the point `(1, 1)`, and the four corners of the interior block are each claimed by two of the face's
+//! four edges. The two want different values there and only one can hold, which is most of what the
+//! `1.389e-1` above is measuring. `crate::enforce` decides this **by slot, not by write order** — the
+//! two orders of tagging one mesh measured `6.142e-2` of control-point movement and `2.325e-1` against
+//! `3.330e-1` of worst fold. See `crate::enforce` and `examples/contested_probe.rs`.
 //!
 //! # What is shipped, and what is not
 //!
