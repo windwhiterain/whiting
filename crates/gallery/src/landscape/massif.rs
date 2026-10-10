@@ -440,15 +440,42 @@ fn stand_on_the_plain(massif: &mut Massif) {
 /// Read from the authored naming rather than from the plan, because the naming is the fact: two ends
 /// at one point that do not name each other are two vertices, and the expansion builds a slit there
 /// rather than a saddle.
+/// Whether one end of a crest is a junction — a col, where it meets another crest.
+///
+/// **Asked in both directions**, and this asked in one. A junction is authored as one crest's *far end*
+/// naming another line, and the naming is written on the crest that arrives rather than on the one that
+/// owns the point, so a crest can meet another either by **naming** it or by **being named** by it.
+/// Reading only the second case leaves every crest that is itself the child of a junction with its far
+/// end looking like a tip: its last node is taken down to the ground, and since the col is one welded
+/// vertex shared with the parent, the mesh keeps whichever elevation was written last. The range loses
+/// that saddle and nothing reports it, because `check_elevations` reads each line on its own and the
+/// taper is monotone on every one of them.
+///
+/// It does not bite the crests authored today, whose junctions all happen to be named from the child's
+/// side already. It is a trap for the next one written the other way round, which is why it is fixed
+/// rather than noted.
+///
+/// Read from the authored naming rather than from the plan, because the naming is the fact: two ends
+/// at one point that do not name each other are two vertices, and the expansion builds a slit there
+/// rather than a saddle.
 fn is_junction(massif: &Massif, ridge: RidgeId, far: bool) -> bool {
     let parameter = if far { 1.0 } else { 0.0 };
+    let line = LineRef::Ridge(ridge);
+    let own = if far {
+        massif.skeleton.ridges[ridge.0].end
+    } else {
+        massif.skeleton.ridges[ridge.0].start
+    };
+    // This crest arrives on another line: a col.
+    if own.station().is_some() {
+        return true;
+    }
+    // Another crest arrives on this one: the same col, authored from the other side.
     massif.skeleton.ridges.iter().any(|other| {
         [other.start, other.end]
             .iter()
             .filter_map(End::station)
-            .any(|station| {
-                station.line == LineRef::Ridge(ridge) && (station.t - parameter).abs() < 1.0e-3
-            })
+            .any(|station| station.line == line && (station.t - parameter).abs() < 1.0e-3)
     })
 }
 
