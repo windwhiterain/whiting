@@ -105,6 +105,58 @@ this is why a scene exposed for the rasterised post stage's Reinhard curve is ov
 exactly the top of that curve, and why the two backends are not expected to produce the same
 image.
 
+## Camera
+
+### the frame is the scene's, and the camera node is not the buffer
+
+`<camera width height>` is the camera's **view plane**. the buffer is `--width`/`--height` —
+see [`Resolution` comes from the command line](#resolution-comes-from-the-command-line) — and both
+are written from the same `Frame`, so the view plane and the buffer cannot drift apart.
+
+a camera in this workspace's schema carries neither. the size is the **scene's** `frame`, a field
+of the scene and not of a camera; the angle is `field_of_view`, or `focal_length` against
+`sensor_width`. reading either off the camera found nothing on any camera that has ever been
+written, so every scene fell through to a hardcoded ninety degrees at `1920 x 1080`.
+
+### `fov` is the full angle along the frame's longer side, in radians
+
+the node carries **one** angle and applies it along the frame's longer side, where the sensor fit
+is automatic. our `field_of_view` is **vertical**: the schema calls it "the angle seen through,
+vertically", and a lens is a width, so `vertical_field_of_view` divides the horizontal tangent by
+the aspect to reach it.
+
+so the two are the same angle on different axes, and which one the node wants is the frame's
+aspect and nothing else:
+
+- **wider than tall** — the longer side is the horizontal, which is the side a sensor is named
+  on, so the angle widens by the aspect;
+- **taller than wide** — the longer side is the vertical, which is already what we measure, so
+  it passes through unchanged.
+
+for `aspect >= 1` the two conversions are exact inverses, so a wide frame round-trips and the
+emitted `fov` is the lens's own horizontal angle. the unit is **radians**: a prediction of
+`pi / 2` matched the field of view measured off a render, and `90` describes no field of view at
+all.
+
+the precedence between an angle and a lens — angle, then lens, then the convention — belongs to
+`standard::camera::vertical_angle` and is not restated in the exporter. a second reader would be
+a second answer to the same question, and the two would drift exactly where the drift is
+invisible: a scene that names a lens.
+
+measured over all twelve gallery scenes. before, every one was `1920 x 1080` at `fov = 1.5708`.
+after, each carries its own:
+
+| scene          | frame       | `fov`     | the lens or angle it came from                     |
+|----------------|-------------|-----------|----------------------------------------------------|
+| `foldyard`     | `1536x1024` | `0.95002` | `35 mm` on `36 mm`, first of three cameras          |
+| `tidewater`    | `1536x1024` | `0.95002` | `35 mm` on `36 mm`, first of two cameras           |
+| `stilllife`    | `1536x1024` | `0.41736` | `85 mm` on `36 mm`                                 |
+| the other nine | `1024x1024` | authored  | the schema's default frame; `field_of_view` as named |
+
+the three wide frames were rendered at a shape they did not declare and now are; `1024` square is
+`frame`'s own default and is what the rasterised path drew them at already, so those nine are
+unchanged in size and changed in angle only.
+
 ## Environment
 
 ### the world is indexed by direction, and the direction has a projection

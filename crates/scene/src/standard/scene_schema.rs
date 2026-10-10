@@ -567,7 +567,7 @@ pub fn frame_schema() -> Schema {
 ///
 /// Every field but `eye` is optional, and a field that is absent falls back to the
 /// convention rather than to a default the author has to know. A camera that names only an
-/// eye is a camera that looks at the middle of what is drawn through a fifty degree lens.
+/// eye is a camera that looks at the middle of what is drawn through a sixty degree lens.
 pub fn camera_schema() -> Schema {
     Schema::new(SchemaKind::structure([
         (
@@ -591,7 +591,7 @@ pub fn camera_schema() -> Schema {
                     "The angle seen through, vertically, in radians. **A camera names a \
                      lens or an angle, and an angle is the one the projection is built \
                      from**, so a document carrying both takes the angle and ignores the \
-                     focal length. A camera that names neither is the fifty degree \
+                     focal length. A camera that names neither is the sixty degree \
                      convention.",
                 ),
         ),
