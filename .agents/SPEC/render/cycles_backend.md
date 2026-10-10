@@ -223,11 +223,82 @@ is what `kit::camera` and the four scenes that use it now do. a reader may still
 documented spellings and apply documented defaults — an angle over a lens, `exposure` over the
 caller's number — but it may not compute a value the document did not carry.
 
+### the camera frame is left-handed, and the reflection is not optional
+
+Cycles draws the camera's own `+X` on the **right** of the frame. `rastertocamera` is
+`screentocamera * rastertoscreen` (`src/scene/camera.cpp:265`), and both factors are positive
+diagonals built from the view plane (`src/scene/camera.cpp:236-249`) — there is no sign flip
+anywhere on that path.
+
+a camera whose `+X` is its own right-hand side is **left-handed**, because its `+Z` is the
+direction it looks along. for orthonormal columns `a, b, c` of a rotation, `b × c = det · a`, so
+`a = cross(c, b) = cross(forward, up)` — the right-hand side — forces `det = -1`. a camera
+transform that is a rotation cannot therefore be right, and no rotation can stand in for the
+reflection. measured, each of these attempted on `landscape`:
+
+| attempt | what happened |
+|---|---|
+| half a turn about the view axis | right **and** up flip; `up · world-up = -0.9981` |
+| half a turn about local `Y` | up is kept, the camera turns away and the markers leave the frame |
+| half a turn about local `Z` | markers to the left and upside down |
+| conjugating instead of left-multiplying | markers at `0.129` and `0.649`, worse |
+
+what the two backends disagreed about was **handedness**, and handedness is exactly what the
+direction checks cannot see: forward, up, the sun's travel and every vertex read correct while
+the picture came out mirrored. measured on `landscape`, two markers set on the rasterised
+camera's right and left:
+
+| marker | rasterised | Cycles, before |
+|---|---|---|
+| camera's right | `0.794` right half | `0.240` **left half** |
+| camera's left | `0.190` left half | `0.818` **right half** |
+
+so the reflection rides in the transform's `scale`, which the loader applies after `rotate`
+(`src/app/cycles_xml.cpp:694-710`) and which therefore renames the local `X` while leaving `Y`,
+`Z` and the translation alone. Cycles keeps the camera matrix verbatim — `Camera::set_matrix` is
+the generated socket setter over `NODE_SOCKET_API(Transform, matrix)`
+(`src/scene/camera.h:151`) — so the negative determinant reaches the kernel unaltered.
+
+**it is applied where the camera is written, not where it is specified.** both routes into a
+camera — an eye and a target, or a transform written by hand — mean the same thing in this
+engine's axes, and only the writer knows that Cycles reads that frame mirrored.
+
+measured after the change, `landscape` at 1024×1024, 32 samples on CPU. pearson correlation
+against the rasterised frame is the measure that cannot confuse a bright ridge with a bright
+sky:
+
+| band | before, as-is | before, flipped | after, as-is | after, flipped |
+|---|---|---|---|---|
+| whole frame | `+0.0392` | `+0.1160` | **`+0.5119`** | `+0.1987` |
+| ground band | `+0.1488` | `+0.6510` | **`+0.6499`** | `+0.1478` |
+
+and the markers again, placed by `cross(forward, up)` — the rule `standard::math::look_at` uses,
+which states nothing about handedness:
+
+| marker | rasterised | Cycles, after |
+|---|---|---|
+| camera's right | `0.794` right half | `0.775` right half |
+| camera's left | `0.190` left half | `0.228` left half |
+
+the emitted camera's `localX` is now `cross(forward, up)` exactly, where it was
+`cross(up, forward)` — the opposite — and `up · world-up` is still `+0.9981`, so the reflection
+took the one column it was meant to and nothing else.
+
+the measurements, the sources and the dead ends are in
+[investigate/cycles-camera-frame-handedness.md](../../investigate/cycles-camera-frame-handedness.md).
+
 ### what is actually left is shading, not the camera
 
-`landscape`, `lanterns`, `spotlight`, `sunlight` and `tiles` still do not match, and the camera is
-**not** why. all five write a final eye, a final target and a final angle through
-`camera_placed`, which is the same thing both backends read. measured on `landscape`:
+**corrected 2026-10-10: this was half wrong.** the eye, the target and the angle were indeed
+right on both sides, and they still are. but the two frames also disagreed about **which side
+of the picture is which**, which is a camera defect and was not in view until the two pictures
+were compared against each other rather than against an expectation — see
+[the camera frame is left-handed](#the-camera-frame-is-left-handed-and-the-reflection-is-not-optional).
+what follows is about the remaining difference, which is shading.
+
+`landscape`, `lanterns`, `spotlight`, `sunlight` and `tiles` still do not match. all five write a
+final eye, a final target and a final angle through `camera_placed`, which is the same thing both
+backends read. measured on `landscape`:
 
 - **the geometry is all there.** `RANGES` is two entries and the plain is the third mesh, so the
   scene has three meshes and the emitted document has three `<mesh>` elements. nothing is dropped.
