@@ -580,13 +580,13 @@ pub fn landscape() -> Value {
     let post_helpers = format!("{helpers}\n{}", crate::ridges::RIDGES);
 
     let mut shaders: Vec<Value> = Vec::new();
-    // Both meshes are drawn with **no surface body at all**. What a massif looks like is a
-    // question for a later stage and a baked texture, not for a per-fragment shader here: the
-    // geometry is what this pipeline is for, and a surface the path tracer cannot reproduce is
-    // a surface only one backend draws. The colour each mesh wears is its material's own tint.
+    // The massif wears the one body it is allowed: [`mountain_shade`], a plain grey diffuse. The
+    // plain keeps the shared stage with no body at all — it is lit as a surface, and the two are
+    // deliberately not the same question.
+    let shade = mountain_shade();
     shaders.extend(stage_set(
         "massif",
-        "",
+        &shade,
         &helpers,
         &massif_extras().point_schema(),
         &massif_extras(),
@@ -710,14 +710,13 @@ pub fn landscape() -> Value {
                     "massif_depthing",
                     surface([1.0, 1.0, 1.0], 0.0, 1.0, [0.0; 3]),
                 ),
-                // The stone. The colour of the rock is **the material's own data**, because
-                // there is no longer a body deciding it per fragment: one surface, one decision.
-                // It is the middle of the band the body used to mix between, so the range reads
-                // as one stone rather than as a gradient that has lost its ends.
+                // The stone. The colour of the rock is **the material's own data**, and it is a
+                // plain grey: the body reads it as the albedo of a grey diffuse, so this number
+                // is the whole of what the massif's colour is.
                 mesh_material(
                     "shade",
                     "massif_lighting",
-                    surface([0.325, 0.295, 0.265], 0.0, 0.90, [0.0; 3]),
+                    surface([0.58, 0.58, 0.58], 0.0, 0.90, [0.0; 3]),
                 ),
                 mesh_material(
                     "ground_depth",
@@ -889,6 +888,61 @@ fn constants(sun: [f64; 3]) -> String {
 
 /// How much of the high sky the cirrus is allowed to take.
 const CIRRUS_COVER: f64 = 0.55;
+
+/// What the massif's own sky term is worth, as a radiance the grade compresses.
+///
+/// The lighting pass writes an **eight bit** shaded image, so a radiance of one is already the
+/// ceiling and the grade then maps it through `x / (x + 1)` and a gamma of `1 / 2.2`. A term of
+/// `0.32` at the material's grey arrives at about `0.43` of the picture — the level a shadowed
+/// flank stands at outdoors, which is a grey and not a black. See [`MOUNTAIN_SUN`] for the lit end.
+const MOUNTAIN_SKY: [f64; 3] = [0.320, 0.330, 0.360];
+
+/// What a flank square to the sun is worth, in the same units.
+///
+/// A sun of `1.4` at the material's grey puts a face square to it at `0.98` — under the eight
+/// bit ceiling, because a facet that clips is a facet with no variation left in it and the
+/// block faces are the whole point. The colour is the scene's own sun, so the mountain and the
+/// painted sky agree on where the light comes from and what temperature it is.
+const MOUNTAIN_SUN: [f64; 3] = [1.400, 1.176, 0.868];
+
+/// The massif's surface body: **a plain grey diffuse**.
+///
+/// # Why the mountain shades itself
+///
+/// The shared lighting stage's ambient term is fed by the scene's environment light, and this
+/// scene names none — which the stage answers with **black**, by design and on purpose (see
+/// [`crate::shaders`], "No environment light means no environment term"). The result is exactly
+/// what was seen: one flank lit by the sun and the other with no term at all on it. Filling the
+/// scene with an environment light would shade the massif as a PBR surface, which is a question
+/// for a later stage and a baked texture; what is wanted here is a hillshade — a grey, lit by a
+/// facing — so the body says that and stops.
+///
+/// # Invariants
+///
+/// - **The albedo is the material's own tint**, read as `in.tint`, so the two meshes still
+///   differ by their data and not by two copies of this body.
+/// - **The direction is the scene's sun**, read from the uniform rather than written here, so
+///   moving the eye moves the light with it exactly as it did before.
+/// - **There is no cast shadow and no specular term.** A hillshade has neither, and the point of
+///   the body is that the massif's form is read from its geometry — the facets — and not from
+///   what a shading model adds to it.
+fn mountain_shade() -> String {
+    format!(
+        r#"
+    // A plain grey diffuse: albedo times a sky term plus the sun's own facing.
+    let to_light = -normalize(uniforms.directional.direction.xyz);
+    let facing = max(dot(normal, to_light), 0.0);
+    color = in.tint * (vec3<f32>({:.4}, {:.4}, {:.4})
+        + vec3<f32>({:.4}, {:.4}, {:.4}) * facing);
+"#,
+        MOUNTAIN_SKY[0],
+        MOUNTAIN_SKY[1],
+        MOUNTAIN_SKY[2],
+        MOUNTAIN_SUN[0],
+        MOUNTAIN_SUN[1],
+        MOUNTAIN_SUN[2],
+    )
+}
 
 /// The noise the post stage draws its weather from.
 ///
