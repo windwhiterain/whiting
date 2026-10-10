@@ -1,0 +1,114 @@
+# How much light the rasterised pipeline loses before its tone curve runs
+
+**Measured 2026-10-10** on the `landscape` scene at 1024×1024, through the rasteriser's own
+`--debug grade` channel. No source was changed to take any of these readings; the channel is a
+supported one and the scripts are in `out/`.
+
+## The question
+
+The open item said *"no tone curve, so every gallery scene is clipped"*. Both halves of that are
+wrong, and the thing it points at is somewhere else. What actually happens to the top of the
+range?
+
+## What was measured
+
+### The grade has a tone curve, and the output does not clip
+
+`landscape`'s `GRADE` runs Reinhard (`color / (color + 1)`), a 0.4545 gamma, a saturation lift, a
+contrast S-curve and a vignette, in that order — see `crates/gallery/src/landscape/mod.rs:924`.
+
+and the frame it produces has **no clipped pixels at all**:
+
+| measure | value |
+|---|---|
+| pixels with every channel at or above 250 | **0** |
+| pixels with every channel at exactly 255 | **0** |
+| brightest channel, 99th percentile of a 4× sample | **192** |
+| median channel | 171 |
+
+a highlight at 230 reads as blown out on screen and is not clipped. what was being called
+clipping is not clipping.
+
+### The clipping happens **before** the grade, and 19.6% of the surface is under it
+
+`--debug grade` is documented in its own sidecar as *"the radiance the post stage's grade reads at
+each pixel, before that grade has run"*, and it says why it cannot be read absolutely:
+
+> The shaded image it copies is an eight bit target, so a light that reached one was clipped
+> before the grade saw it: a value at one here may have been one or may have been forty, and
+> nothing in this file can tell you which.
+
+measured on `landscape`, over the pixels a surface was actually drawn on (`out/probe-clipping.py`,
+separated by the `depth` channel):
+
+| band | pixels | share |
+|---|---|---|
+| whole frame | 109,205 | 10.4% |
+| **of the 556,162 drawn pixels** | 109,205 | **19.6%** |
+
+### and those pixels come out as a plateau
+
+the consequence, which is the part that is visible rather than merely provable. pixels that
+arrived at the curve already at or above one carry no radiance above one, so everything
+downstream maps them onto nearly the same value:
+
+| region | samples | output range | mean |
+|---|---|---|---|
+| **clipped before the grade** | 27,314 | **17.0** | 189.7 |
+| not clipped | 111,860 | 132.6 | 156.2 |
+
+the sunlit faces of the massif land in a band **17 levels wide out of 255**, while the rest of the
+drawn surface spans 133. that is the flat cream plateau the lit faces read as, and it is not a
+curve that is wrong — it is a curve being handed a signal that has already lost its top.
+
+## Where the ceiling is
+
+one named constant:
+
+```text
+crates/scene/src/standard/pass_schemas.rs:312
+pub const COLOR_FORMAT: &str = "rgba8unorm";
+```
+
+and the codebase already states the consequence, at the socket that would otherwise be blamed:
+
+```text
+crates/scene/src/standard/pass_schemas.rs:713
+"It is not a parameter of the curve that follows, and it cannot brighten a value the shaded
+image already holds at one."
+```
+
+so a scene's `exposure` — the obvious lever — **cannot** reach this. it multiplies a value that has
+already been truncated at one. that is why raising the sun to 9.0 made the frame look worse rather
+than better: more light arrived, all of it above the ceiling, and none of it distinguishable.
+
+the path tracer has no such target. it carries radiance as floats and only rounds when it writes
+the file, which is why the Cycles massif shows gradation across its lit faces and this one does
+not.
+
+## What this is not
+
+- **not a missing tone curve.** there is one, and it is applied.
+- **not output clipping.** there is none.
+- **not fixable by `exposure`**, which the schema says in as many words.
+- **not fixable by a better curve.** a curve redistributes a range; this one is given a range whose
+  top is already gone. a filmic curve over a clipped signal produces a smoother plateau, not detail.
+
+## The change it implies, and why it was not made here
+
+the ceiling is the shaded image's format. `rgba16float` is already in this codebase's vocabulary —
+the debug channels are that format, and `rgba16float` is listed as filterable in
+`crates/scene/tests/wgsl_validation.rs:42` — so the texture itself is available. what is **not**
+established is the cost: every lighting shader writes this target, every scene's appearance would
+change, and no measurement of the bandwidth or of the across-the-board look has been taken.
+
+that is a decision, not a finding, so it is not made here.
+
+## Sources
+
+- `out/probe-clipping.py` — counts the pre-grade clipped pixels, separates them from sky by the
+  `depth` channel, and compares the output spread of clipped against unclipped regions.
+- `out/rad3/g-grade.txt`, `out/rad3/g-depth.txt` — the rasteriser's own sidecars for those channels.
+- `crates/gallery/src/landscape/mod.rs:924` — the grade's five stages, in order.
+- `crates/scene/src/standard/pass_schemas.rs:312` — `COLOR_FORMAT`.
+- `crates/scene/src/standard/pass_schemas.rs:709` — the `exposure` socket and its stated ceiling.
