@@ -104,3 +104,44 @@ build either, so there is no curve at all, and linear 1.0 is already the top of 
 this is why a scene exposed for the rasterised post stage's Reinhard curve is overexposed here by
 exactly the top of that curve, and why the two backends are not expected to produce the same
 image.
+
+## Environment
+
+### the world is indexed by direction, and the direction has a projection
+
+an environment map is read by a direction, and how a direction becomes a coordinate is the
+**projection**. Cycles' `environment_texture` has no octahedral option at all: its
+`TextureMapping` projection enum is flat, cube, tube and sphere, and its world lookup is
+equirectangular. so a fold is not something this backend can read.
+
+measured: `foldyard` handed its octahedral sky over as an octahedral map and came back with the
+left half of the sky black, the right half blue, and a hard vertical seam down the middle. nothing
+warned.
+
+so the emitter **refuses** an octahedral map in a document bound for Cycles rather than converting
+it. converting would mean the emitter holding a second definition of a layout, which is the class
+of bug that produced the seam in the first place. the rasterised path keeps both projections and
+defaults to latlong, so a scene that says nothing is carried by every backend.
+
+measured, and worth not repeating: adding a `<mapping>` node to `environment_texture` changes
+nothing. the equirectangular world lookup is already the identity on `(u, v)`, and declaring the
+mapping is decoration.
+
+see [.agents/investigate/cycles-world-axes.md](../../investigate/cycles-world-axes.md) for the
+measurements.
+
+### the exported world is not in Cycles' axes
+
+**not implemented.** this engine is y-up and Cycles is z-up, and the exporter writes coordinates
+with no axis change: a camera at `(28, 14.244, 34)` is emitted as `translate="28, 14.244, 34"` and
+the ground's first vertex as `-150 0 -150`, a plane of constant `y = 0`.
+
+measured consequence: the sky comes out **turned a quarter turn**. the camera's up lands on Cycles'
+`+Y`, which is why the geometry reads correctly, and the sky — which Cycles indexes by `+Z` — is
+sampled across an axis that lies sideways in the frame. a camera's pitch is a turn about this
+engine's `X`, which for it is a turn about its own forward axis, so it arrives as a roll.
+
+the basis change is `(x, y, z) -> (x, -z, y)`, which sends up to `+z` and stays right-handed;
+rotations conjugate rather than translate, and a quaternion's vector part `(qx, qy, qz)` maps to
+`(qx, -qz, qy)` with its scalar part unchanged. the latlong row convention has to move with it,
+because Cycles puts `v = 0` — row zero — at the zenith and this engine puts it at the nadir.
