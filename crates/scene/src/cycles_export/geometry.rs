@@ -28,7 +28,7 @@
 //! downstream reports it.
 
 use super::LossyMode;
-use super::attribute_map::{handle_unsupported_point_attribute, is_mappable};
+use super::attribute_map::{UV_FIELDS, handle_unsupported_point_attribute, is_mappable};
 use super::error::{EmitError, EmitResult, UnsupportedField};
 use super::lossy::LossyReport;
 use super::read;
@@ -258,18 +258,6 @@ fn read_point_schema_fields(label: &str, value: &Value) -> EmitResult<Vec<String
     };
     Ok(fields.iter().map(|(name, _)| name.clone()).collect())
 }
-
-/// The field names a point's texture coordinate may be written under, in the order they are
-/// tried.
-///
-/// This is one list rather than several literals so that the packed and unpacked readers cannot
-/// disagree about which spelling of a uv they accept — a divergence that would show as a mesh
-/// that renders without texture coordinates on one path and with them on the other.
-///
-/// `texture` is first because that is what the workspace's own point schema calls it
-/// (`kit::shaded_point_schema`); the rest are the spellings a document written by hand is likely
-/// to use, since nothing in the workspace writes those.
-const UV_FIELDS: &[&str] = &["texture", "uv", "texcoord", "uv_map"];
 
 /// Reads the same three arrays out of a packed run.
 ///

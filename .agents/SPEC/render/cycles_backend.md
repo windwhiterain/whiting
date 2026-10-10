@@ -134,9 +134,21 @@ been written, and the emitter silently fell back to `0.5` and `0.0` while writin
 half-rough surface, and a floor declared `1.0` came back glossier than any surface in the scene.
 
 `tint`, `metallic` and `roughness` each have a socket to land in and are folded into it.
-`emissive` and `reflect` have none that means the same thing and are reported rather than
-dropped, because a tint that silently failed to apply is the same invisible-wrong-image failure
-this backend is arranged to prevent.
+`emissive` is folded in too — measured, see
+[investigate/cycles-emitter-dropped-material-fields.md](../../investigate/cycles-emitter-dropped-material-fields.md).
+
+`reflect` **has** a socket that sounds like it, and writing it was measured and **reverted**:
+ours is how much sky a surface shows at a grazing angle and `Specular IOR Level` is the
+reflectance at normal incidence. Writing it drops `landscape`'s correlation against the
+rasterised frame from `+0.6223` to `+0.5733`, and reverting restores both numbers to the digit.
+so `reflect` is reported rather than dropped, which is the point: reported is visible, and written
+would read as honoured.
+
+a material's `image` is reported by name with its reason, which is narrower than "no socket":
+`principled_bsdf` **has** a `Base Color`, and the loader splits a connect's endpoints on
+whitespace (`src/app/cycles_xml.cpp:219`), so a socket named with a space cannot be connected at
+all. a field that silently failed to apply is the same invisible-wrong-image failure this backend
+is arranged to prevent.
 
 `ior` and `transmission_weight` are always written and never read, because the document has no
 field for either. they are stated as the dielectric defaults rather than left to the node's own,

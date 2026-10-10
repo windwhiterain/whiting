@@ -22,8 +22,21 @@ pub enum UnsupportedField {
     ///
     /// Cycles' material parameters are compiled into the shader graph, not carried as a
     /// side channel, so a material's custom data has to be folded into a `principled_bsdf`
-    /// socket at emit time. Only `tint` has one.
+    /// socket at emit time. `tint`, `metallic`, `roughness`, `emissive` and `reflect` each land
+    /// in one.
     CustomData { field: String, material: String },
+    /// A material that names an image.
+    ///
+    /// Refused rather than approximated, and the reason is narrower than "there is no socket":
+    /// `principled_bsdf` **does** have one, called `Base Color`. The loader splits a connect's
+    /// endpoints on whitespace and accepts only a two-token pair (`src/app/cycles_xml.cpp:219`),
+    /// so a socket whose name contains a space cannot be connected at all. Measured, on
+    /// `cycles.exe` 5.3.0: `<connect from="tex Color" to="tiles_bsdf Base Color" />` answers
+    /// `Invalid from or to value for connect node`, while the same connect onto a
+    /// `diffuse_bsdf` socket named `Color` is accepted. Substituting a `diffuse_bsdf` would
+    /// trade away the metallic, roughness and ior the material also declares, which is a
+    /// different shading model rather than a carrier for the same one.
+    MaterialImage { material: String },
     /// An `instance_schema` field beyond the model matrix.
     InstanceAttribute { field: String },
     /// A `Topology` the loader cannot triangulate.
@@ -67,6 +80,12 @@ impl fmt::Display for UnsupportedField {
                 formatter,
                 "material '{material}' declares custom data '{field}', which has no \
                  principled_bsdf socket to fold into. Only 'tint' maps"
+            ),
+            Self::MaterialImage { material } => write!(
+                formatter,
+                "material '{material}' names an image. The only socket it could reach is \
+                 principled_bsdf's 'Base Color', and the loader splits a connect's endpoints on \
+                 whitespace, so a socket named with a space in it cannot be connected at all"
             ),
             Self::InstanceAttribute { field } => write!(
                 formatter,
