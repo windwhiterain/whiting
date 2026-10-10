@@ -203,19 +203,47 @@ pub fn run(
 ///
 /// # What counts
 ///
-/// `ERROR`, which is what `print_error` prefixes every diagnostic with. A `WARNING` is not
-/// matched: this build prints two colour-management warnings for a scene with no OCIO
-/// configuration, on renders that are perfectly good, and treating those as failures would make
-/// the crate unusable without an OCIO setup that is not required.
+/// `ERROR`, which is what the log prefix carries. A `WARNING` is not matched: this build
+/// prints two colour-management warnings for a scene with no OCIO configuration, on renders
+/// that are perfectly good, and treating those as failures would make the crate unusable
+/// without an OCIO setup that is not required.
 ///
-/// The match is on the line's start rather than anywhere in it, because a shader name, a
-/// filename or a scene label may legitimately contain the word.
+/// # The line does **not** begin with the level, and this did not know that
+///
+/// In background mode every line carries a timestamp and a separator first:
+///
+/// ```text
+/// 00:00.59 | ERROR: Failed to load 1 image files
+/// ```
+///
+/// This used to match on the line starting with `ERROR`, which is what the level looks like
+/// when there is no timestamp. That scan never fired. Measured on `foldyard`: the subprocess
+/// printed `WARNING: Image file out\air does not exist` and then
+/// `ERROR: Failed to load 1 image files`, and the run was reported as a success — which it is,
+/// by exit status and by an image on disk. **Every render this crate accepted could have had a
+/// fatal scene error in it**, which is the one thing the module exists to prevent.
+///
+/// So the prefix is taken off before the level is read, rather than the level being looked for
+/// at the front of the line. The prefix is a timestamp and a `|`; anything else is left alone,
+/// so a line that begins with the level still matches.
 fn first_error(diagnostics: &str) -> Option<String> {
-    diagnostics
-        .lines()
-        .map(str::trim)
-        .find(|line| line.starts_with("ERROR"))
-        .map(str::to_owned)
+    diagnostics.lines().find_map(|line| {
+        let level = line.trim();
+        let level = match level.split_once('|') {
+            // Only a prefix that looks like a clock is a prefix: a shader name or a filename
+            // may contain `|`, and `code | ERROR: ...` is a message rather than a log line.
+            Some((before, after))
+                if before
+                    .trim()
+                    .split(':')
+                    .all(|part| part.parse::<f32>().is_ok()) =>
+            {
+                after.trim()
+            }
+            _ => level,
+        };
+        level.starts_with("ERROR").then(|| line.trim().to_owned())
+    })
 }
 
 /// Something about running Cycles did not work.
