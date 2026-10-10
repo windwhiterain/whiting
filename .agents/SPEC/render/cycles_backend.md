@@ -257,6 +257,11 @@ recorded rather than fixed: expressing a procedural surface as data is a schema 
 honest first step is knowing how many surfaces depend on it. `landscape`, `lanterns`,
 `spotlight`, `sunlight` and `tiles` are the measured five.
 
+**`landscape` has since been withdrawn from this list** — see
+[the geometry pipeline ships geometry, and the detail is baked later](#the-geometry-pipeline-ships-geometry-and-the-detail-is-baked-later).
+the other four still write a procedural surface. the count is four, not five, and the diagnosis
+below stands for them unchanged.
+
 what is *not* open is whether the target format can express it. measured 2026-10-10: it can, natively,
 with no compiler in the loop — `<shader>` takes an arbitrary node graph and
 `noise_texture`, `voronoi_texture`, `wave_texture`, `checker_texture`, `brick_texture`, `sky_texture`,
@@ -267,6 +272,54 @@ device-type identifier, and a shader using `osl_shader` is rejected as an unknow
 entirely on our side of the boundary and needs no external component. evidence, the socket names that
 fail silently, and the boundary of the OSL claim are in
 [investigate/cycles-procedural-materials.md](../../investigate/cycles-procedural-materials.md).
+
+### the geometry pipeline ships geometry, and the detail is baked later
+
+decided 2026-10-10, superseding the two-form material plan recorded on the abandoned
+`procedural-surfaces` branch. a geometry pipeline's job is geometry. what a surface looks like in
+detail — the snowline, the per-block stone, the gravel sorting, the braided channels — belongs to a
+**later stage that bakes textures**, not to a per-fragment shader in the scene that generated the
+mesh. a scene that shades procedurally is a scene whose picture cannot be reproduced by a path
+tracer, and that is the defect this chapter exists to prevent.
+
+so `landscape` now draws **both meshes with no surface body at all**. the massif's stone and the
+plain's gravel are their materials' own `tint` values, and nothing else decides their colour. a
+scene is not required to be interesting: it is required to be honest about what it is, and a mesh
+that came out of a geometry crate is a mesh, not a mountain.
+
+**atmosphere belongs to the post stage**, for the same reason. haze, aerial perspective, the sky
+itself and the far ranges were already the grade's alone; what changed is that no surface body is
+allowed to reach for `air_colour()` or `air_closure()` and mix toward it. a surface shader that
+paints its own fog is a surface whose fog a post stage cannot correct, a tone curve cannot, and a
+second backend cannot reproduce.
+
+this does not need an exception to **a document carries no logic**. the scene schema already carries
+a shader's own text, and says why: *"a shader carries its own text so that a compiled scene renders
+wherever it is sent."* an empty body is the limit case of that, not a departure from it.
+
+measured on `landscape` after the change, 1024×1024, 32 samples on CPU:
+
+| claim | measured |
+|---|---|
+| composition and silhouette | **identical on both backends** — the camera section above is satisfied for this scene |
+| surface brightness | raster 162.3 mean luma, cycles 70.9, over 3295 paired surface samples |
+| sky | raster painted by the grade, cycles black — the document declares no `<background>` |
+
+the two rows that still differ are **not** shading defects and are recorded as open rather than
+fixed here. the brightness gap is the two lighting models — the rasteriser's own Lambert and specular
+against the tracer's integral — and it is the same class of difference as
+[no view transform](#no-view-transform). the missing sky is the grade's, and a scene that wants a
+world declares one.
+
+the stripes along the massif's flanks are **geometry** — the rib construction in
+`crates/gallery/src/massif.rs` — and both backends draw them. they were briefly mistaken for
+residual striation from the deleted per-block stone hash; they are not, and a crop of both frames
+settles it.
+
+what is **not** claimed is that this makes the two backends agree. it makes them agree about
+**framing and geometry**, which is what the geometry pipeline is responsible for. per-pixel agreement
+was never available — see [no view transform](#no-view-transform) — and is not what this change
+sets out to buy.
 
 ### how many scenes the fitting affected, corrected
 
