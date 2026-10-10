@@ -61,6 +61,15 @@ provide a schema of `Definition` that represents instruction set of lowlevel gra
 
 a server that can hot reload `Graphics`, `GraphicsInstance`, increntally apply `Graphics` and `GraphicsInstance`'s `Delta`, do headless rendering using http RPC.
 
+the rasterised `Backend` lives in `device-rasterize`. an offline `Backend` is a `Scene` document
+plus one subprocess, and does not implement the rasterised `Renderer` trait: that trait is handed
+a compiled `Graphics` and `GraphicsInstance`, and a second renderer wants neither. see
+[SPEC/render/offline_backend.md](SPEC/render/offline_backend.md).
+
+- `device-cycles`: Cycles Standalone as the offline `Backend`. see
+  [SPEC/render/cycles_backend.md](SPEC/render/cycles_backend.md).
+- light quantities are in [SPEC/render/light_units.md](SPEC/render/light_units.md).
+
 ### `mountain` crate
 
 author a mountain massif as a ridge/valley polyline `Skeleton` and expand it into a planar-facet triangle `FacetMesh`. see [SPEC/mountain.md](SPEC/mountain.md).

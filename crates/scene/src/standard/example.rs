@@ -9,6 +9,7 @@ use definition::{Schema, SchemaKind, Value};
 use graphics::layout::components_schema;
 
 use crate::standard::Stage;
+use crate::standard::camera::DEFAULT_FIELD_OF_VIEW;
 use crate::standard::pass_schemas::{
     depth_pass_schema, emission_pass_schema, light_pass_schema, post_pass_schema,
     shadow_pass_schema,
@@ -31,9 +32,46 @@ fn example_point_schema() -> Schema {
 
 /// Builds the example scene: one light, one mesh, one shader per stage, and one instance
 /// per stage.
+///
+/// # It names a camera, and that is not decoration
+///
+/// It used to name none, and the two backends filled the gap differently. The rasterised
+/// compiler falls back to `Camera::convention` — a **parallel** camera framing the scene's
+/// bounding box, which it can do because it has already computed the bounds. The Cycles emitter
+/// has no bounds, no padding, and no orthographic camera, so it falls back to the identity: a
+/// perspective camera standing at the origin looking along `+Z`.
+///
+/// Measured: `Gallery::build("studio")` returned this document, and the subprocess wrote
+/// 2 073 600 texels of `max = 0` — a black frame, exit status zero, no error. The rasterised
+/// path drew the same document without complaint.
+///
+/// A document that does not say where it is drawn from is not a complete document, and the
+/// backends cannot be left to disagree about what to assume. The eye is placed where the
+/// convention camera would have framed the geometry anyway — back along `+Z`, looking at the
+/// origin — so the scene reads the same on both, and `DEFAULT_FIELD_OF_VIEW` is not repeated
+/// here.
 pub fn example_standard_scene() -> Value {
     Value::structure([
         ("name".to_owned(), Value::String("studio".to_owned())),
+        (
+            "cameras".to_owned(),
+            Value::List(vec![Value::structure([
+                (
+                    "eye".to_owned(),
+                    Value::List([0.0, 2.0, 8.0].into_iter().map(Value::Float).collect()),
+                ),
+                (
+                    "target".to_owned(),
+                    Value::List([0.5, 0.0, 0.0].into_iter().map(Value::Float).collect()),
+                ),
+                (
+                    "field_of_view".to_owned(),
+                    Value::Float(DEFAULT_FIELD_OF_VIEW),
+                ),
+                ("near".to_owned(), Value::Float(0.1)),
+                ("far".to_owned(), Value::Float(40.0)),
+            ])]),
+        ),
         (
             "lights".to_owned(),
             Value::List(vec![Value::variant(
@@ -51,7 +89,14 @@ pub fn example_standard_scene() -> Value {
                     // A power, so the number reads as a squared distance: this lamp stands 7.5 units
                     // from the origin, and 56 is that distance squared. See
                     // `.agents/proposals/physical-light-units.md`.
-                    ("power".to_owned(), Value::Float(56.0)),
+                    // **Stated in the same unit as every other light**: radiant flux, in the
+                    // renderer of the world. This scene's geometry is about a unit from the
+                    // origin and the key light is `sqrt(4^2 + 6^2 + 2^2) = 7.2` away, so a flux
+                    // of `4 pi^2 d^2` puts the subject at a radiance of 1.0 — which is what
+                    // every gallery light is calibrated to and what this one was carrying
+                    // already, as 56 against a `d^2` of 56. The number is that flux times
+                    // `4 pi^2`; see `crate::standard::photometry`.
+                    ("power".to_owned(), Value::Float(2_210.8)),
                     ("shadow_extent".to_owned(), Value::Float(2.5)),
                     // 8.1 is the distance to the far corner of a triangle two units across
                     // with a light standing off it, and 10 holds the whole scene — which is
