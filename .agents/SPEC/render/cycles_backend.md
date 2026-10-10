@@ -330,8 +330,45 @@ honest first step is knowing how many surfaces depend on it. `landscape`, `lante
 
 **`landscape` has since been withdrawn from this list** — see
 [the geometry pipeline ships geometry, and the detail is baked later](#the-geometry-pipeline-ships-geometry-and-the-detail-is-baked-later).
-the other four still write a procedural surface. the count is four, not five, and the diagnosis
-below stands for them unchanged.
+
+**and the count of four is itself wrong: measured 2026-10-10, the number is one.** `spotlight`
+(`crates/gallery/src/spotlight.rs:79`) and `sunlight`
+(`crates/gallery/src/sunlight.rs:100`) have passed `""` as the lighting stage's surface argument in
+**every revision since the commits that created them** (`65012c2`, `f616eb9`), so neither ever wrote
+a procedural surface and neither can be withdrawn from a list of them. the earlier four was an
+undercounted reading of which scenes *carry a shader*, not of which ones carry a body.
+`tiles` (`crates/gallery/src/tiles.rs:52`) asks for `shaders::textured` with an empty helpers block,
+and the body that returns is a `textureSample` of the image the document already carries
+(`crates/gallery/src/shaders.rs:2151`) — a bound image, not arithmetic in a fragment. **its
+cross-backend gap is a different one**: the emitter drops both the `texture` point attribute and the
+`image` material field, and reports each, so what the path tracer draws is a flat floor. that is a
+limitation of `scene::cycles_export` in carrying an image at all, and no edit to `tiles` reaches it.
+
+that leaves `lanterns` as **the one scene still writing a procedural surface**, with two bodies
+(`crates/gallery/src/lanterns.rs:312` and `:336`). **neither is vertex displacement, and neither is
+convertible into it.** `WATER_SURFACE` mixes by `pow(1 - |dot(normal, view)|, 4)` and by distance
+from the eye; `GLOW` scales by `|dot(normal, towards)|` and by a `sin` of a world position plus the
+clock. every term in both is a function of where the eye is or of when it is, and a vertex attribute
+is written once when the mesh is built — baking either would freeze a moving quantity onto geometry
+and move the defect rather than remove it, which is the fitting this chapter already undid. both
+stay, and are recorded as the shading gap they are.
+
+all four scenes build and render on **both** backends today — measured 2026-10-10 at 1024x1024, 32
+samples on CPU, no `ERROR` on stderr — and the two scenes that carry no procedural surface are the
+two that already agree. pearson correlation of luma against the rasterised frame, both sides put
+through the same Reinhard + gamma the gallery's own grade applies:
+
+| scene        | surface bodies of its own | correlation |
+|--------------|---------------------------|-------------|
+| `spotlight`  | none                      | `0.938`     |
+| `sunlight`   | none                      | `0.969`     |
+| `lanterns`   | two, both view-dependent  | `0.876`     |
+| `tiles`      | one, a texture sample     | `0.115`     |
+
+so the honest reading of "do not match" for three of these four is **not** a missing body: it is the
+brightness gap of [no view transform](#no-view-transform) and a sky the document declares no
+background for, both already recorded below. `tiles` is the one that genuinely does not compose,
+and the emitter's own report says why.
 
 what is *not* open is whether the target format can express it. measured 2026-10-10: it can, natively,
 with no compiler in the loop — `<shader>` takes an arbitrary node graph and
