@@ -296,8 +296,53 @@ The IR is the part that survives either choice, so it is built first.
 two limits of the OSL fallback are worth stating now rather than discovering later. Cycles runs OSL on
 **CPU only** — the GPU path is an unenabled patch — which costs us nothing, because we render on CPU
 already. And `oslc` is a real compiler with real diagnostics, which is a genuine advantage over the
-node graph's silent failures: on the node-graph path an unknown connect *source* raises nothing at
-all and leaves the surface black.
+node graph, where a mistyped **node attribute** is ignored rather than refused.
+
+### a material has two forms, and they are two implementations rather than one compiled twice
+
+decided 2026-10-10: a material may declare a **rasterised** form and a **traced** form separately.
+The rasterised form is what already exists — WGSL text in a shader's `source`. The traced form is a
+node graph, carried beside it. A material that declares no traced form is emitted as the single
+constant `principled_bsdf` it is emitted as today, so every existing scene keeps working and this is
+purely additive.
+
+**this needs no exception to the rule that a document carries no logic**, because the scene schema
+already carries a shader's own text, and says why:
+
+> The shader source. A shader carries its own text so that a compiled scene renders wherever it is
+> sent.
+
+A node graph is the same kind of thing for the same reason. The field is separate rather than a
+variant of `source` because the two are different languages of different shapes, and one field
+holding both would be a schema about their union rather than about either.
+
+the traced form is written in this repository's own operation set, held in `crates/shader`, which is
+built as Rust and **serialised into the document**. That split matters: the Rust side is where a
+surface is authored, and it is where a mistyped operation or a wire between two mismatched types is
+refused at build time — because the alternative was measured, and the target ignores what it does
+not recognise rather than complaining. The document side is where it travels, so that a compiled
+scene still renders anywhere a rasterised one does. `crates/shader` names no node from any target,
+which is what keeps a future OSL form a second backend rather than a rewrite.
+
+**the two forms will not agree pixel for pixel, and that is not a defect to be fixed.** This is the
+load-bearing sentence of this decision. A rasteriser and a path tracer resolve a surface by different
+means — one interpolates across a triangle and shades once per fragment, the other samples the
+surface repeatedly per ray — so **the same material definition still renders two different pictures**.
+The two forms buy that the *structure* crosses the boundary: the snowline is driven by height in
+both, the rock is mixed by steepness in both, and a person changing one can see what the other is
+doing. A single shared representation would not make the images agree either, and would cost the
+rasteriser its written shader, its comments and its bindings.
+
+the corollary is that **"the two backends agree" is not a testable claim at the pixel level**, and
+neither is a difference between them a defect. Comparing the two frames is for seeing whether a
+surface has the right shape, and for telling a change of shading from a change of framing.
+
+this also settles the noise. A `fract(sin(dot(p, k)) * 43758.5453)` hash over lattice cells near 56
+gives `sin` an argument near 24,600 radians, whose `f32` representation already carries about 0.002
+of error; the multiply amplifies that to about 87 before `fract` turns it into an unrelated number.
+Two implementations agreeing to one ULP still produce uncorrelated noise, so **porting that hash buys
+nothing and costs the stability it appears to have.** The traced form uses the target's own noise
+node, and the rasterised form keeps the hash it has always had.
 
 ### how many scenes the fitting affected, corrected
 

@@ -10,16 +10,22 @@ shading, not the camera* and *how a procedural surface is carried, and what the 
 
 ## What was decided, and by whom
 
-Two questions were put to the user on 2026-10-10 rather than answered here, because both are
-expensive to reverse:
+Two questions were put to the user on 2026-10-10 rather than answered here, because both were
+expensive to reverse. **Both answers changed afterwards**, and the revisions are the interesting part:
 
-- **Fidelity: same pixels.** The gallery's own `value_noise` is ported into the IR and rebuilt from
-  `math` nodes, rather than reaching for Cycles' `noise_texture`. The reason is that
-  `noise_texture` is a *different function*; using it would give a picture of the same kind, not the
-  same picture.
-- **Home: its own crate.** The IR must not live inside `cycles_export`, because the whole point of
-  it being backend-neutral is that the OSL fallback stays a second backend rather than becoming a
-  rewrite.
+- **Fidelity: same pixels — later revised to same picture.** The first answer was to port the
+  gallery's own `value_noise` rather than reach for the target's noise node, so the two backends
+  would agree exactly. Measuring the hash showed that was never reachable, and reasoning about what
+  a rasteriser and a path tracer each *do* showed it should never have been wanted. See
+  *The noise hash* below.
+- **Home: its own crate. Unchanged.** The IR must not live inside `cycles_export`, because the whole
+  point of it being backend-neutral is that a second backend stays a second backend rather than
+  becoming a rewrite.
+
+The third thing decided on the same day is the shape: **a material carries a rasterised form and a
+traced form separately**, they are two implementations rather than one compiled twice, and the two
+are expected to render differently. That is recorded in
+[SPEC/render/cycles_backend.md](../SPEC/render/cycles_backend.md).
 
 OSL is recorded as the **fallback**, not the plan. It is real, maintained (Academy Software
 Foundation, 1.15.7.0 on 2026-09-07), and a CMake flag away in Cycles. It is not first because the
@@ -43,26 +49,41 @@ not mean fBm is unavailable, only that it must be built.
 
 ## The silent-failure trap, which shapes the IR
 
-Measured, and it is the single most important thing to carry into the implementation:
+Corrected 2026-10-10 — an earlier version of this file said connect sources are not validated. They
+are. A direct test settles it:
 
-- a connect **target** with an unknown name raises `Unknown input socket name "x" on "y"`;
-- a connect **source** with an unknown name raises **nothing at all** and leaves the destination at
-  its default — in practice zero, which renders as black plus a specular highlight;
-- node **attributes** with unknown names are ignored silently too.
+| Written | Result |
+| --- | --- |
+| `from="n value"` | works |
+| `from="n Value"` | works — socket names are case-insensitive |
+| `from="n nonexistent_socket"` | `ERROR: Unknown output socket name "n" on "nonexistent_socket"` |
+| `from="n vector"` on a `math` node | `ERROR: Unknown output socket name "n" on "vector"` |
+| `from="n result"` on a `math` node | `ERROR: Unknown output socket name "n" on "result"` |
 
-The mix node takes `a` and `b` as attributes, `A`/`B` as connect targets, and `result` as its
-output. `color1`/`color2` look right and belong to `brick_texture`.
+Connect **targets** are validated too: an unknown one raises
+`Unknown input socket name "x" on "y"`.
 
-**Consequence for this work:** an IR that names its own nodes and sockets and lets the backend
-compiler map them is not a convenience, it is the only thing standing between us and a black render
-that reports success. The IR therefore must be typed — a mis-wired edge has to fail in *our* code,
-with the node and socket named, rather than survive into the XML.
+What is genuinely silent is narrower:
 
-## Open, and the reason it is open
+- a node **attribute** whose name the node does not have is ignored — `color1` on a mix node does
+  nothing where `a` works, and `value` on a `math` node does nothing where `value1` works;
+- an operation whose inputs are left at zero **computes zero**, which renders as a black surface
+  with a specular highlight on it and reads as a lighting fault.
 
-**The `value_noise` hash cannot survive a port as written, and this is the thing to decide next.**
+**Consequence for this work:** the IR still types its sockets and still refuses a mismatched edge,
+because that turns a silent wrong picture into a named build failure. But the IR is not protecting
+against unvalidated socket names — the target does that. It is protecting against a mistyped
+operation or a wire that changes the meaning of a surface without saying so.
 
-`crates/gallery/src/landscape/mod.rs:896`:
+## The noise hash: settled, and not by porting it
+
+**Fidelity: same picture, not the same pixels.** The earlier goal of porting the gallery's own
+`value_noise` so the two backends would agree exactly is **abandoned**, and the reason is in
+`.agents/SPEC/render/cycles_backend.md`: a rasteriser and a path tracer resolve a surface by
+different means, so the same definition still renders two different pictures. Chasing bit equality
+would have cost a lot to buy something that was never reachable.
+
+The hash could not have been ported anyway. `crates/gallery/src/landscape/mod.rs:896` is
 
 ```wgsl
 fn hash(point: vec2<f32>) -> f32 {
@@ -70,55 +91,62 @@ fn hash(point: vec2<f32>) -> f32 {
 }
 ```
 
-The lattice cell components reach roughly 56 at landscape scale, so the argument to `sin` is around
-24,600 radians. In `f32` that argument carries about 0.002 of absolute error before `sin` is even
-called. A difference of one ULP in `sin` becomes roughly 0.002 there, times `43758.5453` becomes
-about 87, and `fract` of that is a completely different number. **Two implementations that agree to
-one ULP still produce uncorrelated noise.** Cycles and a WGSL JIT will not agree bit-for-bit, and
-Cycles may use a fast `sin`.
+The lattice cells reach about 56 at landscape scale, so `sin`'s argument is near 24,600 radians and
+already carries about 0.002 of `f32` error before `sin` is called; the multiply by 43758.5453 turns
+that into about 87, and `fract` of that is an unrelated number. **Two implementations agreeing to one
+ULP still produce uncorrelated noise.** The traced form therefore uses the target's own noise node
+and the rasterised form keeps the hash it has always had.
 
-So "same pixels" is not reachable by porting this hash. It has to be *replaced* with a hash whose
-output depends only on exactly-representable arithmetic — and the replacement has to land in the
-gallery's WGSL too, or the two backends are running different functions rather than the same one
-differently.
-
-The constraint on the replacement: **Cycles' `math` node has no bitwise operations**, so the usual
-32-bit integer hash is not expressible. The candidate space is therefore float-only hashes that keep
-every intermediate inside `2^24` and use no `sin`.
-
-This is not a decision to make inside this handoff. It changes what the gallery's existing scenes
-look like, and that is the parent's call.
+**What the traced form loses by doing this:** the massif's `patches`, `wobble`, `lobes` and `threads`
+terms are tuned against a particular noise's statistics. A different noise function will not honour
+those constants, so the bands will need re-tuning against the traced frame. That is expected work,
+not a defect, and it is the part of this that cannot be done ahead of looking at the picture.
 
 ## Shape of the work, and where it stands
 
-1. **done** — the IR crate `crates/shader`: `socket.rs` (what flows), `op.rs` (the operation set
-   and the one table describing it), `graph.rs` (the graph and its checks), `error.rs`. Builds with
-   no warnings, and the crate doc example compiles.
-2. **not started** — the Cycles compiler: IR → `<shader>` node graph. This is blocked on step 4.
-3. **not started** — proving the chain end to end on the landscape massif surface.
-4. **the measurement the compiler is waiting on.** The node vocabulary is *not* uniform and cannot
-   be assumed:
+The design settled on 2026-10-10: a material carries a **rasterised** form (the WGSL text it already
+carries) and a **traced** form (a node graph) separately. They are two implementations rather than
+one compiled twice, the two are expected to render differently because the two rendering principles
+differ, and `crates/shader` is the Rust construction and schema for the traced form, serialised into
+the document. A material with no traced form still emits the constant `principled_bsdf`, so nothing
+that works today stops working.
 
-   | Node | Input sockets measured | Tried and not a socket |
+1. **done** — `crates/shader`: `socket.rs`, `op.rs`, `graph.rs`, `error.rs`. Builds with no
+   warnings; the crate doc example compiles.
+2. **the node vocabulary is measured.** Input sockets were enumerated by connecting a known source
+   into each candidate and keeping the ones that do not raise; outputs were settled by wiring each
+   into an emission strength and comparing against an emission of the value it should produce.
+
+   | Node | Inputs | Output |
    | --- | --- | --- |
-   | `math` | `value1`, `value2`, `value3` | `value`, `value_001`, `a`, `b` |
-   | `vector_math` | `vector1`, `vector2`, `scale` | `value`, `value1`, `value2`, `vector` |
-   | `map_range` | `value` | `value1`, `value2`, `scale`, `factor` |
-   | `separate_xyz` | `vector` | `value`, `value1`, `vector1` |
-   | `bump` | none found yet | `value`, `value1`, `scale`, `height`, `normal` |
-   | `combine_xyz` | none found yet | `value`, `value1` |
+   | `math` | `value1`, `value2`, `value3` | `value` |
+   | `vector_math` | `vector1`, `vector2`, `scale` | `value` |
+   | `map_range` | `value`, `from_min`, `from_max`, `to_min`, `to_max`, `steps` | `value` |
+   | `bump` | `height`, `normal`, `strength`, `distance` | `normal` |
+   | `combine_xyz` | `x`, `y`, `z` | `vector` |
+   | `separate_xyz` | `vector` | `x`, `y`, `z` |
+   | `mix_color` | `fac`, `a`, `b` | `color` |
+   | `geometry` | none | `position`, `normal`, `true_normal`, `incoming`, `tangent`, `parametric`, `random` |
 
-   `vector_math` raising `Unknown input socket name "value1" on "pick"` is the result that matters:
-   the convention a developer carries over from `math` is wrong on the next node.
+   **Attribute names equal socket names**, confirmed by rendering: `math` with `operation="ADD"`,
+   `value1="0.3"`, `value2="0.4"` matches an emission of strength 0.7 exactly.
 
-   Still to measure before an emitter can be written: `map_range`'s four bound sockets, `bump`'s two
-   inputs and two parameters, `combine_xyz`'s three inputs, and **the attribute names for every
-   node, which are not the socket names**. Writing `value="-0.4"` on a `math` node yields the node's
-   own default, silently; `value1` is read. An emitter written before this is done renders black
-   and reports success.
+   **The emitter must write every input.** `math` has three, and an unset one keeps the node's own
+   default rather than becoming zero. Writing only the inputs it has values for inherits defaults
+   nobody chose.
 
-   The method is in `out/probe-socketnames.py` and `out/probe-opnames.py` in the main tree: compare
-   two renders rather than decoding a number, because the emission response is linear only below
-   about 1.2 and saturates above it.
-
+3. **not started** — the `traced` field in the scene schema, and the reader that turns it into a
+   graph. The field's documentation should answer why a shader already carries its own text: so that
+   a compiled scene renders wherever it is sent. The node graph is the same kind of thing.
+4. **not started** — the compiler from that graph to `<shader>` XML, which refuses to emit an
+   operation it cannot spell.
 5. not yet — the other four scenes.
+
+### Still unmeasured, and marked as such
+
+`attribute` produced nothing under any of `attribute_name` / `name` / `attribute` crossed with
+`fac` / `color` / `vector` / `alpha`. That node is what would carry a per-face authored id, and the
+massif's stone colour depends on one, so it has to be resolved before `landscape` can match. The
+likely cause is that the mesh carries no such attribute, which would be an emitter problem rather
+than a spelling one — Cycles' loader reads exactly five vertex attributes and has no way to add
+another.

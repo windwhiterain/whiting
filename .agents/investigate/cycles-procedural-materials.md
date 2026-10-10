@@ -82,44 +82,69 @@ writing down. Unless stated otherwise a wrong name is ignored and the socket kee
   shorthand `from`/`to` attributes are also present.
 - `color1` and `color2` do exist in the binary, but they belong to `brick_texture` (the mortar
   colours), not to the mix nodes. Their presence in a string scan is not evidence about the mix node.
-- Connect targets are validated and an unknown one raises `Unknown input socket name "x" on "y"`,
-  but connect *sources* are not: an unknown source socket raises nothing and quietly leaves the
-  destination at its default. A graph can therefore be half-connected with no error at all.
+- Connect targets **and sources** are both validated. An unknown target raises
+  `Unknown input socket name "x" on "y"`; an unknown source raises
+  `Unknown output socket name "y" on "x"`. Socket names are matched case-insensitively: `value` and
+  `Value` are the same socket.
+
+  **An earlier revision of this file claimed the opposite**, that an unknown connect source raises
+  nothing and silently leaves the destination at its default. That was a misreading of a truncated
+  error line, corrected on 2026-10-10 by a direct test. What *is* silent is narrower and worth
+  stating exactly:
+
+  - a node **attribute** whose name the node does not have is ignored, with no error — writing
+    `color1` on a mix node does nothing, and writing `a` works;
+  - an operation whose inputs are left at zero **computes zero**, which renders as a black surface
+    with a specular highlight on it. That is what the mix node was doing before its operand names
+    were right, and it looks like a lighting fault rather than a typo.
 - Every `ERROR:` line matters because the process still exits 0.
 
 ## The arithmetic node vocabulary, measured 2026-10-10
 
 An emitter cannot be written from the names above alone. Each arithmetic node has its own input
 socket names, and **they are not the arithmetic node's** — the convention does not carry across node
-types. Enumerated by connecting a source whose output name is already known (`result` on the mix
-family) into each candidate in turn, and keeping the ones that do not raise:
+types. Input sockets were enumerated by connecting a source whose output name is already known
+(`result` on the mix family) into each candidate and keeping the ones that do not raise; output
+sockets were settled by their effect, wiring each into an emission strength and comparing against an
+emission of the value it should produce.
 
-| Node | Input sockets found | Tried and **not** a socket |
-| --- | --- | --- |
-| `math` | `value1`, `value2`, `value3` | `value`, `value_001`, `value_002`, `a`, `b`, `factor` |
-| `vector_math` | `vector1`, `vector2`, `scale` | `value`, `value1`, `value2`, `vector` |
-| `map_range` | `value` | `value1`, `value2`, `scale`, `factor` |
-| `separate_xyz` | `vector` | `value`, `value1`, `vector1` |
-| `bump` | none of the candidates tried | `value`, `value1`, `scale`, `height`, `normal` |
-| `combine_xyz` | none of the candidates tried | `value`, `value1`, `x` was not tried |
+| Node | Inputs | Output | Tried and **not** a socket |
+| --- | --- | --- | --- |
+| `math` | `value1`, `value2`, `value3` | `value` | `value`, `value_001`, `a`, `b`, `factor` |
+| `vector_math` | `vector1`, `vector2`, `scale` | `value` | `value`, `value1`, `value2`, `vector` |
+| `map_range` | `value`, `from_min`, `from_max`, `to_min`, `to_max`, `steps` | `value` | `value1`, `value2`, `scale`, `factor`, `min`, `max` |
+| `bump` | `height`, `normal`, `strength`, `distance` | `normal` | `value`, `value1`, `scale`, `invert` |
+| `combine_xyz` | `x`, `y`, `z` | `vector` | `value`, `vector1` |
+| `separate_xyz` | `vector` | `x`, `y`, `z` | `value`, `value1`, `vector1` |
+| `mix_color` | `fac`, `a`, `b` | `color` | `color1`, `color2`, `factor` |
+| `geometry` | none | `position`, `normal`, `true_normal`, `incoming`, `tangent`, `parametric`, `random` | `pointiness`, `backfacing` |
 
 `vector_math` reporting that it has no `value1` is the clearest single result here: the socket names
 a developer would carry over from `math` are the wrong ones on the very next node.
 
-**Not yet measured, and therefore not yet writable:** the four bound sockets of `map_range`, the two
-inputs and two parameters of `bump`, the three inputs of `combine_xyz`, and — for every node — the
-attribute names, which are *not* the same as the socket names. Writing `value="-0.4"` on a `math`
-node produces the node's own default, silently, where writing `value1="..."` is read. Any emitter
-built before these are measured will render a black surface and report success.
+**A node's parameter attributes use the same names as its input sockets, and that was confirmed
+rather than assumed.** `math` with `operation="ADD"`, `value1="0.3"` and `value2="0.4"` renders
+byte-for-byte what an emission of strength 0.7 renders. The same node with `value="0.3"` and
+`value1="0.4"` does not, because `value` is its *output* and setting it does nothing.
 
-### How a node's value was measured
+**Socket names are matched case-insensitively.** `from="n value"` and `from="n Value"` both work and
+produce identical images.
+
+### The one rule this imposes on an emitter
+
+**Write every input explicitly.** `math` has three, and an input left unset keeps the node's own
+default rather than becoming zero — which is how `SUBTRACT` of 0.7 and 0.3 can arrive as something
+other than 0.4. An emitter that writes only the inputs it has values for inherits defaults nobody
+chose. Writing all of them makes the node's defaults irrelevant and removes a whole class of
+"works on one scene and not on another".
+
+### How a value was measured
 
 The response of an emission strength to its input is linear only below roughly 1.2 and saturates
 above it, so a ladder of known strengths can only decode that range. Comparisons are therefore made
 between two *images* rather than against a decoded number: render the operation with known inputs,
 render an emission of strength equal to what it should produce, and compare pixels. Both images go
-through the same transfer, so nothing has to be known about it. A node left at its default is
-distinguished by comparing against a third image, an emission left at strength one.
+through the same transfer, so nothing has to be known about it.
 
 ## What this does not settle
 
