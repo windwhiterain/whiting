@@ -242,23 +242,9 @@ impl Camera {
             // both an angle and a focal length is a document whose one of the two is being
             // overridden. Taking the angle is that override, stated rather than inferred:
             // the alternative is a scene that changes picture when a field it never read
-            // is added to it.
-            field_of_view: read(FIELD_OF_VIEW)
-                .and_then(Value::as_float)
-                .or_else(|| {
-                    read(FOCAL_LENGTH)
-                        .and_then(Value::as_float)
-                        .map(|focal_length| {
-                            vertical_field_of_view(
-                                focal_length,
-                                read(SENSOR_WIDTH)
-                                    .and_then(Value::as_float)
-                                    .unwrap_or(DEFAULT_SENSOR_WIDTH),
-                                aspect,
-                            )
-                        })
-                })
-                .unwrap_or(DEFAULT_FIELD_OF_VIEW),
+            // is added to it. The precedence itself is [`vertical_angle`], which a backend
+            // that never builds a projection asks instead of this reader.
+            field_of_view: vertical_angle(Some(camera), aspect),
             kind,
             padding: read(PADDING_FIELD)
                 .and_then(Value::as_float)
@@ -828,6 +814,38 @@ impl DepthMap {
         (depth * self.weight_at_eye - self.depth_at_eye)
             / (self.depth_rise - depth * self.weight_rise)
     }
+}
+
+/// Returns the full **vertical** angle a camera sees through, in radians.
+///
+/// # Invariants
+///
+/// The precedence is one function of its own, and a backend that never builds a projection
+/// asks it rather than reading the camera's fields a second time: **an angle beats a lens**, a
+/// lens beats the convention, and the convention is [`DEFAULT_FIELD_OF_VIEW`]. A second reader
+/// would be a second answer to the same question, and the two would drift exactly where the
+/// drift is invisible — a scene that names a lens.
+///
+/// `aspect` is the frame's own, because a lens is named against a sensor and a sensor is a
+/// width: see [`vertical_field_of_view`], which is the lens half on its own.
+///
+/// `camera` is `None` for a scene that declares no camera at all, which is the convention.
+pub fn vertical_angle(camera: Option<&Value>, aspect: f64) -> f64 {
+    let Some(camera) = camera else {
+        return DEFAULT_FIELD_OF_VIEW;
+    };
+    let number = |name: &str| field(camera, name).and_then(Value::as_float);
+    number(FIELD_OF_VIEW)
+        .or_else(|| {
+            number(FOCAL_LENGTH).map(|focal_length| {
+                vertical_field_of_view(
+                    focal_length,
+                    number(SENSOR_WIDTH).unwrap_or(DEFAULT_SENSOR_WIDTH),
+                    aspect,
+                )
+            })
+        })
+        .unwrap_or(DEFAULT_FIELD_OF_VIEW)
 }
 
 /// Returns the full vertical angle a lens of a given focal length sees through.

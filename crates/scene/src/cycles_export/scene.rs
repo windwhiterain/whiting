@@ -17,6 +17,10 @@ use super::settings;
 use super::transform::{self, Transform};
 use super::writer::Writer;
 use super::{EmitOptions, LossyMode};
+use crate::limits::DeviceLimits;
+use crate::standard::FRAME;
+use crate::standard::camera::{DEFAULT_FIELD_OF_VIEW, vertical_angle};
+use crate::standard::frame::Frame;
 use definition::{FieldMap, Value};
 use std::path::Path;
 
@@ -225,9 +229,43 @@ fn read_instances(fields: &FieldMap) -> EmitResult<Vec<Instance>> {
 /// The camera: where it stands, which way it looks, and what it can see.
 struct Camera {
     transform: Transform,
+    /// The angle the loader's camera node takes, in radians.
+    ///
+    /// The node's one socket is a full angle along the frame's **longer** side, which is not the
+    /// side this engine measures a camera's angle on — see [`angle_along_the_longer_side`].
     field_of_view: f64,
     width: usize,
     height: usize,
+}
+
+/// The angle the loader's camera node takes, from an angle this engine measures vertically.
+///
+/// # Invariants
+///
+/// The node carries **one** angle and applies it along the frame's longer side, where the sensor
+/// fit is automatic. This engine measures `field_of_view` **down the frame**, and the schema says
+/// so: `field_of_view` is "the angle seen through, vertically", and a lens is a width, so
+/// `vertical_field_of_view` divides the horizontal tangent by the aspect to reach it.
+///
+/// So the two are the same angle on different axes, and which one the node wants is the frame's
+/// aspect and nothing else:
+///
+/// - **wider than tall** — the longer side is the horizontal, which is the side a sensor is
+///   named on, so the angle widens by the aspect;
+/// - **taller than wide** — the longer side is the vertical, which is already what this engine
+///   measures, so it is the angle unchanged.
+///
+/// Getting this backwards is not a small error: measured against `foldyard`, whose first camera
+/// is a thirty five millimetre lens on a full frame negative and names no angle at all, the
+/// ninety degree default this replaced was **1.94 times** the half angle of the lens the scene
+/// asked for, and the frame came back with the yard's wall a third of the size it is drawn at
+/// elsewhere in this workspace.
+fn angle_along_the_longer_side(vertical: f64, aspect: f64) -> f64 {
+    if aspect >= 1.0 {
+        2.0 * ((vertical / 2.0).tan() * aspect).atan()
+    } else {
+        vertical
+    }
 }
 
 /// Reads the camera.
@@ -244,16 +282,35 @@ struct Camera {
 /// loader's camera looks along its own **`+Z`**, established by moving the camera and watching
 /// the geometry appear — see [`camera_rotation`].
 ///
+/// # The angle and the size are both read from where the document writes them
+///
+/// Both were read from the **camera**, and a camera in this workspace's schema has neither.
+///
+/// - **the size** is the **scene's** `frame`, a field of the scene and not of a camera. Reading
+///   it off the camera found nothing on any camera that has ever been written and fell back to
+///   `1920 x 1080`, so every scene was rendered at a shape it did not ask for. Measured:
+///   `foldyard` names `1536 x 1024` and was rendered `1920 x 1080`.
+/// - **the angle** is `field_of_view` **or** `focal_length` against `sensor_width`, and the
+///   precedence between them belongs to the rasterised path's camera reader rather than to a
+///   second opinion here. `vertical_angle` is that reader's own function.
+///
 /// A camera with no eye is not built by guessing: it is reported, because a camera that cannot
 /// see anything is not a camera with a default.
 fn read_camera(fields: &FieldMap) -> EmitResult<Camera> {
+    // The frame bounds nothing here: this backend writes a picture into a file and has no
+    // texture to allocate, so the ceiling is the one that is not a ceiling.
+    let (frame, _) = Frame::read_declared(
+        fields.get(FRAME).and_then(Value::as_field_map),
+        DeviceLimits::unbounded(),
+    );
+    let aspect = frame.aspect();
     let cameras = list(fields, "cameras")?;
     let Some(first) = cameras.first() else {
         return Ok(Camera {
             transform: Transform::identity(),
-            field_of_view: std::f64::consts::FRAC_PI_2,
-            width: 1920,
-            height: 1080,
+            field_of_view: angle_along_the_longer_side(DEFAULT_FIELD_OF_VIEW, aspect),
+            width: frame.width.max(1) as usize,
+            height: frame.height.max(1) as usize,
         });
     };
     let camera_fields = first.as_field_map().ok_or_else(|| EmitError::Malformed {
@@ -290,15 +347,9 @@ fn read_camera(fields: &FieldMap) -> EmitResult<Camera> {
 
     Ok(Camera {
         transform,
-        field_of_view: read::field(camera_fields, "field_of_view")
-            .and_then(|value| read::number(value, "field_of_view").ok())
-            .unwrap_or(std::f64::consts::FRAC_PI_2),
-        width: read::field(camera_fields, "width")
-            .and_then(|value| read::number(value, "width").ok())
-            .unwrap_or(1920.0) as usize,
-        height: read::field(camera_fields, "height")
-            .and_then(|value| read::number(value, "height").ok())
-            .unwrap_or(1080.0) as usize,
+        field_of_view: angle_along_the_longer_side(vertical_angle(Some(first), aspect), aspect),
+        width: frame.width.max(1) as usize,
+        height: frame.height.max(1) as usize,
     })
 }
 

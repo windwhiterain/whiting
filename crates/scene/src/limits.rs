@@ -38,6 +38,25 @@ impl DeviceLimits {
         }
     }
 
+    /// No ceiling at all, which is what a backend with no machine behind it is bounded by.
+    ///
+    /// # Invariants
+    ///
+    /// The two numbers here are the largest the type holds rather than a size any adapter
+    /// reports, so a count compared against them passes untouched and the ceiling is a
+    /// non-event. That is the whole of the answer: a process that writes a frame into a file
+    /// has no texture to allocate and therefore nothing to be bounded by, and bounding it by
+    /// [`DeviceLimits::downlevel`] would cap a picture at 2048 a side for the sake of a machine
+    /// that is not there. The frame's own default — a thousand square — is the only size that
+    /// has an opinion here, and it has one because the schema says so rather than because a
+    /// device did.
+    pub const fn unbounded() -> Self {
+        Self {
+            max_texture_dimension_2d: u32::MAX,
+            max_texture_array_layers: u32::MAX,
+        }
+    }
+
     /// The widest or tallest a texture may be, in pixels, as a count.
     pub const fn texture_side_ceiling(&self) -> i64 {
         self.max_texture_dimension_2d as i64

@@ -59,10 +59,27 @@ impl Frame {
     /// A convention is never bounded, because [`DeviceLimits::downlevel`] is above every
     /// convention here and a machine below it is not one this pipeline runs on.
     pub fn read(scene: &Value, limits: DeviceLimits) -> (Self, Vec<CompileNote>) {
-        let declared = scene
-            .as_field_map()
-            .and_then(|fields| fields.get(FRAME))
-            .and_then(Value::as_field_map);
+        Self::read_declared(
+            scene
+                .as_field_map()
+                .and_then(|fields| fields.get(FRAME))
+                .and_then(Value::as_field_map),
+            limits,
+        )
+    }
+
+    /// Returns the frame a `frame` field declares, for a caller that already holds one.
+    ///
+    /// # Invariants
+    ///
+    /// This is the whole of [`Frame::read`] past taking the field out of the document, and it is
+    /// separate so that a reader holding a scene's field map does not have to rebuild the scene
+    /// to ask the same question. The frame is the **scene's** and not a camera's, so a camera
+    /// that wants to know how wide its own picture is has to come here.
+    pub fn read_declared(
+        declared: Option<&definition::FieldMap>,
+        limits: DeviceLimits,
+    ) -> (Self, Vec<CompileNote>) {
         let read = |name: &str, fallback: i64| {
             declared
                 .and_then(|fields| fields.get(name))
