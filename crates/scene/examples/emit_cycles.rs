@@ -115,7 +115,8 @@ fn instance(label: &str, mesh: &str, material: &str, transform: [[f64; 3]; 3]) -
     ])
 }
 
-/// A material. A tint is written as `custom_data`, and the shading parameters as siblings.
+/// A material. Every parameter travels inside `custom_data`, because that is the only place the
+/// document carries one.
 fn material(label: &str, tint: [f64; 3], roughness: f64, metallic: f64) -> Value {
     Value::structure([
         ("label".to_owned(), Value::String(label.to_owned())),
@@ -123,14 +124,16 @@ fn material(label: &str, tint: [f64; 3], roughness: f64, metallic: f64) -> Value
             "shader".to_owned(),
             Value::String("LightingShader".to_owned()),
         ),
-        ("roughness".to_owned(), Value::Float(roughness)),
-        ("metallic".to_owned(), Value::Float(metallic)),
         (
             "custom_data".to_owned(),
-            Value::structure([(
-                "tint".to_owned(),
-                Value::List(tint.into_iter().map(Value::Float).collect()),
-            )]),
+            Value::structure([
+                (
+                    "tint".to_owned(),
+                    Value::List(tint.into_iter().map(Value::Float).collect()),
+                ),
+                ("roughness".to_owned(), Value::Float(roughness)),
+                ("metallic".to_owned(), Value::Float(metallic)),
+            ]),
         ),
     ])
 }

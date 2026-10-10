@@ -16,20 +16,52 @@
 //!
 //! Cycles has no per-material data channel. A material's parameters are compiled into its
 //! shader graph, so anything the document carries as `custom_data` has to be folded into a
-//! socket at emit time or it does not exist. `tint` is the one field with a socket to land
-//! in, and it folds multiplicatively into `base_color`, which is what a colour multiplier
-//! means.
+//! socket at emit time or it does not exist.
 //!
-//! Any other custom field has nowhere to go. That is recorded rather than dropped, because
-//! a tint that silently failed to apply is the same invisible-wrong-image failure this
-//! module is arranged to prevent.
+//! **`custom_data` is the only place a material's parameters are written**, so it is the only
+//! place they are read from. `tint`, `metallic` and `roughness` each have a socket to land in
+//! and are folded into it; `emissive` and `reflect` have none that means the same thing and
+//! are recorded rather than dropped, because a tint that silently failed to apply is the same
+//! invisible-wrong-image failure this module is arranged to prevent.
+//!
+//! # Why the dielectric parameters are not read
+//!
+//! `ior` and `transmission_weight` are always written and are never read, because the document
+//! has no field for either and never had. They are the dielectric defaults stated once in the
+//! XML rather than left to whatever the node's own defaults happen to be, so a reader of the
+//! document does not have to know them to know what was meant.
 
 use super::LossyMode;
 use super::error::{EmitError, EmitResult, UnsupportedField};
 use super::lossy::LossyReport;
 use super::read;
 use super::writer::Writer;
-use definition::{FieldMap, Value};
+use definition::Value;
+
+/// The field a material's colour multiplier travels in.
+///
+/// The name is written by the gallery rather than declared here: `custom_data` is an open map
+/// that the gallery populates and this reads, and nothing in the scene schema decides what may
+/// be in it.
+const TINT: &str = "tint";
+
+/// The field a material's metalness travels in.
+const METALLIC: &str = "metallic";
+
+/// The field a material's roughness travels in.
+const ROUGHNESS: &str = "roughness";
+
+/// The roughness a material that names none is drawn with.
+const DEFAULT_ROUGHNESS: f64 = 0.5;
+
+/// The metalness a material that names none is drawn with.
+const DEFAULT_METALLIC: f64 = 0.0;
+
+/// The index of refraction a material that is not glass is drawn with.
+const DEFAULT_IOR: f64 = 1.45;
+
+/// The transmission weight a material that is not glass is drawn with.
+const DEFAULT_TRANSMISSION: f64 = 0.0;
 
 /// One material, read out of the document.
 pub struct Material {
@@ -72,11 +104,15 @@ pub fn read_materials(
         let shader = read::text_field(fields, "shader", &context)?;
 
         let mut tint = None;
+        let mut roughness = DEFAULT_ROUGHNESS;
+        let mut metallic = DEFAULT_METALLIC;
         if let Some(custom) = read::field(fields, "custom_data") {
             if let Some(custom_fields) = custom.as_field_map() {
                 for (name, value) in custom_fields {
                     match name.as_str() {
-                        "tint" => tint = Some(read::triple(value, &format!("{context}'s tint"))?),
+                        TINT => tint = Some(read::triple(value, &format!("{context}'s tint"))?),
+                        ROUGHNESS => roughness = parameter(value, ROUGHNESS, &context)?,
+                        METALLIC => metallic = parameter(value, METALLIC, &context)?,
                         other => match mode {
                             LossyMode::Reject => {
                                 return Err(EmitError::Unsupported(UnsupportedField::CustomData {
@@ -98,10 +134,10 @@ pub fn read_materials(
             label,
             shader,
             tint,
-            roughness: optional_number(fields, "roughness").unwrap_or(0.5),
-            metallic: optional_number(fields, "metallic").unwrap_or(0.0),
-            ior: optional_number(fields, "ior").unwrap_or(1.45),
-            transmission: optional_number(fields, "transmission").unwrap_or(0.0),
+            roughness,
+            metallic,
+            ior: DEFAULT_IOR,
+            transmission: DEFAULT_TRANSMISSION,
         });
     }
     Ok(out)
@@ -143,6 +179,13 @@ pub fn write_material(writer: &mut Writer, material: &Material) {
     writer.close("shader");
 }
 
-fn optional_number(fields: &FieldMap, name: &str) -> Option<f64> {
-    read::field(fields, name).and_then(|value| read::number(value, name).ok())
+/// Reads one custom-data parameter, naming the material and the field when it is not a number.
+///
+/// # Invariants
+///
+/// A malformed parameter is an error rather than the default, because a field that arrived as
+/// the wrong type was written by an author who expected it to be read, and answering with the
+/// default produces a picture that is wrong without saying so.
+fn parameter(value: &Value, name: &str, context: &str) -> EmitResult<f64> {
+    read::number(value, &format!("{context}'s {name}"))
 }

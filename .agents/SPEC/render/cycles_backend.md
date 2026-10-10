@@ -105,6 +105,43 @@ this is why a scene exposed for the rasterised post stage's Reinhard curve is ov
 exactly the top of that curve, and why the two backends are not expected to produce the same
 image.
 
+### `exposure` is the document's own field, and it is a multiplier on both sides
+
+`scene_schema::EXPOSURE` is documented as a linear multiplier on the radiance the post stage
+reads, before that stage's own curve. `<film exposure>` is a linear multiplier on the radiance
+Cycles writes, which was measured: a constant world at `strength = 1.0, color = 0.5` came back as
+64, 128 and 255 under exposures of `0.5`, `1.0` and `2.0` — `0.25`, `0.5` and `1.0` linear, where
+a stop count would have given 149 for the first.
+
+they are the same number, so nothing is converted and **the document wins**. `EmitOptions::exposure`
+is the default for a scene that names no exposure, which is what it was before the document was
+read at all.
+
+no gallery scene declares one, so this is a rule with no scene behind it yet.
+
+## Materials
+
+### a material's parameters all travel in `custom_data`, so all of them are read from there
+
+a `mesh_material` carries `label`, `shader` and `custom_data`, and **`custom_data` is the only
+place any parameter is written** — the gallery's `surface()` row is `tint`, `metallic`,
+`roughness`, `emissive` and `reflect` (`crates/gallery/src/kit.rs:641`). the material itself has
+no field for any of them.
+
+so reading `roughness` or `metallic` off the material finds nothing on any material that has ever
+been written, and the emitter silently fell back to `0.5` and `0.0` while writing both into
+`principled_bsdf`. that is not a small error: a sand declared `roughness = 0.92` came back as a
+half-rough surface, and a floor declared `1.0` came back glossier than any surface in the scene.
+
+`tint`, `metallic` and `roughness` each have a socket to land in and are folded into it.
+`emissive` and `reflect` have none that means the same thing and are reported rather than
+dropped, because a tint that silently failed to apply is the same invisible-wrong-image failure
+this backend is arranged to prevent.
+
+`ior` and `transmission_weight` are always written and never read, because the document has no
+field for either. they are stated as the dielectric defaults rather than left to the node's own,
+so a reader of the document does not have to know them to know what was meant.
+
 ## Camera
 
 ### the frame is the scene's, and the camera node is not the buffer
@@ -156,6 +193,42 @@ after, each carries its own:
 the three wide frames were rendered at a shape they did not declare and now are; `1024` square is
 `frame`'s own default and is what the rasterised path drew them at already, so those nine are
 unchanged in size and changed in angle only.
+
+### the rasterised path moves a camera that names no depth planes, and the emitter does not
+
+A camera that writes **both** `near` and `far` keeps the eye the document wrote. One that writes
+neither is **fitted**: `Camera::projection` pulls the eye back along the eye-to-target ray until
+the whole scene's bounds fit the lens, then multiplies that distance by the camera's `padding`
+(`crates/scene/src/standard/camera.rs:437-448`). Fitting never turns the view — it only changes
+how far back the eye sits — but that is enough to change the picture completely on a large scene.
+
+The gallery's `camera()` writes `padding` and no depth planes (`crates/gallery/src/kit.rs:536`);
+`camera_placed` and `camera_placed_on_lens` write both. So **nine of the twelve gallery scenes are
+drawn by the rasteriser from an eye that is not the one in the document**, and the emitter reads
+the document.
+
+measured by rendering all twelve scenes through both backends and putting the pairs side by side.
+the three that write depth planes — `foldyard`, `tidewater`, `stilllife` — come back with the
+same composition: the same shed, the same wall, the same pole on the same side. the nine fitted
+ones do not: `landscape` returns two close rock faces where the rasteriser has a valley with a
+river running down the middle, `terraces` returns a close crop where the rasteriser has the whole
+range and the valley below it, and `tiles` returns a floor filling the lower half where the
+rasteriser has a thin strip at the bottom.
+
+**this is not fixable inside the emitter.** Fitting needs the compiled scene's `bounds`, which
+come from the compiler's own instance buckets rather than from the document, and the emitter's
+whole contract is that it is a pure function of the document. Re-deriving the bounds in the
+emitter would be a second implementation of `fitting_distance` and a second opinion about what the
+scene's bounds are.
+
+the options are therefore a boundary decision rather than a bug fix, and are recorded rather than
+taken:
+
+- **refuse** a camera that names no depth planes, naming the reason — the same answer the
+  octahedral map gets. nine scenes then have to name where the camera stands, which is what
+  `camera_placed_on_lens` is for.
+- **widen the emitter's input** to the compiled camera, so the two backends read one camera. the
+  correct long-term answer, and it moves the boundary the emitter is built on.
 
 ## Environment
 

@@ -2,6 +2,32 @@
 
 use super::EmitOptions;
 use super::writer::Writer;
+use crate::standard::EXPOSURE;
+use definition::Value;
+
+/// Returns the linear exposure multiplier a document asked for, or `fallback` when it asked for
+/// none.
+///
+/// # Invariants
+///
+/// **The document's own field wins, and the caller's number is the default for a scene that
+/// names none.** They are the same quantity — `scene_schema::EXPOSURE` documents a linear
+/// multiplier on the radiance the post stage reads, and [`EmitOptions::exposure`] documents a
+/// linear multiplier on the radiance Cycles writes — so there is nothing to convert and nothing
+/// to choose between. Taking the caller's number first would be the same mistake the camera
+/// made: a field the emitter never read, which a scene could add and see nothing happen.
+///
+/// A field that is present but is not a number is **ignored rather than refused**, because a
+/// scene that cannot express the field at all is exactly a scene that leaves it out, and this
+/// backend has never refused a document over a malformed float anywhere else.
+pub fn exposure(scene: &Value, fallback: f32) -> f32 {
+    scene
+        .as_field_map()
+        .and_then(|fields| fields.get(EXPOSURE))
+        .and_then(Value::as_float)
+        .map(|value| value as f32)
+        .unwrap_or(fallback)
+}
 
 /// Writes the `<film>` element.
 ///
@@ -14,9 +40,9 @@ use super::writer::Writer;
 ///
 /// `exposure` is a linear multiplier here and in Cycles alike, which was measured rather
 /// than assumed. See [`EmitOptions::exposure`].
-pub fn write_film(writer: &mut Writer, options: &EmitOptions) {
+pub fn write_film(writer: &mut Writer, exposure: f32) {
     writer.comment("Film");
-    writer.leaf("film", &[("exposure", options.exposure.to_string())]);
+    writer.leaf("film", &[("exposure", exposure.to_string())]);
 }
 
 /// Writes the `<integrator>` element.
