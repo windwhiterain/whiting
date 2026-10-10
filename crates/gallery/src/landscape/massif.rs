@@ -373,11 +373,29 @@ fn crest_index(name: &str) -> usize {
 pub fn massif() -> Massif {
     let mut massif = Massif::new(Skeleton::new(ridges(), Vec::new(), Vec::new()))
         .with_tessellation(Tessellation::default().with_step(STEP));
+    // **The crests are taken down to the plain before a single floor is walked**, because a floor is
+    // written against the wall above it and the wall it is written against has to be the wall that
+    // gets built. Walking the floors first and levelling the crests afterwards — the ordering this
+    // function had — leaves a valley's last rib standing at 165 over a crest tip that has since been
+    // taken to 0, which is an inverted belt: a surface folded back on itself, and the source of every
+    // four-digit facet aspect in the report.
+    level_the_crests(&mut massif);
     let (valleys, footprint) = drain(&massif.skeleton);
     massif.skeleton.valleys = valleys;
     massif.skeleton.footprint = footprint;
     stand_on_the_plain(&mut massif);
     massif
+}
+
+/// Takes every crest's rim end down to the plain. Done before the floors exist, so it touches ridges
+/// only; [`stand_on_the_plain`] finishes the job on the rim and the valleys.
+fn level_the_crests(massif: &mut Massif) {
+    for ridge in massif.skeleton.ridge_ids() {
+        if is_junction(massif, ridge, true) {
+            continue;
+        }
+        shelf(massif, LineRef::Ridge(ridge));
+    }
 }
 
 /// Levels everything that reaches the rim down to the plain.
@@ -395,16 +413,43 @@ pub fn massif() -> Massif {
 /// Levelling only the footprint would leave each ridge ending above the ground it is supposed to
 /// stand on, and the gap is at the one place in the frame the eye is trained on — and a point with
 /// two elevations is two points, which is what splits a surface open along its own foot.
+///
+/// **A crest is tapered only toward the end that reaches the rim, and a junction end is never
+/// tapered at all.** This is the rule the first version of this function did not have, and what it
+/// cost: a hierarchy authors its cols as one crest's *far* end, so tapering every crest's far end
+/// took nine of this massif's saddles down to the plain's height and left the summits between them
+/// standing. The range became nine fangs rooted in a web at ground level — which validates, because
+/// `check_elevations` reads each line on its own and the taper is monotone on every one of them, and
+/// which renders as stacked rectangular teeth with a dark gash down each flank. Nothing in the mesh
+/// disagrees, because a welded vertex simply keeps whichever elevation was written last.
 fn stand_on_the_plain(massif: &mut Massif) {
     for node in 0..massif.skeleton.footprint.len() {
         massif.set_elevation(LineRef::Footprint, node, super::RIM as f32);
     }
-    for ridge in massif.skeleton.ridge_ids() {
-        shelf(massif, LineRef::Ridge(ridge));
-    }
+    // The crests were taken down before the floors were walked — see [`level_the_crests`] — so what
+    // is left is the rim and the valley mouths, which cannot be levelled until they exist.
     for valley in massif.skeleton.valley_ids() {
+        // A valley's far end is its mouth, which is a rim vertex; its near end is a head, which is a
+        // summit or a col and is welded to the crests it names, so it is left alone either way.
         shelf(massif, LineRef::Valley(valley));
     }
+}
+
+/// Whether one end of a crest is a junction — a point another crest's end stands on.
+///
+/// Read from the authored naming rather than from the plan, because the naming is the fact: two ends
+/// at one point that do not name each other are two vertices, and the expansion builds a slit there
+/// rather than a saddle.
+fn is_junction(massif: &Massif, ridge: RidgeId, far: bool) -> bool {
+    let parameter = if far { 1.0 } else { 0.0 };
+    massif.skeleton.ridges.iter().any(|other| {
+        [other.start, other.end]
+            .iter()
+            .filter_map(End::station)
+            .any(|station| {
+                station.line == LineRef::Ridge(ridge) && (station.t - parameter).abs() < 1.0e-3
+            })
+    })
 }
 
 /// Takes the outer part of a line down to the rim's height.
@@ -442,9 +487,7 @@ fn ridges() -> Vec<Ridge> {
                 .nodes
                 .iter()
                 .map(|[x, y, elevation]| {
-                    RidgeNode::new([*x, *y], *elevation)
-                        .with_half_width(90.0)
-                        .with_sharpness(crest.sharpness)
+                    RidgeNode::new([*x, *y], *elevation).with_sharpness(crest.sharpness)
                 })
                 .collect();
             let ridge = Ridge::root(nodes).with_step_scale(1.25 - 0.6 * crest.sharpness);
@@ -492,9 +535,13 @@ fn end_point(name: &str, far: bool) -> (Vec2, f32) {
 ///
 /// The graph is welded from the authored ends: two crest ends at one point are one vertex, which is
 /// the same fact `ridges()` states with `End::On` and the same fact the expansion welds on.
-struct Graph {
+struct Graph<'a> {
     /// The vertices, welded.
     vertices: Vec<Vertex>,
+    /// The lines being walked, read for the point and height a station names. Held rather than
+    /// copied: a wall's ceiling has to be asked of the skeleton **as it now stands**, and the
+    /// skeleton it stood as when the graph was welded has already had its foot taken down.
+    skeleton: &'a Skeleton,
 }
 
 /// One welded vertex.
@@ -521,9 +568,9 @@ struct Branch {
     bearing: f32,
 }
 
-impl Graph {
+impl<'a> Graph<'a> {
     /// Welds the authored ends into vertices.
-    fn of(skeleton: &Skeleton) -> Self {
+    fn of(skeleton: &'a Skeleton) -> Self {
         let count = CRESTS.len();
         let mut parent: Vec<usize> = (0..count * 2).collect();
         fn find(parent: &mut [usize], index: usize) -> usize {
@@ -596,7 +643,7 @@ impl Graph {
                 .at
                 .sort_by(|left, right| left.bearing.total_cmp(&right.bearing));
         }
-        Self { vertices }
+        Self { vertices, skeleton }
     }
 
     fn vertex(&self, index: usize) -> &Vertex {
@@ -762,6 +809,14 @@ impl Chain {
     }
 
     /// Where this wall stands at a fraction of its own length.
+    ///
+    /// Read **through the skeleton**, at the station the wall names, rather than by interpolating the
+    /// authored table by node index. Two reasons, and the first is a live bug: a station names an
+    /// arc-length parameter, while `nodes.len()` counts *nodes*, so on a crest whose authored nodes
+    /// are unevenly spaced the two disagree about where along the crest the station is — the ceiling
+    /// gets evaluated at a different point than the floor stands at. And the authored table is what the
+    /// crest was *before* the foot was taken down to the plain, so a ceiling read from it can sit above
+    /// a wall that has since been levelled, which inverts the belt.
     fn at(&self, graph: &Graph, fraction: f32) -> (Vec2, f32, Station) {
         let target = self.total * fraction.clamp(0.0, 1.0);
         let mut walked = 0.0;
@@ -773,20 +828,12 @@ impl Chain {
                 } else {
                     0.0
                 };
-                let crest = self.crests[index];
-                let nodes = CRESTS[crest].nodes;
-                // The wall runs outwards, which is the crest's own direction: every crest is written
-                // from the summit end to its tip.
-                let leg = within * (nodes.len() - 1) as f32;
-                let low = (leg.floor() as usize).min(nodes.len() - 1);
-                let high = (low + 1).min(nodes.len() - 1);
-                let amount = leg - leg.floor();
-                let position = [
-                    nodes[low][0] + (nodes[high][0] - nodes[low][0]) * amount,
-                    nodes[low][1] + (nodes[high][1] - nodes[low][1]) * amount,
-                ];
-                let elevation = nodes[low][2] + (nodes[high][2] - nodes[low][2]) * amount;
-                return (position, elevation, Station::ridge(RidgeId(crest), within));
+                let station = Station::ridge(RidgeId(self.crests[index]), within);
+                let point = graph
+                    .skeleton
+                    .station_point(station)
+                    .unwrap_or([0.0, 0.0, 0.0]);
+                return ([point[0], point[2]], point[1], station);
             }
             walked += span;
         }
@@ -853,14 +900,17 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
             let (a_plan, a_height, a_station) = left.at(&graph, *fraction);
             let (b_plan, b_height, b_station) = right.at(&graph, *fraction);
             let reach = (distance(a_plan, head_plan) + distance(b_plan, head_plan)) * 0.5;
-            // The floor's height is the lower of two descents: a straight run from the head to the
-            // foot, and the ceiling it must stay under. The minimum of two non-increasing functions
-            // is itself non-increasing, which is what keeps the elevation rule true without a clamp
-            // that would flatten the whole valley to one number.
+            // The floor's height is the lowest of three descents: a straight run from the head to the
+            // foot, the ceiling it must stay under, and **the plain, which is base level**. A valley
+            // carves down to where it meets the ground it drains into and no further — digging past it
+            // is what made every floor here dip below zero and then climb back to the rim at its mouth,
+            // a profile that rises at the end and so fails the elevation rule as well as looking like
+            // a trench with a step in it.
             nodes.push(ValleyNode::new(
                 offset(head_plan, [direction[0] * reach, direction[1] * reach]),
                 (head_height - fall * fraction.powf(0.85))
-                    .min(a_height.min(b_height) - fall * depth * *fraction),
+                    .min(a_height.min(b_height) - fall * depth * *fraction)
+                    .max(super::RIM as f32),
                 a_station,
                 b_station,
             ));

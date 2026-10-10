@@ -137,8 +137,6 @@ pub struct Node {
     pub position: Vec2,
     /// The node's elevation.
     pub elevation: f32,
-    /// How wide the ridge's flank is here, and zero on a line that is not a ridge.
-    pub half_width: f32,
     /// How sharp the crest is here, and zero on a line that is not a ridge.
     pub sharpness: f32,
 }
@@ -148,7 +146,6 @@ impl From<&RidgeNode> for Node {
         Self {
             position: node.position,
             elevation: node.elevation,
-            half_width: node.half_width,
             sharpness: node.sharpness,
         }
     }
@@ -159,7 +156,6 @@ impl From<&ValleyNode> for Node {
         Self {
             position: node.position,
             elevation: node.elevation,
-            half_width: 0.0,
             sharpness: 0.0,
         }
     }
@@ -170,7 +166,6 @@ impl From<&FootprintNode> for Node {
         Self {
             position: node.position,
             elevation: node.elevation,
-            half_width: 0.0,
             sharpness: 0.0,
         }
     }

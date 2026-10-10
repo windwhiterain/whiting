@@ -94,45 +94,88 @@ The fan is untouched: `alpine_probe` before and after both give 2100 faces, 1224
 
 ## The face walk, tried and measured (2026-10-08)
 
-The scene's massif was rebuilt on the tree walk first, then the half-edge walk was written over it to
-test the network. **The walk itself works and the network is reachable; the rim is what is not done.**
+The walk itself works and the network is reachable. What is not finished is the **composition of a
+wall** for a cyclic graph. The state of that attempt is kept beside this proposal as
+[`network-face-walk.rs.txt`](network-face-walk.rs.txt) — the scene's `landscape/massif.rs` with the
+half-edge walk, the col-to-col tie and the ring split already in it, reaching **2 violations from
+2128** and a plan area exact to 6 units in 5.35 million. A reference, not a patch.
 
-With a tie ridge added — one crest whose *both* ends stand on other crests, closing a ring between the
-north spur's shoulder and a gully's mouth — the walk returns exactly the two faces the graph has:
+### What works
+
+With a tie ridge whose **both** ends stand on cols — `spur_s2`'s shoulder and `gully_s`'s — the walk
+returns exactly the two faces the graph has:
 
 ```text
-face: 37 darts, 8 tip visits     # the outside, which is where the eight pockets are
-face:  3 darts,  0 tip visits    # the cirque: a closed ring that reaches no rim
+face: 39 darts, 10 tip visits, [shoulder_top spur_w spur_w … spine_w]   # the outside, 10 pockets
+face:  5 darts,  0 tip visits, [spine_m spur_s1 gully_s tie_n spur_s2]  # the cirque
 ```
 
-Three findings came out of it, each one a bug that was easy to write and hard to see:
+The second is a genuine five-crest ring reaching no tip, and it validates as `simple true`. That is a
+**cirque**, and a tree cannot make one. The rim comes out the right size — plan area 5353259 against a
+footprint of 5353265 — and the second boundary loop is gone.
+
+### What is left, and it is one thing
+
+`ElevationRises` in one valley, plus `MeshOpen { boundaries: 2 }`. The trace is unambiguous:
+
+```text
+rib 0.641: L 802 on Ridge(13) t 0.641 / R    0 on Ridge(21) t 1.000   # R ran out to a levelled tip
+rib 0.667: L 744 on Ridge(13) t 0.667 / R 1021 on Ridge(20) t 0.072   # R jumped to a different crest
+```
+
+The right wall walks one crest out to `t = 1.0` — a tip the shelf took down to the plain, so its height
+is 0 — and then continues on **another crest** whose start is 1021. Those two crest ends are not the
+same point, so the wall is not a path: `Chain::at` interpolates across a jump the geometry does not
+have, the floor is written against a wall that dips to zero and climbs again, and the belt between them
+is a hole.
+
+The wall is built from `basin.left`/`basin.right`, halves of a **mirrored** stretch — each pocket is
+reversed and every dart turned around before the walls are cut, because the rim must be wound opposite
+to the walk's own sense. Mirroring a dart list is continuous in principle: reversing `d0…dn` and
+flipping each dart gives a path from `end(dn)` back to `start(d0)`. So the fault is in how the halves
+are read, and **the next session should begin by asserting continuity outright** — that
+`start(dart[i + 1]) == end(dart[i])` for every wall — which turns a silently wrong wall into a message
+naming the crest ends that disagree. That check is missing, and its absence is most of why this took as
+long as it did.
+
+### What the attempt cost, in bugs that do not crash
+
+Each produced a *plausible* mesh rather than an error, which is the theme:
 
 - **A dart's slot has to be one function.** The `seen` index and the test for the walk's own closing
-  are the same number written twice; written twice, one was inverted, and every face came back one
-  crest long — which does not crash, it just quietly produces twenty basins for twenty crests.
+  are the same number; written twice, one was inverted, and every face came back one crest long.
 - **A branch already knows which way its crest runs from the vertex it stands at.** Building the next
-  dart as the *negation* of a branch's direction makes the walk step straight back along the crest it
-  came in on. Same silent symptom: faces the length of one crest.
-- **Which neighbour of the arrival is "next" decides only the winding, not the answer.** Taking the
-  branch clockwise of the arrival and taking the one counterclockwise both yield the same two faces
-  with the same sizes, mirrored. Worth knowing, because it is the first thing to suspect when a face
-  looks wrong.
+  dart as the negation of a branch's direction makes the walk step back the way it came. Same symptom.
+- **A closed stretch's simplicity is not the open one's.** An open run of `n` darts stands on `n + 1`
+  vertices; a ring of `n` stands on `n`, because its last vertex is its first. Comparing the distinct
+  count to `n + 1` refuses the cirque — the very face the check exists to protect.
+- **A ring has to be split twice.** Splitting a cirque at its head alone gives two walls that both end
+  at the head: `foot == head`, fall zero, floor written flat at summit height with a mouth inside the
+  mountain. The arcs run between the ring's **highest and lowest** vertices.
+- **The rim is wound opposite to the walk.** A rim written in the walk's own sense comes out a correct
+  simple outline of exactly the right area and a *negative* one, which the plan comparison reads as a
+  massif that is not there. The tip that starts a basin is the **right** wall's end, not the left's.
+- **A tie between two tips is not a tie.** A lollipop hanging off the graph by one vertex makes the
+  pocket around it an **annulus**, for which "two walls, a head, a bisector, a mouth" has no meaning.
+  Its mouth lands inside the massif, and because welding is by position a misplaced rim vertex glues
+  the outline to whatever sample it fell on and shatters the mesh. Tie two **cols**. The `debug_assert!`
+  on stretch simplicity now says so in as many words.
+- **Several valleys must be split at the col a tie is born at**, for the same reason junctions are: a
+  belt changes line only at a line's end.
+- **`WELD` says `1.0e-2` and `weld_key` implemented `1/1024`.** Fixed: `WELD` is the one tolerance, the
+  cells are that wide, and a lookup measures the 3×3 neighbourhood.
 
-**What is left, and it is one thing.** The rim is woven from each basin's left tip and its mouth, in
-the order the basins were walked — which is correct for a tree, where the pockets tile the outside and
-each tip is the end of exactly one pocket's left wall. With a cycle, a pocket's boundary can run
-*around* the closed face and a tip can be reached from two directions, so the sequence
-`tip, mouth, tip, mouth …` stops being a simple loop and the mesh comes apart: `9 boundary loops,
-euler 40, manifold false`. The fix is to weave the rim by walking the **outer face's own boundary** and
-inserting each pocket's mouth at the tip pair it belongs to, rather than by trusting the basin order —
-which is the same lesson the tree already taught, that the rim's order is a fact about the walk and not
-something to recover by sorting afterwards.
+### Still open beside it
 
-- **`WELD` says `1.0e-2` and `weld_key` implements `1/1024`.** Both the walk and the derivation now
-  read through it, so the mismatch is more load-bearing than when it was recorded.
 - **Confluences.** Every basin drains to the rim on its own floor, so a deep hierarchy combs into
   parallel gullies instead of a tree of valleys. `Station` can name a valley, so a valley-into-valley
-  junction is expressible and has never been built. The cirque above is the near case: its floor
-  reaches a col and stops, and what it should do then is *continue down the valley that owns the col*,
-  which is a junction between two valleys and has the same one problem the ridge junction had — the
-  walk has to be able to turn at it.
+  junction is expressible and has never been built. The cirque above is the near case: its floor reaches
+  a col and stops, and what it should do then is *continue down the valley that owns the col*. The data
+  model already allows it; the walk cannot build it, because at the confluence the trunk's flanking side
+  must switch crests and the two do not weld anywhere. The belt straddling it needs **one jump edge** —
+  walk the leaving line to its welded end, then a single edge to the to-station's vertex — which is the
+  same edge the ending valley's terminal belt already builds, so the surfaces agree.
+- **A tie between two tips** (rather than two cols) is where this leaves the scene and `basin.rs`
+  begins: cutting an annulus with a second valley has a real design space — which attachment drains,
+  where the cut goes — and belongs in the crate where the general half-edge walk will live. Do not build
+  annulus cutting scene-side.

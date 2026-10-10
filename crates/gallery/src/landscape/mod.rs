@@ -159,7 +159,7 @@ const SUBJECT_HAZE: f64 = 0.10;
 ///
 /// The line itself is wobbled in the shader, because a snowline drawn as a level is a level and
 /// a level on a mountain is a thing that does not occur.
-const SNOW_LINE: f64 = 0.72;
+const SNOW_LINE: f64 = 0.88;
 
 /// How far the snowline wanders either side of its own level, as a fraction of the summit.
 const SNOW_WOBBLE: f64 = 0.10;
@@ -581,7 +581,7 @@ pub fn landscape() -> Value {
                     "sun",
                     [-sun[0], -sun[1], -sun[2]],
                     [1.00, 0.84, 0.62],
-                    5.0,
+                    9.0,
                     radius * 4.0,
                 ),
                 // A fill from the sky, dim and blue, standing in for the whole dome. One light with
@@ -975,7 +975,10 @@ const MASSIF: &str = r#"
     // The floor of a valley is soil and scrub rather than stone, and it is warmer for it. It is
     // what separates a valley from a narrower piece of the same slope.
     let floor_mix = 1.0 - smoothstep(0.0, SCENE_RADIUS * 0.45, in.world_position.y);
-    color = color * mix(snowed, vec3<f32>(0.30, 0.29, 0.21), floor_mix * 0.75);
+    // The surface's own colour, named once because two terms below multiply by it and a second copy
+    // of the expression is a second copy that can drift from the first.
+    let albedo = mix(snowed, vec3<f32>(0.30, 0.29, 0.21), floor_mix * 0.75);
+    color = color * albedo;
 
     // The **sky a face stands in**, which on a range this dark is most of what separates a shadow
     // from a hole in the picture. The sun rakes across the spine, so the flanks turned away from it
@@ -987,15 +990,22 @@ const MASSIF: &str = r#"
     // **Upward-facing is what counts, and not merely sun-facing.** An overhang sees the same sky
     // as the ground beneath it and a vertical wall sees half of it, and that gradient is most of
     // what makes an unlit face read as a surface with a shape in it rather than as a black cut-out.
+    // The **sky a face stands in**, and the reason a shadowed rock is not black.
+    //
+    // It is **multiplied by the stone's own colour, not added to it**. Skylight is reflected like
+    // any other light, and a term that is added raw is not reflected light at all — it is fog sitting
+    // in front of the surface, which lifts a shadowed slab of basalt to the same value as a shadowed
+    // slab of limestone and flattens every hue in the frame towards the colour of the air. That was
+    // most of what read as "the whole picture is one pale colour".
     let skyward = 0.35 + 0.65 * clamp(normal.y, 0.0, 1.0);
     let from_sun = clamp(dot(normal, SUN_AHEAD), 0.0, 1.0);
-    color = color + air_colour() * skyward * (0.05 + 0.26 * (1.0 - from_sun));
+    color = color + air_colour() * albedo * skyward * (0.05 + 0.26 * (1.0 - from_sun));
 
     let eye = uniforms.projection.position;
     let view = normalize(in.world_position - eye);
     let facing = 1.0 - abs(dot(normal, view));
     let haze = air_closure(eye, in.world_position);
-    color = mix(color, air_colour(), clamp(haze * (0.45 + 0.55 * facing), 0.0, 0.90));
+    color = mix(color, air_colour(), clamp(haze * (0.45 + 0.25 * facing), 0.0, 0.72));
 "#;
 
 /// What the plain's surface does after the light is applied.
@@ -1079,7 +1089,7 @@ const GROUND: &str = r#"
     let facing = 1.0 - abs(dot(normal, view));
     let skyward = 0.35 + 0.65 * clamp(normal.y, 0.0, 1.0);
     let from_sun = clamp(dot(normal, SUN_AHEAD), 0.0, 1.0);
-    color = color + air_colour() * skyward * (0.10 + 0.30 * (1.0 - from_sun));
+    color = color + air_colour() * albedo * skyward * (0.10 + 0.30 * (1.0 - from_sun));
 
     // The **air between the eye and the ground**, which on this floor is doing more work than it
     // looks: the sun rakes across the range, so a long wedge of plain behind it is in the mountain's
@@ -1088,7 +1098,7 @@ const GROUND: &str = r#"
     // has always had this line; the first rewrite of the ground body dropped it and the range's cast
     // shadow turned black.
     let haze = air_closure(eye, in.world_position);
-    color = mix(color, air_colour(), clamp(haze * (0.45 + 0.55 * facing), 0.0, 0.90));
+    color = mix(color, air_colour(), clamp(haze * (0.45 + 0.25 * facing), 0.0, 0.72));
 
     // The **water**, drawn after the ground's own colour because it is not a colour: it is what the
     // sky does to a flat mirror, and a mirror seen at a grazing angle is nearly all sky. Dark

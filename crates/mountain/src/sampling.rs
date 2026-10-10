@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use crate::line::{LineRef, Node, Station};
-use crate::math::{Vec2, Vec3, lift};
+use crate::math::{Vec2, Vec3, distance, lift};
 use crate::skeleton::{Skeleton, arc_lengths, elevation_at, point_at};
 use crate::tessellation::Tessellation;
 
@@ -44,7 +44,6 @@ pub struct Sample {
     /// Elevation.
     pub elevation: f32,
     /// Interpolated flank width, and zero on a line that carries none.
-    pub half_width: f32,
     /// Interpolated crest sharpness, and zero on a line that carries none.
     pub sharpness: f32,
 }
@@ -519,14 +518,36 @@ impl Sampling {
     }
 
     /// Returns the vertex of a line that coincides with a corner point.
+    ///
+    /// Reads the **three-by-three neighbourhood** of the rounded cell and then measures, because the
+    /// cell is `WELD` wide and two points within `WELD` of each other can straddle a boundary. The
+    /// measurement is the tolerance and the cells are only how it is found; the old code had the cells
+    /// *be* the tolerance, at a tenth of the size the constant promised, so a weld could be refused
+    /// for no reason the author could see.
     fn welded_vertex(&self, line: LineRef, corner: Vec3) -> Option<Vertex> {
-        let candidates = self.welded.get(&weld_key([corner[0], corner[2]]))?;
-        // A welded point holds several lines' samples, because that is exactly what a corner
-        // is. The one wanted is on the named line.
-        candidates
-            .iter()
-            .copied()
-            .find(|vertex| vertex.line == line)
+        let plan = [corner[0], corner[2]];
+        let (east, north) = weld_key(plan);
+        for row in [-1, 0, 1] {
+            for column in [-1, 0, 1] {
+                let Some(candidates) = self.welded.get(&(east + row, north + column)) else {
+                    continue;
+                };
+                // A welded point holds several lines' samples, because that is exactly what a corner
+                // is. The one wanted is on the named line, and within the tolerance — the tolerance,
+                // not the cell, because a neighbouring cell was only reached in order to be measured.
+                let found = candidates.iter().find(|vertex| {
+                    if vertex.line != line {
+                        return false;
+                    }
+                    let at = self.point(**vertex);
+                    distance([at[0], at[2]], plan) <= WELD
+                });
+                if let Some(vertex) = found {
+                    return Some(*vertex);
+                }
+            }
+        }
+        None
     }
 
     /// Builds the plan-position index a corner is resolved through.
@@ -566,11 +587,16 @@ impl Sampling {
 }
 
 /// Returns the plan-position key a vertex is welded under.
+///
+/// The cell is [`WELD`] wide, so the key is an index over the tolerance rather than a second,
+/// stricter tolerance of its own. A lookup therefore has to ask the neighbourhood: two points within
+/// `WELD` of each other can straddle a cell boundary, and reading only the rounded cell would refuse a
+/// weld the tolerance promises — which surfaces not as a wrong surface but as `Disjoint` on a skeleton
+/// whose author wrote "this end stands there".
 fn weld_key(position: Vec2) -> (i64, i64) {
-    const SCALE: f32 = 1024.0;
     (
-        (position[0] * SCALE).round() as i64,
-        (position[1] * SCALE).round() as i64,
+        (position[0] / WELD).round() as i64,
+        (position[1] / WELD).round() as i64,
     )
 }
 
@@ -623,7 +649,6 @@ pub fn sample_line(nodes: &[Node], step: f32, named: &[f32]) -> SampledLine {
                     t: 0.0,
                     position: node.position,
                     elevation: node.elevation,
-                    half_width: node.half_width,
                     sharpness: node.sharpness,
                 })
                 .collect(),
@@ -636,7 +661,6 @@ pub fn sample_line(nodes: &[Node], step: f32, named: &[f32]) -> SampledLine {
                 t: 0.0,
                 position: nodes[0].position,
                 elevation: nodes[0].elevation,
-                half_width: nodes[0].half_width,
                 sharpness: nodes[0].sharpness,
             }],
         };
@@ -691,7 +715,6 @@ pub fn sample_line(nodes: &[Node], step: f32, named: &[f32]) -> SampledLine {
                         || elevation_at(nodes, &span, total, t),
                         |node| node.elevation,
                     ),
-                    half_width: from.half_width + (to.half_width - from.half_width) * amount,
                     sharpness: from.sharpness + (to.sharpness - from.sharpness) * amount,
                 }
             })

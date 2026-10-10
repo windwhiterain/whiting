@@ -30,27 +30,18 @@ pub struct RidgeNode {
     pub position: Vec2,
     /// Elevation.
     pub elevation: f32,
-    /// How far the flank reaches, as a hint to sampling and valley derivation.
-    pub half_width: f32,
     /// `0.0` for a rounded crest, `1.0` for a knife-edge arete.
     pub sharpness: f32,
 }
 
 impl RidgeNode {
-    /// Builds a node with the given position and elevation and no flank detail.
+    /// Builds a node with the given position and elevation.
     pub fn new(position: Vec2, elevation: f32) -> Self {
         Self {
             position,
             elevation,
-            half_width: 1.0,
             sharpness: 0.5,
         }
-    }
-
-    /// Sets the flank width hint.
-    pub fn with_half_width(mut self, half_width: f32) -> Self {
-        self.half_width = half_width;
-        self
     }
 
     /// Sets the crest sharpness.

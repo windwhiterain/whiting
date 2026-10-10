@@ -269,7 +269,6 @@ impl Fan {
                             offset(self.summit, scale(direction, self.reach * fraction)),
                             self.ridge_elevation(index, fraction),
                         )
-                        .with_half_width(self.reach * 0.05)
                         .with_sharpness(0.55)
                     })
                     .collect();
