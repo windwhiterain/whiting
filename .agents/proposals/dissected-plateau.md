@@ -1,5 +1,18 @@
 # A basin floor is a fan, and a dissected upland has none
 
+**Resolved by deleting the derivation.** The diagnosis below is kept because it is the argument for
+what was done: the floor was a fan because it was *invented*, and the fix was not a better floor but
+writing the valleys down. `landscape/massif/` is now `authored.rs` — ridges, valleys, the
+correspondence, the rim — and `mod.rs`, which is one call. `drain`, the face walk, `Chain`, `Graph`,
+`Basin`, `split`, `Crest`, `network.rs` and the two levelling passes are gone.
+
+**The control structure of a massif is the ridge polylines, the valley polylines and the
+correspondence between them, and that structure is meant to be written directly.** Everything this
+file records is what happens when it is derived instead.
+
+The rest of this file is the record of that derivation, and of the plan-view diagnostic that showed
+what it had grown.
+
 Branch `feature/dissected-plateau`, worktree `.worktrees/dissected`. Off `77b3fc2`.
 **Not merged**: the scene does not build cleanly. This records why, so the next session starts where
 this one stopped rather than where it started.
