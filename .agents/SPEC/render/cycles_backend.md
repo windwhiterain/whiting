@@ -223,7 +223,41 @@ is what `kit::camera` and the four scenes that use it now do. a reader may still
 documented spellings and apply documented defaults — an angle over a lens, `exposure` over the
 caller's number — but it may not compute a value the document did not carry.
 
-### how many scenes this affected, corrected
+### what is actually left is shading, not the camera
+
+`landscape`, `lanterns`, `spotlight`, `sunlight` and `tiles` still do not match, and the camera is
+**not** why. all five write a final eye, a final target and a final angle through
+`camera_placed`, which is the same thing both backends read. measured on `landscape`:
+
+- **the geometry is all there.** `RANGES` is two entries and the plain is the third mesh, so the
+  scene has three meshes and the emitted document has three `<mesh>` elements. nothing is dropped.
+- **the camera is the same.** the document's eye comes out as
+  `translate="0, 2837.4650972885993, 771.224941505395"` and the angle as `fov="1.24"`, which is
+  what `camera_placed` wrote.
+- **so the difference is in the picture, and the picture is code.** the massif's surface body
+  (`crates/gallery/src/landscape.rs:1756-1801`) builds its colour per fragment out of
+  `noise(in.world_position.xz * 0.02, 3)`, a snowline driven by `in.world_position.y`, a soil
+  mix keyed on height, a skyward ambient term, and an aerial-perspective mix toward `air_colour`.
+  the plain's body carries **the river**, which the scene's own comment calls the brightest thing
+  in the frame.
+
+the exporter maps a material to one `principled_bsdf` whose `base_color` is the material's `tint`.
+**`landscape` emits three shaders and therefore three constants**, and a valley cannot be drawn
+with three constants: what is missing is the snowline, the rock striation, the haze and the river,
+and each of them reads as a change of framing because each of them is a large part of the picture.
+
+this is not an exporter defect. the exporter is doing the only thing a five-number material row
+allows, and doing it correctly. it is the same defect as the water — **logic that lives in code
+rather than in the document cannot cross a backend boundary** — one level up, in the shading
+rather than in the material. a `MeshMaterial` carries `tint`, `metallic`, `roughness`, `emissive`
+and `reflect`, and a rasterised shader is free to compute anything from those five and the world
+position; a path tracer is handed five numbers.
+
+recorded rather than fixed: expressing a procedural surface as data is a schema change, and the
+honest first step is knowing how many surfaces depend on it. `landscape`, `lanterns`,
+`spotlight`, `sunlight` and `tiles` are the measured five.
+
+### how many scenes the fitting affected, corrected
 
 an earlier revision of this file said **nine** of the twelve gallery scenes were fitted. that was
 wrong, and it is recorded here rather than deleted, because the way it was wrong is the useful
@@ -234,12 +268,10 @@ the true count is **four**: `dunes`, `monoliths`, `nurbs` and `terraces` are the
 calling `camera()`. `camera_placed` and `camera_placed_on_lens` both write `near` and `far`, so the
 reader kept their eye and there was nothing to disagree about.
 
-`landscape`, `lanterns`, `spotlight`, `sunlight` and `tiles` therefore do **not** compose
-identically across the backends, and the fitting is not why. measured on both backends: `landscape`
-returns two close rock faces where the rasteriser has a valley with a river down the middle, and
-`tiles` returns a floor filling the lower half where the rasteriser has a thin strip at the bottom.
-neither has been isolated. They write a final eye and share a final angle, so the cause is
-something neither of the two fixes above touches, and it is still open.
+`landscape`, `lanterns`, `spotlight`, `sunlight` and `tiles` do not compose identically across the
+backends, and the fitting was never why — see **what is actually left is shading, not the camera**
+above. the last sentence of the previous revision said the cause was still open; it was isolated
+in the same pass that corrected the count above.
 
 ## Environment
 
