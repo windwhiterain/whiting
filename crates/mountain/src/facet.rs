@@ -283,6 +283,22 @@ impl FacetMesh {
         edges
     }
 
+    /// Returns the edges used by exactly one face — the surface's open edges.
+    ///
+    /// # Invariants
+    ///
+    /// An edge of a closed surface is shared by two faces. One used once is on a boundary, so this is
+    /// the rim of a disc and every hole in one. It is returned rather than only counted because a
+    /// count says a surface is not closed and not *where* it is not closed, and the difference between
+    /// a hole in a flank and a rim that failed to meet itself is usually the whole diagnosis.
+    pub fn boundary_edges(&self) -> Vec<(u32, u32)> {
+        self.edges()
+            .into_iter()
+            .filter(|(_, count)| *count == 1)
+            .map(|(edge, _)| edge)
+            .collect()
+    }
+
     /// Returns how many closed loops of boundary the surface has.
     ///
     /// # Invariants
@@ -293,10 +309,7 @@ impl FacetMesh {
     /// triangle encloses no area at all, so the area check passes and the surface has a slit.
     pub fn boundary_loops(&self) -> usize {
         let mut neighbours: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
-        for ((a, b), count) in self.edges() {
-            if count != 1 {
-                continue;
-            }
+        for (a, b) in self.boundary_edges() {
             neighbours.entry(a).or_default().push(b);
             neighbours.entry(b).or_default().push(a);
         }

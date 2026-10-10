@@ -35,9 +35,94 @@ impl Massif {
     /// The child's start is an **end naming a station** and its position is not placed here. It is
     /// derived from the station when the massif is sampled, so placing it would be a second copy of
     /// the same fact and the copy is the one that goes stale.
+    ///
+    /// **The parent is split at `t` first**, and the child attaches to the piece after the split. This
+    /// is the whole of what the op has to do to be usable, and it is what it did not do: a child that
+    /// merely named its parent at an interior parameter asked for a junction the expansion cannot
+    /// build, because **a belt changes line only at a line's end** — the parent's line has no end
+    /// there, so no two ends weld, and the massif comes apart at every junction of a hierarchy. The
+    /// author's intent is right and the op was the thing lying about it.
+    ///
+    /// The two pieces are made a junction the way a hand-written one is: the piece downstream names
+    /// the upstream's far end, so the point is named from both sides and neither is taken for a tip.
     pub fn attach_ridge(&mut self, parent: RidgeId, t: f32, nodes: Vec<RidgeNode>) -> RidgeId {
-        self.skeleton.ridges.push(Ridge::child(parent, t, nodes));
+        let stand = self.split_ridge(parent, t).unwrap_or(parent);
+        self.skeleton.ridges.push(Ridge::child(stand, 0.0, nodes));
         RidgeId(self.skeleton.ridges.len() - 1)
+    }
+
+    /// Cuts a ridge in two at a parameter, returning the piece **after** the cut.
+    ///
+    /// # Invariants
+    ///
+    /// The ridge keeps its id and its nodes up to the cut; a new ridge takes the rest and the original
+    /// far end. `t` is resolved by **arc length**, not by node index, because that is what a station
+    /// means everywhere else in this crate; a node is inserted at the cut when `t` does not land on
+    /// one, interpolated along the segment it falls in, so the two pieces share a point exactly rather
+    /// than nearly.
+    ///
+    /// Returns `None` and changes nothing when the cut would leave a piece with no length — a ridge
+    /// cannot be split at its own end, and a caller asking for that wants `attach_ridge` at the end it
+    /// already has.
+    pub fn split_ridge(&mut self, ridge: RidgeId, t: f32) -> Option<RidgeId> {
+        let target = t.clamp(0.0, 1.0);
+        let mut spans: Vec<f32> = Vec::new();
+        let mut total = 0.0;
+        let count = {
+            let nodes = &self.skeleton.ridges.get(ridge.0)?.nodes;
+            if nodes.len() < 2 {
+                return None;
+            }
+            for pair in nodes.windows(2) {
+                let span = crate::math::distance(pair[0].position, pair[1].position);
+                spans.push(span);
+                total += span;
+            }
+            nodes.len()
+        };
+        if total <= f32::EPSILON {
+            return None;
+        }
+        // The cut, as a distance along the ridge.
+        let want = total * target;
+        let mut walked = 0.0;
+        let mut cut = count;
+        for (index, span) in spans.iter().enumerate() {
+            if want <= walked + span {
+                cut = index + 1;
+                break;
+            }
+            walked += span;
+        }
+        // At an end already: there is nothing to cut, and a caller asking for that wants the end it
+        // already has rather than a piece of no length.
+        if cut == 0 || cut >= count {
+            return None;
+        }
+        // A node in the middle of a segment is inserted, so the two pieces meet on a point rather than
+        // on a place between two of them.
+        let within = (want - walked) / spans[cut - 1].max(f32::EPSILON);
+        if within > 1.0e-4 && within < 1.0 - 1.0e-4 {
+            let (before, after) = {
+                let nodes = &self.skeleton.ridges[ridge.0].nodes;
+                (nodes[cut - 1], nodes[cut])
+            };
+            let mixed = RidgeNode {
+                position: [
+                    before.position[0] + (after.position[0] - before.position[0]) * within,
+                    before.position[1] + (after.position[1] - before.position[1]) * within,
+                ],
+                elevation: before.elevation + (after.elevation - before.elevation) * within,
+                sharpness: before.sharpness + (after.sharpness - before.sharpness) * within,
+            };
+            self.insert_ridge_node(ridge, cut, mixed)?;
+        }
+        let tail = self.skeleton.ridges[ridge.0].nodes.split_off(cut);
+        let original_end = self.skeleton.ridges[ridge.0].end;
+        self.skeleton.ridges[ridge.0].end = End::Free;
+        let piece = Ridge::root(tail).with_ends(End::On(Station::ridge(ridge, 1.0)), original_end);
+        self.skeleton.ridges.push(piece);
+        Some(RidgeId(self.skeleton.ridges.len() - 1))
     }
 
     /// Adds a **tie ridge**: one whose two ends both stand on other lines.

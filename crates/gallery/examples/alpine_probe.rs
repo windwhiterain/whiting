@@ -77,6 +77,49 @@ fn main() {
                 mesh.euler_characteristic(),
                 mesh.is_manifold(),
             );
+            // **Where the open edges are, in plan.** A count says a surface is not closed; it does not
+            // say which part of it is not, and the difference between a hole in a flank and a rim that
+            // failed to meet itself is the whole diagnosis.
+            if std::env::var("HOLE_TRACE").is_ok() {
+                let open = mesh.boundary_edges();
+                // A clean loop gives every vertex exactly two boundary edges. A vertex with any other
+                // count is where the loop breaks or folds back, which is the one place worth looking.
+                let mut degree: std::collections::BTreeMap<u32, usize> =
+                    std::collections::BTreeMap::new();
+                for (a, b) in &open {
+                    *degree.entry(*a).or_default() += 1;
+                    *degree.entry(*b).or_default() += 1;
+                }
+                println!(
+                    "  {} open edge(s), {} on the boundary",
+                    open.len(),
+                    degree.len()
+                );
+                for (vertex, count) in &degree {
+                    if *count == 2 {
+                        continue;
+                    }
+                    let at = mesh.points[*vertex as usize];
+                    println!(
+                        "    degree {count} at [{:.1}, {:.1}, {:.1}]",
+                        at[0], at[1], at[2],
+                    );
+                    // Everything else the surface has at the same plan point: if a junction is two
+                    // vertices rather than one welded one, this is where it shows.
+                    for (other, point) in mesh.points.iter().enumerate() {
+                        if other == *vertex as usize {
+                            continue;
+                        }
+                        let (dx, dz) = (point[0] - at[0], point[2] - at[2]);
+                        if dx * dx + dz * dz < 1.0 {
+                            println!(
+                                "      also [{:.1}, {:.1}, {:.1}]",
+                                point[0], point[1], point[2],
+                            );
+                        }
+                    }
+                }
+            }
             println!(
                 "bounds x [{:.1}, {:.1}], y [{:.1}, {:.1}], z [{:.1}, {:.1}]",
                 low[0], high[0], low[1], high[1], low[2], high[2],
