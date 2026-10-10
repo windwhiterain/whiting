@@ -310,18 +310,63 @@ pub fn stood_at(mesh: &FacetMesh, at: [f64; 2], scale: f64, turn: f64) -> FacetM
     moved
 }
 
+/// Which camera the scene compiles.
+///
+/// # Why there are two
+///
+/// The across-the-spine view is the picture. It is also **useless for judging the ridge network**: seen
+/// from the ground, three ridges one behind another are one ridge, and a range that has been grown
+/// badly looks exactly like a range that has been grown well until you walk around it. The question
+/// "does this branch and rejoin the way a real massif does" is a question about the **plan**, and the
+/// only camera that answers it is one looking down.
+///
+/// So there is a second, steep view for looking at the shape rather than at the picture, chosen by
+/// `LANDSCAPE_VIEW=overhead`. It is a debug camera and it is not the scene: the sun, the aim and the
+/// haze all follow the eye they are given, so what the overhead view shows is the same geometry under
+/// the same light and not a second lighting setup that has to be kept in step.
+fn view() -> View {
+    match std::env::var("LANDSCAPE_VIEW").as_deref() {
+        Ok("overhead") => View::Overhead,
+        _ => View::Across,
+    }
+}
+
+/// The two cameras, as the eye offsets that differ between them.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum View {
+    /// Along the ground, across the spine: the picture.
+    Across,
+    /// Almost straight down: the plan, for judging the network.
+    Overhead,
+}
+
 /// Returns where the eye stands, so a caller can measure the picture from it.
 ///
 /// **It is the one eye [`landscape`] compiles**, read back rather than written twice. A probe that
 /// placed its own eye to answer "how wide does this range stand in the frame" would be measuring a
 /// camera nobody renders.
 pub fn eye_at(radius: f64) -> [f64; 3] {
-    [
-        EYE.azimuth.cos() * EYE.back * radius,
-        RIM + radius * EYE.height,
-        EYE.azimuth.sin() * EYE.back * radius,
-    ]
+    match view() {
+        View::Across => [
+            EYE.azimuth.cos() * EYE.back * radius,
+            RIM + radius * EYE.height,
+            EYE.azimuth.sin() * EYE.back * radius,
+        ],
+        // Steep but not vertical: a camera looking exactly down its own up axis has no orientation,
+        // and the massif's own long axis is what the frame should be square to.
+        View::Overhead => [
+            EYE.azimuth.cos() * OVERHEAD_BACK * radius,
+            RIM + radius * OVERHEAD_HEIGHT,
+            EYE.azimuth.sin() * OVERHEAD_BACK * radius,
+        ],
+    }
 }
+
+/// How far back an overhead eye stands, as a fraction of the massif's radius.
+const OVERHEAD_BACK: f64 = 0.30;
+
+/// How high an overhead eye stands, as a fraction of the massif's radius.
+const OVERHEAD_HEIGHT: f64 = 2.60;
 
 /// Returns how wide the frame is, in radians, for the same reason as [`eye_at`].
 pub fn field_of_view() -> f64 {
@@ -413,6 +458,16 @@ pub fn framing() -> Vec<(&'static str, f64, f64)> {
 /// in. The spine's direction is a fact about the authored shape — the long axis of its plan bounds —
 /// so it is turned by the range's own turn before it is added.
 fn target_at(mesh: &FacetMesh, radius: f64, summit: f64, range: &Range) -> [f64; 3] {
+    // Straight down at the subject's own centre. Carrying the aim along the spine is what gives the
+    // ground view a direction to travel in; from above it would only push the network off the middle
+    // of the frame, which is the one thing an overhead view is for.
+    if view() == View::Overhead {
+        return [
+            range.centre[0] * radius,
+            RIM + summit * AIM_HEIGHT,
+            range.centre[1] * radius,
+        ];
+    }
     let (low, high) = mesh.bounds();
     let along = if (high[0] - low[0]) >= (high[2] - low[2]) {
         [1.0, 0.0]

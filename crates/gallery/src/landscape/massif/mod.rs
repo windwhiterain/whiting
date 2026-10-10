@@ -969,6 +969,22 @@ fn basins(graph: &Graph) -> Vec<Basin> {
                 split(graph, &stretch, head)
             };
             let Some([left, right]) = split else {
+                if std::env::var("BASIN_TRACE").is_ok() {
+                    println!(
+                        "    SKIPPED a pocket: {} darts, head {:?}",
+                        stretch.len(),
+                        head
+                    );
+                    for dart in &stretch {
+                        let at = graph.vertex(graph.start(*dart));
+                        println!(
+                            "      `{}` start {:.0}m  -> end {:.0}m",
+                            crests()[dart.crest].name,
+                            at.elevation,
+                            graph.vertex(graph.end(*dart)).elevation,
+                        );
+                    }
+                }
                 continue;
             };
             found.push(Basin {

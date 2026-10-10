@@ -28,16 +28,16 @@
 use super::Crest;
 
 /// How many crest ends a first-order ridge is cut into by its children.
-const ORDERS: u32 = 4;
+const ORDERS: u32 = 3;
 
 /// How much shorter each order is than the one that grew it.
-const SHRINK: f32 = 0.46;
+const SHRINK: f32 = 0.60;
 
 /// How much of a branch's remaining fall is left when it reaches its tip.
 const RELIEF: f32 = 0.34;
 
 /// Nodes per generated crest, before it is cut. Odd, so a crest has a middle node to be born at.
-const NODES: usize = 5;
+const NODES: usize = 9;
 
 /// How far a crest wanders sideways at its middle, as a fraction of the angular interval it owns times
 /// its length.
@@ -47,10 +47,20 @@ const NODES: usize = 5;
 /// fixed fraction of its *length* would swing it further sideways than the wedge is wide, and it would
 /// cross its own parent's continuation. The third and last way this generator produced a crossing, and
 /// the only one where the culprit was shape rather than direction.
-const WANDER: f32 = 0.16;
+const WANDER: f32 = 0.02;
 
 /// The smallest angle a child may leave its parent at, in radians.
-const SPLAY_MIN: f32 = 0.08;
+/// How much of its own interval a child must leave clear of the parent's line, as a fraction.
+///
+/// **A fraction, not an angle.** The intervals halve at every level, so a fixed angular margin is
+/// larger than the room left after one or two of them and the recursion stops one generation deep -
+/// which is what it did, and the plan view of the result was a single straight ridge. Scaling the
+/// margin with the interval is what lets a divide sprout spurs along its whole length, and the
+/// recursion then ends when the intervals themselves are too narrow to tell apart.
+const SPLAY_MARGIN: f32 = 0.12;
+
+/// The narrowest interval worth giving a child, in radians. Below this a spur is not a spur.
+const LEAN_FLOOR: f32 = 0.012;
 
 /// The largest angle a child may leave its parent at, in radians.
 ///
@@ -147,16 +157,45 @@ pub fn crests(ground: &Ground, seed: u64) -> Vec<Crest> {
             emit(branch, &format!("r{index}"), &mut grown);
         }
         if !self_crosses(&grown) {
+            if std::env::var("NETWORK_TRACE").is_ok() {
+                let deepest = grown
+                    .iter()
+                    .map(|crest| crest.name.len())
+                    .max()
+                    .unwrap_or(0);
+                println!(
+                    "  attempt {attempt}: {} crests, deepest name {deepest} chars, {} children on the first",
+                    grown.len(),
+                    grown.first().map_or(0, |crest| crest.nodes.len()),
+                );
+            }
             return grown;
         }
-        if std::env::var("NETWORK_TRACE").is_ok() {
+        if std::env::var("NETWORK_TRACE").is_ok() && attempt == 0 {
             for (index, one) in grown.iter().enumerate() {
                 for other in grown.iter().skip(index + 1) {
-                    if crossing_points(one, other) > 0 {
-                        println!(
-                            "  attempt {attempt}: `{}` crosses `{}`",
-                            one.name, other.name
-                        );
+                    for first in one.nodes.windows(2) {
+                        for second in other.nodes.windows(2) {
+                            let (a, b) = ([first[0][0], first[0][1]], [first[1][0], first[1][1]]);
+                            let (c, d) =
+                                ([second[0][0], second[0][1]], [second[1][0], second[1][1]]);
+                            if !segments_cross(a, b, c, d) {
+                                continue;
+                            }
+                            println!(
+                                "  `{}` [{:.0},{:.0}]->[{:.0},{:.0}] crosses `{}` [{:.0},{:.0}]->[{:.0},{:.0}]",
+                                one.name,
+                                a[0],
+                                a[1],
+                                b[0],
+                                b[1],
+                                other.name,
+                                c[0],
+                                c[1],
+                                d[0],
+                                d[1],
+                            );
+                        }
                     }
                 }
             }
@@ -181,22 +220,40 @@ pub fn crests(ground: &Ground, seed: u64) -> Vec<Crest> {
 /// rather than a continuation of it, and its reach is the whole plateau.
 fn divide(ground: &Ground, random: &mut Random) -> Vec<Branch> {
     let bearing = random.between(0.0, std::f32::consts::TAU);
-    let reach = ground.reach * 2.4;
-    vec![grow(
-        ground,
-        // One end of the plateau, at the height the summit is authored at.
-        [
-            ground.summit[0] - bearing.cos() * reach * 0.5,
-            ground.summit[1] - bearing.sin() * reach * 0.5,
-        ],
-        bearing,
-        -LEAN_MAX,
-        LEAN_MAX,
-        reach,
-        ground.height,
-        ORDERS,
-        random,
-    )]
+    let reach = ground.reach * 0.7;
+    // **Two arms, from the summit, in opposite directions.** The divide runs *through* the summit
+    // rather than starting at it, and that is not a detail of shape: a divide that begins at its own
+    // highest point leaves the summit a **degree-one tip**, and a tip at the top of the massif is the
+    // one thing the basin derivation cannot express. A pocket between two tips is drained from the
+    // highest vertex *between* them; when the highest vertex is one of the two, there is no such
+    // vertex, `split` returns nothing, and the pocket is dropped in silence — taking its tips off the
+    // rim with it, so the surface then refuses to build at a crest end that has no footprint vertex to
+    // weld to. Two arms sharing the summit make it an ordinary through-vertex and every pocket on
+    // either side of it has a col to part at.
+    vec![
+        grow(
+            ground,
+            ground.summit,
+            bearing,
+            -LEAN_MAX,
+            LEAN_MAX,
+            reach,
+            ground.height,
+            ORDERS,
+            random,
+        ),
+        grow(
+            ground,
+            ground.summit,
+            bearing + std::f32::consts::PI,
+            -LEAN_MAX,
+            LEAN_MAX,
+            reach,
+            ground.height,
+            ORDERS,
+            random,
+        ),
+    ]
 }
 
 /// Grows one ridge and everything born on it.
@@ -258,9 +315,16 @@ fn grow(
         return branch;
     }
     // The children, born on the nodes between the first and the last so that cutting the parent there
-    // leaves a crest on each side of every junction. One per flank, each taking the half of the
-    // interval on its own side of the parent's line.
-    let flanks = 2.min(NODES - 2);
+    // leaves a crest on each side of every junction. **Many of them, alternating flanks**, because
+    // this is what a divide does: a long ridge does not throw off two spurs in its whole length, it
+    // throws one every few hundred metres along both flanks for as far as it runs, and each of those
+    // does the same. Two children per crest was enough to make the walk work and nowhere near enough
+    // to make a network — the plan view of it was one straight ridge.
+    //
+    // Each child takes a slice of the half of the parent's interval on its own side, so the slices on
+    // one flank are disjoint and in order, and the parent's line down the middle is bounded away from
+    // all of them.
+    let flanks = (2 + order as usize).min(NODES - 2);
     let mut taken: Vec<usize> = Vec::new();
     for child in 0..flanks {
         let slot = 1 + (child * (NODES - 2)) / flanks.max(1);
@@ -269,15 +333,33 @@ fn grow(
         }
         taken.push(slot);
         let at = branch.nodes[slot];
-        // Half the interval, on one side. `SPLAY_MIN` is the margin that keeps a child clear of its
-        // parent's line instead of lying along it, and the interval is refused when the margin has
-        // eaten it — which is how the recursion runs out of room to lean rather than of order.
-        let (child_low, child_high) = if child % 2 == 0 {
-            (lean + SPLAY_MIN, high)
+        // Which flank, and which turn along it. Slices are laid out from the parent's line outward, so
+        // the ordinal on a flank is what decides how far the child leans.
+        let side = child % 2;
+        let ordinal = child / 2;
+        let on_side = flanks.div_ceil(2);
+        let margin = (high - low) * SPLAY_MARGIN;
+        let (inner, outer) = if side == 0 {
+            (lean + margin, high)
         } else {
-            (low, lean - SPLAY_MIN)
+            (low, lean - margin)
         };
-        if child_high - child_low < SPLAY_MIN * 0.5 {
+        if outer - inner <= 0.0 {
+            continue;
+        }
+        let width = (outer - inner) / on_side as f32;
+        let (child_low, child_high) = if side == 0 {
+            (
+                inner + width * ordinal as f32,
+                inner + width * (ordinal + 1) as f32,
+            )
+        } else {
+            (
+                outer - width * (ordinal + 1) as f32,
+                outer - width * ordinal as f32,
+            )
+        };
+        if child_high - child_low < LEAN_FLOOR {
             continue;
         }
         // A child is a fraction **of what is left of its parent beyond the junction**, so a spur born
@@ -333,7 +415,17 @@ fn emit(branch: &Branch, name: &str, out: &mut Vec<Crest>) {
     }
     for (slot, child) in &branch.children {
         let piece = cuts.iter().position(|cut| cut == slot).unwrap_or(0);
-        emit(child, &format!("{name}_{piece}c{}", child.nodes.len()), out);
+        // **The name has to carry the slot.** Naming a child by the piece it was born in and its own
+        // node count gives two children of one parent the same name whenever they were born in the
+        // same piece — and a name is not a label here, it is a **key**: `ridges()` reads every crest's
+        // end point by looking its name up, so two crests called the same thing are two crests whose
+        // junctions are computed from one of them. The mask hides it because the pieces still exist;
+        // what breaks is every weld that was supposed to be named.
+        emit(
+            child,
+            &format!("{name}_{piece}s{slot}c{}", child.nodes.len()),
+            out,
+        );
     }
 }
 
