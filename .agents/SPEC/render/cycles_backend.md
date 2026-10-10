@@ -194,41 +194,52 @@ the three wide frames were rendered at a shape they did not declare and now are;
 `frame`'s own default and is what the rasterised path drew them at already, so those nine are
 unchanged in size and changed in angle only.
 
-### the rasterised path moves a camera that names no depth planes, and the emitter does not
+### the eye is written down, not fitted at read time
 
-A camera that writes **both** `near` and `far` keeps the eye the document wrote. One that writes
-neither is **fitted**: `Camera::projection` pulls the eye back along the eye-to-target ray until
-the whole scene's bounds fit the lens, then multiplies that distance by the camera's `padding`
-(`crates/scene/src/standard/camera.rs:437-448`). Fitting never turns the view — it only changes
-how far back the eye sits — but that is enough to change the picture completely on a large scene.
+**A scene document carries decisions, not the arithmetic that made them.** A camera names where
+it stands; nothing downstream moves it.
 
-The gallery's `camera()` writes `padding` and no depth planes (`crates/gallery/src/kit.rs:536`);
-`camera_placed` and `camera_placed_on_lens` write both. So **nine of the twelve gallery scenes are
-drawn by the rasteriser from an eye that is not the one in the document**, and the emitter reads
-the document.
+this used not to hold. `Camera::projection` used to take a camera that named no depth planes and
+**fit** it — pull the eye back along the eye-to-target ray until the whole scene's bounds fit the
+lens, then multiply that distance by the camera's `padding`. Fitting never turns the view; it only
+changes how far back the eye sits, and on a large scene that is enough to change the picture
+completely. The emitter reads the document and therefore read an eye the rasterised path was not
+using.
 
-measured by rendering all twelve scenes through both backends and putting the pairs side by side.
-the three that write depth planes — `foldyard`, `tidewater`, `stilllife` — come back with the
-same composition: the same shed, the same wall, the same pole on the same side. the nine fitted
-ones do not: `landscape` returns two close rock faces where the rasteriser has a valley with a
-river running down the middle, `terraces` returns a close crop where the rasteriser has the whole
-range and the valley below it, and `tiles` returns a floor filling the lower half where the
-rasteriser has a thin strip at the bottom.
+the fitting is gone, along with `padding`, and the four gallery scenes that relied on it now write
+the eye they were being fitted to. measured, on `terraces`: the eye moved from 444.1 units off the
+target to 260.9, **41% of the distance**, which is the difference between the whole valley and a
+close crop of it.
 
-**this is not fixable inside the emitter.** Fitting needs the compiled scene's `bounds`, which
-come from the compiler's own instance buckets rather than from the document, and the emitter's
-whole contract is that it is a pure function of the document. Re-deriving the bounds in the
-emitter would be a second implementation of `fitting_distance` and a second opinion about what the
-scene's bounds are.
+**the rasterised output is unchanged.** all three renderable scenes — `dunes`, `monoliths`,
+`terraces` — come back **pixel-identical** to what the reader used to compute, at nine decimal
+places of the eye. three is fewer than three decimals would manage: rounding the eye to 0.001
+units flips a z-buffer pixel on a silhouette, so the written number carries the precision the
+picture needs and not one digit more.
 
-the options are therefore a boundary decision rather than a bug fix, and are recorded rather than
-taken:
+what is left is the honest consequence: a scene that wants its camera framed against its own
+geometry works that out **in the scene that knows the geometry** and writes the answer down, which
+is what `kit::camera` and the four scenes that use it now do. a reader may still choose between
+documented spellings and apply documented defaults — an angle over a lens, `exposure` over the
+caller's number — but it may not compute a value the document did not carry.
 
-- **refuse** a camera that names no depth planes, naming the reason — the same answer the
-  octahedral map gets. nine scenes then have to name where the camera stands, which is what
-  `camera_placed_on_lens` is for.
-- **widen the emitter's input** to the compiled camera, so the two backends read one camera. the
-  correct long-term answer, and it moves the boundary the emitter is built on.
+### how many scenes this affected, corrected
+
+an earlier revision of this file said **nine** of the twelve gallery scenes were fitted. that was
+wrong, and it is recorded here rather than deleted, because the way it was wrong is the useful
+part: it came from reading which constructor each scene calls, and `camera_placed` also fills the
+role of "a camera that is not fitted" without writing anything the reader has to interpret.
+
+the true count is **four**: `dunes`, `monoliths`, `nurbs` and `terraces` are the only scenes
+calling `camera()`. `camera_placed` and `camera_placed_on_lens` both write `near` and `far`, so the
+reader kept their eye and there was nothing to disagree about.
+
+`landscape`, `lanterns`, `spotlight`, `sunlight` and `tiles` therefore do **not** compose
+identically across the backends, and the fitting is not why. measured on both backends: `landscape`
+returns two close rock faces where the rasteriser has a valley with a river down the middle, and
+`tiles` returns a floor filling the lower half where the rasteriser has a thin strip at the bottom.
+neither has been isolated. They write a final eye and share a final angle, so the cause is
+something neither of the two fixes above touches, and it is still open.
 
 ## Environment
 

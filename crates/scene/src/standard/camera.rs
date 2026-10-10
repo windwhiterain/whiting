@@ -108,15 +108,23 @@ use definition::{Path, Value};
 
 use crate::CompileError;
 use crate::lighting::ViewProjection;
-use crate::standard::emit::FRAMING_PADDING;
 use crate::standard::math::{
     Bounds, Matrix, add, apply, cross, dot, look_at, multiply, normalize, orthographic,
     perspective, scale, subtract,
 };
 use crate::standard::scene_schema::{
-    EYE, FAR, FIELD_OF_VIEW, FOCAL_LENGTH, NEAR, PADDING as PADDING_FIELD, PROJECTION, ROLL,
-    SENSOR_WIDTH, TARGET, UP,
+    EYE, FAR, FIELD_OF_VIEW, FOCAL_LENGTH, NEAR, PROJECTION, ROLL, SENSOR_WIDTH, TARGET, UP,
 };
+
+/// The margin the convention's parallel view leaves on each side of the scene.
+///
+/// # Invariants
+///
+/// This is the only framing number left in this reader, and it belongs to a camera the
+/// document never wrote: a scene that declares no camera is drawn by the convention, and the
+/// convention has to choose an extent for itself. A camera that **is** written says how wide
+/// its frame is and is not touched by it — see [`Camera::projection`].
+const PARALLEL_MARGIN: f64 = 1.1;
 
 /// The angle a camera that names no field of view sees through, in radians.
 pub const DEFAULT_FIELD_OF_VIEW: f64 = std::f64::consts::PI / 3.0;
@@ -150,7 +158,6 @@ pub struct Camera {
     pub(crate) up: [f64; 3],
     pub(crate) field_of_view: f64,
     pub(crate) kind: ProjectionKind,
-    pub(crate) padding: f64,
     /// The near plane the scene asked for, when it named one.
     pub(crate) near: Option<f64>,
     /// The far plane the scene asked for, when it named one.
@@ -246,9 +253,6 @@ impl Camera {
             // that never builds a projection asks instead of this reader.
             field_of_view: vertical_angle(Some(camera), aspect),
             kind,
-            padding: read(PADDING_FIELD)
-                .and_then(Value::as_float)
-                .unwrap_or(FRAMING_PADDING),
             near: read(NEAR).and_then(Value::as_float),
             far: read(FAR).and_then(Value::as_float),
             roll: read(ROLL).and_then(Value::as_float).unwrap_or(0.0),
@@ -309,7 +313,6 @@ impl Camera {
             up: [0.0, 1.0, 0.0],
             field_of_view: DEFAULT_FIELD_OF_VIEW,
             kind: ProjectionKind::Orthographic,
-            padding: FRAMING_PADDING,
             near: None,
             far: None,
             roll: 0.0,
@@ -333,35 +336,6 @@ impl Camera {
         }
     }
 
-    /// Returns the nearest distance the eye can sit at and still hold the whole box.
-    ///
-    /// # Invariants
-    ///
-    /// A corner is inside the frame when its offset from the axis is no larger than the
-    /// frame is wide **at that corner's own depth**, and depth is measured from the eye.
-    /// Rearranging gives the bound below: the eye has to be at least as far as the
-    /// corner's own distance along the view plus the distance the frame's width covers.
-    /// The bound is taken over all eight corners because the one that needs the most room
-    /// is whichever is nearest the eye and furthest off axis, and which corner that is
-    /// depends on where the eye is.
-    fn fitting_distance(
-        &self,
-        forward: [f64; 3],
-        right: [f64; 3],
-        up: [f64; 3],
-        vertical_half: f64,
-    ) -> f64 {
-        let horizontal_half = (vertical_half * self.aspect).max(1e-6);
-        let mut needed: f64 = 0.0;
-        for corner in corners(&self.bounds) {
-            let offset = subtract(corner, self.target);
-            let along = dot(offset, forward);
-            needed = needed.max(dot(offset, right).abs() / horizontal_half + along);
-            needed = needed.max(dot(offset, up).abs() / vertical_half + along);
-        }
-        needed.max(1e-3)
-    }
-
     /// Returns the projection the camera draws the scene through.
     ///
     /// # Invariants
@@ -370,6 +344,15 @@ impl Camera {
     /// that same view's field of view, so a ray reconstructed from the two is the ray the
     /// matrix would have produced. That pairing is the only test that matters: a basis from
     /// one camera and a matrix from another is a sky drawn in the wrong place.
+    ///
+    /// **The eye is the one the document wrote, and nothing here moves it.** Deciding where a
+    /// photographer stood is a decision about the scene, and a scene document carries
+    /// decisions rather than the arithmetic that made them: a reader that fits the eye to the
+    /// bounds would draw a different picture from every other backend reading the same
+    /// document, and none of them could say why. A scene that wants its camera framed against
+    /// its own geometry computes that eye when it builds the document, and writes the result
+    /// down. See [`vertical_angle`] for the other half of the same rule: what a document says
+    /// is drawn from is what is drawn.
     pub fn projection(&self) -> Projection {
         let direction = normalize(subtract(self.eye, self.target));
         // The roll is applied to the up axis once, here, and every `look_at` below is given
@@ -395,7 +378,8 @@ impl Camera {
                     subtract(self.eye, self.target),
                 )
                 .sqrt();
-                let half_extent = (2.0 * self.bounds.largest_half_width() * self.padding).max(1e-3);
+                let half_extent =
+                    (2.0 * self.bounds.largest_half_width() * PARALLEL_MARGIN).max(1e-3);
                 let depth = distance + 2.0 * self.bounds.largest_half_width();
                 let view = look_at(self.eye, self.target, up);
                 let (right, up, _) = basis(&view);
@@ -427,31 +411,17 @@ impl Camera {
                     .clamp(1e-3, std::f64::consts::FRAC_PI_2 - 1e-3)
                     .tan();
                 let forward = scale(direction, -1.0);
-                // Where the eye ends up is the scene's decision when the scene wrote both
-                // depth planes, and the frame's otherwise. Fitting never moves the eye off
-                // the ray it was given, so the direction above is the view either way.
-                //
-                // A camera that composes itself — one on a hillside looking down a valley —
-                // cannot have its viewpoint decided by how large the scene is. The extent
-                // of the ground says nothing about where a photographer stood.
-                let written = self.written_planes();
-                let eye = match written {
-                    Some(_) => self.eye,
-                    None => {
-                        let view = look_at(self.eye, self.target, up);
-                        let (right, up, _) = basis(&view);
-                        let distance = (self.fitting_distance(forward, right, up, vertical_half)
-                            * self.padding)
-                            .max(1e-3);
-                        add(self.target, scale(direction, distance))
-                    }
-                };
+                // The eye is what the document wrote. See `projection`: fitting it here would
+                // make this reader the only thing in the pipeline that decides where a camera
+                // stands, and no other backend could reproduce the answer.
+                let eye = self.eye;
                 let view = look_at(eye, self.target, up);
                 let (right, up, _) = basis(&view);
+                let written = self.written_planes();
                 // The depth planes bracket the whole scene rather than the part of it the
-                // frame holds. A camera that crops in — a `padding` below one — is closer
-                // to the scene than the scene is deep, and planes drawn at the frame's own
-                // depth would cut the near half of it away.
+                // frame holds. A camera standing close to the scene is closer to it than the
+                // scene is deep, and planes drawn at the frame's own depth would cut the near
+                // half of it away.
                 //
                 // The bracket is the span of the corners' own depths along the view, which
                 // is the deepest the box reaches in each direction. Bracketing by the half

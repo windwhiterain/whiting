@@ -129,11 +129,13 @@ pub fn nurbs() -> Value {
             "cameras".to_owned(),
             // High enough to look across the sheet rather than along it. A crease seen edge on is a
             // line and not a fold, and the whole of what this scene has to show is the fold.
+            //
+            // The eye is **where the camera stands**, worked out against the sheet's own extent
+            // and written down rather than left to be refitted. See `kit::camera`.
             Value::List(vec![camera(
-                [5.4, 3.6, 5.4],
+                [0.249495829, 0.595539233, 0.249495829],
                 [0.0, 0.45, 0.0],
                 std::f64::consts::FRAC_PI_3,
-                0.05,
             )]),
         ),
         (

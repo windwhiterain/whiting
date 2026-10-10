@@ -533,13 +533,24 @@ pub fn camera_placed_on_lens(
 }
 
 /// Builds the camera a scene is drawn through.
-pub fn camera(eye: [f64; 3], target: [f64; 3], field_of_view: f64, padding: f64) -> Value {
+///
+/// # Invariants
+///
+/// **`eye` is where the camera stands, not where it started.** A scene document carries the
+/// transform it will be drawn from rather than the arithmetic that produced it, so nothing
+/// downstream moves the eye: a scene that wants its framing worked out against its own
+/// geometry works it out here, in the scene that knows the geometry, and writes the answer
+/// down. A reader that refitted the eye would draw a different picture from every other
+/// backend reading the same document, and none of them could say why.
+///
+/// `field_of_view` is the full **vertical** angle, which is what this engine measures a
+/// camera's angle on; see `scene::standard::camera::vertical_angle`.
+pub fn camera(eye: [f64; 3], target: [f64; 3], field_of_view: f64) -> Value {
     Value::structure([
         ("eye".to_owned(), triple(eye)),
         ("target".to_owned(), triple(target)),
         ("field_of_view".to_owned(), Value::Float(field_of_view)),
         ("projection".to_owned(), Value::variant("Perspective", [])),
-        ("padding".to_owned(), Value::Float(padding)),
     ])
 }
 

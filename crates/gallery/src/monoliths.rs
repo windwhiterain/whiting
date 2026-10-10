@@ -130,13 +130,15 @@ pub fn monoliths() -> Value {
         (
             "cameras".to_owned(),
             // Low, close, and cropped hard in. The ground reaches far past the frame in
-            // every direction, so what decides the framing is the padding: at one the
-            // camera would frame the whole plain and the monoliths would be specks on it.
+            // every direction, so the framing has to be decided against the monoliths and
+            // not the plain: framing the whole plain would make them specks on it.
+            //
+            // The eye is **where the camera stands**, worked out against that framing and
+            // written down rather than left to be refitted. See `kit::camera`.
             Value::List(vec![camera(
-                [34.0, 7.0, 44.0],
+                [72.433830082, 2.195771240, 95.885670611],
                 [-6.0, 12.0, -10.0],
                 std::f64::consts::FRAC_PI_3,
-                0.15,
             )]),
         ),
         (

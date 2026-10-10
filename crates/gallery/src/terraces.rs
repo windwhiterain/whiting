@@ -88,14 +88,16 @@ fn terraced_valley(materials: Vec<Value>, instances: Value) -> Value {
             "cameras".to_owned(),
             // Low on the south-west side, looking up the valley into the sun's quarter,
             // so the far paddies mirror the bright horizon and the near ones hold the
-            // blue of the zenith. The padding crops the valley's rim out of frame: a
+            // blue of the zenith. The framing crops the valley's rim out of frame: a
             // landscape whose edges show is a model, and one whose edges are cropped is
             // a place.
+            //
+            // The eye is **where the camera stands**, worked out against that cropping and
+            // written down rather than left to be refitted. See `kit::camera`.
             Value::List(vec![camera(
-                [-230.0, 128.0, 310.0],
+                [-138.835897872, 90.014957447, 173.253846809],
                 [10.0, 28.0, -50.0],
                 0.88,
-                0.52,
             )]),
         ),
         (

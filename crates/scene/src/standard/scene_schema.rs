@@ -86,9 +86,6 @@ pub const ROLL: &str = "roll";
 /// something true about both.
 pub const PROJECTION: &str = "projection";
 
-/// Field holding how much wider than its box the camera frames the scene.
-pub const PADDING: &str = "padding";
-
 /// Field holding how far from the eye the near plane of the camera is.
 pub const NEAR: &str = "near";
 
@@ -652,15 +649,6 @@ pub fn camera_schema() -> Schema {
                 "Which projection the camera draws through. A parallel projection measures \
                  every distance the same, which is what a diagram is made of.",
             ),
-        ),
-        (
-            PADDING.to_owned(),
-            Schema::new(SchemaKind::Float)
-                .optional()
-                .with_documentation(
-                    "How much wider than the scene the camera frames it. A value above one leaves \
-                 a margin; below one crops.",
-                ),
         ),
         (
             NEAR.to_owned(),
