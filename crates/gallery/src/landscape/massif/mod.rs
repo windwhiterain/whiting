@@ -85,11 +85,11 @@ const STEP: f32 = 46.0;
 const RIBS: usize = 9;
 
 /// One authored crest: a run of nodes written outwards from the summit, and how sharp it is cut.
-struct Crest {
+pub(super) struct Crest {
     /// The name this crest's belts answer to.
-    name: &'static str,
+    name: String,
     /// Its nodes, first to last: plan position and elevation.
-    nodes: &'static [[f32; 3]],
+    nodes: Vec<[f32; 3]>,
     /// How sharp the crest is: 0 rounded, 1 a knife edge. Also decides how finely it is sampled,
     /// because the crests cut to read as rock are the ones whose facets must be small enough to be
     /// rock, and a rounded shoulder must not be chopped into steps it cannot hold.
@@ -108,302 +108,41 @@ struct Crest {
     lean: f32,
 }
 
-/// The crests. Plan positions and elevations in metres.
+mod network;
+
+/// The ground the massif is grown on: where its summit stands, what height the country around it is,
+/// and how far its first divides reach.
 ///
-/// The spine runs west to east, falls, and bends; the spurs leave its cols to the north and the
-/// south; the sub-spurs leave the spurs. Every one of them descends, because elevation is
-/// non-increasing along every path from the summit and that is what keeps one vertex the high point
-/// of the whole massif.
+/// Named rather than written into the generator because these are the numbers a *scene* chooses. The
+/// generator knows how to branch; it does not know how big a mountain this picture wants.
+const GROUND: network::Ground = network::Ground {
+    summit: [0.0, 0.0],
+    base: super::RIM as f32,
+    height: 2400.0,
+    reach: 1150.0,
+};
+
+/// The seed every shape below is grown from.
+const SEED: u64 = 0x5EED_4D55_1F17;
+
+/// The crests, grown once and kept.
 ///
-/// The cols are where the junctions are, and every one of them is written as the end of one crest
-/// and the start of two or three others. `spine_w` and `spine_w2` are **one ridge line cut in half**,
-/// and that is the whole of the difference between a hierarchy and a cone.
-const CRESTS: &[Crest] = &[
-    // ------------------------------------------------------------------ the shoulder, west of the top
-    //
-    // The spine runs *through* the summit rather than starting at it, and it is written **from** the
-    // summit outwards like every other crest, because elevation is non-increasing along a path away
-    // from the root and a crest authored uphill is a crest the checker refuses. A summit with one
-    // crest on it is a leaf of the graph, and the face that wraps round a leaf is bounded by the same
-    // crest on both sides, which no pair of outward chains can state. A range whose high point stands
-    // at the end of its own ridge is a cone; one whose ridge carries on past the top is a range.
-    Crest {
-        name: "shoulder_top",
-        nodes: &[
-            [0.0, 0.0, 2400.0],
-            [-100.0, 20.0, 2250.0],
-            [-190.0, 40.0, 2120.0],
-        ],
-        sharpness: 0.85,
-        depth: 0.28,
-        lean: -0.12,
-    },
-    Crest {
-        name: "shoulder_w",
-        nodes: &[
-            [-190.0, 40.0, 2120.0],
-            [-360.0, 80.0, 1900.0],
-            [-520.0, 120.0, 1720.0],
-        ],
-        sharpness: 0.8,
-        depth: 0.28,
-        lean: 0.14,
-    },
-    Crest {
-        name: "spur_w",
-        nodes: &[
-            [-190.0, 40.0, 2120.0],
-            [-300.0, 220.0, 1880.0],
-            [-400.0, 400.0, 1640.0],
-            [-480.0, 560.0, 1400.0],
-        ],
-        sharpness: 0.85,
-        depth: 0.30,
-        lean: -0.12,
-    },
-    // ------------------------------------------------------------------ the spine, level 0
-    Crest {
-        name: "spine_w",
-        nodes: &[
-            [0.0, 0.0, 2400.0],
-            [150.0, -30.0, 2300.0],
-            [290.0, -30.0, 2200.0],
-            [400.0, -20.0, 2120.0],
-        ],
-        sharpness: 0.9,
-        depth: 0.30,
-        lean: 0.16,
-    },
-    Crest {
-        name: "spine_w2",
-        nodes: &[
-            [400.0, -20.0, 2120.0],
-            [500.0, 10.0, 2020.0],
-            [580.0, 40.0, 1940.0],
-            [640.0, 60.0, 1880.0],
-        ],
-        sharpness: 0.85,
-        depth: 0.28,
-        lean: -0.14,
-    },
-    Crest {
-        name: "spine_m",
-        nodes: &[
-            [640.0, 60.0, 1880.0],
-            [760.0, 140.0, 1720.0],
-            [900.0, 240.0, 1580.0],
-            [1000.0, 310.0, 1480.0],
-            [1080.0, 370.0, 1420.0],
-        ],
-        sharpness: 0.8,
-        depth: 0.26,
-        lean: 0.12,
-    },
-    Crest {
-        name: "spine_e1",
-        nodes: &[
-            [1080.0, 370.0, 1420.0],
-            [1200.0, 470.0, 1280.0],
-            [1340.0, 570.0, 1140.0],
-            [1440.0, 640.0, 1040.0],
-        ],
-        sharpness: 0.7,
-        depth: 0.24,
-        lean: -0.10,
-    },
-    Crest {
-        name: "spine_e2",
-        nodes: &[
-            [1440.0, 640.0, 1040.0],
-            [1560.0, 700.0, 900.0],
-            [1690.0, 750.0, 780.0],
-            [1800.0, 780.0, 660.0],
-        ],
-        sharpness: 0.55,
-        depth: 0.22,
-        lean: 0.08,
-    },
-    // ------------------------------------------------------------------ the north side, level 1
-    Crest {
-        name: "spur_n1",
-        nodes: &[
-            [400.0, -20.0, 2120.0],
-            [370.0, -170.0, 1900.0],
-            [320.0, -320.0, 1700.0],
-            [250.0, -460.0, 1540.0],
-            [210.0, -610.0, 1380.0],
-        ],
-        sharpness: 0.95,
-        depth: 0.32,
-        lean: -0.18,
-    },
-    Crest {
-        name: "spur_n2",
-        nodes: &[
-            [640.0, 60.0, 1880.0],
-            [660.0, -90.0, 1680.0],
-            [670.0, -230.0, 1500.0],
-            [660.0, -340.0, 1340.0],
-        ],
-        sharpness: 0.9,
-        depth: 0.30,
-        lean: 0.14,
-    },
-    Crest {
-        name: "spur_s1",
-        nodes: &[
-            [640.0, 60.0, 1880.0],
-            [650.0, 220.0, 1700.0],
-            [650.0, 380.0, 1540.0],
-            [620.0, 520.0, 1400.0],
-        ],
-        sharpness: 0.9,
-        depth: 0.30,
-        lean: -0.16,
-    },
-    // The continuation of `spur_s1` past the col its gully is born at. **The split is the whole of
-    // the difference between a junction and a coincidence**: a gully named at `spur_s1`'s interior
-    // node welds geometrically but is walkable in one direction only, so the parent is cut where the
-    // child is born and both ends of the cut are ends.
-    Crest {
-        name: "spur_s1_mid",
-        nodes: &[
-            [620.0, 520.0, 1400.0],
-            [600.0, 600.0, 1320.0],
-            [580.0, 660.0, 1260.0],
-        ],
-        sharpness: 0.85,
-        depth: 0.28,
-        lean: 0.12,
-    },
-    Crest {
-        name: "spur_s2",
-        nodes: &[[1080.0, 370.0, 1420.0], [1130.0, 520.0, 1260.0]],
-        sharpness: 0.75,
-        depth: 0.26,
-        lean: 0.12,
-    },
-    Crest {
-        name: "spur_s2_low",
-        nodes: &[
-            [1130.0, 520.0, 1260.0],
-            [1170.0, 660.0, 1100.0],
-            [1190.0, 800.0, 940.0],
-        ],
-        sharpness: 0.75,
-        depth: 0.26,
-        lean: 0.12,
-    },
-    Crest {
-        name: "spur_s3",
-        nodes: &[
-            [1440.0, 640.0, 1040.0],
-            [1500.0, 780.0, 900.0],
-            [1540.0, 920.0, 760.0],
-            [1560.0, 1040.0, 620.0],
-        ],
-        sharpness: 0.6,
-        depth: 0.24,
-        lean: -0.10,
-    },
-    // ------------------------------------------------------------------ level 2, off the spurs
-    Crest {
-        name: "spur_n1_low",
-        nodes: &[
-            [210.0, -610.0, 1380.0],
-            [110.0, -740.0, 1180.0],
-            [-10.0, -860.0, 980.0],
-            [-140.0, -950.0, 780.0],
-        ],
-        sharpness: 0.8,
-        depth: 0.30,
-        lean: 0.18,
-    },
-    Crest {
-        name: "gully_n",
-        nodes: &[
-            [660.0, -340.0, 1340.0],
-            [780.0, -420.0, 1160.0],
-            [890.0, -490.0, 990.0],
-            [990.0, -540.0, 820.0],
-        ],
-        sharpness: 0.7,
-        depth: 0.28,
-        lean: -0.14,
-    },
-    Crest {
-        name: "spur_n2_low",
-        nodes: &[
-            [660.0, -340.0, 1340.0],
-            [620.0, -470.0, 1160.0],
-            [570.0, -590.0, 980.0],
-        ],
-        sharpness: 0.75,
-        depth: 0.26,
-        lean: 0.12,
-    },
-    Crest {
-        name: "spur_s1_low",
-        nodes: &[
-            [580.0, 660.0, 1260.0],
-            [500.0, 800.0, 1060.0],
-            [400.0, 920.0, 860.0],
-            [300.0, 1010.0, 660.0],
-        ],
-        sharpness: 0.7,
-        depth: 0.28,
-        lean: -0.14,
-    },
-    Crest {
-        name: "gully_s",
-        nodes: &[
-            [620.0, 520.0, 1400.0],
-            [760.0, 580.0, 1220.0],
-            [880.0, 640.0, 1040.0],
-        ],
-        sharpness: 0.65,
-        depth: 0.26,
-        lean: 0.10,
-    },
-    /// The continuation of gully_s past the col its tie is born at, so the tie's far end is a
-    /// **through-vertex** and not a tip. A tie between two tips makes a lollipop hanging off the
-    /// graph by one vertex, and the pocket wrapping it is an annulus - see [asins].
-    Crest {
-        name: "gully_s_low",
-        nodes: &[
-            [880.0, 640.0, 1040.0],
-            [940.0, 700.0, 900.0],
-            [980.0, 760.0, 740.0],
-        ],
-        sharpness: 0.65,
-        depth: 0.26,
-        lean: 0.10,
-    },
-    // ------------------------------------------------------------------ the tie, which makes it a network
-    // Both its ends stand on other crests — the north spur's shoulder and the gully's mouth — so the
-    // graph closes a ring, and the ring encloses a face that reaches no tip. That face is a
-    // **cirque**: it has no rim to drain to, so its floor runs to the low point of its own wall and
-    // spills over the lip into the basin beyond. A tree cannot express that, and a picture of a
-    // mountain without one is a picture of a cone with branches on it.
-    Crest {
-        name: "tie_n",
-        nodes: &[
-            [1130.0, 520.0, 1260.0],
-            [1030.0, 590.0, 1150.0],
-            [880.0, 640.0, 1040.0],
-        ],
-        sharpness: 0.4,
-        depth: 0.22,
-        lean: 0.08,
-    },
-];
+/// A cell rather than a `const` because the network is **generated**: it is a rule applied until the
+/// detail runs out, not a list, and the list only exists after the rule has run. Growing it once and
+/// lending it out is what keeps the massif the same shape on every call — a generator re-run per query
+/// would give a mountain that changes between a probe and the render that follows it, and a picture
+/// that cannot be compared with the last one is not a picture of anything.
+fn crests() -> &'static [Crest] {
+    static GROWN: std::sync::OnceLock<Vec<Crest>> = std::sync::OnceLock::new();
+    GROWN.get_or_init(|| network::crests(&GROUND, SEED))
+}
 
 /// The index a crest is held at, by name.
 fn crest_index(name: &str) -> usize {
-    CRESTS
+    crests()
         .iter()
         .position(|crest| crest.name == name)
-        .unwrap_or_else(|| panic!("`{name}` is not one of the authored crests"))
+        .unwrap_or_else(|| panic!("`{name}` is not one of the generated crests"))
 }
 
 /// Builds the massif.
@@ -502,14 +241,31 @@ fn is_junction(massif: &Massif, ridge: RidgeId, far: bool) -> bool {
     })
 }
 
-/// Takes the outer part of a line down to the rim's height.
+/// Takes the outer part of a line down to the height of the ground it stands on.
+///
+/// # Invariants
+///
+/// The taper takes the relief away, **not the height**: it multiplies what the line has *above*
+/// [`super::RIM`], so a line ends at the height of the ground beyond it whatever that is. Multiplying
+/// the whole elevation instead — which is what this did, and is correct only while `RIM` is zero —
+/// forces every far end to zero, so a massif standing on a raised plateau has its foot driven down
+/// through the plateau to sea level and the seam at the rim tears open. It looked right for as long as
+/// the ground happened to be at zero, which is the only case in which the two spellings agree.
+///
+/// It is then clamped at zero **relief**, which is the plateau itself. An authored crest runs down to
+/// heights written for ground at nothing, so on a raised plateau its outer nodes are below the land
+/// they stand on; clamping raises them onto it, and the result is the shape a dissected upland
+/// actually has — a ridge descends, reaches the plateau, and runs along it. Letting those nodes keep
+/// their authored heights instead would have the crest *climb* toward its own tip, which is the
+/// elevation rule broken in the one direction the taper cannot hide.
 fn shelf(massif: &mut Massif, line: LineRef) {
     let count = massif.skeleton.node_count(line);
+    let base = super::RIM as f64;
     for node in 0..count {
         let fraction = node as f64 / (count - 1) as f64;
-        let current = elevation(massif, line, node);
-        let height = current as f64 * (1.0 - smoothstep(0.85, 1.0, fraction));
-        massif.set_elevation(line, node, height as f32);
+        let current = elevation(massif, line, node) as f64;
+        let relief = ((current - base) * (1.0 - smoothstep(0.85, 1.0, fraction))).max(0.0);
+        massif.set_elevation(line, node, (base + relief) as f32);
     }
 }
 
@@ -529,7 +285,7 @@ fn elevation(massif: &Massif, line: LineRef, node: usize) -> f32 {
 /// the ring of triangles round a col shares a single mesh vertex instead of leaving a slit whose
 /// zero area no coverage check would notice.
 fn ridges() -> Vec<Ridge> {
-    CRESTS
+    crests()
         .iter()
         .enumerate()
         .map(|(index, crest)| {
@@ -542,14 +298,14 @@ fn ridges() -> Vec<Ridge> {
                 .collect();
             let ridge = Ridge::root(nodes).with_step_scale(1.25 - 0.6 * crest.sharpness);
             let mut ends = [None, None];
-            for (other_index, other) in CRESTS.iter().enumerate() {
+            for (other_index, other) in crests().iter().enumerate() {
                 if other_index >= index {
                     continue;
                 }
                 for far in [false, true] {
-                    let own = end_point(crest.name, far).0;
+                    let own = end_point(&crest.name, far).0;
                     for other_far in [false, true] {
-                        if distance(own, end_point(other.name, other_far).0) > 0.5 {
+                        if distance(own, end_point(&other.name, other_far).0) > 0.5 {
                             continue;
                         }
                         ends[usize::from(far)] = Some(Station::ridge(
@@ -572,7 +328,7 @@ fn ridges() -> Vec<Ridge> {
 
 /// The plan point and elevation one end of a crest stands at.
 fn end_point(name: &str, far: bool) -> (Vec2, f32) {
-    let nodes = CRESTS[crest_index(name)].nodes;
+    let nodes = &crests()[crest_index(name)].nodes;
     let node = if far {
         nodes[nodes.len() - 1]
     } else {
@@ -627,7 +383,7 @@ struct Branch {
 impl<'a> Graph<'a> {
     /// Welds the authored ends into vertices.
     fn of(skeleton: &'a Skeleton) -> Self {
-        let count = CRESTS.len();
+        let count = crests().len();
         let mut parent: Vec<usize> = (0..count * 2).collect();
         fn find(parent: &mut [usize], index: usize) -> usize {
             let mut index = index;
@@ -670,7 +426,7 @@ impl<'a> Graph<'a> {
             for far in [false, true] {
                 let root = find(&mut parent, index * 2 + usize::from(far));
                 let vertex = *ids.entry(root).or_insert_with(|| {
-                    let (position, elevation) = end_point(CRESTS[root / 2].name, root % 2 == 1);
+                    let (position, elevation) = end_point(&crests()[root / 2].name, root % 2 == 1);
                     vertices.push(Vertex {
                         position,
                         elevation,
@@ -848,13 +604,13 @@ impl<'a> Graph<'a> {
                 "a wall is not a path: it arrives at vertex {arrived} on `{}` and leaves vertex \
                  {leaves} on `{}`, which are different points. A crest was walked to an end that is \
                  not where the next crest begins.",
-                CRESTS[pair[0].crest].name,
-                CRESTS[pair[1].crest].name,
+                crests()[pair[0].crest].name,
+                crests()[pair[1].crest].name,
             );
         }
         let mut legs: Vec<Leg> = Vec::new();
         for dart in walk {
-            let nodes = CRESTS[dart.crest].nodes;
+            let nodes = &crests()[dart.crest].nodes;
             let mut span = 0.0;
             for pair in nodes.windows(2) {
                 span += distance([pair[0][0], pair[0][1]], [pair[1][0], pair[1][1]]);
@@ -888,7 +644,7 @@ impl<'a> Graph<'a> {
 
 /// The bearing a crest leaves one of its ends at.
 fn leaving(crest: usize, forward: bool) -> f32 {
-    let nodes = CRESTS[crest].nodes;
+    let nodes = &crests()[crest].nodes;
     let last = nodes.len() - 1;
     let (from, to) = if forward {
         (nodes[0], nodes[1])
@@ -1117,7 +873,7 @@ fn basins(graph: &Graph) -> Vec<Basin> {
             let names: Vec<&str> = face
                 .walk
                 .iter()
-                .map(|dart| CRESTS[dart.crest].name)
+                .map(|dart| crests()[dart.crest].name.as_str())
                 .collect();
             println!(
                 "  face: {} darts, {visits} tip visits, simple {}, [{}]",
@@ -1311,7 +1067,7 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
             (at[1] - head_plan[1]).atan2(at[0] - head_plan[0])
         };
         let swept = (bearing(&right) - bearing(&left)).rem_euclid(TAU);
-        let lean = CRESTS[*right.crests.last().unwrap()].lean;
+        let lean = crests()[*right.crests.last().unwrap()].lean;
         let bisector = bearing(&left) + swept * (0.5 + lean * 0.5);
         let direction = [bisector.cos(), bisector.sin()];
 
@@ -1339,7 +1095,7 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
         .into_iter()
         .fold(f32::INFINITY, f32::min);
         let fall = (head_height - foot).max(0.0);
-        let depth = CRESTS[*left.crests.last().unwrap()].depth;
+        let depth = crests()[*left.crests.last().unwrap()].depth;
         let (_, _, start_left) = left.at(&graph, 0.0);
         let (_, _, start_right) = right.at(&graph, 0.0);
         let mut nodes = vec![ValleyNode::new(
@@ -1372,7 +1128,7 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
             // sharply, which pinches the surface at that one point (see the junction note in
             // `.agents/proposals/network-derivation.md`).
             nodes.push(ValleyNode::new(
-                offset(head_plan, [direction[0] * reach, direction[1] * reach]),
+                [(a_plan[0] + b_plan[0]) * 0.5, (a_plan[1] + b_plan[1]) * 0.5],
                 // The floor is the lowest of three descents: a straight run from the head to the foot,
                 // the ceiling it must stay under, and **the plain, which is base level**. A valley
                 // carves down to where it meets the ground it drains into and no further; digging past
@@ -1457,13 +1213,13 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
                 graph.degree(basin.head),
                 left.crests
                     .iter()
-                    .map(|crest| CRESTS[*crest].name)
+                    .map(|crest| crests()[*crest].name.as_str())
                     .collect::<Vec<_>>()
                     .join("+"),
                 right
                     .crests
                     .iter()
-                    .map(|crest| CRESTS[*crest].name)
+                    .map(|crest| crests()[*crest].name.as_str())
                     .collect::<Vec<_>>()
                     .join("+"),
                 walked,

@@ -155,8 +155,21 @@ const PLAIN_REACH: f64 = 18.0;
 /// then follows, and it is checked by the note the compile prints rather than by hope.
 const SUBJECT_HAZE: f64 = 0.10;
 
-/// The plain's height where it meets the massif, which is the rim's height.
-const RIM: f64 = 0.0;
+/// The ground's height where it meets the massif, which is the rim's height.
+///
+/// **A massif is a range on a plateau, not a tower on a plain.** This is the elevation the land
+/// already stands at before anything rises from it, and it is the largest single number in the
+/// picture: the summit is authored at 2400 and this is where the country around it sits, so the massif
+/// is the difference between the two — a range of a few hundred metres carried on high ground, which
+/// is what a real mountain group is. Set at zero, the same authoring is a 2400-metre spire standing on
+/// nothing, and that is what every version of this scene before this one drew.
+///
+/// It also fixes the *proportion of relief to width*, because the camera and the aim are offsets from
+/// it: raising it moves the eye up with the land and the range gets shorter in the frame without the
+/// frame moving, which is the same statement as the paragraph above.
+///
+/// Nothing here is a physical unit; the massif's own measure is what everything is a multiple of.
+const RIM: f64 = 1450.0;
 
 // --------------------------------------------------------------------------- the frame
 //
