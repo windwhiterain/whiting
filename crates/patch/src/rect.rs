@@ -298,19 +298,51 @@ pub fn evaluate_slice(
 /// tangents happen to be parallel there. A zero normal is a fact about the patch rather than a
 /// failure, and a caller shading from it has to decide what that means.
 pub fn normal_slice(degree_u: usize, degree_v: usize, points: &[Point3], u: f64, v: f64) -> Point3 {
+    if degree_u == 0 || degree_v == 0 {
+        // A degree-0 direction has no tangent in it, and a patch with one has no surface normal to
+        // report. Zero rather than a guess, which is what the rest of this contract already says.
+        return Point3::ZERO;
+    }
     let weights_u = basis(degree_u, u);
     let weights_v = basis(degree_v, v);
+    // `d/dt B_i^n = n (B_{i-1}^{n-1} - B_i^{n-1})`, with `B_{-1}` and `B_n^{n-1}` both zero.
+    //
+    // Two other readings of the Bernstein sum look right and are not. Indexing `B_i` and multiplying
+    // by `i` gives `t * d/dt B_i^n` — the derivative scaled by the parameter, whose direction is
+    // right and whose value is **exactly zero on the whole `u = 0` and `v = 0` boundary**, which is
+    // where a crease runs and therefore where a caller asks. Dropping the second term and keeping
+    // only `n * B_{i-1}^{n-1}` gives derivative weights that do not sum to zero, so the tangent at
+    // `(1, 1)` collapses onto a single control point and the two tangents come out parallel — a zero
+    // normal at the far corner instead of the near one. `examples/raster_probe` measures both.
+    let slope_u = basis(degree_u - 1, u);
+    let slope_v = basis(degree_v - 1, v);
     let stride = degree_v + 1;
     let mut tangent_u = Point3::ZERO;
     let mut tangent_v = Point3::ZERO;
+    // Both tangents walk the whole net, not a row: each derivative's weights belong to one
+    // parameter, and the other parameter's weights — which sum to one — carry it across. A `u`
+    // tangent that started at `i = 1` would drop the `i = 0` row out of the `v` tangent beside it.
     for i in 0..=degree_u {
         for j in 0..=degree_v {
             let point = points[i * stride + j];
-            tangent_u += point * (weights_u[i] * i as f64);
-            tangent_v += point * (weights_v[j] * j as f64);
+            tangent_u += point * (along(degree_u, &slope_u, i) * weights_v[j]);
+            tangent_v += point * (along(degree_v, &slope_v, j) * weights_u[i]);
         }
     }
     tangent_u.cross(tangent_v)
+}
+
+/// The weight of `B_i^degree`'s derivative with respect to its parameter, from the degree below.
+///
+/// `n (B_{i-1}^{n-1} - B_i^{n-1})`, where the two out-of-range terms are zero. Free because it is a
+/// weight rather than a surface, and a surface's two tangents are built at once out of the same table.
+fn along(degree: usize, below: &[f64], index: usize) -> f64 {
+    let scale = degree as f64;
+    match index {
+        0 => -scale * below[0],
+        _ if index == degree => scale * below[degree - 1],
+        _ => scale * (below[index - 1] - below[index]),
+    }
 }
 
 /// Indexing panics on an index outside the net, which is the standard `Index` contract. Use
