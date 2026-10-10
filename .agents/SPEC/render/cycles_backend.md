@@ -257,6 +257,17 @@ recorded rather than fixed: expressing a procedural surface as data is a schema 
 honest first step is knowing how many surfaces depend on it. `landscape`, `lanterns`,
 `spotlight`, `sunlight` and `tiles` are the measured five.
 
+what is *not* open is whether the target format can express it. measured 2026-10-10: it can, natively,
+with no compiler in the loop — `<shader>` takes an arbitrary node graph and
+`noise_texture`, `voronoi_texture`, `wave_texture`, `checker_texture`, `brick_texture`, `sky_texture`,
+`rgb_ramp`, `bump`, `math`, `vector_math`, `map_range`, `layer_weight` and the `mix_*` family are all
+registered and all render with zero errors. OSL, which sounds like the intended mechanism for this,
+is **not compiled into the executable we ship**; the only `osl` substring in it is the `osl.svm`
+device-type identifier, and a shader using `osl_shader` is rejected as an unknown node. so the gap is
+entirely on our side of the boundary and needs no external component. evidence, the socket names that
+fail silently, and the boundary of the OSL claim are in
+[investigate/cycles-procedural-materials.md](../../investigate/cycles-procedural-materials.md).
+
 ### how many scenes the fitting affected, corrected
 
 an earlier revision of this file said **nine** of the twelve gallery scenes were fitted. that was
