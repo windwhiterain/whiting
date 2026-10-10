@@ -505,12 +505,7 @@ pub fn landscape() -> Value {
         .density(-(1.0 - SUBJECT_HAZE).ln() / distance)
         .scale_height(radius * 1.8);
 
-    let helpers = format!(
-        "{}\n{}\n{}",
-        atmosphere.wgsl(),
-        NOISE,
-        constants(sun),
-    );
+    let helpers = format!("{}\n{}\n{}", atmosphere.wgsl(), NOISE, constants(sun),);
     // The far ranges are the post stage's alone, so they are handed to the post stage alone. They
     // are a backdrop the air has already closed over, and a surface shader has no use for a line
     // painted into the sky.
@@ -820,9 +815,7 @@ fn constants(sun: [f64; 3]) -> String {
          const RIDGE_LAYERS: i32 = {RIDGE_LAYERS};\n\
          const CIRRUS_COVER: f32 = {CIRRUS_COVER:.4};\n\
          const SUN_AHEAD: vec3<f32> = vec3<f32>({:.4}, {:.4}, {:.4});\n",
-        sun[0],
-        sun[1],
-        sun[2],
+        sun[0], sun[1], sun[2],
     )
 }
 

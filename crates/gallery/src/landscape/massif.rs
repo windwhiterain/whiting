@@ -278,8 +278,14 @@ const CRESTS: &[Crest] = &[
     },
     Crest {
         name: "spur_s2",
+        nodes: &[[1080.0, 370.0, 1420.0], [1130.0, 520.0, 1260.0]],
+        sharpness: 0.75,
+        depth: 0.26,
+        lean: 0.12,
+    },
+    Crest {
+        name: "spur_s2_low",
         nodes: &[
-            [1080.0, 370.0, 1420.0],
             [1130.0, 520.0, 1260.0],
             [1170.0, 660.0, 1100.0],
             [1190.0, 800.0, 940.0],
@@ -359,6 +365,37 @@ const CRESTS: &[Crest] = &[
         depth: 0.26,
         lean: 0.10,
     },
+    /// The continuation of gully_s past the col its tie is born at, so the tie's far end is a
+    /// **through-vertex** and not a tip. A tie between two tips makes a lollipop hanging off the
+    /// graph by one vertex, and the pocket wrapping it is an annulus - see [asins].
+    Crest {
+        name: "gully_s_low",
+        nodes: &[
+            [880.0, 640.0, 1040.0],
+            [940.0, 700.0, 900.0],
+            [980.0, 760.0, 740.0],
+        ],
+        sharpness: 0.65,
+        depth: 0.26,
+        lean: 0.10,
+    },
+    // ------------------------------------------------------------------ the tie, which makes it a network
+    // Both its ends stand on other crests — the north spur's shoulder and the gully's mouth — so the
+    // graph closes a ring, and the ring encloses a face that reaches no tip. That face is a
+    // **cirque**: it has no rim to drain to, so its floor runs to the low point of its own wall and
+    // spills over the lip into the basin beyond. A tree cannot express that, and a picture of a
+    // mountain without one is a picture of a cone with branches on it.
+    Crest {
+        name: "tie_n",
+        nodes: &[
+            [1130.0, 520.0, 1260.0],
+            [1030.0, 590.0, 1150.0],
+            [880.0, 640.0, 1040.0],
+        ],
+        sharpness: 0.4,
+        depth: 0.22,
+        lean: 0.08,
+    },
 ];
 
 /// The index a crest is held at, by name.
@@ -373,12 +410,11 @@ fn crest_index(name: &str) -> usize {
 pub fn massif() -> Massif {
     let mut massif = Massif::new(Skeleton::new(ridges(), Vec::new(), Vec::new()))
         .with_tessellation(Tessellation::default().with_step(STEP));
-    // **The crests are taken down to the plain before a single floor is walked**, because a floor is
-    // written against the wall above it and the wall it is written against has to be the wall that
-    // gets built. Walking the floors first and levelling the crests afterwards — the ordering this
-    // function had — leaves a valley's last rib standing at 165 over a crest tip that has since been
-    // taken to 0, which is an inverted belt: a surface folded back on itself, and the source of every
-    // four-digit facet aspect in the report.
+    // **The crests are taken down to the plain before a single floor is walked.** A floor is written
+    // against the wall above it, and the wall it is written against has to be the wall that gets
+    // built: walking the floors first and levelling the crests afterwards leaves a valley's last rib
+    // standing above a crest tip that has since been taken to the plain — an inverted belt, a surface
+    // folded back on itself, and a flank that nothing covers.
     level_the_crests(&mut massif);
     let (valleys, footprint) = drain(&massif.skeleton);
     massif.skeleton.valleys = valleys;
@@ -387,8 +423,7 @@ pub fn massif() -> Massif {
     massif
 }
 
-/// Takes every crest's rim end down to the plain. Done before the floors exist, so it touches ridges
-/// only; [`stand_on_the_plain`] finishes the job on the rim and the valleys.
+/// Takes every crest's rim end down to the plain, before any floor exists to be written against it.
 fn level_the_crests(massif: &mut Massif) {
     for ridge in massif.skeleton.ridge_ids() {
         if is_junction(massif, ridge, true) {
@@ -414,23 +449,14 @@ fn level_the_crests(massif: &mut Massif) {
 /// stand on, and the gap is at the one place in the frame the eye is trained on — and a point with
 /// two elevations is two points, which is what splits a surface open along its own foot.
 ///
-/// **A crest is tapered only toward the end that reaches the rim, and a junction end is never
-/// tapered at all.** This is the rule the first version of this function did not have, and what it
-/// cost: a hierarchy authors its cols as one crest's *far* end, so tapering every crest's far end
-/// took nine of this massif's saddles down to the plain's height and left the summits between them
-/// standing. The range became nine fangs rooted in a web at ground level — which validates, because
-/// `check_elevations` reads each line on its own and the taper is monotone on every one of them, and
-/// which renders as stacked rectangular teeth with a dark gash down each flank. Nothing in the mesh
-/// disagrees, because a welded vertex simply keeps whichever elevation was written last.
+/// The crests are **not** touched here: they were taken down by [`level_the_crests`] before the floors
+/// were walked, because a floor is written against the wall above it and the wall has to be the one
+/// that gets built. Doing it again here would taper them twice.
 fn stand_on_the_plain(massif: &mut Massif) {
     for node in 0..massif.skeleton.footprint.len() {
         massif.set_elevation(LineRef::Footprint, node, super::RIM as f32);
     }
-    // The crests were taken down before the floors were walked — see [`level_the_crests`] — so what
-    // is left is the rim and the valley mouths, which cannot be levelled until they exist.
     for valley in massif.skeleton.valley_ids() {
-        // A valley's far end is its mouth, which is a rim vertex; its near end is a head, which is a
-        // summit or a col and is welded to the crests it names, so it is left alone either way.
         shelf(massif, LineRef::Valley(valley));
     }
 }
@@ -440,15 +466,39 @@ fn stand_on_the_plain(massif: &mut Massif) {
 /// Read from the authored naming rather than from the plan, because the naming is the fact: two ends
 /// at one point that do not name each other are two vertices, and the expansion builds a slit there
 /// rather than a saddle.
+/// Whether one end of a crest is a junction — a col, where it meets another crest.
+///
+/// **Asked in both directions**, and the first version asked in one. A junction is authored as one
+/// crest's *far end* naming another line, and the naming is written on the crest that arrives rather
+/// than on the one that owns the point, so a crest can meet another either by **naming** it or by
+/// **being named** by it. Reading only the second case leaves every crest that is itself the child of
+/// a junction with its far end looking like a tip: its last node is taken down to the plain, and since
+/// the col is one welded vertex shared with the parent, the mesh keeps whichever elevation was written
+/// last. That is a saddle at ground level under a crest that is not — and it is exactly what a wall
+/// that walks out to `t = 1.0` on one crest and finds height zero, then steps onto another crest,
+/// is looking at.
+///
+/// Read from the authored naming rather than from the plan, because the naming is the fact: two ends
+/// at one point that do not name each other are two vertices, and the expansion builds a slit there
+/// rather than a saddle.
 fn is_junction(massif: &Massif, ridge: RidgeId, far: bool) -> bool {
     let parameter = if far { 1.0 } else { 0.0 };
+    let line = LineRef::Ridge(ridge);
+    let own = if far {
+        massif.skeleton.ridges[ridge.0].end
+    } else {
+        massif.skeleton.ridges[ridge.0].start
+    };
+    // This crest arrives on another line: a col.
+    if own.station().is_some() {
+        return true;
+    }
+    // Another crest arrives on this one: the same col, authored from the other side.
     massif.skeleton.ridges.iter().any(|other| {
         [other.start, other.end]
             .iter()
             .filter_map(End::station)
-            .any(|station| {
-                station.line == LineRef::Ridge(ridge) && (station.t - parameter).abs() < 1.0e-3
-            })
+            .any(|station| station.line == line && (station.t - parameter).abs() < 1.0e-3)
     })
 }
 
@@ -538,9 +588,14 @@ fn end_point(name: &str, far: bool) -> (Vec2, f32) {
 struct Graph<'a> {
     /// The vertices, welded.
     vertices: Vec<Vertex>,
+    /// For each crest, the vertex its authored start stands at and the vertex its end stands at.
+    /// The face walk steps on these: a dart's start and end are read off them rather than stored
+    /// twice.
+    ends: Vec<[usize; 2]>,
     /// The lines being walked, read for the point and height a station names. Held rather than
-    /// copied: a wall's ceiling has to be asked of the skeleton **as it now stands**, and the
-    /// skeleton it stood as when the graph was welded has already had its foot taken down.
+    /// copied: a wall's ceiling has to be asked of the skeleton **as it now stands**, because the
+    /// skeleton as it was authored still has its foot up in the air where the plain has since taken
+    /// it down.
     skeleton: &'a Skeleton,
 }
 
@@ -549,12 +604,10 @@ struct Vertex {
     /// Plan position and elevation.
     position: Vec2,
     elevation: f32,
-    /// The crests standing here, each with the direction it leaves in.
+    /// The crests standing here, each with the direction it leaves in, counterclockwise by bearing.
+    /// The order is what the face walk turns on, so it is the one piece of state the walk cannot
+    /// recover from anything else.
     at: Vec<Branch>,
-    /// The vertex this one was reached from, and the crest walked to get here. Set by [`Graph::order`],\n    /// read by [`Graph::chain`].
-    parent: Option<(usize, usize)>,
-    /// How many crests deep this vertex is from the summit.
-    depth: usize,
 }
 
 /// One crest standing at one vertex.
@@ -564,6 +617,9 @@ struct Branch {
     crest: usize,
     /// The vertex it leads to.
     to: usize,
+    /// Whether the crest's authored start stands here, which is the direction of travel that keeps
+    /// its parameters reading outwards from this vertex.
+    forward: bool,
     /// The bearing it leaves at.
     bearing: f32,
 }
@@ -619,8 +675,6 @@ impl<'a> Graph<'a> {
                         position,
                         elevation,
                         at: Vec::new(),
-                        parent: None,
-                        depth: 0,
                     });
                     vertices.len() - 1
                 });
@@ -634,6 +688,7 @@ impl<'a> Graph<'a> {
                 vertices[at].at.push(Branch {
                     crest: index,
                     to: pair[usize::from(!far)],
+                    forward: !far,
                     bearing: leaving(index, !far),
                 });
             }
@@ -643,11 +698,33 @@ impl<'a> Graph<'a> {
                 .at
                 .sort_by(|left, right| left.bearing.total_cmp(&right.bearing));
         }
-        Self { vertices, skeleton }
+        Self {
+            vertices,
+            ends,
+            skeleton,
+        }
     }
 
     fn vertex(&self, index: usize) -> &Vertex {
         &self.vertices[index]
+    }
+
+    /// How many crests stand at a vertex. One is a tip, which is where a crest reaches the rim.
+    fn degree(&self, index: usize) -> usize {
+        self.vertices[index].at.len()
+    }
+
+    /// The vertices a run of crest ends passes through, in order, without repeats.
+    fn vertices_of(&self, walk: &[Dart]) -> Vec<usize> {
+        let mut found: Vec<usize> = Vec::new();
+        for dart in walk {
+            for vertex in [self.start(*dart), self.end(*dart)] {
+                if !found.contains(&vertex) {
+                    found.push(vertex);
+                }
+            }
+        }
+        found
     }
 
     /// The vertex with the most height: the root the walk starts from.
@@ -661,106 +738,146 @@ impl<'a> Graph<'a> {
             .unwrap_or(0)
     }
 
-    /// Roots the graph and returns its tips in the cyclic order they lie round the massif.
+    /// Every face of the ridge graph, as the run of crest ends that bounds it.
     ///
-    /// **A wall-following tour, not a depth-first search.** A search lists a vertex's children in
-    /// bearing order and calls that the cyclic order, and it is not: the branch back to the parent
-    /// sits inside the circle too, so the pair that wraps from the last child to the first has the
-    /// parent's own ridge in its sector and is not a face at all. Walking the tree with a wall kept
-    /// on one side — at each vertex leaving by the branch next after the one arrived on — passes every
-    /// branch of every vertex once, records each tip once, and the order it records them in is the
-    /// order they lie round the mountain. Consecutive pairs of that, cyclically closed, are exactly
-    /// the basins: one per tip.
-    fn order(&mut self, root: usize) -> Vec<usize> {
-        let mut tips = Vec::new();
-        // The tour starts by walking *into* the tree from the root's first branch, and the root's own
-        // branches are taken in bearing order: the leaves come out in the cyclic order they have round
-        // the massif, and the last and first of them are adjacent because the root's branch list is a
-        // circle and the tour closes there.
-        let first = self.vertices[root].at.clone();
-        for index in 0..first.len() {
-            let branch = first[index];
-            self.vertices[branch.to].parent = Some((root, branch.crest));
-            self.vertices[branch.to].depth = 1;
-            self.tour(branch.to, root, &mut tips);
-        }
-        if tips.is_empty() {
-            tips.push(root);
-        }
-        tips
-    }
-
-    /// Walks on from `at`, having come from `from`, and records the leaves in the order the wall
-    /// reaches them.
+    /// **The half-edge walk, which is what makes a network and a tree the same case.** A basin is a
+    /// face; a face is found by walking its boundary with the land on one side: arrive along a crest
+    /// end, and leave by the end immediately clockwise of the one taken back. Every direction of
+    /// every crest is the start of exactly one such walk, and the walks that come back to where they
+    /// started are the faces.
     ///
-    /// At each vertex the branches are taken in bearing order **starting just after the one come in
-    /// on**, which is the wall-following step: it is what makes a vertex's parent branch occupy its
-    /// place in the circle rather than being skipped, and skipping it is what pairs two tips whose
-    /// sector has the ridge back to the summit running through it.
-    fn tour(&mut self, at: usize, from: usize, tips: &mut Vec<usize>) {
-        let branches = self.vertices[at].at.clone();
-        let arrived = branches
-            .iter()
-            .position(|branch| branch.to == from)
-            .unwrap_or(branches.len());
-        if branches.len() <= 1 {
-            tips.push(at);
-            return;
-        }
-        for step in 1..branches.len() {
-            let branch = branches[(arrived + step) % branches.len()];
-            if branch.to == from {
+    /// A **tree has one face**, and it is the outside: the walk runs down one side of every crest and
+    /// back up the other, passing each tip. Splitting that single walk at its degree-one vertices is
+    /// what recovers the basins of a tree — one between each consecutive pair of tips — so the tree
+    /// is not a special case of the algorithm, it is the case where there is nothing but the outer
+    /// face. A **tie** ridge, joining two crest ends that were already connected, cuts a face in two
+    /// and the new one reaches no tip at all: that is a cirque, and it is handled by the same walk
+    /// with no branch anywhere for it.
+    ///
+    /// The order is deterministic because the crests are walked in index order and the directions in
+    /// the order `start` then `end`, which is what makes an id mean the same thing across builds.
+    fn faces(&self) -> Vec<Face> {
+        let darts = self.ends.len() * 2;
+        let mut seen = vec![false; darts];
+        let mut faces: Vec<Face> = Vec::new();
+        for start in 0..darts {
+            if seen[start] {
                 continue;
             }
-            self.vertices[branch.to].parent = Some((at, branch.crest));
-            self.vertices[branch.to].depth = self.vertices[at].depth + 1;
-            self.tour(branch.to, at, tips);
-        }
-    }
-
-    /// The vertex where the paths from two tips part — which is the basin's head, and the col when it
-    /// is not the summit.
-    fn ancestor(&self, a: usize, b: usize) -> usize {
-        let (mut x, mut y) = (a, b);
-        while self.vertices[x].depth > self.vertices[y].depth {
-            x = self.vertices[x].parent.map_or(x, |(parent, _)| parent);
-        }
-        while self.vertices[y].depth > self.vertices[x].depth {
-            y = self.vertices[y].parent.map_or(y, |(parent, _)| parent);
-        }
-        while x != y {
-            x = self.vertices[x].parent.map_or(x, |(parent, _)| parent);
-            y = self.vertices[y].parent.map_or(y, |(parent, _)| parent);
-        }
-        x
-    }
-
-    /// The chain of crests from a vertex out to one of its tips.
-    fn chain(&self, head: usize, tip: usize) -> Chain {
-        let mut path: Vec<(usize, usize)> = Vec::new();
-        let mut at = tip;
-        while at != head {
-            let Some((parent, crest)) = self.vertices[at].parent else {
-                break;
+            let mut walk: Vec<Dart> = Vec::new();
+            let mut dart = Dart {
+                crest: start / 2,
+                forward: start % 2 == 0,
             };
-            path.push((crest, parent));
-            at = parent;
-        }
-        path.reverse();
-        let crests: Vec<usize> = path.iter().map(|(crest, _)| *crest).collect();
-        let spans: Vec<f32> = crests
-            .iter()
-            .map(|index| {
-                let nodes = CRESTS[*index].nodes;
-                let mut total = 0.0;
-                for pair in nodes.windows(2) {
-                    total += distance([pair[0][0], pair[0][1]], [pair[1][0], pair[1][1]]);
+            for _ in 0..=darts {
+                // Mark **every dart the walk touches**, not just the one it started on. Marking only
+                // the start leaves the other darts of the same boundary unclaimed, so each of them
+                // begins a fresh "face" that is really the same cycle entered later, and a graph with
+                // twenty crests reports thirty-eight basins whose walls are one crest long.
+                seen[dart.slot()] = true;
+                walk.push(dart);
+                let Some(onward) = self.turn(dart) else {
+                    break;
+                };
+                if onward.slot() == start {
+                    break;
                 }
-                total
-            })
-            .collect();
+                dart = onward;
+            }
+            faces.push(Face { walk });
+        }
+        faces
+    }
+
+    /// The crest end taken after `came`, keeping the land on the walk's left.
+    fn turn(&self, came: Dart) -> Option<Dart> {
+        let at = self.end(came);
+        let branches = &self.vertices[at].at;
+        // The end that leaves here and runs back along the crest just walked.
+        let back = branches
+            .iter()
+            .position(|other| other.crest == came.crest)?;
+        // Immediately **clockwise** of it, which is the previous one in the counterclockwise order
+        // the branches are held in, wrapping at the front. Written as an index rather than with
+        // `checked_sub` and a `?`, because a `?` there ends the walk instead of wrapping it and every
+        // face that crosses index zero comes back truncated — which reads as too many faces.
+        let previous = (back + 1) % branches.len();
+        let branch = branches.get(previous)?;
+        // A branch's `forward` already says which way its crest runs **from this vertex** — the
+        // authored start stands here, so leaving here runs outwards — and the dart leaving here is
+        // therefore the same direction, not its negation. Negating it makes the walk step back along
+        // the crest it came in on, which bounces between two darts and returns a "face" one crest
+        // long for every crest in the graph.
+        Some(Dart {
+            crest: branch.crest,
+            forward: branch.forward,
+        })
+    }
+
+    /// Where a crest end stands: the vertex at the end the dart runs to.
+    fn end(&self, dart: Dart) -> usize {
+        let pair = self.ends[dart.crest];
+        if dart.forward { pair[1] } else { pair[0] }
+    }
+
+    /// Where a crest end starts from.
+    fn start(&self, dart: Dart) -> usize {
+        let pair = self.ends[dart.crest];
+        if dart.forward { pair[0] } else { pair[1] }
+    }
+
+    /// The chain of crests a run of darts makes, walked in the order it is given.
+    ///
+    /// The caller has already put the darts in the order one wall walks them, which is why this takes
+    /// a list rather than a boundary and two endpoints: a basin's two walls are the **same stretch of
+    /// boundary traversed in opposite senses**, and a chain that scanned the stretch forward from its
+    /// beginning for both would hand back the same wall twice. That scan is what this replaced.
+    fn chain(&self, walk: &[Dart]) -> Chain {
+        // **A wall has to be a path**, and asserting it is the single check whose absence let a
+        // wrong wall through as a plausible mesh for a whole session. `Chain::at` reads a wall as a
+        // run of legs joined end to end and interpolates along it without ever asking whether the
+        // legs actually join; when they do not, it happily reports a height from somewhere the wall
+        // never visited, the floor is written against it, and the surface folds. A wall that is not a
+        // path is not a detail to be found later by looking at the render — it is a wrong answer
+        // stated confidently, and the only cheap way to catch it is to say so at the moment it is
+        // built.
+        for pair in walk.windows(2) {
+            let (arrived, leaves) = (self.end(pair[0]), self.start(pair[1]));
+            debug_assert!(
+                arrived == leaves,
+                "a wall is not a path: it arrives at vertex {arrived} on `{}` and leaves vertex \
+                 {leaves} on `{}`, which are different points. A crest was walked to an end that is \
+                 not where the next crest begins.",
+                CRESTS[pair[0].crest].name,
+                CRESTS[pair[1].crest].name,
+            );
+        }
+        let mut legs: Vec<Leg> = Vec::new();
+        for dart in walk {
+            let nodes = CRESTS[dart.crest].nodes;
+            let mut span = 0.0;
+            for pair in nodes.windows(2) {
+                span += distance([pair[0][0], pair[0][1]], [pair[1][0], pair[1][1]]);
+            }
+            // Every crest is authored outwards, so a dart running back along one is walked with its
+            // parameters falling. The leg carries which way, so `Chain::at` reads the crest the same
+            // way its author wrote it and the station it names is the station the wall stands on.
+            legs.push(Leg {
+                crest: dart.crest,
+                from: if dart.forward { 0.0 } else { 1.0 },
+                to: if dart.forward { 1.0 } else { 0.0 },
+                span,
+            });
+        }
+        let spans: Vec<f32> = legs.iter().map(|leg| leg.span).collect();
         let total: f32 = spans.iter().sum();
+        let crests: Vec<usize> = legs.iter().map(|leg| leg.crest).collect();
+        let tip = legs.last().map_or(0, |leg| {
+            let pair = self.ends[leg.crest];
+            if leg.to > leg.from { pair[1] } else { pair[0] }
+        });
         Chain {
+            legs,
             crests,
             spans,
             total,
@@ -781,10 +898,53 @@ fn leaving(crest: usize, forward: bool) -> f32 {
     (to[1] - from[1]).atan2(to[0] - from[0]).rem_euclid(TAU)
 }
 
-/// One wall of a basin: a run of crests from the head out to a tip, walked by the fraction of its own
-/// length.
+/// One direction of one crest. The same data as a [`Branch`] read from the other end, but a dart has
+/// exactly one start and one end, which is what a face walk steps on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Dart {
+    /// The crest.
+    crest: usize,
+    /// Whether the dart runs from the crest's authored start to its authored end.
+    forward: bool,
+}
+
+impl Dart {
+    /// The slot a dart is remembered by: one per direction of every crest.
+    ///
+    /// Written once and used for both the `seen` index and the test for the walk's own closing,
+    /// because two spellings of the same number is one that can be inverted — and inverted it was,
+    /// which made every face come back one dart long.
+    fn slot(self) -> usize {
+        self.crest * 2 + usize::from(!self.forward)
+    }
+}
+
+/// One face of the ridge graph: the run of crest ends that bound it, in walk order.
+struct Face {
+    /// The darts round the boundary, each starting where the one before it ended.
+    walk: Vec<Dart>,
+}
+
+/// One crest of a wall, with the parameters it is walked between.
+#[derive(Debug, Clone, Copy)]
+struct Leg {
+    /// The crest.
+    crest: usize,
+    /// The parameter the wall enters it at.
+    from: f32,
+    /// The parameter it leaves at.
+    to: f32,
+    /// Its plan length.
+    span: f32,
+}
+
+/// One wall of a basin: a run of crests from the head out to its far end, walked by the fraction of
+/// its own length.
 struct Chain {
-    /// The crests, head first.
+    /// The legs, head first, each carrying which way its crest is walked.
+    legs: Vec<Leg>,
+    /// The crests, head first. The same list as `legs` reduced to names, kept because the trace and
+    /// the junction arithmetic both want only that.
     crests: Vec<usize>,
     /// The plan length of each.
     spans: Vec<f32>,
@@ -812,11 +972,11 @@ impl Chain {
     ///
     /// Read **through the skeleton**, at the station the wall names, rather than by interpolating the
     /// authored table by node index. Two reasons, and the first is a live bug: a station names an
-    /// arc-length parameter, while `nodes.len()` counts *nodes*, so on a crest whose authored nodes
-    /// are unevenly spaced the two disagree about where along the crest the station is — the ceiling
-    /// gets evaluated at a different point than the floor stands at. And the authored table is what the
-    /// crest was *before* the foot was taken down to the plain, so a ceiling read from it can sit above
-    /// a wall that has since been levelled, which inverts the belt.
+    /// arc-length parameter while `nodes.len()` counts *nodes*, so on a crest whose authored nodes are
+    /// unevenly spaced the two disagree about where along the crest the station is, and the ceiling
+    /// gets evaluated somewhere other than where the floor stands. And the authored table is what the
+    /// crest was **before** its foot was taken down to the plain, so a ceiling read from it can sit
+    /// above a wall that has since been levelled — which inverts the belt.
     fn at(&self, graph: &Graph, fraction: f32) -> (Vec2, f32, Station) {
         let target = self.total * fraction.clamp(0.0, 1.0);
         let mut walked = 0.0;
@@ -828,7 +988,9 @@ impl Chain {
                 } else {
                     0.0
                 };
-                let station = Station::ridge(RidgeId(self.crests[index]), within);
+                let leg = self.legs[index];
+                let t = leg.from + (leg.to - leg.from) * within;
+                let station = Station::ridge(RidgeId(leg.crest), t);
                 let point = graph
                     .skeleton
                     .station_point(station)
@@ -841,27 +1003,308 @@ impl Chain {
         (
             at.position,
             at.elevation,
-            Station::ridge(RidgeId(self.crests[0]), 1.0),
+            Station::ridge(RidgeId(self.crests[0]), self.legs[0].to),
         )
     }
 }
+/// One basin: the two runs of crest that bound it, from the head out to each end.
+struct Basin {
+    /// The vertex the two walls part at: the basin's highest, and a col when it is not the summit.
+    head: usize,
+    /// The wall on the walk's left, head first.
+    left: Vec<Dart>,
+    /// The wall on the walk's right, head first.
+    right: Vec<Dart>,
+    /// Whether this basin is a **cirque**: a closed ring that reaches no rim, so both walls end at one
+    /// vertex and its floor spills over that lip instead of running out to a mouth.
+    closed: bool,
+}
 
-/// The basin floors and the rim.
+/// Split an open stretch at the vertex its two walls part at.
+///
+/// A pocket of the outer face is a path from one tip to the next, and the head — its highest vertex —
+/// lies somewhere along it. The two walls are the way out from the head toward each tip: one is the
+/// path's own order, the other is reversed **and turned around**, because a dart read backwards leaves
+/// from the vertex it arrived at rather than the one it started at.
+fn split(graph: &Graph, walk: &[Dart], head: usize) -> Option<[Vec<Dart>; 2]> {
+    let at = walk
+        .iter()
+        .position(|dart| graph.start(*dart) == head)
+        .unwrap_or(walk.len());
+    let left: Vec<Dart> = walk[at..].to_vec();
+    let right: Vec<Dart> = walk[..at]
+        .iter()
+        .rev()
+        .map(|dart| Dart {
+            crest: dart.crest,
+            forward: !dart.forward,
+        })
+        .collect();
+    if left.is_empty() || right.is_empty() {
+        return None;
+    }
+    Some([left, right])
+}
+
+/// Split a **closed** ring into the two arcs between its highest and its lowest vertex.
+///
+/// A cirque is the one basin whose boundary comes back to where it started, so splitting it at its
+/// head alone produces two walls that both end at the head — `foot` equals `head`, the fall is zero,
+/// and the floor is written flat at the summit's own height with a mouth inside the mountain. The two
+/// arcs have to run between **two** vertices: the head, where the water parts, and the foot, the lowest
+/// point of the ring, which is the col the floor spills over into the basin beyond.
+fn split_ring(graph: &Graph, walk: &[Dart], head: usize, foot: usize) -> Option<[Vec<Dart>; 2]> {
+    let at = walk
+        .iter()
+        .position(|dart| graph.start(*dart) == head)
+        .unwrap_or(walk.len());
+    let to = walk
+        .iter()
+        .position(|dart| graph.start(*dart) == foot)
+        .unwrap_or(at);
+    if at == to {
+        return None;
+    }
+    // Round the ring the long way and the short way, both read from the head toward the foot.
+    let mut forward: Vec<Dart> = Vec::new();
+    let mut index = at;
+    while index != to {
+        forward.push(walk[index]);
+        index = (index + 1) % walk.len();
+        if forward.len() > walk.len() {
+            return None;
+        }
+    }
+    let mut backward: Vec<Dart> = Vec::new();
+    let mut index = at;
+    while index != to {
+        index = (index + walk.len() - 1) % walk.len();
+        let dart = walk[index];
+        backward.push(Dart {
+            crest: dart.crest,
+            forward: !dart.forward,
+        });
+        if backward.len() > walk.len() {
+            return None;
+        }
+    }
+    if forward.is_empty() || backward.is_empty() {
+        return None;
+    }
+    Some([forward, backward])
+}
+
+/// Every basin of the ridge graph, from its faces.
+///
+/// A face that reaches the massif's edge is the outside of the whole graph, and the basins inside it
+/// are the stretches between its tips — the land between one tip and the next. A face that reaches no
+/// tip is already exactly one basin: a cirque, closed by a tie ridge, with nothing but its own ring
+/// round it.
+///
+/// The head of a basin is the highest vertex on its boundary, and that is not a guess at where water
+/// parts: it is the same fact stated as an elevation. For a face that reaches the rim the two walls
+/// end at two different tips; for a cirque they end at the one low point where its floor spills over
+/// the lip into the basin beyond.
+fn basins(graph: &Graph) -> Vec<Basin> {
+    let mut found: Vec<Basin> = Vec::new();
+    if std::env::var("BASIN_TRACE").is_ok() {
+        for face in graph.faces() {
+            let visits = face
+                .walk
+                .iter()
+                .filter(|dart| graph.degree(graph.start(**dart)) <= 1)
+                .count();
+            let names: Vec<&str> = face
+                .walk
+                .iter()
+                .map(|dart| CRESTS[dart.crest].name)
+                .collect();
+            println!(
+                "  face: {} darts, {visits} tip visits, simple {}, [{}]",
+                face.walk.len(),
+                is_simple(graph, &face.walk),
+                names.join(" "),
+            );
+        }
+    }
+    for face in graph.faces() {
+        if face.walk.is_empty() {
+            continue;
+        }
+        let tips: Vec<usize> = face
+            .walk
+            .iter()
+            .enumerate()
+            .filter(|(_, dart)| graph.degree(graph.start(**dart)) <= 1)
+            .map(|(index, _)| index)
+            .collect();
+        // The stretches to split the boundary into: one between each consecutive pair of tips for a
+        // face that reaches the massif's edge, and the whole boundary for one that does not — a
+        // cirque, which is already exactly one basin.
+        let stretches: Vec<Vec<Dart>> = if tips.len() < 2 {
+            vec![face.walk.clone()]
+        } else {
+            let mut built: Vec<Vec<Dart>> = (0..tips.len())
+                .map(|slot| {
+                    let from = tips[slot];
+                    let to = tips[(slot + 1) % tips.len()];
+                    let mut stretch: Vec<Dart> = Vec::new();
+                    let mut index = from;
+                    while index != to {
+                        stretch.push(face.walk[index]);
+                        index = (index + 1) % face.walk.len();
+                        if stretch.len() > face.walk.len() {
+                            break;
+                        }
+                    }
+                    stretch
+                })
+                .collect();
+            // **Each pocket is then mirrored**: the same land, walked the other way round. The
+            // half-edge walk keeps the land on one side and the basins have to be found in its order,
+            // but the rim is a *second* closed walk parallel to the face's, and the mesh wants it wound
+            // with the inside on its left — the opposite sense. Taken in the walk's own order the rim
+            // comes out wound backwards, its signed area is negative, and the plan comparison reads
+            // that as a massif that is not there. Mirroring is the one degree of freedom the two
+            // conventions differ by, not a correction to a wrong walk: the other turn direction in
+            // [`Graph::turn`] hands back exactly this order.
+            for stretch in &mut built {
+                stretch.reverse();
+                for dart in stretch.iter_mut() {
+                    dart.forward = !dart.forward;
+                }
+            }
+            built.reverse();
+            built
+        };
+        for stretch in stretches {
+            if stretch.is_empty() {
+                continue;
+            }
+            // **A stretch is a basin only if it visits no vertex twice.** This is the check that says
+            // which graphs the weave can handle, and it is not about the weave at all: a rim is a
+            // second closed walk parallel to the outer face's, sharing its tips, and a stretch that
+            // returns to a vertex it already stood on encloses a hole. A tie between two **tips** makes
+            // exactly that — a lollipop hanging off the graph by one vertex, which the outer walk
+            // enters and leaves by the same place — and the pocket wrapping it is an annulus, for
+            // which "two walls, a head, a bisector, a mouth" has no meaning. Its mouth lands inside
+            // the massif, and because welding is by position a misplaced rim vertex does not merely
+            // look wrong, it glues the outline to whatever sample it fell on and shatters the mesh.
+            // Tie two **cols** instead and every stretch is a simple arc.
+            debug_assert!(
+                is_simple(graph, &stretch),
+                "a basin's boundary revisits a vertex, so the region it bounds has a hole in it: the \
+                 ridge graph has a cycle attached to the rest by a single vertex, and the pocket \
+                 around that cycle is an annulus which cannot be drained to one mouth. Tie two cols, \
+                 not two tips.",
+            );
+            let Some(head) = highest(graph, &stretch) else {
+                continue;
+            };
+            // A tipless face is a ring, and a ring's two arcs run between its highest and its lowest
+            // vertex. An open pocket's two walls run from its head out to its two tips.
+            let closed = tips.is_empty();
+            let split = if closed {
+                let Some(foot) = lowest(graph, &stretch) else {
+                    continue;
+                };
+                split_ring(graph, &stretch, head, foot)
+            } else {
+                split(graph, &stretch, head)
+            };
+            let Some([left, right]) = split else {
+                continue;
+            };
+            found.push(Basin {
+                head,
+                left,
+                right,
+                closed,
+            });
+        }
+    }
+    found
+}
+
+/// Whether a run of crest ends walks a boundary that meets itself nowhere.
+///
+/// The vertices are taken **with multiplicity** — a run of `n` darts stands on `n + 1` of them, each
+/// where the one before it ended — and then the closing point of a closed run is dropped, because a
+/// ring's last vertex is its first and that repeat is the ring closing rather than the ring crossing
+/// itself. What is left must be all different.
+///
+/// A first version of this compared the count of *distinct* vertices to the dart count plus one, which
+/// is right for an open run and wrong for a closed one: a cirque's five-dart ring stands on five
+/// vertices, not six, so the check refused the very face it was written to protect.
+fn is_simple(graph: &Graph, walk: &[Dart]) -> bool {
+    let mut visited: Vec<usize> = Vec::with_capacity(walk.len() + 1);
+    for dart in walk {
+        visited.push(graph.start(*dart));
+    }
+    if let Some(last) = walk.last() {
+        visited.push(graph.end(*last));
+    }
+    // A closed run's last vertex is its first; that repeat is not a crossing.
+    if visited.len() > 1 && visited.first() == visited.last() {
+        visited.pop();
+    }
+    let mut seen: Vec<usize> = Vec::with_capacity(visited.len());
+    for vertex in visited {
+        if seen.contains(&vertex) {
+            return false;
+        }
+        seen.push(vertex);
+    }
+    true
+}
+
+/// The highest vertex on a boundary.
+fn highest(graph: &Graph, walk: &[Dart]) -> Option<usize> {
+    let vertices = graph.vertices_of(walk);
+    vertices
+        .iter()
+        .max_by(|left, right| {
+            graph
+                .vertex(**left)
+                .elevation
+                .total_cmp(&graph.vertex(**right).elevation)
+        })
+        .copied()
+}
+
+/// The lowest vertex on a boundary.
+fn lowest(graph: &Graph, walk: &[Dart]) -> Option<usize> {
+    let vertices = graph.vertices_of(walk);
+    vertices
+        .iter()
+        .min_by(|left, right| {
+            graph
+                .vertex(**left)
+                .elevation
+                .total_cmp(&graph.vertex(**right).elevation)
+        })
+        .copied()
+}
 fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
-    let mut graph = Graph::of(skeleton);
-    let root = graph.summit();
-    let tips = graph.order(root);
+    let graph = Graph::of(skeleton);
     let mut valleys: Vec<Valley> = Vec::new();
     let mut rim: Vec<(Vec2, f32)> = Vec::new();
     let mut pending: Vec<(usize, Vec2)> = Vec::new();
 
-    for index in 0..tips.len() {
-        let (a, b) = (tips[index], tips[(index + 1) % tips.len()]);
-        let head = graph.ancestor(a, b);
-        let (left, right) = (graph.chain(head, a), graph.chain(head, b));
+    // One basin per wall pair, and the pairs come out of the faces. A face that reaches the massif's
+    // edge is split at its tips and gives one basin between each consecutive pair; a face that does
+    // not reach it — a cirque closed by a tie ridge — is one basin whole, draining to the low point
+    // of its own ring.
+    for (index, basin) in basins(&graph).iter().enumerate() {
+        let (left, right) = (graph.chain(&basin.left), graph.chain(&basin.right));
         if left.crests.is_empty() || right.crests.is_empty() {
             continue;
         }
+        // A basin whose two walls end at the one vertex is a cirque: it reaches no rim, and its floor
+        // spills over the low point of its own ring.
+        // A ring's two walls both end at the same col, which is how it was split; that is the fact the
+        // basin carries rather than one to be read off the two tips.
+        let closed = basin.closed;
         let (head_plan, head_height, _) = left.at(&graph, 0.0);
         let bearing = |chain: &Chain| {
             let at = graph.vertex(chain.tip).position;
@@ -876,7 +1319,16 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
         for chain in [&left, &right] {
             ribs.extend(chain.junctions());
         }
-        ribs.push(1.0);
+        // **A rim basin ends at its mouth, a cirque ends at its col.** The far rib is the last point
+        // the floor is *computed* at; for a basin with a mouth that is where the mouth is hung, and for
+        // a cirque it is the lip, whose node the branch below writes with the col's own elevation
+        // because the floor has to arrive at a height it does not get to choose. Keeping the rib as
+        // well writes the same point twice: a belt of zero area, whose triangles collapse to a point,
+        // which encloses no area and so passes the plan comparison while leaving the surface pinched —
+        // two boundary loops meeting at one vertex, found by counting boundary edges per vertex.
+        if !closed {
+            ribs.push(1.0);
+        }
         ribs.sort_by(f32::total_cmp);
         ribs.dedup_by(|first, second| (*first - *second).abs() < 1.0e-4);
 
@@ -888,7 +1340,7 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
         .fold(f32::INFINITY, f32::min);
         let fall = (head_height - foot).max(0.0);
         let depth = CRESTS[*left.crests.last().unwrap()].depth;
-        let (head_plan, head_height, start_left) = left.at(&graph, 0.0);
+        let (_, _, start_left) = left.at(&graph, 0.0);
         let (_, _, start_right) = right.at(&graph, 0.0);
         let mut nodes = vec![ValleyNode::new(
             head_plan,
@@ -899,15 +1351,34 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
         for fraction in &ribs {
             let (a_plan, a_height, a_station) = left.at(&graph, *fraction);
             let (b_plan, b_height, b_station) = right.at(&graph, *fraction);
+            if std::env::var("RIB_TRACE").is_ok() && index == 2 {
+                println!(
+                    "    rib {fraction:.3}: L {a_height:.0} on {:?} / R {b_height:.0} on {:?}",
+                    a_station, b_station,
+                );
+            }
             let reach = (distance(a_plan, head_plan) + distance(b_plan, head_plan)) * 0.5;
-            // The floor's height is the lowest of three descents: a straight run from the head to the
-            // foot, the ceiling it must stay under, and **the plain, which is base level**. A valley
-            // carves down to where it meets the ground it drains into and no further — digging past it
-            // is what made every floor here dip below zero and then climb back to the rim at its mouth,
-            // a profile that rises at the end and so fails the elevation rule as well as looking like
-            // a trench with a step in it.
+            // The floor's height is the lower of two descents: a straight run from the head to the
+            // foot, and the ceiling it must stay under. The minimum of two non-increasing functions
+            // is itself non-increasing, which is what keeps the elevation rule true without a clamp
+            // that would flatten the whole valley to one number.
+            //
+            // The floor is laid out along the head's bisector at the **average** of the two walls'
+            // distances, and it is the only place it can be: the plan position of a floor node is what
+            // decides which side of a crest each belt beside it lies on, so a floor moved to, say, the
+            // midpoint of its two stations — which reads as more obviously "between the walls" — puts
+            // belts on the wrong sides and takes the coverage of whole crests with it. Tried; 24
+            // violations. The consequence is a floor that can land on a wall where a wedge bends
+            // sharply, which pinches the surface at that one point (see the junction note in
+            // `.agents/proposals/network-derivation.md`).
             nodes.push(ValleyNode::new(
                 offset(head_plan, [direction[0] * reach, direction[1] * reach]),
+                // The floor is the lowest of three descents: a straight run from the head to the foot,
+                // the ceiling it must stay under, and **the plain, which is base level**. A valley
+                // carves down to where it meets the ground it drains into and no further; digging past
+                // it makes the floor dip below zero and climb back to the rim at its mouth, a profile
+                // that rises at the end and fails the elevation rule as well as looking like a trench
+                // with a step in it.
                 (head_height - fall * fraction.powf(0.85))
                     .min(a_height.min(b_height) - fall * depth * *fraction)
                     .max(super::RIM as f32),
@@ -916,6 +1387,23 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
             ));
         }
         let corner = nodes.last().map_or(head_height, |node| node.elevation);
+        if closed {
+            // A **cirque**: both walls end at the same vertex, so the floor reaches the low point of
+            // its own ring and stops. Its last node's two stations name that one point, which makes
+            // the belts collapse there exactly as they do at a head, and the water goes over the lip
+            // into whatever basin the col belongs to. No rim vertex is written, because the cirque
+            // has no rim to reach — and that is the whole of why a network is worth more than a tree:
+            // it is the only one of the two that can hold a corrie.
+            let at = graph.vertex(left.tip);
+            nodes.push(ValleyNode::new(
+                at.position,
+                at.elevation,
+                left.at(&graph, 1.0).2,
+                right.at(&graph, 1.0).2,
+            ));
+            valleys.push(Valley::new(nodes).with_ends(End::On(start_left), End::Free));
+            continue;
+        }
         // The mouth stands beyond **both** tips, and the distance that does it is the fan's own
         // formula: the corner of a sector of half-angle θ whose walls reach `r` is `r / cos θ`,
         // because the chord between the two tips cuts inside that corner by exactly that much. A
@@ -934,7 +1422,10 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
             head_plan,
             [direction[0] * stand * 1.12, direction[1] * stand * 1.12],
         );
-        let mouth_elevation = corner * 0.6;
+        // The mouth stands at base level, which is where the floor has already reached: a valley
+        // arriving at the rim above its own floor leaves a step for the plain to fill, and one below it
+        // digs under the ground it drains into.
+        let mouth_elevation = corner.max(super::RIM as f32);
         nodes.push(ValleyNode::new(
             mouth,
             mouth_elevation,
@@ -944,20 +1435,26 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
         pending.push((valleys.len(), mouth));
         // The rim is written in the order the basins were walked, not sorted by bearing afterwards.
         // Basin `i` lies between tip `i` and tip `i + 1` and drains past both to mouth `i`, so the
-        // boundary round the whole massif is exactly `tip, mouth, tip, mouth …` — and each tip appears
-        // once, as the left wall's end of one basin and the right wall's end of the one before.
-        // Sorting those points by bearing about their own centroid asks a different question and gets
-        // a different answer: it interleaves a wide basin's mouth with a neighbour's tips, and the
-        // polygon that comes out cuts across the massif it was meant to enclose.
-        let at = graph.vertex(left.tip);
+        // boundary round the whole massif is exactly `tip, mouth, tip, mouth …`. Sorting those points
+        // by bearing about their own centroid asks a different question and gets a different answer:
+        // it interleaves a wide basin's mouth with a neighbour's tips, and the polygon that comes out
+        // cuts across the massif it was meant to enclose.
+        //
+        // The tip pushed is the one the basin **starts** at, which is the *right* wall's end: the left
+        // wall runs forward along the stretch from the head to the far tip, so its end is the next
+        // basin's starting tip. Pushing that one puts each mouth after the tip that follows it, which
+        // winds the outline one place out of step and folds a whole side of the range back on itself.
+        let at = graph.vertex(right.tip);
         rim.push((at.position, at.elevation));
         rim.push((mouth, mouth_elevation));
         let walked = nodes.len();
         valleys.push(Valley::new(nodes).with_ends(End::On(start_left), End::Free));
         if std::env::var("BASIN_TRACE").is_ok() {
             println!(
-                "  basin {index}: head {:.0}m, walls [{}] and [{}], {} nodes",
+                "  basin {index}: head {:.0}m at vertex {} (degree {}), walls [{}] and [{}], {} nodes",
                 head_height,
+                basin.head,
+                graph.degree(basin.head),
                 left.crests
                     .iter()
                     .map(|crest| CRESTS[*crest].name)
@@ -974,6 +1471,12 @@ fn drain(skeleton: &Skeleton) -> (Vec<Valley>, Vec<FootprintNode>) {
         }
     }
 
+    // **The rim is wound opposite to the order the basins were walked.** The half-edge walk keeps the
+    // land on its left, and a rim written in that same sense comes out wound clockwise — a correct,
+    // simple outline of exactly the right area, and a negative one, which the plan comparison reads as
+    // a massif that is not there. The mesh wants the inside on the rim's left, so the outline is the
+    // basins' order reversed. Reversing the list and not the pairs keeps every `tip, mouth` adjacent.
+    rim.reverse();
     let outline = weave_rim(rim);
     let walked = rim_parameters(&outline);
     for (valley, mouth) in pending {
