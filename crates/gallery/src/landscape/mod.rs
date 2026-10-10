@@ -155,18 +155,6 @@ const PLAIN_REACH: f64 = 18.0;
 /// then follows, and it is checked by the note the compile prints rather than by hope.
 const SUBJECT_HAZE: f64 = 0.10;
 
-/// Where the snowline sits, as a fraction of the summit's height.
-///
-/// The line itself is wobbled in the shader, because a snowline drawn as a level is a level and
-/// a level on a mountain is a thing that does not occur.
-const SNOW_LINE: f64 = 0.72;
-
-/// How far the snowline wanders either side of its own level, as a fraction of the summit.
-const SNOW_WOBBLE: f64 = 0.10;
-
-/// How far the snow fades in above the line, as a fraction of the summit.
-const SNOW_FADE: f64 = 0.07;
-
 /// The plain's height where it meets the massif, which is the rim's height.
 const RIM: f64 = 0.0;
 
@@ -521,7 +509,7 @@ pub fn landscape() -> Value {
         "{}\n{}\n{}",
         atmosphere.wgsl(),
         NOISE,
-        constants(radius, summit, sun),
+        constants(sun),
     );
     // The far ranges are the post stage's alone, so they are handed to the post stage alone. They
     // are a backdrop the air has already closed over, and a surface shader has no use for a line
@@ -529,16 +517,20 @@ pub fn landscape() -> Value {
     let post_helpers = format!("{helpers}\n{}", crate::ridges::RIDGES);
 
     let mut shaders: Vec<Value> = Vec::new();
+    // Both meshes are drawn with **no surface body at all**. What a massif looks like is a
+    // question for a later stage and a baked texture, not for a per-fragment shader here: the
+    // geometry is what this pipeline is for, and a surface the path tracer cannot reproduce is
+    // a surface only one backend draws. The colour each mesh wears is its material's own tint.
     shaders.extend(stage_set(
         "massif",
-        MASSIF,
+        "",
         &helpers,
         &massif_extras().point_schema(),
         &massif_extras(),
     ));
     shaders.extend(stage_set(
         "plain",
-        GROUND,
+        "",
         &helpers,
         &shaded_point_schema(),
         &plain_extras(),
@@ -655,14 +647,14 @@ pub fn landscape() -> Value {
                     "massif_depthing",
                     surface([1.0, 1.0, 1.0], 0.0, 1.0, [0.0; 3]),
                 ),
-                // The stone, which the surface body replaces entirely: the tint is **white** and the
-                // body writes the albedo, so the colour of the rock is decided in one place. A tint
-                // with a colour in it would be multiplied by the body's albedo, which is two
-                // decisions about one surface and the sort that drift apart.
+                // The stone. The colour of the rock is **the material's own data**, because
+                // there is no longer a body deciding it per fragment: one surface, one decision.
+                // It is the middle of the band the body used to mix between, so the range reads
+                // as one stone rather than as a gradient that has lost its ends.
                 mesh_material(
                     "shade",
                     "massif_lighting",
-                    surface([1.0, 1.0, 1.0], 0.0, 0.90, [0.0; 3]),
+                    surface([0.325, 0.295, 0.265], 0.0, 0.90, [0.0; 3]),
                 ),
                 mesh_material(
                     "ground_depth",
@@ -672,7 +664,7 @@ pub fn landscape() -> Value {
                 mesh_material(
                     "ground_shade",
                     "plain_lighting",
-                    surface([1.0, 1.0, 1.0], 0.0, 0.95, [0.0; 3]),
+                    surface([0.34, 0.32, 0.29], 0.0, 0.95, [0.0; 3]),
                 ),
             ]),
         ),
@@ -816,81 +808,35 @@ fn plain_height(x: f64, z: f64, radius: f64) -> f64 {
 }
 
 /// The constants the shader bodies are written against.
-fn constants(radius: f64, summit: f64, sun: [f64; 3]) -> String {
+///
+/// Only what something still reads. `SNOW_LINE`, `SNOW_WOBBLE`, `SNOW_FADE` and `SCENE_RADIUS`
+/// went with the massif's surface body; `CLOUD_TOP`, `CLOUD_COVER`, `CLOUD_FROM`, `RIVER_HALF`
+/// and `RIVER_MEANDR` were already unread, the last two left over from the river this plain used
+/// to have. A constant emitted for nobody is a number in the document that looks as load-bearing
+/// as one that is.
+fn constants(sun: [f64; 3]) -> String {
     format!(
-        "const SNOW_LINE: f32 = {:.3};\n\
-         const SNOW_WOBBLE: f32 = {:.3};\n\
-         const SNOW_FADE: f32 = {:.3};\n\
-         const SCENE_RADIUS: f32 = {radius:.3};\n\
-         const CLOUD_TOP: f32 = {CLOUD_TOP:.4};\n\
-         const CLOUD_COVER: f32 = {CLOUD_COVER:.4};\n\
-         const CLOUD_FROM: f32 = {CLOUD_FROM:.4};\n\
-         const RIVER_HALF: f32 = {RIVER_HALF:.4};\n\
-         const RIVER_MEANDR: f32 = {RIVER_MEANDR:.4};\n\
-         const RIDGE_SCALE: f32 = {RIDGE_SCALE:.4};\n\
+        "const RIDGE_SCALE: f32 = {RIDGE_SCALE:.4};\n\
          const RIDGE_LAYERS: i32 = {RIDGE_LAYERS};\n\
          const CIRRUS_COVER: f32 = {CIRRUS_COVER:.4};\n\
          const SUN_AHEAD: vec3<f32> = vec3<f32>({:.4}, {:.4}, {:.4});\n",
-        summit * SNOW_LINE,
-        summit * SNOW_WOBBLE,
-        (summit * SNOW_FADE).max(1.0),
         sun[0],
         sun[1],
         sun[2],
     )
 }
 
-/// How high the cloud in the valley stands, as a fraction of the massif's own radius.
-///
-/// **Just under the eye.** The eye stands a little over a tenth of the radius up, so a sea at
-/// this height is seen almost edge on: it runs out to the horizon as a surface rather than as a
-/// patch of ground, which is the reading that gives the shot its depth. A sea much lower would be
-/// looked down on and would read as a lake; much higher and the massif's own foot would be buried.
-const CLOUD_TOP: f64 = 0.150;
-
-/// How completely the cloud covers the ground beneath it.
-const CLOUD_COVER: f64 = 0.94;
-
 /// How much of the high sky the cirrus is allowed to take.
 const CIRRUS_COVER: f64 = 0.55;
 
-/// How far down the valley the cloud begins, as a multiple of a range's radius.
-///
-/// **A distance down the valley and not a height**, which is the whole of what moved the cloud
-/// out of the foreground. The cloud used to be a sea the massif came out of; here it is what
-/// closes the far end of the corridor, and the floor between the eye and it is left free to carry
-/// the river. A height could not do this job: the floor is flat, so every part of it is at the
-/// same height and a cloud keyed on height either covers all of it or none.
-const CLOUD_FROM: f64 = 5.2;
-
-/// How wide the wet ground either side of the river's own line is, as a multiple of a radius.
-///
-/// It is wide because a braided river is a **wet corridor rather than a channel**, and narrow
-/// because it has to stay a fraction of the valley's own width — at twice this the floodplain
-/// would from the foot of both ranges and the corridor would be a plain with two mountains on it.
-///
-/// It is also **narrow enough to survive being walked on**. A band of a fixed width in world
-/// space is not a fixed width on the screen: the eye stands on its own near edge, so the metre
-/// under the eye is the metre that fills the bottom of the frame, and a band wide enough to look
-/// right at the far end of the corridor is a lake at the near end. Half this is the number that
-/// leaves a green floodplain either side of the thread all the way down.
-const RIVER_HALF: f64 = 0.085;
-
-/// How far the river's line wanders off the valley's axis, as a multiple of a radius.
-///
-/// A river on the axis exactly would be a stripe, and a stripe is the one shape that cannot read
-/// as water: it says where the water is without ever saying the water went. This is more than the
-/// half-width, so the line wanders **off the middle of its own wet ground** — which is what puts
-/// the wider side of the floodplain on the outside of each bend, where a real river puts it.
-const RIVER_MEANDR: f64 = 0.30;
-
-/// What the two surface bodies are written against.
+/// The noise the post stage draws its weather from.
 ///
 /// # Invariants
 ///
-/// The noise is sampled in **world space along the ground**, so a pattern stays put on the
-/// mountain when the camera moves. Sampled in screen space it would slide across the picture as
-/// the eye moves, which reads as a smear on the lens rather than as stone.
+/// The only body left that reads this is the grade, and it uses it for the valley cloud and the
+/// cirrus. Those are sampled in **world space**, so a bank of cloud stays put on the landscape
+/// when the eye moves; sampled in screen space it would slide across the picture, which reads as a
+/// smear on the lens rather than as weather.
 const NOISE: &str = r#"
 /// Returns a value in zero to one from a two dimensional coordinate.
 fn hash(point: vec2<f32>) -> f32 {
@@ -921,190 +867,6 @@ fn noise(point: vec2<f32>, octaves: i32) -> f32 {
     }
     return total * 1.14;
 }
-"#;
-
-/// What the massif's surface does after the light is applied.
-///
-/// # Invariants
-///
-/// The bands are functions of **height and steepness**, and the two are not the same thing. Snow
-/// lies on what is high and level; bare rock shows on what is steep at any height; and scree
-/// gathers below. A mountain banded by height alone has snow on its vertical faces, which is the
-/// one place snow does not stay.
-///
-/// The ruggedness in `in.texture.x` is the crest's authored sharpness and it **varies the stone
-/// between neighbouring faces**. Two facets of one flank differ only by their normals otherwise,
-/// and facets lit by normals alone read as one smooth surface with steps in it; what makes a
-/// facet fan read as rock is that the faces are not all the same stone.
-const MASSIF: &str = r#"
-    // The stone a facet is cut from, and it is *the* albedo rather than a multiplier on one: the
-    // material's tint is white and this is the surface's colour. A body that scaled a tint would
-    // be deciding the colour in two places, and the second place is the one that drifts.
-    // **Steepness is read off the normal and not off the face's own `dip_angle`.** The two say the
-    // same thing — a face's dip is the angle its own normal makes with the horizon — and the normal
-    // is the one of them the rasteriser interpolates. `dip_angle` is a property of a face, written
-    // the same at all three of its corners, so it is constant across each triangle and steps at
-    // every triangle edge: a massif of two thousand of those reads as a fan of straw rather than
-    // as a face of rock, and it does so at exactly the scale of its own tessellation.
-    let steep = smoothstep(0.25, 0.65, 1.0 - clamp(normal.y, 0.0, 1.0));
-    let patches = 0.86 + 0.28 * noise(in.world_position.xz * 0.02, 3);
-    let bare = mix(vec3<f32>(0.46, 0.42, 0.37), vec3<f32>(0.19, 0.17, 0.16), steep);
-    // The stone varies **per block**, and the number that says which block a facet belongs to is the
-    // authored id — a flat per-face value, written the same at all three corners of every triangle of
-    // its belt, so it is constant across a block and steps only at a block's own edge. That is what
-    // makes it the right key and what makes `dip_angle` the wrong one: both are per-face, but the
-    // joint the variation is describing *is* the block boundary.
-    //
-    // It was read off `in.texture.x`, which is the belt's own across-parameter: a ramp along the
-    // direction a flank is walked, so every block in a flank carried the same gradient and the flank
-    // came out striped like straw. The hash is deliberately crude and its amplitude deliberately
-    // small — stone differs block to block by a little, not by a colour.
-    let block = fract(in.authored_id * 0.6180339887);
-    let stone = bare * (0.88 + 0.24 * block) * patches;
-
-    // The snowline wanders with the ground it lies on rather than running level, and it is driven
-    // by the same world position the rock is, so it stays on the mountain. It is held off the
-    // steepest faces by the same steepness the stone is read from, because that is where it does
-    // not stay.
-    let wobble = SNOW_WOBBLE * (noise(in.world_position.xz * 0.004, 3) * 2.0 - 1.0);
-    let above = smoothstep(SNOW_LINE + wobble - SNOW_FADE, SNOW_LINE + wobble + SNOW_FADE,
-                           in.world_position.y);
-    let snow = above * (1.0 - smoothstep(0.78, 0.98, 1.0 - clamp(normal.y, 0.0, 1.0)));
-    let snowed = mix(stone, vec3<f32>(0.93, 0.95, 1.00), snow);
-
-    // The floor of a valley is soil and scrub rather than stone, and it is warmer for it. It is
-    // what separates a valley from a narrower piece of the same slope.
-    let floor_mix = 1.0 - smoothstep(0.0, SCENE_RADIUS * 0.45, in.world_position.y);
-    color = color * mix(snowed, vec3<f32>(0.30, 0.29, 0.21), floor_mix * 0.75);
-
-    // The **sky a face stands in**, which on a range this dark is most of what separates a shadow
-    // from a hole in the picture. The sun rakes across the spine, so the flanks turned away from it
-    // are a large share of the frame, and the scene's second light cannot carry them alone: a point
-    // light in the middle of a plain eighteen times its own size leaves behind it a number about how
-    // far away it stands rather than about the sky. A face's own share of the sky is therefore
-    // decided here, where the face's normal and the sun's bearing both are.
-    //
-    // **Upward-facing is what counts, and not merely sun-facing.** An overhang sees the same sky
-    // as the ground beneath it and a vertical wall sees half of it, and that gradient is most of
-    // what makes an unlit face read as a surface with a shape in it rather than as a black cut-out.
-    let skyward = 0.35 + 0.65 * clamp(normal.y, 0.0, 1.0);
-    let from_sun = clamp(dot(normal, SUN_AHEAD), 0.0, 1.0);
-    color = color + air_colour() * skyward * (0.05 + 0.26 * (1.0 - from_sun));
-
-    let eye = uniforms.projection.position;
-    let view = normalize(in.world_position - eye);
-    let facing = 1.0 - abs(dot(normal, view));
-    let haze = air_closure(eye, in.world_position);
-    color = mix(color, air_colour(), clamp(haze * (0.45 + 0.55 * facing), 0.0, 0.90));
-"#;
-
-/// What the plain's surface does after the light is applied.
-///
-/// # Invariants
-///
-/// The plain is drawn by a body of its own rather than by the massif's with a flag in it: it carries
-/// none of the per-face facts the massif's body reads, so a shared body would have to be told which
-/// mesh it was drawing, and the way to tell it is the material row — which is a branch in a shader
-/// for a difference that is a different surface.
-///
-/// It hazes by the **same law** as the massif, from the same air. That is the whole reason the
-/// atmosphere is one value handed to every stage: the plain meets the massif along the rim, and two
-/// bodies washing towards two slightly different colours would draw that seam as a bright line
-/// across the foot of the mountain.
-///
-/// # What the ground is, and why the old ground was wrong
-///
-/// The first version of this scene stood its eye in a corridor and drew the floor as a **floodplain
-/// with a river down its axis**: green graded from the water, terrace benches, braided channels, all
-/// keyed to the line `x = 0`. That premise died with the corridor. The eye now stands out on the
-/// floor of the foreland looking at a range, and what the old body still painted was a lawn with a
-/// stream across it — a bright green field filling the bottom half of a picture that is about stone.
-///
-/// What is actually there is an **alluvial apron**: everything the range has shed, sorted by how far
-/// the water carried it. Coarse grey gravel at the foot where the slopes end, sand and silt beyond,
-/// and only then whatever will grow. It is keyed to the one fact the ground has that the mountain
-/// also knows — the distance from the range's own centre — because that distance *is* the sorting.
-///
-/// **The channels radiate, they do not run.** A braid that leaves a range at many mouths spreads as
-/// it loses its load, so the pattern is keyed to the bearing round the centre and not to one axis.
-/// Drawing a single river down the middle of a picture of a mountain is drawing a road.
-const GROUND: &str = r#"
-    let patches = 0.90 + 0.16 * noise(in.world_position.xz * 0.004, 4);
-    // How far this point stands from the range, in the range's own measure. Every decision the apron
-    // makes is made against this one number, because it is the only one the ground has that the
-    // mountain also knows.
-    let reach = length(in.world_position.xz) / SCENE_RADIUS;
-
-    // **Gravel at the foot, sand beyond it, scrub where the fines have settled.** Not three textures
-    // blended by noise but three distances, because the boundaries are what make the sorting
-    // legible. Kept low in value: the mountain is the subject, and a bright floor competes with it
-    // for the eye's first look.
-    var albedo = mix(
-        vec3<f32>(0.34, 0.32, 0.29),
-        vec3<f32>(0.44, 0.39, 0.29),
-        smoothstep(0.85, 1.55, reach));
-    albedo = mix(albedo, vec3<f32>(0.30, 0.32, 0.21), smoothstep(1.9, 3.6, reach));
-
-    // The **fan lobes**. Where a basin's mouth meets the plain it dumps a shallow cone, and a row of
-    // those cones reads from above as lobes of pale sorted gravel between darker, coarser ground.
-    // Keyed to the bearing round the range, so there is one lobe per direction the rock came from.
-    let bearing = atan2(in.world_position.z, in.world_position.x);
-    let lobes = noise(vec2<f32>(bearing * 3.4, reach * 1.7), 3);
-    let fan = smoothstep(0.52, 0.78, lobes) * (1.0 - smoothstep(0.95, 1.9, reach));
-    albedo = mix(albedo, vec3<f32>(0.47, 0.44, 0.38), fan * 0.55);
-
-    // The **channels**, radiating as they spread: a noise read finely across the bearing and coarsely
-    // along the run, which is the ratio that makes fingers rather than blotches, and faded out
-    // entirely beyond the apron where the fines have covered them.
-    let threads = noise(vec2<f32>(bearing * 34.0 + reach * 2.2, reach * 5.4), 2);
-    let wet = (1.0 - smoothstep(0.92, 1.35, reach)) * smoothstep(0.60, 0.72, threads);
-
-    // The **scattered stone** at the foot, where the talus has not been sorted into anything yet.
-    // This is the part of the ground that agrees with the rock above it, and it is what keeps the
-    // near foreground from reading as a lawn meeting a wall.
-    let rubble = smoothstep(0.55, 0.86, noise(in.world_position.xz * 0.020, 3))
-        * (1.0 - smoothstep(0.70, 1.25, reach));
-    albedo = mix(albedo, vec3<f32>(0.26, 0.25, 0.24), rubble * 0.5);
-
-    color = color * albedo * patches;
-
-    // The floor's share of the **same sky the walls are lit by, at the same rate**. The plain is
-    // flat, so it faces the sky as squarely as a wall's shoulder does — and it is the ground the sun
-    // is behind, so a long wedge of it lies in the range's own cast shadow. A sky term of a few
-    // percent is what made that wedge read as a hole cut in the picture rather than as shade: the
-    // massif's body has always let an unlit face reach a third of the sky, and a floor that is
-    // *more* open to the dome than a wall is cannot be allowed to see less of it.
-    let eye = uniforms.projection.position;
-    let view = normalize(in.world_position - eye);
-    let facing = 1.0 - abs(dot(normal, view));
-    let skyward = 0.35 + 0.65 * clamp(normal.y, 0.0, 1.0);
-    let from_sun = clamp(dot(normal, SUN_AHEAD), 0.0, 1.0);
-    color = color + air_colour() * skyward * (0.10 + 0.30 * (1.0 - from_sun));
-
-    // The **air between the eye and the ground**, which on this floor is doing more work than it
-    // looks: the sun rakes across the range, so a long wedge of plain behind it is in the mountain's
-    // own shadow, and a shadowed ground with only a sky term and a distant fill light in its
-    // neighbourhood comes back as a hole cut in the picture rather than as shade. The massif's body
-    // has always had this line; the first rewrite of the ground body dropped it and the range's cast
-    // shadow turned black.
-    let haze = air_closure(eye, in.world_position);
-    color = mix(color, air_colour(), clamp(haze * (0.45 + 0.55 * facing), 0.0, 0.90));
-
-    // The **water**, drawn after the ground's own colour because it is not a colour: it is what the
-    // sky does to a flat mirror, and a mirror seen at a grazing angle is nearly all sky. Dark
-    // underneath and bright on top, because a channel that returns sky *alone* is a strip of white
-    // paper laid on the ground, which is how the first version of this floor read.
-    let reflected = mix(
-        vec3<f32>(0.30, 0.38, 0.47),
-        vec3<f32>(0.72, 0.76, 0.82),
-        pow(facing, 2.2));
-    let water = vec3<f32>(0.06, 0.11, 0.16) + reflected * (0.55 + 0.30 * threads);
-    color = mix(color, water, wet * 0.7);
-
-    // The seam where the rock meets the ground it was shed onto. The massif's own foot is levelled
-    // to the rim, and a hard line there is the one edge in the picture that says "two objects"; this
-    // is where the talus of the lowest belt and the gravel of the apron are made to overlap.
-    color = mix(color, vec3<f32>(0.33, 0.31, 0.28), (1.0 - smoothstep(0.78, 0.98, reach)) * 0.18);
 "#;
 
 /// What the post stage does to the frame.
