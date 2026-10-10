@@ -335,33 +335,50 @@ author is an agent iterating on code, and a violation list is more use than a ba
 Three things the scene work found that the design above does not say, recorded here because each
 one changed what could be built rather than only how.
 
-### A spur hung off a parent's flank cannot be built, and the reason is structural
+### A belt changes line only at a line's end — and that is all the "no spurs" rule ever was
 
-`attach_ridge(parent, t > 0, …)` and `Ridge::child(parent, t, …)` both take a parameter for a
-position along the parent, so the model reads as though a ridge may leave a parent's flank
-anywhere along it. **It cannot.** Two independent reasons:
+**This section replaces "A spur hung off a parent's flank cannot be built, and the reason is
+structural", which was wrong and is retracted.** It was written after a hand-bound hierarchy failed
+to expand, and it read that failure as a theorem about the model. The failure was in
+`Sampling::path`, which chose where to turn a belt by measuring which end of the leaving line was
+nearer the point it was aiming at. That is right for a fan — every crest runs away from the one
+summit, so the nearer end is always the tip — and on a crest that is one segment of a longer chain it
+turns the walk back on the summit and answers `Disjoint`. Asking instead which pair of ends **welds**,
+which is a fact about the document, makes the hierarchy expand: a chain `S → J → T` with a spur born
+at `J` builds to a closed manifold surface, with faces hanging off all four segments. See
+[proposals/network-derivation.md](../proposals/network-derivation.md).
 
-1. **Elevation.** Non-increasing along every root-to-leaf path means a connected skeleton has
-   exactly one summit, and a parent and a spur at `t > 0` do not share it.
-2. **The wedge doubles on itself**, which is the one that is not obvious. The fan of triangles
-   around a junction closes only when the wedge between the parent and the spur has its **first
-   row collapsed onto the summit** — a degenerate row is what closes it. But that row leaves a
-   boundary edge running from the summit to the spur's junction, and that edge lies *along the
-   parent ridge*, whose own flank the same wedge is simultaneously covering on its other side.
-   The surface folds onto itself along the parent's upper segment.
+Both of the old reasons were bad reasoning, and it is worth keeping why:
 
-So the reachable topology is a **fan of tips**: every ridge from the one summit, wedges between
-angular neighbours, and asymmetry carried by the crests being genuinely different from each other
-rather than by branching. The hierarchy is still authored — every ridge after the first is a
-`Ridge::child` of the first, at `t = 0.0` — and it is what the hierarchy is *for* in this model,
-but it is a naming of parenthood and not a statement about geometry.
+1. *"Non-increasing along every root-to-leaf path means a connected skeleton has exactly one summit,
+   and a parent and a spur at `t > 0` do not share it."* The spur's first node **is** the parent's
+   station, so the path through it is non-increasing and there is still exactly one summit.
+2. *"The wedge doubles on itself."* The image — a surface folded along the parent's upper segment —
+   was real, but it was what a wrongly-turned walk *builds*, not what the correspondence implies. The
+   wedge between a parent above the junction and its spur does not close onto the summit: its first
+   row collapses onto the **junction**, because both of its stations name that one point, which is the
+   same degenerate row a summit already uses to close.
 
-**Whether a spur is worth a mechanism.** The argument above is a statement about this expansion,
-not a proof that a spur is inexpressible. A `t > 0` spur becomes buildable if the wedge's first
-row is allowed to collapse onto the junction rather than the summit — which means the parent and
-the spur share a summit by construction (a child whose first station is its parent's summit, and a
-parent that runs a *second* crest line along the spur's flank). That is a different model, not a
-bug fix, and it would need its own requirement.
+**What is actually true, and is the rule an author needs.** A belt changes line only at a line's
+**end**. `corner` inspects the leaving line's two ends and nothing else, so a child named at its
+parent's *interior* welds geometrically but is walkable in one direction only — child to parent finds
+the junction, parent to child does not. Author a junction by splitting the parent there:
+
+```text
+ridge A:  S ─────────────▶ J            A.end names nothing; J is A's last node
+ridge B:                   J ─────────▶ T   B.start = On(Station::ridge(A, 1.0))
+ridge C (the spur):        J ──────▶ U      C.start = On(Station::ridge(A, 1.0))
+```
+
+`attach_ridge(parent, 0.5, …)` is accepted by the ops and expands to `Disjoint`. That is the whole,
+narrow content of the old claim, and it is a consequence of the corner rule rather than of wedge
+geometry.
+
+**And what the checks will not tell you.** `euler_characteristic`, `boundary_loops` and `is_manifold`
+certify *closure*. Two flanks doubled onto one crest are two discs glued along an edge, which is a
+disc — `euler 1, 1 boundary loop, manifold true`, with a plan area ten times the rim's. Only the area
+comparison and the coverage check see a doubled cover, so a report that gives the first three and
+omits the second two is not a check on a mountain.
 
 ### `sample_line` read a line's own nodes back interpolated
 

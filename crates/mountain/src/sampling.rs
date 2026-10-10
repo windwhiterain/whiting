@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use crate::line::{LineRef, Node, Station};
-use crate::math::{Vec2, Vec3, distance, lift};
+use crate::math::{Vec2, Vec3, lift};
 use crate::skeleton::{Skeleton, arc_lengths, elevation_at, point_at};
 use crate::tessellation::Tessellation;
 
@@ -399,18 +399,16 @@ impl Sampling {
         }
 
         let end = self.vertex(to)?;
-        // The corner is one of the leaving line's ends, and which one is decided by the point
-        // the path is aiming at, so the walk turns the short way rather than the long way
-        // round a loop.
+        // The corner is the point where the two lines actually meet, and it is found by asking
+        // which pair of ends weld rather than by measuring the plan. A walk from a station to a
+        // station on another line has to leave the first at one of its ends and join the second at
+        // one of its, and the only place it can do both is a point the two lines share. Aiming at
+        // the nearer end instead is a fan-shaped rule: it is right while every crest runs outwards
+        // from one summit, and it turns a walk back on its own summit as soon as a crest is one
+        // segment of a longer chain.
         let aim = self.point(end);
-        let leaving = self
-            .nearest_end(from.line, aim)
-            .ok_or(Unresolved::Disjoint {
-                from: from.line,
-                to: to.line,
-            })?;
-        let joining =
-            self.welded_vertex(to.line, self.point(leaving))
+        let (leaving, joining) =
+            self.corner(from.line, to.line, aim)
                 .ok_or(Unresolved::Disjoint {
                     from: from.line,
                     to: to.line,
@@ -433,6 +431,52 @@ impl Sampling {
         }
         path.extend(arc);
         Ok(path)
+    }
+
+    /// Returns the pair of samples where two lines meet, as the walk between them needs it.
+    ///
+    /// # Invariants
+    ///
+    /// A path that changes line can only do so at a point **both** lines own, and the only points
+    /// a line offers to another are its two ends — a junction, a tip reaching the rim, a mouth. So
+    /// the corner is found by asking which end of the leaving line has a sample welded onto the
+    /// joining line, which is a fact about the document. Choosing the end nearer the point being
+    /// aimed at is a measurement of the plan, and it is right for exactly one shape: a fan whose
+    /// crests all run away from one summit. On a chain — a crest that is one segment of a longer
+    /// ridge, which is what a hierarchy is made of — the walk often has to leave by the end that is
+    /// *further* from its aim, and the measurement then turns it back on the summit and reports a
+    /// corner that does not exist as `Disjoint`.
+    ///
+    /// When both ends weld the two lines close a lens, and the nearer one is the corner the walk
+    /// reaches first. That is the rim's case, where a loop meets a line at one point and the seam
+    /// makes that point both ends.
+    ///
+    /// **This is the corner rule for the whole crate.** [`crate::validate`] reads it too, rather
+    /// than measuring the same thing a second way: two rules about where two lines meet is two
+    /// rules that can disagree, and the disagreement shows up as a skeleton that builds and is
+    /// reported broken, or the other way round.
+    pub fn corner(&self, from: LineRef, to: LineRef, aim: Vec3) -> Option<(Vertex, Vertex)> {
+        let last = self.run(from).samples.len().checked_sub(1)?;
+        let mut found: Option<(Vertex, Vertex, f32)> = None;
+        for index in [0, last] {
+            let leaving = Vertex { line: from, index };
+            let Some(joining) = self.welded_vertex(to, self.point(leaving)) else {
+                continue;
+            };
+            let plan = self.point(leaving);
+            let square = (plan[0] - aim[0]).powi(2) + (plan[2] - aim[2]).powi(2);
+            if found.as_ref().is_none_or(|(_, _, best)| square < *best) {
+                found = Some((leaving, joining, square));
+            }
+        }
+        found.map(|(leaving, joining, _)| (leaving, joining))
+    }
+
+    /// Returns the parameters at which two lines meet, for a walk that leaves the first and joins
+    /// the second. [`Sampling::corner`]'s answer, in the form the coverage check reads.
+    pub fn corner_parameters(&self, from: LineRef, to: LineRef, aim: Vec3) -> Option<(f32, f32)> {
+        let (leaving, joining) = self.corner(from, to, aim)?;
+        Some((self.sample(leaving).t, self.sample(joining).t))
     }
 
     /// Returns whether a line is a loop.
@@ -483,21 +527,6 @@ impl Sampling {
             .iter()
             .copied()
             .find(|vertex| vertex.line == line)
-    }
-
-    /// Returns the end sample of a line nearer a point.
-    fn nearest_end(&self, line: LineRef, aim: Vec3) -> Option<Vertex> {
-        let run = self.run(line);
-        let first = run.samples.first()?;
-        let last = run.samples.last()?;
-        let to_first = distance(first.position, [aim[0], aim[2]]);
-        let to_last = distance(last.position, [aim[0], aim[2]]);
-        let index = if to_first <= to_last {
-            0
-        } else {
-            run.samples.len() - 1
-        };
-        Some(Vertex { line, index })
     }
 
     /// Builds the plan-position index a corner is resolved through.

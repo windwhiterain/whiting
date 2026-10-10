@@ -191,7 +191,7 @@ pub fn validate(skeleton: &Skeleton, tessellation: Tessellation) -> Vec<Violatio
             violations.push(Violation::Unwalkable(unresolved));
         }
     }
-    check_coverage(skeleton, &belts, &mut violations);
+    check_coverage(skeleton, &sampling, &belts, &mut violations);
     if skeleton.footprint.len() >= 3 {
         check_self_intersection(skeleton, &mut violations);
         check_ribs(skeleton, &sampling, &belts, &mut violations);
@@ -396,8 +396,23 @@ fn line_exists(skeleton: &Skeleton, line: LineRef) -> bool {
 /// by ribs from elsewhere — requiring it to be faced would report every fan ever generated, in
 /// which no valley names another. A valley that *is* faced on one side and not the other is
 /// reported, because that is a region with a belt on one side of it and nothing on the other.
+///
+/// **Which side a span belongs to is declared by the rib, not measured from the floor.** A belt's
+/// rib joins a valley node to the station it names, and the node stands on one side of the line it
+/// faces — that is the author's own statement, and it is read at the rib's own station so a bending
+/// line is asked at the place the rib meets it. Measuring instead from the midpoint of the two
+/// valley nodes between the ribs asks a question of a point nobody placed, and on a wide basin, or
+/// one whose two crests part at a shallow angle, that midpoint crosses the crest from one segment
+/// to the next: the spans then land on alternating sides, and the report is a crowd of gaps in a
+/// flank that the mesh covers once.
+///
+/// A node standing exactly on its own station declares nothing — that is a head or a corner
+/// collapsed to a point — and its belt takes the side the other rib of the same span declared. A
+/// span whose two ribs disagree is the valley crossing the line it faces, which is reported as
+/// [`Violation::RibCrossesLine`] by [`check_ribs`] rather than guessed at here.
 fn check_coverage(
     skeleton: &Skeleton,
+    sampling: &Sampling,
     belts: &[crate::expand::Belt],
     violations: &mut Vec<Violation>,
 ) {
@@ -414,11 +429,12 @@ fn check_coverage(
         let valley = &skeleton.valleys[belt.reference.valley.0];
         let node = belt.reference.segment;
         let (left, right) = (valley.nodes[node], valley.nodes[node + 1]);
-        let middle = crate::math::lerp(left.position, right.position, 0.5);
         let from = left.station(belt.reference.side);
         let to = right.station(belt.reference.side);
         if from.line == to.line {
-            let side = skeleton.side_of(from.line, from.t, middle);
+            let side = rib_side(skeleton, from.line, from.t, left.position)
+                .or_else(|| rib_side(skeleton, to.line, to.t, right.position))
+                .unwrap_or_else(|| skeleton.side_of(from.line, from.t, left.position));
             for (low, high) in crate::line::arc_spans(from.t, to.t, from.line == LineRef::Footprint)
             {
                 tiled
@@ -428,12 +444,12 @@ fn check_coverage(
             }
             continue;
         }
-        // Two lines that meet: the belt's upper boundary leaves the first at the end nearest the
-        // second and joins the second at the point where they touch, so each line is covered from
-        // its station to that corner. Reading the second line's *end* instead of its corner would
-        // report the whole of a rim as uncovered, because a rim's two ends are one vertex and
-        // every mouth is far from it.
-        //
+        // Two lines that meet: the belt's upper boundary leaves the first at the end that welds to
+        // the second and joins the second at that same point, so each line is covered from its
+        // station to the corner. The corner is asked of the **sampler**, which is where the weld
+        // index is: reading it as the nearer end of the leaving line is the fan's rule again, and
+        // it files the rim's arc under the far side of the loop whenever a crest is a segment of a
+        // longer chain — which is every hierarchy.
         // On a loop the arc is the **shorter** of the two, the same one the expander walks, and it
         // is split at the seam when it crosses it. A set of parameters that wraps is not an
         // interval, and reading it as one would report the rim's seam as a hole and its far side
@@ -441,25 +457,28 @@ fn check_coverage(
         let Some(to_point) = skeleton.station_point(to) else {
             continue;
         };
-        let leaving = end_nearer(skeleton, from.line, to_point);
-        let Some(corner) = skeleton.station_point(Station::new(from.line, leaving)) else {
+        let Some((leaving, corner_on_to)) =
+            sampling.corner_parameters(from.line, to.line, to_point)
+        else {
             continue;
         };
         let closed = from.line == LineRef::Footprint;
         for (line, station, reach, line_closed) in [
             (from.line, from.t, leaving, closed),
-            (
-                to.line,
-                to.t,
-                parameter_at(skeleton, to.line, corner),
-                to.line == LineRef::Footprint,
-            ),
+            (to.line, to.t, corner_on_to, to.line == LineRef::Footprint),
         ] {
-            // The side is asked **of each line and at that line's own station**. Asking it once
-            // from the line the path leaves would file the rim's arc under the side its ridge
-            // happens to be on, which alternates round a fan and splits the rim's coverage across
-            // both halves of every line in it.
-            let side = skeleton.side_of(line, station, middle);
+            // The side is asked **of each line and at that line's own station**, from the rib's foot
+            // rather than from a point between two floors. Asking it once from the line the path
+            // leaves would file the rim's arc under the side its ridge happens to be on, which
+            // alternates round a fan and splits the rim's coverage across both halves of every line
+            // in it.
+            let foot = if line == from.line {
+                left.position
+            } else {
+                right.position
+            };
+            let side = rib_side(skeleton, line, station, foot)
+                .unwrap_or_else(|| skeleton.side_of(line, station, foot));
             for (low, high) in crate::line::arc_spans(station, reach, line_closed) {
                 tiled.entry((line, side)).or_default().push((low, high));
             }
@@ -526,38 +545,17 @@ fn check_coverage(
     }
 }
 
-/// Returns the end of a line, as a parameter, nearer a point.
-fn end_nearer(skeleton: &Skeleton, line: LineRef, aim: [f32; 3]) -> f32 {
-    let plan = [aim[0], aim[2]];
-    let start = skeleton.station_position(Station::new(line, 0.0));
-    let end = skeleton.station_position(Station::new(line, 1.0));
-    match (start, end) {
-        (Some(start), Some(end)) => {
-            if distance(start, plan) <= distance(end, plan) {
-                0.0
-            } else {
-                1.0
-            }
-        }
-        _ => 0.0,
-    }
-}
-
-/// Returns the parameter of the point on a line nearest a station point.
+/// Returns the side of a line a rib's foot stands on, or nothing when the rib has no length.
 ///
-/// # Invariants
-///
-/// This is the corner's parameter on the line a path is joining, and it is a **search** rather
-/// than a comparison of the line's two ends: a rim's ends are one vertex, so which end is nearer
-/// says nothing about where round the loop a corner is. The search is `O(nodes)` and is made once
-/// per line transition — a junction, a ridge tip reaching the rim — rather than once per face.
-fn parameter_at(skeleton: &Skeleton, line: LineRef, point: [f32; 3]) -> f32 {
-    let nodes = skeleton.nodes(line);
-    if nodes.len() < 2 {
-        return 0.0;
+/// A rib of no length is a node standing exactly on the station it names, which is how a head and a
+/// corner close; it declares no side because it points nowhere, and its belt is attributed by the
+/// rib at its other end.
+fn rib_side(skeleton: &Skeleton, line: LineRef, t: f32, foot: Vec2) -> Option<Side> {
+    let at = skeleton.station_position(Station::new(line, t))?;
+    if distance(at, foot) <= crate::sampling::WELD {
+        return None;
     }
-    let (span, total) = crate::skeleton::arc_lengths(&nodes);
-    crate::skeleton::parameter_of(&nodes, &span, total, [point[0], point[2]])
+    Some(skeleton.side_of(line, t, foot))
 }
 
 /// Checks that no polyline crosses itself.

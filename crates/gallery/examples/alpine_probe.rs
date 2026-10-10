@@ -29,7 +29,7 @@ use whiting_gallery::landscape;
 
 fn main() {
     std::fs::create_dir_all("out").ok();
-    write_ceilings(landscape::crest_count());
+    write_basins();
     let massif = landscape::massif();
     println!(
         "{} ridges, {} valleys, {} footprint nodes, step {}",
@@ -93,42 +93,57 @@ fn main() {
     }
     write_plan(&massif);
 
-    write_framing();
+    write_basins();
 }
 
-/// Prints, for every valley node, the height of the lower of the two crests it runs between.
+/// Prints every basin's walls, its rib count and the ceiling its floor was written under.
 ///
 /// # Invariants
 ///
-/// **A ceiling and not a verdict.** `check_the_authored_heights` already refuses a floor that is
-/// not below the rock either side of it, and that is the rule the table has to satisfy — but a
-/// refusal names one number that is wrong, and authoring a table of a hundred and thirty numbers
-/// against a hundred and thirty refusals is guesswork with extra steps. The ceiling is the number
-/// the author needs: the highest the floor may stand and still be a valley rather than a second
-/// ridge, at that node, against **both** walls. The tightest one of the two is the one that binds,
-/// so a floor written just under this row is valid against the whole wedge.
-fn write_ceilings(wedges: usize) {
-    println!("\nvalley floor ceilings — the lower flanking crest at each node:");
-    for wedge in 0..wedges {
-        let cells: Vec<String> = (1..landscape::valley_nodes())
-            .map(|node| format!("{:.0}", landscape::valley_ceiling(wedge, node)))
+/// **A ceiling and not a verdict.** `validate` already refuses a floor that is not below the rock
+/// either side of it, but a refusal names one number that is wrong and a hierarchy is authored as a
+/// table of dozens of them. The ceiling is what an author needs: the highest the floor may stand at
+/// each rib and still be a valley rather than a second ridge, against **both** walls, with the
+/// tighter of the two printed because that is the one that binds.
+fn write_basins() {
+    let massif = landscape::massif();
+    println!("\nbasins — the lower wall at each rib, and the floor actually written under it:");
+    for (index, valley) in massif.skeleton.valleys.iter().enumerate() {
+        let ribs = valley.nodes.len();
+        let mut ceiling = Vec::with_capacity(ribs);
+        for node in &valley.nodes {
+            let wall = [node.left, node.right]
+                .iter()
+                .filter_map(|station| massif.skeleton.station_point(*station))
+                .map(|point| point[1])
+                .fold(f32::INFINITY, f32::min);
+            ceiling.push(wall);
+        }
+        let floors: Vec<String> = valley
+            .nodes
+            .iter()
+            .zip(ceiling)
+            .map(|(node, wall)| format!("{:.0}/{}", node.elevation, wall))
             .collect();
-        println!("  wedge {wedge}: {}", cells.join("  "));
+        println!("  valley {index} ({} ribs): {}", ribs, floors.join("  "));
     }
 }
 
+/// Reports where the ranges stand in the frame, seen from the eye.
+///
 /// Reports where the two ranges stand in the frame, seen from the eye.
 ///
 /// # Invariants
 ///
-/// **The two azimuths per range come out within a degree or two of each other**, and the report
-/// says so rather than leaving it to be spotted. A range's nearest point and its summit are both
-/// on the ray from the eye through the range's own centre, so one blob in the plan subtends one
-/// narrow slice of azimuth — measured here at about two degrees, against a half-frame of
-/// thirty-five. A two-degree object is a thing standing in the frame, not a wall of it: to be a
-/// wall the range would have to reach from the axis out past the edge, which is the whole width of
-/// the frame. No relief and no focal length changes that number's order of magnitude, and having
-/// it printed means a change to any of them can be seen not to.
+/// **Azimuth and not a position**, because the question is whether a range fills the frame or sits in
+/// it, and a point's distance from the eye says nothing about that while its angle off the view axis
+/// says exactly it.
+///
+/// **The spread across the frame is the number that matters for a range**, and it is the reason the
+/// spine was authored as a line rather than a disc: a blob subtends one narrow slice of azimuth
+/// wherever its nearest point is, and a range that runs across the view puts its two ends many
+/// degrees apart. A report that gave only the summit would say nothing about whether the frame holds
+/// the whole of it.
 fn write_framing() {
     let half = landscape::field_of_view() * 0.5 * 180.0 / std::f64::consts::PI;
     println!("framing from the eye, half frame {half:.1} degrees off the axis:");

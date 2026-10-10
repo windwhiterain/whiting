@@ -258,7 +258,10 @@ pub fn locate(scene: &str, id: Option<[f32; 4]>, u: f32, v: f32) -> Option<Strin
         });
         next += identity.rows().len() as u32;
         let at = [range.centre[0] * radius, range.centre[1] * radius];
-        tables.push((crate::landscape::stood_at(&authored, at), identity));
+        tables.push((
+            crate::landscape::stood_at(&authored, at, range.scale, range.turn),
+            identity,
+        ));
     }
 
     // The value is the **first** component, which is where a one component image puts it: an
