@@ -9,6 +9,11 @@ description = "Compilers from a scene schema to graphics instructions, with incr
 [dependencies]
 definition = { workspace = true }
 graphics = { workspace = true }
+# The Cycles emitter writes an environment image beside the document it emits, because the loader
+# opens a file where the document names one and the pixels are otherwise only in the scene. The
+# rasterised path needs no encoder: it uploads texels. This one does, so that an emitter stays a
+# pure function of a document plus a directory.
+png = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

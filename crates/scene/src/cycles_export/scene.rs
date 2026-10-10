@@ -17,9 +17,18 @@ use super::transform::{self, Transform};
 use super::writer::Writer;
 use super::{EmitOptions, LossyMode};
 use definition::{FieldMap, Value};
+use std::path::Path;
 
 /// Writes a whole scene document.
-pub fn write(scene: &Value, options: &EmitOptions, report: &mut LossyReport) -> EmitResult<String> {
+///
+/// The images the world refers to come back with it, so that a caller writing the document to
+/// disk writes them beside it: the loader resolves `filename` against the document's own
+/// directory, so the two have to land in the same place.
+pub fn write(
+    scene: &Value,
+    options: &EmitOptions,
+    report: &mut LossyReport,
+) -> EmitResult<(String, Vec<SceneImage>)> {
     let fields = scene.as_field_map().ok_or_else(|| EmitError::Malformed {
         detail: "the scene is not a structure".to_owned(),
     })?;
@@ -56,12 +65,21 @@ pub fn write(scene: &Value, options: &EmitOptions, report: &mut LossyReport) -> 
     settings::write_film(&mut writer, options);
     settings::write_integrator(&mut writer, options);
     write_camera(&mut writer, &camera);
-    write_world(&mut writer, &lights);
+    let images = referenced_images(fields, &lights);
+    let mut referenced = Vec::new();
+    write_world(&mut writer, &lights, &images, &mut referenced);
     let drawn = write_materials(&mut writer, &materials, &stages, options.lossy, report)?;
     write_lights(&mut writer, &lights);
     write_instances(&mut writer, &instances, &meshes, &materials, &drawn)?;
 
-    Ok(writer.finish())
+    // Only the images the world actually referred to are returned. An image the document carries
+    // but nothing names — a tile texture, say — belongs to the rasterised path, and writing it
+    // beside the document would put a file there for a reason nobody can read off the file name.
+    let wanted: Vec<SceneImage> = images
+        .into_iter()
+        .filter(|image| referenced.contains(&image.label))
+        .collect();
+    Ok((writer.finish(), wanted))
 }
 
 /// Reads every light, honouring the lossy mode.
@@ -382,26 +400,63 @@ fn write_camera(writer: &mut Writer, camera: &Camera) {
 /// Only one environment light is written, and only when the scene has one. Cycles takes the
 /// world from a single `<background>` element, so a second environment light would have
 /// nowhere to go; the scene document already refuses a second one.
-fn write_world(writer: &mut Writer, lights: &[Light]) {
+///
+/// # An image is written out as a file, because the format has nowhere to put the bytes
+///
+/// `environment_light` names its image by **label**, the same way a material does, because the
+/// pixels are in the document's own `images` list. The loader wants a **path**: it opens
+/// whatever `filename` names, and reports `Image file <path> does not exist` when that is not a
+/// file, then renders the rest of the scene and exits zero.
+///
+/// So the label is written as a file name and the bytes go beside the document. It resolves
+/// relative to the document's own directory, which is what the loader does with it -- measured,
+/// an `air` in a document at `out/scene.xml` was reported as `out/air` -- which is why the
+/// emitted name is not a path and why the two must be written to the same place.
+///
+/// This used to write the label unchanged, so every environment image was a missing file. It
+/// was not visible: `foldyard` and `tidewater` both name one, both rendered a complete and
+/// plausible frame with no sky in it, and neither printed anything the exit status reflected.
+///
+/// # The colour is part of the strength, not left out
+///
+/// The rasterised path samples the map and multiplies by the light's own colour and radiance:
+/// `textureLoad(...) * uniforms.environment.rgb`, with the radiance already folded into that
+/// `rgb`. The loader's `<background>` has a `color` socket, but connecting a texture onto it
+/// **replaces** it, so the tint has nowhere to live except the strength, which multiplies what
+/// the texture produces. Writing the radiance alone would render every tinted sky untinted.
+fn write_world(
+    writer: &mut Writer,
+    lights: &[Light],
+    images: &[SceneImage],
+    referenced: &mut Vec<String>,
+) {
     let Some(environment) = lights.iter().find(|light| light.kind == "background") else {
         return;
     };
     writer.comment("World");
     writer.open_bare("background");
     match &environment.image {
-        Some(image) => {
+        Some(label) => {
+            // A name is written either way. When the document carries no such image the loader
+            // is left to report the missing file, which names it; dropping the element instead
+            // would produce a scene with no world and no explanation of why. Only an image
+            // that is actually carried is queued to be written, so the caller is never asked
+            // to write bytes that do not exist.
             writer.leaf(
                 "environment_texture",
                 &[
                     ("name", "world_texture".to_owned()),
-                    ("filename", image.clone()),
+                    ("filename", name_for(label)),
                 ],
             );
+            if images.iter().any(|image| image.label == *label) {
+                referenced.push(label.clone());
+            }
             writer.leaf(
                 "background",
                 &[
                     ("name", "world".to_owned()),
-                    ("strength", environment.strength.to_string()),
+                    ("strength", environment_strength(environment)),
                 ],
             );
             writer.leaf(
@@ -432,7 +487,7 @@ fn write_world(writer: &mut Writer, lights: &[Light]) {
                             environment.color[2],
                         ),
                     ),
-                    ("strength", environment.strength.to_string()),
+                    ("strength", environment_strength(environment)),
                 ],
             );
             writer.leaf(
@@ -445,6 +500,138 @@ fn write_world(writer: &mut Writer, lights: &[Light]) {
         }
     }
     writer.close("background");
+}
+
+/// The `strength` of a world, as a colour: the light's own tint scaled by its radiance.
+///
+/// The same multiplication a punctual light gets, for the same reason and with the same
+/// hazard — it was missing here, so a scene's tinted environment rendered untinted.
+fn environment_strength(environment: &Light) -> String {
+    Writer::color(
+        environment.color[0] * environment.strength,
+        environment.color[1] * environment.strength,
+        environment.color[2] * environment.strength,
+    )
+}
+
+/// The name an environment image is written under and referred to by.
+///
+/// # The name is not a path, and that is load-bearing
+///
+/// The loader resolves `filename` against **the document's own directory** — measured, an `air`
+/// in a document at `out/scene.xml` was reported as `out/air`. So the emitted name has to be
+/// bare, and the bytes have to be written to the same directory as the document. A path here
+/// would resolve against the document's directory too, and be wrong twice over for anything not
+/// sitting right beside it.
+fn name_for(label: &str) -> String {
+    format!("{label}.png")
+}
+
+/// One image the document carries, in the form the world needs it.
+pub struct SceneImage {
+    pub label: String,
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<u8>,
+}
+
+/// Reads the images an environment light names out of the document's own image list.
+///
+/// # Why the list is read once and handed down
+///
+/// The pixels have to reach a file the loader can open, and the document is the only place they
+/// exist. Reading them here means `write_world` asks for an image rather than looking for one,
+/// and the caller that writes the files is handed the same bytes the emitter referred to rather
+/// than re-reading the document and getting a second answer.
+fn referenced_images(fields: &FieldMap, lights: &[Light]) -> Vec<SceneImage> {
+    let wanted: Vec<&str> = lights
+        .iter()
+        .filter_map(|light| light.image.as_deref())
+        .collect();
+    if wanted.is_empty() {
+        return Vec::new();
+    }
+    let mut found = Vec::new();
+    for entry in read::list_or_empty(fields, "images", "the scene").unwrap_or_default() {
+        let Some(fields) = entry.as_field_map() else {
+            continue;
+        };
+        let Some(label) = read::field(fields, "label").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        if !wanted.contains(&label) {
+            continue;
+        }
+        let size = |name: &str| {
+            read::field(fields, name)
+                .and_then(|value| read::number(value, name).ok())
+                .unwrap_or(0.0)
+                .max(0.0) as u32
+        };
+        let Some(pixels) = read::field(fields, "data").and_then(|value| value.as_bytes()) else {
+            continue;
+        };
+        found.push(SceneImage {
+            label: label.to_owned(),
+            width: size("width"),
+            height: size("height"),
+            pixels: pixels.to_vec(),
+        });
+    }
+    found
+}
+
+/// Writes one scene image as a png beside the document.
+///
+/// # What the bytes are
+///
+/// Exactly the bytes the document carried. `format` says `rgba8unorm` and the rasterised path
+/// uploads the texels as they are and its shaders read them directly; the loader, with no colour
+/// management configured, falls back to scene linear too and says so. So writing them unchanged
+/// makes both backends read the same numbers, and re-encoding them would put a colour pipeline
+/// between two that already agree.
+///
+/// Eight bits per channel is what the document says and what a png holds, so nothing is lost. A
+/// scene whose sky is generated at higher precision than that is quantising it, and a smooth
+/// gradient over a large map is where eight bits is first visible.
+pub fn write_image(path: &Path, image: &SceneImage) -> EmitResult<()> {
+    if image.pixels.len() != (image.width as usize) * (image.height as usize) * 4 {
+        return Err(EmitError::Malformed {
+            detail: format!(
+                "the image '{}' is {} x {} and carries {} bytes, which is not four a texel",
+                image.label,
+                image.width,
+                image.height,
+                image.pixels.len()
+            ),
+        });
+    }
+    let file = std::fs::File::create(path).map_err(|source| EmitError::Write {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), image.width, image.height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    // Compression is the encoder's own and changes no pixel: a render's sky is written once per
+    // render and read once, and the difference between stored and deflated is not the difference
+    // between a right image and a wrong one.
+    encoder.set_compression(png::Compression::Default);
+    let mut writer = encoder.write_header().map_err(|source| EmitError::Write {
+        path: path.to_path_buf(),
+        source: std::io::Error::other(source),
+    })?;
+    writer
+        .write_image_data(&image.pixels)
+        .map_err(|source| EmitError::Write {
+            path: path.to_path_buf(),
+            source: std::io::Error::other(source),
+        })?;
+    writer.finish().map_err(|source| EmitError::Write {
+        path: path.to_path_buf(),
+        source: std::io::Error::other(source),
+    })?;
+    Ok(())
 }
 
 /// Reads which stage each shader belongs to, keyed by the label a material names it by.

@@ -57,7 +57,7 @@ mod writer;
 
 pub use error::{EmitError, EmitResult, UnsupportedField};
 pub use lossy::LossyReport;
-pub use scene::render_size;
+pub use scene::{SceneImage, render_size, write_image};
 
 use std::path::Path;
 
@@ -147,32 +147,42 @@ impl Default for EmitOptions {
 
 /// Emits a scene document as a Cycles Standalone XML document at `path`.
 ///
-/// This is the one entry point a caller normally wants.
+/// This is the one entry point a caller normally wants, and it writes **more than the
+/// document**: an environment image the world refers to is written beside it as a png, because
+/// the loader resolves `filename` against the document's own directory and the pixels exist
+/// nowhere else. A caller that wants a document with no files beside it wants
+/// [`emit_document`], and has to supply those images itself.
 ///
-/// # Why the input is a document and not a compiled scene
+/// # Invariants
 ///
-/// The input is a `StandardScene` *document*, not the output of running the rasterised
-/// [`crate::standard::StandardScene`] compiler over it. The compiler produces passes,
-/// instance entries and buffer payloads for our own pipeline; a second renderer wants none
-/// of those and would have to be fed the scene itself. Taking the document means the
-/// emitter is independent of whether the rasterised pipeline ran at all, and it is the
-/// same document an author wrote rather than something reconstructed from compiled state.
+/// The document and its images are written into the **same directory**, always: the emitted
+/// `filename` is a bare name, not a path, and that is only correct because the loader resolves
+/// it against the document. A caller that moves one without the other gets the missing-file
+/// report and, before the runner learned to read it, a plausible picture with no sky in it.
+///
+/// The report is returned rather than accumulated, so a caller that renders many scenes cannot
+/// be handed a previous scene's losses.
 ///
 /// # Errors
 ///
-/// Returns [`EmitError`] when the scene is not one Cycles can draw: a field the format has
-/// no room for, a light type without a mapping, or geometry that is not triangles. In
+/// Returns [`EmitError`] when the scene is not one Cycles can draw: a field the format has no
+/// room for, a light type without a mapping, or geometry that is not triangles. In
 /// [`LossyMode::Reject`] that includes fields that could have been dropped.
 pub fn emit_to_file(
     scene: &definition::Value,
     path: &Path,
     options: &EmitOptions,
 ) -> EmitResult<LossyReport> {
-    let (document, report) = emit_document(scene, options)?;
+    let mut report = LossyReport::default();
+    let (document, images) = scene::write(scene, options, &mut report)?;
     std::fs::write(path, &document).map_err(|source| EmitError::Write {
         path: path.to_path_buf(),
         source,
     })?;
+    let directory = path.parent().unwrap_or_else(|| Path::new("."));
+    for image in &images {
+        write_image(&directory.join(format!("{}.png", image.label)), image)?;
+    }
     Ok(report)
 }
 
@@ -180,12 +190,19 @@ pub fn emit_to_file(
 ///
 /// The report is returned rather than accumulated in hidden state, so a caller that
 /// renders many scenes cannot be handed a previous scene's losses.
+///
+/// # The images are not here
+///
+/// A document referring to an environment image names a **file**, and the bytes for it live in
+/// the scene's own `images` list rather than on disk. [`emit_to_file`] is what closes that gap.
+/// A caller using this has to write those images beside the document itself, or the loader will
+/// report the file missing, render the rest, and exit zero.
 pub fn emit_document(
     scene: &definition::Value,
     options: &EmitOptions,
 ) -> EmitResult<(String, LossyReport)> {
     let mut report = LossyReport::default();
-    let document = scene::write(scene, options, &mut report)?;
+    let (document, _images) = scene::write(scene, options, &mut report)?;
     Ok((document, report))
 }
 
