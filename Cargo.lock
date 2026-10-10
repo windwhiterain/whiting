@@ -1870,6 +1870,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "whiting-shader"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "winapi-util"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
