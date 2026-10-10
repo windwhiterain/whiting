@@ -63,10 +63,25 @@ pub fn handle_unsupported_point_attribute(
     }
 }
 
+/// The field names a point's texture coordinate may be written under, in the order they are
+/// tried.
+///
+/// This is **one** list rather than the two the emitter used to keep. The readers that pull UVs
+/// out of a point and the table that decides whether the field is carryable are answering the
+/// same question — "is this name a texcoord?" — and they disagreed: `is_mappable` omitted
+/// `texture`, which is the name this workspace's own point schema uses. The UVs were read and
+/// written correctly the whole time and the loss report claimed otherwise, on every mesh of
+/// every scene, naming a field the format carries perfectly well.
+///
+/// `texture` is first because that is what the workspace's own point schema calls it
+/// (`kit::shaded_point_schema`); the rest are the spellings a document written by hand is likely
+/// to use, since nothing in the workspace writes those.
+pub const UV_FIELDS: &[&str] = &["texture", "uv", "texcoord", "uv_map"];
+
 /// Whether `field` is one of the point attributes the loader reads.
 ///
 /// `position` is handled by the geometry writer rather than here, because the loader reads
 /// it from the `P` attribute and the mesh is invalid without it.
 pub fn is_mappable(field: &str) -> bool {
-    matches!(field, "position" | "normal" | "uv" | "texcoord" | "uv_map")
+    matches!(field, "position" | "normal") || UV_FIELDS.contains(&field)
 }
