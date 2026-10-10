@@ -428,6 +428,31 @@ pub fn render_size(scene: &Value) -> EmitResult<(u32, u32)> {
 
 /// Writes the camera inside its transform scope.
 ///
+/// # The camera's frame is mirrored, and the mirror is not optional
+///
+/// Cycles draws the camera's own `+X` on the **right** of the frame: `rastertocamera` is
+/// `screentocamera * rastertoscreen` (`src/scene/camera.cpp:265`), both factors are positive
+/// diagonals (`src/scene/camera.cpp:236-249`), so a point on the `+X` side of the view axis
+/// lands at a larger raster `x`. Measured on a document that holds nothing but the camera and
+/// three triangles: world `+X` rendered at `x = 0.027` and world `-X` at `x = 0.969`.
+///
+/// A camera whose `+X` is its own right-hand side is therefore **left-handed**, because its `+Z`
+/// is the direction it looks along. For orthonormal columns `a, b, c` of a rotation,
+/// `b × c = det · a`, so `a = cross(c, b) = cross(forward, up)` — the right-hand side — forces
+/// `det = -1`. Measured on `landscape`: the basis written here had `det = +1` with
+/// `localX = cross(up, forward)`, the right-hand side's **opposite**, and two markers set on the
+/// raster camera's right and left came out of Cycles at `x = 0.240` and `x = 0.818` — exchanged.
+///
+/// No rotation can stand in for the reflection: one about the view axis flips right **and** up,
+/// and one about `up` turns the camera away from its target. Both were measured. So it rides in
+/// the transform's `scale`, which the loader applies after `rotate`
+/// (`src/app/cycles_xml.cpp:706-710`), negating the local `X` column and leaving `Y`, `Z` and
+/// the translation untouched. Cycles keeps the camera matrix verbatim — `set_matrix` is the
+/// generated socket setter over `NODE_SOCKET_API(Transform, matrix)`
+/// (`src/scene/camera.h:151`) — so the negative determinant reaches the kernel unaltered.
+///
+/// # The size is not the size of the image
+///
 /// The `width` and `height` on the camera element are the camera's own view plane, and the
 /// loader reads them — but they are **not** the size of the image, which comes from the command
 /// line's `--width` and `--height`. Measured: this element saying `1920, 1080` renders a
@@ -443,7 +468,7 @@ fn write_camera(writer: &mut Writer, camera: &Camera) {
     // with `state.tfm` and never looks at the element's own transform attributes.
     writer.open(
         "transform",
-        &transform_attributes(&camera.transform, axes::Rotation::Frame),
+        &transform_attributes(&cycles_camera_frame(&camera.transform), axes::Rotation::Frame),
     );
     writer.leaf(
         "camera",
@@ -455,6 +480,32 @@ fn write_camera(writer: &mut Writer, camera: &Camera) {
         ],
     );
     writer.close("transform");
+}
+
+/// A camera's transform with the mirror Cycles' camera frame needs.
+///
+/// # Why it lands on `scale`
+///
+/// The loader composes `translate`, then `rotate`, then `scale`
+/// (`src/app/cycles_xml.cpp:694-710`), so a scale written last multiplies the rotation's columns
+/// from the right and reaches the frame rather than the world. Negating the local `X` is the
+/// whole of it; see [`write_camera`] for the measurement that forces the sign.
+///
+/// # Why it is not folded into `read_camera`
+///
+/// Both routes into a camera — an eye and a target, or a transform written by hand — mean the
+/// same thing in this engine's axes, and only this function knows Cycles reads a camera's frame
+/// mirrored. Applying it where the camera is specified would leave a second route that has to
+/// remember, which is where the mirror came from the first time.
+fn cycles_camera_frame(transform: &Transform) -> Transform {
+    Transform {
+        scale: [
+            -transform.scale[0],
+            transform.scale[1],
+            transform.scale[2],
+        ],
+        ..*transform
+    }
 }
 
 /// Writes the world.

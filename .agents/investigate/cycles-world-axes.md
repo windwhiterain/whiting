@@ -12,6 +12,12 @@ at `(28, 14.244, 34)` is written `translate="28, 14.244078695546408, 34"`, and t
 vertices of the ground mesh are `-150 0 -150`, `-149 0 -150`, `-150 0 -149` — a plane of constant
 `y = 0`. This engine is y-up. Cycles is z-up. What does that actually do to a render?
 
+**This file answers that for up and forward, and it was silent about left and right.** The
+question turned up separately and is answered in
+[cycles-camera-frame-handedness.md](cycles-camera-frame-handedness.md): the two backends agreed
+on every direction and still disagreed about which side of the picture was which. A "verified"
+list below that checks the sky and the horizon is not a statement about the frame's handedness.
+
 ## What was measured
 
 ### 1. The sky map comes out turned a quarter turn

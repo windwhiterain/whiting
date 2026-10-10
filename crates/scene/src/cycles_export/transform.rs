@@ -20,6 +20,7 @@ use super::read;
 use definition::Value;
 
 /// One instance's transform, in the document's parameterisation.
+#[derive(Clone, Copy)]
 pub struct Transform {
     pub translation: [f64; 3],
     /// Euler angles in degrees, applied X then Y then Z.
