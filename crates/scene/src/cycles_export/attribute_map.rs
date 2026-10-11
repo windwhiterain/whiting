@@ -25,7 +25,20 @@ use super::lossy::LossyReport;
 /// rather than hardcoding it, so its literal is a property of the kernel headers rather than
 /// of the loader. It is kept here as one name rather than written at each use so that a
 /// change in the kernel is a one-line change.
-pub const CYCLES_VERTEX_NORMAL: &str = "standard_vertex_normal";
+///
+/// **It is `N`, and it is a one-character difference that silently did nothing for the whole
+/// life of this backend.** the enumeration is called `ATTR_STD_VERTEX_NORMAL` and the string
+/// it maps to is not its own name: `scene/attribute.cpp:460-462` reads
+/// `case ATTR_STD_VERTEX_NORMAL: case ATTR_STD_CORNER_NORMAL: return "N";`. this module wrote
+/// `standard_vertex_normal` — the enum's name rather than the wire's — so the loader never
+/// found the array, and **a missing attribute is not an error**. measured: writing the array,
+/// deleting it, and replacing it with per-face normals all render byte-identical, which is
+/// what a name that matches nothing looks like from the outside.
+///
+/// UV escapes the same trap only because the loader accepts two spellings for it
+/// (`cycles_xml.cpp:482-483` reads `UV` *or* `Attribute::standard_name(ATTR_STD_UV)`). the
+/// normal array has no alias.
+pub const CYCLES_VERTEX_NORMAL: &str = "N";
 
 /// The attribute name for UV coordinates.
 ///

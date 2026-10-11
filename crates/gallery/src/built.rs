@@ -462,7 +462,12 @@ pub fn sweep(
             normal,
         );
     }
-    // The two cut ends, fanned to the axis.
+    // The two cut ends, fanned to the axis. Each end faces the way its own normal points, so
+    // the ring is walked in opposite senses on the two: a fan to `+axis` takes the successor
+    // then the corner, and a fan to `-axis` takes the corner then the successor. The sense was
+    // the other way round on both, which left both caps opposed to the normals they were given
+    // while the sides between them agreed — so every capped sweep was a mesh half one way and
+    // half the other, and no single reversal described it.
     for (step, radius, normal) in [
         (0.0, radius_from, scale(axis, -1.0)),
         (1.0, radius_to, axis),
@@ -474,9 +479,9 @@ pub fn sweep(
         for corner in 0..sides {
             let next = (corner + 1) % sides;
             let corners = if step == 1.0 {
-                [at(step, corner), at(step, next), centre]
-            } else {
                 [at(step, next), at(step, corner), centre]
+            } else {
+                [at(step, corner), at(step, next), centre]
             };
             for vertex in corners {
                 points.push(vertex, normal, [0.0, 0.0]);

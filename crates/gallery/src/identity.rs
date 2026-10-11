@@ -406,7 +406,16 @@ pub fn faceted(mesh: &FacetMesh, identity: &Identity, smoothing: fn(&Face) -> u3
             .id_of(face.attributes.belt)
             .expect("every face's belt was numbered by the same walk that built the mesh")
             as f64;
-        for (corner, (point, uv)) in [a, b, c].into_iter().zip(face.uv).enumerate() {
+        // `a, c, b` rather than `a, b, c`, and this is the boundary where the massif crate's own
+        // winding is translated into a document one. `mountain::math::face_normal` is
+        // `normal(c - a, b - a)` with the arguments deliberately swapped — the massif's faces have
+        // positive plan area in `(x, z)`, which in a y-up right-handed frame crosses to `-y` — so
+        // the normals `CornerNormals` hands over are the negation of the right-handed normal of
+        // the triangle as the crate winds it. The convention is that the **normal** is outward and
+        // the winding obeys it, so the order written here is the one that agrees. Each corner
+        // still carries its own normal, its own `uv` and its own position: only the order the three
+        // are written in changes, and nothing that reads a winding on this side.
+        for (corner, (point, uv)) in [a, c, b].into_iter().zip(face.uv).enumerate() {
             let position = point.map(|value| value as f64);
             let normal = normals.at(index, corner).map(|value| value as f64);
             let written = points

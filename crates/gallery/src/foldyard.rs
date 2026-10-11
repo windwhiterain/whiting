@@ -598,12 +598,16 @@ fn cut_heightfield(
             let (p10, n10, t10) = at(column + 1, row);
             let (p01, n01, t01) = at(column, row + 1);
             let (p11, n11, t11) = at(column + 1, row + 1);
+            // Wound the way [`crate::geometry::heightfield`] writes its cells, so the winding
+            // points up with the gradient normal rather than against it. This is a second copy
+            // of a heightfield that differs only in what the second texture channel carries,
+            // and it used to wind the other way round from the generator it copies.
             points.push(p00, n00, t00);
-            points.push(p10, n10, t10);
             points.push(p01, n01, t01);
             points.push(p10, n10, t10);
+            points.push(p10, n10, t10);
+            points.push(p01, n01, t01);
             points.push(p11, n11, t11);
-            points.push(p01, n01, t01);
         }
     }
     points.finish()
@@ -905,14 +909,16 @@ fn roof_edge() -> PackedList {
         );
     }
     // The ceiling: the same two triangles as a downward facing plane, wound so the surface
-    // faces the floor rather than the tiles above it.
+    // faces the floor rather than the tiles above it — which is the claim the order used to
+    // contradict, since `(a, c, b)` crosses to `+y` and the normal is `-y`. The wall band above
+    // agreed, so the roof edge was one mesh agreeing on 80 triangles and opposed on two.
     let (a, b, c, d) = (
         [SHED[0] - half, level + EAVE_BAND[0], SHED[1] - half],
         [SHED[0] + half, level + EAVE_BAND[0], SHED[1] - half],
         [SHED[0] - half, level + EAVE_BAND[0], SHED[1] + half],
         [SHED[0] + half, level + EAVE_BAND[0], SHED[1] + half],
     );
-    for corner in [a, c, b, b, c, d] {
+    for corner in [a, b, c, b, d, c] {
         points.push(corner, [0.0, -1.0, 0.0], [0.0, 0.0]);
     }
     points.finish()

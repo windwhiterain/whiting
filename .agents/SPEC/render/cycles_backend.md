@@ -481,20 +481,29 @@ normal field or the tracer's self-occlusion might explain it. neither does. the 
 every number and every source line, is in
 [investigate/cycles-mesh-normals.md](../../investigate/cycles-mesh-normals.md); the summary:
 
-- **the normal array is written under a name the loader never looks for.** the loader reads it
+- **the normal array was written under a name the loader never looks for.** the loader reads it
   as `Attribute::standard_name(ATTR_STD_VERTEX_NORMAL)`, which is **`"N"`**
-  (`cycles_xml.cpp:470`, `scene/attribute.cpp:460-462`). the emitter writes
+  (`cycles_xml.cpp:470`, `scene/attribute.cpp:460-462`). the emitter wrote
   `standard_vertex_normal` — the enum name, not the wire name. measured: removing the array,
   replacing it with face normals, and leaving it as written all render **byte-identical**. a
-  missing attribute is not an error, so nothing ever said so.
-- **and the normals we do write face the opposite way from the winding — on some meshes only.**
-  the mean dot of an exported normal against its own triangle's face normal, per mesh:
-  landscape **−0.9897**, **−0.9897**, **−0.9991**; but `sunlight` carries one mesh at
-  **−1.0000** and another at **+1.0000**, and `lanterns` the same. **the gallery's mesh builders
-  do not share one winding convention**, and neither backend agrees with all of them. not the
-  axis conversion — one proper rotation is applied to positions and normals alike, and a
-  rotation preserves dot products. not the rasteriser either: it renders correctly from these
-  normals, so its front-face convention is the document's opposite.
+  missing attribute is not an error, so nothing ever said so. **now written as `N`**, with the
+  state's `interpolation="smooth"` — see [the array is written as `N`](#the-array-is-written-as-n-and-the-state-carries-interpolationsmooth).
+- **and the normals we do write face the opposite way from the winding — on 447 of 620 meshes.**
+  **corrected: the first count here was the mean dot of a normal against its own triangle's face
+  normal, one number per mesh, and it put the gallery in three groups when there are two.** the
+  distribution says what it should have said from the start — a mesh is opposed only when *not
+  one* of its triangles agrees, and 447 of the 620 are, with 61 more split and 2 carrying a
+  normal perpendicular to their own surface. `landscape` at −0.9897, −0.9897 and −0.9991 was
+  never a special case; it was three members of the majority. the per-mesh evidence is in
+  [investigate/cycles-mesh-normals.md](../../investigate/cycles-mesh-normals.md).
+
+  **the gallery's mesh builders do not share one winding convention**, and neither backend agreed
+  with all of them. not the axis conversion — one proper rotation is applied to positions and
+  normals alike, and a rotation preserves dot products. not the rasteriser either: it renders
+  correctly from these normals and reads no winding at all, so it never had a convention to agree
+  with. the convention is stated now, in
+  [offline_backend.md](offline_backend.md#winding): the authored normal is the outward direction
+  and the winding obeys it.
 
 renaming the array to `N` makes it take effect at once and the massif goes **black**, which is
 what an inward normal looks like. all three emitter changes were then implemented and measured
@@ -509,16 +518,74 @@ across the whole gallery, and **they are not a net win**:
 | sunlight | +0.9763 | +0.8105 |
 | foldyard | +0.1168 | **−0.2411** |
 
-one scene gains 0.013 and four lose, one of them catastrophically. a mapper applies one rule to
-every mesh it writes and this gallery has no single rule to apply, so **no change at the mapper
-layer can be right**. recorded rather than deleted, because the reasoning is what makes the
-next attempt shorter. the survey that has to come first is in
+one scene gains 0.013 and four lose, one of them catastrophically.
+
+**and the reason that table gives was also corrected by the same re-measurement.** it was read as
+*a mapper applies one rule to every mesh it writes and this gallery has no single rule to apply*,
+so no change at the mapper layer can be right. The rule is not unavailable; it was applied to the
+wrong half of the gallery. A reversal at the mapper inverts the 110 meshes that were already
+right and fixes the 447 that were not, which is exactly what the table shows. The mapper cannot
+decide **which** way a given mesh goes — that is the document's to carry — but the emitter
+writing `N` and `interpolation="smooth"` is right on its own terms and lands with the
+document-side correction, not instead of it. recorded rather than deleted, because the reasoning
+is what makes the next attempt shorter. the survey is in
 [proposals/cycles-mesh-normal-orientation.md](../proposals/cycles-mesh-normal-orientation.md).
 
-**neither of the two unambiguous changes may land on its own.** renaming the array is a name
-that does not match the format, and it is a defect whatever the shading turns out to be — but
-with the orientation unsettled it drops the massif to **−0.6122**, because the normals suddenly
-take effect and point inward. the two are blocked together.
+**neither of the two unambiguous changes may land on its own** — *this has since been settled, and
+the blocker was the winding.* renaming the array is a name that does not match the format, and it
+is a defect whatever the shading turns out to be — but with the orientation unsettled it dropped
+the massif to **−0.6122**, because the normals suddenly took effect and pointed inward. once every
+mesh in the gallery agrees with its own normal the block is gone, and both land together.
+
+### the array is written as `N`, and the state carries `interpolation="smooth"`
+
+measured, all thirteen documents re-exported and the whole gallery re-rendered, 1024x1024 and 32
+samples on CPU, against raster frames re-rendered from the same branch:
+
+| scene | before | after | |
+|---|---|---|---|
+| landscape | +0.7826 | **+0.7938** | the only scene the massif is in, and the one that was blocked |
+| monoliths | −0.1594 | −0.1682 | −0.0088 |
+| tiles | +0.9740 | +0.9740 | |
+| sunlight | +0.9763 | +0.9763 | |
+| spotlight | +0.9282 | +0.9282 | |
+| lanterns | +0.8571 | +0.8571 | |
+| foldyard | +0.1168 | +0.1168 | |
+| tidewater | +0.3435 | +0.3435 | |
+| dunes | −0.6584 | −0.6587 | |
+| stilllife | +0.4887 | +0.4884 | |
+| terraces | −0.8264 | −0.8265 | |
+
+**it is worth almost nothing, and the massif no longer goes black.** the first is the finding and
+the second is the reason it lands anyway: the array is written under a name the loader never reads,
+which is a defect whatever it is worth, and it cannot be worth less than a name that matches.
+
+the reason it is worth nothing is the same one that made the winding worth nothing — **the tracer
+flips its shading normal towards the ray it is shading**, so a surface lit from the front is lit
+from the front whichever way its corners were written. Correlation is not a sensitive measure of
+which of two normals points outward.
+
+`interpolation="smooth"` is read by `xml_read_state` and copied into `mesh->get_smooth()`
+(`cycles_xml.cpp:462`), and its default is **flat** — so without it the array is read, stored and
+ignored. both attributes are on the same `<state>`, and the mesh's state is the one that wraps a
+`<mesh>`; a document has several states and only that one carries them.
+
+**and it does not close the facet difference, which was never an attribute defect.** a scanline
+across one lit flank of the massif at `y = 620`, rasterised against both documents:
+
+| x | 275 | 300 | 325 | 350 | 375 | 400 | 425 | 450 | 475 | 500 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| raster | 222 | 222 | 216 | 217 | 218 | 214 | 204 | 207 | 210 | 214 |
+| tracer, flat | 255 | 255 | 243 | 245 | 236 | 242 | 179 | 220 | 238 | 247 |
+| tracer, smooth | 255 | 255 | 243 | 243 | 237 | 229 | 191 | 196 | 205 | 235 |
+
+smooth interpolation takes the excursion down from `255 … 179 … 247` to `255 … 191 … 235` and
+leaves it there. the residual variation is what a **smoothly interpolated normal does across a
+triangle** — it is supposed to vary. the rasteriser shades per face, so its values step at face
+boundaries, and no attribute reaches across that difference: it is a flat-versus-smooth shading
+semantic, and the earlier reading of this scanline — *raster resolves one value per face, the
+tracer resolves within the face* — described a real difference and attributed it to a missing
+attribute that was never the reason.
 
 **welding is not available**, which is worth recording because it looks like the obvious
 repair. the loader consumes `verts` as per-triangle vertex indices and never writes the
@@ -532,9 +599,9 @@ in
 is not what hides the tracer's detail here.
 
 what is **not** claimed is that this makes the two backends agree. it makes them agree about
-**framing and geometry**, which is what the geometry pipeline is responsible for. per-pixel agreement
-was never available — see [no view transform](#no-view-transform) — and is not what this change
-sets out to buy.
+**framing, geometry and the meaning of a document**, which is what the geometry pipeline and the
+emitter are responsible for. per-pixel agreement was never available — see
+[no view transform](#no-view-transform) — and is not what this change sets out to buy.
 
 ### how many scenes the fitting affected, corrected
 
