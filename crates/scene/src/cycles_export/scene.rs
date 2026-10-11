@@ -642,13 +642,20 @@ fn write_world(
 
 /// The `strength` of a world, as a colour: the light's own tint scaled by its radiance.
 ///
-/// The same multiplication a punctual light gets, for the same reason and with the same
-/// hazard — it was missing here, so a scene's tinted environment rendered untinted.
+/// # Invariants
+///
+/// `brightness` and no other field, because that is the one every kind of light reads its
+/// quantity from and the schema names it differently per kind — a world states a
+/// `radiance`. A second field read here would be a second answer to the same question: it
+/// read a `strength` the schema never declares for this kind, found nothing, and fell back
+/// to 1.0, so every environment light rendered at unit radiance whatever the document said.
+/// That was measured on `dunes` and `landscape`, whose declared radiances never reached the
+/// tracer at all.
 fn environment_strength(environment: &Light) -> String {
     Writer::color(
-        environment.color[0] * environment.strength,
-        environment.color[1] * environment.strength,
-        environment.color[2] * environment.strength,
+        environment.color[0] * environment.brightness,
+        environment.color[1] * environment.brightness,
+        environment.color[2] * environment.brightness,
     )
 }
 

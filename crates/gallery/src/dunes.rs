@@ -22,8 +22,8 @@ use scene::standard::Stage;
 use crate::air::Atmosphere;
 use crate::geometry::{fractal_noise, heightfield};
 use crate::kit::{
-    camera, instance, instances, light_with_radius, mesh, mesh_material, post_processes,
-    screen_material, shaded_point_schema, surface,
+    camera, environment_light, image, instance, instances, light_with_radius, mesh, mesh_material,
+    post_processes, screen_material, shaded_point_schema, surface,
 };
 use crate::shaders::{mesh_shaders, post_shader};
 
@@ -98,6 +98,29 @@ pub fn dunes() -> Value {
             )]),
         ),
         (
+            // The sky as an **image**, which is what lets this scene render on a backend that
+            // has no shader stage of its own. Latlong, because that is the one a path tracer
+            // reads: an octahedral map handed to one is read as latlong and comes back as a
+            // plausible frame with half the sky black and a hard vertical seam.
+            //
+            // Two to one, because `u` goes once round the world and `v` once over it; a square
+            // latlong map is a distorted sky.
+            //
+            // The pixels are [`Atmosphere::environment_pixels`] — the same sky the grade below
+            // draws through `air_sky`, term for term. The comment at `atmosphere` says the air
+            // is handed to the lighting stage and the post stage, and this is the third hand it
+            // was not being given: the two stages above are inside this renderer and the world
+            // is the part another renderer reads.
+            "images".to_owned(),
+            Value::List(vec![image(
+                "air",
+                256,
+                128,
+                atmosphere().environment_pixels(256, 128),
+                crate::shaders::Projection::Latlong,
+            )]),
+        ),
+        (
             "lights".to_owned(),
             Value::List(vec![
                 // The sun, low and off to one side, so the crests catch it and the troughs are
@@ -126,19 +149,40 @@ pub fn dunes() -> Value {
                     175.0,
                     430.0,
                 ),
-                // A fill from the opposite side and from above, dim and blue, standing in
-                // for the sky. One light with one falloff leaves every shadowed slope
-                // black, and black is not what a shadow looks like outdoors.
-                // 420 to the far corner. See the sun above for why it is written here.
-                // 220 units from the field's middle, against the sun's 217.
-                light_with_radius(
-                    "sky",
-                    [130.0, 150.0, -95.0],
-                    [0.34, 0.44, 0.68],
-                    348_989.2,
-                    175.0,
-                    430.0,
-                ),
+                // The fill from the opposite side and from above was a lamp named `sky`, dim and
+                // blue, **standing in for the sky** — and the reason it is written that way is the
+                // honest one: *"one light with one falloff leaves every shadowed slope black, and
+                // black is not what a shadow looks like outdoors."*
+                //
+                // It cannot be a sky, though, and the same sentence says why: a point light's
+                // brightness is the square of its distance, and this field is 420 units to the far
+                // corner. A lamp bright enough to lift the near troughs leaves the far plain black,
+                // which is exactly the defect the lamp was added to cure. It is **replaced here,
+                // not joined**: the environment light below reads this scene's own sky from the
+                // image beside it, so the fill and the sky are one thing and cannot drift apart.
+                //
+                // Measured on the tracer, before this: the rasterised frame's top third carried
+                // 155.8 of mean luma and the traced one 0.0, and the whole-frame correlation was
+                // **-0.6585** — a picture whose bright part is the other picture's dark part.
+                //
+                // The radiance is **measured, not copied from `landscape`**. That scene's 0.55 was
+                // never applied to it: the exporter read this quantity out of a field the schema
+                // does not declare for an environment light, found nothing, and fell back to 1.0 —
+                // so every world's brightness was unit until the field was removed. Sweeping the
+                // attribute the tracer actually reads, against a raster sky of 155.7:
+                //
+                // | radiance | traced sky | gap |
+                // |---|---|---|
+                // | 0.55 | 79.6 | -76.1 |
+                // | 1.00 | 146.1 | -9.7 |
+                // | 1.05 | 153.4 | **-2.4** |
+                // | 1.10 | 160.7 | +5.0 |
+                // | 1.30 | 189.9 | +34.2 |
+                //
+                // A sky is a dome and a point light is a bulb, and this number is what tells the
+                // difference: at 0.55 the field's shadowed slopes would go black again, which is
+                // the fault the original `sky` lamp existed to cure.
+                environment_light("air", "air", [1.0; 3], 1.06),
             ]),
         ),
         (

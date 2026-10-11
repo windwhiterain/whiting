@@ -119,6 +119,39 @@ read at all.
 
 no gallery scene declares one, so this is a rule with no scene behind it yet.
 
+### a light's brightness is read through `brightness_field`, and there is no second read
+
+`brightness_field` maps each light kind to the name the **schema** declares for that kind's
+quantity — a point or spot light a `power`, a directional light an `irradiance`, an
+environment light a `radiance`. Every kind is read through it, and a missing value is a
+`Malformed` error rather than a default, because a light whose brightness cannot be
+read is a scene whose lighting is not the scene.
+
+**there is no other field, and that is not a simplification.** the `Environment` arm once read
+a second field, `strength`, which the schema does not declare for that kind —
+`light_variant(shared_fields(), [radiance(), image()])` and nothing else. the read found
+nothing and defaulted to 1.0, so **every environment light in the gallery rendered at unit
+radiance whatever its scene declared**, and the rendered image said nothing, because a sky at
+the wrong brightness is still a sky.
+
+measured on `dunes`, whose declared 0.55 came out as `strength="1, 1, 1"`:
+
+| radiance | traced sky mean | gap against the rasteriser's 155.73 |
+|---|---|---|
+| 0.55 | 79.58 | -76.15 |
+| 1.00 (what it actually rendered at) | 146.09 | -9.65 |
+| **1.06** | **153.21** | **-2.52** |
+| 1.30 | 189.88 | +34.15 |
+
+the response is close to linear — about 145 of luma per unit — which is
+what a linear radiance written straight into an 8-bit file with no view transform should give.
+the investigation, and the three conditions that let it go unnoticed, are in
+`.agents/investigate/environment-radiance-never-arrived.md`.
+
+`Light::strength` was removed rather than corrected. it had one reader, that reader was the
+wrong one, and keeping a second field answering a question `brightness` already answers is how
+the wrong answer survived in the first place.
+
 ## Materials
 
 ### a material's parameters all travel in `custom_data`, so all of them are read from there

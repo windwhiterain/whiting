@@ -105,8 +105,6 @@ pub struct Light {
     pub inner_angle: Option<f64>,
     /// The name of the image an environment light reads.
     pub image: Option<String>,
-    /// How much an environment light is scaled by.
-    pub strength: f64,
 }
 
 /// The field name each kind of light states its brightness under.
@@ -200,7 +198,6 @@ pub fn read_light(light: &Value) -> EmitResult<Light> {
         outer_angle: None,
         inner_angle: None,
         image: None,
-        strength: 1.0,
     };
 
     match tag {
@@ -227,9 +224,6 @@ pub fn read_light(light: &Value) -> EmitResult<Light> {
             image: read::field(fields, "image")
                 .map(|value| read::text(value, &format!("{context}'s image")))
                 .transpose()?,
-            strength: read::field(fields, "strength")
-                .and_then(|value| read::number(value, "strength").ok())
-                .unwrap_or(1.0),
             ..base
         }),
         other => Err(EmitError::Unsupported(UnsupportedField::Light {
