@@ -94,15 +94,42 @@ not.
 - **not fixable by a better curve.** a curve redistributes a range; this one is given a range whose
   top is already gone. a filmic curve over a clipped signal produces a smoother plateau, not detail.
 
-## The change it implies, and why it was not made here
+## The change it implies, and what it cost — **measured 2026-10-11, not made here**
 
-the ceiling is the shaded image's format. `rgba16float` is already in this codebase's vocabulary —
-the debug channels are that format, and `rgba16float` is listed as filterable in
-`crates/scene/tests/wgsl_validation.rs:42` — so the texture itself is available. what is **not**
-established is the cost: every lighting shader writes this target, every scene's appearance would
-change, and no measurement of the bandwidth or of the across-the-board look has been taken.
+the ceiling is the shaded image's format. **`rgba16float`**, with the frame left alone.
 
-that is a decision, not a finding, so it is not made here.
+**the frame does not follow, and that is most of why this is cheap.** the present target is a
+display image: it is what comes back to the host and what a png is made of, and a host reading
+four bytes a pixel cannot be handed eight. widening it together with the shaded image renders
+perfectly and then answers
+
+```text
+the frame does not encode: the frame is drawn in `rgba16float`, and a frame is read as an 8 bit
+rgba image
+```
+
+— so the read-back is untouched and the frame keeps a format of its own.
+
+measured on `landscape` at 1024×1024, whole frame:
+
+| | `rgba8unorm` | `rgba16float` |
+|---|---|---|
+| pre-grade maximum, r/g/b | `1.000 / 1.000 / 1.000` | **`1.344 / 1.077 / 0.896`** |
+| pixels at or above 1.0 — red | 188,602 (**18.0%**) | 10,747 (1.0%) |
+| — green | 161,394 (15.4%) | 643 |
+| — blue | 109,205 (10.4%) | **0** |
+| output span over those red pixels | **24.3** of 255 | **127.9** |
+| render, steady state, three runs | 74 / 68 ms | 69 / 68 / 80 ms |
+
+**no measurable time cost**, and **no effect on cross-backend agreement** — `landscape`
+`+0.2339 → +0.2334`, `spotlight` `+0.9283 → +0.9282`, `sunlight` `+0.9729 → +0.9763`, `tiles`
+`+0.0221 → +0.0221`. It buys the highlight detail the path tracer has always had and the
+rasterised path could not; agreement is a separate matter and is not moved by it.
+
+one line beyond the format: the one texel black map a scene naming **no** environment light is
+bound carried the shaded image's format with four bytes of pixels behind it, and every such scene
+failed to upload with `Number of bytes per row is less than the number of bytes in a complete
+row`. That map is an image and not a radiance, so it now has a format constant of its own.
 
 ## Sources
 
