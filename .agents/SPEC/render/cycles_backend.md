@@ -407,6 +407,30 @@ plain's gravel are their materials' own `tint` values, and nothing else decides 
 scene is not required to be interesting: it is required to be honest about what it is, and a mesh
 that came out of a geometry crate is a mesh, not a mountain.
 
+**a body came back once, and was measured off again.** `e447f85` gave the massif a per-fragment
+body, `mountain_shade`, whose own documentation gave the reason: *"the shared lighting stage's
+ambient term is fed by the scene's environment light, and this scene names none — which the stage
+answers with black."* the scene names one. `mod.rs:671` declares
+`environment_light("air", "air", [1.0; 3], 0.55)`, and that line arrived in `5fb5c12`, which is
+**not** an ancestor of `e447f85`: `git merge-base 5fb5c12 e447f85` is `77b3fc2`, and
+`git show e447f85:crates/gallery/src/landscape/mod.rs` contains zero occurrences of
+`environment_light`. `feature/dissected-plateau` forked before the sky work, so on the branch that
+wrote it the body was a fair answer to a black flank, and `d993bc7`'s merge left main holding both.
+
+the cost, measured with the geometry held fixed so the tree rewrite is not inside the number:
+
+| raster massif | whole frame | lower 62% | lower 38% |
+|---|---|---|---|
+| body present | +0.2339 | +0.0740 | +0.0508 |
+| body removed, same tree | **+0.6029** | **+0.5159** | **+0.5854** |
+
+so the tree is worth about **0.02** and the body about **0.37**. `MOUNTAIN_SKY` and `MOUNTAIN_SUN`
+are literals in the raster shader and `principled_bsdf` has no socket for either, so there is no
+reading of that body the tracer can run. the flank it was written to fix measures 93 mean luma
+with the environment light on it — a grey, which is what a shadowed flank should be. the evidence
+and the reproduction are in
+[investigate/landscape-agreement-drop.md](../../investigate/landscape-agreement-drop.md).
+
 **atmosphere belongs to the post stage**, for the same reason. haze, aerial perspective, the sky
 itself and the far ranges were already the grade's alone; what changed is that no surface body is
 allowed to reach for `air_colour()` or `air_closure()` and mix toward it. a surface shader that
@@ -431,10 +455,19 @@ against the tracer's integral — and it is the same class of difference as
 [no view transform](#no-view-transform). the missing sky is the grade's, and a scene that wants a
 world declares one.
 
-the stripes along the massif's flanks are **geometry** — the rib construction in
-`crates/gallery/src/massif.rs` — and both backends draw them. they were briefly mistaken for
-residual striation from the deleted per-block stone hash; they are not, and a crop of both frames
-settles it.
+the stripes along the massif's flanks were **geometry** — the rib construction — and both backends
+drew them. that was measured on the older massif, and **it no longer describes these frames**. a
+scanline across one lit flank at `y = 620` reads `190 190 191 191 191 191 191 191 191 191` on the
+rasteriser across 275 pixels and `255 243 245 236 242 179 220 238 247 243` on the tracer across the
+same span: **raster resolves one value per face, the tracer resolves within the face.** what
+separates them is **not** established. a different interpolated normal field and the tracer's
+self-occlusion between the tessellation's slivers both predict it, and telling them apart needs a
+controlled render that has not been run. recorded open rather than guessed.
+
+those raster values are **not** clipped — 191 is well under 255 — so the eight bit ceiling measured
+in
+[investigate/shaded-image-eight-bit-ceiling.md](../../investigate/shaded-image-eight-bit-ceiling.md)
+is not what hides the tracer's detail here.
 
 what is **not** claimed is that this makes the two backends agree. it makes them agree about
 **framing and geometry**, which is what the geometry pipeline is responsible for. per-pixel agreement

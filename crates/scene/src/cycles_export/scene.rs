@@ -468,7 +468,10 @@ fn write_camera(writer: &mut Writer, camera: &Camera) {
     // with `state.tfm` and never looks at the element's own transform attributes.
     writer.open(
         "transform",
-        &transform_attributes(&cycles_camera_frame(&camera.transform), axes::Rotation::Frame),
+        &transform_attributes(
+            &cycles_camera_frame(&camera.transform),
+            axes::Rotation::Frame,
+        ),
     );
     writer.leaf(
         "camera",
@@ -499,11 +502,7 @@ fn write_camera(writer: &mut Writer, camera: &Camera) {
 /// remember, which is where the mirror came from the first time.
 fn cycles_camera_frame(transform: &Transform) -> Transform {
     Transform {
-        scale: [
-            -transform.scale[0],
-            transform.scale[1],
-            transform.scale[2],
-        ],
+        scale: [-transform.scale[0], transform.scale[1], transform.scale[2]],
         ..*transform
     }
 }

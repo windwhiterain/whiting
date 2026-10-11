@@ -216,7 +216,10 @@ pub fn write_material(writer: &mut Writer, material: &Material) {
         ("transmission_weight", format!("{}", material.transmission)),
     ];
     if let Some(emissive) = material.emissive {
-        attributes.push(("emission_color", Writer::color(emissive[0], emissive[1], emissive[2])));
+        attributes.push((
+            "emission_color",
+            Writer::color(emissive[0], emissive[1], emissive[2]),
+        ));
         // The colour is not a light on its own: `Emission Strength` keeps the node's own default
         // of zero unless the document says otherwise, so a surface naming a colour and no
         // strength emits nothing.
