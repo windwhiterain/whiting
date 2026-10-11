@@ -117,13 +117,19 @@ pub fn tiles_of(pixels: Vec<u8>) -> Value {
         ),
         (
             "lights".to_owned(),
+            // The reach is **the distance from the lamp to the furthest floor it lights**, which
+            // is `28.8` — the lamp stands at `[-6, 12, 7]` and the floor runs to `[12, 0, -12]`.
+            // At the `12` this scene used to name, the lamp's own radius sphere is *tangent to the
+            // floor plane*, because the lamp is exactly twelve units above it: the floor is
+            // outside its light's reach everywhere, and what survived was the cluster
+            // grid's bounding-box slack rather than any part of the floor being lit.
             Value::List(vec![light_with_radius(
                 "sun",
                 [-6.0, 12.0, 7.0],
                 [1.0, 0.94, 0.86],
                 9_041.0,
                 16.0,
-                12.0,
+                30.0,
             )]),
         ),
         ("shaders".to_owned(), shaders),
