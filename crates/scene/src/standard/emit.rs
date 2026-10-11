@@ -57,8 +57,8 @@ use crate::standard::packing::{pack_points, pack_struct};
 use crate::standard::pass_schemas::{
     CAMERA, CLUSTER_GRID, COLOR_FORMAT, COLOR_TARGET, DEPTH_BUFFER, DEPTH_FORMAT, DEPTH_RANGE,
     DIRECTIONAL, ENVIRONMENT, ENVIRONMENT_MAP, EXPOSURE, FORWARD, FRAME_SIZE, GLOBAL_COUNT,
-    HALF_EXTENT, INSTANCE_DATA, POSITION, PRESENT_TARGET, PROJECTION, RIGHT, SHADOW_ATLAS,
-    SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, UP, VERTICES, VIEW_PAGE,
+    HALF_EXTENT, IMAGE_FORMAT, INSTANCE_DATA, POSITION, PRESENT_FORMAT, PRESENT_TARGET, PROJECTION,
+    RIGHT, SHADOW_ATLAS, SHADOW_MAP_FORMAT, SHADOW_POOL, TIME, UP, VERTICES, VIEW_PAGE,
 };
 use crate::standard::scene_schema;
 use crate::standard::scene_schema::RADIUS;
@@ -1320,7 +1320,7 @@ impl EnvironmentMap {
                 label: ABSENT_ENVIRONMENT_LABEL.to_owned(),
                 width: 1,
                 height: 1,
-                format: COLOR_FORMAT.to_owned(),
+                format: IMAGE_FORMAT.to_owned(),
                 pixels: vec![0, 0, 0, 255],
             },
             entry: ABSENT_ENVIRONMENT_ENTRY.to_owned(),
@@ -3189,7 +3189,7 @@ fn add_targets(instance: &mut BTreeMap<String, Value>, frame: Frame, declared: &
     );
     instance.insert(
         PRESENT_TARGET_ENTRY.to_owned(),
-        texture(frame.width, frame.height, COLOR_FORMAT),
+        texture(frame.width, frame.height, PRESENT_FORMAT),
     );
     // A declared output is the frame's size, like every other target, because it is filled by the
     // same draw and a texel of it is a texel of the same pixel. The format is the declared type's,
@@ -3309,7 +3309,7 @@ fn post_pass(
             ),
             (
                 PRESENT_TARGET.to_owned(),
-                texture_binding(target, frame.width, frame.height, COLOR_FORMAT),
+                texture_binding(target, frame.width, frame.height, PRESENT_FORMAT),
             ),
         ]),
         vec![PRESENT_TARGET],
