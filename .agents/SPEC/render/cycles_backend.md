@@ -473,10 +473,39 @@ the stripes along the massif's flanks were **geometry** — the rib construction
 drew them. that was measured on the older massif, and **it no longer describes these frames**. a
 scanline across one lit flank at `y = 620` reads `190 190 191 191 191 191 191 191 191 191` on the
 rasteriser across 275 pixels and `255 243 245 236 242 179 220 238 247 243` on the tracer across the
-same span: **raster resolves one value per face, the tracer resolves within the face.** what
-separates them is **not** established. a different interpolated normal field and the tracer's
-self-occlusion between the tessellation's slivers both predict it, and telling them apart needs a
-controlled render that has not been run. recorded open rather than guessed.
+same span: **raster resolves one value per face, the tracer resolves within the face.**
+
+**this is now established, and it is two emitter defects rather than a shading difference.**
+an earlier revision of this file left the cause open and guessed that a different interpolated
+normal field or the tracer's self-occlusion might explain it. neither does. the full evidence,
+every number and every source line, is in
+[investigate/cycles-mesh-normals.md](../../investigate/cycles-mesh-normals.md); the summary:
+
+- **the normal array is written under a name the loader never looks for.** the loader reads it
+  as `Attribute::standard_name(ATTR_STD_VERTEX_NORMAL)`, which is **`"N"`**
+  (`cycles_xml.cpp:470`, `scene/attribute.cpp:460-462`). the emitter writes
+  `standard_vertex_normal` — the enum name, not the wire name. measured: removing the array,
+  replacing it with face normals, and leaving it as written all render **byte-identical**. a
+  missing attribute is not an error, so nothing ever said so.
+- **and the normals we do write face the opposite way from the winding.** mean dot of exported
+  normal against the triangle's own face normal, per mesh: **−0.9897**, **−0.9897**,
+  **−0.9991**. not the axis conversion — one proper rotation is applied to positions and
+  normals alike, and a rotation preserves dot products. not the rasteriser either: it renders
+  correctly from these normals, so its front-face convention is the document's opposite. the
+  two conventions are each internally consistent and disagree with each other.
+
+renaming the array to `N` makes it take effect at once and the massif goes **black**, which is
+what an inward normal looks like. the exporter needs three changes and only in this order do
+they hold together: write `N`; write `interpolation="smooth"` on the `<state>` carrying the
+mesh, since `get_smooth()` defaults **false** (`cycles_xml.cpp:39`) and is read only on
+`<state>`; and resolve the orientation. measured on the last step alone, the whole frame goes
+**+0.7812 → +0.7941**.
+
+**welding is not available**, which is worth recording because it looks like the obvious
+repair. the loader consumes `verts` as per-triangle vertex indices and never writes the
+loop-to-vertex map, so a mesh with shared vertices indexes past its own vertex array: welding
+mesh 0 from 2256 vertices to 887, with every array length self-consistent, **crashes Cycles**
+(`0xC0000005`, inside `update_mesh()`), and dropping the UV array does not help.
 
 those raster values are **not** clipped — 191 is well under 255 — so the eight bit ceiling measured
 in
