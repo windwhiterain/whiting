@@ -449,11 +449,25 @@ measured on `landscape` after the change, 1024×1024, 32 samples on CPU:
 | surface brightness | raster 162.3 mean luma, cycles 70.9, over 3295 paired surface samples |
 | sky | raster painted by the grade, cycles black — the document declares no `<background>` |
 
-the two rows that still differ are **not** shading defects and are recorded as open rather than
-fixed here. the brightness gap is the two lighting models — the rasteriser's own Lambert and specular
-against the tracer's integral — and it is the same class of difference as
-[no view transform](#no-view-transform). the missing sky is the grade's, and a scene that wants a
-world declares one.
+**this table is dated; two of its three rows have since been answered.** the sky row is history:
+`5fb5c12` gave the scene the world the note below says it wants — an `Environment` light over a
+`256 x 128` latlong map, which the tracer reads as readily as the rasteriser does. and the surface
+brightness row predates the floating shaded target, which moved `landscape` from **+0.6029** to
+**+0.7812** against the same tracer frame. re-measured on `main` at `c8c7ec9`, 1024×1024, 32 samples
+on CPU:
+
+| scene | `rgba8unorm` shaded target | `rgba16float` shaded target |
+|---|---|---|
+| landscape | +0.6029 | **+0.7812** |
+| spotlight | +0.9283 | +0.9282 |
+| sunlight | +0.9729 | +0.9763 |
+| tiles | +0.0221 | +0.0221 |
+| lanterns | +0.8352 | +0.8571 |
+| foldyard | +0.1050 | +0.1168 |
+
+the brightness gap that remains is the two lighting models — the rasteriser's own Lambert and
+specular against the tracer's integral — and it is the same class of difference as
+[no view transform](#no-view-transform). it is recorded as open rather than fixed here.
 
 the stripes along the massif's flanks were **geometry** — the rib construction — and both backends
 drew them. that was measured on the older massif, and **it no longer describes these frames**. a

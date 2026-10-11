@@ -121,10 +121,32 @@ measured on `landscape` at 1024×1024, whole frame:
 | output span over those red pixels | **24.3** of 255 | **127.9** |
 | render, steady state, three runs | 74 / 68 ms | 69 / 68 / 80 ms |
 
-**no measurable time cost**, and **no effect on cross-backend agreement** — `landscape`
-`+0.2339 → +0.2334`, `spotlight` `+0.9283 → +0.9282`, `sunlight` `+0.9729 → +0.9763`, `tiles`
-`+0.0221 → +0.0221`. It buys the highlight detail the path tracer has always had and the
-rasterised path could not; agreement is a separate matter and is not moved by it.
+**no measurable time cost.** on **cross-backend agreement** the first reading said no effect at all —
+`landscape` `+0.2339 → +0.2334`, `spotlight` `+0.9283 → +0.9282`, `sunlight` `+0.9729 → +0.9763`,
+`tiles` `+0.0221 → +0.0221` — **and that reading was wrong**, because it was taken while the massif
+still wore its per-fragment surface body. That body clipped far more of the frame than the ceiling
+did, so the ceiling was measuring a difference the frame had already thrown away.
+
+Re-measured after the body came off ([investigate/landscape-agreement-drop.md](landscape-agreement-drop.md)),
+on `main` at `c8c7ec9`, same Cycles frames, whole frame:
+
+| scene | `rgba8unorm` | `rgba16float` | change |
+|---|---|---|---|
+| **landscape** | +0.6029 | **+0.7812** | **+0.1783** |
+| lanterns | +0.8352 | +0.8571 | +0.0219 |
+| foldyard | +0.1050 | +0.1168 | +0.0118 |
+| sunlight | +0.9729 | +0.9763 | +0.0034 |
+| spotlight | +0.9283 | +0.9282 | −0.0001 |
+| tiles | +0.0221 | +0.0221 | 0 |
+
+so the ceiling was worth **+0.178 on `landscape`** — more than any single change since the camera
+frame — and nothing anywhere. The gain is in kind what the table above says it is: the rasterised
+massif goes from one flat cream blob to reading its block faces, because those faces were the pixels
+whose span went from 24.3 to 127.9.
+
+**a general lesson worth keeping.** Two defects sat on the same pixels, and the larger one hid the
+smaller. Measuring the smaller one while the larger was in place produced a clean, plausible, wrong
+answer. The order of these measurements was wrong, not the measurements.
 
 one line beyond the format: the one texel black map a scene naming **no** environment light is
 bound carried the shaded image's format with four bytes of pixels behind it, and every such scene
