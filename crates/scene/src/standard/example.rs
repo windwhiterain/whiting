@@ -246,10 +246,16 @@ fn instance(label: &str, mesh: &str, material: &str, translation: [f64; 3]) -> V
 ///
 /// The triangle lies flat on the ground plane and faces the light side of the room, so
 /// every point of it carries the same normal.
+///
+/// **the pairs below are `(x, z)`, and they are in the order that faces `+y`.** they were
+/// written as `(x, y, 0.0)`, so the third component never varied and the triangle lay in the
+/// plane `z = 0` carrying a normal of `(0, 1, 0)` — a vector lying *inside* the triangle. no
+/// order of three corners agrees with a normal that is perpendicular to nothing, so this mesh
+/// was the one in the gallery that no winding rule could reach.
 fn triangle() -> Vec<Value> {
-    [(-1.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+    [(-1.0, 0.0), (0.0, 1.0), (1.0, 0.0)]
         .into_iter()
-        .map(|(x, y)| {
+        .map(|(x, z)| {
             Value::structure([
                 (
                     "normal".to_owned(),
@@ -257,7 +263,7 @@ fn triangle() -> Vec<Value> {
                 ),
                 (
                     "position".to_owned(),
-                    Value::List([x, y, 0.0].into_iter().map(Value::Float).collect()),
+                    Value::List([x, 0.0, z].into_iter().map(Value::Float).collect()),
                 ),
             ])
         })

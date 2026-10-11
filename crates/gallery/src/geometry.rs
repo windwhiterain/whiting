@@ -293,15 +293,16 @@ pub fn heightfield(divisions: usize, extent: f64, height: impl Fn(f64, f64) -> f
             let (p10, n10, t10) = at(column + 1, row);
             let (p01, n01, t01) = at(column, row + 1);
             let (p11, n11, t11) = at(column + 1, row + 1);
-            // Two triangles per cell, wound counter clockwise seen from above, so the
-            // surface faces up and the winding the rasterizer wants is the winding that
-            // makes it visible.
+            // Two triangles per cell, wound counter clockwise seen from above, so the winding
+            // points the way the normals point — the convention in `offline_backend.md`. Each
+            // corner keeps the texture coordinate of its own position; only the order the three
+            // are written in changes.
             points.push(p00, n00, t00);
-            points.push(p10, n10, t10);
             points.push(p01, n01, t01);
             points.push(p10, n10, t10);
+            points.push(p10, n10, t10);
+            points.push(p01, n01, t01);
             points.push(p11, n11, t11);
-            points.push(p01, n01, t01);
         }
     }
     points.finish()
@@ -334,11 +335,13 @@ pub fn plane_facing(extent: f64, height: f64, facing_up: bool) -> PackedList {
     );
     let mut points = Shaded::with_capacity(6);
     // The same two triangles either way round, because the corners are the same and only which
-    // one is in front changes.
+    // one is in front changes. This is what the invariant above claims and was not: with the
+    // arms the other way round, `facing_up` gave `(a, b, c)`, whose `u x v` is `(0, -4e^2, 0)` —
+    // down, against a normal of up — and `facing_down` gave the same. Both were opposed.
     let (first, second) = if facing_up {
-        ([a, b, c], [b, d, c])
-    } else {
         ([a, c, b], [b, c, d])
+    } else {
+        ([a, b, c], [b, d, c])
     };
     for corner in first.into_iter().chain(second) {
         points.push(corner, normal, [0.0, 0.0]);
@@ -378,7 +381,17 @@ pub fn sphere(divisions: usize, radius: f64) -> PackedList {
                 vertex(t1, p1),
                 vertex(t0, p1),
             ];
-            for index in [0usize, 1, 2, 0, 2, 3] {
+            // The ring's own angular direction reverses where `cos phi` does. Differentiating
+            // the vertex map gives `dP/dtheta x dP/dphi = cos phi * n`, so the quad listed
+            // below faces out above the equator and faces **in** below it, and a sphere used to
+            // be half outward and half inverted. The order follows the sign rather than being
+            // fixed, which costs one test and makes every ring agree with its own radial normal.
+            let order: [usize; 6] = if (0.5 * (p0 + p1)).cos() >= 0.0 {
+                [0, 1, 2, 0, 2, 3]
+            } else {
+                [0, 3, 2, 0, 2, 1]
+            };
+            for index in order {
                 let (position, texture) = corners[index];
                 points.push(position, normalized(position), texture);
             }
@@ -495,7 +508,9 @@ pub fn cone(sides: usize, radius: f64, height: f64) -> PackedList {
         let (a, b) = (rim(index), rim(index + 1));
         let slope = [a[0] + b[0], height * 2.0, a[2] + b[2]];
         let normal = normalized(cross(slope, subtract(b, a)));
-        for corner in [a, b, apex] {
+        // `b` before `a`: `cross(b - a, apex - a)` is the exact negation of the normal
+        // above, so the fan used to be wound against its own normals on every cone.
+        for corner in [b, a, apex] {
             points.push(
                 corner,
                 normal,
@@ -850,8 +865,10 @@ pub fn tuft(blades: usize, height: f64, spread: f64) -> PackedList {
 ///
 /// A broad leaf is the one place the single sided trade [`blade`] makes is visible, because
 /// a banana or a reed leaf is wide enough to be seen from behind at the distance a courtyard
-/// is drawn from. This is that leaf: the same taper, run twice with the normals opposed, so
-/// whichever side faces the camera is lit.
+/// is drawn from. This is that leaf: the same taper, run twice with the normals opposed **and
+/// the winding reversed**, so whichever side faces the camera is the side whose winding points
+/// out of it. Reversing only the normals left the second ribbon wound against them, which is a
+/// leaf lit as though it were edge on. Nothing in the gallery calls this yet.
 pub fn double_blade(length: f64, width: f64, curve: f64) -> PackedList {
     let mut points = Shaded::with_capacity(8 * 6);
     let half_width = |fraction: f64| -> f64 {
@@ -872,14 +889,28 @@ pub fn double_blade(length: f64, width: f64, curve: f64) -> PackedList {
             let (from, to) = (step as f64 / 4.0, (step + 1) as f64 / 4.0);
             let lean = curve * (from + to);
             let normal = normalized([-lean * facing, facing, 0.0]);
-            let corners = [
-                (from, -1.0),
-                (from, 1.0),
-                (to, 1.0),
-                (from, -1.0),
-                (to, 1.0),
-                (to, -1.0),
-            ];
+            // The ribbon facing `-y` is the same ribbon seen from its other side, so its
+            // corners are written the other way round. Each corner still carries its own
+            // fraction and its own side, so the texture coordinate follows its position.
+            let corners = if facing > 0.0 {
+                [
+                    (from, -1.0),
+                    (from, 1.0),
+                    (to, 1.0),
+                    (from, -1.0),
+                    (to, 1.0),
+                    (to, -1.0),
+                ]
+            } else {
+                [
+                    (from, -1.0),
+                    (to, -1.0),
+                    (to, 1.0),
+                    (from, -1.0),
+                    (to, 1.0),
+                    (from, 1.0),
+                ]
+            };
             for (fraction, side) in corners {
                 points.push(at(fraction, side), normal, [fraction, side * 0.5 + 0.5]);
             }
@@ -933,16 +964,17 @@ pub fn masked_heightfield(
             let (near_right, near_mask) = corner(row, column + 1);
             let (far_left, far_mask) = corner(row + 1, column);
             // One quad, wound counter clockwise seen from above, as the same two triangles every
-            // other generator writes. The first index of the pair repeats because it is where a
-            // quad is split, and a field whose cells are wound unlike its neighbours is a field
-            // with a hole in every other cell — which reads as a shading artefact and is not.
+            // other generator writes — so the winding points up, the way `(0, 1, mask)` does.
+            // The first index of the pair repeats because it is where a quad is split, and a
+            // field whose cells are wound unlike its neighbours is a field with a hole in every
+            // other cell — which reads as a shading artefact and is not.
             for (position, value) in [
                 (near_left, left_mask),
+                (far_right, right_mask),
                 (near_right, near_mask),
-                (far_right, right_mask),
                 (near_left, left_mask),
-                (far_right, right_mask),
                 (far_left, far_mask),
+                (far_right, right_mask),
             ] {
                 points.push(
                     position,

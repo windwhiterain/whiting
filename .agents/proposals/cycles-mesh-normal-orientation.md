@@ -1,13 +1,23 @@
 # Which way round is a gallery mesh's normal?
 
-> **Outcome: option 1 was implemented and measured, and it is worse.** All three exporter
-> changes together give landscape **+0.7812 → +0.7941** and cost `sunlight` 0.166, `lanterns`
-> 0.123, `spotlight` 0.055, `foldyard` 0.358. The reason is in finding 2 of
-> [investigate/cycles-mesh-normals.md](../investigate/cycles-mesh-normals.md): **the gallery's
-> mesh builders do not share a winding convention.** `sunlight` carries one mesh whose normals
-> are the negation of its winding and another whose normals agree with it, in the same scene.
-> A rule applied at the mapper flips one and inverts the other. The code is kept as a reference
-> implementation; the rule is withdrawn. What follows is why option 3 is the only one left.
+> **Outcome: option 3 was taken, and it was taken in full.** The convention is stated in
+> [SPEC/render/offline_backend.md](../SPEC/render/offline_backend.md#winding) — the authored
+> normal is the outward direction and the winding obeys it — and nine builders were brought
+> into line. All 620 meshes now agree with their own normals: 0 opposed, 0 split, 0
+> malformed, measured by `out/probe-orientation.py` over freshly exported documents.
+>
+> **and the honest part is that it bought almost nothing.** every rendered frame changed and
+> no scene moved: `tiles`, `sunlight`, `spotlight`, `lanterns` and `foldyard` are identical to
+> four decimals, `landscape` gained 0.0014. A path tracer flips its shading normal towards
+> the ray it is shading, so which way the corners were written is not a question it asks.
+> With that settled the blocked emitter changes could land, and they are worth about the same
+> — see [SPEC/render/cycles_backend.md](../SPEC/render/cycles_backend.md).
+>
+> **the survey that made this possible was itself wrong once.** The 111 / 127 / 382 split this
+> proposal was written from came from one scalar per mesh. The distribution says 110 / 447 /
+> 61 / 2, and 557 of the 620 are unanimous. The reasoning below is kept because the way it was
+> wrong is the useful part: three times this gallery was summarised into one number and a
+> story told about it.
 
 ## The question
 

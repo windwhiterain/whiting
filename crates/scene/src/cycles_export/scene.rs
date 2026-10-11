@@ -996,7 +996,20 @@ fn write_instances(
                 &transform_attributes(&instance.transform, axes::Rotation::Points),
             );
         }
-        writer.open("state", &[("shader", material.label.clone())]);
+        writer.open(
+            "state",
+            // `interpolation="smooth"` is what makes the `N` array above it mean anything. The
+            // loader reads it in `xml_read_state` and copies it into `mesh->get_smooth()`
+            // (`cycles_xml.cpp:462`), and the default is **flat** — so without this attribute
+            // the renderer keeps the array and ignores it, interpolating the face normal
+            // across each triangle instead. That is the facet striation this backend was
+            // blamed on: raster resolves one value per face, the tracer was resolving within
+            // the face from the wrong normals.
+            &[
+                ("shader", material.label.clone()),
+                ("interpolation", "smooth".to_owned()),
+            ],
+        );
         geometry::write_mesh(writer, mesh);
         writer.close("state");
         if instance_has_transform(&instance.transform) {

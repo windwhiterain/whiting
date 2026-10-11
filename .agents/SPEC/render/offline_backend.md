@@ -40,3 +40,40 @@ the size of the image, in pixels. **not** carried by the document: see
 
 the answer every `Backend` gives, in one type. a `Backend` that writes a file decodes it, so
 that a caller holding a rasterised frame and a path traced one is holding the same thing.
+
+### `Winding`
+
+**the authored normal is the outward direction, and the winding obeys it.** a triangle's three
+corners are written in the order that makes `cross(second − first, third − first)` point the way
+the normals those corners carry point. this is stated once, here, because it was stated nowhere:
+before it, 447 of the gallery's 620 meshes were wound the other way and 61 had no consistent
+order at all, and the only reason either was visible is that one backend happened to disagree
+about which side of a surface is lit.
+
+**the normal is authoritative and the winding is the notation.** geometry is the asset; the order
+of three corners is how the asset records that it has an outside. a reader may therefore rely on
+`cross(b − a, c − a)` agreeing with the authored normal, and may not have to guess which of the
+two is the one that was meant.
+
+what the two are not:
+
+- **not a culling rule.** a `Backend` need not reject a back-facing triangle. the rasterised path
+  does not — there is no `cull_mode`, no `FrontFace` and no `CullMode` anywhere under `crates/`,
+  and no `front_facing`, `faceforward` or `face_normal` in any `.wgsl` — so it shades from the
+  authored normal and draws both sides. the convention is about what the winding *says*, and a
+  backend that reads only the normals is not violating it.
+- **not a shading rule.** where a surface is lit comes from the normal. the winding says which
+  side the surface claims to be, and a `Backend` that reads no winding is not wrong, only silent.
+
+**a normal perpendicular to its own surface is a malformed document.** no winding satisfies the
+convention for such a mesh, so there is nothing to choose and the authoring mistake cannot be
+papered over by re-ordering corners. two meshes in `studio` are in this state: the triangle is
+built in the plane `z = 0` and carries the normal `(0, 1, 0)`, which lies inside that plane.
+measured, and the evidence is in
+[investigate/cycles-mesh-normals.md](../../investigate/cycles-mesh-normals.md).
+
+**a mesh whose triangles do not share one orientation is not in a third state.** it is in the
+same state as any other mesh that has not yet been brought into line, and it is brought into line
+by the generator that wrote it. a `Backend` applies no rule of its own to guess which way a
+reversal goes, because a reversal applied to a document that holds both kinds of triangle inverts
+the ones that were already right.
