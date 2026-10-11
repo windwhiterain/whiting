@@ -309,7 +309,37 @@ pub const SHADOW_MAP_FORMAT: &str = "depth32float";
 pub const DEPTH_FORMAT: &str = "depth32float";
 
 /// Format the shaded image is rendered in.
-pub const COLOR_FORMAT: &str = "rgba8unorm";
+///
+/// **The one image in the pipeline that is not a display value.** The post stage reads its input
+/// from here and the tone curve runs on what it reads, so this target has to be able to hold a
+/// radiance above one or the light above one is lost before anything can shape it. Measured on
+/// `landscape`: at `rgba8unorm` the pre-grade range on every channel is `[0.000, 1.000]` and
+/// 19.6% of the drawn surface arrives at the curve already flat; at `rgba16float` the same range
+/// reads `[0.000, 1.344]`, `[0.000, 1.077]` and `[0.000, 0.896]` — the top third was being
+/// discarded, and `exposure` cannot reach it, because a multiplier applied to one is still one.
+pub const COLOR_FORMAT: &str = "rgba16float";
+
+/// Format the **frame** is written in, which is a display image and not a radiance.
+///
+/// Deliberately not [`COLOR_FORMAT`]. The frame is what comes back to the host and what a png is
+/// made of, and a host that reads four bytes a pixel cannot be handed eight: measured, widening
+/// the present target with the shaded image answers `the frame does not encode: the frame is
+/// drawn in 'rgba16float', and a frame is read as an 8 bit rgba image` — the pipeline compiles,
+/// validates and renders perfectly, and the read-back is the whole of the cost.
+pub const PRESENT_FORMAT: &str = "rgba8unorm";
+
+/// Format an image the pipeline **uploads itself** is declared in.
+///
+/// Deliberately not [`COLOR_FORMAT`], and the confusion between the two is a measured defect
+/// rather than a hypothetical. An image carries the pixels a document gave it — eight bits a
+/// channel, which is what the scene schema's own `format` field says and what `write_image` emits
+/// — while the shaded image is the pipeline's own and is a radiance, which is why that one is a
+/// float. A one texel black placeholder bound for a scene naming no environment light was
+/// declared with the shaded image's format and four bytes of pixels behind it, and every such
+/// scene then failed to upload with `Number of bytes per row is less than the number of bytes in
+/// a complete row` — a failure that has nothing to do with the thing it names, which is why it
+/// took a scene by scene survey to find.
+pub const IMAGE_FORMAT: &str = "rgba8unorm";
 
 /// Builds the schema of a projection, which every stage draws through.
 ///
