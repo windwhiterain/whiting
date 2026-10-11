@@ -106,6 +106,34 @@ amount of frame it was standing behind.**
   the sky the rasteriser paints, term for term, which is the condition `5fb5c12` set. The only
   free number is the radiance `r` — `landscape` chose 0.55, `foldyard` 0.26, `tidewater` 1.0 —
   and it is the one thing that has to be measured rather than copied.
+
+**this was done, and the prediction held.** measured 2026-10-11, 1024x1024, 32 samples on
+CPU, against the same rasterised frame throughout:
+
+| | before | after |
+|---|---|---|
+| whole frame | **-0.6585** | **+0.2667** |
+| lower 62% | +0.6268 | +0.7401 |
+| lower 38% | -0.3941 | +0.8475 |
+| sky band gap | 155.7 | **-2.5** |
+
+the gap closed and the correlation moved +0.93 in the direction the eleven-scene table
+predicted, so the mechanism is not a description of one scene's coincidence.
+
+the radiance is **1.06**, and it is a measured number. the free parameter `r` above is the one
+that had to be swept, and sweeping it turned up a defect that made every previous value in this
+document meaningless: the exporter never applied `r` at all. see
+`.agents/investigate/environment-radiance-never-arrived.md`. `landscape`'s 0.55, `foldyard`'s
+0.26 and `tidewater`'s 1.0 were all dead numbers, and every environment light in the gallery
+has been rendering at unit radiance.
+
+what the sweep did **not** fix is the ground. with the sky matched to -2.5 the ground band
+carries 99.81 on the rasteriser against 152.94 on the tracer, and the rasterised ground spans
+29 levels of luma across the band where the traced one spans 112 — the two tone
+curves of SPEC's [no view transform](../SPEC/render/cycles_backend.md#no-view-transform), not a
+brightness. a radiance is a scale and a tone curve is a shape, so no single number reaches
+both, and the whole-frame correlation is limited by the ground for as long as that stands.
+
 - **`terraces` is real work.** its sky lives in WGSL, not in Rust, so giving it a world means
   either porting `sky_colour` into an `Atmosphere` or writing the environment map by hand from the
   same three colours. The fog and the painted ranges stay behind either way, so the honest
