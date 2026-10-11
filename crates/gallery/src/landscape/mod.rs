@@ -39,12 +39,12 @@ use scene::standard::Stage;
 
 use crate::air::Atmosphere;
 use crate::geometry::{fractal_noise, heightfield, smoothstep};
-use crate::identity::{self, Identity, massif_extras, outputs_field, plain_extras};
+use crate::identity::{self, massif_extras, outputs_field, plain_extras, Identity};
 use crate::kit::{
-    camera_placed, directional, instance, instances, light_with_radius, mesh, mesh_material,
+    camera_placed_up, directional, instance, instances, light_with_radius, mesh, mesh_material,
     post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{Block, Extras, lighting_shader_declaring, mesh_shaders_over, post_shader};
+use crate::shaders::{lighting_shader_declaring, mesh_shaders_over, post_shader, Block, Extras};
 
 /// The scene document's `outputs` field, whose name the compiler's schema fixes.
 const OUTPUTS: &str = "outputs";
@@ -363,10 +363,29 @@ pub fn eye_at(radius: f64) -> [f64; 3] {
 }
 
 /// How far back an overhead eye stands, as a fraction of the massif's radius.
-const OVERHEAD_BACK: f64 = 0.30;
+///
+/// Nearly none: the plan this view exists for is the reference's own — straight down, the ridge
+/// network read as a pattern — and any more back than this turns the pattern into a skyline.
+const OVERHEAD_BACK: f64 = 0.12;
 
 /// How high an overhead eye stands, as a fraction of the massif's radius.
 const OVERHEAD_HEIGHT: f64 = 2.60;
+
+/// Returns the direction the frame's top edge runs along, in the world.
+///
+/// # Invariants
+///
+/// The ground view's up is world-up: a horizon is level and that is the whole decision. The plan
+/// looks nearly straight down, where world-up is the view direction and a look-at built on it has
+/// no orientation at all — so the plan's up is a **horizontal** direction instead, the one from
+/// the massif out towards where the eye stands, which keeps the plan's left and right the same
+/// left and right the ground view shows.
+fn frame_up() -> [f64; 3] {
+    match view() {
+        View::Across => [0.0, 1.0, 0.0],
+        View::Overhead => [EYE.azimuth.cos(), 0.0, EYE.azimuth.sin()],
+    }
+}
 
 /// Returns how wide the frame is, in radians, for the same reason as [`eye_at`].
 pub fn field_of_view() -> f64 {
@@ -609,9 +628,10 @@ pub fn landscape() -> Value {
         (OUTPUTS.to_owned(), outputs_field()),
         (
             "cameras".to_owned(),
-            Value::List(vec![camera_placed(
+            Value::List(vec![camera_placed_up(
                 eye,
                 target,
+                frame_up(),
                 FIELD_OF_VIEW,
                 (radius * 0.05).max(0.5),
                 plain * 1.2,

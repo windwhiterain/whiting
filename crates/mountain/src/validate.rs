@@ -18,7 +18,7 @@
 use std::collections::BTreeMap;
 
 use crate::line::{LineRef, Side, Station};
-use crate::math::{Vec2, distance};
+use crate::math::{distance, Vec2};
 use crate::sampling::{Sampling, Unresolved, WELD};
 use crate::skeleton::{RidgeId, Skeleton, ValleyId};
 use crate::tessellation::{BeltRef, Tessellation};
@@ -432,9 +432,10 @@ fn check_coverage(
         let from = left.station(belt.reference.side);
         let to = right.station(belt.reference.side);
         if from.line == to.line {
+            let foot = side_foot(skeleton, from.line, from.t, left.position, right.position);
             let side = rib_side(skeleton, from.line, from.t, left.position)
                 .or_else(|| rib_side(skeleton, to.line, to.t, right.position))
-                .unwrap_or_else(|| skeleton.side_of(from.line, from.t, left.position));
+                .unwrap_or_else(|| skeleton.side_of(from.line, from.t, foot));
             for (low, high) in crate::line::arc_spans(from.t, to.t, from.line == LineRef::Footprint)
             {
                 tiled
@@ -477,8 +478,18 @@ fn check_coverage(
             } else {
                 right.position
             };
-            let side = rib_side(skeleton, line, station, foot)
-                .unwrap_or_else(|| skeleton.side_of(line, station, foot));
+            let other = if line == from.line {
+                right.position
+            } else {
+                left.position
+            };
+            let side = rib_side(skeleton, line, station, foot).unwrap_or_else(|| {
+                skeleton.side_of(
+                    line,
+                    station,
+                    side_foot(skeleton, line, station, foot, other),
+                )
+            });
             for (low, high) in crate::line::arc_spans(station, reach, line_closed) {
                 tiled.entry((line, side)).or_default().push((low, high));
             }
@@ -542,6 +553,23 @@ fn check_coverage(
                 });
             }
         }
+    }
+}
+
+/// Returns the foot a rib with no length declares its side from.
+///
+/// # Invariants
+///
+/// A rib of no length — a head or a corner collapsed to a point — points nowhere, so it declares no
+/// side of its own and the side is read from the **valley's other floor node**, the direction the
+/// valley descends in. Reading `side_of` at the coincident foot instead reads the sign of a zero
+/// cross product, and two valleys sharing one head then file their spans under the same side of the
+/// crest and leave the opposite flank bare.
+fn side_foot(skeleton: &Skeleton, line: LineRef, t: f32, foot: Vec2, other: Vec2) -> Vec2 {
+    if rib_side(skeleton, line, t, foot).is_some() {
+        foot
+    } else {
+        other
     }
 }
 

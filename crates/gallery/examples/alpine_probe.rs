@@ -58,6 +58,30 @@ fn main() {
 
     match massif.build() {
         Ok(mesh) => {
+            for block in &mesh.blocks {
+                if block.attributes.belt.valley.0 != 2 || block.attributes.belt.segment != 0 {
+                    continue;
+                }
+                let show = |run: &[u32]| {
+                    run.iter()
+                        .map(|index| {
+                            let point = mesh.points[*index as usize];
+                            format!("({:.3},{:.3},{:.3})", point[0], point[1], point[2])
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                };
+                println!(
+                    "  block {:?} top: {}",
+                    block.attributes.belt,
+                    show(&block.top)
+                );
+                println!(
+                    "  block {:?} bottom: {}",
+                    block.attributes.belt,
+                    show(&block.bottom)
+                );
+            }
             let (low, high) = mesh.bounds();
             println!(
                 "mesh: {} faces, {} points, shortest edge {:.3}",

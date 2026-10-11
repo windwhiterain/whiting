@@ -20,15 +20,33 @@ mod authored;
 
 use mountain::Tessellation;
 
-/// How finely a belt is subdivided along its length.
+/// How wide a facet is allowed to be, as a fraction of the massif's own extent across the plan.
 ///
-/// The only number left in this file, because it is the one thing about the massif that is not part of
-/// its shape: it is how much resolution the facets get, and the spec's block faces are only as small as
-/// this makes them.
-const STEP: f32 = 46.0;
+/// The only number left in this file, and it is a **ceiling** rather than a spacing: a stretch of
+/// line between two anchors — a node or a station a valley named — is never cut finer than one
+/// facet unless it is longer than this. The anchors are the ribs, so a facet is about as wide as
+/// the flank is deep and the cells come out square instead of the combs a fixed spacing cut them
+/// into. Twelve is the number that reads as blocks rather than as drapes on a massif this size.
+const FACET_FRACTION: f64 = 12.0;
 
 /// Builds the massif.
 pub fn massif() -> mountain::Massif {
-    mountain::Massif::new(authored::skeleton())
-        .with_tessellation(Tessellation::default().with_step(STEP))
+    let skeleton = authored::skeleton();
+    let step = facet_ceiling(&skeleton) as f32;
+    mountain::Massif::new(skeleton).with_tessellation(Tessellation::default().with_step(step))
+}
+
+/// Returns how wide a facet may be, read from the skeleton's own extent across the plan.
+fn facet_ceiling(skeleton: &mountain::Skeleton) -> f64 {
+    let (mut low, mut high) = ([f64::MAX, f64::MAX], [f64::MIN, f64::MIN]);
+    for ridge in &skeleton.ridges {
+        for node in &ridge.nodes {
+            for axis in 0..2 {
+                low[axis] = low[axis].min(node.position[axis] as f64);
+                high[axis] = high[axis].max(node.position[axis] as f64);
+            }
+        }
+    }
+    let extent = ((high[0] - low[0]).powi(2) + (high[1] - low[1]).powi(2)).sqrt();
+    extent / FACET_FRACTION
 }

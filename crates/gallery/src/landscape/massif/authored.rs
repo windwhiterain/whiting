@@ -3,39 +3,42 @@
 //! # What is authored and what is generated
 //!
 //! **The control structure is authored**: the ridge polylines, the valley polylines, the
-//! correspondence from every valley node to the two ridge stations it faces, and the rim. That is what
+//! correspondence from every valley node to the two ridge nodes it faces, and the rim. That is what
 //! this file is. **The surface is generated**: the expansion walks each pair of consecutive valley
 //! nodes as a belt bounded by two known stations and emits the facets between them. There is no
-//! triangulation, no search, and — this is the point — **no derivation of the valleys from the ridges**.
+//! triangulation, no search, and — this is the point — **no derivation of the valleys from the
+//! ridges**.
 //!
-//! # The shape: a tree, and how one is written
+//! # The shape: a dissected upland, and how one is written
 //!
-//! The reference is a dissected upland: **one main divide with spurs hanging off it**, and a valley
-//! cut in between every neighbouring pair. That is a tree, and three rules make one writable here:
+//! The reference is a dissected upland: **one long divide with spurs branching off it at several
+//! scales**, and a valley cut in between every neighbouring pair. Three rules make one writable:
 //!
-//! - **A crest is written peak-first and is split at every col and every junction.** The rule the
-//!   crate checks is that nothing rises as it runs away from a summit, so a divide that undulates is
-//!   a *chain* of segments: each descends from its peak (a junction, or the summit) into the col
-//!   beside it. The divide above is `w0` (summit into `cW1`) and `w1` (`J_W1` into the same col) —
-//!   two crests ending at one point, which is what a col is.
-//! - **A junction is a segment end.** A belt changes line only at a line's end, so a spur born at
-//!   `J_W1` names the crest that *ends* there: `w1` starts at `J_W1`, and the spurs name it. Every
-//!   split in this file is at a point where four lines meet and one of them owns the vertex.
-//! - **A valley's wall is a chain, and the chain turns at the junctions.** The valley below the col
-//!   `cW2` has one wall walking `w2` back up to `J_W1` and then out along `nW1`; the belt where the
-//!   wall changes line walks through the junction, because the two segments end there. The
-//!   correspondence names the crests; the expansion does the walking.
+//! - **A crest is written peak-first and is split at every col and every junction.** Nothing may
+//!   rise as it runs away from a summit, so a divide that undulates is a *chain* of segments, each
+//!   falling from its peak — a junction, or the summit — into the col beside it.
+//! - **A junction is a segment end.** A belt changes line only at a line's end, so a spur born at a
+//!   shoulder names the crest that ends or starts there, and [`name_junctions`] writes the naming.
+//! - **A valley's wall is a chain, and the chain turns at the junctions.** The wall below the col
+//!   `cW2` walks `w2` back up to `J_W1` and then out along `nW1a`; the belt that straddles the
+//!   junction walks through it, because the two segments end there.
 //!
-//! The valley floors descend from their heads — a col, a junction, or the summit — to the rim, and
-//! every elevation in this file is written. Nothing is levelled afterwards: a pass that took the
-//! foot down to the ground would have to know which ends are the massif's edge and which are cols,
-//! and the author knows that and the pass does not.
+//! A pocket of the tree is the wedge between two neighbouring ridge tips; its valley heads at the
+//! point where its two wall chains converge — a col, a spur's own junction, or the summit — and its
+//! floor is written between the walls down to the rim.
+//!
+//! # The stations are node indices
+//!
+//! A valley node faces a crest **node**, not a fraction of a crest: the tables name a
+//! `(ridge, node)` pair and [`station`] turns it into the parameter the crate reads, which is that
+//! node's own arc-length share. A round number written by hand lands a hair off the node it meant,
+//! and a station a hair off its node is a sliver facet.
 //!
 //! # The size
 //!
-//! One divide, six spurs and one spur off a spur — three levels of branching, sixteen crests and
-//! nine valleys. It is small enough that the whole correspondence is this one table and large
-//! enough that a wall has to chain and a valley has to head at a col rather than at a summit.
+//! One divide of twelve segments and twenty spurs at three levels of branching — thirty-two crests
+//! and seventeen valleys. The plan reads as one main divide with its tributaries: every pocket
+//! between two neighbouring tips reaches a head that is a col, a junction, or the summit.
 
 use mountain::line::{LineRef, Station};
 use mountain::skeleton::{
@@ -62,174 +65,302 @@ struct RidgeLine {
 
 /// The crests of the tree, in the order the junction naming reads them.
 ///
-/// Indices are named in the comments because the correspondence below is written in them:
-///
 /// ```text
-///  0 w0     summit  -> cW1          8  nW1   J_W1  -> north-west tip
-///  1 w1     J_W1    -> cW1          9  sW1   J_W1  -> south-west tip
-///  2 w2     J_W1    -> cW2         10  nW2   J_W2  -> north-west tip
-///  3 w3     J_W2    -> cW2         11  sW2   J_W2  -> south-west tip
-///  4 w4     J_W2    -> west tip    12  nE1a  J_E1  -> M
-///  5 e0     summit  -> cE1         13  nE1b  M     -> north-east tip
-///  6 e1     J_E1    -> cE1         14  nE1c  M     -> the spur's own spur, east
-///  7 e2     J_E1    -> east tip    15  sE1   J_E1  -> south-east tip
+///  0 w0      summit -> cW1          16 nW2a   J_W2 -> M_nW2
+///  1 w1      J_W1   -> cW1          17 nW2b   M_nW2 -> north-west tip
+///  2 w2      J_W1   -> cW2          18 sub_nW2 M_nW2 -> its own spur, west
+///  3 w3      J_W2   -> cW2          19 sW2    J_W2 -> south-west tip
+///  4 w4      J_W2   -> cW3          20 nW3    J_W3 -> north-west tip
+///  5 w5      J_W3   -> cW3          21 sW3    J_W3 -> south-west tip
+///  6 w6      J_W3   -> west tip     22 nE1a   J_E1 -> M_nE1
+///  7 e0      summit -> cE1          23 nE1b   M_nE1 -> north-east tip
+///  8 e1      J_E1   -> cE1          24 sub_nE1 M_nE1 -> its own spur, north
+///  9 e2      J_E1   -> cE2          25 sE1a   J_E1 -> M_sE1
+/// 10 e3      J_E2   -> cE2          26 sE1b   M_sE1 -> south-east tip
+/// 11 e4      J_E2   -> east tip     27 sub_sE1 M_sE1 -> its own spur, south
+/// 12 nW1a    J_W1   -> M_nW1        28 nE2a   J_E2 -> M_nE2
+/// 13 nW1b    M_nW1  -> north-west tip  29 nE2b M_nE2 -> north-east tip
+/// 14 sub_nW1 M_nW1  -> its own spur 30 sub_nE2 M_nE2 -> its own spur, east
+/// 15 sW1     J_W1   -> south-west tip  31 sE2  J_E2 -> south-east tip
 /// ```
-///
-/// The divide undulates like a real one: `cW1` and `cW2` are cols at `2235` and `2140` between the
-/// shoulders `J_W1` and `J_W2`, and the peaks carry the spurs. Each segment falls from its peak, so
-/// every crest in the chain runs away from the summit without ever rising.
 const RIDGES: &[RidgeLine] = &[
     // 0 w0: the summit down into the first col.
     RidgeLine {
         nodes: &[
             [0.0, 0.0, SUMMIT],
-            [-170.0, 60.0, 2325.0],
-            [-330.0, 95.0, 2235.0],
+            [-135.0, 30.0, 2325.0],
+            [-265.0, 65.0, 2245.0],
         ],
         sharpness: 0.85,
     },
     // 1 w1: the first shoulder back down into the same col.
     RidgeLine {
         nodes: &[
-            [-680.0, 35.0, 2330.0],
-            [-510.0, 65.0, 2285.0],
-            [-330.0, 95.0, 2235.0],
+            [-535.0, 35.0, 2335.0],
+            [-400.0, 50.0, 2290.0],
+            [-265.0, 65.0, 2245.0],
         ],
         sharpness: 0.80,
     },
     // 2 w2: the first shoulder down into the second col.
     RidgeLine {
         nodes: &[
-            [-680.0, 35.0, 2330.0],
-            [-835.0, -5.0, 2235.0],
-            [-985.0, -45.0, 2140.0],
+            [-535.0, 35.0, 2335.0],
+            [-665.0, 10.0, 2250.0],
+            [-795.0, -15.0, 2165.0],
         ],
         sharpness: 0.85,
     },
     // 3 w3: the second shoulder back down into that col.
     RidgeLine {
         nodes: &[
-            [-1235.0, -95.0, 2235.0],
-            [-1110.0, -70.0, 2188.0],
-            [-985.0, -45.0, 2140.0],
+            [-1035.0, -70.0, 2265.0],
+            [-915.0, -42.0, 2215.0],
+            [-795.0, -15.0, 2165.0],
         ],
         sharpness: 0.80,
     },
-    // 4 w4: the second shoulder out to the west tip.
+    // 4 w4: the second shoulder down into the third col.
     RidgeLine {
         nodes: &[
-            [-1235.0, -95.0, 2235.0],
-            [-1310.0, -115.0, 1985.0],
-            [-1385.0, -132.0, 1720.0],
-            [-1470.0, -150.0, GROUND],
+            [-1035.0, -70.0, 2265.0],
+            [-1150.0, -98.0, 2175.0],
+            [-1265.0, -125.0, 2085.0],
         ],
         sharpness: 0.85,
     },
-    // 5 e0: the summit down into the east col.
+    // 5 w5: the third shoulder back down into that col.
+    RidgeLine {
+        nodes: &[
+            [-1425.0, -165.0, 2185.0],
+            [-1345.0, -145.0, 2135.0],
+            [-1265.0, -125.0, 2085.0],
+        ],
+        sharpness: 0.80,
+    },
+    // 6 w6: the third shoulder out to the west tip.
+    RidgeLine {
+        nodes: &[
+            [-1425.0, -165.0, 2185.0],
+            [-1490.0, -182.0, 1945.0],
+            [-1555.0, -198.0, 1700.0],
+            [-1620.0, -215.0, GROUND],
+        ],
+        sharpness: 0.85,
+    },
+    // 7 e0: the summit down into the east col.
     RidgeLine {
         nodes: &[
             [0.0, 0.0, SUMMIT],
-            [165.0, -42.0, 2325.0],
-            [330.0, -85.0, 2245.0],
+            [135.0, -28.0, 2330.0],
+            [270.0, -55.0, 2255.0],
         ],
         sharpness: 0.85,
     },
-    // 6 e1: the east shoulder back down into that col.
+    // 8 e1: the east shoulder back down into that col.
     RidgeLine {
         nodes: &[
-            [695.0, -20.0, 2340.0],
-            [512.0, -52.0, 2292.0],
-            [330.0, -85.0, 2245.0],
+            [550.0, -20.0, 2345.0],
+            [410.0, -38.0, 2300.0],
+            [270.0, -55.0, 2255.0],
         ],
         sharpness: 0.80,
     },
-    // 7 e2: the east shoulder out to the east tip.
+    // 9 e2: the east shoulder down into the second east col.
     RidgeLine {
         nodes: &[
-            [695.0, -20.0, 2340.0],
-            [930.0, 12.0, 2185.0],
-            [1165.0, 52.0, 1950.0],
-            [1395.0, 95.0, GROUND],
+            [550.0, -20.0, 2345.0],
+            [680.0, 5.0, 2265.0],
+            [810.0, 30.0, 2185.0],
         ],
         sharpness: 0.85,
     },
-    // 8 nW1: a spur off the first shoulder, north-west.
+    // 10 e3: the second east shoulder back down into that col.
     RidgeLine {
         nodes: &[
-            [-680.0, 35.0, 2330.0],
-            [-762.0, 212.0, 2130.0],
-            [-862.0, 392.0, 1870.0],
-            [-985.0, 585.0, GROUND],
+            [1065.0, 85.0, 2275.0],
+            [938.0, 58.0, 2230.0],
+            [810.0, 30.0, 2185.0],
+        ],
+        sharpness: 0.80,
+    },
+    // 11 e4: the second east shoulder out to the east tip.
+    RidgeLine {
+        nodes: &[
+            [1065.0, 85.0, 2275.0],
+            [1190.0, 112.0, 2015.0],
+            [1312.0, 138.0, 1735.0],
+            [1435.0, 165.0, GROUND],
+        ],
+        sharpness: 0.85,
+    },
+    // 12 nW1a: a spur off the first shoulder, up to the peak where it splits.
+    RidgeLine {
+        nodes: &[[-535.0, 35.0, 2335.0], [-612.0, 188.0, 2160.0]],
+        sharpness: 0.70,
+    },
+    // 13 nW1b: the split's north branch.
+    RidgeLine {
+        nodes: &[
+            [-612.0, 188.0, 2160.0],
+            [-695.0, 352.0, 1930.0],
+            [-785.0, 528.0, GROUND],
         ],
         sharpness: 0.70,
     },
-    // 9 sW1: the same shoulder's other side, south-west.
+    // 14 sub_nW1: the split's own spur — the tree's third level.
     RidgeLine {
         nodes: &[
-            [-680.0, 35.0, 2330.0],
-            [-742.0, -185.0, 2140.0],
-            [-828.0, -402.0, 1880.0],
-            [-920.0, -620.0, GROUND],
+            [-612.0, 188.0, 2160.0],
+            [-455.0, 335.0, 1985.0],
+            [-325.0, 475.0, 1780.0],
+            [-215.0, 595.0, GROUND],
         ],
         sharpness: 0.70,
     },
-    // 10 nW2: a spur off the second shoulder, north.
+    // 15 sW1: the first shoulder's other side, south-west.
     RidgeLine {
         nodes: &[
-            [-1235.0, -95.0, 2235.0],
-            [-1288.0, 32.0, 2085.0],
-            [-1352.0, 172.0, 1835.0],
-            [-1435.0, 320.0, GROUND],
+            [-535.0, 35.0, 2335.0],
+            [-598.0, -135.0, 2155.0],
+            [-668.0, -310.0, 1925.0],
+            [-745.0, -495.0, GROUND],
         ],
         sharpness: 0.70,
     },
-    // 11 sW2: that shoulder's other side, south-west — short, because the west tip is near.
+    // 16 nW2a: a spur off the second shoulder, up to its split.
+    RidgeLine {
+        nodes: &[[-1035.0, -70.0, 2265.0], [-1092.0, 60.0, 2105.0]],
+        sharpness: 0.70,
+    },
+    // 17 nW2b: the split's north branch.
     RidgeLine {
         nodes: &[
-            [-1235.0, -95.0, 2235.0],
-            [-1288.0, -170.0, 2075.0],
-            [-1342.0, -248.0, 1820.0],
-            [-1395.0, -330.0, GROUND],
+            [-1092.0, 60.0, 2105.0],
+            [-1152.0, 205.0, 1890.0],
+            [-1215.0, 355.0, GROUND],
         ],
         sharpness: 0.70,
     },
-    // 12 nE1a: a spur off the east shoulder, up to the peak where it splits.
+    // 18 sub_nW2: the split's own spur.
     RidgeLine {
         nodes: &[
-            [695.0, -20.0, 2340.0],
-            [760.0, 118.0, 2185.0],
-            [812.0, 232.0, 2055.0],
-            [865.0, 330.0, 1950.0],
+            [-1092.0, 60.0, 2105.0],
+            [-1010.0, 180.0, 1935.0],
+            [-950.0, 300.0, 1735.0],
+            [-905.0, 425.0, GROUND],
         ],
         sharpness: 0.70,
     },
-    // 13 nE1b: the split's north branch.
+    // 19 sW2: the second shoulder's other side.
     RidgeLine {
         nodes: &[
-            [865.0, 330.0, 1950.0],
-            [918.0, 468.0, 1785.0],
-            [968.0, 610.0, 1590.0],
-            [1010.0, 745.0, GROUND],
+            [-1035.0, -70.0, 2265.0],
+            [-1082.0, -180.0, 2100.0],
+            [-1132.0, -300.0, 1880.0],
+            [-1185.0, -430.0, GROUND],
         ],
         sharpness: 0.70,
     },
-    // 14 nE1c: the split's own spur — the tree's third level — running east.
+    // 20 nW3: a spur off the third shoulder, north.
     RidgeLine {
         nodes: &[
-            [865.0, 330.0, 1950.0],
-            [1025.0, 348.0, 1832.0],
-            [1185.0, 375.0, 1645.0],
-            [1345.0, 415.0, GROUND],
+            [-1425.0, -165.0, 2185.0],
+            [-1478.0, -55.0, 2035.0],
+            [-1535.0, 65.0, 1830.0],
+            [-1595.0, 195.0, GROUND],
         ],
         sharpness: 0.70,
     },
-    // 15 sE1: the east shoulder's south side.
+    // 21 sW3: the third shoulder's other side.
     RidgeLine {
         nodes: &[
-            [695.0, -20.0, 2340.0],
-            [832.0, -182.0, 2130.0],
-            [1008.0, -372.0, 1830.0],
-            [1185.0, -560.0, GROUND],
+            [-1425.0, -165.0, 2185.0],
+            [-1462.0, -272.0, 2025.0],
+            [-1502.0, -390.0, 1810.0],
+            [-1545.0, -515.0, GROUND],
+        ],
+        sharpness: 0.70,
+    },
+    // 22 nE1a: a spur off the east shoulder, up to the peak where it splits.
+    RidgeLine {
+        nodes: &[[550.0, -20.0, 2345.0], [618.0, 138.0, 2175.0]],
+        sharpness: 0.70,
+    },
+    // 23 nE1b: the split's north branch.
+    RidgeLine {
+        nodes: &[
+            [618.0, 138.0, 2175.0],
+            [692.0, 308.0, 1950.0],
+            [775.0, 490.0, GROUND],
+        ],
+        sharpness: 0.70,
+    },
+    // 24 sub_nE1: the split's own spur, north.
+    RidgeLine {
+        nodes: &[
+            [618.0, 138.0, 2175.0],
+            [795.0, 215.0, 1985.0],
+            [955.0, 295.0, 1775.0],
+            [1030.0, 500.0, GROUND],
+        ],
+        sharpness: 0.70,
+    },
+    // 25 sE1a: the east shoulder's other side, up to its split.
+    RidgeLine {
+        nodes: &[[550.0, -20.0, 2345.0], [632.0, -172.0, 2165.0]],
+        sharpness: 0.70,
+    },
+    // 26 sE1b: the split's south branch.
+    RidgeLine {
+        nodes: &[
+            [632.0, -172.0, 2165.0],
+            [722.0, -338.0, 1935.0],
+            [820.0, -515.0, GROUND],
+        ],
+        sharpness: 0.70,
+    },
+    // 27 sub_sE1: the split's own spur, south.
+    RidgeLine {
+        nodes: &[
+            [632.0, -172.0, 2165.0],
+            [805.0, -255.0, 1975.0],
+            [965.0, -345.0, 1775.0],
+            [1115.0, -435.0, GROUND],
+        ],
+        sharpness: 0.70,
+    },
+    // 28 nE2a: a spur off the second east shoulder, up to its split.
+    RidgeLine {
+        nodes: &[[1065.0, 85.0, 2275.0], [1122.0, 212.0, 2115.0]],
+        sharpness: 0.70,
+    },
+    // 29 nE2b: the split's north branch.
+    RidgeLine {
+        nodes: &[
+            [1122.0, 212.0, 2115.0],
+            [1185.0, 350.0, 1900.0],
+            [1255.0, 500.0, GROUND],
+        ],
+        sharpness: 0.70,
+    },
+    // 30 sub_nE2: the split's own spur, east.
+    RidgeLine {
+        nodes: &[
+            [1122.0, 212.0, 2115.0],
+            [1275.0, 265.0, 1935.0],
+            [1415.0, 315.0, 1735.0],
+            [1545.0, 365.0, GROUND],
+        ],
+        sharpness: 0.70,
+    },
+    // 31 sE2: the second east shoulder's other side.
+    RidgeLine {
+        nodes: &[
+            [1065.0, 85.0, 2275.0],
+            [1128.0, -42.0, 2115.0],
+            [1198.0, -180.0, 1895.0],
+            [1275.0, -330.0, GROUND],
         ],
         sharpness: 0.70,
     },
@@ -237,21 +368,20 @@ const RIDGES: &[RidgeLine] = &[
 
 /// One authored valley node: where the floor stands, how high, and **what it faces**.
 ///
-/// The two pairs are stations on the crests — which crest, and how far along it — so a node says
-/// "I sit between the east shoulder a third of the way out and the spur's north branch half way
-/// up". That sentence is the mesh's topology; there is nothing else to it.
+/// Each pair is a crest node — the node this rib climbs to — so a node says "I sit between the
+/// east shoulder's middle node on one side and the spur's second node on the other". That sentence
+/// is the mesh's topology.
 ///
-/// A wall that **chains** — one crest then another — is written by the stations changing crest at
-/// the junction, and the belt between those two nodes walks through it. The parameter on a chained
-/// wall therefore runs backwards where the chain does: the valley below `cW2` walks `w2` from its
-/// far end back to the junction, so its stations fall from `1.0` to `0.0`.
+/// A wall that **chains** — one crest then another — is written by the node indices changing crest
+/// at the junction, and the belt between those two nodes walks through it. The node index on a
+/// chained wall therefore runs backwards where the chain does.
 struct Floor {
     position: [f32; 2],
     elevation: f32,
-    /// The station this node faces on its left, read down the valley.
-    left: (usize, f32),
+    /// The crest node this node faces on its left, read down the valley.
+    left: (usize, usize),
     /// The same for the right.
-    right: (usize, f32),
+    right: (usize, usize),
 }
 
 /// One authored valley: its nodes, head first.
@@ -259,326 +389,520 @@ struct ValleyLine {
     nodes: &'static [Floor],
 }
 
-/// The nine valleys — one per pocket of the tree — in the order the rim walks them.
+/// The seventeen valleys — one per pocket of the tree — in the order the rim walks them.
 ///
-/// Each heads where its two walls meet: a **col** (`cW2` heads two of them), a **junction** (`J_W1`
-/// heads the one between the divide's west arm and its own spur), or the **summit** (the two long
-/// ones, north and south). The head names its own point on both sides, which is what makes the
-/// first belt collapse to a triangle and the head close.
-///
-/// The walls are named going **counterclockwise** round the valley's own direction, so `left` is
-/// the crest on the higher bearing. A valley written the other way round would be wound backwards
-/// and the facets beside it would face into the hill.
+/// Each heads where its two walls converge: a **col**, a spur's own **junction**, or the **summit**.
+/// The head names its own point on both sides, which is what makes the first belt row collapse to a
+/// triangle and the head close. The mouth stands outside the chord between its two flanking tips,
+/// roughly on the bisector of the two walls, so the rim bulges rather than bow-ties.
 const VALLEYS: &[ValleyLine] = &[
-    // 0 east_rim: the pocket between the east tip and the spur's own spur.
-    //   head at J_E1, walls nE1a+nE1c (left) and e2 (right).
+    // 0 east_rim: between the east tip and the second east spur's own spur.
+    //   head M_nE2, walls sub_nE2 (left) and nE2a+e4 (right).
     ValleyLine {
         nodes: &[
             Floor {
-                position: [695.0, -20.0],
-                elevation: 2340.0,
-                left: (12, 0.0),
-                right: (7, 0.0),
+                position: [1122.0, 212.0],
+                elevation: 2115.0,
+                left: (30, 0),
+                right: (28, 1),
             },
             Floor {
-                position: [955.0, 40.0],
-                elevation: 2140.0,
-                left: (12, 0.35),
-                right: (7, 0.32),
+                position: [1300.0, 235.0],
+                elevation: 1930.0,
+                left: (30, 1),
+                right: (28, 0),
             },
             Floor {
-                position: [1215.0, 130.0],
+                position: [1520.0, 262.0],
+                elevation: 1730.0,
+                left: (30, 2),
+                right: (11, 1),
+            },
+            Floor {
+                position: [1819.0, 281.0],
+                elevation: GROUND,
+                left: (30, 3),
+                right: (11, 3),
+            },
+        ],
+    },
+    // 1 sub_e2: between that spur's own spur and the second east spur's north branch.
+    //   head M_nE2, walls nE2b (left) and sub_nE2 (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [1122.0, 212.0],
+                elevation: 2115.0,
+                left: (29, 0),
+                right: (30, 0),
+            },
+            Floor {
+                position: [1330.0, 395.0],
                 elevation: 1870.0,
-                left: (14, 0.30),
-                right: (7, 0.62),
+                left: (29, 1),
+                right: (30, 1),
             },
             Floor {
-                position: [1465.0, 225.0],
-                elevation: 1650.0,
-                left: (14, 0.68),
-                right: (7, 0.88),
-            },
-            Floor {
-                position: [1620.0, 290.0],
+                position: [1578.0, 631.0],
                 elevation: GROUND,
-                left: (14, 1.0),
-                right: (7, 1.0),
+                left: (29, 2),
+                right: (30, 3),
             },
         ],
     },
-    // 1 sub_east: the pocket the third level cuts — between the spur's two branches.
-    //   head at the split M, walls nE1b (left) and nE1c (right).
+    // 2 east_col: between the second east spur's north branch and the first east spur's own spur.
+    //   head cE2, walls e2+nE1a+sub_nE1 (left) and e3+nE2a+nE2b (right).
     ValleyLine {
         nodes: &[
             Floor {
-                position: [865.0, 330.0],
-                elevation: 1950.0,
-                left: (13, 0.0),
-                right: (14, 0.0),
+                position: [810.0, 30.0],
+                elevation: 2185.0,
+                left: (9, 2),
+                right: (10, 2),
             },
             Floor {
-                position: [1035.0, 428.0],
-                elevation: 1830.0,
-                left: (13, 0.32),
-                right: (14, 0.34),
-            },
-            Floor {
-                position: [1215.0, 535.0],
-                elevation: 1690.0,
-                left: (13, 0.64),
-                right: (14, 0.66),
-            },
-            Floor {
-                position: [1390.0, 690.0],
-                elevation: GROUND,
-                left: (13, 1.0),
-                right: (14, 1.0),
-            },
-        ],
-    },
-    // 2 north: the long one — from the summit, between the two north spurs' chains.
-    //   head at the summit, walls w0+w1+nW1 (left) and e0+e1+nE1a+nE1b (right).
-    ValleyLine {
-        nodes: &[
-            Floor {
-                position: [0.0, 0.0],
-                elevation: SUMMIT,
-                left: (0, 0.0),
-                right: (5, 0.0),
-            },
-            Floor {
-                position: [-35.0, 210.0],
-                elevation: 2180.0,
-                left: (0, 0.5),
-                right: (5, 0.5),
-            },
-            Floor {
-                position: [-20.0, 450.0],
-                elevation: 1950.0,
-                left: (1, 0.6),
-                right: (6, 0.55),
-            },
-            Floor {
-                position: [0.0, 690.0],
-                elevation: 1730.0,
-                left: (1, 0.25),
-                right: (12, 0.55),
-            },
-            Floor {
-                position: [8.0, 920.0],
-                elevation: 1580.0,
-                left: (8, 0.35),
-                right: (13, 0.45),
-            },
-            Floor {
-                position: [20.0, 1140.0],
-                elevation: GROUND,
-                left: (8, 1.0),
-                right: (13, 1.0),
-            },
-        ],
-    },
-    // 3 nw_col: the valley between the two north spurs, headed at the col cW2.
-    //   walls w3+nW2 (left) and w2+nW1 (right) — both chains turn at their junction.
-    ValleyLine {
-        nodes: &[
-            Floor {
-                position: [-985.0, -45.0],
-                elevation: 2140.0,
-                left: (3, 1.0),
-                right: (2, 1.0),
-            },
-            Floor {
-                position: [-1105.0, 115.0],
-                elevation: 1990.0,
-                left: (3, 0.5),
-                right: (2, 0.55),
-            },
-            Floor {
-                position: [-1215.0, 285.0],
-                elevation: 1830.0,
-                left: (10, 0.35),
-                right: (8, 0.3),
-            },
-            Floor {
-                position: [-1310.0, 435.0],
-                elevation: 1650.0,
-                left: (10, 0.7),
-                right: (8, 0.68),
-            },
-            Floor {
-                position: [-1395.0, 545.0],
-                elevation: GROUND,
-                left: (10, 1.0),
-                right: (8, 1.0),
-            },
-        ],
-    },
-    // 4 w_north: between the divide's west arm and the second shoulder's north spur.
-    //   head at J_W2, walls w4 (left) and nW2 (right).
-    ValleyLine {
-        nodes: &[
-            Floor {
-                position: [-1235.0, -95.0],
-                elevation: 2235.0,
-                left: (4, 0.0),
-                right: (10, 0.0),
-            },
-            Floor {
-                position: [-1395.0, -48.0],
-                elevation: 2020.0,
-                left: (4, 0.35),
-                right: (10, 0.35),
-            },
-            Floor {
-                position: [-1555.0, 0.0],
-                elevation: 1790.0,
-                left: (4, 0.7),
-                right: (10, 0.72),
-            },
-            Floor {
-                position: [-1682.0, 99.0],
-                elevation: GROUND,
-                left: (4, 1.0),
-                right: (10, 1.0),
-            },
-        ],
-    },
-    // 5 w_south: the same shoulder's other pocket — the west arm and sW2.
-    //   head at J_W2, walls sW2 (left) and w4 (right).
-    ValleyLine {
-        nodes: &[
-            Floor {
-                position: [-1235.0, -95.0],
-                elevation: 2235.0,
-                left: (11, 0.0),
-                right: (4, 0.0),
-            },
-            Floor {
-                position: [-1370.0, -155.0],
+                position: [975.0, 175.0],
                 elevation: 2010.0,
-                left: (11, 0.35),
-                right: (4, 0.35),
+                left: (9, 1),
+                right: (10, 1),
             },
             Floor {
-                position: [-1520.0, -222.0],
-                elevation: 1760.0,
-                left: (11, 0.7),
-                right: (4, 0.7),
+                position: [1135.0, 330.0],
+                elevation: 1830.0,
+                left: (22, 1),
+                right: (28, 1),
             },
             Floor {
-                position: [-1680.0, -282.0],
+                position: [1185.0, 495.0],
+                elevation: 1650.0,
+                left: (24, 2),
+                right: (29, 1),
+            },
+            Floor {
+                position: [1232.0, 650.0],
                 elevation: GROUND,
-                left: (11, 1.0),
-                right: (4, 1.0),
+                left: (24, 3),
+                right: (29, 2),
             },
         ],
     },
-    // 6 sw_col: the valley between the two south spurs, headed at the same col cW2.
-    //   walls w2+sW1 (left) and w3+sW2 (right).
+    // 3 sub_e1: between the first east spur's two branches.
+    //   head M_nE1, walls nE1b (left) and sub_nE1 (right).
     ValleyLine {
         nodes: &[
             Floor {
-                position: [-985.0, -45.0],
-                elevation: 2140.0,
-                left: (2, 1.0),
-                right: (3, 1.0),
+                position: [618.0, 138.0],
+                elevation: 2175.0,
+                left: (23, 0),
+                right: (24, 0),
             },
             Floor {
-                position: [-1075.0, -195.0],
-                elevation: 1975.0,
-                left: (2, 0.55),
-                right: (3, 0.5),
+                position: [795.0, 375.0],
+                elevation: 1900.0,
+                left: (23, 1),
+                right: (24, 1),
             },
             Floor {
-                position: [-1165.0, -345.0],
-                elevation: 1810.0,
-                left: (9, 0.3),
-                right: (11, 0.35),
-            },
-            Floor {
-                position: [-1250.0, -475.0],
-                elevation: 1640.0,
-                left: (9, 0.68),
-                right: (11, 0.7),
-            },
-            Floor {
-                position: [-1320.0, -580.0],
+                position: [986.0, 637.0],
                 elevation: GROUND,
-                left: (9, 1.0),
-                right: (11, 1.0),
+                left: (23, 2),
+                right: (24, 3),
             },
         ],
     },
-    // 7 south: the long one's twin, from the summit down the south side.
-    //   head at the summit, walls e0+e1+sE1 (left) and w0+w1+sW1 (right).
+    // 4 north: the long one — from the summit, between the two north spur chains.
+    //   head the summit, walls w0+w1+nW1a+sub_nW1 (left) and e0+e1+nE1a+nE1b (right).
     ValleyLine {
         nodes: &[
             Floor {
                 position: [0.0, 0.0],
                 elevation: SUMMIT,
-                left: (5, 0.0),
-                right: (0, 0.0),
+                left: (0, 0),
+                right: (7, 0),
             },
             Floor {
-                position: [35.0, -215.0],
-                elevation: 2180.0,
-                left: (5, 0.5),
-                right: (0, 0.5),
+                position: [-40.0, 230.0],
+                elevation: 2185.0,
+                left: (0, 1),
+                right: (7, 1),
             },
             Floor {
-                position: [60.0, -450.0],
-                elevation: 1950.0,
-                left: (6, 0.55),
-                right: (1, 0.55),
+                position: [-30.0, 485.0],
+                elevation: 1965.0,
+                left: (1, 1),
+                right: (8, 1),
             },
             Floor {
-                position: [95.0, -690.0],
-                elevation: 1730.0,
-                left: (15, 0.5),
-                right: (9, 0.5),
+                position: [250.0, 640.0],
+                elevation: 1745.0,
+                left: (12, 1),
+                right: (22, 1),
             },
             Floor {
-                position: [150.0, -915.0],
-                elevation: 1580.0,
-                left: (15, 0.78),
-                right: (9, 0.78),
+                position: [300.0, 900.0],
+                elevation: 1590.0,
+                left: (14, 1),
+                right: (23, 1),
             },
             Floor {
-                position: [202.0, -1130.0],
+                position: [356.0, 1041.0],
                 elevation: GROUND,
-                left: (15, 1.0),
-                right: (9, 1.0),
+                left: (14, 3),
+                right: (23, 2),
             },
         ],
     },
-    // 8 se_rim: the pocket between the south-east tip and the east tip.
-    //   head at J_E1, walls e2 (left) and sE1 (right).
+    // 5 sub_w1: between the first west spur's two branches.
+    //   head M_nW1, walls nW1b (left) and sub_nW1 (right).
     ValleyLine {
         nodes: &[
             Floor {
-                position: [695.0, -20.0],
-                elevation: 2340.0,
-                left: (7, 0.0),
-                right: (15, 0.0),
+                position: [-612.0, 188.0],
+                elevation: 2160.0,
+                left: (13, 0),
+                right: (14, 0),
             },
             Floor {
-                position: [985.0, -115.0],
-                elevation: 2130.0,
-                left: (7, 0.33),
-                right: (15, 0.33),
+                position: [-585.0, 470.0],
+                elevation: 1880.0,
+                left: (13, 1),
+                right: (14, 1),
             },
             Floor {
-                position: [1290.0, -208.0],
-                elevation: 1850.0,
-                left: (7, 0.68),
-                right: (15, 0.68),
-            },
-            Floor {
-                position: [1584.0, -286.0],
+                position: [-519.0, 801.0],
                 elevation: GROUND,
-                left: (7, 1.0),
-                right: (15, 1.0),
+                left: (13, 2),
+                right: (14, 3),
+            },
+        ],
+    },
+    // 6 west_col: between the first west spur's north branch and the second west spur's own spur.
+    //   head cW2, walls w2+nW1a+nW1b (left) and w3+nW2a+sub_nW2 (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [-795.0, -15.0],
+                elevation: 2165.0,
+                left: (2, 2),
+                right: (3, 2),
+            },
+            Floor {
+                position: [-775.0, 175.0],
+                elevation: 1990.0,
+                left: (2, 1),
+                right: (3, 1),
+            },
+            Floor {
+                position: [-800.0, 365.0],
+                elevation: 1820.0,
+                left: (12, 1),
+                right: (16, 1),
+            },
+            Floor {
+                position: [-820.0, 470.0],
+                elevation: 1650.0,
+                left: (13, 1),
+                right: (18, 1),
+            },
+            Floor {
+                position: [-860.0, 625.0],
+                elevation: GROUND,
+                left: (13, 2),
+                right: (18, 3),
+            },
+        ],
+    },
+    // 7 sub_w2: between the second west spur's two branches.
+    //   head M_nW2, walls nW2b (left) and sub_nW2 (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [-1092.0, 60.0],
+                elevation: 2105.0,
+                left: (17, 0),
+                right: (18, 0),
+            },
+            Floor {
+                position: [-1035.0, 330.0],
+                elevation: 1850.0,
+                left: (17, 1),
+                right: (18, 1),
+            },
+            Floor {
+                position: [-950.0, 602.0],
+                elevation: GROUND,
+                left: (17, 2),
+                right: (18, 3),
+            },
+        ],
+    },
+    // 8 west_col_far: between the second west spur's north branch and the third's north spur.
+    //   head cW3, walls w5+nW3 (left) and w4+nW2a+nW2b (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [-1265.0, -125.0],
+                elevation: 2085.0,
+                left: (5, 2),
+                right: (4, 2),
+            },
+            Floor {
+                position: [-1315.0, 75.0],
+                elevation: 1920.0,
+                left: (5, 1),
+                right: (4, 1),
+            },
+            Floor {
+                position: [-1375.0, 275.0],
+                elevation: 1760.0,
+                left: (20, 1),
+                right: (16, 1),
+            },
+            Floor {
+                position: [-1440.0, 415.0],
+                elevation: 1620.0,
+                left: (20, 2),
+                right: (17, 1),
+            },
+            Floor {
+                position: [-1504.0, 533.0],
+                elevation: GROUND,
+                left: (20, 3),
+                right: (17, 2),
+            },
+        ],
+    },
+    // 9 west_north: between the third west spur and the west tip.
+    //   head J_W3, walls w6 (left) and nW3 (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [-1425.0, -165.0],
+                elevation: 2185.0,
+                left: (6, 0),
+                right: (20, 0),
+            },
+            Floor {
+                position: [-1640.0, -75.0],
+                elevation: 1930.0,
+                left: (6, 1),
+                right: (20, 1),
+            },
+            Floor {
+                position: [-1878.0, 48.0],
+                elevation: GROUND,
+                left: (6, 3),
+                right: (20, 3),
+            },
+        ],
+    },
+    // 10 west_south: the same shoulder's other pocket — the west tip and sW3.
+    //   head J_W3, walls sW3 (left) and w6 (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [-1425.0, -165.0],
+                elevation: 2185.0,
+                left: (21, 0),
+                right: (6, 0),
+            },
+            Floor {
+                position: [-1615.0, -340.0],
+                elevation: 1920.0,
+                left: (21, 1),
+                right: (6, 1),
+            },
+            Floor {
+                position: [-1793.0, -504.0],
+                elevation: GROUND,
+                left: (21, 3),
+                right: (6, 3),
+            },
+        ],
+    },
+    // 11 west_col_south: between the two south spurs on the far west.
+    //   head cW3, walls w4+sW2 (left) and w5+sW3 (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [-1265.0, -125.0],
+                elevation: 2085.0,
+                left: (4, 2),
+                right: (5, 2),
+            },
+            Floor {
+                position: [-1295.0, -320.0],
+                elevation: 1880.0,
+                left: (4, 1),
+                right: (5, 1),
+            },
+            Floor {
+                position: [-1335.0, -530.0],
+                elevation: 1680.0,
+                left: (19, 1),
+                right: (21, 1),
+            },
+            Floor {
+                position: [-1378.0, -734.0],
+                elevation: GROUND,
+                left: (19, 3),
+                right: (21, 3),
+            },
+        ],
+    },
+    // 12 west_col_mid: between the two south spurs on the middle west.
+    //   head cW2, walls w2+sW1 (left) and w3+sW2 (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [-795.0, -15.0],
+                elevation: 2165.0,
+                left: (2, 2),
+                right: (3, 2),
+            },
+            Floor {
+                position: [-865.0, -215.0],
+                elevation: 1945.0,
+                left: (2, 1),
+                right: (3, 1),
+            },
+            Floor {
+                position: [-945.0, -450.0],
+                elevation: 1700.0,
+                left: (15, 1),
+                right: (19, 1),
+            },
+            Floor {
+                position: [-1019.0, -679.0],
+                elevation: GROUND,
+                left: (15, 3),
+                right: (19, 3),
+            },
+        ],
+    },
+    // 13 south: the long one's twin, from the summit down the south side.
+    //   head the summit, walls e0+e1+sE1a+sE1b (left) and w0+w1+sW1 (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [0.0, 0.0],
+                elevation: SUMMIT,
+                left: (7, 0),
+                right: (0, 0),
+            },
+            Floor {
+                position: [25.0, -235.0],
+                elevation: 2185.0,
+                left: (7, 1),
+                right: (0, 1),
+            },
+            Floor {
+                position: [45.0, -490.0],
+                elevation: 1965.0,
+                left: (8, 1),
+                right: (1, 1),
+            },
+            Floor {
+                position: [70.0, -745.0],
+                elevation: 1745.0,
+                left: (25, 1),
+                right: (15, 1),
+            },
+            Floor {
+                position: [10.0, -935.0],
+                elevation: 1590.0,
+                left: (26, 1),
+                right: (15, 2),
+            },
+            Floor {
+                position: [14.0, -1099.0],
+                elevation: GROUND,
+                left: (26, 2),
+                right: (15, 3),
+            },
+        ],
+    },
+    // 14 sub_s1: between the first east spur's south branch and its own spur.
+    //   head M_sE1, walls sub_sE1 (left) and sE1b (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [632.0, -172.0],
+                elevation: 2165.0,
+                left: (27, 0),
+                right: (26, 0),
+            },
+            Floor {
+                position: [835.0, -380.0],
+                elevation: 1870.0,
+                left: (27, 1),
+                right: (26, 1),
+            },
+            Floor {
+                position: [1028.0, -567.0],
+                elevation: GROUND,
+                left: (27, 3),
+                right: (26, 2),
+            },
+        ],
+    },
+    // 15 east_col_south: between the first east spur's own spur and the second's south spur.
+    //   head cE2, walls e3+sE2 (left) and e2+sE1a+sub_sE1 (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [810.0, 30.0],
+                elevation: 2185.0,
+                left: (10, 2),
+                right: (9, 2),
+            },
+            Floor {
+                position: [920.0, -155.0],
+                elevation: 1985.0,
+                left: (10, 1),
+                right: (9, 1),
+            },
+            Floor {
+                position: [1035.0, -315.0],
+                elevation: 1790.0,
+                left: (31, 1),
+                right: (25, 1),
+            },
+            Floor {
+                position: [1165.0, -415.0],
+                elevation: 1620.0,
+                left: (31, 2),
+                right: (27, 1),
+            },
+            Floor {
+                position: [1299.0, -498.0],
+                elevation: GROUND,
+                left: (31, 3),
+                right: (27, 3),
+            },
+        ],
+    },
+    // 16 east_south: between the second east spur's south spur and the east tip.
+    //   head J_E2, walls e4 (left) and sE2 (right).
+    ValleyLine {
+        nodes: &[
+            Floor {
+                position: [1065.0, 85.0],
+                elevation: 2275.0,
+                left: (11, 0),
+                right: (31, 0),
+            },
+            Floor {
+                position: [1300.0, -25.0],
+                elevation: 2050.0,
+                left: (11, 1),
+                right: (31, 1),
+            },
+            Floor {
+                position: [1535.0, -139.0],
+                elevation: GROUND,
+                left: (11, 3),
+                right: (31, 3),
             },
         ],
     },
@@ -589,11 +913,13 @@ const VALLEYS: &[ValleyLine] = &[
 /// Counterclockwise, which is the winding the mesh wants: the inside is on the left of the walk.
 /// The walk alternates a tip and the mouth of the pocket between it and the next tip, so this list
 /// and [`RIM_MOUTHS`] are two halves of one round trip.
-const RIM_TIPS: &[usize] = &[7, 14, 13, 8, 10, 4, 11, 9, 15];
+const RIM_TIPS: &[usize] = &[
+    11, 30, 29, 24, 23, 14, 13, 18, 17, 20, 6, 21, 19, 15, 26, 27, 31,
+];
 
 /// The valley mouths of the rim, in the same walk order: each is the pocket between the tip above
 /// it and the tip below it in [`RIM_TIPS`].
-const RIM_MOUTHS: &[usize] = &[0, 1, 2, 3, 4, 5, 6, 7, 8];
+const RIM_MOUTHS: &[usize] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
 /// Builds the authored massif's skeleton.
 pub fn skeleton() -> Skeleton {
@@ -632,8 +958,8 @@ fn valley_lines() -> Vec<Valley> {
                     ValleyNode::new(
                         floor.position,
                         floor.elevation,
-                        Station::ridge(RidgeId(floor.left.0), floor.left.1),
-                        Station::ridge(RidgeId(floor.right.0), floor.right.1),
+                        station(floor.left),
+                        station(floor.right),
                     )
                 })
                 .collect();
@@ -642,19 +968,47 @@ fn valley_lines() -> Vec<Valley> {
         .collect()
 }
 
+/// Turns a named crest node into the station the crate reads.
+///
+/// The parameter is the node's own arc-length share of its crest, which is the one number that
+/// lands the station exactly on the node.
+fn station(named: (usize, usize)) -> Station {
+    let (ridge, node) = named;
+    Station::ridge(RidgeId(ridge), parameter_of_node(RIDGES[ridge].nodes, node))
+}
+
+/// Returns the arc-length parameter of one of a ridge's nodes.
+fn parameter_of_node(nodes: Written, node: usize) -> f32 {
+    let mut total = 0.0;
+    let mut walked = 0.0;
+    for (index, pair) in nodes.windows(2).enumerate() {
+        let along = plan_distance(pair[0], pair[1]);
+        if index == node {
+            walked = total;
+        }
+        total += along;
+    }
+    if node + 1 >= nodes.len() {
+        walked = total;
+    }
+    if total <= f32::EPSILON {
+        return 0.0;
+    }
+    walked / total
+}
+
+/// Returns the plan distance between two written nodes.
+fn plan_distance(from: [f32; 3], to: [f32; 3]) -> f32 {
+    ((to[0] - from[0]).powi(2) + (to[1] - from[1]).powi(2)).sqrt()
+}
+
 /// Writes every junction as a name.
 ///
 /// # Invariants
 ///
 /// A junction is one crest's end standing on another's, and the crate states that as an **end naming
-/// a station** rather than as two points that happen to coincide: coincidence is what the expansion
-/// welds on, but it is the *naming* that says a junction is a junction — and on a tree it is what
-/// makes the junction walkable, because a belt changes line only at a line's end. So the col `cW2`,
-/// where `w2` and `w3` both end, is written as `w3` naming `w2`, and the four lines of `J_W1` all
-/// name the crest that starts there.
-///
-/// The rule is one line long because the author placed every junction deliberately: whichever crest
-/// comes first in the table owns a point, and any crest after it whose end lands there names it.
+/// a station** rather than as two points that happen to coincide. Whichever crest comes first in the
+/// table owns a point, and any crest after it whose end lands there names it.
 fn name_junctions(skeleton: &mut Skeleton) {
     let ends: Vec<[([f32; 2], f32); 2]> = skeleton
         .ridges
@@ -686,10 +1040,7 @@ fn name_junctions(skeleton: &mut Skeleton) {
 /// The rim, as the crate's footprint: every ridge tip and every valley mouth, in walk order.
 ///
 /// The elevations come from the lines the points already stand on, so the rim cannot disagree with
-/// the ground it meets — a rim node given its own height would be a second copy of a number the
-/// crest or the valley already carries, and the copy is the one that goes stale. Each mouth was
-/// placed outside the chord between the two tips beside it, which is what keeps the outline a
-/// polygon instead of a bow tie.
+/// the ground it meets.
 fn rim(skeleton: &Skeleton) -> Vec<FootprintNode> {
     let mut outline: Vec<FootprintNode> = Vec::new();
     for (tip, mouth) in RIM_TIPS.iter().zip(RIM_MOUTHS) {
