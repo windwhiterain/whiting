@@ -196,6 +196,79 @@ correct as *code* and become correct as a *rule* the moment the convention is se
 - **The striation explanation stands.** The tracer was reading no normals and shading from
   geometric face normals, which is what the facet striation is.
 
+## The survey: 620 meshes, and the split is not two groups
+
+The correction above says the next attempt is a survey. It has been run: every gallery scene
+was exported and the per-mesh statistic taken for every mesh in it
+(`out/probe-winding-survey.py`, over the thirteen documents in `out/sv-*.cycles.xml`).
+
+| scene | same | opposed | mixed |
+|---|---|---|---|
+| landscape | 0 | **3** | 0 |
+| tiles | 0 | **1** | 0 |
+| dunes | 0 | **1** | 0 |
+| monoliths | 0 | **1** | 40 |
+| lanterns | **72** | 1 | 0 |
+| spotlight | **3** | 1 | 0 |
+| sunlight | **4** | 1 | 0 |
+| nurbs | **1** | 0 | 0 |
+| studio | 0 | 0 | 2 |
+| stilllife | 5 | 1 | 6 |
+| foldyard | 8 | 4 | 8 |
+| terraces | 18 | 111 | **116** |
+| tidewater | 0 | 2 | **210** |
+| **all** | **111** | **127** | **382** |
+
+**620 meshes. It is not a two-group split, and the largest bucket is the one that is neither.**
+382 meshes have a mean dot near zero — `stilllife` carries five identical 2592-triangle meshes
+at **+0.0277**, `tidewater` four identical 7-triangle meshes at **−0.1039**. A mean near zero on
+a mesh with a definite extent is not a small disagreement; it is a mesh whose triangles do not
+share an orientation at all, so no single reversal can describe it.
+
+Two things follow, and the second is the one that matters.
+
+**First: this was guessed wrong twice, and the guesses were both cheap.** Once from
+`landscape`, which was −0.99 on all three of its meshes and looked like a fact about the
+gallery. Once from `sunlight`, which was −1 on one mesh and +1 on another and looked like a
+two-group split. The gallery has **620** meshes, not six.
+
+**Second: there is no stated convention to be wrong about.** `SPEC` says nothing about winding,
+front faces or culling anywhere — grepping it for `winding`, `counter clockwise`, `front face`,
+`back face` and `cull` returns only light culling. So this is not a case of the code departing
+from a written rule; there is no written rule, which is the actual defect, and it is why 620
+meshes came to disagree.
+
+## The source-level half of it, from `geometry.rs`
+
+The two helpers in `crates/gallery/src/geometry.rs` can be checked by reading them, and both
+disagree with their own comments.
+
+`heightfield` gives every point the normal `[-slope_x, 1, -slope_z]`, so a flat field is
+**(0, 1, 0), up**. Its first triangle is `p00 → p10 → p01` with `u = (s, 0, 0)` and
+`v = (0, 0, s)`, so **u × v = (0, −s², 0), down**. The two are exact opposites, which is the
+measured −1.0000. Its comment says *"wound counter clockwise seen from above, so the surface
+faces up and the winding the rasterizer wants is the winding that makes it visible"* — the last
+clause is the honest one and it is the whole story: **the winding was chosen for our own
+rasteriser**, and nothing in it obliges another backend to agree.
+
+`plane_facing` claims *"the winding follows the normal rather than being fixed"*. It does not:
+with `a = (−e, h, −e)`, `b = (e, h, −e)`, `c = (−e, h, e)` and `facing_up`, the first triangle is
+`(a, b, c)`, `u = (2e, 0, 0)`, `v = (0, 0, 2e)`, and **u × v = (0, −4e², 0)** — down, while the
+normal is up. So it is in the opposed group too, **against its own documentation**.
+
+## What this means for the fix
+
+The exporter-side rule is dead, and the survey says why in a way the six-scene table did not: it
+is not that the rule is wrong for most meshes, it is that **there is no rule to apply to most of
+them**. A document-layer project has to (a) state the convention in `SPEC` and (b) bring the
+builders into line, and neither half is a change any one of us should start without deciding
+which way the convention goes — because the answer changes every scene's appearance on one
+backend, and 620 meshes means 620 chances to be wrong.
+
+The statistic is written and re-runnable, which is what makes the project checkable rather than
+a matter of taste: `out/probe-winding-survey.py`, per mesh, per scene, with the triangle count
+and extent so the builder behind each row can be named.
+
 ## Sources
 
 - `out/probe-mesh-normals.py` — per-mesh normal statistics, including the face-normal dot.
