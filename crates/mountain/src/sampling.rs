@@ -25,6 +25,14 @@ use crate::tessellation::Tessellation;
 /// is by definition within it.
 pub const PARAMETER_EPSILON: f32 = 1.0e-5;
 
+/// How far a station's name may sit from the sample it names.
+///
+/// Wider than [`PARAMETER_EPSILON`] on purpose: a station written as a node's round number and
+/// the node's own parameter are one point in two notations, the sampler folds them into one
+/// sample, and this is the width that lets both names find it. Two stations an author really
+/// meant to be distinct are never this close — it is a fifth of a percent of a line.
+pub const SAMPLE_MATCH: f32 = 5.0e-3;
+
 /// How far apart two plan points may be and still be welded into one corner.
 ///
 /// # Invariants
@@ -83,16 +91,21 @@ impl SampledLine {
     /// # Invariants
     ///
     /// A **binary search** over a run in parameter order, accepting only a sample within
-    /// [`PARAMETER_EPSILON`] of the name. A nearest-match with no bound would silently land
+    /// [`SAMPLE_MATCH`] of the name. A nearest-match with no bound would silently land
     /// on a distant sample for a parameter that was never sampled, and a rib would then be
     /// built where the author did not ask for one — a wrong mesh that no violation names.
+    ///
+    /// The bound is wider than [`PARAMETER_EPSILON`] because a station may name a node by the
+    /// round number the author wrote while the node's own parameter is the arc divided by the
+    /// total. The sampler folds such a pair into one sample (see [`sample_line`]), and this is
+    /// the width that lets both names of that one sample find it.
     pub fn index_at(&self, t: f32) -> Option<usize> {
         let after = self.samples.partition_point(|sample| sample.t < t);
         [after.checked_sub(1), Some(after)]
             .into_iter()
             .flatten()
             .filter(|index| *index < self.samples.len())
-            .find(|index| (self.samples[*index].t - t).abs() <= PARAMETER_EPSILON)
+            .find(|index| (self.samples[*index].t - t).abs() <= SAMPLE_MATCH)
     }
 }
 
@@ -666,24 +679,67 @@ pub fn sample_line(nodes: &[Node], step: f32, named: &[f32]) -> SampledLine {
         };
     }
 
-    let mut breaks: Vec<f32> = span.iter().map(|along| along / total).collect();
-    breaks.extend(named.iter().map(|t| crate::math::clamp(*t, 0.0, 1.0)));
-    if step > f32::EPSILON {
-        for index in 0..nodes.len() - 1 {
-            let (low, high) = (span[index] / total, span[index + 1] / total);
-            let divisions = (((high - low) * total / step).ceil() as usize).max(1);
-            for division in 1..divisions {
-                breaks.push(low + (high - low) * division as f32 / divisions as f32);
+    // Two anchors this close are one anchor written twice. A station names a node as an arc
+    // fraction, and the node's own fraction is the arc divided by the total — which is not the
+    // round number the author wrote. Left alone, the line is sampled at both and the two samples
+    // are one sliver apart: the facet aspect reads it, and every station that meant "this node"
+    // hangs on a point beside it. A tenth of a percent of the line is wide enough to catch that
+    // and far too narrow to swallow two ribs an author actually placed.
+    //
+    // The pair becomes **one sample**: its name is the first anchor's, so every station that wrote
+    // either of them still finds it through [`SampledLine::index_at`], and its position is the
+    // **node's** when the pair holds one — a node is read back exactly and an arc fraction is
+    // interpolated, and a crest that drifted a tenth of a unit off its own authored node is a
+    // crest the author no longer recognises.
+    let anchor_gap = (step.max(f32::EPSILON) / (8.0 * total)).min(4.0e-3);
+    let mut merged: Vec<(f32, Option<usize>)> = Vec::with_capacity(span.len() + named.len());
+    let mut anchors: Vec<(f32, Option<usize>)> = Vec::with_capacity(span.len() + named.len());
+    anchors.extend(
+        span.iter()
+            .enumerate()
+            .map(|(index, along)| (along / total, Some(index))),
+    );
+    anchors.extend(
+        named
+            .iter()
+            .map(|t| (crate::math::clamp(*t, 0.0, 1.0), None)),
+    );
+    anchors.sort_by(|left, right| left.0.total_cmp(&right.0));
+    for (t, node) in anchors {
+        match merged.last_mut() {
+            Some((kept, at)) if (t - *kept).abs() <= anchor_gap => {
+                if at.is_none() {
+                    *at = node;
+                }
+            }
+            _ => merged.push((t, node)),
+        }
+    }
+
+    // The subdivision is cut **between the anchors and not across them**, so an anchor is never
+    // crowded by a step of the uniform grid: two samples a hair apart are a sliver facet, and a
+    // sliver is what a facet aspect is measured on. Each stretch between two anchors — two nodes,
+    // or a node and a named station — is cut into as many equal pieces as its length asks for at
+    // `step`, which keeps the cell size even however irregularly the anchors are spaced.
+    let mut cuts: Vec<(f32, Option<usize>)> = Vec::with_capacity(merged.len() * 2);
+    for pair in merged.windows(2) {
+        let ((low, node), (high, _)) = (pair[0], pair[1]);
+        cuts.push((low, node));
+        if step > f32::EPSILON {
+            let pieces = (((high - low) * total / step).ceil() as usize).max(1);
+            for piece in 1..pieces {
+                cuts.push((low + (high - low) * piece as f32 / pieces as f32, None));
             }
         }
     }
-    breaks.sort_by(f32::total_cmp);
-    breaks.dedup_by(|left, right| (*left - *right).abs() <= PARAMETER_EPSILON);
+    if let Some((last, node)) = merged.last() {
+        cuts.push((*last, *node));
+    }
 
     SampledLine {
-        samples: breaks
+        samples: cuts
             .into_iter()
-            .map(|t| {
+            .map(|(t, anchor)| {
                 let (index, amount) = edge_at(&span, total, t);
                 let from = nodes[index];
                 let to = nodes[index + 1];
@@ -701,12 +757,11 @@ pub fn sample_line(nodes: &[Node], step: f32, named: &[f32]) -> SampledLine {
                 // is then a mesh with a crack at every tip, or a `Disjoint` from the walk that
                 // was supposed to close the rim — decided by which side of a cell boundary a
                 // float happened to fall on.
-                let node = if amount <= PARAMETER_EPSILON {
-                    Some(from)
-                } else if amount >= 1.0 - PARAMETER_EPSILON {
-                    Some(to)
-                } else {
-                    None
+                let node = match anchor {
+                    Some(anchor) => Some(nodes[anchor]),
+                    None if amount <= PARAMETER_EPSILON => Some(from),
+                    None if amount >= 1.0 - PARAMETER_EPSILON => Some(to),
+                    None => None,
                 };
                 Sample {
                     t,

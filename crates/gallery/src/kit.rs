@@ -487,9 +487,29 @@ pub fn camera_placed(
     near: f64,
     far: f64,
 ) -> Value {
+    camera_placed_up(eye, target, [0.0, 1.0, 0.0], field_of_view, near, far)
+}
+
+/// Builds a placed camera whose **up in the world** is written, rather than taken as world-up.
+///
+/// # Invariants
+///
+/// A camera looking down its own up axis has no orientation, and the one view that does look
+/// nearly straight down — a plan — is exactly the one that needs it written: its up is a
+/// horizontal direction, the one the frame's top edge runs along, and that is a statement about
+/// the world and not a roll. See [`camera_placed`] for the depth planes.
+pub fn camera_placed_up(
+    eye: [f64; 3],
+    target: [f64; 3],
+    up: [f64; 3],
+    field_of_view: f64,
+    near: f64,
+    far: f64,
+) -> Value {
     Value::structure([
         ("eye".to_owned(), triple(eye)),
         ("target".to_owned(), triple(target)),
+        ("up".to_owned(), triple(up)),
         ("field_of_view".to_owned(), Value::Float(field_of_view)),
         ("projection".to_owned(), Value::variant("Perspective", [])),
         ("near".to_owned(), Value::Float(near)),

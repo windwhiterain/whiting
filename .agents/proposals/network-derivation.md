@@ -92,7 +92,72 @@ The fan is untouched: `alpine_probe` before and after both give 2100 faces, 1224
   the rim. A cycle closes a face that never reaches the rim, so it drains to a corner rather than a
   mouth. Worth a session of its own; none of it blocks the demo.
 
+## A head fold's two valleys share their head crests, and the coverage rule cannot see it (2026-10-10)
+
+Found while authoring `crates/gallery/src/landscape/massif/authored.rs` as a dissected upland: one
+long divide with spurs at four levels, thirty-two crests and seventeen valleys, written down by hand.
+
+### What is built and what it does
+
+The divide is a chain of twelve segments, each descending from a shoulder or the summit into the col
+beside it; the spurs and the spurs' own spurs hang off the shoulders. The **ridge** checks pass:
+`ridge lines: 1 connected piece(s)`, every crest descends from its peak, every junction is an end
+that names the crest owning it, and the stations are written as `(crest, node)` pairs so each one
+lands exactly on its node.
+
+The latest run, with `side_foot` in `validate` and the parameter fix below:
+
+```text
+32 ridges, 17 valleys, 34 footprint nodes, step 279.50012
+ridge lines: 1 connected piece(s)
+violations: 66
+mesh: 203 faces, 132 points, shortest edge 5.099
+plan area 3483590.5 against footprint 3887049.5, difference -403459.000
+surface: 3 boundary loop(s), euler -1, manifold true
+```
+
+### The parameter bug that held the file at 114 violations
+
+`parameter_of_node` returned `0.0` for every node. It walked `nodes.windows(2)` and tested
+`index + 1 == node`, which is right, but the loop it sat in had been shortened to a single pass over
+pairs while the check was left reading the pair's **second** node against the loop index — so no
+node ever matched and every station resolved to `t = 0`. Every rib was then a point at its crest's
+start, which reads as a mesh that builds and leaves a hundred spans bare. Fixing it to accumulate a
+running length per node dropped the violations by half (`114 -> 66`) and took the surface from six
+boundary loops to three. **A station that resolves to the wrong parameter is a whole mountain of
+`NotCovered` and nothing else.**
+
+### The rule that still does not hold
+
+Two valleys share the crest a head stands on — `w0` at the summit carries the north valley's left
+wall and the south valley's right wall. Both write the head belt as `(crest, head-end node)` and the
+station after it as the same crest's next node, so **both cover the same stretch of that crest** and
+the other half of it is bare:
+
+```text
+SAME valley 4  Left  segment 0  Ridge(7) 0.0..0.5004  side Left
+SAME valley 13 Right segment 0  Ridge(7) 0.0..0.5004  side Left
+SAME valley 4  Right segment 0  Ridge(0) 0.0..0.5067  side Right
+SAME valley 13 Left  segment 0  Ridge(0) 0.0..0.5067  side Right
+```
+
+It is not a matter of moving the floor: both valleys' first floor node stands in the same wedge, on
+the same side of the shared crest, so `cross(direction, foot - station)` is equal and opposite for
+the two crests and **equal** for the same crest in both valleys. No plan position of a floor node
+makes them differ, and making the head rib a point does not either — `side_foot` then reads the side
+from the next node, which is the same point in both valleys for the same reason.
+
+### What would fix it
+
+- **A side declared on the rib rather than measured from the foot.** `ValleyNode` would carry which
+  flank of the crest it is on and the check would read it.
+- **A head that stands on a crest the two valleys do not share**, so the two head ribs are not the
+  two flanks of one line.
+
+Neither is in this change. Nothing else about the tree is refused.
+
 ## The face walk, tried and measured (2026-10-08)
+
 
 The walk itself works and the network is reachable. What is not finished is the **composition of a
 wall** for a cyclic graph. The state of that attempt is kept beside this proposal as
