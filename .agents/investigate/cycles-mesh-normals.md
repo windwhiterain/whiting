@@ -467,6 +467,14 @@ come from, and it is a fact about `sphere`'s shape rather than a defect in the c
 this is the same root as the winding defect and one layer deeper: `sphere` was written to a
 shape nobody wrote down, which is the state this whole file is about.
 
+**it has since been fixed**, and the topology columns are what it bought. with `phi` the polar
+angle the doubled surface is gone, and with it every edge the survey counted as traversed twice
+the same way — `monoliths` **800 → 0**, `stilllife` **204 → 0**, `terraces` **60 → 0** — while the
+branched count falls with it, 9440 → **840**, 5592 → **486** and 288 → **66**. all 620 meshes
+still agree with their own normals, and the winding is now coherent with itself in every scene
+that has a sphere in it, which it was not before. the proposal, with the measurement that led to
+it, is [proposals/sphere-is-a-hemisphere-twice.md](../proposals/sphere-is-a-hemisphere-twice.md).
+
 ## and the picture did not move, which is the finding
 
 all thirteen frames re-rendered on Cycles and compared against the raster frames re-rendered
