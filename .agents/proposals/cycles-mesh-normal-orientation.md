@@ -1,16 +1,25 @@
 # Which way round is a gallery mesh's normal?
 
+> **Outcome: option 1 was implemented and measured, and it is worse.** All three exporter
+> changes together give landscape **+0.7812 → +0.7941** and cost `sunlight` 0.166, `lanterns`
+> 0.123, `spotlight` 0.055, `foldyard` 0.358. The reason is in finding 2 of
+> [investigate/cycles-mesh-normals.md](../investigate/cycles-mesh-normals.md): **the gallery's
+> mesh builders do not share a winding convention.** `sunlight` carries one mesh whose normals
+> are the negation of its winding and another whose normals agree with it, in the same scene.
+> A rule applied at the mapper flips one and inverts the other. The code is kept as a reference
+> implementation; the rule is withdrawn. What follows is why option 3 is the only one left.
+
 ## The question
 
-Measured in [investigate/cycles-mesh-normals.md](../investigate/cycles-mesh-normals.md): every
-mesh in `landscape` exports a vertex normal array whose mean dot with the triangle's own
-geometric face normal is **−0.99**. The rasteriser renders correctly from those normals, which
-means its front-face convention is the opposite of the document's winding. Cycles follows the
-document's winding and so shades every surface from the wrong hemisphere.
+Measured in [investigate/cycles-mesh-normals.md](../investigate/cycles-mesh-normals.md): the
+mean dot between a mesh's exported normals and its own triangles' geometric face normals is
+**−0.99 on some meshes and +1.00 on others**, and both appear within a single scene. The
+rasteriser reads the normals and the tracer reads the winding, so the two backends currently
+disagree about which side of every surface is lit.
 
-Fixing the attribute name and the `interpolation` flag makes the normals take effect — and
-turns the massif black, which is what an inward-pointing normal looks like. Something has to
-give. Three ways, and they are not equally good.
+Fixing the attribute name and the `interpolation` flag makes the normals take effect — and on a
+mesh whose normals are negated, the surface turns black, which is what an inward-pointing
+normal looks like. Something has to give. Three ways.
 
 ## The choices
 
@@ -55,29 +64,36 @@ document should state it once, and each backend should honour it.
 - **against**: it moves every scene's appearance on one backend, so it needs the whole gallery
   re-rendered before it can be called an improvement. That is a real cost, not a formality.
 
-## What is recommended
+## What is recommended now
 
-**Option 3, with option 1 as the fallback if the gallery cannot be changed yet.**
+**Option 3 alone, and it is no longer a preference — options 1 and 2 are both measured wrong.**
 
-The decision that is being made is *what a document's winding means*, and that belongs to the
-document, not to a mapper. Option 2 records the disagreement in the exporter; option 1 records
-it in an index order nobody will read. Option 3 removes it.
+The measurement above is what decides it. A mapper applies one rule to every mesh it writes; the
+gallery does not have one convention to apply. Options 1 and 2 therefore cannot be right, and
+the numbers say so. The remaining question is only *which* mesh builders are the minority.
 
-Whichever is taken, it must land **after** the two unambiguous changes, which are defects
-regardless of this one:
+So the work is now a survey, not a change:
 
-1. the normal array is written as `standard_vertex_normal` and the loader reads `"N"`;
-2. no `<state>` carries `interpolation="smooth"`, so the array would be read and then ignored.
-
-Neither of those is a convention question. Both are a name and a flag that do not match the
-format.
+- run the per-mesh dot statistic — it is written, `out/probe-mesh-normals.py` — over **every**
+  gallery scene's exported document, not one scene;
+- the builders on the **−1** side and those on the **+1** side will be different code, and the
+  fix is whichever group is wrong;
+- one scene is not evidence of a convention. `landscape` was −1 on all three meshes and that is
+  exactly why it looked like a global fact and cost an afternoon.
 
 ## What has to be measured before this is called done
 
 - every gallery scene rendered on **both** backends, before and after, at the same resolution;
-- the mean dot of exported normal with face normal reported **per mesh**, not for one scene —
-  the statistic is what makes this checkable, and it is already written
-  (`out/probe-mesh-normals.py`);
+- the mean dot reported **per mesh, per scene**, and the builders named by the pattern that falls
+  out — that naming is the deliverable;
 - at least one scene whose surface is **open and one-sided**, because a closed mesh hides an
   inverted normal from the eye far better than a heightfield does. `landscape`'s massif is
   closed; its plain is not, and the plain's number is the one to watch.
+
+## What must not be done meanwhile
+
+**Do not land changes 1 and 2 on their own.** Each looks harmless and neither is: with the array
+renamed to `N` but no orientation settled, the massif renders at **−0.6122** against a baseline
+of +0.7812, because the normals suddenly take effect and point inward. That is why change 1,
+which is on its own an unambiguous name fix, is listed here as blocked rather than ready.
+
