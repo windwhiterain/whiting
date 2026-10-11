@@ -487,19 +487,38 @@ every number and every source line, is in
   `standard_vertex_normal` — the enum name, not the wire name. measured: removing the array,
   replacing it with face normals, and leaving it as written all render **byte-identical**. a
   missing attribute is not an error, so nothing ever said so.
-- **and the normals we do write face the opposite way from the winding.** mean dot of exported
-  normal against the triangle's own face normal, per mesh: **−0.9897**, **−0.9897**,
-  **−0.9991**. not the axis conversion — one proper rotation is applied to positions and
-  normals alike, and a rotation preserves dot products. not the rasteriser either: it renders
-  correctly from these normals, so its front-face convention is the document's opposite. the
-  two conventions are each internally consistent and disagree with each other.
+- **and the normals we do write face the opposite way from the winding — on some meshes only.**
+  the mean dot of an exported normal against its own triangle's face normal, per mesh:
+  landscape **−0.9897**, **−0.9897**, **−0.9991**; but `sunlight` carries one mesh at
+  **−1.0000** and another at **+1.0000**, and `lanterns` the same. **the gallery's mesh builders
+  do not share one winding convention**, and neither backend agrees with all of them. not the
+  axis conversion — one proper rotation is applied to positions and normals alike, and a
+  rotation preserves dot products. not the rasteriser either: it renders correctly from these
+  normals, so its front-face convention is the document's opposite.
 
 renaming the array to `N` makes it take effect at once and the massif goes **black**, which is
-what an inward normal looks like. the exporter needs three changes and only in this order do
-they hold together: write `N`; write `interpolation="smooth"` on the `<state>` carrying the
-mesh, since `get_smooth()` defaults **false** (`cycles_xml.cpp:39`) and is read only on
-`<state>`; and resolve the orientation. measured on the last step alone, the whole frame goes
-**+0.7812 → +0.7941**.
+what an inward normal looks like. all three emitter changes were then implemented and measured
+across the whole gallery, and **they are not a net win**:
+
+| scene | as emitted | with all three |
+|---|---|---|
+| landscape | +0.7812 | **+0.7941** |
+| tiles | +0.9740 | +0.9740 |
+| spotlight | +0.9282 | +0.8735 |
+| lanterns | +0.8571 | +0.7338 |
+| sunlight | +0.9763 | +0.8105 |
+| foldyard | +0.1168 | **−0.2411** |
+
+one scene gains 0.013 and four lose, one of them catastrophically. a mapper applies one rule to
+every mesh it writes and this gallery has no single rule to apply, so **no change at the mapper
+layer can be right**. recorded rather than deleted, because the reasoning is what makes the
+next attempt shorter. the survey that has to come first is in
+[proposals/cycles-mesh-normal-orientation.md](../proposals/cycles-mesh-normal-orientation.md).
+
+**neither of the two unambiguous changes may land on its own.** renaming the array is a name
+that does not match the format, and it is a defect whatever the shading turns out to be — but
+with the orientation unsettled it drops the massif to **−0.6122**, because the normals suddenly
+take effect and point inward. the two are blocked together.
 
 **welding is not available**, which is worth recording because it looks like the obvious
 repair. the loader consumes `verts` as per-triangle vertex indices and never writes the

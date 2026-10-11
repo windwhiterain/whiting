@@ -59,29 +59,25 @@ one attribute. Byte-identical output means the attribute had no effect at all.
 | attribute removed entirely | `227D9C4A…` |
 | attribute replaced with per-triangle face normals | `227D9C4A…` |
 
-## Finding 2: the normals we do write face the opposite way from the winding
+## Finding 2: the normals we do write face the opposite way from the winding — **on some meshes only**
 
 Renaming the array to `N` makes it take effect immediately — and the massif turns **black**,
 which is the signature of a shading normal pointing into the surface.
 
-The array and the geometry disagree, and they do so in every mesh:
+The array and the geometry disagree, and **which way they disagree is per mesh, and not
+even consistent within one scene:**
 
-| mesh | triangles | mean dot of exported normal with the face normal | corners facing away |
-|---|---|---|---|
-| 0 (massif) | 752 | **−0.9897** | 99.6% |
-| 1 (far range) | 752 | **−0.9897** | 99.6% |
-| 2 (plain) | 18432 | **−0.9991** | 99.9% |
+| scene | mesh 0 | mesh 1 |
+|---|---|---|
+| landscape | −0.9897 | −0.9897 |
+| landscape | −0.9991 (the plain) | |
+| sunlight | **−1.0000** | **+1.0000** |
+| lanterns | **−1.0000** | **+1.0000** |
 
-Hand-checked on triangle 0 of mesh 0, from the exported positions and the exported normal:
-
-```text
-u = v1 − v0 = (43.333, −10.0, −33.333)
-v = v2 − v0 = (16.25,  −34.5, −38.75)
-u × v        = (−762.5, 1137.5, −1332.5)  →  normalised (−0.3990, 0.5953, −0.6974)
-exported N[0] = ( 0.399062, −0.595325, 0.697379)
-```
-
-They are the same three numbers with opposite signs.
+So the gallery's mesh builders do not share one winding convention. Some emit normals that
+agree with their winding and some emit normals that are its exact negation. That is the
+finding that decides the fix, and it arrived after the fix was written — see
+[the correction below](#the-correction-an-exporter-side-fix-measures-worse).
 
 **This is not the axis conversion's fault.** The conversion is one proper rotation
 (`(x, y, z) → (x, −z, y)`, determinant +1) applied to positions and normals alike, and a
@@ -90,8 +86,8 @@ rotation preserves dot products — so a dot of −1 in Cycles' frame was alread
 **It is not the rasteriser's either.** The rasteriser renders correctly from these same
 normals, which it can only do if its front-face convention is the opposite of the document's
 winding: its geometric normal is then the negation of the document's winding normal and agrees
-with the authored one. Both conventions are internally consistent; they simply disagree with
-each other, and Cycles follows the one the document does not.
+with the authored one. Each backend is internally consistent; they disagree with each other, and
+neither agrees with every mesh.
 
 ## Finding 3: a mesh cannot be welded, so "just give it connectivity" is not available
 
@@ -153,6 +149,52 @@ so the emitter needs three changes, and only in this order does the result hold 
 
 Change 1 alone is worth doing regardless: as emitted, the emitter has been writing an
 attribute the format never reads, and reporting no error for doing it.
+
+## The correction: an exporter-side fix measures worse
+
+The fix above was written and then measured, on every scene, and **it is not a net win.** The
+three changes were implemented in Rust — `N` for the array, `interpolation="smooth"` on the
+state, and the winding reversed in `write_mesh` — and the whole gallery re-rendered against the
+same raster frames:
+
+| scene | as emitted | with all three changes |
+|---|---|---|
+| landscape | +0.7812 | **+0.7941** |
+| tiles | +0.9740 | +0.9740 |
+| spotlight | +0.9282 | **+0.8735** |
+| lanterns | +0.8571 | **+0.7338** |
+| sunlight | +0.9763 | **+0.8105** |
+| foldyard | +0.1168 | **−0.2411** |
+
+The Rust result reproduces the text surgery exactly (+0.7941), so the implementation is
+faithful; the *rule* is wrong. One scene improves by 0.013 and four get worse, one of them
+catastrophically.
+
+**Why, and it is the per-mesh statistic above.** Before these changes the tracer was reading
+**no** normals at all and shading from each triangle's geometric normal. The reversal changes
+the geometric normal, and enabling `N` changes the shading normal, and the two together flip
+the surface for meshes whose authored normals are the negation of their winding — which, in this
+gallery, is **half of them and not consistently within a scene**. `sunlight` carries a mesh at
+−1.0000 and another at +1.0000; the reversal fixes the first and inverts the second.
+
+So a rule applied at the mapper cannot be right for meshes that do not share a convention. The
+disagreement is in the documents, and the documents are where it has to be settled.
+
+**This branch's code change is therefore not to be merged.** It is kept uncommitted in
+`.worktrees/emitter-normals` as the reference implementation, because the three edits are
+correct as *code* and become correct as a *rule* the moment the convention is settled.
+
+## What is left standing
+
+- **Finding 1 stands and is independent of all of this.** The array must be written as `N`. It
+  is a name that does not match the format, and a name that does not match the format is a
+  defect whatever the shading turns out to be. It cannot land on its own, because the loader
+  then reads a normal array that disagrees with its mesh.
+- **Findings 2 and 3 stand**, and finding 2 now says something sharper than it did: not "the
+  normals are inverted" but **"the gallery's mesh builders do not share a winding
+  convention."** That is the thing to go and fix.
+- **The striation explanation stands.** The tracer was reading no normals and shading from
+  geometric face normals, which is what the facet striation is.
 
 ## Sources
 
