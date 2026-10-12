@@ -713,6 +713,29 @@ pub fn post_pass_schema_exposed() -> Schema {
 
 /// Builds either post interface, which is one function so the two cannot drift apart.
 fn post_interface(exposed: bool) -> Schema {
+    post_interface_carrying(exposed, false)
+}
+
+/// Builds the post interface of a stage that paints its sky out of the scene's environment.
+///
+/// # Why the field is here and not folded into the map
+///
+/// The map carries an image and not a brightness. An environment light declares a colour and a
+/// radiance beside the image it names, and a path tracer's world is the image scaled by both —
+/// so a stage reading the map and stopping there is reading the map, which is not what a tracer
+/// drew. Carrying [`ENVIRONMENT`] beside the map is what makes the two the same number, and it is
+/// the same field the lighting pass carries rather than a second spelling of it.
+///
+/// The field is written whenever the shader declares it, exactly as the binding beside it is
+/// bound whenever the stage runs, because a uniform's layout is the layout the pass is uploaded
+/// with and a field that came and went with the document would put every field after it
+/// somewhere else.
+pub fn post_pass_schema_with_environment() -> Schema {
+    post_interface_carrying(false, true)
+}
+
+/// Builds a post interface, which is one function so the variants cannot drift apart.
+fn post_interface_carrying(exposed: bool, environment: bool) -> Schema {
     let mut uniform = vec![
         (
             CAMERA.to_owned(),
@@ -746,6 +769,19 @@ fn post_interface(exposed: bool) -> Schema {
                  linear multiplier where 1 is no change. It is not a parameter of the curve \
                  that follows, and it cannot brighten a value the shaded image already holds \
                  at one.",
+            ),
+        ));
+        uniform.sort_by(|left, right| left.0.cmp(&right.0));
+    }
+    if environment {
+        // Placed in name order beside the others, so the vector reads the way the layout it
+        // produces does, and so a reader can find the environment without being told where it is.
+        uniform.push((
+            ENVIRONMENT.to_owned(),
+            components_schema(4).with_documentation(
+                "The environment light's colour scaled by its radiance, and whether the scene \
+                 named one at all. A stage paints its sky at this radiance, because that is the \
+                 radiance a tracer draws its world at.",
             ),
         ));
         uniform.sort_by(|left, right| left.0.cmp(&right.0));
