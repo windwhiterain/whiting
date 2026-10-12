@@ -72,7 +72,7 @@ fn atmosphere() -> Atmosphere {
 
 /// Builds the dune field.
 pub fn dunes() -> Value {
-    let surface_shading = SURFACE;
+    let surface_shading = "";
     // One copy of the air, handed to the lighting stage and to the post stage. They describe
     // the same morning because they read the same constants, not because the scene was
     // careful twice.
@@ -339,45 +339,14 @@ fn cloud(point: vec2<f32>) -> f32 {
 }
 "#;
 
-/// What the lighting stage does to a surface after the light is applied.
-///
-/// # Invariants
-///
-/// Aerial perspective is a function of distance from the eye and of how much sky is
-/// behind the surface, so a slope facing the camera washes out before one facing away.
-/// Washing by distance alone flattens the field, because the far side of a dune and its
-/// near side are the same distance from the eye but not the same distance through the air.
-const SURFACE: &str = r#"
-    // Sand is bright where the light rakes it and dark in the trough, which is a
-    // property of the grain rather than of the geometry: the crests are also the
-    // places the wind has scoured.
-    let crest = clamp(normal.y, 0.0, 1.0);
-    color = color * mix(0.82, 1.12, crest);
-
-    // A cloud shadow crossing the field. The noise is sampled where the ground is and
-    // drifts with the wind, so the shadow travels over the dunes rather than over the
-    // picture. This is the whole of the scene's motion: a landscape has very little of its
-    // own, and what it has is mostly weather passing over it.
-    let drift = vec2<f32>(uniforms.time * 1.6, uniforms.time * 0.7);
-    let cover = cloud(in.world_position.xz * 0.006 + drift);
-    let shade = smoothstep(0.44, 0.78, cover);
-    color = color * mix(0.30, 1.0, shade);
-
-    // Aerial perspective. The colour a distant surface tends towards is the colour of
-    // the sky behind it, and how much of it there is depends on how much of that sky
-    // the surface is seen through. The names here are not the lighting stage's: this is
-    // written into the same function, so a name used twice is a shader that will not
-    // compile.
-    let eye = uniforms.projection.position;
-    let view = normalize(in.world_position - eye);
-    let facing = 1.0 - abs(dot(normal, view));
-    let haze = air_closure(eye, in.world_position);
-    color = mix(color, air_colour(), clamp(haze * (0.5 + 0.5 * facing), 0.0, 0.62));
-"#;
-
 /// What the post stage does to the frame the scene produced.
 ///
 /// # Invariants
+///
+/// **The air belongs here and not to a surface body.** `cycles_backend.md` decides that no
+/// surface body may reach for `air_colour()` or `air_closure()`, because a surface that paints
+/// its own fog is a surface a second backend cannot reproduce. `landscape` had its body removed
+/// on that basis and the removal was measured; this scene was the last one still doing it.
 ///
 /// A filmic curve rather than a clamp: the highlight rolls off towards one as it
 /// approaches it, so a bright sky keeps its colour all the way to white instead of
