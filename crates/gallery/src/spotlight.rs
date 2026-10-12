@@ -82,7 +82,7 @@ pub fn spotlight() -> Value {
             gallery_instance_schema(),
             custom.clone(),
         ),
-        post_shader(GRADE, ""),
+        post_shader(GRADE, "", None),
     ]);
 
     // A material names one shader, and a shader is drawn in the one stage it belongs to, so

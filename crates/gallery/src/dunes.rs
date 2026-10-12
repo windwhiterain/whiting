@@ -25,7 +25,7 @@ use crate::kit::{
     camera, environment_light, image, instance, instances, light_with_radius, mesh, mesh_material,
     post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{mesh_shaders, post_shader};
+use crate::shaders::{Projection, mesh_shaders, post_shader};
 
 /// How far the field reaches, in world units.
 const EXTENT: f64 = 165.0;
@@ -190,7 +190,11 @@ pub fn dunes() -> Value {
             Value::List(
                 mesh_shaders(surface_shading, &helpers)
                     .into_iter()
-                    .chain(std::iter::once(post_shader(grade, &helpers)))
+                    .chain(std::iter::once(post_shader(
+                        grade,
+                        &helpers,
+                        Some(Projection::Latlong),
+                    )))
                     .collect(),
             ),
         ),

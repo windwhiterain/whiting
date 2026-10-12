@@ -147,11 +147,11 @@ fn the_same_text_in_two_stages_is_two_blocks_with_two_meanings() {
     // a line in a sixty thousand line scene file is not told what they are looking at.
     assert!(marker(&lighting("", SURFACE, "", Projection::Latlong), "surface").is_some());
     assert!(
-        marker(&post(SURFACE, ""), "grade").is_some(),
+        marker(&post(SURFACE, "", None), "grade").is_some(),
         "the same text is a grade in the post stage, and the marker says so"
     );
     assert!(
-        marker(&post(SURFACE, ""), "surface").is_none(),
+        marker(&post(SURFACE, "", None), "surface").is_none(),
         "and it does not claim to be the surface block it was in the other stage"
     );
 }

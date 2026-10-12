@@ -250,7 +250,11 @@ pub fn tidewater() -> Value {
                         &water_body(),
                         &helpers,
                     )))
-                    .chain(std::iter::once(post_shader(GRADE, &helpers)))
+                    .chain(std::iter::once(post_shader(
+                        GRADE,
+                        &helpers,
+                        Some(Projection::Latlong),
+                    )))
                     .collect(),
             ),
         ),

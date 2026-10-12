@@ -277,6 +277,7 @@ fn build_shaders() -> Vec<Value> {
     set.push(post_shader(
         &fill(GRADE),
         &fill(&[NOISE_WGSL, SKY_WGSL, ridges::RIDGES, FOG_WGSL].concat()),
+        None,
     ));
     set
 }

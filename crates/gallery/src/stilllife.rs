@@ -192,7 +192,11 @@ pub fn stilllife() -> Value {
             label, displace, body, &helpers,
         ));
     }
-    shaders.push(post_shader(GRADE, &format!("{helpers}\n{GRADE_HELPERS}")));
+    shaders.push(post_shader(
+        GRADE,
+        &format!("{helpers}\n{GRADE_HELPERS}"),
+        None,
+    ));
 
     let materials = vec![
         // The two stages that place a point rather than colour it. Their own data is never
