@@ -85,6 +85,21 @@ writing down. Unless stated otherwise a wrong name is ignored and the socket kee
 - Connect targets are validated and an unknown one raises `Unknown input socket name "x" on "y"`,
   but connect *sources* are not: an unknown source socket raises nothing and quietly leaves the
   destination at its default. A graph can therefore be half-connected with no error at all.
+- **A target that is a real socket with its space removed is accepted, says nothing, and does
+  nothing.** This is the one spelling a writer is most likely to reach for, and it is the only one
+  that fails silently. Measured 2026-10-12 against `principled_bsdf`, connecting a `mix_color` into
+  its base colour:
+
+  | target spelling | what Cycles says | what the frame shows |
+  |---|---|---|
+  | `Base Color` | `ERROR: Invalid from or to value for connect node` | unaffected |
+  | `base_color` | **nothing at all** | the BSDF's default colour, not the mixed one |
+  | `BaseColor` | `ERROR: Unknown input socket name "BaseColor" on "bs"` | unaffected |
+
+  So "a socket whose name contains a space cannot be connected at all" is **true** — the space is
+  what the parser splits on — and the consequence for us is that removing the space does not get
+  around it, it only gets around the error. See
+  [a-material-image-cannot-be-carried.md](a-material-image-cannot-be-carried.md).
 - Every `ERROR:` line matters because the process still exits 0.
 
 ## What this does not settle
