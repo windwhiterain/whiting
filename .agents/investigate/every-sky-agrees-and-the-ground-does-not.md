@@ -57,7 +57,13 @@ silhouette, sanctioned by a decision that is otherwise right.
 
 ## What is still open, and it is not a units error any more
 
-- `tiles` at 1.285 on the ground is the largest remaining ground figure and is **not** explained.
+- ~~`tiles` at 1.285 on the ground is the largest remaining ground figure and is **not**
+  explained.~~ **Explained 2026-10-12**: the two backends are drawing two different surfaces. The
+  exporter drops the material's `image` and the mesh's `texture` attribute, so the tracer draws a
+  flat floor, and the ratio is a texture's brightness against a plain tint. The exporter is right to
+  refuse and right to report it — the target format will not accept a colour connection at all, and
+  that is now measured rather than asserted:
+  [a-material-image-cannot-be-carried.md](a-material-image-cannot-be-carried.md).
 - `foldyard` and `tidewater` need either volume fog in the export or an acceptance that a graded
   scene and a traced one differ by the grade.
 - The chapter's pearson table still cannot see any of this. It is kept because it is a useful shape
