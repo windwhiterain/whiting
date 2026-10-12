@@ -775,8 +775,14 @@ const GRADE: Block = wgsl!(
     r#"
     // The sky, and only the sky: the pixels no geometry covered. A depth of one is the far
     // plane, which is where a depth buffer is cleared.
+    //
+    // Read out of the scene's own environment map at the environment light's own radiance, which
+    // is what a path tracer draws its world from. The law that used to be written here was a
+    // *different* sky from the map this scene declares — its own zenith and horizon literals,
+    // nine times darker than the map — so the two backends were drawing two different mornings
+    // over one stretch of water.
     if depth >= 1.0 {
-        color = sky_colour(ray_through(in.uv));
+        color = environment_sky(ray_through(in.uv));
     }
 
     // Exposure. A photograph is exposed once and this is the one place it is decided; the
