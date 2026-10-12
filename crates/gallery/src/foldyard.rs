@@ -1595,7 +1595,7 @@ const GRADE: &str = r#"
         // drawn *after* the air, and where the modelled range's own silhouette dips they come
         // through above it: three ridges receding, each a step deeper than the one behind,
         // which is what a far range looks like and what one flat cut-out never does.
-        color = ridges(air_sky(ray), ray, RIDGE_SCALE, RIDGE_LAYERS);
+        color = ridges(environment_sky(ray), ray, RIDGE_SCALE, RIDGE_LAYERS);
     } else {
         let world = world_position(in.uv, depth);
         color = mix(color, air_colour(), air_closure(uniforms.camera.position, world));

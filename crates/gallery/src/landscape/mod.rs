@@ -990,7 +990,7 @@ const GRADE: &str = r#"
         // modelled because the air closes over modelled ground long before the eye can see it,
         // and a horizon made of one flat line is the thing that gives a landscape away as a
         // diorama.
-        color = ridges(air_sky(ray), ray, RIDGE_SCALE, RIDGE_LAYERS);
+        color = ridges(environment_sky(ray), ray, RIDGE_SCALE, RIDGE_LAYERS);
 
         // The **shafts**, which are what makes a low sun read as a low sun rather than as a
         // bright patch of sky. A crepuscular ray is a gap in the cloud letting one beam of light

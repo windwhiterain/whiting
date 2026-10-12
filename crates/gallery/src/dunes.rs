@@ -106,11 +106,11 @@ pub fn dunes() -> Value {
             // Two to one, because `u` goes once round the world and `v` once over it; a square
             // latlong map is a distorted sky.
             //
-            // The pixels are [`Atmosphere::environment_pixels`] — the same sky the grade below
-            // draws through `air_sky`, term for term. The comment at `atmosphere` says the air
-            // is handed to the lighting stage and the post stage, and this is the third hand it
-            // was not being given: the two stages above are inside this renderer and the world
-            // is the part another renderer reads.
+            // The pixels are [`Atmosphere::environment_pixels`], and they are also what the
+            // grade below reads its sky out of. The comment at `atmosphere` says the air is
+            // handed to the lighting stage and the post stage, and this is the third hand it was
+            // not being given: the two stages above are inside this renderer and the world is the
+            // part another renderer reads.
             "images".to_owned(),
             Value::List(vec![image(
                 "air",
