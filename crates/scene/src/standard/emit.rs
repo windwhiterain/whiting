@@ -1168,6 +1168,7 @@ pub fn emit(
             &source,
             &target,
             &binders,
+            &environment,
         )?;
         insert_entry(&mut instance, vertex_entry, entry)?;
         passes.push(pass);
@@ -3249,6 +3250,7 @@ fn post_pass(
     source: &str,
     target: &str,
     images: &[(String, Value)],
+    environment: &EnvironmentMap,
 ) -> Result<(Value, Value, String), CompileError> {
     // The vertex buffer is packed once and entered into the instance, the same way a
     // mesh's is, because a post stage draws a mesh like any other pass does.
@@ -3307,6 +3309,19 @@ fn post_pass(
                 DEPTH_BUFFER.to_owned(),
                 texture_binding(DEPTH_BUFFER_ENTRY, frame.width, frame.height, DEPTH_FORMAT),
             ),
+            // The scene's own environment, bound on the same terms the lighting pass binds it.
+            //
+            // A post stage already reads every image its document names; this is the one it
+            // could not, because the map is entered from the scene's `Environment` light and
+            // not from its image list, so nothing routed it here. A scene that paints its sky
+            // from this map and a tracer that draws its sky from this map are then reading one
+            // quantity, which is what makes a radiance mean the same thing on both sides.
+            //
+            // It is bound **whether the scene names an environment or not**, and a scene that
+            // names none binds the one texel black map, for the reason the lighting pass binds
+            // it unconditionally: binders are numbered by name, so a binding that came and
+            // went with the document would move every number after it.
+            environment_binding(environment),
             (
                 PRESENT_TARGET.to_owned(),
                 texture_binding(target, frame.width, frame.height, PRESENT_FORMAT),

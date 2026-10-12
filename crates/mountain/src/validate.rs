@@ -18,7 +18,7 @@
 use std::collections::BTreeMap;
 
 use crate::line::{LineRef, Side, Station};
-use crate::math::{distance, Vec2};
+use crate::math::{Vec2, distance};
 use crate::sampling::{Sampling, Unresolved, WELD};
 use crate::skeleton::{RidgeId, Skeleton, ValleyId};
 use crate::tessellation::{BeltRef, Tessellation};
