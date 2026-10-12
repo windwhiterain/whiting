@@ -39,13 +39,12 @@ use scene::standard::Stage;
 
 use crate::air::Atmosphere;
 use crate::geometry::{fractal_noise, heightfield, smoothstep};
-use crate::identity::{self, massif_extras, outputs_field, plain_extras, Identity};
+use crate::identity::{self, Identity, massif_extras, outputs_field, plain_extras};
 use crate::kit::{
     camera_placed_up, directional, environment_light, image, instance, instances, mesh,
-    mesh_material,
-    post_processes, screen_material, shaded_point_schema, surface,
+    mesh_material, post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{lighting_shader_declaring, mesh_shaders_over, post_shader, Block, Extras};
+use crate::shaders::{Block, Extras, lighting_shader_declaring, mesh_shaders_over, post_shader};
 
 /// The scene document's `outputs` field, whose name the compiler's schema fixes.
 const OUTPUTS: &str = "outputs";
