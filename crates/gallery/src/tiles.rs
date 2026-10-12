@@ -79,7 +79,7 @@ pub fn tiles_of(pixels: Vec<u8>) -> Value {
             gallery_instance_schema(),
             custom.clone(),
         ),
-        post_shader(GRADE, ""),
+        post_shader(GRADE, "", None),
     ]);
 
     // A material names one shader and that shader's stage is the pass it can be drawn in, so a

@@ -858,7 +858,7 @@ fn probe_level_walk(
 ///   one every other measurement is made against.
 fn probe_scene(casters: &[Caster]) -> Value {
     let mut shaders = mesh_shaders("", "");
-    shaders.push(post_shader(GRADE, ""));
+    shaders.push(post_shader(GRADE, "", None));
 
     let mut materials = vec![
         mesh_material("caster", "shadowing", surface([1.0; 3], 0.0, 1.0, [0.0; 3])),

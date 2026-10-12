@@ -273,7 +273,7 @@ fn build_shaders() -> Vec<Value> {
             GLOW,
             "",
         )))
-        .chain(std::iter::once(post_shader(NIGHT, "")))
+        .chain(std::iter::once(post_shader(NIGHT, "", None)))
         .collect()
 }
 

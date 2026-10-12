@@ -156,7 +156,7 @@ pub fn nurbs() -> Value {
             Value::List(
                 mesh_shaders(SURFACE, "")
                     .into_iter()
-                    .chain(std::iter::once(post_shader(GRADE, "")))
+                    .chain(std::iter::once(post_shader(GRADE, "", None)))
                     .collect(),
             ),
         ),

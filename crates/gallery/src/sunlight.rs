@@ -103,7 +103,7 @@ pub fn sunlight() -> Value {
             gallery_instance_schema(),
             custom.clone(),
         ),
-        post_shader(GRADE, ""),
+        post_shader(GRADE, "", None),
     ]);
 
     // The tints are what tell the four boxes apart, and a floor under one sun has no falloff

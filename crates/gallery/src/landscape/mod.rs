@@ -44,7 +44,9 @@ use crate::kit::{
     camera_placed_up, directional, environment_light, image, instance, instances, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{Block, Extras, lighting_shader_declaring, mesh_shaders_over, post_shader};
+use crate::shaders::{
+    Block, Extras, Projection, lighting_shader_declaring, mesh_shaders_over, post_shader,
+};
 
 /// The scene document's `outputs` field, whose name the compiler's schema fixes.
 const OUTPUTS: &str = "outputs";
@@ -622,7 +624,7 @@ pub fn landscape() -> Value {
         &shaded_point_schema(),
         &plain_extras(),
     ));
-    shaders.push(post_shader(GRADE, &post_helpers));
+    shaders.push(post_shader(GRADE, &post_helpers, Some(Projection::Latlong)));
 
     Value::structure([
         ("name".to_owned(), Value::String("landscape".to_owned())),

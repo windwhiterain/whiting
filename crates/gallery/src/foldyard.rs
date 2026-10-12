@@ -1398,6 +1398,7 @@ fn shaders() -> Vec<Value> {
     set.push(post_shader(
         GRADE,
         &(atmosphere().wgsl() + ridges::RIDGES + POST_HELPERS),
+        Some(Projection::Latlong),
     ));
     set
 }

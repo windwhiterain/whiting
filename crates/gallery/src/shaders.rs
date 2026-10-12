@@ -461,6 +461,42 @@ fn octahedral(direction: vec3<f32>, level: i32) -> vec2<i32> {{
 
 "##;
 
+const ENVIRONMENT_SKY: &str = r##"
+/// Returns the scene's environment in a direction, which is what a sky is.
+///
+/// # Invariants
+///
+/// - **Level zero.** A sky is a direction and not a roughness, so this samples the base level.
+///   The lighting stage's `environment_radiance` picks a level from the surface's roughness
+///   because a rough surface wants a blurrier environment; nothing about a sky is rough.
+/// - **A scene naming no environment reads black**, because it bound a one texel black map. The
+///   answer is black rather than a fault, and a stage does not test for the case.
+///
+/// This is the same map the lighting stage lights surfaces with and the same map a tracer draws
+/// its world from, read through the projection the scene declared. A post stage painting its sky
+/// through it is reading one quantity rather than re-deriving a law beside it.
+///
+/// The lookup is filled in with `replace` and not written out here twice, because `format!` reads
+/// its template once and never looks inside a value it substituted. Naming the placeholder in this
+/// comment would give `replace` a first match here, and it would arrive as a fragment splitting a
+/// sentence — a line of prose resuming at module scope.
+{lookup}
+fn environment_sky(direction: vec3<f32>) -> vec3<f32> {{
+    return textureLoad(environment_map, environment_texel(direction, 0), 0).rgb;
+}}
+"##;
+
+/// The binding a post stage reads the environment map at.
+///
+/// # Invariants
+///
+/// **Number three, by name order.** A post stage's textures number themselves by name —
+/// `color_target` one, `depth_buffer` two, `environment_map` three, `vertices` four — which is
+/// why `post_interface` binds a black map for a scene naming no environment rather than leaving
+/// the number out: a binding that came and went with the document would move every number after
+/// it. The interface check compares kinds and not names, so a shader asking for number three
+/// would be answered with whatever sits there and never told it was wrong.
+const ENVIRONMENT_MAP_BINDING: &str = "@group(0) @binding(3) var environment_map: texture_2d<f32>;";
 
 /// The emission stage: what a surface emits, added once rather than once per light.
 ///
@@ -1200,7 +1236,7 @@ fn lighting_stage<'text>(
     // module at all rather than branched over per fragment.
     #[allow(non_snake_case)] // named for the WGSL const it becomes, not for Rust.
     let LATLONG_MAP = projection.as_wgsl();
-// The map lookup is a **template fragment**, not a finished string: it carries `{LATLONG_MAP}`,
+    // The map lookup is a **template fragment**, not a finished string: it carries `{LATLONG_MAP}`,
     // which each stage fills with its own projection, and `{{` for WGSL's braces. `format!` scans
     // its template once and never looks at a value again, so the fragment is formatted here, before
     // the stage interpolates it. Passed raw it would arrive in the shader as literal text.
@@ -2407,11 +2443,29 @@ pub fn sunset_pixels(width: i64, height: i64) -> Vec<u8> {
 /// declared at module level beside `ray_through`, because `WGSL` has no nested functions
 /// and `grade` is written into the body of one. It is the same arrangement the lighting
 /// stage has, and for the same reason.
-pub fn post<'text>(grade: impl Into<Block<'text>>, helpers: impl Into<Block<'text>>) -> String {
+pub fn post<'text>(
+    grade: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+    projection: Option<Projection>,
+) -> String {
     let grade = grade.into();
     let helpers = helpers.into();
     let grade = grade.spliced("grade");
     let helpers = helpers.spliced("helpers");
+    // The map, or nothing. A scene naming no environment gets no binding declared and no
+    // `environment_sky` to call, so it is not carrying a function it cannot reach and a
+    // binding that would take a number for nothing. The fold is this stage's own projection,
+    // filled with `replace` because `format!` will not look inside a value it substituted.
+    let (environment_binding, environment_function) = match projection {
+        Some(projection) => {
+            let lookup = ENVIRONMENT_LOOKUP.replace("{LATLONG_MAP}", projection.as_wgsl());
+            (
+                ENVIRONMENT_MAP_BINDING.to_owned(),
+                ENVIRONMENT_SKY.replace("{lookup}", &lookup),
+            )
+        }
+        None => (String::new(), String::new()),
+    };
     format!(
         r#"
 struct Camera {{
@@ -2437,6 +2491,7 @@ struct Uniforms {{
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var color_target: texture_2d<f32>;
 @group(0) @binding(2) var depth_buffer: texture_depth_2d;
+{environment_binding}
 
 struct Vertex {{
     @builtin(position) position: vec4<f32>,
@@ -2474,6 +2529,8 @@ fn ray_through(uv: vec2<f32>) -> vec3<f32> {{
         + uniforms.camera.up * offset.y * uniforms.camera.half_extent.y,
     );
 }}
+
+{environment_function}
 
 /// Returns how far from the camera a surface at this depth is, measured along the view.
 ///
@@ -2807,6 +2864,7 @@ pub fn lighting_shader_declaring<'text>(
 pub fn post_shader<'text>(
     grade: impl Into<Block<'text>>,
     helpers: impl Into<Block<'text>>,
+    projection: Option<Projection>,
 ) -> Value {
     // A screen shader's variant carries a `stage` naming the stage it belongs to, which
     // the three mesh variants do not: they are named by their own tag, and a fourth one
@@ -2820,7 +2878,7 @@ pub fn post_shader<'text>(
             ),
             (
                 scene::standard::SOURCE.to_owned(),
-                Value::String(post(grade, helpers)),
+                Value::String(post(grade, helpers, projection)),
             ),
             (
                 scene::standard::PASS_SCHEMA.to_owned(),
