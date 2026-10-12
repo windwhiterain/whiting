@@ -602,9 +602,13 @@ pub fn light_pass_schema_over(outputs: &[String]) -> Schema {
         (
             ENVIRONMENT_MAP.to_owned(),
             texture_binding_schema().with_documentation(
-                "The scene's environment, as a two dimensional octahedral map read with \
-                 `textureLoad`. A scene naming no environment light binds a one texel black \
-                 map here rather than nothing, so the binding numbers are the same either way.",
+                "The scene's environment, read with `textureLoad` through whichever projection \
+                 the map was declared with. Latlong is the default and an octahedral map has \
+                 to be asked for, because latlong is the projection a path tracer reads and \
+                 handing one an octahedral sky comes back half black with a hard seam down \
+                 the middle and nothing says so. A scene naming no environment light binds a \
+                 one texel black map here rather than nothing, so the binding numbers are the \
+                 same either way.",
             ),
         ),
     ];
