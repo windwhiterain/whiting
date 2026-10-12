@@ -65,7 +65,11 @@ silhouette, sanctioned by a decision that is otherwise right.
   that is now measured rather than asserted:
   [a-material-image-cannot-be-carried.md](a-material-image-cannot-be-carried.md).
 - `foldyard` and `tidewater` need either volume fog in the export or an acceptance that a graded
-  scene and a traced one differ by the grade.
+  scene and a traced one differ by the grade. **There is no route for the first**: measured
+  2026-10-12, `volume_absorption` and `volume_scatter` are not registered in this build and
+  `principled_volume` leaves a 360000 pixel frame bit-identical at a density of 8.0 —
+  [this-build-cannot-express-a-volume.md](this-build-cannot-express-a-volume.md). So it is the
+  second: their post-stage haze is a permanent difference, and the pictures are the better ones.
 - The chapter's pearson table still cannot see any of this. It is kept because it is a useful shape
   measure, and it is no longer a measure of agreement in level.
 
