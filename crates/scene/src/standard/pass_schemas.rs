@@ -764,6 +764,16 @@ fn post_interface(exposed: bool) -> Schema {
                     .with_documentation("The depth that produced the shaded image."),
             ),
             (
+                ENVIRONMENT_MAP.to_owned(),
+                texture_binding_schema().with_documentation(
+                    "The scene's environment, which is what a post stage paints the sky from \
+                     when the scene names an environment light. A scene naming none binds a one \
+                     texel black map here rather than nothing, because binders are numbered by \
+                     name and a binding that came and went with the document would move every \
+                     number after it.",
+                ),
+            ),
+            (
                 PRESENT_TARGET.to_owned(),
                 texture_binding_schema()
                     .with_documentation("The image this pass renders into, and the frame."),
