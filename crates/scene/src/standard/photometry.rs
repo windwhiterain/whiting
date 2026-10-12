@@ -75,6 +75,26 @@ pub const FLUX_TO_RADIANCE: f64 = 1.0 / (4.0 * std::f64::consts::PI * std::f64::
 /// an `f64`, and the `f32` the shader holds is the nearest one to it.
 pub const FLUX_TO_RADIANCE_DIGITS: &str = "0.025330295910584444";
 
+/// Turns a stated irradiance into the radiance a Lambertian surface returns from it.
+///
+/// # Invariants
+///
+/// **It is `1 / pi` and not `1 / (4 pi^2)`, because an irradiance has already had the distance
+/// and the area done to it.** A directional light reaches every distance equally, so its stated
+/// quantity is power per unit area on a surface square to it, and the one `pi` still owed is the
+/// Lambertian lobe's own: a surface under irradiance `E` returns `albedo * E * cos / pi`. A point
+/// light owes two of them — the sphere and the lobe — which is why [`FLUX_TO_RADIANCE`] is their
+/// product and this is not.
+///
+/// Applying this where the other one is applied would be the mistake this constant exists to
+/// prevent: the clustered loop's brightness has already been through [`FLUX_TO_RADIANCE`] and is a
+/// radiance, and dividing it again would take it to `E / (4 pi^2)`.
+pub const IRRADIANCE_TO_RADIANCE: f64 = 1.0 / std::f64::consts::PI;
+
+/// [`IRRADIANCE_TO_RADIANCE`] as the digits a WGSL `const` is given, for the reason
+/// [`FLUX_TO_RADIANCE_DIGITS`] is digits rather than an expression.
+pub const IRRADIANCE_TO_RADIANCE_DIGITS: &str = "0.3183098861837907";
+
 /// Multiplies a stated radiant flux by [`FLUX_TO_RADIANCE`].
 ///
 /// # Invariants

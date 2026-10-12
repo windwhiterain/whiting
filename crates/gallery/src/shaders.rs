@@ -45,7 +45,7 @@ use std::borrow::Cow;
 
 use definition::{Schema, SchemaKind, Value};
 
-use scene::standard::photometry::FLUX_TO_RADIANCE_DIGITS;
+use scene::standard::photometry::{FLUX_TO_RADIANCE_DIGITS, IRRADIANCE_TO_RADIANCE_DIGITS};
 use scene::standard::{
     Stage, depth_pass_schema, emission_pass_schema, light_pass_schema, light_pass_schema_over,
     post_pass_schema, post_pass_schema_with_environment, shadow_pass_schema,
@@ -1253,6 +1253,9 @@ fn lighting_stage<'text>(
     // rather than written into the template, because the digits live next to the derivation in
     // `scene::standard::photometry` and a copy of them here is a second thing to keep in step.
     let flux_to_radiance = FLUX_TO_RADIANCE_DIGITS;
+    // The other half of the same statement, for the light that owes one `pi` rather than two:
+    // an irradiance becomes a radiance through the Lambertian lobe alone.
+    let irradiance_to_radiance = IRRADIANCE_TO_RADIANCE_DIGITS;
     // Which fold the environment map is read through. A `const`, so the other one is not in the
     // module at all rather than branched over per fragment.
     #[allow(non_snake_case)] // named for the WGSL const it becomes, not for Rust.
@@ -1277,6 +1280,13 @@ fn lighting_stage<'text>(
 /// `scene::standard::photometry::FLUX_TO_RADIANCE` by reading it. See
 /// `.agents/investigate/cycles-light-units.md`.
 const FLUX_TO_RADIANCE: f32 = {flux_to_radiance};
+
+/// The one `pi` an irradiance still owes the Lambertian lobe, which is what a directional light's
+/// declared brightness is converted through. It is not [`FLUX_TO_RADIANCE`]: a lamp owes the
+/// sphere and the lobe, and a sun owes the lobe alone because it has no distance to spread over.
+/// Written as digits rather than as an expression so the value can be checked against
+/// `scene::standard::photometry::IRRADIANCE_TO_RADIANCE` by reading it.
+const IRRADIANCE_TO_RADIANCE: f32 = {irradiance_to_radiance};
 /// Returns one light's record, read out of the flat run the page table shares a buffer with.
 ///
 /// The offsets are written here rather than left to a struct declaration because the run is
@@ -1797,6 +1807,23 @@ fn light_contribution(
 
 /// Returns what the scene's directional light adds to a surface.
 ///
+/// # Invariants
+///
+/// **The uniform's brightness is an irradiance, and this is where it becomes a radiance.**
+/// `brightness_field` maps a directional light to an `irradiance` — power per unit area on a
+/// surface square to the light — and a Lambertian surface under irradiance `E` returns radiance
+/// `albedo * E * cos / pi`.
+///
+/// The division belongs here rather than in `light_contribution`, which is handed a **radiance**
+/// by its other caller: a clustered light's own `1 / (4 pi^2)` already carries the `pi` of the
+/// lobe, and dividing again would be wrong. Converting at the boundary where the quantity is named
+/// is what keeps one function meaning one thing. The environment term also carries no `1 / pi`, and
+/// there it is already correct: a uniform hemisphere of radiance `L` delivers irradiance `pi L`, so
+/// `albedo * E / pi` is `albedo * L` and the division cancels.
+///
+/// Measured 2026-10-12: without it, a scene carrying one sun and nothing else renders `pi` too
+/// bright against the tracer, uniformly across the frame — a factor of 2.948 on its ground.
+///
 /// # Why it is a stated input and not a member of a cluster list
 ///
 /// It stands nowhere and reaches every depth equally, so it is in every cluster by definition
@@ -1839,9 +1866,12 @@ fn directional_radiance(
         world_position,
         normal,
     );
+    // The uniform carries an **irradiance**, not a radiance, and this is the only place in the
+    // stage that knows it: the clustered loop's own `1 / (4 pi^2)` has already turned its light's
+    // power into a radiance, so the same division here and there would not be the same division.
     return light_contribution(
         to_light,
-        uniforms.directional.colour.rgb * lit,
+        uniforms.directional.colour.rgb * lit * IRRADIANCE_TO_RADIANCE,
         normal,
         to_view,
         diffuse,
