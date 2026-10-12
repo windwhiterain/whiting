@@ -334,6 +334,133 @@ struct SpotCone {
     limits: vec4<f32>,
 };
 "#;
+/// The environment map lookup, shared by every stage that reads the map.
+///
+/// # Why one copy rather than one per stage
+///
+/// The lighting stage samples it per surface and a post stage samples it per sky pixel, and
+/// both need the same answer: which texel of this map is this direction. The octahedral fold
+/// and the latlong rectangle are each a page of cases that were got right once — the wrap
+/// on the column that is not the wrap on the row, the fold mirrored back into the square, the
+/// sign taken as it is because `sign(0.0)` is zero — and a second copy would be a second
+/// set of them to keep in step, failing on exactly the seams.
+///
+/// It declares no binding. Each stage declares `environment_map` at the number its own interface
+/// gives it, and this is what both call.
+const ENVIRONMENT_LOOKUP: &str = r##"
+fn environment_texel(direction: vec3<f32>, level: i32) -> vec2<i32> {{
+    if {LATLONG_MAP} {{
+        return latlong(direction, level);
+    }}
+    return octahedral(direction, level);
+}}
+
+/// Returns the texel of a **latlong** map a direction falls in, at one level.
+///
+/// # The rectangle
+///
+/// `u` runs once around the world and `v` runs from the zenith to the nadir, so the map is
+/// twice as wide as it is tall. The azimuth is measured from `+x` towards **`-z`**, which is
+/// the order the world axes come in once it has been carried onto the path tracer's z-up ones
+/// — see `scene::cycles_export::axes` — and it is the reader's `atan2(-direction.z,
+/// direction.x)` written the other way round.
+///
+/// `v` is not inverted: the polar angle already runs up, and the first row of the map is the
+/// zenith. That is the path tracer's own convention (`v = acos(dir.z) / pi`, and `v = 0` is
+/// row zero) and it is the one a map has to be built in to be read by both backends.
+fn latlong(direction: vec3<f32>, level: i32) -> vec2<i32> {{
+    let horizontal = sqrt(direction.x * direction.x + direction.z * direction.z);
+    let turn = atan2(-direction.z, direction.x) / 6.2831853;
+    let rise = atan2(horizontal, direction.y) / 3.1415927;
+    let extent = vec2<i32>(textureDimensions(environment_map, level));
+    // The column **wraps** and the row **clamps**, and they are not the same question.
+    //
+    // `turn` runs `(-0.5, 0.5]` and carries **no** half turn added to it, because that is the
+    // path tracer's own rule and a map built to be read by both backends has to be built to
+    // it: its column is `floor(u * width)` repeating, so `u = 0` — the direction `+x` — is
+    // column zero, and adding half a turn here instead would put every texel of the map half
+    // a turn from where the path tracer looks for it. Measured: the seam showed as a hard
+    // vertical step where the ramp in the render jumped from 28 to 76 of 255.
+    //
+    // `floor` rather than a truncation, because `turn` is negative for half the world and
+    // truncating towards zero turns that half inside out. And the modulo twice, because WGSL's
+    // `%` takes the sign of the dividend.
+    //
+    // `rise` is in `[0, 1]` and reaches `1` only at the nadir, where `sin` is zero and every
+    // azimuth lands on the same row. A direction at a pole *is* one direction however it is
+    // described, so the answer for all of them is the same texel and clamping says that rather
+    // than reading one line past the end of the map.
+    let column = i32(floor(turn * f32(extent.x)));
+    return vec2<i32>(
+        ((column % extent.x) + extent.x) % extent.x,
+        clamp(i32(rise * f32(extent.y)), 0, extent.y - 1),
+    );
+}}
+
+/// Returns the texel of an **octahedral** map a direction falls in, at one level.
+///
+/// # Why the two projections, and which one is the default
+///
+/// A map is a square or a rectangle because a sphere fits in neither, and how a direction
+/// becomes a coordinate is the **projection**. There are two here.
+///
+/// An octahedral map folds the sphere onto one face of an octahedron. It is uniform, which is
+/// what makes the level chain worth having: one texel is one texel's worth of solid angle
+/// everywhere rather than stretching towards the poles. The convention a scene needs to draw
+/// one: the **centre** of the square is the world's `+z`, the **top** row is `+y`, and the four
+/// edges are the seams the fold puts there.
+///
+/// A latlong map is the rectangle: `u` around the world, `v` from zenith to nadir, twice as wide
+/// as tall.
+///
+/// **Latlong is the default, because it is the projection a path tracer reads.** Cycles'
+/// `environment_texture` has no octahedral option at all -- its `TextureMapping` projection enum
+/// is flat, cube, tube and sphere, and its world lookup is equirectangular. Measured: `foldyard`
+/// handed its octahedral sky as an octahedral map and came back with the left half of the sky
+/// black, the right half blue, and a hard vertical seam down the middle. Nothing warned. A
+/// scene that wants the fold asks for it; a scene that says nothing gets the one both backends
+/// read the same way.
+fn octahedral(direction: vec3<f32>, level: i32) -> vec2<i32> {{
+    // The octahedron's own projection, divided by the sum of the magnitudes so that the whole
+    // sphere lands in the square rather than in a disc inscribed in it. The divisor is floored
+    // away from zero because a zero direction has no direction to place, and the origin of the
+    // square is a legal answer for it.
+    var planar = direction.xy / max(
+        abs(direction.x) + abs(direction.y) + abs(direction.z),
+        1e-8,
+    );
+    // The half of the sphere behind the centre is mirrored back into the square, and that
+    // mirror is the entire fold: four triangles folded onto the one the front covers. The sign
+    // is taken as it is rather than as `sign`, because `sign(0.0)` is zero in WGSL and a zero
+    // component has to land on the positive edge of the square, not on its middle.
+    if direction.z < 0.0 {{
+        let folded = vec2<f32>(1.0) - abs(planar.yx);
+        planar = vec2<f32>(
+            select(-folded.x, folded.x, planar.x >= 0.0),
+            select(-folded.y, folded.y, planar.y >= 0.0),
+        );
+    }}
+    // A square's `+y` is the map's top, and an image's rows run down, so the vertical half of
+    // the mapping is flipped. The horizontal half is not: `+x` is the map's right, which is
+    // where an image's columns run too.
+    let uv = vec2<f32>(planar.x * 0.5 + 0.5, 0.5 - planar.y * 0.5);
+    // The map's own size **at this level**, not the size of level zero. A coarse level of a
+    // 256 texel map is four texels across, and indexing it with the level zero size reads four
+    // times past the end of it.
+    let extent = vec2<i32>(textureDimensions(environment_map, level));
+    // Truncated rather than rounded, so a coordinate is the texel whose square contains it
+    // rather than the nearest one, and clamped to the last texel on each axis because of the
+    // seam. The coordinate is never negative — `uv` is a square — and the clamp says so rather
+    // than leaving it to the arithmetic.
+    return clamp(
+        vec2<i32>(uv * vec2<f32>(extent)),
+        vec2<i32>(0),
+        extent - vec2<i32>(1),
+    );
+}}
+
+"##;
+
 
 /// The emission stage: what a surface emits, added once rather than once per light.
 ///
@@ -1073,6 +1200,11 @@ fn lighting_stage<'text>(
     // module at all rather than branched over per fragment.
     #[allow(non_snake_case)] // named for the WGSL const it becomes, not for Rust.
     let LATLONG_MAP = projection.as_wgsl();
+// The map lookup is a **template fragment**, not a finished string: it carries `{LATLONG_MAP}`,
+    // which each stage fills with its own projection, and `{{` for WGSL's braces. `format!` scans
+    // its template once and never looks at a value again, so the fragment is formatted here, before
+    // the stage interpolates it. Passed raw it would arrive in the shader as literal text.
+    let lookup = ENVIRONMENT_LOOKUP.replace("{LATLONG_MAP}", LATLONG_MAP);
     format!(
         r#"{LIGHTING_UNIFORM}
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -1802,116 +1934,7 @@ fn record_contribution(
 /// at a seam is continuous — the two texels either side of it face almost the same direction
 /// — so clamping the coordinate to the last texel is not a rounding of the answer, it *is*
 /// the answer.
-fn environment_texel(direction: vec3<f32>, level: i32) -> vec2<i32> {{
-    if {LATLONG_MAP} {{
-        return latlong(direction, level);
-    }}
-    return octahedral(direction, level);
-}}
-
-/// Returns the texel of a **latlong** map a direction falls in, at one level.
-///
-/// # The rectangle
-///
-/// `u` runs once around the world and `v` runs from the zenith to the nadir, so the map is
-/// twice as wide as it is tall. The azimuth is measured from `+x` towards **`-z`**, which is
-/// the order the world axes come in once it has been carried onto the path tracer's z-up ones
-/// — see `scene::cycles_export::axes` — and it is the reader's `atan2(-direction.z,
-/// direction.x)` written the other way round.
-///
-/// `v` is not inverted: the polar angle already runs up, and the first row of the map is the
-/// zenith. That is the path tracer's own convention (`v = acos(dir.z) / pi`, and `v = 0` is
-/// row zero) and it is the one a map has to be built in to be read by both backends.
-fn latlong(direction: vec3<f32>, level: i32) -> vec2<i32> {{
-    let horizontal = sqrt(direction.x * direction.x + direction.z * direction.z);
-    let turn = atan2(-direction.z, direction.x) / 6.2831853;
-    let rise = atan2(horizontal, direction.y) / 3.1415927;
-    let extent = vec2<i32>(textureDimensions(environment_map, level));
-    // The column **wraps** and the row **clamps**, and they are not the same question.
-    //
-    // `turn` runs `(-0.5, 0.5]` and carries **no** half turn added to it, because that is the
-    // path tracer's own rule and a map built to be read by both backends has to be built to
-    // it: its column is `floor(u * width)` repeating, so `u = 0` — the direction `+x` — is
-    // column zero, and adding half a turn here instead would put every texel of the map half
-    // a turn from where the path tracer looks for it. Measured: the seam showed as a hard
-    // vertical step where the ramp in the render jumped from 28 to 76 of 255.
-    //
-    // `floor` rather than a truncation, because `turn` is negative for half the world and
-    // truncating towards zero turns that half inside out. And the modulo twice, because WGSL's
-    // `%` takes the sign of the dividend.
-    //
-    // `rise` is in `[0, 1]` and reaches `1` only at the nadir, where `sin` is zero and every
-    // azimuth lands on the same row. A direction at a pole *is* one direction however it is
-    // described, so the answer for all of them is the same texel and clamping says that rather
-    // than reading one line past the end of the map.
-    let column = i32(floor(turn * f32(extent.x)));
-    return vec2<i32>(
-        ((column % extent.x) + extent.x) % extent.x,
-        clamp(i32(rise * f32(extent.y)), 0, extent.y - 1),
-    );
-}}
-
-/// Returns the texel of an **octahedral** map a direction falls in, at one level.
-///
-/// # Why the two projections, and which one is the default
-///
-/// A map is a square or a rectangle because a sphere fits in neither, and how a direction
-/// becomes a coordinate is the **projection**. There are two here.
-///
-/// An octahedral map folds the sphere onto one face of an octahedron. It is uniform, which is
-/// what makes the level chain worth having: one texel is one texel's worth of solid angle
-/// everywhere rather than stretching towards the poles. The convention a scene needs to draw
-/// one: the **centre** of the square is the world's `+z`, the **top** row is `+y`, and the four
-/// edges are the seams the fold puts there.
-///
-/// A latlong map is the rectangle: `u` around the world, `v` from zenith to nadir, twice as wide
-/// as tall.
-///
-/// **Latlong is the default, because it is the projection a path tracer reads.** Cycles'
-/// `environment_texture` has no octahedral option at all -- its `TextureMapping` projection enum
-/// is flat, cube, tube and sphere, and its world lookup is equirectangular. Measured: `foldyard`
-/// handed its octahedral sky as an octahedral map and came back with the left half of the sky
-/// black, the right half blue, and a hard vertical seam down the middle. Nothing warned. A
-/// scene that wants the fold asks for it; a scene that says nothing gets the one both backends
-/// read the same way.
-fn octahedral(direction: vec3<f32>, level: i32) -> vec2<i32> {{
-    // The octahedron's own projection, divided by the sum of the magnitudes so that the whole
-    // sphere lands in the square rather than in a disc inscribed in it. The divisor is floored
-    // away from zero because a zero direction has no direction to place, and the origin of the
-    // square is a legal answer for it.
-    var planar = direction.xy / max(
-        abs(direction.x) + abs(direction.y) + abs(direction.z),
-        1e-8,
-    );
-    // The half of the sphere behind the centre is mirrored back into the square, and that
-    // mirror is the entire fold: four triangles folded onto the one the front covers. The sign
-    // is taken as it is rather than as `sign`, because `sign(0.0)` is zero in WGSL and a zero
-    // component has to land on the positive edge of the square, not on its middle.
-    if direction.z < 0.0 {{
-        let folded = vec2<f32>(1.0) - abs(planar.yx);
-        planar = vec2<f32>(
-            select(-folded.x, folded.x, planar.x >= 0.0),
-            select(-folded.y, folded.y, planar.y >= 0.0),
-        );
-    }}
-    // A square's `+y` is the map's top, and an image's rows run down, so the vertical half of
-    // the mapping is flipped. The horizontal half is not: `+x` is the map's right, which is
-    // where an image's columns run too.
-    let uv = vec2<f32>(planar.x * 0.5 + 0.5, 0.5 - planar.y * 0.5);
-    // The map's own size **at this level**, not the size of level zero. A coarse level of a
-    // 256 texel map is four texels across, and indexing it with the level zero size reads four
-    // times past the end of it.
-    let extent = vec2<i32>(textureDimensions(environment_map, level));
-    // Truncated rather than rounded, so a coordinate is the texel whose square contains it
-    // rather than the nearest one, and clamped to the last texel on each axis because of the
-    // seam. The coordinate is never negative — `uv` is a square — and the clamp says so rather
-    // than leaving it to the arithmetic.
-    return clamp(
-        vec2<i32>(uv * vec2<f32>(extent)),
-        vec2<i32>(0),
-        extent - vec2<i32>(1),
-    );
-}}
+{lookup}
 
 /// Returns what a surface facing this normal receives from the environment.
 ///
