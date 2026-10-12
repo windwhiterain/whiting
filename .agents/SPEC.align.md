@@ -22,6 +22,27 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
   re-created rather than created. (User's rule, stated while reviewing the massif's
   ridge network; the surface *is* generated, the control structure never is.)
 
+## Model facts found while authoring the massif
+
+Measured against `mountain`'s checker and expander while authoring the ridge network; they are
+understanding, not amendments, and are recorded so they are not re-derived by breaking meshes.
+
+- **A junction is a line's own end.** `Sampling::corner` resolves a belt's change of line only at
+  one of the two lines' ends: a child standing on a parent's *interior* node welds geometrically
+  but is walkable one way only (`Unwalkable(Disjoint)`). Each crest is therefore one segment
+  between two forks, cols or tips.
+- **Valleys are the ground tips.** One valley per pocket between two neighbouring ridge tips, so
+  the count of valleys equals the count of ground-ending crests — the leaves of the crest tree.
+- **A valley needs at least three floor nodes** (two belts) once its walls are single crests:
+  each flank needs one belt whose top run traverses its crest.
+- **The head floor node must stand on the head point itself.** Set it even a little way off and the
+  head belt's quad has four distinct corners: both sides emit the same triangle, and the symptom
+  `euler = 1 + valleys` with `is_manifold` false names it exactly.
+- **A flank's side is read at each belt's `from` station**, not at the node a rib lands on, so a
+  cross-check aimed at the landing node mis-reports walls that approach one crest from opposite
+  directions. A rib parallel to the crest it lands on has no side at all: the cross product that
+  decides is zero.
+
 ## Dependencies
 
 - `definition`, `graphics`, `scene` depend on `facet` for `(de)serialization only`.
