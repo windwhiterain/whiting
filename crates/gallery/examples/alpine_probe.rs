@@ -236,20 +236,24 @@ fn write_framing() {
 /// area's square root, so that is what is reported — and the face's own belt and centre, because
 /// "there are slivers" is not a finding and "the slivers are all in the last segment of the
 /// valleys" is.
+///
+/// **Both the edge and the area are measured in space.** A facet that drops a thousand units over
+/// a hundred of plan is steep, and it is not for that reason a sliver; dividing a three
+/// dimensional edge by the square root of a plan area reports every steep face as one.
 fn report_slivers(mesh: &FacetMesh) {
     let mut worst: Vec<(f64, usize, [f64; 3], BeltRef, String)> = Vec::new();
     for (index, face) in mesh.faces.iter().enumerate() {
         let [a, b, c] = mesh.triangle(face);
-        let longest = [(a, b), (b, c), (c, a)]
-            .into_iter()
-            .map(|(p, q)| {
-                ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt()
-            })
-            .fold(0.0f32, f32::max) as f64;
+        let longest = f64::from(
+            mountain::math::span(a, b)
+                .max(mountain::math::span(b, c))
+                .max(mountain::math::span(c, a)),
+        );
         let area = 0.5
-            * ((b[0] - a[0]) as f64 * (c[1] - a[1]) as f64
-                - (b[2] - a[2]) as f64 * (c[0] - a[0]) as f64)
-                .abs();
+            * f64::from(mountain::math::length3(mountain::math::cross3(
+                mountain::math::subtract(b, a),
+                mountain::math::subtract(c, a),
+            )));
         if area <= 1.0e-6 {
             continue;
         }
@@ -391,8 +395,8 @@ fn report_creases(mesh: &FacetMesh) {
 /// — which is a thing an author can see, where the violation list is a thing they have to read.
 fn write_plan(massif: &Massif) {
     let mut svg = String::from(
-        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='-620 -620 1240 1240' width='900' \
-         height='900' style='background:#101418'>\n",
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='-1700 -1000 3400 2000' width='1020' \
+         height='600' style='background:#101418'>\n",
     );
     let summit = massif.skeleton.ridges[0].nodes[0].elevation.max(1.0);
 

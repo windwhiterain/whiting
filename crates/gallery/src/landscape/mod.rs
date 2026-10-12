@@ -39,13 +39,12 @@ use scene::standard::Stage;
 
 use crate::air::Atmosphere;
 use crate::geometry::{fractal_noise, heightfield, smoothstep};
-use crate::identity::{self, massif_extras, outputs_field, plain_extras, Identity};
+use crate::identity::{self, Identity, massif_extras, outputs_field, plain_extras};
 use crate::kit::{
     camera_placed_up, directional, environment_light, image, instance, instances, mesh,
-    mesh_material,
-    post_processes, screen_material, shaded_point_schema, surface,
+    mesh_material, post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{lighting_shader_declaring, mesh_shaders_over, post_shader, Block, Extras};
+use crate::shaders::{Block, Extras, lighting_shader_declaring, mesh_shaders_over, post_shader};
 
 /// The scene document's `outputs` field, whose name the compiler's schema fixes.
 const OUTPUTS: &str = "outputs";
@@ -229,7 +228,12 @@ const AIM_HEIGHT: f64 = 0.46;
 /// burn and the ones turned a few degrees away go dark, and the boundary between two of them is a
 /// line of light rather than a line of paint.
 const SUN_OFFSET: f64 = -1.95;
-const SUN_ELEVATION: f64 = 0.30;
+/// How high the sun stands, in radians.
+///
+/// High, near fifty degrees: this scene's body is a plain grey diffuse and the plan is meant to
+/// read as the reference's hillshade, where the light comes from above and the flanks differ by
+/// tone rather than by being one bright face and one black one.
+const SUN_ELEVATION: f64 = 0.85;
 
 /// The ranges drawn in this frame: the massif, and its own measure.
 pub struct Range {
