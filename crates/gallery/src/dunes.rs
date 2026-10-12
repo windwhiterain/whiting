@@ -387,9 +387,15 @@ const GRADE: &str = r#"
     // The sky, for the pixels the scene never reached. A depth of one is the far plane,
     // which is where a depth buffer is cleared, so it is exactly the set of pixels no
     // geometry covered.
+    //
+    // Read out of the scene's own environment map at the environment light's own radiance,
+    // which is what a path tracer draws its world from. Writing a sky law here instead gave
+    // the two backends two different skies over one set of dunes, and no number could bring
+    // them together: the map is the image, the radiance is the brightness, and this stage had
+    // only been told about the ground.
     if depth >= 1.0 {
         let ray = ray_through(in.uv);
-        color = air_sky(ray);
+        color = environment_sky(ray);
     }
 
     // Reinhard, applied per channel. The desaturation a plain Reinhard curve causes is

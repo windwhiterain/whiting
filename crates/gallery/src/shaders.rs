@@ -48,7 +48,7 @@ use definition::{Schema, SchemaKind, Value};
 use scene::standard::photometry::FLUX_TO_RADIANCE_DIGITS;
 use scene::standard::{
     Stage, depth_pass_schema, emission_pass_schema, light_pass_schema, light_pass_schema_over,
-    post_pass_schema, shadow_pass_schema,
+    post_pass_schema, post_pass_schema_with_environment, shadow_pass_schema,
 };
 
 use super::kit;
@@ -471,6 +471,13 @@ const ENVIRONMENT_SKY: &str = r##"
 ///   because a rough surface wants a blurrier environment; nothing about a sky is rough.
 /// - **A scene naming no environment reads black**, because it bound a one texel black map. The
 ///   answer is black rather than a fault, and a stage does not test for the case.
+/// - **It is read at the environment light's own radiance.** The map carries an image and not a
+///   brightness, so returning the raw texel would be returning the map — which is not what a
+///   tracer draws. A path tracer's world is this image scaled by the light's colour and radiance,
+///   and `uniforms.environment` carries exactly those numbers, which is why it is the same field
+///   and not a second one the lighting stage also has.
+/// - **The flag in `uniforms.environment.w`, not the colour.** A scene may want a perfectly black
+///   environment, so a zero colour is not evidence that it named none.
 ///
 /// This is the same map the lighting stage lights surfaces with and the same map a tracer draws
 /// its world from, read through the projection the scene declared. A post stage painting its sky
@@ -482,7 +489,11 @@ const ENVIRONMENT_SKY: &str = r##"
 /// sentence — a line of prose resuming at module scope.
 {lookup}
 fn environment_sky(direction: vec3<f32>) -> vec3<f32> {{
-    return textureLoad(environment_map, environment_texel(direction, 0), 0).rgb;
+    if uniforms.environment.w < 0.5 {{
+        return vec3<f32>(0.0);
+    }}
+    return textureLoad(environment_map, environment_texel(direction, 0), 0).rgb
+        * uniforms.environment.rgb;
 }}
 "##;
 
@@ -497,6 +508,16 @@ fn environment_sky(direction: vec3<f32>) -> vec3<f32> {{
 /// it. The interface check compares kinds and not names, so a shader asking for number three
 /// would be answered with whatever sits there and never told it was wrong.
 const ENVIRONMENT_MAP_BINDING: &str = "@group(0) @binding(3) var environment_map: texture_2d<f32>;";
+
+/// The uniform field a post stage reads the environment light's brightness from.
+///
+/// # Invariants
+///
+/// **The same field the lighting pass carries**, and the same four numbers: the light's colour
+/// scaled by its radiance in `rgb`, and whether the scene named one at all in `w`. A stage that
+/// painted its sky at a brightness of its own would be reading a second number where the tracer
+/// reads this one, which is the disagreement this arrangement exists to remove.
+const ENVIRONMENT_FIELD: &str = "    environment: vec4<f32>,\n";
 
 /// The emission stage: what a surface emits, added once rather than once per light.
 ///
@@ -2452,19 +2473,21 @@ pub fn post<'text>(
     let helpers = helpers.into();
     let grade = grade.spliced("grade");
     let helpers = helpers.spliced("helpers");
-    // The map, or nothing. A scene naming no environment gets no binding declared and no
-    // `environment_sky` to call, so it is not carrying a function it cannot reach and a
-    // binding that would take a number for nothing. The fold is this stage's own projection,
-    // filled with `replace` because `format!` will not look inside a value it substituted.
-    let (environment_binding, environment_function) = match projection {
+    // The map, or nothing. A scene naming no environment gets no binding declared, no
+    // `environment_sky` to call and no radiance to read it at, so it is not carrying a function
+    // it cannot reach and two bindings that would take numbers for nothing. The fold is this
+    // stage's own projection, filled with `replace` because `format!` will not look inside a
+    // value it substituted.
+    let (environment_binding, environment_field, environment_function) = match projection {
         Some(projection) => {
             let lookup = ENVIRONMENT_LOOKUP.replace("{LATLONG_MAP}", projection.as_wgsl());
             (
                 ENVIRONMENT_MAP_BINDING.to_owned(),
+                ENVIRONMENT_FIELD.to_owned(),
                 ENVIRONMENT_SKY.replace("{lookup}", &lookup),
             )
         }
-        None => (String::new(), String::new()),
+        None => (String::new(), String::new(), String::new()),
     };
     format!(
         r#"
@@ -2484,7 +2507,7 @@ struct Projection {{
 struct Uniforms {{
     camera: Camera,
     depth_range: vec2<f32>,
-    projection: Projection,
+{environment_field}    projection: Projection,
     time: f32,
 }};
 
@@ -2882,7 +2905,13 @@ pub fn post_shader<'text>(
             ),
             (
                 scene::standard::PASS_SCHEMA.to_owned(),
-                post_pass_schema().to_value(),
+                // The schema a stage declares is the layout it is uploaded with, so the stage
+                // that reads the map's brightness declares the field holding it, and the stage
+                // that reads neither declares neither.
+                match projection {
+                    Some(_) => post_pass_schema_with_environment().to_value(),
+                    None => post_pass_schema().to_value(),
+                },
             ),
             // A post stage draws over the frame rather than over a mesh, so it declares no
             // point schema and no instance row. The emitter refuses a screen shader that

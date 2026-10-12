@@ -3286,6 +3286,19 @@ fn post_pass(
     if let Some(exposure) = exposure {
         uniform.push((EXPOSURE.to_owned(), Value::Float(exposure)));
     }
+    // The environment is written when the shader **declares** it, which is the same question the
+    // uniform's own layout is answered by: a field a shader did not declare would be a number in
+    // a buffer the shader reads by offset, and a shader that declared one the emitter skipped
+    // would read whatever came next. A stage that paints its sky out of the map declares it; a
+    // stage that draws no sky does not carry the field to be told about a light it cannot see.
+    if scene_shader
+        .pass_schema
+        .struct_field(UNIFORM)
+        .and_then(|uniform| uniform.struct_field(ENVIRONMENT))
+        .is_some()
+    {
+        uniform.push((ENVIRONMENT.to_owned(), environment.uniform()));
+    }
     let uniform = Value::structure(uniform);
     let pass = rasterize(
         &format!("post/{}", scene_shader.label),
