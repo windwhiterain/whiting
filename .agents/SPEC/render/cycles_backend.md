@@ -498,9 +498,35 @@ on CPU:
 | lanterns | +0.8352 | +0.8571 |
 | foldyard | +0.1050 | +0.1168 |
 
-the brightness gap that remains is the two lighting models — the rasteriser's own Lambert and
-specular against the tracer's integral — and it is the same class of difference as
-[no view transform](#no-view-transform). it is recorded as open rather than fixed here.
+**this attribution was wrong, and a measurement has replaced it.** an earlier revision of this file
+recorded the remaining brightness gap as *the two lighting models — the rasteriser's own Lambert and
+specular against the tracer's integral* — and as the same class of difference as
+[no view transform](#no-view-transform). it is not that. compared in **linear radiance**, with the
+raster scene's own tone curve undone on one side and the tracer's linear file read on the other, a
+scene carrying one directional light and nothing else was out by a **uniform factor of `pi`**:
+`sunlight` measured 2.817 whole and 2.948 on its ground, `landscape` 1.841 and 2.317, and the factor
+held across every region of the frame.
+
+a uniform factor is a conversion and not a model. `light_contribution` returned
+`diffuse * lambert * radiance` with no `1 / pi`, and its two callers pass different quantities
+through the one parameter: an `Environment` light declares a **radiance**, where the omission is
+correct because a uniform hemisphere of radiance `L` delivers irradiance `pi L` so the division
+cancels, and a directional light declares an **irradiance**, where a Lambertian surface returns
+`albedo * E * cos / pi` and it does not.
+
+**fixed in `a957642`.** the division goes in `directional_radiance` and not in the shared function,
+because the clustered loop's brightness has already been through `1 / (4 pi^2)` and is a radiance.
+measured after it: `sunlight` 2.817 to **0.896**, `landscape` 1.841 to **0.947**, and `dunes`, which
+names no directional light, 1.004 before and after. **neither scene's declared irradiance changed
+and neither needed to.** the 6% the raster is still short is the tracer's indirect bounce, which a
+rasteriser with no global illumination does not compute.
+
+**the correlation moved the other way on one scene, and the reason matters.** landscape's whole
+frame pearson went +0.9633 to +0.9292 with its sky band unchanged at +0.5444, while `sunlight` went
++0.9709 to +0.9785. a pearson is insensitive to a gain, so that number was partly propped up by both
+frames being bright together for the wrong reason. **no correlation in this chapter can see a units
+error.** the measurement that can is
+[investigate/a-directional-irradiance-is-used-as-a-radiance.md](../../investigate/a-directional-irradiance-is-used-as-a-radiance.md).
 
 the stripes along the massif's flanks were **geometry** — the rib construction — and both backends
 drew them. that was measured on the older massif, and **it no longer describes these frames**. a
