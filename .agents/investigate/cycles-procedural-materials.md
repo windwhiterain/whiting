@@ -100,6 +100,11 @@ writing down. Unless stated otherwise a wrong name is ignored and the socket kee
   what the parser splits on — and the consequence for us is that removing the space does not get
   around it, it only gets around the error. See
   [a-material-image-cannot-be-carried.md](a-material-image-cannot-be-carried.md).
+- **A node can be registered, connected, and do nothing.** `principled_volume` is the second
+  instance of the same shape after `base_color`, and the more consequential one: a black volume at
+  density 8.0 leaves all 360000 pixels of a frame bit-identical. `volume_absorption` and
+  `volume_scatter` are not registered at all. See
+  [this-build-cannot-express-a-volume.md](this-build-cannot-express-a-volume.md).
 - Every `ERROR:` line matters because the process still exits 0.
 
 ## What this does not settle
