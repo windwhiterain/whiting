@@ -12,6 +12,15 @@ rust multi-crates workspace, each crate has publish name prefixed with "whiting"
   schema documents and dynamic values, never `struct` or `enum` definitions.
 - A **schema can change at runtime without recompiling rust**. Schemas are data.
 - Agents read and write documents; every other layer is a pure function of them.
+- **The control points of authored content are placed by hand.** No formula, grid,
+  ellipse, spacing rule or generator places a node, an elevation, or a correspondence
+  in an authored table — a schedule that computes what a person should have chosen is
+  a generator even when it only writes numbers. Scratch arithmetic to find where a
+  point should go is a ruler; anything that writes the table is not. Regularity that
+  arrives on its own — an even ellipse, an even arithmetic progression of heights —
+  is the smell of a generated table, and a table reproducible from a seed is
+  re-created rather than created. (User's rule, stated while reviewing the massif's
+  ridge network; the surface *is* generated, the control structure never is.)
 
 ## Dependencies
 
