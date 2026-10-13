@@ -141,6 +141,56 @@ is the cone's own edge. It is not the cone axis either, which is normalised at
 cosines. **It is unexplained, and it is about half the size of the emitter defect that was fixed
 here**, which is the honest way to leave it.
 
+## What it did to the shipped picture
+
+Re-censused 2026-10-14 on `main` at `dacf474`, `spotlight` only, because `spot()` is called from
+one place in the gallery — `crates/gallery/src/spotlight.rs:223` — and the correction is behind
+`light.kind == "spot"`, so no other scene can reach it. The other seven are unaffected by
+construction, which is a fact about the code rather than a claim about a render.
+
+The cross-check first: the document the emitter now writes renders **bit for bit identical** to
+`out/sc-corrected.png`, the one built by hand from the old document with only `smooth` edited.
+Zero one-sided pixels, median ratio exactly 1.0000. Nothing else in the emitter moved.
+
+| | before | after |
+|---|---|---|
+| pixels only the tracer draws | 3.44% | **0.00%** |
+| pixels only the rasteriser draws | 3.27% | **1.62%** |
+| shape, pearson over the drawn region | +0.8846 | **+0.9844** |
+| the probe's own verdict | *a difference of geometry* | *the same region to within two per cent* |
+
+**The tracer's pool is now entirely inside the rasteriser's.** Before the correction it drew a rim
+the rasteriser did not, in every direction, which is what a cone that is too wide at its rim and too
+narrow at its core looks like from above.
+
+On the floor, in raw radiance, against the rasterised frame's own values:
+
+| degrees off axis | rasteriser | tracer before | tracer after |
+|---|---|---|---|
+| 0 | 0.6317 | 0.6458 | 0.6484 |
+| 16 | 0.3675 | 0.5778 | 0.4915 |
+| 20 | 0.2248 | 0.5242 | 0.3595 |
+| 24 | 0.0704 | 0.4444 | 0.2039 |
+| 28 | 0.0047 | 0.3229 | 0.0562 |
+
+**The gain on the axis was never wrong** — the two agree to two per cent there, before and after.
+The correction moves the ring only, and it moves it toward the rasterised frame at every angle.
+
+## The census's `level` number cannot be read as the light's level
+
+The census reports a level over the union of the two drawn regions, and on `spotlight` that number
+went from 0.7131 to 1.4054 — which reads as the correction overshooting, and is wrong.
+
+That region is not the pool. It is every pixel either backend drew, which here is dominated by
+three coloured boxes and by the shadows they cast, not by the floor the cone is measured on. The
+floor is where the numbers above come from, and there the tracer is brighter than the rasteriser at
+**every** angle, before and after. A median over a region that includes brightly lit box faces and
+deeply shadowed floor is a statement about which of those there are more of, not about the light.
+
+**`out/probe-level-over-shared.py` is here because of it**: it reports the level over the shared
+region and over the union separately, so a change that moves one backend's edge cannot silently move
+the median as well. Read the pool, not the frame.
+
 ## What is not proposed here
 
 Nothing is proposed. The one-line correction in `light.rs` has been taken, as `dacf474`. Whether
