@@ -787,11 +787,14 @@ measured 1024×1024, 32 samples on CPU, against the frame drawn before:
 | whole frame radiance ratio | `2.619` | **`0.530`** |
 | ground radiance ratio | `1.880` | `0.499` |
 
-**`0.856` is the closest sky in the gallery** (`dunes` 1.030, `landscape` 0.948, `tidewater`
-1.059), and it is close without a fitted number: the map is stored at the sky's own scale and the
-environment light declares a radiance of **one**, because any other number would be scaling the
-picture rather than describing it. the raster sky read out of that map correlates **+0.9802**
-against the same sky read from the old `WGSL` law.
+**`0.856` puts `terraces` in the same class as the four scenes that already had a world** — and
+the worst of the five. `dunes` `1.001`, `landscape` `1.040`, `tidewater` `1.059`, `foldyard`
+`1.085` (`.agents/investigate/every-sky-agrees-and-the-ground-does-not.md`, 2026-10-12) are
+inside nine percent; `terraces` is inside fifteen, and it is inside that **without a fitted
+number**: the map is stored at the sky's own scale and the environment light declares a radiance
+of **one**, because any other number would be scaling the picture rather than describing it. the
+raster sky read out of that map correlates **+0.9802** against the same sky read from the old
+`WGSL` law.
 
 **the ground is still wrong and for a reason that is not this scene's.** `0.499` says the tracer's
 ground is twice the raster's, and the cause is the one already recorded above it: the terrain's
