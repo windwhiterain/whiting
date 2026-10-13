@@ -228,10 +228,29 @@ Traced at 1024x1024, 32 samples, against the rasteriser's raw lookup
 | as written today | 1.2414 | 0.6980 | **−0.5433** | yes, at column six |
 | as corrected | 1.3740 | 1.3088 | **−0.0652** | no |
 
-**The monotone sweep is gone and the ratio no longer crosses one, so the sideways displacement is
+~~**The monotone sweep is gone and the ratio no longer crosses one, so the sideways displacement is
 resolved.** What is left is a **constant factor of about 1.41** across the whole sky, and a constant
 ratio is a scale rather than a model disagreement — **that is a separate open question and is not
-settled by this.**
+settled by this.**~~ **The 1.41 is closed: it was the regression, on a sky that is not a map.**
+
+Re-measured 2026-10-13 at `afb0c0b`, the same statistic on the same scenes with the camera
+correct:
+
+| scene, raw sky-band ratio of medians | camera as written | camera as "corrected" |
+|---|---|---|
+| `dunes` — the one scene whose sky is **only** a map | **1.0802**, span **0.0000** | 1.2500, from 1.1732 to 1.2764 |
+| `terraces` — sky painted with cloud, ranges and fog | **1.0152**, from 0.7059 to 1.2552 | 1.3740 to 1.3088 |
+
+**There is no 1.41 on the code that is on `main`, and there never was one to explain.** It was read
+off a scene whose sky is painted rather than looked up — a figure
+[every-sky-agrees-and-the-ground-does-not.md](every-sky-agrees-and-the-ground-does-not.md) had
+already said was not a sky measurement — through a camera that was turned away from its target.
+
+**And `dunes`, whose sky *is* a pure map, agrees exactly.** Its raw ratio is 1.0802 and its span is
+**0.0000** — a constant, which is the signature of a scale and not of a model disagreement. After
+the raster frame's tone curve is inverted, which is what a radiance comparison has to do, its linear
+sky ratio is **1.001**. The 1.0802 is the rasteriser's own Reinhard and gamma sitting between the
+two, and it is not a disagreement about the world.
 
 ~~### The fault is general, and the correction holds on a second scene~~ **Withdrawn.** The
 fault was general — every camera was wrong — but the fault was the correction's, not the

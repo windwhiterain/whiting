@@ -313,9 +313,21 @@ line of sight is worth about 1x on a horizontal ray.
   outright with two night-sky literals and a vignette. There is nothing left to invert, and its
   earlier correlation of +0.8571 is a statement about a night sky, not about shading.
 - **`spotlight`** has a black median over the whole frame — more than half its pixels are zero — so
-  its whole-frame ratio is undefined. Its ground reads 0.971.
+  its whole-frame ratio is undefined. Its ground reads 0.971. **Measured properly 2026-10-13 at
+  `afb0c0b`, over the pixels either side draws** (`out/probe-agreement-over-drawn.py`): both draw
+  **35.41%** of the frame, raster only 3.44%, tracer only 3.27%, level **1.4023**, shape
+  **+0.8846**. **The two are drawing the same picture** — a pool of light on a floor, a red box, a
+  green box, a blue slab, and empty everywhere else — and the level is the one open question, not
+  the framing. The 6.7% of pixels one draws and the other does not is a real difference of geometry
+  and is not described by a level.
 
 ## What is still open, and it is not a units error any more
+
+- **A whole-frame median is the wrong statistic for a frame that is mostly background.** `spotlight`
+  reads a median of zero on **both** backends, and the ratio of two zeros is not a disagreement
+  about anything. `sunlight` and `tiles` have the same shape of problem. What they need is the
+  comparison over the drawn region, which is now written down in `out/probe-agreement-over-drawn.py`
+  and reported in `spotlight`'s row above.
 
 - ~~`tiles` at 1.285 on the ground is the largest remaining ground figure and is **not**
   explained.~~ **Explained 2026-10-12**: the two backends are drawing two different surfaces. The
