@@ -42,18 +42,37 @@ the camera's basis is the columns of R * S, which for S = diag(-1,1,1) is
     right   = -R * (1,0,0)
 ```
 
-Three properties hold on every scene's camera and none of them held during the regression:
-
-| property | why it is the right thing to pin |
-|---|---|
-| `det(basis) == -1` | Cycles' camera `+X` is its own right, so the frame is left-handed. This is the whole reason the mirror exists. |
-| the **forward** is `R * (0,0,1)` — the scale does not appear in it | the regression's signature. A world-side scale puts the scale in the forward and turns the camera. |
-| the forward equals `normalize(target - eye)` in the rasteriser's axes | the two backends agree on where they are looking, and it is this that was never actually violated |
-
 **A test that composes the emitted `translate`/`rotate`/`scale` the way the loader does, and
-asserts those three, fails on `a81b203` and passes now.** It is about fifteen lines, it runs in
-milliseconds, and it needs a hand-written scene document rather than a gallery scene — the same
-shape as `out/probe-camera-calibration.cycles.xml`, which settled the same question by rendering.
+compares the camera's forward against the eye and target the document names, fails on `a81b203`
+and passes now.** It is about fifteen lines, it runs in milliseconds, and it needs a hand-written
+scene document rather than a gallery scene — the same shape as
+`out/probe-camera-calibration.cycles.xml`, which settled the same question by rendering.
+
+## What was measured, and the correction it forced
+
+The first version of this section claimed that **three** properties fail during the regression and
+one of them was the determinant. **Run against both documents — the current export and the
+regression's, which differ only in the camera's rotation — that is wrong.**
+(`out/probe-camera-basis-properties.py`.)
+
+| | current export | the regression's |
+|---|---|---|
+| `det(basis)` | **−1.0** | **−1.0** — *the same* |
+| `up · world_up` | **+0.9809** | **+0.9809** — *the same* |
+| forward against `normalize(target - eye)` | **+0.0000°** | **+66.9472°** |
+
+**Two of the three held throughout the regression, and only the forward identifies it.** That is
+worth stating plainly because the two that held are the two that look like the diagnosis:
+
+- **`det == -1` guards the mirror, not the aim.** The determinant is −1 whenever a scale of
+  `diag(-1, 1, 1)` is written at all, whatever the rotation says. It is the right assertion for
+  *"did anyone drop the mirror"*, and it would have stayed green through the whole of `a81b203`.
+- **`up · world_up` guards a tipped frame**, and `a81b203` tipped nothing: it mirrored in `x`,
+  which is a turn about the view axis, not a roll.
+
+**The assertion that catches it needs the scene's own eye and target**, so it cannot be a property
+of the transform alone. It is a comparison between two things, which is also why no amount of
+looking at the emitted camera's own numbers would have found this.
 
 ## What else in the emitter deserves the same treatment
 
@@ -83,3 +102,8 @@ say what actually went wrong and survive everything else.
 
 This repository's rule is that an agent writes no tests without being told to. **Nothing here has
 been written.** This is the proposal, and it is the shape the work would take.
+
+**The correction above is itself an argument for writing them.** This file asserted that three
+properties fail during a regression, on the strength of reasoning, and running the arithmetic
+showed that two of them hold. An assertion nobody has run is worth exactly as much as the reasoning
+behind it — which is how the camera came to be turned in the first place.
