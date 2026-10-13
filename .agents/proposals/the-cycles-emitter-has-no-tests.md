@@ -98,12 +98,33 @@ Every assertion above is arithmetic on a document.
 the failure message would be a diff rather than a property. The three assertions in the table above
 say what actually went wrong and survive everything else.
 
-## Not done, because it needs permission
+## What has been written, and what has not
 
-This repository's rule is that an agent writes no tests without being told to. **Nothing here has
-been written.** This is the proposal, and it is the shape the work would take.
+**One of these is now a test: `crates/scene/tests/cycles_camera_forward.rs`, merged as `252043c`.**
+It is the forward assertion and nothing else, on the terms this file argued for. It composes the
+emitted transform the way `xml_read_transform` does and compares the camera's `+Z` column against
+`normalize(target - eye)`, and it was checked against both documents by checking `a81b203`'s
+`scene.rs` out and running it:
 
-**The correction above is itself an argument for writing them.** This file asserted that three
-properties fail during a regression, on the strength of reasoning, and running the arithmetic
-showed that two of them hold. An assertion nobody has run is worth exactly as much as the reasoning
-behind it — which is how the camera came to be turned in the first place.
+```text
+current export      +0.00000000 degrees
+the regression's    66.94721815 degrees
+```
+
+The second figure is the one `out/probe-camera-basis-properties.py` reached by hand, reached again by
+a different route — the probe composed vectors, the test composes matrices and compares directions,
+and they agree to eight figures. `whiting-scene` is 111 tests, from 110.
+
+**The other two are still not written, and the reasons they were not are not all the same.**
+
+- **`det(basis)` and `up · world_up`.** The table above says these hold through the regression, so
+  writing them now would be pinning two properties nobody has watched fail. They guard two real and
+  different things — *did anyone drop the mirror* and *did anyone tip the frame* — and the honest
+  order is to write them when one of them has been caught failing once.
+- **the `det(basis)` assertion is the wrong shape anyway.** A determinant is a property of the
+  transform alone, so it can be asserted on the emitter's own output without naming the scene's eye
+  and target. That is what makes it cheap and it is also why it would have stayed green through the
+  whole of `a81b203`.
+
+**The other three items in this file — the basis change round trip, the mesh round trip and the
+non-empty `LossyReport` — are untouched and would need permission again.**
