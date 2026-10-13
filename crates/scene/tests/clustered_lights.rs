@@ -257,6 +257,21 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // **`nurbs` was missing here, and that is what the failure was.** the expected side
+            // of this assertion is a record of what each gallery scene emitted, and a scene
+            // added to the gallery without a row here does not fail loudly — it fails as a list
+            // that differs by one entry, which reads as "a pass count changed" and is nothing of
+            // the kind. The scene emits one pass of each kind: one caster group, one mesh, one
+            // light, one post.
+            "nurbs",
+            Stages {
+                shadowing: 1,
+                depthing: 1,
+                lighting: 1,
+                other: 1,
+            },
+        ),
+        (
             // The one gallery scene whose light is a spot, so the one whose shadow is now a
             // **grid of pages** rather than one page — and the count is what that costs. Its lamp
             // reaches a cone seventeen and a half world units across at the far plane, which at

@@ -2234,7 +2234,9 @@ fn fragment_main(in: Vertex) -> {fragment_type} {{
     // What the surface emits is not added here either, for the same reason: the lighting
     // stage runs once, so a term added here is a term added once, and emission is its own
     // stage.
+{{
 {surface}
+}}
 {fragment_writes}    return {fragment_return};
 }}
 "#
