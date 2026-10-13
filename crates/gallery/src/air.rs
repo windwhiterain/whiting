@@ -328,55 +328,50 @@ impl Atmosphere {
     ///
     /// # Invariants
     ///
-    /// Every texel is **decoded** to the direction it stands for, through
-    /// [`latlong_direction`](crate::shaders::latlong_direction), rather than having a gradient
-    /// painted onto rows. The decode is the exact one; a generator that painted rows would be
-    /// making a claim about rows, and the reader inverts those rows into directions.
+    /// The decode of a texel into its direction, and the clamp into bytes before the quantise,
+    /// are [`environment_pixels_of`](crate::shaders::environment_pixels_of)'s, because they are
+    /// the same for every sky; only the law is this type's, and that is [`radiance`](Self::radiance).
     ///
     /// The below-horizon branch **replaces** the sky rather than tinting it, exactly as the
     /// shader's `select` does, so the glow cannot leak under the horizon and light the ground.
-    ///
-    /// Output is RGBA, top row first, and is clamped into `0..=1` before it is quantised: a
-    /// sun disc sits at a colour well above one and a map that wrapped it would fold the
-    /// brightest thing in the sky into the darkest.
     pub fn environment_pixels(&self, width: i64, height: i64) -> Vec<u8> {
-        let mut pixels = Vec::with_capacity((width * height * 4) as usize);
-        for row in 0..height {
-            for column in 0..width {
-                let ray = crate::shaders::latlong_direction(column, row, width, height);
-                let towards_sun = self
-                    .sun
-                    .map(|sun| {
-                        (ray[0] * sun[0] + ray[1] * sun[1] + ray[2] * sun[2]).clamp(0.0, 1.0)
-                    })
-                    .unwrap_or(0.0);
-                let colour = if ray[1] > 0.0 {
-                    let above = ray[1].clamp(0.0, 1.0).powf(DEFAULT_CURVE);
-                    let mut lit = mix3(self.horizon, self.zenith, above);
-                    if let (Some(_), Some((glow, reach, strength))) = (self.sun, self.glow) {
-                        for channel in 0..3 {
-                            lit[channel] += glow[channel] * towards_sun.powf(reach) * strength;
-                        }
-                    }
-                    if let (Some(sun), Some((disc, sharpness))) = (self.sun, self.disc) {
-                        let alignment = ray[0] * sun[0] + ray[1] * sun[1] + ray[2] * sun[2];
-                        let lit_disc = smoothstep(sharpness, sharpness + DISC_EDGE, alignment);
-                        for channel in 0..3 {
-                            lit[channel] += disc[channel] * lit_disc;
-                        }
-                    }
-                    lit
-                } else {
-                    let below = (-ray[1] * 4.0).clamp(0.0, 1.0);
-                    mix3(self.horizon, self.ground, below)
-                };
-                for channel in colour {
-                    pixels.push((channel.clamp(0.0, 1.0) * 255.0).round() as u8);
+        crate::shaders::environment_pixels_of(width, height, |ray| self.radiance(ray))
+    }
+
+    /// The same sky as a radiance along a ray: the rust half of the pair `wgsl` and this make.
+    ///
+    /// # Invariants
+    ///
+    /// Every term here is a term [`wgsl`](Self::wgsl) writes, taken from the same fields in the
+    /// same order. That is the whole reason this is a method beside the emitter rather than a
+    /// loop beside both: a term added to one and not the other is a scene whose tracer and whose
+    /// rasteriser are looking at two different skies, and the two agree only by having been
+    /// written twice from one place.
+    fn radiance(&self, ray: [f64; 3]) -> [f64; 3] {
+        let towards_sun = self
+            .sun
+            .map(|sun| (ray[0] * sun[0] + ray[1] * sun[1] + ray[2] * sun[2]).clamp(0.0, 1.0))
+            .unwrap_or(0.0);
+        if ray[1] > 0.0 {
+            let above = ray[1].clamp(0.0, 1.0).powf(DEFAULT_CURVE);
+            let mut lit = mix3(self.horizon, self.zenith, above);
+            if let (Some(_), Some((glow, reach, strength))) = (self.sun, self.glow) {
+                for channel in 0..3 {
+                    lit[channel] += glow[channel] * towards_sun.powf(reach) * strength;
                 }
-                pixels.push(255);
             }
+            if let (Some(sun), Some((disc, sharpness))) = (self.sun, self.disc) {
+                let alignment = ray[0] * sun[0] + ray[1] * sun[1] + ray[2] * sun[2];
+                let lit_disc = smoothstep(sharpness, sharpness + DISC_EDGE, alignment);
+                for channel in 0..3 {
+                    lit[channel] += disc[channel] * lit_disc;
+                }
+            }
+            lit
+        } else {
+            let below = (-ray[1] * 4.0).clamp(0.0, 1.0);
+            mix3(self.horizon, self.ground, below)
         }
-        pixels
     }
 }
 

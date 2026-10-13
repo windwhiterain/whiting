@@ -2427,6 +2427,48 @@ pub fn latlong_direction(column: i64, row: i64, width: i64, height: i64) -> [f64
     [flat * turn.cos(), polar.cos(), -flat * turn.sin()]
 }
 
+/// Returns a latlong environment map as pixels, four bytes a texel, top row first, from a sky
+/// the caller owns.
+///
+/// # Why this is here and not in the scene that wants a sky
+///
+/// A scene that names an environment needs that sky as **pixels**, and a shader needs it as a
+/// **function of a ray**. Those are two readings of one law, and the reading is the part that is
+/// the same everywhere: the decode of a texel into the direction it stands for, and the quantise
+/// of a radiance back into bytes. Writing either of those a second time is a second set of them
+/// to keep in step, and the two disagree at the seam and at the clamps.
+///
+/// The **law** is the caller's, because a sky is a decision rather than a convention —
+/// [`crate::air::Atmosphere`] owns the gallery's, and a scene whose sky is its own writes its own
+/// and calls this to have it mapped.
+///
+/// # Invariants
+///
+/// Every texel is **decoded** to the direction it stands for through [`latlong_direction`],
+/// rather than having a gradient painted onto rows. The decode is the exact one; a generator that
+/// painted rows would be making a claim about rows, and the reader inverts those rows into
+/// directions.
+///
+/// Each radiance is **clamped into `0..=1` before it is quantised**: a sun disc sits at a colour
+/// well above one, and a map that wrapped it would fold the brightest thing in the sky into the
+/// darkest. This is a limit of the format rather than of the sky.
+pub fn environment_pixels_of(
+    width: i64,
+    height: i64,
+    radiance: impl Fn([f64; 3]) -> [f64; 3],
+) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+    for row in 0..height {
+        for column in 0..width {
+            for channel in radiance(latlong_direction(column, row, width, height)) {
+                pixels.push((channel.clamp(0.0, 1.0) * 255.0).round() as u8);
+            }
+            pixels.push(255);
+        }
+    }
+    pixels
+}
+
 /// Returns a latlong environment map as pixels, four bytes a texel, top row first.
 ///
 /// # Why the rectangle is two to one
