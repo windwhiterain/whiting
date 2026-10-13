@@ -1915,7 +1915,7 @@ fn directional_radiance(
 /// `smoothstepf((ray.z - cos_half_spot_angle) * spot_smooth)` in `src/kernel/light/spot.h:28-31` —
 /// over the same band, because the two backends were measured drawing measurably different pools
 /// out of the same document and the band was already made identical by
-/// `.agents/investigate/the-spot-cone-is-written-as-a-fraction-of-the-angle.md`. See that file
+/// `.agents/investigate/the-spot-cone-is-not-the-one-the-scene-asked-for.md`. See that file
 /// for the numbers.
 ///
 /// # Why the degenerate case is tested first

@@ -541,7 +541,7 @@ fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) ->
 /// ring a constant slope draws there. This is the same curve the Cycles kernel uses, and it is
 /// what `crates/gallery/src/shaders.rs` draws; the two copies of this function are the same answer
 /// written twice because an example scene cannot reach into the gallery. See
-/// `.agents/investigate/the-spot-cone-is-written-as-a-fraction-of-the-angle.md`.
+/// `.agents/investigate/the-spot-cone-is-not-the-one-the-scene-asked-for.md`.
 fn cone_attenuation(cone: SpotCone, to_surface: vec3<f32>) -> f32 {
     let inner = cone.limits.x;
     let outer = cone.limits.y;

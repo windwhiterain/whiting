@@ -403,7 +403,7 @@ fn write_light_element(writer: &mut Writer, light: &Light) {
 /// at `max_bounce="0"`, moved the root mean square gap to the rasterised curve over 10 to 30
 /// degrees off axis from **0.2744 to 0.1721**.
 ///
-/// See `.agents/investigate/the-spot-cone-is-written-as-a-fraction-of-the-angle.md`.
+/// See `.agents/investigate/the-spot-cone-is-not-the-one-the-scene-asked-for.md`.
 ///
 /// # The zero
 ///

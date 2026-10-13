@@ -1,18 +1,19 @@
-# The emitter writes a spot cone that is not the cone the scene asked for
+# The spot cone, in both backends, was not the cone the scene asked for
 
 Measured 2026-10-14, Cycles 5.3.0 at `C:\resource\cycles\install\cycles.exe`, against
 `C:\resource\cycles` at `a456b761034dda42c32eef9f4aae0fa5a5c9f604`. Probes: `out/probe-spot-cone.py`
 (arithmetic on the two formulas) and `out/probe-spot-profile.py` (the two formulas measured off two
-renders). Documents: `out/rz-spotlight.cycles.xml` (what the emitter writes), and
+renders). Documents: `out/rz-spotlight.cycles.xml` (what the emitter wrote), and
 `out/sc-b0-written.cycles.xml` / `out/sc-b0-corrected.cycles.xml`, which are that document with one
 number changed and the bounce depth set to zero.
 
 ## The question
 
 `spotlight` is the one gallery scene lit by a cone, so it is the only place a spot light's falloff can
-be read at all. Its cone does not fall off the way the document asked: across the ring between the two
-angles the traced frame is much brighter than the rasterised one. Is the emitter writing the wrong
-cone, and if so which number is wrong?
+be read at all. Its cone did not fall off the way the document asked. A cone is two numbers, and the
+question turned out to have to be asked of each of them separately **and of each backend
+separately**, which is why this file is longer than the defect was: the band was wrong in the
+emitter, and the shape of the ramp was wrong on both sides.
 
 ## What the two renderers compute
 
@@ -191,9 +192,48 @@ deeply shadowed floor is a statement about which of those there are more of, not
 region and over the union separately, so a change that moves one backend's edge cannot silently move
 the median as well. Read the pool, not the frame.
 
-## What is not proposed here
+## The ramp, and what it cost to measure
 
-Nothing is proposed. The one-line correction in `light.rs` has been taken, as `dacf474`. Whether
-the rasterised ramp should become a smoothstep to match Cycles' is still a decision about what this
-engine is rather than a measurement, and it is not made here — the shape difference is worth about
-0.096 near 29 degrees off axis, against the 0.2767 that the wrong band cost.
+Taken as `3bfccfd`: `cone_attenuation` ramps with `t * t * (3 - 2t)` over the same band, in both
+copies of the function — `crates/gallery/src/shaders.rs` and the example scene's own lighting
+shader in `crates/scene/src/standard/example.rs`. That is what the kernel does, and it is the whole
+of the difference.
+
+**On the floor, by angle**, every bin now lands within 2 to 7 per cent of the tracer, against 1.6
+times off at 20 degrees and 2.9 times off at 24 before.
+
+**Over the frame, like for like** — against `max_bounce="0"` so the tracer is direct only, and with
+the rasteriser's grade taken off so both sides are radiance:
+
+| | linear ramp | smoothstep |
+|---|---|---|
+| pearson | 0.2263 | **0.9994** |
+| pixels only the tracer draws | 6.92% | **0.04%** |
+
+**The census's own shape figure reads the other way** — 0.9838 before, 0.9241 after — and it should
+not be read as a comparison of lighting. The rasterised frame is graded and this build of Cycles
+writes scene-linear radiance straight into the png. A correlation is blind to a **gain** and not
+blind to a **curve**, so correlating a graded frame against an ungraded one measures the grade as
+much as it measures the light, and here the grade flatters the old frame and penalises the new one.
+
+**That qualifier reaches back.** The 0.9844 recorded above with the emitter fix is a graded
+correlation and is not a lighting comparison either. What survives it is the **one-sided-region
+count**, which is a threshold test on two images and not a correlation between them — and that
+number, 3.44% to 0.00%, still stands.
+
+`out/probe-agreement-ungraded.py` prints both, so the two definitions can be read against each
+other instead of one of them being quietly chosen.
+
+## What the change does not reach
+
+The rasteriser has no indirect light and the tracer has eight bounces, so the tall blue box is lit
+in the traced frame and is not in the rasterised one, and its top is the only part of the picture
+where the two still disagree visibly. **That difference predates this work and is not a cone
+question.** It is the next thing on this scene, and it is a much larger one: it is the difference
+between a renderer that draws direct light and one that draws light transport.
+
+## What is left
+
+The residual against the rasterised path's own formula is no longer a meaningful number, because
+the formula and the render are now the same curve by construction — which is the point of the
+change, and the reason the earlier 0.1522 cannot be compared with anything after it.
