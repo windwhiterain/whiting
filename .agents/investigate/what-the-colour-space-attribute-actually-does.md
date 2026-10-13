@@ -176,10 +176,22 @@ not traced.
 
 **Whether the build could be made to decode.** The sweep covers the names the loader's own
 `ColorSpaceManager` enumerates plus the three a person would reach for. It does not cover changing
-`$OCIO`, installing a configuration, or a different build, and the log says
+`$OCIO`, installing a configuration, or a different build.
+
+**It does not cover `$OCIO`, and that route is closed too.** The log says
 `[OpenColorIO Info]: Color management disabled. (Specify the $OCIO environment variable to enable.)`,
-so **whether a configuration exists that decodes is open** and is the first thing to try next.
+which names the environment variable as the way in, and the variable is empty. **There is no
+configuration to point it at**: `C:\resource\cycles\install` holds `license` and `source` and
+nothing else, and a search of the whole of `C:\resource\cycles` finds no `*.ocio` file and no
+`colormanagement` directory. OpenColorIO is compiled into this build with nothing to configure.
+
+So the three routes an emitter has — name a colour space, spell it right, or turn colour management
+on — are all measured and none of them decodes the map. **A fix cannot live in the attribute.** It
+would have to live in the pixels the exporter writes beside the document, and that is a different
+piece of work with its own cost: an eight bit file cannot hold a linear value faithfully, because
+decoding darkens every texel and the quantisation lands where it hurts most.
 
 **Whether either path decodes the map correctly** is still unestablished. What is established is
 that the file is linear radiance, that the unnamed case uses the map's bytes as they are, that
-naming a colour space makes the map brighter rather than darker, and that no name tried decodes.
+naming a colour space makes the map brighter rather than darker, that no name tried decodes, and
+that there is no configuration in this build that would.
