@@ -134,6 +134,25 @@ nothing and defaulted to 1.0, so **every environment light in the gallery render
 radiance whatever its scene declared**, and the rendered image said nothing, because a sky at
 the wrong brightness is still a sky.
 
+**the environment light's `radiance` is the world's radiance, and that is one quantity rather
+than two jobs.** it is worth saying because a scene's comment can describe only half of it and
+then be read as describing the whole: `foldyard` justified its `0.26` as *"a quarter of the
+sun's strength; the sun is what makes the shape"*, which is a true reason about the **fill** and
+says nothing about the sky — and the same `0.26` is also the sky. both backends read it that way
+and neither reads it two ways:
+
+| | what reads the number | what it does with it |
+|---|---|---|
+| rasteriser | `environment_radiance` (`shaders.rs:2081`) | the ambient every shadowed surface is lit by |
+| rasteriser | `environment_sky` (`shaders.rs:495`) | the background the frame's empty pixels are drawn from |
+| exporter | `kind: "background"`, `strength` = `radiance` (`cycles_export/light.rs:222`) | **one** world, and Cycles has nowhere else to put it (`cycles_export/scene.rs:124`) |
+
+both rasteriser entries are the map scaled by the same `uniforms.environment.rgb`, which is the
+same statement the exporter makes in the other direction. **so there is nothing to split**: a
+scene that wants a quarter of a sun as fill has also chosen a quarter of a sun as sky, and the
+number is called `radiance` on purpose. whether a particular scene wants *that* sky is a question
+about the picture and is not a question this chapter has an opinion about.
+
 measured on `dunes`, whose declared 0.55 came out as `strength="1, 1, 1"`:
 
 | radiance | traced sky mean | gap against the rasteriser's 155.73 |

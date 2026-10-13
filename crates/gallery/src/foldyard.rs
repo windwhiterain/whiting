@@ -312,14 +312,28 @@ pub fn foldyard() -> Value {
                     260.0,
                     700.0,
                 ),
-                // The air, as the environment every shadowed surface is lit by. It is the
-                // same afternoon the sky above it is drawn from.
+                // The air, and how bright the world is.
                 //
-                // It is a **dome**, and a dome has no direction in it: a horizontal face
-                // sees the whole of it and a steep face sees almost none, so at any strength
-                // that lights a shadow it also lights the paving flat. This is the ambient
-                // that says the shade is blue and not black, and it says it at a quarter of
-                // the sun's strength; the sun is what makes the shape.
+                // **This one number is the world's radiance and not a fill strength**, and the
+                // difference is worth stating because the comment here used to describe only
+                // half of it. It is the ambient every shadowed surface is lit by *and* the sky
+                // the frame's background is drawn from: `environment_radiance` and
+                // `environment_sky` are both the map scaled by this (`shaders.rs`), and the
+                // exporter writes it as Cycles' `<background>` `strength`, which is what a
+                // tracer draws its world from. One quantity, read the same way by both.
+                //
+                // It is a **dome**, and a dome has no direction in it: a horizontal face sees
+                // the whole of it and a steep face sees almost none, so at any strength that
+                // lights a shadow it also lights the paving flat. This is the ambient that
+                // says the shade is blue and not black.
+                //
+                // **The old comment ended "at a quarter of the sun's strength; the sun is what
+                // makes the shape", and that is a reason about the fill alone.** It is a true
+                // reason for the ambient and it says nothing about the sky, which is the same
+                // number at the same time — a scene that wants a quarter of a sun as fill has
+                // also chosen a quarter of a sun as sky, and cannot change one without the
+                // other. Whether this scene wants *that* sky is a question about the picture;
+                // what the number is called is not.
                 environment_light("air", "air", [1.0; 3], 0.26),
             ]),
         ),
