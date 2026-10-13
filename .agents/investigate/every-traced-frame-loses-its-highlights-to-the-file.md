@@ -58,7 +58,7 @@ Grade constants read out of each scene's `GRADE` in the source, not out of any n
 |---|---|---|---|
 | `dunes` | **1.003** | 1.000 – 1.006 | **0.9940** |
 | `landscape` | **0.981** | 0.936 – 1.006 | 0.9289 |
-| `terraces` | **1.505** | 1.097 – 1.845 | **0.288** |
+| `terraces` | **1.318** | 1.065 – 1.571 | 0.6496 |
 
 > **The first two rows were 1.086 and 1.077 when this table was written, and both were measured with
 > `e75a18e` in the tree.** That attribute was reverted at `323322c` after it was measured to be an
@@ -84,16 +84,17 @@ three decimal places.
 than the 1.020 to 1.037 quoted before that. Its pearson stays low in the upper bands (0.192, 0.539,
 0.512) because that is where it paints ranges, shafts and cirrus.
 
-**`terraces` is not clipping and it is not close.** 1.505 and 0.288 are the same with the exposure at
-one and at a quarter, so the clipped file is not why it is out. Its picture genuinely differs: the
-traced frame's snow and mountain carry no colour and the traced trees are black, against brown rock,
-yellow-green trees and blue-green paddies on the rasterised side. **Its materials are not lost** —
-the document carries `0.55, 0.45, 0.33` for the rock, `0.76, 0.71, 0.62` for the snow and
-`0.1, 0.11, 0.14` for the trees — and the 675 dropped fields are 405 `reflect` and 270 rasterised-only
-shader stages, none of which can whiten a material. The radiance is simply above one where the
-rasterised frame's ACES brings it back into a range where colour survives. **`terraces` is a
-brightness that one backend compresses and the other does not**, which is a statement about the two
-output chains and not about the scene.
+**`terraces` is out, and not because of either renderer.** 1.318 whole frame with a pearson of
+0.6496, and the per band ratio rises monotonically from 1.065 at the sky to 1.571 at the near
+ground. Its terrain declares **no albedo**: `crates/gallery/src/terraces.rs:446` is
+`surface([1.0, 1.0, 1.0], 0.0, 0.55, [0.0; 3])` with the comment "the terrain's albedo is decided
+per fragment by the surface". The colour, the water and the Fresnel mirror towards an analytic sky
+function all live in `TERRAIN_SURFACE` at `terraces.rs:809-897`, and the document can carry
+`base_color = 1, 1, 1` and nothing else. The 675 dropped fields are 405 `reflect` and 270
+rasterised-only stages, none of which can whiten a material, and nothing is missing from the list —
+**a report about declared-and-unmappable fields cannot report a material that declares nothing to
+map.** See
+[terraces-terrain-is-a-wgsl-material-the-document-cannot-carry](terraces-terrain-is-a-wgsl-material-the-document-cannot-carry.md).
 
 ## A hazard this file's own probes walked into
 
