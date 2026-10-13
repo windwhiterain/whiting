@@ -175,6 +175,20 @@ haze — and the bands below it run from 0.628 to 2.134. The law is
 scenes have a material, a sky or a fog the other backend cannot be given, and four agree to between
 one and eight per cent.
 
+## Neither backend decodes the environment map, and that is why the four agree
+
+`crates/gallery/src/kit.rs:69` declares **every** gallery image as `"format": "rgba8unorm"`, and
+`wgpu::TextureFormat::Rgba8Unorm` returns the bytes as they are — no sRGB decode in hardware.
+Cycles reads the same bytes as scene linear. **Both sides use the map's sRGB-encoded bytes directly
+as radiance, so the world's radiance agrees across the backends**, and that is what `dunes` at 1.003
+and `landscape` at 0.981 are measuring.
+
+This corrects the premise of
+[the-air-image-reaches-cycles-with-no-colour-space](the-air-image-reaches-cycles-with-no-colour-space.md),
+which spent this investigation treating an undecoded map as a cross-backend defect. It is not one.
+Whether the map *should* be decoded is a question about how the gallery authors its skies, and it
+has the same answer on both sides.
+
 ## A silent bug in this file's own tooling, found by a scene that is not square
 
 `out/probe-unclipped.py` passed `--width 1024 --height 1024` as constants. `tidewater` is **1536 by

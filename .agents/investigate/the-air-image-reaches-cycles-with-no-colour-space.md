@@ -1,5 +1,14 @@
 # The environment map reaches Cycles with no colour space, and it is read as scene linear
 
+> **The premise of this file is wrong, and the correction is at the bottom.** The two backends read
+> the map **the same way** — neither decodes it — so there is no colour space disagreement between
+> them to fix. `crates/gallery/src/kit.rs:69` declares every gallery image as `rgba8unorm`, and
+> `wgpu::TextureFormat::Rgba8Unorm` returns the bytes as they are, exactly as Cycles reads them as
+> scene linear. **The scene's world radiance agrees across the backends, and the census shows the
+> pictures agreeing to one part in a thousand for that reason.** What remains true below is only
+> that the map's bytes are not decoded by either side, which is a question about how the gallery
+> authors its skies and not about the exporter or the renderer.
+
 Measured 2026-10-13, Cycles 5.3.0 at `C:\resource\cycles\install\cycles.exe`, source at
 `C:\resource\cycles` @ `a456b761034dda42c32eef9f4aae0fa5a5c9f604`. Probes: `out/probe-landscape-sky.py`
 (where the gap is), `out/probe-world-sky.py` (is the texture read at all), `out/probe-world-colorspace.py`
