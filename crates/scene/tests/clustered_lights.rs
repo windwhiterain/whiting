@@ -322,7 +322,11 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
         (
             "terraces",
             Stages {
-                shadowing: 12,
+                // 12 to 6, and the derivation is the scene's: the valley had two lamps, both
+                // global, and each drew a shadow map per tile of the grid. The sky is no longer
+                // a lamp — it is the environment the scene declares — and one lamp over the same
+                // grid is six maps. `dunes` and `landscape` lost their rows the same way.
+                shadowing: 6,
                 depthing: 6,
                 lighting: 6,
                 other: 1,

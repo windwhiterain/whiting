@@ -68,6 +68,8 @@ pub mod patchmesh;
 pub mod ridges;
 pub mod shaders;
 
+/// The dawn over the rice terraces, held as numbers so a tracer can be handed it as a world.
+mod dawn;
 mod dunes;
 mod foldyard;
 /// The mountain scene, and the massif it stands on.

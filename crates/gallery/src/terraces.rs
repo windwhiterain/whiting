@@ -26,15 +26,17 @@
 use definition::Value;
 
 use crate::attributes::gallery_vertex_inputs;
+use crate::dawn;
 use crate::geometry::{
     cone, cuboid, fractal_noise, hash01, heightfield, prism, ridged_noise, sphere, value_noise,
 };
 use crate::kit::{
-    camera, gallery_custom_schema, gallery_instance_schema, instance, instances, light_with_radius,
-    mesh, mesh_material, post_processes, screen_material, shaded_point_schema, shader, surface,
+    camera, environment_light, gallery_custom_schema, gallery_instance_schema, image, instance,
+    instances, light_with_radius, mesh, mesh_material, post_processes, screen_material,
+    shaded_point_schema, shader, surface,
 };
 use crate::ridges;
-use crate::shaders::{lighting, mesh_shaders, post_shader};
+use crate::shaders::{Projection, lighting, mesh_shaders, post_shader};
 use scene::standard::{Stage, light_pass_schema};
 
 /// How far the valley reaches from its centre, in world units.
@@ -101,6 +103,30 @@ fn terraced_valley(materials: Vec<Value>, instances: Value) -> Value {
             )]),
         ),
         (
+            // The valley's dawn, as the world a tracer is handed. The pixels are
+            // [`dawn::Sky`]'s, term for term with the WGSL the mesh stage reads, and the
+            // radiance beside it is one because the map is stored **at the sky's own scale**:
+            // this sky's visible range runs from about a tenth to about nine tenths of one, and
+            // pre-dividing it to make room for the sun's disc would spend the whole precision
+            // the picture has on a disc that stands above the frame's top edge.
+            //
+            // **A thousand and twenty four by five hundred and twelve, not the two hundred and
+            // fifty six by one hundred and twenty-eight the other scenes use.** A latlong map
+            // spends its rows on elevation, so a hundred and twenty-eight of them give the
+            // twenty degrees of sky this frame actually shows eleven rows, and `dunes` — read at
+            // that size — shows its rows as bands across the gradient. Four times the rows is
+            // four times less of them; the filtering that would remove them outright is a
+            // change to every scene's post stage and is recorded rather than smuggled in here.
+            "images".to_owned(),
+            Value::List(vec![image(
+                "sky",
+                1024,
+                512,
+                dawn::sky(SUN_DIRECTION).pixels(1024, 512),
+                Projection::Latlong,
+            )]),
+        ),
+        (
             "lights".to_owned(),
             Value::List(vec![
                 // The sun, low and warm. It stands in the frame's quarter rather than
@@ -121,18 +147,26 @@ fn terraced_valley(materials: Vec<Value>, instances: Value) -> Value {
                     330.0,
                     700.0,
                 ),
-                // The sky's fill: a broad cool light from the opposite quarter, so a
-                // riser in its own shadow reads as shadowed earth rather than as black,
-                // and the backlit face of the mountain keeps its forest. It is 692 to the
-                // far corner as well. See the sun above for why it is written here.
-                light_with_radius(
-                    "sky",
-                    [-260.0, 320.0, 230.0],
-                    [0.36, 0.47, 0.72],
-                    1_346_222.0,
-                    340.0,
-                    700.0,
-                ),
+                // The sky's fill, which used to be a lamp.
+                //
+                // It was there for an honest reason — *"a riser in its own shadow reads as
+                // shadowed earth rather than as black"* — and for the reason the same sentence
+                // names a few lines on: **a lamp cannot be a sky.** This valley is 380 units to
+                // the far corner, a point light's brightness is the square of its distance, and
+                // a lamp bright enough to lift the near risers leaves the far slopes black. The
+                // defect the lamp was added to cure is the lamp.
+                //
+                // It is **replaced here, not joined**: the environment light reads the map
+                // beside it, so the fill and the sky are one thing and cannot drift apart, and
+                // the tracer draws its world from the same pixels this scene's post stage
+                // draws its sky from. Before this, the rasterised frame carried the morning
+                // and the traced one carried black, and the whole-frame correlation was
+                // **-0.8264**.
+                //
+                // The radiance is **one**, and not a number fitted to a measured frame: the map
+                // is stored at the sky's own scale, so one reads back the sky the WGSL writes.
+                // Any other number would be scaling the picture rather than describing it.
+                environment_light("sky", "sky", [1.0; 3], 1.0),
             ]),
         ),
         ("shaders".to_owned(), Value::List(build_shaders())),
@@ -248,14 +282,22 @@ fn smoothstep(low: f64, high: f64, value: f64) -> f64 {
 
 /// The shaders the scene declares.
 ///
-/// The three mesh stages are the gallery's, with the lighting stage built twice: once
-/// with the terrain's surface (water, earth, crop and forest decided per fragment) and
-/// once plain for the village and the firs, whose whole shading is the pipeline's. The
-/// haze is the post stage's business, so neither surface writes any.
+/// # Invariants
+///
+/// The two stages are given **different skies, on purpose**. The mesh stage has no map to read,
+/// so the water is given the law — `sky_base` and the deck over it — and the post stage is given
+/// the map and the deck alone. Neither is given both, because a stage that could draw its sky
+/// either way is a stage that will one day draw the other one, and the two skies would then
+/// differ by exactly the amount nobody measured.
+///
+/// The post stage's `Some(Projection::Latlong)` is what hands it the map: it is the declaration
+/// that the stage reads `environment_sky`, and a `None` here would compile the grade perfectly
+/// well against a black world.
 fn build_shaders() -> Vec<Value> {
+    let sky = dawn::sky(SUN_DIRECTION);
     let mut set = mesh_shaders(
         &fill(TERRAIN_SURFACE),
-        &fill(&[NOISE_WGSL, SKY_WGSL].concat()),
+        &fill(&[NOISE_WGSL, &sky.wgsl(), CLOUD_WGSL, SKY_WGSL].concat()),
     );
     set.push(shader(
         Stage::Lighting,
@@ -276,8 +318,8 @@ fn build_shaders() -> Vec<Value> {
     ));
     set.push(post_shader(
         &fill(GRADE),
-        &fill(&[NOISE_WGSL, SKY_WGSL, ridges::RIDGES, FOG_WGSL].concat()),
-        None,
+        &fill(&[NOISE_WGSL, CLOUD_WGSL, ridges::RIDGES, FOG_WGSL].concat()),
+        Some(Projection::Latlong),
     ));
     set
 }
@@ -886,53 +928,51 @@ fn fractal(point: vec2<f32>) -> f32 {
 }
 "#;
 
-/// The sky, as a function of the ray it is seen along.
+/// The weather laid over a sky.
 ///
 /// # Invariants
 ///
-/// This is the one sky: the post stage draws it where no geometry reached, and the
-/// water mirrors it. The sun is the scene's `SUN_DIRECTION`, formatted in, so the glow
-/// in a paddy and the glow in the air are the same sun.
-const SKY_WGSL: &str = r#"
-/// Returns the colour of the sky along a ray.
-fn sky_colour(ray: vec3<f32>) -> vec3<f32> {
-    let sun = __SUN__;
-    let rise = clamp(ray.y, -1.0, 1.0);
-    // The horizon's warmth follows the sun around the compass: the east burns, the west
-    // holds the night's cool a while longer, and a paddy mirrors whichever quarter it
-    // turns to.
-    let flat_ray = ray.xz / max(length(ray.xz), 0.01);
-    let flat_sun = sun.xz / length(sun.xz);
-    let toward = dot(flat_ray, flat_sun) * 0.5 + 0.5;
-    let horizon = mix(vec3<f32>(0.58, 0.63, 0.67), vec3<f32>(0.86, 0.66, 0.44), pow(toward, 2.0));
-    let zenith = vec3<f32>(0.11, 0.26, 0.58);
-    let below = vec3<f32>(0.42, 0.39, 0.34);
-    let above = pow(clamp(rise, 0.0, 1.0), 0.42);
-    var sky = select(
-        mix(horizon, below, clamp(-rise * 5.0, 0.0, 1.0)),
-        mix(horizon, zenith, above),
-        rise > 0.0,
-    );
-    // The sun's glow, held close about the disk so the blaze in a paddy is an arc of
-    // light and not a wash, and the disk itself, small and fierce.
-    let to_sun = max(dot(ray, sun), 0.0);
-    sky = sky + vec3<f32>(1.0, 0.52, 0.24) * (pow(to_sun, 14.0) * 0.30 + pow(to_sun, 90.0) * 2.2);
-    sky = sky + vec3<f32>(1.0, 0.70, 0.42) * smoothstep(0.99955, 0.99985, to_sun) * 16.0;
-    // A thin stratus deck, stretched along the wind and lit by the sun it half hides.
-    // It lives in the sky function itself, so the water that mirrors the sky shows the
-    // same clouds as the sky — a paddy whose clouds differ from the sky's is a paddy
-    // the illusion ends at.
-    if ray.y > 0.015 {
-        let sweep = vec2<f32>(ray.x, ray.z) / max(ray.y, 0.08);
-        let streak = fractal(sweep * 0.22 + vec2<f32>(uniforms.time * 0.006, 0.0));
-        let deck = smoothstep(0.48, 0.70, streak)
-            * (1.0 - smoothstep(0.22, 0.55, ray.y))
-            * smoothstep(0.015, 0.06, ray.y);
-        let lit = pow(to_sun, 2.0);
-        let cloud = mix(vec3<f32>(0.55, 0.53, 0.55), vec3<f32>(0.98, 0.72, 0.46), lit);
-        sky = mix(sky, cloud, deck * 0.6);
+/// This is **not the sky**. The sky is [`dawn::Sky`], and a stage that has the environment map
+/// reads its sky out of that. What is here is the one thing the map cannot carry: the stratus
+/// deck drifts with the scene's clock, and a static image has no clock, so the deck belongs to
+/// the stage that can still move it.
+///
+/// It takes the sky as an argument rather than evaluating one, so the stage that has a map and
+/// the stage that has a law lay the **same** deck over either.
+const CLOUD_WGSL: &str = r#"
+/// Lays the stratus deck over a sky, and returns what is left of it.
+///
+/// A thin deck stretched along the wind and lit by the sun it half hides. It is mixed rather
+/// than added, because a cloud **hides** what is behind it, and the part of the sun it does hide
+/// is why a thick one goes grey on the side away from the light.
+fn cloud_deck(ray: vec3<f32>, sky: vec3<f32>) -> vec3<f32> {
+    if ray.y <= 0.015 {
+        return sky;
     }
-    return sky;
+    let to_sun = max(dot(ray, __SUN__), 0.0);
+    let sweep = vec2<f32>(ray.x, ray.z) / max(ray.y, 0.08);
+    let streak = fractal(sweep * 0.22 + vec2<f32>(uniforms.time * 0.006, 0.0));
+    let deck = smoothstep(0.48, 0.70, streak)
+        * (1.0 - smoothstep(0.22, 0.55, ray.y))
+        * smoothstep(0.015, 0.06, ray.y);
+    let lit = pow(to_sun, 2.0);
+    let cloud = mix(vec3<f32>(0.55, 0.53, 0.55), vec3<f32>(0.98, 0.72, 0.46), lit);
+    return mix(sky, cloud, deck * 0.6);
+}
+"#;
+
+/// The sky a paddy mirrors: its base, and the same deck the air is carrying.
+///
+/// # Invariants
+///
+/// This is the **only** place `sky_base` is reachable from. The post stage is handed the
+/// environment map and reads its sky out of that, and it is not given this function at all —
+/// a stage that could draw the sky either way would eventually draw it the other way, and the
+/// two skies would differ by exactly the amount nobody measured.
+const SKY_WGSL: &str = r#"
+/// The sky a paddy mirrors: its base, and the same deck the air is carrying.
+fn sky_colour(ray: vec3<f32>) -> vec3<f32> {
+    return cloud_deck(ray, sky_base(ray));
 }
 "#;
 
@@ -1036,7 +1076,13 @@ fn fog(color: vec3<f32>, ray: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
 const GRADE: &str = r#"
     let ray = ray_through(in.uv);
     if depth >= 1.0 {
-        var sky = sky_colour(ray);
+        // **The map, not a sky law.** This stage is handed the same image the tracer is handed,
+        // so the sky it draws and the sky the tracer draws are one image rather than two
+        // evaluations of one formula — and the moment they stop being one image, a radiance
+        // fitted to a frame is the only thing left that could hide it. The stratus deck is laid
+        // over the top because it is weather and not the world: it moves with the clock, and a
+        // world is not a thing that moves.
+        var sky = cloud_deck(ray, environment_sky(ray));
         // **Three** ranges, and not a receding series: this scene's horizon is the valley's own
         // mist, so the painted ranges are the one step of distance beyond it rather than the
         // several a valley looked into needs.
