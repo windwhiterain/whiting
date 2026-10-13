@@ -106,7 +106,7 @@ varies between the two scenes is where **each camera points**, which is a real f
 The note reached the right neighbourhood by a route that could not distinguish "the world is turned
 round" from "the camera is turned round", because every measurement it used had both in it.
 
-## The camera fault, measured: one line of the exporter
+## ~~The camera fault, measured: one line of the exporter~~ — **the fault was the probe's**
 
 Measured 2026-10-13 on `main` at `f962748` with `out/probe-camera-ray.py`, which builds **both**
 frame-centre rays and compares them in Cycles' axes. whiting's ray is
@@ -115,19 +115,29 @@ frame-centre rays and compares them in Cycles' axes. whiting's ray is
 `scale * rotate * (0, 0, 1)`, because Cycles looks down **+Z** and a translation does not move a
 direction.
 
-| | direction in Cycles axes | azimuth | elevation |
+~~| | direction in Cycles axes | azimuth | elevation |
 |---|---|---|---|
 | rasteriser | `[0.5405, 0.8107, -0.2252]` | **−56.31°** | −13.01° |
 | tracer | `[−0.5405, 0.8107, −0.2252]` | **−123.69°** | −13.01° |
 
-**65.43 degrees apart, the elevation identical to two decimals, and the eye in the same place to
-0.0075.** Only the `x` component of the direction is negated — which is exactly what a scale of
+~~**65.43 degrees apart**, the elevation identical to two decimals, and the eye in the same place to
+0.0075. Only the `x` component of the direction is negated — which is exactly what a scale of
 `-1, 1, 1` does to a direction vector and nothing else — and the two rays are strict mirror images
-about the `YZ` plane. **It is a turn and not a move.**
+about the `YZ` plane. **It is a turn and not a move.**~~
 
-**The rotation is not at fault.** The same ray with the scale left off is **0.0015 degrees** from
-the rasteriser's. `camera_rotation` builds `yaw = atan2(fx, fz)` and a negated pitch, and those
-already carry `+Z` onto `normalize(target - eye)`.
+**The third line of that method is the error.** The tracer's ray is **not** `scale * rotate *
+(0, 0, 1)`. The loader right-multiplies the scale (`src/app/cycles_xml.cpp:706-710`), so the scale
+reaches the camera's own frame and the ray is **`rotate * (0, 0, 1)`** with no scale on it at all.
+Applying the scale to a *direction* is applying it in world space, which is the reading this whole
+section — and then `a81b203` — was built on.
+
+Measured on a camera with no rotation and that one scale: the frame is mirrored and the aim does not
+move, so the ray is untouched by the scale, and **the two backends' frame-centre rays are the same
+ray**. The 65.43 and 51.63 degrees are artefacts of composing a document the way the loader does
+not.
+
+~~**The rotation is not at fault.** The same ray with the scale left off is **0.0015 degrees** from
+the rasteriser's.~~ **The whole document was at fault in the composition, not the rotation.**
 
 ### Why the scale is there, and what it does instead
 
@@ -273,7 +283,7 @@ that narrowed `sunlight`'s dark frame to the field of view ran against an export
 hours before the camera work began; the two documents differ in the camera's rotation and in
 nothing else.
 
-The same treatment was applied to **`dunes`**, which is a different camera, a different sky and a
+~~The same treatment was applied to **`dunes`**, which is a different camera, a different sky and a
 different world (`out/probe-camera-ray.py`, `out/probe-camera-basis-fix.py`):
 
 | scene | as written | rotation alone | as corrected |
@@ -283,13 +293,17 @@ different world (`out/probe-camera-ray.py`, `out/probe-camera-basis-fix.py`):
 
 **Both cameras were turned, both elevations matched to two decimals and both eyes to five, and in
 both the rotation on its own already aims correctly.** The fault is not one scene's framing: it is
-every camera, by an amount that depends on where that camera points.
+every camera, by an amount that depends on where that camera points.~~
 
-**An objection was raised here and withdrawn.** `dunes` exports its rotation with the axis's `y` and
-`z` already negative while `terraces` exports them positive, which looked like the correction
-turning one scene one way and the other the other. **The sign of the axis components is not the
-marker.** `probe-camera-ray.py` on the corrected `dunes` document composes to **−117.10°, the
-raster's ray to four decimals**, so the correction is right there too.
+**Both of those figures are the probe's, not the exporter's.** They come from
+`probe-camera-basis-fix.py`, which composes the document the way this file said the loader did. The
+exported cameras were never 65 or 52 degrees from anything: `dunes` reproduces its census to the
+digit through the correction and the revert alike, and `terraces` and `landscape` do too.
+
+**What is true of both scenes is narrower and was measured directly.** `dunes` exports its rotation
+with the axis's `y` and `z` already negative while `terraces` exports them positive, and that
+looked like the correction turning one scene one way and the other the other. **The sign of the axis
+components is not the marker.**
 
 **And the frame correlation that seemed to show the correction breaking `dunes` was measuring
 something else.** Whole-frame correlation against `now-dunes.png` fell from **0.8729 to 0.1365**
@@ -298,6 +312,11 @@ rasteriser frame, and `dunes`' grade paints in screen space: its own source says
 *slides across the picture as the camera moves*. **A grade that depends on where the camera points
 cannot be used to judge where the camera points.** The comparison that bears on the camera is the
 raw lookup against the trace; the one that bears on the grade is a different question.
+
+**That objection stands, and it is worth more than it looks.** It is the only measurement in this
+file that was right while the composition was wrong: it declined to read a turn out of a statistic
+that could not see one, and it named why. **The composition was wrong and this check did not catch
+it, because the check was about something else.**
 
 ### What is not established
 
