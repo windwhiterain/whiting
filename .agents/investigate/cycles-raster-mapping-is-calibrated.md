@@ -65,8 +65,17 @@ raster_x = 0.5 + (local_x / local_z) / (2 tan(0.475))
 raster_y = 0.5 - (local_y / local_z) / (2 tan(0.475))
 ```
 
-with the camera's own axes reached from the world as `S * R`, the loader's order
-(`src/app/cycles_xml.cpp:694-710`).
+with the camera's own axes reached from the world as `R * S`: the loader applies
+`tfm = tfm * scale` (`src/app/cycles_xml.cpp:706-710`), so the scale lands on the **local**
+frame, on the right, and negates the local `X` column only. `S * R` — a world-side scale —
+is not what the loader computes, and a document written for it renders a scene the camera
+is pointed away from. That was measured on 2026-10-13 at `afb0c0b`; see
+[do-the-backends-read-one-environment-the-same-way.md](do-the-backends-read-one-environment-the-same-way.md).
+
+**This file first said `S * R`, in an earlier version of this paragraph, and it was wrong in the
+same way the shipped correction was.** It is recorded here because the error is not visible in
+the four markers below, all of which a world-side scale would also have placed correctly on a
+camera with no rotation.
 
 ## What this makes checkable
 

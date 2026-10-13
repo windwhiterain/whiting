@@ -137,49 +137,83 @@ left-handed, so a camera with its own right-hand side needs `det = -1`. Markers 
 camera's right and left came back from Cycles exchanged, at `x = 0.240` and `x = 0.818`. **Negating
 the local `X` is a correct answer to that question.**
 
-**The error is one sentence in that comment**: *"a scale written last multiplies the rotation's
-columns from the right and reaches the frame rather than the world."* The loader composes
-`translate`, then `rotate`, then `scale` (`transform.rs:13-16`), so a written scale is **`S * R`** —
-it multiplies from the **left**, in world space. `S * R` negates the `x` of **both** the forward
-column and the right column, so it does not only swap the image: **it turns the camera to face a
-different part of the world.**
+**The sentence this section used to attack was right, and attacking it cost the gallery its
+cameras.** *"A scale written last multiplies the rotation's columns from the right and reaches the
+frame rather than the world."* **The loader right-multiplies** —
+`tfm = tfm * transform_translate(..)`, `tfm = tfm * transform_rotate(..)`,
+`tfm = tfm * transform_scale(..)` (`src/app/cycles_xml.cpp:694-710`) — so a transform written at
+the top of a scope is `T * R * S`, and the scale lands on the **camera's own frame**, on the
+right. `diag(-1, 1, 1)` negates the local `X` **column** and leaves `Y`, `Z` and the translation
+alone. `S * R` — a world-side scale that turns the camera — is not what the loader computes.
+
+**Measured 2026-10-13 at `afb0c0b`, on a document holding nothing but a camera with no rotation
+and that one scale:**
+
+| | raster `x` of the local `+X` marker | local `+Y` | local `-Y` |
+|---|---|---|---|
+| no scale | 0.9844, at the right edge | bottom | top |
+| `scale="-1, 1, 1"` | **0.0146, at the left edge** | bottom, unmoved | top, unmoved |
+
+**The frame came back mirrored left to right and otherwise identical.** The aim did not move at
+all. A world-side `S * R` would have moved the aim instead, which is the distinction the whole
+section turned on.
+
+**What the wrong reading cost.** The rotation was rewritten as `S * R * S`, in the axis-angle form
+`(w, v_x, -v_y, -v_z)`, to cancel an `S * R` that never happens. Under the loader that
+composition is `(S * R * S) * S = S * R`, so the forward became `S * (R * forward)`: every camera
+mirrored in `x` about its own axis, a turn of `2 * atan2(forward.x, forward.z)` away from its
+target. Reverted in `afb0c0b`.
+
+The tables below are kept because they are the record of the wrong turn, not because their
+conclusion stands.
 
 | composition | forward azimuth | right azimuth | determinant | writable as `rotate` |
 |---|---|---|---|---|
-| `S * R` — written today | −123.69° | −33.69° | −1 | no, and it aims wrong |
-| `R * S` | −56.31°, the raster's | 33.69° | −1 | **no** — see below |
+| `S * R` — **assumed, not computed by the loader** | −123.69° | −33.69° | −1 | yes, and it aims wrong |
+| `R * S` — **what the loader computes** | −56.31°, the raster's | 33.69° | −1 | it needs no `rotate` at all |
 
-**`R * S` aims correctly and still cannot be written down.** `diag(-1, 1, 1)` is a reflection, its
+**`R * S` is the wanted basis and it needs no rewriting of the rotation.** `diag(-1, 1, 1)` is a
+reflection, determinant −1, which is exactly what a camera whose own `+X` is its right-hand side
+needs; the format carries it in `scale`, the loader applies it on the right, and the rotation the
+document already holds reaches Cycles untouched.
+
+~~**`R * S` aims correctly and still cannot be written down.** `diag(-1, 1, 1)` is a reflection, its
 determinant is −1, and every product carrying it has determinant −1, so neither form is a rotation
-the loader's Rodrigues composition can carry. That is what the next section turns on.
+the loader's Rodrigues composition can carry. That is what the next section turns on.~~ **This was
+the first wrong turn.** The reflection is already written down, in `scale`, and the loader
+multiplies it in; there was never anything to fold into `rotate`.
 
-### The correction that holds, and the one that does not
+~~### The correction that holds, and the one that does not
 
 **`R * S` was wrong, and the probe that proposed it refuted itself.** `diag(-1, 1, 1)` has
 determinant **−1**: it is a **reflection**, not a rotation. The half turn about `+Y` is
 `diag(-1, 1, -1)`. A product of a reflection with anything also has determinant −1 and **cannot be
 written as a `rotate` attribute at all**, because the loader's Rodrigues composition is always a
 proper rotation. The probe printed both determinants as −1, which was the refutation sitting in its
-own output and not the support it was read as.
+own output and not the support it was read as.~~ **The determinant reasoning here is sound and the
+conclusion drawn from it is not.** `S * R * S` is a proper rotation and *is* writable as a
+`rotate` — that was never in doubt. What was wrong is that it was needed at all, and writing it
+turned every camera away from its target.
 
-**What holds is the same correction the other way round.** The camera that is wanted is a basis `M`
-whose determinant is **−1** — that is the whole reason for the mirror, since Cycles' `+X` is its own
-right and with `+Z` forward that basis is left-handed. Build `M` from the rotation already in the
-document: keep **its own** forward and **its own** up, and take the right axis that makes the
-determinant −1, which for orthonormal columns and `det = -1` is `a = c * b`, so
-`right = forward * up`. Then write **`rotate` as `S * M`** and leave the `scale` alone. `S * M` has
-determinant **+1** and is a proper rotation, so the loader accepts it, and what reaches Cycles is
-`S * (S * M) = M`.
+~~**What holds is the same correction the other way round.** ... Then write **`rotate` as `S * M`**
+and leave the `scale` alone.~~ **Withdrawn.** The wanted basis is reached by `scale` alone; the
+rotation needs no change, and changing it is the regression.
 
-Both the forward and the up must come from **`R`**, never from `S * R`: the scale negates `x` on
+~~Both the forward and the up must come from **`R`**, never from `S * R`: the scale negates `x` on
 **every** column, so the up column of `S * R` is `S * (R * y)` and is not `R * y`. Taking one axis
 from each matrix leaves them non-orthogonal, and `S * M` comes out with determinant **0.9818** —
 which is how this probe's first attempt at the correction failed, and why the determinant is
-printed rather than assumed.
+printed rather than assumed.~~ **The premise is false.** The scale negates `x` on the local `X`
+column only, so the forward and the up columns of `R * S` are `R`'s own.
 
-### Measured end to end, on the document, with no source touched
+~~### Measured end to end, on the document, with no source touched~~ **The measurement is
+sound and the comparison is not.** `out/probe-camera-basis-fix.py` composes the document the way
+this file said the loader did, which is not the way, so both of its rays are computed on a
+composition that does not occur. Two probes agreeing on a wrong composition is not a
+cross-check.
 
-For `terraces` the change to the written `rotate` is **two signs**:
+~~For `terraces` the change to the written `rotate` is **two signs**: ... | as corrected |
+`159.2177, 0.2305913, **-**0.7615913, **-**0.6056454` |~~ **Those two signs were the regression.**
 
 | | axis |
 |---|---|
@@ -199,7 +233,26 @@ resolved.** What is left is a **constant factor of about 1.41** across the whole
 ratio is a scale rather than a model disagreement — **that is a separate open question and is not
 settled by this.**
 
-### The fault is general, and the correction holds on a second scene
+~~### The fault is general, and the correction holds on a second scene~~ **Withdrawn.** The
+fault was general — every camera was wrong — but the fault was the correction's, not the
+original's, and both scenes were turned by it rather than repaired.
+
+| scene | as written before `a81b203` | as written after | what changed |
+|---|---|---|---|
+| `sunlight` | **59.597%** of the frame drawn | **10.372%** | the room left the picture |
+| `foldyard` | the courtyard is in the frame | bare hillside | the courtyard left the picture |
+| `dunes`, `landscape`, `terraces`, `tiles` | the 2026-10-12 census figures | **the same figures to the digit** | nothing |
+
+**`dunes` 1.030 / 1.001 / 1.047 / 1.048, `landscape` 1.125 / 1.040 / 0.848 / 0.948, `terraces`
+0.531 / 0.857 / 0.521 / 0.501, `tiles` 1.184 / black / 1.134 / 1.285 and `sunlight`
+0.850 / black / 0.959 / 0.957 are the numbers this file recorded on 2026-10-12, and the revert
+reproduces every one of them exactly.** A census that had improved by turning five cameras away
+from their subjects was not an improvement.
+
+**A file timestamp was used as proof of what a document contained, and it was not.** The sweep
+that narrowed `sunlight`'s dark frame to the field of view ran against an export written five
+hours before the camera work began; the two documents differ in the camera's rotation and in
+nothing else.
 
 The same treatment was applied to **`dunes`**, which is a different camera, a different sky and a
 different world (`out/probe-camera-ray.py`, `out/probe-camera-basis-fix.py`):

@@ -36,51 +36,59 @@ reason alone.
 | `lanterns` | not comparable — see below | | | |
 | `monoliths` | not comparable — it has no world to compare against | | | |
 
-## Re-measured 2026-10-13 at `7ddcef6`, with the camera's frame mirror balanced
+## ~~Re-measured 2026-10-13 at `7ddcef6`, with the camera's frame mirror balanced~~
 
-**Every sky the tracer can draw is between 1.001 and 1.089, and `terraces` is no longer the
-exception.** The camera was turned away from its target by an angle that depended on where the
-camera pointed — 65.43 degrees on `terraces`, 51.63 on `dunes` — and the fix is described in
-[do-the-backends-read-one-environment-the-same-way.md](do-the-backends-read-one-environment-the-same-way.md).
-The rasteriser's frames are unchanged and byte-reproducible, so every "before" here is the same
-picture the "after" is compared against.
+**The whole of this section described a regression and was read as a repair.** `a81b203` turned
+every camera in the gallery away from its target by mirroring it in `x` about its own axis; the
+figures below are that fault's, and the census that appeared to improve had improved **because
+the cameras were wrong**. Reverted at `afb0c0b` — see
+[do-the-backends-read-one-environment-the-same-way.md](do-the-backends-read-one-environment-the-same-way.md)
+for why the loader's scale is local rather than world.
 
-| scene | whole | sky | lower 62% | ground |
-|---|---|---|---|---|
-| `dunes` | 1.249 | **1.001** | 1.583 | 1.649 |
-| `landscape` | 1.112 | **1.024** | 0.839 | 0.954 |
-| `tidewater` | 0.886 | **1.059** | 0.745 | 0.680 |
-| `foldyard` | 1.017 | **1.089** | 0.982 | 1.010 |
-| `terraces` | 0.471 | **0.966** | 0.456 | 0.443 |
-| `tiles` | 1.184 | both black | 1.134 | 1.285 |
-| `sunlight` | median 0 | both black | median 0 | median 0 |
-| `spotlight` | median 0 | both black | median 0 | median 0 |
+~~The camera was turned away from its target by an angle that depended on where the camera
+pointed — 65.43 degrees on `terraces`, 51.63 on `dunes` — and the fix is described in ...~~ **There
+was no angle to fix: `probe-camera-ray.py` composes the document the way the file said the loader
+did, which is not the way.**
 
-**What improved.** `terraces` sky **0.857 to 0.966**, `landscape` sky 1.040 to 1.024, and
-`foldyard` whole **0.342 to 1.017** — the scene whose camera was most wrong is the one that moved
-most, which is what a camera fault looks like when it is removed rather than fitted. `dunes` sky
-is 1.001 as it was, because its map is uniform in azimuth and cannot see a camera fault at all.
+~~| `dunes` | 1.249 | **1.001** | 1.583 | 1.649 |~~
+~~| `landscape` | 1.112 | **1.024** | 0.839 | 0.954 |~~
+~~| `tidewater` | 0.886 | **1.059** | 0.745 | 0.680 |~~
+~~| `foldyard` | 1.017 | **1.089** | 0.982 | 1.010 |~~
+~~| `terraces` | 0.471 | **0.966** | 0.456 | 0.443 |~~
+~~| `tiles` | 1.184 | both black | 1.134 | 1.285 |~~
+~~| `sunlight` | median 0 | both black | median 0 | median 0 |~~
+~~| `spotlight` | median 0 | both black | median 0 | median 0 |~~
 
-**What got worse, and why that is not a reason to put the camera back.** `dunes` ground 1.048 to
-1.649 and `terraces` whole 0.531 to 0.471. Both frames now contain the ground the rasteriser is
-looking at rather than ground sixty degrees away from it, so the ground figure is a number about
-different geometry. The ground was never expected to agree — it carries per-fragment albedo a
-tracer is not handed — and **a census that improved by keeping the camera wrong would be the same
-trade dressed as a repair that this repository has already reverted once.**
+**What improved.** ~~`terraces` sky 0.857 to 0.966 ...~~ **`terraces`' sky reads 0.857 again,
+which is the number it read on 2026-10-12 and the one this file later withdrew for a different
+reason. Nothing about it was ever the camera's.**
 
-**What is newly open.** `sunlight` and `spotlight` now read a **median of zero** on the traced side,
-where they read 0.850 and 1.177. The trace is not black — `sunlight`'s maximum is 0.4667 and
-10.37% of its pixels are above 0.002, against 52.76% in the rasteriser's frame — so **more than
-half the frame is now black**. Two explanations were checked and both came back clean:
+## Re-censused 2026-10-13 at `afb0c0b`, after the camera correction was undone
 
-- **the camera**: the corrected document's frame-centre ray is the rasteriser's to four decimals,
-  azimuth −124.22 and elevation −11.23, with the eye exact to six places;
-- **the light**: the sun the emitter wrote emits **0.00 degrees** from the direction the scene
-  declared (`out/probe-light-direction.py`).
+Eight scenes, both backends rendered from the current tree, the rasteriser and the tracer to
+**separate** filenames. That separation matters: for a single-camera scene both backends write the
+same name, and a census run that reuses one prefix silently compares the tracer's frame against
+itself. Four scenes reproduce their 2026-10-12 figures **to the digit**.
 
-**So the camera is not the cause and the light is not the cause, and whatever darkens `sunlight`
-was there before and was being masked** — a camera turned sixty degrees away happened to point at
-the part of the floor the misdirected sun lit. That is a separate question and it is open.
+| scene | whole | sky | lower 62% | ground | 2026-10-12 |
+|---|---|---|---|---|---|
+| `dunes` | **1.030** | **1.001** | **1.047** | **1.048** | identical |
+| `landscape` | **1.125** | **1.040** | **0.848** | **0.948** | identical |
+| `terraces` | **0.531** | **0.857** | **0.521** | **0.501** | identical |
+| `tiles` | **1.184** | both black | **1.134** | **1.285** | identical |
+| `sunlight` | **0.850** | both black | **0.959** | **0.957** | identical |
+| `spotlight` | whole black | both black | 1.177 | 0.971 | identical on the two it has |
+| `tidewater` | 0.886 | 1.059 | 0.745 | 0.680 | identical, at camera 0 |
+| `foldyard` | 1.042 | 1.089 | 0.963 | 0.982 | sky identical, the rest within 3% |
+
+**`sunlight` is no longer a scene that goes dark.** It reads 0.850 whole, 0.959 on the lower
+frame and 0.957 on the ground — the figures it read before `a81b203` — and the traced frame
+draws **59.597%** of the picture against 52.757% in the rasterised one, which is the room, the
+three boxes and their shadows.
+
+**`spotlight` is still black over more than half its frame**, and that is open: its lower band
+and its ground read 1.177 and 0.971, so what agrees is the ground and what does not is the sky,
+which it does not have.
 
 **What has been checked about it, and what has not.** Four things were verified and all four came
 back correct:
@@ -117,9 +125,22 @@ wrong by reading the picture instead of projecting the geometry.** The rasterise
 same camera shows the floor filling the lower half with all four boxes standing on it, and the
 rasteriser re-renders **byte for byte**, so that frame is current and authoritative.
 
-## `sunlight`'s dark ground, re-opened 2026-10-13 at `9b18b13`
+## `sunlight`'s dark ground — **closed 2026-10-13 at `afb0c0b`**
 
-**The narrowing to the field of view was made on a stale document, and it does not stand.** The
+**It was the camera correction `a81b203` that darkened it, and this section's whole chain of
+measurement was taken against the damaged document.** The last line below concluded that the
+camera was correct and the tracer was drawing the wrong fraction of the scene. **Both halves of
+that were measured on the regression's own output**, and every probe that fed it composes the
+document the way the code comment said the loader did rather than the way the loader does.
+
+`cycles_camera_frame` negates the local `X`, the camera is otherwise left alone, and `sunlight`
+renders the room again: **59.597%** of the frame drawn against 52.757% in the rasterised one,
+whole 0.850, lower frame 0.959, ground 0.957 — the figures of 2026-10-12, to the digit.
+
+**Nothing in this section was a property of `sunlight`.** It is kept, because the argument is the
+shape of a whole class of mistake and the numbers are the record of it:
+
+1. **the narrowing to the field of view was made on a stale document.** The
 sweep that produced "lit area rises monotonically with the field of view — 0.00% at 0.55, 10.37%
 at 0.95, 19.79% at 1.40" ran against `out/now-traced-sunlight.cycles.xml`, written at **11:48 on
 2026-10-13**. The camera investigation began at **16:51 the same day** and the correction landed
@@ -146,10 +167,13 @@ one.**
 | the camera's **frame-centre ray**, re-checked on the corrected document | `out/probe-camera-ray.py` | **0.00 degrees** apart |
 | the **field of view** | `out/probe-camera-calibration.cycles.xml` | `fov` is the **full** angle, `1/tan(0.5 fov)`; the mapping is isotropic to 1.5% — [cycles-raster-mapping-is-calibrated.md](cycles-raster-mapping-is-calibrated.md) |
 | **clipping planes** | `C:\resource\cycles\src\scene\camera.cpp:136-137` | the sockets are `nearclip` and `farclip`, defaulting to `1e-5` and **`1e5`**. A room-scale scene cannot reach a far plane a hundred kilometres off. **Dead on the numbers, no render needed.** |
-| the **floor is drawn where it should be** | `out/probe-floor-edges.py` against the calibrated mapping | **no.** The floor's far edge projects to `(0.372, 0.443)`–`(1.312, 0.539)` and its left edge crosses the frame at `(0.0001, 0.506)`, so the floor should fill the frame below about `y = 0.45`. The traced frame has it in **10.37%** of the picture |
+| the **floor is drawn where it should be** | `out/probe-floor-edges.py` against the calibrated mapping | **no** — on the damaged document. The floor's far edge projects to `(0.372, 0.443)`–`(1.312, 0.539)`, so it should fill the frame below about `y = 0.45`; the damaged frame has it in 10.37% of the picture. **The projection was right all along and the camera was not where the projection said it was**, because the projection was built on the wrong composition. |
 
-**The camera is correct in its aim, its roll, its stand and its field of view. What is wrong is
-that the tracer draws a fraction of the geometry the camera is demonstrably pointed at.**
+**Every row above is a true measurement of a broken document.** The camera's aim, roll, stand and
+field of view were all checked and all agreed — because every one of those probes composes the
+document with a world-side scale that the loader never computes, so they confirmed the same wrong
+model together and looked like agreement. **Two probes that share a wrong assumption are not a
+cross-check**, and that is what the three of them amounted to here.
 
 ### The sharpest falsification: the black is not a shadow
 
@@ -177,16 +201,17 @@ which is the only reason they are known at all.
 
 ### What is open
 
-Why the tracer draws 10.37% of a floor the calibrated projection says fills the lower half. Not
-yet checked: the `viewport_camera_border` term in `screentocamera`
-(`src/scene/camera.cpp:236-247`), which the calibration held fixed by matching the camera's
-`width`/`height` to the render's `--width`/`height` and so **did not vary**; and the floor's
-`interpolation="smooth"` combined with its explicit vertex normals. **Nothing in this section is
-a diagnosis.**
+~~Why the tracer draws 10.37% of a floor the calibrated projection says fills the lower half. Not
+yet checked: the `viewport_camera_border` term ...~~ **Closed by the revert.** The tracer draws
+59.597% of a floor the calibrated projection says fills the lower half, which is the room. The
+question was never a question about the floor: the projection and the camera disagreed because
+the projection was composed the wrong way round, and it agreed with the camera because both were
+computed the same wrong way.
 
 `tiles` reproduces its figures to the digit because its rotation is a half turn about an axis in
-the `YZ` plane, which **commutes** with `diag(-1, 1, 1)` — so the correction is provably a no-op
-there and its being unchanged is a check on the reasoning rather than a coincidence.
+the `YZ` plane, which **commutes** with `diag(-1, 1, 1)` — so the mirror is provably a no-op there,
+and its being unchanged through both the correction and the revert is a check on the reasoning
+rather than a coincidence.
 
 **re-measured 2026-10-13 at `a1397e3`, after `tidewater`'s air moved into its post stage.** every
 row not touched this session reproduces the 2026-10-12 figures to the digit — `dunes` 1.048,
