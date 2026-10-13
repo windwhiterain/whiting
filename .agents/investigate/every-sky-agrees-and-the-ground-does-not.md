@@ -32,7 +32,32 @@ reason alone.
 | `sunlight` | 0.850 | both black | 0.959 | 0.957 |
 | `spotlight` | median 0 | both black | 1.177 | 0.971 |
 | `tiles` | 1.184 | both black | 1.134 | 1.285 |
+| `terraces` | 0.531 | **0.857** | 0.521 | 0.501 |
 | `lanterns` | not comparable — see below | | | |
+| `monoliths` | not comparable — it has no world to compare against | | | |
+
+**re-measured 2026-10-13 at `a1397e3`, after `tidewater`'s air moved into its post stage.** every
+row not touched this session reproduces the 2026-10-12 figures to the digit — `dunes` 1.048,
+`landscape` 0.948, `sunlight` 0.957, `spotlight` 0.971, `tiles` 1.285 — and the two that changed are
+`tidewater` at **0.699 → 0.680** and `foldyard` at 0.982 unchanged. `terraces` is **new to the
+table**: it became an environment-light scene when its sky law was given a map, and it is now the
+worst-matched scene in the gallery on both halves of the frame.
+
+**the sky column above is now wrong as a sentence, and `terraces` is why.** "the four scenes that
+declare an environment light read 1.001, 1.040, 1.059 and 1.085" was true when it was written and
+there were four of them. There are six now, and the sixth reads **0.857** — and the two frames
+disagree about the image's own vertical structure, the rasteriser's getting brighter towards the
+horizon and the tracer's brighter towards the top of the frame. That is measured with the grade
+taken out of the question entirely, and **which backend is wrong is not settled**:
+[do-the-backends-read-one-environment-the-same-way.md](do-the-backends-read-one-environment-the-same-way.md).
+
+**a `shape` column was added to the measurement on 2026-10-13, and it should have been there from
+the start.** a ratio says how bright and a correlation says how shaped, and the two fail
+differently: a constant ratio across a region is a calibration one curve could fix, and a region
+whose ratio moves from row to row is a model disagreement no exposure will touch. `terraces`' sky
+reads 0.857 at a shape of **+0.8732** — close, and not close enough — and its ground reads 0.501 at
+a shape of **+0.0375**, which is the per-fragment albedo story and no calibration at all. Reading
+the ratio alone would have called both the same kind of thing.
 
 **corrected 2026-10-13, `foldyard`, re-measured after the albedo was applied once.** the table
 above read the ground at `0.274` and the whole frame at `0.342`; the cause was the scene's ground
