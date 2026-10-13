@@ -1891,10 +1891,32 @@ fn directional_radiance(
 ///
 /// The number being compared is a dot product, so the two numbers compared against it are
 /// cosines of the two half angles, and the falloff needs no inverse cosine to find the angle it
-/// is at. The ramp between them is a straight line in the cosine, which is a curve in the angle
-/// — and which curve it is belongs to the author, who picks it by where the two angles are.
-/// A cone with the two cosines equal is the whole sphere, and that is what a light that is not
-/// a spot light carries.
+/// is at. A cone with the two cosines equal is the whole sphere, and that is what a light that is
+/// not a spot light carries.
+///
+/// # Why the ramp is a smoothstep and not a straight line
+///
+/// **`t * t * (3 - 2t)` has no slope at either end of the band, and a straight line has a
+/// constant one.** `d/dt` of the smoothstep is `6t(1 - t)`, which is zero at `t = 0` and at
+/// `t = 1`. That is the whole of what it buys, and it is worth two things in a picture:
+///
+/// - **the rim of the cone.** Outside the band the attenuation is a flat zero and inside it the
+///   slope is zero, so the gradient never jumps. A straight line jumps from nothing to a slope
+///   the instant it enters the band, and the eye reads that jump as a **bright ring just inside
+///   the cone's edge** — a Mach band, and one that reads as a defect in the falloff rather than
+///   as the falloff.
+/// - **the edge of the core.** The same argument at `t = 1`, where the light goes from rising to
+///   flat, and which puts a second ring where the full strength region begins.
+///
+/// Neither ring is geometry and neither is a shadow, so a threshold sweep collapses both of them
+/// while a real edge survives it.
+///
+/// This was a straight line until 2026-10-14. It is now the same curve the Cycles kernel uses —
+/// `smoothstepf((ray.z - cos_half_spot_angle) * spot_smooth)` in `src/kernel/light/spot.h:28-31` —
+/// over the same band, because the two backends were measured drawing measurably different pools
+/// out of the same document and the band was already made identical by
+/// `.agents/investigate/the-spot-cone-is-written-as-a-fraction-of-the-angle.md`. See that file
+/// for the numbers.
 ///
 /// # Why the degenerate case is tested first
 ///
@@ -1921,7 +1943,9 @@ fn cone_attenuation(cone: SpotCone, to_surface: vec3<f32>) -> f32 {{
     if facing >= inner {{
         return 1.0;
     }}
-    return (facing - outer) / (inner - outer);
+    // Where in the band this direction falls, zero at the outer cosine and one at the inner one.
+    let across_the_band = (facing - outer) / (inner - outer);
+    return across_the_band * across_the_band * (3.0 - 2.0 * across_the_band);
 }}
 
 /// Returns what the light of one record adds to a surface.

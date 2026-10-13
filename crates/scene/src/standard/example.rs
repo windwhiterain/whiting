@@ -535,6 +535,13 @@ fn shadowed(light: LightRecord, world_position: vec3<f32>, normal: vec3<f32>) ->
 /// product and needs no inverse cosine. Two equal cosines are the whole sphere, which is what a
 /// light that is not a spot light carries — and that case is tested first, so the answer does
 /// not rest on the cosine of a half turn being exactly minus one.
+///
+/// The ramp between the two limits is a **smoothstep**, `t * t * (3 - 2t)`, which has no slope at
+/// either end, so neither the rim of the cone nor the edge of its full strength core shows the
+/// ring a constant slope draws there. This is the same curve the Cycles kernel uses, and it is
+/// what `crates/gallery/src/shaders.rs` draws; the two copies of this function are the same answer
+/// written twice because an example scene cannot reach into the gallery. See
+/// `.agents/investigate/the-spot-cone-is-written-as-a-fraction-of-the-angle.md`.
 fn cone_attenuation(cone: SpotCone, to_surface: vec3<f32>) -> f32 {
     let inner = cone.limits.x;
     let outer = cone.limits.y;
@@ -548,7 +555,8 @@ fn cone_attenuation(cone: SpotCone, to_surface: vec3<f32>) -> f32 {
     if facing >= inner {
         return 1.0;
     }
-    return (facing - outer) / (inner - outer);
+    let across_the_band = (facing - outer) / (inner - outer);
+    return across_the_band * across_the_band * (3.0 - 2.0 * across_the_band);
 }
 
 /// Returns the texel of the environment map a direction falls in, at one level.
