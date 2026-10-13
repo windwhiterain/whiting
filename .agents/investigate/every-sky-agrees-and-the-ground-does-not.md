@@ -45,11 +45,22 @@ worst-matched scene in the gallery on both halves of the frame.
 
 **the sky column above is now wrong as a sentence, and `terraces` is why.** "the four scenes that
 declare an environment light read 1.001, 1.040, 1.059 and 1.085" was true when it was written and
-there were four of them. There are six now, and the sixth reads **0.857** — and the two frames
-disagree about the image's own vertical structure, the rasteriser's getting brighter towards the
-horizon and the tracer's brighter towards the top of the frame. That is measured with the grade
-taken out of the question entirely, and **which backend is wrong is not settled**:
+there were four of them. There are six now. **`terraces`' 0.857 is not a sky measurement in the
+first place**: it paints a cloud deck, three ranges and the valley's fog into its sky, and
+[the-raster-sky-band-is-not-the-tracers-sky-band.md](the-raster-sky-band-is-not-the-tracers-sky-band.md)
+established that a sky figure is only meaningful for a scene that paints nothing there — of the
+converted scenes, `dunes` is that one. Decomposed, `terraces`' sky is the map alone at **0.781**,
+0.764 with the clouds and ranges added, and 0.857 once the fog is on top of it. **The number to
+reason about is 0.781**, and that one is a lookup question rather than a composition one:
 [do-the-backends-read-one-environment-the-same-way.md](do-the-backends-read-one-environment-the-same-way.md).
+
+**one radiance can now be both the sky and the ground, which it could not on 2026-10-12.** The
+asymmetry recorded in
+[one-radiance-cannot-both-sky-and-ground.md](one-radiance-cannot-both-sky-and-ground.md) — the
+rasteriser's post stage calling an analytic sky that reads no light, so its sky and its ground were
+two independent quantities — **has been resolved**: every scene that declares an environment light
+draws its sky from the map it declares, scaled by the declared radiance, which is what the tracer's
+world is. That note is now the record of the asymmetry rather than of the code.
 
 **a `shape` column was added to the measurement on 2026-10-13, and it should have been there from
 the start.** a ratio says how bright and a correlation says how shaped, and the two fail

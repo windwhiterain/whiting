@@ -1,5 +1,27 @@
 # Why one environment radiance cannot align both the sky and the ground
 
+**resolved 2026-10-13, and this note is the record of the asymmetry rather than of the code.** the
+diagnosis below describes a state that no longer exists: option 2 at the end of it **was taken**.
+Every scene that declares an environment light now has its post stage draw its sky from the map it
+already declares — `dunes`, `landscape`, `foldyard`, `tidewater` and then `terraces` — and both sides
+therefore agree that **the sky is the world** and that one `radiance` sets it. The numbers in the
+diagnosis are kept because they are what the asymmetry was worth, and a finding nobody can check is
+a finding nobody should act on.
+
+**what changed, so the reader does not have to guess which sentences are history.** the rasteriser's
+post stage used to call `air_sky`, which reads the scene's atmosphere constants and **no light at
+all**; it now calls `environment_sky`, which reads the declared map scaled by the declared radiance,
+and the tracer's world is that same map scaled by that same number. Two independent quantities
+became one. The mapping is written down under `brightness_field` in
+[cycles_backend.md](../../SPEC/render/cycles_backend.md#a-lights-brightness-is-read-through-brightness_field-and-there-is-no-second-read),
+where `foldyard`'s `0.26` is recorded as **the world's radiance** rather than as a fill strength —
+which is what it always was, and what a comment describing only the fill had hidden.
+
+**two statements below are therefore stale and are corrected in place**: the line saying `terraces`
+and the other scenes without a world "are unaffected by this finding and still need one" — `terraces`
+has a world as of 2026-10-13 — and the diagnosis's own "the rasteriser draws its sky from `air_sky`",
+which was true when measured and is not now.
+
 Measured 2026-10-12, on `landscape`, after `b4adcb5` made every environment light's declared
 radiance reach the tracer for the first time. This is the finding behind the recalibration
 work and it is why the recalibration is not a sweep.
@@ -97,7 +119,8 @@ the first place.
   tracer's 112. That is [no view transform](../../SPEC/render/cycles_backend.md#no-view-transform)
   and no radiance reaches it.
 - **`terraces` and the other scenes without a world** are unaffected by this finding and still
-  need one.
+  need one. **Stale as of 2026-10-13:** `terraces` declares a world, and the scenes that declare
+  none draw no sky on either side, which is the correct agreement rather than a gap.
 - **No recalibrated radiance is committed.** `landscape`'s 1.24 and `foldyard`'s 1.30 are
   measured and they are the sky-matched values, but until the asymmetry above is decided they
   are the wrong shape of answer for `landscape` and this work stops here rather than committing

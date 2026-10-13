@@ -11,6 +11,25 @@ read that image the same way, and if not, which of them is wrong?**
 read it the same way, and **this note does not establish which is right.** What follows is what was
 measured, and then what was ruled out.
 
+## The census's 0.857 for `terraces` is not a sky measurement, and this note is not about it
+
+`terraces` paints a cloud deck, three ranges and the valley's fog **into its sky**.
+[the-raster-sky-band-is-not-the-tracers-sky-band.md](the-raster-sky-band-is-not-the-tracers-sky-band.md)
+established the rule: **a sky-band figure is only meaningful for a scene that paints nothing into
+its sky**, and of the scenes converted to the map, `dunes` is that one. Decomposed on 2026-10-13
+through `out/probe-linear-radiance.py`:
+
+| what the sky band is made of | sky ratio |
+|---|---|
+| the map alone | 0.781 |
+| plus the cloud deck and the three ranges | 0.764 |
+| plus the fog, which runs on geometry and sky alike | **0.857** |
+
+**so the census's 0.857 is mostly the fog**, which is a painted layer the tracer cannot have, and
+the number to reason about is the **0.781**. What follows takes the painted layers out as well — not
+to make the scene score better, but because a lookup question is only answerable against a frame
+whose sky is nothing but the lookup.
+
 ## The measurement, with no inversion anywhere in it
 
 The band figure and the row profile both come out of `probe-linear-radiance.py`, which has to undo
