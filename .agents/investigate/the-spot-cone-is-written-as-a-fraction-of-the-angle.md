@@ -99,26 +99,51 @@ Root mean square gap to the rasterised curve over 10 to 30 degrees off axis:
 A 37 per cent reduction from one number. The median profile agrees: at 20 degrees off axis the
 written build reads 0.736 and the corrected one 0.569, against 0.350 in the rasterised frame.
 
-## Two things this did not settle
+## The control that made the number mean something
 
-**The residual is the shape of the ramp.** Cycles uses `smoothstepf`, `x*x*(3-2x)`, and ours is a
-straight line. They agree at both ends and at the midpoint and differ in between, so matching the band
-cannot make them the same curve. With the band corrected the largest disagreement is **0.096** near 29
-degrees off axis — real, and about a third of what the wrong band cost. Which of the two is the
-reference is a decision about what this engine is, not a measurement; it is not made here.
+Comparing a render against a formula only says anything if the formula is the whole of what was
+rendered. The first version of this comparison was not, and it produced a finding that was wrong.
 
-**The rasterised frame does not follow its own cone model either.** `predicted, ours` — the formula
-in `shaders.rs` evaluated at these two angles — scores RMS **0.2718** against the measured rasterised
-curve, which is as large a gap as the traced frame had before this was found. The measured curve is
-already **0.917 at 4 degrees** off axis and **0.879 at 8**, inside a 9.17 degree full strength core
-that the model says reads 1.00 at both. So the rasterised cone falls off faster than the code that
-draws it says it should, and **this is unexplained**. It was checked and is not the cone axis:
-`crates/scene/src/standard/emit.rs:1651-1657` reads the axis through `read_direction`, which returns
-it already normalised. Nothing else was checked, and the profile above is the evidence to check
-against.
+A ring of a pool is **not one distance and not one angle of incidence**. The lamp stands 8.5 above
+the floor, so along the ring the far side is both further away and more oblique, and a Lambertian
+floor loses light to both: the predicted brightness goes as `cone(theta) * N.L / r^3` per pixel,
+with `N.L = 8.5 / r`. Binning by angle and dividing only by `r^2` leaves the incidence term in, and
+a curve that still carries it looks steeper than the cone alone.
+
+With the two terms put back per pixel and binned exactly as the images are:
+
+| | RMS against the measured rasterised curve, 10 to 30 degrees off axis |
+|---|---|
+| **predicted from `shaders.rs`, the rasterised path's own formula** | **0.1522** |
+| **Cycles measured, with the corrected number** | **0.1721** |
+| predicted from `spot.h`, with the corrected number | 0.1763 |
+| predicted from `spot.h`, with the number as written | 0.2744 |
+| **Cycles measured, with the number as written** | **0.2744** |
+
+Three things follow, and the first two are the load-bearing ones.
+
+**The traced render is following the kernel formula exactly.** Measured against the written number
+it scores 0.2744 and the formula predicts 0.2744; measured against the corrected number it scores
+0.1721 and the formula predicts 0.1763. The document and the render and the source agree to four
+figures either way, which is what makes the corrected number a measurement rather than a reading.
+
+**The rasterised path is drawing the cone its schema asks for.** Its own formula is the closest of
+the four curves to its own image at 0.1522. **There is no second defect on this side**, and the
+first version of this note said there was — it reported the rasterised curve as 0.2718 away from
+its own model, which was the missing incidence and inverse square and nothing else.
+
+**What is left is a shape, and it is smaller than the defect that was just fixed.** The residual
+0.1522 is not the shadow page: inside the 26 to 30 degree band the rasterised brightness falls
+smoothly and monotonically from 8.5 to 13.75 metres from the lamp with no step at any distance, and
+the only cut anywhere — in the 22 to 26 degree band at about 12 metres — appears in both images and
+is the cone's own edge. It is not the cone axis either, which is normalised at
+`crates/scene/src/standard/emit.rs:1651-1657`. It is not the two angles, the band, or the angles'
+cosines. **It is unexplained, and it is about half the size of the emitter defect that was fixed
+here**, which is the honest way to leave it.
 
 ## What is not proposed here
 
-Nothing has been changed. The one-line correction in `light.rs` is available and is measured; whether
-to take it, and whether the rasterised ramp should become a smoothstep to match, are decisions the
-superior makes rather than facts this note establishes.
+Nothing is proposed. The one-line correction in `light.rs` has been taken, as `dacf474`. Whether
+the rasterised ramp should become a smoothstep to match Cycles' is still a decision about what this
+engine is rather than a measurement, and it is not made here — the shape difference is worth about
+0.096 near 29 degrees off axis, against the 0.2767 that the wrong band cost.
