@@ -64,21 +64,36 @@ The image is the evidence, not the log.
 
 ## `__builtin_srgb` is the correct name, not a constant that happened to help
 
-Two independent reasons, and the second is the one that matters.
+**FALSIFIED on 2026-10-13, later the same day. The rest of this section is kept because it is the
+reasoning that led to the change and the measurement that killed it is in
+[what-the-colour-space-attribute-actually-does](what-the-colour-space-attribute-actually-does.md).**
 
-**It is Cycles' own sRGB space.** `colorspace.cpp:28` binds `u_colorspace_srgb` to the string
-`__builtin_srgb`, and `colorspace.cpp:121-123` routes it through `to_scene_linear`, which is the sRGB
-electro-optical transfer function. Naming it asks for the decode the file format already implies.
+`colorspace.cpp:28` binds `u_colorspace_srgb` to the string `__builtin_srgb`, and `colorspace.cpp:121-123`
+routes it through `to_scene_linear`, which is the sRGB electro-optical transfer function. **This
+build does not do that.** Rendering one world-only document twice, changing only that attribute:
 
-**It does not depend on the OpenColorIO configuration the machine happens to have.** The obvious
-spelling, `colorspace="sRGB"`, is **rejected** by this build — `Color space 'sRGB' could not be
-found` — and renders byte-for-byte the shipped frame, because the fallback is the same scene linear.
-A name that only works on a machine with a full OCIO config installed is the wrong thing for an
-exporter to write; a builtin name is the same everywhere.
+| candidate for what the attribute does to the frame | largest error against the measured curve |
+|---|---|
+| `srgb_to_linear` | 0.5129 |
+| **`pow(x, 0.4545)`** | **0.0053** |
+| identity | 0.2258 |
 
-The rasterised side is the control, not the other way round. Its sky sits within three per cent of
-the map's own mean, which is what a decode on read and an encode on write round-trips to. That is the
-behaviour `__builtin_srgb` reproduces on the traced side, and it is why the level lands where it does.
+0.0053 is eight bit rounding. **The attribute applies a 1/2.2 encode to the file being written, not
+an sRGB decode to the texture being read.** Two documents that differ only in this attribute share
+the same texture, so nothing about the texture can explain the difference between them.
+
+The change `e75a18e` shipped on the strength of this section. The frame moved, and it moved towards
+the rasterised frame, and **both of those are still true** — but the rasterised frame is also gamma
+encoded, so an output gamma agreeing with it is a coincidence of the same kind as the one this file
+already records twice. The stated mechanism was wrong and the change is under review.
+
+The two spelling arguments below are unaffected and still hold: `sRGB` is rejected outright by this
+build, and a builtin name does not depend on the machine's OpenColorIO configuration.
+
+The rasterised side was the control. Its sky sits within three per cent of the map's own mean, which
+is what a decode on read and an encode on write round-trips to. **That reasoning is now known to be
+wrong on its own terms**: the rasterised side round-trips and the traced side after this change does
+not, because the change applies an encode to the whole frame rather than a decode to the map.
 
 ## Three explanations that were wrong, and how each died
 
