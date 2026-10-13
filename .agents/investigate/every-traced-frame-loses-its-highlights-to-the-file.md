@@ -57,8 +57,16 @@ Grade constants read out of each scene's `GRADE` in the source, not out of any n
 | scene | graded/rasterised, whole frame | per band | pearson, whole frame |
 |---|---|---|---|
 | `dunes` | **1.003** | 1.000 – 1.006 | **0.9940** |
+| `spotlight` | **1.047** | 1.004 – 1.313 | **0.9904** |
+| `tiles` | **0.961** | 0.934 – 0.973 | **0.9973** |
 | `landscape` | **0.981** | 0.936 – 1.006 | 0.9289 |
 | `terraces` | **1.318** | 1.065 – 1.571 | 0.6496 |
+
+`spotlight`'s top two bands are black on both sides, so their ratio and correlation carry no
+information and are printed as a dash rather than as `nan` and `inf`; its 1.313 is the first band
+with any signal in it. `tiles` agrees on level and disagrees on shape in its brightest bands, with
+band pearson −0.5372 and −0.6976 where the level ratio is 0.960 and 0.973 — a local inversion where
+the two draw the pattern in opposite directions, which is not a level finding and is not chased here.
 
 > **The first two rows were 1.086 and 1.077 when this table was written, and both were measured with
 > `e75a18e` in the tree.** That attribute was reverted at `323322c` after it was measured to be an
@@ -120,16 +128,41 @@ need the mapping this file does not have, or an EXR the probes cannot read: Cycl
 (`out/dw-world.exr`, 109342 bytes) and this machine's Python has no EXR reader installed, so float
 output is currently unreachable to every probe here.
 
+> **Both of these paragraphs were superseded the same evening.** The attribute was measured against a
+> generated ramp to be an sRGB **encode** applied by the texture node, not a decode, and it was
+> reverted at `323322c`; see
+> [what-the-colour-space-attribute-actually-does](what-the-colour-space-attribute-actually-does.md).
+> The absolute calibration was settled without either route: a document carrying an `<emission>` of
+> strength 1.0 reads **exactly 1.00000** in the file, so the eight bit png holds linear radiance with
+> no gamma and no view transform. **Neither the mapping nor an EXR reader was needed.**
+
+## `tiles` and `spotlight`, which paint nothing into their sky
+
+Neither carries a `depth >= 1.0` block. A search of `crates/gallery/src` finds one in `dunes`,
+`landscape`, `monoliths`, `terraces`, `tidewater`, `foldyard`, `lanterns`, `nurbs` and `stilllife`,
+and in neither of these. Both grades are Reinhard and a gamma and nothing else
+(`crates/gallery/src/tiles.rs:198-199`, `spotlight.rs:272-273`), read from the source.
+
+`spotlight` agrees to **1.047** whole frame at a pearson of **0.9904**, and `tiles` to **0.961** at
+**0.9973**, which is the highest shape agreement of any scene measured here. `spotlight`'s top two
+bands are black on both sides, so their ratio and correlation carry no information; the probe prints
+a dash for those rather than the `nan` and `inf` a division would produce, because a number that
+cannot be read as a measurement should not be printed in the column where measurements go.
+
+**`tiles` agrees on level and disagrees on shape in its brightest bands** — band pearson −0.5372 and
+−0.6976 where the level ratio is 0.960 and 0.973. A local inversion, with the two drawing the pattern
+in opposite directions, which is not a level finding and is not chased here.
+
 ## Not done
 
-**The gallery census has not been re-run** under the colour space change and the exposure change.
-Every figure in it is an eight bit, clipped, differently graded comparison, and the method in this
-file replaces all of it.
+**The gallery census has not been re-run** under the exposure and grade method. Every figure in it
+is an eight bit, clipped, differently graded comparison, and the method in this file replaces all
+of it.
 
 **`foldyard` has no bounce-free render and no unclipped one** — its document is sixty four megabytes.
 
-**Only three scenes were measured.** `sunlight`, `tiles`, `spotlight`, `tidewater` and `monoliths`
-have none of this.
+**Three scenes were never measured**: `sunlight`, `tidewater` and `monoliths`, out of nine that
+render. `tiles` and `spotlight` were added after this list was written.
 
 ## Sources
 
