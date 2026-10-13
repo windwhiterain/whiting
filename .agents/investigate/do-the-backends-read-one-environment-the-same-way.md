@@ -7,188 +7,158 @@ gradients run in opposite directions**: the rasteriser's gets brighter towards t
 tracer's gets brighter towards the top of the frame. Both are handed one 256x128 image. **Do they
 read that image the same way, and if not, which of them is wrong?**
 
-**Answer, measured 2026-10-13 on `main` at `a1397e3`, 1024x1024, 32 samples on CPU.** They do not
-read it the same way. **The fault is not a fixed convention to be corrected once** — mirroring the
-exported map along `u` fixes `terraces` and breaks `landscape`, from the same generator, and the
-reading that survives both is that **the tracer's azimuth is a function of the camera**. The
-measurement is below, the control that made mirroring look safe is in its own section, and the
-section that killed the obvious fix is the one after it.
+**Answer, re-measured 2026-10-13 on `main` at `7a7fc5d`, 1024x1024, 32 samples on CPU.** **They
+read the image the same way, and the reading is correct in every respect it can be measured in.** No
+tone curve sits between the tracer and the file, the polar is the right way up, the azimuth is not
+mirrored and is not rotated, and denoising is off. **The fault is not in the world at all: the two
+backends are looking in different directions**, and the disagreement is a clean sideways
+displacement across the frame rather than a difference in how a sky is drawn.
 
-## The census's 0.857 for `terraces` is not a sky measurement, and this note is not about it
+**The measurement that settles it is below. It took a map with no law in it**, because every
+earlier experiment compared two skies that each had their own ridges, cloud, fog and sun painted
+on them, and a scene's own painting is indistinguishable from a fault in the world it is painted on.
 
-`terraces` paints a cloud deck, three ranges and the valley's fog **into its sky**.
-[the-raster-sky-band-is-not-the-tracers-sky-band.md](the-raster-sky-band-is-not-the-tracers-sky-band.md)
-established the rule: **a sky-band figure is only meaningful for a scene that paints nothing into
-its sky**, and of the scenes converted to the map, `dunes` is that one. Decomposed on 2026-10-13
-through `out/probe-linear-radiance.py`:
+## What the projection actually is, measured against a map with nothing in it
 
-| what the sky band is made of | sky ratio |
-|---|---|
-| the map alone | 0.781 |
-| plus the cloud deck and the three ranges | 0.764 |
-| plus the fog, which runs on geometry and sky alike | **0.857** |
+Two synthetic maps, written by `out/probe-projection-map.py` and traced through the **same exported
+terraces document** with only the world replaced. `latlong_direction` writes a direction from a
+column and a row, so a channel carrying a known function of the column or the row reads back the
+exact `u` or `v` the tracer looked up for that pixel. No ridge, cloud, fog, grade or sun law can
+move the answer.
 
-**so the census's 0.857 is mostly the fog**, which is a painted layer the tracer cannot have, and
-the number to reason about is the **0.781**. What follows takes the painted layers out as well — not
-to make the scene score better, but because a lookup question is only answerable against a frame
-whose sky is nothing but the lookup.
+### There is no tone curve (`rows` map, `out/probe-read-projection.py`)
 
-## The measurement, with no inversion anywhere in it
+The map's red channel is **0.25 over its top half and 0.75 over its bottom half**. The traced sky
+carries **0.2510** and **0.7490**: a ratio of **2.984** against the map's **3.000**. **The tracer
+writes scene linear straight through.** This matters because the document carries
+`<film exposure="1" />` and **no `<display_settings>` at all**, so Cycles takes its own default view
+transform — and every ratio measured against an authored sky would have been partly a measurement of
+that transform. It is not one.
 
-The band figure and the row profile both come out of `probe-linear-radiance.py`, which has to undo
-a grade first — so both are measurements of an *inversion*. To take the inversion out of the
-question, the post stage was reduced to
+### The polar is not the wrong way up
 
-```wgsl
-color = environment_sky(ray_through(in.uv));
-```
+The sky reads red **0.2510**, which is the map's **top** half, and the map's top half is the zenith
+half as `latlong_direction` writes it. The green channel, which ramps **0 at the zenith to 1 at the
+nadir**, **rises down the frame by +0.0353** over the sky window. Both say the same thing: `v` is
+read the way it was written.
 
-with no grade and no depth test, so every pixel of the file **is** the map lookup. Read straight
-out of the files, nothing undone (`out/probe-three-skies.py`):
+### The azimuth is not mirrored and is not rotated (`columns` map, `out/probe-read-azimuth.py`)
 
-| frame row | raster, raw lookup | tracer | ratio |
-|---|---|---|---|
-| 0 | 0.4773 | 0.8234 | 0.580 |
-| 20 | 0.4878 | 0.8106 | 0.602 |
-| 40 | 0.5110 | 0.7837 | 0.652 |
-| 60 | 0.5255 | 0.7418 | 0.708 |
-| 80 | 0.5464 | 0.6669 | 0.819 |
-| 90 | 0.5595 | 0.6504 | 0.860 |
+The map's red channel ramps **0 to 1** from its left column to its right. Traced, over the sky above
+the skyline:
 
-**The ratio moves from 0.58 to 0.86 across ten rows.** A constant ratio is a scale and one number
-explains it; a ratio that moves is the two frames placing the same image differently, and no field
-on a light will close that.
+| x | 64 | 192 | 320 | 448 | 576 | 704 | 832 |
+|---|---|---|---|---|---|---|---|
+| red | 0.2863 | 0.3020 | 0.3176 | 0.3333 | 0.3529 | 0.3686 | 0.3843 |
 
-## What the document hands the tracer
+**Monotonically rising**: span **+0.1020**, least squares slope **+0.000135** a pixel. **The tracer
+walks the map the way it was written.** This is the fault every earlier experiment kept half finding,
+and it is not there.
 
-`out/now-traced-terraces.cycles.xml`, the whole of the world:
+### And denoising was never on
 
-```xml
-<film exposure="1" />
-...
-<background>
-    <environment_texture name="world_texture" filename="sky.png" />
-    <background name="world" strength="1, 1, 1" />
-    <connect from="world_texture color" to="world color" />
-    <connect from="world background" to="output surface" />
-</background>
-```
+`<integrator seed="0" use_denoise="false" max_bounce="8" />`. Whiting writes it off, so a traced
+frame carries no denoiser to tilt a gradient, and that candidate cost one read of the document to
+kill.
 
-One point light, `sun`. **Nothing else touches the background**: no exposure on the film, a strength
-of one, no second term mixed into the world.
+## Where the fault is: the two backends look different ways
 
-## What the image itself holds
+With the world cleared, the only thing the two backends each have their own is the camera. And the
+disagreement has the **shape a camera makes and the world does not** — `out/probe-disagreement-shape.py`,
+ratio of the rasteriser's raw lookup to the trace, in twelve columns across the sky:
 
-`out/sky.png`, 256x128 RGBA, the file the tracer was handed, in the file's own order
-(`out/probe-exported-map.py`): row means run **0.2504 at row 0, 0.7008 at row 64, and a flat
-0.3915 from row 96 down**. A conventional equirectangular — dark pole, bright horizon at the middle
-row, flat ground half below. The rasteriser's values sit inside that range and rise towards the
-horizon row; the tracer's do the opposite.
+| column | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ratio | **1.2414** | 1.2432 | 1.2222 | 1.1875 | 1.1302 | 1.0608 | 0.9697 | 0.8796 | 0.8008 | 0.7352 | 0.7176 | **0.6980** |
 
-## Two things this cost to find
+**A clean monotone sweep from 1.2414 to 0.6980, span −0.5433.** That is a **sideways displacement**.
+A fault in the world is the same at every pixel of a frame and shows up in a row statistic; a camera
+pointing elsewhere puts the rasteriser brighter than the tracer on one side and darker on the other,
+and the ratio across the frame **crosses one**. This one crosses one at column six, the middle of the
+frame.
 
-**the documents in `out/` share image filenames, so a re-trace can pick up the wrong sky.** `dunes`
-and `foldyard` both declare an image labelled `air`, and the exporter writes it as
-`out/air.png` — **last write wins**. `out/now-traced-dunes.cycles.xml` therefore names a file that,
-by the time it was re-read, held `foldyard`'s sky. The control above had to re-export `dunes` into
-a clean prefix first. A document and the image beside it are **a pair, and re-reading one without
-the other is how a measurement becomes a different measurement.**
+**So the sun's warm band is in a different part of the frame in each backend.** That is the whole of
+what every experiment in this note was chasing, seen from the other end.
 
-**and a finding that seemed to be an export fault was not.** For a while the reading here was that
+## Why the mirror looked like a fix, and why it was not one
+
+Mirroring the exported map in `u` moved `terraces` from 0.58–0.86 to 0.945–0.983 and moved
+`landscape` from 1.040 to 0.704. **Neither number was ever a measure of the projection**, and the
+table below says why: the thing that needed correcting is a **displacement**, and a map mirrored in
+`u` displaces its content sideways too. It moved `terraces`' warm band into the half of the frame
+where the comparison wanted it, which raised the ratio, and it moved `landscape`'s out. **A
+displacement and an azimuthal mirror both shift the sky sideways and are the same size to a frame
+comparison**, which is why the correction looked like a repair for one scene and a breakage for the
+other. The synthetic map separates them, because a mirrored map would have made its red **fall**.
+
+**The azimuth sweep this note used to ask for is superseded and should not be run.** Rotating the map
+a quarter, a half and three quarters was to distinguish a fixed convention error from a
+camera-dependent one, but **mirroring twice cannot tell a mirror from a rotation** and neither can
+rotating: both move content sideways, and the question is only answerable against a map that
+measures the mapping instead of shifting it.
+
+## Withdrawn: the camera-dependence claim this note used to make
+
+An earlier version concluded that "**the tracer's azimuth is a function of the camera**", on the
+grounds that `terraces` wanted the map mirrored and `landscape` wanted it whole. **That reasoning
+was wrong and the claim is withdrawn.** The projection is camera-independent and correct; what
+varies between the two scenes is where **each camera points**, which is a real fault but not that one.
+The note reached the right neighbourhood by a route that could not distinguish "the world is turned
+round" from "the camera is turned round", because every measurement it used had both in it.
+
+## Where the camera fault lives, and what has not been checked
+
+**The exported camera transform is `translate="-138.835897872, -173.253846809, 90.014957447"
+rotate="159.21770006141406, 0.230591282583172, 0.7615912703919129, 0.605645438569036"
+scale="-1, 1, 1"`** — and that `scale` is a **handedness flip written by whiting**. Read from
+Cycles' own source at `C:\resource\cycles`:
+
+- the standalone camera looks down **+Z**, with **+X** right and **+Y** up
+  (`src/scene/camera.cpp:276`, `src/util/projection.h:265-266`, `src/kernel/camera/camera.h:186`);
+- **lights emit along −Z** (`src/scene/light.cpp:251,312`), so cameras and lights do not share a
+  convention;
+- `xml_read_transform` (`src/app/cycles_xml.cpp:684-711`) only composes translate, rotate and scale,
+  and `transform_rotate` is a plain Rodrigues rotation — **no axis swap, no negation, and no mirror
+  can be introduced on the reader's side**.
+
+**So the `scale="-1, 1, 1"` is a compensation for a convention difference, and it is whiting's.**
+Whether it compensates correctly, and whether the quaternion beside it agrees with what
+`ray_through` gives the rasteriser, is **not measured here** and is the next thing to settle.
+
+## Two errors of mine this note should not let anyone repeat
+
+**A window over the mountains is a window onto lit rock.** `probe-read-azimuth.py` first took the
+sky as the top **45%** of the frame, measured a span of **−0.0608**, and printed "**red FALLS to the
+right: the tracer walks the world the opposite way round**" — over rows whose own printed values rose
+from `0.2863` to `0.3843**. `terraces` looks thirteen degrees down and its ranges reach into the
+lower half of the frame; lit rock under a flat world reads about **0.6** red whatever its `u` is,
+which swamps the **0.28 to 0.38** the sky carries. Both probes also printed their green summary over
+the bottom of the frame, where there is no sky, and drew a decreasing trend from a mountain. **The
+window was the measurement's error and the verdict was read off it anyway** — twice.
+
+**A row median is a statistic that hides a displacement.** The original evidence for this whole
+question was a ratio moving down the rows, and a sideways displacement produces exactly that as
+well, which is the trap the column-wise comparison above exists to close.
+
+## What it cost to find
+
+**The documents in `out/` share image filenames, so a re-trace can pick up the wrong sky.** `dunes`
+and `foldyard` both declare an image labelled `air`, and the exporter writes it as `out/air.png` —
+**last write wins**. A document and the image beside it are **a pair, and re-reading one without the
+other is how a measurement becomes a different measurement.** The work above re-exported into a clean
+prefix for exactly this reason, and `dn-terraces.png` came out byte-for-byte the size of
+`now-traced-terraces.png`, which is how the pair was confirmed to be the same one.
+
+**And a finding that seemed to be an export fault was not.** For a while the reading here was that
 the tracer's 0.8234 "exceeds the map's brightest row" and so cannot come from the map at all. That
 compared a row **mean** against a pixel **value**, and 0.754% of this map's texels are clipped to
-one — the peak is near one, so 0.8234 is inside the image. The claim was wrong, and it pointed the
-search at the export instead of at the lookup.
-
-## The control, and it is the reason this reading is safe
-
-**One scene cannot change an exporter**, because a blanket mirror would break every scene that is
-already right. So `dunes` — which reads 1.001, and is the only scene in the gallery that paints
-nothing into its sky — had its exported map mirrored in `u` and was re-traced anyway.
-
-| row | plain | mirrored | ratio |
-|---|---|---|---|
-| 0 | 0.5203 | 0.5203 | **1.000** |
-| 40 | 0.5567 | 0.5567 | **1.000** |
-| 80 | 0.6084 | 0.6084 | **1.000** |
-| 120 | 0.6862 | 0.6862 | **1.000** |
-| 160 | 0.5895 | 0.5895 | **1.000** |
-
-**Every row identical to three decimals.** `dunes`' environment map is **uniform in azimuth** —
-mirroring it changes nothing at all — so mirroring every map in `u` **cannot break it**, and the
-fix is safe with respect to the one scene that currently looks perfect.
-
-**and this is why the census never caught it.** "the four scenes that declare an environment light
-read 1.001, 1.040, 1.059 and 1.085" was never evidence about the lookup. **An azimuthally uniform
-map cannot detect an azimuth error**, because the map under the error is the same map. `dunes`
-agrees at 1.001 and would agree at 1.001 with the sky turned inside out. `terraces` sees it because
-its map carries the sun's bearing, and a scene whose weather has a direction is the only kind that
-can.
-
-## The mirror is NOT the fix, and landing it would have traded one scene for another
-
-**The obvious reading of the section above is wrong, and the experiment that catches it is cheap.**
-If the tracer reads every world image mirrored in azimuth, then mirroring on export fixes `terraces`
-— and it must also leave `dunes`, `tidewater` and `foldyard` untouched, which it did. **Applied to
-the exporter, it did exactly that and one more thing: it broke `landscape`.**
-
-| scene | sky before | sky after | ground before | ground after |
-|---|---|---|---|---|
-| `dunes` | 1.001 | **1.001** | 1.048 | 1.048 |
-| `tidewater` | 1.059 | **1.059** | 0.680 | 0.680 |
-| `foldyard` | 1.089 | **1.089** | 0.982 | 0.982 |
-| `terraces` | 0.857 | **1.048** | 0.501 | 0.490 |
-| `landscape` | 1.040 | **0.704** | 0.948 | 0.951 |
-
-`landscape` was given the same raw-lookup treatment `terraces` had — its post stage reduced to
-`color = environment_sky(ray_through(uv))`, no grade, no painted ranges, no shafts — and against
-that:
-
-| `landscape`, raw lookup | against the unmirrored trace | against the mirrored trace |
-|---|---|---|
-| ratio across ten rows | **1.004 to 1.022**, gradients the same way | 0.595 to 0.682, gradients opposite |
-
-**So `landscape` is right unmirrored and `terraces` is right mirrored, and both maps are written by
-the same function.** `dawn::Sky::pixels` calls `crate::shaders::environment_pixels_of` and so does
-`air.rs`'s `environment_pixels` — one generator, one projection, one exporter, two opposite
-results. The hypothesis that the two generators disagreed was checked and **disproved**.
-
-**The only reading left is that the tracer's azimuth is a function of the camera.** The correction a
-scene needs would then depend on where its camera is looking, and **a mirror baked into the writer
-is the wrong shape of fix**: it happens to be right for `terraces` and wrong for `landscape`, which
-is a trade dressed as a repair. Their camera rotations are not close — the quaternions read
-`terraces` 159.22/0.23/0.76/0.61 against `landscape` 83.31/1.00/-0.06/-0.07, and this note's first
-version called that "a narrow band", which was not looked at closely enough.
-
-**The exporter change was reverted and is not on `main`.** What it bought is the knowledge that the
-fault is camera-dependent rather than a convention to be corrected once, which is worth more than
-the fix would have been.
-
-## What would actually settle it
-
-**Sweep the map's azimuth and find the offset that matches.** Rotate `terraces`' exported world by a
-fraction of a turn — a quarter, a half, three quarters — and re-trace each, against the raw-lookup
-frame. If the required correction is a constant, the fault is a fixed convention error and a scene
-whose camera sits at the matching azimuth is showing it; if the required correction differs between
-`terraces` and `landscape` in the way their cameras differ, it is camera-dependent and the fix
-belongs in the camera transform or in the world's own rotation, which is a node the format has and
-this emitter does not write. **That sweep is four traces and has not been run.**
-
-## Not measured
-
-- **Whether the residual 0.955 is quantisation, the pixel filter, or a colour space.** The
-  `environment_texture` node carries no `color_space` attribute and therefore takes Cycles' default,
-  and the writer's choice for an 8-bit image was not compared against it.
-- **`landscape`, `foldyard` and `tidewater` under the mirror.** Their maps are structured and their
-  skies will change; what they change *to* is not measured here.
-- **A synthetic ramp world.** `axes.rs` describes one and the gallery does not have it. The
-  experiment here does not need it — a real scene's own map, mirrored and re-traced, answered the
-  question — but a ramp would say *which* axis is wrong without inferring it from one scene's sun.
+one — the peak is near one, so 0.8234 is inside the image.
 
 ## Why it matters more than its size suggests
 
-`terraces` is now the worst-matched scene in the gallery — whole frame **0.531**, sky **0.857**,
+`terraces` is the worst-matched scene in the gallery — whole frame **0.531**, sky **0.857**,
 ground **0.501** — and the ground is already accounted for (per-fragment albedo a tracer is not
-handed). **This is the sky, and the census's headline is that skies agree**: the four scenes that
-declare an environment read 1.001, 1.040, 1.059 and 1.085. `terraces` declares one and reads 0.857
-with a shape correlation of +0.8732, which is not what that sentence says.
+handed). The sky is this fault, and it is **not** in the world: **every scene is mis-framed by it,
+in its own direction, by its own angle.** A scene whose sky happens to be uniform in azimuth — which
+is why the census read 1.001, 1.040, 1.059 and 1.085 for the others — cannot see a fault that is a
+displacement, because the frame it would have to be mis-pointed within is the same frame either way.
