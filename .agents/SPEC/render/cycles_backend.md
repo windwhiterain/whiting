@@ -802,29 +802,76 @@ albedo is decided per fragment — water, earth, crop, forest — and a path tra
 **material row**, which says white. fitting the declared albedo to the picture's mean would close
 the number and open a lie, so the gap stays.
 
-### the map is read with `textureLoad`, and that is visible on every scene that has one
+### the `environment` radiance sets the sky as well as the light, and `foldyard`'s was chosen as light
 
-**the map declares no sampler**, and it is read at a texel the shader computes
-(`shaders::ENVIRONMENT_LOOKUP`, `environment_sky`, `environment_radiance`). the reason recorded in
-`emit.rs` is the octahedral fold: a filtered read would blend across the fold's seam.
+`environment_sky` returns `textureLoad(...).rgb * uniforms.environment.rgb`, so the **one** field
+a scene declares is read by the stage that draws the sky and by the stage that lights from it.
+that is right — in a path tracer the background and the world's radiance are the same quantity,
+and separating them would put the two backends a factor apart.
 
-**it shows in two places, and both were measured on rendered frames 2026-10-13.**
+**but it couples two decisions a scene author makes for different reasons**, and one scene has
+already been bitten by it. `foldyard` declares `environment_light("air", "air", [1.0; 3], 0.26)`,
+and the comment above it says why: *"at a quarter of the sun's strength; the sun is what makes the
+shape."* that is an **ambient lighting** argument, and it is a good one. the same `0.26` also
+multiplies the sky its post stage draws, and it did not until the post stage began reading the map
+— `air_sky` is a law and carries no radiance.
 
-- **in the sky.** `dunes` reads a `256 × 128` map and its gradient carries visible horizontal
-  bands. a latlong map spends its rows on elevation, so 128 of them give the twenty degrees of sky
-  its frame shows about **eleven rows**. `terraces` reads `1024 × 512` for the same reason and
-  bands far less; its picture and the one drawn from the old `WGSL` law correlate `+0.9802`.
-- **on every surface the world lights.** `environment_radiance` selects a level from the material's
-  roughness and then reads that level without filtering. for `terraces` the terrain row is `0.55`
-  and an eleven-level chain gives level `5` — **thirty-two texels around the whole sky** — and the
-  mountain face shows rectangular patches of them. (derived from the code, not measured.)
+measured on the rendered frame 2026-10-13, `foldyard` camera 0: the sky rows read **41 / 45 / 55**
+of 255, against about **152** for the same rays under its own `Atmosphere` through its own grade
+(`HORIZON` 0.600 at ten degrees, exposure 0.42, ACES, gamma). the factor is `0.26`.
 
-**the fix is `sampled`, and the machinery is already there.** `graphics::binders` reads a `sampled`
-key off the texture payload and allocates the sampler at the next binding, with `filter`,
-`address` and `mip_filter` already in the schema. what is missing is that `ENVIRONMENT_LOOKUP`
-computes **texel** coordinates, where `textureSampleLevel` wants **normalised** ones, and that
-`latlong` must wrap in `u` and clamp in `v` — which a `Repeat` sampler cannot do. it is a change to
-every scene's post and lighting stage, so it is named here and not smuggled into one scene's commit.
+**this is not a bug and the frame is not wrong** — the tracer draws the same world at the same
+`0.26`, which is why the census has `foldyard`'s sky at `1.085` rather than the `3.8` it would read
+if the raster were still drawing the law. what it is, is a number chosen under one name being
+read under another, and it is worth knowing which scenes are affected before anyone tunes an
+ambient and silently dims a sky:
+
+| scene | declared radiance | who chose it |
+|---|---|---|
+| `dunes` | 1.06 | measured against a raster sky |
+| `terraces` | **1.0** | the sky is the world, so the radiance is one |
+| `foldyard` | **0.26** | *"a quarter of the sun's strength"* — an ambient argument |
+
+### the map is read with `textureLoad`, and the artefact that was expected was not found
+
+**the mechanism, from the code.** the map declares **no sampler**
+(`emit.rs::environment_binding`, and its comment gives the reason: a filtered read would bleed
+across the octahedral fold's seam), and both readers use `textureLoad` at a texel the shader
+computes — `environment_sky` at level zero, and `environment_radiance` at
+`level = clamp(int(roughness * (levels - 1)), 0, levels - 1)`. for `terraces` the terrain row is
+`0.55` and a nine-level chain gives **level four, which is sixteen texels around the whole
+sky**, read without filtering. (derived from the code, not measured.)
+
+**what was looked for, and not found.** two frames were measured for the staircase a nearest read
+must produce: the step between consecutive sky rows, and a crop of a lit face at one to one.
+
+| frame | sky rows that repeat | median step between rows | worst |
+|---|---|---|---|
+| `dunes`, top tenth | 284 of 306 | **0.09** | 0.49 |
+| `terraces`, top tenth | 198 of 306 | **0.09** | 0.19 |
+
+and a 200×200 crop of `terraces`' mountain at one to one is smooth, with no hard-edged texel
+boundary anywhere in it. **a smooth ramp quantised to eight bits is exactly what this measures**,
+and the banding one can see in a downscaled view of `dunes` is the eye's, not the file's — a long
+dark ramp reads as bands whether or not there is anything to band about.
+
+**so the negative result stands and is the finding: nothing visible came of it.** both the bands
+and the blocks were read off a scaled-down frame and neither is in the pixels, and the honest
+conclusion is that a latlong map at these sizes carries these skies well enough that the
+unfiltered read costs nothing measurable.
+
+**what it would take to become visible, which is why the mechanism is still recorded.** a texel
+step has to exceed a quantisation level before a ramp becomes a staircase, and it scales with how
+fast the sky changes across one texel. a map a quarter of the size, or a scene whose sky has a
+sharper feature — a disc, a hard horizon — puts it over. `foldyard` below is that scene, and it
+is not a banding case but a worse one.
+
+**and the octahedral seam is narrower than it looked.** of the environments the gallery declares,
+**none is octahedral** — `dunes`, `landscape`, `foldyard` and `terraces` all pass
+`Projection::Latlong`, and `Projection::Octahedral` is reached by
+`device-rasterize/tests/environment_map_render.rs` and nothing else. the fold therefore constrains
+a test, not a rendered scene, and the work a filtered read would actually be is a latlong `u` that
+wraps and a `v` that clamps.
 
 ### the map is `rgba8unorm`, so a radiance above one is stored as one — and almost nothing is
 
@@ -837,7 +884,7 @@ has no headroom. **that reads as a live defect in three scenes and is not one.**
 | `dunes` | 256×128 | 0.700 | 0.687 | 0.000% |
 | `landscape` | 256×128 | 1.390 | 0.813 | 0.000% |
 | `foldyard` | 192×96 | 2.042 | 0.582 | 0.000% |
-| `terraces` | 1024×512 | 19.360 | **2.582** | **2.370%** |
+| `terraces` | 256×128 | 19.360 | **2.580** | **2.325%** |
 
 **the upper bound is each term's maximum, added.** the terms do not all peak on one ray, so it is
 what a clamp has to be sized against rather than a measurement of any texel — and on three

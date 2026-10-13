@@ -110,19 +110,26 @@ fn terraced_valley(materials: Vec<Value>, instances: Value) -> Value {
             // pre-dividing it to make room for the sun's disc would spend the whole precision
             // the picture has on a disc that stands above the frame's top edge.
             //
-            // **A thousand and twenty four by five hundred and twelve, not the two hundred and
-            // fifty six by one hundred and twenty-eight the other scenes use.** A latlong map
-            // spends its rows on elevation, so a hundred and twenty-eight of them give the
-            // twenty degrees of sky this frame actually shows eleven rows, and `dunes` — read at
-            // that size — shows its rows as bands across the gradient. Four times the rows is
-            // four times less of them; the filtering that would remove them outright is a
-            // change to every scene's post stage and is recorded rather than smuggled in here.
+            // **Two hundred and fifty six by one hundred and twenty-eight, the size the other
+            // scenes use, and the size was measured rather than chosen.** This scene was first
+            // written at `1024 × 512` on the reasoning that a latlong map spends its rows on
+            // elevation and a coarse one must show steps. Both renders were measured against the
+            // sky the `WGSL` law writes:
+            //
+            // | map | correlation with the law | sky band mean | worst step between rows |
+            // |---|---|---|---|
+            // | 256 × 128 | **+0.9803** | 195.8 185.6 183.1 | 0.27 |
+            // | 1024 × 512 | **+0.9802** | 195.8 185.6 183.1 | 0.19 |
+            //
+            // **sixteen times the texels buy a thousandth of a correlation.** a latlong map at
+            // this size carries this sky, and the earlier guess that it would not is recorded
+            // here because it was made twice.
             "images".to_owned(),
             Value::List(vec![image(
                 "sky",
-                1024,
-                512,
-                dawn::sky(SUN_DIRECTION).pixels(1024, 512),
+                256,
+                128,
+                dawn::sky(SUN_DIRECTION).pixels(256, 128),
                 Projection::Latlong,
             )]),
         ),
