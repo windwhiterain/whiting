@@ -1504,7 +1504,18 @@ const GROUND_SURFACE: &str = r#"
 
     // Enough noise that a hillside three hundred units across is not one flat colour.
     earth = earth * (0.88 + 0.24 * ground_noise(here.xz * 0.09));
-    color = color * in.tint * earth;
+    // **`in.tint` is not here, and its absence is the point.** The shading template reaches this
+    // body with the colour already carrying the material's own albedo — `diffuse_color` is
+    // `in.tint * (1 - metallic)` and every term above is built from it — so multiplying by
+    // `in.tint` again made the rasterised ground the tint **squared** while a path tracer, handed
+    // only the material row, renders it once.
+    //
+    // Measured, 32 samples on CPU against the rasterised frame: the ground band read **0.274**
+    // (raster over traced, medians of linear radiance) where the tint's median is **0.232**. The
+    // two agree to eighteen percent, and nothing else in this scene's ground is the size of the
+    // tint. `terraces` has the same shape of body and does not have this bug, because its
+    // material row is white and a white multiplied twice is the white it was.
+    color = color * earth;
 "#;
 
 /// The post stage's own helpers: the world position a pixel shows, recovered from the depth
