@@ -7,14 +7,22 @@ Measured 2026-10-13, Cycles 5.3.0 at `C:\resource\cycles\install\cycles.exe`, wi
 `out/rr-landscape.png` `f7c00ad9cc65d009` (rasterised),
 `out/air.png` `d4420f30350830c9`.
 
-## The question
+## > **The colour space was not the cause.** The whole frame moved from 0.831 to 0.993 when the
+> exporter began writing `colorspace="__builtin_srgb"`, and this file originally called that the
+> colour space defect closing. It was not: the attribute applies a 1/2.2 encode to the **file being
+> written** rather than an sRGB decode to the **texture being read**, measured against a generated
+> ramp with a largest error of 0.0053 for `pow(x, 0.4545)` and 0.5129 for `srgb_to_linear`. The
+> rasterised frame is gamma encoded too, so the two moved together without either reading the map
+> correctly. **Every number in this file was taken on a frame rendered with `e75a18e` in the tree,
+> so they are measurements of that build and not of a corrected one.** See
+> [what-the-colour-space-attribute-actually-does](what-the-colour-space-attribute-actually-does.md).
+
+The question
 
 `a-low-correlation-measures-the-bounce-and-the-samples.md` left `landscape` with a median level
 ratio of **0.788** against the rasterised frame and called it the largest disagreement in the
-gallery. The colour space defect closed most of it — see
-[the-air-image-reaches-cycles-with-no-colour-space](the-air-image-reaches-cycles-with-no-colour-space.md)
-— and moved the whole frame from 0.831 to 0.993. What is left over is a real disagreement or an
-artefact of comparing two files that were written differently?
+gallery. What is left over is a real disagreement or an artefact of comparing two files that were
+written differently?
 
 ## It was two different things, and one of them is not a disagreement
 
