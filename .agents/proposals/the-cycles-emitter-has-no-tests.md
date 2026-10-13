@@ -1,0 +1,85 @@
+# The Cycles emitter has no tests, and the regression that proves it was not a compile error
+
+## What happened
+
+`a81b203` changed the camera the exporter writes: it rewrote the rotation as `S * R * S`, in the
+axis-angle form `(w, v_x, -v_y, -v_z)`, to cancel a world-side scale that the loader does not
+compute. Every camera in the gallery was turned away from its subject by
+`2 * atan2(forward.x, forward.z)`. `sunlight` went from drawing 59.597% of its frame to 10.372%;
+`foldyard` lost its courtyard entirely.
+
+**It was reverted in `afb0c0b` and the gallery is back to its 2026-10-12 census figures to the
+digit.** What is written here is not the fault — that is recorded in
+[do-the-backends-read-one-environment-the-same-way.md](../investigate/do-the-backends-read-one-environment-the-same-way.md).
+This is about why nothing caught it.
+
+## Why nothing caught it
+
+`crates/scene/src/cycles_export/` has **no test anywhere in the workspace**. Not the camera, not
+the axes, not the transform composition, not the geometry, not the lights, not the materials. The
+module is reached from exactly two places, `crates/scene/examples/emit_cycles.rs` and
+`crates/device-cycles/src/render.rs`, and neither asserts anything.
+
+So the change was made, **110 tests stayed green**, and the only thing that noticed was a manual
+census of eight rendered scenes — which reported the damage as an **improvement**, because five
+cameras turned away from their subjects put different ground in the frame.
+
+**The census was not fooled by chance.** It compared a ratio and a correlation between two
+rendered frames, and both are insensitive to the specific thing that had gone wrong in the way it
+was being read. A test on the emitted document would have caught it before any render ran.
+
+## What the test would be, and why it needs no Cycles
+
+The fault was a claim about **how a third-party loader composes a transform**. That claim is
+checkable as arithmetic on the emitted XML, with no Cycles process and no render:
+
+```text
+the loader:  tfm = tfm * translate;  tfm = tfm * rotate;  tfm = tfm * scale
+so a top-level transform is  T * R * S
+the camera's basis is the columns of R * S, which for S = diag(-1,1,1) is
+    forward = R * (0,0,1)
+    up      = R * (0,1,0)
+    right   = -R * (1,0,0)
+```
+
+Three properties hold on every scene's camera and none of them held during the regression:
+
+| property | why it is the right thing to pin |
+|---|---|
+| `det(basis) == -1` | Cycles' camera `+X` is its own right, so the frame is left-handed. This is the whole reason the mirror exists. |
+| the **forward** is `R * (0,0,1)` — the scale does not appear in it | the regression's signature. A world-side scale puts the scale in the forward and turns the camera. |
+| the forward equals `normalize(target - eye)` in the rasteriser's axes | the two backends agree on where they are looking, and it is this that was never actually violated |
+
+**A test that composes the emitted `translate`/`rotate`/`scale` the way the loader does, and
+asserts those three, fails on `a81b203` and passes now.** It is about fifteen lines, it runs in
+milliseconds, and it needs a hand-written scene document rather than a gallery scene — the same
+shape as `out/probe-camera-calibration.cycles.xml`, which settled the same question by rendering.
+
+## What else in the emitter deserves the same treatment
+
+The camera is the case where a wrong answer still looks like a picture. The others are cheaper and
+should be pinned for the same reason — a wrong answer there is a wrong document:
+
+- **the basis change** (`axes.rs`). `position` is `(x, -z, y)`; `rotation_frame` and
+  `rotation_points` are different on purpose, and `Rotation::{Points,Frame}` exists because getting
+  that wrong aims a camera 90 degrees off. Both are worth a round-trip property.
+- **a mesh round trip.** Every vertex and normal through `into_cycles_axes` and back must be what
+  went in. One facet of a box is enough and catches a transposed permutation immediately.
+- **a dropped field is reported.** The emitter has a `LossyReport` and nine fields are dropped on
+  `sunlight`; a test that asserts the report is non-empty for a scene that declares them keeps the
+  report from rotting into always-empty.
+
+## What is not proposed
+
+**No test renders.** A test that starts `cycles.exe` is a test that needs the binary, a GPU or a
+long timeout, and this repository already has eight rendered scenes that only a person checks.
+Every assertion above is arithmetic on a document.
+
+**No golden files of whole documents.** A whole document changes whenever any scene changes, and
+the failure message would be a diff rather than a property. The three assertions in the table above
+say what actually went wrong and survive everything else.
+
+## Not done, because it needs permission
+
+This repository's rule is that an agent writes no tests without being told to. **Nothing here has
+been written.** This is the proposal, and it is the shape the work would take.
