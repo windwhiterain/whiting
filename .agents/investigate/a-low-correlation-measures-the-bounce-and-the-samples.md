@@ -67,6 +67,15 @@ Median ratio of traced over rasterised, over the pixels both draw, bounce remove
 level disagreement in the gallery and, unlike the ones this file has closed, it survives every
 control tried here.
 
+> **Closed on 2026-10-13, and not by a renderer.** The environment map was reaching Cycles with no
+> colour space, so an eight bit sRGB file was used directly as linear radiance; and the tracer's file
+> is raw radiance while this file's rasterised frames are tone mapped. With both accounted for,
+> `landscape`'s ground rows agree to within three and a half per cent and its sky band is a
+> composition difference, because `landscape` paints ranges, shafts and cirrus into pixels no geometry
+> reached. See [what-is-left-of-landscapes-level-gap](what-is-left-of-landscapes-level-gap.md).
+> **`dunes` and `terraces` remain open**, and `dunes` is now the scene where this method would give a
+> clean sky number, because it is the one that paints nothing into its sky.
+
 ## What this does to the census
 
 Every shape figure in `out/probe-census-both-graded.py` is a **block size 1** figure against an

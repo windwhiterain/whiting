@@ -74,6 +74,14 @@ the other. Its correlation measures that composition, not the sky.
   115.27 and the tracer's at 61.39 while reading the same radiance, and a curve that compresses
   cannot account for a raster side that is the brighter one.
 
+  > **The reasoning here was sound and its premise has moved.** The tracer's 61.39 was measured with
+  > the environment map read as scene linear, so the tracer was reading a sky it had decoded wrongly.
+  > Naming the colour space puts `landscape`'s traced sky at 0.3817, and putting that through the
+  > rasterised scene's own curve gives 0.5176 against a rasterised 0.4407 — the tracer's side is now
+  > the brighter one. The conclusion drawn from it, that the curve was not what was wrong with the sky,
+  > still holds; what was wrong turned out to be the colour space. See
+  > [what-is-left-of-landscapes-level-gap](what-is-left-of-landscapes-level-gap.md).
+
 ## Not measured
 
 Whether the sky bands agree once the painted layers are taken out of the comparison, which needs a

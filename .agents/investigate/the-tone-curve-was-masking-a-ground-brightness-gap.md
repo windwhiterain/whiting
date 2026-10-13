@@ -68,6 +68,16 @@ Mean luma over the region, and the traced frame put through the curve.
 read from the scene's own map at the light's own radiance is the tracer's world, and this is the
 measurement that says so.
 
+> **Superseded on 2026-10-13.** Every sky in this table agreed because two errors were cancelling. The
+> environment map was being read as scene linear — an eight bit sRGB file used directly as linear
+> radiance — which left the traced sky short by roughly the amount the curve lifts it. With the colour
+> space named, `landscape`'s traced sky grades to **0.5176 against a rasterised 0.4407**, the sign is
+> the other way, and the three skies here would no longer agree. The ground half of this table is
+> unaffected and is confirmed: after grading, `landscape`'s ground rows come out 1.004, 1.024 and
+> 1.034. See
+> [what-is-left-of-landscapes-level-gap](what-is-left-of-landscapes-level-gap.md) and
+> [the-air-image-reaches-cycles-with-no-colour-space](the-air-image-reaches-cycles-with-no-colour-space.md).
+
 **No ground agrees**, and not in one direction: `dunes` is 49 levels dark, `foldyard` 47 dark,
 `landscape` 34 bright. `dunes`' ground correlates +0.9893 while sitting 49 levels away, which is the
 clearest statement of the difference available: **the shape is right and the brightness is not.**
