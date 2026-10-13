@@ -40,7 +40,49 @@ the whole unit interval.
 | **`pow(x, 0.4545)`** | **0.0053** |
 | identity | 0.2258 |
 
-**0.0053 is eight bit rounding.** The attribute applies a 1/2.2 encode to the file being written.
+**0.0053 is eight bit rounding.**
+
+## Where the gamma is applied is not the writer, and that is settled by an emitter
+
+This file first said the writer, on the strength of `src/app/oiio_output_driver.cpp:61-69` applying
+`pow(image, 1/2.2)` to a png. **That is wrong too**, and the second attempt at locating it had a
+control that did not control anything: a document naming an undefined `shader`, so the "emitter"
+was the default surface shader and sampled the environment like everything else. Both regions then
+moved by the same factor, which proves nothing.
+
+With a real `<emission>` in the document, and sampled inside the quad's actual extent (it is 0.5
+units across at depth 2 where the half frame is 1.0276, so it covers **24.3%** of the frame, and the
+first attempt sampled a region twice that and measured mostly world):
+
+| region | unnamed | named | ratio |
+|---|---|---|---|
+| **the emissive quad** | **1.00000** | **1.00000** | **1.00000** |
+| the world around it | 0.35671 | 0.60567 | 1.69792 |
+
+**The emitter does not move and the world does.** The gamma is applied by the texture node, and
+`oiio_output_driver.cpp` never sees it.
+
+## Which also settles the file's encoding, which nothing here had settled before
+
+The quad is an `<emission>` of strength 1.0 and white. **It reads exactly 1.00000 in the file.**
+So the eight bit png holds linear radiance with no gamma and no view transform, which is what
+`[OpenColorIO Info]: Color management disabled` says and what every previous note in this directory
+had assumed without a measurement.
+
+**The texture node applies the transfer function in the wrong direction.** `srgb_to_linear` is
+predicted to error by 0.5129 and `pow(x, 0.4545)` by 0.0053, and the node returns the **encode**.
+A map whose bytes are sRGB encoded, read through this socket, comes out brighter than its own bytes
+at every value below one.
+
+## So the emitter change was wrong, and so was the reason it was withdrawn for
+
+Both halves of `e75a18e` are gone: it does not fix the colour space defect, and it was not fixing it
+at the writer either. It makes the environment brighter, which moved `landscape`'s numbers towards a
+rasterised frame whose sky is itself gamma encoded. That is the same kind of coincidence this
+investigation has already had to withdraw twice.
+
+`323322c` reverts it. The emitter writes no colour space and the traced file is linear radiance, and
+every measurement has a single stated baseline.
 
 ## So the attribute is not doing what the source says, and the change is wrong as stated
 
@@ -96,13 +138,16 @@ naming it does not fix it on this build.** The defect is real; this was not its 
 
 ## Not measured
 
-**Why the attribute reaches the writer.** The route from a texture's `colorspace` string to
-`oiio_output_driver.cpp`'s gamma decision is not traced, and `check_invalidate_caches` at
-`colorspace.cpp:363` is a plausible place a cached lookup could make an unrelated node's request
-decide the file's encoding. It is named here as a lead and not as a conclusion.
+**Why the texture node applies the wrong direction.** `src/util/colorspace.cpp:121-123` routes
+`u_colorspace_srgb` through `to_scene_linear`, which by its name converts *to* linear and would make
+the map darker. This build makes it brighter. The route between the socket and the returned value is
+not traced.
 
-**Whether the two frames' textures were decoded identically.** The frames establish that the
-difference is not a texture decode; they do not establish that either of them decodes the map
-correctly, which is the separate question
-[what-is-left-of-landscapes-level-gap](what-is-left-of-landscapes-level-gap.md) could not reach
-either.
+**Whether any name produces the decode.** `scene_linear` and unnamed render byte-identically, and
+`__builtin_srgb` encodes rather than decodes, so the two names this build answers to give identity
+and encode. Whether a third name decodes is **not tested**, and it is the question that decides
+whether the emitter can express this at all or whether the defect is in the build.
+
+**Whether either of them decodes the map correctly** is still unestablished. What is established is
+that the file is linear radiance, that the unnamed case uses the map's bytes as they are, and that
+naming a colour space makes the map brighter rather than darker.
