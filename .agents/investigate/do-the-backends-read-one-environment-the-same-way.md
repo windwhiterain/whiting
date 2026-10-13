@@ -106,24 +106,62 @@ varies between the two scenes is where **each camera points**, which is a real f
 The note reached the right neighbourhood by a route that could not distinguish "the world is turned
 round" from "the camera is turned round", because every measurement it used had both in it.
 
-## Where the camera fault lives, and what has not been checked
+## The camera fault, measured: one line of the exporter
 
-**The exported camera transform is `translate="-138.835897872, -173.253846809, 90.014957447"
-rotate="159.21770006141406, 0.230591282583172, 0.7615912703919129, 0.605645438569036"
-scale="-1, 1, 1"`** — and that `scale` is a **handedness flip written by whiting**. Read from
-Cycles' own source at `C:\resource\cycles`:
+Measured 2026-10-13 on `main` at `f962748` with `out/probe-camera-ray.py`, which builds **both**
+frame-centre rays and compares them in Cycles' axes. whiting's ray is
+`forward = normalize(target - eye)` (`standard/camera.rs:357-369`), carried through the same
+`(x, y, z) -> (x, -z, y)` the exported `translate` is the evidence of. The tracer's is
+`scale * rotate * (0, 0, 1)`, because Cycles looks down **+Z** and a translation does not move a
+direction.
 
-- the standalone camera looks down **+Z**, with **+X** right and **+Y** up
-  (`src/scene/camera.cpp:276`, `src/util/projection.h:265-266`, `src/kernel/camera/camera.h:186`);
-- **lights emit along −Z** (`src/scene/light.cpp:251,312`), so cameras and lights do not share a
-  convention;
-- `xml_read_transform` (`src/app/cycles_xml.cpp:684-711`) only composes translate, rotate and scale,
-  and `transform_rotate` is a plain Rodrigues rotation — **no axis swap, no negation, and no mirror
-  can be introduced on the reader's side**.
+| | direction in Cycles axes | azimuth | elevation |
+|---|---|---|---|
+| rasteriser | `[0.5405, 0.8107, -0.2252]` | **−56.31°** | −13.01° |
+| tracer | `[−0.5405, 0.8107, −0.2252]` | **−123.69°** | −13.01° |
 
-**So the `scale="-1, 1, 1"` is a compensation for a convention difference, and it is whiting's.**
-Whether it compensates correctly, and whether the quaternion beside it agrees with what
-`ray_through` gives the rasteriser, is **not measured here** and is the next thing to settle.
+**65.43 degrees apart, the elevation identical to two decimals, and the eye in the same place to
+0.0075.** Only the `x` component of the direction is negated — which is exactly what a scale of
+`-1, 1, 1` does to a direction vector and nothing else — and the two rays are strict mirror images
+about the `YZ` plane. **It is a turn and not a move.**
+
+**The rotation is not at fault.** The same ray with the scale left off is **0.0015 degrees** from
+the rasteriser's. `camera_rotation` builds `yaw = atan2(fx, fz)` and a negated pitch, and those
+already carry `+Z` onto `normalize(target - eye)`.
+
+### Why the scale is there, and what it does instead
+
+`cycles_camera_frame` (`cycles_export/scene.rs:503`) negates the local `X`, and its comment records
+a real measurement: **Cycles' camera `+X` is its own right**, and with `+Z` forward that basis is
+left-handed, so a camera with its own right-hand side needs `det = -1`. Markers on the raster
+camera's right and left came back from Cycles exchanged, at `x = 0.240` and `x = 0.818`. **Negating
+the local `X` is a correct answer to that question.**
+
+**The error is one sentence in that comment**: *"a scale written last multiplies the rotation's
+columns from the right and reaches the frame rather than the world."* The loader composes
+`translate`, then `rotate`, then `scale` (`transform.rs:13-16`), so a written scale is **`S * R`** —
+it multiplies from the **left**, in world space. `S * R` negates the `x` of **both** the forward
+column and the right column, so it does not only swap the image: **it turns the camera to face a
+different part of the world.**
+
+| composition | forward azimuth | right azimuth | determinant |
+|---|---|---|---|
+| `S * R` — written today | −123.69° | −33.69° | −1 |
+| `R * S` — folded into the rotation | **−56.31°, the raster's** | 33.69° | −1 |
+
+**`diag(-1, 1, 1)` is not a reflection that has to stay one — it is a half turn about the camera's
+own `+Y`, so it is a rotation and can be folded into `R`.** Both compositions are proper rotations
+carrying the same negative determinant the frame needs; only the order decides whether the camera
+still looks at its target.
+
+### What is not established
+
+**That `R * S` puts the image the right way round is not measured.** The two compositions differ on
+the right axis as well as on the forward one — −33.69° against 33.69° — and the handedness
+measurement recorded in `write_camera` was taken **with the camera turned away from its target**, so
+it established that a `det = -1` basis is wanted and not what that basis looks like once the camera
+is aimed correctly. Re-establishing it is a separate run with the geometry held still and only the
+transform changed, and it belongs **before** the change lands rather than after.
 
 ## Two errors of mine this note should not let anyone repeat
 
