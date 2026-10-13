@@ -56,6 +56,13 @@ is a sky. Grading cannot reconcile two pictures.
 its upper half that has been documented since 2026-10-12, and a ground that agrees to three per cent
 once each file is read the way its own writer wrote it.
 
+> **Re-measured without clipping, and the ground figure holds.** Every traced frame in this gallery
+> loses its highlights to the eight bit file and no rasterised one does — `landscape` had 11.31% of
+> its pixels with a channel at 255, so the table above was a ratio against a partly destroyed frame.
+> Rendered at `film exposure = 0.25` with the exposure divided back out, `landscape`'s ground bands
+> come out 1.037, 1.020 and 1.026 and the whole frame 1.077. See
+> [every-traced-frame-loses-its-highlights-to-the-file](every-traced-frame-loses-its-highlights-to-the-file.md).
+
 ## Two earlier readings this file overturns
 
 **`the-tone-curve-was-masking-a-ground-brightness-gap.md` said every sky agreed after grading** —
