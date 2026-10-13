@@ -110,21 +110,79 @@ region is fixed by something that is not the light.** And it is the same 10.37% 
 including the one with the boxes deleted, which is what makes it a fact about the frame rather
 than about any of these edits.
 
-**What the region is.** In the trace it is a triangle in the lower left bounded by a straight
+~~**What the region is.** In the trace it is a triangle in the lower left bounded by a straight
 diagonal — which is what the floor's **own two far edges** look like from a camera standing almost
-on its corner, and beyond them there is nothing at all to draw. The rasteriser's frame of the same
-camera shows the floor filling the lower half with all four boxes standing on it, and the
+on its corner, and beyond them there is nothing at all to draw.~~ **This was wrong, and it was
+wrong by reading the picture instead of projecting the geometry.** The rasteriser's frame of the
+same camera shows the floor filling the lower half with all four boxes standing on it, and the
 rasteriser re-renders **byte for byte**, so that frame is current and authoritative.
 
-**So the two backends are showing different geometry from a camera whose frame-centre ray is the
-same**, and the four falsifications above say it is not the light, not the boxes, not the
-triangulation and not the shadowing. **What is not checked is the field of view**: `write_camera`'s
-own comment records that the element's `width` and `height` are the camera's view plane and **not**
-the image size, and Cycles takes the view plane from `fov` and a sensor fit
-(`src/scene/camera.cpp:206,236-249`). A field of view the two read differently would change the
-whole frame while leaving the centre ray exactly where it is, which is the one shape this takes.
-**That is a hypothesis and has not been tested**, and the fix for it is a comparison of what the two
-make of `fov = 0.95` on a square frame. **Nothing in this paragraph is a diagnosis.**
+## `sunlight`'s dark ground, re-opened 2026-10-13 at `9b18b13`
+
+**The narrowing to the field of view was made on a stale document, and it does not stand.** The
+sweep that produced "lit area rises monotonically with the field of view — 0.00% at 0.55, 10.37%
+at 0.95, 19.79% at 1.40" ran against `out/now-traced-sunlight.cycles.xml`, written at **11:48 on
+2026-10-13**. The camera investigation began at **16:51 the same day** and the correction landed
+in `a81b203` at **17:57**. Re-exporting from the current tree gives a camera whose rotation differs
+in the sign of its second and third components:
+
+```text
+now-traced-sunlight.cycles.xml  rotate="158.48303192786693,  0.23142489197372607, -0.751891754173714, -0.6173340338751173"
+out/ft-sunlight.cycles.xml       rotate="158.48303192786693,  0.23142489197372607,  0.751891754173714,  0.6173340338751173"
+```
+
+**Every figure in that sweep was measured on a camera that is now known to be aimed away from its
+target, and a misdirected camera is exactly what makes lit area rise with the field of view**: widen
+the cone and it sweeps across the room until it catches something lit. The sweep is not evidence
+about the field of view. **A timestamp is not proof of what a file contains, and it was used as
+one.**
+
+### What is now established, each by its own measurement
+
+| checked | how | result |
+|---|---|---|
+| the camera's **forward** | `out/probe-camera-ray.py` | the rasteriser's to four decimals, azimuth −124.22, elevation −11.23; eye exact to six places |
+| the camera's **roll** | `out/probe-camera-roll.py` | **0.0000 degrees** on both sides |
+| the camera's **frame-centre ray**, re-checked on the corrected document | `out/probe-camera-ray.py` | **0.00 degrees** apart |
+| the **field of view** | `out/probe-camera-calibration.cycles.xml` | `fov` is the **full** angle, `1/tan(0.5 fov)`; the mapping is isotropic to 1.5% — [cycles-raster-mapping-is-calibrated.md](cycles-raster-mapping-is-calibrated.md) |
+| **clipping planes** | `C:\resource\cycles\src\scene\camera.cpp:136-137` | the sockets are `nearclip` and `farclip`, defaulting to `1e-5` and **`1e5`**. A room-scale scene cannot reach a far plane a hundred kilometres off. **Dead on the numbers, no render needed.** |
+| the **floor is drawn where it should be** | `out/probe-floor-edges.py` against the calibrated mapping | **no.** The floor's far edge projects to `(0.372, 0.443)`–`(1.312, 0.539)` and its left edge crosses the frame at `(0.0001, 0.506)`, so the floor should fill the frame below about `y = 0.45`. The traced frame has it in **10.37%** of the picture |
+
+**The camera is correct in its aim, its roll, its stand and its field of view. What is wrong is
+that the tracer draws a fraction of the geometry the camera is demonstrably pointed at.**
+
+### The sharpest falsification: the black is not a shadow
+
+The floor was given an emission so that nothing about lighting could move it, and the frame came
+back **unchanged** — `out/ft-emit2.png` against `out/ft-sunlight-traced.png`. Then the floor's
+`base_color` was set to pure red, and the lit wedge turned pure red, so the wedge **is** the floor.
+
+An emitting surface cannot be in shadow, and the sun aimed straight down cannot either — the
+earlier sun test moved the brightness of the region by 1.6 and left its area at 10.37%. **So the
+10.37% is where the camera finds the floor and the other 89.63% is where it does not.**
+
+### Two silent no-ops worth recording, because both look like measurements
+
+- **`clip_start` / `clip_end` are not socket names.** The camera's are `nearclip` and `farclip`,
+  and `xml_read_node` iterates the node's own inputs and **skips any attribute matching none**
+  (`src/graph/node_xml.cpp:53-65`). An edit writing the wrong name produces a document that reads
+  back correctly and a render identical to the baseline, which is indistinguishable from
+  "clipping is not the cause".
+- **`emission_color` alone emits nothing.** The closure needs `EmissionStrength != 0` as well and
+  that defaults to **zero**. An edit writing only the colour produced a **byte-identical** render —
+  the same trap, reached from the other side.
+
+Neither was caught by looking. Both were caught by **hashing the output against the baseline**,
+which is the only reason they are known at all.
+
+### What is open
+
+Why the tracer draws 10.37% of a floor the calibrated projection says fills the lower half. Not
+yet checked: the `viewport_camera_border` term in `screentocamera`
+(`src/scene/camera.cpp:236-247`), which the calibration held fixed by matching the camera's
+`width`/`height` to the render's `--width`/`height` and so **did not vary**; and the floor's
+`interpolation="smooth"` combined with its explicit vertex normals. **Nothing in this section is
+a diagnosis.**
 
 `tiles` reproduces its figures to the digit because its rotation is a half turn about an axis in
 the `YZ` plane, which **commutes** with `diag(-1, 1, 1)` — so the correction is provably a no-op
@@ -269,3 +327,10 @@ line of sight is worth about 1x on a horizontal ray.
   [investigate/the-ground-was-dark-because-a-surface-body-painted-its-own-air.md](the-ground-was-dark-because-a-surface-body-painted-its-own-air.md).
 - Frames: `out/gb-*.png`, `out/sky-foldyard-*.png`, `out/env-sky-traced.png`,
   `out/sky-landscape-traced.png`.
+- The `sunlight` re-opening of 2026-10-13: `out/probe-camera-roll.py`,
+  `out/probe-floor-edges.py`, `out/probe-regions.py`, `out/probe-silhouette.py`,
+  `out/probe-channels.py`, and the edits `clip`, `emitfloor`, `floorcolor`, `noboxes` in
+  `out/probe-document-edit.py`. Artefacts `out/ft-sunlight.cycles.xml`,
+  `out/ft-sunlight-traced.png`, `out/ft-emit2.png`, `out/ft-red.png`, `out/ft-nobox.png`,
+  `out/probe-camera-calibration.cycles.xml`, `out/calib.png`. The raster mapping these rest on is
+  [cycles-raster-mapping-is-calibrated.md](cycles-raster-mapping-is-calibrated.md).
