@@ -321,6 +321,38 @@ line of sight is worth about 1x on a horizontal ray.
   the framing. The 6.7% of pixels one draws and the other does not is a real difference of geometry
   and is not described by a level.
 
+## The two backends draw the same geometry on the scenes with black in them
+
+`spotlight` and `sunlight` each have pixels one side draws and the other does not — 3.4%/3.3% and
+0.03%/5.94% at a threshold of 0.02. **Those percentages cannot tell a difference of geometry from a
+difference of level**, and the two need opposite responses. A threshold sweep separates them: a
+region only one side draws because the geometry differs survives any threshold, and one that
+differs only in brightness does not.
+
+| threshold | `sunlight` tracer only | `spotlight` tracer only | `spotlight` raster only |
+|---|---|---|---|
+| 0.02 | **5.94%** | 3.27% | 3.44% |
+| 0.15 | 1.76% | 0.25% | 10.20% |
+| 0.35 | **0.02%** | **0.01%** | 8.29% |
+
+**The tracer-only region collapses to nothing on both scenes, so it is not geometry.** The tracer
+lifts a shadowed surface with the bounce off the floor around it; the rasteriser's lighting pass
+adds nothing where a fragment is unlit and leaves it exactly black. At 0.02 the tracer's shadow
+reads 0.0980 and the rasteriser's reads below the line, which is enough to put a third of the
+shadowed band on one side of an arbitrary threshold and none of it on the other.
+
+**The geometry agrees directly, and not only in aggregate.** `sunlight`'s floor silhouette, read
+column by column, agrees between the two backends to **one or two pixels in 1024** — 0.506 against
+0.505 at column 0, 0.489 against 0.489 at column 96, 0.355 against 0.355 at column 288 — from
+column 0 to column 480, which is the whole of the floor either side can see.
+
+**`spotlight`'s raster-only region grows as the threshold rises, and that is the spot's falloff.**
+The rasteriser's pool is wider and softer than the tracer's: at 0.35 the pixels only the rasteriser
+draws have a median of 0.4235 against 0.6039 on the pixels both draw, and they sit over most of
+the frame's width at rows 0.309 to 0.879. A cone whose angular falloff differs between two backends
+is a shading difference and not a framing one, and it is the same class as the ground figures
+above: logic that lives in code rather than in the document.
+
 ## What is still open, and it is not a units error any more
 
 - **A whole-frame median is the wrong statistic for a frame that is mostly background.** `spotlight`
