@@ -201,26 +201,34 @@ settled by this.**
 
 ### What is not established
 
-**The image orientation has not been settled on its own, and two measurements of it disagree.**
-A correlation of the column profiles — straight against mirrored, `out/probe-image-orientation.py` —
-says the corrected trace agrees better when flipped, at −0.5945 against 0.0670. The per-column
-ratio over the same rows says the frames are proportional across the frame, at 1.3740 against 1.3088
-with no crossing. **Those cannot both be describing the same pair of images**: one says the two
-profiles slope opposite ways, the other says they slope together.
+**The two orientation measurements were never in conflict, and the reading that made them look so
+was wrong.** `out/probe-orientation-one-statistic.py` derives the ratio curve and both correlations
+from **one profile per frame** — mean luminance down the sky rows, one number per column — so the
+two cannot disagree by construction. For the corrected trace against the rasteriser's raw lookup:
 
-The profiles as printed are small and of opposite sign — raster from −0.0262 to −0.0428, traced from
-−0.0138 to +0.0319 — against frames of about 0.5, so the band carries **12% of its own level** in
-left-right structure. That is above the noise floor and below what settles a question, and the two
-probes do not use the same statistic over the same data: one takes a **median** over pixels and
-channels of the raw RGB, the other a **mean over rows of a luma**. **Which of them is right is not
-determined here**, and picking the one that agrees with the expected answer would be picking on the
-result.
+| | raster's profile | traced profile | ratio, left to right |
+|---|---|---|---|
+| **as corrected** | falls −0.0166 | rises **+0.0457** | 1.4257 to 1.2853, span **−0.1404** |
+| as written today | falls −0.0166 | rises **+0.3938** | 1.1915 to 0.7053, span **−0.4862** |
 
-**What is settled is the ray, and it is settled exactly**: the corrected document's camera composes
-to a forward **0.000000 degrees** from the rasteriser's, and the traced frame no longer sweeps.
-**What is owed is a marker**: one unmistakable object on the rasteriser's right and one on its left,
-geometry held still and only the transform changed. That settles the orientation directly, and it
-belongs before any change to the exporter lands rather than after.
+**One description, not two: the traced sky's left-right gradient runs the other way from the
+raster's in this band.** The ratio falls by **9.8%** across the frame, and a falling ratio is not a
+constant one — which is the whole of the confusion. A ratio of 1.4257 to 1.2853 was read as
+"proportional" and a correlation of −0.5945 as "opposite", and the two were then treated as a
+contradiction. **They are the same fact.** The uncorrected trace is the control that shows the
+measure works: the same profile rises by +0.3938 instead of +0.0457 and the ratio falls by **40.8%**,
+so the correction cut the horizontal mismatch by a factor of **8.6**.
+
+**So the camera is right and something is still wrong with the sky, by a tenth of what it was.**
+That remainder is **not measured**, and it is very likely not the camera: the rasteriser reads the
+map with `textureLoad`, which takes the **nearest texel**, while Cycles samples the same 256x128
+map **filtered**, and a difference between the two on a sky with a bright horizon band and a sun
+with a bearing is asymmetric by nature. **That is a separate question and nothing here has answered
+it.**
+
+**What is owed for the image orientation is still a marker**: one unmistakable object on the
+rasteriser's right and one on its left, geometry held still and only the transform changed. The ray
+is settled exactly — 0.000000 degrees — and that is the part the camera answers.
 
 ## Two errors of mine this note should not let anyone repeat
 
@@ -237,13 +245,15 @@ window was the measurement's error and the verdict was read off it anyway** — 
 question was a ratio moving down the rows, and a sideways displacement produces exactly that as
 well, which is the trap the column-wise comparison above exists to close.
 
-**And a statistic chosen after seeing the answer is not a measurement.** The orientation probe was
-written to settle left-for-right by correlating column profiles straight against mirrored. It
-reported a verdict, and that verdict contradicted the ratio probe on the same two files. The
-profiles involved carry 12% of their own level, the two probes use different statistics over
-different reductions of the same data, and **the probe was built after the correction had already
-been made** — which is exactly the position from which any number looks like confirmation. It is
-recorded here rather than deleted, because the conflict is a fact about what is still open.
+**And a statistic chosen after seeing the answer is not a measurement.** The orientation probes were
+written to settle left-for-right by correlating column profiles straight against mirrored, and they
+were written **after the correction had already been made** — the position from which any number
+looks like confirmation. One of them reported a verdict and the note recorded it as a contradiction
+with the ratio probe. **Deriving both numbers from one profile showed there had never been a
+contradiction: a falling ratio and a negative correlation are the same fact, and the ratio was
+falling all along.** The lesson is not about correlation or about medians. It is that two readings of
+the same data, made with two different reductions and no shared array, will be read as two findings
+long before anyone checks whether they can be the same finding.
 
 ## What it cost to find
 
