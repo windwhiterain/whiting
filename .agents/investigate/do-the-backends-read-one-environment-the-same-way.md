@@ -199,6 +199,34 @@ resolved.** What is left is a **constant factor of about 1.41** across the whole
 ratio is a scale rather than a model disagreement — **that is a separate open question and is not
 settled by this.**
 
+### The fault is general, and the correction holds on a second scene
+
+The same treatment was applied to **`dunes`**, which is a different camera, a different sky and a
+different world (`out/probe-camera-ray.py`, `out/probe-camera-basis-fix.py`):
+
+| scene | as written | rotation alone | as corrected |
+|---|---|---|---|
+| `terraces` | **65.43°** from the raster's ray | 0.0015° | **0.000000°** |
+| `dunes` | **51.63°** from the raster's ray | 0.0000° | **0.0000°** |
+
+**Both cameras were turned, both elevations matched to two decimals and both eyes to five, and in
+both the rotation on its own already aims correctly.** The fault is not one scene's framing: it is
+every camera, by an amount that depends on where that camera points.
+
+**An objection was raised here and withdrawn.** `dunes` exports its rotation with the axis's `y` and
+`z` already negative while `terraces` exports them positive, which looked like the correction
+turning one scene one way and the other the other. **The sign of the axis components is not the
+marker.** `probe-camera-ray.py` on the corrected `dunes` document composes to **−117.10°, the
+raster's ray to four decimals**, so the correction is right there too.
+
+**And the frame correlation that seemed to show the correction breaking `dunes` was measuring
+something else.** Whole-frame correlation against `now-dunes.png` fell from **0.8729 to 0.1365**
+after the correction, which reads as a catastrophe — but `now-dunes.png` is the **graded**
+rasteriser frame, and `dunes`' grade paints in screen space: its own source says the cloud shadow
+*slides across the picture as the camera moves*. **A grade that depends on where the camera points
+cannot be used to judge where the camera points.** The comparison that bears on the camera is the
+raw lookup against the trace; the one that bears on the grade is a different question.
+
 ### What is not established
 
 **The two orientation measurements were never in conflict, and the reading that made them look so
