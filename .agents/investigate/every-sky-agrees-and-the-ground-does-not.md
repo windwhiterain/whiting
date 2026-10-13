@@ -82,6 +82,27 @@ half the frame is now black**. Two explanations were checked and both came back 
 was there before and was being masked** — a camera turned sixty degrees away happened to point at
 the part of the floor the misdirected sun lit. That is a separate question and it is open.
 
+**What has been checked about it, and what has not.** Four things were verified and all four came
+back correct:
+
+| checked | how | result |
+|---|---|---|
+| the camera | `out/probe-camera-ray.py` | ray is the rasteriser's to four decimals, azimuth −124.22, elevation −11.23, eye exact to six places |
+| the sun's direction | `out/probe-light-direction.py` | **0.00 degrees** from the direction the scene declared |
+| the geometry | the emitted document | the floor is the full ±8.5 quad at `z = 0` with all normals `+Z`, and all four boxes are present with their own transforms |
+| the materials | the emitted document | every `principled_bsdf` carries the scene's own `base_color` |
+
+**What is not checked, and what the frames show.** In the trace the floor is a lit wedge in the
+lower left with a straight diagonal boundary, and **none of the four boxes appear at all**, while
+the rasteriser's frame of the same camera shows the floor filling the lower half with all four
+standing on it. The far box's bearing is **10.3 degrees off the view axis**, so it is well inside
+the frame in both. The wedge's boundary is straight, which is what a shadow edge looks like and not
+what "the floor stops existing" looks like, and four boxes 1.2 to 1.6 wide with shadows 2.8 to 6.5
+long cover well under a tenth of the floor the camera can see. **So neither shadowing nor the
+geometry accounts for it, and no arithmetic on the emitted document settles it either.** What is
+needed is a probe that isolates the material from the light on that scene, and that has not been
+written. **Nothing about this paragraph is a diagnosis.**
+
 `tiles` reproduces its figures to the digit because its rotation is a half turn about an axis in
 the `YZ` plane, which **commutes** with `diag(-1, 1, 1)` — so the correction is provably a no-op
 there and its being unchanged is a check on the reasoning rather than a coincidence.
