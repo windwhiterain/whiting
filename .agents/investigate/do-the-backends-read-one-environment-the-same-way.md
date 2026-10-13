@@ -201,11 +201,26 @@ settled by this.**
 
 ### What is not established
 
-**That the corrected basis puts the image the right way round left-for-right has not been isolated
-on its own.** What the measurement above shows is that the two frames now agree in shape and differ
-by one number. A scene with one unmistakable marker on the rasteriser's right and one on its left,
-geometry held still and only the transform changed, would settle the orientation directly, and that
-is still worth running before a change to the exporter lands.
+**The image orientation has not been settled on its own, and two measurements of it disagree.**
+A correlation of the column profiles — straight against mirrored, `out/probe-image-orientation.py` —
+says the corrected trace agrees better when flipped, at −0.5945 against 0.0670. The per-column
+ratio over the same rows says the frames are proportional across the frame, at 1.3740 against 1.3088
+with no crossing. **Those cannot both be describing the same pair of images**: one says the two
+profiles slope opposite ways, the other says they slope together.
+
+The profiles as printed are small and of opposite sign — raster from −0.0262 to −0.0428, traced from
+−0.0138 to +0.0319 — against frames of about 0.5, so the band carries **12% of its own level** in
+left-right structure. That is above the noise floor and below what settles a question, and the two
+probes do not use the same statistic over the same data: one takes a **median** over pixels and
+channels of the raw RGB, the other a **mean over rows of a luma**. **Which of them is right is not
+determined here**, and picking the one that agrees with the expected answer would be picking on the
+result.
+
+**What is settled is the ray, and it is settled exactly**: the corrected document's camera composes
+to a forward **0.000000 degrees** from the rasteriser's, and the traced frame no longer sweeps.
+**What is owed is a marker**: one unmistakable object on the rasteriser's right and one on its left,
+geometry held still and only the transform changed. That settles the orientation directly, and it
+belongs before any change to the exporter lands rather than after.
 
 ## Two errors of mine this note should not let anyone repeat
 
@@ -221,6 +236,14 @@ window was the measurement's error and the verdict was read off it anyway** — 
 **A row median is a statistic that hides a displacement.** The original evidence for this whole
 question was a ratio moving down the rows, and a sideways displacement produces exactly that as
 well, which is the trap the column-wise comparison above exists to close.
+
+**And a statistic chosen after seeing the answer is not a measurement.** The orientation probe was
+written to settle left-for-right by correlating column profiles straight against mirrored. It
+reported a verdict, and that verdict contradicted the ratio probe on the same two files. The
+profiles involved carry 12% of their own level, the two probes use different statistics over
+different reductions of the same data, and **the probe was built after the correction had already
+been made** — which is exactly the position from which any number looks like confirmation. It is
+recorded here rather than deleted, because the conflict is a fact about what is still open.
 
 ## What it cost to find
 
