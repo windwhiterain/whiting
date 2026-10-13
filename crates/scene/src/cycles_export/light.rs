@@ -366,17 +366,57 @@ fn write_light_element(writer: &mut Writer, light: &Light) {
             let outer = light.outer_angle.unwrap_or(std::f64::consts::FRAC_PI_4);
             let inner = light.inner_angle.unwrap_or(outer).min(outer);
             attributes.push(("angle", format!("{}", outer * 2.0)));
-            // `smooth` is the width of the falloff band as a fraction of the cone, so a zero
-            // here is the hard cutoff the loader treats as infinitely sharp.
-            attributes.push((
-                "smooth",
-                format!("{}", ((outer - inner) / outer).max(0.001)),
-            ));
+            attributes.push(("smooth", format!("{}", solid_angle_fraction(inner, outer))));
         }
         _ => {}
     }
 
     writer.leaf("light", &attributes);
+}
+
+/// Returns how much of a cone's solid angle its falloff band occupies.
+///
+/// # Why the band is measured in solid angle and not in degrees
+///
+/// The kernel reads `smooth` as a fraction of `1 - cos(angle / 2)`
+/// (`src/scene/light.cpp:177-180`):
+///
+/// ```text
+/// const float spot_smooth = 1.0f / ((1.0f - cos_half_spot_angle) * smooth);
+/// ```
+///
+/// and `2 pi (1 - cos t)` is the solid angle of a cone of half angle `t`. So `smooth` is the
+/// share of the outer cone's **solid angle** that the band occupies, counted inward from its rim.
+/// That is the same sentence Blender's own manual gives for its `Blend` slider — the value is
+/// "that amount of space that the inner cone should occupy inside the outer cone Size".
+///
+/// This function used to write the fraction of the **angle** instead, `(outer - inner) / outer`,
+/// and the two are the same only while the cone is narrow. `(1 - cos outer)` is `outer^2 / 2`
+/// plus fourth-order terms, so an angle fraction is within a few per cent of a solid angle
+/// fraction only while `outer` is a few degrees. A wide cone is where the two part company, and
+/// the error is always the same sign: the angle fraction is the smaller one, so the band written
+/// is too narrow and the core of full strength comes out wider than the document asked.
+///
+/// Measured on `spotlight`, whose cone runs from 9.17 to 32.09 degrees: **0.714286 written,
+/// 0.916379 wanted**, and Cycles reached full strength at **16.99 degrees** off axis where the
+/// scene asked for 9.17. Rendering the same document twice with only this number changed, both
+/// at `max_bounce="0"`, moved the root mean square gap to the rasterised curve over 10 to 30
+/// degrees off axis from **0.2744 to 0.1721**.
+///
+/// See `.agents/investigate/the-spot-cone-is-written-as-a-fraction-of-the-angle.md`.
+///
+/// # The zero
+///
+/// `1 - cos(outer)` is zero for a cone of no angle at all, and the loader is already degenerate
+/// there — it divides by zero and reads the result as an infinite sharpness. The denominator is
+/// floored rather than the cone refused, because a cone of zero angle is a legal document and the
+/// loader has an answer for it; what must not happen is this function writing a `NaN`.
+///
+/// A band of no width — `inner == outer`, a hard cutoff — is zero, and a zero here would make the
+/// loader's `1 / (... * smooth)` infinite, which is the hard edge it draws when asked for one. The
+/// thousandth is the smallest fraction that keeps that division finite and still reads as an edge.
+fn solid_angle_fraction(inner: f64, outer: f64) -> f64 {
+    ((inner.cos() - outer.cos()) / (1.0 - outer.cos()).max(f64::EPSILON)).max(0.001)
 }
 
 /// The rotation to write for a light, in degrees.
