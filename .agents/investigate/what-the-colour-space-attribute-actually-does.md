@@ -74,6 +74,37 @@ predicted to error by 0.5129 and `pow(x, 0.4545)` by 0.0053, and the node return
 A map whose bytes are sRGB encoded, read through this socket, comes out brighter than its own bytes
 at every value below one.
 
+## Whether any name decodes: no, and that is the whole answer
+
+Eight names, one generated ramp, one camera frame covering the whole unit interval
+(`out/probe-colorspace-sweep.py`):
+
+| name | what the frame follows | largest error | loader |
+|---|---|---|---|
+| *(unnamed)* | identity | 0.00000 | accepted |
+| `scene_linear` | identity | 0.00000 | accepted |
+| `__builtin_srgb` | `pow(x, 0.4545)` | 0.00528 | accepted |
+| `srgb` | identity | 0.00000 | **rejected** |
+| `linear` | identity | 0.00000 | **rejected** |
+| `Non-Color` | identity | 0.00000 | **rejected** |
+| `data` | identity | 0.00000 | accepted |
+| `raw` | identity | 0.00000 | accepted |
+
+**No name decodes.** The four the loader accepts give identity three times and the encode once; the
+three it rejects fall back to scene linear, which is identity here.
+
+A sweep rather than one guess because a single name failing would not have established that the
+build cannot do it, and the answer changes where a fix lives. This establishes it:
+
+- **A name that decodes** would make the defect an emitter defect, fixed by one attribute.
+- **No name decodes** — what is measured here — puts it in the build or in how this build is
+  configured, and **no attribute the emitter writes will change it.**
+
+The three rejected names are worth recording for a second reason: `srgb`, `linear` and `Non-Color`
+are the spellings a person reaches for, `Non-Color` and `linear` being Blender's own, and each one
+is refused with `Color space '<name>' could not be found`. A rejected name renders exactly as if it
+had not been written, so a document that looks like it names a colour space may name nothing at all.
+
 ## So the emitter change was wrong, and so was the reason it was withdrawn for
 
 Both halves of `e75a18e` are gone: it does not fix the colour space defect, and it was not fixing it
@@ -143,11 +174,12 @@ naming it does not fix it on this build.** The defect is real; this was not its 
 the map darker. This build makes it brighter. The route between the socket and the returned value is
 not traced.
 
-**Whether any name produces the decode.** `scene_linear` and unnamed render byte-identically, and
-`__builtin_srgb` encodes rather than decodes, so the two names this build answers to give identity
-and encode. Whether a third name decodes is **not tested**, and it is the question that decides
-whether the emitter can express this at all or whether the defect is in the build.
+**Whether the build could be made to decode.** The sweep covers the names the loader's own
+`ColorSpaceManager` enumerates plus the three a person would reach for. It does not cover changing
+`$OCIO`, installing a configuration, or a different build, and the log says
+`[OpenColorIO Info]: Color management disabled. (Specify the $OCIO environment variable to enable.)`,
+so **whether a configuration exists that decodes is open** and is the first thing to try next.
 
-**Whether either of them decodes the map correctly** is still unestablished. What is established is
-that the file is linear radiance, that the unnamed case uses the map's bytes as they are, and that
-naming a colour space makes the map brighter rather than darker.
+**Whether either path decodes the map correctly** is still unestablished. What is established is
+that the file is linear radiance, that the unnamed case uses the map's bytes as they are, that
+naming a colour space makes the map brighter rather than darker, and that no name tried decodes.
