@@ -56,20 +56,33 @@ Grade constants read out of each scene's `GRADE` in the source, not out of any n
 
 | scene | graded/rasterised, whole frame | per band | pearson, whole frame |
 |---|---|---|---|
-| `dunes` | **1.086** | 1.077 – 1.107 | **0.967** |
-| `landscape` | **1.077** | 1.020 – 1.174 | 0.884 |
+| `dunes` | **1.003** | 1.000 – 1.006 | **0.9940** |
+| `landscape` | **0.981** | 0.936 – 1.006 | 0.9289 |
 | `terraces` | **1.505** | 1.097 – 1.845 | **0.288** |
 
-**`dunes` is the clean answer and it is good.** Shape correlation 0.967, rising to 0.98 – 0.99 in the
-ground bands, and the level is **a uniform 8.6 per cent** with no sky/ground split at all — the
-signature `landscape` did not have. Removing the bounce changes almost nothing: the bounce-free
-frame is 0.7501 against 0.7520, so **indirect light is not the residual**. Eight per cent, uniform,
-with the shape right, is a level mapping difference and not a disagreement about the picture.
+> **The first two rows were 1.086 and 1.077 when this table was written, and both were measured with
+> `e75a18e` in the tree.** That attribute was reverted at `323322c` after it was measured to be an
+> sRGB **encode** applied by the texture node rather than a decode. Re-measured on the shipped build
+> — frames `rlx-dunes` `670379bb34674ce3` and `rlx-landscape` `4be19e8be0b9871e`, traced at film
+> exposure 0.25 with the exposure divided back out — **`dunes` agrees to three parts in a thousand
+> and `landscape` to under two per cent**, and `dunes`' per band pearson is 0.9912 to 0.9982.
+>
+> **So the systematic disagreement this file recorded for `dunes` and `landscape` was caused by the
+> colour space attribute, not by either renderer.** The attribute brightened the environment, which
+> read as an improvement on the raw comparison and was then carried through the graded comparison as
+> if it were a fix.
 
-**`landscape`'s ground claim survives the clipping.** Re-measured unclipped it is 1.037, 1.020 and
-1.026 across its three ground bands — inside four per cent, so the three and a half per cent quoted
-before was not an artefact of the clip. Its pearson stays low in the upper bands (0.199, 0.381,
-0.450) because that is where it paints.
+**`dunes` is the clean answer and it is very good.** Shape correlation **0.9940** over the whole
+frame and 0.9912 to 0.9982 in every band, and the level is **one part in a thousand**, with no
+sky/ground split at all. Removing the bounce changes almost nothing: the bounce-free frame is 0.7501
+against 0.7520 on the earlier build, so **indirect light is not a residual**. A scene whose sky is a
+sky on both sides, read each frame the way its own writer wrote it, with nothing clipped, agrees to
+three decimal places.
+
+**`landscape`'s ground claim survives both corrections.** Its three ground bands are 1.004, 0.999 and
+1.006, and its sky bands 0.936 to 0.987 — closer than the four per cent quoted before, and closer
+than the 1.020 to 1.037 quoted before that. Its pearson stays low in the upper bands (0.192, 0.539,
+0.512) because that is where it paints ranges, shafts and cirrus.
 
 **`terraces` is not clipping and it is not close.** 1.505 and 0.288 are the same with the exposure at
 one and at a quarter, so the clipped file is not why it is out. Its picture genuinely differs: the
