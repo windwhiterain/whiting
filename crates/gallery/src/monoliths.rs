@@ -160,7 +160,7 @@ pub fn monoliths() -> Value {
             Value::List(
                 mesh_shaders(SURFACE, "")
                     .into_iter()
-                    .chain(std::iter::once(post_shader(GRADE, "", None)))
+                    .chain(std::iter::once(post_shader(GRADE, SKY_WGSL, None)))
                     .collect(),
             ),
         ),
@@ -210,9 +210,14 @@ pub fn monoliths() -> Value {
 /// reflection off a smooth surface follows the same Fresnel term the shading already
 /// computed, so it is strongest where the surface is seen edge on and vanishes where it
 /// is seen flat on — which is the whole of what makes a flat plane read as a liquid one.
+///
+/// **Nothing here is measured against the distance to the eye.** the body used to mix toward
+/// a `wet` literal by `1 - exp(-from_eye * 0.004)`, which is a wash of air with the air's own
+/// physics left out: no height, no ray, and a colour that is a constant rather than the sky in
+/// the direction of the surface. that is the post stage's work now, and what is left here is
+/// the one thing that needs a normal.
 const SURFACE: &str = r#"
     let eye = uniforms.projection.position;
-    let from_eye = length(eye - in.world_position);
     let view = normalize(in.world_position - eye);
     let grazing = pow(1.0 - abs(dot(normal, view)), 3.0);
     // The name is not the lighting stage's: this is written into the same function, so a
@@ -222,23 +227,61 @@ const SURFACE: &str = r#"
     // a stone are drawn by the same pass with the same shader, so without this both would
     // be as reflective as the wettest thing in the scene.
     let amount = in.material.z;
-    let haze = 1.0 - exp(-from_eye * 0.004);
     color = color + wet * grazing * amount * 1.6;
-    color = mix(color, wet, clamp(haze * 0.9 * amount, 0.0, 0.96));
+"#;
+
+/// The sky this scene draws, as a function the post stage can call more than once.
+///
+/// # Invariants
+///
+/// **The law is written once and the sky and the air both call it.** it used to be three
+/// literals inside the branch that fills in the sky — a branch that draws only the pixels no
+/// geometry covered — which meant the air in front of a surface could not be the colour of the
+/// air behind it without copying three numbers out of a block nothing else can see.
+const SKY_WGSL: &str = r#"
+fn sky_at(ray: vec3<f32>) -> vec3<f32> {
+    let above = pow(clamp(ray.y, 0.0, 1.0), 0.5);
+    let horizon = vec3<f32>(0.82, 0.66, 0.48);
+    let zenith = vec3<f32>(0.10, 0.19, 0.42);
+    let below = vec3<f32>(0.40, 0.34, 0.30);
+    return select(mix(horizon, below, clamp(-ray.y * 4.0, 0.0, 1.0)),
+                  mix(horizon, zenith, above),
+                  ray.y > 0.0);
+}
 "#;
 
 /// What the post stage does to the frame.
+///
+/// # Invariants
+///
+/// **The air goes on before the curve, over the geometry and not over the sky.** the sky is
+/// already the far distance and is drawn whole above; what has to be crossed with air is
+/// everything between the eye and it. By the rule at `cycles_backend.md:501` this is the
+/// stage's work: it used to be mixed into the surface body, which meant a law written once
+/// was applied by two passes that could disagree about it, and the only way to change the
+/// air was to change a material.
+///
+/// **The air is no longer weighted by the material's own row.** it used to be
+/// `haze * 0.9 * amount`, so only the wet floor stood in it and the stones stood clear of it.
+/// A post stage cannot ask a surface how wet it is — there is no normal, no material row and
+/// no attachment but the depth — and building an attachment so that it could is the change
+/// this rule exists to prevent. Every distant thing now stands in the same air, which is what
+/// air does.
 const GRADE: &str = r#"
     if depth >= 1.0 {
+        color = sky_at(ray_through(in.uv));
+    }
+    if depth < 1.0 {
         let ray = ray_through(in.uv);
-        let above = pow(clamp(ray.y, 0.0, 1.0), 0.5);
-        let horizon = vec3<f32>(0.82, 0.66, 0.48);
-        let zenith = vec3<f32>(0.10, 0.19, 0.42);
-        let below = vec3<f32>(0.40, 0.34, 0.30);
-        let sky = select(mix(horizon, below, clamp(-ray.y * 4.0, 0.0, 1.0)),
-                         mix(horizon, zenith, above),
-                         ray.y > 0.0);
-        color = sky;
+        // `distance_to` is along the view and the ray is not the view, so the two differ by
+        // the ray's own component of it. The ray is a unit vector, so what comes out is also
+        // how far the fragment is from the eye, which is the distance the air is measured over.
+        let along_ray = distance_to(depth) / max(dot(ray, uniforms.camera.forward), 0.0001);
+        let air = clamp(1.0 - exp(-along_ray * 0.004) * 0.9, 0.0, 0.96);
+        // The ray's height is held to the horizon for the colour, because the air in front of
+        // a surface takes the colour of the sky *behind* that surface and not the colour of
+        // the ground the ray happens to be pointing into.
+        color = mix(color, sky_at(vec3<f32>(ray.x, max(ray.y, -0.03), ray.z)), air);
     }
     color = color / (color + vec3<f32>(1.0));
     color = pow(color, vec3<f32>(0.4545));

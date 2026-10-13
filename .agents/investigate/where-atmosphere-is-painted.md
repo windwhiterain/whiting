@@ -86,10 +86,12 @@ concession.
 
 ## Not settled here
 
-**Whether the ground rows move.** `monoliths` measures `0.971` and `tidewater` `0.699` on the
-census, so neither is currently paying a visible price for painting its own air, and the tracer
-cannot have air over geometry in either case: this build registers no `volume_absorption` or
-`volume_scatter`, and `principled_volume` leaves a 360000 pixel frame bit-identical at a density of
-8.0 ([this-build-cannot-express-a-volume.md](this-build-cannot-express-a-volume.md)). Moving the
-law is therefore a statement about **where the air is written down**, not a measurable gain against
+**Whether the ground rows move.** `tidewater` measures `0.699` on the census of 2026-10-12, and
+`monoliths` **has no row in that census at all** — it was never measured against the tracer. The
+`0.971` in the ground column is `spotlight`'s, which is how this paragraph first put it on
+`monoliths`. And the tracer cannot have air over geometry in either case: this build registers no
+`volume_absorption` or `volume_scatter`, and `principled_volume` leaves a 360000 pixel frame
+bit-identical at a density of 8.0
+([this-build-cannot-express-a-volume.md](this-build-cannot-express-a-volume.md)). Moving the law
+is therefore a statement about **where the air is written down**, not a measurable gain against
 the other backend, and this note does not claim one.
