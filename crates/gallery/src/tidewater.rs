@@ -252,7 +252,7 @@ pub fn tidewater() -> Value {
                     )))
                     .chain(std::iter::once(post_shader(
                         GRADE,
-                        &helpers,
+                        &post_helpers(),
                         Some(Projection::Latlong),
                     )))
                     .collect(),
@@ -472,7 +472,17 @@ fn standing_instances(material: &str) -> Vec<Value> {
 /// copy be declared once and used by a lighting pass and a post pass at the same time —
 /// which is the only way two stages that draw the same air can be made to agree about it.
 fn shared_helpers() -> String {
-    format!("{}\n{}\n{}", HASH_WGSL, sky_wgsl(), AERIAL_WGSL)
+    format!("{}\n{}", HASH_WGSL, sky_wgsl())
+}
+
+/// The helpers the post stage runs with, which is the shared ones and this scene's air.
+///
+/// **The air is here and not in `shared_helpers`** because it is the post stage's alone. It
+/// used to be shared, which is what let two geometry bodies each mix toward it; a helper that
+/// is only reachable from the stage that applies it is a helper that cannot be reached from a
+/// body that should not.
+fn post_helpers() -> String {
+    format!("{}\n{}", shared_helpers(), AERIAL_WGSL)
 }
 
 /// The sun's direction and the sky it lights, as WGSL both stages use.
@@ -557,13 +567,20 @@ fn hash(point: vec2<f32>) -> f32 {
 /// a lake rather than hanging in it, and the falloff is steep enough that the far shore
 /// stands clear of it. A fog with no height term is a wash of grey over everything at every
 /// distance, which reads as a dirty lens rather than as weather.
+///
+/// This is the **post stage's** air and not a body's, by the rule at `cycles_backend.md:501`.
+/// It used to be two bodies' air — the shore mixed toward it at the lighting stage and the
+/// lake at the emission stage — which meant a law with three inputs lived in a place that
+/// had two of them and had to be told the third, and a place where a change to it was a
+/// change to two surfaces. Here it is written once, over the whole frame, by the stage that
+/// has both the ray and the distance.
 const AERIAL_WGSL: &str = r#"
 /// How much of the sky a point at this distance through this air is seen through.
 ///
 /// `height` is the point's own height above the water and not its distance from the eye. A
 /// mist that is a function of distance alone is a fog that is a function of the camera, and
 /// moving the camera changes the weather.
-fn aerial_penetration(distance: f32, height: f32, facing: f32) -> f32 {
+fn aerial_depth(eye_height: f32, point_height: f32, length: f32) -> f32 {
     // The mist burns off. This and the water are the scene's whole motion, and a dawn whose
     // fog never lifts is a fog rather than a morning: what changes over half a minute is the
     // air, not the land.
@@ -573,21 +590,34 @@ fn aerial_penetration(distance: f32, height: f32, facing: f32) -> f32 {
     // falloff has to be steep enough that a tree fifteen units up is barely in it at all —
     // otherwise the far shore dissolves into the sky at exactly the distance where a
     // silhouette is the whole of the photograph, and the frame has no dark in it anywhere.
-    let density = exp(-max(height, 0.0) * 0.22) * 0.00026 * thinning;
-    // More air along a line that grazes the surface than along one that goes into it, which
-    // is the same reason a distant road is paler than a near one.
-    let slant = 1.0 + facing * 2.4;
-    return 1.0 - exp(-distance * density * slant);
+    let falloff = 0.22;
+    // **The integral of that density along the line of sight, and not the density at the far
+    // end of it.** the closed form of `∫₀^L exp(-k·h)ds` for a height running linearly from
+    // the eye to the point is `L·(1 - exp(-k·Δh))/(k·Δh)`, and the limit as `Δh` goes to
+    // nothing is `L` itself — a horizontal ray through one height. The shape term is what
+    // makes a ray that climbs into thinner air accumulate less and a ray that drops into
+    // denser air accumulate more, and it is what `slant = 1 + facing * 2.4` was standing in
+    // for: a density sampled once at the endpoint cannot tell those apart, so it was given a
+    // boost with the slope of the surface in it. the post stage has the ray and the
+    // endpoint's height and needs neither, and integrating is the honest statement of what a
+    // medium between two points actually does.
+    let rise = falloff * (point_height - eye_height);
+    let shape = select((1.0 - exp(-rise)) / rise, 1.0, abs(rise) < 0.0001);
+    return 0.00026 * thinning * length * exp(-falloff * max(eye_height, 0.0)) * shape;
 }
 
-/// The colour the air has made a surface at this distance, seen along this way.
+/// The colour the air has made a surface, seen along this way.
 ///
 /// The fog takes the colour of the sky **in the direction of the surface** and not a
 /// constant. This is what closes the horizon: a far surface and the air it is seen against
 /// are then the same colour by the same function, and a mist of one flat grey is the thing
 /// that produces a visible seam instead.
-fn aerial_colour(eye: vec3<f32>, point: vec3<f32>) -> vec3<f32> {
-    let ray = normalize(point - eye);
+///
+/// The ray is the post stage's own `ray_through`, which is the direction the pixel was drawn
+/// along and therefore the direction the air was crossed in — there is no second ray here
+/// recovered from a position, because there is no position: what the depth buffer gave was
+/// how far, and the direction was already known.
+fn aerial_colour(ray: vec3<f32>) -> vec3<f32> {
     return sky_colour(vec3<f32>(ray.x, max(ray.y, -0.03), ray.z));
 }
 "#;
@@ -692,11 +722,11 @@ fn water_body() -> String {
     let glitter_half = normalize(SUN_DIRECTION + view);
     let glitter = pow(max(dot(wave_normal, glitter_half), 0.0), 240.0) * 0.5;
     water = water + vec3<f32>(1.0, 0.66, 0.40) * glitter;
+    emitted = water;
 
-    // The mist, over the top of both. A lake with air lying on it is not a mirror but a
-    // sheet, and the reflection softens into the distance rather than stopping at it.
-    let penetration = aerial_penetration(from_eye, in.world_position.y, facing);
-    emitted = mix(water, aerial_colour(eye, in.world_position), clamp(penetration, 0.0, 0.97));
+    // **No mist here.** it used to be mixed in here, on top of the reflection and the glitter,
+    // so that the lake carried its own air; it is the post stage's now, and it crosses this
+    // fragment on the way out exactly as it crosses the shore behind it.
 "#
     )
 }
@@ -727,10 +757,12 @@ const REED_SWAY: Block = wgsl!(
 /// # Invariants
 ///
 /// Neither is lit by much but the sun, and both are seen against a sky far brighter than
-/// they are, so most of what a fragment of shore looks like is the air in front of it. The
-/// tint is nearly black on purpose: a silhouette is not a dark object but an object with
-/// the sky's colour *around* it and very little of its own, and a shore given a legible
-/// surface colour reads as a painted backdrop instead.
+/// they are, so most of what a fragment of shore looks like is the air in front of it — but
+/// that air is the post stage's, applied over this fragment like every other, and **nothing
+/// here mixes toward it.** the body is left with the one decision that needs this stage: how
+/// dark the shore's own shading is. The tint is nearly black on purpose: a silhouette is not
+/// a dark object but an object with the sky's colour *around* it and very little of its own,
+/// and a shore given a legible surface colour reads as a painted backdrop instead.
 const SHORE: Block = wgsl!(
     r#"
     // A backlit shore is a silhouette, and a silhouette is mostly the air in front of it.
@@ -742,17 +774,6 @@ const SHORE: Block = wgsl!(
     // peak while its diffuse term is a fiftieth of it — and no tint on the material can
     // bring it down, because the tint is not in the specular.
     color = color * 0.55;
-
-    let eye = uniforms.projection.position;
-    let to_eye = eye - in.world_position;
-    let from_eye = length(to_eye);
-    let view = to_eye / from_eye;
-
-    // And then the air puts the sky back, more the further off and the lower down it is.
-    // This is the whole of what a distant shore is made of.
-    let facing = 1.0 - clamp(dot(normal, view), 0.0, 1.0);
-    let penetration = aerial_penetration(from_eye, in.world_position.y, facing);
-    color = mix(color, aerial_colour(eye, in.world_position), clamp(penetration, 0.0, 0.985));
 "#
 );
 
@@ -763,8 +784,9 @@ const SHORE: Block = wgsl!(
 /// The order is the reason this reads as a photograph rather than as a render with a filter
 /// on it:
 ///
-/// - **The sky, from the same function the water reflected.** Everything the depth prepass
-///   never reached.
+/// - **The air over the geometry, then the sky where there is none.** this is the stage's
+///   own work and not a body's, by the rule at `cycles_backend.md:501`, and it is where the
+///   scene's mist is now written down.
 /// - **Exposure, then white balance, then a filmic curve.** A curve is what lets a sun that
 ///   is genuinely brighter than the frame roll off into white with its colour still in it.
 /// - **Grain and a vignette last**, because they belong to the film rather than to the
@@ -783,6 +805,23 @@ const GRADE: Block = wgsl!(
     // over one stretch of water.
     if depth >= 1.0 {
         color = environment_sky(ray_through(in.uv));
+    }
+
+    // **The air, over the geometry and not over the sky.** the sky is already the far
+    // distance and is drawn whole above; what has to be crossed with air is everything
+    // between the eye and it. Both halves come out of the depth buffer and the camera basis:
+    // the ray is the direction the pixel was drawn along, `distance_to` is how far along the
+    // view the fragment is, and dividing by the ray's own component of the view turns that
+    // into how far along *this* ray — which, the ray being a unit vector, is also how far
+    // the fragment is from the eye. The height of the fragment above the water is then a
+    // difference of two components of that reconstruction, and it is what the law needs.
+    if depth < 1.0 {
+        let ray = ray_through(in.uv);
+        let eye = uniforms.camera.position;
+        let along_ray = distance_to(depth) / max(dot(ray, uniforms.camera.forward), 0.0001);
+        let point = eye + ray * along_ray;
+        let depth_of_air = aerial_depth(eye.y, point.y, along_ray);
+        color = mix(color, aerial_colour(ray), clamp(1.0 - exp(-depth_of_air), 0.0, 0.985));
     }
 
     // Exposure. A photograph is exposed once and this is the one place it is decided; the
