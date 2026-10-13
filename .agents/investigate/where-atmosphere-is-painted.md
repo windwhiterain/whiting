@@ -7,20 +7,21 @@ post process.* A rule about names cannot be applied to that question, because a 
 name its air whatever it likes. So: **which bodies in the gallery decide a fragment's appearance
 from the distance between that fragment and the eye, and what do they decide?**
 
-**Answer, measured 2026-10-13** against `.worktrees/terraces`, the worktree that rendered the
-frames in [every-sky-agrees-and-the-ground-does-not.md](every-sky-agrees-and-the-ground-does-not.md).
-27 source files under `crates/gallery/src`, walked recursively. **Three bodies, in two scenes:**
+**Answer, measured 2026-10-13** against the gallery on `main`, 27 source files under
+`crates/gallery/src`, walked recursively. **Three bodies, in two scenes, and all three have since
+moved to the post stage** (see below):
 
-| scene | body | stage | what it decides from the distance |
-|---|---|---|---|
-| `tidewater` | `SHORE` | lighting | mixes toward `aerial_colour` by `aerial_penetration`, clamped at `0.985` |
-| `tidewater` | `water_body()` | emission | mixes toward `aerial_colour` by `aerial_penetration`, clamped at `0.97` |
-| `monoliths` | `SURFACE` | lighting | mixes toward the local literal `wet` by `1 - exp(-from_eye * 0.004)`, weighted by the material's own `amount` |
+| scene | body | stage | what it decided from the distance | now |
+|---|---|---|---|---|
+| `tidewater` | `SHORE` | lighting | mixes toward `aerial_colour` by `aerial_penetration`, clamped at `0.985` | the post stage |
+| `tidewater` | `water_body()` | emission | mixes toward `aerial_colour` by `aerial_penetration`, clamped at `0.97` | the post stage |
+| `monoliths` | `SURFACE` | lighting | mixes toward the local literal `wet` by `1 - exp(-from_eye * 0.004)`, weighted by the material's own `amount` | the post stage |
 
-**Reproduction.** `out/survey-distance-mix.py`, gitignored, so it is not the evidence — the
-source lines it prints are. It reads the gallery's source rather than the built scenes, because
-the question is which bodies *mention* a distance, and a body that mentions it in a comment is
-worth knowing about too.
+**Re-run today, it reports nothing, and that is a different claim from the one above.** The
+survey is `out/survey-distance-mix.py`, gitignored, so it is not the evidence — the source lines
+it prints are. It reads the gallery's source rather than the built scenes, because the question is
+which bodies *mention* a distance, and a body that mentions it in a comment is worth knowing
+about too.
 
 ## Why the earlier wording could not be applied
 
@@ -38,7 +39,7 @@ clause's own three reasons — a post stage cannot correct it, a tone curve cann
 cannot reproduce — applied to both all the same, so the document was stating reasons it did not
 enforce.
 
-## Three blind spots in the survey, each of which would have reported a clean scene
+## Four blind spots in the survey, each of which would have reported a clean scene
 
 These are recorded because each produced a **negative** result, and a negative result is the kind
 that has to be earned.
@@ -56,6 +57,17 @@ that has to be earned.
    `pool` and `skin` — material patterns. Four reflections were reported as four pieces of
    atmosphere. `to_eye` is no longer a distance signal; `from_eye`, a distance against the eye
    position, and `length(eye - in.world_position)` are.
+4. **Looking for the distance's own name in the painting line missed a body that laundered it.**
+   The tightened filter required a line that decides `color` or `emitted` to *mention* a distance,
+   and on the old `monoliths` body it found nothing — because that body bound
+   `haze = 1.0 - exp(-from_eye * 0.004)` and then painted by `haze`. The names a distance can
+   travel under are now followed to a fixed point through `let` bindings.
+
+**And the survey was checked by pointing it at a violation on purpose.** Blind spot 4 was found
+because the probe takes its root as an argument and was given a directory holding `monoliths` as
+it stood before the move: it now fires on that text and names the line. **A survey that reports
+nothing is only evidence if the same survey reports something when given something to find**, and
+this one had been reporting nothing for a reason that had nothing to do with the gallery.
 
 The search is also deliberately not `mix(` alone: a body can multiply colour by a distance factor
 rather than mix toward a colour, and that is the form most likely to be written by someone who is

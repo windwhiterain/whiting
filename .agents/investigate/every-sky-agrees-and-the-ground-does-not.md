@@ -41,7 +41,13 @@ against a tracer that is handed the tint once. it now reads:
 
 | scene | whole | sky | lower 62% | ground |
 |---|---|---|---|---|
-| `foldyard`, after | **1.042** | 1.089 | 0.963 | **0.982** |
+| `tidewater`, after | 0.886 | 1.059 | 0.745 | **0.680** |
+
+**the other scene with air in the wrong place is `monoliths`, and it has no row in this table at
+all.** it declares no environment light, so the tracer draws it black — traced sky median
+`0.0000`, ground `0.0039` — while its raster paints a sky of post-only literals. a ratio of
+`85.4` on the ground is a measurement of the absence of a world, not of agreement, which is why
+it is not here and why the "both black" rows above are the ones that actually say something.
 
 so the worst whole-frame scene in the table above became the best matched, and the only reason to
 look at this table again is that its other rows may hide the same shape of mistake.
@@ -59,7 +65,7 @@ mystery. **two of the three are limitations the format already has; one was a bu
 | `spotlight` | 0.971 | likewise |
 | `tiles` | 1.285 | **the material image the tracer cannot be handed.** the raster's body is `color * (0.25 + 1.5 * pattern)` and the exporter reports the image and exports without it (`LossyMode::Degrade`), so the ratio is exactly that multiplier — the measured 1.285 says the pattern averages **0.69**. recorded at `cycles_backend.md`, materials. |
 | `terraces` | 0.499 | **the albedo is decided per fragment** and a tracer is handed the material row, which says white. structural. |
-| `tidewater` | 0.699 | **no discrete cause found.** the shore is a near-black surface and the water is an emission-stage procedural mirror, which is black in the tracer; both bands' linear medians are near `0.02`–`0.03`, so the ratio is a statistic over a very dark region rather than a level that is wrong by half. |
+| `tidewater` | 0.699 → **0.680** | **the air was in the wrong place, and moving it cost brightness.** the shore mixed toward `aerial_colour` at the lighting stage and the lake at the emission stage, by a law whose `slant = 1 + facing * 2.4` was worth up to 3.4x at grazing incidence. the post stage applies the real integral instead, which is about 1x on a horizontal ray, so the ground band fell. it was still **no discrete cause** for the residual: both bands' linear medians are near `0.02`–`0.03`, so this is a statistic over a very dark region rather than a level that is wrong by half. |
 | `foldyard` | 0.274 → **0.982** | **the bug.** the ground body applied `in.tint` a second time, and the tint is `0.232`. |
 
 re-measured 2026-10-13 against the current branch, all rows reproducing the 2026-10-12 figures to
@@ -72,11 +78,21 @@ sides, which is the correct agreement: the tracer draws black for a scene with n
 does the raster post stage once it stops painting one of its own.
 
 **The ground does not follow, and two scenes are the reason.** `foldyard` at 0.274 and `tidewater`
-at 0.699 are the two that paint aerial perspective in their **post** stage — which the SPEC permits
-and requires, having moved atmosphere out of the surface bodies. A path tracer draws no fog unless
-it is given a volume, and the exporter carries none, so a scene that paints haze in its grade has
-painted something the tracer cannot have. That is the same class of difference as a painted ridge
-silhouette, sanctioned by a decision that is otherwise right.
+at 0.699 were the two scenes carrying air the tracer cannot have. A path tracer draws no fog
+unless it is given a volume, and the exporter carries none, so a scene that paints haze has
+painted something the other backend cannot reproduce. That is the same class of difference as a
+painted ridge silhouette, sanctioned by a decision that is otherwise right.
+
+**Corrected 2026-10-13: the two were not the same case, and this paragraph said they were.**
+`foldyard` painted its air in its **post** stage, over geometry, from a world position recovered
+from the depth buffer (`foldyard.rs:1626`). `tidewater` painted its air in its **bodies** — the
+shore at the lighting stage and the lake at the emission stage — and its post stage touched only
+the sky, under `if depth >= 1.0`. Reading the code rather than the summary is what caught it: the
+two scenes were both "the ones that paint air" and neither was in the other's place. Under the
+stage rule decided on 2026-10-13 both are now in the post stage, and `tidewater`'s ground reads
+**0.680**. The direction of that move was predicted in advance and it fell: the old law's
+`slant = 1 + facing * 2.4` was worth up to 3.4x at grazing incidence, and an integral along the
+line of sight is worth about 1x on a horizontal ray.
 
 ## The two that are not comparable
 

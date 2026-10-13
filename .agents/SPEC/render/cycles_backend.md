@@ -509,15 +509,66 @@ found `monoliths` and `tidewater` both satisfying that wording while both did th
 `monoliths` mixes toward a local literal `wet`, `tidewater` toward its own `aerial_colour()`, and
 **neither file so much as names `air.rs`**. what the clause is about is what a body **computes** —
 a distance from the eye to this fragment, and a colour decided by it — which is the shape of aerial
-perspective whatever a scene chooses to call it. the three bodies that do it, and the three blind
-spots in the survey that found them, are in
+perspective whatever a scene chooses to call it. the three bodies that were doing it, and the
+four blind spots in the survey that found them, are in
 [investigate/where-atmosphere-is-painted.md](../../investigate/where-atmosphere-is-painted.md).
 
+**all three have moved, measured 2026-10-13 at 1024x1024.** `tidewater`'s two were the shore
+mixing toward `aerial_colour` at the lighting stage and the lake doing the same at the emission
+stage; the law is now the integral of the density along the line of sight rather than the
+density at the far end with `slant = 1 + facing * 2.4` bolted on, which is what let it go — the
+slant term needed a normal, and the integral needs only the ray and the endpoint's height:
+
+| `tidewater` camera 0 | bodies | post |
+|---|---|---|
+| whole | 0.920 | 0.886 |
+| sky | 1.059 | **1.059** |
+| lower 62% | 0.769 | 0.745 |
+| ground | 0.699 | 0.680 |
+
+**the sky is unchanged to the digit, and that is the check the move is verified by**: rows 0 to
+84 agree to four decimals between the two raster frames, because the post stage applies the air
+only where the depth buffer says geometry was drawn. **the ground ratio falls, and that was
+predicted before the change was made** — `slant` was worth up to 3.4x at grazing incidence and a
+horizontal ray's integral is worth about 1x, so the air thinned exactly where the old law had
+inflated it.
+
+`monoliths` had **no row in the census at all** and still cannot have one: it declares no
+environment light, its sky is post-only literals, and the tracer draws it black (traced sky
+median `0.0000`, ground `0.0039`), so a ratio against it would measure the absence of a world.
+What it does have is a picture, and the move is visible in the picture:
+
+| `monoliths` | before | after |
+|---|---|---|
+| sky rows, median | unchanged to four decimals | unchanged to four decimals |
+| ground rows, median | — | +1% to +10%, growing to the near floor |
+| row 264 dark tail | 0.2040 | **0.4885** |
+| row 276 dark tail | 0.0890 | **0.4953** |
+
+**the median says almost nothing about that and the dark tail says all of it.** the stones are a
+small fraction of the rows they stand in, so the row median moves by one or two percent while the
+tenth percentile — what the darkest thing in the row is made of — moves by a factor of five.
+Before, the monoliths were `0.089` against a `0.60` median: hard black edges with the morning
+pasted behind them. That is the defect this clause exists to prevent, and it is now a measurement
+rather than an assertion.
+
+**what the air costs is a constant the scene owns, and it was left alone.** both scenes' density
+constants are unchanged; they were tuned against a law that had a fudge in it, and whether a
+scene wants more air than an honest integral gives is a question about the picture, not about
+where the air is written down.
+
 **what post has, and what it has not, is why the move is not mechanical.** a post stage recovers
-where a fragment was: `ray_through(in.uv)` (`shaders.rs:2619`) gives the direction through the
-pixel, `distance_to(depth)` (`shaders.rs:2642`) the distance along the view, and the camera uniform
-the eye — so the world position, and its height above the water, follows from those three. it has
-**no normal**: the post pass binds a colour target, a depth buffer and the environment map, and
+where a fragment was: `world_position(uv, depth)` (`shaders.rs:2674`) inverts the depth buffer
+against the whole view-projection, and `ray_through` (`shaders.rs:2619`) is what it inverts along.
+the world position, and its height above the water, follows from those and the camera uniform.
+**that recovery is the shared stage's and not a scene's** — `foldyard` and `terraces` each carried
+a copy of it, character for character, and a third scene then wrote a fourth spelling, so four
+answers to a question the depth buffer has one of; all three now call the one beside
+`ray_through` and `distance_to`, and the relocation is measured to be byte-identical on every
+frame of both scenes that had a copy. `distance_to` stays because it answers a different question,
+a distance **along the view**, which is what `stilllife`'s depth of field wants.
+
+it has **no normal**: the post pass binds a colour target, a depth buffer and the environment map, and
 nothing else. a law whose weight is a function of the surface normal therefore cannot move as
 written. `tidewater`'s is — `facing = 1 - clamp(dot(normal, view), 0, 1)` feeding
 `slant = 1 + facing * 2.4` — and it is **replaced rather than dropped**: an exponential-height
