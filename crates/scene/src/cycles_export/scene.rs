@@ -471,6 +471,7 @@ fn write_camera(writer: &mut Writer, camera: &Camera) {
         &transform_attributes(
             &cycles_camera_frame(&camera.transform),
             axes::Rotation::Frame,
+            true,
         ),
     );
     writer.leaf(
@@ -487,12 +488,47 @@ fn write_camera(writer: &mut Writer, camera: &Camera) {
 
 /// A camera's transform with the mirror Cycles' camera frame needs.
 ///
-/// # Why it lands on `scale`
+/// # The camera needs a negative determinant
 ///
-/// The loader composes `translate`, then `rotate`, then `scale`
-/// (`src/app/cycles_xml.cpp:694-710`), so a scale written last multiplies the rotation's columns
-/// from the right and reaches the frame rather than the world. Negating the local `X` is the
-/// whole of it; see [`write_camera`] for the measurement that forces the sign.
+/// Cycles draws the camera's own `+X` on the **right** of the frame: `rastertocamera` is
+/// `screentocamera * rastertoscreen` (`src/scene/camera.cpp:265`), both factors are positive
+/// diagonals (`src/scene/camera.cpp:236-249`), so a point on the `+X` side of the view axis
+/// lands at a larger raster `x`. Measured on a document that holds nothing but the camera and
+/// three triangles: world `+X` rendered at `x = 0.027` and world `-X` at `x = 0.969`.
+///
+/// A camera whose `+X` is its own right-hand side is therefore **left-handed**, because its `+Z`
+/// is the direction it looks along. For orthonormal columns `a, b, c` of a rotation,
+/// `b * c = det * a`, so a camera with its own right-hand side forces `det = -1` and no rotation
+/// can stand in for the reflection: one about the view axis flips right **and** up, and one about
+/// `up` turns the camera away from its target. Both were measured.
+///
+/// # The scale is necessary and is not sufficient
+///
+/// The reflection rides in the transform's `scale`, because that is the only place the format can
+/// put one. **What it cannot do alone is keep the aim.** The loader applies `matrix`, then
+/// `translate`, then `rotate`, then `scale`, each multiplied onto the enclosing scope
+/// (`src/app/cycles_xml.cpp:694-710`), so a written scale is **`S * R`** — it multiplies from the
+/// **left**, in **world** space — and `S = diag(-1, 1, 1)` negates the `x` of **every** column, the
+/// forward one included. A camera whose forward is written by [`camera_rotation`] is therefore
+/// turned away from its target: measured at **65.43 degrees** on `terraces` and **51.63 degrees**
+/// on `dunes`, with the elevation matching to two decimals and the eye to five, and with the
+/// rotation on its own already aiming correctly in both.
+///
+/// **An earlier version of this comment said the scale "multiplies the rotation's columns from the
+/// right and reaches the frame rather than the world". That is backwards, and it is the whole
+/// reason the fault survived as long as it did**: it predicted a swap of the image and predicted
+/// an aim that was untouched, and the aim is precisely what is broken.
+///
+/// # What balances it
+///
+/// The rotation written must be **`S * R * S`**, which the loader composes to
+/// `S * (S * R * S) = R * S`. That is the wanted basis: the forward and the up are `R`'s own, the
+/// right axis is negated because `R` is a rotation and carries its `x` column as `up * forward`
+/// rather than the other way round, and the determinant is `-1`. In the quaternion
+/// [`transform::axis_angle`] produces, `S * R * S` is `(w, v_x, -v_y, -v_z)`: the scalar and the
+/// `x` component stand, the other two change sign. **Both halves are required.** The scale alone
+/// turns the camera and the mirror alone loses the handedness the frame needs, and either one on
+/// its own would be a scene that loads, renders, and is wrong in a way nothing reports.
 ///
 /// # Why it is not folded into `read_camera`
 ///
@@ -1000,7 +1036,7 @@ fn write_instances(
         if instance_has_transform(&instance.transform) {
             writer.open(
                 "transform",
-                &transform_attributes(&instance.transform, axes::Rotation::Points),
+                &transform_attributes(&instance.transform, axes::Rotation::Points, false),
             );
         }
         writer.open(
@@ -1041,6 +1077,7 @@ fn instance_has_transform(transform: &Transform) -> bool {
 fn transform_attributes(
     transform: &Transform,
     kind: axes::Rotation,
+    mirror: bool,
 ) -> Vec<(&'static str, String)> {
     let mut attributes = Vec::with_capacity(3);
     if transform.translation != [0.0; 3] {
@@ -1050,7 +1087,16 @@ fn transform_attributes(
             Writer::color(translation[0], translation[1], translation[2]),
         ));
     }
-    if let Some((axis, angle)) = transform::axis_angle(transform.rotation, kind) {
+    if let Some((mut axis, angle)) = transform::axis_angle(transform.rotation, kind) {
+        // **The camera's frame is mirrored, and a scale on its own cannot say so.** The reasoning
+        // and the measurement that forced it are in [`cycles_camera_frame`]; this is only the
+        // arithmetic, kept here because this is where the attribute is built. The two are kept
+        // apart deliberately: a correction whose explanation lives at the call site is one edit
+        // away from being copied somewhere it does not belong.
+        if mirror {
+            axis[1] = -axis[1];
+            axis[2] = -axis[2];
+        }
         attributes.push((
             "rotate",
             format!("{}, {}, {}, {}", angle, axis[0], axis[1], axis[2]),

@@ -36,6 +36,56 @@ reason alone.
 | `lanterns` | not comparable — see below | | | |
 | `monoliths` | not comparable — it has no world to compare against | | | |
 
+## Re-measured 2026-10-13 at `7ddcef6`, with the camera's frame mirror balanced
+
+**Every sky the tracer can draw is between 1.001 and 1.089, and `terraces` is no longer the
+exception.** The camera was turned away from its target by an angle that depended on where the
+camera pointed — 65.43 degrees on `terraces`, 51.63 on `dunes` — and the fix is described in
+[do-the-backends-read-one-environment-the-same-way.md](do-the-backends-read-one-environment-the-same-way.md).
+The rasteriser's frames are unchanged and byte-reproducible, so every "before" here is the same
+picture the "after" is compared against.
+
+| scene | whole | sky | lower 62% | ground |
+|---|---|---|---|---|
+| `dunes` | 1.249 | **1.001** | 1.583 | 1.649 |
+| `landscape` | 1.112 | **1.024** | 0.839 | 0.954 |
+| `tidewater` | 0.886 | **1.059** | 0.745 | 0.680 |
+| `foldyard` | 1.017 | **1.089** | 0.982 | 1.010 |
+| `terraces` | 0.471 | **0.966** | 0.456 | 0.443 |
+| `tiles` | 1.184 | both black | 1.134 | 1.285 |
+| `sunlight` | median 0 | both black | median 0 | median 0 |
+| `spotlight` | median 0 | both black | median 0 | median 0 |
+
+**What improved.** `terraces` sky **0.857 to 0.966**, `landscape` sky 1.040 to 1.024, and
+`foldyard` whole **0.342 to 1.017** — the scene whose camera was most wrong is the one that moved
+most, which is what a camera fault looks like when it is removed rather than fitted. `dunes` sky
+is 1.001 as it was, because its map is uniform in azimuth and cannot see a camera fault at all.
+
+**What got worse, and why that is not a reason to put the camera back.** `dunes` ground 1.048 to
+1.649 and `terraces` whole 0.531 to 0.471. Both frames now contain the ground the rasteriser is
+looking at rather than ground sixty degrees away from it, so the ground figure is a number about
+different geometry. The ground was never expected to agree — it carries per-fragment albedo a
+tracer is not handed — and **a census that improved by keeping the camera wrong would be the same
+trade dressed as a repair that this repository has already reverted once.**
+
+**What is newly open.** `sunlight` and `spotlight` now read a **median of zero** on the traced side,
+where they read 0.850 and 1.177. The trace is not black — `sunlight`'s maximum is 0.4667 and
+10.37% of its pixels are above 0.002, against 52.76% in the rasteriser's frame — so **more than
+half the frame is now black**. Two explanations were checked and both came back clean:
+
+- **the camera**: the corrected document's frame-centre ray is the rasteriser's to four decimals,
+  azimuth −124.22 and elevation −11.23, with the eye exact to six places;
+- **the light**: the sun the emitter wrote emits **0.00 degrees** from the direction the scene
+  declared (`out/probe-light-direction.py`).
+
+**So the camera is not the cause and the light is not the cause, and whatever darkens `sunlight`
+was there before and was being masked** — a camera turned sixty degrees away happened to point at
+the part of the floor the misdirected sun lit. That is a separate question and it is open.
+
+`tiles` reproduces its figures to the digit because its rotation is a half turn about an axis in
+the `YZ` plane, which **commutes** with `diag(-1, 1, 1)` — so the correction is provably a no-op
+there and its being unchanged is a check on the reasoning rather than a coincidence.
+
 **re-measured 2026-10-13 at `a1397e3`, after `tidewater`'s air moved into its post stage.** every
 row not touched this session reproduces the 2026-10-12 figures to the digit — `dunes` 1.048,
 `landscape` 0.948, `sunlight` 0.957, `spotlight` 0.971, `tiles` 1.285 — and the two that changed are
