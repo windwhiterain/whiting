@@ -66,14 +66,32 @@ Chasing that is not this change's job; recording it is.
 
 ## Verification
 
+Done, in `e75a18e`.
+
 1. `cargo run --release -p whiting-device-cycles --example render_cycles -- landscape out/cs-landscape.png 32`
    and the row-band table from `out/probe-world-colorspace.py`, against the same rasterised frame
    `f7c00ad9cc65d009`.
-2. The warning pair must shrink to **one** line — the one belonging to the other lookup — and not to
-   zero. Zero would mean the second lookup was never unnamed and the note above is wrong.
-3. Re-run `out/probe-census-both-graded.py` over the whole gallery. `dunes` and `terraces` carry skies
-   as well and their bounce-free ratios were 0.952 and 0.928; they are expected to move and it is not
-   known which way, so they are measured rather than predicted.
+2. **The emitted document is byte identical to the hand edited variant** the measurement was taken
+   on (`out/cs-landscape.cycles.xml` and `out/wc-named.cycles.xml` are the same sha256), and so is
+   the frame (`e1c3b08c5ab3e6cd` both). The number above is therefore what the shipped emitter
+   produces, not what a hand edited file produces.
+3. `cargo test --release -p whiting-scene` passes.
+4. Re-run `out/probe-census-both-graded.py` over the whole gallery. **Not done** — `dunes` and
+   `terraces` carry skies as well and their bounce-free ratios were 0.952 and 0.928; they are
+   expected to move and it is not known which way, so they are measured rather than predicted.
+
+### The check that was planned and turned out to be worthless
+
+The first version of this file said the warning pair "must shrink to one line — the one belonging to
+the other lookup — and not to zero", on the reasoning that it named the environment map's space.
+
+It does not move at all. `out/wc-named.log` still carries the same two lines that
+`out/wx-a-shipped.log` does, and so does `out/wx-c-unconnected.log`, which is a document with **no
+environment texture in it**. `colorspace.cpp:400` caches the miss under the empty name, so the first
+node to ask warns and every later one is silent. The count is independent of what was fixed.
+
+**A check whose result cannot move is not a check.** The image is the evidence here, and the image
+moved.
 
 ## Not included
 

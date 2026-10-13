@@ -52,6 +52,16 @@ The name in both lines is empty, and it is empty because the socket's default is
 empty string. `colorspace.cpp:391-401` then takes the "not found" branch and caches scene linear for
 it.
 
+**These two lines are not evidence about the environment map, and counting them proves nothing.**
+They appear, unchanged and the same number of times, in the render of a document that carries **no
+environment texture at all** (`out/wx-c-unconnected.log`), and naming the colour space does not
+reduce them: `out/wc-named.log` still has exactly the pair. `colorspace.cpp:400` caches the miss under
+the empty name, so however many nodes ask, the first one warns and the rest are silent. A warning
+whose count is independent of the thing being fixed cannot be the check that the thing was fixed, and
+the first version of this file claimed it was.
+
+The image is the evidence, not the log.
+
 ## `__builtin_srgb` is the correct name, not a constant that happened to help
 
 Two independent reasons, and the second is the one that matters.
@@ -94,10 +104,8 @@ background node's own colour.
 **The fix does not close the scene.** After naming the colour space the sky is still 0.82 to 0.87 of
 the rasterised frame and the near ground is 1.17 to 1.24 *hot*, in opposite directions. The
 whole-frame mean of 0.993 is an average over two errors that do not cancel cleanly and should not be
-read as agreement.
-
-**The warning is not only about the environment map.** It appears in the render of the document that
-has no environment texture at all, so a second, unidentified colour space lookup is also unnamed.
+read as agreement. On the median over shared pixels the ground moved the wrong way too, 1.13 to 1.21
+and 1.29 to 1.36, so the change helped the sky and did nothing for the ground.
 
 **Only `landscape` was measured.** `dunes` and `terraces` carry skies too and neither was re-rendered
 under the change.
