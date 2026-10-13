@@ -34,6 +34,18 @@ reason alone.
 | `tiles` | 1.184 | both black | 1.134 | 1.285 |
 | `lanterns` | not comparable — see below | | | |
 
+**corrected 2026-10-13, `foldyard`, re-measured after the albedo was applied once.** the table
+above read the ground at `0.274` and the whole frame at `0.342`; the cause was the scene's ground
+body multiplying by `in.tint` a second time, which made the rasterised ground the tint squared
+against a tracer that is handed the tint once. it now reads:
+
+| scene | whole | sky | lower 62% | ground |
+|---|---|---|---|---|
+| `foldyard`, after | **1.042** | 1.089 | 0.963 | **0.982** |
+
+so the worst whole-frame scene in the table above became the best matched, and the only reason to
+look at this table again is that its other rows may hide the same shape of mistake.
+
 **Where both backends have a sky, they now hold the same radiance.** The four scenes that declare
 an environment light read `1.001`, `1.040`, `1.059` and `1.085` — from a scene that was at `0.111`
 and one that was at `2.817` an hour earlier. The four that declare none have a black sky on **both**

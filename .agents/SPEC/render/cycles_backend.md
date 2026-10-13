@@ -187,6 +187,40 @@ is arranged to prevent.
 field for either. they are stated as the dielectric defaults rather than left to the node's own,
 so a reader of the document does not have to know them to know what was meant.
 
+### a surface body must not re-apply the albedo the shading already carries
+
+`base_color` **is** honoured, which was verified rather than assumed: a `principled_bsdf` carrying
+`base_color="0.85, 0.30, 0.08"` renders a saturated orange-red, with a dielectric highlight that
+goes yellow-white near the light. the exporter writes `material.tint` there
+(`cycles_export/material.rs:206`), and the template's own diffuse is
+`in.tint * (1 - metallic)`. **so a body spliced at `{surface}` receives a colour that already has
+the material's albedo in it**, and multiplying by `in.tint` there applies it twice.
+
+`foldyard` did exactly that, and it was the largest disagreement in the gallery. its ground tint is
+`[0.232, 0.238, 0.152]`, so the two backends should have differed by exactly the tint — and the
+ground band, measured as the ratio of medians of linear radiance, read **0.274**, which is the
+tint to within eighteen percent.
+
+| | before | after |
+|---|---|---|
+| ground | 0.274 | **0.982** |
+| whole frame | 0.342 | **1.042** |
+| lower 62% | 0.384 | 0.963 |
+| pearson, whole frame | +0.6047 | **+0.8278** |
+
+the number was predicted from the scene before anything was changed, and the fix landed where the
+prediction said, which is the only reason this is written as a finding rather than as a repair.
+
+**a survey of every body in the gallery found this shape once.** `terraces` has the same kind of
+body and never had the bug, because its material row is white and a white multiplied twice is the
+white it was. `stilllife` names `in.tint` too and is correct: its term is **added**
+(`color + fresnel * room_environment(...) * in.tint`), and a reflection carrying the colour of what
+reflects it is the right physics rather than a second coat of paint.
+
+**the rule this leaves is that a body's multiplier is about one.** that is what makes a body
+portable at all: a second backend is handed the material row and nothing else, so anything a body
+does with a quantity the row already states is a quantity only one backend has.
+
 ## Camera
 
 ### the frame is the scene's, and the camera node is not the buffer
