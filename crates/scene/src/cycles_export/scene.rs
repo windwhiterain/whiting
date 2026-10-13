@@ -471,7 +471,6 @@ fn write_camera(writer: &mut Writer, camera: &Camera) {
         &transform_attributes(
             &cycles_camera_frame(&camera.transform),
             axes::Rotation::Frame,
-            true,
         ),
     );
     writer.leaf(
@@ -502,33 +501,35 @@ fn write_camera(writer: &mut Writer, camera: &Camera) {
 /// can stand in for the reflection: one about the view axis flips right **and** up, and one about
 /// `up` turns the camera away from its target. Both were measured.
 ///
-/// # The scale is necessary and is not sufficient
+/// # The scale reaches the frame, not the world
 ///
-/// The reflection rides in the transform's `scale`, because that is the only place the format can
-/// put one. **What it cannot do alone is keep the aim.** The loader applies `matrix`, then
-/// `translate`, then `rotate`, then `scale`, each multiplied onto the enclosing scope
-/// (`src/app/cycles_xml.cpp:694-710`), so a written scale is **`S * R`** — it multiplies from the
-/// **left**, in **world** space — and `S = diag(-1, 1, 1)` negates the `x` of **every** column, the
-/// forward one included. A camera whose forward is written by [`camera_rotation`] is therefore
-/// turned away from its target: measured at **65.43 degrees** on `terraces` and **51.63 degrees**
-/// on `dunes`, with the elevation matching to two decimals and the eye to five, and with the
-/// rotation on its own already aiming correctly in both.
+/// This is the whole of the correction, and an earlier version of this comment got it backwards
+/// in a way that cost the gallery its cameras. **The loader right-multiplies**:
+/// `tfm = tfm * transform_translate(..)`, then `tfm = tfm * transform_rotate(..)`, then
+/// `tfm = tfm * transform_scale(..)` (`src/app/cycles_xml.cpp:694-710`). For a transform written
+/// at the top of a scope the result is `T * R * S`, so the scale lands on the **camera's own
+/// frame**, on the right, and `S = diag(-1, 1, 1)` negates the local `X` **column** while `Y`,
+/// `Z` and the translation stand. `S * R` — the scale in world space, turning the camera away —
+/// is not what the loader computes.
 ///
-/// **An earlier version of this comment said the scale "multiplies the rotation's columns from the
-/// right and reaches the frame rather than the world". That is backwards, and it is the whole
-/// reason the fault survived as long as it did**: it predicted a swap of the image and predicted
-/// an aim that was untouched, and the aim is precisely what is broken.
+/// Measured on a document holding nothing but a camera with **no rotation** and that one scale:
+/// the frame came back **mirrored left to right and otherwise identical**. The marker on the
+/// camera's local `+X` moved from raster `x = 0.984` to `x = 0.015`; the markers on local `±Y`
+/// did not move at all. A world-side `S * R` would have moved the aim instead, and the aim did
+/// not move.
 ///
-/// # What balances it
+/// # What a correction built on the wrong reading cost
 ///
-/// The rotation written must be **`S * R * S`**, which the loader composes to
-/// `S * (S * R * S) = R * S`. That is the wanted basis: the forward and the up are `R`'s own, the
-/// right axis is negated because `R` is a rotation and carries its `x` column as `up * forward`
-/// rather than the other way round, and the determinant is `-1`. In the quaternion
-/// [`transform::axis_angle`] produces, `S * R * S` is `(w, v_x, -v_y, -v_z)`: the scalar and the
-/// `x` component stand, the other two change sign. **Both halves are required.** The scale alone
-/// turns the camera and the mirror alone loses the handedness the frame needs, and either one on
-/// its own would be a scene that loads, renders, and is wrong in a way nothing reports.
+/// The rotation was rewritten as `S * R * S`, in the axis-angle form `(w, v_x, -v_y, -v_z)`, to
+/// cancel a `S * R` that never happens. Under the loader that composition is
+/// `(S * R * S) * S = S * R`, so the forward became `S * (R * forward)`: the camera was mirrored
+/// in `x` about its own axis, a turn of `2 * atan2(forward.x, forward.z)` from its target.
+/// Measured on `sunlight`, one line of the document differing from the pre-correction export:
+/// **59.597%** of the frame drawn before, **10.372%** after, against 52.757% in the rasterised
+/// frame. On `foldyard` the courtyard left the picture entirely.
+///
+/// What this function returns is therefore the **only** mirror: the local `X` negated and the
+/// rotation the scene asked for, untouched.
 ///
 /// # Why it is not folded into `read_camera`
 ///
@@ -1036,7 +1037,7 @@ fn write_instances(
         if instance_has_transform(&instance.transform) {
             writer.open(
                 "transform",
-                &transform_attributes(&instance.transform, axes::Rotation::Points, false),
+                &transform_attributes(&instance.transform, axes::Rotation::Points),
             );
         }
         writer.open(
@@ -1077,7 +1078,6 @@ fn instance_has_transform(transform: &Transform) -> bool {
 fn transform_attributes(
     transform: &Transform,
     kind: axes::Rotation,
-    mirror: bool,
 ) -> Vec<(&'static str, String)> {
     let mut attributes = Vec::with_capacity(3);
     if transform.translation != [0.0; 3] {
@@ -1087,16 +1087,7 @@ fn transform_attributes(
             Writer::color(translation[0], translation[1], translation[2]),
         ));
     }
-    if let Some((mut axis, angle)) = transform::axis_angle(transform.rotation, kind) {
-        // **The camera's frame is mirrored, and a scale on its own cannot say so.** The reasoning
-        // and the measurement that forced it are in [`cycles_camera_frame`]; this is only the
-        // arithmetic, kept here because this is where the attribute is built. The two are kept
-        // apart deliberately: a correction whose explanation lives at the call site is one edit
-        // away from being copied somewhere it does not belong.
-        if mirror {
-            axis[1] = -axis[1];
-            axis[2] = -axis[2];
-        }
+    if let Some((axis, angle)) = transform::axis_angle(transform.rotation, kind) {
         attributes.push((
             "rotate",
             format!("{}, {}, {}, {}", angle, axis[0], axis[1], axis[2]),
