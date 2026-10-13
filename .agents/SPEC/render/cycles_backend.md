@@ -883,8 +883,8 @@ has no headroom. **that reads as a live defect in three scenes and is not one.**
 |---|---|---|---|---|
 | `dunes` | 256×128 | 0.700 | 0.687 | 0.000% |
 | `landscape` | 256×128 | 1.390 | 0.813 | 0.000% |
-| `foldyard` | 192×96 | 2.042 | 0.582 | 0.000% |
-| `terraces` | 256×128 | 19.360 | **2.580** | **2.325%** |
+| `foldyard` | 512×256 | 2.042 | 1.716 | 0.002% |
+| `terraces` | 256×128 | 19.360 | **2.580** | **0.754%** |
 
 **the upper bound is each term's maximum, added.** the terms do not all peak on one ray, so it is
 what a clamp has to be sized against rather than a measurement of any texel — and on three
@@ -901,22 +901,35 @@ the fix is the `environment` radiance field — a map stored at one over that ra
 shader's multiply brings it back and the headroom the format lacks is the radiance itself — and it
 is not applied here because it would change three scenes already measured against a raster frame.
 
-### and the defect that is real is resolution: a map can miss a feature the shader draws
+### a map can miss a feature the shader draws, and `foldyard`'s sun was one
 
-**`foldyard`'s sun is not in its map.** its disc is `smoothstep(0.99995, …)`, a cap of about
-**0.57°**, and a `192 × 96` latlong texel is about **1.9°** across. no sample lands inside the cap,
-and its brightest texel — **0.582** — is its horizon, with no disc and no glow anywhere in it.
+**`foldyard`'s map carried no sun at all.** its disc is `smoothstep(0.99995, …)`, a cap of about
+**0.573°**, and a `192 × 96` latlong texel is about **1.875°** across, so no sample could land
+inside it. measured by sweeping the size and reading the disc term the brightest texel received:
 
-this is the same defect as the banding above, seen from the other side. a nearest read of a small
-map cannot represent a small feature, and the post stage now reads the map rather than the law,
-so **`foldyard`'s rasterised frame has lost a sun it drew correctly before.** the number the
-correlation reports did not move, because a 0.57° disc in a 1024×1024 frame is a handful of pixels;
-the loss is real and small, and it is the kind of thing a frame-to-frame diff finds and a
-statistic does not.
+| map | texel | the disc term |
+|---|---|---|
+| 192 × 96 | 1.875° | **0.0000** |
+| 256 × 128 | 1.406° | **0.0000** |
+| 512 × 256 | 0.703° | **1.0000** |
 
-**one resolution does not serve both questions.** the lighting stage wants a *blurred* sky — that
-is what a roughness-selected mip is for — and the post stage wants the *sharpest* one it can carry,
-because it is drawing a picture. a map sized for the first is banded in the second.
+**the map is now `512 × 256`.** that is the first size whose texel centres can fall inside a
+`0.573°` cap, and it restores the invariant the module states — the map is the same law as the
+shader, term for term. the sun's own pixels then clip (`0.002%` of texels, brightest **1.716**),
+which is the format's limit and not a scene's error.
+
+**and no picture changed, which is the part that corrects an earlier claim here.** all three
+`foldyard` cameras were rendered at both sizes and the sky band's maximum is the same to within a
+level — **108 against 108**, **167 against 168**, **155 against 155**. the sun is at **28°
+elevation** and **no `foldyard` camera frames it**, so the map was carrying a sun the picture had
+never shown and never lost. what the defect actually was is a divergence between two readings of
+one law, which is worth fixing on its own terms and is not worth a frame.
+
+**one resolution does not serve both questions, and the two answers here disagree.** the lighting
+stage wants a *blurred* sky — that is what a roughness-selected mip is for — and the post stage
+wants the sharpest one it can carry, because it is drawing a picture. `terraces` was measured at
+both `256 × 128` and `1024 × 512` and **the larger map bought nothing**, while `foldyard` needs
+four times the linear size to hold a disc. a size cannot be chosen once for the gallery.
 
 ### the exported world is written in this engine's axes, and Cycles' are not the same
 

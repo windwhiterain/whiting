@@ -324,12 +324,27 @@ pub fn foldyard() -> Value {
             ]),
         ),
         (
+            // **Five hundred and twelve by two hundred and fifty six, and the number is a
+            // measurement rather than a preference.** at the `192 x 96` this was, a texel is
+            // `1.875` degrees across and the sun's disc is `0.573`; no sample lands inside the
+            // disc, the map carried no sun at all, and the rasterised frame lost one it drew
+            // correctly before its post stage began reading the map.
+            //
+            // | map | texel | the disc term the brightest texel received |
+            // |---|---|---|
+            // | 192 x 96 | 1.875 deg | **0.0000** |
+            // | 256 x 128 | 1.406 deg | **0.0000** |
+            // | 512 x 256 | 0.703 deg | **1.0000** |
+            //
+            // the first size whose texel centres can fall inside a `0.573` degree cap, and the
+            // cheapest one. this is the same law as every other map in the gallery -- it is not
+            // that a latlong map cannot hold a sun, it is that this one was too coarse to.
             "images".to_owned(),
             Value::List(vec![image(
                 "air",
-                192,
-                96,
-                atmosphere().environment_pixels(192, 96),
+                512,
+                256,
+                atmosphere().environment_pixels(512, 256),
                 Projection::Latlong,
             )]),
         ),
