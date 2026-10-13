@@ -266,21 +266,34 @@ frames by either of the two detectors tried:
   row 316**, 118 rows apart, purely on which end the search started from
   (`out/probe-skyline-gradient.py`).
 
-**The reason neither works is that these frames contain two horizontal edges and a detector cannot
-tell them apart**: the map's bright horizon band is an edge in the sky, and the terrain against the
-sky is the other. That is also why the map resolution moved the answer so far — a sixteen-times
-finer map softens the band's edge just enough for the detector to prefer the other one. **The same
-scene, the same camera, the same geometry, two different rows.**
+**The reason neither works is that these frames contain two horizontal edges and the terrain's is
+an order of magnitude the weaker.** The map's bright horizon band is an edge in the sky and the
+terrain against the sky is the other, and their measured strengths are not close:
+
+| edge | strength |
+|---|---|
+| the map's horizon band, in the rasteriser's frames | **0.039 to 0.043** |
+| the terrain silhouette, in a trace against a sky with no edge at all | **0.0040** |
+
+**So the terrain is a ten-times weaker edge than the thing competing with it**, and no threshold on
+one statistic separates them reliably. That is not a detector written badly; it is what the picture
+is. It is also why the map resolution moved the answer so far — a sixteen-times finer map softens
+the band's edge just enough to change which one a threshold prefers.
+
+A trace against a **synthetic sky of two flat halves**, which has no horizontal edge in it at all,
+puts the corrected camera's terrain at **row 507** and the uncorrected one at **none found at
+all** — and the step it found is the 0.0040 above, barely over the threshold rather than clear of
+it.
 
 **So the residue is not yet attributable to anything**, because the window it is measured over is
 not known to hold the same content in both frames. The camera's part is settled exactly, and the
 camera was the fault. What remains is either a real second fault or an artefact of a comparison
 whose window was never checked — and the two are not distinguishable until the window is.
 
-**What would settle the window**: a frame with **no horizontal edge in the sky at all**, so the only
-edge left is terrain. A synthetic map of two flat halves already is that, and tracing it through the
-corrected camera would put the terrain's row on record. A marker scene would settle the orientation
-at the same time.
+**What would settle the window is a scene whose foreground contrasts**, because the terrain's own
+edge is an order of magnitude too weak to find against this sky, and no amount of care with a
+threshold changes that. A marker on each side would settle the orientation at the same time. Both
+are scene code, and neither has been written.
 
 ## Two errors of mine this note should not let anyone repeat
 
