@@ -220,15 +220,47 @@ measure works: the same profile rises by +0.3938 instead of +0.0457 and the rati
 so the correction cut the horizontal mismatch by a factor of **8.6**.
 
 **So the camera is right and something is still wrong with the sky, by a tenth of what it was.**
-That remainder is **not measured**, and it is very likely not the camera: the rasteriser reads the
-map with `textureLoad`, which takes the **nearest texel**, while Cycles samples the same 256x128
-map **filtered**, and a difference between the two on a sky with a bright horizon band and a sun
-with a bearing is asymmetric by nature. **That is a separate question and nothing here has answered
-it.**
 
-**What is owed for the image orientation is still a marker**: one unmistakable object on the
-rasteriser's right and one on its left, geometry held still and only the transform changed. The ray
-is settled exactly — 0.000000 degrees — and that is the part the camera answers.
+### The filter explanation was predicted, tested, and is wrong
+
+The obvious remaining candidate was the **filter**: the rasteriser reads the map with `textureLoad`,
+which takes the **nearest texel**, while Cycles samples it **filtered**, and on a sky with a bright
+horizon band and a sun with a bearing the difference between those two is asymmetric by nature.
+That is falsifiable, because Cycles' equirect filter width is fixed **in texels**: on a 256-wide
+map one texel is 1.4 degrees, on a 4096-wide one it is 0.088, so **a finer map should bring the
+tracer's filtered read closer to a nearest-texel read** and the residue should shrink.
+
+The map was replicated sixteen times by nearest neighbour — a latlong grid is separable, so this
+samples the same function of direction more finely and changes nothing the map says — and the
+scene was re-traced (`out/probe-map-resolution.py`).
+
+| map | ratio span | traced profile | correlation |
+|---|---|---|---|
+| 256 wide | −0.1404 | rises +0.0457 | −0.5945 |
+| **4096 wide** | **−0.1401** | rises **+0.0452** | −0.5993 |
+
+**Sixteen times the sampling density moved the residue by three ten-thousandths. It is not the
+filter**, and the prediction this note made a commit ago is withdrawn.
+
+The reference frame is sound and was checked rather than assumed: the rasteriser re-renders
+`terraces` **byte for byte**, so `baresky.png` is a different image by design — the ungraded sky —
+and not a stale one.
+
+### What is left, and it is not the world
+
+The candidate list is now short and each entry has been measured out: the camera, the projection,
+the tone curve, the denoiser and the filter are all ruled out, and the reference frame is verified.
+**What has not been checked is whether the two frames hold the same picture in the band being
+compared.** A skyline probe (`out/probe-skyline.py`) put the rasteriser's terrain at row **229**
+and the uncorrected trace's at row **175**, and returned **no skyline at all** for the corrected
+trace.
+
+**That last one is the detector failing and not a finding.** The probe keys on brightness against
+each frame's own top level, and the frames sit at 0.6998 and 0.4831 — a dimly lit ground stays
+above the threshold and reads as unbroken sky. **Whether the terrain really sits lower in the
+corrected trace is not established**, and a detector keyed on the horizontal gradient along a row
+rather than on a level would settle it, because a level moves with exposure and a gradient does
+not.
 
 ## Two errors of mine this note should not let anyone repeat
 
