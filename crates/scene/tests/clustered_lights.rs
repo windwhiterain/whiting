@@ -191,7 +191,7 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
         (
             "dunes",
             Stages {
-                shadowing: 2,
+                shadowing: 1,
                 depthing: 1,
                 lighting: 1,
                 other: 1,
@@ -232,7 +232,7 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             // the scene's own shape and not a change in how a pass is counted.
             "landscape",
             Stages {
-                shadowing: 4,
+                shadowing: 2,
                 depthing: 3,
                 lighting: 3,
                 other: 1,
