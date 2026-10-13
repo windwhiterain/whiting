@@ -144,24 +144,68 @@ it multiplies from the **left**, in world space. `S * R` negates the `x` of **bo
 column and the right column, so it does not only swap the image: **it turns the camera to face a
 different part of the world.**
 
-| composition | forward azimuth | right azimuth | determinant |
-|---|---|---|---|
-| `S * R` — written today | −123.69° | −33.69° | −1 |
-| `R * S` — folded into the rotation | **−56.31°, the raster's** | 33.69° | −1 |
+| composition | forward azimuth | right azimuth | determinant | writable as `rotate` |
+|---|---|---|---|---|
+| `S * R` — written today | −123.69° | −33.69° | −1 | no, and it aims wrong |
+| `R * S` | −56.31°, the raster's | 33.69° | −1 | **no** — see below |
 
-**`diag(-1, 1, 1)` is not a reflection that has to stay one — it is a half turn about the camera's
-own `+Y`, so it is a rotation and can be folded into `R`.** Both compositions are proper rotations
-carrying the same negative determinant the frame needs; only the order decides whether the camera
-still looks at its target.
+**`R * S` aims correctly and still cannot be written down.** `diag(-1, 1, 1)` is a reflection, its
+determinant is −1, and every product carrying it has determinant −1, so neither form is a rotation
+the loader's Rodrigues composition can carry. That is what the next section turns on.
+
+### The correction that holds, and the one that does not
+
+**`R * S` was wrong, and the probe that proposed it refuted itself.** `diag(-1, 1, 1)` has
+determinant **−1**: it is a **reflection**, not a rotation. The half turn about `+Y` is
+`diag(-1, 1, -1)`. A product of a reflection with anything also has determinant −1 and **cannot be
+written as a `rotate` attribute at all**, because the loader's Rodrigues composition is always a
+proper rotation. The probe printed both determinants as −1, which was the refutation sitting in its
+own output and not the support it was read as.
+
+**What holds is the same correction the other way round.** The camera that is wanted is a basis `M`
+whose determinant is **−1** — that is the whole reason for the mirror, since Cycles' `+X` is its own
+right and with `+Z` forward that basis is left-handed. Build `M` from the rotation already in the
+document: keep **its own** forward and **its own** up, and take the right axis that makes the
+determinant −1, which for orthonormal columns and `det = -1` is `a = c * b`, so
+`right = forward * up`. Then write **`rotate` as `S * M`** and leave the `scale` alone. `S * M` has
+determinant **+1** and is a proper rotation, so the loader accepts it, and what reaches Cycles is
+`S * (S * M) = M`.
+
+Both the forward and the up must come from **`R`**, never from `S * R`: the scale negates `x` on
+**every** column, so the up column of `S * R` is `S * (R * y)` and is not `R * y`. Taking one axis
+from each matrix leaves them non-orthogonal, and `S * M` comes out with determinant **0.9818** —
+which is how this probe's first attempt at the correction failed, and why the determinant is
+printed rather than assumed.
+
+### Measured end to end, on the document, with no source touched
+
+For `terraces` the change to the written `rotate` is **two signs**:
+
+| | axis |
+|---|---|
+| as written today | `159.2177, 0.2305913, 0.7615913, 0.6056454` |
+| as corrected | `159.2177, 0.2305913, **-**0.7615913, **-**0.6056454` |
+
+Traced at 1024x1024, 32 samples, against the rasteriser's raw lookup
+(`out/probe-camera-basis-fix.py`, `out/probe-disagreement-shape.py`):
+
+| | left edge | right edge | span | crosses one |
+|---|---|---|---|---|
+| as written today | 1.2414 | 0.6980 | **−0.5433** | yes, at column six |
+| as corrected | 1.3740 | 1.3088 | **−0.0652** | no |
+
+**The monotone sweep is gone and the ratio no longer crosses one, so the sideways displacement is
+resolved.** What is left is a **constant factor of about 1.41** across the whole sky, and a constant
+ratio is a scale rather than a model disagreement — **that is a separate open question and is not
+settled by this.**
 
 ### What is not established
 
-**That `R * S` puts the image the right way round is not measured.** The two compositions differ on
-the right axis as well as on the forward one — −33.69° against 33.69° — and the handedness
-measurement recorded in `write_camera` was taken **with the camera turned away from its target**, so
-it established that a `det = -1` basis is wanted and not what that basis looks like once the camera
-is aimed correctly. Re-establishing it is a separate run with the geometry held still and only the
-transform changed, and it belongs **before** the change lands rather than after.
+**That the corrected basis puts the image the right way round left-for-right has not been isolated
+on its own.** What the measurement above shows is that the two frames now agree in shape and differ
+by one number. A scene with one unmistakable marker on the rasteriser's right and one on its left,
+geometry held still and only the transform changed, would settle the orientation directly, and that
+is still worth running before a change to the exporter lands.
 
 ## Two errors of mine this note should not let anyone repeat
 
