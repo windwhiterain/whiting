@@ -60,6 +60,9 @@ Grade constants read out of each scene's `GRADE` in the source, not out of any n
 | `spotlight` | **1.047** | 1.004 – 1.313 | **0.9904** |
 | `tiles` | **0.961** | 0.934 – 0.973 | **0.9973** |
 | `landscape` | **0.981** | 0.936 – 1.006 | 0.9289 |
+| `sunlight` | **1.081** | 1.009 – 1.236 | **0.9723** |
+| `tidewater` | **1.181** | 0.628 – 2.134 | 0.7705 |
+| `monoliths` | **0.008** | 0.000 – 0.042 | 0.0969 |
 | `terraces` | **1.318** | 1.065 – 1.571 | 0.6496 |
 
 `spotlight`'s top two bands are black on both sides, so their ratio and correlation carry no
@@ -152,6 +155,33 @@ cannot be read as a measurement should not be printed in the column where measur
 **`tiles` agrees on level and disagrees on shape in its brightest bands** — band pearson −0.5372 and
 −0.6976 where the level ratio is 0.960 and 0.973. A local inversion, with the two drawing the pattern
 in opposite directions, which is not a level finding and is not chased here.
+
+## The four that are out, and what each one is out for
+
+| scene | why |
+|---|---|
+| `terraces` | its terrain declares **no albedo**; the colour, the water and the Fresnel mirror are WGSL computed per fragment and the document carries `base_color = 1, 1, 1` |
+| `monoliths` | the scene declares **no environment light** and the rasterised post stage paints a sky anyway, which is also what the near-black mirror ground reflects |
+| `tidewater` | aerial perspective applied to **every surface**, `crates/gallery/src/tidewater.rs:818-825` |
+| `foldyard` | never measured; its document is sixty four megabytes |
+
+**`tidewater` is 1.181 whole frame at 0.7705**, and the split is informative: its top two bands agree
+to **0.993 and 0.999** at a pearson above 0.85 — sky and far water, where there is little depth to
+haze — and the bands below it run from 0.628 to 2.134. The law is
+`mix(color, aerial_colour(ray), clamp(1.0 - exp(-depth_of_air), 0.0, 0.985))` on every fragment with
+`depth < 1.0`, which is a fog a path tracer computes by other means and this document does not carry.
+
+**Nothing in this table is a disagreement between the two renderers about the same picture.** Four
+scenes have a material, a sky or a fog the other backend cannot be given, and four agree to between
+one and eight per cent.
+
+## A silent bug in this file's own tooling, found by a scene that is not square
+
+`out/probe-unclipped.py` passed `--width 1024 --height 1024` as constants. `tidewater` is **1536 by
+1024**, so the probe wrote a differently shaped frame without saying so, and the comparison failed on
+shapes rather than on levels. It now reads `width` and `height` out of the document's `<camera>` and
+prints what it read. **A probe that can produce a wrong-shaped frame without complaining is a probe
+whose numbers cannot be trusted on any scene it has not been read against.**
 
 ## Not done
 
