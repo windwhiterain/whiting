@@ -46,6 +46,25 @@ against a tracer that is handed the tint once. it now reads:
 so the worst whole-frame scene in the table above became the best matched, and the only reason to
 look at this table again is that its other rows may hide the same shape of mistake.
 
+## Every ground row accounted for, 2026-10-13
+
+the four rows that were not near one, each traced to a cause that is a decision rather than a
+mystery. **two of the three are limitations the format already has; one was a bug and is fixed.**
+
+| scene | ground | what it is |
+|---|---|---|
+| `dunes` | 1.048 | within two percent of the frame; nothing to explain |
+| `landscape` | 0.948 | likewise |
+| `sunlight` | 0.957 | likewise |
+| `spotlight` | 0.971 | likewise |
+| `tiles` | 1.285 | **the material image the tracer cannot be handed.** the raster's body is `color * (0.25 + 1.5 * pattern)` and the exporter reports the image and exports without it (`LossyMode::Degrade`), so the ratio is exactly that multiplier — the measured 1.285 says the pattern averages **0.69**. recorded at `cycles_backend.md`, materials. |
+| `terraces` | 0.499 | **the albedo is decided per fragment** and a tracer is handed the material row, which says white. structural. |
+| `tidewater` | 0.699 | **no discrete cause found.** the shore is a near-black surface and the water is an emission-stage procedural mirror, which is black in the tracer; both bands' linear medians are near `0.02`–`0.03`, so the ratio is a statistic over a very dark region rather than a level that is wrong by half. |
+| `foldyard` | 0.274 → **0.982** | **the bug.** the ground body applied `in.tint` a second time, and the tint is `0.232`. |
+
+re-measured 2026-10-13 against the current branch, all rows reproducing the 2026-10-12 figures to
+the digit, which is the check that the table above is still about the code that is on `main`.
+
 **Where both backends have a sky, they now hold the same radiance.** The four scenes that declare
 an environment light read `1.001`, `1.040`, `1.059` and `1.085` — from a scene that was at `0.111`
 and one that was at `2.817` an hour earlier. The four that declare none have a black sky on **both**
