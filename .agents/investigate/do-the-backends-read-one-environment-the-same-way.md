@@ -8,8 +8,11 @@ tracer's gets brighter towards the top of the frame. Both are handed one 256x128
 read that image the same way, and if not, which of them is wrong?**
 
 **Answer, measured 2026-10-13 on `main` at `a1397e3`, 1024x1024, 32 samples on CPU.** They do not
-read it the same way, and **this note does not establish which is right.** What follows is what was
-measured, and then what was ruled out.
+read it the same way, and **the fault is located: the tracer reads the image mirrored in azimuth.**
+Mirroring the exported map along `u` and re-tracing the exported document takes the sky from a
+ratio of 0.58 to 0.86 across ten rows — gradients running opposite ways — to **0.945 to 0.983**,
+gradients running the same way. What was measured first is below; the control that makes the
+reading safe is in its own section after it.
 
 ## The census's 0.857 for `terraces` is not a sky measurement, and this note is not about it
 
@@ -82,46 +85,77 @@ of one, no second term mixed into the world.
 row, flat ground half below. The rasteriser's values sit inside that range and rise towards the
 horizon row; the tracer's do the opposite.
 
-**One inference I had to withdraw.** For a while the reading here was that the tracer's 0.8234
-"exceeds the map's brightest row" and therefore cannot come from the map at all. That compared a
-row **mean** against a pixel **value**, and 0.754% of this map's texels are clipped to one — the
-peak is near one, so 0.8234 is inside the image. The claim was wrong and is recorded because it
-would have sent the search after the export rather than after the lookup.
+## Two things this cost to find
 
-## Ruled out, and how
+**the documents in `out/` share image filenames, so a re-trace can pick up the wrong sky.** `dunes`
+and `foldyard` both declare an image labelled `air`, and the exporter writes it as
+`out/air.png` — **last write wins**. `out/now-traced-dunes.cycles.xml` therefore names a file that,
+by the time it was re-read, held `foldyard`'s sky. The control above had to re-export `dunes` into
+a clean prefix first. A document and the image beside it are **a pair, and re-reading one without
+the other is how a measurement becomes a different measurement.**
 
-- **A grade inversion artefact.** This is what the raw-lookup render exists to exclude. Both
-  columns above are read straight out of their files.
-- **The world's own settings.** `<film exposure="1">`, `strength="1, 1, 1"`, one background node,
-  nothing mixed in.
-- **A camera-specific fault.** All six scenes that declare an environment emit the same camera
-  shape — `scale="-1, 1, 1"` on every one, and quaternions within a narrow band of each other
-  (`dunes` 163.99/0.19/-0.79/-0.58, `terraces` 159.22/0.23/0.76/0.61, `foldyard`
-  148.44/0.27/-0.67/-0.69, `tidewater` 179.62/0.004/0.74/0.67, `landscape` 83.31/1.00/-0.06/-0.07,
-  `sunlight` 158.48/0.23/-0.75/-0.62). **The direction-to-texel mapping is therefore not varying
-  with the camera**, which was the first thing to check and is now off the list.
-- **A wrong `v` axis, as a completed argument.** `cycles_export/axes.rs` states the basis change
-  `(x, y, z) -> (x, -z, y)`, which sends this engine's `+y` to Cycles' `+z`, so
-  `v = acos(dir.z)/pi` is `acos` of this engine's `+y` and should be right. That is an argument from
-  the code, not a measurement, and it is exactly the kind of argument that has already been wrong
-  once in this chapter — `axes.rs` records that an axis ramp once showed the image's own row running
-  along a *horizontal* line of a render, which is the symptom of this class of fault.
+**and a finding that seemed to be an export fault was not.** For a while the reading here was that
+the tracer's 0.8234 "exceeds the map's brightest row" and so cannot come from the map at all. That
+compared a row **mean** against a pixel **value**, and 0.754% of this map's texels are clipped to
+one — the peak is near one, so 0.8234 is inside the image. The claim was wrong, and it pointed the
+search at the export instead of at the lookup.
 
-## Not settled
+## The control, and it is the reason this reading is safe
 
-**Which backend is wrong, and where.** The two candidates the evidence has not separated:
+**One scene cannot change an exporter**, because a blanket mirror would break every scene that is
+already right. So `dunes` — which reads 1.001, and is the only scene in the gallery that paints
+nothing into its sky — had its exported map mirrored in `u` and was re-traced anyway.
 
-1. **the `v` axis as Cycles resolves it for these rays**, in which case `dunes` at 1.001 with a
-   shape correlation of +0.9898 is the scene whose sky is too flat to show it, and the fault is in
-   the exporter's world handling;
-2. **the colour space the 8-bit `environment_texture` is read with**, in which case the node carries
-   no `color_space` attribute and takes Cycles' default, and the fault is in what the writer emits.
+| row | plain | mirrored | ratio |
+|---|---|---|---|
+| 0 | 0.5203 | 0.5203 | **1.000** |
+| 40 | 0.5567 | 0.5567 | **1.000** |
+| 80 | 0.6084 | 0.6084 | **1.000** |
+| 120 | 0.6862 | 0.6862 | **1.000** |
+| 160 | 0.5895 | 0.5895 | **1.000** |
 
-**The test that would separate them** is the one `axes.rs` already describes and is not repeated
-here: a synthetic world whose image is a ramp along one axis. A ramp that comes back running
-vertically is a correct lookup and a fault in the image or the colour space; a ramp that comes back
-running sideways, or running the wrong way, is a fault in the lookup. That scene does not exist in
-the gallery today and would have to be authored to answer this.
+**Every row identical to three decimals.** `dunes`' environment map is **uniform in azimuth** —
+mirroring it changes nothing at all — so mirroring every map in `u` **cannot break it**, and the
+fix is safe with respect to the one scene that currently looks perfect.
+
+**and this is why the census never caught it.** "the four scenes that declare an environment light
+read 1.001, 1.040, 1.059 and 1.085" was never evidence about the lookup. **An azimuthally uniform
+map cannot detect an azimuth error**, because the map under the error is the same map. `dunes`
+agrees at 1.001 and would agree at 1.001 with the sky turned inside out. `terraces` sees it because
+its map carries the sun's bearing, and a scene whose weather has a direction is the only kind that
+can.
+
+## The fix, and what is left of it
+
+**The rasteriser is right and the exporter's writer is wrong.** The rasteriser's own numbers match
+the image: the map rises 0.250 at the pole to 0.701 at the horizon, and the raster's sky rises
+0.477 to 0.560 down the frame, which is that same rise. The tracer's 0.823 to 0.650 is the rise and
+fall of a **mirrored** map, and mirroring the file puts the two together.
+
+So the change belongs where the image is written for the tracer — the equirectangular environment
+image's `u` convention — and **not** in the camera and **not** in the rasteriser's lookup.
+
+**What the mirror does not explain.** After it, the ratio sits at **0.955**, roughly constant across
+the band rather than spread across it, so what is left is a scale and not a lookup: 8-bit
+quantisation against an in-memory float map, and Cycles' pixel filter averaging a footprint the
+rasteriser point-samples with `textureLoad`. Neither is settled here and neither is a lookup fault.
+
+**What is left to do before this lands.** `foldyard` and `tidewater` also carry structured maps and
+their skies will move under this change, and **neither has a clean sky measurement to check the
+result against** — both paint ridges or fog into their sky, which is the composition problem
+[the-raster-sky-band-is-not-the-tracers-sky-band.md](the-raster-sky-band-is-not-the-tracers-sky-band.md)
+describes. `terraces` is the only scene in the gallery that can currently verify this.
+
+## Not measured
+
+- **Whether the residual 0.955 is quantisation, the pixel filter, or a colour space.** The
+  `environment_texture` node carries no `color_space` attribute and therefore takes Cycles' default,
+  and the writer's choice for an 8-bit image was not compared against it.
+- **`landscape`, `foldyard` and `tidewater` under the mirror.** Their maps are structured and their
+  skies will change; what they change *to* is not measured here.
+- **A synthetic ramp world.** `axes.rs` describes one and the gallery does not have it. The
+  experiment here does not need it — a real scene's own map, mirrored and re-traced, answered the
+  question — but a ramp would say *which* axis is wrong without inferring it from one scene's sun.
 
 ## Why it matters more than its size suggests
 
