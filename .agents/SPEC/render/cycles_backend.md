@@ -744,6 +744,130 @@ before and after on both backends, `+0.1044` against `+0.1050` on the whole fram
 inside the noise of sixteen samples. `foldyard` composes poorly across the two backends for its
 own reasons and did before this; it is a separate finding, not a regression here.
 
+### `terraces` keeps its own sky law, and `dawn::Sky` is why that is not a second `Atmosphere`
+
+`terraces` was the last scene drawing a sky nothing else could see. Its law was a `WGSL`
+function — `sky_colour(ray)` — so the post stage drew it and the tracer had no sky at all: the
+rasterised frame carried the morning and the traced one carried black, at **−0.8264**.
+
+**the law moved into rust, as `crates/gallery/src/dawn.rs`, and is read out twice.** `dawn::Sky`
+holds zenith, horizon, ground, the sun, its glow and its disc as fields; [`wgsl`](../../crates/gallery/src/dawn.rs)
+emits the shader the stages that ask for a ray read, and `radiance` answers the same law as a
+number, which `shaders::environment_pixels_of` maps into the world. every field is read by both.
+
+**it is not an `Atmosphere` with three more setters, and that is a decision rather than an
+omission.** this sky's horizon **follows the sun around the compass** — east burns, west holds the
+night's cool — and its glow is **two lobes** rather than one. `air.rs` grants a scene the right to
+write its own law, and the alternative was pushing one scene's hour into a type four others read.
+`shaders::environment_pixels_of` exists so the part that is *not* the law — the texel decode and
+the clamp before the quantise — is written once for both.
+
+**the two stages are given different skies on purpose.** the mesh stage has no map to read, so the
+water that mirrors the sky mirrors `sky_base` and the deck over it; the post stage is handed the
+map and the deck alone, and is **not given `sky_base` at all**. a stage that could draw its sky
+either way will one day draw the other one, and the two would differ by exactly the amount nobody
+measured.
+
+**the stratus deck stays in the raster stage.** it drifts on `uniforms.time` and a static map has
+no clock, so it is weather laid over a world rather than part of it. it takes the sky as an
+argument rather than evaluating one, which is what lets the map's sky and the law's sky wear the
+same deck.
+
+**the `sky` lamp is replaced rather than joined**, on the reasoning its own comment already gave —
+a point light cannot be a dome, and a valley 380 units to the far corner is too far for one. the
+pass count follows from the scene rather than by hand: two global lamps drew twelve shadow maps
+over the grid and one draws six.
+
+measured 1024×1024, 32 samples on CPU, against the frame drawn before:
+
+| | before | after |
+|---|---|---|
+| whole frame, pearson | `−0.8264` | **`+0.8281`** |
+| sky radiance ratio | traced exactly black | **`0.856`** |
+| whole frame radiance ratio | `2.619` | **`0.530`** |
+| ground radiance ratio | `1.880` | `0.499` |
+
+**`0.856` is the closest sky in the gallery** (`dunes` 1.030, `landscape` 0.948, `tidewater`
+1.059), and it is close without a fitted number: the map is stored at the sky's own scale and the
+environment light declares a radiance of **one**, because any other number would be scaling the
+picture rather than describing it. the raster sky read out of that map correlates **+0.9802**
+against the same sky read from the old `WGSL` law.
+
+**the ground is still wrong and for a reason that is not this scene's.** `0.499` says the tracer's
+ground is twice the raster's, and the cause is the one already recorded above it: the terrain's
+albedo is decided per fragment — water, earth, crop, forest — and a path tracer is handed the
+**material row**, which says white. fitting the declared albedo to the picture's mean would close
+the number and open a lie, so the gap stays.
+
+### the map is read with `textureLoad`, and that is visible on every scene that has one
+
+**the map declares no sampler**, and it is read at a texel the shader computes
+(`shaders::ENVIRONMENT_LOOKUP`, `environment_sky`, `environment_radiance`). the reason recorded in
+`emit.rs` is the octahedral fold: a filtered read would blend across the fold's seam.
+
+**it shows in two places, and both were measured on rendered frames 2026-10-13.**
+
+- **in the sky.** `dunes` reads a `256 × 128` map and its gradient carries visible horizontal
+  bands. a latlong map spends its rows on elevation, so 128 of them give the twenty degrees of sky
+  its frame shows about **eleven rows**. `terraces` reads `1024 × 512` for the same reason and
+  bands far less; its picture and the one drawn from the old `WGSL` law correlate `+0.9802`.
+- **on every surface the world lights.** `environment_radiance` selects a level from the material's
+  roughness and then reads that level without filtering. for `terraces` the terrain row is `0.55`
+  and an eleven-level chain gives level `5` — **thirty-two texels around the whole sky** — and the
+  mountain face shows rectangular patches of them. (derived from the code, not measured.)
+
+**the fix is `sampled`, and the machinery is already there.** `graphics::binders` reads a `sampled`
+key off the texture payload and allocates the sampler at the next binding, with `filter`,
+`address` and `mip_filter` already in the schema. what is missing is that `ENVIRONMENT_LOOKUP`
+computes **texel** coordinates, where `textureSampleLevel` wants **normalised** ones, and that
+`latlong` must wrap in `u` and clamp in `v` — which a `Repeat` sampler cannot do. it is a change to
+every scene's post and lighting stage, so it is named here and not smuggled into one scene's commit.
+
+### the map is `rgba8unorm`, so a radiance above one is stored as one — and almost nothing is
+
+`environment_pixels_of` clamps every channel into `0..=1` before it quantises, because the format
+has no headroom. **that reads as a live defect in three scenes and is not one.** measured
+2026-10-13 by evaluating each scene's own law over the rectangle its own map is built at:
+
+| scene | map | upper bound | brightest texel | texels over one |
+|---|---|---|---|---|
+| `dunes` | 256×128 | 0.700 | 0.687 | 0.000% |
+| `landscape` | 256×128 | 1.390 | 0.813 | 0.000% |
+| `foldyard` | 192×96 | 2.042 | 0.582 | 0.000% |
+| `terraces` | 1024×512 | 19.360 | **2.582** | **2.370%** |
+
+**the upper bound is each term's maximum, added.** the terms do not all peak on one ray, so it is
+what a clamp has to be sized against rather than a measurement of any texel — and on three
+scenes it is far above what any texel reaches, because the disc is small and no sample lands in it.
+
+**`terraces` is the first scene whose map is actually clamped**, over **2.37%** of the sphere and
+at **2.58** rather than one. what that costs the picture is small and was measured: the corner the
+sun's bearing falls in reads **214/255** with the old analytic law and **204/255** with the map,
+**five percent**, because the grade's ACES fit had already rolled that corner off long before the
+map could have mattered.
+
+**so the clamp is real, it is confined to one scene, and it is not what is wrong with the maps.**
+the fix is the `environment` radiance field — a map stored at one over that radiance, so the
+shader's multiply brings it back and the headroom the format lacks is the radiance itself — and it
+is not applied here because it would change three scenes already measured against a raster frame.
+
+### and the defect that is real is resolution: a map can miss a feature the shader draws
+
+**`foldyard`'s sun is not in its map.** its disc is `smoothstep(0.99995, …)`, a cap of about
+**0.57°**, and a `192 × 96` latlong texel is about **1.9°** across. no sample lands inside the cap,
+and its brightest texel — **0.582** — is its horizon, with no disc and no glow anywhere in it.
+
+this is the same defect as the banding above, seen from the other side. a nearest read of a small
+map cannot represent a small feature, and the post stage now reads the map rather than the law,
+so **`foldyard`'s rasterised frame has lost a sun it drew correctly before.** the number the
+correlation reports did not move, because a 0.57° disc in a 1024×1024 frame is a handful of pixels;
+the loss is real and small, and it is the kind of thing a frame-to-frame diff finds and a
+statistic does not.
+
+**one resolution does not serve both questions.** the lighting stage wants a *blurred* sky — that
+is what a roughness-selected mip is for — and the post stage wants the *sharpest* one it can carry,
+because it is drawing a picture. a map sized for the first is banded in the second.
+
 ### the exported world is written in this engine's axes, and Cycles' are not the same
 
 this engine is y-up and Cycles is z-up, and the format has no element that says which way up a

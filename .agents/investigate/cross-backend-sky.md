@@ -139,6 +139,13 @@ both, and the whole-frame correlation is limited by the ground for as long as th
   same three colours. The fog and the painted ranges stay behind either way, so the honest
   prediction is that terraces recovers most of its gap and not all of it — and the part it does
   not recover is the part SPEC says cannot cross.
+
+  **done, 2026-10-13, and neither option: the law moved into `dawn::Sky` and read out twice**, as
+  WGSL and as a latlong map, because this sky's horizon follows the sun around the compass and its
+  glow is two lobes — an hour, not a setting of the shared air. the prediction held: whole frame
+  `−0.8264` → **`+0.8281`**, sky radiance ratio black → **`0.856`**, and the ground did **not**
+  recover, because its albedo is per fragment and the tracer is handed the material row's white.
+  see SPEC `render/cycles_backend.md`.
 - **`monoliths` and `stilllife`** are the same one-line-per-scene change and are worth less:
   −0.1448 and +0.4580, because little of either frame is sky.
 
