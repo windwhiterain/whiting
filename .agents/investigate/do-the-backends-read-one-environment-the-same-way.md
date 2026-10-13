@@ -246,21 +246,41 @@ The reference frame is sound and was checked rather than assumed: the rasteriser
 `terraces` **byte for byte**, so `baresky.png` is a different image by design — the ungraded sky —
 and not a stale one.
 
-### What is left, and it is not the world
+### What is left, and it is the measurement rather than the world
 
 The candidate list is now short and each entry has been measured out: the camera, the projection,
 the tone curve, the denoiser and the filter are all ruled out, and the reference frame is verified.
-**What has not been checked is whether the two frames hold the same picture in the band being
-compared.** A skyline probe (`out/probe-skyline.py`) put the rasteriser's terrain at row **229**
-and the uncorrected trace's at row **175**, and returned **no skyline at all** for the corrected
-trace.
+**What has not been checked is whether the two frames hold the same picture in the band every
+comparison here reads**, and checking it has failed twice in two different designs.
 
-**That last one is the detector failing and not a finding.** The probe keys on brightness against
-each frame's own top level, and the frames sit at 0.6998 and 0.4831 — a dimly lit ground stays
-above the threshold and reads as unbroken sky. **Whether the terrain really sits lower in the
-corrected trace is not established**, and a detector keyed on the horizontal gradient along a row
-rather than on a level would settle it, because a level moves with exposure and a gradient does
-not.
+Every figure in this investigation — the 0.58 to 0.86 sweep, the 1.2414 to 0.6980 sweep, the
+corrected 1.4257 to 1.2853 — is read from **the top fifth of the frame on the assumption that it is
+sky in both images.** That assumption has never been verified, and it cannot be verified from these
+frames by either of the two detectors tried:
+
+- a **level** detector keys each frame against its own top brightness, and the frames sit at
+  0.6998 and 0.4831, so a dimly lit ground stays above its threshold and reads as unbroken sky. It
+  returned **no skyline at all** for the corrected trace (`out/probe-skyline.py`);
+- a **gradient** detector keys on the difference between adjacent rows, which no exposure can move,
+  and it is unstable: **the same corrected trace against the same sky came back at row 434 and at
+  row 316**, 118 rows apart, purely on which end the search started from
+  (`out/probe-skyline-gradient.py`).
+
+**The reason neither works is that these frames contain two horizontal edges and a detector cannot
+tell them apart**: the map's bright horizon band is an edge in the sky, and the terrain against the
+sky is the other. That is also why the map resolution moved the answer so far — a sixteen-times
+finer map softens the band's edge just enough for the detector to prefer the other one. **The same
+scene, the same camera, the same geometry, two different rows.**
+
+**So the residue is not yet attributable to anything**, because the window it is measured over is
+not known to hold the same content in both frames. The camera's part is settled exactly, and the
+camera was the fault. What remains is either a real second fault or an artefact of a comparison
+whose window was never checked — and the two are not distinguishable until the window is.
+
+**What would settle the window**: a frame with **no horizontal edge in the sky at all**, so the only
+edge left is terrain. A synthetic map of two flat halves already is that, and tracing it through the
+corrected camera would put the terrain's row on record. A marker scene would settle the orientation
+at the same time.
 
 ## Two errors of mine this note should not let anyone repeat
 
