@@ -92,16 +92,39 @@ back correct:
 | the geometry | the emitted document | the floor is the full ±8.5 quad at `z = 0` with all normals `+Z`, and all four boxes are present with their own transforms |
 | the materials | the emitted document | every `principled_bsdf` carries the scene's own `base_color` |
 
-**What is not checked, and what the frames show.** In the trace the floor is a lit wedge in the
-lower left with a straight diagonal boundary, and **none of the four boxes appear at all**, while
-the rasteriser's frame of the same camera shows the floor filling the lower half with all four
-standing on it. The far box's bearing is **10.3 degrees off the view axis**, so it is well inside
-the frame in both. The wedge's boundary is straight, which is what a shadow edge looks like and not
-what "the floor stops existing" looks like, and four boxes 1.2 to 1.6 wide with shadows 2.8 to 6.5
-long cover well under a tenth of the floor the camera can see. **So neither shadowing nor the
-geometry accounts for it, and no arithmetic on the emitted document settles it either.** What is
-needed is a probe that isolates the material from the light on that scene, and that has not been
-written. **Nothing about this paragraph is a diagnosis.**
+**Five more were tried on the emitted document and each is ruled out**, one variable at a time
+(`out/probe-document-edit.py`, which edits the artefact and leaves the repository alone):
+
+| edit | result | what it rules out |
+|---|---|---|
+| the sun's `angle`, zero to 0.05 | **byte for byte the same frame** | a **delta** sun being degenerate |
+| the four boxes removed | `10.37%` lit, unchanged | the boxes darkening the floor |
+| the floor's two triangles swapped | **byte for byte the same frame** | the loader drawing only the first triangle |
+| the floor split into two `<mesh>` elements | **Cycles crashes**, `0xC0000409` | — and a loader that will not read two meshes in one state |
+| the sun aimed **straight down** | max **0.4667 to 0.7373**, mean 0.0388 to 0.0641, and `10.37%` lit **unchanged** | shadowing, **by anything in the frame** |
+
+**The sun test is the sharp one.** Aimed straight down, nothing in the scene can cast a shadow onto
+the floor, so the lit **area** must be the whole of it. It is not: the same **10.37%** of the
+frame is lit before and after, while the **brightness** of that area rises by a factor of 1.6. **The
+region is fixed by something that is not the light.** And it is the same 10.37% in every variant,
+including the one with the boxes deleted, which is what makes it a fact about the frame rather
+than about any of these edits.
+
+**What the region is.** In the trace it is a triangle in the lower left bounded by a straight
+diagonal — which is what the floor's **own two far edges** look like from a camera standing almost
+on its corner, and beyond them there is nothing at all to draw. The rasteriser's frame of the same
+camera shows the floor filling the lower half with all four boxes standing on it, and the
+rasteriser re-renders **byte for byte**, so that frame is current and authoritative.
+
+**So the two backends are showing different geometry from a camera whose frame-centre ray is the
+same**, and the four falsifications above say it is not the light, not the boxes, not the
+triangulation and not the shadowing. **What is not checked is the field of view**: `write_camera`'s
+own comment records that the element's `width` and `height` are the camera's view plane and **not**
+the image size, and Cycles takes the view plane from `fov` and a sensor fit
+(`src/scene/camera.cpp:206,236-249`). A field of view the two read differently would change the
+whole frame while leaving the centre ray exactly where it is, which is the one shape this takes.
+**That is a hypothesis and has not been tested**, and the fix for it is a comparison of what the two
+make of `fov = 0.95` on a square frame. **Nothing in this paragraph is a diagnosis.**
 
 `tiles` reproduces its figures to the digit because its rotation is a half turn about an axis in
 the `YZ` plane, which **commutes** with `diag(-1, 1, 1)` — so the correction is provably a no-op
