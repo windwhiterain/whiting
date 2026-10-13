@@ -498,11 +498,32 @@ with the environment light on it — a grey, which is what a shadowed flank shou
 and the reproduction are in
 [investigate/landscape-agreement-drop.md](../../investigate/landscape-agreement-drop.md).
 
-**atmosphere belongs to the post stage**, for the same reason. haze, aerial perspective, the sky
-itself and the far ranges were already the grade's alone; what changed is that no surface body is
-allowed to reach for `air_colour()` or `air_closure()` and mix toward it. a surface shader that
-paints its own fog is a surface whose fog a post stage cannot correct, a tone curve cannot, and a
-second backend cannot reproduce.
+**atmosphere belongs to the post stage**, as a rule about **stages** and not about names. restated
+2026-10-13: *an atmospheric effect may not be implemented on the geometry's own material; it must
+be a separate post process.* a surface shader that paints its own fog is a surface whose fog a post
+stage cannot correct, a tone curve cannot, and a second backend cannot reproduce.
+
+**the wording this clause used to carry named `air_colour()` and `air_closure()`, and a rule about
+two spellings is not a rule about the fault.** a survey of the whole gallery, measured 2026-10-13,
+found `monoliths` and `tidewater` both satisfying that wording while both did the thing:
+`monoliths` mixes toward a local literal `wet`, `tidewater` toward its own `aerial_colour()`, and
+**neither file so much as names `air.rs`**. what the clause is about is what a body **computes** —
+a distance from the eye to this fragment, and a colour decided by it — which is the shape of aerial
+perspective whatever a scene chooses to call it. the three bodies that do it, and the three blind
+spots in the survey that found them, are in
+[investigate/where-atmosphere-is-painted.md](../../investigate/where-atmosphere-is-painted.md).
+
+**what post has, and what it has not, is why the move is not mechanical.** a post stage recovers
+where a fragment was: `ray_through(in.uv)` (`shaders.rs:2619`) gives the direction through the
+pixel, `distance_to(depth)` (`shaders.rs:2642`) the distance along the view, and the camera uniform
+the eye — so the world position, and its height above the water, follows from those three. it has
+**no normal**: the post pass binds a colour target, a depth buffer and the environment map, and
+nothing else. a law whose weight is a function of the surface normal therefore cannot move as
+written. `tidewater`'s is — `facing = 1 - clamp(dot(normal, view), 0, 1)` feeding
+`slant = 1 + facing * 2.4` — and it is **replaced rather than dropped**: an exponential-height
+medium has a closed form for the path length along a segment, and integrating it is what the
+`facing` factor was standing in for. the post version needs the ray and the endpoint's height,
+both of which it has, so this is a reason to prefer the post statement rather than a concession.
 
 this does not need an exception to **a document carries no logic**. the scene schema already carries
 a shader's own text, and says why: *"a shader carries its own text so that a compiled scene renders
