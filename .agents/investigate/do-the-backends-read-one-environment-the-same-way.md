@@ -8,11 +8,11 @@ tracer's gets brighter towards the top of the frame. Both are handed one 256x128
 read that image the same way, and if not, which of them is wrong?**
 
 **Answer, measured 2026-10-13 on `main` at `a1397e3`, 1024x1024, 32 samples on CPU.** They do not
-read it the same way, and **the fault is located: the tracer reads the image mirrored in azimuth.**
-Mirroring the exported map along `u` and re-tracing the exported document takes the sky from a
-ratio of 0.58 to 0.86 across ten rows — gradients running opposite ways — to **0.945 to 0.983**,
-gradients running the same way. What was measured first is below; the control that makes the
-reading safe is in its own section after it.
+read it the same way. **The fault is not a fixed convention to be corrected once** — mirroring the
+exported map along `u` fixes `terraces` and breaks `landscape`, from the same generator, and the
+reading that survives both is that **the tracer's azimuth is a function of the camera**. The
+measurement is below, the control that made mirroring look safe is in its own section, and the
+section that killed the obvious fix is the one after it.
 
 ## The census's 0.857 for `terraces` is not a sky measurement, and this note is not about it
 
@@ -125,26 +125,54 @@ agrees at 1.001 and would agree at 1.001 with the sky turned inside out. `terrac
 its map carries the sun's bearing, and a scene whose weather has a direction is the only kind that
 can.
 
-## The fix, and what is left of it
+## The mirror is NOT the fix, and landing it would have traded one scene for another
 
-**The rasteriser is right and the exporter's writer is wrong.** The rasteriser's own numbers match
-the image: the map rises 0.250 at the pole to 0.701 at the horizon, and the raster's sky rises
-0.477 to 0.560 down the frame, which is that same rise. The tracer's 0.823 to 0.650 is the rise and
-fall of a **mirrored** map, and mirroring the file puts the two together.
+**The obvious reading of the section above is wrong, and the experiment that catches it is cheap.**
+If the tracer reads every world image mirrored in azimuth, then mirroring on export fixes `terraces`
+— and it must also leave `dunes`, `tidewater` and `foldyard` untouched, which it did. **Applied to
+the exporter, it did exactly that and one more thing: it broke `landscape`.**
 
-So the change belongs where the image is written for the tracer — the equirectangular environment
-image's `u` convention — and **not** in the camera and **not** in the rasteriser's lookup.
+| scene | sky before | sky after | ground before | ground after |
+|---|---|---|---|---|
+| `dunes` | 1.001 | **1.001** | 1.048 | 1.048 |
+| `tidewater` | 1.059 | **1.059** | 0.680 | 0.680 |
+| `foldyard` | 1.089 | **1.089** | 0.982 | 0.982 |
+| `terraces` | 0.857 | **1.048** | 0.501 | 0.490 |
+| `landscape` | 1.040 | **0.704** | 0.948 | 0.951 |
 
-**What the mirror does not explain.** After it, the ratio sits at **0.955**, roughly constant across
-the band rather than spread across it, so what is left is a scale and not a lookup: 8-bit
-quantisation against an in-memory float map, and Cycles' pixel filter averaging a footprint the
-rasteriser point-samples with `textureLoad`. Neither is settled here and neither is a lookup fault.
+`landscape` was given the same raw-lookup treatment `terraces` had — its post stage reduced to
+`color = environment_sky(ray_through(uv))`, no grade, no painted ranges, no shafts — and against
+that:
 
-**What is left to do before this lands.** `foldyard` and `tidewater` also carry structured maps and
-their skies will move under this change, and **neither has a clean sky measurement to check the
-result against** — both paint ridges or fog into their sky, which is the composition problem
-[the-raster-sky-band-is-not-the-tracers-sky-band.md](the-raster-sky-band-is-not-the-tracers-sky-band.md)
-describes. `terraces` is the only scene in the gallery that can currently verify this.
+| `landscape`, raw lookup | against the unmirrored trace | against the mirrored trace |
+|---|---|---|
+| ratio across ten rows | **1.004 to 1.022**, gradients the same way | 0.595 to 0.682, gradients opposite |
+
+**So `landscape` is right unmirrored and `terraces` is right mirrored, and both maps are written by
+the same function.** `dawn::Sky::pixels` calls `crate::shaders::environment_pixels_of` and so does
+`air.rs`'s `environment_pixels` — one generator, one projection, one exporter, two opposite
+results. The hypothesis that the two generators disagreed was checked and **disproved**.
+
+**The only reading left is that the tracer's azimuth is a function of the camera.** The correction a
+scene needs would then depend on where its camera is looking, and **a mirror baked into the writer
+is the wrong shape of fix**: it happens to be right for `terraces` and wrong for `landscape`, which
+is a trade dressed as a repair. Their camera rotations are not close — the quaternions read
+`terraces` 159.22/0.23/0.76/0.61 against `landscape` 83.31/1.00/-0.06/-0.07, and this note's first
+version called that "a narrow band", which was not looked at closely enough.
+
+**The exporter change was reverted and is not on `main`.** What it bought is the knowledge that the
+fault is camera-dependent rather than a convention to be corrected once, which is worth more than
+the fix would have been.
+
+## What would actually settle it
+
+**Sweep the map's azimuth and find the offset that matches.** Rotate `terraces`' exported world by a
+fraction of a turn — a quarter, a half, three quarters — and re-trace each, against the raw-lookup
+frame. If the required correction is a constant, the fault is a fixed convention error and a scene
+whose camera sits at the matching azimuth is showing it; if the required correction differs between
+`terraces` and `landscape` in the way their cameras differ, it is camera-dependent and the fix
+belongs in the camera transform or in the world's own rotation, which is a node the format has and
+this emitter does not write. **That sweep is four traces and has not been run.**
 
 ## Not measured
 
