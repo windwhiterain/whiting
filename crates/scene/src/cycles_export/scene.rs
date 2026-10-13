@@ -24,26 +24,6 @@ use crate::standard::frame::Frame;
 use definition::{FieldMap, Value};
 use std::path::Path;
 
-/// The colour space an environment image is read in.
-///
-/// The loader's `EnvironmentTextureNode` declares `SOCKET_STRING(colorspace, "Colorspace",
-/// u_colorspace_auto)`, and `u_colorspace_auto` is a default-constructed `ustring`, which is the
-/// empty string. An empty name is not a request for the file's own encoding: it falls through to
-/// `ColorSpaceManager::detect_known_colorspace`, finds nothing, and answers `u_colorspace_scene_linear`
-/// -- after two warnings on stderr that name no colour space at all.
-///
-/// Every image this exporter writes is a png, whose bytes are sRGB encoded, so an unnamed space
-/// means an eight-bit file used directly as linear radiance. Measured on `landscape`: the traced
-/// sky came out at 46% of the level the same map reaches through the rasterised backend.
-///
-/// `__builtin_srgb` is the name the loader binds to its own sRGB space (`u_colorspace_srgb`), and
-/// it is the string that has to be written rather than `sRGB`: this build has OpenColorIO and its
-/// configuration has no space called `sRGB`, which the loader reports as `Color space 'sRGB' could
-/// not be found` before falling back to exactly the scene linear read this constant exists to
-/// avoid. A builtin name also renders the same on a machine with a full configuration installed,
-/// which a configuration name would not.
-const ENVIRONMENT_COLORSPACE: &str = "__builtin_srgb";
-
 /// Writes a whole scene document.
 ///
 /// The images the world refers to come back with it, so that a caller writing the document to
@@ -593,14 +573,6 @@ fn cycles_camera_frame(transform: &Transform) -> Transform {
 /// `rgb`. The loader's `<background>` has a `color` socket, but connecting a texture onto it
 /// **replaces** it, so the tint has nowhere to live except the strength, which multiplies what
 /// the texture produces. Writing the radiance alone would render every tinted sky untinted.
-///
-/// # The colour space is named, because an unnamed one is read as scene linear
-///
-/// The texture element carries [`ENVIRONMENT_COLORSPACE`], and the loader would otherwise read
-/// the map's sRGB-encoded bytes as linear radiance. That is invisible in the exit status and in
-/// the image itself -- a sky that is simply too dark, with no error anywhere -- and it is not
-/// visible in a document either, so the attribute has to be written whether or not anyone reads
-/// the file back.
 fn write_world(
     writer: &mut Writer,
     lights: &[Light],
@@ -626,7 +598,6 @@ fn write_world(
                 &[
                     ("name", "world_texture".to_owned()),
                     ("filename", name_for(label)),
-                    ("colorspace", ENVIRONMENT_COLORSPACE.to_owned()),
                 ],
             );
             if images.iter().any(|image| image.label == *label) {
