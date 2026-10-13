@@ -273,10 +273,10 @@ const GRADE: &str = r#"
     }
     if depth < 1.0 {
         let ray = ray_through(in.uv);
-        // `distance_to` is along the view and the ray is not the view, so the two differ by
-        // the ray's own component of it. The ray is a unit vector, so what comes out is also
-        // how far the fragment is from the eye, which is the distance the air is measured over.
-        let along_ray = distance_to(depth) / max(dot(ray, uniforms.camera.forward), 0.0001);
+        // `world_position` is the shared post stage's recovery of where this pixel is, and
+        // `length` of the difference is how far away that is — the post stage's own answer and
+        // not a distance assembled here out of a near and a far plane.
+        let along_ray = length(world_position(in.uv, depth) - uniforms.camera.position);
         let air = clamp(1.0 - exp(-along_ray * 0.004) * 0.9, 0.0, 0.96);
         // The ray's height is held to the horizon for the colour, because the air in front of
         // a surface takes the colour of the sky *behind* that surface and not the colour of

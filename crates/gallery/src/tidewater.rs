@@ -818,8 +818,9 @@ const GRADE: Block = wgsl!(
     if depth < 1.0 {
         let ray = ray_through(in.uv);
         let eye = uniforms.camera.position;
-        let along_ray = distance_to(depth) / max(dot(ray, uniforms.camera.forward), 0.0001);
-        let point = eye + ray * along_ray;
+        let world = world_position(in.uv, depth);
+        let along_ray = length(world - eye);
+        let point = world;
         let depth_of_air = aerial_depth(eye.y, point.y, along_ray);
         color = mix(color, aerial_colour(ray), clamp(1.0 - exp(-depth_of_air), 0.0, 0.985));
     }

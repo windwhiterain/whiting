@@ -1518,28 +1518,14 @@ const GROUND_SURFACE: &str = r#"
     color = color * earth;
 "#;
 
-/// The post stage's own helpers: the world position a pixel shows, recovered from the depth
-/// the prepass wrote.
+/// The post stage's own helpers.
+///
+/// **It no longer carries `world_position`.** that function used to live here and in
+/// `terraces`, one copy each, which meant two scenes could recover a pixel's world position
+/// two ways and neither could see the other's. it is the shared post stage's now
+/// (`shaders.rs`, beside `ray_through` and `distance_to`), and this scene calls it the same way
+/// every other scene does.
 const POST_HELPERS: &str = r#"
-/// Returns the world position a pixel shows, given its depth buffer value.
-///
-/// # Invariants
-///
-/// The recovery is written against rows two and three of the whole view-projection, because
-/// the pass carries the composition with the view and reading a bare perspective's own
-/// coefficients out of it reads every distance as the far plane.
-fn world_position(uv: vec2<f32>, depth: f32) -> vec3<f32> {
-    let ray = ray_through(uv);
-    let eye = uniforms.camera.position;
-    let matrix = uniforms.projection.view_projection;
-    let row_z = vec4<f32>(matrix[0][2], matrix[1][2], matrix[2][2], matrix[3][2]);
-    let row_w = vec4<f32>(matrix[0][3], matrix[1][3], matrix[2][3], matrix[3][3]);
-    let at_eye_z = dot(row_z.xyz, eye) + row_z.w;
-    let at_eye_w = dot(row_w.xyz, eye) + row_w.w;
-    let per_depth = dot(row_z.xyz - depth * row_w.xyz, ray);
-    let t = (depth * at_eye_w - at_eye_z) / per_depth;
-    return eye + ray * min(t, 2400.0);
-}
 
 /// Returns a dither of about one 8-bit step, seeded on the pixel.
 ///

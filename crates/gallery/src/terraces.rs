@@ -996,31 +996,13 @@ fn sky_colour(ray: vec3<f32>) -> vec3<f32> {
 /// closed form is what is used: stepping the fog would band where the mist is thin and
 /// lie about where it is thick. The fog scatters towards the sun, so the mist over the
 /// sun's quarter of the valley is warm and the mist behind is cool.
+///
+/// **`world_position` is not here.** this string used to declare it, and so did `foldyard`'s,
+/// and the derivation that justified it — the one that says why reading a bare perspective's
+/// own coefficients reads every distance as the far plane — is the reason it is now the
+/// shared post stage's. A function two scenes each carry is a function the two can drift apart
+/// on.
 const FOG_WGSL: &str = r#"
-/// Returns the world position a pixel shows, given its depth buffer value.
-///
-/// # Invariants
-///
-/// The recovery is written against rows two and three of the whole view-projection —
-/// `z_clip = row_z · world` and `w = row_w · world`, so `world = eye + ray * t` makes
-/// `depth = z_clip / w` one linear equation in `t`. It is *not* written against the bare
-/// perspective's coefficients: the pass carries the composition with the view, whose
-/// elements mix the rotation in, and reading `m[2][2]` and `m[3][2]` as `far/(near-far)`
-/// and its sibling reads every distance as the far plane. Written this way the recovery
-/// holds for any projection the camera can emit, orthographic included.
-fn world_position(uv: vec2<f32>, depth: f32) -> vec3<f32> {
-    let ray = ray_through(uv);
-    let eye = uniforms.camera.position;
-    let matrix = uniforms.projection.view_projection;
-    let row_z = vec4<f32>(matrix[0][2], matrix[1][2], matrix[2][2], matrix[3][2]);
-    let row_w = vec4<f32>(matrix[0][3], matrix[1][3], matrix[2][3], matrix[3][3]);
-    let at_eye_z = dot(row_z.xyz, eye) + row_z.w;
-    let at_eye_w = dot(row_w.xyz, eye) + row_w.w;
-    let per_depth = dot(row_z.xyz - depth * row_w.xyz, ray);
-    let t = (depth * at_eye_w - at_eye_z) / per_depth;
-    return eye + ray * min(t, 2400.0);
-}
-
 /// Fogs `color` by the air between the camera and `world`, along `ray`.
 ///
 /// # Invariants
