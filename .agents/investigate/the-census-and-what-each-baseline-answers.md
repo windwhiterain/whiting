@@ -1,10 +1,12 @@
 # The census, and what each of its two baselines answers
 
 Measured 2026-10-14, Cycles 5.3.0 at `C:\resource\cycles\install\cycles.exe`, at `a5950cd` in the
-tree. Probe: `out/probe-grade-matched.py`, with `out/probe-unclipped.py` for the exposure control and
-`out/probe-bounce-free.py` for the bounce control. Grade constants are read out of each scene's
-`GRADE` in the source, one per scene, and every figure below comes from a frame with **no clipped
-pixel**.
+tree, with `foldyard` added at `4cd7d0c`. Probe: `out/probe-grade-matched.py`, with
+`out/probe-unclipped.py` for the exposure control and `out/probe-bounce-free.py` for the bounce
+control. Grade constants are read out of each scene's `GRADE` in the source, one per scene, and
+every figure below comes from a frame with **no clipped pixel**. `foldyard`'s own measurement, its
+two reasons, and what was not decomposed are in
+[foldyard-composes-poorly-and-these-are-its-reasons](foldyard-composes-poorly-and-these-are-its-reasons.md).
 
 ## The two baselines, and the question each one answers
 
@@ -18,8 +20,16 @@ is measuring, and the choice has to be written down because the numbers are not 
 
 Both are worth having and neither is the other's baseline. **Every figure in this file is
 bounce-free where a bounce-free frame exists**, because that is the baseline that isolates the
-document, and the bounce-free renders differ from their bounced ones by 0.002 or less on the scenes
-measured, so the two baselines agree wherever both exist.
+document.
+
+**The two baselines do not agree everywhere, and an earlier version of this file said they did.**
+It claimed a difference "of 0.002 or less on the scenes measured", which was `dunes` alone.
+`foldyard` is the counterexample: **0.938 as shipped against 0.920 bounce-free, a difference of
+0.018**, and bounce-free makes it *worse* rather than neutral. A yard lit by a point sun four
+hundred units off has a large indirect component, so removing every bounce there moves the frame —
+and it moves it away from the rasterised one, which keeps its own bounce. The two baselines are
+interchangeable on an open scene and not on an enclosed one, so a figure taken on one is not a
+figure taken on the other. Where both exist they are given.
 
 ## How a frame is read, and why each step is there
 
@@ -40,24 +50,25 @@ bits. Three steps separate those.
 ## The figures
 
 `graded/rasterised` is a whole-frame mean after step 1, and `pearson` is the correlation of luma
-between the two.
+between the two. `foldyard` is given on both baselines because they differ there.
 
 | scene | graded/rasterised | pearson | comparable |
 |---|---|---|---|
 | `dunes` | **1.003** | **0.9940** | yes |
 | `spotlight` | **1.047** | **0.9904** | yes |
 | `sunlight` | **1.081** | **0.9723** | yes |
+| `foldyard` | **0.920** (0.938 as shipped) | 0.8706 (0.8804) | **no** |
 | `landscape` | **0.981** | 0.9289 | ground only |
 | `tiles` | **0.961** | **0.9973** | yes |
-| `monoliths` | **0.008** | 0.0969 | **no** |
 | `tidewater` | **1.181** | 0.7705 | **no** |
+| `monoliths` | **0.008** | 0.0969 | **no** |
 | `terraces` | **1.318** | 0.6496 | **no** |
-| `foldyard` | — | — | not measured |
 
-**Five agree, to between one and eight per cent.** `landscape`'s three ground bands are 1.004, 0.999
-and 1.006 — inside four per cent — and its whole-frame figure is dragged up only by the upper bands.
+**Four agree, to between one and eight per cent.** `landscape`'s three ground bands are 1.004,
+0.999 and 1.006 — inside four per cent — and its whole-frame figure is dragged up only by the upper
+bands. Every scene in the gallery now has a row.
 
-## Four scenes are marked not comparable, and why each one is
+## Five scenes are marked not comparable, and why each one is
 
 This is the rule the census applies and the list it applies it to. A scene is **not comparable**
 when its rasterised frame contains something the document cannot carry, because the figure then
@@ -68,19 +79,28 @@ measures that something rather than the two backends.
 | `terraces` | the terrain declares **no albedo**; its colour, its water and its Fresnel mirror are computed per fragment in WGSL, and the document carries `base_color = 1, 1, 1` | `crates/gallery/src/terraces.rs:446`, `:809-897` |
 | `monoliths` | the scene declares **no environment light** and the rasterised post stage paints a sky anyway — which is also what its near-black mirror ground reflects | `crates/gallery/src/monoliths.rs:271-272` |
 | `tidewater` | **aerial perspective on every surface** | `crates/gallery/src/tidewater.rs:818-825` |
+| `foldyard` | **both of the next two rows at once** — aerial perspective on every surface, and three ridge layers painted into the pixels no geometry reached | `crates/gallery/src/foldyard.rs:1627`, `:1613-1624` |
 | `landscape`, sky bands only | ranges, shafts and cirrus **painted into pixels no geometry reached** | `crates/gallery/src/landscape/mod.rs:993-1031` |
 
 `landscape` is listed with "ground only" rather than as not comparable because its ground does agree,
 to within four per cent, and its sky does not. A whole-frame figure for it is a figure about a
 mixture and should not be quoted as either.
 
-**The four scenes stay exactly as they are.** Their paintings are the pictures, and a census that
+**`foldyard`'s air is where the SPEC tells it to be, and that is why its row is not a defect to
+fix.** `render/cycles_backend.md:520-523` requires atmosphere to be a separate post process,
+`foldyard` has it in one, and the survey in [where-atmosphere-is-painted](where-atmosphere-is-painted.md)
+correctly did not list it. Moving it would mean moving it *out* of the post stage. **Post-stage
+atmosphere is invisible to a document, so this is the end state the current rule produces**: four of
+the five scenes above are uncorrectable by relocating a layer, because the layer is already where
+it belongs. That consequence is worth stating rather than discovering one scene at a time.
+
+**The five scenes stay exactly as they are.** Their paintings are the pictures, and a census that
 reported only comparable scenes would be a census of the easy half.
 
 ## What no figure in this table is
 
-**A disagreement between the two renderers about the same picture.** Five scenes agree to between
-one and eight per cent with the encodings and the clipping accounted for, and the four that do not
+**A disagreement between the two renderers about the same picture.** Four scenes agree to between
+one and eight per cent with the encodings and the clipping accounted for, and the five that do not
 agree differ by a material, a sky or a fog the other backend was never given.
 
 **Neither backend decodes the environment map, and that is why the comparable ones agree.**
@@ -93,11 +113,12 @@ method spends its first half undoing.
 
 ## Not measured
 
-**`foldyard`**, whose document is sixty four megabytes.
+**As-shipped figures for every scene.** Both baselines exist for `foldyard` and for `dunes`; only
+the bounce-free one was run across the rest. The two are **not** interchangeable — see the note at
+the top of this file — so every figure here is labelled as the baseline it was taken on, and the
+other seven scenes have one.
 
-**As-shipped figures for every scene.** Only the bounce-free baseline was run across the gallery;
-the two baselines agree to within 0.002 wherever both exist, but that was checked on `dunes` alone.
-
-**Whether any of the four not-comparable scenes would agree if their painting were carried**, which
+**Whether any of the five not-comparable scenes would agree if their painting were carried**, which
 for `terraces` and `monoliths` is the question
 [a-document-level-graph-vocabulary](../proposals/a-document-level-graph-vocabulary.md) is about.
+For `foldyard` it would also need the air, which is a fog law rather than a graph.

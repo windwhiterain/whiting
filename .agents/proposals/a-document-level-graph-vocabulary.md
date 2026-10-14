@@ -69,6 +69,8 @@ material belongs to one of them; which is a question about what else a material 
 light and the post stage paints a sky, which is a statement about the scene rather than about its
 material. Its materials do carry albedo.
 
-**The three other painted scenes.** `landscape`'s ranges and shafts are not geometry, so no graph
+**The four other painted scenes.** `landscape`'s ranges and shafts are not geometry, so no graph
 carries them; `tidewater`'s aerial perspective is a fog law, which is a graph only in a sense that
-has to be argued. Only `terraces` is a material, and only `terraces` is what this is about.
+has to be argued; `foldyard` has both of those and neither of its materials lacks an albedo, so it
+is not a material case either. Only `terraces` is a material, and only `terraces` is what this is
+about.
