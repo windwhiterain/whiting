@@ -24,6 +24,10 @@
 //! rather than dropped, because a tint that silently failed to apply is the same invisible-wrong-
 //! image failure this module is arranged to prevent.
 //!
+//! **One exception, and it is a statement about a value rather than about a field.** A field
+//! carrying the value the emitted node already has is not lost by not being written — see
+//! [`loses_nothing_when_dropped`] for the field and the measurement it rests on.
+//!
 //! **Everything that is written is written as a node attribute, not as a connection**, and that
 //! is not a style choice: a socket whose name contains a space cannot be connected at all — see
 //! [`UnsupportedField::MaterialImage`]. An emitter reaching for `<connect>` would fail on exactly
@@ -75,6 +79,25 @@ const EMISSIVE: &str = "emissive";
 
 /// The field a material's image travels under.
 const IMAGE: &str = "image";
+
+/// The field a surface's grazing-angle reflectivity travels in.
+///
+/// # Why a declared value is a loss and a declared zero is not
+///
+/// The document's `reflect` is how much sky a surface shows **at a grazing angle**.
+/// `principled_bsdf`'s `Specular IOR Level` is the reflectance at **normal incidence**, with
+/// Fresnel supplying the rise towards grazing on its own, so the obvious mapping is wrong:
+/// measured on `landscape`, writing it moved the pearson correlation from `+0.6223` to
+/// `+0.5733` on the whole frame and from `+0.6249` to `+0.5919` below the sky. The record is
+/// `.agents/investigate/cycles-emitter-dropped-material-fields.md`.
+///
+/// **A declared `0.0` is a different case, and it is the common one.** The node's own specular
+/// default is no reflection, so a material declaring zero is already drawn the way the document
+/// asks, and reporting it describes a loss that was not taken. `kit::surface()` writes this field
+/// on every gallery material through `surface_reflecting`, so that was **472 of the 498** `reflect`
+/// lines the exporter reported across the gallery, and under `LossyMode::Reject` — the `#[default]`
+/// — it was a refusal to export a scene over a field nothing depended on.
+const REFLECT: &str = "reflect";
 
 /// The roughness a material that names none is drawn with.
 const DEFAULT_ROUGHNESS: f64 = 0.5;
@@ -159,18 +182,28 @@ pub fn read_materials(
                                 material: label.clone(),
                             }),
                         },
-                        other => match mode {
-                            LossyMode::Reject => {
-                                return Err(EmitError::Unsupported(UnsupportedField::CustomData {
-                                    field: other.to_owned(),
-                                    material: label,
-                                }));
+                        other => {
+                            // A field whose value the node already holds was not lost by going
+                            // unwritten, so neither the report nor the refusal describes
+                            // anything that happened.
+                            if loses_nothing_when_dropped(other, value, &context)? {
+                                continue;
                             }
-                            LossyMode::Degrade => report.record(UnsupportedField::CustomData {
-                                field: other.to_owned(),
-                                material: label.clone(),
-                            }),
-                        },
+                            match mode {
+                                LossyMode::Reject => {
+                                    return Err(EmitError::Unsupported(
+                                        UnsupportedField::CustomData {
+                                            field: other.to_owned(),
+                                            material: label,
+                                        },
+                                    ));
+                                }
+                                LossyMode::Degrade => report.record(UnsupportedField::CustomData {
+                                    field: other.to_owned(),
+                                    material: label.clone(),
+                                }),
+                            }
+                        }
                     }
                 }
             }
@@ -238,6 +271,28 @@ pub fn write_material(writer: &mut Writer, material: &Material) {
         ],
     );
     writer.close("shader");
+}
+
+/// Whether dropping this field would lose nothing, because the value it carries is one the
+/// emitted node already holds.
+///
+/// # Invariants
+///
+/// **Only a field whose value the node already holds qualifies.** A field that is merely
+/// unrecognised is still a loss. This must not grow into a list of fields the exporter believes
+/// it can ignore: that would be a second answer to the question the match in [`read_materials`]
+/// already answers, and this repository has been bitten by two lists answering one question and
+/// disagreeing — `attribute_map::is_mappable` against `geometry.rs`'s `UV_FIELDS`.
+///
+/// **A value of the wrong type is still an error.** A `reflect` that is not a number arrived from
+/// an author expecting it to be read, so the number is read through [`parameter`] and only its
+/// value is inspected. Answering `false` here would still report it, which is the less bad of the
+/// two wrong answers, but reading it is what keeps a malformed field a malformed field.
+fn loses_nothing_when_dropped(field: &str, value: &Value, context: &str) -> EmitResult<bool> {
+    match field {
+        REFLECT => Ok(parameter(value, REFLECT, context)? == 0.0),
+        _ => Ok(false),
+    }
 }
 
 /// Reads one custom-data parameter, naming the material and the field when it is not a number.

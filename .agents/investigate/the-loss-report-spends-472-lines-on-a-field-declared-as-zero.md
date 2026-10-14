@@ -48,8 +48,11 @@ all, or — for `foldyard`, whose thirteen `Group::new` calls all pass `0.0`, in
 at `foldyard.rs:1249` — never pass anything else. **472 of 498 lines describe a loss of nothing.**
 
 `lanterns` (1.0 at `lanterns.rs:138`), `monoliths` (1.0 at `monoliths.rs:31`) and `stilllife`
-(0.55, 0.22, 1.0, 0.85, 1.0 at `stilllife.rs:219-251`) do declare reflection, and their 26 lines are
-not broken down here.
+(0.55, 0.22, 1.0, 0.85, 1.0 at `stilllife.rs:219-251`) do declare reflection, so their 26 lines were
+expected to be real. **They are not: 15 of the 26 are zero-valued as well.** Those three scenes mix
+`surface()` and `surface_reflecting()` call sites, so their counts could not be read off the source
+the way the other eight were — that was the open item, and the exporter now answers it by reporting
+3, 3 and 5.
 
 The counts are internally consistent, which is the check that they are counting materials and not
 lines: `terraces` reports 270 shader-stage lines against 405 `reflect` lines, and 405 is exactly
@@ -81,12 +84,58 @@ Read from source rather than measured: the three sites above are quoted and the 
 `match` on the field's name, so there is no branch in which a declared `reflect` survives `Reject`.
 Confirming it on a real document takes one `emit_cycles` run with a `surface()` material.
 
-## Why this is a defect and not a verbose report
+## What was done about it, and what that measured
 
-**The emitter never reads the value.** `crates/scene/src/cycles_export/material.rs:162-173` puts
-`reflect` in the `other` arm of a match on the custom-data **name**, reports it, and discards it —
-so a declared `0.0` and a declared `1.0` produce identical text. `principled_bsdf`'s own default is
-no reflection, so dropping a declared zero is exactly carrying it.
+**Option A — stop writing the field — is not implementable, and the reason is in the packer.**
+`gallery_custom_schema()` declares `reflect` as a required `Float` (`kit.rs:642-649`), so
+`validate_fields` (`schema.rs:248-258`) answers an absent one with `MissingField`. A schema `default`
+does not rescue it, because `pack_struct` (`packing.rs:114-120`) walks the schema's field order and
+answers an absent one with *"the data is missing a field its own schema declares"* — and
+`Value::defaulted()` (`value.rs:353-372`), which would fill it, is reached only through
+`defaulted_value()`, **which has no production caller**. The compile path never substitutes a
+default. Removing the field breaks the rasterised compile outright, which is not a trade 472 lines of
+noise is worth.
+
+**Option B — the exporter stops reporting a loss it did not take — is what shipped.** The guard in
+`cycles_export/material.rs` reads the value through the same `parameter` reader every other
+parameter uses, and skips both the record and the refusal when the value is the node's own default.
+
+| | before | after |
+|---|---|---|
+| `reflect` lines, gallery-wide | 498 | **11** |
+| `terraces` | 405 | **0** |
+| `foldyard` | 39 | **0** |
+| `monoliths` | 8 | 3 |
+| `lanterns` | 10 | 3 |
+| `stilllife` | 8 | 5 |
+| the other five scenes | 28 | **0** |
+
+**All eleven rendered frames are byte-identical before and after**, compared by SHA256 over
+`out/rl-<scene>.png`. That is the check the change had to pass: dropping a declared zero cannot move
+a pixel, and none moved. The stage-line counts are unchanged in every scene and `custom_data` still
+equals `reflect` in every scene, so nothing else was silenced.
+
+The 11 that remain are measured rather than inferred, and **15 of those three scenes' original 26
+lines were zero-valued too**: `monoliths` reports one `surface_reflecting` call site at 1.0
+(`monoliths.rs:31`) and `lanterns` one at 1.0 (`lanterns.rs:138`), against five non-zero call sites
+in `stilllife`, so 8, 10 and 8 became 3, 3 and 5.
+
+### What the `Reject` claim now rests on
+
+**The guard sits ahead of the `match mode` and reads no mode.** The 472 lines that disappeared were
+disappearing under `LossyMode::Degrade`, which is what `render_cycles` sets; that same `continue`
+gates the `Err` in the `Reject` arm of the same `match`, with nothing between them that could tell
+the two apart. **`Reject` itself was not run** — `emit_cycles` builds its own scene and writes no
+`reflect`, so it never exercised this path, and no example selects `Reject`. The claim is measured
+for `Degrade` and follows for `Reject` from the guard's position; it has not been observed.
+
+## Why this was a defect and not a verbose report
+
+**The emitter never read the value.** `crates/scene/src/cycles_export/material.rs` put `reflect` in
+the `other` arm of a match on the custom-data **name**, reported it, and discarded it — so a declared
+`0.0` and a declared `1.0` produced identical text. `principled_bsdf`'s own default is no reflection,
+so dropping a declared zero was exactly carrying it. That is the arm `loses_nothing_when_dropped`
+now stands in front of.
 
 **The field has a meaning, and a zero-valued declaration spends it.**
 `kit.rs:667-671` says the field exists because "a wet floor and a stone are drawn by the same pass
@@ -110,10 +159,14 @@ in [terraces-terrain-is-a-wgsl-material-the-document-cannot-carry](terraces-terr
 
 ## Not measured
 
-**The split of the 26 lines in `lanterns`, `monoliths` and `stilllife`** between zero and non-zero
-declarations. Those three scenes mix `surface()` and `surface_reflecting()` call sites, so their
-counts cannot be read off the source the way the other eight were.
+**`LossyMode::Reject` against a real gallery scene**, for the reason given above. The 11 remaining
+lines are the shape of that unrun case: under `Reject` those eleven materials would be refusals, and
+under `Degrade` they are eleven lines. No example selects `Reject` over a gallery scene.
 
-**Whether the emitter's behaviour is wrong or only the gallery's.** Two changes are defensible and
-they answer different questions — see the proposal
-[report-a-dropped-field-only-when-dropping-it-loses-something](../proposals/report-a-dropped-field-only-when-dropping-it-loses-something.md).
+**Whether the 11 remaining lines are the right 11.** Each is a material declaring a non-zero
+`reflect`, which the node cannot carry, so each is a genuine loss — but this records the count and
+not a per-material audit of the three scenes.
+
+**Making the field absent from the document at all.** That is the version that would give the field
+its stated meaning back, and it is refused by the packer rather than by this change; see
+[report-a-reflect-only-when-dropping-it-loses-something](../proposals/report-a-reflect-only-when-dropping-it-loses-something.md).
