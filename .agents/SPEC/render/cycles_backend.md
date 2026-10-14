@@ -193,8 +193,30 @@ half-rough surface, and a floor declared `1.0` came back glossier than any surfa
 ours is how much sky a surface shows at a grazing angle and `Specular IOR Level` is the
 reflectance at normal incidence. Writing it drops `landscape`'s correlation against the
 rasterised frame from `+0.6223` to `+0.5733`, and reverting restores both numbers to the digit.
-so `reflect` is reported rather than dropped, which is the point: reported is visible, and written
-would read as honoured.
+
+**a declared `reflect` is reported; a declared zero is not, because a zero is not a loss.** the
+principle is the one above — reported is visible, and written would read as honoured — and it is a
+statement about a **value** rather than about a field. `kit::surface()` writes `reflect` on every
+gallery material through `surface_reflecting`, so reporting the field by name alone was **472 of
+the 498** `reflect` lines across the gallery describing nothing at all, and under
+`LossyMode::Reject` — the `#[default]` — it refused an export over a field nothing depended on.
+`cycles_export/material.rs` now reads the value through the same `parameter` reader every other
+parameter uses and skips both the record and the refusal when the value is the one the emitted node
+already holds. the gallery-wide count is **11**, every one of them a material declaring a real
+reflection. **no rendered frame moves**, and that is the check this rule rests on: all eleven scenes'
+frames are byte-identical before and after by SHA256, and every other line of every report is
+unchanged.
+
+**a declared field cannot be left out of the document, whatever its value.** `reflect` is a
+**required** field of the gallery's custom schema (`kit.rs:642`), `validate_fields` answers an
+absent one with `MissingField`, and `pack_struct` (`scene/src/standard/packing.rs:114-120`) walks
+the schema's field order and answers an absent one with *the data is missing a field its own schema
+declares*. `Value::defaulted()` would fill it and is reached only through `defaulted_value()`,
+**which has no production caller**, so the compile path substitutes no defaults. the field is
+therefore reportable-but-not-writable in one direction only, and that is why "stop writing a
+declared zero" is not a fix. letting the field be absent would mean changing `pack_struct` to
+honour schema defaults, which is a change to the layout contract for every struct in the system —
+instance rows and point attributes included — and is a separate decision with its own evidence.
 
 a material's `image` is reported by name with its reason, which is narrower than "no socket":
 `principled_bsdf` **has** a `Base Color`, and the loader splits a connect's endpoints on
@@ -868,6 +890,14 @@ rasterised frame:
 before and after on both backends, `+0.1044` against `+0.1050` on the whole frame, a difference
 inside the noise of sixteen samples. `foldyard` composes poorly across the two backends for its
 own reasons and did before this; it is a separate finding, not a regression here.
+
+**that separate finding has since been made**, measured 2026-10-14 at `b4f6956`: whole frame
+**0.938** as shipped and **0.920** bounce free, pearson **0.8804**, on a frame with no clipped
+pixel. its two reasons are aerial perspective in the post stage (`foldyard.rs:1627`) and three
+ridge layers painted into the pixels no geometry reached (`foldyard.rs:1613-1624`) — and the air is
+**compliant** with the rule above, which is why the move made to three other scenes does not apply
+to it, and why it joins them as not comparable rather than as fixed. see
+[investigate/foldyard-composes-poorly-and-these-are-its-reasons.md](../../investigate/foldyard-composes-poorly-and-these-are-its-reasons.md).
 
 ### `terraces` keeps its own sky law, and `dawn::Sky` is why that is not a second `Atmosphere`
 
