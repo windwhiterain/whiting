@@ -420,6 +420,26 @@ what follows is about the remaining difference, which is shading.
 final eye, a final target and a final angle through `camera_placed`, which is the same thing both
 backends read. measured on `landscape`:
 
+**restated 2026-10-14: the figures below were taken before the comparison was made like-for-like,
+and the agreement is much closer than `+0.6223` suggests.** two things were wrong with reading two
+png files against each other: each frame has to go through **its own writer's output** — Cycles
+copies radiance straight into the file while the rasterised frame has been through that scene's own
+`GRADE` — and a traced frame rendered at exposure one has **already lost its highlights**, so it was
+being compared against a clipped image. with each frame graded through its own curve and both
+rendered at `exposure = 0.25` and divided back out, `sunlight` agrees to **1.003** and `spotlight`
+to **0.991** and `tiles` to **0.961**, with pearson correlations of **0.9989**, **0.9982** and
+**0.9973**. `landscape`'s three ground bands are 1.004, 0.999 and 1.006.
+
+**and the agreement depends on which baseline it is taken on, which is the more useful half.**
+measured on both `max_bounce = 8` and `max_bounce = 0`, `sunlight` goes 1.081 → **1.003** and
+`spotlight` 1.047 → 0.991, while `dunes` goes 1.003 → 0.967 and `landscape` 0.981 → 0.929, the other
+way. **so the two comparable lamp-lit scenes were agreeing better with the tracer's indirect light
+than without it, and the earlier figure for `sunlight` was measuring Cycles' interreflection against
+the rasteriser's own ambient term rather than a failure to read the scene.** a figure from this
+backend must name its baseline. all of it, including `tiles` producing a **byte-identical** frame at
+`max_bounce = 0` and `max_bounce = 8`, is in
+[investigate/the-census-and-what-each-baseline-answers.md](../../investigate/the-census-and-what-each-baseline-answers.md).
+
 - **the geometry is all there.** `RANGES` is two entries and the plain is the third mesh, so the
   scene has three meshes and the emitted document has three `<mesh>` elements. nothing is dropped.
 - **the camera is the same.** the document's eye comes out as
