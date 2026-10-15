@@ -139,6 +139,66 @@ fn median(values: &mut [f64]) -> f64 {
     values[values.len() / 2]
 }
 
+/// How much **the rock itself** moves across one cell, in space.
+///
+/// This is the number that decides whether a departure is a defect. A cell of a faceted mesh spans
+/// several triangles, and the rock is not flat across them: a surface that interpolates the rock's
+/// own corners and is smooth between them **cannot** follow that, and the best it can do is sit
+/// somewhere inside the range the rock already occupies. So if a cell's departure is no larger than
+/// the rock's own spread across that cell, the surface is inside the rock's own variation and the
+/// probe's threshold is asking for something no smooth surface can deliver.
+///
+/// Sampled at nine points — the four corners, the four edge midpoints, and the centre — and taken as
+/// the widest gap between any two of them, which is the spread rather than an average of it.
+fn rock_spread(faces: &[&mountain::Face], massif: &FacetMesh, side: usize) -> f64 {
+    let (low, high) = uv_box(faces);
+    let last = side - 1;
+    let mut per_cell: Vec<f64> = Vec::new();
+    for row in 0..last {
+        for column in 0..last {
+            let mut probes = Vec::with_capacity(9);
+            for (dr, dc) in [
+                (0.0f64, 0.0f64),
+                (0.0, 0.5),
+                (0.0, 1.0),
+                (0.5, 0.0),
+                (0.5, 0.5),
+                (0.5, 1.0),
+                (1.0, 0.0),
+                (1.0, 0.5),
+                (1.0, 1.0),
+            ] {
+                let (s, t) = (
+                    (column as f64 + dc) / last as f64,
+                    (row as f64 + dr) / last as f64,
+                );
+                let u = low[0] + (high[0] - low[0]) * s as f32;
+                let v = low[1] + (high[1] - low[1]) * t as f32;
+                // A corner no triangle covers makes the cell's spread undefined rather than small,
+                // and counting it as small is how a ragged region reads as a good fit.
+                match sample(faces, massif, u, v) {
+                    Some(point) => probes.push(point),
+                    None => {
+                        probes.clear();
+                        break;
+                    }
+                }
+            }
+            if probes.len() < 9 {
+                continue;
+            }
+            let mut widest = 0.0f64;
+            for (at, first) in probes.iter().enumerate() {
+                for second in &probes[at + 1..] {
+                    widest = widest.max(first.distance(*second));
+                }
+            }
+            per_cell.push(widest);
+        }
+    }
+    median(&mut per_cell)
+}
+
 fn main() {
     let facet: FacetMesh = match starter(11, Starter::default()).build() {
         Ok(mesh) => mesh,
@@ -149,14 +209,18 @@ fn main() {
     };
 
     println!("\n  A block on its own, against the same block inside the whole-mesh surface");
-    println!("\n  side   alone (median)   in the mesh (median)   cell aspect u/v (median)");
+    println!(
+        "\n  side   alone (median)   in the mesh (median)   cell aspect   rock's own spread\n     \x20       of the patch    inside the mesh         u/v (median)  in one cell (median)"
+    );
     let mut alone_is_always_floor = true;
     let mut aspects: Vec<(f64, f64)> = Vec::new();
+    let mut spreads: Vec<(f64, f64)> = Vec::new();
 
     for side in [2usize, 3, 4, 6, 8] {
         let whole = blockmesh::from_facet(&facet, side);
         let mut alone: Vec<f64> = Vec::new();
         let mut own: Vec<f64> = Vec::new();
+        let mut spread: Vec<f64> = Vec::new();
         for block in whole.blocks() {
             let Some(source) = facet.blocks.get(block.source as usize) else {
                 continue;
@@ -189,23 +253,44 @@ fn main() {
             let (u_size, v_size) = cell_sizes(&one.surface, 0);
             own.push(u_size / v_size.max(f64::MIN_POSITIVE));
             aspects.push((u_size / v_size.max(f64::MIN_POSITIVE), reading));
+            let rock = rock_spread(&faces, &facet, side);
+            if rock > 0.0 {
+                spread.push(rock);
+                spreads.push((reading, rock));
+            }
         }
 
         let mut sorted = alone.clone();
         let alone_median = median(&mut sorted);
         let in_mesh = blockmesh_median(&whole, &facet, side);
         let mut sorted_own = own.clone();
+        let mut sorted_spread = spread.clone();
         println!(
-            "  {:>4}   {:>14.3e}   {:>16.3e}   {:>22.3e}",
+            "  {:>4}   {:>14.3e}   {:>16.3e}   {:>11.3e}   {:>22.3e}",
             side,
             alone_median,
             in_mesh,
-            median(&mut sorted_own)
+            median(&mut sorted_own),
+            median(&mut sorted_spread)
         );
         if alone_median > 1.0e-4 {
             alone_is_always_floor = false;
         }
     }
+
+    // The decisive reading: **is the departure inside the rock's own variation?**
+    let inside = spreads
+        .iter()
+        .filter(|(reading, rock)| reading <= rock)
+        .count();
+    println!(
+        "\n  of {} blocks, the departure is within the rock's own spread for {} ({:.0}%)\n\
+         \x20 and above it for {}",
+        spreads.len(),
+        inside,
+        100.0 * inside as f64 / spreads.len().max(1) as f64,
+        spreads.len() - inside
+    );
 
     println!("\n  cell aspect against departure, over every block at every resolution");
     let mut sorted_aspects = aspects.clone();

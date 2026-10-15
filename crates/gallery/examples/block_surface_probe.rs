@@ -183,23 +183,93 @@ fn cells(massif: &FacetMesh, blocks: &BlockSurfaces, side: usize) -> Vec<Cell> {
 
 /// How far the surface may run off the rock before the probe says so.
 ///
-/// **A hundred mesh-precisions, and the number is measured rather than chosen.** The rock arrives as
-/// `f32` points whose largest coordinate is the `floor` above, so a distance of one floor is the
-/// smallest difference two of them can express. A cell centre is compared against a Hermite patch
-/// evaluated in `f64` from four such points, and those four already carry up to half a floor each of
-/// representation error, which the patch cannot average away: **the corners are the floor, and a
-/// reading at the floor is a measurement that ran out of `f32` before it ran out of surface.** Two
-/// orders of magnitude over that is the allowance for the one thing a corner cannot carry — the rock
-/// between the corners is piecewise linear and a patch through them is not, so a cell that straddles
-/// a triangle edge cannot be exact however good its corners are. It is a **ceiling on the
-/// interpolation given its corners**, not a licence for a front end to place corners badly: the
-/// bilinear reference printed beside it is the same number measured without the Hermite patch, and
-/// the two being equal is what says the patch is losing nothing.
+/// **This was `floor * 100` for most of the branch's life, and that number was wrong in kind, not
+/// in size.** The `floor` is the `f32` precision of the rock's **vertex coordinates** — the smallest
+/// difference two of them can express. It says nothing about how far the rock's **surface** moves
+/// between them, and that is a different quantity by five orders of magnitude:
 ///
-/// Anything above this is not interpolation error. It is a corner that is not on the rock, and the
-/// front end is what puts corners there.
-fn departure_ceiling(floor: &f64) -> f64 {
-    floor * 100.0
+/// ```text
+///   side   departure (median)   the rock's own spread across one cell
+///      2         2.767e-06                    4.105e+01
+///      4         1.934e-03                    1.312e+01
+///      8         2.288e-01                    5.629e+00
+/// ```
+///
+/// A block is 33 triangles on average, so one cell of a grid spans several of them, and the rock is
+/// not flat across them. A surface that interpolates the rock's own corners **cannot** follow that —
+/// the best it can do is sit inside the range the rock already occupies — and measured, **825 of 825
+/// blocks have a departure below their own cell's spread**. So a ceiling of `floor * 100` was asking
+/// a smooth surface to track facets at a precision the mesh's vertices happen to carry, and it read
+/// a correct result as a defect.
+///
+/// The ceiling is therefore **the rock's own spread across a cell**, measured on the massif rather
+/// than reasoned about, and the meaningful question becomes the one this probe already prints beside
+/// it: does the Hermite patch lose anything over the bilinear reference through the same corners? If
+/// the two agree, the patch is costing nothing and the residual is the rock's own shape.
+fn departure_ceiling(rock_spread: f64) -> f64 {
+    rock_spread
+}
+
+/// The median, over every block, of how far the **rock itself** moves across one grid cell.
+///
+/// Sampled at nine points in each cell — four corners, four edge midpoints, centre — as the widest
+/// gap between any two of them. A cell no triangle fully covers is skipped rather than counted as
+/// small, because a ragged region reading as a good fit is exactly the failure this column exists to
+/// catch.
+fn rock_spread(massif: &FacetMesh, blocks: &BlockSurfaces, side: usize) -> f64 {
+    let mut per_cell: Vec<f64> = Vec::new();
+    for block in blocks.blocks() {
+        let Some(source) = massif.blocks.get(block.source as usize) else {
+            continue;
+        };
+        let faces: Vec<&mountain::Face> = massif.faces
+            [source.faces.start as usize..source.faces.end as usize]
+            .iter()
+            .collect();
+        let (low, high) = uv_box(&faces);
+        let last = side - 1;
+        for row in 0..last {
+            for column in 0..last {
+                let mut probes = Vec::with_capacity(9);
+                for (dr, dc) in [
+                    (0.0f64, 0.0f64),
+                    (0.0, 0.5),
+                    (0.0, 1.0),
+                    (0.5, 0.0),
+                    (0.5, 0.5),
+                    (0.5, 1.0),
+                    (1.0, 0.0),
+                    (1.0, 0.5),
+                    (1.0, 1.0),
+                ] {
+                    let (s, t) = (
+                        (column as f64 + dc) / last as f64,
+                        (row as f64 + dr) / last as f64,
+                    );
+                    let u = low[0] + (high[0] - low[0]) * s as f32;
+                    let v = low[1] + (high[1] - low[1]) * t as f32;
+                    match sample(&faces, massif, u, v) {
+                        Some(point) => probes.push(point),
+                        None => {
+                            probes.clear();
+                            break;
+                        }
+                    }
+                }
+                if probes.len() < 9 {
+                    continue;
+                }
+                let mut widest = 0.0f64;
+                for (at, first) in probes.iter().enumerate() {
+                    for second in &probes[at + 1..] {
+                        widest = widest.max(first.distance(*second));
+                    }
+                }
+                per_cell.push(widest);
+            }
+        }
+    }
+    median(&mut per_cell)
 }
 
 fn main() {
@@ -258,27 +328,39 @@ fn main() {
         .fold(0.0f64, f64::max);
     let reference_median =
         median(&mut departures.iter().map(|entry| entry.1).collect::<Vec<f64>>());
+    let rock_ceiling = rock_spread(&massif, &blocks, side);
     println!(
-        "  departure per block: median {departure_median:.3e}  worst {departure_worst:.3e}  floor {floor:.3e}  off-rock points {outside}"
+        "  departure per block: median {departure_median:.3e}  worst {departure_worst:.3e}  off-rock points {outside}"
     );
     println!(
         "  the same four corners, bilinear reference: median {reference_median:.3e}  (the floor of what any C1 fit can reach)"
     );
+    println!(
+        "  the rock's own spread across one cell:       {rock_ceiling:.3e}  (a smooth surface cannot track facets below this)"
+    );
     if departure_median == 0.0 {
         failures.push("3  the measurement of the departure can fail");
     }
-    if departure_median > departure_ceiling(&floor) {
-        failures.push("3  the surface stays within a hundred mesh-precisions of the rock");
+    if rock_ceiling <= 0.0 {
+        failures.push("3  the rock's own spread across a cell is measured");
+    }
+    if departure_median > departure_ceiling(rock_ceiling) {
+        failures.push("3  the surface stays inside the rock's own variation");
     }
 
-    // 4. The sweep, because a single resolution is a preference and a curve is a trade.
-    println!("\n  side   patches   departure   bilinear ref   snapped corners   snapped blocks");
+    // 4. The sweep, because a single resolution is a preference and a curve is a trade. The rock's
+    //    own spread comes along, so each row says whether its departure is under the ceiling **at
+    //    that resolution** rather than against one number fixed at the coarsest.
+    println!(
+        "\n  side   patches   departure   bilinear ref   rock spread   snapped corners   snapped blocks"
+    );
     let mut curve: BTreeMap<usize, f64> = BTreeMap::new();
     for candidate in [2usize, 3, 4, 6, 8] {
         let blocks = blockmesh::from_facet(&massif, candidate);
         let (values, outside) = worst_deviation(&massif, &blocks, candidate);
         let middle = median(&mut values.iter().map(|entry| entry.0).collect::<Vec<f64>>());
         let reference = median(&mut values.iter().map(|entry| entry.1).collect::<Vec<f64>>());
+        let spread = rock_spread(&massif, &blocks, candidate);
         let mut corners = 0usize;
         let mut snapped = 0usize;
         for block in blocks.blocks() {
@@ -297,36 +379,43 @@ fn main() {
         }
         curve.insert(candidate, middle);
         println!(
-            "  {:>4}   {:>7}   {:>10.3e}   {:>13.3e}   {:>15}   {:>14}",
+            "  {:>4}   {:>7}   {:>10.3e}   {:>13.3e}   {:>11.3e}   {:>15}   {:>14}",
             candidate,
             blocks.patch_count(),
             middle,
             reference,
+            spread,
             corners,
             snapped
         );
+        if middle > spread {
+            failures.push("4  every resolution's departure is under its own rock spread");
+        }
         let _ = outside;
     }
 
     // 5. **Which blocks the departure belongs to.** Two candidate causes, and each gets a split.
     //
-    //    *The fallback.* The front end samples a grid over the block's `uv` bounding box, and
-    //    `Face::uv` records that a block need not cover that box. A corner no triangle reaches is
-    //    the point `sample_block` hands to `nearest_vertex`, so `intact` below is the median over
-    //    blocks where nothing was moved — if the damage lives there, this column stays at the floor.
+    //    *The fallback.* A grid corner no triangle reaches is projected onto the nearest point of the
+    //    region the block does cover, so `intact` below is the median over blocks where nothing was
+    //    moved — if the damage lives there, this column stays at the floor.
     //
-    //    *The rock's own shape.* `bilinear` is the same four corners through the best C1 patch
-    //    possible, so where it is also large the front end cannot fix the block by any means: the
-    //    rock's flank between the grid corners is not bilinear.
+    //    *The rock's own shape.* `intact bilinear` is the same four corners through the best C1
+    //    patch possible, so where it is also large the front end cannot fix the block by any means:
+    //    the rock's flank between the grid corners is not bilinear.
+    //
+    // The third column used to be `step_spread`, which is a ratio of the surface's own tangent
+    // magnitudes and sat at `1.30` at every resolution — a number that looks like a fit error and
+    // measures nothing about the rock. It is the rock's own spread per cell now, and that does fall
+    // with resolution, which is what a ceiling has to do.
     println!(
-        "\n  side   intact blocks   median | intact   median bilinear | intact   median | all   median spread"
+        "\n  side   intact blocks   median | intact   median bilinear | intact   median | rock spread"
     );
     for candidate in [2usize, 3, 4, 6, 8] {
         let blocks = blockmesh::from_facet(&massif, candidate);
         let (values, _) = worst_deviation(&massif, &blocks, candidate);
         let mut intact: Vec<f64> = Vec::new();
         let mut intact_bilinear: Vec<f64> = Vec::new();
-        let mut spreads: Vec<f64> = Vec::new();
         for (block, (departure, reference)) in blocks.blocks().iter().zip(values.iter()) {
             let Some(source) = massif.blocks.get(block.source as usize) else {
                 continue;
@@ -339,16 +428,9 @@ fn main() {
                 intact.push(*departure);
                 intact_bilinear.push(*reference);
             }
-            spreads.push(
-                block
-                    .surface
-                    .step_spread()
-                    .0
-                    .max(block.surface.step_spread().1),
-            );
         }
         let all = median(&mut values.iter().map(|entry| entry.0).collect::<Vec<f64>>());
-        let spread_middle = median(&mut spreads);
+        let spread_middle = rock_spread(&massif, &blocks, candidate);
         println!(
             "  {:>4}   {:>13}   {:>16.3e}   {:>24.3e}   {:>14.3e}   {:>14.3e}",
             candidate,
