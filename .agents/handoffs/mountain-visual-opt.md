@@ -220,6 +220,13 @@ stations.
 Render: the stacked column of chevrons down the front valley is gone and most of the isolated
 diamonds with it; `out/dh1.png` against `out/dh2.png`.
 
+**One number in `a3fd1f6`'s message is not to be relied on.** It quotes "seam cells reaching past
+their own seam line, 73 of 460 -> 4 of 460". That came from a probe whose sign test is inverted
+(it counts pairs whose two offsets differ in sign, which is the *separated* case) and whose
+perpendicular is taken from the patch's own `v = 1` boundary — a boundary that, before the fix,
+doubles back on itself, so the direction it gives is noise. The four numbers in the table above
+and the render are the evidence; that one is not.
+
 ### Ruled out on the way, by measurement
 
 - **Not** the one-sided boundary tangent at a seam vertex. Its seed is the full chord in the
