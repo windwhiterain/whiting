@@ -108,11 +108,13 @@ pub struct Erosion {
     /// How far each cell stands from the rim, in cells, from
     /// [`HeightField::edge_distance`].
     pub margin: Vec<f32>,
-    /// The surface the scene draws: the eroded field, faded back to the massif's own at the rim.
+    /// The surface the scene draws: the eroded field with its leftover pits filled, faded back
+    /// to the massif's own at the rim.
     ///
     /// # Invariants
     ///
-    /// **It is the one place the fade is applied.** A caller asking what the picture shows gets
+    /// **It is the one place the fade and the pit fill are applied.** A caller asking what the
+    /// picture shows gets
     /// this field and not the solve's own output, and a caller displacing the authored mesh
     /// gets `surface − field`. Written twice it was already wrong once: the lattice drew the raw
     /// solve and the displaced mesh drew the faded one, so the two put the massif's foot in two
@@ -137,9 +139,13 @@ impl Erosion {
             .iter()
             .map(|cells| ((*cells - 1.0) / RIM_FADE_CELLS).clamp(0.0, 1.0))
             .collect();
+        // The drawn surface fills the solve's leftover pits: a one-cell pit draws as a dot, and
+        // a dozen of them are the last of the texel artifacts the multiple-flow routing did not
+        // take. The solve itself, and the books that describe it, stay unfilled.
+        let filled = eroded.fill_pits();
         let surface = read
             .field
-            .with_surface(&eroded, &fade)
+            .with_surface(&filled, &fade)
             .expect("a field is the same length as the run that fades it");
         Erosion {
             field: read.field,

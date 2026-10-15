@@ -373,6 +373,135 @@ impl HeightField {
             .collect();
         self.with_heights(heights)
     }
+
+    /// Returns the field with every interior pit raised to the level its water would spill at.
+    ///
+    /// # Invariants
+    ///
+    /// - **Only pits rise, and never above their own spill level.** A cell's filled height is
+    ///   the lowest level at which it connects to the rock's own boundary through rock — the
+    ///   priority flood: the boundary stands at its own height and the level spreads inward,
+    ///   climbing only where the rock lies below the level that reached it. Ground that already
+    ///   drains is untouched, because its own height is the level that reaches it.
+    /// - **It is one heap sweep over the covered cells**, `O(n log n)`, the order of one sorted
+    ///   round of the solver rather than a search per pit.
+    /// - **A cell with no rock under it keeps [`HeightField::base`]**, as everywhere else, and a
+    ///   cell the flood never reaches — an inside component walled off from the boundary, which
+    ///   the mask cannot express but an arithmetic fault could — keeps its own height rather
+    ///   than being lifted to infinity.
+    ///
+    /// The solver leaves a handful of one-cell pits even with multiple-flow routing, and a pit
+    /// drawn is a dot: this is the drawing's answer to them, applied by the caller that draws
+    /// rather than inside the solve, so the transport books still describe the solve that ran.
+    pub fn fill_pits(&self) -> HeightField {
+        use std::collections::BinaryHeap;
+
+        /// A heap entry: the level a cell was reached at, lowest first.
+        #[derive(Clone, Copy)]
+        struct Level(f32, usize);
+        impl PartialEq for Level {
+            fn eq(&self, other: &Self) -> bool {
+                self.cmp(other) == std::cmp::Ordering::Equal
+            }
+        }
+        impl Eq for Level {}
+        impl Ord for Level {
+            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                // Reversed on the level: the binary heap is a max-heap and the flood wants the
+                // lowest level first. A total order including the index, because a NaN level
+                // would otherwise leave the heap without a greatest element.
+                other
+                    .0
+                    .total_cmp(&self.0)
+                    .then_with(|| self.1.cmp(&other.1))
+            }
+        }
+        impl PartialOrd for Level {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+
+        /// The eight neighbours, edges before diagonals, in one table.
+        const NEIGHBOURS: [(i32, i32); 8] = [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+        ];
+
+        let cells = self.cells();
+        let mut level = vec![f32::INFINITY; cells];
+        let mut heap = BinaryHeap::new();
+        for row in 0..self.height {
+            for column in 0..self.width {
+                let Some(at) = self.index(column, row) else {
+                    continue;
+                };
+                if !self.inside[at] {
+                    continue;
+                }
+                // The flood enters the rock where the rock meets its own boundary: a cell with
+                // a neighbour off the lattice or with no rock under it.
+                let open = NEIGHBOURS.iter().any(|(dx, dy)| {
+                    let next = (column as i32 + dx, row as i32 + dy);
+                    next.0 < 0
+                        || next.1 < 0
+                        || self
+                            .index(next.0 as usize, next.1 as usize)
+                            .map_or(true, |next| !self.inside[next])
+                });
+                if open {
+                    level[at] = self.heights[at];
+                    heap.push(Level(self.heights[at], at));
+                }
+            }
+        }
+        while let Some(Level(reached, at)) = heap.pop() {
+            if reached > level[at] {
+                // This cell was reached again, lower, after this stale entry was pushed.
+                continue;
+            }
+            let column = at % self.width;
+            let row = at / self.width;
+            for (dx, dy) in NEIGHBOURS {
+                let next_column = column as i32 + dx;
+                let next_row = row as i32 + dy;
+                if next_column < 0 || next_row < 0 {
+                    continue;
+                }
+                let Some(next) = self.index(next_column as usize, next_row as usize) else {
+                    continue;
+                };
+                if !self.inside[next] {
+                    continue;
+                }
+                let spill = reached.max(self.heights[next]);
+                if spill < level[next] {
+                    level[next] = spill;
+                    heap.push(Level(spill, next));
+                }
+            }
+        }
+        let heights = self
+            .heights
+            .iter()
+            .enumerate()
+            .map(|(at, here)| {
+                if self.inside[at] && level[at] < f32::INFINITY {
+                    level[at].max(*here)
+                } else {
+                    *here
+                }
+            })
+            .collect();
+        self.with_heights(heights)
+            .expect("the lattice and mask are unchanged")
+    }
 }
 
 /// Why a height field could not be built.
