@@ -113,6 +113,12 @@ impl HermitePatch {
     ///
     /// `step_u` and `step_v` are the parameter distances each direction spans. They are stored so
     /// the derivatives above can be written once, in world units, and converted on the way out.
+    ///
+    /// **This constructor cannot build a face of a shared mesh.** Both steps are per-face numbers,
+    /// and a boundary curve's Hermite tangent is `dP/du * step_u`, so two faces sharing an edge
+    /// draw *different* curves along it whenever their `step_u` differ — by `4.5e-4` on a grid of
+    /// the scene's size, which is a distance between two points that are supposed to be one. See
+    /// [`HermitePatch::from_coefficients`], which is what a mesh uses and why.
     pub fn new(step_u: f64, step_v: f64, corners: [Jet; 4]) -> Self {
         debug_assert!(
             step_u > 0.0 && step_v > 0.0,
@@ -162,6 +168,21 @@ impl HermitePatch {
                 Jet::new(c01, du0, dv1, Point3::ZERO),
             ],
         )
+    }
+
+    /// Builds a patch from sixteen coefficients already in place.
+    ///
+    /// **This is the constructor the mesh uses, and the reason it exists is in
+    /// [`HermitePatch::new`]'s neighbour: a boundary curve scaled by a *face's* step is not the same
+    /// curve as the same boundary scaled by its *neighbour's* step.** A caller that assembles a
+    /// patch's boundary lines from shared edge data needs to put them in directly, because the four
+    /// lines each have their own scale and no single pair of steps can be all four.
+    pub fn from_coefficients(step_u: f64, step_v: f64, coefficients: [[Point3; 4]; 4]) -> Self {
+        Self {
+            step_u,
+            step_v,
+            coefficients,
+        }
     }
 
     /// Where a corner sits on the unit square, in the winding every quad in this crate uses.

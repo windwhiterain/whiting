@@ -302,14 +302,38 @@ impl HermiteSurface {
     }
 
     /// The patch one face reads, built from its four corner jets and the edge steps.
+    ///
+    /// **This path and per-edge boundary scaling were both tried; this one is the one that measures
+    /// better, and the other one is why.** Scaling each of the four boundary lines by the chord of
+    /// *its own* edge — which is what "each face's boundary is the shared edge's curve" seems to
+    /// ask for — takes the crease's split to `0.000e+00` and takes the soft seams from `2.892e-3`
+    /// to `3.010e-2` with zero-length normals. The cause is structural: `dS/du` at the `u = 0`
+    /// boundary reads the `a = 1` row, whose end coefficients come from **this face's** `MinV` and
+    /// `MaxV` edges — the two perpendicular edges — and those are not the shared edge. So the
+    /// cross-boundary derivative stops being determined by shared data, and the normal mismatch
+    /// that a soft edge has to eliminate comes back.
+    ///
+    /// So the two facts are: **a bicubic Hermite face cannot have both a per-edge-scaled boundary
+    /// curve and a shared cross-boundary derivative**, because the corner jet has two derivative
+    /// slots and a shared edge's boundary tangent is not the same slot as the shared edge's
+    /// cross-boundary. The measurement in both directions is in `examples/hermite_probe.rs` and the
+    /// gallery scene's handoff.
+    ///
+    /// What this path gives, measured: **exactly C1** (`across 0.000e+00` on every seam of the
+    /// crate's grid) and a residual split of `2.892e-3` on a mesh whose cells are not exactly equal,
+    /// because `step_v` belongs to the face and the two faces of a shared edge hold slightly
+    /// different ones. Both numbers are properties of this representation, not of one caller.
     pub fn patch(&self, face: FaceId) -> HermitePatch {
-        let corners = [
-            self.corner_jet(face, 0),
-            self.corner_jet(face, 1),
-            self.corner_jet(face, 2),
-            self.corner_jet(face, 3),
-        ];
-        HermitePatch::new(self.step_along_u(face), self.step_along_v(face), corners)
+        HermitePatch::new(
+            self.step_along_u(face),
+            self.step_along_v(face),
+            [
+                self.corner_jet(face, 0),
+                self.corner_jet(face, 1),
+                self.corner_jet(face, 2),
+                self.corner_jet(face, 3),
+            ],
+        )
     }
 
     /// Evaluates the surface at one face's local parameters.

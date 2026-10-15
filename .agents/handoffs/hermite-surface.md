@@ -116,11 +116,65 @@ parameter an edge *fixes*, so `MinU` varies `v`; reading it the other way round 
 normal off its perpendicular edge and returns a plausible fold that is not there" — and it was walked
 into anyway. Read it before touching either method.
 
+## The residual, and what chasing it found — this is the load-bearing section
+
+The gallery scene's soft seams read a split of `2.892e-3` where they should read `0.000e+00`, and
+that residual was chased to ground this round. **The cause is the parameter step, and the resolution
+is that this representation needs one more shared field than it has.**
+
+A boundary curve's Hermite tangent is `dP/du * step_u`. So the curve along a shared edge is scaled
+by a number that, today, belongs to **the face**. Two faces sharing an edge therefore draw slightly
+different curves along it whenever their `step_u` or `step_v` differ — which they do whenever the
+mesh's cells are not exactly equal. On the crate's regular grid they agree and the split is
+`0.000e+00`; under the gallery sheet's dome and knock they differ by about one part in a hundred,
+and that is the `2.9e-3`.
+
+**Two fixes were built and measured. They are mutually exclusive, and that is the finding.**
+
+| assembly | cross-boundary derivative (`across`) | split |
+| --- | --- | --- |
+| four corner jets + two per-face steps (**shipped**) | **`0.000e+00` — exactly C1** | `2.892e-3` |
+| four boundary curves, each scaled by **its own edge's chord** | `3.010e-2`, with zero-length normals | **`0.000e+00`** on the crease |
+
+The second looks obviously right — "each face's boundary is the shared edge's curve" is literally
+what sharing means — and it fixes the split. It destroys continuity, and **the reason is structural
+rather than a coding slip**:
+
+> `dS/du` at the `u = 0` boundary reads the **`a = 1` row** of the coefficient array. That row's two
+> end coefficients come from this face's own `MinV` and `MaxV` edges — the two edges
+> *perpendicular* to the shared one — and those are not shared with anybody. So once each boundary
+> line is scaled by its own edge, the cross-boundary derivative stops being a function of shared
+> data, and the normal mismatch a soft edge exists to eliminate comes straight back.
+
+**So: a bicubic Hermite face cannot have both a per-edge-scaled boundary curve and a shared
+cross-boundary derivative.** A corner jet has two derivative slots; a shared edge's boundary tangent
+and its cross-boundary derivative are not the same slot; and the array's derivative rows reach the
+perpendicular edges. This is the vertex-consistency problem of Halbfleiß & Peters
+(<https://hal.science/hal-00319653>) — the thing the previous branch cited as unsolved here and could
+not resolve — arriving from the direction of the patch rather than the vertex.
+
+**What follows, and it is the next slice:** the cross-boundary derivative has to be **stored per
+shared edge** rather than derived from the corner jets. That is the `G` field of the original
+proposal, and the measurement above is why it is load-bearing rather than a refinement: without it
+the choice is C1 with a residual split, or C0 with a residual normal — and there is no third option
+at degree 3.
+
+### The gallery probe's thresholds, and why it is still red
+
+`crease` at `5.722e-1` rad and `soft seams` at `2.526e-3` rad is a separation of `2.3e+05`, so **the
+scene shows what it is for** and the crease is unambiguously the sharpest thing on the sheet. What
+is red is the absolute claim: the seams are not at the `acos` floor, and the `2.892e-3` split is not
+explained by anything other than the step, which is now explained but not fixed.
+
+**Not to be weakened to pass, and not to be "fixed" by the per-edge assembly**, which trades this
+failure for a worse one.
+
 ## Next
 
-1. **The `2.9e-3` split on the gallery scene's seams.** Above everything else: the representation is
-   measured exact in `whiting-patch` and unexplained here, and the difference between those two facts
-   is a real bug somewhere.
+1. **Add the cross-boundary derivative `G` as per-shared-edge data.** The measurement above says
+   this is not an optimisation: it is the third field that makes both halves true at once. With it,
+   the boundary curve can be scaled by its own edge's chord *and* the normal can be shared, because
+   the derivative the soft edge needs is no longer derived from the corner jets.
 2. **The agentic editing layer** over `set_position` / `set_derivative` / `set_twist`, which are
    already unconditional and need nothing underneath them.
 3. **`PatchMesh` is still beside `HermiteSurface`,** and `gallery::nurbs` still draws the old model.
