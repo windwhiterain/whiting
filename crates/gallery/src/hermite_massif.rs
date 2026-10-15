@@ -120,6 +120,25 @@ fn backdrop(eye: &[f64; 3], target: &[f64; 3], radius: f64) -> definition::Packe
         .expect("every generator writes whole elements of its own layout")
 }
 
+/// A sun over the camera's shoulder: up and behind, aimed down at the subject.
+///
+/// **Over the shoulder rather than beside the eye**, because a sun level with the eye throws a
+/// slope at the silhouette into shadow no matter how well it faces the light — and a slope at the
+/// silhouette is where a fold shows most, so it would put the artifacts and the ordinary shading
+/// in the same place and make them impossible to tell apart. From above and behind, the only dark
+/// slopes left are ones facing away, which is what a real massif looks like.
+fn sun_from_behind(eye: &[f64; 3], target: &[f64; 3]) -> [f64; 3] {
+    let back = normalize([eye[0] - target[0], 0.0, eye[2] - target[2]]);
+    // Two thirds of the way up and one third of the way back: high enough to light the flanks, low
+    // enough that the peaks still cast onto the valleys behind them.
+    //
+    // **Negated, because `directional` takes the direction the light travels** and not the
+    // direction it comes from. The first version of this returned it the other way round and
+    // rendered the whole massif black, which looked like a catastrophic lighting bug and was a
+    // sign.
+    normalize([-back[0] * 0.6, -0.75, -back[2] * 0.6])
+}
+
 fn normalize(vector: [f64; 3]) -> [f64; 3] {
     let length = (vector[0].powi(2) + vector[1].powi(2) + vector[2].powi(2)).sqrt();
     if length <= f64::MIN_POSITIVE {
@@ -186,7 +205,14 @@ pub fn hermite_massif() -> Value {
             Value::List(vec![
                 directional(
                     "sun",
-                    [-0.45, -0.78, 0.44],
+                    // **The sun is placed from the eye, not written down.** Every round since the
+                    // backdrop has assumed the whole of the dark in this picture was an artifact,
+                    // and none of them separated that from a slope that genuinely faces away from
+                    // the light -- which is what most of a massif looks like from any one side. This
+                    // direction is the one over the camera's shoulder, so a backlit slope has to be
+                    // the exception rather than the rule, and whatever is still dark after it is
+                    // dark for a reason worth chasing.
+                    sun_from_behind(&eye, &target),
                     [1.0, 0.95, 0.86],
                     4.6,
                     radius * 1.4,
