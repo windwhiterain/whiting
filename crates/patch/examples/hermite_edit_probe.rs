@@ -248,9 +248,9 @@ fn main() {
     // fail. A region edit's claim is about what it changed.
     let mut inner_moved = 0.0f64;
     let mut outer_moved = 0.0f64;
-    for vertex in 0..editor.surface().positions().len() {
+    for (vertex, held) in start.iter().enumerate() {
         let distance = editor.surface().positions()[vertex].distance(centre);
-        let moved = editor.surface().positions()[vertex].distance(start[vertex]);
+        let moved = editor.surface().positions()[vertex].distance(*held);
         if distance < radius * 0.9 {
             inner_moved = inner_moved.max(moved);
         } else if distance > radius * 1.1 {

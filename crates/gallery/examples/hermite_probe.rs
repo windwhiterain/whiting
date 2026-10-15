@@ -20,7 +20,7 @@
 
 use patch::hermite_surface::Join;
 use patch::topology::EdgeKey;
-use patch::{FaceId, HermiteSurface, Point3};
+use patch::{HermiteSurface, Point3};
 use whiting_gallery::hermite::{fold_edges, sheet};
 
 /// Two unit vectors that close have a dot product `f64` cannot resolve below `1 - 1e-16`, and `acos`
@@ -86,13 +86,6 @@ fn read_edge(surface: &HermiteSurface, edge: EdgeKey) -> (f64, f64) {
     (worst_split, worst_normal)
 }
 
-fn seam_split_both(surface: &HermiteSurface, first: FaceId, second: FaceId) -> (f64, f64) {
-    let a = surface.patch(first);
-    let b = surface.patch(second);
-    let as_u = a.evaluate(1.0, 0.0).distance(b.evaluate(0.0, 0.0));
-    let as_v = a.evaluate(0.0, 1.0).distance(b.evaluate(0.0, 0.0));
-    (as_u, as_v)
-}
 fn main() {
     let mut failures: Vec<&str> = Vec::new();
     let surface = sheet();

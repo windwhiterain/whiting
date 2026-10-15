@@ -105,7 +105,11 @@ impl core::fmt::Display for SurfaceError {
     /// this representation cannot do.
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::InconsistentWinding { edge, first, second } => write!(
+            Self::InconsistentWinding {
+                edge,
+                first,
+                second,
+            } => write!(
                 formatter,
                 "edge {edge:?} is {first:?} on one face and {second:?} on the other, so its two faces \
                  do not agree which direction it runs in; a per-vertex derivative field cannot serve \

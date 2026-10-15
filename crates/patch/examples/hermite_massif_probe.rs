@@ -18,7 +18,6 @@
 //! 1. Whether `HermiteSurface::build` accepts it, and if not, how many edges refused it and whether a
 //!    positive control shows the check can fire at all.
 
-
 use whiting_gallery::patchmesh;
 use whiting_mountain::{FacetMesh, Starter, starter};
 use whiting_patch::{HermiteSurface, SurfaceError};
@@ -59,7 +58,10 @@ fn main() {
     let mut valences: std::collections::BTreeMap<usize, usize> = Default::default();
     for quad in &quads {
         for slot in 0..4 {
-            let ends = whiting_patch::topology::edge_endpoints(*quad, whiting_patch::topology::EdgeSlot::ALL[slot]);
+            let ends = whiting_patch::topology::edge_endpoints(
+                *quad,
+                whiting_patch::topology::EdgeSlot::ALL[slot],
+            );
             for end in ends {
                 *valences.entry(end as usize).or_default() += 1;
             }
@@ -83,9 +85,8 @@ fn main() {
     let mut disagreeing = 0usize;
     let mut shared = 0usize;
     let mut odd_valence = 0usize;
-    for (_edge, faces) in &mesh.topology().edge_faces {
-        if let [(first, a), (second, b)] = faces.as_slice() {
-            let _ = (first, second);
+    for faces in mesh.topology().edge_faces.values() {
+        if let [(_, a), (_, b)] = faces.as_slice() {
             shared += 1;
             if a.varies_along_u() != b.varies_along_u() {
                 disagreeing += 1;
@@ -126,13 +127,20 @@ fn main() {
         }
         Err(error) => {
             println!("\nREFUSED: {error}");
-            if let SurfaceError::InconsistentWinding { edge, first, second } = error {
+            if let SurfaceError::InconsistentWinding {
+                edge,
+                first,
+                second,
+            } = error
+            {
                 println!("  edge {edge:?}: slot {first:?} on one face, {second:?} on the other");
             }
             if let SurfaceError::NonManifold { edges } = error {
                 println!("  {edges} edges carry three or more faces");
             }
-            println!("\nreported, not asserted: this is a measurement, and it is why the old model");
+            println!(
+                "\nreported, not asserted: this is a measurement, and it is why the old model"
+            );
             println!("cannot simply be deleted. See .agents/handoffs/hermite-surface.md.");
 
             // The control: a mesh that does fail must fail *here*, or the refusal above is a property
