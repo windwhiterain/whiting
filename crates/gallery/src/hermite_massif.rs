@@ -16,12 +16,14 @@
 //!
 //! The Hermite surface is **C1 inside every belt**, so a flank reads as one smooth rock face
 //! rather than as a fan of facets, and it is **creased along every valley**, because that is where
-//! two belts meet and `from_belts` tags their shared edge hard. The picture is therefore smooth
+//! two belts meet at coincident vertices of their own, each carrying its own derivative field, so
+//! the two flanks simply leave the valley in different directions. The picture is therefore smooth
 //! across a flank and sharp down every valley — which is what a massif is supposed to look like,
 //! and is not what a triangle soup looks like.
 
 use definition::Value;
 use mountain::FacetMesh;
+use patch::Point3;
 use scene::standard::Stage;
 
 use crate::blockmesh::{self, BeltSurfaces};
@@ -38,8 +40,17 @@ const SIDE: usize = 6;
 /// The angle the frame takes in.
 const FIELD_OF_VIEW: f64 = 0.72;
 
-/// How far the frame reaches, as a multiple of the massif's own height.
-const PLAIN: f64 = 1450.0;
+/// How far the frame reaches, as a multiple of the massif's own radius.
+///
+/// **A multiple of the radius, not a written-down distance** (2026-10-08): this was `1450.0`
+/// outright, written when the massif was a third of its present relief, and the far plane it
+/// became outlived the mountain — the eye stands about two and a half radii back, which is some
+/// four thousand six hundred units once the radius is what the corridor amendment made it, so
+/// every triangle of the massif and the backdrop both fell past the far plane and the frame
+/// rendered as bare sky. Nothing in the picture said so: a clipped scene and an empty one are
+/// the same pixels. The backdrop stands four radii past the aim, so eight radii reaches it with
+/// margin and is the whole of what this number is for.
+const FAR_REACH: f64 = 8.0;
 
 /// What the rock's surface stage does.
 ///
@@ -186,7 +197,7 @@ pub fn hermite_massif() -> Value {
                 [0.0, 1.0, 0.0],
                 FIELD_OF_VIEW,
                 (radius * 0.05).max(0.5),
-                PLAIN * 1.2,
+                radius * FAR_REACH,
             )]),
         ),
         (
@@ -353,7 +364,13 @@ fn aim_at(built: &FacetMesh, _radius: f64, summit: f64) -> [f64; 3] {
 /// show the opposite of what it is for. Cutting each patch into a `SAMPLES × SAMPLES` grid is what
 /// puts the curvature in the mesh, and the normals are the patch's own, so the shading is C1
 /// whether or not the sampling is fine.
-const SAMPLES: usize = 4;
+///
+/// **Six, raised from four** (2026-10-08): at four, a patch's own curvature between its corner
+/// jets still reads as flat plates on a flank seen close up — the render showed the plate edges
+/// as faint bands across the smooth rock. Six puts a triangle at about half the size the eye
+/// resolves at this scene's own framing, for 2.25 times the triangles of four, which the offline
+/// renderer takes without notice.
+const SAMPLES: usize = 6;
 
 /// Samples the Hermite surface into triangles.
 ///
@@ -381,34 +398,27 @@ fn tessellate(belts: &BeltSurfaces) -> definition::PackedList {
                 let along_v = at(1, 0);
                 let far = at(1, 1);
 
-                // **Which way this cell actually faces**, from its own corners.
+                // **Which way is out: up.** Every belt is a height field over the plan — one
+                // height per plan point, no overhangs — so the rock's outward normal lies in the
+                // `+y` hemisphere everywhere, and that is the one reference every belt agrees on.
                 //
-                // The patch's normal is `tangent_u x tangent_v` in the patch's own frame, and that
-                // frame is not the same handedness everywhere: a valley's two belts wind along
-                // their shared edge in opposite directions, so on one side the product points down
-                // while the rock is up. Measured, 2554 of the massif's 29484 drawn triangles were
-                // shaded by a normal pointing the opposite way — by pi, the whole turn — and a
-                // path tracer draws those black.
-                //
-                // So a vertex's analytic normal is **turned to agree with the geometry it is drawn
-                // on**. That keeps the crease, because the two sides of a seam still differ from
-                // each other; what it removes is the one-sided flip that is not a crease at all.
-                let near_p = patch.evaluate(near.0, near.1);
-                let along_u_p = patch.evaluate(along_u.0, along_u.1);
-                let along_v_p = patch.evaluate(along_v.0, along_v.1);
-                let facing = (along_u_p - near_p).cross(along_v_p - near_p);
+                // The previous reference was each cell's own corner cross product, and it is not
+                // global: a valley's two belts wind along their shared edge in opposite
+                // directions, so on one side the product points down while the rock is up, and
+                // turning the analytic normal to agree with it shaded whole belts by ambient
+                // alone — the dark grey facets in the render. The same handedness flip reaches
+                // the triangle winding, which follows the parameter order, so half the massif was
+                // wound inward as well. One unconditional rule replaces both: normals and
+                // windings are turned to `+y`, and the creases survive because the two sides of a
+                // seam still carry different analytic normals.
                 let turned = |uv: (f64, f64)| {
                     let normal = patch.normal(uv.0, uv.1);
                     let length = normal.length();
                     if length <= 1.0e-12 {
-                        return facing;
+                        return Point3::new(0.0, 1.0, 0.0);
                     }
                     let unit = normal * (1.0 / length);
-                    if unit.dot(facing) < 0.0 {
-                        unit * -1.0
-                    } else {
-                        unit
-                    }
+                    if unit.y < 0.0 { unit * -1.0 } else { unit }
                 };
 
                 // **The diagonal is chosen per cell, not fixed for the grid.**
@@ -443,12 +453,44 @@ fn tessellate(belts: &BeltSurfaces) -> definition::PackedList {
                     }
                     (first * (1.0 / one)).dot(second * (1.0 / two)) > 0.0
                 };
-                let along_far = if agree(0, 1, 2, 3) {
+                // **Each split is tested by the triangles it actually emits, and the one that
+                // agrees is the one drawn; a cell where neither agrees keeps the 0-2 split and
+                // lets the per-triangle turn below hide the fold.**
+                //
+                // `agree(a, b, c, d)` compares the normals of triangles `(a, b, c)` and
+                // `(a, c, d)`, so `agree(0, 1, 2, 3)` is the **0-2 split** — the pair
+                // `(0, 1, 2), (0, 2, 3)` — and `agree(1, 2, 3, 0)` is the **1-3 split** — the pair
+                // `(1, 2, 3), (0, 1, 3)`. The previous code read the 0-2 test and then emitted the
+                // *other* split when it passed, so on a folded quad — where exactly one split has
+                // its two triangles facing opposite ways — it always drew the folding one, and the
+                // path tracer drew that split's backwards triangle as a black diamond. That is why
+                // the round that introduced the per-cell diagonal recorded that it did not fix the
+                // picture: the test was right and the branch was inverted.
+                //
+                // A quad folded along both splits still draws: the per-triangle turn below gives
+                // the fold's underside sheet the same outward orientation as the rest of the
+                // rock, so it hides under the upper sheet by depth rather than leaving a hole.
+                // Dropping such cells was measured at 778 of 125900 at SIDE 6 — a notch along
+                // every crest in the picture — against a sliver of underside nobody can see.
+                let split_13 = agree(1, 2, 3, 0);
+                let triangles = if split_13 {
                     [(0usize, 1usize, 3usize), (1usize, 2usize, 3usize)]
                 } else {
                     [(0, 1, 2), (0, 2, 3)]
                 };
-                for (first, second, third) in along_far {
+                for (first, second, third) in triangles {
+                    // The winding the rasteriser sees, turned to the same outward rule: a
+                    // triangle whose wound normal points down is emitted with two corners
+                    // swapped, so every triangle of every belt winds the same way round the rock.
+                    let (second, third) = if (corners[second] - corners[first])
+                        .cross(corners[third] - corners[first])
+                        .y
+                        < 0.0
+                    {
+                        (third, second)
+                    } else {
+                        (second, third)
+                    };
                     for corner in [first, second, third] {
                         let uv = [near, along_u, far, along_v][corner];
                         let position = corners[corner];
