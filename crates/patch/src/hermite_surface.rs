@@ -200,11 +200,13 @@ impl HermiteSurface {
             }
         }
 
-        let derivatives = seed_derivatives(&positions, &topology);
+        // Measured **before** the seed, because the seed is written in the step's own units: see
+        // [`seed_derivatives`].
+        let (steps, spread) = measure_steps(&positions, &topology);
+        let derivatives = seed_derivatives(&positions, &quads, &topology, steps.0, steps.1);
         // A fresh model has no twist, which is the "twist-free" bicubic patch and is what a caller
         // means by "start from my mesh". Every edge seeds as shared, so a fresh surface is smooth
         // everywhere; a caller introduces a crease by tagging an edge hard.
-        let (steps, spread) = measure_steps(&positions, &topology);
         let private_twist = vec![[Point3::ZERO; 4]; quads.len()];
         let join = topology
             .edge_faces
@@ -582,41 +584,98 @@ fn measure_steps(positions: &[Point3], topology: &Topology) -> ((f64, f64), (f64
     )
 }
 
-/// Seeds `du` and `dv` at every vertex from the direction of each incident edge, half-weighted so a
-/// vertex on `n` edges averages to something of that size rather than `n` times it.
+/// Seeds `du` and `dv` at every vertex as the **mean of its incident edge vectors** in each
+/// parameter direction: half of each edge added per incident edge, so a vertex on two edges of one
+/// direction carries exactly the central difference through it, and a vertex on one carries that
+/// edge whole.
 ///
 /// An edge's tangent is `du` when `u` varies along it and `dv` otherwise — the one decision
 /// [`EdgeSlot::is_u_edge`] makes, and the reason a per-vertex field can serve every face at a
 /// vertex.
 ///
+/// **The seed carries the chord's own length, in the shared step's units** (2026-10-08; before
+/// this it was half a *unit* direction, the same 0.5 at every vertex of every mesh whatever its
+/// scale). A coefficient holds `du * step`, and `evaluate` does not divide it back out, so the
+/// boundary curve's end tangent is `du * step`: for the curve to leave a corner along its chord
+/// the seed has to be the chord over the step. At half a unit against chords of forty and a step
+/// of forty the tangent was half a chord, which leaves every corner flat and rushes to the next —
+/// a faceted plate rather than a surface — and where a belt's grid chords collapse against that
+/// fixed magnitude the patch looped into a fold: the dark diamonds and silhouette needles in the
+/// massif render.
+///
 /// A difference rather than a closed form, and that is a choice about what is being claimed: what is
 /// under test is that the surface built from *whatever* tangent field is continuous across a seam,
 /// so seeding it beautifully would be measuring the seed.
-fn seed_derivatives(positions: &[Point3], topology: &Topology) -> Vec<(Point3, Point3)> {
+fn seed_derivatives(
+    positions: &[Point3],
+    quads: &[[VertexId; 4]],
+    topology: &Topology,
+    step_u: f64,
+    step_v: f64,
+) -> Vec<(Point3, Point3)> {
     let vertex_count = positions.len();
     let mut du = vec![Point3::ZERO; vertex_count];
     let mut dv = vec![Point3::ZERO; vertex_count];
+    let mut du_edges = vec![0usize; vertex_count];
+    let mut dv_edges = vec![0usize; vertex_count];
 
     for (edge, faces) in &topology.edge_faces {
-        let Some((_, slot)) = faces.first() else {
+        let Some((face, slot)) = faces.first() else {
             continue;
         };
         let (first, second) = *edge;
-        let distance = positions[first as usize].distance(positions[second as usize]);
-        if distance == 0.0 {
+        if positions[first as usize].distance(positions[second as usize]) == 0.0 {
             continue;
         }
-        let along = (positions[second as usize] - positions[first as usize]) / distance;
-        let half = 0.5;
+        // Half the edge vector, **pointing away from each of its own ends**: at `first` the way
+        // along the edge is towards `second`, and at `second` it is the reverse. Adding the same
+        // vector at both ends seeds half the vertices with a tangent pointing back along the
+        // edge, and a Hermite curve whose end tangents oppose its chord is a loop, not a curve.
+        // Half the edge vector in the step's own units, oriented along the **parameter's own
+        // increase** through the edge and added at **both** ends. A tangent is a derivative along
+        // the parameter, not a distance between vertices: at the edge's low end the forward
+        // difference and at its high end the backward difference both point the way the parameter
+        // increases, so both ends take the same vector — and an interior vertex, on two edges of
+        // one direction, collects the central difference through it. Orienting the edge by vertex
+        // id instead, or pointing each end away from itself, seeds the boundary vertices with a
+        // tangent pointing back into the patch, and a Hermite curve whose end tangent opposes its
+        // chord is a loop: measured as a fold in every boundary row and column of every patch of
+        // the massif, which is the dark diamonds down every valley and rib in the render.
+        let corners = quads[*face as usize];
+        let (end0, end1) = match slot {
+            EdgeSlot::MinV => (corners[0], corners[1]),
+            EdgeSlot::MaxV => (corners[3], corners[2]),
+            EdgeSlot::MinU => (corners[0], corners[3]),
+            EdgeSlot::MaxU => (corners[1], corners[2]),
+        };
+        let along = (positions[end1 as usize] - positions[end0 as usize]) * 0.5;
         if slot.varies_along_u() {
-            du[first as usize] = along * half;
-            du[second as usize] = along * half;
+            let along = along * (1.0 / step_u);
+            du[end0 as usize] = du[end0 as usize] + along;
+            du[end1 as usize] = du[end1 as usize] + along;
+            du_edges[end0 as usize] += 1;
+            du_edges[end1 as usize] += 1;
         } else {
-            dv[first as usize] = along * half;
-            dv[second as usize] = along * half;
+            let along = along * (1.0 / step_v);
+            dv[end0 as usize] = dv[end0 as usize] + along;
+            dv[end1 as usize] = dv[end1 as usize] + along;
+            dv_edges[end0 as usize] += 1;
+            dv_edges[end1 as usize] += 1;
         }
     }
     (0..vertex_count)
-        .map(|vertex| (du[vertex], dv[vertex]))
+        .map(|vertex| {
+            // A single incident edge is a one-sided read: the whole chord is the tangent there,
+            // not half of it, because there is no other side to average with.
+            let scale = |tangent: Point3, edges: usize| match edges {
+                0 => tangent,
+                1 => tangent * 2.0,
+                _ => tangent,
+            };
+            (
+                scale(du[vertex], du_edges[vertex]),
+                scale(dv[vertex], dv_edges[vertex]),
+            )
+        })
         .collect()
 }
