@@ -97,7 +97,9 @@ in for "the boundary the water actually reaches".
 
 ### What is measured, and it is the contract
 
-Over the landscape massif, at 24 units, at the reference parameters (release build):
+Over the landscape massif, at the scene's first spacing of 24 units, at the reference
+parameters (release build). These are the numbers that say the **solver** is right; the
+spacing itself is settled further down, by what the picture needs.
 
 ```
 lattice        133 x 72 cells, 6209 covered of 9576
@@ -128,48 +130,108 @@ so this is the number to read before any picture.
   1446..2900. The read returns `Option` now and each caller states its own fallback, which is
   what makes it a function rather than a convention.
 
-## The gallery, and why the displacement goes back onto the mesh
+## The gallery: what the render overturned
 
-`landscape::Erosion` is the scene's use of this crate. It rasterises the **placed** mesh (erode
-after `stood_at`, not before: a solve run on the authored mesh and then scaled would carve the
-near range at the far range's resolution), erodes it, and **applies the displacement back to
-the mesh's own vertices**.
+This section was written before anything was rendered, and **two of its conclusions were
+wrong**. Both were found by rendering the scene and looking at it, which is the only thing
+here that can be wrong in that particular way.
 
-Drawing the lattice instead would throw away what the scene is for. A face carries the belt it
-was expanded from, so a pixel still resolves to the crest an author wrote, and a lattice has
-nowhere to carry that. Displacing keeps the authored skeleton as the shape of the mountain and
-adds to it only what the water removed — which is what erosion is: a **displacement field**,
-not a replacement for the thing it acts on.
+### The displacement went onto the mesh's own vertices, and the erosion never arrived
 
-### What the lattice's spacing is measured against: the mesh, not the mountain
+The scene first drew the **authored facet mesh**, displaced. The argument for it was good: a
+face carries the belt it was expanded from, so a pixel resolves to the crest an author wrote,
+and a lattice has nowhere to carry that.
 
-A relief of nine hundred over a plan eighteen hundred across says nothing about how much of an
-erosion pass the geometry can carry. This massif's own faces are sixty units on a crest and
-twenty on a rib, so a lattice five times finer would solve for gullies narrower than the
-triangles asked to draw them, and the answer would be thrown away before it was ever seen.
-`CELL` is therefore stated against `Tessellation::step` and sits between the two. Measured,
-the worst displacement is **108 at 24 units, 87 at 12, 100 at 6** — the detail exists and does
-not reach the picture — while the cost goes 12 ms, 50 ms, 228 ms. This is
-[SPEC.align/mountain.md](mountain.md)'s "a heightfield's coarseness budget and a skeleton's
-step budget are the same budget", now with a number on each side of it.
+The render said this:
 
-### The rim, and the seam it would open
+```
+cargo run -p whiting-device-rasterize --example render -- landscape out/erode-01
+```
 
-The massif's mesh ends at its footprint and the scene's plain begins there at the same
-elevation, so anything the solve does at the rim opens a crack between two surfaces built to
-meet. Measured, the raw displacement at the rim reaches **71.8 units** against a plain standing
-still. The displacement is therefore faded to nothing over the outermost three cells.
+A massif of sharp block faces — `out/erode-01.png` — indistinguishable from the same scene
+with no erosion in it at all. The arithmetic explains why: **the massif has 174 points and the
+field has 6209 cells**, so the solve is evaluated 174 times and everything between those 174
+samples is discarded before the frame sees it. The probe had already said the displacement was
+worth up to 95 units — and 95 units on a 950-unit relief, sampled at 174 points on a
+3188-unit plan, is not a picture.
 
-The fade starts at the **first ring of cells**, not at the rim line: a vertex standing *on*
-the rim has no cell under it and the nearest cell with rock is one step in, so measuring from
-zero left that vertex at a third of its displacement and put the seam back. After the fade the
-massif's low point reads 1449.8 against the plain's 1450, and 150 of its 174 vertices move.
+So the lattice is what the scene draws now. The identity survives: each lattice cell names
+**the facet it was read from**, and a facet carries its belt. The cost is resolution — a
+pixel resolves to a facet to within a lattice cell rather than exactly — and the feature is
+intact. `out/erode-04.png` is the same scene afterwards: gullies on the flanks, a toe that
+meets the plain, and `authored_id` still naming the crest under each pixel.
+
+### A displacement *texture* is not the mechanism here, and why
+
+Displacing in the vertex stage from a texture is the obvious GPU-shaped answer and this
+workspace cannot use it for the geometry. `scene`'s Cycles exporter reads `position` straight
+out of the packed point run (`crates/scene/src/cycles_export/geometry.rs`) and writes a mesh;
+it has no vertex stage and no way to sample anything. A displacement texture would render on
+the rasterising backend and silently not exist on the path tracer, which is exactly the class
+of failure [SPEC.align.md](SPEC.align.md) treats as worse than a refusal. The displacement is
+therefore baked into the document's points, which is also the cheaper answer here — the field
+is already on the cpu, having just been solved on it.
+
+What the texture idea does buy is **a legible instrument**: the displacement as a scene-declared
+output image, next to the `authored_id` / `u` / `v` channels this scene already writes. That
+is not built.
+
+### What the lattice's spacing is measured against now: the silhouette, not the solve
+
+The old claim was that `CELL` should sit between the mesh's crest step and its shortest edge,
+because a finer lattice solves for gullies narrower than the triangles. That was true of a
+**displacement** and is false of a **drawing**: the lattice's cell is the size of this
+mountain's facets.
+
+The thing a lattice cannot hide is its own outline. A cell with a corner outside the footprint
+is dropped whole, so the massif's silhouette is the footprint quantised to the cell. At 24
+units the steps are about seven pixels in this frame and plainly visible along the foot; at 12
+they are about three and read as rough ground; at 6 they would be about a pixel for four times
+the triangles. The eroded surface itself barely changes across that range — worst displacement
+**108 at 24, 87 at 12, 100 at 6** — so the cost is geometry, not physics. `CELL` is 12.
+
+### The berm at the toe, and a fade written twice
+
+The first lattice render came out with a **black band along the foot of the massif**. It was
+not a shading fault: `--locate` on a pixel in it reported `authored_id 0`, so it was the
+plain, in the massif's shadow. The massif was casting a shadow on the plain it is supposed to
+meet, and the thing casting it was the solve's own boundary behaviour. Measured by distance
+from the rim:
+
+```
+displacement by distance from the rim:
+  under 1.5 cells      494 cells, mean   29.96, range  -44.16 to   71.82
+  1.5 to 3.5           531 cells, mean   17.39, range  -49.49 to   76.97
+  3.5 to 6.5           773 cells, mean    4.85, range  -58.21 to   79.34
+  6.5 to 12.5         1290 cells, mean   -6.09, range  -77.33 to   77.04
+  beyond 12.5         3121 cells, mean  -17.82, range  -86.26 to  108.49
+```
+
+**A +30 unit berm right round the toe, decaying to nothing over about six cells, and negative
+everywhere else.** That is not erosion; it is the erosion model answering an artificial
+boundary — the massif is *cut off* at its footprint rather than ending, the ground flattens
+there, capacity goes to nothing, and everything arriving deposits.
+
+Two fixes, and the second is the one that mattered. The fade is right, and it starts at the
+**first ring of cells** rather than at the rim line, because a vertex standing on the rim has
+no cell under it and the nearest cell with rock is one step in. But the fade was **written
+twice** — once for the displaced mesh, and once, *absent*, in the lattice — so the two
+drawings put the massif's foot in two different places and the lattice kept the berm. There is
+now one surface, `Erosion::surface`, built once and read by everything.
+
+### What the change cost the scene's own argument
+
+The block-face reading is gone from the picture. That scene's module note said the normals are
+written per corner precisely so the facets read as facets, and a height field shaded by its own
+gradient is a smooth surface — which is what an eroded mountain is. **The two cannot both be
+shown by the same geometry.** The facet mesh still exists and is still what the lattice is
+read from; what changed is that it is no longer what is drawn.
 
 ### What it costs
 
-14 ms in release, **238 ms in debug**, per range, so about half a second for a scene build in a
-development build. That is the price of doing it at scene-build time rather than authoring
-time, and it is the number to argue with if it becomes the wrong trade.
+At 12 units: about 25,000 covered cells per range, so ~50,000 triangles per range against the
+authored mesh's 314. The solve is 62 ms in release and the scene compile went from 115 ms to
+about 290 ms.
 
 ## What SPEC.md needs from a human
 
@@ -192,8 +254,16 @@ shape as the `mountain` entry:
 - **Thermal erosion.** The reference scheme has none, and a talus angle is the other half of
   what makes a slope read as rock. It is a second law over the same round and a second
   `Transport` would not carry it — it is a separate term, not a different formula.
-- **Whether the displacement belongs on the mesh at all.** The argument for it is identity and
-  it is a good one, but the argument for drawing the lattice is that the mesh's own faces are
-  what stops the erosion reading, and that costs the fine detail. Nothing here measures which
-  picture is better, because this repository measures pictures with a renderer this crate
-  cannot reach.
+- **The berm, as a general answer rather than a scene constant.** A +30 unit lip at a free
+  boundary is the erosion model's answer to being cut off, and a three-cell fade hides it from
+  *this* scene because this scene levels its plain to meet the rim. A caller that let its field
+  end in mid-air would get the lip, and the honest fix is at the boundary — an outlet that
+  spills rather than a deposit that piles — rather than a fade over whatever the caller's
+  ground happens to be doing.
+- **The staircase.** Twelve units makes the footprint's quantisation read as rough ground.
+  It is still a quantisation, and the fix that removes it — snapping the outer ring of lattice
+  vertices onto the footprint outline — collapses triangles at the boundary, which is a worse
+  artefact to look at than the one it removes. Not attempted.
+- **Whether the picture is better.** It is a different picture and that is the honest claim.
+  The block faces are gone and the gullies are there; nothing here says which a reader prefers,
+  and the only thing that could is another render.
