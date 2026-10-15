@@ -213,7 +213,9 @@ fn main() {
     for quantile in [0.5f64, 0.9, 0.99, 1.0] {
         let at = ((sorted_aspects.len() as f64 - 1.0) * quantile).round() as usize;
         let (aspect, reading) = sorted_aspects[at];
-        println!("    aspect {aspect:>10.3e} at the {quantile:.0}th percentile   departure {reading:.3e}");
+        println!(
+            "    aspect {aspect:>10.3e} at the {quantile:.0}th percentile   departure {reading:.3e}"
+        );
     }
     let (aspect, reading) = sorted_aspects[0];
     let (worst_aspect, worst_reading) = *sorted_aspects.last().unwrap_or(&(0.0, 0.0));
