@@ -48,6 +48,7 @@ use mountain::line::Side;
 use mountain::tessellation::BeltRef;
 use mountain::{FacetMesh, Massif};
 use scene::standard::Stage;
+use terrain::HeightField;
 
 use crate::air::Atmosphere;
 use crate::geometry::{fractal_noise, heightfield, smoothstep};
@@ -561,7 +562,7 @@ pub fn landscape() -> Value {
     // number to a flank on each range, and a pixel would resolve to whichever one a reader asked
     // about first.
     let mut next_id = 1;
-    let mut ranges_built: Vec<(&'static str, PackedList, Identity)> =
+    let mut solved: Vec<(&'static str, FacetMesh, Erosion, Identity)> =
         Vec::with_capacity(RANGES.len());
     for range in RANGES {
         let identity = Identity::of(&authored, next_id, |belt| belt_path(range.name, belt));
@@ -575,15 +576,33 @@ pub fn landscape() -> Value {
             range.scale,
             range.turn,
         );
+        let erosion = Erosion::of(&stood);
+        solved.push((range.name, stood, erosion, identity));
+    }
+    // Every range's lattice is drawn **after every range is solved**, because a lattice drops
+    // the cells that stand under another range's rock — see [`Erosion::lattice`] — and that ask
+    // needs the other range's surface, which its own solve is.
+    // Cloned rather than borrowed, so the solves can be consumed by the draw loop below: a
+    // surface is a few thousand floats, against a lattice draw that reads it per cell.
+    let belows: Vec<Vec<HeightField>> = (0..solved.len())
+        .map(|index| {
+            solved
+                .iter()
+                .enumerate()
+                .filter(|(other, _)| *other != index)
+                .map(|(_, (_, _, erosion, _))| erosion.surface.clone())
+                .collect()
+        })
+        .collect();
+    let mut ranges_built: Vec<(&'static str, PackedList, Identity)> =
+        Vec::with_capacity(solved.len());
+    for ((name, stood, erosion, identity), below) in solved.into_iter().zip(belows) {
+        let below: Vec<&HeightField> = below.iter().collect();
         // Drawn on the **lattice's own vertices**, not on the authored mesh's. The erosion
         // is a field of a few thousand cells and the massif it fell on has a hundred and
         // seventy four points, so displacing those throws the whole solve away before the
         // frame sees it — see [`Erosion::lattice`].
-        ranges_built.push((
-            range.name,
-            Erosion::of(&stood).lattice(&stood, &identity),
-            identity,
-        ));
+        ranges_built.push((name, erosion.lattice(&stood, &identity, &below), identity));
     }
 
     // The eye looks **back along the bearing it stands at**, so the massif's centre is what it aims

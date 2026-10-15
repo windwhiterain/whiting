@@ -199,6 +199,10 @@ impl Erosion {
     ///   corners have rock under them.** A cell with a corner outside is dropped whole rather
     ///   than drawn short, because a triangle with one corner missing is a notch along the rim
     ///   — and the rim is the one place in this scene where the massif meets another surface.
+    /// - **A cell standing under another range's surface is dropped**, for the same reason at a
+    ///   range crossing: the buried lattice's rim staircase notches the crossing curve from
+    ///   inside, and rock inside rock is rock nobody can see. The other ranges' surfaces arrive
+    ///   as `below`, which is why the scene solves every range before it draws any.
     /// - **The heights are the eroded ones and the normals are their own gradient.** A normal
     ///   per cell would shade a smooth hillside as tiled facets, and this mesh has forty times
     ///   as many cells as the massif it came from had faces.
@@ -210,7 +214,12 @@ impl Erosion {
     /// - **The winding is [`crate::geometry::heightfield`]'s**, which is the winding this
     ///   pipeline already draws ground with and the one every other height field in the
     ///   gallery is drawn with.
-    pub fn lattice(&self, mesh: &FacetMesh, identity: &Identity) -> PackedList {
+    pub fn lattice(
+        &self,
+        mesh: &FacetMesh,
+        identity: &Identity,
+        below: &[&HeightField],
+    ) -> PackedList {
         let schema = crate::identity::massif_extras().point_schema();
         // The layout is the schema's own, read through the same function the renderer reads
         // it with; writing the field order out here would be a second copy of the rule.
@@ -246,6 +255,24 @@ impl Erosion {
                 let cell = field
                     .index(column, row)
                     .expect("the cell is on the lattice");
+                // **A cell whose centre stands under another range's rock is not drawn.** Two
+                // ranges' lattices interpenetrate where their footprints overlap, and both sheets
+                // draw through the crossing: the buried one's rim staircase — the cells its own
+                // fade levels towards its foot — notches the crossing curve from inside, which
+                // is the dark gash and the thin spike where a foothill range meets the main
+                // flank. Rock inside rock draws nothing anybody can see, so the buried cells are
+                // dropped whole; the crossing curve itself is then the upper range's own surface
+                // meeting the lower one's, quantised to one cell and hidden in the contact.
+                let plan = [
+                    field.origin()[0] + column as f32 * field.cell(),
+                    field.origin()[1] + row as f32 * field.cell(),
+                ];
+                let buried = below
+                    .iter()
+                    .any(|other| other.sample(plan) > field.height_at(cell) + 1.0e-3);
+                if buried {
+                    continue;
+                }
                 let face = &mesh.faces[self.provenance.faces[cell] as usize];
                 let id = identity
                     .id_of(face.attributes.belt)
