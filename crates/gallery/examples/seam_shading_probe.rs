@@ -74,12 +74,8 @@ fn tessellate(belts: &BeltSurfaces) -> Vec<Triangle> {
                 // triangle it measured had two coincident vertices and reported zero area for the
                 // whole mesh. A measurement that says "every triangle in the model is degenerate"
                 // is a measurement of its own indexing, and the picture is right there to say so.
-                let at = |dr: usize, dc: usize| {
-                    (
-                        (column + dc) as f64 / span,
-                        (row + dr) as f64 / span,
-                    )
-                };
+                let at =
+                    |dr: usize, dc: usize| ((column + dc) as f64 / span, (row + dr) as f64 / span);
                 let vertex = |dr: usize, dc: usize| {
                     let (s, t) = at(dr, dc);
                     (patch.evaluate(s, t), patch.normal(s, t))
@@ -134,11 +130,37 @@ fn main() {
     let facet: FacetMesh = starter(11, Starter::default())
         .build()
         .expect("the massif expands");
-    let belts = blockmesh::from_belts(&facet, SIDE).expect("the massif is one representable surface");
+    let belts =
+        blockmesh::from_belts(&facet, SIDE).expect("the massif is one representable surface");
     let surface = belts.surface();
     let triangles = tessellate(&belts);
 
-    let degenerate = triangles.iter().filter(|tri| tri.area <= AREA_FLOOR).count();
+    // **The magnitude of the disagreement is what names the cause, and the count only does not.**
+    //
+    // A triangle shaded by a normal that points the *other way* disagrees by close to pi, and that
+    // is a handedness fault: the two belts on either side of a seam wind along their shared edge in
+    // opposite directions, so one of them has its `(u, v)` frame the other way round and
+    // `tangent_u x tangent_v` comes out downwards. A triangle that merely curves disagrees by a
+    // smaller angle spread across many values, and that is a sampling question instead.
+    //
+    // So the two are counted apart rather than lumped as "flipped", because lumping them is what
+    // made the first reading of this look like a fold when it is a frame.
+    let backwards = triangles
+        .iter()
+        .filter(|tri| tri.from_vertices > std::f64::consts::FRAC_PI_2)
+        .count();
+    let grazed = triangles
+        .iter()
+        .filter(|tri| tri.from_vertices > 1.0 && tri.from_vertices <= std::f64::consts::FRAC_PI_2)
+        .count();
+    let mut worst: Vec<f64> = triangles.iter().map(|tri| tri.from_vertices).collect();
+    worst.sort_by(f64::total_cmp);
+    let deepest = *worst.last().unwrap_or(&0.0);
+
+    let degenerate = triangles
+        .iter()
+        .filter(|tri| tri.area <= AREA_FLOOR)
+        .count();
     let flipped = triangles
         .iter()
         .filter(|tri| tri.from_vertices > 1.0)
@@ -159,13 +181,28 @@ fn main() {
         surface.face_count(),
         triangles.len()
     );
-    println!("  area            median {median:>.3e}", median = median(&mut areas));
-    println!("  normal from vertices  median {median:.3e} rad", median = median(&mut deviations));
+    println!(
+        "  area            median {median:>.3e}",
+        median = median(&mut areas)
+    );
+    println!(
+        "  normal from vertices  median {median:.3e} rad",
+        median = median(&mut deviations)
+    );
     println!(
         "  degenerate triangles   {degenerate}\n\
-         \x20 flipped normals (> 1 rad from the vertices)   {flipped}\n\
-         \x20 triangles with a normal of no direction       {missing}"
+         \x20 normal points BACKWARDS (over half a radian out)   {backwards}\n\
+         \x20 normal grazed (1 to half a radian out)             {grazed}\n\
+         \x20 deepest disagreement   {deepest:.3e} rad\n\
+         \x20 triangles with a normal of no direction             {missing}"
     );
+    if backwards > 0 {
+        println!(
+            "\n  A normal that points backwards is a frame fault, not a fold: the patch's own\n\
+             \x20 (u, v) is the other way round from the way the cell is wound, so\n\
+             \x20 tangent_u x tangent_v points down while the geometry is up."
+        );
+    }
 
     let mut problems = Vec::new();
     if degenerate > 0 {

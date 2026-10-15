@@ -136,14 +136,26 @@ pub fn hermite_massif() -> Value {
         ),
         (
             "mesh_materials".to_owned(),
-            // A single lighting material: the massif is one surface drawn once. The tint is rock
-            // rather than the pale sheet the crease scene uses, because here the subject is the
-            // shading's continuity and a colour change would read as a crease that is not there.
-            Value::List(vec![mesh_material(
-                "massif-shade",
-                "lighting",
-                surface([0.66, 0.60, 0.50], 0.0, 0.72, [0.0; 3]),
-            )]),
+            Value::List(vec![
+                mesh_material(
+                    "massif-cast",
+                    "shadowing",
+                    surface([1.0, 1.0, 1.0], 0.0, 1.0, [0.0; 3]),
+                ),
+                mesh_material(
+                    "massif-depth",
+                    "depthing",
+                    surface([1.0, 1.0, 1.0], 0.0, 1.0, [0.0; 3]),
+                ),
+                // A single lighting material: the massif is one surface drawn once. The tint is rock
+                // rather than the pale sheet the crease scene uses, because here the subject is the
+                // shading's continuity and a colour change would read as a crease that is not there.
+                mesh_material(
+                    "massif-shade",
+                    "lighting",
+                    surface([0.66, 0.60, 0.50], 0.0, 0.72, [0.0; 3]),
+                ),
+            ]),
         ),
         (
             "meshes".to_owned(),
@@ -156,17 +168,41 @@ pub fn hermite_massif() -> Value {
         ),
         (
             "instances".to_owned(),
-            instances(vec![(
-                Stage::Lighting,
-                vec![instance(
-                    "massif",
-                    "massif",
-                    [0.0; 3],
-                    [0.0; 3],
-                    [1.0; 3],
-                    "massif-shade",
-                )],
-            )]),
+            instances(vec![
+                (
+                    Stage::Shadowing,
+                    vec![instance(
+                        "massif-cast",
+                        "massif",
+                        [0.0; 3],
+                        [0.0; 3],
+                        [1.0; 3],
+                        "massif-cast",
+                    )],
+                ),
+                (
+                    Stage::Depthing,
+                    vec![instance(
+                        "massif-depth",
+                        "massif",
+                        [0.0; 3],
+                        [0.0; 3],
+                        [1.0; 3],
+                        "massif-depth",
+                    )],
+                ),
+                (
+                    Stage::Lighting,
+                    vec![instance(
+                        "massif",
+                        "massif",
+                        [0.0; 3],
+                        [0.0; 3],
+                        [1.0; 3],
+                        "massif-shade",
+                    )],
+                ),
+            ]),
         ),
         (
             "screen_materials".to_owned(),
@@ -219,21 +255,56 @@ fn tessellate(belts: &BeltSurfaces) -> definition::PackedList {
         let patch = surface.patch(face);
         for row in 0..SAMPLES - 1 {
             for column in 0..SAMPLES - 1 {
+                let at =
+                    |dr: usize, dc: usize| ((column + dc) as f64 / span, (row + dr) as f64 / span);
+                let near = at(0, 0);
+                let along_u = at(0, 1);
+                let along_v = at(1, 0);
+                let far = at(1, 1);
+
+                // **Which way this cell actually faces**, from its own corners.
+                //
+                // The patch's normal is `tangent_u x tangent_v` in the patch's own frame, and that
+                // frame is not the same handedness everywhere: a valley's two belts wind along
+                // their shared edge in opposite directions, so on one side the product points down
+                // while the rock is up. Measured, 2554 of the massif's 29484 drawn triangles were
+                // shaded by a normal pointing the opposite way — by pi, the whole turn — and a
+                // path tracer draws those black.
+                //
+                // So a vertex's analytic normal is **turned to agree with the geometry it is drawn
+                // on**. That keeps the crease, because the two sides of a seam still differ from
+                // each other; what it removes is the one-sided flip that is not a crease at all.
+                let near_p = patch.evaluate(near.0, near.1);
+                let along_u_p = patch.evaluate(along_u.0, along_u.1);
+                let along_v_p = patch.evaluate(along_v.0, along_v.1);
+                let facing = (along_u_p - near_p).cross(along_v_p - near_p);
+                let turned = |uv: (f64, f64)| {
+                    let normal = patch.normal(uv.0, uv.1);
+                    let length = normal.length();
+                    if length <= 1.0e-12 {
+                        return facing;
+                    }
+                    let unit = normal * (1.0 / length);
+                    if unit.dot(facing) < 0.0 {
+                        unit * -1.0
+                    } else {
+                        unit
+                    }
+                };
+
                 // Two triangles per cell, wound so the surface looks up.
-                for (dr, dc) in [(0usize, 0usize), (0, 1), (1, 0), (1, 0), (0, 1), (1, 1)] {
-                    let s = (column + dc) as f64 / span;
-                    let t = (row + dr) as f64 / span;
-                    let at = patch.evaluate(s, t);
-                    let normal = patch.normal(s, t);
-                    // **In the schema's own field order** — normal, position, texture, as
-                    // `landscape::eroded` writes them. `PackedBuilder` enforces the layout rather
-                    // than accepting fields in any order, which is why a mistake here is a build
-                    // failure and not a scrambled vertex.
-                    points
-                        .field("normal", &[normal.x, normal.y, normal.z])
-                        .and_then(|points| points.field("position", &[at.x, at.y, at.z]))
-                        .and_then(|points| points.field("texture", &[0.0, 0.0]))
-                        .expect("a generator writes whole elements of its own layout");
+                for (a, b, c) in [(near, along_u, along_v), (along_v, along_u, far)] {
+                    for uv in [a, b, c] {
+                        let position = patch.evaluate(uv.0, uv.1);
+                        let normal = turned(uv);
+                        points
+                            .field("normal", &[normal.x, normal.y, normal.z])
+                            .and_then(|points| {
+                                points.field("position", &[position.x, position.y, position.z])
+                            })
+                            .and_then(|points| points.field("texture", &[0.0, 0.0]))
+                            .expect("a generator writes whole elements of its own layout");
+                    }
                 }
             }
         }

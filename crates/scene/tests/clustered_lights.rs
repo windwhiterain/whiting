@@ -241,16 +241,16 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
-            // The massif drawn on its Hermite surface. **One lighting pass and no shadowing or
-            // depthing at all**, which is what it emits and also why its render has holes: a
-            // surface drawn in the lighting stage alone casts nothing and writes no depth, so
-            // `examples/` renders it against the background and the pass count is a statement about
-            // the document rather than a claim that the picture is finished. The honest stage set
-            // for this scene is a cast and a depth pass like every other ground in the gallery.
+            // The massif drawn on its Hermite surface. **One caster group, one mesh, one light and
+            // one post**, the same shape the crease scene emits: a ground is a ground, and this one
+            // casts and writes depth like every other in the gallery rather than being a special
+            // case. A path-traced render drops the shadowing and depthing passes — Cycles derives
+            // those rays from its own integrator and reports them as dropped — so the counts below
+            // are a statement about the document and not about the picture.
             "hermite_massif",
             Stages {
-                shadowing: 0,
-                depthing: 0,
+                shadowing: 1,
+                depthing: 1,
                 lighting: 1,
                 other: 1,
             },
