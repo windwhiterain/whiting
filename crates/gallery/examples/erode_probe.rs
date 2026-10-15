@@ -40,23 +40,24 @@ fn main() {
 /// Runs one lattice at the reference parameters and prints what came out of it.
 fn sweep(mesh: &FacetMesh, cell: f32) {
     let started = Instant::now();
-    let field = rasterize(mesh, cell).expect("the massif covers its own lattice");
-    let read = started.elapsed();
+    let read = rasterize(mesh, cell).expect("the massif covers its own lattice");
+    let field = &read.field;
+    let scanned = started.elapsed();
 
     let started = Instant::now();
     let (eroded, books) =
-        erode_traced(&ErodeParams::default(), &field, &Hydraulic).expect("a field is a field");
+        erode_traced(&ErodeParams::default(), field, &Hydraulic).expect("a field is a field");
     let solve = started.elapsed();
 
     println!(
-        "  at {cell:.0} units: {} x {} cells, {} covered, {read:?} to read, {solve:?} to solve",
+        "  at {cell:.0} units: {} x {} cells, {} covered, {scanned:?} to read, {solve:?} to solve",
         field.width(),
         field.height(),
         field.covered(),
     );
-    println!("    {}", displacement(&field, &eroded));
+    println!("    {}", displacement(field, &eroded));
     println!("    {}", ledger(&books));
-    println!("    {}", mass_line(&field, &eroded, &books));
+    println!("    {}", mass_line(field, &eroded, &books));
     println!("    {}", sinks(&eroded));
 }
 
@@ -94,6 +95,61 @@ fn scene(mesh: &FacetMesh) {
         mass_line(&erosion.field, &erosion.eroded, &erosion.books)
     );
     println!("  {}", applied(&stood, &eroded));
+    println!(
+        "  displacement by distance from the rim:\n{}",
+        by_distance_from_the_rim(&erosion)
+    );
+}
+
+/// Returns how the displacement is distributed by distance from the rim.
+///
+/// The rim is where a massif is **cut off** rather than where it ends, so whatever the solve
+/// does near it is its answer to an artificial boundary and not to a landscape. This is the
+/// measurement that shows whether the boundary is leaking: a band of cells standing above
+/// where they were, all the way round, is a toe the water piled up because it ran out of
+/// mountain — and it stands above the plain the scene levels to meet it, so it casts a
+/// shadow onto it.
+fn by_distance_from_the_rim(erosion: &Erosion) -> String {
+    let field = &erosion.field;
+    let mut bands: [(f64, usize, f32, f32); 5] = Default::default();
+    let limits = [1.5, 3.5, 6.5, 12.5];
+    for at in 0..field.cells() {
+        if !field.is_inside(at) {
+            continue;
+        }
+        let band = limits
+            .iter()
+            .position(|limit| erosion.margin[at] < *limit)
+            .unwrap_or(limits.len());
+        let delta = erosion.eroded.height_at(at) - field.height_at(at);
+        let entry = &mut bands[band];
+        entry.0 += delta as f64;
+        entry.1 += 1;
+        entry.2 = entry.2.min(delta);
+        entry.3 = entry.3.max(delta);
+    }
+    let named = [
+        "under 1.5 cells",
+        "1.5 to 3.5",
+        "3.5 to 6.5",
+        "6.5 to 12.5",
+        "beyond 12.5",
+    ];
+    named
+        .iter()
+        .zip(bands.iter())
+        .filter(|(_, entry)| entry.1 > 0)
+        .map(|(name, entry)| {
+            format!(
+                "  {name:<16} {:>7} cells, mean {:>7.2}, range {:>7.2} to {:>7.2}",
+                entry.1,
+                entry.0 / entry.1 as f64,
+                entry.2,
+                entry.3
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Returns how far the solve moved the rock before it was applied back to the mesh, split by

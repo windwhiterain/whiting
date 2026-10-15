@@ -12,14 +12,23 @@
 //! # What the expansion gives the scene, and what the scene has to give back
 //!
 //! The crate hands over a [`FacetMesh`]: triangles, each one a planar block face, each carrying
-//! the belt it came from and how rugged its crest is. The scene's job is the half the crate
-//! deliberately does not do — turning that into a document the standard pipeline draws — and the
-//! one decision in it is that **the normal is the face's own and is written per corner**.
+//! the belt it came from and how rugged its crest is. That mesh is what the scene **reads**, and
+//! it reads two things from it.
 //!
-//! That is the whole of the block-face reading. A generator that averaged normals across the
-//! shared vertices, as [`crate::geometry::heightfield`] does and must, would shade the massif as
-//! one smooth surface with steps in it, and the facets the crate exists to produce would be
-//! invisible.
+//! - **The authored shape**, which is the point: the ridge lines in the picture are the lines
+//!   that were written, and moving one moves the mountain.
+//! - **The identity**, face by face, so that a pixel still resolves to the crest it was
+//!   authored as — see [`crate::identity`], and [`Erosion`] for how a lattice keeps it.
+//!
+//! # What it draws, and why it is not the mesh the crate built
+//!
+//! The scene draws the massif **eroded**: read onto a lattice, solved, and drawn on the
+//! lattice's own vertices ([`Erosion`]). That is a change of what this scene is a demonstration
+//! of, and it is worth being plain about: the block-face reading — a flank as a set of planar
+//! facets meeting at sharp edges, normals written per corner — **is gone from the picture**. A
+//! height field shaded by its own gradient is a smooth surface, which is what an eroded mountain
+//! is, and the two cannot both be shown by the same geometry. The facet mesh still exists and is
+//! still what the lattice is read from; what changed is that it is no longer what is drawn.
 //!
 //! # The plain
 //!
@@ -27,9 +36,10 @@
 //! nothing. It therefore stands on a plain: a heightfield whose height is **zero everywhere the
 //! massif reaches**, which is why the rim is levelled before the mesh is built. The two surfaces
 //! meet along the rim rather than one hovering over the other, and the seam between them is the
-//! massif's own boundary rather than a crack between two pieces of arithmetic.
+//! massif's own boundary rather than a crack between two pieces of arithmetic — which is also
+//! why the solve's output is faded back to the massif's own at the rim.
 
-use definition::{Schema, Value};
+use definition::{PackedList, Schema, Value};
 
 mod eroded;
 mod massif;
@@ -41,7 +51,7 @@ use scene::standard::Stage;
 
 use crate::air::Atmosphere;
 use crate::geometry::{fractal_noise, heightfield, smoothstep};
-use crate::identity::{self, Identity, massif_extras, outputs_field, plain_extras};
+use crate::identity::{Identity, massif_extras, outputs_field, plain_extras};
 use crate::kit::{
     camera_placed_up, directional, environment_light, image, instance, instances, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, surface,
@@ -551,22 +561,29 @@ pub fn landscape() -> Value {
     // number to a flank on each range, and a pixel would resolve to whichever one a reader asked
     // about first.
     let mut next_id = 1;
-    let mut ranges_built: Vec<(&'static str, FacetMesh, Identity)> =
+    let mut ranges_built: Vec<(&'static str, PackedList, Identity)> =
         Vec::with_capacity(RANGES.len());
     for range in RANGES {
         let identity = Identity::of(&authored, next_id, |belt| belt_path(range.name, belt));
         next_id += identity.rows().len() as u32;
         // Eroded **after** it is stood at, and not before: erosion acts in world units, so a
         // solve run on the authored mesh and then scaled would carve the near range at the
-        // far range's resolution. See [`Erosion`] for what the displacement is and why it is
-        // applied back to these points rather than drawn as a lattice in their place.
+        // far range's resolution.
         let stood = stood_at(
             &built,
             [range.centre[0] * radius, range.centre[1] * radius],
             range.scale,
             range.turn,
         );
-        ranges_built.push((range.name, Erosion::of(&stood).applied(&stood), identity));
+        // Drawn on the **lattice's own vertices**, not on the authored mesh's. The erosion
+        // is a field of a few thousand cells and the massif it fell on has a hundred and
+        // seventy four points, so displacing those throws the whole solve away before the
+        // frame sees it — see [`Erosion::lattice`].
+        ranges_built.push((
+            range.name,
+            Erosion::of(&stood).lattice(&stood, &identity),
+            identity,
+        ));
     }
 
     // The eye looks **back along the bearing it stands at**, so the massif's centre is what it aims
@@ -710,7 +727,7 @@ pub fn landscape() -> Value {
             Value::List({
                 let mut entries: Vec<Value> = ranges_built
                     .iter()
-                    .map(|(name, geometry, identity)| {
+                    .map(|(name, points, _)| {
                         mesh(
                             &format!("range_{name}"),
                             "Triangles",
@@ -718,10 +735,7 @@ pub fn landscape() -> Value {
                             // layout and the shader's parameter list are derived from one schema
                             // rather than two that have to agree.
                             massif_extras().point_schema(),
-                            // The block, and not the flank: a belt is one block face and a rib is a
-                            // joint in the rock, so this is the grouping that lets the massif read as
-                            // cut rather than as draped. See `across_the_belt`.
-                            identity::faceted(geometry, identity, identity::across_the_belt),
+                            points.clone(),
                         )
                     })
                     .collect();
