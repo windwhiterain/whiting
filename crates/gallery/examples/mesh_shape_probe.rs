@@ -117,6 +117,7 @@ type VertexId = u32;
 
 /// What one mesh measured like this came out as.
 struct Reading {
+    folded_faces: Vec<u32>,
     folded: usize,
     skewed: usize,
     stretched: usize,
@@ -142,10 +143,16 @@ fn report(name: &str, surface: &patch::HermiteSurface, points: &[Point3]) -> Rea
     let mut stretched = 0usize;
     let mut skews: Vec<f64> = Vec::new();
     let mut aspects: Vec<f64> = Vec::new();
+    let mut folded_faces: Vec<u32> = Vec::new();
     for face in 0..surface.face_count() as u32 {
         let (fold, skew, aspect) = one_cell(&surface.quads()[face as usize], points);
         if fold {
             folded += 1;
+            if name == "massif" {
+                // **Where the folded cells are**, so a fix has something to aim at rather than a
+                // count to move. A count says how many are wrong; the face ids say which.
+                folded_faces.push(face);
+            }
         }
         if skew > SKEW_LIMIT {
             skewed += 1;
@@ -157,6 +164,7 @@ fn report(name: &str, surface: &patch::HermiteSurface, points: &[Point3]) -> Rea
         aspects.push(aspect);
     }
     let reading = Reading {
+        folded_faces,
         folded,
         skewed,
         stretched,
@@ -261,6 +269,10 @@ fn main() {
         .expect("a folded grid is still buildable, which is the point");
     let folded_reading = report("folded grid", &folded, &fold_points);
 
+    println!(
+        "  the massif folded cells are faces {:?}",
+        massif.folded_faces
+    );
     println!(
         "  stretched cells: massif {}, controls {} and {}",
         massif.stretched, sheared_reading.stretched, folded_reading.stretched
