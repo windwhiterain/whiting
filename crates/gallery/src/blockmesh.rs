@@ -351,6 +351,24 @@ fn grid_points(
 }
 
 /// `side` points along a run of mesh vertices, spaced by arc length.
+/// `side` points along a run of mesh vertices, spaced by arc length.
+///
+/// # Invariants
+///
+/// - **`points[0]` and `points[len-1]` are returned exactly.** The two belts that share this run
+///   have to agree on where it begins and ends, and a rounded interior point that drifted past
+///   either end would put their shared edge somewhere neither of them has rock for.
+/// - **The result is inside the run.** Every point is on the polyline itself, never extrapolated
+///   past either end.
+///
+/// The first version located the segment with `starts.iter().position(|start| *start + 1.0 < target)`
+/// — a unit-less epsilon compared against an arc length — and fell through to the **last** segment
+/// for any target below the second segment's start. It therefore answered `points[last + 1]` for
+/// the run's whole first stretch, putting every early sample on the run's far end. Several seam
+/// points landed on one place, `push_quads` dropped the cells whose corners were not distinct, and
+/// the massif rendered with holes through it. The `+ 1.0` was the bug and it is gone rather than
+/// tuned: the comparison that selects a segment is against the segment's own length, so it cannot
+/// be right by accident on a long run and wrong on a short one.
 fn resample_by_arclength(facet: &FacetMesh, run: &[u32], side: usize) -> Vec<Point3> {
     let points: Vec<Point3> = run
         .iter()
@@ -359,43 +377,41 @@ fn resample_by_arclength(facet: &FacetMesh, run: &[u32], side: usize) -> Vec<Poi
             Point3::new(point[0] as f64, point[1] as f64, point[2] as f64)
         })
         .collect();
-    if points.is_empty() {
+    if points.is_empty() || side == 0 {
         return Vec::new();
     }
     if points.len() == 1 {
         return vec![points[0]; side];
     }
-    // Cumulative length to the **start** of each segment, one short of `points`, so segment `at`
-    // spans `lengths[at] ..= lengths[at + 1]` in the sense that its far end is the next entry of
-    // `points`. The first version indexed `lengths` with a segment number and read one past its end.
-    let mut starts = Vec::with_capacity(points.len() - 1);
-    let mut total = 0.0f64;
-    for pair in points.windows(2) {
-        starts.push(total);
-        total += pair[0].distance(pair[1]);
-    }
-    let last = points.len() - 2;
+
+    // The length of each segment, in the order they appear, and their total.
+    let mut spans: Vec<f64> = points
+        .windows(2)
+        .map(|pair| pair[0].distance(pair[1]))
+        .collect();
+    let total: f64 = spans.iter().sum();
     if total <= 0.0 {
+        // A run whose every vertex is in the same place has no length to divide.
         return vec![points[0]; side];
     }
+
     (0..side)
         .map(|step| {
-            let target = total * step as f64 / (side - 1) as f64;
-            // The last target is the run's own far end, and there is no segment past the last one.
-            let at = match starts.iter().position(|start| *start + 1.0 < target) {
-                Some(index) => (index + 1).min(last),
-                None => last,
-            };
-            let share = if target >= starts[at] + total * 0.0 && at < last {
-                let span = points[at].distance(points[at + 1]);
-                if span > 0.0 {
-                    ((target - starts[at]) / span).clamp(0.0, 1.0)
-                } else {
-                    0.0
+            let target = total * step as f64 / (side - 1).max(1) as f64;
+            // Walk the segments rather than searching for one: the run is short and this is linear
+            // in a number that is already small, and a search here is where the first version went
+            // wrong.
+            let mut walked = 0.0f64;
+            let mut at = spans.len() - 1;
+            for (index, span) in spans.iter().enumerate() {
+                if target < walked + *span {
+                    at = index;
+                    break;
                 }
-            } else {
-                1.0
-            };
+                walked += *span;
+            }
+            let span = spans[at].max(f64::MIN_POSITIVE);
+            let share = ((target - walked) / span).clamp(0.0, 1.0);
             points[at] + (points[at + 1] - points[at]) * share
         })
         .collect()
