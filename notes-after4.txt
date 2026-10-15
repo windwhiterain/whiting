@@ -1,0 +1,36 @@
+
+2380 triangles in 182 blocks; the mesh's own f32 floor is 1.526e-5
+182 blocks built at 4x4, 1638 patches in total
+  every block's interior seams   split 0.000e0   normal 3.332e-8 rad
+  departure per block: median 1.799e-3  worst 2.088e0  floor 1.526e-5  off-rock points 1
+  the same four corners, bilinear reference: median 1.733e-3  (the floor of what any C1 fit can reach)
+
+  side   patches   departure   bilinear ref   snapped corners   snapped blocks
+     2       182     2.687e-6        2.687e-6                79               79
+     3       728     1.361e-1        1.361e-1               170               83
+     4      1638     1.799e-3        1.733e-3               266               93
+     6      4550     2.329e-1        2.288e-1               741              169
+     8      8918     2.288e-1        2.190e-1              1025              181
+
+  side   intact blocks   median | intact   median bilinear | intact   median | all   median spread
+     2             103           1.437e-6                   1.437e-6         2.687e-6          1.301e0
+     3              99           1.354e-1                   1.354e-1         1.361e-1          1.302e0
+     4              89           4.152e-6                   4.115e-6         1.799e-3          1.302e0
+     6              13           2.476e-1                   2.451e-1         2.329e-1          1.303e0
+     8               1           1.731e-1                   1.559e-1         2.288e-1          1.303e0
+
+  side     cells   median     p90     p99     max   | single-sheet cells   median     p99     max   | folded   median
+     2       182   2.607e-6   4.593e-1   2.296e0   2.765e0   |                 182   2.607e-6   2.296e0   2.765e0   |       0   0.000e0
+     3       728   1.152e-1   2.256e-1   1.384e0   2.199e0   |                 728   1.152e-1   1.384e0   2.199e0   |       0   0.000e0
+     4      1637   2.736e-6   7.314e-3   1.230e0   2.088e0   |                1626   2.743e-6   1.230e0   2.088e0   |      11   1.866e-6
+     6      4519   7.776e-2   2.852e-1   2.110e0   3.521e0   |                4518   7.776e-2   2.110e0   3.521e0   |       1   1.492e-2
+     8      8854   7.538e-2   2.462e-1   1.607e0   2.518e0   |                8836   7.512e-2   1.607e0   2.518e0   |      18   1.825e-1
+
+  side   untouched cells   median     p90     max   | snapped cells   median     p90     max   | blocks with no covered cell
+     2                103   1.437e-6   2.839e-6   2.296e0   |            79   3.434e-3   9.907e-1   2.765e0   |   79 of 182
+     3                396   1.182e-1   1.653e-1   1.607e0   |           332   1.133e-1   6.635e-1   2.199e0   |    0 of 182
+     4                800   1.937e-6   4.462e-6   1.624e0   |           837   3.062e-4   3.302e-1   2.088e0   |    0 of 182
+     6                325   7.294e-2   2.142e-1   3.273e-1   |          4194   7.888e-2   3.008e-1   3.521e0   |    0 of 182
+     8                 49   5.838e-2   1.428e-1   1.731e-1   |          8805   7.547e-2   2.465e-1   2.518e0   |    0 of 182
+
+FAILED  3  the surface stays within a hundred mesh-precisions of the rock
