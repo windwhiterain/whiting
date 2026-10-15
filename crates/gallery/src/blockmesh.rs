@@ -33,7 +33,8 @@ use std::collections::BTreeMap;
 
 use mountain::facet::{BlockFace, Face, FacetMesh};
 use mountain::tessellation::BeltRef;
-use patch::topology::VertexId;
+use patch::hermite_surface::Join;
+use patch::topology::{EdgeKey, VertexId};
 use patch::{HermiteSurface, Point3};
 
 /// How many samples a side of a block's grid carries.
@@ -128,7 +129,7 @@ pub fn from_facet(facet: &FacetMesh, side: usize) -> BlockSurfaces {
 ///
 /// Blocks within a belt become cells of one surface, so **the ribs between them stop being creases**
 /// — see the note on [`BlockSurfaces`] for whether that is a loss.
-pub fn from_belts(facet: &FacetMesh, side: usize) -> BeltSurfaces {
+pub fn from_belts(facet: &FacetMesh, side: usize) -> Option<BeltSurfaces> {
     // Group by belt, in the order the facets name them, so the result does not depend on a hash map's
     // iteration order.
     let mut order: Vec<BeltRef> = Vec::new();
@@ -141,25 +142,59 @@ pub fn from_belts(facet: &FacetMesh, side: usize) -> BeltSurfaces {
     }
     order.sort_by_key(|belt| (belt.valley.0, belt.segment, belt.side));
 
+    // **Every belt's grid goes into one surface.** They could not be separate surfaces and still
+    // offer a soft edge: `Join` lives on an `EdgeKey`, which is two face ids in one `Topology`, and a
+    // pair of surfaces has no shared topology to tag. Measured what independence costs, on the
+    // valley a valley's Left and Right belts share: `2.412e-02` apart at `side` 4, against a
+    // `1.526e-05` floor. Not a crack, but not C0 either, and the reason is the two belts' `u`
+    // fractions being parametrised from different upper runs — so the fix is below rather than a
+    // bigger grid.
+    let mut positions: Vec<Point3> = Vec::new();
+    let mut quads: Vec<[VertexId; 4]> = Vec::new();
+    // The shared valley vertices, keyed by the run they came from and their place along it.
+    let mut valley: BTreeMap<(usize, usize, usize), VertexId> = BTreeMap::new();
     let mut belts = Vec::with_capacity(order.len());
-    for (index, belt) in order.iter().enumerate() {
+
+    for belt in order.iter() {
         let Some(faces) = grouped.get(belt) else {
             continue;
         };
-        let Some(surface) = surface_from_faces(facet, faces, side) else {
+        let Some(grid) = grid_points(facet, faces, side, *belt, &mut valley, &mut positions) else {
             continue;
         };
-        belts.push(BeltSurface {
-            surface,
-            source: index as u32,
+        let first_face = quads.len() as u32;
+        push_quads(&positions, &grid, side, &mut quads);
+        belts.push(BeltRecord {
             belt: *belt,
+            first_face,
+            face_count: quads.len() as u32 - first_face,
         });
     }
-    BeltSurfaces {
+
+    let Ok(mut surface) = HermiteSurface::build(positions, quads) else {
+        return None;
+    };
+
+    // Every edge two belts share is the seam between them, and it starts **hard**: a crease is the
+    // conservative default, and `set_join` on the surface is what a caller uses to soften one.
+    for seam in valley_seams(&belts, &surface) {
+        surface.set_join(seam, Join::Hard);
+    }
+
+    Some(BeltSurfaces {
+        surface,
         belts,
         side,
         blocks: facet.blocks.len(),
-    }
+    })
+}
+
+/// A belt's place in the one surface, so a caller can reach its patches.
+#[derive(Clone, Copy, Debug)]
+pub struct BeltRecord {
+    pub belt: BeltRef,
+    pub first_face: u32,
+    pub face_count: u32,
 }
 
 /// One belt's Hermite surface, and which belt it is.
@@ -173,29 +208,40 @@ pub struct BeltSurface {
     pub belt: BeltRef,
 }
 
-/// Every belt of a massif, as a Hermite surface.
+/// Every belt of a massif, as **one** Hermite surface.
+///
+/// The belts are cells of it rather than surfaces of their own, which is what makes a shared edge
+/// between two of them a thing that exists. See [`from_belts`].
 #[derive(Clone, Debug)]
 pub struct BeltSurfaces {
-    belts: Vec<BeltSurface>,
+    surface: HermiteSurface,
+    belts: Vec<BeltRecord>,
     side: usize,
     blocks: usize,
 }
 
 impl BeltSurfaces {
+    /// The whole massif, as one surface, with every inter-belt edge already tagged hard.
+    pub fn surface(&self) -> &HermiteSurface {
+        &self.surface
+    }
+
+    pub fn surface_mut(&mut self) -> &mut HermiteSurface {
+        &mut self.surface
+    }
+
+    /// Where each belt sits in the surface.
+    pub fn belts(&self) -> &[BeltRecord] {
+        &self.belts
+    }
+
+    /// How many belts the massif has.
     pub fn len(&self) -> usize {
         self.belts.len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.belts.is_empty()
-    }
-
-    pub fn get(&self, index: usize) -> Option<&BeltSurface> {
-        self.belts.get(index)
-    }
-
-    pub fn belts(&self) -> &[BeltSurface] {
-        &self.belts
     }
 
     /// The grid resolution every belt was built at.
@@ -205,26 +251,242 @@ impl BeltSurfaces {
 
     /// How many patches in total.
     pub fn patch_count(&self) -> usize {
-        self.belts
-            .iter()
-            .map(|belt| belt.surface.face_count())
-            .sum()
+        self.surface.face_count()
     }
 
     /// How many blocks the massif has, so a caller can say what a belt absorbed.
     pub fn blocks(&self) -> usize {
         self.blocks
     }
+
+    /// The belt a face belongs to.
+    pub fn belt_of_face(&self, face: u32) -> Option<BeltRef> {
+        self.belts
+            .iter()
+            .find(|belt| face >= belt.first_face && face < belt.first_face + belt.face_count)
+            .map(|belt| belt.belt)
+    }
 }
 
-/// One grid over any set of faces that share a domain, or `None` when they cover no area.
-fn surface_from_faces(facet: &FacetMesh, faces: &[&Face], side: usize) -> Option<HermiteSurface> {
+/// The mesh vertices on a belt's **valley** row, in order, deduped.
+///
+/// `Face::uv` puts `v = 1` on the valley, so these are the vertices of the faces whose `uv` reaches
+/// the top of the belt's own `v` range. `expand.rs`'s `valley_run` hands a valley's Left and Right
+/// belts the **same** run, so this returns the same ids for both, which is what makes them shareable.
+fn valley_vertices(faces: &[&Face]) -> Vec<u32> {
+    let mut high = f32::NEG_INFINITY;
+    for face in faces {
+        for corner in face.uv {
+            high = high.max(corner[1]);
+        }
+    }
+    let mut found: BTreeMap<u32, f32> = BTreeMap::new();
+    for face in faces {
+        for (index, corner) in face.uv.iter().enumerate() {
+            if (corner[1] - high).abs() > 1.0e-5 {
+                continue;
+            }
+            let vertex = face.indices[index];
+            let slot = found.entry(vertex).or_insert(f32::INFINITY);
+            *slot = slot.min(corner[0]);
+        }
+    }
+    let mut ordered: Vec<(f32, u32)> = found.into_iter().map(|(id, u)| (u, id)).collect();
+    ordered.sort_by(|left, right| left.0.total_cmp(&right.0));
+    ordered.into_iter().map(|(_, id)| id).collect()
+}
+
+/// A belt's grid of vertex indices into `positions`, with its valley row shared with its partner.
+fn grid_points(
+    facet: &FacetMesh,
+    faces: &[&Face],
+    side: usize,
+    belt: BeltRef,
+    valley: &mut BTreeMap<(usize, usize, usize), VertexId>,
+    positions: &mut Vec<Point3>,
+) -> Option<Vec<VertexId>> {
     if faces.is_empty() || side < 2 {
         return None;
     }
+    let Some((low_u, high_u, low_v, high_v)) = covered_domain(faces) else {
+        return None;
+    };
 
-    // The covered domain. **Not the unit square**, because a caller may hand this a set whose `uv`
-    // runs over a sub-range; the unit square would then put the whole grid off the rock.
+    // The valley row, resampled off the shared run.
+    //
+    // **This is the whole of the seam.** A valley's Left and Right belts carry the same run, so
+    // resampling it by arc length gives both of them the same `side` points, and the key below
+    // hands both the same vertex ids. Sampling at uniform `u` instead — which is what each belt
+    // would do on its own — parameterises the two from different upper runs and lands them
+    // `2.412e-02` apart on a curved valley: not a crack, and not C0 either.
+    let run = valley_vertices(faces);
+    let run = resample_by_arclength(facet, &run, side);
+    let key_of = |at: usize| (belt.valley.0 as usize, belt.segment, at);
+
+    let mut grid = Vec::with_capacity(side * side);
+    for row in 0..side {
+        for column in 0..side {
+            if row == side - 1 {
+                let key = key_of(column);
+                let id = match valley.get(&key) {
+                    Some(id) => *id,
+                    None => {
+                        let id = positions.len() as VertexId;
+                        positions.push(run[column]);
+                        valley.insert(key, id);
+                        id
+                    }
+                };
+                grid.push(id);
+                continue;
+            }
+            let v = low_v + (high_v - low_v) * row as f32 / (side - 1) as f32;
+            let u = low_u + (high_u - low_u) * column as f32 / (side - 1) as f32;
+            let id = positions.len() as VertexId;
+            positions.push(sample_block(facet, faces, u, v)?);
+            grid.push(id);
+        }
+    }
+    Some(grid)
+}
+
+/// `side` points along a run of mesh vertices, spaced by arc length.
+fn resample_by_arclength(facet: &FacetMesh, run: &[u32], side: usize) -> Vec<Point3> {
+    let points: Vec<Point3> = run
+        .iter()
+        .map(|index| {
+            let point = facet.points[*index as usize];
+            Point3::new(point[0] as f64, point[1] as f64, point[2] as f64)
+        })
+        .collect();
+    if points.is_empty() {
+        return Vec::new();
+    }
+    if points.len() == 1 {
+        return vec![points[0]; side];
+    }
+    // Cumulative length to the **start** of each segment, one short of `points`, so segment `at`
+    // spans `lengths[at] ..= lengths[at + 1]` in the sense that its far end is the next entry of
+    // `points`. The first version indexed `lengths` with a segment number and read one past its end.
+    let mut starts = Vec::with_capacity(points.len() - 1);
+    let mut total = 0.0f64;
+    for pair in points.windows(2) {
+        starts.push(total);
+        total += pair[0].distance(pair[1]);
+    }
+    let last = points.len() - 2;
+    if total <= 0.0 {
+        return vec![points[0]; side];
+    }
+    (0..side)
+        .map(|step| {
+            let target = total * step as f64 / (side - 1) as f64;
+            // The last target is the run's own far end, and there is no segment past the last one.
+            let at = match starts.iter().position(|start| *start + 1.0 < target) {
+                Some(index) => (index + 1).min(last),
+                None => last,
+            };
+            let share = if target >= starts[at] + total * 0.0 && at < last {
+                let span = points[at].distance(points[at + 1]);
+                if span > 0.0 {
+                    ((target - starts[at]) / span).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                }
+            } else {
+                1.0
+            };
+            points[at] + (points[at + 1] - points[at]) * share
+        })
+        .collect()
+}
+
+/// Appends a belt's cells, skipping any whose corners collapse onto one place.
+fn push_quads(
+    positions: &[Point3],
+    grid: &[VertexId],
+    side: usize,
+    quads: &mut Vec<[VertexId; 4]>,
+) {
+    for row in 0..side - 1 {
+        for column in 0..side - 1 {
+            let near = (row * side + column) as usize;
+            let corners = [
+                grid[near],
+                grid[near + 1],
+                grid[near + side + 1],
+                grid[near + side],
+            ];
+            let distinct = corners.iter().all(|first| {
+                corners.iter().all(|second| {
+                    first == second
+                        || positions[*first as usize].distance(positions[*second as usize]) > 0.0
+                })
+            });
+            if distinct {
+                quads.push(corners);
+            }
+        }
+    }
+}
+
+/// The edges two different belts share, which are the seams a caller chooses soft or hard on.
+fn valley_seams(belts: &[BeltRecord], surface: &HermiteSurface) -> Vec<EdgeKey> {
+    let owner = |face: u32| -> Option<BeltRef> {
+        belts
+            .iter()
+            .find(|belt| face >= belt.first_face && face < belt.first_face + belt.face_count)
+            .map(|belt| belt.belt)
+    };
+    let mut found = Vec::new();
+    for (edge, faces) in &surface.topology().edge_faces {
+        if faces.len() != 2 {
+            continue;
+        }
+        let (Some(first), Some(second)) = (owner(faces[0].0), owner(faces[1].0)) else {
+            continue;
+        };
+        if first != second {
+            found.push(*edge);
+        }
+    }
+    found
+}
+
+/// One block's grid, or `None` when the block has no surface to sample at all.
+fn block_surface(
+    facet: &FacetMesh,
+    block: &BlockFace,
+    side: usize,
+    source: u32,
+) -> Option<BlockSurface> {
+    let faces: Vec<&Face> = facet.faces[block.faces.start as usize..block.faces.end as usize]
+        .iter()
+        .collect();
+    let Some((low_u, high_u, low_v, high_v)) = covered_domain(&faces) else {
+        return None;
+    };
+    let mut positions = Vec::with_capacity(side * side);
+    // A block has no partner to share a seam with, so every point of its grid is sampled.
+    for row in 0..side {
+        let v = low_v + (high_v - low_v) * row as f32 / (side - 1) as f32;
+        for column in 0..side {
+            let u = low_u + (high_u - low_u) * column as f32 / (side - 1) as f32;
+            positions.push(sample_block(facet, &faces, u, v)?);
+        }
+    }
+    let grid: Vec<VertexId> = (0..positions.len() as VertexId).collect();
+    let surface = surface_from_grid(&positions, &grid, side)?;
+    Some(BlockSurface { surface, source })
+}
+
+/// The `uv` box a set of faces covers, or `None` when it covers no area.
+///
+/// **Not the unit square**, because a caller may hand this a set whose `uv` runs over a sub-range.
+fn covered_domain(faces: &[&Face]) -> Option<(f32, f32, f32, f32)> {
+    if faces.is_empty() {
+        return None;
+    }
     let (mut low_u, mut high_u) = (f32::INFINITY, f32::NEG_INFINITY);
     let (mut low_v, mut high_v) = (f32::INFINITY, f32::NEG_INFINITY);
     for face in faces {
@@ -238,66 +500,21 @@ fn surface_from_faces(facet: &FacetMesh, faces: &[&Face], side: usize) -> Option
     if high_u <= low_u || high_v <= low_v {
         return None;
     }
+    Some((low_u, high_u, low_v, high_v))
+}
 
-    let mut positions = Vec::with_capacity(side * side);
-    for row in 0..side {
-        let v = low_v + (high_v - low_v) * row as f32 / (side - 1) as f32;
-        for column in 0..side {
-            let u = low_u + (high_u - low_u) * column as f32 / (side - 1) as f32;
-            positions.push(sample_block(facet, faces, u, v)?);
-        }
-    }
-
-    // The winding: `(0,0) (1,0) (1,1) (0,1)` per cell, which is the order `HermiteSurface` and every
-    // quad in this crate uses.
-    //
-    // **A cell whose corners are not four distinct points is left out, and only that cell.**
-    // Projection can put two grid points on the same place — a corner that fell outside the region
-    // is sent to the nearest point of it, and near a cusp or a thin arm two corners can be sent to
-    // the same one — and `HermiteSurface::build` refuses a quad with a repeated corner, which would
-    // take the **whole block** with it. Measured, keeping every quad cost 87 of the massif's 182
-    // blocks at `side` 4 and 181 of them at `side` 8, so a front end that fixed its corners and lost
-    // four fifths of the rock was not a fix. Leaving the cell out keeps the block.
+/// Builds a surface from a grid of vertex indices, dropping any cell whose corners collapse.
+fn surface_from_grid(
+    positions: &[Point3],
+    grid: &[VertexId],
+    side: usize,
+) -> Option<HermiteSurface> {
     let mut quads = Vec::with_capacity((side - 1) * (side - 1));
-    for row in 0..side - 1 {
-        for column in 0..side - 1 {
-            let near = (row * side + column) as VertexId;
-            let corners = [
-                near,
-                near + 1,
-                near + side as VertexId + 1,
-                near + side as VertexId,
-            ];
-            let distinct = corners.iter().all(|first| {
-                corners.iter().all(|second| {
-                    first == second
-                        || positions[*first as usize].distance(positions[*second as usize]) > 0.0
-                })
-            });
-            if distinct {
-                quads.push(corners);
-            }
-        }
-    }
+    push_quads(positions, grid, side, &mut quads);
     if quads.is_empty() {
         return None;
     }
-
-    HermiteSurface::build(positions, quads).ok()
-}
-
-/// One block's grid, or `None` when the block has no surface to sample at all.
-fn block_surface(
-    facet: &FacetMesh,
-    block: &BlockFace,
-    side: usize,
-    source: u32,
-) -> Option<BlockSurface> {
-    let faces: Vec<&Face> = facet.faces[block.faces.start as usize..block.faces.end as usize]
-        .iter()
-        .collect();
-    let surface = surface_from_faces(facet, &faces, side)?;
-    Some(BlockSurface { surface, source })
+    HermiteSurface::build(positions.to_vec(), quads).ok()
 }
 
 /// The block's own surface at `(u, v)`, averaged over every triangle of the block that covers it.

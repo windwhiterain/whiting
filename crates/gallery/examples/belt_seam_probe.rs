@@ -33,11 +33,22 @@ use std::collections::BTreeMap;
 
 use mountain::tessellation::BeltRef;
 use mountain::{FacetMesh, Starter, starter};
+use patch::hermite_surface::Join;
+use patch::topology::EdgeKey;
 use patch::{HermiteSurface, Point3};
 use whiting_gallery::blockmesh::{self, BeltSurfaces};
 
-fn parameters() -> [f64; 9] {
-    [0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
+/// The `acos` floor for two unit vectors this close, and a small multiple for a normal.
+const C1_CEILING: f64 = 1.0e-7;
+
+/// A measurement that came out NaN cannot be compared, and folding it into a maximum silently turns
+/// a broken run into a passing one.
+fn finite(value: f64) -> f64 {
+    if value.is_finite() {
+        value
+    } else {
+        f64::INFINITY
+    }
 }
 
 fn massif() -> FacetMesh {
@@ -73,120 +84,213 @@ fn valley_seams(facet: &FacetMesh) -> Vec<(BeltRef, BeltRef)> {
     seams
 }
 
-/// Where a patch's own **valley row** lies in world space, sampled along it.
+/// Reads one seam out of the surface's own topology.
 ///
-/// `Face::uv` defines `v` as the fraction from the belt's **upper** boundary down to the lower one,
-/// so the valley is `v = 1` and the crest is `v = 0`. The first version of this probe sampled
-/// `evaluate(0.0, t)`, which is the grid's `u = 0` **side** — a different edge entirely — and
-/// reported `1.185e+02` as a gap between the two patches. It was measuring two unrelated side edges
-/// of a grid whose winding nobody had checked against `Face::uv`.
+/// Now that every belt is a group of faces in one `HermiteSurface`, a seam is a shared edge with two
+/// faces on it, and the two faces read **the same vertex ids** — measured, both endpoints of the
+/// first seam are literally the same vertices in both faces. So the split on a seam is zero by
+/// construction and measuring it is only worth doing as the check that it is.
 ///
-/// Sampled over the last patch row, since `v = 1` is the far edge of it.
-fn valley_edge(belts: &BeltSurfaces, belt: BeltRef) -> Vec<Point3> {
-    let Some(patch) = belts.belts().iter().find(|candidate| candidate.belt == belt) else {
-        return Vec::new();
-    };
-    let side = patch.surface.face_count();
-    let _ = side;
-    (0..=8)
-        .map(|step| {
-            let s = step as f64 / 8.0;
-            // The valley row lives in the last row of patches; which face that is depends on the
-            // surface's own layout, so the last face id is read rather than assumed.
-            let last = (patch.surface.face_count() - 1) as u32;
-            patch.surface.patch(last).evaluate(s, 1.0)
-        })
-        .collect()
-}
-
-/// The largest distance between two polylines at corresponding sample positions.
+/// What is left to measure is the thing sharing vertices does **not** settle: whether the two faces'
+/// normals agree, which is what `Join` decides.
 ///
-/// **Both matchings are tried and the smaller is reported.** The two belts wind along their shared
-/// valley in opposite directions, so `s` on one is `1 - s` on the other, and a measurement that
-/// assumes the match would report a real seam as far apart. Taking the better of the two asks the
-/// question that actually matters — *do these two surfaces reach the same curve* — without
-/// committing to an orientation this file does not establish.
+/// # The parameter trap, which this function has now fallen into twice
 ///
-/// This is deliberately **not** a nearest-point comparison: that would report the gap between two
-/// sets, which is zero whenever they overlap somewhere. What a seam needs is "at the same place
-/// along the shared edge, do the two patches agree", and that is a sampled comparison or nothing.
-fn best_agreement(first: &[Point3], second: &[Point3]) -> f64 {
-    let mut best = f64::INFINITY;
-    for mirror in [false, true] {
-        let mut worst = 0.0f64;
-        for (index, a) in first.iter().enumerate() {
-            let at = if mirror {
-                first.len() - 1 - index
-            } else {
-                index
-            };
-            let Some(b) = second.get(at) else { continue };
-            worst = worst.max(a.distance(*b));
-        }
-        best = best.min(worst);
+/// **Two faces meeting along a shared edge traverse it in opposite directions.** A point at `t`
+/// along it on one face is at `1 - t` on the other, so comparing them at the same parameter
+/// measures two different places. The first version of this probe got the *edge* wrong as well and
+/// reported `1.185e+02`; the second got the edge right and still would have reported the seam as
+/// far apart, for this reason.
+///
+/// So both faces' own corners are read, the shared pair is located in each, and **the parameter is
+/// mapped through the actual endpoint order** rather than assumed. Nothing here infers an
+/// orientation.
+fn seam_reading(surface: &HermiteSurface, edge: &EdgeKey) -> (f64, f64, f64) {
+    let faces = &surface.topology().edge_faces[edge];
+    if faces.len() != 2 {
+        return (f64::INFINITY, f64::INFINITY, f64::INFINITY);
     }
-    best
+    let (first, _) = faces[0];
+    let (second, _) = faces[1];
+
+    // Where the seam sits inside each face's own `[0,1]^2`, read off that face's corners.
+    let corner_of = |face: u32, vertex: u32| -> Option<(f64, f64)> {
+        let quads = &surface.quads()[face as usize];
+        let at = quads.iter().position(|held| *held == vertex)?;
+        let other = quads.iter().position(|held| *held == edge.1);
+        // The corner's own `(u, v)` is the winding's: `(0,0) (1,0) (1,1) (0,1)`.
+        let uv = match at {
+            0 => (0.0, 0.0),
+            1 => (1.0, 0.0),
+            2 => (1.0, 1.0),
+            _ => (0.0, 1.0),
+        };
+        // `other` is `None` when the face holds both endpoints adjacent to this one; the caller
+        // checks the pair it got back rather than trusting a `None` here.
+        let _ = other;
+        Some(uv)
+    };
+    let (Some(first_start), Some(first_end)) = (corner_of(first, edge.0), corner_of(first, edge.1))
+    else {
+        return (f64::INFINITY, f64::INFINITY, f64::INFINITY);
+    };
+    let (Some(second_start), Some(second_end)) =
+        (corner_of(second, edge.0), corner_of(second, edge.1))
+    else {
+        return (f64::INFINITY, f64::INFINITY, f64::INFINITY);
+    };
+
+    let mut worst_split = 0.0f64;
+    let mut worst_along = 0.0f64;
+    let mut worst_normal = 0.0f64;
+    for step in 0..=8usize {
+        let t = step as f64 / 8.0;
+        // Walk each face along its own edge from its own start, so `t` names the same place in both.
+        let at = |(start, end): ((f64, f64), (f64, f64))| {
+            let (axis, from, to) = if (start.0 - end.0).abs() > (start.1 - end.1).abs() {
+                (0, start.0, end.0)
+            } else {
+                (1, start.1, end.1)
+            };
+            let mut uv = [start.0, start.1];
+            uv[axis] = from + (to - from) * t;
+            (uv[0], uv[1])
+        };
+        let a = at((first_start, first_end));
+        let b = at((second_start, second_end));
+
+        let one = surface.patch(first);
+        let two = surface.patch(second);
+        worst_split = worst_split.max(one.evaluate(a.0, a.1).distance(two.evaluate(b.0, b.1)));
+
+        let (first_u, first_v) = (one.tangent_u(a.0, a.1), one.tangent_v(a.0, a.1));
+        let (second_u, second_v) = (two.tangent_u(b.0, b.1), two.tangent_v(b.0, b.1));
+        // Which tangent runs along the seam is read from the edge itself, not from the slot.
+        let along_axis =
+            if (first_start.0 - first_end.0).abs() > (first_start.1 - first_end.1).abs() {
+                0
+            } else {
+                1
+            };
+        let (along_first, along_second) = if along_axis == 0 {
+            (first_u, second_u)
+        } else {
+            (first_v, second_v)
+        };
+        worst_along = worst_along.max(finite(along_first.angle(along_second)));
+        worst_normal = worst_normal.max(finite(
+            first_u.cross(first_v).angle(second_u.cross(second_v)),
+        ));
+    }
+    (worst_split, worst_along, worst_normal)
 }
 
 fn main() {
     let mut failures: Vec<&str> = Vec::new();
     let facet = massif();
     let side = 4;
-    let belts = blockmesh::from_belts(&facet, side);
-    println!(
-        "\n{} belts at {side}x{side}, {} patches",
-        belts.len(),
-        belts.patch_count()
-    );
 
-    // 1. The seams, from the massif's own belts.
+    // 1. The seams, from the massif's own belts: every shared edge whose two faces are in
+    //    different belts.
     let seams = valley_seams(&facet);
-    println!("  {} valley seams between a belt's Left and Right", seams.len());
-    if seams.is_empty() {
-        println!("  no valley seams exist, so there is nowhere to choose soft or hard yet");
-        failures.push("1  neighbouring belts share a seam");
-    }
+    let Some(belts) = blockmesh::from_belts(&facet, side) else {
+        eprintln!("the massif would not build as one surface");
+        std::process::exit(1);
+    };
+    println!(
+        "\n{} belts at {side}x{side}, {} patches, one surface",
+        belts.belts().len(),
+        belts.surface().face_count()
+    );
+    let surface = belts.surface();
 
-    // 2. The gap along them.
-    let mut worst_gap = 0.0f64;
-    let mut considered = 0usize;
-    for (left, right) in &seams {
-        let first = valley_edge(&belts, *left);
-        let second = valley_edge(&belts, *right);
-        if first.is_empty() || second.is_empty() {
+    // Every edge two different belts share, read out of the surface itself rather than predicted.
+    let mut tagged_hard = 0usize;
+    let mut worst = (0.0f64, 0.0f64, 0.0f64);
+    let mut first: Option<(EdgeKey, u32, u32)> = None;
+    for (edge, faces) in &surface.topology().edge_faces {
+        if faces.len() != 2 {
             continue;
         }
-        considered += 1;
-        worst_gap = worst_gap.max(best_agreement(&first, &second));
+        let (Some(first_belt), Some(second_belt)) = (
+            belts.belt_of_face(faces[0].0),
+            belts.belt_of_face(faces[1].0),
+        ) else {
+            continue;
+        };
+        if first_belt == second_belt {
+            continue;
+        }
+        tagged_hard += 1;
+        if first.is_none() {
+            first = Some((*edge, faces[0].0, faces[1].0));
+        }
+        let reading = seam_reading(surface, edge);
+        worst = (
+            worst.0.max(reading.0),
+            worst.1.max(reading.1),
+            worst.2.max(reading.2),
+        );
+    }
+    println!("  {tagged_hard} inter-belt edges, all tagged hard");
+    if let Some((edge, one, two)) = first {
+        println!(
+            "  the first, {edge:?}: faces {one} and {two} -- {}",
+            shared_vertices(surface, &edge, one, two)
+        );
     }
     println!(
-        "  worst gap between the two patches along a shared valley   {worst_gap:.3e}\n\
-         \x20   over {considered} seams, best of the two orientations"
+        "  split {:.3e}   along-edge {:.3e} rad   normal {:.3e} rad",
+        worst.0, worst.1, worst.2
     );
-    if considered == 0 {
-        failures.push("2  the seams were found and measured");
+    if tagged_hard == 0 {
+        failures.push("1  neighbouring belts share edges in one surface");
+    }
+    if worst.0 > 1.0e-12 {
+        failures.push("2  a hard seam is C0, never a crack");
     }
 
-    // 3. The control: one belt sampled twice must agree exactly. If this is not zero, measurement 2
-    //    is measuring the instrument rather than the geometry.
-    let twice = blockmesh::from_belts(&facet, side);
-    let mut control = 0.0f64;
-    for (index, belt) in belts.belts().iter().enumerate() {
-        let other = &twice.belts()[index];
-        if other.belt != belt.belt {
-            continue;
+    // 3. The tag decides, and that is the whole question: softening one seam has to make its two
+    //    faces agree on the normal, and nothing else on the surface may move.
+    let probe = seams
+        .first()
+        .and_then(|(left, right)| find_seam(surface, &belts, *left, *right));
+    let Some(edge) = probe else {
+        failures.push("3  a seam was found to retag");
+        println!();
+        for failure in &failures {
+            println!("FAILED  {failure}");
         }
-        for face in 0..belt.surface.face_count() as u32 {
-            for t in parameters() {
-                control = control
-                    .max(belt.surface.patch(face).evaluate(0.5, t)
-                        .distance(other.surface.patch(face).evaluate(0.5, t)));
-            }
-        }
+        std::process::exit(1);
+    };
+
+    let mut softened = belts.clone();
+    let before = seam_reading(softened.surface(), &edge);
+    softened.surface_mut().set_join(edge, Join::Soft);
+    let after = seam_reading(softened.surface(), &edge);
+    println!(
+        "\n  retagging one seam soft\n\
+         \x20   split {:.3e} -> {:.3e}\n\
+         \x20   normal {:.3e} -> {:.3e} rad",
+        before.0, after.0, before.2, after.2
+    );
+
+    if after.0 > 1.0e-12 {
+        failures.push("3  softening a seam keeps it closed");
     }
-    println!("  control: the same belt sampled twice   {control:.3e}");
-    if control != 0.0 {
-        failures.push("3  sampling a belt twice gives the same surface");
+    // **The claim is that a soft seam is exactly C1 — not that retagging improves anything.** The
+    // first version of this assertion was "the normal must go down", which is wrong twice over: the
+    // measurement cannot distinguish `2.980e-8` from `1.490e-8`, both being the `acos` floor, and a
+    // seam that is already at the floor has nowhere to go. An assertion that asks a measurement to
+    // improve is an assertion that passes when the instrument is blunt.
+    if after.2 > C1_CEILING {
+        println!(
+            "\n  note: the softened seam reads {:.3e} rad, above the {:.1e} ceiling. Retagging cannot\n\
+             \x20 repair a tangent field the two faces were seeded with independently -- the seed is\n\
+             \x20 what has to agree, and that is the next thing to look at.",
+            after.2, C1_CEILING
+        );
+        failures.push("3  a softened seam is exactly C1");
     }
 
     println!();
@@ -200,5 +304,49 @@ fn main() {
     }
 }
 
+/// How many vertices the two faces on an edge actually share, read off the faces' own corners.
+///
+/// **A shared edge in this crate's `Topology` does not mean the two faces share vertices.** `EdgeKey`
+/// is a pair of endpoints, so two faces can name the same edge with **different** vertex ids and the
+/// topology will still pair them — which is exactly the hole the valley-keyed pool was cut to close,
+/// and this is the measurement that says whether the hole is closed.
+fn shared_vertices(surface: &HermiteSurface, edge: &EdgeKey, one: u32, two: u32) -> String {
+    let first = surface.quads()[one as usize];
+    let second = surface.quads()[two as usize];
+    // `EdgeKey` is the unordered pair of endpoints, so it is the edge's own id list — there is
+    // nothing to look up, and looking it up is where the first version of this went wrong.
+    let shared = [edge.0, edge.1]
+        .iter()
+        .filter(|end| first.contains(end) && second.contains(end))
+        .count();
+    format!(
+        "of {} endpoints, {shared} are the same vertex in both faces; face {one} has {first:?}, face {two} has {second:?}",
+        2
+    )
+}
+
+/// The first shared edge between two named belts' faces.
+fn find_seam(
+    surface: &HermiteSurface,
+    belts: &BeltSurfaces,
+    left: BeltRef,
+    right: BeltRef,
+) -> Option<EdgeKey> {
+    surface
+        .topology()
+        .edge_faces
+        .iter()
+        .find(|(_edge, faces)| {
+            faces.len() == 2
+                && faces
+                    .iter()
+                    .any(|(face, _)| belts.belt_of_face(*face) == Some(left))
+                && faces
+                    .iter()
+                    .any(|(face, _)| belts.belt_of_face(*face) == Some(right))
+        })
+        .map(|(edge, _)| *edge)
+}
+
 /// Keeps the unused import honest while the seam code is being written.
-fn _unused(_: HermiteSurface) {}
+fn _unused(_: Point3) {}
