@@ -16,6 +16,7 @@
 
 pub mod bernstein;
 pub mod continuity;
+pub mod edit;
 pub mod enforce;
 pub mod hermite;
 pub mod hermite_surface;
@@ -29,6 +30,7 @@ pub mod tessellate;
 pub mod topology;
 
 pub use continuity::{Continuity, SoftEdge, slave_interior};
+pub use edit::{Edit as SurfaceEdit, Editor};
 pub use enforce::Rules;
 pub use hermite::{HermitePatch, Jet};
 pub use hermite_surface::{HermiteSurface, Join, SurfaceError};

@@ -308,6 +308,47 @@ impl HermiteSurface {
         self.twist_at(face, corner)
     }
 
+    /// Every `(face, corner)` reachable from a vertex through soft edges.
+    ///
+    /// **The set [`HermiteSurface::set_twist`] writes, and therefore the set an undo has to
+    /// record.** A twist travels around the faces at a vertex, so one call writes several slots, and
+    /// a caller that records only the one it asked for leaves the rest stale on the way back. That
+    /// is not a subtlety of this module's implementation — it is what "carries a value across every
+    /// soft edge at the corner" means, and a caller keeping an undo stack has to see all of it.
+    ///
+    /// Bounded by the valence of one vertex, so it is constant work and never a scan.
+    pub fn soft_ring(&self, vertex: VertexId) -> Vec<(FaceId, usize)> {
+        let mut found: Vec<(FaceId, usize)> = Vec::new();
+        let mut pending: Vec<(FaceId, usize)> = Vec::new();
+        for (face, quad) in self.quads.iter().enumerate() {
+            if let Some(corner) = quad.iter().position(|held| *held == vertex) {
+                pending.push((face as FaceId, corner));
+            }
+        }
+        while let Some((face, corner)) = pending.pop() {
+            if found.contains(&(face, corner)) {
+                continue;
+            }
+            found.push((face, corner));
+            let quads = self.quads[face as usize];
+            for slot in EdgeSlot::ALL {
+                let ends = crate::topology::edge_endpoints(quads, slot);
+                if !ends.contains(&vertex) {
+                    continue;
+                }
+                if self.join(&canonical(ends)) != Join::Soft {
+                    continue;
+                }
+                for (neighbour, _) in &self.topology.edge_faces[&canonical(ends)] {
+                    if let Some(other) = self.corner_at(*neighbour, vertex) {
+                        pending.push((*neighbour, other));
+                    }
+                }
+            }
+        }
+        found
+    }
+
     /// The patch one face reads, built from its four corner jets and the edge steps.
     ///
     /// **This path and per-edge boundary scaling were both tried; this one is the one that measures

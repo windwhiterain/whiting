@@ -169,6 +169,51 @@ explained by anything other than the step, which is now explained but not fixed.
 **Not to be weakened to pass, and not to be "fixed" by the per-edge assembly**, which trades this
 failure for a worse one.
 
+## The agentic editing layer, and what it is allowed to say
+
+`crates/patch/src/edit.rs`. `Editor` over a `HermiteSurface`: `lift`, `tilt`, `fold`, `unfold`,
+`undo`, `commit`. `examples/hermite_edit_probe.rs` measures it.
+
+**The claim being checked is not that the edits work. It is that there is no edit here that can put
+the surface into a state the next read has to repair.** That is what the old model asked a caller to
+know — that a control point might be claimed by two edges, that writing it re-runs a pass, and that
+the pass resolves any contest by write order — and it is why `Edit::Overconstrained` and the
+arbitration existed.
+
+Measured on a batch of `lift` + `tilt` + `fold`:
+
+| | measured |
+| --- | --- |
+| soft seams **before** the batch | split `0.000e0`, normal `2.107e-8` rad |
+| soft seams **after** the batch | split `0.000e0`, normal `2.107e-8` rad — **identical** |
+| the fold | split `0.000e0`, normal `1.616e0` rad |
+| after `unfold` | split `0.000e0`, normal `1.490e-8` rad |
+| region lift, interior vs outside its support | `8.601e-1` against `0.000e+00` |
+
+The edits are named in the shape a request arrives in — a centre and a radius, not a control point
+index — the falloff reaches zero *with zero slope* at the edge of its support so a region edit leaves
+no lip, and `fold`/`unfold` are one call each rather than a tag plus two order-sensitive writes.
+
+### One failure, red on purpose
+
+**`undo` drifts `3.220e-1`.** The cause is known and written into the probe: a twist write's reach
+depends on the tags *at write time* — `set_twist` carries along soft edges, so the same call touches
+one slot on a soft edge and two on a hard one — and undo replays the carry with the tags as they are
+now. The batch folds, unfolds and folds again, so the rings recorded on the way out do not line up
+with the rings replayed on the way back.
+
+The fix is to **record the ring rather than recompute it**, which makes an edit carry a list rather
+than three numbers. `HermiteSurface::soft_ring` exists and is what the next slice records. Not built.
+Nothing else in the editing claim depends on it, so it stays red rather than being dropped.
+
+### A third `0.000e+00` that could not fail
+
+Measurement 6 read `positions()[v].z` to ask how far a region lift moved things, which also reads the
+dome — up at `0.7` everywhere — so it reported the whole sheet rising by its own shape. It measures
+the **displacement** now. Recorded because it is the third time this repository has produced a null
+result that was a measurement rather than a result, and because the two previous ones were both found
+the same way.
+
 ## Next
 
 1. **Add the cross-boundary derivative `G` as per-shared-edge data.** The measurement above says
