@@ -1,0 +1,189 @@
+# Handoff: a Hermite surface in place of per-patch NURBS
+
+Status: **the design is measured and it works. `crates/patch` is still untouched — nothing has been
+rewritten, and the rewrite is not yet approved.**
+Branch `feature/hermite-surface`, worktree `.worktrees/hermite`, from `main` at `3c9dc55`.
+
+Agent's understanding: this file.
+Proposal: [proposals/hermite-c1-by-shared-derivative.md](../proposals/hermite-c1-by-shared-derivative.md)
+Probe: `crates/patch/examples/hermite_continuity_probe.rs`
+
+## What was asked
+
+Refactor the NURBS/patch module to a Hermite surface, where each patch joins C1 because it reads
+adjacent control points and their parameters in sync, with a configurable hard/soft tag per edge.
+
+Superior's ruling on the one open trade, 2026-10-15:
+
+> 边可配置硬边还是软边，硬边 c0，自动同步相邻点位置，软边同步剩余
+
+which is: **hard = C0 with the boundary shared, soft = the rest synced too.**
+
+## Read this first — the correction, and why it matters
+
+**Parameter synchronization alone does not give C1.** Two faces agreeing about the edge curve, its
+parameterization and its step agree about the *tangent along* the edge. C1 additionally needs the
+**cross-boundary** derivative, and on a bicubic patch that derivative is not boundary data:
+
+```
+S_u(1, t) = 3 * (row3(t) - row2(t))
+```
+
+`row3` is the shared boundary row and `row2` is one step inside it, **private to the face**. So a
+face can be perfectly synchronized with its neighbour and still have a free normal across the seam.
+A probe that measures only the boundary will read `0.000e+00` and prove nothing — this is the same
+class of error as `continuity`'s along-edge `2.107e-8` measurement, one level up.
+
+**What the superior chose is exactly the fix.** A soft edge syncs "the rest" — the cross-boundary
+derivative — which is the missing quantity. A hard edge syncs only positions, so the boundary is
+shared and never a crack, and the face keeps a free interior.
+
+## The model as it now stands
+
+Per mesh edge `e = (p, q)`:
+
+| quantity | stored | shared? | gives |
+| --- | --- | --- | --- |
+| `P(p)`, `P(q)` | mesh vertex positions | always | C0, never a crack |
+| `V(p)`, `V(q)` — tangent **along** `e` | per edge endpoint | always, on both kinds of edge | the boundary curve is one cubic, identical parameterization |
+| `G(p)`, `G(q)` — derivative **across** `e` | per edge endpoint | **soft only**; private per face when hard | soft ⇒ exact C1; hard ⇒ the face's interior stays free |
+
+`Delta_e` — what local `u` means along `e` — is the chord `|P(q) - P(p)|`, a property of the **edge**.
+Two faces traversing `e` see the same endpoints, so the step is shared with no stored data and no
+rule. **That is the parameter synchronization, and it is free.** It is also load-bearing: a per-face
+step is not a synchronization at all, it is two independent reparameterizations, and what comes out
+is G1. See the proposal for the derivation.
+
+The boundary curve `(P_p, V_p, P_q, V_q)` is a bijective reparameterization of today's shared
+degree-3 Bernstein row, so **the shared geometry does not change** and neither does the storage
+count. Probe measurement 4 checks that claim rather than asserting it.
+
+## The open question, and it is the whole irregular-topology question
+
+A face with **all four** edges soft is over-determined **on itself**: the four cross-derivative
+constraints are 16 equations on the face's 12 one-step-in control points. A face with at least one
+hard edge has no such problem — that is the free interior the hard tag buys.
+
+So the free data is not `G` per edge. Measured or not yet:
+
+- **On a regular grid** the over-determination resolves for free, because the data can be stored per
+  **node** — `Fu`, `Fv`, `Fuv` at each grid point — and every cell reads the same values. No contest
+  exists to have. This is the classical bicubic C1 spline and probe measurement 2 is it.
+- **On an irregular quad mesh** there is no per-node `Fu`: a valence-8 vertex has four distinct
+  u-directions, so the slot is not even well defined. Per-edge `G` needs the 16-on-12 system solved,
+  and whether it is solvable is exactly what this probe is for.
+
+**The handoff from the NURBS work says our own front end is 89.4 % extraordinary** (valences 2 to 40,
+after Doo–Sabin), so the regular-grid answer is necessary and is not sufficient. Read
+`arbitrary-topology-smoothness.md` failures 1 and 2: this design is a candidate answer to both, and
+the probe is what would settle it.
+
+## What the probe measured
+
+`cargo run -p whiting-patch --example hermite_continuity_probe`, 5 by 4 node grid, 12 cells,
+**17 interior seams**, seven parameters along each including both corners. All five pass, exit 0.
+
+| # | measurement | result | verdict |
+| --- | --- | --- | --- |
+| 1 | every interior edge soft | split `0.000e0`, along `2.107e-8`, **across `0.000e0`**, normal `2.980e-8` rad | **exact C1** |
+| 0 | control, one side moved | across `6.109e-1`, normal `6.105e-1` rad — `2.0e+07` times measurement 1 | fires |
+| 0 | control, **both** sides moved | normal `2.980e-8` rad | stays at the floor, and **that is the point** |
+| 2a | cross-boundary derivative shared (soft) | split `0.000e0`, along `2.107e-8`, across `0.000e0`, normal `2.107e-8` | exact C1 |
+| 2b | cross-boundary derivative private (hard) | split `0.000e0`, along `2.107e-8`, across `6.440e-1`, normal `6.435e-1` rad | folds, and **never opens** |
+| 3 | hard edge, both interiors dragged | split `0.000e0`, along `2.107e-8`, crease `6.435e-1` → `5.673e-2` rad | boundary survives the drag |
+| 4 | Hermite jets vs Bezier control points | `1.388e-17` | same curve |
+| 4 | interior moved without the boundary | boundary shift `0.000e+00`, interior moved `9.843e-2` | interior is free |
+
+**Measurement 1 is the decisive number.** `across = 0.000e0` is not a floor — it is exact, because
+the two faces' cross-boundary derivatives are literally the same function of the edge parameter
+rather than two functions that agree. Compare the current model, whose soft edge reads `4.771e-2` rad
+on the same kind of sample and is an accepted cost with a regression ceiling guarding it.
+
+`2.980e-8` on the normal is **two times the `1.4e-8` acos floor, not a defect.** A normal is a
+cross product of two vectors that are not unit length, so the direction error being measured is a
+few ulps. The ceiling is `1.0e-7` and is documented as a decade above the floor for exactly that
+reason; tightening against the floor is how a probe ends up reporting its own instrument.
+
+### Measurement 2b is the correction this file leads with, now a number
+
+Both arms of measurement 2 share the boundary curve, its parameterization and its step. `split` and
+`along-edge` are **identical in both and exact in both**. Only `across` moves, from `0.000e0` to
+`6.440e-1` rad.
+
+> Two faces agreeing about an edge, its curve and its parameters is **C0 with a matching tangential
+> derivative**. It is not C1, and it is not close to C1. The soft tag has to carry the
+> cross-boundary derivative, which is what the superior's ruling — 硬边 c0, 软边同步剩余 — says.
+
+### The control that was void, and why it is now two arms
+
+The first version perturbed a node column and measured the perturbed grid. It reported `2.980e-8`,
+indistinguishable from the passing arm, and would have been a control that could not fail: moving
+every node on a column moves **both** faces of each seam it touches, so nothing becomes
+discontinuous. Perturbing **one side only** reports `6.105e-1` rad. Both arms are now in the probe,
+because the void one is the evidence that the other is real.
+
+## Three bugs the probe caught, all in the probe
+
+Recorded because they are the shape of thing this rewrite will produce again, and because the
+third is not a typo.
+
+1. **Bernstein weights used as the Hermite basis.** The degree-3 Bernstein weights
+   `(1-t)^3, 3t(1-t)^2, 3t^2(1-t), t^3` and the cubic Hermite basis `h00..h11` are **different
+   functions of the same degree**. Substituting one for the other evaluates the four stored jets as
+   a Bezier curve — which takes `P_0` at the near end and `d_1` at the far end instead of `P_0` and
+   `d_0` — and every seam read `2.501e0` apart. It looked like a discontinuous surface; it was a
+   tangent where a corner belonged. **Measurement 4 keeps both evaluators, written independently,
+   precisely so the two are compared rather than assumed interchangeable.**
+2. **`Cell::from_nodes` slot table in the wrong corner order**, so the third and fourth corners were
+   placed on the wrong sides. Same symptom, different cause, and the first fix did not help.
+3. **The Hermite basis array interleaves.** `a = 0` is the near edge's position, `a = 1` its
+   cross-boundary derivative, `a = 2` the **far** edge's position, `a = 3` its derivative. The
+   interior rows are `1` and `3`. Nudging `a = 2` — which reads as "the interior" — moved the far
+   edge's **corner positions** and reported a drag opening a seam by `5.469e-1`. The boundary lines
+   are `a = 0` and `a = 2`, which is also the one place `far` has to name `2` and not `3`.
+
+## What is still open, and what the next probe has to answer
+
+**The grid case is settled. Irregular topology is not, and that is where the real question is.**
+
+- **On a regular grid** the free data is `P`, `Fu`, `Fv`, `Fuv` **per node**, every cell reads the
+  same four values, and there is no contest to have. That is what measurement 1 measures.
+- **On an irregular quad mesh** there is no per-node `Fu`: a valence-8 vertex has four distinct
+  u-directions, so the slot is not even well defined. Per-edge data runs into it instead, and the
+  algebra is **16 equations on 12 unknowns for a face with all four edges soft** — over-determined by
+  four. A face with at least one hard edge has no such problem, because a hard edge constrains
+  nothing.
+
+The handoff from the NURBS work measures our own front end at **89.4 % extraordinary vertices**
+(valences 2 to 40 after Doo–Sabin), so the regular-grid result is necessary and is not sufficient.
+What is not measured: whether the irregular case is solved by a per-vertex solve, by hard edges at
+irregular faces, or by neither.
+
+**Do not start the rewrite before that is answered.** The rewrite is a replacement of `rect.rs`,
+`enforce.rs` and `continuity.rs`, and it is large enough that getting the irregular case wrong means
+rebuilding the storage rather than the evaluator.
+
+## Traps carried in from the previous branch
+
+These cost that branch days and are the same hazards here:
+
+- **A boundary-only measurement proves nothing.** The shared curve and the shared parameterization
+  are already exact today; the defect is always one step inside. Measure across the seam.
+- **Every zero needs a positive control, and the control must be able to fail.** See measurement 0's
+  two arms.
+- **Count the thing that changed, not its maximum.** A worst-case number hid a null result before.
+- **A plane angle floors at about `1.4e-8`**, and a **normal reads a small multiple of it**. The
+  ceiling on a C1 claim is a decade above the floor, and the reason is written next to it.
+- **`f64::max`/`min` swallow NaN.** Every reduction counts non-finite readings first; the count is a
+  reported field of `Reading`, not a discarded one.
+- **The Hermite basis array interleaves value and derivative.** See bug 3 above.
+- **This worktree uses a private `CARGO_TARGET_DIR`.** Six other worktrees are live against this
+  repository; see the note at the end of the previous handoff.
+
+## Not decided
+
+- How irregular faces get their cross-boundary derivatives: a per-vertex solve, hard edges at
+  extraordinary faces, or a third option. **This is the next measurement.**
+- Whether the twist (`Fuv`) is free per face or derived. On a grid it is free per cell.
+- Whether `gallery/src/nurbs.rs` is renamed, and whether the crate keeps the name `patch`.
+- Nothing here touches `SPEC.md`, which is human-editable only.
