@@ -67,6 +67,75 @@ const GRADE: &str = r#"
     color = pow(color, vec3<f32>(0.4545));
 "#;
 
+/// A large quad standing behind the massif, square to the view.
+///
+/// **Placed by the eye rather than by the massif's own axes**, because it has to fill the frame
+/// from where the camera is rather than merely be behind the subject in plan. It is drawn with an
+/// emissive material so that a hole in the massif shows this colour instead of the film, which is
+/// what makes a hole distinguishable from a dark triangle at all.
+fn backdrop(eye: &[f64; 3], target: &[f64; 3], radius: f64) -> definition::PackedList {
+    let forward = normalize([target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]]);
+    // Far enough that the massif is wholly in front of it, wide enough to fill the frame.
+    let distance = radius * 4.0;
+    let centre = [
+        target[0] + forward[0] * distance,
+        target[1] + forward[1] * distance,
+        target[2] + forward[2] * distance,
+    ];
+    // Any two directions square to `forward` will do; world up and the view's own right are the
+    // two a reader would pick, and they are never parallel because the eye looks near-horizontally.
+    let right = normalize(cross(forward, [0.0, 1.0, 0.0]));
+    let up = cross(right, forward);
+    let half = radius * 6.0;
+    let corner = |sx: f64, sy: f64| {
+        [
+            centre[0] + right[0] * half * sx + up[0] * half * sy,
+            centre[1] + right[1] * half * sx + up[1] * half * sy,
+            centre[2] + right[2] * half * sx + up[2] * half * sy,
+        ]
+    };
+    let vertices = [
+        corner(-1.0, -1.0),
+        corner(1.0, -1.0),
+        corner(1.0, 1.0),
+        corner(-1.0, 1.0),
+    ];
+    let mut points = definition::PackedBuilder::new(
+        graphics::layout::packed_layout(&shaded_point_schema())
+            .expect("the shaded point schema is a struct of components"),
+    );
+    // Two triangles, wound to face back along the view.
+    for at in [0usize, 1, 2, 2, 1, 3] {
+        let position = vertices[at];
+        // Facing the eye, which is the only way an emissive quad shows anything.
+        let normal = [-forward[0], -forward[1], -forward[2]];
+        points
+            .field("normal", &normal)
+            .and_then(|points| points.field("position", &position))
+            .and_then(|points| points.field("texture", &[0.0, 0.0]))
+            .expect("a generator writes whole elements of its own layout");
+    }
+    points
+        .finish()
+        .expect("every generator writes whole elements of its own layout")
+}
+
+fn normalize(vector: [f64; 3]) -> [f64; 3] {
+    let length = (vector[0].powi(2) + vector[1].powi(2) + vector[2].powi(2)).sqrt();
+    if length <= f64::MIN_POSITIVE {
+        return [0.0, 0.0, 1.0];
+    }
+    [vector[0] / length, vector[1] / length, vector[2] / length]
+}
+
+fn cross(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
+    [
+        left[1] * right[2] - left[2] * right[1],
+        left[2] * right[0] - left[0] * right[2],
+        left[0] * right[1] - left[1] * right[0],
+    ]
+}
+
 /// Builds the scene.
 pub fn hermite_massif() -> Value {
     let authored = landscape::massif();
@@ -155,16 +224,30 @@ pub fn hermite_massif() -> Value {
                     "lighting",
                     surface([0.66, 0.60, 0.50], 0.0, 0.72, [0.0; 3]),
                 ),
+                // **The backdrop is emissive and it is loud on purpose.** This scene renders against
+                // Cycles' own film, which is black, so a hole in the massif and a triangle shaded
+                // almost black are the same colour in the picture and no amount of looking tells
+                // them apart -- two hypotheses were disproved by exactly that. A hole shows what is
+                // behind the massif, so what is behind the massif is made bright: a hole then reads
+                // as a hole.
+                mesh_material(
+                    "backdrop-shade",
+                    "lighting",
+                    surface([0.0, 0.0, 0.0], 0.0, 1.0, [0.9, 0.25, 0.6]),
+                ),
             ]),
         ),
         (
             "meshes".to_owned(),
-            Value::List(vec![mesh(
-                "massif",
-                "Triangles",
-                crate::kit::shaded_point_schema(),
-                points,
-            )]),
+            Value::List(vec![
+                mesh("massif", "Triangles", shaded_point_schema(), points),
+                mesh(
+                    "backdrop",
+                    "Triangles",
+                    shaded_point_schema(),
+                    backdrop(&eye, &target, radius),
+                ),
+            ]),
         ),
         (
             "instances".to_owned(),
@@ -193,14 +276,24 @@ pub fn hermite_massif() -> Value {
                 ),
                 (
                     Stage::Lighting,
-                    vec![instance(
-                        "massif",
-                        "massif",
-                        [0.0; 3],
-                        [0.0; 3],
-                        [1.0; 3],
-                        "massif-shade",
-                    )],
+                    vec![
+                        instance(
+                            "massif",
+                            "massif",
+                            [0.0; 3],
+                            [0.0; 3],
+                            [1.0; 3],
+                            "massif-shade",
+                        ),
+                        instance(
+                            "backdrop",
+                            "backdrop",
+                            [0.0; 3],
+                            [0.0; 3],
+                            [1.0; 3],
+                            "backdrop-shade",
+                        ),
+                    ],
                 ),
             ]),
         ),
