@@ -1,3 +1,9 @@
+# Fitting a grid to a block whose uv box is not its own
+
+Date measured: 2026-10-15. Sources: crates/gallery/examples/block_surface_probe.rs on
+feature/hermite-surface, massif starter(11, Starter::default()).
+
+Moved here from the repository root, where a subagent had left it.
 # Why `blockmesh`'s grid runs off the rock — measurement notes
 
 Worktree `C:\resource\whiting\.worktrees\fitfix`, branch `fix/block-sampling`, based on
