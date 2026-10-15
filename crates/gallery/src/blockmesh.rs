@@ -33,8 +33,7 @@ use std::collections::BTreeMap;
 
 use mountain::facet::{BlockFace, Face, FacetMesh};
 use mountain::tessellation::BeltRef;
-use patch::hermite_surface::Join;
-use patch::topology::{EdgeKey, VertexId};
+use patch::topology::VertexId;
 use patch::{HermiteSurface, Point3};
 
 /// How many samples a side of a block's grid carries.
@@ -142,24 +141,24 @@ pub fn from_belts(facet: &FacetMesh, side: usize) -> Option<BeltSurfaces> {
     }
     order.sort_by_key(|belt| (belt.valley.0, belt.segment, belt.side));
 
-    // **Every belt's grid goes into one surface.** They could not be separate surfaces and still
-    // offer a soft edge: `Join` lives on an `EdgeKey`, which is two face ids in one `Topology`, and a
-    // pair of surfaces has no shared topology to tag. Measured what independence costs, on the
-    // valley a valley's Left and Right belts share: `2.412e-02` apart at `side` 4, against a
-    // `1.526e-05` floor. Not a crack, but not C0 either, and the reason is the two belts' `u`
-    // fractions being parametrised from different upper runs — so the fix is below rather than a
-    // bigger grid.
+    // **Every belt's grid goes into one surface value**, and the belts meet along their valley
+    // rows at vertices that are separate but coincident: each belt carries its own copy of each
+    // station of the shared run, and the copies agree exactly because both are the same arclength
+    // resample of the same run. The surface is therefore a set of components that touch, which is
+    // what a creased massif is — a valley is a crease because two flanks leave it in different
+    // directions, not because an edge was tagged — and it is why no `Join` is set here any more:
+    // a shared vertex would have forced one `dv` to serve both flanks, and the averaged
+    // cross-boundary derivative pinched every seam cell into the dark diamonds this arrangement
+    // removes. See [`grid_points`].
     let mut positions: Vec<Point3> = Vec::new();
     let mut quads: Vec<[VertexId; 4]> = Vec::new();
-    // The shared valley vertices, keyed by the run they came from and their place along it.
-    let mut valley: BTreeMap<(usize, usize, usize), VertexId> = BTreeMap::new();
     let mut belts = Vec::with_capacity(order.len());
 
     for belt in order.iter() {
         let Some(faces) = grouped.get(belt) else {
             continue;
         };
-        let Some(grid) = grid_points(facet, faces, side, *belt, &mut valley, &mut positions) else {
+        let Some(grid) = grid_points(facet, faces, side, &mut positions) else {
             continue;
         };
         let first_face = quads.len() as u32;
@@ -171,15 +170,9 @@ pub fn from_belts(facet: &FacetMesh, side: usize) -> Option<BeltSurfaces> {
         });
     }
 
-    let Ok(mut surface) = HermiteSurface::build(positions, quads) else {
+    let Ok(surface) = HermiteSurface::build(positions, quads) else {
         return None;
     };
-
-    // Every edge two belts share is the seam between them, and it starts **hard**: a crease is the
-    // conservative default, and `set_join` on the surface is what a caller uses to soften one.
-    for seam in valley_seams(&belts, &surface) {
-        surface.set_join(seam, Join::Hard);
-    }
 
     Some(BeltSurfaces {
         surface,
@@ -208,10 +201,11 @@ pub struct BeltSurface {
     pub belt: BeltRef,
 }
 
-/// Every belt of a massif, as **one** Hermite surface.
+/// Every belt of a massif, as **one** Hermite surface value.
 ///
-/// The belts are cells of it rather than surfaces of their own, which is what makes a shared edge
-/// between two of them a thing that exists. See [`from_belts`].
+/// The belts are components of it that touch along coincident valley vertices rather than cells
+/// sharing edges, so each carries its own derivative field and the valleys stay creases. See
+/// [`from_belts`].
 #[derive(Clone, Debug)]
 pub struct BeltSurfaces {
     surface: HermiteSurface,
@@ -221,7 +215,7 @@ pub struct BeltSurfaces {
 }
 
 impl BeltSurfaces {
-    /// The whole massif, as one surface, with every inter-belt edge already tagged hard.
+    /// The whole massif, as one surface whose belts touch at coincident valley vertices.
     pub fn surface(&self) -> &HermiteSurface {
         &self.surface
     }
@@ -272,7 +266,8 @@ impl BeltSurfaces {
 ///
 /// `Face::uv` puts `v = 1` on the valley, so these are the vertices of the faces whose `uv` reaches
 /// the top of the belt's own `v` range. `expand.rs`'s `valley_run` hands a valley's Left and Right
-/// belts the **same** run, so this returns the same ids for both, which is what makes them shareable.
+/// belts the **same** run, so both belts resample the same stations — which is what makes their
+/// duplicated valley rows coincident point for point.
 fn valley_vertices(faces: &[&Face]) -> Vec<u32> {
     let mut high = f32::NEG_INFINITY;
     for face in faces {
@@ -301,27 +296,22 @@ fn grid_points(
     facet: &FacetMesh,
     faces: &[&Face],
     side: usize,
-    belt: BeltRef,
-    valley: &mut BTreeMap<(usize, usize, usize), VertexId>,
     positions: &mut Vec<Point3>,
 ) -> Option<Vec<VertexId>> {
     if faces.is_empty() || side < 2 {
         return None;
     }
-    let Some((low_u, high_u, low_v, high_v)) = covered_domain(faces) else {
-        return None;
-    };
+    // A belt whose faces cover no area in their own parameter plane has no surface to sample.
+    covered_domain(faces)?;
 
-    // The valley row, resampled off the shared run.
-    //
-    // **This is the whole of the seam.** A valley's Left and Right belts carry the same run, so
-    // resampling it by arc length gives both of them the same `side` points, and the key below
-    // hands both the same vertex ids. Sampling at uniform `u` instead — which is what each belt
-    // would do on its own — parameterises the two from different upper runs and lands them
-    // `2.412e-02` apart on a curved valley: not a crack, and not C0 either.
+    // The valley row, resampled off the run this belt's own faces name. A valley's Left and Right
+    // belts carry the same run, so resampling it by arc length gives both of them the same
+    // stations — the same points, in opposite orders — which is what makes their duplicated valley
+    // rows coincident. Sampling at uniform `u` instead — which is what each belt would do on its
+    // own — parameterises the two from different upper runs and lands them `2.412e-02` apart on a
+    // curved valley: not a crack, and not C0 either.
     let run = valley_vertices(faces);
     let run = resample_by_arclength(facet, &run, side);
-    let key_of = |at: usize| (belt.valley.0 as usize, belt.segment, at);
 
     // **The grid's columns and rows are the covered region's own, not its bounding box's.**
     //
@@ -346,20 +336,26 @@ fn grid_points(
     for row in 0..side {
         for column in 0..side {
             if row == side - 1 {
-                let key = key_of(column);
-                let id = match valley.get(&key) {
-                    Some(id) => *id,
-                    None => {
-                        let id = positions.len() as VertexId;
-                        positions.push(run[column]);
-                        valley.insert(key, id);
-                        id
-                    }
-                };
+                // **The valley row is duplicated per belt rather than shared by vertex id**
+                // (2026-10-08; it used to be one vertex keyed by the run and the place along it).
+                // Both belts resample the same run at the same arc-length stations, so the two
+                // copies of each station are the same point to the last bit — the crack the old
+                // uniform-`u` sampling measured at `2.412e-02` is what the arclength resample
+                // already removed, not what the sharing removed.
+                //
+                // What sharing did cost is the reason it is gone: a Hermite surface holds one
+                // `dv` per vertex, and at a shared valley vertex that one vector has to serve two
+                // flanks that leave the valley in different directions, so it serves neither —
+                // the averaged cross-boundary derivative pinched the patches of both belts at
+                // every seam cell, which is the row of dark diamonds down every valley in the
+                // render. Separate vertices at coincident positions keep the surface C0 exactly,
+                // keep the valley a crease, and let each belt carry its own derivative field.
+                let id = positions.len() as VertexId;
+                positions.push(run[column]);
                 grid.push(id);
                 continue;
             }
-            let v = if row < side - 1 { rows[row] } else { high_v };
+            let v = rows[row];
             let u = columns[column];
             let id = positions.len() as VertexId;
             positions.push(sample_block(facet, faces, u, v)?);
@@ -404,7 +400,7 @@ fn resample_by_arclength(facet: &FacetMesh, run: &[u32], side: usize) -> Vec<Poi
     }
 
     // The length of each segment, in the order they appear, and their total.
-    let mut spans: Vec<f64> = points
+    let spans: Vec<f64> = points
         .windows(2)
         .map(|pair| pair[0].distance(pair[1]))
         .collect();
@@ -436,13 +432,6 @@ fn resample_by_arclength(facet: &FacetMesh, run: &[u32], side: usize) -> Vec<Poi
         .collect()
 }
 
-/// How thin a cell may be, as the ratio of its shortest side to its longest.
-///
-/// **A ratio, and deliberately coarse.** The three degenerate cells measured at `0.65` against
-/// `17.86`, a ratio of `0.037`. The massif's ordinary cells run at a median aspect of about `3`, a
-/// ratio of `0.3`, so the gap between them is wide and the threshold does not sit near either.
-const SLIVER: f64 = 0.05;
-
 /// Appends a belt's cells, skipping any whose corners collapse onto one place.
 fn push_quads(
     positions: &[Point3],
@@ -459,62 +448,28 @@ fn push_quads(
                 grid[near + side + 1],
                 grid[near + side],
             ];
-            // **A cell is kept when it has four distinct corners AND a real size.**
+            // **A cell is kept when its four corners are four distinct places.**
             //
-            // The first test was the only one, and it was the wrong question: four *different*
-            // vertices is not the same as four corners that are usefully apart. Measured on the
-            // massif, three cells pass it and are still degenerate — faces 686, 1163 and 1397, each
-            // a quadrilateral whose second and third corners sit `0.65` units apart while its other
-            // three sides are 14 to 20, so it is a sliver with a degenerate diagonal rather than a
-            // cell. Those are the dark diamonds along the ridge in the render.
-            //
-            // The test is **the cell's own size**: an edge shorter than `SLIVER` of the cell's
-            // longest one means the quad cannot be drawn, whether or not its vertices are distinct.
-            // The threshold is a ratio rather than a distance because the massif is 275 units across
-            // and a fixed length would mean something different at every scale.
-            let mut longest = 0.0f64;
-            let mut shortest = f64::INFINITY;
-            for (first, second) in [(0usize, 1usize), (1, 2), (2, 3), (3, 0)] {
-                let length = positions[corners[first] as usize]
-                    .distance(positions[corners[second] as usize]);
-                longest = longest.max(length);
-                shortest = shortest.min(length);
-            }
+            // A size test used to stand beside this one — a cell whose shortest edge was under
+            // `SLIVER` of its longest was dropped as undrawable — and it was the dark diamonds in
+            // the render, twice over: every dropped cell is a hole in the surface, and a hole
+            // shows the lit inside of the rock behind it, which reads as a black or dark-grey
+            // diamond exactly the size of one cell. The folds the test was chasing were never the
+            // thin quad's; they were the tangent seed's (see [`patch::HermiteSurface`]), and with
+            // a seed scaled to its chord a thin quad is a thin patch and draws as one. What
+            // genuinely cannot be drawn here is a quad with two corners in one place, which is a
+            // triangle, and this surface type has no triangle: that alone is dropped.
             let distinct = corners.iter().all(|first| {
                 corners.iter().all(|second| {
                     first == second
                         || positions[*first as usize].distance(positions[*second as usize]) > 0.0
                 })
             });
-            let sized = longest > 0.0 && shortest / longest > SLIVER;
-            if distinct && sized {
+            if distinct {
                 quads.push(corners);
             }
         }
     }
-}
-
-/// The edges two different belts share, which are the seams a caller chooses soft or hard on.
-fn valley_seams(belts: &[BeltRecord], surface: &HermiteSurface) -> Vec<EdgeKey> {
-    let owner = |face: u32| -> Option<BeltRef> {
-        belts
-            .iter()
-            .find(|belt| face >= belt.first_face && face < belt.first_face + belt.face_count)
-            .map(|belt| belt.belt)
-    };
-    let mut found = Vec::new();
-    for (edge, faces) in &surface.topology().edge_faces {
-        if faces.len() != 2 {
-            continue;
-        }
-        let (Some(first), Some(second)) = (owner(faces[0].0), owner(faces[1].0)) else {
-            continue;
-        };
-        if first != second {
-            found.push(*edge);
-        }
-    }
-    found
 }
 
 /// One block's grid, or `None` when the block has no surface to sample at all.
