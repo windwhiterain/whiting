@@ -1,12 +1,84 @@
 # Handoff: a Hermite surface in place of per-patch NURBS
 
-Status: **the design is measured and it works. `crates/patch` is still untouched — nothing has been
-rewritten, and the rewrite is not yet approved.**
-Branch `feature/hermite-surface`, worktree `.worktrees/hermite`, from `main` at `3c9dc55`.
+Status: **the representation is built and measured. `PatchMesh` is still in place beside it, so the
+gallery still draws the old model.** Branch `feature/hermite-surface`, worktree `.worktrees/hermite`.
+The four existing probes are green and unchanged.
 
 Agent's understanding: this file.
 Proposal: [proposals/hermite-c1-by-shared-derivative.md](../proposals/hermite-c1-by-shared-derivative.md)
 Probe: `crates/patch/examples/hermite_continuity_probe.rs`
+
+## What landed
+
+| File | What |
+| --- | --- |
+| `crates/patch/src/hermite.rs` | `Jet` — the four values at one corner. `HermitePatch` — sixteen coefficients, `evaluate`, exact `tangent_u`/`tangent_v`, `normal`, `boundary`, `corner`/`set_corner`. |
+| `crates/patch/src/hermite_surface.rs` | `HermiteSurface`, `Join::{Hard, Soft}`, `SurfaceError`. The mesh on top, and every mutator. |
+| `crates/patch/src/topology.rs` | `EdgeSlot::is_u_edge`, one method, the whole of "which derivative an edge carries". |
+| `crates/patch/examples/hermite_continuity_probe.rs` | **now measures the crate**, not a copy of it. |
+
+## The model, as built
+
+```
+per mesh vertex   position, du, dv         read by every face meeting there
+per face corner   duv (the twist)          the face's interior
+per edge          Hard | Soft
+```
+
+Two faces on a soft edge have **equal corner jets**, and two patches with equal corner jets are the
+same surface — so C1 is structural. Measured on 31 interior seams: `across 0.000e0`, normal
+`2.980e-8` rad.
+
+**The crease comes from the twist and nowhere else.** `duv` appears in the cross-boundary derivative
+and in no boundary curve, so a face can hold its own without touching what it shares. Measured on one
+seam: `split` and `along` stay at `0.000e0` in both arms; `across` moves `0.000e0` → `1.572e-1` rad.
+
+`set_twist` carries a value across every **soft** edge at the corner, transitively, so the write is
+the whole edit. **Transitive is load-bearing**: the faces around a vertex are a cycle, not a tree,
+and the first version carried one level — which measured `1.699e-1` rad on seams the edit was not
+aimed at. Tag an edge hard and the carrying stops on it, which is how a crease appears.
+
+## Measured
+
+`cargo run -p whiting-patch --example hermite_continuity_probe` — five measurements, exit 0.
+
+| # | measurement | result |
+| --- | --- | --- |
+| 1 | every edge soft | `split 0.000e0`, `along 2.107e-8`, `across 0.000e0`, `normal 2.980e-8` rad — **exact C1** |
+| 0 | control, one seam broken | `across 1.572e-1`, `normal 1.571e-1` rad; every other seam `2.980e-8` — `5.0e+06` times larger |
+| 2 | hard against soft, same seam | soft `normal 1.490e-8`, hard `normal 1.571e-1`; `split` and `along` exact in both |
+| 3 | both sides twisted independently | crease survives, `split 0.000e0`, rest of the surface untouched at `2.980e-8` |
+| 4 | boundary against an independent Bernstein basis | `1.110e-16`; twist moved `1.030e0`, shared boundary moved `0.000e0`, interior moved `9.669e-3` |
+
+## What it costs, recorded not hidden
+
+- **A face has four free vectors on a fully hard mesh and none on a fully soft one.** The same count
+  as the old model's four private interior points — but the freedom is *twist*, and there is no
+  longer a handle that moves one patch's middle without its neighbours.
+- **A private cross-boundary derivative is not available in this representation at all.** A boundary
+  curve and the cross-boundary derivative are the same data, so sharing one forces sharing the other.
+  **This is why the rewrite removes the enforcement pass and not the fact that a crease costs
+  something.** `crate::PatchMesh`'s free interior row is the escape it does not have.
+- **Twist is stored per face corner and carried, not stored once per edge.** That is a second copy of
+  a number, bought on purpose: sharing one slot per edge forces a corner onto one answer, and a lone
+  hard edge would then produce **no crease at all**.
+- **T-junctions are still unrepresentable**, unchanged.
+- **Extraordinary vertices are still the open half.** Per-vertex `du`/`dv` need every face at a
+  vertex to agree about which way is `u`; they do on a consistently wound quad mesh because
+  `EdgeSlot::MinU`/`MaxU` are the edges that fix `u`, so no computation is needed — and
+  `HermiteSurface::build` **refuses** a mesh where two faces disagree on an edge's kind rather than
+  producing a surface that disagrees with itself.
+
+## Next
+
+1. **`PatchMesh` is still beside `HermiteSurface`,** and `gallery::nurbs` still draws the old model.
+   The removal of `enforce.rs`, `continuity.rs`'s invariant and `PatchMesh` is the rest of the work.
+2. **A gallery scene on the Hermite surface,** with a crease, to show the tag doing something.
+3. **The agentic editing layer** on top of `set_position` / `set_derivative` / `set_twist`, which are
+   already unconditional.
+4. **Measure the irregular case on the authored massif**, which `HermiteSurface::build` will either
+   accept or name a vertex on.
+
 
 ## What was asked
 
