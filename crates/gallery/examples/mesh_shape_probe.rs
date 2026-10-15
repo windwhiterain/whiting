@@ -243,6 +243,33 @@ fn surface_points(surface: &patch::HermiteSurface) -> Vec<Point3> {
     surface.positions().to_vec()
 }
 
+/// How many of the massif's own vertices the surface does not reach, judged against its own cell size.
+///
+/// **Nearest mesh vertex, not nearest triangle**, so this is a lower bound on the distance and the
+/// count is if anything generous: a cell whose interior is covered but whose corners are all far
+/// away is counted here as uncovered. It is a proxy and it is named as one.
+fn uncovered_rock(facet: &FacetMesh, surface: &patch::HermiteSurface, mesh: &[Point3]) -> usize {
+    let mut cell = f64::INFINITY;
+    for face in 0..surface.face_count() as u32 {
+        let quad = surface.quads()[face as usize];
+        cell = cell.min(mesh[quad[0] as usize].distance(mesh[quad[1] as usize]));
+    }
+    if !cell.is_finite() {
+        return 0;
+    }
+    facet
+        .points
+        .iter()
+        .filter(|point| {
+            let rock = Point3::new(point[0] as f64, point[1] as f64, point[2] as f64);
+            mesh.iter()
+                .map(|held| rock.distance(*held))
+                .fold(f64::INFINITY, f64::min)
+                > cell * 2.0
+        })
+        .count()
+}
+
 fn main() {
     let facet: FacetMesh = starter(11, Starter::default())
         .build()
@@ -273,6 +300,20 @@ fn main() {
         "  the massif folded cells are faces {:?}",
         massif.folded_faces
     );
+
+    // **Coverage**, which is what the picture's dark patches turned out to be. A fold shades a
+    // triangle black; a hole shows the unlit inside of the mountain and is also black, and the two
+    // are indistinguishable by looking -- an emissive backdrop does not separate them either, since
+    // it stands behind the massif and is only visible through a gap that goes all the way through.
+    //
+    // So coverage is measured against the massif's own vertices: a rock point with no mesh vertex
+    // near it is rock the surface does not reach.
+    let uncovered = uncovered_rock(&facet, surface, &points);
+    println!(
+        "  massif vertices with no mesh vertex within two cells: {uncovered} ({:.1}%)\n\
+         \x20   the mesh does not reach that rock, and a hole there is dark in the render",
+        100.0 * uncovered as f64 / facet.points.len() as f64,
+    );
     println!(
         "  stretched cells: massif {}, controls {} and {}",
         massif.stretched, sheared_reading.stretched, folded_reading.stretched
@@ -294,10 +335,17 @@ fn main() {
         std::process::exit(1);
     }
     println!(
-        "  the massif itself has {} folded cells, which the render shows and no other probe does.",
-        massif.folded
+        "  the massif itself has {} folded cells; {} of its vertices are unreachable",
+        massif.folded, uncovered
     );
-    if massif.folded > 0 {
+    // **Coverage is the one that is red, and it is what the picture is mostly made of.** The fold
+    // count is a small real defect; the holes are the bulk of the dark. This is the first
+    // measurement in the branch that has looked at them at all.
+    if uncovered > 0 {
+        println!(
+            "FOUND  the surface leaves {uncovered} of the massif's own vertices unreachable,\n\
+             \x20 and a hole there draws as black in the render"
+        );
         std::process::exit(1);
     }
 }
