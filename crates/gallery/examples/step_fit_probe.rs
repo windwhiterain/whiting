@@ -84,6 +84,25 @@ fn uv_box(faces: &[&mountain::Face]) -> ([f32; 2], [f32; 2]) {
     (low, high)
 }
 
+/// A block's cell **sizes in space**, not in `(u, v)`.
+///
+/// The spread column in the table is `(u, v)` ratios, which says nothing about how big the cells
+/// are where the rock is. This measures the two directions of the first cell in metres, which is
+/// what a patch's tangents are actually built from — and it is the number that separates a block
+/// whose grid is square on the rock from one whose grid is `side` squares laid on a long thin
+/// region.
+///
+/// Read off the built surface rather than recomputed, so what is measured is the geometry the
+/// patches were handed.
+fn cell_sizes(surface: &patch::HermiteSurface, face: u32) -> (f64, f64) {
+    let corners = &surface.quads()[face as usize];
+    let positions = &surface.positions();
+    let near = positions[corners[0] as usize];
+    let along_u = positions[corners[1] as usize];
+    let along_v = positions[corners[3] as usize];
+    (near.distance(along_u), near.distance(along_v))
+}
+
 /// The worst departure of a built surface from the rock, at cell centres.
 fn departure(
     surface: &patch::HermiteSurface,
@@ -130,13 +149,14 @@ fn main() {
     };
 
     println!("\n  A block on its own, against the same block inside the whole-mesh surface");
-    println!("\n  side   alone (median)   in the mesh (median)   mesh step u / v");
+    println!("\n  side   alone (median)   in the mesh (median)   cell aspect u/v (median)");
     let mut alone_is_always_floor = true;
-    let mut pairs: Vec<(f64, f64)> = Vec::new();
+    let mut aspects: Vec<(f64, f64)> = Vec::new();
 
     for side in [2usize, 3, 4, 6, 8] {
         let whole = blockmesh::from_facet(&facet, side);
         let mut alone: Vec<f64> = Vec::new();
+        let mut own: Vec<f64> = Vec::new();
         for block in whole.blocks() {
             let Some(source) = facet.blocks.get(block.source as usize) else {
                 continue;
@@ -166,27 +186,41 @@ fn main() {
             };
             let reading = departure(&one.surface, &faces, &facet, side);
             alone.push(reading);
-            pairs.push((one.surface.step_u(), reading));
+            let (u_size, v_size) = cell_sizes(&one.surface, 0);
+            own.push(u_size / v_size.max(f64::MIN_POSITIVE));
+            aspects.push((u_size / v_size.max(f64::MIN_POSITIVE), reading));
         }
 
         let mut sorted = alone.clone();
         let alone_median = median(&mut sorted);
         let in_mesh = blockmesh_median(&whole, &facet, side);
-        let spread = whole.blocks()[0].surface.step_spread();
+        let mut sorted_own = own.clone();
         println!(
-            "  {:>4}   {:>14.3e}   {:>16.3e}   {:.3e} / {:.3e}  spread {:.2} / {:.2}",
+            "  {:>4}   {:>14.3e}   {:>16.3e}   {:>22.3e}",
             side,
             alone_median,
             in_mesh,
-            whole.blocks()[0].surface.step_u(),
-            whole.blocks()[0].surface.step_along_v(0),
-            spread.0,
-            spread.1
+            median(&mut sorted_own)
         );
         if alone_median > 1.0e-4 {
             alone_is_always_floor = false;
         }
     }
+
+    println!("\n  cell aspect against departure, over every block at every resolution");
+    let mut sorted_aspects = aspects.clone();
+    sorted_aspects.sort_by(|left, right| left.0.total_cmp(&right.0));
+    for quantile in [0.5f64, 0.9, 0.99, 1.0] {
+        let at = ((sorted_aspects.len() as f64 - 1.0) * quantile).round() as usize;
+        let (aspect, reading) = sorted_aspects[at];
+        println!("    aspect {aspect:>10.3e} at the {quantile:.0}th percentile   departure {reading:.3e}");
+    }
+    let (aspect, reading) = sorted_aspects[0];
+    let (worst_aspect, worst_reading) = *sorted_aspects.last().unwrap_or(&(0.0, 0.0));
+    println!(
+        "\n  least elongated cell {aspect:.3e} departs {reading:.3e}; most elongated \
+         {worst_aspect:.3e} departs {worst_reading:.3e}"
+    );
 
     println!();
     if alone_is_always_floor {
