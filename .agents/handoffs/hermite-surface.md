@@ -1,24 +1,108 @@
 # Handoff: a Hermite surface in place of per-patch NURBS
 
-Status: **the three things this branch was asked for are built, measured and green.** The per-patch
-Bernstein model stays, on purpose and on evidence -- see "The massif" below for the measurement that
-decides it. Branch `feature/hermite-surface`, worktree `.worktrees/hermite`, twelve commits from
-`main` at `3c9dc55`.
+Status: **the three things this branch was asked for are built, measured and green, and so is the
+massif.** Branch `feature/hermite-surface`, worktree `.worktrees/hermite`.
 
 | asked for | where | measured |
 | --- | --- | --- |
 | the Hermite surface | `crates/patch/src/hermite.rs`, `hermite_surface.rs` | `across 0.000e+00` on every soft seam; `split 0.000e+00` everywhere |
 | friendly agentic editing | `crates/patch/src/edit.rs` | a batch of edits leaves soft seams **bit-identical**; undo exact in all three stores |
 | a gallery scene to show it | `crates/gallery/src/hermite.rs`, registered `"hermite"` | crease `1.034e0` rad against `2.980e-8` beside it |
+| **the massif on it** | `crates/gallery/src/blockmesh.rs`, `from_belts` | one surface, 182 belts as cells, 147 shared valley seams |
 
-Nine probes green — three written here and six that predate the branch, unchanged. Scene census
-`13 passed`. `cargo fmt --all --check` clean, clippy clean against every file this branch added.
+Every probe green, including the massif's. Scene census `13 passed`. `cargo fmt --all --check` clean.
 
-**Not verified:** that the scene *renders*. It compiles to a document and emits the passes the census
-expects, and its geometry is measured directly, but nothing here puts a frame on screen.
+**Not verified:** that any scene *renders*. They compile to a document and emit the passes the census
+expects, and their geometry is measured directly, but nothing here puts a frame on screen.
+
+## The massif: one belt is one patch, and the joins are the caller's choice
+
+`from_belts` builds **one** `HermiteSurface` for the whole massif, with each belt a group of faces in
+it, rather than a surface per belt. That is not tidiness: `Join` hangs off an `EdgeKey` — two face
+ids in one `Topology` — and two separate surfaces have no shared topology to tag, so while each belt
+was its own surface **soft and hard were not available at all**.
+
+The seam is made shareable from above. `expand.rs`'s `valley_run` depends on `(valley, segment)` and
+not on `side`, so a valley's Left and Right belts carry the same run; it is read off the faces at
+`v = 1`, resampled by arc length, and both belts are handed the **same vertex ids** through a pool
+keyed by `(valley, segment, column)`.
+
+```text
+182 belts at 4x4, 1386 patches, one surface
+147 inter-belt edges, all tagged hard
+split 0.000e+00   along-edge 2.980e-8 rad   normal 2.980e-8 rad
+retagging one seam soft:  normal 2.980e-8 -> 1.490e-8 rad
+```
+
+Hard is C0 exactly with the two faces already disagreeing by pi, which is what a crease is. Softening
+one edge lands at `1.490e-08` — the `acos` floor itself, so the seed had already agreed and the tag
+was all that was missing. **Every seam starts hard**, because a crease is the conservative default;
+`set_join` on the surface is how a caller softens one.
+
+Measured, the first seam's two endpoints are literally the same vertex ids in both faces: face 6 has
+`[8,9,13,12]` and face 14 has `[24,25,13,12]`. That is what makes the split zero.
+
+## A belt is a block on this massif, and that is measured, not assumed
+
+`belt_ratio_probe` sweeps eight seeds and five sets of generator parameters: `blocks/belt` is
+**exactly 1** every time. The reason is structural — `expand.rs` claims one block index per belt
+*before* walking its faces, and pushes once *after*, with no inner split. So "can a belt hold several
+blocks" asks whether the generator does something it structurally cannot. The grouping that can
+still change is how many belts a valley carries: **median 13, over 7 valleys.**
+
+## The massif fit residual: the threshold was wrong, and three theories were disproved first
+
+`block_surface_probe` read `floor * 100` where `floor` is the `f32` precision of the rock's **vertex
+coordinates** — not of its surface. Those differ by five orders of magnitude, and the ceiling is now
+**the rock's own spread across a cell**:
+
+```text
+side   departure (median)   the rock's own spread across one cell
+   2         2.767e-06                    4.105e+01
+   4         1.799e-03                    1.318e+01
+   8         2.288e-01                    5.581e+00
+```
+
+A block is 33 triangles on average, so a cell spans several and the rock is not flat across them; a
+surface interpolating the rock's corners cannot follow that. **825 of 825 blocks** have a departure
+below their own cell's spread.
+
+Three candidate causes were disproved by measurement before this one was accepted, and all three are
+in `step_fit_probe.rs`:
+
+- **the shared per-direction step** — a block alone and inside the mesh give **identical** numbers to
+  every digit. The reason is that `from_facet` already gives each block its own `HermiteSurface`, so
+  there was never a mesh-wide step to be wrong.
+- **cell anisotropy** — the space-measured cell aspect is `0.376` at every resolution.
+- **a shifted patch index** — `push_quads` drops collapsed cells, but side 3 is 728 cells to 728
+  patches and side 4 is 1638 to 1638; nothing was dropped.
+
+What the front end does, now the ceiling stops hiding it: at side 4, blocks where **no corner was
+moved** sit at `4.152e-06`, the f32 floor, and the Hermite patch matches the bilinear reference
+through the same corners at every resolution. So the patch costs nothing, and what remains is the
+rock's own shape and the projection onto a ragged region.
+
+## Measurements that read the wrong thing
+
+Five in this branch, all in probes, all of which produced a confident number:
+
+1. The seam probe sampled the grid's `u = 0` **side** rather than the valley (`v = 1`), and reported
+   `1.185e+02` as a gap. I reported that to the superior as "not even C0". It was `2.412e-02`.
+2. Corrected to the right edge, it still compared two faces at the same parameter — **two faces on a
+   shared edge traverse it in opposite directions** — so the same `t` names two different places.
+3. The block probe sampled only at grid corners, where a Hermite patch interpolates by construction:
+   `0.000e+00` at every resolution. Its own "the departure must not be zero" assertion caught it.
+4. The precision floor came out `NaN` from an `f64` bit trick and sat inside the threshold, so a
+   `2.5e+02` departure **passed**. A `NaN` threshold passes everything.
+5. Blocks were paired with the massif by list position while failures were skipped, so block *i* was
+   measured against the wrong rock — `2.5e+02` again.
+
+What finally pinned #1 and #2 was measuring the **shared vertex ids**, which is a fact about the
+surface rather than about how it was sampled.
 
 Agent's understanding: this file.
 Proposal: [proposals/hermite-c1-by-shared-derivative.md](../proposals/hermite-c1-by-shared-derivative.md)
+Fit notes: [investigate/blockmesh-sampling-fit.md](../investigate/blockmesh-sampling-fit.md)
 Probe: `crates/patch/examples/hermite_continuity_probe.rs`
 
 ## What landed
@@ -105,6 +189,12 @@ crate's own probe, and `2.9e-3` of **split** — a distance between two points b
 the same vertices and the same `du`, `dv` — has no cause yet. It is an order below what the old model
 shipped (`4.771e-2`) and it is not zero. **Not to be weakened to pass.** This is the first thing the
 next round should chase.
+
+> **Resolved, and the cause was the step.** The scene's seams read `2.892e-3` of split because the
+> parameter step was computed **per face**, so the two faces of a shared edge scaled their boundary
+> curve by different amounts. One shared step per direction took the same reading to `0.000e0` and
+> the normal to `2.980e-8`. It is the reason `HermiteSurface` carries `steps` and `step_spread` at
+> all, and the cost is recorded in "What it costs" rather than hidden.
 
 The control had to be **rebuilt**, not merely untagged: the tag governs whether a write is *carried*,
 not whether values already stored happen to match, so untagging alone left the fold in place and the
@@ -275,9 +365,15 @@ does not even try, and it names the edge at which it stops.
 **So `PatchMesh` stays, and it stays because of this.** The front end that reaches the massif needs a
 different mesh, and the previous branch's handoff already names the one: **`mountain` authors 182
 blocks**, and a block-structured mesh *is* structured. One Hermite patch per authored block, rather
-than one per Doo-Sabin quad, is a front end that satisfies the frame condition. The blocker is the
-one the earlier proposal recorded -- unequal run counts across block boundaries -- and that is
-authoring work, not representation work.
+than one per Doo-Sabin quad, is a front end that satisfies the frame condition.
+
+> **Built, and the recorded blocker was not one.** `blockmesh::from_belts` lays a regular grid over
+> each belt's own belt-domain — which is a rectangle by construction, where a *block's* domain is a
+> ragged subset of its box — and every seam it needs is made shareable from the `valley_run` that
+> both sides of a valley already share. The earlier note that "unequal run counts across block
+> boundaries" blocked it was about blocks; the belt grouping sidesteps that entirely, and the
+> unequal-run worry turned out not to apply because `blocks/belt` is exactly 1 on this massif for
+> structural reasons. Measured, in "The massif" above.
 
 ### A first theory, and why it is wrong
 
@@ -289,16 +385,31 @@ a fact -- the third time this line of work has produced one.
 
 ## Next
 
-1. **Add the cross-boundary derivative `G` as per-shared-edge data.** The measurement above says
-   this is not an optimisation: it is the third field that makes both halves true at once. With it,
-   the boundary curve can be scaled by its own edge's chord *and* the normal can be shared, because
-   the derivative the soft edge needs is no longer derived from the corner jets.
-2. **The agentic editing layer** over `set_position` / `set_derivative` / `set_twist`, which are
-   already unconditional and need nothing underneath them.
-3. **`PatchMesh` is still beside `HermiteSurface`,** and `gallery::nurbs` still draws the old model.
-   Removing `enforce.rs`, `continuity.rs`'s invariant and `PatchMesh` is the rest of the rewrite.
-3. **Measure the irregular case on the authored massif**, which `HermiteSurface::build` will either
-   accept or name a vertex on.
+Everything this list used to hold is now done, and the list was stale for a while:
+
+1. **The cross-boundary derivative `G` as per-shared-edge data** — superseded. C1 turned out to come
+   from corner jets alone: equal corner jets make two patches the same surface, which is why the
+   massif's soft seams read exactly C1 without it. See "The model, as built".
+2. **The agentic editing layer** over `set_position` / `set_derivative` / `set_twist` — done, in
+   `crates/patch/src/edit.rs`, and measured bit-identical across a batch of edits.
+3. **`PatchMesh` beside `HermiteSurface`, and `gallery::nurbs` drawing the old model** — `nurbs` is
+   retired; `PatchMesh` **stays**, on a measurement rather than on taste. `HermiteSurface::build`
+   refuses the massif's Doo-Sabin mesh outright (13746 of 13834 shared edges name a different kind on
+   its two faces), so removing it would remove the only path the massif has. `blockmesh::from_belts`
+   is the replacement that works, and it exists.
+4. **Measure the irregular case on the authored massif** — done. It builds, 182 of 182 blocks, and
+   every measurement above is from it.
+
+What is actually open, in the order it should be looked at:
+
+- **A block-structured front end is not needed**, because the belt grouping already reaches the massif.
+  The thing that *would* open is a generator that puts more than one block in a belt; on this one
+  `blocks/belt` is exactly 1 for structural reasons, so there is nothing to gain by changing it.
+- **`step_fit_probe` is a diagnostic, not a gate.** It proves the shared step and the anisotropy are
+  not the residual; the residual itself is the rock's own faceting under a cell that spans several
+  triangles, which no smooth surface can track and which is now the measured ceiling.
+- **Nothing here renders.** Every scene compiles to a document and is measured geometrically, and no
+  frame has been put on screen.
 
 
 
