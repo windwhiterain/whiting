@@ -84,6 +84,103 @@ fn precision_floor(facet: &FacetMesh) -> f64 {
     f64::from(largest - below)
 }
 
+/// One cell's reading: how far its Hermite patch runs off the rock, how far the bilinear reference
+/// through the same corners does, how far apart the triangles covering the cell's own parameter
+/// region lie, and how many corners its own block had to have moved.
+type Cell = (f64, f64, f64, usize);
+
+/// How many of a block's grid cells have all four corners on the rock.
+///
+/// **The count a front end that refuses to move a corner can keep**, and the number that decides
+/// whether refining helps: a region with an interior always gains covered cells as the grid gets
+/// finer, so a block with none at a coarse side has some at a finer one.
+fn covered_cells(massif: &FacetMesh, faces: &[&mountain::Face], side: usize) -> usize {
+    if faces.is_empty() || side < 2 {
+        return 0;
+    }
+    let (low, high) = uv_box(faces);
+    let span = (side - 1) as f32;
+    let mut on_rock = vec![false; side * side];
+    for row in 0..side {
+        let v = low[1] + (high[1] - low[1]) * row as f32 / span;
+        for column in 0..side {
+            let u = low[0] + (high[0] - low[0]) * column as f32 / span;
+            on_rock[row * side + column] = sample(faces, massif, u, v).is_some();
+        }
+    }
+    let mut covered = 0usize;
+    for row in 0..side - 1 {
+        for column in 0..side - 1 {
+            let corner = |row: usize, column: usize| on_rock[row * side + column];
+            if corner(row, column)
+                && corner(row, column + 1)
+                && corner(row + 1, column + 1)
+                && corner(row + 1, column)
+            {
+                covered += 1;
+            }
+        }
+    }
+    covered
+}
+
+/// Every cell of every block at this resolution, with the fold measured over the cell's centre and
+/// its four corners.
+///
+/// **The fold is measured over the whole cell, not only its centre**, because a cell whose centre
+/// happens to sit on one sheet while its corners sit on the other is exactly the case that has to be
+/// separated from a cell that is simply far from the rock.
+fn cells(massif: &FacetMesh, blocks: &BlockSurfaces, side: usize) -> Vec<Cell> {
+    let mut readings = Vec::new();
+    let last = side - 1;
+    let span = (side - 1) as f64;
+    for block in blocks.blocks() {
+        let Some(source) = massif.blocks.get(block.source as usize) else {
+            continue;
+        };
+        let faces: Vec<&mountain::Face> = massif.faces
+            [source.faces.start as usize..source.faces.end as usize]
+            .iter()
+            .collect();
+        if faces.is_empty() {
+            continue;
+        }
+        let (low, high) = uv_box(&faces);
+        let moved = uncovered_corners(massif, &faces, side);
+        // The cell's own `(u, v)` extent, which is where the rock is actually asked about it.
+        let u_at = |column: f64| low[0] + (high[0] - low[0]) * (column / span) as f32;
+        let v_at = |row: f64| low[1] + (high[1] - low[1]) * (row / span) as f32;
+        for row in 0..last {
+            for column in 0..last {
+                let (near, far) = (column as f64, (column + 1) as f64);
+                let (top, bottom) = (row as f64, (row + 1) as f64);
+                let (u_centre, v_centre) = (u_at((near + far) * 0.5), v_at((top + bottom) * 0.5));
+                let Some(rock) = sample(&faces, massif, u_centre, v_centre) else {
+                    continue;
+                };
+                let crease = [
+                    (u_centre, v_centre),
+                    (u_at(near), v_centre),
+                    (u_at(far), v_centre),
+                    (u_at(near), v_at(top)),
+                    (u_at(far), v_at(top)),
+                ]
+                .into_iter()
+                .map(|(u, v)| fold(&faces, massif, u, v))
+                .fold(0.0f64, f64::max);
+                let cell = (row * last + column) as u32;
+                readings.push((
+                    rock.distance(block.surface.patch(cell).evaluate(0.5, 0.5)),
+                    rock.distance(bilinear_centre(&block.surface, cell)),
+                    crease,
+                    moved,
+                ));
+            }
+        }
+    }
+    readings
+}
+
 fn main() {
     let mut failures: Vec<&str> = Vec::new();
     let massif = match starter(11, Starter::default()).build() {
@@ -234,6 +331,95 @@ fn main() {
         );
     }
 
+    // 6. **Per cell, not per block.** The median hides a heavy tail, so this reports the whole
+    //    distribution and splits it on the one thing that can make a *corner* wrong rather than the
+    //    interpolation: a `(u, v)` that two different places on the rock both claim.
+    println!(
+        "\n  side     cells   median     p90     p99     max   | single-sheet cells   median     p99     max   | folded   median"
+    );
+    for candidate in [2usize, 3, 4, 6, 8] {
+        let blocks = blockmesh::from_facet(&massif, candidate);
+        let readings = cells(&massif, &blocks, candidate);
+        let all: Vec<f64> = readings.iter().map(|cell| cell.0).collect();
+        let single: Vec<f64> = readings
+            .iter()
+            .filter(|cell| cell.2 == 0.0)
+            .map(|cell| cell.0)
+            .collect();
+        let mut folded: Vec<f64> = readings
+            .iter()
+            .filter(|cell| cell.2 > 0.0)
+            .map(|cell| cell.0)
+            .collect();
+        println!(
+            "  {:>4}   {:>7}   {:>7.3e}   {:>7.3e}   {:>7.3e}   {:>7.3e}   | {:>19}   {:>7.3e}   {:>7.3e}   {:>7.3e}   | {:>7}   {:>7.3e}",
+            candidate,
+            all.len(),
+            quantile(&mut all.clone(), 0.5),
+            quantile(&mut all.clone(), 0.9),
+            quantile(&mut all.clone(), 0.99),
+            quantile(&mut all.clone(), 1.0),
+            single.len(),
+            quantile(&mut single.clone(), 0.5),
+            quantile(&mut single.clone(), 0.99),
+            quantile(&mut single.clone(), 1.0),
+            folded.len(),
+            quantile(&mut folded, 0.5),
+        );
+    }
+
+    // 7. **The question the fix turns on.** A block whose every grid corner lies on the rock had
+    //    nothing moved on it, so its cells are what the interpolation alone costs; the snapped
+    //    blocks are what the fallback costs. Separating them says whether removing the fallback is
+    //    the whole repair or only part of it. `empty` counts blocks that have no cell whose four
+    //    corners all lie on the rock, which is what a front end that refuses to snap must answer.
+    println!(
+        "\n  side   untouched cells   median     p90     max   | snapped cells   median     p90     max   | blocks with no covered cell"
+    );
+    for candidate in [2usize, 3, 4, 6, 8] {
+        let blocks = blockmesh::from_facet(&massif, candidate);
+        let readings = cells(&massif, &blocks, candidate);
+        let mut untouched: Vec<f64> = Vec::new();
+        let mut snapped: Vec<f64> = Vec::new();
+        for cell in &readings {
+            if cell.3 == 0 {
+                untouched.push(cell.0);
+            } else {
+                snapped.push(cell.0);
+            }
+        }
+        let empty = blocks
+            .blocks()
+            .iter()
+            .filter(|block| {
+                massif
+                    .blocks
+                    .get(block.source as usize)
+                    .is_some_and(|source| {
+                        let faces: Vec<&mountain::Face> = massif.faces
+                            [source.faces.start as usize..source.faces.end as usize]
+                            .iter()
+                            .collect();
+                        covered_cells(&massif, &faces, candidate) == 0
+                    })
+            })
+            .count();
+        println!(
+            "  {:>4}   {:>16}   {:>7.3e}   {:>7.3e}   {:>7.3e}   | {:>13}   {:>7.3e}   {:>7.3e}   {:>7.3e}   | {:>4} of {}",
+            candidate,
+            untouched.len(),
+            median(&mut untouched.clone()),
+            quantile(&mut untouched.clone(), 0.9),
+            quantile(&mut untouched.clone(), 1.0),
+            snapped.len(),
+            median(&mut snapped.clone()),
+            quantile(&mut snapped.clone(), 0.9),
+            quantile(&mut snapped.clone(), 1.0),
+            empty,
+            blocks.len()
+        );
+    }
+
     println!();
     if failures.is_empty() {
         println!("all measurements pass");
@@ -329,6 +515,19 @@ fn median(values: &mut [f64]) -> f64 {
     }
 }
 
+/// The `fraction` quantile of a run, by nearest rank.
+///
+/// **Nearest rank and not interpolation**, because a measurement that has to fail must not be able
+/// to answer with a value that is between two samples and was never measured.
+fn quantile(values: &mut [f64], fraction: f64) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    values.sort_by(f64::total_cmp);
+    let rank = (fraction * values.len() as f64).ceil() as usize;
+    values[rank.clamp(1, values.len()) - 1]
+}
+
 /// The `uv` bounding box of a block's triangles, which is the box the front end lays its grid over.
 fn uv_box(faces: &[&mountain::Face]) -> ([f32; 2], [f32; 2]) {
     let mut low = [f32::INFINITY; 2];
@@ -392,11 +591,17 @@ fn bilinear_centre(surface: &HermiteSurface, cell: u32) -> Point3 {
     Point3::new(sum[0], sum[1], sum[2])
 }
 
-/// The barycentric weights of `point` over a triangle in a parameter plane, as the front end's own
-/// sampler computes them. Duplicated here on purpose, as [`sample`] is.
-fn sample(faces: &[&mountain::Face], massif: &FacetMesh, u: f32, v: f32) -> Option<Point3> {
-    let mut sum = [0.0f64; 3];
-    let mut count = 0.0f64;
+/// One point on the rock per triangle that covers `(u, v)`, so a caller can see whether they agree.
+///
+/// **The fold test.** `Face::uv` is a parameterization, and a parameterization may be many-to-one: a
+/// flank that wraps back over itself covers the same `(u, v)` twice with two different points in
+/// space. `sample` averages them, so the average is a point on **neither** sheet, and a grid corner
+/// placed there is off the rock by construction — which no interpolation can repair, because the
+/// four corners no longer describe the rock. Two triangles that share an edge also both cover a
+/// point on that edge and *agree*, so this returns zero for an ordinary well-formed block; a large
+/// value means the domain folds.
+fn covering(faces: &[&mountain::Face], massif: &FacetMesh, u: f32, v: f32) -> Vec<Point3> {
+    let mut points = Vec::new();
     for face in faces {
         let [a, b, c] = face.uv;
         let area = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
@@ -411,16 +616,47 @@ fn sample(faces: &[&mountain::Face], massif: &FacetMesh, u: f32, v: f32) -> Opti
         if shares.iter().any(|share| *share < -1.0e-9) {
             continue;
         }
+        let mut point = [0.0f64; 3];
         for (index, share) in shares.into_iter().enumerate() {
-            let point = massif.points[face.indices[index] as usize];
+            let corner = massif.points[face.indices[index] as usize];
             for axis in 0..3 {
-                sum[axis] += f64::from(point[axis]) * share;
+                point[axis] += f64::from(corner[axis]) * share;
             }
         }
-        count += 1.0;
+        points.push(Point3::new(point[0], point[1], point[2]));
     }
-    if count == 0.0 {
+    points
+}
+
+/// How far apart the triangles covering one parameter point lie, which is zero unless the domain
+/// folds there.
+fn fold(faces: &[&mountain::Face], massif: &FacetMesh, u: f32, v: f32) -> f64 {
+    let points = covering(faces, massif, u, v);
+    if points.len() < 2 {
+        return 0.0;
+    }
+    let mean = Point3::new(
+        points.iter().map(|point| point.x).sum::<f64>() / points.len() as f64,
+        points.iter().map(|point| point.y).sum::<f64>() / points.len() as f64,
+        points.iter().map(|point| point.z).sum::<f64>() / points.len() as f64,
+    );
+    points
+        .iter()
+        .map(|point| point.distance(mean))
+        .fold(0.0f64, f64::max)
+}
+
+/// The barycentric weights of `point` over a triangle in a parameter plane, as the front end's own
+/// sampler computes them. Duplicated here on purpose, as [`fold`] is.
+fn sample(faces: &[&mountain::Face], massif: &FacetMesh, u: f32, v: f32) -> Option<Point3> {
+    let points = covering(faces, massif, u, v);
+    if points.is_empty() {
         return None;
     }
-    Some(Point3::new(sum[0] / count, sum[1] / count, sum[2] / count))
+    let count = points.len() as f64;
+    Some(Point3::new(
+        points.iter().map(|point| point.x).sum::<f64>() / count,
+        points.iter().map(|point| point.y).sum::<f64>() / count,
+        points.iter().map(|point| point.z).sum::<f64>() / count,
+    ))
 }
