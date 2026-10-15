@@ -269,9 +269,10 @@ fn surface_from_faces(facet: &FacetMesh, faces: &[&Face], side: usize) -> Option
                 near + side as VertexId,
             ];
             let distinct = corners.iter().all(|first| {
-                corners
-                    .iter()
-                    .all(|second| first == second || positions[*first as usize].distance(positions[*second as usize]) > 0.0)
+                corners.iter().all(|second| {
+                    first == second
+                        || positions[*first as usize].distance(positions[*second as usize]) > 0.0
+                })
             });
             if distinct {
                 quads.push(corners);
@@ -373,9 +374,8 @@ fn nearest_covered(faces: &[&Face], u: f32, v: f32) -> [f32; 2] {
         let Some(point) = closest_on_triangle(face.uv, [u, v]) else {
             continue;
         };
-        let distance =
-            f64::from(point[0] - u) * f64::from(point[0] - u)
-                + f64::from(point[1] - v) * f64::from(point[1] - v);
+        let distance = f64::from(point[0] - u) * f64::from(point[0] - u)
+            + f64::from(point[1] - v) * f64::from(point[1] - v);
         if distance < best_distance {
             best_distance = distance;
             best = point;
@@ -418,9 +418,8 @@ fn closest_on_triangle(corners: [[f32; 2]; 3], point: [f32; 2]) -> Option<[f32; 
         let Some(on) = closest_on_segment(from, to, point) else {
             continue;
         };
-        let distance =
-            f64::from(on[0] - point[0]) * f64::from(on[0] - point[0])
-                + f64::from(on[1] - point[1]) * f64::from(on[1] - point[1]);
+        let distance = f64::from(on[0] - point[0]) * f64::from(on[0] - point[0])
+            + f64::from(on[1] - point[1]) * f64::from(on[1] - point[1]);
         if distance < best_distance {
             best_distance = distance;
             best = on;

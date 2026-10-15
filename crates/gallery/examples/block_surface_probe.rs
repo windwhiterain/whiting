@@ -181,6 +181,27 @@ fn cells(massif: &FacetMesh, blocks: &BlockSurfaces, side: usize) -> Vec<Cell> {
     readings
 }
 
+/// How far the surface may run off the rock before the probe says so.
+///
+/// **A hundred mesh-precisions, and the number is measured rather than chosen.** The rock arrives as
+/// `f32` points whose largest coordinate is the `floor` above, so a distance of one floor is the
+/// smallest difference two of them can express. A cell centre is compared against a Hermite patch
+/// evaluated in `f64` from four such points, and those four already carry up to half a floor each of
+/// representation error, which the patch cannot average away: **the corners are the floor, and a
+/// reading at the floor is a measurement that ran out of `f32` before it ran out of surface.** Two
+/// orders of magnitude over that is the allowance for the one thing a corner cannot carry — the rock
+/// between the corners is piecewise linear and a patch through them is not, so a cell that straddles
+/// a triangle edge cannot be exact however good its corners are. It is a **ceiling on the
+/// interpolation given its corners**, not a licence for a front end to place corners badly: the
+/// bilinear reference printed beside it is the same number measured without the Hermite patch, and
+/// the two being equal is what says the patch is losing nothing.
+///
+/// Anything above this is not interpolation error. It is a corner that is not on the rock, and the
+/// front end is what puts corners there.
+fn departure_ceiling(floor: &f64) -> f64 {
+    floor * 100.0
+}
+
 fn main() {
     let mut failures: Vec<&str> = Vec::new();
     let massif = match starter(11, Starter::default()).build() {
@@ -229,8 +250,12 @@ fn main() {
 
     // 3. How far the surface runs off the rock, against the same sampler that built it.
     let (departures, outside) = worst_deviation(&massif, &blocks, side);
-    let departure_median = median(&mut departures.iter().map(|entry| entry.0).collect::<Vec<f64>>());
-    let departure_worst = departures.iter().map(|entry| entry.0).fold(0.0f64, f64::max);
+    let departure_median =
+        median(&mut departures.iter().map(|entry| entry.0).collect::<Vec<f64>>());
+    let departure_worst = departures
+        .iter()
+        .map(|entry| entry.0)
+        .fold(0.0f64, f64::max);
     let reference_median =
         median(&mut departures.iter().map(|entry| entry.1).collect::<Vec<f64>>());
     println!(
@@ -242,14 +267,12 @@ fn main() {
     if departure_median == 0.0 {
         failures.push("3  the measurement of the departure can fail");
     }
-    if departure_median > floor * 100.0 {
+    if departure_median > departure_ceiling(&floor) {
         failures.push("3  the surface stays within a hundred mesh-precisions of the rock");
     }
 
     // 4. The sweep, because a single resolution is a preference and a curve is a trade.
-    println!(
-        "\n  side   patches   departure   bilinear ref   snapped corners   snapped blocks"
-    );
+    println!("\n  side   patches   departure   bilinear ref   snapped corners   snapped blocks");
     let mut curve: BTreeMap<usize, f64> = BTreeMap::new();
     for candidate in [2usize, 3, 4, 6, 8] {
         let blocks = blockmesh::from_facet(&massif, candidate);
@@ -316,7 +339,13 @@ fn main() {
                 intact.push(*departure);
                 intact_bilinear.push(*reference);
             }
-            spreads.push(block.surface.step_spread().0.max(block.surface.step_spread().1));
+            spreads.push(
+                block
+                    .surface
+                    .step_spread()
+                    .0
+                    .max(block.surface.step_spread().1),
+            );
         }
         let all = median(&mut values.iter().map(|entry| entry.0).collect::<Vec<f64>>());
         let spread_middle = median(&mut spreads);
@@ -442,7 +471,11 @@ type Reading = (f64, f64);
 /// real fit error and not a tautology**: the sampler is re-implemented here rather than called,
 /// because a probe that measures a front end by asking the front end where the rock is measures it
 /// to agree with itself.
-fn worst_deviation(massif: &FacetMesh, blocks: &BlockSurfaces, side: usize) -> (Vec<Reading>, usize) {
+fn worst_deviation(
+    massif: &FacetMesh,
+    blocks: &BlockSurfaces,
+    side: usize,
+) -> (Vec<Reading>, usize) {
     let mut per_block: Vec<Reading> = Vec::with_capacity(blocks.len());
     let mut outside = 0usize;
     for (index, block) in blocks.blocks().iter().enumerate() {

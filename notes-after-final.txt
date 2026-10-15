@@ -1,0 +1,6 @@
+
+2380 triangles in 182 blocks; the mesh's own f32 floor is 1.526e-5
+182 blocks built at 4x4, 1638 patches in total
+  every block's interior seams   split 0.000e0   normal 3.332e-8 rad
+  departure per block: median 1.799e-3  worst 2.088e0  floor 1.526e-5  off-rock points 1
+  the same four corners, bilinear reference: median 1.733e-3  (the floor of what any C1 fit can reach)
