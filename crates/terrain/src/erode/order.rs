@@ -4,11 +4,12 @@
 //! # Invariants
 //!
 //! - **It is a total order, and it is the same total order every run.** Descending height
-//!   with ties broken by ascending lattice index — a cell that hands its water to a
-//!   neighbour of identical height has already been visited, because the receivers descend
-//!   or stand still and the index order settles the stand-still. Without the tie-break a flat
-//!   riverbed would route differently on different machines, and a landscape that erodes to
-//!   a slightly different valley each time it is built is not reproducible.
+//!   with ties broken by ascending lattice index — every route a cell takes goes to a
+//!   neighbour strictly below it, so a cell is always visited after everything that hands
+//!   anything to it, and the index order settles the cells that tie without routing between
+//!   themselves. Without the tie-break a flat riverbed would route differently on different
+//!   machines, and a landscape that erodes to a slightly different valley each time it is
+//!   built is not reproducible.
 //! - **The input order is rebuilt from the lattice every round**, not carried over from the
 //!   last one. The sort below is stable, so it keeps ties in the order it was given them,
 //!   and a permutation carried over would resolve every tie by *last* round's answer.

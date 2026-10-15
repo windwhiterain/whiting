@@ -1,18 +1,27 @@
-//! Iterative hydraulic erosion over a height field: D8 steepest descent per unit of step
-//! distance, flow accumulation in descending height order, and one Eulerian sediment step
-//! per round.
+//! Iterative hydraulic erosion over a height field: multiple flow direction routing
+//! weighted by slope, flow accumulation in descending height order, and one Eulerian
+//! sediment step per round.
 //!
 //! # Invariants
 //!
-//! - **The round is: read the field, accumulate, then exchange.** Receivers and slopes are
+//! - **The round is: read the field, accumulate, then exchange.** Shares and slopes are
 //!   read from the heights at the start of the round; the accumulation cascades water and
 //!   suspended load together down the *previous* round's routing; and only then does the
 //!   fresh routing take over. Routing by the current field instead would let a cell hand
 //!   its water to a neighbour whose height it had not yet seen, and the accumulation would
 //!   depend on the order the update happened to write in.
+//! - **The routing fans out.** A cell hands its water and its load to every neighbour
+//!   below it, in shares of the slope each descends by, rather than to the steepest one
+//!   alone. A single receiver concentrates every cell's flow onto grid-aligned paths, and
+//!   the channels that leaves read as rows of dots along the lattice diagonals rather than
+//!   as drainage. The shares sum to one, so what leaves a cell arrives across its
+//!   neighbours and the books close on the fan-out exactly as they did on the hop.
+//! - **A cell with nothing below it keeps everything it holds.** Its shares are all zeros,
+//!   so the fan-out moves nothing out of it: a pit is a lake, not a drain, and it is the
+//!   only kind of cell the exchange reads as a sink at all.
 //! - **The visit that hands water down a chain hands standing load down it too**, at
 //!   [`ErodeParams::carry`] of what the cell holds. Load therefore cascades exactly as far
-//!   as the route reaches and is never deleted on the way; the only place material leaves
+//!   as the routes reach and is never deleted on the way; the only place material leaves
 //!   the massif is an outlet, and the books close on that.
 //! - **The books close.** `eroded − deposited = suspended + spilled`, and `initial − final =
 //!   suspended + spilled`, up to the order the rounds are summed in. An interior pit keeps
@@ -34,13 +43,14 @@
 //!   serial there too — so the whole round is one pass, and the only thing lost is wall
 //!   clock on the two passes that were already the cheap half.
 //! - **The field width limit.** The reference carries receivers in an `f32` band buffer and
-//!   refuses a field wider than `2^24` cells because the index stops being exact. These
-//!   receivers are `Option<usize>`, so there is no such limit and no error for it.
-//! - **The scratch receiver's initial state.** The reference's scratch buffer starts with
+//!   refuses a field wider than `2^24` cells because the index stops being exact. Here the
+//!   route is a share per neighbour slot over `usize` indices, so there is no such limit and
+//!   no error for it.
+//! - **The scratch routing's initial state.** The reference's scratch buffer starts with
 //!   receiver zero for every cell, so on the first round every cell's water is dumped into
 //!   cell zero and its capacity is inflated for that round. There is no load to route on the
-//!   first round — it is all zero — so this starts with no receiver anywhere instead, and
-//!   the first round is a round of rainfall rather than a round of one very wet corner.
+//!   first round — it is all zero — so this starts with no route anywhere instead, and the
+//!   first round is a round of rainfall rather than a round of one very wet corner.
 
 pub mod grid;
 pub mod order;
@@ -59,6 +69,15 @@ pub use transport::{Hydraulic, Transport, delta_of};
 /// its capacity then grows with what it gathered, so an unbounded solver digs a hole whose
 /// own slope keeps it digging.
 const WATER_MAX: f32 = 64.0;
+
+/// The power the fan-out weights each descending direction's share by.
+///
+/// One is the share of the slope itself, so a cell's flow goes where its ground actually
+/// falls and every lower neighbour takes some of it. It is a constant rather than a knob in
+/// [`ErodeParams`] because it is a property of the routing scheme, not of a solve: a caller
+/// who wants the steepest-descent scheme back reads [`grid::receiver`] and routes by that,
+/// and a caller who wants a different dial gets it by asking [`grid::fractions`] for one.
+const FLOW_EXPONENT: f32 = 1.0;
 
 /// The knobs one solve reads.
 ///
@@ -134,10 +153,11 @@ struct Scratch {
     water: Vec<f32>,
     /// The round's steepest distance-normalised drop per cell.
     slope: Vec<f32>,
-    /// The routing the accumulation follows: the previous round's receivers.
-    routing: Vec<Option<usize>>,
-    /// The receivers just computed, waiting to become next round's routing.
-    receiver: Vec<Option<usize>>,
+    /// The shares the accumulation follows: the previous round's routing, one slot per
+    /// [`D8`] neighbour and all zero for a cell with nothing below it.
+    routing: Vec<[f32; 8]>,
+    /// The shares just computed, waiting to become next round's routing.
+    computed: Vec<[f32; 8]>,
 }
 
 impl Scratch {
@@ -157,8 +177,8 @@ impl Scratch {
             inside,
             water: vec![0.0; cells],
             slope: vec![0.0; cells],
-            routing: vec![None; cells],
-            receiver: vec![None; cells],
+            routing: vec![[0.0; 8]; cells],
+            computed: vec![[0.0; 8]; cells],
         }
     }
 }
@@ -219,7 +239,7 @@ fn round<L: Transport>(
     for index in scratch.inside.iter() {
         let at = *index as usize;
         scratch.slope[at] = grid::slope(field, heights, at);
-        scratch.receiver[at] = grid::receiver(field, heights, at);
+        scratch.computed[at] = grid::fractions(field, heights, at, FLOW_EXPONENT);
     }
 
     by_height_descending(
@@ -231,19 +251,28 @@ fn round<L: Transport>(
     scratch.water.fill(params.rainfall);
     for index in scratch.order.iter() {
         let at = *index as usize;
-        let Some(to) = scratch.routing[at] else {
-            continue;
-        };
-        // Water and load ride the same hop, so one descending visit cascades both
-        // downstream exactly as far as the route reaches. The clamp on the load is the
-        // conservativity of the exchange: for any `carry` a round moves part of what the
-        // cell stands in, and creates and deletes nothing.
-        scratch.water[to] = (scratch.water[to] + scratch.water[at]).min(WATER_MAX);
-        let moving = (sediment[at] * params.carry).clamp(0.0, sediment[at]);
-        sediment[at] -= moving;
-        sediment[to] += moving;
+        // Water and load ride the same fan-out, so one descending visit cascades both
+        // downstream exactly as far as the routes reach. The shares are read in the fixed
+        // `D8` order and sum to one, so a cell that has somewhere lower to go hands over
+        // everything it carries and a pit hands over nothing and keeps it all. The clamp on
+        // the load is the conservativity of the exchange: for any `carry` a round moves part
+        // of what the cell stands in, and what leaves a cell is subtracted from that same
+        // cell, so nothing is created and nothing is deleted on the way.
+        let carried = (sediment[at] * params.carry).clamp(0.0, sediment[at]);
+        for (slot, share) in scratch.routing[at].iter().enumerate() {
+            if *share == 0.0 {
+                continue;
+            }
+            let Some(to) = grid::neighbor(field, at, slot) else {
+                continue;
+            };
+            scratch.water[to] = (scratch.water[to] + scratch.water[at] * share).min(WATER_MAX);
+            let moving = carried * share;
+            sediment[at] -= moving;
+            sediment[to] += moving;
+        }
     }
-    std::mem::swap(&mut scratch.routing, &mut scratch.receiver);
+    std::mem::swap(&mut scratch.routing, &mut scratch.computed);
 
     for index in scratch.inside.iter() {
         let at = *index as usize;
@@ -257,7 +286,7 @@ fn round<L: Transport>(
         let mut after = law.suspend(params, delta, sediment[at]);
         // An outlet that is also a sink is water leaving the massif, so its load leaves
         // with it; a sink out on the plain is a lake and keeps what it gathered.
-        if grid::is_outlet(field, at) && scratch.routing[at].is_none() {
+        if grid::is_outlet(field, at) && grid::is_sink(&scratch.routing[at]) {
             books.spilled += after as f64;
             after = 0.0;
         }

@@ -122,6 +122,17 @@ pub fn fractions(field: &HeightField, heights: &[f32], at: usize, exponent: f32)
     shares
 }
 
+/// Whether a set of [`fractions`] leaves the cell nowhere, which is what a sink is.
+///
+/// A cell with no neighbour below it is a lake rather than a route, so it reads all zeros
+/// and this answers true. Asking it of the shares rather than of the heights is what keeps
+/// "does this cell go anywhere" one read with "where does it go": the solver's routing is a
+/// round old by the time it acts, and the sink it spills at is the sink it was, not the one
+/// the exchange would make it.
+pub(crate) fn is_sink(shares: &[f32; 8]) -> bool {
+    shares.iter().all(|share| *share == 0.0)
+}
+
 /// Returns the cell one [`D8`] step away, where the massif is.
 pub fn neighbor(field: &HeightField, at: usize, slot: usize) -> Option<usize> {
     let column = at % field.width();
