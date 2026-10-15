@@ -113,8 +113,15 @@ pub fn hermite() -> Value {
             "cameras".to_owned(),
             // High enough to look across the sheet rather than along it. A crease seen edge on is a
             // line and not a fold, and the whole of what this scene has to show is the fold.
+            //
+            // **The eye stands out along its own direction, two and a half sheet-widths out**
+            // (2026-10-08): the number here was the unit direction itself standing where a
+            // position belongs, seven tenths of a unit from the origin of a sheet six units
+            // wide, so the frame was drawn from inside the dome and showed one flat facet of it
+            // edge to edge. The direction is kept and the distance is the sheet's: at six degrees
+            // of arc a second further in or out either clips the corners or drowns the fold.
             Value::List(vec![camera(
-                [0.249495829, 0.595539233, 0.249495829],
+                [2.703, 7.052, 2.703],
                 [0.0, 0.6, 0.0],
                 std::f64::consts::FRAC_PI_3,
             )]),
@@ -123,11 +130,19 @@ pub fn hermite() -> Value {
             "lights".to_owned(),
             // Low and to one side, so the two sides of the crease are lit differently. A light
             // straight overhead lights a fold symmetrically, and a symmetric fold reads as a dip.
+            //
+            // **The power is the inverse-square law, not a taste** (2026-10-08): a point light's
+            // power is a flux, and what reaches the sheet is it spread over the sphere at the
+            // light's own distance — `4 pi d^2` with `d^2 = 110` here — so the `3.2` this scene
+            // carried from before the photometry handoff arrived as two thousandths of an
+            // irradiance and drew the sheet black. Four units of irradiance at the sheet is what
+            // the other scenes' directional lights give their rock, and four times that sphere
+            // is the flux that delivers it.
             Value::List(vec![light_with_radius(
                 "key",
                 [-7.0, 6.0, 5.0],
                 [1.0, 0.95, 0.88],
-                3.2,
+                4.0 * 4.0 * std::f64::consts::PI * 110.0,
                 14.0,
                 30.0,
             )]),
