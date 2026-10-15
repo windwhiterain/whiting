@@ -243,33 +243,6 @@ fn surface_points(surface: &patch::HermiteSurface) -> Vec<Point3> {
     surface.positions().to_vec()
 }
 
-/// How many of the massif's own vertices the surface does not reach, judged against its own cell size.
-///
-/// **Nearest mesh vertex, not nearest triangle**, so this is a lower bound on the distance and the
-/// count is if anything generous: a cell whose interior is covered but whose corners are all far
-/// away is counted here as uncovered. It is a proxy and it is named as one.
-fn uncovered_rock(facet: &FacetMesh, surface: &patch::HermiteSurface, mesh: &[Point3]) -> usize {
-    let mut cell = f64::INFINITY;
-    for face in 0..surface.face_count() as u32 {
-        let quad = surface.quads()[face as usize];
-        cell = cell.min(mesh[quad[0] as usize].distance(mesh[quad[1] as usize]));
-    }
-    if !cell.is_finite() {
-        return 0;
-    }
-    facet
-        .points
-        .iter()
-        .filter(|point| {
-            let rock = Point3::new(point[0] as f64, point[1] as f64, point[2] as f64);
-            mesh.iter()
-                .map(|held| rock.distance(*held))
-                .fold(f64::INFINITY, f64::min)
-                > cell * 2.0
-        })
-        .count()
-}
-
 fn main() {
     let facet: FacetMesh = starter(11, Starter::default())
         .build()
@@ -308,9 +281,9 @@ fn main() {
     //
     // So coverage is measured against the massif's own vertices: a rock point with no mesh vertex
     // near it is rock the surface does not reach.
-    let uncovered = uncovered_rock(&facet, surface, &points);
+    let uncovered = uncovered_rock(&facet, &points);
     println!(
-        "  massif vertices with no mesh vertex within two cells: {uncovered} ({:.1}%)\n\
+        "  massif vertices further than one per-cent of the massif from any mesh vertex: {uncovered} ({:.1}%)\n\
          \x20   the mesh does not reach that rock, and a hole there is dark in the render",
         100.0 * uncovered as f64 / facet.points.len() as f64,
     );
@@ -348,4 +321,38 @@ fn main() {
         );
         std::process::exit(1);
     }
+}
+/// How many of the massif's own vertices the surface does not reach.
+///
+/// **Judged against the massif's own size, not against the mesh's cell.** The first version used two
+/// cells, a threshold that tightens as the grid is refined: swept from `side` 4 to `side` 12 it
+/// reported 46, 76, 103 and then 782 unreachable vertices, and that 782 was the metric failing and
+/// not the mesh -- the cell had shrunk from 3.358 to 0.157 and the threshold went with it. A
+/// measurement that changes its own answer when the thing it measures is refined is not a
+/// measurement.
+///
+/// The threshold is therefore **one per-cent of the massif's own plan extent**, which is a scale the
+/// subject has and which does not depend on how finely anything is drawn. A rock vertex further
+/// than that from every mesh vertex is rock the surface does not come near, at any resolution.
+///
+/// **Nearest mesh vertex rather than nearest triangle**, so the distance is a lower bound and the
+/// count is if anything generous. It is a proxy and it is named as one.
+fn uncovered_rock(facet: &FacetMesh, mesh: &[Point3]) -> usize {
+    let (low, high) = facet.bounds();
+    let span = f64::from(high[0] - low[0]).max(f64::from(high[2] - low[2]));
+    if span <= 0.0 {
+        return 0;
+    }
+    let reach = span * 0.01;
+    facet
+        .points
+        .iter()
+        .filter(|point| {
+            let rock = Point3::new(point[0] as f64, point[1] as f64, point[2] as f64);
+            mesh.iter()
+                .map(|held| rock.distance(*held))
+                .fold(f64::INFINITY, f64::min)
+                > reach
+        })
+        .count()
 }

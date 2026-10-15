@@ -33,7 +33,7 @@ use crate::landscape;
 use crate::shaders::{mesh_shaders, post_shader};
 
 /// The massif's grid resolution per belt.
-const SIDE: usize = 4;
+const SIDE: usize = 6;
 
 /// The angle the frame takes in.
 const FIELD_OF_VIEW: f64 = 0.72;
