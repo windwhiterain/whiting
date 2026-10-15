@@ -385,10 +385,47 @@ fn tessellate(belts: &BeltSurfaces) -> definition::PackedList {
                     }
                 };
 
-                // Two triangles per cell, wound so the surface looks up.
-                for (a, b, c) in [(near, along_u, along_v), (along_v, along_u, far)] {
-                    for uv in [a, b, c] {
-                        let position = patch.evaluate(uv.0, uv.1);
+                // **The diagonal is chosen per cell, not fixed for the grid.**
+                //
+                // A quad whose four corners are not coplanar can be split so that its two triangles
+                // face **opposite ways** — and then the path tracer draws the one facing away as
+                // nothing, which reads as a hole. Measured: 3 of the massif's 1638 cells split along
+                // the `(near, far)` diagonal have triangles a whole `pi` apart, at faces 686, 1163
+                // and 1397, and an emissive backdrop behind the massif showed every dark patch
+                // stayed dark rather than showing the backdrop, so they are not gaps in the mesh.
+                //
+                // They are in cells where the covered region **narrows**: belts 4/12 and 5/12 run
+                // `u` to `0.9429` and `0.9199` at the top against `1.0000` at the bottom, and the
+                // fold sits on that top row. A taper is a trapezoid and a trapezoid does not fold,
+                // which is what said the problem was the split rather than the surface.
+                //
+                // So each cell is split by whichever diagonal leaves its two triangles agreeing,
+                // which costs one cross product per cell and is the difference between a rock and a
+                // rock with holes in it.
+                let corners = [
+                    patch.evaluate(near.0, near.1),
+                    patch.evaluate(along_u.0, along_u.1),
+                    patch.evaluate(far.0, far.1),
+                    patch.evaluate(along_v.0, along_v.1),
+                ];
+                let agree = |a: usize, b: usize, c: usize, d: usize| {
+                    let first = (corners[b] - corners[a]).cross(corners[c] - corners[a]);
+                    let second = (corners[c] - corners[a]).cross(corners[d] - corners[a]);
+                    let (one, two) = (first.length(), second.length());
+                    if one < 1.0e-12 || two < 1.0e-12 {
+                        return false;
+                    }
+                    (first * (1.0 / one)).dot(second * (1.0 / two)) > 0.0
+                };
+                let along_far = if agree(0, 1, 2, 3) {
+                    [(0usize, 1usize, 3usize), (1usize, 2usize, 3usize)]
+                } else {
+                    [(0, 1, 2), (0, 2, 3)]
+                };
+                for (first, second, third) in along_far {
+                    for corner in [first, second, third] {
+                        let uv = [near, along_u, far, along_v][corner];
+                        let position = corners[corner];
                         let normal = turned(uv);
                         points
                             .field("normal", &[normal.x, normal.y, normal.z])
