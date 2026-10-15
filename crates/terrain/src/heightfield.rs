@@ -347,6 +347,32 @@ impl HeightField {
             self.inside.clone(),
         )
     }
+
+    /// Returns this field blended towards another, per cell, by a weight run.
+    ///
+    /// # Invariants
+    ///
+    /// - **A cell with no rock under it keeps this field's own height.** The weight of a cell
+    ///   outside the massif is a number the caller chose, and the drawing it does with a
+    ///   surface that is not there is its own business.
+    /// - **`weights` is one entry per cell**, and a shorter run damps every cell that has one
+    ///   against nothing, which is the same refusal to invent a weight as the lattice's own
+    ///   index checks are.
+    pub fn with_surface(&self, other: &HeightField, weights: &[f32]) -> Result<Self, FieldError> {
+        let heights = self
+            .heights
+            .iter()
+            .enumerate()
+            .map(|(at, here)| {
+                if !self.inside[at] {
+                    return *here;
+                }
+                let weight = weights.get(at).copied().unwrap_or(0.0);
+                *here + weight * (other.heights[at] - *here)
+            })
+            .collect();
+        self.with_heights(heights)
+    }
 }
 
 /// Why a height field could not be built.

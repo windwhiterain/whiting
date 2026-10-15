@@ -39,14 +39,15 @@
 //! let mesh = massif.build()?;
 //!
 //! // Four unit cells across the massif's own plan bounds.
-//! let field = rasterize(&mesh, 4.0)?;
-//! let (eroded, books) = erode_traced(&ErodeParams::default(), &field, &Hydraulic)?;
+//! let read = rasterize(&mesh, 4.0)?;
+//! let (eroded, books) = erode_traced(&ErodeParams::default(), &read.field, &Hydraulic)?;
 //!
 //! // The mass line closed: what left the massif in load is what is gone from it in rock.
 //! assert!((books.eroded - books.deposited - books.suspended - books.spilled).abs() < 1.0e-3);
 //! // And it moved rock — deposition is half of an erosion, so neither end of the relief is
 //! // a direction it travels in.
-//! let moved = field
+//! let moved = read
+//!     .field
 //!     .heights()
 //!     .iter()
 //!     .zip(eroded.heights())
@@ -66,4 +67,4 @@ pub use erode::{
     erode_traced,
 };
 pub use heightfield::{FieldError, HeightField};
-pub use rasterize::{Rasterize, rasterize};
+pub use rasterize::{NO_FACE, Provenance, Rasterize, Rasterized, rasterize};

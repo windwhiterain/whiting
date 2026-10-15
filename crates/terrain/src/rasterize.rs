@@ -27,7 +27,7 @@
 //! touches, and a cell reads only its own bucket. The build is linear in the faces and the
 //! query is a short scan of one bucket, so the conversion is linear in both.
 
-use mountain::math::{Vec2, Vec3, signed_area};
+use mountain::math::{Vec2, signed_area};
 use mountain::{Face, FacetMesh};
 
 use crate::heightfield::{FieldError, HeightField};
@@ -53,7 +53,11 @@ const CONTAINMENT_SLACK: f32 = 1.0e-6;
 ///   lattice is a massif with a straight cut along one side of its own picture.
 /// - **`base` is the lowest elevation under any cell**, so a caller drawing the lattice gets
 ///   ground continuing at the foot of the massif rather than at a number it invented.
-pub fn rasterize(mesh: &FacetMesh, cell: f32) -> Result<HeightField, Rasterize> {
+/// - **The provenance is read in the same pass as the height**, from the same containment test
+///   on the same point. A caller asking which face a cell stands on is therefore answered by
+///   the face the height came from, and cannot be handed a second answer found by looking
+///   again — which for a boundary cell is a different face.
+pub fn rasterize(mesh: &FacetMesh, cell: f32) -> Result<Rasterized, Rasterize> {
     if cell <= 0.0 || cell.is_nan() {
         return Err(Rasterize::Field(FieldError::NotASpacing { cell }));
     }
@@ -72,6 +76,10 @@ pub fn rasterize(mesh: &FacetMesh, cell: f32) -> Result<HeightField, Rasterize> 
     let index = BucketIndex::of(mesh, low, extent);
     let mut heights = vec![0.0; columns * rows];
     let mut inside = vec![false; columns * rows];
+    let mut provenance = Provenance {
+        faces: vec![NO_FACE; columns * rows],
+        weights: vec![[0.0; 3]; columns * rows],
+    };
     let mut lowest = f32::INFINITY;
     for row in 0..rows {
         for column in 0..columns {
@@ -80,14 +88,21 @@ pub fn rasterize(mesh: &FacetMesh, cell: f32) -> Result<HeightField, Rasterize> 
                 origin[1] + row as f32 * step,
             ];
             let at = row * columns + column;
-            if let Some(height) = index.lookup(mesh, plan) {
-                heights[at] = height;
+            if let Some((face, weights)) = index.lookup(mesh, plan) {
+                heights[at] = weights
+                    .into_iter()
+                    .zip(corners_of(mesh, face))
+                    .fold(0.0, |height, (weight, corner)| {
+                        height + weight * mesh.points[corner as usize][1]
+                    });
                 inside[at] = true;
-                lowest = lowest.min(height);
+                provenance.faces[at] = face;
+                provenance.weights[at] = weights;
+                lowest = lowest.min(heights[at]);
             }
         }
     }
-    HeightField::of(
+    let field = HeightField::of(
         origin,
         step,
         columns,
@@ -96,16 +111,51 @@ pub fn rasterize(mesh: &FacetMesh, cell: f32) -> Result<HeightField, Rasterize> 
         heights,
         inside,
     )
-    .map_err(Rasterize::Field)
-    .and_then(|field| {
-        if field.covered() == 0 {
-            return Err(Rasterize::NoRock {
-                cells: columns * rows,
-                cell,
-            });
-        }
-        Ok(field)
-    })
+    .map_err(Rasterize::Field)?;
+    if field.covered() == 0 {
+        return Err(Rasterize::NoRock {
+            cells: columns * rows,
+            cell,
+        });
+    }
+    Ok(Rasterized { field, provenance })
+}
+
+/// Returns the three vertex indices of one face, in its own corner order.
+fn corners_of(mesh: &FacetMesh, face: u32) -> [u32; 3] {
+    mesh.faces[face as usize].indices
+}
+
+/// The face a cell with no face under it names.
+pub const NO_FACE: u32 = u32::MAX;
+
+/// Which face each cell was read from, and where in it.
+///
+/// # Invariants
+///
+/// - **One entry per cell, in lattice order**, the same order as the field's own buffers, so
+///   an index that means a cell means the same cell in all three.
+/// - **The weights are barycentric in the face's own plan triangle**, in the face's corner
+///   order, so a caller interpolating anything the face carries at that corners — a texture
+///   coordinate, a value per corner — does it with the same three numbers the height was
+///   built from. Weights for [`NO_FACE`] are zero rather than left over, so a caller that
+///   ignores the face index and reads them anyway gets a point at the first corner instead of
+///   a NaN.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Provenance {
+    /// The face each cell was read from, or [`NO_FACE`].
+    pub faces: Vec<u32>,
+    /// Each cell's barycentric coordinates in that face.
+    pub weights: Vec<[f32; 3]>,
+}
+
+/// A mesh read onto a lattice: the field, and the mesh each cell of it came from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Rasterized {
+    /// The elevations.
+    pub field: HeightField,
+    /// Which face each cell was read from.
+    pub provenance: Provenance,
 }
 
 /// Why a mesh could not be read onto a lattice.
@@ -261,8 +311,8 @@ impl BucketIndex {
         }
     }
 
-    /// Returns the elevation at a plan position, if a face covers it.
-    fn lookup(&self, mesh: &FacetMesh, plan: Vec2) -> Option<f32> {
+    /// Returns the face covering a plan position, and the point's place in its plan triangle.
+    fn lookup(&self, mesh: &FacetMesh, plan: Vec2) -> Option<(u32, [f32; 3])> {
         let bucket = self.bucket_of(plan);
         self.faces[self.starts[bucket] as usize..self.starts[bucket + 1] as usize]
             .iter()
@@ -323,16 +373,18 @@ fn bucket_span(
     ))
 }
 
-/// Returns the elevation at a plan position if this face covers it.
+/// Returns the face covering a plan position, and the position's place in its plan triangle.
 ///
 /// The three subtriangle areas are the barycentric coordinates themselves, which is why the
 /// test needs no assumption about the winding: the coordinates sum to one whichever way the
-/// face is wound, so dividing by the whole signed area yields the same three weights.
-fn cover(mesh: &FacetMesh, index: u32, plan: Vec2) -> Option<f32> {
+/// face is wound, so dividing by the whole signed area yields the same three weights. They
+/// are returned as well as consumed, because a caller that knows which face a cell came from
+/// needs to know where in that face the cell stood.
+fn cover(mesh: &FacetMesh, index: u32, plan: Vec2) -> Option<(u32, [f32; 3])> {
     let face = &mesh.faces[index as usize];
-    let corners: [Vec3; 3] =
-        std::array::from_fn(|corner| mesh.points[face.indices[corner] as usize]);
-    let flat: [Vec2; 3] = std::array::from_fn(|corner| [corners[corner][0], corners[corner][2]]);
+    let flat: [Vec2; 3] = std::array::from_fn(|corner| {
+        mountain::math::plan(mesh.points[face.indices[corner] as usize])
+    });
     let whole = signed_area(flat[0], flat[1], flat[2]);
     if whole == 0.0 {
         return None;
@@ -345,5 +397,5 @@ fn cover(mesh: &FacetMesh, index: u32, plan: Vec2) -> Option<f32> {
     if weights.iter().any(|weight| *weight < -CONTAINMENT_SLACK) {
         return None;
     }
-    Some(weights[0] * corners[0][1] + weights[1] * corners[1][1] + weights[2] * corners[2][1])
+    Some((index, weights))
 }
