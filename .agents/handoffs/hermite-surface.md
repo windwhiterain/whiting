@@ -1,8 +1,21 @@
 # Handoff: a Hermite surface in place of per-patch NURBS
 
-Status: **the representation is built and measured. `PatchMesh` is still in place beside it, so the
-gallery still draws the old model.** Branch `feature/hermite-surface`, worktree `.worktrees/hermite`.
-The four existing probes are green and unchanged.
+Status: **the three things this branch was asked for are built, measured and green.** The per-patch
+Bernstein model stays, on purpose and on evidence -- see "The massif" below for the measurement that
+decides it. Branch `feature/hermite-surface`, worktree `.worktrees/hermite`, twelve commits from
+`main` at `3c9dc55`.
+
+| asked for | where | measured |
+| --- | --- | --- |
+| the Hermite surface | `crates/patch/src/hermite.rs`, `hermite_surface.rs` | `across 0.000e+00` on every soft seam; `split 0.000e+00` everywhere |
+| friendly agentic editing | `crates/patch/src/edit.rs` | a batch of edits leaves soft seams **bit-identical**; undo exact in all three stores |
+| a gallery scene to show it | `crates/gallery/src/hermite.rs`, registered `"hermite"` | crease `1.034e0` rad against `2.980e-8` beside it |
+
+Nine probes green — three written here and six that predate the branch, unchanged. Scene census
+`13 passed`. `cargo fmt --all --check` clean, clippy clean against every file this branch added.
+
+**Not verified:** that the scene *renders*. It compiles to a document and emits the passes the census
+expects, and its geometry is measured directly, but nothing here puts a frame on screen.
 
 Agent's understanding: this file.
 Proposal: [proposals/hermite-c1-by-shared-derivative.md](../proposals/hermite-c1-by-shared-derivative.md)
