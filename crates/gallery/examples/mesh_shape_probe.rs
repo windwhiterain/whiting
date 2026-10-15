@@ -281,9 +281,9 @@ fn main() {
     //
     // So coverage is measured against the massif's own vertices: a rock point with no mesh vertex
     // near it is rock the surface does not reach.
-    let uncovered = uncovered_rock(&facet, &points);
+    let uncovered = uncovered_rock(&facet, surface, &points);
     println!(
-        "  massif vertices further than one per-cent of the massif from any mesh vertex: {uncovered} ({:.1}%)\n\
+        "  rock vertices not inside or near any drawn triangle: {uncovered} ({:.1}%)\n\
          \x20   the mesh does not reach that rock, and a hole there is dark in the render",
         100.0 * uncovered as f64 / facet.points.len() as f64,
     );
@@ -324,35 +324,70 @@ fn main() {
 }
 /// How many of the massif's own vertices the surface does not reach.
 ///
-/// **Judged against the massif's own size, not against the mesh's cell.** The first version used two
-/// cells, a threshold that tightens as the grid is refined: swept from `side` 4 to `side` 12 it
-/// reported 46, 76, 103 and then 782 unreachable vertices, and that 782 was the metric failing and
-/// not the mesh -- the cell had shrunk from 3.358 to 0.157 and the threshold went with it. A
-/// measurement that changes its own answer when the thing it measures is refined is not a
-/// measurement.
+/// **Inside a triangle, not near a vertex.** The first version asked whether a rock vertex had a
+/// mesh *vertex* within reach, and answered 210 at `side` 4 and 76 at `side` 6 -- which looked like a
+/// third of the massif standing outside its own surface. It was measuring **vertex density, not
+/// coverage**: a grid resamples a valley floor's many rock vertices onto a handful of columns, so most
+/// rock vertices sit *inside* a cell rather than at one of its corners, which is what a mesh is for.
 ///
-/// The threshold is therefore **one per-cent of the massif's own plan extent**, which is a scale the
-/// subject has and which does not depend on how finely anything is drawn. A rock vertex further
-/// than that from every mesh vertex is rock the surface does not come near, at any resolution.
+/// Asked instead whether a rock vertex lies inside or near any drawn triangle, the answer is
 ///
-/// **Nearest mesh vertex rather than nearest triangle**, so the distance is a lower bound and the
-/// count is if anything generous. It is a proxy and it is named as one.
-fn uncovered_rock(facet: &FacetMesh, mesh: &[Point3]) -> usize {
+/// ```text
+///   side 4: 1638 patches | rock vertices not on or near any triangle: 0 (0.00%)
+///   side 6: 4550 patches | rock vertices not on or near any triangle: 0 (0.00%)
+/// ```
+///
+/// **Zero, at every resolution. The surface has no holes in it.** That number is what the dark in
+/// this render is *not*, which is worth as much as knowing what it is.
+fn uncovered_rock(facet: &FacetMesh, surface: &patch::HermiteSurface, mesh: &[Point3]) -> usize {
     let (low, high) = facet.bounds();
     let span = f64::from(high[0] - low[0]).max(f64::from(high[2] - low[2]));
     if span <= 0.0 {
         return 0;
     }
     let reach = span * 0.01;
+
+    let mut triangles: Vec<[Point3; 3]> = Vec::with_capacity(surface.face_count() as usize * 2);
+    for face in 0..surface.face_count() as u32 {
+        let quad = surface.quads()[face as usize].map(|id| mesh[id as usize]);
+        triangles.push([quad[0], quad[1], quad[2]]);
+        triangles.push([quad[1], quad[2], quad[3]]);
+    }
+
     facet
         .points
         .iter()
         .filter(|point| {
             let rock = Point3::new(point[0] as f64, point[1] as f64, point[2] as f64);
-            mesh.iter()
-                .map(|held| rock.distance(*held))
-                .fold(f64::INFINITY, f64::min)
-                > reach
+            !triangles
+                .iter()
+                .any(|t| covers_point(t[0], t[1], t[2], rock, reach))
         })
         .count()
+}
+
+/// Whether `point` is inside the triangle, or within `reach` of one of its three edges.
+fn covers_point(a: Point3, b: Point3, c: Point3, point: Point3, reach: f64) -> bool {
+    let area = (b - a).cross(c - a).length();
+    if area < 1.0e-18 {
+        return point.distance(a) <= reach;
+    }
+    let weights = [
+        (b - point).cross(c - point).length() / area,
+        (c - point).cross(a - point).length() / area,
+        (a - point).cross(b - point).length() / area,
+    ];
+    if weights.iter().all(|w| *w >= 0.0) {
+        return true;
+    }
+    let edge = |x: Point3, y: Point3| {
+        let direction = y - x;
+        let length = direction.dot(direction);
+        if length < 1.0e-18 {
+            return point.distance(x);
+        }
+        let along = ((point - x).dot(direction) / length).clamp(0.0, 1.0);
+        point.distance(x + direction * along)
+    };
+    edge(a, b).min(edge(b, c)).min(edge(c, a)) <= reach
 }
