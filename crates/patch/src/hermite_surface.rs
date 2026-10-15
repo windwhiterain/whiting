@@ -105,6 +105,10 @@ pub struct HermiteSurface {
     topology: Topology,
     /// `du` and `dv` at each mesh vertex, shared by every face meeting there.
     derivatives: Vec<(Point3, Point3)>,
+    /// One step per direction, shared by every face. See [HermiteSurface::step_u].
+    steps: (f64, f64),
+    /// How unequal the mesh's cells are. See [HermiteSurface::step_spread].
+    spread: (f64, f64),
     /// The twist at each face's four corners.
     ///
     /// **One slot per face corner, not one per edge**, and that is a deliberate trade. Sharing the
@@ -167,6 +171,7 @@ impl HermiteSurface {
         // A fresh model has no twist, which is the "twist-free" bicubic patch and is what a caller
         // means by "start from my mesh". Every edge seeds as shared, so a fresh surface is smooth
         // everywhere; a caller introduces a crease by tagging an edge hard.
+        let (steps, spread) = measure_steps(&positions, &topology);
         let private_twist = vec![[Point3::ZERO; 4]; quads.len()];
         let join = topology
             .edge_faces
@@ -179,6 +184,8 @@ impl HermiteSurface {
             quads,
             topology,
             derivatives,
+            steps,
+            spread,
             private_twist,
             join,
         })
@@ -325,8 +332,8 @@ impl HermiteSurface {
     /// different ones. Both numbers are properties of this representation, not of one caller.
     pub fn patch(&self, face: FaceId) -> HermitePatch {
         HermitePatch::new(
-            self.step_along_u(face),
-            self.step_along_v(face),
+            self.step_u(),
+            self.step_v(),
             [
                 self.corner_jet(face, 0),
                 self.corner_jet(face, 1),
@@ -356,25 +363,60 @@ impl HermiteSurface {
         self.patch(face).normal(s, t)
     }
 
-    /// The parameter distance a face spans along `u`, which is the chord of its `MinV` edge.
+    /// The parameter distance a face spans along `u`, and the chord of its `MinV` edge.
     ///
-    /// **The chord is the parameter synchronization.** Two faces traversing the same edge see the
-    /// same two endpoints and therefore the same length, with nothing stored to keep in step, which
-    /// is what lets their cross-boundary derivatives come out equal. A step that belonged to the
-    /// face rather than to the edge would be two independent reparameterizations.
+    /// **Not the number that matters.** What matters is that the two faces sharing an edge get the
+    /// *same* one, and that is enforced by [`HermiteSurface::step_u`] rather than by this
+    /// calculation. Kept because a caller measuring a mesh wants to know how far apart the chords
+    /// are, which is exactly the residual the shared step is buying freedom from.
     pub fn step_along_u(&self, face: FaceId) -> f64 {
-        self.chord(crate::topology::edge_endpoints(
-            self.quads[face as usize],
-            EdgeSlot::MinV,
-        ))
+        let quads = self.quads[face as usize];
+        self.chord(crate::topology::edge_endpoints(quads, EdgeSlot::MinV))
     }
 
-    /// The parameter distance a face spans along `v`, the chord of its `MinU` edge.
+    /// The parameter distance a face spans along `v`, the chord of its `MinU` edge. See
+    /// [`HermiteSurface::step_along_u`].
     pub fn step_along_v(&self, face: FaceId) -> f64 {
-        self.chord(crate::topology::edge_endpoints(
-            self.quads[face as usize],
-            EdgeSlot::MinU,
-        ))
+        let quads = self.quads[face as usize];
+        self.chord(crate::topology::edge_endpoints(quads, EdgeSlot::MinU))
+    }
+
+    /// The step every face spans along `u`. **The parameter synchronization, in one number.**
+    ///
+    /// It is the mean chord over the mesh rather than a per-face chord, and that is the whole of the
+    /// design decision. The step enters twice and both times it has to agree:
+    ///
+    /// - a boundary curve's Hermite tangent is `dP/du * step_u`, so a per-face step makes two faces
+    ///   draw *different* curves along a shared edge — measured `2.892e-3` apart on the gallery
+    ///   sheet, against `0.000e+00` on a grid whose cells happen to be equal;
+    /// - `dS/du` is `1 / step_u` times a quantity that *is* shared, so a per-face step scales the two
+    ///   faces' normals by different amounts and leaves a seam that reads `2.526e-3` instead of
+    ///   zero.
+    ///
+    /// **Neither residual is the surface's; both are the parameterization's.** With one shared step
+    /// per direction the surface cannot tell the difference, because there is no difference to tell.
+    ///
+    /// The cost is stated rather than hidden: a mesh whose cells are strongly anisotropic gets one
+    /// uniform parameterization, so its tangents are stretched relative to arc length.
+    /// [`HermiteSurface::step_spread`] measures how much, and a caller with a structured mesh can
+    /// replace the mean with a per-grid-line step, which is the obvious refinement.
+    pub fn step_u(&self) -> f64 {
+        self.steps.0
+    }
+
+    /// The step every face spans along `v`. See [`HermiteSurface::step_u`].
+    pub fn step_v(&self) -> f64 {
+        self.steps.1
+    }
+
+    /// How unequal the mesh's cells are, as the ratio of the largest chord to the smallest in each
+    /// direction.
+    ///
+    /// This is the residual the shared step is standing in for: at `1.000e+00` the two families of
+    /// measurement agree exactly, and the ratio is what a caller needs in order to say how much of
+    /// its surface is being described by the mean rather than by the geometry.
+    pub fn step_spread(&self) -> (f64, f64) {
+        self.spread
     }
 
     /// Moves a mesh vertex.
@@ -407,6 +449,52 @@ impl HermiteSurface {
         let distance = self.positions[first as usize].distance(self.positions[second as usize]);
         if distance > 0.0 { distance } else { 1.0 }
     }
+}
+
+/// Measures the mesh's chords in each direction and returns the mean per direction and the ratio of
+/// largest to smallest.
+///
+/// The mean is what every face uses, so that a shared edge has one step rather than two. The spread
+/// is reported because it is the size of the thing being averaged: a spread of `1.0` is a mesh whose
+/// cells are equal and a spread of `2.0` is a mesh being described by a number that fits none of
+/// them, which a caller is entitled to know before it sculpts.
+fn measure_steps(positions: &[Point3], topology: &Topology) -> ((f64, f64), (f64, f64)) {
+    let mut along_u: Vec<f64> = Vec::new();
+    let mut along_v: Vec<f64> = Vec::new();
+    for (edge, faces) in &topology.edge_faces {
+        let Some((_, slot)) = faces.first() else {
+            continue;
+        };
+        let (first, second) = *edge;
+        let distance = positions[first as usize].distance(positions[second as usize]);
+        if distance <= 0.0 {
+            continue;
+        }
+        if slot.varies_along_u() {
+            along_u.push(distance);
+        } else {
+            along_v.push(distance);
+        }
+    }
+    let mean = |values: &Vec<f64>| -> f64 {
+        if values.is_empty() {
+            return 1.0;
+        }
+        values.iter().sum::<f64>() / values.len() as f64
+    };
+    let ratio = |values: &Vec<f64>| -> f64 {
+        match (
+            values.iter().cloned().fold(f64::INFINITY, f64::min),
+            values.iter().cloned().fold(0.0f64, f64::max),
+        ) {
+            (low, high) if low > 0.0 => high / low,
+            _ => 1.0,
+        }
+    };
+    (
+        (mean(&along_u), mean(&along_v)),
+        (ratio(&along_u), ratio(&along_v)),
+    )
 }
 
 /// Seeds `du` and `dv` at every vertex from the direction of each incident edge, half-weighted so a

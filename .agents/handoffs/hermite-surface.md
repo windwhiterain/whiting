@@ -179,7 +179,7 @@ failure for a worse one.
    already unconditional and need nothing underneath them.
 3. **`PatchMesh` is still beside `HermiteSurface`,** and `gallery::nurbs` still draws the old model.
    Removing `enforce.rs`, `continuity.rs`'s invariant and `PatchMesh` is the rest of the rewrite.
-4. **Measure the irregular case on the authored massif**, which `HermiteSurface::build` will either
+3. **Measure the irregular case on the authored massif**, which `HermiteSurface::build` will either
    accept or name a vertex on.
 
 

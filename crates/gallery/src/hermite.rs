@@ -60,12 +60,12 @@ const CREASE_COLUMN: usize = 6;
 /// reaches the cross-boundary derivative and reaches no boundary curve. Set it to zero and the tag
 /// is still there and the sheet is still smooth across it.
 ///
-/// The scale follows from the cell. The cross-boundary derivative is `sum of h01 * duv / step`, so a
-/// fold of order one radian needs `duv` of order `step`; with `step` near `0.5` on this grid, `4.0`
-/// is a strong fold and `0.4` would be a shallow one. Measured at `4.0`, the crease reads `1.5`
-/// radians while the soft seams either side of it read `2.9e-8` — a separation of `5.0e+07`, which
-/// is what "the crease is the sharpest thing on the sheet" means as a number.
-const CREASE_TWIST: f64 = 4.0;
+/// The scale follows from the cell. The cross-boundary derivative carries `duv / step`, so the fold
+/// grows with the twist and shrinks with the cell. Measured on this sheet: `4.0` gives `4.953e-1`
+/// rad and `9.0` gives `1.034e0`, against `2.980e-8` for the soft seams beside it — a separation of
+/// `3.5e+07`. So the crease is the sharpest thing on the sheet by seven orders of magnitude, which
+/// is the claim the scene is making and the number that makes it checkable rather than asserted.
+const CREASE_TWIST: f64 = 9.0;
 
 /// How tall the dome is, in world units.
 const DOME: f64 = 1.1;
