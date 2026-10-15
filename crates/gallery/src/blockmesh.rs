@@ -244,23 +244,43 @@ fn surface_from_faces(facet: &FacetMesh, faces: &[&Face], side: usize) -> Option
         let v = low_v + (high_v - low_v) * row as f32 / (side - 1) as f32;
         for column in 0..side {
             let u = low_u + (high_u - low_u) * column as f32 / (side - 1) as f32;
-            positions.push(sample_block(facet, faces, u, v));
+            positions.push(sample_block(facet, faces, u, v)?);
         }
     }
 
     // The winding: `(0,0) (1,0) (1,1) (0,1)` per cell, which is the order `HermiteSurface` and every
     // quad in this crate uses.
+    //
+    // **A cell whose corners are not four distinct points is left out, and only that cell.**
+    // Projection can put two grid points on the same place — a corner that fell outside the region
+    // is sent to the nearest point of it, and near a cusp or a thin arm two corners can be sent to
+    // the same one — and `HermiteSurface::build` refuses a quad with a repeated corner, which would
+    // take the **whole block** with it. Measured, keeping every quad cost 87 of the massif's 182
+    // blocks at `side` 4 and 181 of them at `side` 8, so a front end that fixed its corners and lost
+    // four fifths of the rock was not a fix. Leaving the cell out keeps the block.
     let mut quads = Vec::with_capacity((side - 1) * (side - 1));
     for row in 0..side - 1 {
         for column in 0..side - 1 {
             let near = (row * side + column) as VertexId;
-            quads.push([
+            let corners = [
                 near,
                 near + 1,
                 near + side as VertexId + 1,
                 near + side as VertexId,
-            ]);
+            ];
+            let distinct = corners.iter().all(|first| {
+                corners.iter().all(|second| {
+                    first == second
+                        || positions[*first as usize].distance(positions[*second as usize]) > 0.0
+                })
+            });
+            if distinct {
+                quads.push(corners);
+            }
         }
+    }
+    if quads.is_empty() {
+        return None;
     }
 
     HermiteSurface::build(positions, quads).ok()
@@ -285,14 +305,37 @@ fn block_surface(
 /// **Averaged, not first-found**, because a point on a triangle boundary belongs to two of them and
 /// picking one makes the sampled grid depend on triangle order.
 ///
-/// **A point no triangle covers falls back to the nearest vertex of the block.** `Face::uv`'s own
-/// documentation records that 89 of 182 blocks leave part of their `uv` box uncovered — a block's
-/// belt domain is not always a rectangle — so a grid corner at the corner of that box can be off the
-/// rock. Skipping the block for it would throw away half the massif; snapping to the nearest vertex
-/// keeps the grid well formed and moves only the corner that was already off the surface. The count
-/// of blocks that needed it is not reported here because the snapping is a deformation of the domain
-/// rather than an error, and `examples/block_surface_probe.rs` measures the result against the rock.
-fn sample_block(facet: &FacetMesh, faces: &[&Face], u: f32, v: f32) -> Point3 {
+/// **A parameter point no triangle covers is projected onto the region the block does cover**
+/// rather than snapped to a vertex. `Face::uv`'s own documentation makes `u` the fraction of the
+/// *belt's* upper boundary walked, so a block's triangles cover a ragged subset of their own
+/// bounding box and a uniform grid over that box puts corners off the rock at every resolution
+/// above the coarsest. What used to happen there was [`nearest_vertex`]: the corner was replaced by
+/// one of the block's mesh **vertices**, chosen for being near in parameter space and therefore
+/// arbitrarily far in space, which drags a whole cell with it. Measured on the massif, cells in
+/// blocks that had something snapped departed `3.6e-1` at the median against `1.2e-1` for the
+/// blocks that had nothing snapped, and the worst went from `1.6e0` to `9.7e0`.
+///
+/// The replacement moves the corner to the **nearest point of the covered region**, so the corner
+/// still lies on the rock — the distance it moves is bounded by how far outside the region the box
+/// reaches, and no vertex is invented. Every block therefore still builds and the grid still covers
+/// the block, which dropping the uncovered cells would not: a cell with one corner off the rock is
+/// missing, and the missing cells are the rock's border.
+fn sample_block(facet: &FacetMesh, faces: &[&Face], u: f32, v: f32) -> Option<Point3> {
+    if let Some(point) = covered(facet, faces, u, v) {
+        return Some(point);
+    }
+    let [u, v] = nearest_covered(faces, u, v);
+    // **`None` rather than a position invented here.** `nearest_covered` answers a point lying on a
+    // triangle of this block, so the second `covered` succeeds whenever the block has one triangle
+    // with an area in its parameter plane. A block that does not is one whose every face is
+    // degenerate, and for it there is no rock to sample: the old code answered such a block with
+    // the first vertex it walked, which is a position no triangle of the block's own parameter
+    // plane has any claim to.
+    covered(facet, faces, u, v)
+}
+
+/// The block's own surface at `(u, v)`, or `None` when no triangle of the block covers it.
+fn covered(facet: &FacetMesh, faces: &[&Face], u: f32, v: f32) -> Option<Point3> {
     let mut sum = [0.0f64; 3];
     let mut count = 0.0f64;
     for face in faces {
@@ -307,27 +350,94 @@ fn sample_block(facet: &FacetMesh, faces: &[&Face], u: f32, v: f32) -> Point3 {
         }
         count += 1.0;
     }
-    if count > 0.0 {
-        return Point3::new(sum[0] / count, sum[1] / count, sum[2] / count);
+    if count == 0.0 {
+        return None;
     }
-    nearest_vertex(facet, faces, u, v)
+    Some(Point3::new(sum[0] / count, sum[1] / count, sum[2] / count))
 }
 
-/// The vertex of the block's own triangles whose parameter position is nearest `(u, v)`.
-fn nearest_vertex(facet: &FacetMesh, faces: &[&Face], u: f32, v: f32) -> Point3 {
-    let mut best = Point3::ZERO;
-    let mut best_distance = f32::INFINITY;
+/// The point of the block's covered region nearest to `(u, v)`, in the parameter plane.
+///
+/// **A search over triangles, not over vertices**, because the region is what the grid has to land
+/// on and its boundary is made of triangle edges. The point found is then moved a little way **into**
+/// the triangle it belongs to, because the nearest point on a triangle is usually *on* one of its
+/// edges and a point placed on an edge by arithmetic in `f32` lands just outside it — far enough to
+/// fail [`barycentric`]'s `-1e-9` tolerance, which reads as "no triangle covers this" and takes the
+/// block with it. Inside by a thousandth of the way to the centroid is past any rounding and still on
+/// the rock.
+fn nearest_covered(faces: &[&Face], u: f32, v: f32) -> [f32; 2] {
+    const INSIDE: f32 = 1.0e-3;
+    let mut best = [u, v];
+    let mut inside = [u, v];
+    let mut best_distance = f64::INFINITY;
     for face in faces {
-        for (index, corner) in face.uv.iter().enumerate() {
-            let distance = (corner[0] - u) * (corner[0] - u) + (corner[1] - v) * (corner[1] - v);
-            if distance < best_distance {
-                best_distance = distance;
-                let point = facet.points[face.indices[index] as usize];
-                best = Point3::new(point[0] as f64, point[1] as f64, point[2] as f64);
-            }
+        let Some(point) = closest_on_triangle(face.uv, [u, v]) else {
+            continue;
+        };
+        let distance = f64::from(point[0] - u) * f64::from(point[0] - u)
+            + f64::from(point[1] - v) * f64::from(point[1] - v);
+        if distance < best_distance {
+            best_distance = distance;
+            best = point;
+            inside = [
+                (face.uv[0][0] + face.uv[1][0] + face.uv[2][0]) / 3.0,
+                (face.uv[0][1] + face.uv[1][1] + face.uv[2][1]) / 3.0,
+            ];
         }
     }
-    best
+    [
+        best[0] + (inside[0] - best[0]) * INSIDE,
+        best[1] + (inside[1] - best[1]) * INSIDE,
+    ]
+}
+
+/// The point of a triangle nearest to `point`, or `None` for a degenerate one.
+///
+/// The standard region test: inside, else the nearest of the three edges, else the nearest vertex —
+/// which is what a triangle's own boundary is made of, so a caller that gets a point back always
+/// gets one the triangle covers.
+fn closest_on_triangle(corners: [[f32; 2]; 3], point: [f32; 2]) -> Option<[f32; 2]> {
+    let [a, b, c] = corners;
+    let area = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+    if area.abs() < f32::EPSILON {
+        return None;
+    }
+    let first =
+        ((b[0] - point[0]) * (c[1] - point[1]) - (c[0] - point[0]) * (b[1] - point[1])) / area;
+    let second =
+        ((c[0] - point[0]) * (a[1] - point[1]) - (a[0] - point[0]) * (c[1] - point[1])) / area;
+    let (first, second) = (first as f64, second as f64);
+    let third = 1.0 - first - second;
+    const EPSILON: f64 = -1.0e-9;
+    if first >= EPSILON && second >= EPSILON && third >= EPSILON {
+        return Some(point);
+    }
+    let mut best = a;
+    let mut best_distance = f64::INFINITY;
+    for (from, to) in [(a, b), (b, c), (c, a)] {
+        let Some(on) = closest_on_segment(from, to, point) else {
+            continue;
+        };
+        let distance = f64::from(on[0] - point[0]) * f64::from(on[0] - point[0])
+            + f64::from(on[1] - point[1]) * f64::from(on[1] - point[1]);
+        if distance < best_distance {
+            best_distance = distance;
+            best = on;
+        }
+    }
+    Some(best)
+}
+
+/// The point of the segment `from`–`to` nearest to `point`, or `None` when the segment is a point.
+fn closest_on_segment(from: [f32; 2], to: [f32; 2], point: [f32; 2]) -> Option<[f32; 2]> {
+    let along = [to[0] - from[0], to[1] - from[1]];
+    let length = along[0] * along[0] + along[1] * along[1];
+    if length <= f32::EPSILON {
+        return Some(from);
+    }
+    let share = ((point[0] - from[0]) * along[0] + (point[1] - from[1]) * along[1]) / length;
+    let share = share.clamp(0.0, 1.0);
+    Some([from[0] + share * along[0], from[1] + share * along[1]])
 }
 
 /// The barycentric weights of `point` over a triangle given in a parameter plane.

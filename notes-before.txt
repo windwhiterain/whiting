@@ -1,0 +1,14 @@
+
+2380 triangles in 182 blocks; the mesh's own f32 floor is 1.526e-5
+182 blocks built at 4x4, 1638 patches in total
+  every block's interior seams   split 0.000e0   normal 3.332e-8 rad
+  departure per block: median 1.727e-1  worst 6.562e0  floor 1.526e-5  off-rock points 1
+
+  side   patches   worst departure from the rock   departures
+     2       182                       1.527e-6   0
+     3       728                       1.710e-1   0
+     4      1638                       1.727e-1   1
+     6      4550                        4.933e0   31
+     8      8918                        4.099e0   64
+
+FAILED  3  the surface stays within a hundred mesh-precisions of the rock
