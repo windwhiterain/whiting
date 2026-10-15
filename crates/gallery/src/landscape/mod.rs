@@ -957,35 +957,110 @@ const CIRRUS_COVER: f64 = 0.55;
 /// cirrus. Those are sampled in **world space**, so a bank of cloud stays put on the landscape
 /// when the eye moves; sampled in screen space it would slide across the picture, which reads as a
 /// smear on the lens rather than as weather.
+///
+/// The field is **gradient noise faded with the quintic**, and that is not a preference between
+/// two noises that look alike. Value noise interpolates corner *values* bilinearly: it is
+/// continuous across a cell boundary and nothing else is, so its slope jumps there, and the cirrus
+/// window — which thresholds the field — turns that jump into a hard edge along the lattice. The
+/// sky's own projection then stretches those lattice cells until each one spans a hundred pixels,
+/// and the picture is a grid of axis-aligned plates. Gradient noise is twice differentiable across
+/// the boundary, so the same window draws a cloud edge instead of a seam.
 const NOISE: &str = r#"
-/// Returns a value in zero to one from a two dimensional coordinate.
-fn hash(point: vec2<f32>) -> f32 {
-    return fract(sin(dot(point, vec2<f32>(127.1, 311.7))) * 43758.5453);
+/// Returns a scrambled integer.
+///
+/// # Invariants
+///
+/// **It is integer arithmetic, not `fract(sin(x) * k)`.** A sine hash needs its argument small
+/// enough that an `f32` still carries its fractional part. A cloud deck carries coordinates of
+/// tens, and a cell coordinate is that deck multiplied by a frequency and a per-octave turn, so the
+/// dot products reach tens of thousands; past about `1e4` the argument's leading bits are all an
+/// `f32` keeps and the hash becomes a function of them, which is a set of plates rather than a
+/// hash. Multiplying an integer is exact at every magnitude the sky reaches.
+fn scramble(value: u32) -> u32 {
+    var word = value * 747796405u + 2891336453u;
+    word = ((word >> ((word >> 28u) + 4u)) ^ word) * 277803737u;
+    return (word >> 22u) ^ word;
 }
 
-/// Returns smooth value noise in zero to one.
-fn value_noise(point: vec2<f32>) -> f32 {
-    let cell = floor(point);
-    let within = fract(point);
-    let blend = within * within * (3.0 - 2.0 * within);
-    let corner = hash(cell);
-    let east = hash(cell + vec2<f32>(1.0, 0.0));
-    let north = hash(cell + vec2<f32>(0.0, 1.0));
-    let far = hash(cell + vec2<f32>(1.0, 1.0));
-    return mix(mix(corner, east, blend.x), mix(north, far, blend.x), blend.y);
+/// Returns the seed of the lattice cell a coordinate falls in.
+///
+/// # Invariants
+///
+/// **Both coordinates are folded into one word before it is scrambled.** A cell is named by its two
+/// halves together, and scrambling the halves separately lets one cancel the other, which is a
+/// whole family of cells sharing a seed and therefore a family of corners steering the same way.
+fn cell_seed(cell: vec2<i32>) -> u32 {
+    return scramble(bitcast<u32>(cell.x) * 1597334677u ^ bitcast<u32>(cell.y) * 2654435761u);
 }
+
+/// Returns the direction one lattice corner steers its cell's noise towards.
+///
+/// # Invariants
+///
+/// **Every corner steers somewhere.** The draw is from the whole circle rather than from a small
+/// fixed set of axes, because a set with a preference for the axes puts that preference into the
+/// field, and an axis-aligned preference is the one thing this sky must not have. The nudge keeps
+/// the single seed whose bits are all zero from returning the zero vector, which would leave a flat
+/// plate exactly where the corner stood.
+fn corner_gradient(seed: u32) -> vec2<f32> {
+    let draw = vec2<f32>(f32(seed & 65535u), f32((seed >> 16u) & 65535u)) * (2.0 / 65535.0) - 1.0;
+    return normalize(draw + vec2<f32>(1.0e-4, 1.0e-4));
+}
+
+/// Returns gradient noise, in roughly minus one to one.
+///
+/// # Invariants
+///
+/// **The fade is the quintic.** `6t^5 - 15t^4 + 10t^3` arrives at a cell boundary with its first
+/// *and* its second derivative at zero, so nothing about the seam between two cells is left to
+/// see. The cubic the value noise used leaves the slope itself jumping there instead.
+fn gradient_noise(point: vec2<f32>) -> f32 {
+    let cell = vec2<i32>(floor(point));
+    let within = point - floor(point);
+    let fade = within * within * within * (within * (within * 6.0 - 15.0) + 10.0);
+    let east = vec2<f32>(1.0, 0.0);
+    let north = vec2<f32>(0.0, 1.0);
+    let low_west = dot(corner_gradient(cell_seed(cell)), within);
+    let low_east = dot(corner_gradient(cell_seed(cell + vec2<i32>(1, 0))), within - east);
+    let high_west = dot(corner_gradient(cell_seed(cell + vec2<i32>(0, 1))), within - north);
+    let high_east = dot(corner_gradient(cell_seed(cell + vec2<i32>(1, 1))), within - east - north);
+    return mix(
+        mix(low_west, low_east, fade.x),
+        mix(high_west, high_east, fade.x),
+        fade.y
+    ) * 1.4142;
+}
+
+/// The turn each octave takes before the next one raises its frequency.
+///
+/// # Invariants
+///
+/// **It is a turn and not a scale.** Octaves at whole-number frequencies share their cell
+/// boundaries: an octave at 1 and the next at 2.1 put every seam of the finer one very near a seam
+/// of the coarser one, and two near-coincident lattices reinforce each other into the grid the
+/// gradient noise was taken to remove.
+const OCTAVE_TURN: mat2x2<f32> = mat2x2<f32>(0.766, -0.643, 0.643, 0.766);
 
 /// Returns noise summed over `octaves`, in roughly zero to one.
+///
+/// # Invariants
+///
+/// **The sum is centred and scaled here**, because the grade thresholds this field and the
+/// thresholds are numbers the picture is read against: an octave sum that is only accidentally in
+/// zero to one leaves every window written over it meaning whatever the octaves happened to do.
+/// The turn between octaves is part of the sum for the same reason — it is what keeps the finer
+/// octaves off the coarser ones' lattice, and a field with a visible lattice is what this whole
+/// body exists to stop drawing.
 fn noise(point: vec2<f32>, octaves: i32) -> f32 {
     var total = 0.0;
     var amplitude = 0.5;
-    var frequency = 1.0;
+    var sample = point;
     for (var octave = 0; octave < octaves; octave = octave + 1) {
-        total = total + amplitude * value_noise(point * frequency);
-        frequency = frequency * 2.1;
+        total = total + amplitude * gradient_noise(sample);
+        sample = OCTAVE_TURN * sample * 2.1;
         amplitude = amplitude * 0.5;
     }
-    return total * 1.14;
+    return total * 1.14 + 0.5;
 }
 "#;
 
