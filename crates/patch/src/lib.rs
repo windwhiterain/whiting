@@ -1,16 +1,24 @@
 //! Freeform patches over a mesh: one editable patch per face, one continuity tag per edge.
 //!
-//! The design this implements is
-//! [`.agents/SPEC.align/hierarchical-nurbs-multipatch.md`](../../../.agents/SPEC.align/hierarchical-nurbs-multipatch.md).
-//! In brief: a mesh face carries a tensor-product patch, a shared edge is either a hard crease
-//! (the two sides move independently) or soft (the tangent plane is continuous across it), and
-//! refinement is a layered linear sum in which an empty layer contributes nothing.
+//! Two representations live here, and they are not variants of one another.
 //!
-//! Nothing here fits or approximates a mesh. A freshly built model reproduces its mesh exactly.
+//! - [`PatchMesh`] is the **per-patch Bernstein** model. Each face carries its own rectangular
+//!   control net and a shared edge is repaired by an enforcement pass that mirrors one side's
+//!   adjacent row into the other. It is what [`gallery::nurbs`](../../../crates/gallery/src/nurbs.rs)
+//!   draws today.
+//! - [`HermiteSurface`] is the **Hermite** model. The corner jets are shared rather than
+//!   reconciled, so continuity is structural and there is no pass to run. It is what
+//!   `.agents/handoffs/hermite-surface.md` measures.
+//!
+//! They are kept side by side while [`HermiteSurface`] is being measured against real input; the
+//! Hermite model replaces [`PatchMesh`] rather than sitting beside it, and the removal of
+//! [`enforce`] is part of that.
 
 pub mod bernstein;
 pub mod continuity;
 pub mod enforce;
+pub mod hermite;
+pub mod hermite_surface;
 pub mod level;
 pub mod patch_mesh;
 pub mod point;
@@ -22,6 +30,8 @@ pub mod topology;
 
 pub use continuity::{Continuity, SoftEdge, slave_interior};
 pub use enforce::Rules;
+pub use hermite::{HermitePatch, Jet};
+pub use hermite_surface::{HermiteSurface, Join, SurfaceError};
 pub use level::{Face, Level};
 pub use patch_mesh::{Edit, PatchMesh};
 pub use point::Point3;

@@ -36,6 +36,18 @@ pub enum EdgeSlot {
 
 impl EdgeSlot {
     pub const ALL: [Self; 4] = [Self::MinU, Self::MaxU, Self::MinV, Self::MaxV];
+
+    /// Whether `u` varies along this edge. `MinU` and `MaxU` are the edges that **fix** `u`, so
+    /// they are the `v`-direction edges and the other two are the `u`-direction ones.
+    ///
+    /// This is the one place that decides which parameter an edge's tangent belongs to, and it is
+    /// what makes `du` and `dv` mean the same thing at a shared vertex: on a consistently wound
+    /// mesh the two faces on an edge agree on its slot, so they agree on the axis, and a per-vertex
+    /// tangent field can serve both. `crate::hermite_surface` checks that agreement and refuses a
+    /// mesh that fails it rather than producing a surface that disagrees with itself.
+    pub fn is_u_edge(self) -> bool {
+        matches!(self, Self::MinV | Self::MaxV)
+    }
 }
 
 /// The mesh vertices at local positions `0` and `degree` of this face's edge, in that order.
