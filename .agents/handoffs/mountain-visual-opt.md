@@ -80,3 +80,72 @@ artifacts lived:
 ## Merge state
 
 Checkpoint 1 merged to `main` at `8174f1c`. Merge again when the two in-flight fixes commit.
+
+## Sky lattice blocks
+
+Commit `d49d3f9` "Draw the sky's weather from gradient noise, so its lattice stops showing", on
+`feature/mountain-visual-opt`. File: `crates/gallery/src/landscape/mod.rs`, the `NOISE` const only.
+
+**Guilty term: the cirrus mix, and only it.** Two A/B renders, both from the same build:
+
+- `out/ab-nocirrus.png` — the cirrus `mix` weight set to zero, everything else as written. Every
+  rectangle in the upper half of the frame is gone; the sky is the painted ranges and nothing else.
+- `out/ab-cirrus-only.png` — the `ridges(...)` call and the shaft add zeroed, the cirrus left as
+  written. Every rectangle is back. (The black sky in that frame is the zeroed `ridges` call and
+  nothing else; it is a diagnostic, not a defect.)
+
+So `crate::ridges::RIDGES` and the crepuscular shafts are not implicated. That is also what their
+maths says: `ridge_noise` is a function of the ray's azimuth alone and the shafts are a function
+of the sweep angle alone, so neither can draw an axis-aligned box whatever it is multiplied by.
+
+**Cause.** The cirrus is `smoothstep(0.56, 0.82, ...)` over `noise(...)`, so the window's *input*
+is drawn on the noise's lattice and the window turns every kink in that field into an edge. The
+field was value noise — corner **values** interpolated bilinearly, faded with the cubic
+`3t²-2t³`. It is continuous across a cell boundary and its slope is not, so each cell's iso-line
+has a corner on the boundary; thresholded, that corner is a hard edge running along the lattice.
+The deck projection `ray.xz / max(abs(ray.y), 0.16)` then stretches one cell until it spans a
+hundred pixels, which is why the plates are large and the artifact worst in the upper half, where
+the deck coordinate is smallest and the cells are biggest. A second, weaker cause sits under it:
+`hash` was `fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453)`, and a cell coordinate is the
+deck coordinate times an octave frequency and (now) a turn, so the dot products reach tens of
+thousands — past about `1e4` an `f32` keeps only the leading bits of the sine's argument and the
+hash returns flat plates of its own.
+
+**Fix.** Gradient noise under a **quintic** fade, `6t^5 - 15t^4 + 10t^3`, which arrives at a cell
+boundary with its first *and* second derivative at zero, so the same window draws a cloud edge
+rather than a seam. Corner seeds come from an integer scramble (`scramble`, a Wang/murmur style
+finalizer) instead of a sine hash, which is exact at every magnitude the sky reaches. Each octave
+**turns** the domain about 40 degrees (`OCTAVE_TURN`) so the finer octaves do not put their seams
+on the coarser ones'. `noise` now returns `total * 1.14 + 0.5`: gradient noise sums around zero
+where value noise summed around one half, so the centring is explicit rather than left to the
+range of the octaves. Cost is one integer scramble, one `normalize` and four dot products per
+octave — about the same as the four `sin`-based corner hashes it replaces, and cheaper on the sky's
+coordinates.
+
+**Scope.** `NOISE` is a private const in `landscape/mod.rs` and is spliced into this scene's
+shaders only. `terraces.rs`, `stilllife.rs` and `foldyard.rs` each carry their own `NOISE_WGSL`
+and `ridges.rs` carries `ridge_noise`; none of them read this one, so no other scene's authored
+composition can have moved. `hash` and `value_noise` were removed rather than kept beside
+`gradient_noise`: they had no reader outside the `noise` they fed. `crates/terrain`, `crates/patch`,
+`blockmesh.rs` and `hermite_massif.rs` were not touched.
+
+**Verified.** `out/sky1.png` (before) against `out/sky-fixed.png` (after), 1024x1024, same build:
+
+- Ground, `y >= 700`: **2 of 331776 pixels differ, by 1 of 255 in one channel** — last-bit
+  rounding in the shared post pass, not a change in the picture. Massif and plain are unchanged.
+- Sky, `y < 700`: 275597 pixels differ, max channel delta 60 — the cirrus, as intended.
+- Hard edges, measured as the largest single-pixel luminance step in the band above the painted
+  ranges, `y = 0..400`: horizontal `|dx|` max **21.5 → 1.9** of 255, and the count of steps over
+  4/255 goes **624 → 0**. There is no horizontal hard edge left anywhere in that band. Vertical
+  `|dy|` max drops 22.3 → 6.1, and the surviving steps are the wisps' own edges, which the 2x and
+  3x crops show spread over ten to twenty pixels.
+- A 2x crop of the same 300x200 patch (`out/crop-before.png`, `out/crop-after.png`) is the
+  clearest read: flat plates with hard boundaries before, a continuous wisp after.
+- `cargo build -p whiting-gallery` prints no warning from the file. `rustfmt --edition 2024
+  --check` is clean and the file keeps CRLF throughout (1152 CRLF, 0 bare LF).
+
+**Cost.** Nothing re-rendered against another scene, because nothing outside this one moved. The
+sine hash in `ridges.rs`, `terraces.rs`, `stilllife.rs` and `foldyard.rs` has the same weakness at
+large coordinates; none of those is drawn at a coordinate anywhere near `1e4`, and changing them
+would move an authored composition, so they are left as they are.
+
