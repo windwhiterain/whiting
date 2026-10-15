@@ -634,3 +634,34 @@ reverted render's hash matches the pre-experiment one exactly.
 What it says is true and worth keeping: **a belt's `u` is not a coordinate that survives down the
 flank**, so the valley row and the rows above it cannot be placed by the same numbers. That is a
 real open question, not a typo.
+## The artifacts are folds, and dropping them costs more than it saves
+
+The backdrop behind the massif settled what the dark patches are: **every one of them stayed
+dark**, so none is a hole, and the mesh is complete. They are surface — parts of a flank that
+curl back on themselves and face away from the sun, which is what a normal a whole `pi` out
+looks like, and 2554 of the massif's 29484 drawn triangles are shaded that way.
+
+The cause is the front end's fallback: a grid point no triangle covers is projected onto the
+nearest point of the region that is covered, and a cell built from an invented corner folds.
+
+**Measured, then reverted.** Carrying a mask of which corners were found rather than projected,
+and dropping every cell with one:
+
+- **It works.** The render changed exactly as the backdrop predicted — every dark patch became
+  a hole showing the backdrop. The folds are gone.
+- **It costs 17.6% of the surface**, 1350 of 1638 cells at `side` 4 and 8918 to 7617 at
+  `side` 8. A uniform grid over a bounding box that is mostly not rock can only be built from
+  invented corners, so the drop is the honest fallback and not the answer.
+- **It invalidates every positional index in the probes**, because a cell's place in the grid
+  is its face id only while no cell has been dropped. `block_surface_probe` read side 4 as
+  `8.056e+00` where the true figure is `1.799e-03`, because it was reading the wrong patch. Third
+  time in this branch a probe has indexed by position and been wrong about a model whose faces
+  do not all exist.
+
+**The real fix is a grid whose columns and rows are the covered region's own** — placed on rock
+by rank rather than over a bounding box by value. It needs no projected corner and loses no
+cell, and it is a change to how `grid_points` chooses its parameters rather than to which cells
+it keeps. Not built yet.
+
+Reverted to the state that renders and measures correctly. Verified after the revert: 1638
+patches, departure `1.799e-03`, every probe green.
