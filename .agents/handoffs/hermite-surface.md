@@ -69,15 +69,65 @@ aimed at. Tag an edge hard and the carrying stops on it, which is how a crease a
   `HermiteSurface::build` **refuses** a mesh where two faces disagree on an edge's kind rather than
   producing a surface that disagrees with itself.
 
+## The gallery scene, and the probe that is red
+
+`crates/gallery/src/hermite.rs`, registered as `"hermite"`. A 13 by 9 sheet built from a
+`HermiteSurface`, **one column of edges tagged `Join::Hard`, and the two sides twisted apart.** That
+pair of writes is the entire crease: the positions carry a dome and no fold at all, so the fold is
+attributable to the tag and not to the geometry. Normals are read per face, because a hard edge means
+two faces genuinely disagree and one shared normal would round the fold into a ridge.
+
+`crates/gallery/examples/hermite_probe.rs` measures the surface rather than the document. **It is
+red, on purpose, and the commit message says so.**
+
+| | split | normal |
+| --- | --- | --- |
+| soft seams | `2.892e-3` | `2.526e-3` rad |
+| crease | `1.853e-3` | `5.722e-1` rad |
+| control — retagged soft **and re-twisted** | `1.853e-3` | `4.469e-4` rad |
+
+The crease is `2.3e+05` times sharper than the seams beside it, so **the scene shows what it is
+for**. What is unexplained is that the seams are not at the `acos` floor here, as they are in the
+crate's own probe, and `2.9e-3` of **split** — a distance between two points both faces read from
+the same vertices and the same `du`, `dv` — has no cause yet. It is an order below what the old model
+shipped (`4.771e-2`) and it is not zero. **Not to be weakened to pass.** This is the first thing the
+next round should chase.
+
+The control had to be **rebuilt**, not merely untagged: the tag governs whether a write is *carried*,
+not whether values already stored happen to match, so untagging alone left the fold in place and the
+control reported a null result.
+
+## The slot bug the scene found
+
+`EdgeSlot::MinU` is the edge that **fixes** `u`, which means **`v` runs along it**. So `MinU`/`MaxU`
+are the `v`-direction edges and `MinV`/`MaxV` the `u`-direction ones — and this was written the other
+way round.
+
+It does not crash. It rotates the seeded tangent field a quarter turn and makes a seam comparison ask
+for `S_u` where it wanted `S_v`. Every interior edge of a 13 by 9 sheet read a split of `8.1e-1`,
+one cell away, which is the signature. `EdgeSlot` now answers the two questions separately:
+
+- `varies_along_u` — which derivative the edge carries as its tangent.
+- `separates_u` — which way the two faces are stacked, and so which pair of ends a caller compares.
+
+Neither can be inferred from the other without the winding. **This is the trap
+`crates/gallery/src/nurbs.rs`'s own module documentation already records** — "`EdgeSlot` names the
+parameter an edge *fixes*, so `MinU` varies `v`; reading it the other way round asks each face for a
+normal off its perpendicular edge and returns a plausible fold that is not there" — and it was walked
+into anyway. Read it before touching either method.
+
 ## Next
 
-1. **`PatchMesh` is still beside `HermiteSurface`,** and `gallery::nurbs` still draws the old model.
-   The removal of `enforce.rs`, `continuity.rs`'s invariant and `PatchMesh` is the rest of the work.
-2. **A gallery scene on the Hermite surface,** with a crease, to show the tag doing something.
-3. **The agentic editing layer** on top of `set_position` / `set_derivative` / `set_twist`, which are
-   already unconditional.
+1. **The `2.9e-3` split on the gallery scene's seams.** Above everything else: the representation is
+   measured exact in `whiting-patch` and unexplained here, and the difference between those two facts
+   is a real bug somewhere.
+2. **The agentic editing layer** over `set_position` / `set_derivative` / `set_twist`, which are
+   already unconditional and need nothing underneath them.
+3. **`PatchMesh` is still beside `HermiteSurface`,** and `gallery::nurbs` still draws the old model.
+   Removing `enforce.rs`, `continuity.rs`'s invariant and `PatchMesh` is the rest of the rewrite.
 4. **Measure the irregular case on the authored massif**, which `HermiteSurface::build` will either
    accept or name a vertex on.
+
 
 
 ## What was asked
