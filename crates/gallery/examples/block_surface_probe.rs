@@ -131,11 +131,16 @@ fn main() {
     }
 
     // 3. How far the surface runs off the rock, against the same sampler that built it.
-    let (mut departures, outside) = worst_deviation(&massif, &blocks, side);
-    let departure_median = median(&mut departures);
-    let departure_worst = departures.iter().copied().fold(0.0f64, f64::max);
+    let (departures, outside) = worst_deviation(&massif, &blocks, side);
+    let departure_median = median(&mut departures.iter().map(|entry| entry.0).collect::<Vec<f64>>());
+    let departure_worst = departures.iter().map(|entry| entry.0).fold(0.0f64, f64::max);
+    let reference_median =
+        median(&mut departures.iter().map(|entry| entry.1).collect::<Vec<f64>>());
     println!(
         "  departure per block: median {departure_median:.3e}  worst {departure_worst:.3e}  floor {floor:.3e}  off-rock points {outside}"
+    );
+    println!(
+        "  the same four corners, bilinear reference: median {reference_median:.3e}  (the floor of what any C1 fit can reach)"
     );
     if departure_median == 0.0 {
         failures.push("3  the measurement of the departure can fail");
@@ -145,18 +150,87 @@ fn main() {
     }
 
     // 4. The sweep, because a single resolution is a preference and a curve is a trade.
-    println!("\n  side   patches   worst departure from the rock   departures");
+    println!(
+        "\n  side   patches   departure   bilinear ref   snapped corners   snapped blocks"
+    );
     let mut curve: BTreeMap<usize, f64> = BTreeMap::new();
     for candidate in [2usize, 3, 4, 6, 8] {
         let blocks = blockmesh::from_facet(&massif, candidate);
-        let (mut values, outside) = worst_deviation(&massif, &blocks, candidate);
-        let middle = median(&mut values);
+        let (values, outside) = worst_deviation(&massif, &blocks, candidate);
+        let middle = median(&mut values.iter().map(|entry| entry.0).collect::<Vec<f64>>());
+        let reference = median(&mut values.iter().map(|entry| entry.1).collect::<Vec<f64>>());
+        let mut corners = 0usize;
+        let mut snapped = 0usize;
+        for block in blocks.blocks() {
+            let Some(source) = massif.blocks.get(block.source as usize) else {
+                continue;
+            };
+            let faces: Vec<&mountain::Face> = massif.faces
+                [source.faces.start as usize..source.faces.end as usize]
+                .iter()
+                .collect();
+            let uncovered = uncovered_corners(&massif, &faces, candidate);
+            corners += uncovered;
+            if uncovered > 0 {
+                snapped += 1;
+            }
+        }
         curve.insert(candidate, middle);
         println!(
-            "  {:>4}   {:>7}   {:>28.3e}   {outside}",
+            "  {:>4}   {:>7}   {:>10.3e}   {:>13.3e}   {:>15}   {:>14}",
             candidate,
             blocks.patch_count(),
-            middle
+            middle,
+            reference,
+            corners,
+            snapped
+        );
+        let _ = outside;
+    }
+
+    // 5. **Which blocks the departure belongs to.** Two candidate causes, and each gets a split.
+    //
+    //    *The fallback.* The front end samples a grid over the block's `uv` bounding box, and
+    //    `Face::uv` records that a block need not cover that box. A corner no triangle reaches is
+    //    the point `sample_block` hands to `nearest_vertex`, so `intact` below is the median over
+    //    blocks where nothing was moved — if the damage lives there, this column stays at the floor.
+    //
+    //    *The rock's own shape.* `bilinear` is the same four corners through the best C1 patch
+    //    possible, so where it is also large the front end cannot fix the block by any means: the
+    //    rock's flank between the grid corners is not bilinear.
+    println!(
+        "\n  side   intact blocks   median | intact   median bilinear | intact   median | all   median spread"
+    );
+    for candidate in [2usize, 3, 4, 6, 8] {
+        let blocks = blockmesh::from_facet(&massif, candidate);
+        let (values, _) = worst_deviation(&massif, &blocks, candidate);
+        let mut intact: Vec<f64> = Vec::new();
+        let mut intact_bilinear: Vec<f64> = Vec::new();
+        let mut spreads: Vec<f64> = Vec::new();
+        for (block, (departure, reference)) in blocks.blocks().iter().zip(values.iter()) {
+            let Some(source) = massif.blocks.get(block.source as usize) else {
+                continue;
+            };
+            let faces: Vec<&mountain::Face> = massif.faces
+                [source.faces.start as usize..source.faces.end as usize]
+                .iter()
+                .collect();
+            if uncovered_corners(&massif, &faces, candidate) == 0 {
+                intact.push(*departure);
+                intact_bilinear.push(*reference);
+            }
+            spreads.push(block.surface.step_spread().0.max(block.surface.step_spread().1));
+        }
+        let all = median(&mut values.iter().map(|entry| entry.0).collect::<Vec<f64>>());
+        let spread_middle = median(&mut spreads);
+        println!(
+            "  {:>4}   {:>13}   {:>16.3e}   {:>24.3e}   {:>14.3e}   {:>14.3e}",
+            candidate,
+            intact.len(),
+            median(&mut intact),
+            median(&mut intact_bilinear),
+            all,
+            spread_middle
         );
     }
 
@@ -171,6 +245,10 @@ fn main() {
     }
 }
 
+/// One reading per block: how far the built Hermite patch runs off the rock, and how far the
+/// **bilinear reference** through the same four corners does.
+type Reading = (f64, f64);
+
 /// The worst distance between the rock and the surface built through it, and how many blocks could
 /// not be sampled at all.
 ///
@@ -178,8 +256,8 @@ fn main() {
 /// real fit error and not a tautology**: the sampler is re-implemented here rather than called,
 /// because a probe that measures a front end by asking the front end where the rock is measures it
 /// to agree with itself.
-fn worst_deviation(massif: &FacetMesh, blocks: &BlockSurfaces, side: usize) -> (Vec<f64>, usize) {
-    let mut per_block: Vec<f64> = Vec::with_capacity(blocks.len());
+fn worst_deviation(massif: &FacetMesh, blocks: &BlockSurfaces, side: usize) -> (Vec<Reading>, usize) {
+    let mut per_block: Vec<Reading> = Vec::with_capacity(blocks.len());
     let mut outside = 0usize;
     for (index, block) in blocks.blocks().iter().enumerate() {
         let _ = index;
@@ -196,16 +274,8 @@ fn worst_deviation(massif: &FacetMesh, blocks: &BlockSurfaces, side: usize) -> (
             continue;
         }
         let mut worst = 0.0f64;
-        let mut low = [f32::INFINITY; 2];
-        let mut high = [f32::NEG_INFINITY; 2];
-        for face in &faces {
-            for corner in face.uv {
-                low[0] = low[0].min(corner[0]);
-                high[0] = high[0].max(corner[0]);
-                low[1] = low[1].min(corner[1]);
-                high[1] = high[1].max(corner[1]);
-            }
-        }
+        let mut best = 0.0f64;
+        let (low, high) = uv_box(&faces);
         // **The cell centres, not the grid corners.** A Hermite patch interpolates its own corners,
         // so sampling there measures the definition of the representation rather than the front
         // end's quality: it read `0.000e+00` at every resolution, and the probe's own assertion
@@ -236,9 +306,10 @@ fn worst_deviation(massif: &FacetMesh, blocks: &BlockSurfaces, side: usize) -> (
                 // what produced `1.0e+01` above `side` 2 and `0.000e+00` at it.
                 let cell = (row_index * last + column) as u32;
                 worst = worst.max(rock.distance(block.surface.patch(cell).evaluate(0.5, 0.5)));
+                best = best.max(rock.distance(bilinear_centre(&block.surface, cell)));
             }
         }
-        per_block.push(worst);
+        per_block.push((worst, best));
     }
     (per_block, outside)
 }
@@ -258,8 +329,71 @@ fn median(values: &mut [f64]) -> f64 {
     }
 }
 
-/// `blockmesh`'s sampler, reached through the surface's own corners' domain. Duplicated here on
-/// purpose: the probe must not call the code it is measuring.
+/// The `uv` bounding box of a block's triangles, which is the box the front end lays its grid over.
+fn uv_box(faces: &[&mountain::Face]) -> ([f32; 2], [f32; 2]) {
+    let mut low = [f32::INFINITY; 2];
+    let mut high = [f32::NEG_INFINITY; 2];
+    for face in faces {
+        for corner in face.uv {
+            low[0] = low[0].min(corner[0]);
+            high[0] = high[0].max(corner[0]);
+            low[1] = low[1].min(corner[1]);
+            high[1] = high[1].max(corner[1]);
+        }
+    }
+    (low, high)
+}
+
+/// How many of the grid's corners no triangle of this block covers.
+///
+/// **The count of points the front end hands to its fallback**, re-derived from the same grid
+/// `surface_from_faces` lays: `row` walks `v`, `column` walks `u`, and the box is the faces' own
+/// `uv` bounds. A corner covered by nothing is a corner `sample_block` moved onto a mesh vertex.
+fn uncovered_corners(massif: &FacetMesh, faces: &[&mountain::Face], side: usize) -> usize {
+    if faces.is_empty() || side < 2 {
+        return 0;
+    }
+    let (low, high) = uv_box(faces);
+    let mut uncovered = 0usize;
+    for row in 0..side {
+        let v = low[1] + (high[1] - low[1]) * row as f32 / (side - 1) as f32;
+        for column in 0..side {
+            let u = low[0] + (high[0] - low[0]) * column as f32 / (side - 1) as f32;
+            if sample(faces, massif, u, v).is_none() {
+                uncovered += 1;
+            }
+        }
+    }
+    uncovered
+}
+
+/// The centre of the bilinear patch through a cell's own four corners.
+///
+/// **The reference that says whether the Hermite patch is the problem or the rock is.** A bicubic
+/// Hermite patch whose corner derivatives are the central differences and whose twist is zero is,
+/// at its centre, exactly the bilinear interpolant of its four corners — the sums cancel. So this
+/// is the best a C1 surface can do through the same four points, and the gap between it and the
+/// Hermite patch's own centre is what the derivative seeding costs. The gap between it and the rock
+/// is what **no** C1 surface through those points can recover, because it is the rock's own shape.
+fn bilinear_centre(surface: &HermiteSurface, cell: u32) -> Point3 {
+    let [a, b, c, d] = surface.quads()[cell as usize];
+    let corners = [
+        surface.positions()[a as usize],
+        surface.positions()[b as usize],
+        surface.positions()[c as usize],
+        surface.positions()[d as usize],
+    ];
+    let mut sum = [0.0f64; 3];
+    for corner in corners {
+        sum[0] += corner.x * 0.25;
+        sum[1] += corner.y * 0.25;
+        sum[2] += corner.z * 0.25;
+    }
+    Point3::new(sum[0], sum[1], sum[2])
+}
+
+/// The barycentric weights of `point` over a triangle in a parameter plane, as the front end's own
+/// sampler computes them. Duplicated here on purpose, as [`sample`] is.
 fn sample(faces: &[&mountain::Face], massif: &FacetMesh, u: f32, v: f32) -> Option<Point3> {
     let mut sum = [0.0f64; 3];
     let mut count = 0.0f64;

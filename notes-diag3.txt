@@ -1,0 +1,22 @@
+
+2380 triangles in 182 blocks; the mesh's own f32 floor is 1.526e-5
+182 blocks built at 4x4, 1638 patches in total
+  every block's interior seams   split 0.000e0   normal 3.332e-8 rad
+  departure per block: median 1.727e-1  worst 6.562e0  floor 1.526e-5  off-rock points 1
+  the same four corners, bilinear reference: median 1.942e-1  (the floor of what any C1 fit can reach)
+
+  side   patches   departure   bilinear ref   snapped corners   snapped blocks
+     2       182     1.527e-6        1.527e-6                79               79
+     3       728     1.710e-1        1.710e-1               170               83
+     4      1638     1.727e-1        1.942e-1               266               93
+     6      4550      4.933e0         4.747e0               741              169
+     8      8918      4.099e0         3.931e0              1025              181
+
+  side   intact blocks   median | intact   median bilinear | intact   median | all   median spread
+     2             103           1.437e-6                   1.437e-6         1.527e-6          1.302e0
+     3              99           1.354e-1                   1.354e-1         1.710e-1          1.530e0
+     4              89           4.152e-6                   4.115e-6         1.727e-1          1.570e0
+     6              13           2.476e-1                   2.451e-1          4.933e0          6.906e0
+     8               1           1.731e-1                   1.559e-1          4.099e0          9.694e0
+
+FAILED  3  the surface stays within a hundred mesh-precisions of the rock
