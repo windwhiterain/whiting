@@ -665,3 +665,35 @@ it keeps. Not built yet.
 
 Reverted to the state that renders and measures correctly. Verified after the revert: 1638
 patches, departure `1.799e-03`, every probe green.
+## The dark patches: where this actually stands
+
+The render is lit from over the camera, so nothing dark in it is backlight. What is left is
+**holes**: the surface does not reach part of the massif, and a hole shows the unlit inside of
+the mountain, which is black.
+
+Measured at `side` 4 — 46 of the massif's 1414 own vertices have no mesh vertex within two cells,
+gaps of 6.7 to 11.1 units against a 3.358-unit cell.
+
+**And that number does not survive a sweep, because the metric does not:**
+
+```text
+side  4: cell 3.358  patches  1638  uncovered  46 (3.3%)
+side  6: cell 1.461  patches  4550  uncovered  76 (5.4%)
+side  8: cell 0.793  patches  8918  uncovered 103 (7.3%)
+side 12: cell 0.157  patches 22022  uncovered 782 (55.3%)
+```
+
+The threshold is two cells, so a finer grid tightens it and more rock fails it. The 55% is the
+metric failing. Only the `side` 4 reading is a real distance.
+
+**The sweep found something else, and it is not the dark patches: the grid collapses at fine
+resolution.** 22022 patches averaging 0.157 units of cell is not a surface of the massif at four
+times the detail — it is a grid piling points onto one another. Placing columns by rank through a
+ragged region gets worse as the count rises, for the same reason the projected corners did.
+
+### What the backdrop could and could not settle
+
+It was built to tell a fold from a hole and **could not**: it stands behind the massif, so it is
+only visible through a gap that goes all the way through, and a hole in a front-facing slope
+shows the unlit inside instead. Two claims made from that test in earlier rounds were wrong, and
+the lighting control from over the camera is what actually ruled out backlight.
