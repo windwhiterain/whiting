@@ -436,6 +436,13 @@ fn resample_by_arclength(facet: &FacetMesh, run: &[u32], side: usize) -> Vec<Poi
         .collect()
 }
 
+/// How thin a cell may be, as the ratio of its shortest side to its longest.
+///
+/// **A ratio, and deliberately coarse.** The three degenerate cells measured at `0.65` against
+/// `17.86`, a ratio of `0.037`. The massif's ordinary cells run at a median aspect of about `3`, a
+/// ratio of `0.3`, so the gap between them is wide and the threshold does not sit near either.
+const SLIVER: f64 = 0.05;
+
 /// Appends a belt's cells, skipping any whose corners collapse onto one place.
 fn push_quads(
     positions: &[Point3],
@@ -452,13 +459,35 @@ fn push_quads(
                 grid[near + side + 1],
                 grid[near + side],
             ];
+            // **A cell is kept when it has four distinct corners AND a real size.**
+            //
+            // The first test was the only one, and it was the wrong question: four *different*
+            // vertices is not the same as four corners that are usefully apart. Measured on the
+            // massif, three cells pass it and are still degenerate — faces 686, 1163 and 1397, each
+            // a quadrilateral whose second and third corners sit `0.65` units apart while its other
+            // three sides are 14 to 20, so it is a sliver with a degenerate diagonal rather than a
+            // cell. Those are the dark diamonds along the ridge in the render.
+            //
+            // The test is **the cell's own size**: an edge shorter than `SLIVER` of the cell's
+            // longest one means the quad cannot be drawn, whether or not its vertices are distinct.
+            // The threshold is a ratio rather than a distance because the massif is 275 units across
+            // and a fixed length would mean something different at every scale.
+            let mut longest = 0.0f64;
+            let mut shortest = f64::INFINITY;
+            for (first, second) in [(0usize, 1usize), (1, 2), (2, 3), (3, 0)] {
+                let length = positions[corners[first] as usize]
+                    .distance(positions[corners[second] as usize]);
+                longest = longest.max(length);
+                shortest = shortest.min(length);
+            }
             let distinct = corners.iter().all(|first| {
                 corners.iter().all(|second| {
                     first == second
                         || positions[*first as usize].distance(positions[*second as usize]) > 0.0
                 })
             });
-            if distinct {
+            let sized = longest > 0.0 && shortest / longest > SLIVER;
+            if distinct && sized {
                 quads.push(corners);
             }
         }

@@ -169,6 +169,12 @@ fn cells(massif: &FacetMesh, blocks: &BlockSurfaces, side: usize) -> Vec<Cell> {
                 .map(|(u, v)| fold(&faces, massif, u, v))
                 .fold(0.0f64, f64::max);
                 let cell = (row * last + column) as u32;
+                // The cell's place in the grid is its face id only while no cell has been
+                // dropped, and the front end drops the degenerate ones. This has walked off the
+                // end of the face list twice now; a cell with no face is simply not measured.
+                if cell as usize >= block.surface.face_count() {
+                    continue;
+                }
                 readings.push((
                     rock.distance(block.surface.patch(cell).evaluate(0.5, 0.5)),
                     rock.distance(bilinear_centre(&block.surface, cell)),
@@ -606,6 +612,12 @@ fn worst_deviation(
                 // not the parameter any one of them is written in. Deriving the two separately is
                 // what produced `1.0e+01` above `side` 2 and `0.000e+00` at it.
                 let cell = (row_index * last + column) as u32;
+                // The cell's place in the grid is its face id only while no cell has been
+                // dropped, and the front end drops the degenerate ones. This has walked off the
+                // end of the face list twice now; a cell with no face is simply not measured.
+                if cell as usize >= block.surface.face_count() {
+                    continue;
+                }
                 worst = worst.max(rock.distance(block.surface.patch(cell).evaluate(0.5, 0.5)));
                 best = best.max(rock.distance(bilinear_centre(&block.surface, cell)));
             }
