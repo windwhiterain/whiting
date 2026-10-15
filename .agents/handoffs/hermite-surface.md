@@ -202,6 +202,37 @@ the **displacement** now. Recorded because it is the third time this repository 
 result that was a measurement rather than a result, and because the two previous ones were both found
 the same way.
 
+## The `nurbs` scene is retired, not kept alongside
+
+`crates/gallery/src/nurbs.rs` and `examples/nurbs_probe.rs` are **deleted**, not deprecated.
+
+They drew the same picture as `hermite` — one patch sheet with a crease down it — on the other
+representation. Keeping both would have been two scenes doing one job, which is the duplication
+`AGENTS.md` names, and the newer one is strictly better: the crease is one call rather than a tag plus
+two order-sensitive writes, and the seams beside it are exactly C1 rather than measurably smooth.
+
+**The pass counts are unchanged**, which is worth noticing rather than assuming: one caster group, one
+mesh, one light, one post, before and after. The document the scene compiles to is the same size. So
+the swap is not a cost, it is a removal.
+
+### The census caught what its own comment warns about
+
+`crates/scene/tests/clustered_lights.rs` holds a row per scene and its comment says a scene added
+without a row "does not fail loudly — it fails as a list that differs by one entry". Renaming `nurbs`
+to `hermite` did exactly that, and the first run was red: **the expected list is ordered, and
+`hermite` sorts between `foldyard` and `landscape`, not where `nurbs` sat.** The row moved and the
+thirteen tests pass. This is the third time this session that a measurement caught something an
+argument had already called settled, and it is the reason the file carries the comment.
+
+### What the old model's probes are now guarding
+
+`crates/patch` still carries `PatchMesh`, `enforce.rs`, `continuity.rs`, `level.rs`, `rect.rs`,
+`simplex.rs`, `tessellate.rs` and the six probes that measure them. **Nothing in the product path
+calls them any more** — `gallery` draws only `hermite` now — so they are dead weight kept on purpose,
+because their numbers are the evidence that the Hermite model replaced something rather than
+arriving. Their measurements are recorded in `proposals/two-soft-edges-one-face.md` and in the
+previous branch's handoff before the code goes.
+
 ## Next
 
 1. **Add the cross-boundary derivative `G` as per-shared-edge data.** The measurement above says

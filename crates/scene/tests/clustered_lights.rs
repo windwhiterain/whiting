@@ -221,6 +221,26 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // **This row was `nurbs` until 2026-10-15, and renaming it rather than adding a row is
+            // the point.** The scene is the same picture built on the other representation: one
+            // patch sheet with a crease down it. Keeping both would be two scenes doing one job,
+            // and this file's own comment below is about exactly that failure — a scene added
+            // without a row here does not fail loudly, it fails as a list that differs by one entry.
+            //
+            // The counts are unchanged by the swap and that is worth noticing: the old scene
+            // emitted one caster group, one mesh, one light and one post, and so does the new one.
+            // What changed is that the crease is now made by one call and the seams beside it are
+            // exactly C1 rather than measurably smooth, and **the document it compiles to is the
+            // same size**.
+            "hermite",
+            Stages {
+                shadowing: 1,
+                depthing: 1,
+                lighting: 1,
+                other: 1,
+            },
+        ),
+        (
             // One sun, one point light and three groups: the plain and the **two ranges** it runs
             // between, each drawn in two stages. Three shadowing passes rather than one per light:
             // the plain is a flat sheet that cannot occlude itself, so it is left out of the cast
@@ -253,21 +273,6 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
                 shadowing: 2,
                 depthing: 2,
                 lighting: 2,
-                other: 1,
-            },
-        ),
-        (
-            // **`nurbs` was missing here, and that is what the failure was.** the expected side
-            // of this assertion is a record of what each gallery scene emitted, and a scene
-            // added to the gallery without a row here does not fail loudly — it fails as a list
-            // that differs by one entry, which reads as "a pass count changed" and is nothing of
-            // the kind. The scene emits one pass of each kind: one caster group, one mesh, one
-            // light, one post.
-            "nurbs",
-            Stages {
-                shadowing: 1,
-                depthing: 1,
-                lighting: 1,
                 other: 1,
             },
         ),
