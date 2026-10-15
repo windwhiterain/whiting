@@ -366,7 +366,6 @@ fn grid_points(
 }
 
 /// `side` points along a run of mesh vertices, spaced by arc length.
-/// `side` points along a run of mesh vertices, spaced by arc length.
 ///
 /// # Invariants
 ///
@@ -419,7 +418,23 @@ fn resample_by_arclength(facet: &FacetMesh, run: &[u32], side: usize) -> Vec<Poi
             let mut walked = 0.0f64;
             let mut at = spans.len() - 1;
             for (index, span) in spans.iter().enumerate() {
-                if target < walked + *span {
+                // **`<=`, because the run's own end belongs to its last segment.** With a strict
+                // `<` the target that lands exactly on the end of the last segment fails the test,
+                // the walk falls out of the loop with `walked` already at `total`, and the share
+                // comes out as `(total - total) / span` — zero. The final station was therefore
+                // `points[last]`, the *second to last* vertex of the run, on every run with more
+                // than one vertex, which is all but 32 of the massif's 216 belts.
+                //
+                // A two-vertex run makes the consequence easy to see: its six stations were the
+                // first, the four interior ones, and the **first again** — a seam row that walks
+                // four fifths of the way down the valley and then jumps back to where it started.
+                // The cell between the last two stations is then a bow tie whose `u` edges run the
+                // whole length of the valley while its `v` edges are one cell, and its Hermite
+                // patch is a flap that sweeps back across the valley and over the other flank:
+                // the dark chevrons and diamonds sitting on every seam in the massif render.
+                // `resample_by_arclength`'s own invariant — the run's two ends are returned
+                // exactly — was already written above this line and was not true; it is now.
+                if target <= walked + *span {
                     at = index;
                     break;
                 }
