@@ -76,6 +76,10 @@ artifacts lived:
 - The hermite massif's valleys are creases by construction (coincident vertices, private
   derivative fields); a caller wanting a soft valley has no join to tag any more and would ask
   `patch` for one.
+- **The lighting stage samples the shadow map unconditionally.** Emptying a scene's Shadowing
+  stage does not render it unshadowed, it renders it wholly in shadow (measured on `landscape`,
+  2026-10-08: every surface flat dark). An A/B on shadowing needs a light or shader change, not
+  an instance removal.
 
 ## Merge state
 
