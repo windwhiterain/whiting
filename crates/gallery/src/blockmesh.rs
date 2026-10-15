@@ -29,7 +29,10 @@
 //! triangles, so the surface passes through the rock the expander actually built, and how far off the
 //! mesh it runs is measured by `examples/block_surface_probe.rs` rather than argued here.
 
+use std::collections::BTreeMap;
+
 use mountain::facet::{BlockFace, Face, FacetMesh};
+use mountain::tessellation::BeltRef;
 use patch::topology::VertexId;
 use patch::{HermiteSurface, Point3};
 
@@ -111,26 +114,120 @@ pub fn from_facet(facet: &FacetMesh, side: usize) -> BlockSurfaces {
     BlockSurfaces { blocks, side }
 }
 
-/// One block's grid, or `None` when the block has no surface to sample at all.
-fn block_surface(
-    facet: &FacetMesh,
-    block: &BlockFace,
+/// Builds one Hermite surface per **belt** rather than per block.
+///
+/// **The same construction over a different set of faces**, and the difference is what the belt's
+/// domain buys. A block's faces carry `(u, v)` local to that block, so a block's covered region is a
+/// ragged subset of its own bounding box — 266 of the grid points this crate lays at `side` 4 fall
+/// outside their block's triangles. **A belt's faces carry `(u, v)` over the whole belt**, so the
+/// region is a rectangle by construction and the grid lands on the rock rather than beside it.
+///
+/// That is the whole argument for the belt, and it is the same argument `Face::uv` makes about
+/// itself: `u` is "the fraction of the belt's upper boundary already walked", not "the fraction of
+/// this block's".
+///
+/// Blocks within a belt become cells of one surface, so **the ribs between them stop being creases**
+/// — see the note on [`BlockSurfaces`] for whether that is a loss.
+pub fn from_belts(facet: &FacetMesh, side: usize) -> BeltSurfaces {
+    // Group by belt, in the order the facets name them, so the result does not depend on a hash map's
+    // iteration order.
+    let mut order: Vec<BeltRef> = Vec::new();
+    let mut grouped: BTreeMap<BeltRef, Vec<&Face>> = BTreeMap::new();
+    for face in &facet.faces {
+        if !order.contains(&face.attributes.belt) {
+            order.push(face.attributes.belt);
+        }
+        grouped.entry(face.attributes.belt).or_default().push(face);
+    }
+    order.sort_by_key(|belt| (belt.valley.0, belt.segment, belt.side));
+
+    let mut belts = Vec::with_capacity(order.len());
+    for (index, belt) in order.iter().enumerate() {
+        let Some(faces) = grouped.get(belt) else {
+            continue;
+        };
+        let Some(surface) = surface_from_faces(facet, faces, side) else {
+            continue;
+        };
+        belts.push(BeltSurface {
+            surface,
+            source: index as u32,
+            belt: *belt,
+        });
+    }
+    BeltSurfaces {
+        belts,
+        side,
+        blocks: facet.blocks.len(),
+    }
+}
+
+/// One belt's Hermite surface, and which belt it is.
+#[derive(Clone, Debug)]
+pub struct BeltSurface {
+    /// The surface, smooth everywhere inside the belt.
+    pub surface: HermiteSurface,
+    /// Which belt of [`BeltSurfaces::belts`] this is, by list position.
+    pub source: u32,
+    /// The massif's own name for the belt, so a caller can find it again after a round trip.
+    pub belt: BeltRef,
+}
+
+/// Every belt of a massif, as a Hermite surface.
+#[derive(Clone, Debug)]
+pub struct BeltSurfaces {
+    belts: Vec<BeltSurface>,
     side: usize,
-    source: u32,
-) -> Option<BlockSurface> {
-    let faces: Vec<&Face> = facet.faces[block.faces.start as usize..block.faces.end as usize]
-        .iter()
-        .collect();
-    if faces.is_empty() {
+    blocks: usize,
+}
+
+impl BeltSurfaces {
+    pub fn len(&self) -> usize {
+        self.belts.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.belts.is_empty()
+    }
+
+    pub fn get(&self, index: usize) -> Option<&BeltSurface> {
+        self.belts.get(index)
+    }
+
+    pub fn belts(&self) -> &[BeltSurface] {
+        &self.belts
+    }
+
+    /// The grid resolution every belt was built at.
+    pub fn side(&self) -> usize {
+        self.side
+    }
+
+    /// How many patches in total.
+    pub fn patch_count(&self) -> usize {
+        self.belts
+            .iter()
+            .map(|belt| belt.surface.face_count())
+            .sum()
+    }
+
+    /// How many blocks the massif has, so a caller can say what a belt absorbed.
+    pub fn blocks(&self) -> usize {
+        self.blocks
+    }
+}
+
+/// One grid over any set of faces that share a domain, or `None` when they cover no area.
+fn surface_from_faces(facet: &FacetMesh, faces: &[&Face], side: usize) -> Option<HermiteSurface> {
+    if faces.is_empty() || side < 2 {
         return None;
     }
 
-    // The block's own domain. **Not the unit square**: `Face::uv`'s documentation records that 89 of
-    // 182 blocks leave part of their own `uv` box uncovered, and sampling across a gap extrapolates
-    // off the rock into a derivative field nothing measured.
+    // The covered domain. **Not the unit square**, because a caller may hand this a set whose `uv`
+    // runs over a sub-range; the unit square would then put the whole grid off the rock.
     let (mut low_u, mut high_u) = (f32::INFINITY, f32::NEG_INFINITY);
     let (mut low_v, mut high_v) = (f32::INFINITY, f32::NEG_INFINITY);
-    for face in &faces {
+    for face in faces {
         for corner in face.uv {
             low_u = low_u.min(corner[0]);
             high_u = high_u.max(corner[0]);
@@ -147,7 +244,7 @@ fn block_surface(
         let v = low_v + (high_v - low_v) * row as f32 / (side - 1) as f32;
         for column in 0..side {
             let u = low_u + (high_u - low_u) * column as f32 / (side - 1) as f32;
-            positions.push(sample_block(facet, &faces, u, v));
+            positions.push(sample_block(facet, faces, u, v));
         }
     }
 
@@ -166,7 +263,20 @@ fn block_surface(
         }
     }
 
-    let surface = HermiteSurface::build(positions, quads).ok()?;
+    HermiteSurface::build(positions, quads).ok()
+}
+
+/// One block's grid, or `None` when the block has no surface to sample at all.
+fn block_surface(
+    facet: &FacetMesh,
+    block: &BlockFace,
+    side: usize,
+    source: u32,
+) -> Option<BlockSurface> {
+    let faces: Vec<&Face> = facet.faces[block.faces.start as usize..block.faces.end as usize]
+        .iter()
+        .collect();
+    let surface = surface_from_faces(facet, &faces, side)?;
     Some(BlockSurface { surface, source })
 }
 

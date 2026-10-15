@@ -1,0 +1,32 @@
+Measure the belt front end: on this massif a belt IS a block
+
+blockmesh::from_belts and examples/belt_surface_probe.rs. The instruction was that patches
+need not join smoothly -- C0 is fine -- so a crease between patches costs nothing and the
+only question is the shape of the domain.
+
+The answer is that there is no shape of the domain to ask about yet.
+
+  a belt's faces span 182 groups; a block's 182
+  median u-width of a group: belt 1.0000   block 1.0000
+  median v-depth of a group: belt 1.0000   block 1.0000
+  median faces per group:    belt 33.0     block 33.0
+  182 distinct belts over 182 blocks
+
+Face::attributes.belt and Face::block name the SAME 182 groups on this massif. Every
+block is its own belt, so from_belts lays the grid over the same domain as from_facet and
+measures the same numbers -- 1.527e-6 median at side 2, 3.332e-8 rad across every interior
+seam. The belt construction is not a second front end here; it is a different name for the
+first.
+
+That is in the probe's output rather than left to be noticed, because a route whose
+measured benefit is identical to the route it replaces is a rename until proven otherwise.
+
+So the question is whether a massif exists where a belt carries several blocks -- which is
+what the previous branch's record suggested, with one node carrying 56 patches. It does not
+come out of starter(11, Starter::default()), so either that record was about a different
+number (blocks versus patches, which is not the same quantity) or the belt-per-block ratio
+depends on the seed. That is the next thing to measure, and it is a question about the
+skeleton rather than about surfaces.
+
+block_surface_probe stays red for the reason already recorded: sample_block snaps a grid
+point off the triangles to the nearest vertex, and a finer grid has more of those.
