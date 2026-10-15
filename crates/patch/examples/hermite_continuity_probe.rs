@@ -116,14 +116,6 @@ fn face_of(column: usize, row: usize, columns: usize) -> FaceId {
     (row * columns + column) as FaceId
 }
 
-/// The interior edge between two cells side by side, at global `u = column + 1`.
-fn seam_between(column: usize, row: usize, columns: usize, surface: &HermiteSurface) -> EdgeKey {
-    let _ = (columns, surface);
-    let left = face_of(column, row, columns) as usize;
-    let _ = left;
-    unreachable!()
-}
-
 // -- measuring ----------------------------------------------------------------------------------
 
 /// Everything measured at one point on one shared edge.

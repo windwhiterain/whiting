@@ -37,16 +37,32 @@ pub enum EdgeSlot {
 impl EdgeSlot {
     pub const ALL: [Self; 4] = [Self::MinU, Self::MaxU, Self::MinV, Self::MaxV];
 
-    /// Whether `u` varies along this edge. `MinU` and `MaxU` are the edges that **fix** `u`, so
-    /// they are the `v`-direction edges and the other two are the `u`-direction ones.
+    /// Whether **`u` varies along** this edge, which makes `du` the edge's tangent.
     ///
-    /// This is the one place that decides which parameter an edge's tangent belongs to, and it is
-    /// what makes `du` and `dv` mean the same thing at a shared vertex: on a consistently wound
-    /// mesh the two faces on an edge agree on its slot, so they agree on the axis, and a per-vertex
-    /// tangent field can serve both. `crate::hermite_surface` checks that agreement and refuses a
-    /// mesh that fails it rather than producing a surface that disagrees with itself.
-    pub fn is_u_edge(self) -> bool {
+    /// `MinU` is the edge at `u = 0` and runs from `corners[0]` to `corners[3]` — that is, along
+    /// **`v`**. So the `MinU`/`MaxU` pair are the `v`-direction edges and `MinV`/`MaxV` are the
+    /// `u`-direction ones.
+    ///
+    /// **This is the trap this crate has already fallen into once.** `EdgeSlot` names an edge by the
+    /// parameter it *fixes*, which is the opposite of the direction it *runs*, and reading it the
+    /// other way round asks each face for a tangent off its perpendicular edge. The result is not a
+    /// crash: it is a plausible-looking surface whose tangent field is rotated a quarter turn, and
+    /// a seam that compares `S_u` against `S_v` reports a fold that is not there. Measured while
+    /// getting this wrong — every interior edge of a 13 by 9 sheet read a split of `8.1e-1`, one
+    /// cell away, which is the signature of comparing the wrong two ends.
+    pub fn varies_along_u(self) -> bool {
         matches!(self, Self::MinV | Self::MaxV)
+    }
+
+    /// Whether this edge **separates its two faces across `u`**, so the faces meet at `s = 1`
+    /// against `s = 0` and the shared parameter is `t`.
+    ///
+    /// The exact complement of [`EdgeSlot::varies_along_u`], and a separate question: the first is
+    /// about which derivative the edge carries, the second about which direction the faces are
+    /// stacked in. Both are asked by a caller, neither can be inferred from the other without the
+    /// winding, and conflating them is what the module documentation above warns about.
+    pub fn separates_u(self) -> bool {
+        matches!(self, Self::MinU | Self::MaxU)
     }
 }
 

@@ -89,6 +89,7 @@ mod tiles;
 
 pub use dunes::dunes;
 pub use foldyard::foldyard;
+pub use hermite::hermite;
 pub use landscape::landscape;
 pub use lanterns::lanterns;
 pub use monoliths::monoliths;
@@ -97,6 +98,7 @@ pub use monoliths::monoliths;
 /// Public so that `examples/nurbs_probe.rs` can measure the model rather than the document it
 /// compiles to: what the scene is here to show is what the surface does, and a measurement of the
 /// document would say nothing about that.
+pub mod hermite;
 pub mod nurbs;
 pub use spotlight::spotlight;
 pub use stilllife::stilllife;
@@ -114,6 +116,7 @@ impl Gallery {
         &[
             "dunes",
             "foldyard",
+            "hermite",
             "landscape",
             "lanterns",
             "monoliths",
@@ -136,6 +139,7 @@ impl Gallery {
         match name {
             "dunes" => dunes(),
             "foldyard" => foldyard(),
+            "hermite" => hermite::hermite(),
             "landscape" => landscape(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),

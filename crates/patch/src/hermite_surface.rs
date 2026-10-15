@@ -153,7 +153,7 @@ impl HermiteSurface {
         // where they do not is wound inconsistently.
         for (edge, faces) in &topology.edge_faces {
             if let [(_, first), (_, second)] = faces.as_slice() {
-                if first.is_u_edge() != second.is_u_edge() {
+                if first.varies_along_u() != second.varies_along_u() {
                     return Err(SurfaceError::InconsistentWinding {
                         edge: *edge,
                         first: *first,
@@ -411,7 +411,7 @@ fn seed_derivatives(positions: &[Point3], topology: &Topology) -> Vec<(Point3, P
         }
         let along = (positions[second as usize] - positions[first as usize]) / distance;
         let half = 0.5;
-        if slot.is_u_edge() {
+        if slot.varies_along_u() {
             du[first as usize] = along * half;
             du[second as usize] = along * half;
         } else {
