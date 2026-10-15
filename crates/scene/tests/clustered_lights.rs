@@ -241,6 +241,21 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // The massif drawn on its Hermite surface. **One lighting pass and no shadowing or
+            // depthing at all**, which is what it emits and also why its render has holes: a
+            // surface drawn in the lighting stage alone casts nothing and writes no depth, so
+            // `examples/` renders it against the background and the pass count is a statement about
+            // the document rather than a claim that the picture is finished. The honest stage set
+            // for this scene is a cast and a depth pass like every other ground in the gallery.
+            "hermite_massif",
+            Stages {
+                shadowing: 0,
+                depthing: 0,
+                lighting: 1,
+                other: 1,
+            },
+        ),
+        (
             // One sun, one point light and three groups: the plain and the **two ranges** it runs
             // between, each drawn in two stages. Three shadowing passes rather than one per light:
             // the plain is a flat sheet that cannot occlude itself, so it is left out of the cast

@@ -101,6 +101,7 @@ pub use monoliths::monoliths;
 /// document would say nothing about that.
 pub mod blockmesh;
 pub mod hermite;
+pub mod hermite_massif;
 pub use spotlight::spotlight;
 pub use stilllife::stilllife;
 pub use sunlight::sunlight;
@@ -118,6 +119,7 @@ impl Gallery {
             "dunes",
             "foldyard",
             "hermite",
+            "hermite_massif",
             "landscape",
             "lanterns",
             "monoliths",
@@ -140,6 +142,7 @@ impl Gallery {
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
+            "hermite_massif" => hermite_massif::hermite_massif(),
             "landscape" => landscape(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
