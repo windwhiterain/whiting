@@ -99,6 +99,7 @@ pub use monoliths::monoliths;
 /// Public so that `examples/hermite_probe.rs` can measure the surface rather than the document it
 /// compiles to: what the scene is here to show is what the surface does, and a measurement of the
 /// document would say nothing about that.
+pub mod blockmesh;
 pub mod hermite;
 pub use spotlight::spotlight;
 pub use stilllife::stilllife;
