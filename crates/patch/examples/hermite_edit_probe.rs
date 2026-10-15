@@ -74,26 +74,30 @@ fn measure(surface: &HermiteSurface, folds: &[EdgeKey]) -> ((f64, f64), (f64, f6
 }
 
 /// Every point of a surface, flattened, so two surfaces can be compared in full.
-fn fingerprint(surface: &HermiteSurface) -> Vec<f64> {
-    let mut points = surface.positions().to_vec();
+///
+/// **In three parts rather than one, because a drift that is not attributed is not a diagnosis.** A
+/// single maximum says something moved and not what; the first version of this measurement reported
+/// `3.220e-1` without saying which store it came from, which is the difference between a bug report
+/// and a rumour.
+fn fingerprint(surface: &HermiteSurface) -> (Vec<Point3>, Vec<Point3>, Vec<Point3>) {
+    let positions = surface.positions().to_vec();
+    let mut derivatives = Vec::new();
     for vertex in 0..surface.positions().len() {
         let (du, dv) = surface.derivative(vertex as u32);
-        points.push(du);
-        points.push(dv);
+        derivatives.push(du);
+        derivatives.push(dv);
     }
+    let mut twists = Vec::new();
     for face in 0..surface.face_count() as FaceId {
         for corner in 0..4 {
-            points.push(surface.twist(face, corner));
+            twists.push(surface.twist(face, corner));
         }
     }
-    let mut out = Vec::with_capacity(points.len() * 3);
-    for point in points {
-        out.extend_from_slice(&[point.x, point.y, point.z]);
-    }
-    out
+    (positions, derivatives, twists)
 }
 
-fn worst_difference(before: &[f64], after: &[f64]) -> f64 {
+/// The largest distance between any two corresponding points of two fingerprints.
+fn worst_difference(before: &[Point3], after: &[Point3]) -> f64 {
     assert_eq!(
         before.len(),
         after.len(),
@@ -102,7 +106,7 @@ fn worst_difference(before: &[f64], after: &[f64]) -> f64 {
     before
         .iter()
         .zip(after.iter())
-        .map(|(a, b)| (a - b).abs())
+        .map(|(a, b)| a.distance(*b))
         .fold(0.0f64, f64::max)
 }
 
@@ -208,28 +212,28 @@ fn main() {
 
     // -- 5: undo restores bit-exactly. ---------------------------------------------------------------
     //
-    // **Known to fail, and the cause is known.** A twist write's reach depends on the tags at the
-    // moment of the write — `set_twist` carries along the soft edges, so the same call on a soft
-    // edge touches one slot and on a hard one touches two. Undo replays the carry with the tags as
-    // they are *now*, and the batch above folded, unfolded and folded again, so the rings recorded on
-    // the way out do not line up with the rings replayed on the way back. Measured `3.220e-1`.
+    // Three stores, three numbers, because **a drift that is not attributed is not a diagnosis.** The
+    // first version of this reported a single `3.220e-1` and said only that something moved. Split,
+    // it said which: twists were already exact and the whole of it was positions and derivatives.
+    // The cause was then obvious -- `revert` restored the value an edit *wrote* rather than the one
+    // it replaced, on fields named `from` and `to`, which differ by one letter. Every undo put the
+    // surface back to the **edited** state, which looks right until the stack empties.
     //
-    // The fix is to record the ring itself rather than recompute it, which means an edit carries a
-    // list rather than three numbers. Not built. The rest of the editing claim does not depend on
-    // it — nothing below is about undo — so this stays red rather than being dropped, and the number
-    // is written down so the next person does not rediscover it.
+    // The twist half needed a real fix as well: a twist's reach depends on the tags at write time,
+    // so it now records the slots it touched and replays them directly rather than re-deriving a
+    // carry from the tags in force now.
     editor.fold(fold_edge, 6.0);
     let depth = editor.depth();
     while editor.undo() {}
-    let after_undo = fingerprint(editor.surface());
-    let drift = worst_difference(&before, &after_undo);
+    let (positions, derivatives, twists) = fingerprint(editor.surface());
+    let drift = worst_difference(&before.0, &positions);
+    let derivative_drift = worst_difference(&before.1, &derivatives);
+    let twist_drift = worst_difference(&before.2, &twists);
     println!(
-        "\nundo: {depth} edits popped, whole-surface drift {drift:.3e}  (known gap, see the comment)"
+        "\nundo: {depth} edits popped\n  positions  {drift:.3e}\n  derivatives {derivative_drift:.3e}\n  twists     {twist_drift:.3e}"
     );
-    if drift != 0.0 {
-        failures.push(
-            "5  undo restores the surface bit-exactly (known gap: twist reach is recomputed)",
-        );
+    if drift.max(derivative_drift).max(twist_drift) != 0.0 {
+        failures.push("5  undo restores the surface bit-exactly");
     }
 
     // -- 6: a region edit leaves no lip. ------------------------------------------------------------

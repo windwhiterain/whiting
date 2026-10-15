@@ -349,6 +349,17 @@ impl HermiteSurface {
         found
     }
 
+    /// Writes one face's twist at one corner **without carrying it across soft edges**.
+    ///
+    /// **For undo, and for nothing else.** It is the one write in this type that can put the two
+    /// faces on a soft edge out of step, and it exists because undo has to put back a set of slots
+    /// exactly as they were — which means replaying each write directly rather than re-deriving
+    /// which slots a carry would reach today. A caller reaching for this to "just set a twist"
+    /// reintroduces precisely the defect this representation exists to remove.
+    pub fn write_twist_raw(&mut self, face: FaceId, corner: usize, twist: Point3) {
+        self.private_twist[face as usize][corner] = twist;
+    }
+
     /// The patch one face reads, built from its four corner jets and the edge steps.
     ///
     /// **This path and per-edge boundary scaling were both tried; this one is the one that measures

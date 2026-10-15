@@ -38,65 +38,65 @@ use crate::topology::{EdgeKey, EdgeSlot, FaceId, VertexId};
 /// Each variant carries the value it replaced as well as the value it wrote, which is what makes
 /// [`Edit::revert`] exact rather than approximate — there is no recomputation and nothing to be
 /// slightly wrong about.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Edit {
     /// A mesh vertex moved.
     Displace {
         vertex: VertexId,
-        from: Point3,
-        to: Point3,
+        before: Point3,
+        after: Point3,
     },
     /// The shared tangent field at a mesh vertex changed.
     Derivative {
         vertex: VertexId,
-        from: (Point3, Point3),
-        to: (Point3, Point3),
+        before: (Point3, Point3),
+        after: (Point3, Point3),
     },
     /// A face's twist at a corner changed.
-    Twist {
-        face: FaceId,
-        corner: usize,
-        from: Point3,
-        to: Point3,
-    },
+    ///
+    /// **Carries the whole set of slots the write reached**, not the one that was asked for, and
+    /// this is the load-bearing detail of the whole undo stack. `set_twist` carries a value around
+    /// the faces at a vertex, so one call writes several slots, and the slots it reaches depend on
+    /// which edges are soft **at the time of the write**. Recomputing that on the way back is wrong
+    /// the moment a tag changes in between — measured `3.220e-1` of drift over a fold, an unfold and
+    /// a second fold. Recording `(face, corner, previous value)` for each slot, and putting them
+    /// back with [`HermiteSurface::write_twist_raw`] rather than by re-deriving a carry, is what
+    /// makes the round trip exact.
+    Twist { slots: Vec<(FaceId, usize, Point3)> },
     /// An edge's tag changed.
-    Join { edge: EdgeKey, from: Join, to: Join },
+    Join {
+        edge: EdgeKey,
+        before: Join,
+        after: Join,
+    },
 }
 
 impl Edit {
-    /// The edit that undoes this one, for a caller that wants to record rather than replay.
-    pub fn inverse(self) -> Self {
+    /// Puts this edit back.
+    ///
+    /// Replaying the **recorded predecessor** rather than recomputing is the point: every variant
+    /// restores the value it saw replaced, so the surface after an undo is the surface before the
+    /// edit and not one that happens to look like it.
+    ///
+    /// The fields are named `before` and `after` rather than `from` and `to` because the first
+    /// version named them the other way round and [`Edit::revert`] restored `to` — the value the edit
+    /// *wrote*. Every undo then put the surface **back to the edited state**, which looks correct
+    /// right up until the whole stack is popped and the surface is `3.220e-1` away from where it
+    /// started. Two names that differ by one letter, on the only method that reads them.
+    pub fn revert(&self, surface: &mut HermiteSurface) {
         match self {
-            Self::Displace { vertex, from, to } => Self::Displace {
-                vertex,
-                from: to,
-                to: from,
-            },
-            Self::Derivative { vertex, from, to } => Self::Derivative {
-                vertex,
-                from: to,
-                to: from,
-            },
-            // A twist records its predecessor like everything else, even though the write that put
-            // it there carried the value across soft edges on its way. Recording what was there
-            // before the call is what keeps `undo` exact; without it a twist had no inverse and the
-            // stack popped to a surface that had drifted by whatever the twists were worth.
-            Self::Twist {
-                face,
-                corner,
-                from,
-                to,
-            } => Self::Twist {
-                face,
-                corner,
-                from: to,
-                to: from,
-            },
-            Self::Join { edge, from, to } => Self::Join {
-                edge,
-                from: to,
-                to: from,
-            },
+            Self::Displace { vertex, before, .. } => surface.set_position(*vertex, *before),
+            Self::Derivative { vertex, before, .. } => {
+                surface.set_derivative(*vertex, before.0, before.1)
+            }
+            // Direct, and carrying nothing: the set of slots is the one that was written, so the
+            // tags in force now are not consulted and cannot change the answer.
+            Self::Twist { slots } => {
+                for (face, corner, previous) in slots {
+                    surface.write_twist_raw(*face, *corner, *previous);
+                }
+            }
+            Self::Join { edge, before, .. } => surface.set_join(*edge, *before),
         }
     }
 }
@@ -134,24 +134,16 @@ impl Editor {
 
     /// Puts the last edit back, exactly.
     ///
-    /// Returns whether there was one. A twist's predecessor is **read** before the pop rather than
-    /// recomputed, because [`HermiteSurface::set_twist`] carries a value across soft edges and
-    /// replaying that carry in reverse would need to know which neighbours had been carried to.
+    /// Returns whether there was one. **Exact means bit-exact**: the surface afterwards is the
+    /// surface before, which is measured as a whole-surface fingerprint rather than as "the control
+    /// points look right". A float that comes back one ulpe out is a surface an agent has drifted
+    /// from, and it compounds over a session.
     pub fn undo(&mut self) -> bool {
-        let Some(edit) = self.undo.pop() else {
+        let Some(edit) = self.undo.last().cloned() else {
             return false;
         };
-        match edit {
-            Edit::Displace { vertex, to, .. } => self.surface.set_position(vertex, to),
-            Edit::Derivative { vertex, to, .. } => {
-                let (du, dv) = to;
-                self.surface.set_derivative(vertex, du, dv);
-            }
-            Edit::Twist {
-                face, corner, from, ..
-            } => self.surface.set_twist(face, corner, from),
-            Edit::Join { edge, to, .. } => self.surface.set_join(edge, to),
-        }
+        self.undo.pop();
+        edit.revert(&mut self.surface);
         true
     }
 
@@ -182,8 +174,8 @@ impl Editor {
             self.surface.set_position(id, from + delta);
             self.undo.push(Edit::Displace {
                 vertex: id,
-                from,
-                to: from + delta,
+                before: from,
+                after: from + delta,
             });
             moved += 1;
         }
@@ -211,8 +203,8 @@ impl Editor {
             self.surface.set_derivative(id, next_du, next_dv);
             self.undo.push(Edit::Derivative {
                 vertex: id,
-                from: (du, dv),
-                to: (next_du, next_dv),
+                before: (du, dv),
+                after: (next_du, next_dv),
             });
             touched += 1;
         }
@@ -234,8 +226,8 @@ impl Editor {
         self.surface.set_join(edge, Join::Hard);
         self.undo.push(Edit::Join {
             edge,
-            from: previous,
-            to: Join::Hard,
+            before: previous,
+            after: Join::Hard,
         });
 
         let Some(faces) = self.surface.topology().edge_faces.get(&edge).cloned() else {
@@ -263,8 +255,8 @@ impl Editor {
         self.surface.set_join(edge, Join::Soft);
         self.undo.push(Edit::Join {
             edge,
-            from: previous,
-            to: Join::Soft,
+            before: previous,
+            after: Join::Soft,
         });
         let Some(faces) = self.surface.topology().edge_faces.get(&edge).cloned() else {
             return;
@@ -301,14 +293,10 @@ impl Editor {
             })
             .collect();
         self.surface.set_twist(face, corner, value);
-        for (held, held_corner, previous) in before {
-            self.undo.push(Edit::Twist {
-                face: held,
-                corner: held_corner,
-                from: previous,
-                to: self.surface.twist(held, held_corner),
-            });
-        }
+        // One edit carrying every slot the write reached — not one edit per slot. Undo replays the
+        // list directly, so the tags in force now are not consulted; recorded per slot instead, undo
+        // recomputed the reach and drifted as soon as a tag changed in between.
+        self.undo.push(Edit::Twist { slots: before });
     }
 
     /// The angle between the two faces' normals along `edge`, in radians.

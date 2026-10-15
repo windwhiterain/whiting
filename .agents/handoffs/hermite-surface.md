@@ -194,19 +194,7 @@ The edits are named in the shape a request arrives in — a centre and a radius,
 index — the falloff reaches zero *with zero slope* at the edge of its support so a region edit leaves
 no lip, and `fold`/`unfold` are one call each rather than a tag plus two order-sensitive writes.
 
-### One failure, red on purpose
-
-**`undo` drifts `3.220e-1`.** The cause is known and written into the probe: a twist write's reach
-depends on the tags *at write time* — `set_twist` carries along soft edges, so the same call touches
-one slot on a soft edge and two on a hard one — and undo replays the carry with the tags as they are
-now. The batch folds, unfolds and folds again, so the rings recorded on the way out do not line up
-with the rings replayed on the way back.
-
-The fix is to **record the ring rather than recompute it**, which makes an edit carry a list rather
-than three numbers. `HermiteSurface::soft_ring` exists and is what the next slice records. Not built.
-Nothing else in the editing claim depends on it, so it stays red rather than being dropped.
-
-### A third `0.000e+00` that could not fail
+### Undo is exact, and getting there was two separate bugs
 
 Measurement 6 read `positions()[v].z` to ask how far a region lift moved things, which also reads the
 dome — up at `0.7` everywhere — so it reported the whole sheet rising by its own shape. It measures
@@ -408,3 +396,4 @@ These cost that branch days and are the same hazards here:
 - Whether the twist (`Fuv`) is free per face or derived. On a grid it is free per cell.
 - Whether `gallery/src/nurbs.rs` is renamed, and whether the crate keeps the name `patch`.
 - Nothing here touches `SPEC.md`, which is human-editable only.
+
