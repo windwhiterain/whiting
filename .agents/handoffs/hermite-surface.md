@@ -233,6 +233,47 @@ because their numbers are the evidence that the Hermite model replaced something
 arriving. Their measurements are recorded in `proposals/two-soft-edges-one-face.md` and in the
 previous branch's handoff before the code goes.
 
+## The massif, and the answer to whether the refactor can finish by deletion
+
+`examples/hermite_massif_probe.rs`. This is the question that decides whether `crate::PatchMesh`
+can simply be deleted, and **the answer is no**.
+
+`gallery::patchmesh::from_facet` turns the authored massif into 7587 vertices and 7140 quads by
+Doo-Sabin. `HermiteSurface::build` **refuses it**:
+
+| | measured |
+| --- | --- |
+| vertices not valence 4 | 6781 of 7587 -- **89.4 %** |
+| shared edges whose two faces traverse them as **different kinds** of edge | **13746 of 13834** |
+| vertices of odd valence | **0** |
+| positive control -- one quad wound the other way round | refused, as it must be |
+
+**99.4 % of shared edges disagree, and the mesh is not at fault.** Zero odd-valent vertices means it
+is a proper quad mesh with a valid structure; what it lacks is *grid-ness*. On a regular grid the
+left face of a vertical seam calls it `MaxU` and the right calls it `MinU` -- the same kind both
+sides -- and on a horizontal seam `MinV` and `MaxV`. Here almost nothing pairs up that way, because a
+Doo-Sabin mesh has no consistent `(u, v)` frame to have a shared one in.
+
+**That is the representation's boundary, stated by measurement rather than by argument:**
+`HermiteSurface` covers quad meshes that are laid out like a grid. It does not cover arbitrary quad
+topology, and the earlier rounds' suspicion that it might was wrong in the useful direction -- it
+does not even try, and it names the edge at which it stops.
+
+**So `PatchMesh` stays, and it stays because of this.** The front end that reaches the massif needs a
+different mesh, and the previous branch's handoff already names the one: **`mountain` authors 182
+blocks**, and a block-structured mesh *is* structured. One Hermite patch per authored block, rather
+than one per Doo-Sabin quad, is a front end that satisfies the frame condition. The blocker is the
+one the earlier proposal recorded -- unequal run counts across block boundaries -- and that is
+authoring work, not representation work.
+
+### A first theory, and why it is wrong
+
+I expected the refusal to come from odd valence: a valence-3 vertex has an odd number of edge-ends and
+so cannot pair them into consistent `(u, v)` slots. **Measured: zero odd-valent vertices.** The mesh
+is even everywhere and is refused anyway, so parity is not the mechanism and a fix aimed at it would
+fix nothing. Recorded because the argument was sound and would have been written into a proposal as
+a fact -- the third time this line of work has produced one.
+
 ## Next
 
 1. **Add the cross-boundary derivative `G` as per-shared-edge data.** The measurement above says

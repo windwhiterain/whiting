@@ -97,6 +97,35 @@ pub enum SurfaceError {
     DegenerateQuad { face: FaceId },
 }
 
+impl core::fmt::Display for SurfaceError {
+    /// Says **what refused it**, because "cannot be built" is not a diagnosis.
+    ///
+    /// The winding case names the edge and both slots, and says what the disagreement means, so a
+    /// caller reading this can tell a mesh that needs re-winding from a mesh that needs something
+    /// this representation cannot do.
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InconsistentWinding { edge, first, second } => write!(
+                formatter,
+                "edge {edge:?} is {first:?} on one face and {second:?} on the other, so its two faces \
+                 do not agree which direction it runs in; a per-vertex derivative field cannot serve \
+                 both, and re-winding the mesh so every edge is the same kind of edge on both sides \
+                 is the fix"
+            ),
+            Self::NonManifold { edges } => write!(
+                formatter,
+                "{edges} edges carry three or more faces; two faces can share a boundary curve and \
+                 three cannot, because there is no pair to pick"
+            ),
+            Self::DegenerateQuad { face } => {
+                write!(formatter, "face {face} does not have four distinct corners")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SurfaceError {}
+
 /// A mesh of bicubic Hermite patches.
 #[derive(Clone, Debug)]
 pub struct HermiteSurface {
