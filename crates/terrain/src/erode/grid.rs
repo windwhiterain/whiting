@@ -85,6 +85,43 @@ pub fn slope(field: &HeightField, heights: &[f32], at: usize) -> f32 {
     best
 }
 
+/// The share of a cell's outgoing water and load that each of its lower neighbours takes.
+///
+/// Every neighbour below `at` takes a share of its distance-normalised drop raised to
+/// `exponent`, and the shares are normalised to sum to one. A cell with no lower neighbour
+/// is a sink and answers all zeros, so "where does this cell's water go" and "does it go
+/// anywhere" are one read.
+///
+/// The exponent is what separates this from the steepest-descent [`receiver`]: at one the
+/// share is proportional to the slope, so every descending direction carries some of the
+/// flow where a single receiver gives the steepest neighbour all of it and starves the
+/// rest. Pushed high enough the steepest neighbour's share approaches one and the two
+/// routings agree, which makes the exponent a dial between them rather than a second
+/// scheme. Values around one are the intended range; a value high enough to overflow
+/// `f32` on this field's own relief is outside it.
+pub fn fractions(field: &HeightField, heights: &[f32], at: usize, exponent: f32) -> [f32; 8] {
+    let here = heights[at];
+    let mut shares = [0.0_f32; 8];
+    let mut total = 0.0_f32;
+    for (slot, step) in INV_STEP.iter().enumerate() {
+        let Some(next) = neighbor(field, at, slot) else {
+            continue;
+        };
+        let drop = (here - heights[next]) * step;
+        if drop > 0.0 {
+            let share = drop.powf(exponent);
+            shares[slot] = share;
+            total += share;
+        }
+    }
+    if total > 0.0 {
+        for share in shares.iter_mut() {
+            *share /= total;
+        }
+    }
+    shares
+}
+
 /// Returns the cell one [`D8`] step away, where the massif is.
 pub fn neighbor(field: &HeightField, at: usize, slot: usize) -> Option<usize> {
     let column = at % field.width();
