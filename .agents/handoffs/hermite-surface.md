@@ -593,3 +593,44 @@ These cost that branch days and are the same hazards here:
 - Whether `gallery/src/nurbs.rs` is renamed, and whether the crate keeps the name `patch`.
 - Nothing here touches `SPEC.md`, which is human-editable only.
 
+
+## The massif renders, and what the render says that the probes could not
+
+`crates/gallery/src/hermite_massif.rs`, scene `hermite_massif`:
+
+```text
+cargo run -p whiting-device-cycles --example render_cycles -- hermite_massif out/hermite_massif.png 48 CPU
+hermite_massif: 48 samples on CPU, 2.54 s in the process, 0 dropped
+```
+
+It is the `landscape` scene's massif and the `landscape` scene's **eye**, read back through
+`landscape::massif` and `landscape::eye_at` rather than written a second time — an eye written
+twice is a camera nobody renders. So the two pictures differ in exactly one thing: `landscape`
+draws the massif's own triangles, this draws the Hermite surface they were sampled into.
+
+**Three things the render caught that six rounds of measuring did not:**
+
+1. **The scene compiled and produced a picture that was empty.** The `hermite` sheet scene still
+   renders blank; `Gallery::bounds` reports it at the origin while the exported document carries
+   real coordinates. Undiagnosed.
+2. **`SAMPLES` per patch is the difference between showing the claim and hiding it.** A patch cut
+   into its own four corners is two flat triangles, which is the picture the massif's own triangles
+   give. The first render came back visibly faceted — the opposite of what the scene is for.
+3. **The shared-valley resampler was broken**, and only the render said so. It selected a segment
+   with `position(|start| *start + 1.0 < target)` — a unit-less epsilon against an arc length —
+   which answered the **last** segment for any target below the second segment's start, putting
+   the run's whole opening stretch on its far end. Seam points landed on one place, cells were
+   dropped, and the massif rendered with holes. Fixed by walking the spans: `0 dropped` of 1638.
+
+### A hypothesis the render disproved, kept because it is about the domain
+
+The seam rows still show fern-like spikes, and with no cell dropped they are not holes — they are
+slivers between two rows placed by two different parameterisations. The obvious fix was to place
+every row's column by the valley's own arc-length `u`, since a column of a belt runs crest to
+valley. **The render says no, unambiguously**: the crest rows fell outside the belt's domain,
+`sample_block` projected them back, and the massif came apart into separated plates. Reverted; the
+reverted render's hash matches the pre-experiment one exactly.
+
+What it says is true and worth keeping: **a belt's `u` is not a coordinate that survives down the
+flank**, so the valley row and the rows above it cannot be placed by the same numbers. That is a
+real open question, not a typo.
