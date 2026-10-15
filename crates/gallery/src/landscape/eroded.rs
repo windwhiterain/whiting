@@ -70,7 +70,13 @@ use crate::identity::{ID_OUTPUT, Identity, U_OUTPUT, V_OUTPUT};
 /// rough ground where the mountain meets the plain rather than as the staircase it is. Six
 /// units is about a pixel and costs four times the triangles; twenty four is about seven and
 /// the steps are plainly visible.
-pub const CELL: f32 = 12.0;
+///
+/// **Six, lowered from twelve** (2026-10-08): three-pixel steps are exactly the texel artifact
+/// the picture was judged to have — a rim and a flank quantised to a visible grid — and the
+/// fourfold triangle cost is nothing to an offline renderer. The solve itself also reads finer:
+/// a drainage line narrower than one cell of twelve cannot exist at all, which is half of why
+/// the eroded flanks carried grid-aligned rills.
+pub const CELL: f32 = 6.0;
 
 /// How many cells the displacement is faded over, from the rim inwards.
 ///
@@ -295,22 +301,38 @@ impl Erosion {
                 .filter(|at| field.is_inside(*at))
                 .map(|at| field.height_at(at) as f64)
         };
-        let here = read(column as isize, row as isize).unwrap_or(0.0);
-        // The slope over a pair of neighbours, one step either side, falling back to the one
-        // step there is. `None` on both sides leaves the axis level rather than guessing.
-        let slope = |ahead: (isize, isize), behind: (isize, isize)| match (
-            read(ahead.0, ahead.1),
-            read(behind.0, behind.1),
-        ) {
-            (Some(a), Some(b)) => (a - b) / (2.0 * cell),
-            (Some(a), None) => (here - a) / cell,
-            (None, Some(b)) => (here - b) / cell,
-            (None, None) => 0.0,
-        };
         let column = column as isize;
         let row = row as isize;
-        let slope_x = slope((column + 1, row), (column - 1, row));
-        let slope_z = slope((column, row + 1), (column, row - 1));
+        let here = read(column, row).unwrap_or(0.0);
+        // The slope over a **two-cell span** where the field has one, falling back to the one-cell
+        // span and then to the one side that exists. `None` on both sides leaves the axis level
+        // rather than guessing.
+        //
+        // **Two cells, raised from one** (2026-10-08): a one-cell central difference reads the
+        // solve's own micro-relief — the rills and pits hydraulic transport leaves at one to two
+        // cells of wavelength — straight into the normal, and a normal per vertex then shades
+        // every one of those cells as its own facet: the point artifact the eroded picture was
+        // judged to have. A span of two cells averages over the micro-relief while leaving the
+        // hillside slope, which lives at tens of cells, untouched.
+        let slope = |dc: isize, dr: isize| match (
+            read(column + 2 * dc, row + 2 * dr),
+            read(column - 2 * dc, row - 2 * dr),
+        ) {
+            (Some(a), Some(b)) => (a - b) / (4.0 * cell),
+            _ => match (read(column + dc, row + dr), read(column - dc, row - dr)) {
+                (Some(a), Some(b)) => (a - b) / (2.0 * cell),
+                // **One-sided reads keep the sign of the two-sided one**: the slope towards an
+                // existing neighbour is that neighbour's height minus this one over the step to
+                // it. The ahead case was written the other way round, which turned the rim's
+                // west and north halves' normals downhill — a dark band along two sides of the
+                // footprint, measured at up to 39 units of slope error per vertex.
+                (Some(a), None) => (a - here) / cell,
+                (None, Some(b)) => (here - b) / cell,
+                (None, None) => 0.0,
+            },
+        };
+        let slope_x = slope(1, 0);
+        let slope_z = slope(0, 1);
         let normal = [-slope_x, 1.0, -slope_z];
         let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
         if length > f64::EPSILON {
