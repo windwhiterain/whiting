@@ -31,7 +31,9 @@
 
 use definition::{Schema, Value};
 
+mod eroded;
 mod massif;
+pub use eroded::{CELL as EROSION_CELL, Erosion};
 use mountain::line::Side;
 use mountain::tessellation::BeltRef;
 use mountain::{FacetMesh, Massif};
@@ -554,16 +556,17 @@ pub fn landscape() -> Value {
     for range in RANGES {
         let identity = Identity::of(&authored, next_id, |belt| belt_path(range.name, belt));
         next_id += identity.rows().len() as u32;
-        ranges_built.push((
-            range.name,
-            stood_at(
-                &built,
-                [range.centre[0] * radius, range.centre[1] * radius],
-                range.scale,
-                range.turn,
-            ),
-            identity,
-        ));
+        // Eroded **after** it is stood at, and not before: erosion acts in world units, so a
+        // solve run on the authored mesh and then scaled would carve the near range at the
+        // far range's resolution. See [`Erosion`] for what the displacement is and why it is
+        // applied back to these points rather than drawn as a lattice in their place.
+        let stood = stood_at(
+            &built,
+            [range.centre[0] * radius, range.centre[1] * radius],
+            range.scale,
+            range.turn,
+        );
+        ranges_built.push((range.name, Erosion::of(&stood).applied(&stood), identity));
     }
 
     // The eye looks **back along the bearing it stands at**, so the massif's centre is what it aims

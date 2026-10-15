@@ -17,3 +17,8 @@ mountain = { workspace = true }
 # surface. This crate is where the two meet, because it is the only crate that sees both — neither
 # `mountain` nor `patch` may know about the other, so the conversion has to live above them.
 patch = { workspace = true }
+# The direction after that: `terrain` reads a massif's facets onto a lattice and erodes it,
+# which is the downstream pipeline SPEC/mountain.md R6 puts outside the `mountain` crate. It
+# lives in the gallery because the gallery is the only crate that sees the massif and the
+# erosion of one at the same time, and the scene is what a height field is drawn from.
+terrain = { workspace = true }
