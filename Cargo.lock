@@ -1834,6 +1834,7 @@ dependencies = [
  "whiting-mountain",
  "whiting-patch",
  "whiting-scene",
+ "whiting-terrain",
 ]
 
 [[package]]
@@ -1867,6 +1868,13 @@ dependencies = [
  "whiting-definition",
  "whiting-gallery",
  "whiting-graphics",
+]
+
+[[package]]
+name = "whiting-terrain"
+version = "0.1.0"
+dependencies = [
+ "whiting-mountain",
 ]
 
 [[package]]

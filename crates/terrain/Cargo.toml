@@ -1,0 +1,14 @@
+[package]
+name = "whiting-terrain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Turn a mountain massif's facet mesh into a height field, and erode it."
+
+# `mountain` for the mesh it rasterises, and nothing else. The solver is three passes over flat
+# buffers, so there is no linear algebra to depend on — the same reason `mountain` has no
+# triangulation library: the correspondence made the search unnecessary, and this made the
+# arithmetic unnecessary.
+[dependencies]
+mountain = { workspace = true }

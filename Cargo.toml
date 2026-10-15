@@ -10,6 +10,7 @@ members = [
     "crates/device-cycles",
     "crates/mountain",
     "crates/patch",
+    "crates/terrain",
 ]
 
 [workspace.package]
@@ -29,6 +30,7 @@ device-rasterize = { path = "crates/device-rasterize", package = "whiting-device
 device-cycles = { path = "crates/device-cycles", package = "whiting-device-cycles" }
 mountain = { path = "crates/mountain", package = "whiting-mountain" }
 patch = { path = "crates/patch", package = "whiting-patch" }
+terrain = { path = "crates/terrain", package = "whiting-terrain" }
 
 # The `facet` facade and `facet-core` must be the same line: `facet-json 0.44.7`
 # requires `facet ^0.45`, which pins `facet-core =0.45.0`. Declaring `facet = "0.44"`
