@@ -3,31 +3,40 @@
 //! Run with `cargo run -p whiting-gallery --example seam_shading_probe`. Diagnostic: it reports,
 //! and exits non-zero only if it finds a defect it can name.
 //!
-//! # What is already ruled out
+//! # SUPERSEDED, and its numbers are not about the render
 //!
-//! **No cell is dropped** — `blockmesh` builds 1638 cells at `side` 4 and draws all 1638 — so the
-//! dark patches are not holes in the mesh. The mesh is complete and the picture is still wrong,
-//! which puts the cause in how the surface is *sampled* for drawing or in how it is *shaded*.
+//! **This probe tessellates the surface itself, on a fixed diagonal, and the scene no longer does
+//! either.** `hermite_massif::tessellate` chooses each cell's diagonal by whichever keeps its two
+//! triangles agreeing, and the front end drops cells that are slivers rather than only cells whose
+//! corners repeat. So the figures below describe a mesh nobody draws.
 //!
-//! Two candidates, and they are distinguishable:
+//! It is kept, and not deleted, because the finding it produced was real at the time and is the
+//! reason the scene changed: **2554 of 29484 triangles shaded by a normal a whole `pi` out**, which
+//! is what pointed at cell diagonals in the first place. The scene's fix came after.
 //!
-//! - **A degenerate triangle.** Two of its vertices in the same place, so it has no area, and a
-//!   path tracer draws a zero-area triangle as nothing or as noise. This is what the earlier
-//!   resampler bug produced, and it was fixed; whether any survive is the question.
-//! - **A normal that flips.** A cell whose corners are not convex, so the surface folds back on
-//!   itself and the patch's own normal points the other way. Shading follows the normal, so a
-//!   flipped cell is black however good its geometry is.
+//! **What replaced it is `mesh_shape_probe`**, which reads the surface's own quads rather than
+//! re-tessellating them, carries a control that is a control, and now reports:
 //!
-//! # What decides between them
+//! ```text
+//!   massif: 1616 cells, 0 folded, 23 skewed, 0 stretched
+//!     rock vertices not inside or near any drawn triangle: 0 (0.0%)
+//! ```
 //!
-//! **The angle between a triangle's own geometric normal and the vertex normals it was drawn with.**
-//! A near-degenerate triangle has a geometric normal that is noise. A folded one agrees with its
-//! vertex normals and both point away from the patch's neighbours. Measuring the two apart is what
-//! makes the answer say which one it is, rather than "the shading is wrong somewhere".
+//! So: no holes, no folded cells, and the dark that is left is **cast shadow** -- measured, by
+//! putting the sun straight down and watching almost all of it go.
 //!
-//! Both are counted **per seam cell** and over the whole mesh, because the picture shows them on the
-//! valleys and not on the open flanks, and a defect that is everywhere is a different finding from
-//! one that is on the seams.
+//! # What it measured while it was current
+//!
+//! **The angle between a triangle's own geometric normal and the vertex normals it was drawn
+//! with.** A near-degenerate triangle has a geometric normal that is noise; a folded one agrees with
+//! its vertex normals and both point away from the patch's neighbours. Counting those two apart is
+//! what made the answer say which one it was.
+//!
+//! The first version of this file reported **all 29484 triangles degenerate**, because it derived
+//! a vertex slot from `(dr, dc)` and put a row's three vertices into the first half of a two-
+//! triangle cell while the second triangle read the half that was empty. A measurement saying every
+//! triangle in the model is broken is a measurement of its own indexing, and the picture is right
+//! there to say so.
 
 use mountain::{FacetMesh, Starter, starter};
 use patch::Point3;
@@ -211,18 +220,26 @@ fn main() {
     if missing > 0 {
         problems.push("every drawn triangle has a normal");
     }
-    if flipped > 0 {
-        problems.push("no drawn triangle's normal is flipped away from its vertices");
-    }
     println!();
+    // **The flipped-normal count is reported and not asserted on.**
+    //
+    // It is high here and it is high *here*, on a fixed-diagonal tessellation of the surface that
+    // the scene does not use. Asserting on it would leave a permanently red probe describing a mesh
+    // nobody draws, which is how a real defect gets lost among the false ones -- this file's own
+    // first version reported all 29484 triangles degenerate, in the same way.
+    //
+    // What the scene actually draws is measured by `mesh_shape_probe`, which reads the surface's
+    // own quads: 0 folded cells, 0 holes, and the rest of the dark is cast shadow.
     if problems.is_empty() {
-        println!("the drawn mesh is clean: every triangle has area and a normal that agrees");
-        println!("with the vertices it is drawn from. The artifacts are therefore not in the");
-        println!("sampling, and the next place to look is how the stage shades rather than how it");
-        println!("is built.");
+        println!("every triangle here has area and a normal that exists.");
     } else {
         for problem in &problems {
             println!("FOUND  {problem}");
         }
     }
+    println!();
+    println!(
+        "this tessellation is not the one the scene draws -- see the header. mesh_shape_probe"
+    );
+    println!("is the measurement that describes the render.");
 }

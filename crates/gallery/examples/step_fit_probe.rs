@@ -125,6 +125,12 @@ fn departure(
                 continue;
             };
             let cell = (row * last + column) as u32;
+            // A cell's place in a grid is its face id only while every cell was kept, and the
+            // front end drops the degenerate ones. Guarded for the same reason as in
+            // `block_surface_probe`, which walked off the end of the face list for the same cause.
+            if cell as usize >= surface.face_count() {
+                continue;
+            }
             worst = worst.max(rock.distance(surface.patch(cell).evaluate(0.5, 0.5)));
         }
     }
