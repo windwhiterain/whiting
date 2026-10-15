@@ -697,3 +697,32 @@ It was built to tell a fold from a hole and **could not**: it stands behind the 
 only visible through a gap that goes all the way through, and a hole in a front-facing slope
 shows the unlit inside instead. Two claims made from that test in earlier rounds were wrong, and
 the lighting control from over the camera is what actually ruled out backlight.
+## Where the degenerate cells come from
+
+Measured at every resolution, before changing anything:
+
+```text
+side  4:  1638 patches | worst aspect     36.04 | smallest side 0.5528
+side  6:  4550 patches | worst aspect 72415357.44 | smallest side 0.0000
+side  8:  8918 patches | worst aspect    119.41 | smallest side 0.0467
+side 12: 22022 patches | worst aspect    182.78 | smallest side 0.0291
+```
+
+The median aspect is steady at 2.8 to 3.2 throughout — the grid is not stretched — and **one
+cell** is degenerate. At side 6, which the scene draws, there is a cell with a side of exactly
+zero.
+
+**The first guess was wrong and cost an hour to disprove.** That the rank placement repeats a
+column: a region narrower than the grid asks for has fewer distinct covered `u` values than it
+has columns, so `quantiles` rounds neighbouring steps onto the same index. Clamping the count to
+what the run can distinguish **changed no number at all**. Reverted — an unmeasured change is
+worse than none.
+
+**So it is the projection fallback.** Two grid points that no triangle covers are each sent to
+the nearest covered point, and where they land on the *same* place the cell between them has a
+side of zero. This is the same fault this branch first found — invented corners — arriving by a
+different route: no longer in cells that fold, now in cells that are short.
+
+`HermiteSurface` is right to refuse a quad with a repeated corner and `push_quads` drops it, so
+the zero cell never reaches a surface. What reaches the render is the cell beside it, with a
+neighbour gone, and that is what the picture shows.
