@@ -142,7 +142,7 @@ pub fn hermite() -> Value {
                 "key",
                 [-7.0, 6.0, 5.0],
                 [1.0, 0.95, 0.88],
-                4.0 * 4.0 * std::f64::consts::PI * 110.0,
+                crate::kit::flux_for_irradiance(4.0, 110.0f64.sqrt()),
                 14.0,
                 30.0,
             )]),

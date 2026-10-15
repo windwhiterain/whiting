@@ -230,6 +230,18 @@ pub fn directional(
     )
 }
 
+/// The flux a point light needs so that a surface at `distance` from it receives `irradiance`.
+///
+/// A point light's `power` is a flux spread over the sphere at each distance, so the number a
+/// scene wants — how brightly a surface at a known distance is lit — is not the number the
+/// document takes. A scene that writes a flux by taste writes the hermite sheet's old `3.2`,
+/// which at ten units of distance is two thousandths of an irradiance and drew the sheet
+/// black. The sphere's area is the whole of the conversion, and stating it here keeps every
+/// scene's point light a statement about its subject rather than about the inverse-square law.
+pub fn flux_for_irradiance(irradiance: f64, distance: f64) -> f64 {
+    irradiance * 4.0 * std::f64::consts::PI * distance * distance
+}
+
 /// Builds one environment light of a scene, reading the image the label names.
 ///
 /// # Invariants
