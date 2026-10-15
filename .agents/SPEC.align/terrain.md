@@ -161,16 +161,46 @@ pixel resolves to a facet to within a lattice cell rather than exactly — and t
 intact. `out/erode-04.png` is the same scene afterwards: gullies on the flanks, a toe that
 meets the plain, and `authored_id` still naming the crest under each pixel.
 
-### A displacement *texture* is not the mechanism here, and why
+### A displacement *texture* is not the mechanism here — verified on both backends
 
 Displacing in the vertex stage from a texture is the obvious GPU-shaped answer and this
 workspace cannot use it for the geometry. `scene`'s Cycles exporter reads `position` straight
 out of the packed point run (`crates/scene/src/cycles_export/geometry.rs`) and writes a mesh;
-it has no vertex stage and no way to sample anything. A displacement texture would render on
-the rasterising backend and silently not exist on the path tracer, which is exactly the class
-of failure [SPEC.align.md](SPEC.align.md) treats as worse than a refusal. The displacement is
-therefore baked into the document's points, which is also the cheaper answer here — the field
-is already on the cpu, having just been solved on it.
+it has no vertex stage and no way to sample anything. The displacement is therefore baked into
+the document's points, which is also the cheaper answer here — the field is already on the cpu,
+having just been solved on it.
+
+**This was measured, not reasoned, and the measurement was the second attempt.** The first
+search for a Cycles binary looked in three directories and found none, and the offline
+backend was reported as unverified on the strength of that. It was wrong: the runner's first
+candidate is `C:\resource\cycles\install\cycles.exe`, which is exactly where the binary is
+(`crates/device-cycles/src/runner.rs`), and the search had only listed the top level of the
+directory above it. A capability claim made from a search that did not look where the code
+looks is worth nothing.
+
+What both backends then drew, from the same document:
+
+```
+cargo run -p whiting-device-rasterize --example render    -- landscape out/erode-lattice.png
+cargo run -p whiting-device-cycles   --example render_cycles -- landscape out/erode-cycles.png
+```
+
+The two agree on the silhouette and on the gullies, which is the part that matters: under a
+path tracer those gullies are lit from the integrator's own rays, so **they are geometry and not
+shading**. A vertex displacement would have produced a flat massif here, because there is no
+vertex stage to apply it in.
+
+The emitter reports nine dropped fields and all nine are pre-existing rather than new:
+`authored_id` / `authored_u` / `authored_v` on both range meshes, which the Cycles XML loader
+cannot carry (it reads position, normal, uv, uv tangent and tangent sign), and the
+shadowing and depth shader stages, which describe passes the rasterised pipeline owns. The
+massif declared those three attributes before this change too — `identity::faceted` wrote them
+— so the lattice moved them from one builder to another without moving the count.
+
+Two small dark notches at the massif's toe appear in **both** frames. That makes them
+geometric rather than a rasteriser artefact, and they are not accounted for: they are most
+likely a lattice cell at the boundary whose one-sided normal falls away steeply, which would
+be a shading artefact in the rasteriser and a silhouette in the tracer. Left alone and named.
 
 What the texture idea does buy is **a legible instrument**: the displacement as a scene-declared
 output image, next to the `authored_id` / `u` / `v` channels this scene already writes. That
