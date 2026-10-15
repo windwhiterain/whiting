@@ -28,6 +28,11 @@ artifacts lived:
   renders mostly were (the old "the backdrop shows through nothing" evidence was vacuous: the
   backdrop stood past the far plane and never drew). Rows are now duplicated per belt at
   coincident arclength stations; a cell is dropped only when two corners are one place.
+- `a3fd1f6` **seam resample** (`crates/gallery/src/blockmesh.rs`): the arc-length resample's
+  last station was `points[last]` rather than `points[last + 1]`, so every valley seam row ran
+  four fifths of the valley and jumped back to its start, and the last seam cell's Hermite patch
+  swept across the seam onto the other flank — the dark chevrons and diamonds. See **Hermite
+  seam flaps**.
 - `ea267e7` **hermite scene** (`crates/gallery/src/hermite_massif.rs`): the far plane was
   `1450.0` outright while the eye stands some 4600 units back, so the whole scene rendered as
   bare sky at the branch tip — a clipped scene and an empty one are the same pixels. It is
@@ -51,19 +56,11 @@ artifacts lived:
 
 ## In flight (subagents, this session)
 
-- **Hermite seam flaps.** After all of the above the hermite massif still shows one-cell dark
-  diamonds *on the valley seam lines* (stacked chevrons down the front valley, isolated
-  diamonds on side valleys). Established: front-facing geometry (backfaces are culled; genuine
-  holes in the same frame show sky), belonging to a different patch face than the surface
-  around them (false-colour render with the face id in the texture slot), i.e. flaps of one
-  belt's patch poking through the neighbour at the seam, or seam cells tilted hard away from
-  the sun. Ruled out: shadows (Shadowing stage removed, pixel-identical), sliver holes, fold
-  census skips, diagonal choice, global orientation, far plane. A subagent is hunting it with
-  `BELT_DUMP` grid dumps in `blockmesh.rs` (to be removed before its commit) and
-  `examples/seam_probe.rs`.
 - **Sky lattice blocks.** The landscape sky showed axis-aligned hard-edged rectangles; a
   subagent is fixing the term responsible in `crates/gallery/src/landscape/mod.rs` (its WIP
   already renders clean in `out/land2.png`).
+
+- The hermite seam flaps were hunted and fixed; see **Hermite seam flaps** below.
 
 ## Known issues not being fixed here
 
@@ -83,7 +80,8 @@ artifacts lived:
 
 ## Merge state
 
-Checkpoint 1 merged to `main` at `8174f1c`. Merge again when the two in-flight fixes commit.
+Checkpoint 1 merged to `main` at `8174f1c`. Merge again when the sky lattice fix commits; the
+seam-flaps fix is already in, at `a3fd1f6`.
 
 ## Sky lattice blocks
 
@@ -152,4 +150,109 @@ composition can have moved. `hash` and `value_noise` were removed rather than ke
 sine hash in `ridges.rs`, `terraces.rs`, `stilllife.rs` and `foldyard.rs` has the same weakness at
 large coordinates; none of those is drawn at a coordinate anywhere near `1e4`, and changing them
 would move an authored composition, so they are left as they are.
+
+## Hermite seam flaps
+
+Commit `a3fd1f6` "Return the run's own far end from the seam resample, and the seam stops
+doubling back", on `feature/mountain-visual-opt` after `0cdf7a6`. File:
+`crates/gallery/src/blockmesh.rs` only, and the change is one character. Before
+`out/dh1.png`; after `out/dh2.png`.
+
+### Cause
+
+`resample_by_arclength` picked its segment with a **strict** `<`:
+
+```rust
+if target < walked + *span { at = index; break; }
+walked += *span;
+```
+
+The last station's target is exactly `total`, which fails `< walked + span` on the last segment,
+so the walk fell out of the loop with `walked` already at `total`, and the share came out as
+`(total - total) / span` — **zero**. The function therefore answered `points[last]`, the
+*second to last* vertex of the run, for the station that is supposed to be `points[last + 1]`.
+Its own documented invariant two dozen lines above, *"**`points[0]` and `points[len-1]` are
+returned exactly**"*, was false on every run with more than one vertex.
+
+On this massif that is 184 of the 216 belts (32 have a one-vertex run, 184 have two). A
+two-vertex run makes the consequence plain — the six seam stations were
+
+```
+A, A+0.2d, A+0.4d, A+0.6d, A+0.8d, A          <- the last one is A again
+```
+
+so each belt's valley row walked four fifths of the way down the valley and then **jumped back
+to where it started**. The cell between the last two stations is a bow tie whose `u` edges are
+the whole length of the valley (207 units on valley 0 segment 1) while its `v` edges are one
+cell (30 units): `u` edges of 207, 41, 41, 41, 41 against `v` edges of 262, 181, 141, 112, 87.
+Its Hermite patch has no reason to stay in that cell and swept back across the seam and over
+the other flank. Every seam of every valley segment produced one, which is why the artifacts
+read as a column: a valley is several segments and each segment's last cell is one chevron.
+
+The `d = 0.0` chord in the same dump is the second half of it: the doubled-back station makes
+the last seam edge run the whole valley *backwards*, and `push_quads` drops a cell whose corners
+are not distinct — so for the 32 one-vertex-run belts all five seam cells were dropped, a
+one-cell hole at the head of each of the 32 valleys.
+
+### Fix
+
+`<` becomes `<=`. The run's own end belongs to its last segment, and with `<=` the final station
+takes `at = last`, `share = (total - (total - span)) / span = 1`, and answers `points[last + 1]`.
+It cannot crack: the two belts that share a run still resample the same polyline by the same
+walk, so their rows stay coincident to the last bit — the printout reads `A … B` on both sides
+of every seam, and the same invariant that was written down and not true is now true. It cannot
+fold the seam: a cell whose four corners are four stations along one straight run is a trapezoid
+at worst, and every corner keeps its seed because its chord is unchanged on the other five
+stations.
+
+### Measured, same build, side 6, 5156 patches
+
+| | before `a3fd1f6` | after |
+| --- | --- | --- |
+| seam row's bulge from its own bilinear interpolant, p90 | 0.2500 | 0.1232 |
+| same, p99 | 0.4384 | 0.2136 |
+| same, max | 0.5091 | 0.4384 |
+| the other four grid rows, p90 (the yardstick) | 0.1441 / 0.1399 / 0.1190 / 0.1252 | unchanged |
+| patches whose own normal turns more than 90° inside themselves | 557 | 228 |
+| dark-triangle islands under 40 triangles, of 257800 drawn | 21 | 14 |
+| sky-coloured pixels enclosed by the silhouette | 8713 | 8713 (unchanged: no new holes) |
+
+Render: the stacked column of chevrons down the front valley is gone and most of the isolated
+diamonds with it; `out/dh1.png` against `out/dh2.png`.
+
+### Ruled out on the way, by measurement
+
+- **Not** the one-sided boundary tangent at a seam vertex. Its seed is the full chord in the
+  right direction, which is what a one-sided difference is, and after the fix the seam row's
+  bulge statistics are indistinguishable from the four interior rows.
+- **Not** the twist (it is zero everywhere), **not** the per-edge boundary scaling (the step
+  cancels: the seed is `chord / step` and the coefficient is `du * step`), **not** `step_u` /
+  `step_v` being global means (`HermitePatch::new` multiplies by the step and `tangent_u`
+  divides it back out, and the normal is a cross product of two).
+- **Not** the shear between the seam row and the flank rows, although it is real and is the next
+  thing on the list: the seam row is spaced by arc length along the run and every other row by
+  the belt's own `u` quantiles, so the last cell row is sheared. Measured ratio of seam chord to
+  the chord above it: min 0.216, p10 0.458, median 0.855, p90 1.104, max 1.816. Removing it means
+  taking the columns from the run's own `u` values, so the two belts' columns agree only if
+  their `u` quantiles are mirror images, which they are not (left `[0, 0.444, 0.635, 0.762,
+  0.889, 1.0]` against right `[0, 0.444, 0.619, 0.762, 0.889, 1.0]` on valley 0 segment 0). Not
+  attempted; see below.
+
+### Still in the picture after `a3fd1f6`
+
+- **32 one-cell holes, one at the head of each valley.** Those belts' valley run is a single
+  vertex, so `resample_by_arclength` returns the same point six times and `push_quads` drops all
+  five seam cells. Sky-coloured notches at the valley heads in `out/dh2.png`.
+- **84 one-cell holes at a crest corner.** `push_quads` drops the cell whose corners are not four
+  distinct places; on those belts a grid corner lands twice in one place, usually because
+  `sample_block`'s projection (`nearest_covered`) put two columns on one covered point.
+- **14 islands of one to eleven triangles** out of 257800 that shade past the sun's terminator,
+  each one tessellation cell. Raising `SIDE` to 8 shrinks them with the cell rather than turning
+  them into bands, so they are cell-sized and not a geometric feature: they are where the
+  analytic normal crosses `dot = 0` inside one cell, and, where the patch folds, where
+  `tessellate`'s per-vertex `turned()` flip disagrees with its neighbours'.
+- **Some belts' rock is the flat base plane** (`y = 1450` exactly at all four corners), where
+  `du` and `dv` are collinear and `|n|` falls to `1e-3`. `turned()` answers `+y` there, which is
+  the right answer, but the analytic normal is meaningless and the `fold` census above counts
+  those as folds.
 
