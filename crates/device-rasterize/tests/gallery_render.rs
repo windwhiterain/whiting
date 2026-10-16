@@ -11,6 +11,10 @@
 //! reads the pixels back. What it looks for is **variation**: the scene's image is a tile pattern,
 //! so a frame drawn from it is a frame of several colours, and a frame drawn from a texture that
 //! never reached the gpu is one flat colour however the lighting went.
+//!
+//! The second test here walks the whole gallery, and it is a **compilation and read-back**
+//! sweep rather than a picture test: it holds that every scene the gallery names draws at all,
+//! not what any of them looks like.
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier};
 use device::Renderer;
@@ -60,9 +64,37 @@ fn every_gallery_scene_renders() {
     // The gallery is what tells a rule that can be changed safely from one that cannot: a
     // binding numbering that shifts by one still renders, and still renders the wrong thing, so
     // what this holds is that none of them stops rendering at all.
-    for name in Gallery::names() {
-        render(&renderer, name).unwrap_or_else(|error| panic!("`{name}` does not render: {error}"));
-    }
+    //
+    // **Every scene is rendered and every failure is reported, in one panic.** This used to
+    // abort at the first one, and `studio` is the tenth of fourteen names, so the four after it
+    // were never reached and nothing said so: a red test here named one broken scene and left
+    // thirteen unverified, and the cost of finding out was one run per broken scene. Measured
+    // on `main` at `169abaa`, the four the loop never reached — `sunlight`, `terraces`,
+    // `tidewater`, `tiles` — all render, but that was checked by hand and not by this test.
+    //
+    // The price is one extra render pass over the failing scenes, paid only when there is a
+    // failure: a run where everything renders pays exactly what it paid before. A scene that
+    // fails on the fourth of fourteen used to cost a fifth of the run and now costs all of it,
+    // and that is the trade this makes deliberately.
+    //
+    // **The messages stay distinguishable.** Each line names its own scene and carries that
+    // scene's own error, in the order the gallery lists them, so a panic of fourteen lines says
+    // which fourteen and why, rather than saying fourteen times that something did not render.
+    let failures: Vec<String> = Gallery::names()
+        .iter()
+        .filter_map(|name| {
+            render(&renderer, name)
+                .err()
+                .map(|error| format!("  `{name}` does not render: {error}"))
+        })
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "{} of {} gallery scenes do not render:\n{}",
+        failures.len(),
+        Gallery::names().len(),
+        failures.join("\n")
+    );
 }
 
 /// Returns a renderer, or nothing when the machine has no adapter.
