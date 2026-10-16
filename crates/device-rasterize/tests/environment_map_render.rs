@@ -15,15 +15,13 @@
 //!
 //! # Why two surfaces and not one
 //!
-//! A single surface cannot tell a sampled environment from the two colour hemisphere that stood
-//! in for one. Both are brighter towards the sky, so "the top is brighter than the bottom" holds
-//! for either, and an assertion that stops there would pass on a shader that read nothing at
-//! all. What the stand-in cannot do is move the two surfaces in **opposite directions** when the
-//! environment is taken away, because it is a replacement and not an addition: the map's top row
-//! is far brighter than the stand-in's sky and its bottom row is darker than the stand-in's
-//! ground, so removing the environment drops the upward face and lifts the downward one. That is
-//! the check that the image is being sampled by direction rather than merely added, and it is why
-//! the first test here renders four frames rather than one.
+//! A single surface cannot tell a sampled environment from a constant added to one. "The top is
+//! brighter than the bottom" holds for either, and an assertion that stops there would pass on a
+//! shader that read nothing at all. What separates them is what happens when the environment is
+//! taken away: the map **replaces** the ambient term rather than being added on top of one, so a
+//! scene naming no environment light is not dimmer — it is black, in both directions at once. A
+//! shader that had summed the map onto an ambient of its own would leave a lit frame behind, and
+//! that is what the second half of the first test here is for.
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use device::{Frame, Renderer};
@@ -70,18 +68,11 @@ const BLURRED: f64 = 1.0;
 
 /// How much of the difference between the two directions has to survive to count as a lookup.
 ///
-/// The stand-in's two ends differ by about twelve of 765, and the map's by most of the range, so
-/// a hundred is a floor that excludes the stand-in by a wide margin rather than a number tuned
-/// to the frame.
+/// A constant sitting on top of whatever was read cannot make the top of the map brighter than
+/// its bottom by more than that constant, so this is the floor a constant cannot cross. The map's
+/// two ends are most of the range apart, and a hundred of seven hundred and sixty five is a
+/// margin rather than a number tuned to this frame.
 const SEPARATION: u32 = 100;
-
-/// The largest gap between the stand-in's two ends that still counts as the stand-in.
-///
-/// The stand-in's two colours are a twelfth and a fiftieth of one, and a surface multiplies
-/// them by its own tint, so the gap it produces is around forty of seven hundred and sixty five.
-/// The number is a floor above that rather than a measurement of it, so a stand-in that drifted
-/// a little would still pass and a sampled map still could not.
-const STAND_IN_GAP: u32 = 60;
 
 /// Where the ground is probed, as a fraction down the frame.
 const GROUND: f64 = 0.88;
@@ -119,22 +110,22 @@ fn the_two_directions_differ_and_the_environment_is_what_makes_them() {
          the downward one"
     );
 
-    // The half no single frame can give. The stand-in is a hemisphere that is brighter from
-    // above too, so the ordering above is on its own consistent with the environment never
-    // having been read; what the stand-in cannot do is move the two surfaces in opposite
-    // directions when the environment is taken away.
+    // The half no single frame can give. The ordering above is on its own consistent with the
+    // environment never having been read: a constant, or an ambient of the renderer's own, puts
+    // the top above the bottom too. What neither of those can do is be **replaced** by the map.
+    //
+    // A scene naming no `Environment` light is given no ambient at all rather than a dimmer one,
+    // so the frame without the environment is black in both directions instead of being lifted
+    // in one of them. That states the replacement as a measurement rather than as a claim.
     let (up_without, down_without) = (probe(&unlit, GROUND), probe(&unlit, CEILING_PROBE));
-    assert!(
-        up_without < up,
-        "removing the environment takes the upward face from {up} down to {up_without}, because \
-         the two colour stand-in is far dimmer at the top than the map's top row is"
-    );
-    assert!(
-        down_without > down,
-        "and it takes the downward face from {down} **up** to {down_without}, because the \
-         stand-in is not black underneath while the map's bottom row is. Two surfaces moving in \
-         opposite directions is what a lookup by direction looks like, and a constant or a \
-         hemisphere cannot do it"
+    assert_eq!(
+        (up_without, down_without),
+        (0, 0),
+        "the environment replaces the ambient term rather than being added to one, so a scene \
+         naming none is not dimmer: it is black. This frame reads {up_without} for the upward \
+         face and {down_without} for the downward one, where the lit frame held {up} and {down}. \
+         Anything lit here is an ambient of the renderer's own underneath the map, which is \
+         exactly what `light_units.md` records the stand-in as having been"
     );
 }
 
@@ -163,9 +154,9 @@ fn a_rougher_surface_reads_a_coarser_level_of_the_map() {
     );
 }
 
-/// A scene naming no environment light compiles, renders, and renders the stand-in.
+/// A scene naming no environment light compiles, renders, and renders **black**.
 #[test]
-fn a_scene_naming_no_environment_still_renders_the_stand_in() {
+fn a_scene_naming_no_environment_still_renders_and_is_black() {
     let Some(renderer) = renderer() else {
         println!("{NO_ADAPTER}");
         return;
@@ -176,19 +167,13 @@ fn a_scene_naming_no_environment_still_renders_the_stand_in() {
     let frame = render(&renderer, &scene(false, SHARP))
         .expect("a scene with no environment light compiles");
     let (up, down) = (probe(&frame, GROUND), probe(&frame, CEILING_PROBE));
-    assert!(
-        up > down,
-        "the stand-in is a hemisphere that is brighter from above, so the upward face at {up} is \
-         still above the downward one at {down}"
-    );
-    // And the two are close together, which is the property that tells the stand-in from a map:
-    // one dark colour across a whole hemisphere cannot be most of the range at the same time as
-    // white at the top and black at the bottom.
-    assert!(
-        up - down < STAND_IN_GAP,
-        "the stand-in's two ends are {up} and {down}, a gap of {} where a sampled map is most of \
-         the range. A frame this far apart is a map being read in a scene that named none",
-        up - down
+    assert_eq!(
+        (up, down),
+        (0, 0),
+        "a surface receives the environment only when the scene names an `Environment` light, and \
+         nothing when it does not, so both faces read {up} and {down}. A lit face here is an \
+         ambient the document did not ask for, which is the two colour stand-in \
+         `light_units.md` records as removed for being exactly that"
     );
 }
 
@@ -247,9 +232,10 @@ fn scene(environment: bool, roughness: f64) -> Value {
 
     // The environment is the **only** light in the scene, and a scene naming no environment
     // light is a scene with *no* lights at all. Both have to render: the clustered loop over
-    // an empty list is a loop that does not run, so every pixel in the frame is the ambient
-    // term and nothing else, which is what makes the difference between the two surfaces
-    // attributable to the map rather than to a lamp.
+    // an empty list is a loop that does not run, and the ambient term is black without an
+    // environment to feed it, so every pixel in the frame is the map and nothing else. That is
+    // what makes the difference between the two surfaces attributable to the map rather than to
+    // a lamp, and what makes the second frame black rather than merely dim.
     let lights = if environment {
         Value::List(vec![environment_light("sky", "sky", [1.0; 3], 1.0)])
     } else {

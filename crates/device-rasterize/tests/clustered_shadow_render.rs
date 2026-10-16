@@ -49,6 +49,36 @@ const GROUND: f64 = 10.0;
 /// How high the occluder stands above the ground, which is what makes a shadow at all.
 const BLOCK_HEIGHT: f64 = 3.0;
 
+/// Where the key lamp stands: on the far side of the block from the camera.
+const KEY: [f64; 3] = [-30.0, 20.0, -24.0];
+
+/// Where the second lamp stands, on the same far side and to the other hand.
+const SECOND: [f64; 3] = [26.0, 18.0, -20.0];
+
+/// The radiance each lamp is calibrated to put on the ground directly below it.
+///
+/// A light's `power` is a **radiant flux** and not a brightness, and the shading model turns a
+/// flux into the radiance a surface sees with `power / (4 pi^2 d^2)`. So the flux that puts a
+/// given radiance on a subject `d` away is `radiance * 4 pi^2 d^2`, and a document that states
+/// any other number is describing a lamp in units no backend shares. See
+/// `.agents/SPEC/render/light_units.md`.
+///
+/// The number below is short of the one that reads as white so that the whole ground keeps room
+/// under the top of an eight bit present target, which this stage's empty grade does nothing to
+/// pull back. Measured on this scene at 1024x1024, with the three channels summed: the key lamp
+/// alone peaks at **586 of 765** over 447475 lit pixels and a mean of 83, with **no** pixel
+/// clipped; the two lamp frame peaks at 765 over 505618 lit pixels and a mean of 175, with 422
+/// pixels clipped. The block takes 70467 pixels to black, thirty five times the floor the
+/// assertion below asks for.
+const LAMP_RADIANCE: f64 = 0.45;
+
+/// The radiant flux of the lamp standing at `position`, for the radiance [`LAMP_RADIANCE`].
+fn flux(position: [f64; 3]) -> f64 {
+    let distance =
+        (position[0] * position[0] + position[1] * position[1] + position[2] * position[2]).sqrt();
+    LAMP_RADIANCE * 4.0 * std::f64::consts::PI * std::f64::consts::PI * distance * distance
+}
+
 /// How many pixels of difference a shadow has to cover before it counts as one.
 ///
 /// A shadow of a block this size on a ground this wide is a large part of the frame. The
@@ -194,11 +224,22 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
     // renders and casts no shadow — which is the same symptom as a broken page and the
     // opposite diagnosis. (A light that names **no** radius is a global light and is never
     // culled at all, which is the other way out and is what `kit::light` builds.)
+    //
+    // The **flux** is derived rather than written, and that is the whole of what was wrong with
+    // this scene. It used to state `3.0` and `2.4`, which were brightness multipliers of a
+    // shading model that divided by `d^2` and by nothing else. That model no longer exists —
+    // `d36b4cb` put the sphere's `1 / (4 pi d^2)` and the Lambert lobe's `1 / pi` into the
+    // shading, and re-derived every *gallery* scene's light against them — and a document that
+    // states the old number against the new model is dark by the ratio between the two. At the
+    // forty-odd units these lamps stand from the ground that ratio is 24687, so the brightest
+    // pixel in the frame came out at 0.004 of 255: every one of the 1048576 pixels rounded to
+    // zero and both of these tests spent their time comparing two black frames, which is why the
+    // failure read as a broken page rather than as a scene with no light in it.
     let mut lights_list = Value::List(vec![light_with_radius(
         "key",
-        [-30.0, 20.0, -24.0],
+        KEY,
         [1.0, 0.96, 0.9],
-        3.0,
+        flux(KEY),
         20.0,
         70.0,
     )]);
@@ -211,9 +252,9 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
         };
         extra.push(light_with_radius(
             "second",
-            [26.0, 18.0, -20.0],
+            SECOND,
             [0.85, 0.9, 1.0],
-            2.4,
+            flux(SECOND),
             20.0,
             70.0,
         ));
