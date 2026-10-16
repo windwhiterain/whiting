@@ -228,14 +228,7 @@ pub fn hermite_massif() -> Value {
                     4.6,
                     radius * 1.4,
                 ),
-                // **Bright enough to fill the valley walls** (2026-10-08; was 0.55). The sun
-                // stands over the camera's shoulder, so a valley that runs at the camera shows
-                // one lit wall and one in shadow, and at half strength the shadowed wall read as
-                // the same dark diamond the artifact hunt had been chasing — correctly shaded,
-                // under-lit. A sky that fills a shadow to a third of the sunlit rock is what the
-                // landscape scene's own atmosphere gives its valleys, and it is the difference
-                // between a crease and a hole.
-                environment_light("air", "air", [1.0; 3], 1.1),
+                environment_light("air", "air", [1.0; 3], 0.55),
             ]),
         ),
         (

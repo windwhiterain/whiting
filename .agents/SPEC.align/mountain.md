@@ -632,3 +632,76 @@ RibCrossesLine { belt: BeltRef { valley: ValleyId(1), side: Right, segment: 0 },
 A number written as "a fraction of the radius" reads as small and is small only where the crests
 happen to be far apart. Normalised against the wedge's own half width it is the same quantity in
 every wedge, and the same scene then validates at zero violations.
+
+## Amendments (2026-10-08, the mountain visual optimization pass)
+
+What the pass that fixed the hermite massif's black blocks and the erosion lattice's texel
+artifacts learned about the design above, recorded because each item changes what a caller of
+`mountain`, `patch` or `terrain` may assume.
+
+### A belt's seam is coincident vertices, not a shared vertex, and not a tagged edge
+
+The alignment above built one `HermiteSurface` whose belts shared their valley-row vertices and
+tagged the shared edges `Join::Hard`. A Hermite surface holds **one** derivative field per
+vertex, and at a shared valley vertex that one `dv` has to serve two flanks that leave the
+valley in different directions, so it serves neither: the averaged cross-boundary derivative
+pinched both belts' patches at every seam cell. Belts now meet at vertices that are separate but
+exactly coincident — both belts resample the same run at the same arc-length stations, so the
+copies agree to the last bit — and the valley crease is structural rather than tagged. A caller
+who wants a soft valley has no join to tag and must ask `patch` for a representation with a
+private cross-boundary derivative, which `patch::hermite_surface` documents as unavailable.
+`belt_seam_probe` now measures coincidence (91 of 91 seams at distance zero) instead of tags.
+
+### A Hermite tangent is a displacement per parameter span, and the seed must say so in step units
+
+`seed_derivatives` seeded half a *unit* direction at every vertex of every mesh. The boundary
+curve's end tangent is `du * step`, so against chords of forty the curves left every corner flat
+and rushed to the next — a faceted plate — and at boundary vertices the one-sided tangent
+pointed back into the patch, looping every boundary row and column of every patch. The seed is
+now half the edge vector in the shared step's units, oriented by the parameter direction read
+from the face slot, added at both ends: interior vertices collect the central difference,
+boundary vertices the forward or backward one. Any caller seeding derivatives by hand inherits
+the same unit rule.
+
+### The arc-length resample's last station is the run's own end
+
+`resample_by_arclength` selected its segment with a strict `<`, so the final station — whose
+target is exactly the total — fell out of the walk and answered the *second to last* vertex on
+every run of more than one vertex: a seam row that walked most of the way down a valley and
+jumped back to its start, whose bow-tie cell swept a Hermite flap back across the seam. The
+function's own stated invariant was false; the comparison is `<=` now. Anything else that walks
+a polyline by accumulated length wants the same check.
+
+### A quad with two corners in one place is drawn as a sliver, not dropped
+
+`push_quads` dropped cells whose shortest edge was under a twentieth of the longest, and each
+drop is a one-cell hole showing the lit inside of the rock behind it — measured as 32 notches at
+valley heads and 84 at crest corners, and historically mistaken for the black blocks themselves.
+Coincident adjacent corners are now nudged apart by a hundred picometres, which is below anything
+the picture resolves and above the `f64` rounding of these coordinates; only a quad with two
+corners in exactly one place, which the surface type cannot represent at all, is dropped.
+
+### The erosion lattice is the drawing, so its cell is a picture constant and its routing is the picture's grain
+
+`CELL` 12 put three-pixel steps and grid-aligned single-flow rills in the frame; at 6 the steps
+are about a pixel and the multiple-flow-direction routing (`grid::fractions`, slope shares to
+every lower neighbour) takes the rills' cause out at the source — micro-relief p90 10.1 to 2.3
+units, interior pits 191 to 12. The drawn surface additionally fills the solve's leftover pits
+(`HeightField::fill_pits`, one priority-flood sweep) because a pit drawn is a dot, while the
+solve and its books stay unfilled. The drawn normal reads a two-cell span: a one-cell central
+difference paints the solve's micro-relief as a facet per cell.
+
+### What remains, measured and accepted
+
+- The seam row stands at arc-length stations while the flank columns stand at `u` quantiles; the
+  two disagree by up to a factor of two on a narrowing belt (shear ratio 0.216 to 1.816). Taking
+  the columns from the stations' own `u` was tried and is worse: the top row then projects whole
+  columns onto one covered point and the summits flatten into it. The shear stays, and the
+  scene's tessellation guards it — a vertex analytic normal is trusted only within sixty degrees
+  of the cell's own geometric facing, past which the triangle's flat normal stands in.
+- A valley that runs at the camera shows one lit wall and one in shadow; at this sun the shadowed
+  wall is a dark diamond-shaped patch. That is the crease reading as a crease, not an artifact,
+  and no lighting change was made to hide it.
+- Where two stood ranges' footprints overlap, the nearer lattice's rim used to notch the crossing
+  curve; lattice cells under another range's surface are now dropped whole. A thin spike at one
+  junction remains and is unattributed.
