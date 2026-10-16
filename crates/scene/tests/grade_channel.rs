@@ -20,8 +20,10 @@
 //! - **its contract is where the numbers came from, not what its pass drew** — a pass that
 //!   copies a buffer covers the buffer, and saying so is what keeps a caller from believing
 //!   the image over the picture when the two disagree;
-//! - **it says what it cannot show**: the sky is black because the post stage draws it, and a
-//!   value at one was clipped by the eight bit target before the grade ever saw it;
+//! - **it says what it cannot show**: the sky is black because the post stage draws it. It used
+//!   to say a second thing here — that a value at one was clipped by the eight bit target before
+//!   the grade ever saw it — and `0257706` ended that by giving the shaded image `rgba16float`,
+//!   so the file is now the radiance the grade reads and is not bounded by one;
 //! - **it moves no pixel of the beauty image**, which is the contract every channel holds and
 //!   the one a channel that tinted the frame in place would break;
 //! - **it does not borrow the depth channels' note**, because a full frame of a scene that
@@ -130,12 +132,23 @@ fn the_grade_shader_is_a_copy_and_not_an_interpretation() {
 #[test]
 fn the_grade_header_says_what_it_cannot_show() {
     // A file of numbers whose header does not say what it leaves out is a measurement somebody
-    // will believe. Three things are left out here and all three are stated: the sky, the
-    // values above one, and the pixels with no surface.
+    // will believe. Two things are left out here and both are stated: the sky, and the pixels
+    // with no surface.
+    //
+    // **What the radiance bullet asserts, and why it is stronger than the one it replaced.**
+    // It used to hold that the header carries "eight bit", which pinned a claim about the
+    // *shaded image's format*: that the lighting stage clipped what was above one, so a value
+    // at one here might have been one or might have been forty. `0257706` gave the shaded image
+    // `rgba16float` and that claim became false, so holding the text would have pinned a lie.
+    // What is asserted now is the claim that *survives* and is the one a reader needs: that
+    // these numbers are scene-linear and **are not bounded by one**, which is a property of the
+    // file rather than of a format constant elsewhere, and which fails loudly if a later change
+    // puts the ceiling back. The negative assertion below is what keeps it honest in the other
+    // direction — a header that regained the words "eight bit" has regained the lie with them.
     let header = DebugChannel::Grade.description();
     for said in [
         "before that grade has run",
-        "eight bit",
+        "not bounded by",
         "sky is",
         "alpha marks nothing",
     ] {
@@ -148,6 +161,11 @@ fn the_grade_header_says_what_it_cannot_show() {
     assert!(
         !header.contains("world position") && !header.contains("depth buffer"),
         "and it is not either other channel's sentence: {header}"
+    );
+    assert!(
+        !header.contains("eight bit"),
+        "and it does not claim the shaded image is eight bits a channel again, which `0257706` \
+         made false when it gave that image `rgba16float`: {header}"
     );
 }
 

@@ -134,12 +134,15 @@ pub const TIME: &str = "time";
 ///    samples from the shaded image and **before** the grade's curve runs.
 ///
 /// **What it cannot do is stated rather than left to be discovered**, and it is the reason
-/// this field exists: the shaded image the post stage reads is an `rgba8unorm` target, so
-/// everything above one was clipped by the lighting stage before any grade saw it. An
-/// exposure above one therefore brightens only what was already below one, and a scene whose
-/// light reaches one comes back unchanged however high the number goes. Lowering the light is
-/// what moves a clipped pixel, and a scene that wants to brighten one needs a wider target
-/// rather than a larger multiplier.
+/// this field exists. It is a multiplier on a value, so it brightens what is below one and
+/// what is above one alike, and it is not a tone curve. **It could not brighten what was
+/// already at one, and `0257706` is what ended that**: the shaded image the post stage reads is
+/// an `rgba16float` target, so nothing above one was clipped before the grade saw it and an
+/// exposure above one reaches every pixel alike. Before that commit the shaded image was
+/// `rgba8unorm`, an exposure brightened only what was already below one, and a scene whose
+/// light reached one came back unchanged however high the number went. Lowering the light is
+/// still what moves a dark pixel, and a scene that wants a different curve names something
+/// else.
 pub const EXPOSURE: &str = "exposure";
 
 /// Field holding the label of a mesh an instance draws.
@@ -382,9 +385,9 @@ pub fn standard_scene_schema() -> Schema {
                      declare the field — in its `pass_schema` and in its own uniform — and a \
                      shader that does not is refused rather than quietly left unexposed. A scene \
                      that names no exposure is drawn exactly as it was before the field \
-                     existed, byte for byte. **It cannot brighten what is already at one**: the \
-                     shaded image is an eight bit target, so a light that reached one was \
-                     clipped before the grade saw it.",
+                     existed, byte for byte. **It is not a tone curve and cannot reach one**: it \
+                     multiplies a radiance, and the shaded image is an rgba16float target, so a \
+                     value above one arrives whole and is multiplied like any other.",
                 ),
         ),
         (

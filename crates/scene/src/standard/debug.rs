@@ -498,27 +498,32 @@ that png is a picture of how the depths are laid out rather than a set of depths
 /// - **what the alpha means** — nothing, and that is said rather than left to be read as the
 ///   other two channels' marker. The lighting stage writes one into the shaded image and the
 ///   pipeline clears it to one, so it is one at a pixel nothing was drawn on as well.
-/// - **what it does not cover** — three things, each of which is a way this file is not the
+/// - **what it does not cover** — two things, each of which is a way this file is not the
 ///   frame divided by something:
 ///
 ///   1. **The sky.** A post stage draws the sky, so a pixel of sky is black here however bright
 ///      the sky is in the frame. That is the single most useful thing this file says about a
 ///      landscape: a sky that is bright in the picture and black here was drawn by the grade.
-///   2. **Anything above one.** The shaded image is an eight bit target, so the lighting stage
-///      clipped it before the grade saw it, and this file reports the clip rather than the
-///      radiance. A pixel at one here may have been one or may have been forty, and no channel
-///      in this module can tell you which.
-///   3. **The pixels nothing was drawn on.** A black pixel here is unlit, which is a fact
+///   2. **The pixels nothing was drawn on.** A black pixel here is unlit, which is a fact
 ///      about the light and not about the surface; the `depth` channel is the one that says
 ///      which pixels have a surface at all.
+///
+/// **The header says nothing above one any more, and that is a change.** It used to carry a
+/// third item, that a value at one here might have been one or might have been forty, because
+/// the shaded image was an eight bit target and the lighting stage had clipped it before the
+/// grade saw it. `0257706` gave that image `rgba16float` and the claim became false, so it was
+/// removed rather than reworded: **a header is a statement about the file the reader is holding,
+/// not a changelog**, and one that explains what the numbers used to be is one a reader has to
+/// decide how much of to believe. `crates/scene/tests/grade_channel.rs` asserts the claim that
+/// survives — that these numbers are not bounded by one — and asserts the old words are gone.
 const GRADE_DESCRIPTION: &str = "\
 the radiance the post stage's grade reads at each pixel, before that grade has run: this is
 the input of the transform, where the picture beside this file is its output. The three are
 the same pixels, so a difference between the two is the grade and nothing else.
-it is a value in zero to one and not a colour the scene chose. The shaded image it copies is
-an eight bit target, so a light that reached one was clipped before the grade saw it: a value
-at one here may have been one or may have been forty, and nothing in this file can tell you
-which. The sky is drawn by the post stage rather than by the lighting, so a pixel of sky is
+it is a value in scene-linear light and not a colour the scene chose, and it is not bounded by
+one: the shaded image it copies is an rgba16float target, so a light above one arrives here
+above one. A value at one is a light that reached one.
+The sky is drawn by the post stage rather than by the lighting, so a pixel of sky is
 black here however bright the sky is in the frame.
 alpha marks nothing. The lighting stage writes one into the shaded image and the pipeline
 clears it to one, so it is one at a pixel no surface was drawn on as well. The depth channel

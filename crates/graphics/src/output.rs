@@ -218,12 +218,16 @@ impl TexelType {
     ///   fragment lost a depth test and not enough to say how near it was. The cost of the
     ///   wider format is the size of the file, and the cost of the narrower one is a
     ///   measurement that lies about its own precision.
-    /// - **A `grade` buys no precision at all, and says so.** The image it copies is itself an
-    ///   eight bit target, so every value in it is already a multiple of a two hundred and
-    ///   fifty fifth and a wider format cannot recover what the lighting stage clipped. What
-    ///   the float target buys is the **sidecar**: a file of numbers beside the picture, which
-    ///   is the instrument the comparison that channel exists for is actually made with. An
-    ///   eight bit copy would be byte exact in the png and would have no numbers at all.
+    /// - **A `grade` is a copy, and says so rather than claiming a precision it does not
+    ///   have.** It copies the shaded image verbatim, so whatever the lighting stage wrote is
+    ///   what this file holds: since `0257706` that is an `rgba16float` radiance, and the file is
+    ///   the radiance rather than a cut-down one. **This bullet is the one `0257706` made false**
+    ///   — it used to read "a `grade` buys no precision at all", because the shaded image was
+    ///   then an eight bit target where every value was already a multiple of a two hundred and
+    ///   fifty fifth and a wider target could not recover what the lighting stage had clipped.
+    ///   What is left of the original reason is the **sidecar**, which is the instrument the
+    ///   comparison that channel exists for is actually made with: an eight bit copy would be
+    ///   byte exact in the png and would have no numbers at all.
     /// - **A built-in image is a `vec4<f32>` while a scene's own normal is a `vec3<f32>`, and
     ///   the difference is a marker.** `Position` and `Depth` use their fourth channel to say
     ///   that no surface was drawn on a pixel, which is a fact only compiler code can know and

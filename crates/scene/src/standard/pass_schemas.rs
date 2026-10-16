@@ -767,8 +767,8 @@ fn post_interface_carrying(exposed: bool, environment: bool) -> Schema {
             Schema::new(SchemaKind::Float).with_documentation(
                 "What this pass multiplies the radiance it read by, before its own grade: a \
                  linear multiplier where 1 is no change. It is not a parameter of the curve \
-                 that follows, and it cannot brighten a value the shaded image already holds \
-                 at one.",
+                 that follows, and it cannot reach one. It does reach a value above one, because \
+                 the shaded image it reads is an rgba16float target.",
             ),
         ));
         uniform.sort_by(|left, right| left.0.cmp(&right.0));

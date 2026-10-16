@@ -14,8 +14,10 @@
 //!
 //! - **the field is a linear multiplier and not a curve parameter**, so a document naming one
 //!   number cannot mean two things — and the *consequence* of that choice is stated rather than
-//!   discovered: the shaded image is an eight bit target, so anything above one was clipped
-//!   before the grade saw it and no exposure can bring it back;
+//!   discovered: a multiplier reaches a radiance above one, which is only true since `0257706`
+//!   gave the shaded image `rgba16float`. It was an eight bit target, so anything above one was
+//!   clipped before the grade saw it and no exposure could bring it back; that is recorded here
+//!   rather than deleted, because it is why this field reads as a limitation until it does not;
 //! - **it is additive**: a scene that names no exposure emits the documents it emitted before
 //!   the field existed, and the two post interfaces differ by exactly one field;
 //! - **naming it is a three-place opt-in**, and a scene that names it without declaring it in
