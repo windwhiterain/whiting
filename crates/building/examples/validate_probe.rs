@@ -391,6 +391,10 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::RoofDoesNotCover { .. } => "RoofDoesNotCover",
         Violation::RoofSkinNotADisc { .. } => "RoofSkinNotADisc",
         Violation::RoofSkinLeavesTheEave { .. } => "RoofSkinLeavesTheEave",
+        Violation::GridFaceMissing { .. } => "GridFaceMissing",
+        Violation::GridTooShort { .. } => "GridTooShort",
+        Violation::GridNotOrdered { .. } => "GridNotOrdered",
+        Violation::GridOutsideFace { .. } => "GridOutsideFace",
         Violation::FaceNotPlanar { .. } => "FaceNotPlanar",
         Violation::FaceDegenerate { .. } => "FaceDegenerate",
     }

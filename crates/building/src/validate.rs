@@ -30,6 +30,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::expand::Problem;
+use crate::grid::{FaceRef, GRID_TOLERANCE, increasing};
 use crate::mass::{MassId, PlanNode};
 use crate::math::{Vec2, Vec3, distance, dot3, subtract};
 use crate::mesh::{BuildingMesh, Element, MassSurface, RoofSurface, SolidId};
@@ -347,6 +348,41 @@ pub enum Violation {
         /// How many boundary loops its skin has.
         loops: usize,
     },
+    /// A face carries a rhythm, and the document holds no such face.
+    ///
+    /// The one grid fault that is about the reference rather than the numbers, and it is staged
+    /// exactly like the others: there is nothing to measure the stops against, so this is reported
+    /// and the rest of that face's checks are skipped rather than guessed at.
+    GridFaceMissing {
+        /// The face the rhythm names.
+        face: FaceRef,
+    },
+    /// A face's rhythm has fewer than two stops in one of its lists, so it makes no bay.
+    ///
+    /// An **empty** grid is not this: no rhythm at all is a state an author passes through, and
+    /// `FaceGrid::is_empty` tells the two apart. One stop is the fault, because one stop is a family
+    /// with nothing between its ends.
+    GridTooShort {
+        /// The face.
+        face: FaceRef,
+    },
+    /// A face's stops are not strictly increasing, so some bay has no width or no height.
+    GridNotOrdered {
+        /// The face.
+        face: FaceRef,
+    },
+    /// A face's rhythm does not span the face: a level outside the wall, or a division off the edge.
+    ///
+    /// # Invariants
+    ///
+    /// **Both ends are checked, not only the far one.** A family that starts below the wall's foot has
+    /// a gap at the bottom of the facade, and a tiling sum over the bays alone would not see it —
+    /// which is why this is a statement about the stops against the face's own extents rather than a
+    /// statement about the bays against each other.
+    GridOutsideFace {
+        /// The face.
+        face: FaceRef,
+    },
     /// A facet has no area because **two of its corners are one point**, so it is a facet of no
     /// surface.
     ///
@@ -421,6 +457,7 @@ pub fn document(skeleton: &BuildingSkeleton) -> Vec<Violation> {
     let mut violations = Vec::new();
     check_masses(skeleton, &mut violations);
     check_roofs(skeleton, &mut violations);
+    check_grids(skeleton, &mut violations);
     violations.sort_by_key(order_key);
     violations
 }
@@ -881,6 +918,47 @@ fn on_eave_loop(point: Vec3, roof: &Roof) -> bool {
     })
 }
 
+/// Checks every face's rhythm: that it is ordered, that it spans the face it claims, and that it has
+/// bays at all.
+///
+/// # Invariants
+///
+/// **A grid is measured against its face's own extents**, which is what makes "outside the face" a
+/// statement about the document rather than about a convention: the levels must lie in `[the lowest
+/// ground under the edge, the wall top]` and the divisions in `[0, the edge's length]`, both within
+/// [`GRID_TOLERANCE`]. It is `O(faces with a rhythm)` and reads two nodes per face.
+///
+/// Staged: a rhythm on a face whose mass is not in the document is reported as that and nothing else,
+/// because there is nothing to measure its stops against.
+fn check_grids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
+    for face in skeleton.grids.faces() {
+        let Some(grid) = skeleton.grid(face) else {
+            continue;
+        };
+        let (Some(length), Some((base, top))) =
+            (skeleton.face_length(face), skeleton.face_extent(face))
+        else {
+            violations.push(Violation::GridFaceMissing { face });
+            continue;
+        };
+        if grid.levels.len() < 2 || grid.divisions.len() < 2 {
+            violations.push(Violation::GridTooShort { face });
+            continue;
+        }
+        if !increasing(&grid.levels) || !increasing(&grid.divisions) {
+            violations.push(Violation::GridNotOrdered { face });
+            continue;
+        }
+        let levels_span = (grid.levels[0] - base).abs() <= GRID_TOLERANCE
+            && (grid.levels[grid.levels.len() - 1] - top).abs() <= GRID_TOLERANCE;
+        let divisions_span = grid.divisions[0].abs() <= GRID_TOLERANCE
+            && (grid.divisions[grid.divisions.len() - 1] - length).abs() <= GRID_TOLERANCE;
+        if !levels_span || !divisions_span {
+            violations.push(Violation::GridOutsideFace { face });
+        }
+    }
+}
+
 /// Checks that no facet has no area.
 ///
 /// # Invariants
@@ -1231,6 +1309,10 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
             (16, *face as u64, ordered(*departure), 0, 0)
         }
         Violation::RoofSkinLeavesTheEave { roof, off } => (19, roof.0 as u64, *off as u64, 0, 0),
+        Violation::GridFaceMissing { face } => (20, face.mass.0 as u64, face.edge as u64, 0, 0),
+        Violation::GridTooShort { face } => (21, face.mass.0 as u64, face.edge as u64, 0, 0),
+        Violation::GridNotOrdered { face } => (22, face.mass.0 as u64, face.edge as u64, 0, 0),
+        Violation::GridOutsideFace { face } => (23, face.mass.0 as u64, face.edge as u64, 0, 0),
         Violation::RoofSkinNotADisc { roof, loops } => (18, roof.0 as u64, *loops as u64, 0, 0),
         Violation::FaceDegenerate { face, area } => (17, *face as u64, ordered(*area), 0, 0),
     }

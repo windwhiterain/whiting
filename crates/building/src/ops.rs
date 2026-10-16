@@ -40,6 +40,7 @@
 //! `[0, 1)` before they use it, so the attachment a caller records and the node the split inserted
 //! are the same place — not two readings of a parameter that happened to be written the same way.
 
+use crate::grid::{FaceGrid, FaceRef, Rhythm};
 use crate::mass::{Attachment, Mass, MassId, PlanNode};
 use crate::math::{distance, lerp};
 use crate::roof::{Roof, RoofId};
@@ -226,4 +227,53 @@ pub(crate) fn closed_spans(nodes: &[PlanNode]) -> (Vec<f32>, f32) {
         spans.push(total);
     }
     (spans, total)
+}
+
+/// Gives a face a rhythm, **replacing** whatever rhythm it had.
+///
+/// # Invariants
+///
+/// - **Replacement, never a merge** (D10's rule, and `mountain::derive_valleys`' precedent): both
+///   families are laid out fresh from the face's own extents, and what was there is gone — returned
+///   so a caller can keep it, which is also how a probe measures that the replacement happened
+///   rather than accumulating.
+/// - **The face decides the domain, and the rhythm is refused rather than stretched.** The columns
+///   are laid out over the edge's plan length, and the rows over `[the lowest ground under it, the
+///   wall top]`; [`Rhythm::stops`] answers `None` when it cannot span that, and this op passes the
+///   refusal on. Nothing is clamped, and no bay is widened to make a facade come out.
+/// - **A level is an elevation and a division is arc length.** The rows are laid out as rises and
+///   written as elevations, because a storey line is level in the world whatever the ground under it
+///   does; the columns stay as arc length, which is what a station means everywhere here.
+/// - **A missing face is a refusal**, not a panic and not an entry in the map: a rhythm on a face the
+///   document does not hold is a rhythm nothing can be authored against.
+///
+/// Returns how many bays the face now holds, or `None` when the face is not there or either rhythm
+/// cannot be laid out on it.
+pub fn split_face(
+    skeleton: &mut BuildingSkeleton,
+    face: FaceRef,
+    columns: &Rhythm,
+    rows: &Rhythm,
+) -> Option<usize> {
+    let length = skeleton.face_length(face)?;
+    let (base, top) = skeleton.face_extent(face)?;
+    let divisions = columns.stops(length)?;
+    let levels: Vec<f32> = rows
+        .stops(top - base)?
+        .into_iter()
+        .map(|rise| base + rise)
+        .collect();
+    let grid = FaceGrid::new(levels, divisions);
+    let bays = grid.bays();
+    skeleton.grids.replace(face, grid);
+    Some(bays)
+}
+
+/// Removes a face's rhythm and returns it.
+///
+/// Nothing else is touched: a placement hanging in the grid is the caller's to keep or drop, which is
+/// exactly what slots being indices rather than coordinates buys (D10) — the grid can be replaced
+/// under a placement without the placement having to be rewritten.
+pub fn clear_face(skeleton: &mut BuildingSkeleton, face: FaceRef) -> Option<FaceGrid> {
+    skeleton.grids.take(face)
 }

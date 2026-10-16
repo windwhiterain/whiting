@@ -54,6 +54,7 @@
 
 pub mod derive;
 pub mod expand;
+pub mod grid;
 pub mod mass;
 pub mod math;
 pub mod mesh;
@@ -63,6 +64,7 @@ pub mod skeleton;
 pub mod validate;
 
 pub use expand::{BuildError, Problem, build};
+pub use grid::{Bay, FaceGrid, FaceRef, GRID_TOLERANCE, Grids, Rhythm};
 pub use mass::{Attachment, Mass, MassId, PlanNode};
 pub use mesh::{
     BuildingFace, BuildingMesh, CornerNormals, Element, MassSurface, RoofSurface, SolidId,
