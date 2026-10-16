@@ -7,7 +7,9 @@ all sources accessed 2026-10-16, the load-bearing RNG and boolean-free claims re
 the primary README by the chief designer). An adversarial design review (2026-10-16) verified the
 first draft's boldest claim — "a roof is the same object `mountain` already expands" — **false
 against source**, and this revision rewrites D2, D5, D10 and P1 on that evidence; the correction is
-recorded inside D2 rather than silently fixed. Date: 2026-10-16.
+recorded inside D2 rather than silently fixed. **P1 implementation started on 2026-10-16** on this
+design, and what it found amends four points — see *What implementation found, and where it amends
+this design* below. Date: 2026-10-16.
 
 Decisions taken with the superior on 2026-10-16, before this draft:
 
@@ -343,6 +345,125 @@ authored. The expander therefore emits a **grouping key per authored face** (one
 wall run) and the mesh's corner normals come from `CornerNormals::of_grouped` (`facet.rs:505-533`),
 the mechanism that already exists for exactly this. All building edges are hard between groups;
 soft edges within a group wait for the NURBS direction (D3) and are not promised.
+
+## What implementation found, and where it amends this design (2026-10-16)
+
+The shell phase (P1) started on this design and its first measurements amend four things. Recorded
+here because the phase's handoff is deleted when the phase closes and this file is the durable
+record.
+
+1. **D2's reuse is thinner than revision 2 claimed, and for a reason worth keeping.** Revision 2 said
+   `whiting-building` reuses `mountain`'s `FacetMesh`, `Sampling` and `CornerNormals`. It cannot:
+   `mountain`'s per-face attributes are keyed by a **belt**, and the gallery reads exactly that field
+   as the identity handle — `gallery/identity.rs:406` numbers pixels by it and
+   `gallery/blockmesh.rs:137` groups faces by it. Reusing the type would mean writing belt ids onto
+   walls, which is a document that says something untrue about itself. `Sampling` samples skeleton
+   *lines* rather than wall edges, and `CornerNormals` is inherent to `FacetMesh` and cannot be
+   called on a foreign type. **So the dependency on `mountain` is `math` alone** — one definition of
+   which axis is up, which two crates authoring into one scene must share — and `BuildingMesh` with
+   its own predicates is this crate's. That is not duplication of a shared abstraction; the shared
+   abstraction does not exist yet, and **a shared mesh crate (with the plan-geometry helpers
+   `mountain` keeps private) is the unification to propose** when a second caller needs it.
+2. **A flat roof has no representation yet.** A plane here is a *strip of transverse rows*, and a
+   flat slab has no transverse extent — its skin **is** the eave polygon. `RoofStyle` therefore has
+   `Hip` and `Gable` only, and authoring a flat roof needs a second representation (a plane bounded
+   by a loop) before it can be honest rather than a degenerate row set that expands to nothing.
+3. **The roof derivation's domain is narrower than "a quadrilateral".** A plane's quad is planar only
+   when its crest line is parallel to its eave edge, so a skew quadrilateral is **refused** (`None`)
+   rather than authored into a document that contradicts the crate's own "one plane is one planar
+   face" invariant. This is `derive_valleys`' refuse-rather-than-guess rule applied to a roof, and it
+   was found by implementing rather than by designing.
+4. **Watertightness between two roof planes is a disjunction, and the design said only one half of
+   it.** Measured on a starter house: a hip's plane pairs share **four rows** (the same crest index
+   and the same eave station, written twice from one value), while a gable's two planes share **no
+   row at all** — they share their inner **crest edge**, both naming crest 0 and crest 1. S3's "two
+   adjacent planes share the boundary row" is the hip's case; the rule is *a shared row **or** a
+   shared crest edge*, and either way the shared thing is an authored identity rather than a
+   coincidence of coordinates.
+
+Two further measurements belong to the phase rather than to the design, and are recorded because a
+later reader will otherwise re-derive them:
+
+- **Coplanarity must be measured against a least-squares plane, not a mean of normals**: for a 0.25 m
+  corner lift the mean reports `0.0623` and the fitted plane `0.1875`, so the mean would have made
+  the tolerance a re-tuned guess. The phase uses `1.0e-3` m — and, measured later, the fit itself has
+  a property that has to be stated rather than discovered: **it reports the farthest vertex's distance
+  to the best-fit plane, which is not one vertex's displacement.** Lift one corner of a quad by
+  0.25 m and the fit tilts to share the error and reads `0.0833`, exactly a third. A number that
+  "should" have been 0.25 is not a defect; measuring *how far one vertex stands off the plane its
+  neighbours lie in* needs three vertices and the triangle they name, which is a different instrument
+  and a different meaning for the violation.
+- **A check is only as good as the surface it is exercised on**, and the phase paid for this twice: the
+  planarity fitter returned a coordinate axis for every sloped surface, which no axis-aligned fixture
+  could expose (the hip's own trapezoid reads `0.8` under the axis and `2e-7` under a correct fit),
+  and a square's hip emitted facets of **no area** while closure, Euler, manifoldness and orientation
+  were all green. Both now have controls that fail on the old behaviour: a sloped, exactly coplanar
+  quad, and a facet of zero area. **`SolidOpen` and `SolidNonManifold` are also not independent** —
+  a hole and a duplicated face each fire both, because an odd-used edge cannot cancel in a boundary
+  walk, so a control that fires `SolidOpen` alone needs an edge used twice in the *same* direction.
+
+**A defect found in a neighbouring frozen file, recorded rather than edited.** `gallery::built`'s doc
+comment states that a ring is wound "with the ground it encloses on the walker's **left**". In the
+frame `mountain::math` states (`x` east, `y` up, `z` **south**), `up × along` — that file's own
+formula for a wall's outer face — is the walker's **left**, so a *positively* wound loop puts the
+solid on the walker's **right**. The formula is right in both files; the prose reads true only if `z`
+is read as north. This crate now states the test (`plan_area > 0`) and the verified direction. The
+`built.rs` prose is left alone (another crate, and its callers' actual winding was not audited) and
+is a follow-up for whoever next touches that file.
+
+### What P1 measured, and what it still owes
+
+**One process lesson, recorded because it is about this design rather than about that week.** P1's
+first acceptance run read "zero violations" from a tree where the validator was still a stub: three
+parallel works had been written against a frozen interface, two were merged, the third was not, and
+the number the phase reported came from the gap. The corrected run — expander and validator on one
+tip — turned zero into nine, and **not one of the nine was where it first appeared to be**: one was a
+naming fault (the floor's top and the slab's soffit shared one element, so a planarity group spanned
+two planes one slab apart), and eight were the **validator's own fitter**, which returned a coordinate
+axis for any sloped surface and so reported a roof plane's vertical spread as its departure. Two
+genuine derivation defects were found in the same pass, and **neither was visible to any predicate**:
+a hip whose ridge inset reached half the long run — every square — stood two crest points on one spot
+and emitted facets of no area, and an inset past that point shed the long planes inside out.
+
+Two consequences for this design's own discipline, both already its stated aims and neither yet its
+practice. **A claim about a system is measured with every part of that system present** — and **a
+check is only as good as the surface it is exercised on**: a fixture whose plane is axis-aligned
+cannot fail a plane fitter, and no closure predicate can see a triangle of no area. The row model in
+particular makes planarity a *duty of the derivation* rather than a property the model guarantees, so
+a derived roof has to be checked for it by measurement, on a sloped fixture, every time.
+
+`cargo run -p whiting-building --example census`, three starters (hip 7×11, gable 7×11, hip 6×6):
+
+| starter | violations | solid | faces | loops | Euler | manifold | volume |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| hip 7×11 | **0** | mass | 28 | 0 | 2 | true | 64.2080 |
+| | | roof | 20 | 0 | 2 | true | 24.0000 |
+| gable 7×11 | **0** | mass | 28 | 0 | 2 | true | 64.2080 |
+| | | roof | 20 | 0 | 2 | true | 24.0000 |
+| hip 6×6 | **0** | mass | 28 | 0 | 2 | true | 36.2880 |
+| | | roof | **16** | 0 | 2 | true | 12.2500 |
+
+The volumes are the authored numbers rather than plausible ones: `64.2080 = 0.4·77 + 3.2·(77 −
+6.4·10.4)` is slab plus walls, to the digit, and `24.0000 = 96 · 0.25` is a slab of constant vertical
+thickness covering its eave area exactly. A square's hip has **one** crest point rather than two — a
+ridge of no length is one point and four triangles — which is why its roof has 16 faces and not 20,
+and that difference is itself a defect the phase found and fixed rather than a shape it chose.
+`examples/expand_probe.rs` carries the positive controls — a reversed solid reads −51.720 against
+51.720, a dropped face reads one boundary loop and Euler 1, an over-wide wall reports four
+`OffsetEdgeFolded` problems and no mesh — and the validator's own probe carries one control per check
+it claims, including the sloped-plane fixture and the facet of no area that no closure predicate can
+see.
+
+Two things P1 deliberately does not have, both named rather than faked: a **flat roof** (item 2
+above), and **bays, openings and parts** (P2). The proof frame —
+`cargo run -p whiting-device-rasterize --example render -- house out/house`, a derived hip-roofed
+house in 10 passes — carries one known artifact, attributed by measurement rather than by eye:
+`--debug position` on the same scene shows clean wall planes and a crisp eave line, so the geometry
+is what the census says; the toothing in the beauty frame is the **soffit's own shadow terminator**,
+it gets finer as the shadow map's texel density rises (`shadow_extent` 30 → 14) and does not vanish,
+so a bias term is involved too. That belongs to the shadow subsystem, where three works are already
+in flight (`virtual-shadow-maps`, `shadow-texel-push`, `shadow-level-walk`), and the scene says so in
+its own doc comment.
 
 ## `validate()`: reports, never repairs
 

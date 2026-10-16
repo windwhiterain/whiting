@@ -59,6 +59,7 @@ use definition::Value;
 
 pub mod air;
 pub mod attributes;
+pub mod building_mesh;
 pub mod built;
 pub mod geometry;
 pub mod identity;
@@ -73,6 +74,11 @@ pub mod shaders;
 mod dawn;
 mod dunes;
 mod foldyard;
+/// The shell phase's proof scene: one authored building, derived and expanded, standing in a frame.
+///
+/// Public before it is listed in [`Gallery::names`] because the scene is the phase's acceptance
+/// picture and a session that is iterating on it should be able to call it directly.
+pub mod house;
 /// The mountain scene, and the massif it stands on.
 ///
 /// Public so that `examples/alpine_probe.rs` can report on the skeleton without compiling the
@@ -120,6 +126,7 @@ impl Gallery {
             "foldyard",
             "hermite",
             "hermite_massif",
+            "house",
             "landscape",
             "lanterns",
             "monoliths",
@@ -143,6 +150,7 @@ impl Gallery {
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
             "hermite_massif" => hermite_massif::hermite_massif(),
+            "house" => house::house(),
             "landscape" => landscape(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),

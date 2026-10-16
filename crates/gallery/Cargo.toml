@@ -22,3 +22,7 @@ patch = { workspace = true }
 # lives in the gallery because the gallery is the only crate that sees the massif and the
 # erosion of one at the same time, and the scene is what a height field is drawn from.
 terrain = { workspace = true }
+# An authored building, drawn as the solids it expands to. `building_mesh` is where the two meet:
+# a building carries its provenance per face and a scene carries a material per instance, and the
+# conversion between those two facts is nobody else's business.
+building = { workspace = true }

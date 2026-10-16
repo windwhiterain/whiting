@@ -1771,6 +1771,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "whiting-building"
+version = "0.1.0"
+dependencies = [
+ "whiting-mountain",
+]
+
+[[package]]
 name = "whiting-definition"
 version = "0.1.0"
 dependencies = [
@@ -1829,6 +1836,7 @@ dependencies = [
 name = "whiting-gallery"
 version = "0.1.0"
 dependencies = [
+ "whiting-building",
  "whiting-definition",
  "whiting-graphics",
  "whiting-mountain",

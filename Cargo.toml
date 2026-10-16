@@ -9,6 +9,7 @@ members = [
     "crates/device-rasterize",
     "crates/device-cycles",
     "crates/mountain",
+    "crates/building",
     "crates/patch",
     "crates/terrain",
 ]
@@ -29,6 +30,7 @@ device = { path = "crates/device", package = "whiting-device" }
 device-rasterize = { path = "crates/device-rasterize", package = "whiting-device-rasterize" }
 device-cycles = { path = "crates/device-cycles", package = "whiting-device-cycles" }
 mountain = { path = "crates/mountain", package = "whiting-mountain" }
+building = { path = "crates/building", package = "whiting-building" }
 patch = { path = "crates/patch", package = "whiting-patch" }
 terrain = { path = "crates/terrain", package = "whiting-terrain" }
 

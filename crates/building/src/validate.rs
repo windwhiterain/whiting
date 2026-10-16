@@ -1,0 +1,1264 @@
+//! Validation: what the author has got wrong, reported and never repaired.
+//!
+//! # Contract of this module
+//!
+//! - **Everything wrong is returned**, in a deterministic order, so two runs diff. A check that
+//!   stops at the first fault turns a fix into a sequence of runs.
+//! - **The two halves are separate functions.** [`document`] reads the skeleton alone and needs no
+//!   expansion, so it answers even for a skeleton that cannot be built; [`mesh`] reads a built mesh
+//!   and answers the closure and orientation questions a document cannot. `Building::validate`
+//!   composes them.
+//! - **A violation is never an error and never a repair.** An intermediate state that violates
+//!   something is ordinary — the ops do not refuse edits — and this is the instrument that reads
+//!   it.
+//! - **Staged checks**: a check that would read a value the document cannot support is skipped
+//!   rather than guessed at, the way `mountain`'s validate stages its own.
+//!
+//! # The order the answer comes back in
+//!
+//! [`order_key`] sorts by the variant first and by what the variant is **about** second, and it is
+//! a total order: a `f32` or `i64` field is folded to the `u64` [`total_cmp`] would have ordered it
+//! by, so two runs over one input give byte-identical lists rather than two orders of a hash map.
+//!
+//! # The three numbers here
+//!
+//! [`PLANARITY_TOLERANCE`], [`TOUCH_TOLERANCE`] and [`COVERAGE_TOLERANCE`], each justified where it
+//! is declared. None is imported from `mountain`: this crate depends on that crate for `math` alone
+//! (the handoff for `building-p1` says so), and a weld tolerance from `mountain::sampling` would be
+//! a second dependency on a module this crate does not otherwise read.
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+use crate::expand::Problem;
+use crate::mass::{MassId, PlanNode};
+use crate::math::{Vec2, Vec3, distance, dot3, subtract};
+use crate::mesh::{BuildingMesh, Element, MassSurface, RoofSurface, SolidId};
+use crate::roof::{Roof, RoofId};
+use crate::skeleton::BuildingSkeleton;
+
+/// How far an authored surface's vertices may stand off that surface's own fitted plane.
+///
+/// # Invariants
+///
+/// It is **absolute**, in metres, because an authored surface is authored in metres and a departure
+/// is a length. The value is a millimetre, and it is chosen between two measurements rather than
+/// by taste:
+///
+/// - The noise it has to absorb is `f32` rounding. A group of vertices at building scale carries
+///   about `1e-7` of relative error, and the normal is a sum divided by an area that may be a
+///   square metre, so anything under about `1e-5` is arithmetic rather than geometry.
+/// - The slip it has to catch is an **authored** one: a crest elevation written in centimetres, an
+///   eave station that resolved onto the wrong node, a corner welded to the wrong row. The
+///   smallest of those is a centimetre, an order of magnitude above this.
+///
+/// A millimetre therefore keeps the two apart with a decade of head-room on each side, and is the
+/// same kind of number as `mountain`'s `WELD` rather than a value tuned per building.
+const PLANARITY_TOLERANCE: f32 = 1.0e-3;
+
+/// How close in plan two masses have to stand before their outlines count as touching rather than
+/// overlapping.
+///
+/// # Invariants
+///
+/// Two masses whose walls stand flush against each other share a plane and no area, so a test that
+/// counted a shared edge as an overlap would report every pair of masses an author had butted up
+/// without attaching — which is a **different** fault with a different fix, and is not what
+/// [`Violation::UnattachedOverlap`] names. The margin is a millimetre for the reason
+/// [`PLANARITY_TOLERANCE`] has one: it is a length, it is above the rounding of plan coordinates,
+/// and it is far below the gap between two masses that were meant to stand apart.
+const TOUCH_TOLERANCE: f32 = 1.0e-3;
+
+/// How far a skin may miss its own eave loop, in metres of edge, before the missing area is a
+/// defect.
+///
+/// # Invariants
+///
+/// **It is a width, and the check converts it to an area by the loop's own length**: the area
+/// allowed to be missing is `COVERAGE_TOLERANCE × eave_length`, so a roof is held to the same
+/// millimetre whether its eave is a shed's or a warehouse's. A gap of `w` metres along an edge `L`
+/// long is an area of `w·L`, which is what makes one linear number the honest statement of a
+/// tolerance about a surface nobody tiles exactly.
+///
+/// The value is a millimetre for the reason [`PLANARITY_TOLERANCE`] is one: it is a length, it sits
+/// above the `f32` rounding of plan coordinates at building scale (about `1e-6` m over a span of
+/// tens of metres), and it is far below the slip it has to catch. The smallest authored slip is a
+/// station landing a centimetre off the node it meant — an eave corner skipped, a row paired with
+/// the wrong neighbour — and the largest is a whole corner of the loop, which is metres.
+const COVERAGE_TOLERANCE: f32 = 1.0e-3;
+
+/// The smallest area a facet may have and still be a facet, in square metres.
+///
+/// # Invariants
+///
+/// **It is an area and not a length, and it is the square of a length this module already uses.**
+/// A facet of no area is a facet of no surface: it draws nothing, it casts no shadow worth naming,
+/// and it is invisible to every other reading here — its edges are shared with their neighbours
+/// twice over, so closure, manifoldness, Euler characteristic and volume are all satisfied by a
+/// zero-area triangle exactly as they are by a real one. Measured on this tip, a square hip's
+/// collapsed ridge emits **four** of them, and the census read that solid as closed, manifold,
+/// outward, euler 2 and of positive volume.
+///
+/// The number is chosen between two measurements rather than by taste:
+///
+/// - **The noise it has to absorb is `f32` rounding on a cross product.** Three corners that are
+///   collinear in a document written at metre scale do not measure zero: measured `1.97e-6` m² for
+///   a triple at `(0, 3.1, −6)`, `(2, 4.7, 6)`, `(4, 6.3, 18)`, because the cross product of two
+///   metre-scale differences carries about `1e-7` of relative error and `1e-6` m² is the square of
+///   a thousandth of a metre. A threshold under that would report a rounding artefact as a defect.
+/// - **The slip it has to catch is exactly zero.** Two rows naming one crest point emit a facet of
+///   `0.000000000` m², and so does a face that names one of its own corners twice. Measured, not
+///   argued: both readings are exact zeros, four decades under this threshold.
+///
+/// Between them sits the smallest facet any starter emits — `0.500` m² for the gable's gable-end
+/// triangle, `0.960` m² for the hip's — which is three decades above it. So the value is a
+/// centimetre on a side: it is the same kind of number as [`TOUCH_TOLERANCE`] and the same kind of
+/// reasoning, read in the units the quantity is in.
+const DEGENERATE_AREA: f32 = 1.0e-4;
+
+/// How close two of a facet's corners have to be before they are called one point.
+///
+/// # Invariants
+///
+/// It separates the two classes of a facet of no area ([`Violation::FaceDegenerate`]) and it is a
+/// **coincidence** test, not a proximity test: the fault is a point two elements each authored at one
+/// place, which is exact — the phase's square hip stood two crest points at *the same* coordinates —
+/// so this only has to clear `f32` rounding at building scale. Ten micrometres is four decades above
+/// that and five below the shortest edge any starter emits (`0.3` m for a wall's thickness), so no
+/// structural corner of a real building can be mistaken for a coincidence.
+const COINCIDENT_TOLERANCE: f32 = 1.0e-5;
+
+/// One thing wrong with a building.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Violation {
+    /// A mass's outline is wound so its walls face inward, which is a building that is not drawn.
+    OutlineReversed {
+        /// The mass.
+        mass: MassId,
+        /// The signed plan area that came out negative.
+        area: f32,
+    },
+    /// A mass's outline has fewer than three nodes, so it encloses nothing.
+    OutlineTooShort {
+        /// The mass.
+        mass: MassId,
+        /// How many nodes it has.
+        nodes: usize,
+    },
+    /// The wall top is not above the outline, so the mass has no height.
+    ZeroHeight {
+        /// The mass.
+        mass: MassId,
+        /// The authored wall top.
+        top: f32,
+        /// The highest elevation of the outline.
+        highest: f32,
+    },
+    /// Two masses' plans overlap and neither names the other as a host.
+    UnattachedOverlap {
+        /// One mass.
+        mass: MassId,
+        /// The other.
+        other: MassId,
+    },
+    /// A mass names a host that does not exist, so the attachment it authorizes is not one.
+    MassHostMissing {
+        /// The mass.
+        mass: MassId,
+        /// The host it named.
+        host: MassId,
+    },
+    /// A roof names a host mass that does not exist.
+    RoofHostMissing {
+        /// The roof.
+        roof: RoofId,
+        /// The mass it named.
+        host: MassId,
+    },
+    /// A roof's eave loop has fewer than three nodes, so no station on it names a point.
+    RoofEaveTooShort {
+        /// The roof.
+        roof: RoofId,
+        /// How many nodes it has.
+        nodes: usize,
+    },
+    /// A roof plane has fewer than two rows, so it spans nothing.
+    RoofPlaneTooShort {
+        /// The roof.
+        roof: RoofId,
+        /// The plane.
+        plane: usize,
+    },
+    /// A roof row names a crest point that does not exist.
+    RoofCrestMissing {
+        /// The roof.
+        roof: RoofId,
+        /// The plane.
+        plane: usize,
+        /// The row.
+        row: usize,
+        /// The index it named.
+        crest: usize,
+    },
+    /// A skeleton does not expand at all, so nothing else can be said about its solids.
+    ///
+    /// # Invariants
+    ///
+    /// **The problems travel with the violation, untranslated.** `expand::Problem` names the thing
+    /// that could not be built — a mitre past the join limit, an offset edge folded back on itself —
+    /// and re-spelling each of them here would be a second list of the same faults that drifts from
+    /// the first the moment the expander grows a variant. One list, carried whole, is also the whole
+    /// of what this module owes a skeleton it cannot build: the mesh half has no mesh to read, and a
+    /// skeleton that expands to nothing used to read as a building with nothing wrong with it.
+    ///
+    /// It is reported once per [`Building::validate`](crate::Building::validate) and last in the
+    /// list, because it is the composition's own answer and neither half can make it.
+    DidNotExpand {
+        /// Every problem the expansion found, in the expander's own deterministic order.
+        problems: Vec<Problem>,
+    },
+    /// A solid is not closed: its faces leave a boundary.
+    SolidOpen {
+        /// The solid.
+        solid: SolidId,
+        /// How many boundary loops it left.
+        loops: usize,
+    },
+    /// A solid has an edge that is not shared by exactly two of its faces.
+    SolidNonManifold {
+        /// The solid.
+        solid: SolidId,
+    },
+    /// A solid's faces point inward: its signed volume came out negative.
+    SolidInsideOut {
+        /// The solid.
+        solid: SolidId,
+        /// The signed volume that came out.
+        volume: f32,
+    },
+    /// A solid could not be given an Euler characteristic of a closed surface.
+    SolidNotASphere {
+        /// The solid.
+        solid: SolidId,
+        /// The characteristic that came out.
+        euler: i64,
+    },
+    /// A mass's floor slab does not cover the outline the author drew.
+    ///
+    /// # Invariants
+    ///
+    /// **This is the only coverage a mass can honestly be asked for, and saying why is the
+    /// variant's contract.** A mass is built inward from its outline: the walls, the wall top and
+    /// the floor are one walk, and the one face that must span the whole outline is
+    /// [`MassSurface::SlabSoffit`], whose plan projection is the outline itself whatever the ground
+    /// under it does. So its area against [`Mass::plan_area`](crate::mass::Mass::plan_area) is a
+    /// reading across the two halves of the crate — the author's loop against the expander's disc.
+    ///
+    /// Two readings that look like coverage checks are not, and neither is this one:
+    ///
+    /// - **The solid's own plan area is zero, and must be.** Measured `0.0000` on every starter
+    ///   solid, and it is an identity rather than a fact: a closed surface's projections cancel,
+    ///   because the floor looks up over the inner loop and the soffit looks down over the whole
+    ///   outline, and every wall projects to a line of no area. Checking a solid's plan area against
+    ///   its outline would compare zero with something and could never fire.
+    /// - **The floor against the inner loop is the expander checked against itself.** Both are
+    ///   products of the same offset walk, so a disagreement between them is not a thing that can
+    ///   happen without a face the closure checks already name. There is no authored inner loop to
+    ///   measure against either: the loop is derived from `wall`, which is why an inner loop that
+    ///   will not build is a [`Problem`], and [`Violation::DidNotExpand`] is what carries it.
+    MassDoesNotCover {
+        /// The mass.
+        mass: MassId,
+        /// The plan area its soffit covers.
+        soffit: f32,
+        /// The plan area of the outline it must cover.
+        outline: f32,
+    },
+    /// A roof's skin does not tile the eave loop the author drew.
+    ///
+    /// # Invariants
+    ///
+    /// A roof's skin does not cover its eave loop in area.
+    ///
+    /// # Invariants
+    ///
+    /// **The check every closure predicate was blind to.** The expander closes *any* skin by
+    /// construction — the skin, its own reverse one thickness below, and a fascia band around the
+    /// **skin's own boundary** — and orients it by one rule. A roof whose row stations land
+    /// mid-edge, skipping an eave corner, therefore expands to a closed, edge-manifold, outward solid
+    /// of positive volume with euler characteristic 2, and nothing in that list can see the hole in
+    /// the roof over the missing corner. The design's exit criterion is "closed, outward, **and
+    /// covered**", and this is the covered part of it.
+    ///
+    /// **The comparison is on magnitudes.** An up-facing triangle's plan area is the negative of its
+    /// projection in this crate's plan convention, so a correctly tiled skin reads `-96.0000`
+    /// against a `+96.0000` eave loop, and the sign that says so is the winding's business —
+    /// [`Violation::SolidInsideOut`] owns it. Coverage asks one question, which is how much of the
+    /// loop is covered, and a fault that is reported twice under two names is a fault an author has
+    /// to triage twice.
+    ///
+    /// **It is a net area, and a net cannot tell a covering from a hole plus a skirt of the same
+    /// size** — a review built exactly that roof and got an empty violation list. The boundary is
+    /// what tells them apart, which is [`RoofSkinLeavesTheEave`](Self::RoofSkinLeavesTheEave)'s
+    /// business and its only reason to exist; this number stays because it is cheap, because it names
+    /// the common case in the units an author thinks in, and because a fault reported under two names
+    /// is still better than one reported under none.
+    RoofDoesNotCover {
+        /// The roof.
+        roof: RoofId,
+        /// The plan area its skin covers.
+        skin: f32,
+        /// The plan area of the eave loop it must cover.
+        eave: f32,
+    },
+    /// A roof's skin has a boundary that is not the eave loop: a notch cut into it, or a skirt
+    /// reaching past it.
+    ///
+    /// # Invariants
+    ///
+    /// **This is the check that a net-area comparison cannot replace**, and it exists because a
+    /// review built the counterexample: a hip with its near end plane deleted (a notch, which removes
+    /// area) and its crest slid past the far eave edge (a skirt, which adds the same area) nets to the
+    /// eave's own area, closes as a solid, keeps every closure predicate green — and is a roof with a
+    /// hole over one end and an overhang over the other. The **area** of a skin cannot tell that from
+    /// a covering; the **boundary** can, because a covering skin's boundary *is* the eave loop, and
+    /// every vertex of a notch or a skirt stands off it.
+    ///
+    /// It is measured in plan, against the eave loop's own polyline, with [`COVERAGE_TOLERANCE`] as
+    /// the distance a boundary vertex may stand off it. A roof that expanded no skin never reaches
+    /// this check: the expansion has already named the reason.
+    RoofSkinLeavesTheEave {
+        /// The roof.
+        roof: RoofId,
+        /// How many of its skin's boundary vertices stand off the eave loop.
+        off: usize,
+    },
+    /// A roof's skin is not one piece, so its boundary is not the eave loop alone.
+    ///
+    /// # Invariants
+    ///
+    /// A hole entirely enclosed by skin adds a boundary loop, and the count is what tells that apart
+    /// from a covering. It is the cheap companion of
+    /// [`RoofSkinLeavesTheEave`](Self::RoofSkinLeavesTheEave), which catches the notches and skirts a
+    /// strip-shaped skin can actually produce; this one catches the enclosed hole a future
+    /// two-dimensional plane would allow.
+    RoofSkinNotADisc {
+        /// The roof.
+        roof: RoofId,
+        /// How many boundary loops its skin has.
+        loops: usize,
+    },
+    /// A facet has no area because **two of its corners are one point**, so it is a facet of no
+    /// surface.
+    ///
+    /// # Invariants
+    ///
+    /// **This is the one fault of the four that every other reading here is blind to**, because a
+    /// zero-area triangle satisfies all of them: its edges are used by their neighbours exactly as a
+    /// real facet's are, so the solid stays closed, edge-manifold, outward, a sphere and of positive
+    /// volume. The phase's own square hip roof emitted four of them — a collapsed ridge gives two
+    /// crest points at one spot, and points are welded by authored identity rather than by coordinate,
+    /// so the two are two vertices and the triangle between them has no area.
+    ///
+    /// **A facet of no area is two classes, and only one of them is the author's** — which is a
+    /// correction to what this check first said, and it was measured rather than argued:
+    ///
+    /// - **Two corners at one point** is the fault this reports. A ridge of no length, a wall face
+    ///   collapsed onto itself, a bay of no width.
+    /// - **Three distinct corners in a line** is *structural*, and it is not reported: an outline
+    ///   carrying a collinear node — which is exactly what `ops::attach_mass` inserts when it splits a
+    ///   host — must be closed by a facet of no area, because the ring's edges around that node each
+    ///   need their second face and the disc has to carry the same vertices the wall does. Removing it
+    ///   opens the solid. Reporting it left the phase's own attach verb unable to produce a document
+    ///   this validator calls clean: measured, two violations per split host, before this
+    ///   discriminator existed.
+    ///
+    /// The two classes are told apart by their corners and not by their area, since both areas are
+    /// zero. The area is still reported rather than a boolean so that the threshold can be read off
+    /// the answer: a facet at `1e-8` is a different fault from one at `9.9e-5`, and the second is
+    /// within a whisker of the tolerance where the first is six decades under it.
+    FaceDegenerate {
+        /// The face.
+        face: usize,
+        /// The area it measured.
+        area: f32,
+    },
+    /// An authored surface — one element's facets — is not one plane within tolerance.
+    ///
+    /// # Invariants
+    ///
+    /// **The fault is the element's, not the triangle's.** A triangle is planar by construction, so
+    /// there is no such thing as a non-planar face here; what the contract makes planar is the
+    /// authored surface, because one wall face and one roof plane are one plane however many
+    /// triangles they were cut into, and a facet that does not lie in that plane is either a seam
+    /// that will show or a shading group whose normals disagree with its silhouette.
+    FaceNotPlanar {
+        /// The element's first face, naming the group the fault is in. The reported face is the
+        /// group's lowest index so that the number is a stable handle on the group.
+        face: usize,
+        /// How far the group's farthest vertex stands off the group's own fitted plane.
+        departure: f32,
+    },
+}
+
+/// Reports what a skeleton has got wrong, without expanding it.
+///
+/// Answers for a skeleton that cannot be built, which is why it is the half an agent should call
+/// while editing.
+///
+/// # The one check here that is quadratic
+///
+/// [`Violation::UnattachedOverlap`] compares every mass's plan with every other mass's: `O(n^2)` in
+/// the masses and `O(k^2)` in the nodes of a pair. That is the right cost here and the wrong one
+/// anywhere else — this is called by an author asking what is wrong, a few times a second at most,
+/// and **never** by `build`, which is why the expansion can stay linear. `mountain`'s validate
+/// makes the same trade for its rib-crossing scan and states it in the same terms. A bounding box
+/// rejects a pair in `O(1)` before any edge is read, so the quadratic part is only paid by masses
+/// whose plans really are near each other, which in a building is a handful of pairs.
+///
+/// Everything else here is a pass: the outline checks are `O(k)` per mass and the roof checks are
+/// `O(rows)` per plane.
+pub fn document(skeleton: &BuildingSkeleton) -> Vec<Violation> {
+    let mut violations = Vec::new();
+    check_masses(skeleton, &mut violations);
+    check_roofs(skeleton, &mut violations);
+    violations.sort_by_key(order_key);
+    violations
+}
+
+/// Reports what a built mesh has got wrong: closure, orientation, planarity, coverage.
+///
+/// # Invariants
+///
+/// Every solid is measured over **one** face set, gathered once and then handed to the four
+/// predicates, so a solid costs `O(faces of that solid)` rather than the four passes
+/// [`BuildingMesh::solid_boundary_loops`] and its three siblings would make of it. The four are
+/// the same measurements either way — the `solid_*` forms are one-line wrappers over the `_of`
+/// forms taken here.
+///
+/// The solids are the ones the mesh actually holds, read out of the faces' own provenance rather
+/// than out of a count the mesh does not carry: a `BuildingMesh` has no idea how many masses or
+/// roofs its author wrote, and asking the empty solids of a document would report four violations
+/// about solids that were never there.
+///
+/// **It takes the skeleton as well as the mesh, for the coverage check and nothing else.**
+/// Coverage is the one question here with nothing inside the mesh to measure against: the fascia
+/// follows the **skin's own boundary** rather than the eave loop, so a mesh carries no record of
+/// the loop its roof was meant to tile, and only the document does. Every other check reads the
+/// mesh alone, and this is why the signature is not `mesh(&BuildingMesh)` — the alternative was a
+/// second public half and a second call site, which is more surface for the same answer.
+pub fn mesh(skeleton: &BuildingSkeleton, built: &BuildingMesh) -> Vec<Violation> {
+    let mut violations = Vec::new();
+    let mut solids: BTreeSet<SolidId> = BTreeSet::new();
+    for face in &built.faces {
+        solids.insert(face.element.solid());
+    }
+    for solid in solids {
+        check_solid(built, solid, &mut violations);
+    }
+    check_planarity(built, &mut violations);
+    check_degenerate_faces(built, &mut violations);
+    check_coverage(skeleton, built, &mut violations);
+    violations.sort_by_key(order_key);
+    violations
+}
+
+/// Checks the masses: enough nodes, the right winding, some height, a host that exists.
+fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
+    for (index, mass) in skeleton.masses.iter().enumerate() {
+        let id = MassId(index);
+        // Staged: an outline with fewer than three nodes has no plan area to sign, and
+        // `plan_area` answers 0.0 for it, which would be reported as a winding fault when it says
+        // nothing about the winding at all. A zero area from three or more nodes is a different
+        // fault and is reported below.
+        if mass.outline.len() < 3 {
+            violations.push(Violation::OutlineTooShort {
+                mass: id,
+                nodes: mass.outline.len(),
+            });
+        } else {
+            let area = mass.plan_area();
+            if area <= 0.0 {
+                violations.push(Violation::OutlineReversed { mass: id, area });
+            }
+        }
+        // Staged the same way: `highest` of an empty outline is not an elevation, it is a fold
+        // over nothing that answers negative infinity.
+        if !mass.outline.is_empty() {
+            let highest = mass.highest();
+            if mass.top <= highest {
+                violations.push(Violation::ZeroHeight {
+                    mass: id,
+                    top: mass.top,
+                    highest,
+                });
+            }
+        }
+        if let Some(attachment) = mass.attachment {
+            if skeleton.mass(attachment.host).is_none() {
+                violations.push(Violation::MassHostMissing {
+                    mass: id,
+                    host: attachment.host,
+                });
+            }
+        }
+    }
+    check_overlap(skeleton, violations);
+}
+
+/// Reports two masses whose plans share area with no attachment between them.
+///
+/// # Invariants
+///
+/// An attachment in **either** direction ends the question: a wing overlaps its host by
+/// construction and the host's own outline is what the attachment's station splits, so a pair with
+/// one is a named joint rather than a coincidence of coordinates. What is left is two shells whose
+/// plans share area with nothing written down about how they meet, which is a pile of boxes and
+/// not a building.
+///
+/// The pairs are read in list order and each pair is reported once, with the lower index first, so
+/// the list is the same whatever order the masses were found in.
+fn check_overlap(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
+    for first in 0..skeleton.masses.len() {
+        for second in (first + 1)..skeleton.masses.len() {
+            if attached_either_way(skeleton, first, second) {
+                continue;
+            }
+            if plans_share_area(
+                &skeleton.masses[first].outline,
+                &skeleton.masses[second].outline,
+            ) {
+                violations.push(Violation::UnattachedOverlap {
+                    mass: MassId(first),
+                    other: MassId(second),
+                });
+            }
+        }
+    }
+}
+
+/// Returns whether either of two masses names the other as its host.
+fn attached_either_way(skeleton: &BuildingSkeleton, first: usize, second: usize) -> bool {
+    let names = |index: usize, host: MassId| {
+        skeleton.masses[index].attachment.map(|one| one.host) == Some(host)
+    };
+    names(first, MassId(second)) || names(second, MassId(first))
+}
+
+/// Returns whether two closed plan polygons share an area.
+///
+/// # Invariants
+///
+/// The test is the standard one for simple polygons: **a vertex of one strictly inside the other,
+/// or a pair of edges crossing in both their interiors.** That is complete — two simple polygons
+/// with a shared area have an intersection whose boundary is made of pieces of both, and a vertex
+/// of that region is either a crossing or an original corner that fell inside the other polygon.
+///
+/// Two details are what make it answer the question this module means:
+///
+/// - "Strictly". A corner standing **on** the other's edge is a touch, not an overlap, and the
+///   margin is [`TOUCH_TOLERANCE`]. Two masses whose walls are flush share a plane and no area,
+///   which is a joint to author rather than an overlap to report.
+/// - **No assumption of convexity.** The separating-axis test is the cheaper answer for two boxes
+///   and it is wrong here, because a building outline may be an L and an L has no single direction
+///   that separates it from anything.
+fn plans_share_area(first: &[PlanNode], second: &[PlanNode]) -> bool {
+    if first.len() < 3 || second.len() < 3 {
+        return false;
+    }
+    let one: Vec<Vec2> = first.iter().map(|node| node.position).collect();
+    let other: Vec<Vec2> = second.iter().map(|node| node.position).collect();
+    if !boxes_overlap(&one, &other) {
+        return false;
+    }
+    strictly_contains(&one, &other) || strictly_contains(&other, &one) || edges_cross(&one, &other)
+}
+
+/// Returns whether the bounding boxes of two plan polygons share anything.
+///
+/// The one cheap rejection before any edge is read, and it is sound for the convex test it
+/// replaces here: boxes that miss cannot make polygons that meet.
+fn boxes_overlap(first: &[Vec2], second: &[Vec2]) -> bool {
+    let (low, high) = extremes(first);
+    let (other_low, other_high) = extremes(second);
+    (0..2).all(|axis| low[axis] <= other_high[axis] && other_low[axis] <= high[axis])
+}
+
+/// Returns the lowest and highest corner of a plan polygon's bounding box.
+fn extremes(polygon: &[Vec2]) -> ([f32; 2], [f32; 2]) {
+    let mut low = [f32::INFINITY; 2];
+    let mut high = [f32::NEG_INFINITY; 2];
+    for point in polygon {
+        for axis in 0..2 {
+            low[axis] = low[axis].min(point[axis]);
+            high[axis] = high[axis].max(point[axis]);
+        }
+    }
+    (low, high)
+}
+
+/// Returns whether a polygon has a vertex strictly inside another.
+///
+/// # Invariants
+///
+/// The test is by ray casting, and a vertex within [`TOUCH_TOLERANCE`] of the other's boundary is
+/// **not** inside for this purpose: the ray would cross an edge it is standing on, and the count
+/// it produced would be an answer about a corner that touches rather than one that overlaps.
+fn strictly_contains(outer: &[Vec2], inner: &[Vec2]) -> bool {
+    inner
+        .iter()
+        .any(|point| !on_boundary(outer, *point) && ray_casts_in(outer, *point))
+}
+
+/// Returns whether a plan point stands on a polygon's edge, within [`TOUCH_TOLERANCE`].
+fn on_boundary(polygon: &[Vec2], point: Vec2) -> bool {
+    (0..polygon.len()).any(|index| {
+        distance_to_segment(point, polygon[index], polygon[(index + 1) % polygon.len()])
+            <= TOUCH_TOLERANCE
+    })
+}
+
+/// Returns whether a ray cast from a point crosses a simple polygon an odd number of times.
+///
+/// # Invariants
+///
+/// The ray runs along `+x` and a vertex it passes exactly through is counted by the half-open rule
+/// `(from[1] > point[1]) != (to[1] > point[1])`, which is what stops a corner the ray grazes being
+/// counted twice. `mountain`'s validate uses the same rule for the same reason; the helper is not
+/// public there, so it is restated rather than shared.
+fn ray_casts_in(polygon: &[Vec2], point: Vec2) -> bool {
+    let mut inside = false;
+    let mut previous = polygon[polygon.len() - 1];
+    for &current in polygon {
+        if (current[1] > point[1]) != (previous[1] > point[1]) {
+            let width = previous[1] - current[1];
+            if width.abs() > f32::EPSILON {
+                let crossing =
+                    current[0] + (point[1] - current[1]) / width * (previous[0] - current[0]);
+                if point[0] < crossing {
+                    inside = !inside;
+                }
+            }
+        }
+        previous = current;
+    }
+    inside
+}
+
+/// Returns whether any edge of one plan polygon crosses any edge of the other.
+///
+/// # Invariants
+///
+/// A shared endpoint is not a crossing, and neither is a proper touch closer than
+/// [`TOUCH_TOLERANCE`], scaled by the two edges' lengths so the test is about the geometry rather
+/// than about the units: two masses meeting corner to corner have not been measured as overlapping
+/// because a hair of rounding put the crossing a millionth of a metre inside the segments.
+fn edges_cross(first: &[Vec2], second: &[Vec2]) -> bool {
+    for (a, b) in closed_edges(first) {
+        for (c, d) in closed_edges(second) {
+            if crosses(a, b, c, d) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Returns the closed loop's edges, the last one running back to the first node.
+fn closed_edges(polygon: &[Vec2]) -> Vec<(Vec2, Vec2)> {
+    (0..polygon.len())
+        .map(|index| (polygon[index], polygon[(index + 1) % polygon.len()]))
+        .collect()
+}
+
+/// Returns whether two plan segments cross in both their interiors.
+fn crosses(a: Vec2, b: Vec2, c: Vec2, d: Vec2) -> bool {
+    let first = crate::math::cross(crate::math::difference(b, a), crate::math::difference(c, a));
+    let second = crate::math::cross(crate::math::difference(b, a), crate::math::difference(d, a));
+    let third = crate::math::cross(crate::math::difference(d, c), crate::math::difference(a, c));
+    let fourth = crate::math::cross(crate::math::difference(d, c), crate::math::difference(b, c));
+    let straddles = |left: f32, right: f32, tolerance: f32| {
+        (left > tolerance && right < -tolerance) || (left < -tolerance && right > tolerance)
+    };
+    let scale = (distance(a, b) * distance(c, d)).max(f32::EPSILON);
+    let tolerance = TOUCH_TOLERANCE * scale;
+    straddles(first, second, tolerance) && straddles(third, fourth, tolerance)
+}
+
+/// Returns how far a plan point is from a plan segment.
+fn distance_to_segment(point: Vec2, from: Vec2, to: Vec2) -> f32 {
+    let edge = crate::math::difference(to, from);
+    let length_squared = crate::math::dot(edge, edge);
+    let amount = if length_squared > f32::EPSILON {
+        crate::math::clamp(
+            crate::math::dot(crate::math::difference(point, from), edge) / length_squared,
+            0.0,
+            1.0,
+        )
+    } else {
+        0.0
+    };
+    distance(point, crate::math::lerp(from, to, amount))
+}
+
+/// Checks the roofs: a host that exists, an eave loop with length, planes that span, crests in
+/// range.
+///
+/// # Invariants
+///
+/// Nothing here is staged against the other checks. A plane with one row still has a row whose
+/// crest index can be read, and reading it is the more useful report: the author who wrote two
+/// faults is told both, which is the contract of this module. What is staged is only the reads a
+/// value cannot support, and here there are none — [`crate::roof::Roof::crest_point`] answers an
+/// index off its list with `None` rather than by indexing.
+fn check_roofs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
+    for (index, roof) in skeleton.roofs.iter().enumerate() {
+        let id = RoofId(index);
+        if skeleton.mass(roof.host).is_none() {
+            violations.push(Violation::RoofHostMissing {
+                roof: id,
+                host: roof.host,
+            });
+        }
+        if roof.eaves.len() < 3 {
+            violations.push(Violation::RoofEaveTooShort {
+                roof: id,
+                nodes: roof.eaves.len(),
+            });
+        }
+        for (plane_index, plane) in roof.planes.iter().enumerate() {
+            if plane.rows.len() < 2 {
+                violations.push(Violation::RoofPlaneTooShort {
+                    roof: id,
+                    plane: plane_index,
+                });
+            }
+            for (row_index, row) in plane.rows.iter().enumerate() {
+                if row.crest >= roof.crest.len() {
+                    violations.push(Violation::RoofCrestMissing {
+                        roof: id,
+                        plane: plane_index,
+                        row: row_index,
+                        crest: row.crest,
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Checks that a solid is closed, edge-manifold, outward, and one sphere.
+fn check_solid(built: &BuildingMesh, solid: SolidId, violations: &mut Vec<Violation>) {
+    let faces = built.faces_of(solid);
+    let loops = built.boundary_loops_of(&faces);
+    if loops != 0 {
+        violations.push(Violation::SolidOpen { solid, loops });
+    }
+    if !built.is_manifold_of(&faces) {
+        violations.push(Violation::SolidNonManifold { solid });
+    }
+    let volume = built.signed_volume_of(&faces);
+    if volume <= 0.0 {
+        violations.push(Violation::SolidInsideOut { solid, volume });
+    }
+    let euler = built.euler_characteristic_of(&faces);
+    if euler != 2 {
+        violations.push(Violation::SolidNotASphere { solid, euler });
+    }
+}
+
+/// Which of a solid's surfaces a coverage reading is taken over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Coverage {
+    /// A mass's slab soffit, measured against the mass's outline.
+    Slab(MassId),
+    /// A roof's skin, measured against the roof's eave loop.
+    Skin(RoofId),
+}
+
+/// Checks that a roof's skin tiles its eave loop and a mass's slab covers its outline.
+///
+/// # Invariants
+///
+/// **One pass gathers both, and the reading is a net area over a gathered set of faces.** The
+/// buckets are keyed by the surface rather than by the solid, so the faces of a roof's four planes
+/// land in one bucket however they were expanded, and a solid contributes `O(faces of that solid)`
+/// between the gathering and the arithmetic.
+///
+/// **The tolerance is a width times the loop's own length** ([`COVERAGE_TOLERANCE`]), so the same
+/// millimetre is held at every size; the missing area is allowed to differ from the authored one by
+/// [`COVERAGE_TOLERANCE`] × the loop's perimeter.
+///
+/// **Staged on the surface being there at all.** A roof that expanded no skin has no coverage to
+/// read, and the reason it has no skin is a [`Problem`] the expansion already reported — a missing
+/// crest, an unresolvable station — rather than a gap in the roof this check could name.
+fn check_coverage(
+    skeleton: &BuildingSkeleton,
+    built: &BuildingMesh,
+    violations: &mut Vec<Violation>,
+) {
+    let mut measured: BTreeMap<Coverage, Vec<usize>> = BTreeMap::new();
+    for (index, face) in built.faces.iter().enumerate() {
+        let surface = match face.element {
+            Element::Mass(id, MassSurface::SlabSoffit) => Coverage::Slab(id),
+            Element::Roof(id, RoofSurface::Skin { .. }) => Coverage::Skin(id),
+            _ => continue,
+        };
+        measured.entry(surface).or_default().push(index);
+    }
+    for (surface, faces) in measured {
+        let covered = built.plan_area_of(&faces).abs();
+        match surface {
+            Coverage::Slab(id) => {
+                // Staged: a face naming a mass the document does not hold is a mesh of another
+                // building, and there is no outline here to measure it against.
+                let Some(mass) = skeleton.mass(id) else {
+                    continue;
+                };
+                let outline = mass.plan_area().abs();
+                let (_, perimeter) = crate::ops::closed_spans(&mass.outline);
+                if (covered - outline).abs() > COVERAGE_TOLERANCE * perimeter {
+                    violations.push(Violation::MassDoesNotCover {
+                        mass: id,
+                        soffit: covered,
+                        outline,
+                    });
+                }
+            }
+            Coverage::Skin(id) => {
+                let Some(roof) = skeleton.roof(id) else {
+                    continue;
+                };
+                let eave = roof.plan_area().abs();
+                // **The boundary is what tells a covering from a hole plus a skirt**, and it is the
+                // only thing that can: the two net to the same area (a review built exactly that roof
+                // and got an empty violation list). A covering skin's boundary lies on the eave loop;
+                // a notch's inner vertices and a skirt's outer ones do not.
+                let loops = built.boundary_loops_of(&faces);
+                if loops != 1 {
+                    violations.push(Violation::RoofSkinNotADisc { roof: id, loops });
+                }
+                let off = built
+                    .boundary_edges_of(&faces)
+                    .iter()
+                    .flat_map(|(from, to)| [*from, *to])
+                    .collect::<BTreeSet<u32>>()
+                    .iter()
+                    .filter(|index| !on_eave_loop(built.points[**index as usize], roof))
+                    .count();
+                if off > 0 {
+                    violations.push(Violation::RoofSkinLeavesTheEave { roof: id, off });
+                }
+                if (covered - eave).abs() > COVERAGE_TOLERANCE * roof.eave_length() {
+                    violations.push(Violation::RoofDoesNotCover {
+                        roof: id,
+                        skin: covered,
+                        eave,
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Returns whether a point stands on the eave loop, in plan, within [`COVERAGE_TOLERANCE`].
+///
+/// # Invariants
+///
+/// The distance is to the loop's **segments** and not to its nodes, because a covering skin's
+/// boundary vertices are the row stations the author wrote, and a station lands mid-edge as often as
+/// it lands on a corner. `O(nodes)` per point over a loop of four, and the points are the skin's
+/// boundary vertices rather than all of its corners.
+fn on_eave_loop(point: Vec3, roof: &Roof) -> bool {
+    let count = roof.eaves.len();
+    if count < 2 {
+        return false;
+    }
+    let at = [point[0], point[2]];
+    (0..count).any(|index| {
+        let from = roof.eaves[index].position;
+        let to = roof.eaves[(index + 1) % count].position;
+        distance_to_segment(at, from, to) < COVERAGE_TOLERANCE
+    })
+}
+
+/// Checks that no facet has no area.
+///
+/// # Invariants
+///
+/// **One pass over the faces, `O(F)`, and one cross product each.** The area is read from the
+/// welded corners rather than from any quantity the mesh already carries: `normal` is a
+/// *normalized* normal and normalizing divides the area away, which is exactly the number this
+/// needs.
+fn check_degenerate_faces(built: &BuildingMesh, violations: &mut Vec<Violation>) {
+    for (index, face) in built.faces.iter().enumerate() {
+        let area = area_of(built, face);
+        if area < DEGENERATE_AREA && corners_coincide(built, face) {
+            violations.push(Violation::FaceDegenerate { face: index, area });
+        }
+    }
+}
+
+/// Returns whether two of a face's corners stand at one point.
+///
+/// # Invariants
+///
+/// This is the discriminator between the two classes of a facet of no area, and it reads positions
+/// because the areas are both zero: a **coincidence** is a point two elements each authored at one
+/// place, and it is exact — the square's collapsed ridge stood two crest points at *the same*
+/// coordinates — so the tolerance only has to clear `f32` rounding at building scale. Three distinct
+/// collinear corners are the structural case a split host needs, and they measure above it.
+fn corners_coincide(built: &BuildingMesh, face: &crate::mesh::BuildingFace) -> bool {
+    let [a, b, c] = built.triangle(face);
+    [(a, b), (b, c), (c, a)].iter().any(|(from, to)| {
+        let delta = subtract(*to, *from);
+        dot3(delta, delta).sqrt() < COINCIDENT_TOLERANCE
+    })
+}
+
+/// Returns the area a face covers in space, from the cross product of two of its edges.
+fn area_of(built: &BuildingMesh, face: &crate::mesh::BuildingFace) -> f32 {
+    let [a, b, c] = built.triangle(face);
+    let normal = crate::math::cross3(subtract(b, a), subtract(c, a));
+    0.5 * (dot3(normal, normal)).sqrt()
+}
+
+/// Checks that every element's facets lie in one plane.
+///
+/// # Invariants
+///
+/// The grouping key is the face's [`Element`], which is the authored surface: one wall face, one
+/// roof plane. That is the surface the contract makes planar, and grouping by it is what turns
+/// "one plane" from a statement about a triangle — always true — into a statement about the thing
+/// an author wrote down.
+///
+/// The plane is the group's own **least squares** plane: the direction its covariance's smallest
+/// eigenvalue stands in, through the mean of its distinct vertices. A genuinely planar group
+/// therefore has a departure of zero to within rounding, which is the floor
+/// [`PLANARITY_TOLERANCE`] has to stay above.
+///
+/// The fit is a least squares fit and not a mean of the group's triangle normals, and the reason is
+/// a property of the measurement rather than a preference: on the reference cube with one corner
+/// lifted `0.25` m the fitted plane reads `0.0626`, and the mean of the group's normals reads about
+/// as much again — both are statements about their own plane.
+///
+/// **What the reading is, stated exactly: the distance from the group's farthest vertex to the plane
+/// that best fits the group, which is not the distance that vertex stands off the plane its
+/// neighbours lie in.** With four corners, one of them `0.25` m off, the best plane tilts to share
+/// the error, so the reading is a fraction of the displacement and the fraction belongs to the
+/// group's shape rather than to the fault. Measured: a sloped quad of four corners with one corner
+/// lifted `0.2500` m along the plane's normal reads `0.0833` — exactly a third — while the same
+/// group with its corners exactly coplanar reads nothing at all over tolerance. The cube's wall top,
+/// a `2 × 2` corner whose vertices all satisfy `x + z = 2`, is worse still at `0.0626`, because its
+/// design matrix is near singular and the plane it finds is one of a family of equally good ones.
+///
+/// The check is a detector and that is all it claims: a corner a factor of three off still reads
+/// eighty-three times over [`PLANARITY_TOLERANCE`], and a genuinely planar group reads zero to within
+/// rounding. **Reporting the displacement itself needs a different instrument** — three vertices
+/// picked and the triangle they name — and that is a change to what this check means, for whoever
+/// wants it, rather than a repair to make quietly here.
+fn check_planarity(built: &BuildingMesh, violations: &mut Vec<Violation>) {
+    let mut groups: HashMap<Element, Vec<usize>> = HashMap::new();
+    for (index, face) in built.faces.iter().enumerate() {
+        groups.entry(face.element).or_default().push(index);
+    }
+    for faces in groups.into_values() {
+        let Some(departure) = departure_of(built, &faces) else {
+            continue;
+        };
+        if departure > PLANARITY_TOLERANCE {
+            violations.push(Violation::FaceNotPlanar {
+                face: faces[0],
+                departure,
+            });
+        }
+    }
+}
+
+/// Returns how far an element's farthest vertex stands off the element's own fitted plane, or
+/// `None` when its vertices do not span a plane at all.
+///
+/// # Invariants
+///
+/// The vertices are the group's **distinct welded indices**, taken once each. A vertex at the
+/// corner of a fan belongs to several of the group's triangles and weighting it by how many would
+/// weight it by the shape of the triangulation rather than by the surface the author wrote, and
+/// the surface — not the cut of it — is what has to be planar.
+fn departure_of(built: &BuildingMesh, faces: &[usize]) -> Option<f32> {
+    let mut vertices: BTreeSet<u32> = BTreeSet::new();
+    for index in faces {
+        for corner in built.faces[*index].indices {
+            vertices.insert(corner);
+        }
+    }
+    if vertices.len() < 3 {
+        return None;
+    }
+    let count = vertices.len() as f32;
+    let mean = [
+        axis_mean(&vertices, built, 0) / count,
+        axis_mean(&vertices, built, 1) / count,
+        axis_mean(&vertices, built, 2) / count,
+    ];
+    let mut covariance = [[0.0f32; 3]; 3];
+    for corner in &vertices {
+        let offset = subtract(built.points[*corner as usize], mean);
+        for row in 0..3 {
+            for column in 0..3 {
+                covariance[row][column] += offset[row] * offset[column];
+            }
+        }
+    }
+    let (unit, eigenvalues) = smallest_direction(&covariance);
+    // Rank one is a line rather than a plane, so there is nothing for a vertex to stand off from.
+    // Rank two is the ordinary case: a plane's own covariance is singular, and the zero direction
+    // is exactly the normal being looked for.
+    if eigenvalues[1] <= eigenvalues[2] * 1.0e-6 {
+        return None;
+    }
+    let mut departure: f32 = 0.0;
+    for corner in vertices {
+        let offset = subtract(built.points[corner as usize], mean);
+        departure = departure.max(dot3(offset, unit).abs());
+    }
+    Some(departure)
+}
+
+/// Returns the mean of one axis over a set of points.
+fn axis_mean(vertices: &BTreeSet<u32>, built: &BuildingMesh, axis: usize) -> f32 {
+    vertices
+        .iter()
+        .map(|corner| built.points[*corner as usize][axis])
+        .sum::<f32>()
+}
+
+/// Returns the unit direction of a symmetric matrix's smallest eigenvalue, and its eigenvalues in
+/// ascending order.
+///
+/// # Invariants
+///
+/// Cyclic Jacobi: each step zeroes the largest off-diagonal entry with a rotation in the plane it
+/// lives in. It is the classic way of reading a plane's normal out of a point set without a closed
+/// form, it converges in a handful of steps at this size, and it is **bounded anyway** — a run that
+/// has not converged returns the best reading it has, and the caller's tolerance is in metres, not
+/// in eigenvalues.
+///
+/// The rotations are accumulated into the columns of an identity, which becomes the matrix of
+/// eigenvectors. That accumulator is not an optimisation: the steps destroy the matrix they
+/// diagonalize, so after one step the entry that was rotated holds a zero rather than the direction
+/// that eigenvalue stands in, and reading the eigenvector out of it gives the null vector.
+///
+/// **One angle is read per step and applied to both matrices.** Reading the angle off the
+/// accumulator instead divides by its off-diagonal, which is zero — the accumulator starts as the
+/// identity — and the angle comes out as a `NaN` that `normalized3` turns into a plausible-looking
+/// `[0, 1, 0]` rather than into a failure.
+///
+/// **The step is `Jᵀ A J` and the accumulator is `Q J`, never `J A J` or `J Jᵀ`.** Those two wrong
+/// spellings look right — a rotation applied to both sides of a symmetric matrix is still a
+/// similarity in appearance — and they are invisible for the reason that matters: the caller zeroes
+/// the entry the step was after, so a step that does not zero it is corrected by the next line, and
+/// what is left wrong is the **accumulator**, which no line corrects. `J Jᵀ` is the identity, so
+/// every step returned the accumulator to the identity and the fitted "normal" was a raw coordinate
+/// axis: the departure a genuinely planar group reported was its extent along that axis, not its
+/// distance off a plane. Measured on this tip before the fix, on the hip starter's plane 0 — a
+/// trapezoid between two parallel lines, four vertices exactly coplanar — the fit reported
+/// `departure = 0.8000002`, which is the `0.8` m the crest stands above the eave and nothing about
+/// planarity, and it reported the same for the soffit of the very solid the census calls clean.
+/// Three of the roof's four planes came out "not planar" on geometry that is planar to the digit.
+fn smallest_direction(matrix: &[[f32; 3]; 3]) -> (Vec3, [f32; 3]) {
+    let mut value = *matrix;
+    let mut vectors = [[0.0f32; 3]; 3];
+    for index in 0..3 {
+        vectors[index][index] = 1.0;
+    }
+    let scale = value
+        .iter()
+        .flatten()
+        .fold(0.0f32, |largest, entry| largest.max(entry.abs()));
+    for _ in 0..16 {
+        let (row, column) = largest_off_diagonal(&value);
+        if value[row][column].abs() <= scale * 1.0e-9 {
+            break;
+        }
+        let (cosine, sine) = rotation_of(&value, row, column);
+        turn(&mut value, row, column, cosine, sine);
+        // The rotation zeroes these analytically; the remainder is rounding, and leaving it would
+        // let the next sweep find an entry that is not there.
+        value[row][column] = 0.0;
+        value[column][row] = 0.0;
+        // `Q` takes the columns half alone: the direction for an eigenvalue is a **column** of it,
+        // so the rows half belongs to the matrix being diagonalized and to nothing else.
+        turn_columns(&mut vectors, row, column, cosine, sine);
+    }
+    let mut eigenvalues = [value[0][0], value[1][1], value[2][2]];
+    let mut smallest = 0;
+    for index in 1..3 {
+        if eigenvalues[index] < eigenvalues[smallest] {
+            smallest = index;
+        }
+    }
+    eigenvalues.sort_by(f32::total_cmp);
+    (
+        crate::math::normalized3([
+            vectors[0][smallest],
+            vectors[1][smallest],
+            vectors[2][smallest],
+        ]),
+        eigenvalues,
+    )
+}
+
+/// Returns the Jacobi rotation that zeroes one off-diagonal entry of a symmetric matrix, as its
+/// cosine and sine.
+///
+/// # Invariants
+///
+/// It is the root of the quadratic with the smaller magnitude, so the step stays small when the two
+/// diagonals are close — which is the ordinary case here, since the covariance of a plane is
+/// singular and its two non-zero eigenvalues are often near each other.
+fn rotation_of(value: &[[f32; 3]; 3], row: usize, column: usize) -> (f32, f32) {
+    let difference = value[row][row] - value[column][column];
+    let off = value[row][column];
+    let shifted = difference / (2.0 * off);
+    let sign = if shifted >= 0.0 { 1.0 } else { -1.0 };
+    let tangent = shifted - sign * (shifted * shifted + 1.0).sqrt();
+    let cosine = 1.0 / (tangent * tangent + 1.0).sqrt();
+    (cosine, tangent * cosine)
+}
+
+/// Right-multiplies a matrix by the rotation in the plane `row`, `column`: its columns `row` and
+/// `column` are turned into one another.
+///
+/// # Invariants
+///
+/// This is the right factor, `J`: `(M J)[i][row] = c·M[i][row] - s·M[i][column]`, which is the form
+/// [`rotation_of`] solves its angle for. It is also the **whole** of what the eigenvector
+/// accumulator takes, because `Q` accumulates columns and `Q` takes no left factor at all.
+///
+/// `O(n)` in the matrix's side and no more: one pass over the two columns being mixed, each entry
+/// read once and written once.
+fn turn_columns(value: &mut [[f32; 3]; 3], row: usize, column: usize, cosine: f32, sine: f32) {
+    for index in 0..3 {
+        let along_row = value[index][row];
+        let along_column = value[index][column];
+        value[index][row] = cosine * along_row - sine * along_column;
+        value[index][column] = sine * along_row + cosine * along_column;
+    }
+}
+
+/// Turns the columns `row` and `column` of a matrix by `J`, and its rows by `Jᵀ`.
+///
+/// # Invariants
+///
+/// The two halves are **transposes of one another and not the same rotation twice**: a Jacobi step
+/// is `A ← Jᵀ A J`, so the columns take `J` and the rows take `Jᵀ`. Applying `J` on the left as
+/// well is what makes the step a conjugation that leaves the entry it was chasing where it was,
+/// and the caller would not see it — it zeroes that entry by hand on the next line.
+///
+/// A round trip through both halves is therefore `Jᵀ Q J`, which for the identity accumulator is
+/// the identity, and that is exactly how the fitted normal came to be a coordinate axis before the
+/// accumulator was given the columns half alone.
+fn turn(value: &mut [[f32; 3]; 3], row: usize, column: usize, cosine: f32, sine: f32) {
+    turn_columns(value, row, column, cosine, sine);
+    for index in 0..3 {
+        let along_row = value[row][index];
+        let along_column = value[column][index];
+        value[row][index] = cosine * along_row - sine * along_column;
+        value[column][index] = sine * along_row + cosine * along_column;
+    }
+}
+
+/// Returns the position of the largest off-diagonal entry of a symmetric matrix.
+fn largest_off_diagonal(value: &[[f32; 3]; 3]) -> (usize, usize) {
+    let mut found = (0usize, 1usize);
+    let mut largest: f32 = 0.0;
+    for row in 0..3 {
+        for column in (row + 1)..3 {
+            if value[row][column].abs() > largest {
+                largest = value[row][column].abs();
+                found = (row, column);
+            }
+        }
+    }
+    found
+}
+
+/// Returns the total order two runs of this module agree on.
+///
+/// # Invariants
+///
+/// The key is the variant's rank first, so the answer reads as "the document's faults, then the
+/// mesh's", and within a variant the thing it is about: the mass, then the plane, then the row, so
+/// two edits of one building are diffed by hand without sorting the lines first. Every key is
+/// unique within its rank, which is what makes the order total.
+fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
+    match violation {
+        Violation::OutlineReversed { mass, area } => (0, mass.0 as u64, ordered(*area), 0, 0),
+        Violation::OutlineTooShort { mass, nodes } => (1, mass.0 as u64, *nodes as u64, 0, 0),
+        Violation::ZeroHeight { mass, top, highest } => {
+            (2, mass.0 as u64, ordered(*top), ordered(*highest), 0)
+        }
+        Violation::UnattachedOverlap { mass, other } => (3, mass.0 as u64, other.0 as u64, 0, 0),
+        Violation::MassHostMissing { mass, host } => (4, mass.0 as u64, host.0 as u64, 0, 0),
+        Violation::RoofHostMissing { roof, host } => (5, roof.0 as u64, host.0 as u64, 0, 0),
+        Violation::RoofEaveTooShort { roof, nodes } => (6, roof.0 as u64, *nodes as u64, 0, 0),
+        Violation::RoofPlaneTooShort { roof, plane } => (7, roof.0 as u64, *plane as u64, 0, 0),
+        Violation::RoofCrestMissing {
+            roof,
+            plane,
+            row,
+            crest,
+        } => (8, roof.0 as u64, *plane as u64, *row as u64, *crest as u64),
+        // One of these per validation, so the count is the only thing that has to order it; the
+        // problems themselves travel in a deterministic order of their own, from the expander.
+        Violation::DidNotExpand { problems } => (9, problems.len() as u64, 0, 0, 0),
+        Violation::SolidOpen { solid, loops } => (10, solid_rank(solid), *loops as u64, 0, 0),
+        Violation::SolidNonManifold { solid } => (11, solid_rank(solid), 0, 0, 0),
+        Violation::SolidInsideOut { solid, volume } => {
+            (12, solid_rank(solid), ordered(*volume), 0, 0)
+        }
+        Violation::SolidNotASphere { solid, euler } => {
+            (13, solid_rank(solid), ordered_integer(*euler), 0, 0)
+        }
+        Violation::MassDoesNotCover {
+            mass,
+            soffit,
+            outline,
+        } => (14, mass.0 as u64, ordered(*soffit), ordered(*outline), 0),
+        Violation::RoofDoesNotCover { roof, skin, eave } => {
+            (15, roof.0 as u64, ordered(*skin), ordered(*eave), 0)
+        }
+        Violation::FaceNotPlanar { face, departure } => {
+            (16, *face as u64, ordered(*departure), 0, 0)
+        }
+        Violation::RoofSkinLeavesTheEave { roof, off } => (19, roof.0 as u64, *off as u64, 0, 0),
+        Violation::RoofSkinNotADisc { roof, loops } => (18, roof.0 as u64, *loops as u64, 0, 0),
+        Violation::FaceDegenerate { face, area } => (17, *face as u64, ordered(*area), 0, 0),
+    }
+}
+
+/// Returns a number that sorts a solid the way the enum's own order does, masses first.
+fn solid_rank(solid: &SolidId) -> u64 {
+    match solid {
+        SolidId::Mass(mass) => mass.0 as u64,
+        SolidId::Roof(roof) => (1 << 32) | roof.0 as u64,
+    }
+}
+
+/// Returns a `u64` that sorts like the `f32` it came from.
+///
+/// # Invariants
+///
+/// It is the bit pattern with the sign moved to the top, which is exactly what
+/// [`f32::total_cmp`] orders by — so this makes an `f32` field usable in a `sort_by_key` without
+/// the borrow a closure over two violations would need, and without `f32`'s own `Ord` (which it
+/// does not have, because `NaN` compares with nothing).
+fn ordered(value: f32) -> u64 {
+    let bits = value.to_bits();
+    let mask = (((bits as i32) >> 31) as u32) | 0x8000_0000;
+    (bits ^ mask) as u64
+}
+
+/// Returns a `u64` that sorts like the `i64` it came from, negatives first.
+fn ordered_integer(value: i64) -> u64 {
+    (value as u64) ^ (1 << 63)
+}
