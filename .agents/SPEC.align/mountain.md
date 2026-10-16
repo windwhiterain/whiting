@@ -705,3 +705,94 @@ difference paints the solve's micro-relief as a facet per cell.
 - Where two stood ranges' footprints overlap, the nearer lattice's rim used to notch the crossing
   curve; lattice cells under another range's surface are now dropped whole. A thin spike at one
   junction remains and is unattributed.
+
+## Scales
+
+The ruling that started this section: **the scales must not exist at all, because the erosion
+lattice's version of the same massif has none.** Everything below is measured on
+`whiting_gallery::hermite_massif`'s own massif — radius `1807.884`, summit `2400`, bounds
+`[-1533, 1450, -831]` to `[1655, 2400, 875]` — and on its own camera, `landscape::eye_at`.
+
+### Reading (A) won: the scales were one-cell holes in the Hermite mesh
+
+The two readings offered were a hole in the near belt showing the far side through it, and an
+overshoot at the sheared seam cell. The instrument that separates them is a **plan census**: read
+the authored `FacetMesh` onto a `2.0`-unit lattice with `terrain::rasterize` — the exact conversion
+the `landscape` scene draws, with no error term — and mark which lattice cell centres the emitted
+mesh covers. The comparison is exact and cell for cell, and each uncovered cell names the authored
+face that should cover it, and so the belt that wanted it.
+
+Before any change: **`892498` rock cells, `13412` of them with rock under them and no surface over
+them — `1.503%` of the massif's plan footprint, spread over `136` of the `300` belts.** At the six
+named pixels the gpu's own `position` channel answered the question directly. At `(881, 510)` the
+drawn fragment is `(-1225, 1783, -52.875)`, and the authored rock crosses the same ray at
+`(-1155, 1791, -218)` — **`172` units nearer**. The same held at every named pixel: `654` units at
+`(691, 520)`, `738` at `(366, 536)`, `769` at `(531, 524)`, `379` at `(936, 584)`. That is reading
+(A) exactly: **the fragment that survives is the massif's far side, it faces away from the camera,
+and so it takes no sun and no environment term the sun does not reach** — which is why it answered
+to environment light and never to the sun, and why the depth channel read it as the farthest
+fragment there.
+
+The cause is one function. `grid_points` removed grid corners that land on one place by nudging
+neighbours **along a row**, and it moved a run of duplicates by the **same absolute offset**, so
+three stations of one place became three stations of one place again. `push_quads` cannot represent
+a quad with two corners in one place and drops it, and **every drop is a one-cell hole**. Measured:
+`212` of `5400` cells dropped — `128` with two coincident seam stations and `84` with two
+coincident diagonal corners — and `11985` of the `13412` gap cells sit in a belt that is itself
+missing a cell.
+
+### The fix
+
+`separate_corners` in `crates/gallery/src/blockmesh.rs` replaces the nudge. It visits **all six
+corner pairs of every cell** — the four edges and the two diagonals — and moves an offending corner
+one step away from the pair's place, taking the direction from the cell's own remaining corners.
+It holds the **seam row still**: a seam vertex is shared with the partner belt at coincident
+positions, so moving one belt's copy and not the other's would open the crack the duplication exists
+to avoid. One pass suffices, because a corner only ever moves *away* and a pair that was distinct
+stays distinct. The step is `1.0e-11`, chosen so that a station's five steps along a seam row put
+the two belts' copies at most `1.0e-10` apart — a hundred times inside the `1.0e-9`
+`belt_seam_probe` measures a seam against — while still being tens of `f64` ulps at these
+coordinates, so a moved corner is a different `f64` and not a rounding of the corner it left.
+
+**Measured, after:** dropped cells `212` of `5400` to **0**; gap cells `13412` to **`1702`
+(`0.191%`)**; dark flake pixels in `out/sf*.png` **4566 to 365**, in `14` clusters to `5`; and all
+six named coordinates eliminated. The six coordinates before and after:
+
+| pixel | before (main, `cf7d9bf`) | after (`be3ea26`) |
+| --- | --- | --- |
+| `(360, 520)` | `(133, 131, 127)` | `(180, 174, 163)` |
+| `(520, 405)` | `(105, 106, 108)` | `(181, 175, 163)` |
+| `(680, 515)` | `(177, 171, 159)` | `(177, 171, 159)` |
+| `(870, 505)` | `(93, 96, 101)` | `(178, 172, 160)` |
+| `(935, 575)` | `(93, 96, 101)` | `(182, 176, 165)` |
+| `(110, 590)` | `(110, 111, 112)` | `(182, 176, 164)` |
+
+`(680, 515)` was already lit on `cf7d9bf`: the flake the brief meant there has its centroid at
+`(691, 520)`, and it is gone.
+
+**Why the lattice version cannot produce it.** The lattice reads every cell from whichever authored
+face covers its centre, so its coverage is the massif's footprint by construction and a cell with
+rock under it always has geometry over it. The Hermite mesh's coverage is the *union of its belt
+grids*, and a cell missing from a grid is missing from the picture — the failure is available to
+the mesh and not to the lattice, which is the whole of the ruling.
+
+### What is left, measured and not yet attributed
+
+`1702` lattice cells (`0.191%`) still have rock under them and no surface, all of them at a belt
+junction rather than in a belt's interior; `17` of them sit inside a patch's own corner quad, so
+they are not folds. Two attempts to close them were measured and **rejected**: building the `u`
+boundaries from the shared mesh-vertex run, as the valley row already is, made the gap
+`1702` to `33149` (`3.692%`), because a belt's `u` edge is often a single vertex and the column then
+stands on one place; building the **crest** row the same way made it `4294` (`0.481%`). Taking the
+grid's outer `u` and `v` ends from `covered_domain` rather than from the probe, and a `64` to `256`
+probe, were measured as no-ops (`1965` either way).
+
+The five surviving clusters (`365` pixels) are **not holes**. The gpu's `position` channel and the
+rock agree at every one of them to `0.0` to `0.3` units — `(107, 625)` draws `(1306, 1493, -582)`
+where the rock is `(1307, 1494, -582)` — so the fragment **is** the rock. What is dark is its
+facing: those fragments are back-facing, in cells whose plan area is `0.8` and `1.0` square units
+against an eight-unit span, that is, cells on a flank steep enough to be a knife edge in plan. They
+are one chevron down the front valley at `(531, 518)` and four flecks along the massif's foot, and
+the fold of a near-vertical flank is **reading (B)**, which this round did not fix. The note above
+about a shadowed valley wall reading as a crease covers the chevron's cause; the foot flecks are
+the same shape one cell smaller.
