@@ -11,7 +11,7 @@
 //! rather than a fresh one.
 //!
 //! ```text
-//! cargo run -p whiting-device --features wgpu --example render -- <scene> <out> [times] [mode]
+//! cargo run -p whiting-device-rasterize --example render -- <scene> <out> [times] [mode]
 //!
 //!   render dunes out/dunes                          one frame, at the time the scene carries
 //!   render dunes out/dunes 2.5                      one frame, at t = 2.5
