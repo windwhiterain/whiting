@@ -1,9 +1,26 @@
 //! A small, valid standard scene, built from the schemas the compiler declares.
 //!
-//! The scene has one light, one mesh, and four instances of that mesh — one per stage, and two
-//! in the lighting stage — so the pipeline it compiles to is the whole three stage pipeline, the
-//! geometry is written once however many stages draw it, and the two lighting instances are drawn
-//! together by one instanced draw.
+//! The scene has one light, one mesh, and four instances of that mesh — one under `shadowing`,
+//! one under `depthing` and two under `lighting` — plus **a post stage**, so the pipeline it
+//! compiles to is the whole one: the geometry is written once however many stages draw it, the
+//! two lighting instances are drawn together by one instanced draw, and the frame that comes
+//! back is a **display image** rather than a radiance.
+//!
+//! # The post stage is here because the frame must be one
+//!
+//! It was added on 2026-10-16 and it is load bearing, not decoration. A scene with no post
+//! stage has the **lighting pass's shaded image** for its frame — `emit.rs` names
+//! `color_target` as the frame's point in that case and says so in `debug_outputs` — and since
+//! `0257706` that image is `rgba16float`, because a radiance above one must reach the tone
+//! curve whole. So a scene with no post stage names a **radiance** as its frame, and the
+//! read-back refuses it: `the frame is drawn in 'rgba16float', and a frame is read as an 8 bit
+//! rgba image`. This example was the one document in the tree that did that, and every
+//! gallery scene but it carries a post stage for the same reason.
+//!
+//! **What that cost is stated rather than absorbed**: this scene was the tree's only exercise
+//! of the no-post path, so `outputs.present` is now never declared against `color_target` by
+//! any document here. `.agents/investigate/a-scene-with-no-post-stage-has-no-frame-to-read.md`
+//! records the loss and what is left covering it.
 
 use definition::{Schema, SchemaKind, Value};
 use graphics::layout::components_schema;
@@ -31,7 +48,16 @@ fn example_point_schema() -> Schema {
 }
 
 /// Builds the example scene: one light, one mesh, one shader per stage, and one instance
-/// per stage.
+/// per mesh stage.
+///
+/// # It grades the frame, and that is not decoration either
+///
+/// It declares one `post_processes` entry and the screen material behind it. Added 2026-10-16:
+/// without it this document named the **lighting pass's shaded image** as its frame, and since
+/// `0257706` that image is `rgba16float`, so `Renderer::render` refused it — *the frame is
+/// drawn in `rgba16float`, and a frame is read as an 8 bit rgba image* — after a render that
+/// compiled, validated and completed in 153 ms. See the module comment for why that is a
+/// property of the document rather than of the renderer.
 ///
 /// # It names a camera, and that is not decoration
 ///
@@ -113,7 +139,16 @@ pub fn example_standard_scene() -> Value {
                 shader("shadowing", Stage::Shadowing, CASTER_SOURCE),
                 shader("depthing", Stage::Depthing, OCCLUDER_SOURCE),
                 shader("lighting", Stage::Lighting, QUAD_SOURCE),
+                screen_shader("post", POST_SOURCE),
             ]),
+        ),
+        (
+            "screen_materials".to_owned(),
+            Value::List(vec![screen_material("post", "post")]),
+        ),
+        (
+            "post_processes".to_owned(),
+            Value::List(vec![Value::String("post".to_owned())]),
         ),
         (
             "meshes".to_owned(),
@@ -214,6 +249,48 @@ fn shader(label: &str, stage: Stage, source: &str) -> Value {
             ),
         ],
     )
+}
+
+/// Builds the example's **post** shader, which is a different variant and not another of the above.
+///
+/// A screen shader draws over the frame rather than over a mesh, so it declares no point schema
+/// and no instance row — carrying either is refused, because a shader that declares an interface
+/// nothing supplies is a shader whose layout nothing can check. It also carries a `stage` field
+/// naming the stage it belongs to, which the three mesh variants do not: they are named by their
+/// own tag, and a fourth one that was not would leave a document with no way to say which stage a
+/// shader reads.
+fn screen_shader(label: &str, source: &str) -> Value {
+    Value::variant(
+        Stage::Post.tag(),
+        [
+            ("label".to_owned(), Value::String(label.to_owned())),
+            ("source".to_owned(), Value::String(source.to_owned())),
+            ("pass_schema".to_owned(), post_pass_schema().to_value()),
+            (
+                "instance_schema".to_owned(),
+                Schema::new(SchemaKind::Unit).to_value(),
+            ),
+            (
+                "custom_schema".to_owned(),
+                Schema::new(SchemaKind::Unit).to_value(),
+            ),
+            (
+                "stage".to_owned(),
+                Value::String(Stage::Post.suffix().to_owned()),
+            ),
+        ],
+    )
+}
+
+/// Builds one screen material of the example, which a post process names by label.
+///
+/// It carries no `custom_data`, which is the same case as the shader above: every screen shader
+/// the standard pipeline emits declares the unit schema and so reads none.
+fn screen_material(label: &str, shader: &str) -> Value {
+    Value::structure([
+        ("label".to_owned(), Value::String(label.to_owned())),
+        ("shader".to_owned(), Value::String(shader.to_owned())),
+    ])
 }
 
 /// Builds one instance of the example, which places a mesh and names the material drawing it.
@@ -652,5 +729,81 @@ fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {
     // had stopped responding to its own colour.
     color = color + environment_radiance(normal, 0.5);
     return vec4<f32>(color.r, color.g, color.b, 1.0);
+}
+"#;
+
+/// The post stage: read the shaded image, turn it into a display value, and write the frame.
+///
+/// **This is the stage that makes the frame a picture.** A scene with no post stage has the
+/// lighting pass's shaded image for its frame, and since `0257706` that image is a
+/// `rgba16float` radiance — a read-back that wants an eight bit rgba image refuses it. So the
+/// example declares one, and it is the smallest grade that says what a post stage is for: a
+/// **copy**, a **Reinhard** roll-off and a **gamma**.
+///
+/// # Invariants
+///
+/// - **The copy is a copy.** `textureLoad` at the fragment's own framebuffer coordinate, with
+///   no camera, no matrix, no test and no branch, so a pixel of this stage is the pixel of the
+///   shaded image it stands on. A post stage that reinterpreted its input would be a second
+///   convention between the caller and the image; `crates/scene/tests/grade_channel.rs` holds
+///   that contract over the compiler's own copy pass and it is the same one written twice here.
+///
+/// - **The roll-off is applied and not a clamp.** `colour / (colour + 1)` holds a value above
+///   one rather than cutting it to one, which is the whole reason the shaded image is a float:
+///   `0257706` measured 18.0% of `landscape`'s red pixels arriving at the curve already flat,
+///   and a clamp here would put them back.
+///
+/// - **The binding numbers are the pass's own, in name order.** `color_target` is one,
+///   `depth_buffer` is two, `environment_map` is three and `present_target` is four, which is
+///   what `post_pass` emits for a shader that declares no environment. This stage declares only
+///   the first two: it paints no sky and reads no depth, and a binding declared and not read
+///   costs a number the next stage would have to know about. The device's interface check is
+///   what says so if one of these is wrong.
+///
+/// - **Alpha is one**, and the pipeline clears the frame to one, so a pixel nothing was drawn
+///   on is transparent black rather than a colour this stage invented.
+const POST_SOURCE: &str = r#"
+struct Camera {
+    forward: vec3<f32>,
+    half_extent: vec2<f32>,
+    position: vec3<f32>,
+    right: vec3<f32>,
+    up: vec3<f32>,
+};
+
+struct Projection {
+    position: vec3<f32>,
+    view_projection: mat4x4<f32>,
+};
+
+struct Uniforms {
+    camera: Camera,
+    depth_range: vec2<f32>,
+    projection: Projection,
+    time: f32,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var color_target: texture_2d<f32>;
+@group(0) @binding(2) var depth_buffer: texture_depth_2d;
+
+struct Vertex {
+    @builtin(position) position: vec4<f32>,
+};
+
+@vertex
+fn vertex_main(@location(0) position: vec3<f32>) -> Vertex {
+    var out: Vertex;
+    out.position = vec4<f32>(position.xy, 0.0, 1.0);
+    return out;
+}
+
+@fragment
+fn fragment_main(in: Vertex) -> @location(0) vec4<f32> {
+    // The builtin position is the framebuffer coordinate, so this is a texel address and not an
+    // interpolation: the whole point is that no pixel moves.
+    let radiance = textureLoad(color_target, vec2<i32>(in.position.xy), 0).rgb;
+    let rolled_off = radiance / (radiance + vec3<f32>(1.0));
+    return vec4<f32>(pow(rolled_off, vec3<f32>(0.4545)), 1.0);
 }
 "#;

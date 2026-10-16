@@ -1,6 +1,7 @@
 # What is a standard scene that declares no post stage supposed to return?
 
-Measured 2026-10-16, on machine B, on `main` at `95b2ba4`.
+Measured 2026-10-16, on machine B, on `main` at `95b2ba4`. Option A was approved and landed in
+`ee3abc7`'s successor; see *What was decided, and what it cost* at the end.
 
 ## The question
 
@@ -299,3 +300,65 @@ The answer picks the option and nothing else does:
   `C:\resource\whiting\.worktrees\studio-post`.
 - The option A measurement above, 2026-10-16, applied and then reverted with
   `git checkout -- crates/scene/src/standard/example.rs`. Nothing from it is in the tree.
+
+## What was decided, and what it cost
+
+**Option A was approved by the superior on 2026-10-16 and landed.** `example_standard_scene()`
+now declares a `ScreenShader`, a screen material and one `post_processes` entry, and the frame
+it comes back is a display image.
+
+### Re-measured from the clean tree, both ends
+
+Measured 2026-10-16 on `169abaa` and on the branch built from it, with the harness
+`render.exe` and a full rebuild each time — not carried over from the experiment above:
+
+| | before (`169abaa`) | after |
+|---|---|---|
+| passes | 3 | **4** |
+| compiled | 34 ms | 27 ms |
+| rendered | 153 ms | 407 ms |
+| exit | **1** | **0** |
+| png | **none** | **25 501 bytes** |
+
+The 407 ms against 153 ms is the cost of the stage, not a regression in the three that were
+there: a post pass is a fullscreen draw over the frame plus a texture load a fragment.
+
+### The loss, stated rather than absorbed
+
+**Option A removes the tree's only exercise of the no-post path.** What is lost, precisely:
+
+- **No document in the workspace now ends up with `outputs.present` declared against
+  `color_target`.** `emit.rs:1183-1187` chooses that point when `post` is empty, and
+  `debug_outputs` declares `vec4<f32>` at location zero for it. After this change every document
+  in the tree takes the other branch, so that branch's *emitted output* is no longer produced by
+  anything here. It is still compiled — the code is still reached by `Gallery::build` of no
+  scene, which is to say not at all by a gallery scene, and the three `post.is_empty()` branches
+  are still there for a hand-written document.
+- **`Renderer::render` refusing a no-post scene is no longer observed by anything.** The error
+  was reachable only through this scene.
+- **The example no longer demonstrates the case it is most often cited for.** Its own doc
+  already made a point of the convention camera, and now also carries a post stage; a reader
+  looking for "a scene with no grade" has nowhere in the gallery to look.
+
+**What survives, checked rather than assumed:**
+
+- **The empty-`post_processes` compiler branch is still tested.**
+  `crates/scene/tests/exposure.rs:128` — `a_scene_naming_an_exposure_and_no_post_process_is_told`
+  — takes `dunes`, empties its `post_processes` list and asserts the note
+  `emit.rs:1108-1118` writes. That branch was never covered by the gallery example.
+- **A `ScreenShader` is still built two ways** — `image_channel.rs:463` builds one for a scene
+  that reads an image, and `example.rs` now builds one for a scene that reads only the frame.
+
+**The cheapest way to put the rest back, proposed and not built:** `crates/scene/tests/`
+already has the fixture. `exposure.rs:132-136` shows how to take a scene and empty its
+`post_processes` in four lines, and `output_declarations.rs` already asserts against
+`debug_outputs`. One test that compiles `example_standard_scene()` with its `post_processes`
+emptied and asserts that `outputs.present` names `color_target` rather than `present_target`
+would close exactly the gap named above, and needs no new source and no new scene. It is not
+built here because it is a new test and `AGENTS.md` reserves those.
+
+**What this costs the cross-backend survey**: nothing new — it was already the case, and is now
+recorded. `cycles-mesh-normals.md:515` lists `studio` as one of two scenes with "no raster
+frame to compare against". It now has one, so that survey can compare it for the first time,
+and the reason it could not be compared — the document, not the tracer — is on the record here
+rather than being re-discovered the next time a scene fails to cross-check.

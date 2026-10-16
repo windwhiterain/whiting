@@ -20,7 +20,9 @@
 //!   default that is wrong is a number an author silently inherits.
 //!
 //! The last is the regression bar for the stage: an all `Point` scene emits the passes it
-//! emitted before, with the same buffer sizes, and gains three entries that nothing binds yet.
+//! emitted before, with the same buffer sizes, gains three entries that nothing binds yet, and
+//! since 2026-10-16 carries a post stage as well — so its pass list has four entries where it
+//! had three, and its name says so.
 
 use definition::{Definition, DefinitionIdentifier, Path, Registry, SchemaIdentifier, Value};
 use graphics::{ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
@@ -42,7 +44,7 @@ use whiting_scene::{CompileError, STANDARD_SCENE_SCHEMA, StandardScene};
 const WIDE: f64 = 16.0;
 
 #[test]
-fn an_all_point_scene_still_emits_the_passes_it_emitted_before() {
+fn an_all_point_scene_emits_one_pass_per_stage_and_a_post_stage() {
     let compiled = compiled(&example_standard_scene());
 
     let labels: Vec<&str> = graphics::passes(&compiled.graphics.value)
@@ -53,14 +55,23 @@ fn an_all_point_scene_still_emits_the_passes_it_emitted_before() {
     // The lighting pass no longer names a light, so its label lost the `key/` that the one
     // light of this scene used to contribute. The shadowing pass still does name one, because
     // it is still one per light that was given a page.
+    //
+    // **This list gained its fourth entry on 2026-10-16 and so did this name.** The example
+    // scene used to declare no `post_processes`, which made it the one document in the tree
+    // whose frame was the lighting pass's shaded image — and since `0257706` that image is
+    // `rgba16float`, so the frame could not be read back as an eight bit rgba image. The
+    // example now grades, and `post/post` is that pass. A test still called
+    // `an_all_point_scene_still_emits_the_passes_it_emitted_before` would be claiming a
+    // history it no longer has, sitting over an assertion that it emits one more.
     assert_eq!(
         labels,
         [
             "shadow/key/shadowing/triangle",
             "depth/depthing/triangle",
             "lighting/lighting/triangle",
+            "post/post",
         ],
-        "one pass per stage, and none of them named twice over"
+        "one pass per mesh stage, one post pass, and none of them named twice over"
     );
 
     // Every buffer that existed before this stage, at the size it had.
@@ -108,7 +119,8 @@ fn an_all_point_scene_still_emits_the_passes_it_emitted_before() {
 
     assert!(
         compiled.notes.is_empty(),
-        "a light per cluster is a scene that dropped nothing: {:?}",
+        "a light per cluster is a scene that dropped nothing, and the post stage it now declares \
+         names no exposure, so there is no field-nothing-reads note either: {:?}",
         compiled.notes
     );
 }
@@ -169,8 +181,15 @@ impl Stages {
         }
     }
 
-    fn total(&self) -> usize {
-        self.shadowing + self.depthing + self.lighting + self.other
+    /// The passes of the three mesh stages, which is what the clustered swap produced or kept.
+    ///
+    /// **This is what `total()` used to be, and the name says why it changed on 2026-10-16.** A
+    /// whole-scene total stopped meaning "what the swap did to this scene" the moment `studio`
+    /// gained a post stage, which was a decision about its frame and had nothing to do with
+    /// lights. The mesh stages are the ones the swap replaced, so they are the ones to hold
+    /// still.
+    fn mesh_total(&self) -> usize {
+        self.shadowing + self.depthing + self.lighting
     }
 }
 
@@ -338,11 +357,16 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
         ),
         (
             "studio",
+            // `other` is one and not zero since 2026-10-16, and the change is the example's
+            // post stage rather than anything about lights: the scene declares one
+            // `post_processes` entry so that its frame is a display image rather than the
+            // `rgba16float` shaded image. See `an_all_point_scene_emits_one_pass_per_stage_and_a_post_stage`
+            // and `.agents/investigate/a-scene-with-no-post-stage-has-no-frame-to-read.md`.
             Stages {
                 shadowing: 1,
                 depthing: 1,
                 lighting: 1,
-                other: 0,
+                other: 1,
             },
         ),
         (
@@ -409,6 +433,14 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
 /// to 4. Three of the seven did not move at all, which is the honest result: a scene whose
 /// groups are few and whose lights are few gains nothing from the swap, and a scene with the
 /// most of both is where the count actually moved.
+///
+/// **The comparison is on the mesh stages alone, and that is a change of 2026-10-16.** `studio`
+/// emits four passes now and emitted three then, because it gained a post stage — a decision
+/// about what its frame is, with nothing to do with how lights are assigned. Comparing the whole
+/// total would have meant either editing a recorded history that is true or raising the bound,
+/// and both would have made this assert something other than what its name says. The clustered
+/// swap touched the mesh stages; the post stage did not, so the mesh stages are what this holds
+/// still.
 #[test]
 fn the_totals_shrank_where_the_scene_had_more_lights_than_groups() {
     let before: Vec<(&str, usize)> = vec![
@@ -421,10 +453,14 @@ fn the_totals_shrank_where_the_scene_had_more_lights_than_groups() {
         ("tiles", 4),
     ];
     for (name, was) in before {
-        let after = Stages::of(&Gallery::build(name)).total();
+        let stages = Stages::of(&Gallery::build(name));
+        let mesh = stages.mesh_total();
         assert!(
-            after <= was,
-            "{name} emitted {was} passes and emits {after}, so the clustered pass never added one"
+            mesh <= was,
+            "{name} emitted {was} mesh passes and emits {mesh}, so the clustered pass never \
+             added one. Its {other} emission and post passes are not counted here and never \
+             were: the swap this test replaced did not touch them",
+            other = stages.other,
         );
     }
 }
