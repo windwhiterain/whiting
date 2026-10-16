@@ -361,38 +361,85 @@ fn grid_points(
         }
     }
 
-    // **Adjacent corners of a row that land on one place are nudged apart by a hundred
-    // picometres.** Two things put them there: a valley head, whose run is a single vertex so the
-    // whole row is one point repeated, and a crest corner, where two columns' parameter points
-    // project onto the same covered point. A quad with two corners in one place is a triangle,
-    // this surface type has no triangle, and dropping the cell leaves a one-cell hole — measured
-    // as 32 notches at the valley heads and 84 at crest corners in the massif render.
-    //
-    // A hundred picometres is far below anything the picture resolves and far above the `f64`
-    // rounding of coordinates this size, so the cell draws as a sliver converging on the point
-    // the rock actually reaches. Two belts nudging their shared valley row do it along their own
-    // row directions, which run opposite ways, so their stations stay within a few hundred
-    // picometres of each other — coincident to every measurement this crate makes, and to the
-    // eye.
-    for row in 0..side {
-        let first = grid[row * side] as usize;
-        let last = grid[row * side + side - 1] as usize;
-        let span = positions[last] - positions[first];
-        let direction = if span.length() > 1.0e-12 {
-            span * (1.0 / span.length())
-        } else {
-            Point3::new(1.0, 0.0, 0.0)
-        };
-        for column in 1..side {
-            let here = grid[row * side + column] as usize;
-            let previous = grid[row * side + column - 1] as usize;
-            if positions[here].distance(positions[previous]) > 1.0e-9 {
-                continue;
+    separate_corners(positions, &grid, side);
+    Some(grid)
+}
+
+/// How far past a neighbour a grid corner that landed on it is placed.
+///
+/// **Ten picometres**, which is a measured choice rather than a round one. The two belts that share
+/// a valley row nudge their own copies of the same station, so the most a station can move is one
+/// step per column between it and the run's own start — five steps at `side` 6 — and the two belts'
+/// copies can differ by twice that. Ten femtometres of a step puts that at `1.0e-10` between the
+/// copies, a hundred times inside the `1.0e-9` a seam is measured against, and at the massif's own
+/// coordinates it is tens of `f64` ulps, so a moved corner is a different `f64` and not a rounding
+/// of the corner it left.
+const SEPARATED: f64 = 1.0e-11;
+
+/// Removes every coincidence the grid carries, so that `push_quads` has nothing to drop.
+///
+/// # Invariants
+///
+/// - **No cell is left a triangle.** A quad with two corners in one place is dropped, and every
+///   drop is a one-cell hole in the massif: measured on the authored rock read onto a 2.0-unit
+///   lattice, `push_quads` dropping `212` of `5400` cells left `13412` lattice cells — 1.503% of
+///   the massif's plan footprint — with rock under them and no surface over them. Looking down
+///   one of those holes from the eye shows the massif's far side, whose fragments face away from
+///   the camera and so take no sun: a dark diamond one cell across on an otherwise lit flank.
+///   That is the whole of the "scales" this function exists to remove.
+/// - **A seam-row vertex is never moved to separate it from a flank-row vertex.** The seam row is
+///   shared with the partner belt at coincident positions, so moving one belt's copy and not the
+///   other's opens the very crack the duplication exists to avoid.
+/// - **The pass is complete, not a sample.** Every pair of a cell's four corners is one of the
+///   cell's four edges or its two diagonals, and all six are visited; the first version compared
+///   only neighbours along a row, which left `128` cells with two coincident seam stations and
+///   `84` with two coincident diagonal corners, and therefore `212` holes, and the second compared
+///   rows and diagonals but not columns, which left `556` more wherever a whole column of a belt
+///   stands on one place.
+///
+/// One pass is enough, and not because the grid is small: a corner is only ever moved **away from**
+/// where it was, and a pair that was distinct stays distinct, so a later cell cannot be left with
+/// a coincidence an earlier one created. It runs in time linear in the number of cells.
+fn separate_corners(positions: &mut [Point3], grid: &[VertexId], side: usize) {
+    for row in 0..side - 1 {
+        for column in 0..side - 1 {
+            let corners = [
+                grid[row * side + column] as usize,
+                grid[row * side + column + 1] as usize,
+                grid[(row + 1) * side + column + 1] as usize,
+                grid[(row + 1) * side + column] as usize,
+            ];
+            for (first, second) in [(0usize, 1usize), (1, 2), (2, 3), (0, 3), (0, 2), (1, 3)] {
+                let (left, right) = (corners[first], corners[second]);
+                if positions[left].distance(positions[right]) > 0.0 {
+                    continue;
+                }
+                // The seam row is shared with the partner belt at coincident positions, so a
+                // corner of it stands still and the cell's other copy is the one that moves.
+                let seam = row + 1 == side - 1;
+                let (moving, staying) = if seam && second == 2 || seam && second == 3 {
+                    (left, right)
+                } else {
+                    (right, left)
+                };
+                let at = positions[staying];
+                // The pair is in one place, so the direction cannot come from it: it comes from
+                // the cell's own remaining corners, which stand on the rock, or from the row's own
+                // chord where the whole cell is one place.
+                let away = [corners[0], corners[1], corners[2], corners[3]]
+                    .into_iter()
+                    .find(|corner| positions[*corner].distance(at) > 1.0e-12)
+                    .map_or_else(
+                        || Point3::new(1.0, 0.0, 0.0),
+                        |corner| {
+                            let span = positions[corner] - at;
+                            span * (1.0 / span.length())
+                        },
+                    );
+                positions[moving] = at + away * SEPARATED;
             }
-            positions[here] = positions[here] + direction * 1.0e-10;
         }
     }
-    Some(grid)
 }
 
 /// `side` points along a run of mesh vertices, spaced by arc length.
