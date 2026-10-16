@@ -68,11 +68,17 @@
 //!     })
 //!     .expect("the scene compiles");
 //!
-//! // The scene has instances in three stages, so the pipeline is the three stages in order.
-//! // Instances that would be drawn by identical passes share one: the two lighting instances
-//! // are one pass, so the label names the group rather than an instance. The lighting pass
-//! // names no light at all, where the shadowing one does — it draws one light's page, and
-//! // that light is part of what the pass is.
+//! // The scene has instances in three mesh stages, so those three passes come first and in
+//! // order. Instances that would be drawn by identical passes share one: the two lighting
+//! // instances are one pass, so the label names the group rather than an instance. The
+//! // lighting pass names no light at all, where the shadowing one does — it draws one light's
+//! // page, and that light is part of what the pass is.
+//!
+//! // The fourth pass is the post stage the example declares, and it is named after the shader
+//! // rather than after a light or a mesh: a post pass draws a fullscreen triangle the compiler
+//! // builds, so there is no group and no light in its label. It is there because a scene with no
+//! // post stage has the lighting pass's shaded image for its frame, and since `0257706` that
+//! // image is a radiance the host cannot read back as a picture.
 //! let passes = graphics::passes(&compiled.graphics.value).expect("the passes read");
 //! let labels: Vec<&str> = passes.iter().map(|pass| pass.label().unwrap()).collect();
 //! assert_eq!(
@@ -80,7 +86,8 @@
 //!     [
 //!         "shadow/key/shadowing/triangle",
 //!         "depth/depthing/triangle",
-//!         "lighting/lighting/triangle"
+//!         "lighting/lighting/triangle",
+//!         "post/post"
 //!     ]
 //! );
 //!
