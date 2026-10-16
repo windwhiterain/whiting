@@ -699,9 +699,11 @@ difference paints the solve's micro-relief as a facet per cell.
   columns onto one covered point and the summits flatten into it. The shear stays, and the
   scene's tessellation guards it — a vertex analytic normal is trusted only within sixty degrees
   of the cell's own geometric facing, past which the triangle's flat normal stands in.
-- A valley that runs at the camera shows one lit wall and one in shadow; at this sun the shadowed
-  wall is a dark diamond-shaped patch. That is the crease reading as a crease, not an artifact,
-  and no lighting change was made to hide it.
+- A valley that runs at the camera shows one lit wall and one in shadow, and the shadowed wall is
+  a dark band along the seam. The dark *diamonds* that an earlier round of this document
+  attributed to those walls were one-cell holes in the Hermite mesh, not walls: the attribution
+  is retracted, and the [Scales](#scales) section below records the measurement that separated
+  the two readings and the coverage fix that removed the holes.
 - Where two stood ranges' footprints overlap, the nearer lattice's rim used to notch the crossing
   curve; lattice cells under another range's surface are now dropped whole. A thin spike at one
   junction remains and is unattributed.
