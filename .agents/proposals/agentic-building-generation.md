@@ -1,0 +1,471 @@
+# Agentic procedural building generation: the `building` crate
+
+Status: **DRAFT, revision 2 — chief designer's design.** Both reconnaissance notes are woven in
+(repo side: [investigate/building-crate-integration-surface.md](../investigate/building-crate-integration-surface.md);
+external techniques: [investigate/procedural-architecture-techniques.md](../investigate/procedural-architecture-techniques.md),
+all sources accessed 2026-10-16, the load-bearing RNG and boolean-free claims re-verified against
+the primary README by the chief designer). An adversarial design review (2026-10-16) verified the
+first draft's boldest claim — "a roof is the same object `mountain` already expands" — **false
+against source**, and this revision rewrites D2, D5, D10 and P1 on that evidence; the correction is
+recorded inside D2 rather than silently fixed. Date: 2026-10-16.
+
+Decisions taken with the superior on 2026-10-16, before this draft:
+
+- **Scope: one building, plus site composition.** A city grammar (streets, parcels, skyline rhythm)
+  is a later phase, not this design.
+- **Authoring interface: a rust construction API first**, exactly like `mountain`'s R5. Document/Delta
+  authoring is a possible later phase (see D7 for what it would actually cost).
+- **Deliverable: this proposal.** No implementation code until the design is approved.
+
+## Motivation
+
+`mountain` exists because the ridge distribution of a real massif is *planned* — hierarchy,
+direction, rhythm — and noise cannot plan ([SPEC/mountain.md](../SPEC/mountain.md) R1 motivation).
+The same argument holds one level stronger for buildings: a building is planned *all the way down*.
+Massing has hierarchy (body, wing, tower, porch), facades have rhythm (levels and bays), roofs have
+structure (ridges, hips, valleys, eaves), and every face belongs to a named element of that plan.
+
+The demand-side evidence is measured, not aesthetic
+([recon §5](../investigate/building-crate-integration-surface.md)):
+
+1. **The gallery already contains an architectural form library in the wrong crate.**
+   `crates/gallery/src/built.rs` holds `edge_normal`, `wall_run`, `WallGap`, `wall_ring`,
+   `roof_ridge`, `sweep` — forms assembled face by face, with no hierarchy, no rhythm and no
+   validation. A `building` crate is therefore partly a **promotion**, not a greenfield write.
+2. **`PackedList` cannot be read back and rejoined** (`built.rs:116-121`). That single fact forced
+   `foldyard.rs:822 push_ring` to re-implement `wall_ring`'s walk — one behaviour, two
+   implementations, and the file says why (`foldyard.rs:811-816`). Hand-composed architecture
+   duplicates code *structurally*, not stylistically.
+3. **A wrong outward normal is invisible**: "a wall that is not drawn, and nothing in the frame says
+   which of the two happened" (`built.rs:86-88`). There is **no `validate()` anywhere in the
+   architectural path** — the gap a planning crate exists to close.
+4. **Roofs are single-sided height functions** (`built.rs:339-346`, `foldyard.rs:906-921`): every
+   normal points up, a camera below the eave sees through, and each soffit is a separate hand-written
+   band. A building crate must answer roof solidity once, for every building.
+5. **Two incompatible placement strategies coexist** — baked meshes (`foldyard`) and instanced unit
+   meshes (`terraces.rs:533 place_house`) — and nothing in the framework prefers either. Scenes pick
+   by accident and cannot mix.
+6. Three independent agent runs building a bamboo courtyard each hand-rolled a gatehouse or a roof,
+   and each hit camera-burial, scale or black-box-exposure failures — facts a planning layer knows
+   before a frame is drawn ([agent-scene-iteration-loop.md](agent-scene-iteration-loop.md), its
+   camera, scale and exposure items).
+
+## The one idea, inherited
+
+`mountain`'s one idea is that **the lines carry their correspondence**: a valley node names the
+station it faces on each side, so the correspondence *is* the mesh's topology, and watertightness is
+structural rather than the outcome of a search (`crates/mountain/src/lib.rs:13-25`).
+
+The `building` crate inherits it verbatim, applied to three skeletons:
+
+> **A building is authored as skeletons that carry their correspondence, and expansion is a direct
+> walk of what the author wrote down.** Two faces meet along an edge because they were built from
+> the same authored edge — never because two independent constructions happened to agree, and never
+> because a boolean or a triangulation search decided it after the fact.
+
+## The three skeletons
+
+### S1: the mass skeleton (planned volume)
+
+- A building is a tree/network of **masses**: body, wings, towers, porches, chimneys.
+- Each mass is a footprint outline plus a vertical extent and a wall thickness. Floor lines are
+  *not* S1 data — they belong to the grid skeleton (S2) on the mass's faces.
+- Attachment is **authored adjacency**: an attached mass names the host face and where on it the
+  joint lands. The precedent is `attach_ridge`, not a bare station reference — it **splits the host
+  first**, then attaches to the named end, because "a belt changes line only at a line's end"
+  (`mountain/src/ops.rs:39-52`); a mass attachment does the same to a host face. An intersection
+  with no authored attachment is a `validate()` violation and nothing repairs it. An *authored*
+  attachment may deliberately authorize an intersection at the joint — a roof sunk 0.10 into a wall
+  top, as `terraces.rs:573` places one — and only the unauthored kind is reported.
+
+### S2: the grid skeleton (planned rhythm)
+
+- Each mass face carries **levels** (floor lines) and **bays** (vertical divisions): the lattice a
+  facade reads as rhythm, and the reason a building is not a box.
+- A bay names its mass face, the level below and above, and the division it spans. Parts attach
+  **into bays**; a part that exceeds its bay is a violation, not a style.
+- The **algebra** of those edits is CGA's, borrowed as a vocabulary and not as a runtime: split
+  with rhythm (`{ pier | bay }*` between bookends), repeat, fit (first candidate whose minimum
+  width fits), face/edge decomposition, offset — the op set the mature shape-grammar engines expose
+  ([survey §1](../investigate/procedural-architecture-techniques.md), symbios-shape [S2]). What is
+  **not** borrowed is CGA's implicit correspondence: a facade scope knows its parent face only by
+  descent, and the survey names exactly this as the gap against R4.1 — so a bay *names* its mass
+  face and its two levels by reference, the way a valley node names the stations it faces. D10
+  settles where the algebra lives and what a re-split does to the edits under it.
+
+### S3: the roof skeleton (planned structure)
+
+A roof is **an upright miniature massif**: ridge and hip lines above, roof valleys where two planes
+meet concavely, and an eave loop as its footprint. The isomorphism with `mountain`'s skeleton is
+real — polylines with elevations, explicit station correspondence, one planar face per authored
+span — and the design exploits it. It is **not** a licence to hand the roof to `Massif::build`:
+that expander walks belts hung from valley lines only and can emit only an upward skin (D2 records
+the measured reasons). The roof skeleton is building-side, of the same shape as `mountain`'s, with
+one authoring rule that the massif case never needed:
+
+- **The eave is authored once.** Ridge and hip lines name stations on the eave loop directly; no
+  tracing artifact re-states an eave edge as a second line, so nothing can drift between two copies
+  of the same edge.
+- Gables, hips, mansards and sheds are different skeletons, not different expanders; overhang is
+  authored by placing the eave loop outside the wall line; a roof is a **solid** (D5), so soffit
+  and fascia are faces of the roof mass, never a hand-written band.
+
+### Parts (the style vocabulary)
+
+- Doors, windows, columns, brackets, copings, tiles: small authored templates placed into bays with
+  an authored attachment (which bay, what inset, what scale).
+- **The joint is authored, never snapped.** A part template declares named sockets, and a placement
+  names the socket of the part it mates with; an unfinished joint is a `validate()` violation and
+  is never repaired. Proximity snapping and inferred mates are the measured failure mode of parts
+  systems ([survey §4](../investigate/procedural-architecture-techniques.md)): a parts soup is not
+  watertight unless the joint is enforced, and an inferred mate drifts silently. This is R4.1 in
+  its purest form — joinery is data, not a search.
+- The parts vocabulary is where *style* lives; the skeletons are where *plan* lives. Neither
+  encodes the other: replacing every window template changes no skeleton, and moving a wing changes
+  no part.
+
+## Decisions
+
+Recorded with the alternatives they reject, in the form this repo's proposals already use.
+
+### D1: rust construction API first (decided with the superior)
+
+`ops` for edits, `derive` for starting points, `validate` for what is wrong, `build` for the mesh —
+the `mountain` R5 workflow three measured agent runs converged on independently. **Rejected for
+phase 1:** a `Definition`-document authoring surface (see D7).
+
+### D2: reuse mountain's types and discipline; the roof's expansion is building's own
+
+**Correction, recorded rather than silently fixed.** Revision 1 claimed a roof is "the same object
+`mountain` already expands" and that watertightness and coverage checks "come free" through
+`Massif::build`. The review read the source and the claim is false in both halves:
+
+- belts hang **only from valley lines** (`mountain/src/expand.rs:236-253` enumerates
+  `skeleton.valleys`; verified by the chief designer), so a convex roof — gable, hip, shed, every
+  family S3 promises — has no valley lines and expands to **zero faces**, with `build()` returning
+  `Ok` on the empty mesh and only `validate()` complaining (`MeshOpen`, `validate.rs:214-223`);
+- the expander winds every face **up** and **drops vertical faces** (`expand.rs:407-441`,
+  "the mesh is a graph over the plan"), so `Massif::build` can never emit a roof *solid*: no soffit,
+  no fascia, no gable-end wall — exactly the single-sided-roof pain (motivation 4) this crate exists
+  to answer;
+- the working convention inside today's `Skeleton` (trace each eave edge as a valley line, with
+  degenerate ghost valleys to satisfy coverage bookkeeping) **double-authors the eave loop** — the
+  footprint corners and the valley-node positions are two copies that can drift silently into real
+  skirt faces — and leans on the coincident-rib side fallback (`validate.rs:568-587`) for every
+  footprint span.
+
+**The decision, restated on that evidence.** `whiting-building` depends on `whiting-mountain` for
+what is actually reusable — `FacetMesh` and its self-checks (`facet.rs:179-407`), `Sampling`,
+`CornerNormals`, the `Station`/`End::On` adjacency vocabulary, and the measured disciplines of
+`ops`/`derive`/`validate` — and owns the rest:
+
+- the **roof skeleton is a building-side type of the same shape** as `mountain`'s (polylines with
+  elevations and named-station correspondence), with the eave authored once (S3);
+- the **roof-solid expander is building-side P1 scope**: it walks ridge/hip stations paired with
+  eave stations and roof-valley correspondence directly, emits the upward skin, and thickens it
+  into the authored solid (soffit, fascia, gable ends). No boolean is involved; watertightness is
+  the authored correspondence, the `mountain` idea kept and the `mountain` walk not reused.
+
+**Rejected alternatives.** *(a) The eave-tracing convention over `Massif::build`*: buys a skin, not
+a solid, and pays for it with double-authored eaves, ghost valleys and a coincident-rib fallback.
+*(b) Extending `mountain`'s belt enumeration so footprint edges become first-class belt sources*:
+one clean move that would delete the convention's fragilities, but it changes an expansion contract
+under a SPEC that is **human-editable only**, in a crate with in-flight neighbour work (the catmull
+and hermite probe worktrees exist; their contents were not audited). It is recorded here as a
+**future unification proposal to the SPEC owner**, not as a P1 dependency. *(c) Copying the
+expander*: duplication of the one invariant-bearing machinery in the workspace.
+
+**Consequence, stated plainly.** What transfers for free is the philosophy, the types and the
+discipline; what P1 must build and name is the roof-solid walk, the mass-solid expansion, and the
+checks in D5. P1's scope below says so.
+
+### D3: output is planar triangles, `FacetMesh`-shaped; no `Topology::Quads` dependency
+
+The scene layer is triangle-only — `Topology` has exactly `Triangles` and `Segments`
+(`SPEC.md:104-106`, `scene_schema.rs:1041-1051`, `emit.rs:721-723`), a hard gate. The crate emits
+planar-facet triangles into `mountain`'s `FacetMesh` shape, so a building reaches a frame through
+the same gallery adapter path a massif already uses, with **no SPEC change required**.
+
+- The NURBS multipatch direction (`feature/nurbs-multipatch`, in flight, not landed) *reproduces a
+  planar face exactly* (degree-1 bilinear, planarity preserved to `1.047e-15`) and a hard edge costs
+  nothing — architecture is almost entirely hard edges. But soft edges are **not continuous today**
+  (a lone seam folds `8.6e-2` rad; T-junctions are unrepresentable), so nothing in this design may
+  *depend* on it. If and when it lands, `FacetMesh → PatchMesh` conversion already exists
+  (`gallery/patchmesh.rs:68-83`) and a building can be subdivided downstream — the crate's output
+  stays the authoring truth. **Rejected:** designing against patch meshes now (building a phase-1
+  guarantee on an unlanded, non-continuous representation).
+- Watertightness here is structural (authored correspondence), so no boolean kernel is in the
+  critical path. For the one case where parts must behave as a single solid — a shell with openings
+  cut across baked and instanced geometry — the survey nominates `manifold` (MIT OR Apache-2.0) as
+  an **opt-in consolidation**: it guarantees manifold output and retains per-input surface IDs, so
+  D6's provenance survives the boolean
+  ([survey §6](../investigate/procedural-architecture-techniques.md)). It is not a phase-1
+  dependency: P1 openings are composed as masses (see Phasing), so no boolean arises.
+
+### D4: the plan is baked; the vocabulary is instanced
+
+The two coexisting gallery strategies stop being an accident and become a rule:
+
+- **Baked mesh** for what the skeletons cut uniquely: walls with their bay openings, slabs, roof
+  solids. This is one `FacetMesh` per building.
+- **Instanced unit meshes** for what the parts vocabulary repeats: a hundred identical windows are
+  one part mesh and a hundred transforms, through the scene's `instances` and its per-axis scale
+  (`terraces.rs:563-578` already places a whole roof by transform alone).
+- **Rejected:** all-baked (loses the scene's instancing, repeats identical geometry per bay) and
+  all-instanced (a facade with unique openings is not a repetition of one unit).
+
+### D5: closure and orientation are `validate()` invariants, at two named levels
+
+`mountain` turns "is the mesh what the skeleton claimed" into one number: the signed `plan_area`
+compares coverage *and* orientation (`mountain/src/lib.rs:108-129`). Two honest notes on that
+inheritance, both measured by the review: the comparison itself is a **caller idiom documented as
+a contract**, performed today only in an example (`census.rs:4-6`) — not a violation `validate()`
+raises; and `mountain`'s own mesh contract is a **disc** (`MeshOpen` fires unless one boundary
+loop, euler 1 — `validate.rs:214-223`), while a building mass is a closed solid. Building therefore
+defines its checks rather than inheriting them:
+
+- **Per mass:** a closed solid — zero boundary loops, manifold, euler characteristic 2 (the three
+  predicates exist on `FacetMesh`, `facet.rs:294-356`) — and **positive signed volume**. Signed
+  volume is **new building-side machinery**: `mountain` has none (a grep for `volume` finds zero
+  matches), and it is the check that turns the inside-out wall of `built.rs:86-88` from an invisible
+  building into a named violation.
+- **Coverage as a violation, not an idiom:** the plan-area-versus-footprint comparison is promoted
+  into `validate()` beside the station-tiling check (the `NotCovered` analogue for bays and roof
+  spans), closing the enforcement gap the mountain idiom leaves open.
+- **Per building:** attached closed solids glued face-to-face make 4-face edges, so a *building* is
+  deliberately **not** manifold as a whole; "watertight" at building level means *every mass closed
+  and outward, every joint authored*. Whole-building manifoldness is claimed only under the opt-in
+  `manifold` consolidation (D3), never by default.
+- **Roofs are solids by default.** An open shell is an explicit per-mass marking for authored cases
+  (a canopy, a ruin); the default answers motivation 4 once — a camera below the eave meets a
+  soffit face, not a hole. **Rejected:** fusing "solid or open shell" into one silent option, which
+  is how the single-sided roof happened the first time.
+
+### D6: every face carries provenance, numbered by the expansion itself
+
+Each expanded face records the skeleton element it came from (mass face, bay, roof line, part
+placement). The numbering comes **from the expansion's own enumeration order**, the discipline
+`gallery/identity.rs:33-35` already follows — its ids are taken from `mountain::expand::belt_references`
+so id and mesh "are the same numbering by construction rather than by two loops kept in step"
+(`expand.rs:228-232`). Note for P2: `identity.rs` itself is welded to mountain's types
+(`belt_references`, `BeltRef`, `Massif` — `identity.rs:43-45`) and **cannot be reused as code**;
+what transfers is the discipline, and building grows a sibling mechanism over its own expansion's
+reference list. This is the crate-side half of the `Identifier` channel that
+[agent-scene-iteration-loop.md](agent-scene-iteration-loop.md) shelved pending a shader graph (its
+disposition item 3): the crate owes a stable face→element map; the harness owes the channel when it
+exists.
+
+### D7: document/Delta authoring is deferred, and its real cost is recorded
+
+The user decision is a rust API first. The recon adds the fact that makes deferral cheap rather than
+lossy: `Delta`'s `Append`/`Remove` are **contiguous-only** by construction (`definition/src/delta.rs:22-25`),
+and no geometry crate uses `Definition`/`Delta`/`History` at all today (`mountain` has zero
+dependencies). A document-shaped building would need a registered `Schema` and would still not
+express non-contiguous edits. **This is a phase of its own, not a small add-on** — recorded so a
+future design does not rediscover it as a surprise.
+
+### D8: no terrain dependency; the ground is an authored input
+
+A building stands on a plane or on authored sill heights in phase 1–2. Seating on a
+`terrain::HeightField` (skirts, stepped foundations on slopes) is **P3 site composition**, and stays
+outside the crate's R6-equivalent boundary: `terrain` produces numbers, never geometry
+(`terrain/src/lib.rs:26-30`), and this crate produces geometry, never erosion.
+
+### D9: crate name `building`, publish `whiting-building`
+
+A noun naming the thing made, like `mountain` names the massif. **Rejected:** `architecture` (names
+the discipline, not the artifact), `edifice` (not a word an agent greps for).
+
+### D10: the split algebra is ops on the skeleton, with replace semantics
+
+CGA's editable state is its rule set, and its re-derivation is global — the whole shape re-derives
+from its initial polygon ([survey §1](../investigate/procedural-architecture-techniques.md)).
+`mountain`'s invariant is the opposite and this crate inherits it: **the document is the skeleton**
+(`mountain/src/lib.rs:68-74` — the tessellation is not part of it in any sense that survives an
+edit). Split/repeat/fit therefore live as `ops` verbs that *write bays and levels into the
+skeleton*. A rule is a construction move, not a persistent graph.
+
+The staleness objection is real and gets the `mountain` answer rather than a hand-wave: widening a
+mass face leaves its authored bays stale, and forty hand edits are forty chances to drift. The
+precedent is `derive_valleys` — it **replaces every valley rather than merging**, which makes it
+"a 'start over' operation and not an incremental one … the answer to 'the valleys are wrong', never
+to 'the valleys are nearly right'" (`derive.rs:129-141`), and outside its supported domain it
+**refuses to guess** and reports what it could not place (`:138-145`). So:
+
+- `split(face, rhythm)` has **replace semantics** for that face's bay family: it re-reads the face
+  and stores nothing from the old family, and it reports rather than guesses when the face cannot
+  support the rhythm;
+- part placements key by **rhythm index** (which slot of the family), not by bay identity, so a
+  re-split re-seats forty windows instead of orphaning them;
+- `validate()` gains the grid invariants that make staleness *visible*: bays must tile their face
+  exactly once (the `NotCovered` analogue), levels and bays must lie inside the face extent after a
+  resize, and a placement naming a bay that no longer exists is an orphan violation.
+
+**The honest middle path, recorded:** keeping a rhythm as *annotation data* on a face and re-firing
+it manually does **not** violate the document-is-the-skeleton invariant — an annotation is skeleton
+data like any other. What D10 rejects is the **auto-refiring rule tree**, whose re-derivation is
+global and whose rule and hand-edits below it are two sources of truth. The steelman stands: CGA
+re-derives forty bays and re-places their windows for free on a width edit. This design answers
+with one replace-semantics op plus rhythm-indexed keys, which is cheap for the same edit — and
+pays in explicitness everywhere else, which is the point.
+
+### D11: derived randomness forks per node, and shows itself as a choice
+
+Where `derive` needs randomness (which window variant, which hip a roof gets), two disciplines are
+borrowed from the MIT rust CGA engine the survey verified ([S2]; re-checked against its primary
+README by the chief designer 2026-10-16):
+
+- **Fork the RNG per node along the ancestry path.** The same seed re-derives the same building;
+  queue order is irrelevant; and editing one wing re-rolls that wing alone, never its neighbours —
+  the exact property the iteration loop's "nearest path that differs" diagnostic wants, on the
+  geometry side.
+- **Randomness is an explicit weighted alternative** (`70% WinA | 30% WinB`), never parameter
+  jitter, so a derived default *looks like* a default (R3) and an authored choice looks authored.
+  Style coherence — every floor picks the same window variant — is a keyed pick resolved once per
+  building: coherence is data, not luck.
+
+### D12: the default roof derives from the eave footprint, then is edited
+
+`derive` may generate a starter roof skeleton (ridge/hip/valley lines) from a mass's top footprint —
+the R3 pattern `mountain` already ships (`Starter`, and its refusal to invent spur ridges without a
+guarantee, `derive.rs:19-23`, `:35-101`) — and the same move the mature roof families make (a hip
+ridge derived from the footprint; mixed-width wings sharing one ridge height). Generated lines
+carry no guarantee and are ordinary editable lines the moment they exist; outside the supported
+domain, derivation reports rather than guesses (`derive_valleys`' contract, D10). **Rejected:**
+parametric roof primitives as the representation — a `Roof(Hip, 30)` whose lines cannot be edited
+individually is a finished artifact with no edit handle, which is what R3 exists to prevent.
+
+### D13: shading groups are a design obligation, not a rendering afterthought
+
+`CornerNormals::of` creases at **every block boundary** (`facet.rs:476-483`, `:136-141`), so a roof
+plane emitted as per-segment belts would shade creased at every eave node — a faceted roof nobody
+authored. The expander therefore emits a **grouping key per authored face** (one roof plane, one
+wall run) and the mesh's corner normals come from `CornerNormals::of_grouped` (`facet.rs:505-533`),
+the mechanism that already exists for exactly this. All building edges are hard between groups;
+soft edges within a group wait for the NURBS direction (D3) and are not promised.
+
+## `validate()`: reports, never repairs
+
+The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
+
+- **all** violations are returned, in a deterministic order, so two runs diff;
+- checks are **staged** — downstream checks are skipped when the document cannot support them;
+- ops never refuse an edit **except** the ones that would leave a dangling index, which refuse by
+  returning `None` (`ops.rs:10-16`) — an invalid intermediate state is otherwise ordinary, and
+  `validate` is the instrument that reads it;
+- **build failure is a list**, not a first error;
+- geometry self-checks live on the mesh itself;
+- the reporting vehicle during implementation is an `examples/` probe, not a test file
+  (`mountain/examples/census.rs` pattern; tests need the superior's permission per workspace rules).
+
+Non-exhaustive violation list: unattached mass intersection; incomplete bay, roof or socket
+correspondence; non-planar face beyond tolerance; mass not closed, or closed inward (negative
+signed volume, D5); coverage — the plan-area comparison and bay/span tiling, as violations (D5,
+D10); level or bay outside its face extent; orphaned part placement; part exceeding its bay; open
+shell not marked open; zero-height storey; zero-width bay; collinear eave; tracing-artifact drift
+(the double-authored eave the S3 rule exists to make impossible — kept as a check on imports and
+derivations, not on authoring).
+
+## The agentic loop
+
+The loop already exists and is measured: compile → render → manifest → camera notes → contact
+sheet, in `crates/device-rasterize/examples/render.rs` (the path the iteration-loop proposal gets
+wrong at its line 6; scale notes have since been **removed** by `physical-light-units` and must not
+be promised). What the crate contributes:
+
+- `validate()` is the **cheap inner loop** — a wrong building is named before a frame is spent on
+  it, and every geometry failure the three courtyard runs hit was a validate-shaped fact;
+- the manifest's "the edit did not reach the documents this camera reads" verdict works unchanged,
+  because a building compiles into the same document path a massif does;
+- provenance (D6) makes the frame diagnosable per element;
+- `derive` gives an agent a whole starting building in one call — starter masses, default grid,
+  default hip roof — which it then edits as ordinary skeleton elements, the `Starter` pattern
+  (`mountain/src/derive.rs:35-101`).
+
+The role split the 2023–2026 literature converges on is adopted verbatim: the LLM **plans and
+critiques** — it authors skeleton nodes, picks parameters, edits rule arguments — and the
+deterministic expander **emits geometry**. The model never emits a number where a reference is
+expected, and a hallucinated reference surfaces as a `validate()` diagnostic instead of broken
+geometry ([survey §5](../investigate/procedural-architecture-techniques.md): LayoutGPT's visual
+planner; CityCraft's "the LLM emits constraints, not numbers"; BuildingBlock's rule-based
+hierarchical designs built by PCG; ProxyBuild's negative result on inferred correspondence).
+`validate()` is therefore also the cheapest known guard against an LLM corrupting a good state.
+
+## Surveyed and rejected as the representation
+
+Recorded so a future design does not re-litigate
+([survey §2, §5, §6](../investigate/procedural-architecture-techniques.md)):
+
+- **Wave Function Collapse** — can return *nothing* (satisfiability is NP-hard), and a local edit
+  can invalidate the whole solve. No editable hierarchy.
+- **Layout optimization** (Make-It-Home-style) — a finished artifact with no edit handle; R3
+  forbids relying on it.
+- **Learned proxies / part-semantics inference** — *infer* the correspondence R4.1 requires to be
+  authored; the strongest published attempt still reports over-smoothing, component collisions and
+  structural corruption (ProxyBuild, 2026-09).
+- **Graph-grammar rewriting** — a genuinely editable hierarchy (the survey's own credit), but rule
+  applicability is a search, which R4.1 excludes, and solidity is unsolved.
+
+Stochastic and search methods remain admissible in exactly one role: producing **default skeleton
+nodes**, guarantee-free and immediately editable (R3), never the mesh.
+
+## Relationship to `gallery/built.rs`: promotion, not demolition
+
+`built.rs` stays; nothing is broken. The `building` crate becomes the layer *above* it in spirit —
+the planning layer `built.rs`'s own header says it is not ("Nothing here names a place, a period or
+a plant"). Migration is opportunistic: the P1 proof scene rebuilds one hand-built building through
+the crate, and `foldyard.rs:822 push_ring`'s duplication is the natural first P2 consumer. Whether
+`built.rs` forms eventually move into the crate is a later decision with a working precedent either
+way. The invariants in its doc comments (winding rules, the coping-band logic) are measured
+knowledge: P1 mines them into `validate` checks rather than letting them stay comments.
+
+## Phasing
+
+- **P1 — shell.** Mass skeleton; roof skeleton and the **building-side roof-solid expander** (D2 —
+  named scope, not reuse); closed-solid and orientation checks **including the new signed-volume
+  and coverage violations** (D5); `ops` with attach (split-host-first) and replace-semantics split
+  (D10); `derive` defaults with forked RNG (D11, D12); shading groups (D13); the gallery proof
+  scene. **Openings in P1 are composed as masses** — piers and a lintel, the way `WallGap` already
+  thinks — and bay-mounted openings arrive in P2. The proof scene is the **terraces house**
+  (`terraces.rs:361-367` unit wall and roof, placed by transform at `:533-579`): the only
+  opening-free candidate, and its deliberately sunk roof joint (`:573`) exercises the
+  authorized-intersection rule of S1. Exit: one rendered building in which every mass is closed,
+  outward, and covered — and which refuses to be wrong silently.
+- **P2 — facade.** Levels and bays with the grid invariants; the parts vocabulary with authored
+  sockets; instance emission (D4); the identity **sibling** mechanism (D6); one coherent style set;
+  `foldyard`'s shed and enclosure rebuilt as the second demonstration (their door and gate are
+  bay-mounted openings).
+- **P3 — site.** Several buildings, enclosure walls and courtyards, ground seating against
+  `terrain` heightfields (D8), the site as the unit an agent composes.
+
+Out of scope, all phases: city grammar; interiors and floor plans beyond slab extents; structural
+simulation; weathering and damage; DSL and serialization; editor frontends; undo/redo service.
+
+## What SPEC would say if this is adopted
+
+SPEC is human-editable only, so this proposal states the delta rather than writing it: a
+`building`-crate section in the shape of `SPEC/mountain.md` (motivation, R1..Rn, out of scope), plus
+one line under the workspace description. **No `Topology::Quads` is required** (D3). The
+mountain-side extension that D2 defers (footprint edges as belt sources) is likewise a human SPEC
+conversation, recorded there so it is not lost. If adopted, a `SPEC/building.md` sibling to
+`SPEC/mountain.md` is the natural home, and this file becomes the record of why.
+
+## Open questions
+
+1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
+   *type* is `mountain::Skeleton` reused under a documented mapping (hip↔ridge, eave↔footprint) or
+   a building-native twin is an implementation choice inside P1, constrained by: the eave is
+   authored once, every correspondence names its partner explicitly, and no expansion leans on
+   coincident coordinates. The review's warning stands against a cosmetic renaming facade — it
+   would hide structural facts, so rename only what the proof run shows agents actually trip on.
+2. **Parts representation.** Authored template meshes in code (P2, rust-API-consistent) versus
+   `PackedList` snippets versus scene meshes — and where a part's material is named, given a
+   material belongs to a scene document, not a mesh. The socket principle (§Parts) is decided; its
+   rust shape is not.
+3. **Hand-edit preservation across a replace-semantics re-split.** D10 adopts "the rhythm is wrong"
+   replace semantics by precedent; whether a *nearly right* rhythm deserves any merge story is
+   left open until an agent run actually asks for it — `derive_valleys`' answer ("never") is the
+   default.
+4. **Style-coherence keys (D11).** Does the pick key belong to the skeleton (authored, survives
+   edits, diffable) or to `derive` (transient)? The document-is-the-skeleton invariant argues
+   skeleton; the R3 no-guarantee rule argues derive. Decide at P2, when the parts vocabulary lands.
