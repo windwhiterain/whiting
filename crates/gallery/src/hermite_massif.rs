@@ -228,7 +228,14 @@ pub fn hermite_massif() -> Value {
                     4.6,
                     radius * 1.4,
                 ),
-                environment_light("air", "air", [1.0; 3], 0.55),
+                // **Bright enough to fill the valley walls** (2026-10-08; was 0.55). The sun
+                // stands over the camera's shoulder, so a valley that runs at the camera shows
+                // one lit wall and one in shadow, and at half strength the shadowed wall read as
+                // the same dark diamond the artifact hunt had been chasing — correctly shaded,
+                // under-lit. A sky that fills a shadow to a third of the sunlit rock is what the
+                // landscape scene's own atmosphere gives its valleys, and it is the difference
+                // between a crease and a hole.
+                environment_light("air", "air", [1.0; 3], 1.1),
             ]),
         ),
         (
@@ -444,6 +451,40 @@ fn tessellate(belts: &BeltSurfaces) -> definition::PackedList {
                     patch.evaluate(far.0, far.1),
                     patch.evaluate(along_v.0, along_v.1),
                 ];
+                // **A cell whose analytic normals disagree with each other is shaded by its
+                // triangles' own geometry.** Where the patch folds — the seam row against the
+                // sheared flank rows — the analytic normal turns through horizontal inside one
+                // cell, and the `+y` turn then flips some corners of the cell and not others,
+                // which shades a coherent patch of flank as an island of dark triangles one cell
+                // wide: the last diamonds in the picture. The fold's own extent is a fifth of a
+                // unit, far under a pixel; what showed was never the fold but the disagreement.
+                // A folded cell is therefore drawn flat, one normal per triangle, which is what
+                // its neighbours' interpolant approaches at that size anyway.
+                // **The analytic normal is trusted only where it agrees with the cell's own
+                // geometric facing; past sixty degrees apart the triangle's flat normal stands
+                // in.** Where the seam row shears against the flank rows the patch's analytic
+                // normal can leave the rock — pointing into it or along it — while the four
+                // corners still agree with each other, so no test among the corners sees it; the
+                // cell then shades as an island of dark triangles a cell wide on a sunlit flank,
+                // which is what the last diamonds in the picture are. The geometric facing of the
+                // cell's own four corners is the one reference the rock cannot argue with, and on
+                // every sane cell the analytic normal stays well inside sixty degrees of it, so
+                // the guard costs nothing where the surface is honest.
+                let facing = {
+                    let cross = (corners[1] - corners[0]).cross(corners[3] - corners[0]);
+                    let length = cross.length();
+                    if length <= 1.0e-12 {
+                        Point3::new(0.0, 1.0, 0.0)
+                    } else {
+                        let unit = cross * (1.0 / length);
+                        if unit.y < 0.0 {
+                            unit * -1.0
+                        } else {
+                            unit
+                        }
+                    }
+                };
+                let corner_normals = [turned(near), turned(along_u), turned(far), turned(along_v)];
                 let agree = |a: usize, b: usize, c: usize, d: usize| {
                     let first = (corners[b] - corners[a]).cross(corners[c] - corners[a]);
                     let second = (corners[c] - corners[a]).cross(corners[d] - corners[a]);
@@ -491,10 +532,22 @@ fn tessellate(belts: &BeltSurfaces) -> definition::PackedList {
                     } else {
                         (second, third)
                     };
+                    // The flat normal of the triangle as wound after the turn above, which is
+                    // already in the `+y` hemisphere because the turn put it there.
+                    let wound = (corners[second] - corners[first])
+                        .cross(corners[third] - corners[first]);
+                    let flat = if wound.length() <= 1.0e-12 {
+                        Point3::new(0.0, 1.0, 0.0)
+                    } else {
+                        wound * (1.0 / wound.length())
+                    };
                     for corner in [first, second, third] {
-                        let uv = [near, along_u, far, along_v][corner];
                         let position = corners[corner];
-                        let normal = turned(uv);
+                        let normal = if corner_normals[corner].dot(facing) < 0.5 {
+                            flat
+                        } else {
+                            corner_normals[corner]
+                        };
                         points
                             .field("normal", &[normal.x, normal.y, normal.z])
                             .and_then(|points| {

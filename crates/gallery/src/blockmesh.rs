@@ -313,21 +313,19 @@ fn grid_points(
     let run = valley_vertices(faces);
     let run = resample_by_arclength(facet, &run, side);
 
-    // **The grid's columns and rows are the covered region's own, not its bounding box's.**
+    // **The grid's columns and rows are the covered region's own quantiles, by rank rather than
+    // by value.** Taking them from the bounding box lands corners where no triangle is; taking
+    // the columns from the seam stations' own `u` — tried 2026-10-08 — puts the seam row exactly
+    // under its columns but drags every other row onto the seam's arc-length spacing, and on a
+    // narrowing belt the top row then projects whole columns onto one covered point: a worse
+    // picture than the shear it removed, with the summits flattened into it. The shear between
+    // the seam row and the flank rows stays, and the normal guard in the scene's tessellation is
+    // what keeps it out of the shading.
     //
     // A belt's `uv` runs over a rectangle by construction but the block inside it need not fill
-    // that rectangle, and a uniform grid over the box therefore lands corners where no triangle
-    // is. Every one of those corners is answered by [`sample_block`] projecting onto the nearest
-    // covered point, and a cell with an invented corner **folds**: measured on the massif, 2554 of
-    // the 29484 drawn triangles were shaded by a normal a whole pi out, which is a fold and not a
-    // shading fault — an emissive backdrop behind the massif showed every dark patch stayed dark,
-    // so they are not holes either. They are surface.
-    //
-    // **By rank rather than by value.** Taking the quantiles of the covered region's own `u` and
-    // `v` puts each column and row where the rock actually is, so the grid needs no invented corner
-    // at all. Dropping the cells that had one was measured and it works — the folds become holes,
-    // which is the same picture with the same cost of 17.6% of the surface — so this is the way to
-    // have the folds not exist rather than to remove them afterwards.
+    // that rectangle, and a uniform grid over the box lands corners where no triangle is. Every
+    // one of those corners is answered by [`sample_block`] projecting onto the nearest covered
+    // point, and the nudge below keeps the projected coincidences drawable.
     let Some((columns, rows)) = covered_quantiles(faces, side - 1) else {
         return None;
     };
@@ -360,6 +358,38 @@ fn grid_points(
             let id = positions.len() as VertexId;
             positions.push(sample_block(facet, faces, u, v)?);
             grid.push(id);
+        }
+    }
+
+    // **Adjacent corners of a row that land on one place are nudged apart by a hundred
+    // picometres.** Two things put them there: a valley head, whose run is a single vertex so the
+    // whole row is one point repeated, and a crest corner, where two columns' parameter points
+    // project onto the same covered point. A quad with two corners in one place is a triangle,
+    // this surface type has no triangle, and dropping the cell leaves a one-cell hole — measured
+    // as 32 notches at the valley heads and 84 at crest corners in the massif render.
+    //
+    // A hundred picometres is far below anything the picture resolves and far above the `f64`
+    // rounding of coordinates this size, so the cell draws as a sliver converging on the point
+    // the rock actually reaches. Two belts nudging their shared valley row do it along their own
+    // row directions, which run opposite ways, so their stations stay within a few hundred
+    // picometres of each other — coincident to every measurement this crate makes, and to the
+    // eye.
+    for row in 0..side {
+        let first = grid[row * side] as usize;
+        let last = grid[row * side + side - 1] as usize;
+        let span = positions[last] - positions[first];
+        let direction = if span.length() > 1.0e-12 {
+            span * (1.0 / span.length())
+        } else {
+            Point3::new(1.0, 0.0, 0.0)
+        };
+        for column in 1..side {
+            let here = grid[row * side + column] as usize;
+            let previous = grid[row * side + column - 1] as usize;
+            if positions[here].distance(positions[previous]) > 1.0e-9 {
+                continue;
+            }
+            positions[here] = positions[here] + direction * 1.0e-10;
         }
     }
     Some(grid)
