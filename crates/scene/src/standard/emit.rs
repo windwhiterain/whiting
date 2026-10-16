@@ -3813,8 +3813,9 @@ fn lighting_pass(
                 // The field is written for every scene, present or not, because the uniform's
                 // layout is the same for every scene and a field that came and went would put
                 // everything after it somewhere else. What a scene with no environment light
-                // writes is a zero colour and a zero flag, and the shader takes the stand-in
-                // path on the flag rather than on the colour: see `EnvironmentMap`.
+                // writes is a zero colour and a zero flag, and the shader branches on the flag
+                // rather than on the colour — a black environment is a perfectly good thing to
+                // ask for. The branch returns black either way; see `EnvironmentMap`.
                 environment.uniform(),
             ),
             (

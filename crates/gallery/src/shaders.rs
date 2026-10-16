@@ -2244,8 +2244,9 @@ fn fragment_main(in: Vertex) -> {fragment_type} {{
     //
     // `environment_radiance` is the whole of what is decided about the source, and the
     // decision is spelled out there: the scene's own environment map when it names an
-    // `Environment` light, the two colour hemisphere that stood in for one when it does not,
-    // and never both.
+    // `Environment` light, and **black** when it does not. There is no fallback — the two colour
+    // hemisphere that used to answer the second case was removed as ambient no document asked
+    // for, and `.agents/SPEC/render/light_units.md` records the rule it left behind.
     //
     // The multiplication that follows is unchanged and is the reason it is here rather than
     // inside that function. The tint and the metalness are the **material's own**, the same

@@ -1726,11 +1726,11 @@ not run.
 
 ## Image based lighting: one ambient term, and what feeds it
 
-### The environment **replaces** the stand-in, and the stand-in is the stated fallback
+### The environment replaced the stand-in, and the stand-in is now gone
 
 The lighting stage carried a two colour hemisphere: darker below, dimmer blue above, brighter
 towards `+y`. It was explicitly a stand-in — the code said so — and an `Environment` light is
-the thing it stood in for. The decision is therefore **replacement, not addition**, and it is
+the thing it stood in for. The decision was therefore **replacement, not addition**, and it was
 written in the shader rather than left emergent:
 
 > There is **one** ambient term. What feeds it is the scene's `Environment` light when the
@@ -1740,10 +1740,20 @@ A scene naming an environment *and* keeping the hemisphere underneath would coun
 environment twice and add a sky of the renderer's own that no author could turn off, which is
 exactly what the hemisphere was. The alternative — coexist — was rejected for the same reason.
 
-**A scene naming no environment light still renders, and this is the rule rather than an
-accident.** It binds a **one texel black** map at `environment_map` and writes a uniform field
-of `vec4(colour * intensity, present)`. The shader branches on `present` and takes the
-stand-in. Three consequences, all of them load bearing:
+**The second half of that sentence has since been reversed, and the reversal is the current
+contract.** `d36b4cb` measured what the stand-in was actually worth and found it was most of the
+image: on `tiles` the rasterised floor sat at a linear radiance of 0.132 and the scene's one
+lamp accounted for 0.011 of it, so the rasterised frame was mostly a picture of that function.
+It was a decision about the world that no document asked for. The shader therefore returns
+**black** for a scene naming no `Environment` light, and **there is no fallback** — SPEC's
+*no ambient the scene did not ask for* (`SPEC/render/light_units.md`) records that as the rule
+rather than as the absence of one. A scene that wants a sky declares one, and the gallery scenes
+that declared none render considerably darker, which is the honest picture of what they wrote.
+
+**A scene naming no environment light still renders**, and this is the rule rather than an
+accident. It binds a **one texel black** map at `environment_map` and writes a uniform field
+of `vec4(colour * intensity, present)`. The shader branches on `present` and returns black.
+Three consequences, all of them load bearing:
 
 - The **binding is unconditional.** A binder that came and went with the document would move
   every binding number below it, because the device numbers a pass's binders in name order. The
@@ -1761,7 +1771,9 @@ stand-in. Three consequences, all of them load bearing:
 
 **The material's own tint and metalness still reach the term.** The multiplication stays in the
 fragment body, not in the function that picks the source, and it is the same
-`sky * mix(1, tint, metallic) * diffuse_color` the stand-in had. A term that had stopped
+`sky * mix(1, tint, metallic) * diffuse_color` the removed stand-in fed the term with, so one
+expression answers both cases: a term multiplied by zero contributes zero, and a term multiplied
+by an environment's radiance carries the material's own colour into it. A term that had stopped
 multiplying by them would be a material that had stopped responding to its own colour, which is a
 regression nobody asked for.
 
