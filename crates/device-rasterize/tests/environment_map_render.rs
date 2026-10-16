@@ -312,7 +312,7 @@ fn scene(environment: bool, roughness: f64) -> Value {
                     gallery_instance_schema(),
                     custom.clone(),
                 ),
-                post_shader("", ""),
+                post_shader("", "", Some(Projection::Octahedral)),
             ]),
         ),
         ("meshes".to_owned(), meshes),

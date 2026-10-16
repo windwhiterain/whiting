@@ -334,7 +334,7 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
                     gallery_instance_schema(),
                     custom.clone(),
                 ),
-                post_shader("", ""),
+                post_shader("", "", None),
             ]),
         ),
         ("meshes".to_owned(), meshes),
