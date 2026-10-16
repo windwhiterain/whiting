@@ -157,31 +157,43 @@ not a preference.
 
 ### A — give the standard example a post stage
 
-Would fix the test and the harness, and leaves `0257706` and `as_frame` exactly as decided.
-Thirteen of fourteen gallery scenes already do this, so it is the majority convention.
+**Measured 2026-10-16, then reverted.** A `Post` shader built on `post_pass_schema()`, a
+`screen_materials` entry and a one-entry `post_processes` were added to
+`example_standard_scene()` in an uncommitted edit, built, and run:
 
-Costs, all verified in the tree rather than argued:
+| | before | after |
+|---|---|---|
+| `render.exe studio out\studio` | 3 passes, rendered 173 ms, **exit 1**, no png | **4 passes, rendered 415 ms, exit 0, a 25 501 byte png** |
+| `cargo test -p whiting-device-rasterize --test gallery_render` | 1 passed, 1 failed | **2 passed, 0 failed** |
 
-- **It breaks two recorded numbers in a contract test.**
-  `crates/scene/tests/clustered_lights.rs` is called
-  `every_gallery_scene_still_emits_the_pass_count_it_emitted_before`, pins `studio` at
-  `{shadowing 1, depthing 1, lighting 1, other 0}` at `:339-347`, and at `:412-429` asserts
-  `total <= 3` for `studio`. Its own comment says a scene added to the gallery *"now has to be
-  added to the table and cannot be forgotten"* — the table is the assertion. Adding a post pass
-  makes `studio` 4 and fails both. The `other` column counts emission **and** post
-  (`clustered_lights.rs:166-168`).
-- **It changes what the example is.** `crates/scene/src/standard/example.rs:1-6` says the scene
-  exists so that *"the pipeline it compiles to is the whole three stage pipeline"*, and the
-  harness measured that as **3 passes**. A fourth stage makes that sentence false.
-- **It needs a fourth WGSL source written in `scene`.** `example.rs:192-199` already builds a
-  `Stage::Post` shader and `pass_schemas::post_pass_schema()` exists, so the plumbing is there;
-  the grade itself is a body of new text, and `example.rs:543-544` already records that
+So it works, and it is not a guess. **What it costs is three red tests in one file, not the two
+this note first predicted**, measured on the same build:
+
+| test | what it asserts | what option A does to it |
+|---|---|---|
+| `an_all_point_scene_still_emits_the_passes_it_emitted_before` (`clustered_lights.rs:56`) | the example scene's exact pass list, `["shadow/key/shadowing/triangle", "depth/depthing/triangle", "lighting/lighting/triangle"]` | gains `"post/post"`. **This one is not a number that moves — the test's whole subject is the example scene's pass list**, and its name claims it emits what it emitted before |
+| `every_gallery_scene_still_emits_the_pass_count_it_emitted_before` (`:394`) | `studio` = `{shadowing 1, depthing 1, lighting 1, other 0}` | `other` 0 to 1 |
+| `the_totals_shrank_where_the_scene_had_more_lights_than_groups` (`:425`) | `studio` total `<= 3` | 4 |
+
+`cargo test -p whiting-scene --test clustered_lights` on that build: **10 passed, 3 failed**.
+
+Option A also would have to:
+
+- **Contradict the example's own doc.** `crates/scene/src/standard/example.rs:1-6` says the
+  scene exists so that *"the pipeline it compiles to is the whole three stage pipeline"*, and
+  the harness now measures four.
+- **Write a fourth WGSL source in `scene`.** `example.rs:192-199` builds mesh shaders and
+  `pass_schemas::post_pass_schema()` exists, but a `ScreenShader` is a different variant: it
+  carries a `stage` string and takes no `point_schema` (`scene_schema.rs:1322-1337`), and the
+  emitter refuses one that declares an interface nothing supplies. So this is a new builder,
+  not one line added to the existing one. `example.rs:543-544` already records that
   duplication into `scene` is the standing practice here.
-- **It stops the example covering the case it currently covers.** The three `post.is_empty()`
-  branches are the only exercise in the tree of a no-post scene.
+- **Stop the gallery exercising the no-post case at all**, which the three `post.is_empty()`
+  branches in `emit.rs` were the only cover for.
 - Six test files use `example_standard_scene()` as a fixture (`directional_lights`,
   `spot_lights`, `environment_light`, `image_channel`, `clustered_lights`, `camera_notes`) plus
-  the `standard` module doctest.
+  the `standard` module doctest. Measured: only the three above move; the other three and the
+  doctest were not run against the experiment.
 
 ### B — make the read back handle a scene with no display image
 
@@ -200,7 +212,9 @@ Three distinct shapes, and two of them re-create the defect `0257706` exists to 
   frame is a display image", and a small diff. Against it: the field is optional, three
   branches handle the empty case on purpose, `debug_outputs` documents the answer, and the tree
   refuses a document only when it is *malformed* — `emit.rs:1108-1118` is the statement of that
-  rule, *"said rather than refused"*.
+  rule, *"said rather than refused"*. Note that B3 would make the no-post case an error rather
+  than a path, so it is the one option that makes the current example's document wrong rather
+  than its picture.
 
 ### C — declare the example out of contract and change the test
 
@@ -212,7 +226,32 @@ and it would hold the stated contract for all fourteen.
 
 Against it: it removes the only automated notice that studio has no readable frame, and it does
 not close the user-visible gap — `examples/render.rs` still exits 1 for `studio`, which is how
-`studio` has had "no raster frame to compare against" in every cross-backend survey since.
+`studio` has had "no raster frame to compare against" in every cross-backend survey since
+(`cycles-mesh-normals.md:515`).
+
+## Which one I would take, and the case against it
+
+**A.** It is the only option that makes the tree state more than it already does:
+
+- It is the only one where `COLOR_FORMAT` and `PRESENT_FORMAT` mean what their own doc comments
+  say. Every sentence `0257706` wrote — *"the shaded image is the one image in the pipeline that
+  is not a display value"*, *"the frame is what comes back to the host"*, *"widening the present
+  target with the shaded image … the read-back is untouched"* — describes a pipeline with a
+  post stage. A makes that universal; B1 and B2 make it a special case.
+- B1 and B2 both re-create the plateau `0257706` measured, in a different place. B3 refuses a
+  document the schema accepts, against the tree's own stated rule.
+- `emit.rs:1183`'s `post.is_empty()` branch does not have to disappear under A. It stays correct
+  and is still reachable from a hand-written document; what changes is that the gallery stops
+  being the one scene with no picture.
+
+**The case against it, which is why this is still the superior's call**: A rewrites a test whose
+name claims the example emits what it emitted before, and rewrites a second whose numbers are
+pinned on purpose ("*a scene added to the gallery now has to be added to the table and cannot be
+forgotten*"). Editing tests to accommodate a scene change is the thing `AGENTS.md` reserves, and
+it removes the gallery's only exercise of the no-post path — which is, per
+`cycles-mesh-normals.md:515`, exactly what makes `studio` the one scene the cross-backend survey
+cannot compare. If the survey is more valuable than a readable `studio` frame, C is the answer
+and A is the wrong one.
 
 ## What would settle it
 
@@ -232,27 +271,31 @@ The answer picks the option and nothing else does:
 
 ## Not measured
 
-- Whether a hand-written document with no post stage reaches `render()` anywhere else. The
-  device's own doctest (`crates/device/src/lib.rs:82-89`) goes through `present()` on a
-  `RenderedFrame` rather than `as_frame()`, so no existing test asserts an eight-bit frame for a
-  no-post document. Searched 2026-10-16.
 - What the picture would look like under B1 with any given curve. Not computed, because which
   curve is the decision.
 - Whether `nurbs`, the other scene named in `cycles-mesh-normals.md:517`, is still failing to
   compile. That row was replaced by `hermite` on 2026-10-15 and was not checked here.
+- Whether a hand-written document with no post stage reaches `render()` anywhere else. The
+  device's own doctest (`crates/device/src/lib.rs:82-89`) goes through `present()` on a
+  `RenderedFrame` rather than `as_frame()`, so no existing test asserts an eight-bit frame for a
+  no-post document. Searched 2026-10-16.
 
 ## Sources
 
 - `git show 0257706` — the format split, its measurements, and its five-scene evidence, all of
   which are post-stage scenes.
 - `git log -1 --format=%B 2e7644a` — the frame-target decision and why `present` did not move.
-- `crates/scene/src/standard/emit.rs:1108-1118`, `:1146-1160`, `:1183-1187`, `:3593-3597`.
+- `crates/scene/src/standard/emit.rs:1108-1118`, `:1146-1160`, `:1183-1187`, `:3244-3348`,
+  `:3593-3597`.
 - `crates/scene/src/standard/pass_schemas.rs:309-342` — `COLOR_FORMAT`, `PRESENT_FORMAT`,
-  `IMAGE_FORMAT` and their three doc comments.
-- `crates/scene/src/standard/scene_schema.rs:302-311` — `post_processes` is optional.
+  `IMAGE_FORMAT` and their three doc comments; `:689-717` — the post interface.
+- `crates/scene/src/standard/scene_schema.rs:302-311` — `post_processes` is optional;
+  `:1322-1337` — what a `ScreenShader` variant carries, and why it is not a mesh shader.
 - `crates/device/src/render.rs:58-69`, `:174-183`, `:552-553`.
-- `crates/scene/tests/clustered_lights.rs:139-175`, `:339-347`, `:412-429`.
+- `crates/scene/tests/clustered_lights.rs:56`, `:139-175`, `:339-347`, `:394`, `:412-429`.
 - `crates/scene/src/standard/example.rs:1-6`, `:110-117`, `:192-199`, `:543-544`.
 - `cargo test -p whiting-device-rasterize --test gallery_render` and `render.exe` for five
   scenes, both 2026-10-16 on `95b2ba4`, at
   `C:\resource\whiting\.worktrees\studio-post`.
+- The option A measurement above, 2026-10-16, applied and then reverted with
+  `git checkout -- crates/scene/src/standard/example.rs`. Nothing from it is in the tree.
