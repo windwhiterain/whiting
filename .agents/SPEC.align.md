@@ -784,12 +784,17 @@ incremental compile.
       rather than on one call site, which is what keeps the note true as channels are added.
     - **invariant**: `Grade` is the frame **before** the post stage's grade, copied verbatim —
       no camera, no matrix, no test, no branch, and `textureLoad` rather than a sampler so the
-      copy moves no pixel of its own. It is `rgba16float` for the **sidecar** and not for
-      precision: the shaded image is itself `rgba8unorm`, so a wider target cannot recover what
-      the lighting stage clipped. Three things are therefore stated on the file rather than left
-      to be discovered — **the sky is black** because a post stage draws it, **a value at one
-      was clipped** before any grade saw it, and **alpha marks nothing**, because the lighting
-      stage writes one everywhere and the pipeline clears it to one. The `depth` channel is the
+      copy moves no pixel of its own. **Two halves of this were overtaken by `0257706` and are
+      corrected here; they were right when written.** It was `rgba16float` for the **sidecar**
+      and *not* for precision, because the shaded image it copies was itself `rgba8unorm`, so a
+      wider target could not recover what the lighting stage had clipped. The shaded image is
+      now `rgba16float` too, so the channel is the same width as its source and **the ceiling
+      `0257706` removed is gone** — a value above one now arrives at the grade intact, and a
+      value at one here is a light that reached one rather than one that was cut down to it.
+      Three things are stated on the file rather than left to be discovered — **the sky is
+      black** because a post stage draws it, **the radiance is scene-linear** rather than
+      display-encoded, and **alpha marks nothing**, because the lighting stage writes one
+      everywhere and the pipeline clears it to one. The `depth` channel is the
       one that says which pixels have a surface at all. Measured on `tidewater`: the beauty is a
       blue-hour lake and the grade image is a black sky, a thin treeline and a glitter path, so
       the sky, the lake's blue and the glow column are all the grade's — which is the comparison
