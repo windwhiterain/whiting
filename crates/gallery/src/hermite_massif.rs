@@ -477,11 +477,7 @@ fn tessellate(belts: &BeltSurfaces) -> definition::PackedList {
                         Point3::new(0.0, 1.0, 0.0)
                     } else {
                         let unit = cross * (1.0 / length);
-                        if unit.y < 0.0 {
-                            unit * -1.0
-                        } else {
-                            unit
-                        }
+                        if unit.y < 0.0 { unit * -1.0 } else { unit }
                     }
                 };
                 let corner_normals = [turned(near), turned(along_u), turned(far), turned(along_v)];
@@ -534,8 +530,8 @@ fn tessellate(belts: &BeltSurfaces) -> definition::PackedList {
                     };
                     // The flat normal of the triangle as wound after the turn above, which is
                     // already in the `+y` hemisphere because the turn put it there.
-                    let wound = (corners[second] - corners[first])
-                        .cross(corners[third] - corners[first]);
+                    let wound =
+                        (corners[second] - corners[first]).cross(corners[third] - corners[first]);
                     let flat = if wound.length() <= 1.0e-12 {
                         Point3::new(0.0, 1.0, 0.0)
                     } else {
