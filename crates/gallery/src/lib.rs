@@ -59,6 +59,8 @@ use definition::Value;
 
 pub mod air;
 pub mod attributes;
+/// The identity a building's frame can carry: which element a pixel shows.
+pub mod building_identity;
 pub mod building_mesh;
 pub mod built;
 pub mod geometry;

@@ -819,10 +819,13 @@ pub struct Extras {
 
 /// One declared output and where its value comes from.
 #[derive(Debug, Clone, PartialEq)]
-struct Extra {
-    name: String,
-    location: u32,
-    source: Authored,
+pub struct Extra {
+    /// The name the frame is looked up under.
+    pub name: String,
+    /// The declared location, which is the target's index.
+    pub location: u32,
+    /// Where the value comes from.
+    pub source: Authored,
 }
 
 /// One output's point field, borrowed from the [`Authored`] that named it.
@@ -842,6 +845,17 @@ impl Extras {
     pub const NONE: Self = Self {
         outputs: Vec::new(),
     };
+
+    /// Returns the outputs this scene declares, in the order the compiler builds their targets.
+    ///
+    /// # Invariants
+    ///
+    /// **The order is the authority**, and this hands it out rather than a copy of it: the list is the
+    /// scene's outputs map in location order, and a tool that numbered a target off a second list would
+    /// be reading somebody else's picture.
+    pub fn outputs(&self) -> &[Extra] {
+        &self.outputs
+    }
 
     /// Returns the outputs a scene declares, each paired with where its value comes from.
     ///
