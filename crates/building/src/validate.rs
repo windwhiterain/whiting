@@ -509,22 +509,6 @@ pub enum Violation {
         /// The wall it names.
         face: FaceRef,
     },
-    /// A placement names a bay of a **courtyard's** wall, and the expander does not build that.
-    ///
-    /// # Invariants
-    ///
-    /// **It is a fault and not a fit.** Everything else this check reads — the template's box against
-    /// the bay's own extents — has a reading, and a wrong one is a report an author can act on. A
-    /// courtyard bay's frame has none: the frame is read from the wall's outward face, which for a
-    /// courtyard is the loop the rooms see rather than the loop the face is named by, and nothing in
-    /// the document says which of the two a part hung there was meant to hang from. It is reported here
-    /// for the same reason the expander refuses it, and the two are the same statement in the two
-    /// halves of the crate — see
-    /// [`Problem::PlacementOnACourtWall`](crate::expand::Problem::PlacementOnACourtWall).
-    PlacementOnACourtWall {
-        /// The placement.
-        placement: usize,
-    },
     /// A placement's template does not fit in the bay it stands in.
     ///
     /// # Invariants
@@ -1681,16 +1665,10 @@ fn check_parts(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
                 continue;
             }
         }
-        // **A courtyard's bay has no frame to measure a part in**, so it is reported before anything
-        // else is asked of it: the slot exists and the grid holds it, and what the expander declines
-        // to build has to be the same statement the document makes or an author fixing the other
-        // faults would find the build still refused.
-        if let Target::Bay { face, .. } = placement.target {
-            if face.is_court() {
-                violations.push(Violation::PlacementOnACourtWall { placement: index });
-                continue;
-            }
-        }
+        // **A courtyard's bay is measured exactly as a mass's is.** It used to be reported here
+        // before anything else was asked of it, because the expander declined to build the frame;
+        // the frame is now read off the ring's own offset side and the only reading left to make is
+        // the one every other bay makes.
         let Some(at) = skeleton.pin_of(placement) else {
             violations.push(Violation::PlacementAnchorMissing { placement: index });
             continue;
@@ -2184,12 +2162,6 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
             face.edge as u64,
             void_rank(*face),
         ),
-        // **A courtyard's bay has a fault the mass's own bays cannot have**, so it sorts after every
-        // bay fault that both can have: an author fixing "the slot is gone" on a courtyard's wall has
-        // not fixed this one.
-        Violation::PlacementOnACourtWall { placement } => {
-            (29, *placement as u64, u64::MAX, u64::MAX, u64::MAX)
-        }
         Violation::PlacementOutsideBay { placement, past } => {
             (30, *placement as u64, ordered(*past), 0, 0)
         }

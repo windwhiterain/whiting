@@ -407,7 +407,6 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::GridOutsideFace { .. } => "GridOutsideFace",
         Violation::PlacementTemplateMissing { .. } => "PlacementTemplateMissing",
         Violation::PlacementBayMissing { .. } => "PlacementBayMissing",
-        Violation::PlacementOnACourtWall { .. } => "PlacementOnACourtWall",
         Violation::PlacementOutsideBay { .. } => "PlacementOutsideBay",
         Violation::PlacementWallMissing { .. } => "PlacementWallMissing",
         Violation::PlacementOffItsWall { .. } => "PlacementOffItsWall",

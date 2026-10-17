@@ -86,6 +86,12 @@ impl FaceRef {
     /// The void is the loop the courtyard's ring is built **outward** from, so this edge is the face
     /// that looks *into* the courtyard; the ring's other face — the one the rooms see — is the same
     /// edge of the offset loop and is not separately addressable, because a hole is cut through both.
+    ///
+    /// **A part pinned in one of these bays stands on the courtyard's side of that wall**, flush with
+    /// the face this names and with its own depth running out of it into the courtyard — which is what
+    /// `along × up = inward` requires here, and what `expand::part_frame` reads. See
+    /// [`PartFrame`](crate::parts::PartFrame) for the frame a placement is stood in and why it is a
+    /// rotation on this face as much as on a mass's.
     pub fn court(mass: MassId, void: usize, edge: usize) -> Self {
         Self {
             mass,

@@ -9,11 +9,24 @@
 //! Run with `cargo run -p whiting-building --example part_probe`.
 
 use whiting_building::derive::{RoofStyle, Starter, starter};
+use whiting_building::expand::part_frame;
 use whiting_building::grid::{FaceRef, Rhythm};
+use whiting_building::math::{cross3, dot3};
 use whiting_building::openings::{Inset, Opening};
 use whiting_building::ops;
 use whiting_building::parts::{Pin, Placement, Template};
 use whiting_building::{Building, Mass, MassId, PlanNode};
+
+/// Returns whether a frame is a rotation, as the sign of `(along × up) · inward`.
+///
+/// **A frame with `+1` can be reproduced by a yaw about `up`, which is what a scene's instance
+/// transform carries; `−1` is a mirror**, and `PartFrame::apply` on a mirror hands back every face of
+/// the template wound the wrong way round. A part's own placement here is a mass's bay, so this reads
+/// `+1` and always has — the same reading the courtyard's bay in `patio_probe` gives, and the reason
+/// this slice did not seat a courtyard part inside its ring's thickness.
+fn handedness(frame: &whiting_building::parts::PartFrame) -> f32 {
+    dot3(cross3(frame.along, frame.up), frame.inward)
+}
 
 /// Returns a door leaf: a hollow panel `width` across, `height` tall, `thickness` through.
 ///
@@ -142,6 +155,33 @@ fn main() {
     }
 
     println!("\n# the mesh: a part is a solid of its own");
+    // **The frame itself, which is the thing this slice changed.** The numbers below are the ones a
+    // mass-wall placement has to keep reading whatever a courtyard's bay does, and they are printed
+    // from [`part_frame`] rather than re-derived here, so the reading below is the same object
+    // `build` applies.
+    let frame = part_frame(&skeleton, placed)
+        .expect("the frame resolves")
+        .expect("the placement resolves");
+    println!(
+        "# the frame it stands in: origin ({:.4}, {:.4}, {:.4}), along ({:.1}, {:.1}, {:.1}), \
+         up ({:.1}, {:.1}, {:.1}), inward ({:.1}, {:.1}, {:.1})",
+        frame.origin[0],
+        frame.origin[1],
+        frame.origin[2],
+        frame.along[0],
+        frame.along[1],
+        frame.along[2],
+        frame.up[0],
+        frame.up[1],
+        frame.up[2],
+        frame.inward[0],
+        frame.inward[1],
+        frame.inward[2],
+    );
+    println!(
+        "  and (along x up) . inward = {:+.1}: a mass's own bay is unchanged by anything a courtyard's is",
+        handedness(&frame)
+    );
     match Building::new(skeleton.clone()).build() {
         Ok(mesh) => {
             let mut solids: std::collections::BTreeSet<whiting_building::SolidId> =

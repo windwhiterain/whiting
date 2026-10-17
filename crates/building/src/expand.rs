@@ -7,9 +7,10 @@
 //!   they were built from the same authored row or corner.
 //! - **Points are welded by authored identity.** Two faces built from one authored corner share one
 //!   point index; nothing compares coordinates to decide it.
-//! - **A mass expands to one closed solid**: outer wall, inner wall, the ring of wall top, and the
-//!   floor slab's underside. **A roof expands to one closed solid**: skin, soffit one thickness
-//!   below, and a fascia band around the eave.
+//! - **A mass expands to one closed ring**: the outer wall, the inner wall, the strip of wall top
+//!   between them, and the annulus at the loops' own elevations — a torus, which is why a mass's
+//!   Euler characteristic is `0` and not a box's `2`. **A roof expands to one closed solid**: skin,
+//!   soffit one thickness below, and a fascia band around the eave.
 //! - **Two solids are two solids.** A mass and the roof that names it, or two masses joined by an
 //!   authored attachment, are not welded to one another: at building level the faces therefore meet
 //!   along 4-face edges, and "watertight" means *every solid closed and outward, every joint
@@ -60,6 +61,7 @@
 //! inner loop nowhere: the slab is a slab, `slab` below the outline's own elevations, which is what
 //! [`Mass::slab`](crate::mass::Mass::slab) says it is.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 
 use crate::courtyard;
@@ -335,27 +337,11 @@ pub enum Problem {
     /// names what it dropped, which is why this variant exists at all. The validator reports the same
     /// fault in the document's own terms (`PlacementTemplateMissing`, `PlacementBayMissing`), so an
     /// author reading either sees it.
+    ///
+    /// **A placement in a courtyard's bay is not one of these.** It used to be
+    /// `PlacementOnACourtWall`, refused because the frame could only be read off a mass's outer face;
+    /// the ring's own offset side answers it now — see [`part_frame`] — and nothing carries that name.
     PlacementUnresolved {
-        /// The placement, by its index in the document's placements.
-        placement: usize,
-    },
-    /// A placement stands in a bay of a **courtyard's** wall, and this crate does not build that.
-    ///
-    /// # Invariants
-    ///
-    /// **A courtyard's bay resolves like any other — the grid, the slot and the pin are all there —
-    /// and the frame a part would be stood in is the one thing about it that is not built.** The part
-    /// frame is read off the wall's **outer** face, which is the face an outside viewer sees, and
-    /// for a courtyard that is the offset loop rather than the loop the face is named by; a frame
-    /// resolved from the face's own loop would stand the part in the courtyard's open air, a
-    /// centimetre of masonry away from where its bay says it is. That is a part in a visible wrong
-    /// place, which is worse than no part, so the placement is refused by name rather than guessed at
-    /// a face it does not own.
-    ///
-    /// It is one variant and not a flag on [`PlacementUnresolved`](Self::PlacementUnresolved)
-    /// because the fix is different: that one says the slot has gone, and this says the slot is
-    /// there and the expander declines to stand anything in it.
-    PlacementOnACourtWall {
         /// The placement, by its index in the document's placements.
         placement: usize,
     },
@@ -698,12 +684,36 @@ fn expand_wall(mesh: &mut BuildingMesh, id: WallId, wall: &Wall) -> Result<(), V
 ///
 /// **One frame, used by both paths**: `build` applies it to a template's own mesh, and a scene applies the
 /// same frame to the same mesh, so an instanced part and a baked one are the same geometry rather than two
-/// renderings that agree approximately. The frame is the wall's own `along` direction, `up`, and
-/// `inward` across the wall's thickness, with the origin on the wall's **outer face** at the pin's arc
-/// length and elevation — the three facts the parts documentation states, resolved once.
+/// renderings that agree additionally. The frame is the wall's own `along` direction, `up`, and `inward`
+/// across the wall's face, with the origin on **the face the bay names** at the pin's arc length and
+/// elevation — the three facts the parts documentation states, resolved once.
 ///
-/// A placement whose wall cannot be offset is **the mass's fault**, and the problems are returned rather
-/// than swallowed: a scene asking for a frame must hear about a wall the miter refused.
+/// **A courtyard's bay is read through the same three lines, and the one fact that differs is which
+/// loop the face names.** A mass's bay is measured along its own outline, and a courtyard's along its
+/// void loop; [`loops_of`] answers both from one walk and carries the offset side, so the strip this
+/// frame is read from is the strip the ring itself was built from — a courtyard's is the void loop and
+/// its outward offset, which is what the last slice made a single flag. There is no second frame and
+/// no second opinion about which way a courtyard's wall went.
+///
+/// **The part stands on the courtyard's face with its depth running into the courtyard, and the
+/// alternative was measured rather than argued.** A part's origin is on the face its bay names and its
+/// depth runs *across* that face, which for a mass's outer wall means into the masonry. A courtyard's
+/// face looks the other way: its loop is walked with the courtyard on the walker's **right**, so
+/// `inward` runs into the courtyard rather than into the ring. Seating a part **inside the ring's
+/// thickness** instead needs `inward` reversed — and that makes the frame **improper**, because
+/// `along × up` is the walker's right and a courtyard's material is on the walker's **left**. Measured
+/// on a 4 × 4 courtyard in a 10 × 10 mass: the part builds, and the crate reports
+/// [`SolidInsideOut`](crate::validate::Violation::SolidInsideOut) at `volume −0.02242782`, because
+/// [`PartFrame::apply`] on an improper basis **mirrors** the template and every one of its faces comes
+/// out wound the wrong way round. A part that is inside out is a worse fault than a part that stands
+/// proud of the face it was pinned to, so the honest answer is the frame that stays a rotation — and
+/// this is the crate's own convention stated at the type: *a face is wound so that its right-handed
+/// normal points out of the solid*, which an improper frame cannot keep.
+///
+/// What that costs an author is one sentence: **a template's depth runs out of the face the bay names**,
+/// so a shutter or a bracket stands against the courtyard wall and a door leaf sits in the courtyard's
+/// own reveal rather than 0.06 m inside it. A part in a mass's bay is unchanged, and the probe measures
+/// both frames side by side.
 pub fn part_frame(
     skeleton: &BuildingSkeleton,
     index: usize,
@@ -719,37 +729,28 @@ pub fn part_frame(
             let Some(bay) = placed.bay else {
                 return Ok(None);
             };
-            // **A courtyard's bay resolves and its frame does not, so it is refused rather than
-            // approximated.** The frame below is read from the wall's *outer* face, and for a
-            // courtyard that is the offset loop rather than the loop the face is named by; a frame
-            // taken from the named loop would stand the part in the courtyard's open air. That is a
-            // part in a visible wrong place rather than no part, so the placement is named — see
-            // [`Problem::PlacementOnACourtWall`] for why this is a variant of its own.
-            if face.is_court() {
-                return Err(vec![Problem::PlacementOnACourtWall { placement: index }]);
-            }
             let Some(mass) = skeleton.mass(face.mass) else {
                 return Ok(None);
             };
+            // **The two loops come from the one derivation every ring asks for**, so the strip this
+            // frame is read from is the strip the wall itself was built from, and a courtyard's is its
+            // void loop and its outward offset rather than a second reading of the same face. The side
+            // matters here for what the walk **refuses** — a courtyard's offset has to enclose more than
+            // its loop or `OffsetInverted` says so — and not for the three directions below, which are
+            // the wall's own walk read one way.
             let mut problems = Vec::new();
-            let Some(inner) = offset_loop(
-                &mass.outline,
-                AuthoredLoop::Outline { mass: face.mass },
-                mass.wall,
-                mass.plan_area(),
-                OffsetSide::Inward,
-                &mut problems,
-            ) else {
-                return Err(problems);
+            let loop_of = face.loop_of();
+            let Some(loops) = loops_of(skeleton, loop_of, mass.wall, &mut problems) else {
+                // **A loop the document does not hold is a placement that does not resolve**, and not a
+                // build failure carrying an empty problem list — a filter with no companion that names
+                // what it dropped is the one thing this crate refuses to ship.
+                return if problems.is_empty() {
+                    Ok(None)
+                } else {
+                    Err(problems)
+                };
             };
-            let wall = WallFace::of(
-                &mass.outline,
-                &inner,
-                mass.wall,
-                mass.top,
-                face.edge,
-                OffsetSide::Inward,
-            );
+            let wall = loops.ring(loop_of, mass.wall, mass.top).face(face.edge);
             let origin = lift(
                 wall.outer_at(bay.from + placed.at.along),
                 bay.low + placed.at.up,
@@ -1062,14 +1063,8 @@ fn expand_mass(
         }]);
     }
     let mut problems = Vec::new();
-    let Some(inner) = offset_loop(
-        &mass.outline,
-        AuthoredLoop::Outline { mass: id },
-        mass.wall,
-        mass.plan_area(),
-        OffsetSide::Inward,
-        &mut problems,
-    ) else {
+    let outline_of = AuthoredLoop::Outline { mass: id };
+    let Some(loops) = loops_of(skeleton, outline_of, mass.wall, &mut problems) else {
         return Err(problems);
     };
     // **Every opening in the document is grouped once per mass, and each ring reads the one group
@@ -1078,14 +1073,7 @@ fn expand_mass(
     // the group is keyed by the exact face, which is what keeps a courtyard's hole out of the mass's
     // own wall.
     let grouped = skeleton.openings.by_face();
-    let ring = Ring {
-        loop_of: AuthoredLoop::Outline { mass: id },
-        walked: &mass.outline,
-        offset: &inner,
-        wall: mass.wall,
-        top: mass.top,
-        side: OffsetSide::Inward,
-    };
+    let ring = loops.ring(outline_of, mass.wall, mass.top);
     let mut solid = Solid::default();
     ring_walk(&mut solid, &ring, skeleton, &grouped, &mut problems);
     // **A courtyard is built before anything is spliced, and refused with the mass.** The ring is
@@ -1223,6 +1211,105 @@ impl RingSurfaces {
             LoopSide::Offset => self.offset,
         }
     }
+}
+
+/// The two loops one authored loop's ring stands between, held together because one of them is the
+/// expander's own normalised copy of a loop the author wrote the other way round.
+///
+/// # Invariants
+///
+/// **The pair is derived once and handed on, never re-derived by a reader.** A mass's wall and a
+/// courtyard's wall are the same shape between the same two loops, and three callers need those two
+/// loops for three different reasons — the ring walk draws them, and a part's frame is read off the
+/// same strip the wall itself was built from. Each of them asking for the offset independently is
+/// three walks that can disagree about which way a courtyard's wall went, which is the one fact the
+/// last slice made a single flag.
+///
+/// The walked loop is a [`Cow`] rather than a borrow because **a courtyard's loop may be normalised
+/// and a mass's outline never is**: [`BuildingSkeleton::void_loop`] returns the author's own value
+/// when it already winds positively and an owned copy when it does not, and this type keeps that copy
+/// alive for as long as the [`Ring`] that borrows from it.
+pub(crate) struct FaceLoops<'a> {
+    walked: Cow<'a, [PlanNode]>,
+    offset: Vec<Vec2>,
+    side: OffsetSide,
+}
+
+impl FaceLoops<'_> {
+    /// Returns the ring these two loops are, read by anything that needs one edge of it.
+    pub(crate) fn ring(&self, loop_of: AuthoredLoop, wall: f32, top: f32) -> Ring<'_> {
+        Ring {
+            loop_of,
+            walked: self.walked.as_ref(),
+            offset: &self.offset,
+            wall,
+            top,
+            side: self.side,
+        }
+    }
+}
+
+/// Returns the two loops one authored loop's ring is built from: the loop the author wrote, walked
+/// the way the expander walks it, and the loop a wall's thickness away from it.
+///
+/// # Invariants
+///
+/// - **One call answers for every caller, and the side comes from the loop rather than from the
+///   caller.** A mass's outline is offset **inward** and a void's loop **outward**, so the flag that
+///   decides every winding downstream is decided here, once, from which loop was asked for — the same
+///   rule [`Ring`] states and the ring walk reads.
+/// - **Convexity is checked before the outward offset and only for a void**, because it is the one
+///   restriction [`offset_loop`] cannot state for itself: a mass whose *outline* has a reflex corner
+///   is offset inward and is drawn, while a *void* with one is offset outward and the outward walk
+///   has never been measured across a reflex corner in this crate. See [`Problem::VoidNotConvex`].
+/// - **`None` with an empty `problems` is "the document does not hold that loop",** which is a
+///   different statement from a fault: a caller that is building reports `None` and no problem, and
+///   a caller that is resolving one placement answers "it does not resolve" rather than reporting a
+///   build failure with nothing in it.
+/// `O(nodes)` for the normalising copy a reversed void loop needs; a loop already wound positively is
+/// borrowed.
+pub(crate) fn loops_of<'a>(
+    skeleton: &'a BuildingSkeleton,
+    loop_of: AuthoredLoop,
+    wall: f32,
+    problems: &mut Vec<Problem>,
+) -> Option<FaceLoops<'a>> {
+    let (walked, side) = match loop_of {
+        AuthoredLoop::Outline { mass } => (
+            Cow::Borrowed(skeleton.mass(mass)?.outline.as_slice()),
+            OffsetSide::Inward,
+        ),
+        AuthoredLoop::Void { mass, void } => {
+            let walked = skeleton.void_loop(mass, void)?;
+            if !crate::fill::convex(&plan_positions(&walked)) {
+                problems.push(Problem::VoidNotConvex { mass, void });
+                return None;
+            }
+            (walked, OffsetSide::Outward)
+        }
+    };
+    let offset = offset_loop(
+        &walked,
+        loop_of,
+        wall,
+        loop_area(&plan_positions(&walked)),
+        side,
+        problems,
+    )?;
+    Some(FaceLoops {
+        walked,
+        offset,
+        side,
+    })
+}
+
+/// Returns a loop's plan positions, which is what its winding, its area and its convexity are read
+/// from.
+///
+/// One helper for three questions about the same list, so the list is walked once per question
+/// rather than once per question by each of three callers.
+fn plan_positions(loop_nodes: &[PlanNode]) -> Vec<Vec2> {
+    loop_nodes.iter().map(|node| node.position).collect()
 }
 
 /// Appends one expansion's own points and faces to the mesh, renumbering the faces.

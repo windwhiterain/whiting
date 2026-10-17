@@ -29,10 +29,12 @@
 //!
 //! Run with `cargo run -p whiting-building --example patio_probe`.
 
+use whiting_building::expand::part_frame;
 use whiting_building::identity::Identity;
+use whiting_building::math::{cross3, dot3};
 use whiting_building::mesh::{MassSurface, SolidId};
 use whiting_building::openings::RevealSide;
-use whiting_building::parts::{Pin, Placement, Template};
+use whiting_building::parts::{PartFrame, Pin, Placement, Template};
 use whiting_building::{
     Building, BuildingSkeleton, Element, FaceRef, Inset, Mass, MassId, Opening, PlanNode, Rhythm,
     ops,
@@ -113,8 +115,8 @@ fn base_strips(skeleton: &BuildingSkeleton) -> usize {
 /// Returns a small template to stand in a courtyard's bay.
 ///
 /// The leaf is a template like any other and its **slot** is a courtyard bay, so the placement itself
-/// is perfectly ordinary: everything the document says resolves, and the refusal comes from the frame
-/// the expander cannot read.
+/// is perfectly ordinary: everything the document says resolves, and what the expander has to answer
+/// is the frame.
 fn leaf() -> Template {
     let wall = 0.010;
     let slab = 0.020;
@@ -129,6 +131,40 @@ fn leaf() -> Template {
         vec![Mass::new(outline, 1.8).with_wall(wall).with_slab(slab)],
         Vec::new(),
     )
+}
+
+/// Returns a shutter that **fits** a courtyard bay: 0.9 m across, 1.35 m up, 0.06 m through.
+///
+/// A different template from [`leaf`] for one reason only, and the reason is measured rather than
+/// chosen: `leaf` is 1.8 m tall and a courtyard bay on a two-storey 3.2 m ring is 1.6 m, so a part
+/// made of it reports `PlacementOutsideBay` — which is a refusal worth having, but it is not the
+/// reading of "a part stands in a courtyard's bay", and a probe that could only print one of the two
+/// would be a probe that had chosen its answer.
+fn shutter() -> Template {
+    let wall = 0.010;
+    let slab = 0.020;
+    let outline = vec![
+        PlanNode::new([0.0, 0.0], slab),
+        PlanNode::new([0.9, 0.0], slab),
+        PlanNode::new([0.9, 0.06], slab),
+        PlanNode::new([0.0, 0.06], slab),
+    ];
+    Template::new(
+        "courtyard shutter",
+        vec![Mass::new(outline, 1.35).with_wall(wall).with_slab(slab)],
+        Vec::new(),
+    )
+}
+
+/// Returns whether a frame is a rotation, as the sign of `(along × up) · inward`.
+///
+/// **This is the whole measurement of the one design choice in this slice, and it is arithmetic
+/// rather than a reading of a picture.** A frame with `+1` can be reproduced by a yaw about `up`, which
+/// is what a scene's instance transform carries; a frame with `−1` is a mirror, and
+/// [`PartFrame::apply`] on a mirror hands back every face of the template wound the wrong way round —
+/// measured on this very document as `SolidInsideOut { solid: Part(0), volume: -0.02242782 }`.
+fn handedness(frame: &PartFrame) -> f32 {
+    dot3(cross3(frame.along, frame.up), frame.inward)
 }
 
 fn main() {
@@ -550,11 +586,138 @@ fn main() {
         Err(error) => println!("  it does not build: {:?}", error.problems.first()),
     }
 
+    // **A part in a courtyard's bay, which is the reading this whole probe was missing.** The document
+    // side was never in doubt: a `FaceRef::court` names a loop, a rhythm lays on it, a bay is a slot on
+    // it and a placement pins in it exactly as on the building's own wall. What had no answer was the
+    // frame — the strip of masonry the part is stood on — and the answer is the one the ring already
+    // knew: the face a courtyard's bay names is the loop that looks *into* the courtyard, so the part
+    // stands on that face with its depth running out into the courtyard.
+    let mut furnited = BuildingSkeleton {
+        masses: vec![housed_patio()],
+        ..BuildingSkeleton::default()
+    };
+    for at in furnited.court_faces_of(MassId(0), 0) {
+        ops::split_face(&mut furnited, at, &columns, &rows);
+    }
+    let shutter_here = ops::add_template(&mut furnited, shutter());
+    let standing = ops::place_part(
+        &mut furnited,
+        Placement::new(shutter_here, court_face(), 0, 0, Pin::new(0.2, 0.1)),
+    );
+    let Some(shutter_index) = standing else {
+        println!("\n# a part in a courtyard's bay\n  refused at the verb");
+        return;
+    };
+    let bay = furnited
+        .bay(court_face(), 0, 0)
+        .expect("the slot is in the grid");
+    println!(
+        "\n# a part in a courtyard's bay\n  the bay is [{:.4}, {:.4}] x [{:.4}, {:.4}], and the shutter's own \
+         box is 0.9000 x 1.3500 x 0.0600 pinned at (0.2, 0.1)",
+        bay.from, bay.to, bay.low, bay.high
+    );
+    let frame = part_frame(&furnited, shutter_index)
+        .expect("the frame resolves")
+        .expect("the placement resolves");
+    println!(
+        "  its frame: origin ({:.4}, {:.4}, {:.4}), along ({:.1}, {:.1}, {:.1}), up ({:.1}, {:.1}, {:.1}), \
+         inward ({:.1}, {:.1}, {:.1})",
+        frame.origin[0],
+        frame.origin[1],
+        frame.origin[2],
+        frame.along[0],
+        frame.along[1],
+        frame.along[2],
+        frame.up[0],
+        frame.up[1],
+        frame.up[2],
+        frame.inward[0],
+        frame.inward[1],
+        frame.inward[2],
+    );
+    // **The origin is on the void loop and the depth runs away from it**, which is the two numbers
+    // that say "on the courtyard's side". Edge 0 of the void loop runs along z = -2 with the courtyard
+    // at z > -2, so a point at z = -2 is the face the courtyard looks at and +z is into the courtyard.
+    println!(
+        "  the origin stands on the void loop's own line at z {:.4}, and `inward` runs +z, so the part is \
+         on the courtyard's side of the ring — not in the rooms, and not buried in the masonry",
+        frame.origin[2]
+    );
+    println!(
+        "  and the frame is a rotation: (along x up) . inward = {:+.1}, the sign that says whether a \
+         scene's yaw alone can reproduce it",
+        handedness(&frame)
+    );
+    let with_shutter = Building::new(furnited.clone());
+    let faults = with_shutter.validate();
+    println!("  the document reports {} violation(s)", faults.len());
+    for fault in &faults {
+        println!("    {fault:?}");
+    }
+    match with_shutter.build() {
+        Ok(built) => {
+            let part = SolidId::Part(shutter_index);
+            println!(
+                "  it builds: the part reads {} faces, loops {}, euler {}, manifold {}, volume {:.6}",
+                built.faces_of(part).len(),
+                built.solid_boundary_loops(part),
+                built.solid_euler_characteristic(part),
+                built.solid_is_manifold(part),
+                built.solid_signed_volume(part)
+            );
+            // **A part is a ring and the crate's own expectation says so**: `check_solid` counts one
+            // handle for `SolidId::Part`, so `2 - 2(1 + 0) = 0` is what a correct part reads, and the
+            // `2` a box carries is what `SolidNotASphere` would report as wrong here. The number is
+            // printed beside the arithmetic rather than beside a wish.
+            println!(
+                "    which is 2 - 2(1 ring + 0 holes) = 0: a template's mass is a closed ring exactly as a \
+                 mass's own is"
+            );
+            let (low, high) = built.bounds_of(part);
+            println!(
+                "    it stands in plan x [{:.4}, {:.4}], z [{:.4}, {:.4}], and from y {:.4} to {:.4}",
+                low[0], high[0], low[2], high[2], low[1], high[1]
+            );
+            println!(
+                "    so it fills z {:.4} .. {:.4}: its own 0.0600 m of thickness runs out of the \
+                 courtyard-facing face and into the courtyard, and the ring's masonry is beyond z {:.4}",
+                low[2], high[2], low[2]
+            );
+            println!(
+                "  the courtyard's ring keeps its reading: manifold {}, loops {}, euler {}",
+                built.solid_is_manifold(courtyard_ring()),
+                built.solid_boundary_loops(courtyard_ring()),
+                built.solid_euler_characteristic(courtyard_ring())
+            );
+            println!(
+                "  and the mass's own ring keeps its reading: manifold {}, loops {}, euler {}",
+                built.solid_is_manifold(SolidId::Mass(MassId(0))),
+                built.solid_boundary_loops(SolidId::Mass(MassId(0))),
+                built.solid_euler_characteristic(SolidId::Mass(MassId(0)))
+            );
+            let named: Vec<String> = Identity::of(&built, 1)
+                .rows()
+                .iter()
+                .filter(|row| {
+                    matches!(row.element, Element::Part { placement, .. } if placement == shutter_index)
+                })
+                .map(|row| row.path.clone())
+                .collect();
+            println!(
+                "  the table names {} of the part's own surface(s), from \"{}\" to \"{}\"",
+                named.len(),
+                named.first().cloned().unwrap_or_default(),
+                named.last().cloned().unwrap_or_default()
+            );
+        }
+        Err(error) => println!("  it does not build: {:?}", error.problems.first()),
+    }
+
     // **Every way the cut cannot be made, each reached through the document and named.** Every one of
     // them names the **loop**, because a mass's wall and a courtyard's are both "edge 1" and reporting
     // one as the other would send an author to the wrong piece of masonry.
     println!("\n# every way a hole cannot be cut into a courtyard's wall");
-    let refusals: [(&str, fn(&mut BuildingSkeleton) -> Option<usize>); 6] = [
+    let refusals: [(&str, fn(&mut BuildingSkeleton) -> Option<usize>); 5] = [
         ("a slot the courtyard's grid no longer holds", |skeleton| {
             let index = skeleton.openings.push(Opening::new(
                 court_face(),
@@ -593,13 +756,6 @@ fn main() {
                 first.and(second)
             },
         ),
-        ("a part placed in a courtyard's bay", |skeleton| {
-            let index = ops::add_template(skeleton, leaf());
-            ops::place_part(
-                skeleton,
-                Placement::new(index, court_face(), 1, 1, Pin::new(0.2, 0.2)),
-            )
-        }),
         (
             "an opening naming a void the document does not hold",
             |skeleton| {
@@ -637,7 +793,8 @@ fn main() {
         }
         match built {
             Ok(_) => println!(
-                "    and it builds: there is no ring for it to be cut into, so the document's own report is the name"
+                "    and it builds: a case the document's own report already named, so the expander has \
+                 nothing to refuse"
             ),
             Err(error) => {
                 for problem in &error.problems {
@@ -647,7 +804,123 @@ fn main() {
         }
     }
 
+    // **Every way a part cannot stand in a courtyard's bay, each named.** The refusal that used to
+    // head this list — `PlacementOnACourtWall` — said the expander declined to build the frame, and it
+    // no longer declines, so nothing carries that name. What is left are the three faults a part can
+    // genuinely have on either kind of wall, and each is reachable here rather than asserted.
+    println!("\n# every way a part cannot stand in a courtyard's bay");
+    let part_refusals: [(&str, fn(&mut BuildingSkeleton) -> Option<usize>); 2] = [
+        // **A part that does not fit is placed and reported, exactly as on a mass's wall.** The leaf is
+        // 1.8 m tall and the bay is 1.6 m, so the reading is a fault an author can act on rather than a
+        // refusal — and it is the fault the old court-wall check was shadowing, which is why this case
+        // existed at all.
+        ("a 1.8 m leaf in a 1.6 m courtyard bay", |skeleton| {
+            let index = ops::add_template(skeleton, leaf());
+            ops::place_part(
+                skeleton,
+                Placement::new(index, court_face(), 1, 1, Pin::new(0.2, 0.2)),
+            )
+        }),
+        // **The rhythm taken away under the placement**, which is the reason a slot is an index and not
+        // a place. The grid is cleared *after* the placement is authored, because `place_part` refuses a
+        // slot the document does not hold and the fault under test is the one a later edit creates.
+        ("a courtyard bay the grid no longer holds", |skeleton| {
+            let template = ops::add_template(skeleton, shutter());
+            let placed = ops::place_part(
+                skeleton,
+                Placement::new(template, court_face(), 0, 0, Pin::new(0.2, 0.1)),
+            )?;
+            ops::clear_face(skeleton, court_face());
+            Some(placed)
+        }),
+    ];
+    for (label, author) in part_refusals {
+        let mut skeleton = BuildingSkeleton {
+            masses: vec![housed_patio()],
+            ..BuildingSkeleton::default()
+        };
+        for at in skeleton.court_faces_of(MassId(0), 0) {
+            ops::split_face(&mut skeleton, at, &columns, &rows);
+        }
+        let authored = author(&mut skeleton);
+        if authored.is_none() {
+            println!("  {label}: refused at the verb, before the document holds it");
+            continue;
+        }
+        let document = Building::new(skeleton.clone());
+        let faults = document.validate();
+        let built = document.build();
+        println!("  {label}:");
+        for fault in &faults {
+            println!("    {fault:?}");
+        }
+        match built {
+            Ok(_) => println!("    and it builds: a reported fault is not a refusal"),
+            Err(error) => {
+                for problem in &error.problems {
+                    println!("    and it does not build: {problem:?}");
+                }
+            }
+        }
+    }
+
+    // **A part in a notched courtyard's bay, which is the courtyard's own restriction reached through a
+    // part rather than through a hole.** `VoidNotConvex` is the expander's refusal and the document's
+    // own `Violation::VoidNotConvex` is the same statement in the other half of the crate; a notched
+    // void has no ring, so a part pinned in one of its bays has no strip to be framed on either.
+    let mut notched = BuildingSkeleton::default();
+    notched.masses = vec![
+        Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
+            .with_wall(0.3)
+            .with_slab(0.4)
+            .with_voids(vec![vec![
+                PlanNode::new([-2.0, -2.0], 0.0),
+                PlanNode::new([2.0, -2.0], 0.0),
+                PlanNode::new([2.0, 2.0], 0.0),
+                PlanNode::new([0.0, 0.0], 0.0),
+                PlanNode::new([-2.0, 2.0], 0.0),
+            ]]),
+    ];
+    // **The rhythm is laid on the loop as the author wrote it**, which is what `split_face` measures
+    // against, so the bay exists and only the offset walk refuses.
+    let _ = ops::split_face(
+        &mut notched,
+        FaceRef::court(MassId(0), 0, 0),
+        &Rhythm::Even { count: 2 },
+        &Rhythm::Even { count: 2 },
+    );
+    let notched_template = ops::add_template(&mut notched, shutter());
+    let notched_part = ops::place_part(
+        &mut notched,
+        Placement::new(
+            notched_template,
+            FaceRef::court(MassId(0), 0, 0),
+            0,
+            0,
+            Pin::new(0.1, 0.1),
+        ),
+    );
+    let notched_document = Building::new(notched);
+    println!("  a part in a notched courtyard's bay:");
+    if notched_part.is_none() {
+        println!("    refused at the verb");
+    }
+    for fault in &notched_document.validate() {
+        println!("    {fault:?}");
+    }
+    match notched_document.build() {
+        Ok(_) => println!("    and it builds, which would be the fault"),
+        Err(error) => {
+            // **The same void is named once by the ring walk and once by the frame**, which is the
+            // shape a mass's part already has when its own miter refuses: every reader of a ring
+            // reports the ring's faults, and the document lists them all rather than collapsing them.
+            for problem in &error.problems {
+                println!("    and it does not build: {problem:?}");
+            }
+        }
+    }
+
     println!(
-        "\n# the reading: a courtyard's wall takes an opening exactly as the building's own does — the\n# hole goes through both of the ring's faces, the reveals name the loop, and the ring's Euler\n# characteristic follows the document rather than staying at 0."
+        "\n# the reading: a courtyard's wall takes an opening exactly as the building's own does — the\n# hole goes through both of the ring's faces, the reveals name the loop, the ring's Euler\n# characteristic follows the document rather than staying at 0, and a part stands in one of its\n# bays on the courtyard's own face."
     );
 }

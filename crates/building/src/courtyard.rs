@@ -24,12 +24,19 @@
 //! **solid of its own** ([`SolidId::Void`]) rather than a second ring inside the mass's one.
 //!
 //! **The ring itself is the mass's own walk.** What this module owns is the part that is a
-//! courtyard's and nobody else's — normalising the loop's winding, refusing a reflex corner, and
-//! taking the offset **outward** rather than inward — and then it hands the two loops to
-//! [`expand::ring_walk`], which is the same walk that builds a mass's own wall. A hole cut in a
-//! courtyard's wall therefore arrives by exactly the path a window in a mass's wall does: one
-//! [`Opening`], one bay, one set of reveals, and no second implementation to agree with the first
-//! about what a jamb is.
+//! courtyard's and nobody else's — taking the offset **outward** rather than inward, and refusing a
+//! reflex corner before the walk that has no measurement for one is asked — and then it hands the two
+//! loops to [`expand::loops_of`], which is the one derivation of "a loop and the loop a wall's
+//! thickness away from it", and to [`expand::ring_walk`], which is the same walk that builds a mass's
+//! own wall. A hole cut in a courtyard's wall therefore arrives by exactly the path a window in a
+//! mass's wall does: one [`Opening`], one bay, one set of reveals, and no second implementation to
+//! agree with the first about what a jamb is.
+//!
+//! **A part's frame is read off the same two loops, and that is why this module has no second ring
+//! for it.** A part pinned in a courtyard bay needs the strip of wall the bay was measured on, which
+//! is the void loop and its outward offset; [`expand::part_frame`] asks [`expand::loops_of`] for
+//! exactly what [`ring`] asks for and reads one edge of the result, so "which way does a courtyard's
+//! wall go" has one answer in the crate rather than one per reader of it.
 //!
 //! # What is refused, and why
 //!
@@ -51,10 +58,10 @@
 
 use std::collections::BTreeMap;
 
-use crate::expand::{OffsetSide, Problem, Ring, Solid, loop_area, offset_loop, ring_walk};
+use crate::expand::{self, Problem, Solid, ring_walk};
 use crate::grid::FaceRef;
-use crate::mass::{AuthoredLoop, MassId, PlanNode};
-use crate::math::{Vec2, Vec3};
+use crate::mass::{AuthoredLoop, MassId};
+use crate::math::Vec3;
 use crate::mesh::BuildingFace;
 use crate::skeleton::BuildingSkeleton;
 
@@ -90,45 +97,19 @@ pub(crate) fn ring(
     top: f32,
     problems: &mut Vec<Problem>,
 ) -> Result<(Vec<Vec3>, Vec<BuildingFace>), Vec<Problem>> {
-    let Some(loop_nodes) = skeleton.void_loop(mass, void) else {
+    let loop_of = AuthoredLoop::Void { mass, void };
+    // **The two loops come from the one derivation every ring asks for**, and with them the side the
+    // offset went and the convexity restriction, because that restriction is about the *outward*
+    // walk and belongs beside it rather than beside this module's caller. A caller that re-derived
+    // them would be a second answer to "which way does a courtyard's wall go".
+    let Some(loops) = expand::loops_of(skeleton, loop_of, wall, problems) else {
         return Err(Vec::new());
     };
-    let walked = loop_nodes.as_ref();
-    // **Convexity first, because it is the one restriction the offset walk cannot state.** Every
-    // other thing the ring needs from its loop is one of the walk's own refusals, which name
-    // themselves; a reflex corner is a restriction this crate keeps on purpose, so it is checked
-    // here where it can say why.
-    if !crate::fill::convex(&positions(walked)) {
-        problems.push(Problem::VoidNotConvex { mass, void });
-        return Err(Vec::new());
-    }
-    let Some(offset) = offset_loop(
-        walked,
-        AuthoredLoop::Void { mass, void },
-        wall,
-        loop_area(&positions(walked)),
-        OffsetSide::Outward,
-        problems,
-    ) else {
-        return Err(Vec::new());
-    };
-    let ring = Ring {
-        loop_of: AuthoredLoop::Void { mass, void },
-        walked,
-        offset: &offset,
-        wall,
-        top,
-        side: OffsetSide::Outward,
-    };
+    let ring = loops.ring(loop_of, wall, top);
     let mut solid = Solid::default();
     ring_walk(&mut solid, &ring, skeleton, grouped, problems);
     if !problems.is_empty() {
         return Err(Vec::new());
     }
     Ok(solid.into_parts())
-}
-
-/// Returns a loop's plan positions, which is what both its winding and its convexity are read from.
-fn positions(loop_nodes: &[PlanNode]) -> Vec<Vec2> {
-    loop_nodes.iter().map(|node| node.position).collect()
 }

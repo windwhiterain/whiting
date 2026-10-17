@@ -1999,14 +1999,105 @@ ring's own end (`OpeningOutsideWall`, `past: 0.001` — the grid's top row is th
 
 ### Still open
 
-- **A part in a courtyard's bay is refused, not built.** The frame is read from the wall's outward face, which for a
-  courtyard is the offset loop rather than the loop the face names, and `Ring` now makes that distinction available —
-  so supporting it is a small slice, and refusing it was the honest interim answer.
+- ~~**A part in a courtyard's bay is refused, not built.**~~ **Closed by the part-in-a-courtyard's-bay
+  slice below** (2026-10-27, branch `feature/building-court-part`): the frame is read off the void loop
+  through the ring's own offset side, and `PlacementOnACourtWall` is gone from both halves of the crate.
 - **An opening naming a void the document does not hold is named by `validate` (`OpeningBayMissing`) and dropped by
   `build`,** because there is no ring to cut into. That is the same as a mass's behaviour today and this slice did not
   change it, but it is the one opening fault with no `Problem` behind it.
 - **`roof_planarity_probe` is not run-to-run deterministic** (its plane grouping is printed in hash order). Verified
   by running the same binary twice on this tip; it is pre-existing and unrelated.
+
+## What the part-in-a-court slice found: the frame has to stay a rotation (2026-10-27, branch `feature/building-court-part`)
+
+The item the last section left open is closed: **a part stands in a courtyard's bay**, and
+`Problem::PlacementOnACourtWall` and `Violation::PlacementOnACourtWall` are deleted — the expander no
+longer declines, so nothing carries those names.
+
+**The unification is one derivation with three callers.** `expand::loops_of(skeleton, loop_of, wall,
+problems)` answers *"the loop the author wrote, walked the way the expander walks it, and the loop a
+wall's thickness away from it"*, and it decides the **offset side from which loop was named** rather
+than from its caller — the mass's outline is offset inward, a void's loop outward, and that one flag is
+already what every winding in `ring_walk` is derived from. `expand_mass`, `courtyard::ring` and
+`expand::part_frame` all read that call, so the strip a part is framed on is the strip the ring was
+built from, and "which way does a courtyard's wall go" has one answer in the crate rather than one per
+reader of it. `courtyard::ring` lost its own winding copy and its own convexity check in the process;
+the convexity restriction stayed with the **outward** walk it is about, inside `loops_of`.
+
+Measured by `examples/patio_probe.rs` on a 10 × 10 mass, a 0.3 m wall, a 4 × 4 courtyard and a shutter
+in bay (0, 0) of the courtyard's edge 0, pinned at (0.2, 0.1):
+
+| reading | value |
+| --- | --- |
+| the bay | `[0.0000, 1.3333] × [0.0000, 1.6000]` |
+| the frame | origin `(-1.8000, 0.1000, -2.0000)`, along `(1, 0, 0)`, up `(0, 1, 0)`, inward `(0, 0, 1)` |
+| `(along × up) · inward` | **`+1.0`** |
+| the document | **0 violations** |
+| the part's solid | 32 faces, loops **0**, euler **0**, manifold, volume `0.025004` |
+| where it stands | `x [-1.8000, -0.9000]`, `z [-2.0000, -1.9400]`, `y [0.1200, 1.4500]` |
+| the courtyard's ring | manifold, loops 0, euler **0** — its reading |
+| the mass's own ring | manifold, loops 0, euler **0** — its reading |
+
+and `examples/part_probe.rs` prints the mass-wall frame beside its own solid so the pair that had to keep
+reading is on the frame itself: origin `(3.5000, 0.0000, -5.0000)`, along `(0, 0, 1)`, up `(0, 1, 0)`,
+inward `(-1, 0, 0)`, `(along × up) · inward = +1.0`, with `Part(0)` at `0.025002` and `Part(1)` at
+`0.044745` — every number the probe has always printed, byte for byte.
+
+### The measurement that decided it, and it is the most useful thing here
+
+**"Seat the part in the ring's thickness" was built first, and it is not available.** The brief's
+wording — *seated on the ring the way it is on a mass's wall* — asks for the part's origin on the
+courtyard's face with its depth running away from the courtyard and into the ring. That needs `inward`
+reversed, and `along × up` is the walker's **right** while a courtyard's loop puts its material on the
+walker's **left** — so the frame becomes **improper**. `PartFrame::apply` on an improper basis
+**mirrors** the template, and every one of its faces comes back wound the wrong way round. Measured on
+the document above: the part builds, and the crate reports
+
+```text
+SolidInsideOut { solid: Part(0), volume: -0.02242782 }
+```
+
+which is `validate`'s own predicate saying what a mirror does to a closed solid, on a document with no
+other fault in it. **A part that is inside out is a worse fault than a part that stands proud of the
+face it was pinned to**, so the answer shipped is the frame that stays a rotation: the origin is on the
+face the bay names and the depth runs *across* that face — into the masonry for a mass, into the
+courtyard for a courtyard. A shutter or a bracket stands against the courtyard wall and a door leaf sits
+in the courtyard's own reveal rather than 0.06 m inside it.
+
+**Three ways out were checked before this was accepted, and all three are closed.**
+
+1. **Reverse `along` instead**, which keeps the frame right-handed and puts the part in the ring — but
+   the template's `x` then runs from the pin towards the bay's *start*, so the part occupies
+   `[length − s − w, length − s]` instead of its bay. Worse, `Placement::reach` would still read the box
+   as `[s, s + w]`, so `validate` would say the part fits while the mesh puts it three metres away. A
+   pin that means one thing to the checker and another to the builder is the failure this crate has
+   paid for more than once.
+2. **Normalise a void to negative plan area** so its material falls on the walker's right. Then
+   `OffsetSide::Inward` would carry the void's outward offset and `Ring::authored_is_outer` would return
+   `true` for a courtyard — and be geometrically wrong, because a void's authored loop is the ring's
+   *inner* face. It needs a second flag, which is the thing the last slice removed.
+3. **Put the origin on the ring's outer face** — the offset loop, the one the rooms see — with the depth
+   running into the ring. That frame is proper and is the best-behaved of all, and it is **not
+   addressable**: a `FaceRef` names one loop, `FaceRef::court` names the void loop, and the offset edge
+   is *longer* at both ends (measured by the courtyard-wall slice), so one arc length would not name the
+   same span of wall there. A vocabulary gap, not an expander one — so it carries no `Problem` and no
+   `Violation`, for the reason the shared-face item below records: `validate` could never report a
+   document that cannot exist.
+
+### What else this slice found
+
+- **A fault a ring reports is listed once per reader of it.** A notched void with a part in one of its
+  bays names `VoidNotConvex` twice — once from the ring walk and once from the frame. This is
+  pre-existing and not courtyard-specific: a mass's part on a mass whose miter refuses already names
+  that fault twice today, because `part_frame` derives the offset for itself. Left alone rather than
+  deduplicated, because a list that collapses repeated problems would hide a fault reported by two
+  independent reads of the same geometry.
+- **`PlacementOutsideBay` became reachable on a courtyard's bay**, which it was not before: the
+  court-wall check `continue`d before the containment reading was made. The probe reaches it with a
+  1.8 m leaf in a 1.6 m bay, `past: 0.39999998`.
+- **The nine scene hashes did not move** and `scene_identity_probe` still reads nine tables two-way
+  (**800 rows**), with the building crate's twenty-nine probes at zero. `roof_planarity_probe` is still
+  not run-to-run deterministic, re-verified here by running the same binary twice on this tip.
 
 ## Open questions
 

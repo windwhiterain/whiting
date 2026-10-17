@@ -23,12 +23,22 @@
 //!
 //! - the template's **`x`** runs **along** the edge, from the pin towards the far end of the bay;
 //! - its **`y`** runs **up**, from the pin towards the wall's top;
-//! - its **`z`** runs **into the wall**, which is the walker's right when the outline is wound the way
-//!   this crate winds it, and is therefore `x × y` — a right-handed frame, so an author who writes a
-//!   part the way they write a building does not have to think about a reflection.
+//! - its **`z`** runs **across the face the bay names**, which is `x × y` — a right-handed frame, so an
+//!   author who writes a part the way they write a building does not have to think about a reflection.
 //!
 //! A door leaf is therefore authored with its thickness along `z` and its width along `x`: it stands
-//! in the hole, its face flush with the wall's outer face when the pin says so.
+//! in the hole, its face flush with the face the bay names when the pin says so.
+//!
+//! **The third bullet is the one that varies, and it varies because the face does.** A mass's bay is
+//! measured on its outline and the outline is the wall's *outer* face, so a part's `z` runs from there
+//! into the masonry. A courtyard's bay is measured on the void loop and that loop is the face which
+//! looks *into* the courtyard, so the same part's `z` runs out of that face and into the courtyard
+//! instead — flush with the same face, standing on the same wall, and turned to look at the person who
+//! is standing in the courtyard. The frame is right-handed either way, which is the invariant worth
+//! keeping: a frame that could be reproduced by a yaw about `up` is a frame a scene's instance
+//! transform can carry, and a frame that cannot is one whose baked and instanced geometry would
+//! disagree. See [`expand::part_frame`](crate::expand::part_frame) for the measurement that settled
+//! the alternative, and [`PartFrame`] for what a caller may do with the answer.
 
 use crate::grid::FaceRef;
 use crate::mass::Mass;
@@ -134,9 +144,16 @@ impl Joint {
 /// pieces — there is no second frame convention and no matrix: the crate's own vocabulary is an origin and
 /// three unit directions, and [`apply`](Self::apply) is one dot product per direction.
 ///
-/// The directions are `along` the wall's edge, `up`, and `inward` into the wall, in the order the template
-/// authored `x`, `y` and `z` — which is what [`Template`](crate::parts::Template)'s documentation means by
-/// "authored in the placement's frame".
+/// The directions are `along` the wall's edge, `up`, and `inward` across the face the bay names, in
+/// the order the template authored `x`, `y` and `z` — which is what
+/// [`Template`](crate::parts::Template)'s documentation means by "authored in the placement's frame".
+///
+/// **`inward` is always the walker's right, so `along × up` is `inward` on every face this crate
+/// has**, a mass's outer wall and a courtyard's inner one alike. That is what makes the frame a
+/// rotation rather than a reflection, and it is the property a caller can rely on: the map is
+/// `origin + x · along + y · up + z · inward`, so the sign of `(along × up) · inward` is `+1` and a
+/// yaw about `up` plus a translation is the whole transform. Measured on a part in a mass's bay and
+/// on the same part in a courtyard's bay, both `+1.0` — see `examples/patio_probe.rs`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PartFrame {
     /// Where the template's own origin lands, in world space.
