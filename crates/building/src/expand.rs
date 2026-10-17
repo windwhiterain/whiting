@@ -376,7 +376,70 @@ impl std::error::Error for BuildError {}
 /// no faces, so a mesh never carries half a wall, and the problems name every solid that failed
 /// rather than the first. The order is masses then roofs, each in list order, so two runs of one
 /// document produce the same report.
+/// One expansion per template, reused by every placement that stands it.
+///
+/// # Invariants
+///
+/// **The cache is sound because a template's expansion depends on nothing but the template.** Its skeleton is
+/// the template's own, its parts are its own, and no placement enters it — so one mesh per template index is
+/// the same value a second expansion would compute, and [`build`] takes its meshes from here rather than from
+/// a second call. `O(templates)` expansions for any number of placements.
+///
+/// **A failed template is held too**, so every placement that stands it reports the same problems rather than
+/// each re-discovering them.
+pub struct TemplateCache {
+    held: Vec<Option<Result<BuildingMesh, Vec<Problem>>>>,
+}
+
+impl TemplateCache {
+    /// Expands every template in the document, once each.
+    pub fn of(skeleton: &BuildingSkeleton) -> Self {
+        let mut held = Vec::with_capacity(skeleton.parts.template_count());
+        for index in 0..skeleton.parts.template_count() {
+            held.push(
+                skeleton
+                    .parts
+                    .template(index)
+                    .map(|template| template.mesh()),
+            );
+        }
+        Self { held }
+    }
+
+    /// Returns how many templates this cache expanded **without** a problem.
+    ///
+    /// It is the number the slice exists for: a document with twelve placements of one shutter answers `1`.
+    pub fn expanded(&self) -> usize {
+        self.held
+            .iter()
+            .filter(|held| matches!(held, Some(Ok(_))))
+            .count()
+    }
+
+    /// Returns one template's own mesh, or the problems that stopped it, or `None` for a template the
+    /// document does not hold.
+    pub fn mesh(&self, template: usize) -> Option<&Result<BuildingMesh, Vec<Problem>>> {
+        self.held.get(template).and_then(|held| held.as_ref())
+    }
+}
 pub fn build(skeleton: &BuildingSkeleton) -> Result<BuildingMesh, BuildError> {
+    build_with(skeleton, &TemplateCache::of(skeleton))
+}
+
+/// Expands a skeleton, taking each template's own mesh from a cache the caller supplies.
+///
+/// # Invariants
+///
+/// - **A template's expansion is a function of the template alone**, which is what makes the cache sound:
+///   the mesh it hands back is exactly what [`Template::mesh`] would compute, computed once.
+/// - **`build` is this function with a cache it builds itself**, so there is one path and no way for a caller
+///   to get a different geometry by choosing the other one.
+/// - **A cache entry that failed is reported, not skipped**: a template that cannot expand is a fault of
+///   every placement that stands it, and the problems are cloned into each of them rather than counted once.
+pub fn build_with(
+    skeleton: &BuildingSkeleton,
+    cache: &TemplateCache,
+) -> Result<BuildingMesh, BuildError> {
     let mut mesh = BuildingMesh::new();
     let mut problems = Vec::new();
     for (index, mass) in skeleton.masses.iter().enumerate() {
@@ -390,7 +453,7 @@ pub fn build(skeleton: &BuildingSkeleton) -> Result<BuildingMesh, BuildError> {
         }
     }
     for index in 0..skeleton.parts.len() {
-        match expand_placement(skeleton, index) {
+        match expand_placement(skeleton, index, cache) {
             Ok(Some((points, faces))) => {
                 let base = mesh.points.len() as u32;
                 mesh.points.extend(points);
@@ -684,14 +747,31 @@ pub fn part_frame(
 fn expand_placement(
     skeleton: &BuildingSkeleton,
     index: usize,
+    cache: &TemplateCache,
 ) -> Result<Option<(Vec<Vec3>, Vec<BuildingFace>)>, Vec<Problem>> {
-    let Some(placed) = skeleton.placed(index) else {
+    // The placement must resolve — its bay or its wall, its pin, its reach — before a frame can be read for
+    // it, and the frame is what carries the template into the document's space.
+    if skeleton.placed(index).is_none() {
         return Ok(None);
-    };
+    }
     let Some(frame) = part_frame(skeleton, index)? else {
         return Ok(None);
     };
-    let held = placed.template.mesh()?;
+    // **The template's mesh comes from the cache, not from a second expansion.** A template's expansion is a
+    // function of the template alone ([`Template::mesh`]), so expanding it once per document and standing the
+    // result in every placement is the same geometry for a twelfth of the work — and because `build` uses the
+    // cache too, the cached and the uncached readings cannot diverge: there is one path.
+    let Some(held) = skeleton
+        .parts
+        .placement(index)
+        .and_then(|placement| cache.mesh(placement.template))
+    else {
+        return Ok(None);
+    };
+    let held = match held {
+        Ok(held) => held,
+        Err(problems) => return Err(problems.clone()),
+    };
     let points = held
         .points
         .iter()

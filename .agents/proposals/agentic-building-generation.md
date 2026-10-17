@@ -977,6 +977,33 @@ gallery suite passes.
 The crate's eighteen probes are green and the **`shed` frame is byte-identical** (`0AF51AEC…`), which is the
 evidence that adding a target disturbed no part that stands in a bay.
 
+## What the cache slice found: the last debt was a measurement waiting to be structural (2026-10-27)
+
+The proposal has carried one crate-level debt since the instancing slice, and it named its own shape: *"`build`
+still expands each template per placement — a cache keyed by template index is a performance change a caller can
+now make correctly, because a template's mesh is a function of the template alone."* Twelve placements of one
+shutter expanded the shutter twelve times.
+
+`expand::TemplateCache` is that cache, and the design point is that **`build` uses it**: `build(skeleton)` is
+`build_with(skeleton, &TemplateCache::of(skeleton))`, so there is one path and no way for a caller to get a
+different geometry by choosing the other one. The cache holds **failures too**, so every placement of a broken
+template reports the same problems rather than each re-discovering them.
+
+**The measurement is structural rather than timed.** `TemplateCache::expanded()` answers how many templates
+expanded cleanly, so the probe does not have to argue about milliseconds:
+
+| measurement | value |
+| --- | --- |
+| expansions for **12** placements of one template | **1** |
+| placements whose baked points differ from the cached template's, mapped by their frames | **0** |
+| the mesh | `336` part faces = `12 × 28` |
+| two templates, 13 placements | **2** expansions — the count follows templates, not placements |
+| a broken template among three | **2 of 3** expanded, and the document reports `OutlineTooShort { nodes: 2 }` |
+
+That is the shape a performance change should have in this crate: the *cost* became a number the document can
+be asked about, and the geometry stayed byte-identical, which the nineteen probes and the byte-identical `shed`
+frame both say.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
