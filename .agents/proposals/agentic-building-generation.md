@@ -1160,6 +1160,12 @@ conversation, recorded there so it is not lost. If adopted, a `SPEC/building.md`
    `PackedList` snippets versus scene meshes — and where a part's material is named, given a
    material belongs to a scene document, not a mesh. The socket principle (§Parts) is decided; its
    rust shape is not.
+
+   **Answered by implementation (P2): templates are documents.** A `Template` holds the same
+   `BuildingSkeleton` a building does — masses, roofs, walls, slabs — so a part is authored in the crate's own
+   vocabulary and expanded by the same expander; `Template::mesh()` is that expansion in the template's own
+   frame. **A material stays the scene's**: the mesh carries `Element`s with provenance and the scene names a
+   material per element, which is why a part can be drawn by any material the frame has.
 3. **Hand-edit preservation across a replace-semantics re-split.** D10 adopts "the rhythm is wrong"
    replace semantics by precedent; whether a *nearly right* rhythm deserves any merge story is
    left open until an agent run actually asks for it — `derive_valleys`' answer ("never") is the
