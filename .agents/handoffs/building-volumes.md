@@ -559,3 +559,29 @@ there is no station); use those for the strip; and in the wall emission, whereve
 
 **Acceptance is already written and needs no reinterpretation:** the three scenes stop reporting `FaceNotPlanar`, the
 nine hashes are re-recorded in the proposal baseline table, and the building crate thirteen probes stay green.
+
+## The last link: the station's "floor point" is a band's first corner (2026-10-27)
+
+`CutStation`'s two fields are documented as *"the outer/inner wall's floor point there"* — and they are created as
+
+```rust
+let soffit = outer[0];
+let floor = inner[0];
+```
+
+i.e. **the first corner of the band the station starts**, which is the opening's own corner — the sill. That is
+exactly the `y = 0.02` and `y = 0.05` the strip measured, and it is the one line where the field's name and the
+field's value disagree.
+
+**So the whole remaining fix is inside `resolve_holes`:** those two points must be made at the **base** elevation
+(`solid.point(lift(wall.outer_at(*station), base))` and the inner counterpart), while the **reveals** keep the band
+corners they already use — they read `outer[0]`/`inner[0]` through their own path, not through `CutStation`. If they
+do read through it, they need their own pair of fields, which is the same "one station, two readers" conclusion the
+strip measurement reached, now located in four lines.
+
+**This is the last link, not a hypothesis:** the field's documentation, the field's value, and the measured
+elevations (0.02 and 0.05 against 0) are three statements about the same two lines, and two of them agree.
+
+**The next session's whole job is those four lines plus the strip's two lines:** build the strip from points at the
+base, make the walls' bottom bands read the same points, and the three scenes stop being warped. Nothing else in the
+volume model is open.
