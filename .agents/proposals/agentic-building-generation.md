@@ -3371,3 +3371,43 @@ two numbers disagree, the first question is *which hash is this?*, not *which ma
 
 **A false rule in a record is worse than no rule**, because the next session budgets for the wrong problem: one slice
 spent part of its turn re-baselining on a second adapter that did not exist.
+
+## Where the system stands (2026-10-27, after the volume arc)
+
+**All gates green, measured on the merged tip:** workspace builds with no errors and no new warnings; **29/29**
+building examples; **16/16** gallery examples; **9/9** scenes render; `scene_identity_probe` two-way over **806 rows**;
+`cargo fmt --all -- --check` clean.
+
+**What the model is now.** A mass is **two volumes**: a closed **wall ring** and a **plate**, which is a real `Slab`
+carrying `SlabRole { Plate, Floor, Roof }` — and `Slab::new` is private, so a construction site that does not name its
+role does not compile. A **courtyard** is a **third ring** (`SolidId::Void { mass, void }`) whose offset runs
+**outward**; it is drawn, it takes holes, it holds parts on **both** of its faces, and it may be **non-convex**.
+Because volumes may overlap and shells may not, a wall stands on its plate instead of splitting it — the single fact
+that made the courtyard trivial after the shell model had made it impossible. **Roofs, walls and slabs were already
+volumes**; the mass was the last shell.
+
+**What was removed rather than kept.** The shell vocabulary that no volume emits: `MassSurface::{FloorTop, SlabSoffit}`,
+`Violation::{MassDoesNotCover, SolidNotASphere…}` in its sphere form, `Problem::FloorDegenerate`, `Coverage::Slab`,
+`Problem/Violation::VoidNotConvex` (lifted by measuring the outward walk across reflex corners: area and volume agree
+to 1e-5 on L, T, bite and U loops), and `Problem::VoidNotDrawn`. Every one went in the commit that stopped it being
+true, which is what this project means by "the record is deleted in the same breath".
+
+**The pictures.** Every building has a floor and **eight of nine scenes show it** (`--locate` on a floor pixel answers
+the plate, not a wall and not the ground), because the ground is no longer drawn under a building. `house` answers a
+wall: it has no opening on its camera side. `terrace` shows one of its three plates; two stand behind the row.
+
+**The diagnostics tell the truth.** `--locate`, `--where` and `--region` all answer the reserved zero with **one shared
+string**, asked rather than written, and `--region` names a landscape element by **handle** through the same identity
+walk `--locate` uses. Where a sentence was false — 53–92 % of every frame, in the `--where 0` case — the cause was
+fixed rather than the sentence.
+
+**What is left, in order of what would teach the most:** a part on a **mass's inner wall** is now addressable and
+measured by no scene (the frame is proper: the part stands into the mass's own rooms); a **self-intersecting void
+loop** is untested — `VoidNotInside` reports a bowtie, but whether the walk refuses it is unmeasured; `--region` prints
+**at most 24 rows**, so no whole-frame sweep is a census; `terrace`'s third plate is a camera question for the owner.
+
+**And the rule the arc earned, above all of it:** an instrument must be able to disagree with you, and must be shown
+to fire. The ground cut's first version shifted every triangle, showed sky through the ground, and still reported
+plausible pixel counts; the check that caught it was `--locate` on a floor pixel with an untouched channel as the
+control. Five briefs in a row carried a false premise, and every one was caught by a measurement rather than by
+argument — including two of the author's own.
