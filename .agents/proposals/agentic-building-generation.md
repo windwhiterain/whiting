@@ -800,6 +800,85 @@ the elements of the faces that use it. It showed one edge owned by a door's **si
 owned by the **floor top** — two faces disagreeing about whether a horizontal edge is broken, which under
 **authored-identity welding** is an opening that no coordinate comparison would ever find.
 
+## What the identity slice found: a building whose every pixel names its element (2026-10-16)
+
+The crate's oldest promise is that *the lines carry their correspondence*: every face of a mesh is a named
+authored element, and `Identity` (P2) answers *"what is this element called"* from a document and its mesh.
+What it could not do is answer it **from a picture** — and a picture is all an agent looking at a frame has.
+*"The third window's reveal is too deep"* is a sentence about a picture, and the join from a pixel to the
+authored element is what makes such a sentence checkable. The mountain side of the gallery had that join;
+a building had none of it.
+
+The slice came in **two halves**, and the second is where the design stopped being a theory.
+
+### The CPU half: the numbers a pixel will carry
+
+`crates/gallery/src/building_identity.rs`:
+
+- **`building_extras()`** — one output, `authored_id` at location 1, read from the points and carried
+  **flat**. An element is a property of a *face*, not a place on it, so interpolation is the wrong operation
+  and flat is the right one: the three corners of a face must agree, or a pixel is pulled between two
+  elements.
+- **`outputs_field()`** — the scene's own declaration, `f32`, because `r32float` is exact where an
+  `rgba16float` is exact only to 2048 and an id of 4093 would come back as 4092 with nothing saying so.
+- **`ids(built, identity)`** and **`packed(built, identity)`** — one id per point, three per face, and the
+  packed buffer that carries it beside the corner normals, the positions and the plan `texture`.
+- **`not_authored_extras()`** — the reserved zero as a **constant**. A constant is not a field, so a surface
+  that is not an element of the building (the ground) carries **no id field at all** and is drawn by its own
+  set of stages; that is exactly the `plain_extras` design one crate over, and it is what keeps a ground
+  pixel answering *"not an element"* rather than naming one.
+
+Measured by `examples/building_identity_probe.rs` on a document holding a two-storey shell, a plate, a
+courtyard wall and a part in a bay: **100 faces, 50 elements numbered `1..=50`, 0 faces whose corners
+disagree, 50 distinct ids against 50 rows and equal, and zero never written**.
+
+### The frame half: the picture, and the loop that closes on it
+
+`crates/gallery/src/authored.rs` is the scene registered as **`identity`**: a two-storey shell with a plate,
+a doorway, five windows, a shutter part and a courtyard wall, drawn as **one mesh** with one material body,
+the ground drawn with the constant zero, and the scene declaring the output. `stage_set(prefix, body,
+helpers, point, extras)` builds a mesh's four stages with the lighting one **declaring** the outputs, and
+`locate(id)` rebuilds the scene's own document and answers with the row's path.
+
+**The pipeline needed nothing.** `render_outputs` already reads a scene's `outputs` and hands back one image
+per declaration, and the render example already writes each as `<out>-<channel>.png` plus a sidecar of the
+values — because a png cannot hold floats. So the whole frame half was the scene's declaration and the
+points' packing:
+
+```
+cargo run -p whiting-device-rasterize --example render -- identity out/identity
+    → out/identity.png, out/identity-authored_id.png, out/identity-authored_id.txt
+```
+
+Measured from that frame's own sidecar:
+
+| fact | value |
+| --- | --- |
+| the image | `1024x1024, r32float`, red over **`[0.000, 68.000]`** |
+| building pixels | ids `3, 4, 16, 20, …` |
+| sky and ground pixels | **`0.000`** |
+| the join | `id 3 → mass 0, outer wall over edge 2`; `id 16 → mass 0, the head reveal of opening 0 in edge 2` |
+| an id the table does not hold | `0` and `9999` both answer **`None`** |
+
+### Three things the wiring taught
+
+1. **A material names its shader by a label built from a prefix**, so a scene with two meshes needs two
+   label sets and the two cannot read each other's point layouts. The failure is not an error in the
+   shader — it is a mesh whose depth stage reads another mesh's numbers.
+2. **A constant is not a field**, and the compiler says so in the only terms that matter: *"the points are
+   packed as normal, position, texture but the mesh's point schema lays them out as authored_id, …"*.
+3. **The scene's own assert is the cheapest test in the crate.** Every building scene checks its document
+   before drawing, and this one found the openings' closure defect (the floor slice) — the same assert now
+   guards the frame whose whole purpose is to be looked at.
+
+### An accident worth keeping
+
+A failed scripted edit — a `Substring` that threw, followed by a `Set-Content` on the null result — wrote an
+**empty** `landscape/mod.rs`. The build named the file immediately and the previous commit restored it in
+one command. The rule it argues for is not "be careful with scripts" but **commit before you rewrite a file
+you did not read digests of**: the recovery was one `git checkout --` because the file was already on disk
+in the history.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
