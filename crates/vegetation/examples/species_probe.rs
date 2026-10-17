@@ -280,6 +280,13 @@ fn a_grown_plant_expands_into_closed_solids() -> bool {
 }
 
 /// The hand edits a grown tree: a handle names a path the rule made, so an offset lands on it.
+///
+/// # Invariants
+///
+/// The reading is the **drawn spine before the plant's fields shape it** ([`Node::spine_now`]), because that is
+/// where a length offset lives: the length is the authored one scaled, and a field bends the result without
+/// stretching it. The field-shaped length is printed beside it and differs by the bend's own chord-to-arc
+/// difference, which is why a row that measured the shaped number would be chasing a rounding.
 fn the_hand_edits_a_grown_plant() -> bool {
     let mut species = shrub(11);
     let limb = species
@@ -288,7 +295,15 @@ fn the_hand_edits_a_grown_plant() -> bool {
         .find(|(handle, _)| handle.depth() == 1)
         .map(|(handle, _)| handle)
         .expect("the shrub has limbs");
-    let before = species
+    let drawn = |plant: &whiting_vegetation::plant::Plant| {
+        plant
+            .get(&limb)
+            .expect("the limb resolves")
+            .spine_now()
+            .length()
+    };
+    let before = drawn(&species.plant);
+    let shaped_before = species
         .plant
         .spine(&limb)
         .expect("the limb resolves")
@@ -303,7 +318,8 @@ fn the_hand_edits_a_grown_plant() -> bool {
             },
         )],
     );
-    let after = species
+    let after = drawn(&species.plant);
+    let shaped_after = species
         .plant
         .spine(&limb)
         .expect("the limb resolves")
@@ -312,9 +328,13 @@ fn the_hand_edits_a_grown_plant() -> bool {
     println!("\n# the hand on a grown tree");
     println!("  {report} · {limb} went {before:.6} → {after:.6}, shorter by {moved:.6}");
     println!(
+        "  the field-shaped spine reads {shaped_before:.6} → {shaped_after:.6}, a departure of {:.3e} from the edit, which is the bend's own chord against its arc",
+        (shaped_before - shaped_after) - moved
+    );
+    println!(
         "  the control is the landed edit: a grown node the hand could not name would be a tree nobody can sculpt"
     );
-    report.clean() && (moved - 0.05).abs() < 1e-5
+    report.clean() && (moved - 0.05).abs() < 1e-6
 }
 
 /// A graft is one more of what the rule would have made, and the leaf field fills it at once.

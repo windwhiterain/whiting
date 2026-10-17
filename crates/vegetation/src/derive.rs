@@ -24,6 +24,7 @@
 
 use shape::{Curve, Scalar};
 
+use crate::field::Field;
 use crate::leaf::{LeafField, LeafTemplate};
 use crate::plant::Plant;
 use crate::rng::Rng;
@@ -80,6 +81,7 @@ pub fn bamboo_rule() -> Rule {
                 shape: branch_shape,
             },
         ],
+        fields: Vec::new(),
     }
 }
 
@@ -113,6 +115,7 @@ pub fn shrub_rule() -> Rule {
                 shape: limb_three,
             },
         ],
+        fields: vec![Field::gravity(0.25)],
     }
 }
 

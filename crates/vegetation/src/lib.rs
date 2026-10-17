@@ -35,6 +35,7 @@
 
 pub mod derive;
 pub mod expand;
+pub mod field;
 pub mod handle;
 pub mod leaf;
 pub mod node;

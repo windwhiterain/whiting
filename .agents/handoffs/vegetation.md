@@ -43,6 +43,9 @@ let expansion = expand::expand(&plant, Detail::DEFAULT, &species.fields);
 expansion.wood;                                 // one Wood { handle, loft } per live node
 expansion.leaves;                               // one LeafGroup { node, template, leaves } per node
 
+// The forces that shape a grown plant: gravity, a light, a wind. `amount` is a fraction of each spine's length.
+let plant = plant.with_fields(vec![field::Field::gravity(0.25), field::Field::light([1.0, 0.0, 0.0], 0.15)]);
+
 let report = ops::apply(&mut plant, &[
     Edit::new(bough(2), Change::Offset { property: Property::Station, by: 0.1 }),
     Edit::new(bough(1), Change::Spine { jets }),
@@ -68,6 +71,16 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 
 ## Traps
 
+- **A field is applied where a spine is drawn, and only there.** `Plant::shape` folds the plant's `fields` over
+  `Node::spine_now`, and `spine`, `surface` and `placement` all read it — so a field bends a parent and its
+  children follow. A new reader that reaches for `Node::spine_now` directly bypasses every field.
+- **Only the component across a spine bends it.** A push along a trunk is a *compression*: the first version
+  displaced every knot along the field and moved an upright trunk's tip 15% of its reach downward instead of
+  bending it. The amount is a **fraction of the spine's own length**, so a droop is the same shape at every
+  scale — an absolute push folded a 16 cm twig and broke a closed solid.
+- **A baked spine is immune to fields**, and `Plant::shape` is the one place that reads `Node::baked`.
+- **The shrub's rule carries `Field::gravity(0.25)`**; the bamboo's carries none, so the bamboo's picture is
+  bit-identical to before fields existed.
 - **A species is a rule, and the seed's draw order is data.** `species::grow` draws, per parent: the count (only
   when its range can vary), then per child the station jitter and the slot jitter — **unconditionally, even when
   the jitter is zero** — then whatever the generation's shape function draws. Reordering those draws changes
@@ -122,7 +135,8 @@ cargo run -p whiting-vegetation --example plant_probe      # 8
 cargo run -p whiting-vegetation --example leaf_probe       # 8
 cargo run -p whiting-vegetation --example edit_probe       # 8, the hand
 cargo run -p whiting-vegetation --example select_probe     # 8, the brush
-cargo run -p whiting-vegetation --example species_probe    # 6, the generator
+cargo run -p whiting-vegetation --example species_probe    # 8, the generator
+cargo run -p whiting-vegetation --example field_probe      # 8, the fields
 cargo run -p whiting-device-rasterize --example render -- bamboo out/bamboo
 cargo run -p whiting-device-rasterize --example render -- sweep out/sweep
 ```

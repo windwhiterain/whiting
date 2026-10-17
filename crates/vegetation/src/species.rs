@@ -25,6 +25,7 @@
 
 use shape::{Curve, Scalar};
 
+use crate::field::Field;
 use crate::handle::Handle;
 use crate::node::{Attachment, Node};
 use crate::plant::Plant;
@@ -64,13 +65,17 @@ pub struct Generation {
     pub shape: Shape,
 }
 
-/// A species: the trunk, and one rule per generation below it.
+/// A species: the trunk, one rule per generation below it, and the fields that shape the result.
 #[derive(Debug, Clone)]
 pub struct Rule {
     /// The trunk's spine and taper.
     pub trunk: fn() -> (Curve, Scalar),
     /// `generations[0]` makes the trunk's children, `generations[1]` theirs, and so on.
     pub generations: Vec<Generation>,
+    /// The forces that shape every spine the rule makes, applied in V5's order: after the growth, before the
+    /// expansion. A gravity belongs here and a light direction belongs to a scene, which is why they are a list
+    /// the caller may replace rather than a constant inside [`grow`].
+    pub fields: Vec<Field>,
 }
 
 /// Grows a plant from a rule and a seed.
@@ -82,7 +87,7 @@ pub struct Rule {
 /// in the order it is made, so its index — and therefore its handle — is its rank among its siblings.
 pub fn grow(rule: &Rule, seed: u64) -> Plant {
     let (spine, taper) = (rule.trunk)();
-    let mut plant = Plant::new(Node::root(spine, taper), seed);
+    let mut plant = Plant::new(Node::root(spine, taper), seed).with_fields(rule.fields.clone());
     for (depth, generation) in rule.generations.iter().enumerate() {
         let parents: Vec<Handle> = plant
             .walk()

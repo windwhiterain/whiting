@@ -1074,13 +1074,46 @@ tree** — same 10 nodes, same stations, same 6 branches, same 54 leaves. That i
 *says what the author typed* rather than approximating it: the generator did not change the plant, it changed who
 gets to write it.
 
+**The fields.** `field` is V5's stage 6: a `Field` reads a spine and the frame that spine is drawn in and returns
+a shaped one, so a field holds no state, edits nothing, and has no idea what kind of plant it is shaping. Two
+fields on one plant apply one after the other, each reading the last one's result. `Tropism { toward, amount }` is
+gravity, phototropism and a prevailing wind at once — one family, because they differ only in direction, which is
+the same unification `Section` made of a circle and a blade.
+
+| invariant | reading |
+| --- | --- |
+| a lateral push moves a tip by its reach | **0.321021** of a **0.331782** reach (96.76%), the base at **0.000e0** |
+| **only the component across a spine bends it** | gravity moves the upright trunk's tip **8.92%** of its reach where a lateral push of the same strength moves it **98.04%**; a bough, which departs from the vertical, drops **27.79%** |
+| the weight is `t²` | at the knot **68.0%** along, the displacement is **0.472666** against the tip's where the square is **0.462471** — **1.02%** apart, which is the re-projection's own share |
+| a bend does not stretch | the worst segment-length change across **10** nodes under two fields is **2.384e-7** |
+| a child follows a bent parent | a branch moves **0.094587** and sits **8.227e-3** from the bent bough's spine against a taper less the sink of **0.008226** |
+| a baked spine is immune | two half-strength fields move it **0.000e0** |
+| two fields compose | the tip lands **7.641e-3** from the vector sum of their separate pushes, because the second field reads the first's bent tangents |
+
+**Four decisions the fields forced**, two of which were the first version being wrong:
+
+1. **A field is applied where a spine is drawn, never baked into the tree.** `Plant::shape` is the one place, so
+   the plant is shaped the same way every time it is asked for a spine, two fields compose instead of overwriting
+   each other, and the hand's edits survive a field being added to a species afterwards. A field that wrote its
+   result into the node would be a second author and would not be idempotent.
+2. **Only the component across a spine bends it.** The first law displaced every knot along the field's own
+   direction, and on an upright trunk that is a *compression*: a 0.221 reach moved the tip **0.042** and only
+   **15%** of that displacement was downward. The law is now `push − tangent · (push · tangent)` per knot, so a
+   trunk under gravity does not leave the ground and a limb pointing at the sun does not grow — measured as the
+   **8.92% against 98.04%** row above.
+3. **The amount is a fraction of the spine's own length.** The first version pushed an absolute distance, which
+   folded a 16 cm twig and broke a closed solid in `species_probe` (the shrub's limbs are 0.16 m to 0.42 m). A
+   fraction is self-similar: the same droop shape at every level, and no limb is folded by a force meant for a
+   branch ten times its size.
+4. **A baked spine is immune**, and the marker is read in exactly one place — `Plant::shape` — so every field
+   inherits the rule without repeating it.
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before
 the nudges so that a nudge on a baked node applies to the authored spine rather than being thrown away by it.
 `edit_probe` reads both: a batch with an offset and a prune on one node lands 1, refuses 1, and the node's radius
 nudge is still `0.000000`.
-
 **Report, never repair** has a shape: `EditReport { applied, problems }` with `Problem::{Orphaned, Pruned,
 OutOfRange, NotPositive}`, each naming the handle and, for a value, the number it would have had. Nothing is
 clamped: a station of `1.71` is refused rather than pinned to `1.0`, and a length of `−99.5` is refused rather

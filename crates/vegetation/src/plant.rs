@@ -17,6 +17,7 @@
 use shape::math::{Vec3, clamp, cross3, length3, normalized3};
 use shape::{Curve, Jet};
 
+use crate::field::Field;
 use crate::handle::Handle;
 use crate::node::{Attachment, Node};
 use crate::rng::Rng;
@@ -97,17 +98,36 @@ impl std::fmt::Display for HandleOrphaned {
     }
 }
 
-/// A plant: a root node and the seed its nodes' randomness is derived from.
+/// A plant: a root node, the seed its nodes' randomness is derived from, and the fields that shape it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plant {
     root: Node,
     seed: u64,
+    fields: Vec<Field>,
 }
 
 impl Plant {
-    /// A plant whose root is `root` and whose numbers come from `seed`.
+    /// A plant whose root is `root` and whose numbers come from `seed`, with no field shaping it.
     pub fn new(root: Node, seed: u64) -> Self {
-        Self { root, seed }
+        Self {
+            root,
+            seed,
+            fields: Vec::new(),
+        }
+    }
+
+    /// The same plant under a set of fields: how gravity, a light or a wind shape it.
+    ///
+    /// The fields are applied where a spine is drawn, in the order they are given, so a plant is shaped the
+    /// same way every time it is asked for a spine and two fields compose instead of overwriting each other.
+    pub fn with_fields(mut self, fields: Vec<Field>) -> Self {
+        self.fields = fields;
+        self
+    }
+
+    /// The fields shaping this plant, in the order they are applied.
+    pub fn fields(&self) -> &[Field] {
+        &self.fields
     }
 
     /// The root node.
@@ -189,6 +209,24 @@ impl Plant {
         Rng::for_path(self.seed, handle.path())
     }
 
+    /// The node's spine **as it is drawn**: the authored one, as long as a length nudge says, bent by the
+    /// plant's fields.
+    ///
+    /// # Invariants
+    ///
+    /// **The fields are applied here and nowhere else**, in the order the plant holds them, each reading the
+    /// spine the last one left. A spine an author baked is passed through untouched — the design's third tier
+    /// says an authored spine is authored from here on — and that is the one place the marker is read.
+    fn shape(&self, node: &Node, placement: &Placement) -> Curve {
+        let drawn = node.spine_now();
+        if node.baked() {
+            return drawn;
+        }
+        self.fields
+            .iter()
+            .fold(drawn, |curve, field| field.shape(&curve, placement))
+    }
+
     /// The frame on `handle`'s surface at an attachment: the joint a child hangs from.
     ///
     /// # Invariants
@@ -199,17 +237,23 @@ impl Plant {
     /// point has no direction from the spine, and `x` falls back to the section's own `+x` rather than to a
     /// zero vector that would collapse every child.
     ///
-    /// **The skin is the drawn one**: the frame is read from [`crate::node::Node::spine_now`] and
-    /// [`crate::node::Node::taper_now`], so a node whose length or radius an author nudged carries its
-    /// children on the surface they actually see. A joint placed on the authored data would float a child off
-    /// a branch that was made thinner, which is the defect this reads through instead.
+    /// **The skin is the drawn one**: the frame is read from the spine [`Plant::shape`] returns and from
+    /// [`crate::node::Node::taper_now`], so a node an author nudged carries its children on the surface they
+    /// see, and a node a field bent carries them on the bend.
     pub fn surface(
         &self,
         handle: &Handle,
         attachment: Attachment,
     ) -> Result<Placement, HandleOrphaned> {
         let node = self.get(handle)?;
-        let spine = node.spine_now();
+        let placement = self.placement(handle)?;
+        Ok(self.surface_at(node, &placement, attachment))
+    }
+
+    /// The surface frame of a node whose placement is already known: one step of the walk [`Plant::placement`]
+    /// makes, kept as a function so the walk and a caller cannot disagree about where a joint is.
+    fn surface_at(&self, node: &Node, placement: &Placement, attachment: Attachment) -> Placement {
+        let spine = self.shape(node, placement);
         let station = clamp(attachment.station, 0.0, 1.0);
         let frame = spine.frame(station);
         let scale = node.taper_now().at(station);
@@ -229,12 +273,12 @@ impl Plant {
         for axis in 0..3 {
             origin[axis] = along[axis] + radial[axis] - outward[axis] * attachment.sink;
         }
-        Ok(Placement {
+        Placement {
             origin,
             x: outward,
             y: frame.tangent,
             z: cross3(outward, frame.tangent),
-        })
+        }
     }
 
     /// The node's placement in the world, composed from the root down.
@@ -253,7 +297,12 @@ impl Plant {
         for index in handle.path() {
             let child = prefix.child(*index);
             let node = self.get(&child)?;
-            placement = placement.then(&self.surface(&prefix, node.effective_attachment())?);
+            let attachment = node.effective_attachment();
+            let surface = {
+                let parent = self.get(&prefix)?;
+                self.surface_at(parent, &placement, attachment)
+            };
+            placement = placement.then(&surface);
             let shift = node.shift();
             if shift != [0.0; 3] {
                 let moved = placement.rotate(shift);
@@ -278,7 +327,7 @@ impl Plant {
     pub fn spine(&self, handle: &Handle) -> Result<Curve, HandleOrphaned> {
         let node = self.get(handle)?;
         let placement = self.placement(handle)?;
-        let drawn = node.spine_now();
+        let drawn = self.shape(node, &placement);
         let jets: Vec<Jet> = drawn
             .jets()
             .into_iter()
