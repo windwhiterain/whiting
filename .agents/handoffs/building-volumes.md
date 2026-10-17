@@ -135,3 +135,16 @@ trouble shrinks to zero, because the plate was already a volume and only the mas
 **What still has to be measured:** the sum of the ring's volume and the plate's volume against every recorded
 number (the plate's own numbers come from `floor_slab`'s thickness), and the nine hashes re-recorded with the
 reason — a mass with no floor disc renders differently at its inner base by one plate thickness.
+
+## Where the refactor stands (2026-10-27, branch `feature/building-vol2`, worktree `.worktrees/building-vol2`)
+
+Step 1 is written and builds: `expand_mass` runs the inner walls down to the plate bottom plane, closes the ring with
+a `WallBase` annulus (`ring_fill` via a `ring` helper), and no longer emits `FloorTop` or `SlabSoffit`. Measured:
+`census`, `floor_probe` and `slab_probe` exit 0; **`expand_probe` panics** because its expectations are the old shell's
+— that is the step that has not landed yet, not a defect: **the documents carry no plate**, so a mass has walls and
+no floor.
+
+Step 2 is the rest: add the plate `Slab` wherever a mass is authored (`derive::starter` first, then `terrace.rs`,
+`wing.rs`, and every probe document that builds a mass), then bring `expand_probe`'s numbers up to the ring-plus-plate
+split, then re-record the nine hashes. **The volumes to check:** the old shell's `solid_signed_volume(Mass)` must
+equal the new ring's volume **plus** the plate's.
