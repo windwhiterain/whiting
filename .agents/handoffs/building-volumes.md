@@ -171,3 +171,26 @@ and `scene_identity_probe` says the channel is **not** two-way for every scene.
 wall's outer face by a millimetre or the wall should overhang it, so the two do not share a plane; (2) the three
 failing scenes, which need their render error read first; (3) the identity probe, whose failure is probably the same
 cause as (2) — a document that no longer expands the way its table was built from.
+
+## The three failing scenes are rejected documents, not renderer faults (2026-10-27)
+
+`render -- shed` panics in the scene's own assertion, and the violation list is the whole story:
+
+```text
+the shed's own document must be clean, and it is not:
+  SolidOpen { solid: Mass(MassId(0)), loops: 2 },  SolidNonManifold { solid: Mass(MassId(0)) },
+  SolidNotASphere { solid: Mass(MassId(0)), euler: -8 },
+  SolidOpen { solid: Part(0), loops: 2 }, SolidNotASphere { solid: Part(0), euler: 0 },
+  SolidOpen { solid: Part(1), loops: 2 }, SolidNotASphere { solid: Part(1), euler: 0 }
+```
+
+**So the mass is no longer watertight once its floor and soffit are gone** — and the two parts fail the same way.
+The parts are the clue: a part's solid is a template's own mass, expanded through the same `expand_mass`, and it has
+**no plate at all**, so if a part's mass is not closed by the ring alone then the ring alone is not enough in general.
+
+**Hypothesis, to be tested before any fix** (it is a hypothesis, not a finding): the ring's base strip closes a
+mass whose outline is a simple loop, and the shed's mass and its parts are the documents that exercise something the
+strip does not cover — an opening whose reveal was welded to the **floor disc**, or a mass whose outline carries
+per-node elevations so the base strip is not planar. The first measurement to make is `SolidOpen`'s boundary edges
+with the `PATIO_DEBUG`-style dump (it is not on this branch; the trick is recorded in the patio handoff's history):
+the edges will name the hole instead of guessing at it.
