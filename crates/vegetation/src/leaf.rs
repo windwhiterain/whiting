@@ -207,6 +207,14 @@ pub struct LeafField {
     pub pitch: Scalar,
     /// Radians about the leaf's own forward.
     pub twist: Scalar,
+    /// The world axis the leaf's midrib is turned toward, when [`LeafField::aim`] weighs it.
+    pub aim_axis: Vec3,
+    /// How much of the way the midrib is turned toward [`LeafField::aim_axis`], nought to one.
+    ///
+    /// It is the last term of the design's composition — *"`aim` (a world axis and a `Scalar` weight)"* — and it is
+    /// the law grass wants: a blade aimed at the sky stands up whatever the rule that placed it, and a crown's
+    /// leaves aimed at it shade as a volume rather than as a bag of leaves.
+    pub aim: Scalar,
     /// The leaf's scale in the world.
     pub size: Scalar,
     /// The fraction of `size` the node's own numbers may add or remove, `0` for none.
@@ -231,6 +239,8 @@ impl LeafField {
             phyllotaxy: GOLDEN_ANGLE,
             pitch: Scalar::constant(std::f32::consts::FRAC_PI_4),
             twist: Scalar::constant(0.0),
+            aim_axis: [0.0, 1.0, 0.0],
+            aim: Scalar::constant(0.0),
             size: Scalar::constant(0.1),
             jitter: 0.0,
             template,
@@ -319,7 +329,11 @@ impl LeafField {
                     index: rank as u32,
                     station,
                     slot,
-                    placement: frame(&anchor, self.pitch.at(station), self.twist.at(station)),
+                    placement: aim(
+                        frame(&anchor, self.pitch.at(station), self.twist.at(station)),
+                        self.aim_axis,
+                        self.aim.at(station),
+                    ),
                     scale,
                 });
             }
@@ -333,6 +347,46 @@ impl LeafField {
     }
 }
 
+/// Turns a leaf's midrib toward a world axis: the last term of the design's composition.
+///
+/// # Invariants
+///
+/// - **A weight of nought is the identity and a weight of one points the midrib at the axis**: the turn is a rotation
+///   about the axis the two directions span, carried through the leaf's side and face, so the frame stays
+///   right-handed and the blade is never mirrored.
+/// - **A midrib already at the axis is the identity at every weight**, which is what lets a grass field aim every
+///   blade at the sky without moving the ones the rule already stood up.
+/// - **A direction of no length is no axis**: a zero axis, or one the midrib already lies along, leaves the frame
+///   alone rather than turning it somewhere arbitrary.
+fn aim(frame: Placement, axis: Vec3, weight: f32) -> Placement {
+    let far = length3(axis);
+    if weight == 0.0 || far < 1.0e-9 {
+        return frame;
+    }
+    let toward = scale(axis, 1.0 / far);
+    let along = dot3(frame.x, toward).clamp(-1.0, 1.0);
+    let turn = along.acos() * weight;
+    let across = cross(frame.x, toward);
+    let reach = length3(across);
+    if turn < 1.0e-9 || reach < 1.0e-9 {
+        return frame;
+    }
+    let axis = scale(across, 1.0 / reach);
+    let (sin, cos) = turn.sin_cos();
+    let swing = |vector: Vec3| -> Vec3 {
+        let along = dot3(axis, vector);
+        add(
+            add(scale(vector, cos), scale(cross(axis, vector), sin)),
+            scale(axis, along * (1.0 - cos)),
+        )
+    };
+    Placement {
+        origin: frame.origin,
+        x: swing(frame.x),
+        y: swing(frame.y),
+        z: swing(frame.z),
+    }
+}
 /// The instance's own frame at `anchor`: forward `x`, side `y`, face `z`, at the anchor's origin.
 ///
 /// # Invariants
@@ -428,6 +482,22 @@ impl Density {
         };
         (self.start + (index as f64 + within) * self.width) as f32
     }
+}
+
+fn length3(vector: Vec3) -> f32 {
+    (vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]).sqrt()
+}
+
+fn dot3(left: Vec3, right: Vec3) -> f32 {
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+fn cross(left: Vec3, right: Vec3) -> Vec3 {
+    [
+        left[1] * right[2] - left[2] * right[1],
+        left[2] * right[0] - left[0] * right[2],
+        left[0] * right[1] - left[1] * right[0],
+    ]
 }
 
 fn add(left: Vec3, right: Vec3) -> Vec3 {

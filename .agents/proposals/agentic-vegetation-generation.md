@@ -945,6 +945,20 @@ withdrawn (D17) nothing here waits on it.
   grass); `--region`; the segmentation scene; and the promotion of
   `geometry::{culm, blade, double_blade, leaf_spray, tuft}` into `derive`, which retired five uncalled
   generators and **281 lines** from the gallery.
+**The implementation is finished (round 17).** The sweep that closed it: **18 probes and 139 invariant rows** green on
+`main`'s tip, **7 scenes** rendered, and the phasing below read line by line against the tree. It found **two items
+this document claims and the crate did not have**, and both are closed:
+
+| gap | what this document says | what landed |
+| --- | --- | --- |
+| `Field::Ancestor` | D12's four fields are gravity, **ancestor**, light, obstacle | `Field::Ancestor { toward }`, reading the parent's direction as the node frame's own `y`; on the bamboo's first bough, which leaves the culm at **1.242456** rad, `toward: 0.6` closes the angle to **1.202558** and `toward: −0.6` opens it to **1.357532** |
+| `LeafField::aim` | the leaf contract's fifth term, *"`aim` (a world axis and a `Scalar` weight)"* | `aim_axis` and `aim`; the first leaf's midrib stands **1.701249** rad from the sky, half a weight takes it to **0.850625**, all of it to **0.000598** |
+
+Both laws default to the identity, so **every scene is bit-identical** with them in (`1D533E76…`, `884C7C85…`,
+`4213A47B…`, `0A7AFD1B…`, `2937B7B6…`, `9DD7522D…`, `DB0BA9F0…`). `field_probe` is **9** rows and `leaf_probe`
+**11**. The handoff is deleted, as the repository's rule asks once an implementation is finished; everything it
+carried that is still true — the traps — is moved into this document, and the three bullets it had that the last four
+rounds made false are corrected rather than moved.
 - **P3 — the site.** A grove (instancing at plant level, with D7's identity granularity stated in the
   scene's own doc); ground cover (one tuft template and a field, which is the same mechanism as leaves);
   seating on a `terrain::HeightField` by the `site::seat` precedent; the offline backend's view of a plant
@@ -1516,11 +1530,11 @@ so a later session reopens it by argument rather than by forgetting it.
    *"leaves point away from the trunk"* is a curve edit and not a placement-level fix — which is the sentence
    the open question asked for.
 
-   P1 implements the anchor, the phyllotaxy, `pitch` **and `twist`** — the first four terms, measured in
-   `leaf_probe`. **`reference` is the one term that waits, and it waits on `closest`**: reading the frame from
-   an ancestor means knowing where the leaf's own anchor lands on *that* ancestor, which is a closest-point
-   query and is already owed by the envelope's trimming law (shape's open question 4). `aim` is one more term
-   in the same composition and arrives with the first crown whose leaves need to turn to the light.
+   P1 implemented the anchor, the phyllotaxy, `pitch` **and `twist`**, and P2 closed the other two terms: **`reference`
+   in round 16** and **`aim` in round 17**, so the five-term composition is the whole of it. `reference` did **not**
+   need `closest` after all — the frame an ancestor hands a leaf is the ancestor's *placement*, not a point on its
+   spine, so one integer selects a frame and nothing is projected. `aim` is the term a crown's leaves turn to the
+   light with, and the term grass stands up with.
 2. **The identity granularity P1 ships** — **per field group**, with per-placement available for a field the
    author *names*, and `report()` printing the group count either way. The number at which a field must go
    unnumbered stays unmeasured on purpose: a document-entry budget is a fact about a frame's page pool, and a
@@ -1544,3 +1558,117 @@ so a later session reopens it by argument rather than by forgetting it.
 6. **`closest`'s accuracy** — **deferred with the obligation `shape` recorded**: when the envelope's trimming
    law needs it, the answer owes its sample budget, a measured worst-case error, and a stated answer at a
    knot. Nothing in P1 or P2 calls it.
+
+## Traps the implementation learned
+
+Every one of these is an invariant the code now relies on or a defect it was written to avoid, recorded here because
+the handoff that carried them is deleted now that the implementation is finished.
+
+
+- **A scene's sky must be an image and one `environment_light`, not a shader.** A path tracer has no shader stage:
+  the plant scenes drew black backgrounds until they adopted `air::Atmosphere` (one struct emits the grade's helpers
+  and the 512x256 latlong map, and the light's radiance is the raster ambient *and* Cycles' `background` strength). A
+  hand-written `sky_at` is a sky only one backend can see.
+
+- **The ground is one function**: the scene draws its floor from it *and* seats every planting on it (Ground::Fielded /
+  egetation::ground::seat). A second ground function is the defect a seated plant exists to rule out. Framing::ground is
+  Ground::Plane for the five single-plant scenes, so a plane's seating is the identity and their hashes do not move.
+
+- **The wood is one mesh per scene, not per planting.** A mesh per plant is a pass per plant (the emitter groups by
+  mesh) and the ids live in the corners, so merging the geometry does not merge the names. A planting with **no**
+  template is legal — a tuft's blades are its wood — and the builder's lade_of is an Option because of it.
+
+- **A picture's hash is a pixel-scale instrument.** Rewriting the field's normalisation from *rotate then normalise*
+  to *normalise then rotate* — the same law to a rounding — changed the windy frame's hash (`1A3ACC93…` →
+  `D7488DF2…`) while every probe stayed green. Use a probe for meaning and a hash for *"did anything move at all"*.
+- **A planting's ids are `base + node`, and planting 0's base is 1.** A resolver that refuses ids below
+  `PLANTING_STRIDE` refuses every node of the first plant; only `NOT_AUTHORED` (zero) is not a node.
+- **A plant is not instanced; its leaves are.** A grove is one wood mesh per *scene* since the ground-cover round and
+  one blade mesh per distinct template, so six plantings draw their leaves in one instanced pass per stage, not six.
+  *(This bullet read "one wood mesh per plant … two instanced passes" until the ground cover measured otherwise.)*
+
+- **The occupancy's sign is the whole contract: negative inside.** The first version of `obstacle_probe` wrote
+  `x − face`, which is positive inside, so the field pushed the boughs *deeper into the wall* and the row passed
+  anyway ("47 → 35 contacts"). A scene that passes the inverted function pushes plants into walls and nothing
+  complains.
+- **One push is not a solver.** The weight is `t²`, so a knot mid-spine is pushed a quarter of what a tip is, and
+  the contacts that remain after a field are the author's to read (`contact::collide`), not a failure of the push.
+- **`thin` compares siblings only**, keeps the first of a crowding group, decides on every tip before any prune
+  lands, and prunes with `Prune::Thinned` through `ops` — so a second call finds nothing to do.
+
+- **A decorator's frame is the node's surface frame taken whole**, and `Seat` carries no angle: a decorator that
+  needs a roll is a decorator whose *template* should be authored rolled. A seat on a tombstone draws nothing,
+  which is the one place a decorator can be absent without an error.
+- **`Curve::closest` pins the distance exactly and the fraction only as well as the distance is flat.** Near a foot
+  the distance is quadratic in `t`, so `f32` stops resolving the fraction at about `1e-4` on a metre-scale curve.
+  An envelope's `outside` therefore reads a few millionths on its own boundary, and a probe that demanded an exact
+  zero there would be demanding something `f32` cannot give.
+- **The trim writes length nudges through `ops`**, so a trimmed plant is an edited plant: every amount is a
+  `Change::Offset` at a handle. It runs on a **linear** model of the tip, which is exact without fields and
+  approximate with them, and then re-reads every tip — that is why `Trim::pressed` exists.
+- **A trim cannot make a branch vanish.** V4's sentence taken literally took a bough from 1.054910 m to
+  0.000007 m; a node that would have to go below a tenth of its length is pressed and reported instead.
+- **The trunk is not trimmed**: it is the envelope's own axis, so shortening it would move the crown rather than
+  fit it.
+- **A field is applied where a spine is drawn, and only there.** `Plant::shape` folds the plant's `fields` over
+  `Node::spine_now`, and `spine`, `surface` and `placement` all read it — so a field bends a parent and its
+  children follow. A new reader that reaches for `Node::spine_now` directly bypasses every field.
+- **Only the component across a spine bends it.** A push along a trunk is a *compression*: the first version
+  displaced every knot along the field and moved an upright trunk's tip 15% of its reach downward instead of
+  bending it. The amount is a **fraction of the spine's own length**, so a droop is the same shape at every
+  scale — an absolute push folded a 16 cm twig and broke a closed solid.
+- **A baked spine is immune to fields**, and `Plant::shape` is the one place that reads `Node::baked`.
+- **The shrub's rule carries `Field::gravity(0.25)`**; the bamboo's carries none, so the bamboo's picture is
+  bit-identical to before fields existed.
+- **An ancestor's direction is the frame's own `y`, and a tropism's is the world's.** A node's placement is built
+  from the surface frame it hangs on — outward `x`, the parent's tangent `y` — so `Field::Ancestor` needs no lookup
+  and `Field::Tropism { toward: [0, 1, 0] }` would be a *different* law (the world's up, not each parent's own way).
+- **A leaf's composition has five terms and `aim` is the last**: anchor, the reference ancestor's frame, the slot's
+  radial direction, pitch, twist, aim. `aim` turns the midrib toward a world axis by a weight that is a *fraction of
+  the turn*; a weight of one lands within about 6e-4 rad, because an `acos` near one amplifies an `f32` dot's own
+  error by three orders — a probe that demanded exactness there would be demanding what the type cannot give.- **A species is a rule, and the seed's draw order is data.** `species::grow` draws, per parent: the count (only
+  when its range can vary), then per child the station jitter and the slot jitter — **unconditionally, even when
+  the jitter is zero** — then whatever the generation's shape function draws. Reordering those draws changes
+  every plant a rule makes.
+- **A rule may leave nothing to chance**: bamboo's counts, bands and jitters are fixed and its shapes draw no
+  numbers, so its seed reaches the leaf field and nothing else. Two bamboo seeds are the same tree with two leaf
+  layouts; two shrub seeds are two shrubs.
+- **A graft is the generator's operation, not an edit.** `species::graft(plant, &rule, at, station, slot)` needs the
+  rule that made the tree, so it cannot be a `Change` — an edit is a handle and a change, and carrying a species in
+  every edit is what the layering exists to avoid. The generation is the parent's own depth, and the new node's
+  shape draws from **its own** forked stream, so a graft is as deterministic and as local as a grown child. The
+  leaf field sees it at once: a grafted branch took **9** leaves with no extra call.
+- **A prune is a tombstone, and both walks exist for a reason.** `walk` names tombstones so a handle goes on
+  naming what it named; `live` skips them *and their subtrees*. `expand::wood` reads `live`. A new reader that
+  takes `walk` will draw deleted branches.
+- **Prunes outrank offsets in the same batch.** The order is enforced in `ops::apply`, not left to the caller's
+  list order: an offset aimed at a node the same batch prunes is reported, not written.
+- **An offset is added at use, never written into the authored data.** That is why `expand` reads
+  `taper_now`, `Plant::spine` reads `spine_now`, and `Plant::placement` reads `effective_attachment`. A new
+  reader that reaches for `taper`, `spine` or `attachment` bypasses every edit silently — that was a real
+  defect: the first `expand::wood` read `taper` and a radius nudge moved nothing.
+- **A shift is stored in the node's own frame.** `Frame::Local` is that frame already; `Parent` and `World` are
+  undone by one rotation each. For a child of the root, `Parent` and `World` are the same frame, because the
+  root's placement *is* the identity — a reading, not a defect.
+- **`Station`, `Slot` and `Length` are range-checked, and since the `Curve` round so is radius.** A profile that
+  crosses zero draws the swept solid turned inside out, so `thinnest` samples a radius change at 33 stations and
+  refuses it with `NotPositive`; before that round nothing refused a negative `Offset { Radius }` at all.
+- **A bake replaces; a nudge adds on top.** The stages run prunes, then bakes, then nudges, so a batch may bake
+  a spine and thin it in one go. `Node::baked` is the marker a field must read before reshaping anything, and it
+  is set only by `Change::Spine`.
+- **A brush edits nothing.** `Selector` answers `matches` and `handles`; `ops::paint` is the only bridge, and it
+  goes one way — a selector writes the edit list that `apply` reads. A predicate that tried to change a plant
+  would be a second editing path, which is what the design exists to avoid.
+- **The design's vocabulary is a contract**: depth 0 trunk, 1 bough, 2 branch, 3 twig, 4 sprig (`Handle`'s
+  `NAMES`). `derive::bamboo`'s second level is a *branch*, and the code said "twig" until a probe printed
+  `trunk/bough 0/branch 1` beside prose that disagreed with it.
+- **`Scalar::offset` keeps every slope, to a rounding.** The slope is evaluated from the shifted knots, so it
+  agrees to ~4e-7 rather than exactly; `scalar_probe`'s row says so.
+- **A template's frame is its midrib's initial normal**, and a flat section's thin axis is the frame's
+  *binormal*: the leaf template states it once (`+y`), and the gallery's `sweep` scene hit the same rule from
+  the other side.
+- **A leaf's `scale` is in the template's own frame**: `placement.place(point · scale)`. The other order moves
+  the anchor by `(1 − scale) · |origin|` — 1.362 m on this plant's topmost leaf.
+- **The emitter groups a pass by shader, mesh and images — not by material.** Six `LeafGroup`s of one template
+  are one pass over one instance buffer.
+

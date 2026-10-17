@@ -33,6 +33,7 @@ fn main() {
     checks.push(("a baked spine is immune", a_baked_spine_is_immune()));
     checks.push(("two fields compose", two_fields_compose()));
     checks.push(("gravity droops a bough", gravity_droops_a_bough()));
+    checks.push(("an ancestor straightens", an_ancestor_straightens()));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -362,4 +363,37 @@ fn gravity_droops_a_bough() -> bool {
         "  the control is the trunk: the same field moves the upright trunk's tip by a few per cent of its reach"
     );
     drop / reach > 0.2 && drop / reach < 1.1
+}
+
+/// The ancestor field pushes a limb along the direction its parent carried, or away from it.
+///
+/// # Invariants
+///
+/// The direction is the frame's own `y`, which is the parent's tangent at the attachment, so the row measures the
+/// angle between a bough's own departure and the parent's direction: a positive `toward` must **close** it (the
+/// limb straightens along its parent) and a negative one must **open** it, and zero must leave it exactly as the
+/// rule drew it.
+fn an_ancestor_straightens() -> bool {
+    let plain = under(Vec::new());
+    let straight = under(vec![Field::ancestor(0.6)]);
+    let opened = under(vec![Field::ancestor(-0.6)]);
+    let bough = Handle::root().child(0);
+    let angle = |species: &Species| -> f32 {
+        let curve = species.plant.spine(&bough).expect("the bough resolves");
+        let start = curve.jets()[0].tangent;
+        let heading = length3(start);
+        // The parent's own direction is the culm's tangent, which is the frame's `y` for every attached node.
+        let up = [0.0f32, 1.0, 0.0];
+        let dot = (start[0] * up[0] + start[1] * up[1] + start[2] * up[2]) / heading;
+        dot.clamp(-1.0, 1.0).acos()
+    };
+    let (plain, straight, opened) = (angle(&plain), angle(&straight), angle(&opened));
+    println!("\n# an ancestor");
+    println!(
+        "  the bough leaves the culm at {plain:.6} rad: toward 0.6 closes it to {straight:.6}, away opens it to {opened:.6}"
+    );
+    println!(
+        "  the control is the sign: one direction with two signs has to move the angle two ways"
+    );
+    straight < plain && opened > plain
 }

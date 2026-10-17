@@ -43,6 +43,7 @@ fn main() {
         "a reference past the root reads it",
         a_reference_past_the_root_reads_it(),
     ));
+    checks.push(("aim turns the midrib", aim_turns_the_midrib()));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -622,4 +623,44 @@ fn a_reference_past_the_root_reads_it() -> bool {
         "  the control is the clamp: a field is one generation-wide number, and a per-leaf report is the one thing it cannot be"
     );
     count > 0 && worst < 1e-6
+}
+
+/// The last term of the composition: a weight turns every leaf's midrib toward a world axis.
+///
+/// # Invariants
+///
+/// A weight of one points the midrib at the axis, half of a weight halves the angle, and a weight of nought is the
+/// frame the other terms made — one law with three readings, and the middle one is what says the weight is a
+/// fraction of the turn rather than a switch.
+fn aim_turns_the_midrib() -> bool {
+    let plant = whiting_vegetation::derive::bamboo(7).plant;
+    let angle_to_up = |field: &LeafField| -> f32 {
+        let leaf = field
+            .groups(&plant)
+            .into_iter()
+            .flat_map(|group| group.leaves)
+            .next()
+            .expect("the bamboo carries leaves");
+        let up = [0.0f32, 1.0, 0.0];
+        let dot = leaf.placement.x[1].clamp(-1.0, 1.0);
+        let _ = up;
+        dot.acos()
+    };
+    let plain = whiting_vegetation::derive::bamboo(7).fields[0].clone();
+    let mut half = plain.clone();
+    half.aim = Scalar::constant(0.5);
+    let mut full = plain.clone();
+    full.aim = Scalar::constant(1.0);
+    let (plain, half, full) = (angle_to_up(&plain), angle_to_up(&half), angle_to_up(&full));
+    println!("\n# aim");
+    println!(
+        "  the first leaf's midrib stands {plain:.6} rad from the sky: half of the way is {half:.6}, and all of it {full:.6}"
+    );
+    println!(
+        "  the control is the fraction: a switch would read the same angle at half and at one"
+    );
+    // **The last milliradian is `f32`'s and not the law's**: an `acos` near one amplifies a dot product's own error
+    // by about a thousand, so a midrib turned to the axis lands within 6e-4 rad and cannot do better in single
+    // precision.
+    full < 1.0e-3 && (half - plain * 0.5).abs() < 1.0e-4 && plain > 1.0e-3
 }

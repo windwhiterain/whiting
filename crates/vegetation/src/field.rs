@@ -56,6 +56,22 @@ pub enum Field {
         /// meant for a branch ten times its size.
         amount: f32,
     },
+    /// A push along the direction the node's parent carried: **toward that direction or away from it**.
+    ///
+    /// # Invariants
+    ///
+    /// - **The direction is the frame's own `y`**, which is the parent's tangent at the attachment: a node's
+    ///   placement is built from the surface frame it hangs on — outward `x`, the parent's tangent `y` — so the
+    ///   ancestor's direction in the node's own coordinates is the constant `+y` and nothing has to be looked up.
+    ///   That is also why this field is not a [`Field::Tropism`] with `toward: [0, 1, 0]`: a tropism's direction is
+    ///   the *world's*, and this one is every node's own parent's.
+    /// - `toward` is **signed**: positive grows the limb towards the way its parent was going, which straightens it,
+    ///   and negative pulls it away, which opens it out. Its magnitude is a fraction of the spine's own length, like
+    ///   every other field's.
+    Ancestor {
+        /// How far, as a fraction of the spine's length, and which way: positive toward the parent's direction.
+        toward: f32,
+    },
     /// A push out of something solid: a wall, a building's shell, the space a neighbour already occupies.
     ///
     /// # Invariants
@@ -99,6 +115,7 @@ impl PartialEq for Field {
                     amount: second,
                 },
             ) => one == two && first == second,
+            (Field::Ancestor { toward: one }, Field::Ancestor { toward: two }) => one == two,
             (
                 Field::Obstacle {
                     occupancy: one,
@@ -126,6 +143,12 @@ impl Field {
     /// A push toward a light, a window, or the sun.
     pub fn light(toward: [f32; 3], amount: f32) -> Self {
         Field::Tropism { toward, amount }
+    }
+
+    /// A push along the direction the parent carried: positive straightens a limb towards it, negative opens it
+    /// away.
+    pub fn ancestor(toward: f32) -> Self {
+        Field::Ancestor { toward }
     }
 
     /// A push out of whatever `occupancy` calls solid.
@@ -186,64 +209,75 @@ impl Field {
         let jets = curve.jets();
         let fractions = curve.knot_parameters();
         let mut offsets = vec![[0.0f32; 3]; jets.len()];
-        match *self {
+        // **Two families are one push along a direction read in the spine's own frame**: a tropism's direction is
+        // the world's, read in once; an ancestor's is the frame's own `y`, which is the parent's tangent. The
+        // obstacle is the third and cannot be either, because its direction is different at every place the wood
+        // stands. So the direction and the reach are chosen here, and one loop applies them.
+        let (local, reach) = match *self {
             Field::Tropism { toward, amount } => {
                 let size = length3(toward);
                 if amount == 0.0 || size < 1.0e-9 {
                     return offsets;
                 }
-                let local =
-                    placement.unrotate([toward[0] / size, toward[1] / size, toward[2] / size]);
-                let reach = amount * curve.length();
-                for (index, fraction) in fractions.iter().enumerate() {
-                    let direction = jets[index].tangent;
-                    let heading = length3(direction);
-                    let weight = fraction * fraction;
-                    if heading < 1.0e-9 || weight == 0.0 {
-                        continue;
-                    }
-                    let unit = [
-                        direction[0] / heading,
-                        direction[1] / heading,
-                        direction[2] / heading,
-                    ];
-                    // **Only the part across the spine bends it**: a limb along the field is compressed rather
-                    // than pulled, so a trunk under gravity does not leave the ground and a branch pointing at
-                    // the sun does not grow longer.
-                    let along = dot3(local, unit);
-                    for axis in 0..3 {
-                        offsets[index][axis] = (local[axis] - unit[axis] * along) * reach * weight;
-                    }
-                }
+                (
+                    placement.unrotate([toward[0] / size, toward[1] / size, toward[2] / size]),
+                    amount * curve.length(),
+                )
             }
-            Field::Obstacle { occupancy, amount } => {
-                if amount == 0.0 {
+            Field::Ancestor { toward } => {
+                if toward == 0.0 {
                     return offsets;
                 }
-                for (index, jet) in jets.iter().enumerate() {
-                    let weight = fractions[index] * fractions[index];
-                    if weight == 0.0 {
-                        continue;
-                    }
-                    let world = placement.place(jet.position);
-                    let value = occupancy(world);
-                    if value >= 0.0 {
-                        continue;
-                    }
-                    let Some(out) = outward(occupancy, world) else {
-                        continue;
-                    };
-                    let local = placement.unrotate(out);
-                    for axis in 0..3 {
-                        offsets[index][axis] = local[axis] * -value * amount * weight;
+                // The parent's tangent in the node's own frame is the constant `+y`; the sign is the law's.
+                ([0.0, toward.signum(), 0.0], toward.abs() * curve.length())
+            }
+            Field::Obstacle { occupancy, amount } => {
+                if amount > 0.0 {
+                    for (index, jet) in jets.iter().enumerate() {
+                        let weight = fractions[index] * fractions[index];
+                        if weight == 0.0 {
+                            continue;
+                        }
+                        let world = placement.place(jet.position);
+                        let value = occupancy(world);
+                        if value >= 0.0 {
+                            continue;
+                        }
+                        let Some(out) = outward(occupancy, world) else {
+                            continue;
+                        };
+                        let local = placement.unrotate(out);
+                        for axis in 0..3 {
+                            offsets[index][axis] = local[axis] * -value * amount * weight;
+                        }
                     }
                 }
+                return offsets;
+            }
+        };
+        for (index, fraction) in fractions.iter().enumerate() {
+            let direction = jets[index].tangent;
+            let heading = length3(direction);
+            let weight = fraction * fraction;
+            if heading < 1.0e-9 || weight == 0.0 {
+                continue;
+            }
+            let unit = [
+                direction[0] / heading,
+                direction[1] / heading,
+                direction[2] / heading,
+            ];
+            // **Only the part across the spine bends it**: a limb along the field is compressed rather than
+            // pulled, so a trunk under gravity does not leave the ground and a branch pointing at the
+            // sun does not grow longer.
+            let along = dot3(local, unit);
+            for axis in 0..3 {
+                offsets[index][axis] = (local[axis] - unit[axis] * along) * reach * weight;
             }
         }
         offsets
     }
 }
-
 /// The direction an occupancy grows in at a point, from central differences on it.
 ///
 /// # Invariants
