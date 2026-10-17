@@ -81,7 +81,9 @@ fn main() {
     let at = Pin::new(hole.from - doorway_bay.from, 0.0);
     let placed = ops::place_part(&mut skeleton, Placement::new(template, face, 0, 0, at))
         .expect("the template and the slot are both there");
-    let (_, bay, reach) = skeleton.placed(placed).expect("just placed");
+    let standing = skeleton.placed(placed).expect("just placed");
+    let bay = standing.bay;
+    let reach = standing.reach;
     println!(
         "# the leaf placed in bay [{:.4}, {:.4}] x [{:.4}, {:.4}]: x [{:.4}, {:.4}], y [{:.4}, {:.4}]",
         bay.from,
@@ -106,7 +108,7 @@ fn main() {
         Placement::new(tall, face, 0, 1, Pin::new(0.6, 0.0)),
     )
     .expect("the bay is there");
-    let (_, _, big) = skeleton.placed(too_tall).expect("just placed");
+    let big = skeleton.placed(too_tall).expect("just placed").reach;
     println!(
         "  a 2.40 m leaf in a {:.4} m storey: y [{:.4}, {:.4}], so it stands {:.4} m past the head",
         bay.height(),

@@ -30,10 +30,97 @@
 //! A door leaf is therefore authored with its thickness along `z` and its width along `x`: it stands
 //! in the hole, its face flush with the wall's outer face when the pin says so.
 
-use crate::grid::{Bay, FaceRef};
+use crate::grid::FaceRef;
 use crate::mass::Mass;
 use crate::roof::Roof;
 use crate::skeleton::BuildingSkeleton;
+
+/// A named mount point on a template: where the part touches what it hangs from.
+///
+/// # Invariants
+///
+/// **A socket is a point, not a frame, and that is the whole of the simplification.** Every part in
+/// this crate is authored in the placement's frame — `x` along the edge, `y` up, `z` into the wall — so
+/// a joint needs no rotation to mate: the part keeps its authoring orientation and only its origin is
+/// moved, so a socket point lands on an anchor point. A joint that could turn a part would need a
+/// basis, a handedness and a sign convention, and each of those is a way for a canopy to hang upside
+/// down; this slice does not have that problem because it cannot express the turn.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Socket {
+    /// What the mount point is called: `"head"`, `"back"`, `"foot"`.
+    pub name: String,
+    /// Where it stands in the template's own frame, across and up.
+    pub at: (f32, f32),
+}
+
+impl Socket {
+    /// Builds a socket.
+    pub fn new(name: impl Into<String>, at: (f32, f32)) -> Self {
+        Self {
+            name: name.into(),
+            at,
+        }
+    }
+}
+
+/// A named place on the building a part can hang from.
+///
+/// # Invariants
+///
+/// It names a **feature of the document**, not a number: an opening's head or sill, a bay's own edges.
+/// That is what makes a joint follow an edit — moving a door's head moves every part hung on it, which
+/// a pin written in metres cannot do and cannot even notice. The anchor is resolved in the bay's own
+/// frame (along the edge, up from its sill) by [`BuildingSkeleton::anchor`], so a joint is as
+/// slot-carried as the bay itself.
+///
+/// [`BuildingSkeleton::anchor`]: crate::skeleton::BuildingSkeleton::anchor
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Anchor {
+    /// The head of one of the wall's openings, at its own middle across.
+    OpeningHead {
+        /// The opening, by its index in the document's openings.
+        opening: usize,
+    },
+    /// The sill of one of the wall's openings, at its own middle across.
+    OpeningSill {
+        /// The opening.
+        opening: usize,
+    },
+    /// The middle of a bay's own sill.
+    BaySill,
+    /// The middle of a bay's own head.
+    BayHead,
+    /// The start of a bay along the edge, at the middle of its height.
+    BayStart,
+    /// The end of a bay along the edge, at the middle of its height.
+    BayEnd,
+}
+
+/// How a placement is positioned in its bay.
+///
+/// # Invariants
+///
+/// Exactly one of the two, and a joint wins when both are given: a placement that names a socket is
+/// **mounted**, and its pin is then only what a free placement would have used. This is the shape that
+/// keeps [`Placement::reach`](Placement::reach) and the expansion reading one number — the pin the
+/// joint resolves to — rather than each deciding for itself whether a part is mounted.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Joint {
+    /// The template's socket, by name.
+    pub socket: String,
+    /// The place on the building it hangs from.
+    pub anchor: Anchor,
+}
+
+impl Joint {
+    /// Builds a joint.
+    pub fn new(socket: impl Into<String>, anchor: Anchor) -> Self {
+        Self {
+            socket: socket.into(),
+            anchor,
+        }
+    }
+}
 
 /// Where a placement pins a template's origin, measured from its bay's own corner.
 ///
@@ -97,16 +184,33 @@ pub struct Template {
     pub masses: Vec<Mass>,
     /// Its roofs, in its own frame.
     pub roofs: Vec<Roof>,
+    /// Its mount points, which a placement can hang the part from.
+    pub sockets: Vec<Socket>,
 }
 
 impl Template {
-    /// Builds a template from its parts.
+    /// Builds a template from its parts, with no socket to hang it from.
     pub fn new(name: impl Into<String>, masses: Vec<Mass>, roofs: Vec<Roof>) -> Self {
         Self {
             name: name.into(),
             masses,
             roofs,
+            sockets: Vec::new(),
         }
+    }
+
+    /// Adds a socket, for a placement to name.
+    pub fn with_socket(mut self, socket: Socket) -> Self {
+        self.sockets.push(socket);
+        self
+    }
+
+    /// Returns one socket by name.
+    ///
+    /// `O(sockets)`, and a template has a handful: a name is what an author writes in the document, so
+    /// looking it up by name is the shape the document uses rather than an index nobody reads.
+    pub fn socket(&self, name: &str) -> Option<&Socket> {
+        self.sockets.iter().find(|socket| socket.name == name)
     }
 
     /// Returns the template as the skeleton it is, ready to expand.
@@ -162,7 +266,7 @@ impl Template {
 /// the grid when the part is expanded or checked. So a grid that is re-split moves the parts that hang
 /// in it, a slot that vanishes is reported rather than guessed at, and the document never holds two
 /// statements of where the same part is.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Placement {
     /// Which template, by index in the document's list.
     pub template: usize,
@@ -172,12 +276,14 @@ pub struct Placement {
     pub row: usize,
     /// Which bay across, counting from the edge's start.
     pub column: usize,
-    /// Where the template's own origin is pinned, from the bay's corner.
+    /// Where the template's own origin is pinned, from the bay's corner. Ignored when `joint` is set.
     pub at: Pin,
+    /// What the part hangs from, when it is mounted rather than merely placed.
+    pub joint: Option<Joint>,
 }
 
 impl Placement {
-    /// Builds a placement.
+    /// Builds a free placement: a part pinned in a bay.
     pub fn new(template: usize, face: FaceRef, row: usize, column: usize, at: Pin) -> Self {
         Self {
             template,
@@ -185,7 +291,14 @@ impl Placement {
             row,
             column,
             at,
+            joint: None,
         }
+    }
+
+    /// Hangs the part from a socket and an anchor instead of a pin.
+    pub fn with_joint(mut self, joint: Joint) -> Self {
+        self.joint = Some(joint);
+        self
     }
 
     /// Returns the box this placement occupies in its bay's own frame, or `None` when the template
@@ -203,12 +316,11 @@ impl Placement {
     /// author expects: authoring a part's outline at the elevation of its own slab puts its bounds at
     /// `0`, and `Pin::new(along, 0.0)` then stands its underside on the bay's own sill rather than a
     /// slab below or above it.
-    pub fn reach(&self, template: &Template, bay: Bay) -> Option<Bounds> {
-        let _ = bay;
+    pub fn reach(&self, template: &Template, at: Pin) -> Option<Bounds> {
         let bounds = template.bounds()?;
         Some(Bounds {
-            x: (self.at.along + bounds.x.0, self.at.along + bounds.x.1),
-            y: (self.at.up + bounds.y.0, self.at.up + bounds.y.1),
+            x: (at.along + bounds.x.0, at.along + bounds.x.1),
+            y: (at.up + bounds.y.0, at.up + bounds.y.1),
             z: bounds.z,
         })
     }

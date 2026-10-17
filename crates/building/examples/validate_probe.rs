@@ -403,6 +403,8 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::PlacementTemplateMissing { .. } => "PlacementTemplateMissing",
         Violation::PlacementBayMissing { .. } => "PlacementBayMissing",
         Violation::PlacementOutsideBay { .. } => "PlacementOutsideBay",
+        Violation::PlacementSocketMissing { .. } => "PlacementSocketMissing",
+        Violation::PlacementAnchorMissing { .. } => "PlacementAnchorMissing",
         Violation::OpeningBayMissing { .. } => "OpeningBayMissing",
         Violation::OpeningExceedsBay { .. } => "OpeningExceedsBay",
         Violation::OpeningOutsideWall { .. } => "OpeningOutsideWall",

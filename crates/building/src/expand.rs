@@ -394,11 +394,11 @@ fn expand_placement(
     skeleton: &BuildingSkeleton,
     index: usize,
 ) -> Result<Option<(Vec<Vec3>, Vec<BuildingFace>)>, Vec<Problem>> {
-    let Some((template, bay, _reach)) = skeleton.placed(index) else {
+    let Some(placed) = skeleton.placed(index) else {
         return Ok(None);
     };
     let placement = match skeleton.parts.placement(index) {
-        Some(placement) => *placement,
+        Some(placement) => placement.clone(),
         None => return Ok(None),
     };
     let Some(mass) = skeleton.mass(placement.face.mass) else {
@@ -415,10 +415,10 @@ fn expand_placement(
         return Err(problems);
     };
     let wall = WallFace::of(mass, placement.face.edge, &inner);
-    let held = build(&template.skeleton()).map_err(|error| error.problems)?;
+    let held = build(&placed.template.skeleton()).map_err(|error| error.problems)?;
     let origin = lift(
-        wall.outer_at(bay.from + placement.at.along),
-        bay.low + placement.at.up,
+        wall.outer_at(placed.bay.from + placed.at.along),
+        placed.bay.low + placed.at.up,
     );
     let along = [wall.along[0], 0.0, wall.along[1]];
     let inside = inward(wall.along);

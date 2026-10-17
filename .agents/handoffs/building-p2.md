@@ -330,18 +330,55 @@ The render half is **not** this crate's: an `id` channel the mesh shader writes 
 business, exactly as it is for the mountains (`gallery::identity` owns the mountain side, and its
 `faceted` packs the attribute). Nothing here bakes a number into an image.
 
-## What P2 still owes, stated so the next session does not have to rediscover it
+## Slice 6: sockets — from placing a part to connecting it
 
-**Sockets.** The phase's own scope says "the parts vocabulary with **authored sockets**", and what
-exists is templates and placements with a `Pin` — two numbers from a bay's corner. That places a part
-but does not *connect* it: the shed's canopy is pinned 0.11 m along and `hole.high + 0.12` up, which
-means the canopy does not know it belongs over the door and will not follow if the door's head moves.
-A socket is the missing half: a named frame on a template (and on a bay's boundary) that a placement
-names instead of a pin, so "the canopy hangs over the door's head" is a fact the document holds.
+**The interface** (`parts.rs`): `Socket { name, at: (f32, f32) }` on a `Template`; `Anchor` — a
+**named feature of the document** (`OpeningHead`/`OpeningSill` by opening index, `BaySill`/`BayHead`/
+`BayStart`/`BayEnd`); `Joint { socket, anchor }` on a `Placement`, which then ignores its pin;
+`BuildingSkeleton::{pin_of, anchor}` and a `Placed` value that carries the **resolved** pin so the
+expander and the validator read one answer.
 
-Everything else P2 listed is in: levels and bays, openings, parts and their solids, identity, and the
-second demonstration scene. The "one coherent style set" is each scene's own materials, and the
-enclosure is a scene rather than a mechanism.
+**A joint is one subtraction, not a transform.** Every part is authored in the placement's frame
+(`x` along, `y` up, `z` into the wall), so mating a socket to an anchor only moves the template's
+origin: `origin = anchor − socket`. No rotation is expressible, and therefore none can be got wrong —
+which is the reason this slice is small enough to be right. The doc says so at the `Socket` type.
+
+Measured by `examples/socket_probe.rs`, and the number that matters is the third column:
+
+| how the canopy is placed | doorway head at 2.35 | head moved to 2.55 |
+| --- | --- | --- |
+| **joint** on `OpeningHead` | canopy top = head **+0.0000** | canopy top = head **+0.0000** |
+| **pin** at hand-worked numbers | canopy top = head +0.2200 | canopy top = head **+0.0200** |
+
+So a mounted part **follows the feature it is hung on** and a pinned one does not — which is the whole
+difference, and the one thing a pin can never express. Two faults, refused by the verb and named by
+the validator: `PlacementSocketMissing { socket: "sill" }` for a socket the template does not name, and
+`PlacementAnchorMissing` for an anchor naming an opening in another wall.
+
+The shed scene's canopy now hangs on the doorway's head (`Joint::new("back", Anchor::OpeningHead
+{ opening: 0 })`) instead of a pin, and the frame re-rendered with it (`out/shed5.png`): the canopy's
+top sits exactly on the hole's head.
+
+## What P2 owes that is *not* a missing mechanism
+
+**D4's instancing is honoured in the document and not in the mesh.** One `Template` is authored once
+and every `Placement` names it **by index**, which is the vocabulary side of D4 and is what keeps the
+document small. The expansion then **rebuilds the template's skeleton per placement** — `build` is
+called for each one — so a building with forty identical windows holds forty copies of the geometry.
+That is correct and cheap at the phase's scale, and it is *not* what a scene would want; the fix is the
+gallery's (one mesh per template, one instance transform per placement, which the kit's `instance`
+already supports) rather than the crate's, and it is recorded here so the next session does not read
+the mesh as instanced because the document is.
+
+## Closing P2
+
+Every mechanism the phase listed is in: levels and bays, openings, the parts vocabulary **with
+sockets**, identity, and the second demonstration scene. What is left is the **book-keeping of
+closing**: fold this handoff's durable findings — the two contract facts the cut found, the four
+instrument facts, the phase's acceptance numbers, and the D4 limitation above — into
+`.agents/proposals/agentic-building-generation.md` as P2's record (the way P1's went in), then delete
+this file and let the phase branch be merged. A handoff whose content is only in the handoff is a
+handoff that will be deleted with it.
 
 **The acceptance probe is the chief designer's** (`examples/opening_probe.rs`), and its strongest
 number is the one no predicate can fake: a wall with a hole holds less material by exactly

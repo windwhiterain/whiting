@@ -16,7 +16,7 @@ use building::derive::{self, RoofStyle, Starter};
 use building::grid::{FaceRef, Rhythm};
 use building::openings::{Inset, Opening};
 use building::ops;
-use building::parts::{Pin, Placement, Template};
+use building::parts::{Anchor, Joint, Pin, Placement, Socket, Template};
 use building::{Building, Mass, MassId, PlanNode, RoofId, SolidId};
 
 use crate::building_mesh::points_of;
@@ -113,6 +113,7 @@ fn canopy(width: f32, thickness: f32, reach: f32) -> Template {
         ],
         Vec::new(),
     )
+    .with_socket(Socket::new("back", (width * 0.5, thickness)))
 }
 
 /// Builds the shed's document: the derived shell, the front's rhythm, the door and the two windows,
@@ -155,7 +156,11 @@ fn shed_document() -> Building {
     let shelter = ops::add_template(&mut skeleton, canopy(1.45, 0.10, 0.70));
     ops::place_part(
         &mut skeleton,
-        Placement::new(shelter, front, 0, 1, Pin::new(0.11, hole.high + 0.12)),
+        // **Hung on the doorway's head, not pinned above it**: the canopy's `back` socket sits on the
+        // opening's head line, so moving the door's head moves the canopy with it — the difference
+        // between a part that is placed and one that is connected.
+        Placement::new(shelter, front, 0, 1, Pin::new(0.0, 0.0))
+            .with_joint(Joint::new("back", Anchor::OpeningHead { opening: 0 })),
     )
     .expect("the canopy hangs over the same bay");
 

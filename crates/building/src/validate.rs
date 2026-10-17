@@ -511,6 +511,26 @@ pub enum Violation {
         /// How far the worst edge of its box stands past the bay.
         past: f32,
     },
+    /// A placement hangs from a socket its template does not name.
+    ///
+    /// Staged like the others: with no socket there is no point to mate, so nothing about where the
+    /// part lands can be asked. The name is carried because it is what the author wrote.
+    PlacementSocketMissing {
+        /// The placement.
+        placement: usize,
+        /// The socket it names.
+        socket: String,
+    },
+    /// A placement hangs from an anchor that names nothing in its own wall.
+    ///
+    /// The anchor is a feature of the document — an opening's head or sill, a bay's own edge — and a
+    /// joint to an opening in another wall (or to an opening whose slot the grid has lost) has nowhere
+    /// to land. It is one variant for both because a reader's next move is the same: check the wall
+    /// the anchor names.
+    PlacementAnchorMissing {
+        /// The placement.
+        placement: usize,
+    },
     /// A facet has no area because **two of its corners are one point**, so it is a facet of no
     /// surface.
     ///
@@ -1302,7 +1322,27 @@ fn check_parts(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             });
             continue;
         };
-        let Some(reach) = placement.reach(template, bay) else {
+        // A mounted part is resolved through its joint before anything is measured: a socket the
+        // template does not name and an anchor naming an opening in another wall are faults of the
+        // document, and neither has a box to compare until it is fixed.
+        if let Some(joint) = &placement.joint {
+            if template.socket(&joint.socket).is_none() {
+                violations.push(Violation::PlacementSocketMissing {
+                    placement: index,
+                    socket: joint.socket.clone(),
+                });
+                continue;
+            }
+            if skeleton.anchor(placement.face, bay, joint.anchor).is_none() {
+                violations.push(Violation::PlacementAnchorMissing { placement: index });
+                continue;
+            }
+        }
+        let Some(at) = skeleton.pin_of(placement) else {
+            violations.push(Violation::PlacementAnchorMissing { placement: index });
+            continue;
+        };
+        let Some(reach) = placement.reach(template, at) else {
             continue;
         };
         let past = (-reach.x.0)
@@ -1683,6 +1723,8 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         Violation::PlacementOutsideBay { placement, past } => {
             (30, *placement as u64, ordered(*past), 0, 0)
         }
+        Violation::PlacementSocketMissing { placement, .. } => (31, *placement as u64, 0, 0, 0),
+        Violation::PlacementAnchorMissing { placement } => (32, *placement as u64, 0, 0, 0),
         // The four opening faults in the order an author meets them: the slot is not there, the bay
         // cannot hold the hole, the hole leaves the wall, and two holes in one wall fight.
         Violation::OpeningBayMissing { opening, face } => {

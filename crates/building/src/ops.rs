@@ -331,8 +331,13 @@ pub fn add_template(skeleton: &mut BuildingSkeleton, template: Template) -> usiz
 ///   centimetres. `O(log faces)` for the bay and `O(1)` for the rest.
 pub fn place_part(skeleton: &mut BuildingSkeleton, placement: Placement) -> Option<usize> {
     let template = skeleton.parts.template(placement.template)?;
-    let bay = skeleton.bay(placement.face, placement.row, placement.column)?;
-    placement.reach(template, bay)?;
+    skeleton.bay(placement.face, placement.row, placement.column)?;
+    // A mounted part is refused when its joint does not resolve — a socket the template does not name,
+    // or an anchor naming an opening in another wall. That is a domain question like the bay's own
+    // existence, and unlike a part that merely does not fit it has no reading at all: there is nowhere
+    // to put the part. Fitting stays a reported fault.
+    let at = skeleton.pin_of(&placement)?;
+    placement.reach(template, at)?;
     Some(skeleton.parts.place(placement))
 }
 

@@ -8,9 +8,29 @@ use crate::grid::{Bay, FaceGrid, FaceRef, Grids, face_extent, face_length};
 use crate::mass::{Mass, MassId};
 use crate::mesh::BuildingMesh;
 use crate::openings::{Extents, Openings};
-use crate::parts::{Bounds, Parts, Template};
+use crate::parts::{Anchor, Bounds, Parts, Pin, Placement, Template};
 use crate::roof::{Roof, RoofId};
 use crate::validate::{Violation, document, mesh};
+
+/// Everything a placement resolves to: what stands, where, and where it lands.
+///
+/// # Invariants
+///
+/// It is produced in one place ([`BuildingSkeleton::placed`]) and then read by the expander, the
+/// validator and any probe, so "where the part is" is one answer rather than three readings of the same
+/// numbers. The box is in the bay's own frame and the pin is in the same frame, which is why a mounted
+/// part's `at` is the *resolved* origin and not the pin the author would have written.
+#[derive(Debug, Clone, Copy)]
+pub struct Placed<'a> {
+    /// The template that stands.
+    pub template: &'a Template,
+    /// The bay it stands in.
+    pub bay: Bay,
+    /// The origin its own frame is placed at, in the bay's frame.
+    pub at: Pin,
+    /// The box it then occupies, in the bay's frame.
+    pub reach: Bounds,
+}
 
 /// The control structure of a building: its masses, its roofs, and the rhythms on its faces.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -41,23 +61,83 @@ impl BuildingSkeleton {
         }
     }
 
-    /// Returns everything a placement resolves to: its template, its bay, and the box it occupies in
-    /// that bay's own frame.
+    /// Returns everything a placement resolves to: its template, its bay, the pin it lands on, and the
+    /// box it then occupies in that bay's own frame.
     ///
     /// # Invariants
     ///
     /// **One place resolves a placement**, so the expander that stands the part and the validator that
     /// measures it cannot disagree — the same rule [`aperture`](Self::aperture) follows for a hole. A
-    /// template index the document does not hold, a bay slot the grid does not hold, or a template
-    /// with no mass all answer `None`, which is exactly what
-    /// [`unresolved_placements`](Self::unresolved_placements) names. `O(log faces)` for the bay and
-    /// `O(1)` for the rest.
-    pub fn placed(&self, index: usize) -> Option<(&Template, Bay, Bounds)> {
+    /// template index the document does not hold, a bay slot the grid does not hold, a socket the
+    /// template does not name, an anchor whose opening is not in that wall, or a template with no mass
+    /// all answer `None`, which is exactly what [`unresolved_placements`](Self::unresolved_placements)
+    /// names. `O(log faces)` for the bay and `O(1)` for the rest.
+    pub fn placed(&self, index: usize) -> Option<Placed<'_>> {
         let placement = self.parts.placement(index)?;
         let template = self.parts.template(placement.template)?;
         let bay = self.bay(placement.face, placement.row, placement.column)?;
-        let reach = placement.reach(template, bay)?;
-        Some((template, bay, reach))
+        let at = self.pin_of(placement)?;
+        let reach = placement.reach(template, at)?;
+        Some(Placed {
+            template,
+            bay,
+            at,
+            reach,
+        })
+    }
+
+    /// Returns the pin a placement lands on, whether it was written or hangs from an anchor.
+    ///
+    /// # Invariants
+    ///
+    /// **A joint is one subtraction, not a transform**: every part is authored in the placement's frame,
+    /// so mating a socket to an anchor only moves the template's origin, and the origin that puts the
+    /// socket on the anchor is `anchor − socket`. No rotation is involved and none can be got wrong —
+    /// see [`Socket`](crate::parts::Socket) for why that is the whole of the design.
+    ///
+    /// A free placement returns its own [`Pin`]; a mounted one whose socket or anchor does not resolve
+    /// answers `None`.
+    pub fn pin_of(&self, placement: &Placement) -> Option<Pin> {
+        let Some(joint) = &placement.joint else {
+            return Some(placement.at);
+        };
+        let template = self.parts.template(placement.template)?;
+        let socket = template.socket(&joint.socket)?;
+        let bay = self.bay(placement.face, placement.row, placement.column)?;
+        let (along, up) = self.anchor(placement.face, bay, joint.anchor)?;
+        Some(Pin::new(along - socket.at.0, up - socket.at.1))
+    }
+
+    /// Returns the point an anchor names, in its bay's own frame: along the edge from the bay's start,
+    /// and up from its sill.
+    ///
+    /// # Invariants
+    ///
+    /// **The point is read out of the document**, so a joint follows an edit: an opening's head is "the
+    /// middle of the hole across, the hole's own head" and nothing else, which is why moving the door's
+    /// head moves every part hung on it. A bay's own anchors need no lookup at all. `O(1)` for a bay's
+    /// and `O(log faces)` for an opening's, which is what [`aperture`](Self::aperture) costs.
+    pub fn anchor(&self, face: FaceRef, bay: Bay, anchor: Anchor) -> Option<(f32, f32)> {
+        let point = match anchor {
+            Anchor::BaySill => (bay.width() * 0.5, 0.0),
+            Anchor::BayHead => (bay.width() * 0.5, bay.height()),
+            Anchor::BayStart => (0.0, bay.height() * 0.5),
+            Anchor::BayEnd => (bay.width(), bay.height() * 0.5),
+            Anchor::OpeningHead { opening } | Anchor::OpeningSill { opening } => {
+                let held = self.openings.get(opening)?;
+                if held.face != face {
+                    return None;
+                }
+                let (_, hole) = self.aperture(opening)?;
+                let middle = (hole.from + hole.to) * 0.5;
+                let elevation = match anchor {
+                    Anchor::OpeningHead { .. } => hole.high,
+                    _ => hole.low,
+                };
+                (middle - bay.from, elevation - bay.low)
+            }
+        };
+        Some(point)
     }
 
     /// Returns the index of every placement that **cannot be resolved** in one wall.
