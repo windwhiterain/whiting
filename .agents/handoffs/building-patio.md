@@ -138,6 +138,24 @@ wall between them.
 **`ring_fill` is therefore used three times** (rooms' floor, wall top, and — if the mass's own outline ever becomes a
 ring — the mass's wall top), which is what it was built for. The design's "no plate work" line is struck; the tool was
 never the problem.
+## The code that makes the correction concrete
+
+`FloorTop` is not assembled per edge — it is **one fill of the inner loop**:
+
+```rust
+let walked = polygon(&mut solid, &inner_loop, &floor_points, floor_top, true)
+    && polygon(&mut solid, &outside_loop, &soffit_points, slab_soffit, false);
+```
+
+(`expand.rs`, in `expand_mass`, at the `floor_top`/`slab_soffit` pair). So a courtyard authored in a document whose
+floor is this call would have the plate drawn straight across its own opening — which is exactly the three-surface
+edge the correction describes, now located in one line.
+
+That line is also where the change goes: the floor becomes **two walks** — a ring from the room-side loop out to the
+courtyard's outer loop, and the courtyard's paving as its own polygon — and `fill::ring_fill` is what supplies the
+first one's triangles. The helper that turns triangles into faces has to be written beside `polygon`, because
+`polygon` fills one loop and the ring needs two.
+
 ## Status log
 
 - **2026-10-27** — handoff written. Nothing implemented yet: `main` carries `ring_fill` and this plan.
