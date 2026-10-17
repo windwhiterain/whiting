@@ -94,3 +94,32 @@ ids**, each naming its own placement, and a pixel of the ground still answers ze
   `offset_by(surface(..), base − 1)`, with the bases the probe measured (`24, 38, 52, 66, 80, 94` for that
   probe's six placements; the workshop's five need their own, taken from the same probe's arithmetic), and the
   acceptance is `--locate` answering **five different element names** for five pixels on five shutters.
+
+- **2026-10-27** — the consumer was **attempted and not landed**, and the record is worth more than the code
+  would have been. Two mistakes, both mine:
+
+  1. the workshop's rewiring needs `building_identity::packed_where` (a filtered `packed`), which **does not
+     exist on `main`** — I wrote it, then broke the file with a line-based rewrite (an unbalanced `}`), restored
+     the file from `HEAD`, and lost the addition with it;
+  2. the failed rewrite is the third time this session that **scripted line surgery on Rust** has cost a
+     working tree — after the literal backtick-n and the four silently-inert `Replace` calls.
+
+  So the state is: **`main` at `37b1585` is the plumbing, verified inert**, and the consumer is unstarted. The
+  exact next steps, in order, for a fresh round with a full budget:
+
+  1. **add `packed_where(built, identity, keep)`** to `building_identity` — the body is `packed`'s with
+     `if !keep(&face.element) { continue; }` after the three ids are consumed — and make `packed` delegate to
+     it with `|_| true`, so there is one derivation rather than two;
+  2. **the workshop's meshes** take `packed_where(&built, &numbering, ..)` for shells, roofs, floors and the
+     shutters, and the shutter **mesh** is the template's own expansion through
+     `Identity::of(&template.mesh(), 1)` so its corners carry the template's local ids;
+  3. **one material set per placement** for the shutters, each `offset_by(board(), base − 1)` where `base` is
+     **read from the baked table** (the least id whose element is `Part { placement, .. }`) rather than copied
+     from a probe's printout;
+  4. **the scene declares the channel**: `outputs_field()`, `stage_set("authored", ..)` for every authored mesh
+     (they share one point schema, so one shader set serves them all), and `stage_set("plain", ..)` with
+     `not_authored_extras()` for the ground;
+  5. **acceptance**: five pixels on five shutters, five **different** names from `--locate`, and zero on the
+     ground.
+
+  Every one of those steps is an `edit` call or a small block; none of it needs line surgery.
