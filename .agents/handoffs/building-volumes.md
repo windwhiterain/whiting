@@ -194,3 +194,34 @@ strip does not cover — an opening whose reveal was welded to the **floor disc*
 per-node elevations so the base strip is not planar. The first measurement to make is `SolidOpen`'s boundary edges
 with the `PATIO_DEBUG`-style dump (it is not on this branch; the trick is recorded in the patio handoff's history):
 the edges will name the hole instead of guessing at it.
+
+## The base strip's one defect, measured (2026-10-27)
+
+The base strip closes a mass with **no openings**, and leaves one open with them. The `SHED_DEBUG` dump named it:
+every open edge sat at the floor plane on a **reveal's own sill**, e.g.
+
+```text
+OPEN [0.0, 0.0, 0.05] -> [1.1, 0.0, 0.05]
+OPEN [0.01, 0.0, 0.010000002] -> [1.09, 0.0, 0.01]
+```
+
+**The strip is built from the raw outline arrays (`outside_base`, `inside_floor`), and the walls are built from the
+cut loops (`outside_loop`/`soffit_points`, `inner_loop`/`floor_points`), which carry the stations an opening's reveal
+added.** So the strip's edges do not pair with the walls' bottoms wherever a reveal reaches the floor, and each such
+reveal leaves its sill's edge open. The two cut loops have the **same length** (the stations come from the same
+cuts), so the fix is mechanical:
+
+```text
+for edge in 0..soffit_points.len() {
+    let next = (edge + 1) % soffit_points.len();
+    solid.quad([soffit_points[next], soffit_points[edge], floor_points[edge], floor_points[next]],
+               Element::Mass(id, MassSurface::WallBase));
+}
+```
+
+That replacement was written and lost to a bad line slice; the worktree was reverted to `7c88e2a`, so it is one edit
+away. Two further things the same measurement says: the strip is **warped** when the outer and inner loops sit at
+different heights (`FaceNotPlanar` with `departure = slab/2` on the shed), which is why the inner loop must be at the
+**same** elevation as the outer — `inside_floor` was moved down for one commit and that is what produced the warped
+quads; and the plate must be **inset** from the wall's outer face, or the plate's side and the wall's face fight for
+the same pixels (measured on `hall_large` and `terrace`).
