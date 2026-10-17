@@ -110,27 +110,38 @@ fn main() {
     // **The identity table of a concave mass**, which is what a scene would draw through: every face of the
     // courtyard must name itself, and the two sides of the mouth must be two different elements.
     let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![Mass::new(outline(&[
-        [-5.0, -5.0],
-        [5.0, -5.0],
-        [5.0, 5.0],
-        [2.0, 5.0],
-        [2.0, -1.0],
-        [-2.0, -1.0],
-        [-2.0, 5.0],
-        [-5.0, 5.0],
-    ]), 3.2)
-    .with_wall(0.3)
-    .with_slab(0.4)];
+    skeleton.masses = vec![
+        Mass::new(
+            outline(&[
+                [-5.0, -5.0],
+                [5.0, -5.0],
+                [5.0, 5.0],
+                [2.0, 5.0],
+                [2.0, -1.0],
+                [-2.0, -1.0],
+                [-2.0, 5.0],
+                [-5.0, 5.0],
+            ]),
+            3.2,
+        )
+        .with_wall(0.3)
+        .with_slab(0.4),
+    ];
     let built = Building::new(skeleton).build().expect("the U expands");
     let table = whiting_building::identity::Identity::of(&built, 1);
     println!();
     println!("# the concave mass identity table");
-    println!("  it holds {} row(s): one per face an element names", table.len());
+    println!(
+        "  it holds {} row(s): one per face an element names",
+        table.len()
+    );
     for row in table.rows().iter().take(4) {
         println!("    id {:>3} to {}", row.id, row.path);
     }
     let last = table.rows().last().expect("a row");
     println!("    id {:>3} to {} (last)", last.id, last.path);
-    println!("  every row names something: {}", table.rows().iter().all(|row| !row.path.is_empty()));
+    println!(
+        "  every row names something: {}",
+        table.rows().iter().all(|row| !row.path.is_empty())
+    );
 }
