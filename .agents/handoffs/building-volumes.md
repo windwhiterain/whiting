@@ -316,3 +316,22 @@ boundary was compared against nothing.
 `floor_points[0]`. If the pairs differ, the strip must be built from the **same arrays the walls use**, subdivided at
 the same stations — i.e. the wall emission and the base strip have to share one description of the loop, which is the
 single change this whole slice has been circling.
+
+## The ids are shared, so the strip is not missing points — it is missing faces (2026-10-27)
+
+The four ids compare equal at the first corner of every mass:
+
+```text
+LOOPS outer 10 inner 10 stations 6 | ids outer_base 0 soffit 0 inner_floor 2 floor 2
+```
+
+and the station count is 6 with a 10-node cut loop, so **both the strip and the walls are subdivided at the same
+stations and share the same vertices.** The round-116 hypothesis — two descriptions with different ids — is dead, and
+the ids are the third hypothesis this slice has killed by measurement rather than argued away.
+
+What is left is one number: **how many `WallBase` faces exist** on the shed's mass. If it is 10 (the cut loop's
+length), the strip is emitted and its edges are somehow oriented the same way as the walls' rather than opposite, and
+the fix is one winding. If it is 4 (the outline's length), the strip is built from the raw loop after all and the
+`soffit_points` binding is not what the emission reads. If it is **0**, the strip is not emitted and the reason is in
+the code path between the loop and the quad — which is where the `let _ = walked; walked = true;` lines I left in while
+carving deserve a hard look: they were scaffolding, and scaffolding is exactly what can silently swallow an emission.
