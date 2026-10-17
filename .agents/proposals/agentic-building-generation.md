@@ -4216,3 +4216,36 @@ instrument to get it.
   it, so `VoidNotInside` and `VoidReachesTheWall` are now both silent for it — deliberately, and for the right reason, but it
   is still the one courtyard in the crate whose areas nothing can check.
 
+
+## A recorded sentence that was true of the subtraction and false of the clipper (2026-10-27)
+
+The courtyard record carried this, and it was written as a strength:
+
+> *"the two areas were measured equal (`9.0000` against `9.0000`) — measured rather than assumed"*
+
+**It was false of the clipper.** Two `3 × 3` squares sharing a corner enclose `18.0000`, and `clip` read `9.0000` —
+**half**, on both terms of the subtraction. So the check was silent **by cancellation, not by measurement**: two wrong
+numbers agreeing with each other. The sentence was true of what `VoidNotInside` compared and wrong about every number it
+compared.
+
+The same slice found the shape that got there with **no gate at all**: a **needle** — a square with a needle cut into its
+east edge and back out over a node it repeats — where every meeting is a point **two adjacent edges share as their own
+ends** (so `self_meeting` is rightly silent) and the repeats are **not neighbours** (so the zero-length-edge removal
+cannot reach them). Its own area is `64.0000`; `clip` read `32.0000`; the read grew as the **square** of the leak, so
+every leak under 4 cm was unreported and every report above it was eight times too small. On a **mass's own outline** it
+read `12.5000` against a true `50.0000`, with nothing in front of that caller.
+
+**Both faults are closed the only way that keeps the crate honest:** `clip` now answers **`None`** for a loop it cannot
+cover, and its four callers **decline** — `SharedArea` and the two plan readings return no number, and expansion reports
+`DidNotExpand` carrying `MiterUnresolved { loop_of, node }`. A function that cannot measure no longer returns a number.
+
+**The lesson worth keeping above the fix:** "measured rather than assumed" is a claim about **which number you trust**,
+and it is only as good as the instrument that produced it. Both numbers here were measured, agreed, and wrong together.
+When two readings cancel, ask what produced **each** one — the agreement of two wrong numbers is the most convincing
+kind of silence.
+
+**And what is still deliberately unchecked:** an **authored pinch** (two nodes at one place) builds a sound courtyard and
+`clip` cannot measure it, so `VoidNotInside` and `VoidReachesTheWall` are now silent for it **by design**, recorded rather
+than papered over. `validate::document` alone also stays silent about a mass outline with no triangulation — the name
+arrives through `Building::validate()` — and the honest fix is a **gate** in `check_masses` (asking `self_meeting` of a
+mass's own outline), which would give `UnattachedOverlap` a gate it has never had.
