@@ -1142,6 +1142,7 @@ fn main() {
     );
 
     a_mass_outline_that_meets_itself();
+    plans_the_clipper_cannot_compare();
 
     let mut lost_host = house();
     lost_host.masses[0].attachment = Some(Attachment {
@@ -1494,6 +1495,76 @@ fn a_mass_outline_that_meets_itself() {
         report_document(&format!("{name}, through validate::document"), &skeleton);
         report_building(&format!("{name}, through Building::validate"), &skeleton);
     }
+}
+
+/// Asks what the overlap subtraction does with a plan [`whiting_building::clip`] cannot measure,
+/// which is the case no gate in front of it covers.
+///
+/// # Invariants
+///
+/// - **The first row is a control and the other two are what keep it honest.** An authored pinch is
+///   the one meeting [`Violation::OutlineNotSimple`] is deliberately silent about, so a pinched
+///   plan reaches [`Violation::UnattachedOverlap`] with nothing in front of it; the second row is
+///   the same plan against a neighbour it does not touch, where the two plans really are apart and
+///   must stay silent; and the third is a plan this crate's own [`ops::split_outline`]
+///   (whiting_building::ops::split_outline) writes against the control's own neighbour, where the
+///   subtraction works and must go on reporting.
+/// - **The true area is printed beside every row**, because "`clip` cannot measure the first plan"
+///   cannot tell a pair that really does share area from a pair that really does not — and the
+///   first two rows are one plan and two neighbours, so that difference is the whole content.
+/// - **`OutlineNotSimple` is what shows the gate did not skip the pair.** Its absence from the first
+///   row is the evidence that the pair reached the subtraction at all.
+fn plans_the_clipper_cannot_compare() {
+    println!(
+        "\n# the overlap subtraction itself: a plan `clip` cannot measure, and the two pairs beside it"
+    );
+    for (name, plan, neighbour, truth) in [
+        (
+            "the control: two 3 x 3 squares sharing a corner, standing inside an 8 x 8 neighbour",
+            pinched_pair(),
+            square((-4.0, -4.0), (4.0, 4.0), 0.0),
+            "18.0000",
+        ),
+        (
+            "the same plan against a neighbour whose plan it does not touch",
+            pinched_pair(),
+            square((5.0, 0.0), (15.0, 10.0), 0.0),
+            "0.0000",
+        ),
+        (
+            "a square with one node written on its own east edge, against the control's neighbour",
+            collinear_square(),
+            square((-4.0, -4.0), (4.0, 4.0), 0.0),
+            "16.0000",
+        ),
+    ] {
+        let mut skeleton = BuildingSkeleton::default();
+        skeleton.masses = vec![
+            Mass::new(plan, 3.2).with_wall(0.3).with_slab(0.4),
+            Mass::new(neighbour, 3.2).with_wall(0.3).with_slab(0.4),
+        ];
+        let plan_of =
+            |mass: &Mass| -> Vec<Vec2> { mass.outline.iter().map(|n| n.position).collect() };
+        let shared = whiting_building::clip::shared_area(
+            &plan_of(&skeleton.masses[0]),
+            &plan_of(&skeleton.masses[1]),
+        );
+        println!(
+            "\n{name}: the two plans really share {truth} m2, and `clip` reads {}",
+            match shared {
+                Some(area) => format!("{area:.4} m2"),
+                None => "nothing, because it cannot measure the first plan".to_owned(),
+            }
+        );
+        report_document(&format!("{name}, through validate::document"), &skeleton);
+    }
+    println!(
+        "  the first row carries no OutlineNotSimple, so the gate in front of the subtraction did not \
+         skip this pair and the pair's reading is whatever the subtraction returned. The second row's \
+         two plans were compared and are apart: their bounding boxes miss, which is a measurement \
+         rather than a refusal, so the row must stay silent. The third row is the same neighbour \
+         against a plan `clip` can measure"
+    );
 }
 
 /// Returns a `10 × 10` square with a needle cut into its north edge and straight back out, the same
