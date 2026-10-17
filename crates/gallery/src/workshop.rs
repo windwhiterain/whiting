@@ -26,14 +26,15 @@ use building::ops;
 use building::parts::{Pin, Placement, Template};
 use building::{Building, Mass, MassId, PlanNode};
 
-use crate::building_mesh::points_where;
+use building::identity::Identity;
+use crate::building_identity::{building_extras, not_authored_extras, outputs_field, packed_where, stage_set};
 use crate::geometry::heightfield;
-use crate::instancing::{standing, template_points};
+use crate::instancing::standing;
 use crate::kit::{
-    camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
+    camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material, offset_by,
     post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{mesh_shaders, post_shader};
+use crate::shaders::post_shader;
 use building::expand::part_frame;
 
 /// The workshop: two storeys, a shallow gable, and enough wall for three bays a storey.
@@ -196,27 +197,32 @@ pub fn workshop() -> Value {
         "the workshop's own document must be clean, and it is not: {violations:?}"
     );
 
-    let shells = points_where(&built, |element| {
+    // **Every mesh the frame draws carries its elements' ids**, so a pixel of this workshop can be asked what
+    // it is. The shutters are one mesh drawn five times, so they carry their **template's** local ids and each
+    // placement's material offsets them onto the rows a bake would have written.
+    let table = Identity::of(&built, 1);
+    let shells = packed_where(&built, &table, |element| {
         matches!(element, building::Element::Mass(_, _))
     });
-    let roofs = points_where(&built, |element| {
+    let roofs = packed_where(&built, &table, |element| {
         matches!(element, building::Element::Roof(_, _))
     });
-    let floors = points_where(&built, |element| {
+    let floors = packed_where(&built, &table, |element| {
         matches!(element, building::Element::Slab(_, _))
     });
-    // **The shutters are not read off the baked mesh.** One template, five placements: the panel is expanded
-    // once in its own frame and stood five times by an instance transform, so the frame a baked part would
-    // have cost five times over costs one mesh and five rows.
     let skeleton = &building.skeleton;
-    let panel = template_points(
-        skeleton
-            .parts
-            .template(shutters)
-            .expect("the shutter template is in the document"),
-    )
-    .expect("the shutter expands on its own");
-    let mut hung: Vec<([f64; 3], [f64; 3], [f64; 3])> = Vec::new();
+    let held = skeleton
+        .parts
+        .template(shutters)
+        .expect("the shutter template is in the document")
+        .mesh()
+        .expect("the shutter expands on its own");
+    let local = Identity::of(&held, 1);
+    let panel = packed_where(&held, &local, |_| true);
+    // **The bases are read from the baked table**, not copied from a probe's printout: a placement's offset is
+    // the least id the table gives an element of that placement, so the template's local ids land on exactly
+    // the rows a bake would have written.
+    let mut hung: Vec<(([f64; 3], [f64; 3], [f64; 3]), i64)> = Vec::new();
     for (index, placement) in skeleton.parts.placements().iter().enumerate() {
         if placement.template != shutters {
             continue;
@@ -224,7 +230,14 @@ pub fn workshop() -> Value {
         let frame = part_frame(skeleton, index)
             .expect("the wall offsets")
             .expect("every shutter's slot is in the grid");
-        hung.push(standing(&frame));
+        let base = table
+            .rows()
+            .iter()
+            .filter(|row| matches!(row.element, building::Element::Part { placement: at, .. } if at == index))
+            .map(|row| row.id)
+            .min()
+            .expect("the placement draws at least one surface");
+        hung.push((standing(&frame), i64::from(base) - 1));
     }
 
     // Rendered wall, sheet metal, a boarded first floor and dry earth. The floor is its own material because
@@ -241,9 +254,50 @@ pub fn workshop() -> Value {
         ("board", board),
         ("earth", earth),
     ] {
-        materials.push(mesh_material(&format!("{name}-cast"), "shadowing", body()));
-        materials.push(mesh_material(&format!("{name}-depth"), "depthing", body()));
-        materials.push(mesh_material(&format!("{name}-shade"), "lighting", body()));
+        materials.push(mesh_material(
+            &format!("{name}-cast"),
+            "authored_shadowing",
+            body(),
+        ));
+        materials.push(mesh_material(
+            &format!("{name}-depth"),
+            "authored_depthing",
+            body(),
+        ));
+        materials.push(mesh_material(
+            &format!("{name}-shade"),
+            "authored_lighting",
+            body(),
+        ));
+    }
+    // **One material set per placement**, because a scene's instance carries no custom values: the offset that
+    // makes five shutter pixels answer five different elements lives on the row the instance names, and five
+    // rows name five materials that all draw with one shader.
+    for (index, (_, offset)) in hung.iter().enumerate() {
+        let offset = *offset as f64;
+        for (stage, shader) in [
+            ("cast", "authored_shadowing"),
+            ("depth", "authored_depthing"),
+            ("shade", "authored_lighting"),
+        ] {
+            materials.push(mesh_material(
+                &format!("shutter-{index}-{stage}"),
+                shader,
+                offset_by(board(), offset),
+            ));
+        }
+    }
+    // The ground is not an element of the building, and it still writes the output — with the reserved zero.
+    for (stage, shader) in [
+        ("cast", "plain_shadowing"),
+        ("depth", "plain_depthing"),
+        ("shade", "plain_lighting"),
+    ] {
+        materials.push(mesh_material(
+            &format!("ground-{stage}"),
+            shader,
+            earth(),
+        ));
     }
 
     let placed = |stage: &str| {
@@ -251,7 +305,7 @@ pub fn workshop() -> Value {
             ("shells", "plaster"),
             ("roofs", "metal"),
             ("floors", "board"),
-            ("ground", "earth"),
+            ("ground", "ground"),
         ]
         .into_iter()
         .map(|(label, material)| {
@@ -265,24 +319,31 @@ pub fn workshop() -> Value {
             )
         })
         .collect::<Vec<_>>();
-        // **Five rows for five shutters, over one mesh.** Each row is the transform that stands the panel
-        // where a placement puts it, which is the whole of what an instance is.
+        // **Five rows for five shutters, over one mesh**, and each names **its own** material so the offset that
+        // separates the five lives on the row rather than on the geometry.
         rows.extend(
             hung.iter()
                 .enumerate()
-                .map(|(index, (translation, rotation, scale))| {
+                .map(|(index, ((translation, rotation, scale), _))| {
                     instance(
                         &format!("shutter-{index}-{stage}"),
                         "shutters",
                         *translation,
                         *rotation,
                         *scale,
-                        &format!("board-{stage}"),
+                        &format!("shutter-{index}-{stage}"),
                     )
                 }),
         );
         rows
     };
+
+    // **Two point schemas, because there are two kinds of surface.** Every authored mesh — the shell, the
+    // roofs, the plate and the shutters — carries `authored_id`; the ground carries no id at all and writes the
+    // reserved zero from a constant.
+    let extras = building_extras();
+    let point = extras.point_schema();
+    let plain = not_authored_extras();
 
     Value::structure([
         ("name".to_owned(), Value::String("workshop".to_owned())),
@@ -309,20 +370,22 @@ pub fn workshop() -> Value {
         ),
         (
             "shaders".to_owned(),
-            Value::List(
-                mesh_shaders("", "")
-                    .into_iter()
-                    .chain(std::iter::once(post_shader(GRADE, SKY, None)))
-                    .collect(),
-            ),
+            Value::List({
+                let mut shaders = stage_set("authored", "", "", &point, &extras);
+                shaders.extend(stage_set("plain", "", "", &plain.point_schema(), &plain));
+                shaders.push(post_shader(GRADE, SKY, None));
+                shaders
+            }),
         ),
+        // The one image this scene writes beside the frame: which element each pixel shows.
+        ("outputs".to_owned(), outputs_field()),
         (
             "meshes".to_owned(),
             Value::List(vec![
-                mesh("shells", "Triangles", shaded_point_schema(), shells),
-                mesh("roofs", "Triangles", shaded_point_schema(), roofs),
-                mesh("floors", "Triangles", shaded_point_schema(), floors),
-                mesh("shutters", "Triangles", shaded_point_schema(), panel),
+                mesh("shells", "Triangles", point.clone(), shells),
+                mesh("roofs", "Triangles", point.clone(), roofs),
+                mesh("floors", "Triangles", point.clone(), floors),
+                mesh("shutters", "Triangles", point, panel),
                 mesh(
                     "ground",
                     "Triangles",

@@ -102,6 +102,20 @@ pub fn ids(built: &BuildingMesh, identity: &Identity) -> Vec<u32> {
 /// It is [`crate::building_mesh::points_where`] with the id added: the same corner normals, the same
 /// positions, and the plan position as the texture coordinate, which is what the building materials read.
 pub fn packed(built: &BuildingMesh, identity: &Identity) -> PackedList {
+    packed_where(built, identity, |_| true)
+}
+
+/// Returns the points of every face an element filter keeps, each corner carrying its element's id.
+///
+/// # Invariants
+///
+/// The filter is applied to a **face** after its three ids are consumed, so a filtered mesh holds whole
+/// triangles and its ids stay in step with the table whatever the filter keeps.
+pub fn packed_where(
+    built: &BuildingMesh,
+    identity: &Identity,
+    keep: impl Fn(&building::Element) -> bool,
+) -> PackedList {
     let schema = building_extras().point_schema();
     let layout = graphics::layout::packed_layout(&schema)
         .expect("the building's own point schema is a struct of components");
@@ -113,6 +127,9 @@ pub fn packed(built: &BuildingMesh, identity: &Identity) -> PackedList {
         let id = f64::from(ids.next().expect("one id per corner"));
         let _ = ids.next();
         let _ = ids.next();
+        if !keep(&face.element) {
+            continue;
+        }
         let triangle = built.triangle(face);
         for corner in 0..3 {
             let position = triangle[corner];
