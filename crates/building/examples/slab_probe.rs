@@ -6,6 +6,11 @@
 //! flat-roofed starter and of a hipped one over the same starter are the same mass, because a roof is
 //! above the wall top and a plate is a plate.
 //!
+//! **A flat roof is a plate and a starter is a room**, so the document holds **two** of them: the plate
+//! on the wall top and the plate the mass stands on. The probe reads the role and host off each rather
+//! than counting them, because the count is the reading that hid the second one — a starter that carried
+//! only its roof plate was a mass with no floor, and every number below it stayed exactly as true.
+//!
 //! Run with `cargo run -p whiting-building --example slab_probe`.
 
 use whiting_building::derive::{RoofStyle, Starter, starter};
@@ -39,6 +44,16 @@ fn main() {
         skeleton.slabs.len()
     );
     let slab = &skeleton.slabs[0];
+    // **The document says what each of its slabs is**, and a flat-roofed starter holds two of them: the
+    // plate its roof is, and the plate its mass stands on. A style decides what stands on the wall top,
+    // never what stands under the wall, so this line reads a role and a host rather than a count — a
+    // count of one here would have been the fault and not have shown.
+    for (index, held) in skeleton.slabs.iter().enumerate() {
+        println!(
+            "  slab {index} is a {:?} hosted on {:?}, {:.4} .. {:.4}",
+            held.role, held.host, held.bottom, held.top
+        );
+    }
     let eave_width = STARTER.width + 2.0 * STARTER.overhang;
     let eave_depth = STARTER.depth + 2.0 * STARTER.overhang;
     println!(
@@ -87,9 +102,12 @@ fn main() {
         hipped_built.faces_of(SolidId::Mass(MassId(0))).len()
     );
     println!(
-        "  the hipped one has {} roof(s) and {} slab(s); the flat one the other way round",
+        "  the hipped one has {} roof(s) and {} slab(s), the flat one {} and {}: the style decides \
+         what stands on the wall top and never what stands under it",
         hipped.skeleton.roofs.len(),
-        hipped.skeleton.slabs.len()
+        hipped.skeleton.slabs.len(),
+        skeleton.roofs.len(),
+        skeleton.slabs.len()
     );
 
     println!("\n# seating moves the plate with the building it covers");
@@ -101,7 +119,7 @@ fn main() {
     let (_mass_low, mass_high) = seated.bounds_of(SolidId::Mass(MassId(0)));
     let (slab_low, slab_high) = seated.bounds_of(SolidId::Slab(SlabId(0)));
     println!(
-        "  {} mass seated and {} slab moved; the plate now runs y {:.4} .. {:.4} and the wall top {:.4}",
+        "  {} mass seated and {} slab(s) moved; the plate now runs y {:.4} .. {:.4} and the wall top {:.4}",
         report.len(),
         report.slabs,
         slab_low[1],

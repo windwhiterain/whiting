@@ -693,6 +693,12 @@ Measured by `examples/slab_probe.rs` on a flat-roofed 7 × 11 starter:
 | an unhoused plate | `masses seated 0, slabs moved 0` — still at `5.0000 .. 5.4000` |
 | the two faults | `SlabNotThick { thickness: 0.0 }`, `SlabNotAPolygon { nodes: 2 }`, refused by the build |
 
+**Re-measured 2026-10-17: a flat starter holds two slabs, not one, and the plate is what the second is.**
+`derive::starter`'s `RoofStyle::Flat` arm used to build its own document and return, which dropped the
+ground plate derived above it — so for sixteen days the "1 mass, 0 roofs, 1 slab" line in that table was
+true of a building with no floor, and every other number in it still held. The fix and its measurements are
+in *What the flat arm kept* below.
+
 **One process lesson, the same one the wall slice recorded from the other side.** The new variants broke
 two probes' exhaustive matches over `SolidId` — and the fix was not to widen a wildcard but to give
 `validate_probe` something real to say: it now compares a slab's **authored plan loop** with the mesh's
@@ -1262,7 +1268,7 @@ That is the difference between a style and a preset: **a preset is the numbers, 
 them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
 chosen twice.
 
-## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, and again on 2026-10-31 when the ground was cut away from under every plate)
+## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, again on 2026-10-31 when the ground was cut away from under every plate, and again on 2026-10-17 when `RoofStyle::Flat` kept the plate every other style already carried — **all nine unmoved**, see *What the flat arm kept* below)
 
 Nine building scenes render, and each one's picture has a hash. They are recorded here because the question a
 refactor has to answer is *"did the picture change?"*, and a hash answers it in a way that looking at two images
@@ -1287,6 +1293,13 @@ its own sides and top, and a doorway notches that base instead of being floored 
 no opening moved for the first two reasons alone and `shed`, `workshop` and `identity` for all three. A baseline that
 held these nine still would have been the shell's, and a baseline predicting the new ones before the branch merged
 would have been a guess; these are the numbers the merged tip renders.
+
+**Re-recorded 2026-10-17, and the table is unchanged.** A later slice gave the flat-roofed arm the ground
+plate it had been dropping, which adds a slab to every flat starter — and **no scene is a flat starter**,
+so all nine hashes below still read what they read: `house B13154AD7D29F938` … `identity 974FB5B24E1E7A35`,
+with the nine `authored_id` buffers and the 806 identity rows beside them unmoved. The evidence for that
+claim, and the canary that was fired to make the claim mean something, are in *What the flat arm kept*
+further down.
 
 ### The plates are drawn: seven of the nine moved, and two of the nine never needed to (2026-10-29)
 
@@ -2454,6 +2467,90 @@ ground-hole slice's first cut emitted one triangle per four-corner piece, which 
 one; the frame showed sky through the ground while `--where` still reported plausible floor counts. What caught it was
 `--locate` on a floor pixel with an untouched channel (`monoliths`) as the control. **Measure with an instrument that
 can disagree with you.**
+
+## What the flat arm kept, and why none of the nine frames moved (2026-10-17, branch `feature/building-flat-plate`)
+
+The brief for this slice said *"scenes that use `RoofStyle::Flat` will gain a plate, so their documents, their
+identity tables and their frames may all change"* and asked for a moved-hash table. **The premise is false and
+was false before the first edit: no gallery scene uses `RoofStyle::Flat` at all.** Measured two ways —
+
+| what the brief expected to move | what is actually there |
+| --- | --- |
+| scenes built with `RoofStyle::Flat` | **none.** `house.rs` is `Hip`; `authored.rs` (the `identity` scene), `shed.rs`, `yard.rs` (both its shed and its store) and `workshop.rs` are `Gable`; `hall.rs` and `wing.rs` derive from `derive::HALL` and `terrace.rs` from `derive::COTTAGE`, and the two styles carry `form: RoofStyle::Gable` and `form: RoofStyle::Hip` respectively |
+| the two users of `RoofStyle::Flat` in the tree | `examples/slab_probe.rs` (the acceptance probe for a flat roof as a plate) and `examples/validate_probe.rs` (the three-hosted-roles fixture). Neither renders a scene, so neither has a frame |
+| the stronger reading of the same fact | `crates/gallery` never calls `Slab::roof` at all, so **no gallery document holds a `SlabRole::Roof` slab** — the arm this slice fixes writes nothing any of the nine scenes can see |
+
+So the nine frames were rendered before the edit and again after it, and **every one of the nine is
+byte-identical, as is every one of the nine `authored_id` buffers**:
+
+| scene | frame hash, before and after | the `authored_id` buffer | identity rows, before and after |
+| --- | --- | --- | --- |
+| `house` | `B13154AD7D29F938` **same** | `7A954F87EBF22947` same | 31 **same** |
+| `hall` | `C4339E6310EA1C37` **same** | `777AA32F8B0962AC` same | 77 **same** |
+| `hall_large` | `43D3780A15E3D08E` **same** | `85A48CCC04560C60` same | 109 **same** |
+| `identity` | `974FB5B24E1E7A35` **same** | `EC7F02766DA2CF9F` same | 77 **same** |
+| `shed` | `882B8F9A7C671B0D` **same** | `F023C3F427D48748` same | 66 **same** |
+| `terrace` | `EDF3F4B3CF2A9686` **same** | `75579E03187003BB` same | 123 **same** |
+| `workshop` | `7DD5D40894181EA7` **same** | `63CBE9DBC62EC7F3` same | 123 **same** |
+| `wing` | `14E3E27F9F9E1A83` **same** | `6D47CA55C9993292` same | 99 **same** |
+| `yard` | `FDC446B24E98CE04` **same** | `1B79ED37D7110694` same | 101 **same** |
+
+The baseline table above is therefore **re-recorded unchanged**, and it was checked rather than trusted:
+the nine hashes read on this branch's parent are the nine the table already carried, so the comparison
+below is against a tip that renders what the table says it renders. `scene_identity_probe` reads **806**
+rows, the same total as the role slice recorded, and its four pinned readings (`identity` 3 and 16,
+`house` 15, `workshop` 49) all still answer the strings the reports quote.
+
+**The instrument was proved able to fire before its silence was read as a fact.** A one-line canary —
+`house`'s camera eye raised from `4.2` to `4.21` — moved `house` from `B13154AD7D29F938` to
+`BF222614E7EEBBAD`, and the perturbation was reverted with the tree left clean. Without that, nine equal
+hashes only say the render loop agreed with itself.
+
+### The fault, and the fix, on the one document that does use a flat roof
+
+`derive::starter` derived the ground plate *before* it chose a roof, and every arm that fell through to
+`with_plate` carried it. `RoofStyle::Flat` **built its own `Building` and returned**, so the plate
+computed above it was dropped: a flat-roofed starter was a mass with a roof and no floor, in a model
+where a mass is a wall ring plus a plate. The style arms now return a `Top` — the one value that is
+either a pitched `Roof` or the plate a flat roof is — and `with_top` is the single place that knows where
+each kind goes and carries the plate either way. The arm that built the whole document is what let the
+plate go: it had to remember every other thing the function puts in one, and it remembered the roof.
+
+| reading on `slab_probe`'s 7 × 11 flat starter | before | after |
+| --- | --- | --- |
+| the document | 1 mass, 0 roofs, **1 slab** | 1 mass, 0 roofs, **2 slabs** |
+| what the slabs are | not printed — the probe read `slabs[0]` and counted | **`slab 0` is a `Roof` hosted on `MassId(0)`, `3.4500 .. 3.7300`**; **`slab 1` is a `Plate` hosted on `MassId(0)`, `-0.4500 .. 0.0000`**, its top at the ground line |
+| `validate()` | 0 violations | **0 violations** — `PlateCoverage` stays silent, because the plate it measures is the one on the mass's inner loop, which is the floor the check measures against |
+| seating | 1 mass seated, 1 slab moved | 1 mass seated, **2 slabs** moved, and the seated document still reads 0 violations |
+| the identity rows of this document | 6, all `slab 0` | **12**, `slab 0`'s six and `slab 1`'s six |
+
+**A plate that did not cover its outline would have been a second fault, and it is not one.** The fixed
+document reports **0 violations** rather than a `PlateCoverage`: the roof plate hangs over the **eave**
+(outward, by the overhang) and carries `SlabRole::Roof`, and the check selects the plate **by role** and
+reads no elevation at all, so the overhang is not a shortfall. The control that the role slice recorded is
+untouched — `validate_probe`'s output is byte-identical before and after, down to
+`PlateCoverage { mass: MassId(0), slab: SlabId(0), plate: 50.759995, outline: 66.56, short: 15.800003 }`
+on the same loop pulled in half a metre on all four sides.
+
+### The rest of the gate, on the branch
+
+- all **29** building examples exit 0 (and the `census` one is run through `cargo run -p whiting-building
+  --example census` as well, because the mountain crate's `census` example collides with it in
+  `target/debug/examples` and only one of the two binaries survives that name);
+- `cargo build --workspace --all-targets` exits 0 and the warnings are the four pre-existing ones —
+  the `census.exe` filename collision and the three gallery probes the punch list names
+  (`seam_shading_probe`, `alpine_probe`, `step_fit_probe`); nothing in `whiting-building` warns;
+- `cargo fmt -p whiting-building -- --check` is clean, and `cargo fmt --all -- --check` is clean on the
+  merged tip.
+
+### What this slice's brief got wrong
+
+**It predicted the wrong set of scenes twice.** It asked which *scenes* use `RoofStyle::Flat` and for a
+moved-hash table for them; there are none, so the honest answer to acceptance item 2 is *"nothing moved,
+here are the nine that did not"*. It also assumed the change would be visible in a rendered picture, and
+the only document it does move has never been in a scene. What the brief got **right** is the shape of
+the fault and the measurement list — the nine hashes, the identity tables, the `PlateCoverage` silence and
+the twenty-nine examples are what proved the fix as quiet as it turned out to be.
 
 ## The merge procedure every brief must state correctly (2026-10-27)
 

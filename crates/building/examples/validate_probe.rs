@@ -450,6 +450,10 @@ fn hip_starter_with_a_floor_at_the_ground_line() -> BuildingSkeleton {
 /// of the question the plate and the floor do not raise: a roof is seated on something a plate never
 /// was, and the check still says the same thing about it. The hip starter's own pitched roof stays where
 /// it is, because a validation control has no business changing what is drawn.
+///
+/// `flat.slabs[0]` is that roof rather than the ground plate the same starter also carries: the flat arm
+/// puts what stands on the wall top first and the plate the mass stands on second, and this fixture
+/// needs the one that hangs over the eave.
 fn three_hosted_roles(host: MassId) -> BuildingSkeleton {
     let mut skeleton = hip_starter();
     let mass = skeleton.masses[0].clone();

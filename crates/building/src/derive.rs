@@ -145,7 +145,9 @@ pub const RIDGE_INSETS: [f32; 3] = [0.4, 0.5, 0.6];
 ///   stream either way, and the value used is the first of the published list at or after the drawn
 ///   one that the eave admits ([`Eave::admits`]) — so the document still names one of the three,
 ///   and a square, which admits only the first two, never stands its hip feet on the wrong corners.
-/// - **The plate is the mass's inner loop, and its top is the ground.** The floor is seated on the
+/// - **The plate is the mass's inner loop, its top is the ground, and every roof style carries it.** A
+///   style decides what stands on the wall top; nothing it can be takes the floor away, which is the
+///   reading that once did not hold for [`RoofStyle::Flat`]. The floor is seated on the
 ///   same loop the walls are built on — the way [`floor_slab`] seats a first floor — rather than
 ///   under the whole footprint. A footprint-wide plate puts its four edges in exactly the wall ring's
 ///   outer-face planes, so the floor is a depth tie with the wall it carries; the inner loop leaves the
@@ -186,7 +188,7 @@ pub fn starter(starter: &Starter) -> Building {
         // `UnattachedOverlap`, `MassHostMissing`, `RoofHostMissing`, `RoofEaveTooShort`,
         // `RoofPlaneTooShort`, `RoofCrestMissing`, and the four solid faults with
         // `FaceNotPlanar`), so a mass without a roof would be silent rather than reported.
-        return with_plate(vec![mass], Vec::new(), plate);
+        return with_top(vec![mass], None, plate);
     };
     let roof = match starter.roof {
         RoofStyle::Hip => {
@@ -199,25 +201,54 @@ pub fn starter(starter: &Starter) -> Building {
                 // Never empty, and not a guess: the middle inset is half the short span, and the
                 // short span is at most the long run by the way `Eave::read` picks its axis.
                 .expect("the middle published inset is admissible on every eave this reads");
-            hip_over(&eave, host, starter.rise, starter.roof_thickness, inset)
+            Top::Roof(hip_over(
+                &eave,
+                host,
+                starter.rise,
+                starter.roof_thickness,
+                inset,
+            ))
         }
-        RoofStyle::Gable => gable_over(&eave, host, starter.rise, starter.roof_thickness),
-        // **A flat roof is a plate, not a roof**, so this arm returns a slab and there is no roof at all:
-        // the roof model's skin is a strip between a crest row and an eave row, and zero rise would make
-        // those rows coincide and every facet of the strip have no area.
-        RoofStyle::Flat => {
-            let mut skeleton = BuildingSkeleton::new(vec![mass], Vec::new());
-            skeleton
-                .slabs
-                .push(flat_over(&eave, host, starter.roof_thickness));
-            return Building::new(skeleton);
-        }
+        RoofStyle::Gable => Top::Roof(gable_over(
+            &eave,
+            host,
+            starter.rise,
+            starter.roof_thickness,
+        )),
+        // **A flat roof is a plate, not a roof**, so this arm builds a slab and the document holds no
+        // roof at all: the roof model's skin is a strip between a crest row and an eave row, and zero
+        // rise would make those rows coincide and every facet of the strip have no area.
+        //
+        // **What the style decides is what stands on the wall top, never what stands under the wall.**
+        // The plate the mass's inner loop carries was derived above and it is carried here like every
+        // other style's, so a flat-roofed starter is a room with a floor: a mass is a wall ring plus a
+        // plate ([`SlabRole`](crate::slab::SlabRole)), and an arm that returned early on its roof would
+        // have left the ring standing on nothing.
+        RoofStyle::Flat => Top::Plate(flat_over(&eave, host, starter.roof_thickness)),
     };
-    with_plate(vec![mass], vec![roof], plate)
+    with_top(vec![mass], Some(roof), plate)
 }
 
-/// Returns a starter's building: the mass, whatever roof it asked for, and the plate the mass's inner
-/// loop could carry.
+/// What a starter's roof style leaves on the wall top: a pitched [`Roof`], or the plate a flat roof is.
+///
+/// # Invariants
+///
+/// **The one arm that builds the wrong kind of element is named rather than spelt out twice.** A hip and
+/// a gable are skins, so both land in the document's `roofs`; a flat roof is a [`Slab`], so it lands in
+/// its `slabs` beside the mass's own plate — which is why this is a two-kinded value at all, and why
+/// [`with_top`] is the single place that knows where each kind goes. One arm building the document itself
+/// is what let a flat starter drop the plate derived above it: the arm that returned a whole
+/// [`Building`] had to remember every other thing the function puts in one, and it remembered the roof.
+#[derive(Debug)]
+enum Top {
+    /// A pitched roof, over the eave loop.
+    Roof(Roof),
+    /// The plate a flat roof is, over the same eave loop.
+    Plate(Slab),
+}
+
+/// Returns a starter's building: the mass, whatever its style left on the wall top, and the plate the
+/// mass's inner loop could carry.
 ///
 /// # Invariants
 ///
@@ -225,8 +256,21 @@ pub fn starter(starter: &Starter) -> Building {
 /// walk [`inner_loop`] refuses is the wall ring's own, so a plate placed anywhere but on it would be a
 /// second opinion about where the inside of the building is — which is the one thing this module's
 /// floors exist to say once.
-fn with_plate(masses: Vec<Mass>, roofs: Vec<Roof>, plate: Option<Slab>) -> Building {
-    let mut skeleton = BuildingSkeleton::new(masses, roofs);
+///
+/// **The plate is carried by every style, and it is the last slab in the list.** A flat starter holds a
+/// roof plate and then the plate its mass stands on, so `SlabId(0)` is the roof and `SlabId(1)` the floor
+/// whichever way a reader counts; that order is what `examples/slab_probe.rs` and
+/// `examples/validate_probe.rs` read their roof out of.
+fn with_top(masses: Vec<Mass>, top: Option<Top>, plate: Option<Slab>) -> Building {
+    let mut skeleton = match top {
+        Some(Top::Roof(roof)) => BuildingSkeleton::new(masses, vec![roof]),
+        Some(Top::Plate(slab)) => {
+            let mut skeleton = BuildingSkeleton::new(masses, Vec::new());
+            skeleton.slabs.push(slab);
+            skeleton
+        }
+        None => BuildingSkeleton::new(masses, Vec::new()),
+    };
     skeleton.slabs.extend(plate);
     Building::new(skeleton)
 }
