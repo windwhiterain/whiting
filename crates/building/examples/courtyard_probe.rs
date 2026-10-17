@@ -39,7 +39,10 @@ fn main() {
     let mut skeleton = BuildingSkeleton::default();
     skeleton.masses = vec![Mass::new(u_shape(), 3.2).with_wall(0.3).with_slab(0.4)];
     println!("# a U-shaped mass: 10 x 10 outside, a 4 x 6 courtyard open to the north");
-    println!("  the outline is {} nodes, two of them reflex", u_shape().len());
+    println!(
+        "  the outline is {} nodes, two of them reflex",
+        u_shape().len()
+    );
 
     let building = Building::new(skeleton);
     let violations = building.validate();
