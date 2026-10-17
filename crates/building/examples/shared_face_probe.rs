@@ -19,7 +19,7 @@ use whiting_building::derive::HALL;
 use whiting_building::grid::{FaceRef, Rhythm};
 use whiting_building::openings::{Inset, Opening};
 use whiting_building::ops;
-use whiting_building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, SolidId};
+use whiting_building::{BuildingSkeleton, Mass, MassId, PlanNode};
 
 /// Returns a rectangular outline.
 fn rectangle(x0: f32, z0: f32, x1: f32, z1: f32) -> Vec<PlanNode> {
@@ -29,8 +29,24 @@ fn rectangle(x0: f32, z0: f32, x1: f32, z1: f32) -> Vec<PlanNode> {
         .collect()
 }
 
-fn main() {
-    let plan = HALL.starter(6.0, 6.0, 1);
+/// Answers whether one split-and-cut on a mass face is accepted.
+fn cut_on(skeleton: &mut BuildingSkeleton, mass: MassId, face: usize) -> bool {
+    let held = FaceRef::new(mass, face);
+    ops::split_face(
+        skeleton,
+        held,
+        &Rhythm::Even { count: 2 },
+        &Rhythm::Even { count: 1 },
+    );
+    ops::add_opening(
+        skeleton,
+        Opening::new(held, 0, 0, Inset::new(0.6, 0.6, 0.0, 2.1)),
+    )
+    .is_some()
+}
+
+/// Returns a 6 x 6 room and a 6 x 4 wing attached to it, the pair the shared face belongs to.
+fn pair(plan: &whiting_building::derive::Starter) -> (BuildingSkeleton, MassId, MassId) {
     let mut skeleton = BuildingSkeleton::default();
     let host = ops::add_mass(
         &mut skeleton,
@@ -47,54 +63,42 @@ fn main() {
             .with_slab(plan.slab),
     )
     .expect("the host takes a station off its corners");
+    (skeleton, host, wing)
+}
 
-    // **The host's east face is the shared one**: the wing reaches west over it by the wall's thickness. Split it
-    // and cut a door, which is exactly what a scene must not do.
-    let shared = FaceRef::new(host, 1);
-    ops::split_face(
-        &mut skeleton,
-        shared,
-        &Rhythm::Even { count: 2 },
-        &Rhythm::Even { count: 1 },
-    );
-    let cut = ops::add_opening(
-        &mut skeleton,
-        Opening::new(shared, 0, 0, Inset::new(0.6, 0.6, 0.0, 2.1)),
-    );
+fn main() {
+    let plan = HALL.starter(6.0, 6.0, 1);
+    println!("# the same split and the same 2.1 m door, on three faces");
 
-    let building = Building::new(skeleton);
-    let violations = building.validate();
-    println!("# a door cut into the face two arms share");
-    println!("  the cut was accepted: {}", cut.is_some());
-    println!("  the document reports {} violation(s)", violations.len());
-    for violation in &violations {
-        println!("    {violation:?}");
-    }
-    match building.build() {
-        Ok(built) => {
-            for (id, label) in [(host, "host"), (wing, "wing")] {
-                let solid = SolidId::Mass(id);
-                println!(
-                    "  the {label}: manifold {}, boundary loops {}, volume {:.4}",
-                    built.solid_is_manifold(solid),
-                    built.solid_boundary_loops(solid),
-                    built.solid_signed_volume(solid)
-                );
-            }
-        }
-        Err(error) => println!(
-            "  the document does not build: {:?}",
-            error.problems.first()
-        ),
-    }
+    // 1. A lone 6 x 6 room: nothing is attached to it, so nothing is shared.
+    let mut alone = BuildingSkeleton::default();
+    let lone = ops::add_mass(
+        &mut alone,
+        Mass::new(rectangle(-3.0, -3.0, 3.0, 3.0), plan.height)
+            .with_wall(plan.wall)
+            .with_slab(plan.slab),
+    );
+    let lone_cut = cut_on(&mut alone, lone, 1);
+
+    // 2. The pair, cut on the wing outer face: not shared by anything.
+    let (mut outer, _host, wing) = pair(&plan);
+    let outer_cut = cut_on(&mut outer, wing, 1);
+
+    // 3. The pair, cut on the host east face: the one the wing overlaps.
+    let (mut shared, host, _wing) = pair(&plan);
+    let shared_cut = cut_on(&mut shared, host, 1);
+
+    println!("  a lone room, its east face:        accepted {lone_cut}");
+    println!("  an attached pair, a wing outer face: accepted {outer_cut}");
+    println!("  an attached pair, the shared face:   accepted {shared_cut}");
     println!(
         "\n# the reading: {}",
-        if violations.is_empty() {
-            "the crate accepts a hole in a shared face, so the refusal the closing record names would have to be a new \
-             judgement rather than a fault it already sees"
+        if lone_cut && outer_cut && !shared_cut {
+            "only the shared face is refused, so the refusal is attachment-aware"
+        } else if !shared_cut && !(lone_cut && outer_cut) {
+            "the refusal is not about the attachment: the same cut fails on faces nothing shares"
         } else {
-            "the crate already reports something about a hole in a shared face"
+            "the shared face accepts the cut, so nothing guards it"
         }
     );
-    let _ = MassId(0);
 }

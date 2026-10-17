@@ -1649,14 +1649,26 @@ impression — that is the standard this project has held itself to since the fi
   nothing stops a `split_face` on the face two arms share; the scene avoids it by choosing which faces to split. A
   violation would need the attachment's station, and a new `Violation` is a compiler-enforced audit of every match.
 
-  **Corrected by measurement (2026-10-27, `shared_face_probe`).** That sentence was too strong. On an attached
-  pair — a 6 × 6 host with a 6 × 4 wing overlapping it by the wall — splitting the host's shared face and cutting a
-  2.1 m door through it is **refused**: `ops::add_opening` answers `None`, the document reports **0 violations**,
-  and both solids stay manifold and closed. So the crate does not accept a hole in a shared face today, and the
-  question a `Violation` would answer is a different one: *is the refusal for the right reason?* The probe cannot
-  yet tell an attachment-aware refusal from a grid or reveal limit, and **that distinction is the next slice's** —
-  because a refusal that happens for the wrong reason is the same failure as an acceptance for the wrong reason,
-  one layer down.
+  **Corrected by measurement (2026-10-27, `shared_face_probe`).** That sentence was too strong, twice over. First the
+  cut was refused on an attached pair; then a three-arm experiment said **why**, and the answer is that the guard is
+  the right one:
+
+  | the same split and the same 2.1 m door, on… | accepted |
+  | --- | --- |
+  | a lone 6 × 6 room's east face | **yes** |
+  | an attached pair's **wing outer** face | **yes** |
+  | an attached pair's **shared** face | **no** |
+
+  So the refusal is **attachment-aware**, not a grid or reveal limit: the same cut succeeds on two faces nothing
+  shares and fails only on the one the wing overlaps. **The crate already keeps the invariant this record claimed it
+  did not**, and the honest statement is the opposite of the original: a shared face is treated as not-a-facade by
+  `add_opening`, and a scene that wants a hole there is refused rather than drawing one backed by the neighbour's
+  wall.
+
+  What is still missing is only the **name**: the refusal is silent — `ops::add_opening` answers `None` and
+  `validate` reports nothing, so a caller sees a missing opening rather than a stated reason. A `Violation` variant
+  would say *why*, and that is a compiler-enforced audit of every match; whether it is worth that cost is a judgement
+  for the next slice rather than a fault to fix.
 - **`site::report`'s overlaps are plan bounding boxes** and say so in their own docs: two L-shaped buildings can
   have overlapping boxes and no shared wall. The report **lists** and does not judge.
 - **The shadow terminator toothing** is the shadow subsystem's, not this one's.
