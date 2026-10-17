@@ -94,13 +94,16 @@ const NORMAL_FLOOR: f64 = 1.0e-12;
 /// different things: a band across the tube is a **station**, and a band around it is a **slot**.
 /// Eight of the first over the length and sixteen of the second around it makes the two bands
 /// visibly different widths on screen, so a reader can tell which is which without being told.
-///
-/// The pattern is **periodic in `v`**: `v` never reaches one, because `v` is `slot / around`, so
-/// the last column of texels is only ever read by the points nearest the seam and a pattern whose
-/// ends disagree would draw a dark line down a tube that has none.
 const CHECKER_SIZE: i64 = 128;
 const CHECKER_ACROSS_U: i64 = 8;
 const CHECKER_AROUND_V: i64 = 16;
+
+/// How many cells the pattern runs before it repeats.
+///
+/// **Three, and the number is a property of the ring rather than of taste**: the last of sixteen
+/// cells and the first are read side by side at the seam, and only a cycle that divides their
+/// difference keeps them the same shade. See [`checker_pixels`].
+const CHECKER_CYCLE: i64 = 3;
 
 /// What the post stage does to the frame, which is `tiles`' own grade.
 const GRADE: &str = r#"
@@ -736,12 +739,17 @@ fn points_of(loft: &Loft) -> PackedList {
 ///
 /// # Invariants
 ///
-/// **The pattern is periodic in `v` and not in `u`.** `v = slot / around` never reaches one, so the
-/// column of texels at `v = 1` is read by the points nearest the seam alone and a pattern that did
-/// not close would draw a line there; `u` runs from zero to one and its two ends are the base and
-/// the crown, which is a difference worth showing. The lit cell is the lighter of the two so the
-/// tube reads as a grid rather than as a dark solid, because the `textured` shader multiplies the
-/// albedo by `(0.25 + 1.5 · pattern)`.
+/// **The pattern closes in `v`, and it closes because its cycle is three cells.** `v = slot / around`
+/// never reaches one, so the texels at the top of the image are read by the points nearest the seam
+/// and by nothing else; a two phase checker puts sixteen cells round a ring, and a ring of sixteen
+/// is not a whole number of two phases, so the last cell and the first carry opposite shades and
+/// draw a dark line down a tube that has no seam. Three phases divide sixteen's wrap exactly —
+/// `15 ≡ 0 (mod 3)` — so the last cell and the first agree and the join is two cells of one shade
+/// rather than a step between two. `u` is **not** closed and is not meant to be: it runs from the
+/// base to the crown, and its two ends being different shades is the difference worth showing.
+///
+/// The lit cell is the lighter of the two, because the `textured` shader multiplies the albedo by
+/// `(0.25 + 1.5 · pattern)` and a pattern centred on the dark end draws a dark solid.
 fn checker_pixels() -> Vec<u8> {
     let size = CHECKER_SIZE;
     let cell_u = size / CHECKER_ACROSS_U;
@@ -750,7 +758,7 @@ fn checker_pixels() -> Vec<u8> {
     for row in 0..size {
         for column in 0..size {
             let (across_u, around_v) = (column / cell_u, row / cell_v);
-            let lit = (across_u + around_v) % 2 == 0;
+            let lit = (across_u + around_v) % CHECKER_CYCLE < CHECKER_CYCLE - 1;
             let shade = if lit { 235 } else { 105 };
             pixels.extend_from_slice(&[shade, shade, shade, 255]);
         }
