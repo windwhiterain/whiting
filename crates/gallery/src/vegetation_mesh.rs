@@ -43,10 +43,10 @@ use definition::{PackedBuilder, PackedList};
 use vegetation::expand::Wood;
 use vegetation::handle::Handle;
 use vegetation::leaf::LeafTemplate;
-use vegetation::plant::Plant;
+use vegetation::plant::{Placement, Plant};
 
 use crate::building_identity::building_extras;
-use crate::geometry::{Corner, loft_corners};
+use crate::geometry::{Corner, loft_corners, loft_corners_at};
 use crate::identity::ID_OUTPUT;
 
 /// The id every corner of a blade's own mesh carries.
@@ -66,10 +66,22 @@ pub const LEAF_BASE_ID: u32 = 1;
 /// table is a [`BTreeMap`] and is built here once, so a mesh and a sidecar that were handed the same
 /// plant agree by construction rather than by two orderings that have not diverged yet.
 pub fn node_ids(plant: &Plant) -> BTreeMap<Handle, u32> {
+    node_ids_from(plant, LEAF_BASE_ID)
+}
+
+/// The id of every node of a plant, counted from `base` instead of from one.
+///
+/// # Invariants
+///
+/// **A planting numbers its plants apart by its base**, so two plants of one scene never write the same id and a
+/// frame can answer *which plant and which node* with one number. The stride between two bases must exceed every
+/// plant's node count, and [`crate::vegetation_picture::PLANTING_STRIDE`] is the number the grove scene uses: a
+/// plant of more than four thousand nodes is not one a picture draws.
+pub fn node_ids_from(plant: &Plant, base: u32) -> BTreeMap<Handle, u32> {
     plant
         .walk()
         .enumerate()
-        .map(|(index, (handle, _))| (handle, index as u32 + 1))
+        .map(|(index, (handle, _))| (handle, base + index as u32))
         .collect()
 }
 
@@ -85,12 +97,27 @@ pub fn node_ids(plant: &Plant) -> BTreeMap<Handle, u32> {
 ///   the field order here would be a second copy of the rule that a field's position is its name's
 ///   position.
 pub fn wood_points(wood: &[Wood], ids: &BTreeMap<Handle, u32>) -> PackedList {
+    wood_points_at(wood, ids, &Placement::IDENTITY)
+}
+
+/// Returns a plant's whole wood as one mesh, moved into the world by `placement`.
+///
+/// # Invariants
+///
+/// **The placement moves the points and not the ids**: a plant standing somewhere is the same plant, so its wood's
+/// corners carry the ids its own walk gave them and only the positions and normals change. That is what keeps a
+/// scene's two plants answerable: the id names the plant through its base and the node through its offset.
+pub fn wood_points_at(
+    wood: &[Wood],
+    ids: &BTreeMap<Handle, u32>,
+    placement: &Placement,
+) -> PackedList {
     packed(
         wood.iter().flat_map(|solid| {
             let id = *ids
                 .get(&solid.handle)
                 .expect("every solid's handle is one the plant's own walk yielded");
-            loft_corners(&solid.loft)
+            loft_corners_at(&solid.loft, placement)
                 .into_iter()
                 .map(move |corner| (corner, id))
         }),

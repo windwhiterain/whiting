@@ -96,6 +96,14 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 
 ## Traps
 
+- **A picture's hash is a pixel-scale instrument.** Rewriting the field's normalisation from *rotate then normalise*
+  to *normalise then rotate* — the same law to a rounding — changed the windy frame's hash (`1A3ACC93…` →
+  `D7488DF2…`) while every probe stayed green. Use a probe for meaning and a hash for *"did anything move at all"*.
+- **A planting's ids are `base + node`, and planting 0's base is 1.** A resolver that refuses ids below
+  `PLANTING_STRIDE` refuses every node of the first plant; only `NOT_AUTHORED` (zero) is not a node.
+- **A plant is not instanced; its leaves are.** A grove is one wood mesh per plant and one blade mesh per distinct
+  template, so six plantings draw their leaves in two instanced passes per stage, not six.
+
 - **The occupancy's sign is the whole contract: negative inside.** The first version of `obstacle_probe` wrote
   `x − face`, which is positive inside, so the field pushed the boughs *deeper into the wall* and the row passed
   anyway ("47 → 35 contacts"). A scene that passes the inverted function pushes plants into walls and nothing
@@ -194,5 +202,6 @@ cargo run -p whiting-device-rasterize --example render -- bamboo out/bamboo
 cargo run -p whiting-device-rasterize --example render -- bamboo_wind out/bamboo-wind
 cargo run -p whiting-device-rasterize --example render -- bamboo_crown out/bamboo-crown
 cargo run -p whiting-device-rasterize --example render -- bamboo_knots out/bamboo-knots
+cargo run -p whiting-device-rasterize --example render -- grove out/grove
 cargo run -p whiting-device-rasterize --example render -- sweep out/sweep
 ```

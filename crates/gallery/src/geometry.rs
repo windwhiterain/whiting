@@ -151,6 +151,43 @@ pub struct Corner {
 ///   centre.** That is the ring at a station the scale law collapsed to nothing, where every
 ///   incident triangle has no area; it is outward for every solid drawn here and it is better than
 ///   the zero-length vector a shader would read as `NaN`.
+/// Returns a loft's corners with their positions and normals moved by a plant's placement.
+///
+/// # Invariants
+///
+/// **The normals are rotated and never translated**, because a placement moves a frame and not a direction; and the
+/// placement never scales, which is why a normal stays unit length and the texture coordinates are untouched. A wood
+/// mesh baked in the world and a wood mesh baked at the origin therefore shade alike.
+pub fn loft_corners_at(loft: &Loft, placement: &vegetation::plant::Placement) -> Vec<Corner> {
+    loft_corners(loft)
+        .into_iter()
+        .map(|corner| {
+            let position = placement.place([
+                corner.position[0] as f32,
+                corner.position[1] as f32,
+                corner.position[2] as f32,
+            ]);
+            let normal = placement.rotate([
+                corner.normal[0] as f32,
+                corner.normal[1] as f32,
+                corner.normal[2] as f32,
+            ]);
+            Corner {
+                position: [
+                    f64::from(position[0]),
+                    f64::from(position[1]),
+                    f64::from(position[2]),
+                ],
+                normal: [
+                    f64::from(normal[0]),
+                    f64::from(normal[1]),
+                    f64::from(normal[2]),
+                ],
+                texture: corner.texture,
+            }
+        })
+        .collect()
+}
 pub fn loft_corners(loft: &Loft) -> Vec<Corner> {
     let positions = loft.positions();
     let mut accumulated = vec![[0.0f64; 3]; positions.len()];

@@ -39,11 +39,14 @@
 
 use definition::Value;
 use scene::standard::Stage;
-use vegetation::decorator::{Seat, Template, placed};
+use vegetation::decorator::{Placed, Seat, Template, placed};
 use vegetation::derive::{Species, bamboo};
 use vegetation::envelope::{Envelope, trim};
 use vegetation::expand::{Detail, Expansion, expand};
 use vegetation::field::Field;
+use vegetation::handle::Handle;
+use vegetation::leaf::LeafTemplate;
+use vegetation::plant::Placement;
 
 use crate::building_identity::{building_extras, not_authored_extras, outputs_field, stage_set};
 use crate::geometry::plane_facing;
@@ -52,8 +55,9 @@ use crate::kit::{
     mesh_material, offset_by, post_processes, screen_material, surface,
 };
 use crate::shaders::post_shader;
-use crate::vegetation_instancing::standing;
-use crate::vegetation_mesh::{LEAF_BASE_ID, node_ids, template_points, wood_points};
+use crate::vegetation_mesh::{
+    LEAF_BASE_ID, node_ids, node_ids_from, template_points, wood_points_at,
+};
 
 /// The name the still scene is built and rendered under.
 pub const SCENE: &str = "bamboo";
@@ -230,18 +234,188 @@ pub fn sidecar() -> String {
     table
 }
 
+/// A scene of plants is framed by its own camera and its own ground: the same document, a different eye.
+///
+/// # Invariants
+///
+/// A framing carries **numbers only**, so two scenes framed differently are one builder's two arguments rather than
+/// two builders: the camera, the frame and the floor's reach are the three things a picture of plants differs in
+/// from another one, and everything the plants themselves are made of is the plantings'.
+#[derive(Debug, Clone, Copy)]
+pub struct Framing {
+    /// The frame's width in pixels.
+    pub width: i64,
+    /// The frame's height in pixels.
+    pub height: i64,
+    /// Where the camera stands.
+    pub eye: [f64; 3],
+    /// What it looks at.
+    pub target: [f64; 3],
+    /// The vertical field of view, in radians.
+    pub field_of_view: f64,
+    /// The near plane, which must be closer than the nearest leaf.
+    pub near: f64,
+    /// The far plane, which must reach past the floor's own corner.
+    pub far: f64,
+    /// How far the floor reaches from the origin.
+    pub floor: f64,
+}
+
+/// One plant in a scene: a species, where it stands, and any decorators it carries.
+///
+/// # Invariants
+///
+/// A planting's placement moves it into the world and **does not change its ids**: an id names a plant through the
+/// base its planting gave it ([`node_ids_from`]) and a node through its offset, so a frame drawn from five plantings
+/// answers *which plant and which node* with one number.
+pub struct Planting {
+    /// The plant and its templates.
+    pub species: Species,
+    /// Where the plant stands: the frame its own coordinates are in.
+    pub placement: Placement,
+    /// The decorators its nodes carry, in its own coordinates.
+    pub seats: Vec<Seat>,
+}
+
+impl Planting {
+    /// A planting standing where it grew.
+    pub fn new(species: Species) -> Self {
+        Self {
+            species,
+            placement: Placement::IDENTITY,
+            seats: Vec::new(),
+        }
+    }
+
+    /// The same planting somewhere else.
+    pub fn at(mut self, placement: Placement) -> Self {
+        self.placement = placement;
+        self
+    }
+
+    /// The same planting carrying decorators.
+    pub fn with_seats(mut self, seats: Vec<Seat>) -> Self {
+        self.seats = seats;
+        self
+    }
+}
+
+/// How far apart two plantings' id bases are: a plant of more than four thousand nodes is not one a picture draws.
+pub const PLANTING_STRIDE: u32 = 4096;
+
+/// The framing of the four scenes that draw one plant.
+const STILL: Framing = Framing {
+    width: WIDTH,
+    height: HEIGHT,
+    eye: EYE,
+    target: TARGET,
+    field_of_view: FIELD_OF_VIEW,
+    near: NEAR,
+    far: FAR,
+    floor: FLOOR_EXTENT,
+};
+
+/// The framing of a grove: back far enough for three culms, and no further.
+const GROVE_FRAMING: Framing = Framing {
+    width: 1400,
+    height: 1000,
+    eye: [2.55, 1.85, 3.35],
+    target: [0.05, 1.00, 0.00],
+    field_of_view: 0.75,
+    near: 0.05,
+    far: 32.0,
+    floor: 7.0,
+};
+
+/// The name a grove of three culms and three shrubs is built and rendered under.
+pub const GROVE: &str = "grove";
+
+/// The three seeds the culms are sown from. A bamboo's rule leaves nothing to chance but its leaves, so three
+/// culms differ in their foliage and in where they stand — which is what a clump of bamboo is.
+const GROVE_CULMS: [u64; 3] = [7, 8, 9];
+
+/// The three seeds the undergrowth is sown from. A shrub's rule draws its own skeleton, so three seeds are three
+/// different shrubs rather than three drawings of one.
+const GROVE_SHRUBS: [u64; 3] = [31, 47, 59];
+
+/// Where each culm stands and which way it faces.
+const GROVE_CULM_PLACES: [([f32; 3], f32); 3] = [
+    ([-0.62, 0.0, 0.30], 0.3),
+    ([0.04, 0.0, -0.25], 1.9),
+    ([0.66, 0.0, 0.34], 3.4),
+];
+
+/// Where each shrub stands and which way it faces: between the culms, so the grove reads as one planting.
+const GROVE_SHRUB_PLACES: [([f32; 3], f32); 3] = [
+    ([-0.98, 0.0, -0.22], 0.9),
+    ([0.34, 0.0, 0.42], 2.6),
+    ([0.95, 0.0, -0.30], 4.7),
+];
+
+/// A frame standing at a place and turned about the world's `y`: the only two numbers a planting needs to stand
+/// somewhere, and the reason a turn is a placement rather than a decorator's forbidden angle — a *plant* may be
+/// turned, a decorator may not, because a decorator has to sit on a surface that already has a frame.
+fn planted_at(position: [f32; 3], turn: f32) -> Placement {
+    let (sin, cos) = turn.sin_cos();
+    Placement {
+        origin: position,
+        x: [cos, 0.0, -sin],
+        y: [0.0, 1.0, 0.0],
+        z: [sin, 0.0, cos],
+    }
+}
+
+/// The six plantings a grove is, in the order their ids are numbered: the culms first, then the undergrowth.
+fn grove_plantings() -> Vec<Planting> {
+    let mut plantings = Vec::new();
+    for (seed, (position, turn)) in GROVE_CULMS.iter().zip(GROVE_CULM_PLACES.iter()) {
+        plantings.push(Planting::new(bamboo(*seed)).at(planted_at(*position, *turn)));
+    }
+    for (seed, (position, turn)) in GROVE_SHRUBS.iter().zip(GROVE_SHRUB_PLACES.iter()) {
+        plantings
+            .push(Planting::new(vegetation::derive::shrub(*seed)).at(planted_at(*position, *turn)));
+    }
+    plantings
+}
+
+/// Resolves a grove frame's `authored_id` into the planting and the handle it names.
+///
+/// # Invariants
+///
+/// **The id is split the way it was written**: the planting index is the id's quotient by [`PLANTING_STRIDE`] and
+/// the node is its remainder, so a frame answers *which plant* and *which node* with one number and no table. An id
+/// whose planting or node does not exist answers `None` rather than a neighbouring plant's node.
+pub fn grove_handle_of(id: u32) -> Option<String> {
+    if id == crate::identity::NOT_AUTHORED {
+        return None;
+    }
+    let index = (id / PLANTING_STRIDE) as usize;
+    let plantings = grove_plantings();
+    let planting = plantings.get(index)?;
+    let ids = node_ids_from(
+        &planting.species.plant,
+        LEAF_BASE_ID + index as u32 * PLANTING_STRIDE,
+    );
+    ids.iter()
+        .find(|(_, held)| **held == id)
+        .map(|(handle, _)| format!("planting {index}, {handle}"))
+}
+
+/// Builds the grove scene: five shrubs from five seeds, each turned to its own place.
+pub fn grove_picture() -> Value {
+    plant_scene(&grove_plantings(), &GROVE_FRAMING, GROVE)
+}
+
 /// Builds the bamboo scene: one camera, a key and a fill, a floor, the plant's wood and its blade.
 pub fn bamboo_picture() -> Value {
-    plant_scene(&bamboo(SEED), &[])
+    plant_scene(&[Planting::new(bamboo(SEED))], &STILL, SCENE)
 }
 
 /// The same plant under a lateral wind, drawn beside it: a field bends spines, and a picture is the only place
 /// the bend is visible as a shape rather than as a number.
 pub fn windy_picture() -> Value {
-    plant_scene(
-        &bamboo(SEED).with_fields(vec![Field::light([1.0, 0.0, 0.0], 0.12)]),
-        &[],
-    )
+    let species = bamboo(SEED).with_fields(vec![Field::light([1.0, 0.0, 0.0], 0.12)]);
+    plant_scene(&[Planting::new(species)], &STILL, WINDY)
 }
 
 /// The same plant fitted to a crown: `trim` writes length nudges until each tip is on the envelope, so the frame
@@ -250,30 +424,92 @@ pub fn crowned_picture() -> Value {
     let mut species = bamboo(SEED);
     let crown = Envelope::radial(&[(0.0, 0.55), (0.5, 0.45), (1.0, 0.35)]);
     trim(&mut species.plant, &crown);
-    plant_scene(&species, &[])
+    plant_scene(&[Planting::new(species)], &STILL, CROWNED)
 }
 
-/// Builds one plant scene: the camera, the lights, the floor, the wood and the blade, under whatever fields the
-/// species carries.
 /// The same plant with a knot at the base of every bough: a decorator is a template and three numbers, and the
 /// frame shows the three numbers on the bark rather than in a table.
 pub fn knots_picture() -> Value {
     let species = bamboo(SEED);
     let seats = knots(&species);
-    plant_scene(&species, &seats)
+    plant_scene(&[Planting::new(species).with_seats(seats)], &STILL, KNOTTED)
 }
 
-fn plant_scene(species: &Species, seats: &[Seat]) -> Value {
-    let species = species.clone();
-    let decorators = placed(&species.plant, seats);
-    let expanded = expansion(&species);
-    let ids = node_ids(&species.plant);
-
+/// Builds one scene of plants: the camera, the lights, the floor, every planting's wood and the one blade mesh
+/// every leaf of every planting instances.
+///
+/// # Invariants
+///
+/// - **One blade mesh, and one material per leaf group of every planting.** The emitter groups by shader, mesh and
+///   images and not by material, so five shrubs' leaves are **one** pass over one instance buffer: a planting is
+///   not instanced (its wood is its own) and its *leaves* are, which is the whole of the design's instancing claim
+///   and the reason the grove costs one blade mesh and no more.
+/// - **A planting's wood is one mesh, baked in the world**: a plant of five hundred solids is one draw, and its
+///   corners carry the ids its own planting numbered ([`node_ids_from`]), so two plantings never write one id.
+/// - **A second planting's labels carry its index**, because a label names one instance in the whole scene.
+fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
     // **Two point schemas, and they are the two identities**: every authored mesh carries `authored_id`,
     // the ground carries none and writes the reserved zero from a constant.
     let extras = building_extras();
     let point = extras.point_schema();
     let ground = not_authored_extras();
+
+    // The blade meshes: one per distinct template, so two plantings of one species share one mesh.
+    let mut blades: Vec<&LeafTemplate> = Vec::new();
+    let mut blade_of: Vec<usize> = Vec::new();
+    for planting in plantings {
+        let template = &planting.species.templates[0];
+        let index = match blades.iter().position(|held| *held == template) {
+            Some(index) => index,
+            None => {
+                blades.push(template);
+                blades.len() - 1
+            }
+        };
+        blade_of.push(index);
+    }
+    let one_planting = plantings.len() == 1;
+    let tagged = |index: usize, label: &str| -> String {
+        if one_planting {
+            label.to_owned()
+        } else {
+            format!("{label}-{index}")
+        }
+    };
+    let blade_label = |index: usize| -> String {
+        if blades.len() == 1 {
+            "leaf".to_owned()
+        } else {
+            format!("leaf-{}", blade_of[index])
+        }
+    };
+
+    // Everything a planting contributes, read once: its expansion, its ids, and its decorators in the world.
+    struct Drawn {
+        expansion: Expansion,
+        ids: std::collections::BTreeMap<Handle, u32>,
+        decorators: Vec<Placed>,
+        placement: Placement,
+    }
+    let drawn: Vec<Drawn> = plantings
+        .iter()
+        .enumerate()
+        .map(|(index, planting)| Drawn {
+            expansion: expansion(&planting.species),
+            ids: node_ids_from(
+                &planting.species.plant,
+                LEAF_BASE_ID + index as u32 * PLANTING_STRIDE,
+            ),
+            decorators: placed(&planting.species.plant, &planting.seats)
+                .into_iter()
+                .map(|instance| Placed {
+                    placement: planting.placement.then(&instance.placement),
+                    ..instance
+                })
+                .collect(),
+            placement: planting.placement,
+        })
+        .collect();
 
     let mut materials = vec![
         mesh_material(
@@ -309,28 +545,33 @@ fn plant_scene(species: &Species, seats: &[Seat]) -> Value {
     // drawn by every leaf, so a leaf's own corners carry the blade's base id and the node it hangs from is
     // its row's offset: `authored_offset = node - LEAF_BASE_ID`. The groups still draw in **one** pass,
     // because the emitter groups by shader, mesh and images and not by material.
-    for (group, leaves) in expanded.leaves.iter().enumerate() {
-        let node = ids[&leaves.node];
-        materials.push(mesh_material(
-            &format!("leaf-shade-{group}"),
-            "plant_lighting",
-            offset_by(leaf_body.clone(), f64::from(node - LEAF_BASE_ID)),
-        ));
+    for (index, planting) in drawn.iter().enumerate() {
+        for (group, leaves) in planting.expansion.leaves.iter().enumerate() {
+            let node = planting.ids[&leaves.node];
+            materials.push(mesh_material(
+                &tagged(index, &format!("leaf-shade-{group}")),
+                "plant_lighting",
+                offset_by(leaf_body.clone(), f64::from(node - LEAF_BASE_ID)),
+            ));
+        }
     }
     // A knot is drawn by every seat of its template, so its corners carry the blade's base id and each seat's row
     // carries the node it sits on: one mesh, one material per seat, and the seats still draw in one pass.
-    if !decorators.is_empty() {
+    for (index, planting) in drawn.iter().enumerate() {
+        if planting.decorators.is_empty() {
+            continue;
+        }
         for (stage, shader) in [("cast", "plant_shadowing"), ("depth", "plant_depthing")] {
             materials.push(mesh_material(
-                &format!("knot-{stage}"),
+                &tagged(index, &format!("knot-{stage}")),
                 shader,
                 surface(CULM_TINT, 0.0, 0.72, [0.0; 3]),
             ));
         }
-        for (index, instance) in decorators.iter().enumerate() {
-            let node = ids[&instance.node];
+        for (seat, instance) in planting.decorators.iter().enumerate() {
+            let node = planting.ids[&instance.node];
             materials.push(mesh_material(
-                &format!("knot-shade-{index}"),
+                &tagged(index, &format!("knot-shade-{seat}")),
                 "plant_lighting",
                 offset_by(
                     surface(CULM_TINT, 0.0, 0.72, [0.0; 3]),
@@ -355,8 +596,8 @@ fn plant_scene(species: &Species, seats: &[Seat]) -> Value {
     // **One leaf placement per leaf instance, and the label says which group and which rank**: a label
     // names one instance in the *whole* scene, so the same leaf is drawn in three passes under three
     // labels.
-    let placed = |stage: &str| {
-        let mesh = |label: &str, material: String| {
+    let placed_rows = |stage: &str| {
+        let fixed = |label: &str, material: String| {
             instance(
                 format!("{label}-{stage}"),
                 label,
@@ -366,24 +607,50 @@ fn plant_scene(species: &Species, seats: &[Seat]) -> Value {
                 &material,
             )
         };
-        // **Two placements of its own and no more**: the wood is baked in world coordinates and the floor
-        // is a plane. The blade has no placement of its own — every leaf places it, and a placement at the
-        // origin would be a leaf growing out of the ground.
-        let mut placements = vec![
-            mesh("culm", format!("culm-{stage}")),
-            mesh("floor", format!("floor-{stage}")),
-        ];
-        for (group, leaves) in expanded.leaves.iter().enumerate() {
-            let material = if stage == "shade" {
-                format!("leaf-shade-{group}")
-            } else {
-                format!("leaf-{stage}")
-            };
-            for leaf in &leaves.leaves {
-                let (translation, rotation, scale) = standing(leaf);
+        // The wood is baked in world coordinates and the floor is a plane, so neither needs a transform of its
+        // own. The blade has none — every leaf places it, and a placement at the origin would be a leaf growing
+        // out of the ground.
+        let mut placements = Vec::new();
+        for (index, _) in drawn.iter().enumerate() {
+            placements.push(fixed(&tagged(index, "culm"), format!("culm-{stage}")));
+        }
+        placements.push(fixed("floor", format!("floor-{stage}")));
+        for (index, planting) in drawn.iter().enumerate() {
+            for (group, leaves) in planting.expansion.leaves.iter().enumerate() {
+                let material = if stage == "shade" {
+                    tagged(index, &format!("leaf-shade-{group}"))
+                } else {
+                    format!("leaf-{stage}")
+                };
+                for leaf in &leaves.leaves {
+                    let world = planting.placement.then(&leaf.placement);
+                    let (translation, rotation, scale) =
+                        crate::vegetation_instancing::standing_at(&world, leaf.scale);
+                    placements.push(instance(
+                        format!("{}-{stage}-{group}-{}", tagged(index, "leaf"), leaf.index),
+                        &blade_label(index),
+                        translation,
+                        rotation,
+                        scale,
+                        &material,
+                    ));
+                }
+            }
+        }
+        // **One placement per decorator, and its frame is the seat's**: a knot has no orientation of its own to
+        // choose, which is why the same conversion a blade uses converts it.
+        for (index, planting) in drawn.iter().enumerate() {
+            for (seat, decorator) in planting.decorators.iter().enumerate() {
+                let material = if stage == "shade" {
+                    tagged(index, &format!("knot-shade-{seat}"))
+                } else {
+                    tagged(index, &format!("knot-{stage}"))
+                };
+                let (translation, rotation, scale) =
+                    crate::vegetation_instancing::seated(decorator);
                 placements.push(instance(
-                    format!("leaf-{stage}-{group}-{}", leaf.index),
-                    "leaf",
+                    format!("{}-{stage}-{seat}", tagged(index, "knot")),
+                    "knot",
                     translation,
                     rotation,
                     scale,
@@ -391,39 +658,27 @@ fn plant_scene(species: &Species, seats: &[Seat]) -> Value {
                 ));
             }
         }
-        // **One placement per decorator, and its frame is the seat's**: a knot has no orientation of its own to
-        // choose, which is why the same conversion a blade uses converts it.
-        for (index, decorator) in decorators.iter().enumerate() {
-            let material = if stage == "shade" {
-                format!("knot-shade-{index}")
-            } else {
-                format!("knot-{stage}")
-            };
-            let (translation, rotation, scale) = crate::vegetation_instancing::seated(decorator);
-            placements.push(instance(
-                format!("knot-{stage}-{index}"),
-                "knot",
-                translation,
-                rotation,
-                scale,
-                &material,
-            ));
-        }
         placements
     };
 
     Value::structure([
-        ("name".to_owned(), Value::String(SCENE.to_owned())),
+        ("name".to_owned(), Value::String(name.to_owned())),
         (
             "frame".to_owned(),
             Value::structure([
-                ("width".to_owned(), Value::Int(WIDTH)),
-                ("height".to_owned(), Value::Int(HEIGHT)),
+                ("width".to_owned(), Value::Int(framing.width)),
+                ("height".to_owned(), Value::Int(framing.height)),
             ]),
         ),
         (
             "cameras".to_owned(),
-            Value::List(vec![camera_placed(EYE, TARGET, FIELD_OF_VIEW, NEAR, FAR)]),
+            Value::List(vec![camera_placed(
+                framing.eye,
+                framing.target,
+                framing.field_of_view,
+                framing.near,
+                framing.far,
+            )]),
         ),
         (
             "lights".to_owned(),
@@ -457,38 +712,43 @@ fn plant_scene(species: &Species, seats: &[Seat]) -> Value {
         // The one image this scene writes beside the frame: which node each pixel shows.
         ("outputs".to_owned(), outputs_field()),
         ("meshes".to_owned(), {
-            let mut meshes = vec![
-                mesh(
-                    "culm",
+            let mut meshes = Vec::new();
+            for (index, planting) in drawn.iter().enumerate() {
+                meshes.push(mesh(
+                    &tagged(index, "culm"),
                     "Triangles",
                     point.clone(),
-                    wood_points(&expanded.wood, &ids),
-                ),
-                mesh(
-                    "leaf",
+                    wood_points_at(&planting.expansion.wood, &planting.ids, &planting.placement),
+                ));
+            }
+            for (index, template) in blades.iter().enumerate() {
+                let label = if blades.len() == 1 {
+                    "leaf".to_owned()
+                } else {
+                    format!("leaf-{index}")
+                };
+                meshes.push(mesh(
+                    &label,
                     "Triangles",
                     point.clone(),
-                    template_points(&species.templates[0]),
-                ),
-            ];
+                    template_points(template),
+                ));
+            }
             // **A decorator mesh only when a seat asks for one**: a scene with no seats is the same document
             // it was before decorators existed, down to the frame it writes.
-            if !decorators.is_empty() {
+            if drawn.iter().any(|planting| !planting.decorators.is_empty()) {
                 meshes.push(mesh(
                     "knot",
                     "Triangles",
-                    point,
+                    point.clone(),
                     crate::vegetation_mesh::decorator_points(&knot()),
                 ));
-            } else {
-                // The knot mesh would be unused; `point` stays moved exactly once either way.
-                let _ = &point;
             }
             meshes.push(mesh(
                 "floor",
                 "Triangles",
                 ground.point_schema(),
-                plane_facing(FLOOR_EXTENT, 0.0, true),
+                plane_facing(framing.floor, 0.0, true),
             ));
             Value::List(meshes)
         }),
@@ -501,9 +761,9 @@ fn plant_scene(species: &Species, seats: &[Seat]) -> Value {
         (
             "instances".to_owned(),
             instances(vec![
-                (Stage::Shadowing, placed("cast")),
-                (Stage::Depthing, placed("depth")),
-                (Stage::Lighting, placed("shade")),
+                (Stage::Shadowing, placed_rows("cast")),
+                (Stage::Depthing, placed_rows("depth")),
+                (Stage::Lighting, placed_rows("shade")),
             ]),
         ),
     ])

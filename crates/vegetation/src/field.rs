@@ -192,8 +192,8 @@ impl Field {
                 if amount == 0.0 || size < 1.0e-9 {
                     return offsets;
                 }
-                let push = [toward[0] / size, toward[1] / size, toward[2] / size];
-                let local = placement.unrotate(push);
+                let local =
+                    placement.unrotate([toward[0] / size, toward[1] / size, toward[2] / size]);
                 let reach = amount * curve.length();
                 for (index, fraction) in fractions.iter().enumerate() {
                     let direction = jets[index].tangent;

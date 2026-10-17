@@ -103,10 +103,22 @@ pub fn euler(placement: &Placement) -> [f64; 3] {
 ///   translation, rotation, scale, so the order is fixed by the document and only the extraction is a
 ///   choice.
 pub fn standing(leaf: &LeafInstance) -> Standing {
+    standing_at(&leaf.placement, leaf.scale)
+}
+
+/// Returns the instance transform for a frame that is already in the world.
+///
+/// # Invariants
+///
+/// **One conversion, three callers**: a leaf, a decorator and a whole plant's placement all become a scene transform
+/// here, so a probe that measures one has measured them all. A caller composes first —
+/// `plant_placement.then(&leaf_placement)` — because a placement composes *after* its inner one and the leaf's own
+/// frame is the inner one of the two.
+pub fn standing_at(placement: &Placement, scale: f32) -> Standing {
     (
-        leaf.placement.origin.map(f64::from),
-        euler(&leaf.placement),
-        [f64::from(leaf.scale); 3],
+        placement.origin.map(f64::from),
+        euler(placement),
+        [f64::from(scale); 3],
     )
 }
 
@@ -119,11 +131,7 @@ pub fn standing(leaf: &LeafInstance) -> Standing {
 /// a rule the blade does not. A decorator and a leaf of the same plant therefore stand in the same way, and a probe
 /// that measures one has measured the other.
 pub fn seated(placed: &vegetation::decorator::Placed) -> Standing {
-    (
-        placed.placement.origin.map(f64::from),
-        euler(&placed.placement),
-        [f64::from(placed.scale); 3],
-    )
+    standing_at(&placed.placement, placed.scale)
 }
 
 /// Returns the matrix [`standing`]'s transform stands as, which is what a scene compiles the instance

@@ -1089,7 +1089,7 @@ the same unification `Section` made of a circle and a blade.
 | a child follows a bent parent | a branch moves **0.094587** and sits **8.227e-3** from the bent bough's spine against a taper less the sink of **0.008226** |
 | a baked spine is immune | two half-strength fields move it **0.000e0** |
 | two fields compose | the tip lands **7.641e-3** from the vector sum of their separate pushes, because the second field reads the first's bent tangents |
-| the picture | the still `bamboo` scene renders to the **same sha256** (`84510A4D…`) before and after fields existed, and the same plant under a wind (`bamboo_wind`, 13 passes) is another frame: a field is visible as a shape, and the plant without one did not move |
+| the picture | the still `bamboo` scene renders to the **same sha256** (`84510A4D…`) before and after fields existed, and the same plant under a wind (`bamboo_wind`, 13 passes) is another frame: a field is visible as a shape, and the plant without one did not move. **The windy frame's hash did move once**, when the field's normalisation was rewritten from a node's frame to the world's — by one rounding, with every probe still green; see the grove's record |
 
 **Four decisions the fields forced**, two of which were the first version being wrong:
 
@@ -1212,6 +1212,35 @@ gradient by the penetration the knot stands in. The report is the same occupancy
 branches actually went: a `count` band cannot know that two of its children grew into the same space. Only siblings
 compete — a rule against cousins would need a resolution the author has not stated — and the decision is made on
 every tip **before** any prune lands, so the result does not depend on the order the prunes happen in.
+
+**The grove.** P3's first scene is `vegetation_picture::grove_picture`: **six plantings** — three culms from three
+seeds, three shrubs from three others — drawn by the same builder the four single-plant scenes use. A `Planting` is a
+species, a `Placement` and its seats; a `Framing` is the camera, the frame and the floor's reach.
+
+| invariant | reading |
+| --- | --- |
+| one builder, five scenes | `plant_scene(plantings, framing, name)`; the four single-plant scenes pass one planting and `STILL`, and their documents are byte-identical (three hashes unchanged: `84510A4D…`, `708EF240…`, `A56BBE62…`) |
+| a plant is not instanced, its leaves are | six plantings, **two** blade meshes (one per distinct template) and **33** passes: the leaves of all six draw in two instanced passes per stage, not six |
+| a pixel names the planting and the node | the id is `base + node` with `PLANTING_STRIDE` = **4096**: `--locate 752,300` answers *id 4097 → planting 1, trunk*, and `--locate 505,700` answers *id 1 → planting 0, trunk* |
+| a planting is a frame | a plant stands where its `Placement` puts it and turns about the world's `y`; its wood is baked in the world with its ids carried, so *which plant* and *which node* are one number |
+
+**Three decisions the grove forced:**
+
+1. **A plant is not instanced; its leaves are.** Five shrubs do not share a wood mesh — each is its own solids — so
+   a grove costs one wood mesh per plant and **one blade mesh per distinct template**. That is the whole of the
+   design's instancing claim at grove scale, and the pass count is what says so: 33 passes for six plantings, of
+   which the leaf passes are two per stage.
+2. **An id carries the plant in its quotient.** `PLANTING_STRIDE` = 4096 and a planting's ids are
+   `LEAF_BASE_ID + index × 4096 + node`, so a frame's `authored_id` splits into *which plant* and *which node* with
+   one division and no table. The first version refused every id below the stride — which is **every node of
+   planting 0** — and `--locate` answered *"not one of the grove's nodes"* for a leaf on the first culm; the guard is
+   now `id == NOT_AUTHORED` alone.
+3. **A picture's hash is a pixel-scale instrument, not a semantic one.** The field's normalisation was rewritten
+   from *rotate then normalise* to *normalise then rotate* in the obstacle round: the same law to a rounding, every
+   probe green, and the windy frame's hash changed (`1A3ACC93…` → `D7488DF2…`). The A/B is recorded rather than
+   guessed: restoring round 5's `field.rs` brings `1A3ACC93…` back, and computing the length *after* rotating brings
+   it back too. So a hash is evidence that **something moved at pixel scale**; only a probe is evidence that a
+   meaning held.
 
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs

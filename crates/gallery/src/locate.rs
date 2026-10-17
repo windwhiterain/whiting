@@ -66,6 +66,24 @@ pub fn locate(scene: &str, values: &[(String, f32)]) -> Option<String> {
         // the node rather than a building element's path: the id is the node's position in the plant's own
         // walk, and a leaf drawn by the blade mesh carries its twig's. The reserved zero is answered as
         // itself, because a pixel of the ground a plant stands on is a real answer about a real pixel.
+        // **A grove's frame answers a step further out**, because one id has to name two things: the planting is
+        // the id's quotient by the stride and the node is its remainder, so the answer is *which plant* as well as
+        // *which node* and no table is needed to split them.
+        if scene == crate::vegetation_picture::GROVE {
+            let id = id.round() as u32;
+            return Some(match crate::vegetation_picture::grove_handle_of(id) {
+                Some(answer) => {
+                    format!("{answer}\n  authored_id {id}: the planting is the id's quotient by \
+                             {} and the node is its remainder", crate::vegetation_picture::PLANTING_STRIDE)
+                }
+                None if id == crate::identity::NOT_AUTHORED => {
+                    "not an authored element: this pixel is the ground the grove stands on, or the sky \
+                     above it"
+                        .to_owned()
+                }
+                None => format!("authored_id {id} is not one of the grove's nodes"),
+            });
+        }
         if scene == crate::vegetation_picture::SCENE
             || scene == crate::vegetation_picture::WINDY
             || scene == crate::vegetation_picture::CROWNED
