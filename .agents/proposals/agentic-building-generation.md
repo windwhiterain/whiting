@@ -454,8 +454,9 @@ and that difference is itself a defect the phase found and fixed rather than a s
 it claims, including the sloped-plane fixture and the facet of no area that no closure predicate can
 see.
 
-Two things P1 deliberately does not have, both named rather than faked: a **flat roof** (item 2
-above), and **bays, openings and parts** (P2). The proof frame —
+Two things P1 deliberately does not have, both named rather than faked — and **both closed since**: a
+**flat roof** (item 2 above) is a plate, which the slab slice below added as the crate's third
+primitive; and **bays, openings and parts** are P2's. The proof frame —
 `cargo run -p whiting-device-rasterize --example render -- house out/house`, a derived hip-roofed
 house in 10 passes — carries one known artifact, attributed by measurement rather than by eye:
 `--debug position` on the same scene shows clean wall planes and a crisp eave line, so the geometry
@@ -639,6 +640,56 @@ second, at `0.16` with separated materials, reads as a site.
    found it because a picture is where a consequence becomes visible.
 3. **The bound is not the intersection, and the report must say which it is.** An overlap of bounding
    boxes is a reading, not a fact about the buildings, and the doc says so at the type.
+
+## What the slab slice found: a flat roof is a plate (2026-10-16)
+
+P1 named two things it deliberately did not have, and the last of them was the **flat roof**. This slice
+answers what a flat roof *is*, and the answer is neither of the two shapes the crate already had.
+
+**It is not a roof with `rise = 0`.** The roof model's skin is a strip between a **crest row** and an
+**eave row**; zero rise makes those rows coincide in plan, the strip has no width, and every facet of it
+has no area — the same failure shape the square hip already taught this crate (a ridge of no length
+became one point and two zero-area facets, which the degenerate-face check then had to be taught to
+distinguish from structure). A flat roof expressed as a zero-rise roof would be a vocabulary fighting its
+own geometry.
+
+**It is not a mass either.** A mass is a **room** — a shell with a floor disc and a slab under it — and a
+plate with a coincident floor is degenerate (measured on the shed's canopy: eight facets of no area).
+
+**So it is the crate's third primitive: `Slab`, a level prism over a plan polygon.** With it the
+vocabulary is complete in a way worth stating: **`Mass` is a room, `Wall` is a box along a line, `Slab`
+is a plate** — and flat roofs, canopies, plinths, terraces, steps and balcony decks are all the plate.
+
+**A slab is level, and that is the domain.** `bottom` and `top` are elevations, not per-node values, so
+every face of the prism is planar by construction: the two caps are the polygon (triangulated by the
+**existing ear clipper**) and each side is a rectangle. A *sloped* plate is a roof, and the type refuses
+to be one rather than growing a second geometry — per-node elevations would make the caps a ruled surface
+for any real outline, which is the fault the shell's floor already has to avoid.
+
+`Slab` also carries `host`, and that is what makes seating work: `seat` moves a **hosted** slab with its
+building and leaves an unhoused one where its author put it, because a flat roof's elevations are the wall
+top's and a seat that moved the mass alone would leave the roof behind at the old level.
+
+Measured by `examples/slab_probe.rs` on a flat-roofed 7 × 11 starter:
+
+| measurement | value |
+| --- | --- |
+| the document | **1 mass, 0 roofs, 1 slab** — a plate is not a roof |
+| the plate's plan | `8.4000 × 12.4000 = 104.159988 m²` (`w + 2 × overhang` by hand) |
+| its volume | `29.164793 m³` written, **`29.164804`** measured |
+| its topology | **12 faces, loops 0, Euler 2, manifold** — the count a box has, because a rectangle's caps triangulate to two triangles each |
+| its underside | `3.4500` = the wall top `3.6000` less the sink `0.1500` |
+| **the building under it** | mass volume `78.245979` and `28` faces for **both** the flat and the hipped starter |
+| seating | `1` mass and `1` slab move, the plate holding its `0.2800` thickness, `0` violations |
+| an unhoused plate | `masses seated 0, slabs moved 0` — still at `5.0000 .. 5.4000` |
+| the two faults | `SlabNotThick { thickness: 0.0 }`, `SlabNotAPolygon { nodes: 2 }`, refused by the build |
+
+**One process lesson, the same one the wall slice recorded from the other side.** The new variants broke
+two probes' exhaustive matches over `SolidId` — and the fix was not to widen a wildcard but to give
+`validate_probe` something real to say: it now compares a slab's **authored plan loop** with the mesh's
+measured coverage, which is the one solid in that document whose loop can be compared directly. **A new
+variant is a compiler-enforced audit of every `match` in the crate**, and the audit is only worth the
+trouble if each site it stops at gains a reading rather than a `_`.
 
 ## `validate()`: reports, never repairs
 
