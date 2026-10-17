@@ -117,16 +117,6 @@ pub fn wing() -> Value {
     wing_at(6.0, 6.0, 4.0)
 }
 
-/// Builds the hall scene at a **larger** footprint from the same style and the same code.
-///
-/// # Invariants
-///
-/// **Nothing but the footprint and the storey count is passed in**, and the frame follows the building: the
-/// camera's distance, its height and the sun's shadow page are all derived from the size the style answers
-/// with, so two sizes draw as two pictures of one building rather than one picture with a bigger box in it.
-pub fn wing_second() -> Value {
-    wing_at(6.0, 6.0, 4.0)
-}
 
 /// Builds the hall scene for a footprint and a storey count.
 pub fn wing_at(width: f32, depth: f32, wing_depth: f32) -> Value {
