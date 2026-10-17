@@ -1278,7 +1278,7 @@ does not. The hash is the first sixteen hex of the `sha256` of the scene's own `
 | `terrace` | `CCBA7FF2FAD71A57` | three units that touch, nine windows |
 | `wing` | `73A68D3C3BDAF97D` | host plus attached wing, windows on the weather faces |
 | `workshop` | `CB975B31D8E936C7` | two storeys, a plate, five instanced shutters |
-| `yard` | `7F1D25D497EF50B0` | the courtyard and its gate |
+| `yard` | `7F1D25D497EF50B0` | the courtyard and its gate; the store's plate is `STORE`'s, carried across by hand, and the frame is unmoved by it |
 | `identity` | `D0C45EF53EE51909` | the identity picture, and every pixel still names itself |
 
 **Every one of the nine moved, and for one reason: a mass is two solids.** The wall ring's inner base stands on the
@@ -1289,13 +1289,37 @@ held these nine still would have been the shell's, and a baseline predicting the
 would have been a guess; these are the numbers the merged tip renders.
 
 And the probes behind them: `scene_identity_probe` reads **nine** tables two-way — 77 + 109 + 77 + 31 + 66 + 123 +
-123 + 99 + 95 = **800 rows** in the gallery's own scene order, every id contiguous from the first and every name
+123 + 99 + 101 = **806 rows** in the gallery's own scene order, every id contiguous from the first and every name
 round-tripping back to it — and the building crate's **twenty-nine** probes exit zero. `census`, `expand_probe`,
 `validate_probe`, `authoring_probe`, `roof_planarity_probe`, `grid_probe`, `opening_probe`, `part_probe`,
 `identity_probe`, `socket_probe`, `seat_probe`, `wall_probe`, `site_probe`, `slab_probe`, `instance_probe`,
 `floor_probe`, `multi_row_probe`, `wall_part_probe`, `template_cache_probe`, `style_probe`, `instance_identity_probe`,
 `terrace_probe`, `courtyard_probe`, `courtyard_widths`, `wing_probe`, `shared_face_probe`, `ring_probe`, and the
 volume refactor's own two, `patio_probe` and `ring_fill_probe`.
+
+### The store's plate, and why `yard` is the one hash this did not move (2026-10-28)
+
+`yard` is the only scene that **composes** two derived buildings into one document rather than deriving one:
+`site()` takes `derive::starter(&STORE)`, shifts the mass and the roof up the slope, and moves `store.masses[0]`
+and `store.roofs[0]` into the shed's skeleton — and never carried `store.slabs[0]` across. A mass is a wall ring
+**and** a plate, so the store was a building with no floor in the volume model, and the table said so before
+anything was changed: `yard` held two masses and ended at **`slab 0`**, where `wing` holds two arms and ends at
+`slab 1` and `terrace` holds three units and ends at `slab 2`.
+
+The plate crosses now, hosted by `MassId(1)` — the id the store's mass holds in this skeleton and not in its own —
+and its **footprint shifts with the mass**, which the mass's own loop cannot reach, because a `Slab` carries plan
+positions and no elevations. Left at the origin it would have landed under the shed and `Violation::PlateCoverage`
+would have named the store. Seated, the store's plate spans `x 12..=16` with its top at `2.56` and its host mass's
+lowest node at `2.56`: **2 masses, 2 slabs, 0 violations.**
+
+**The frame did not move, and that is the second half of this measurement.** The plate adds six faces to the
+document — `yard` goes from 95 rows to **101**, ending at `slab 1` — but `yard.rs` packs only `Element::Mass`,
+`Element::Roof` and `Element::Wall` into its meshes, and `Element::Slab` is a fourth variant that none of the three
+predicates can match. **The yard has never drawn a plate, the shed's included**; `workshop` is the one scene that
+packs `Element::Slab` into a `floors` mesh, and the other six draw none either. The six new ids land at the end of
+the table (96..=101), so no existing id moved — which is the mechanical reason not one pixel of `7F1D25D497EF50B0`
+changed. A plate the frame cannot draw is still the floor the volume model measures, and that is what was missing;
+drawing it would be a second change, and it would reveal the shed's own plate at the same time.
 
 **The `identity` frame is no longer the number a shader rewrite has to leave alone.** It was byte-identical through
 every slice that touched the shader generator, and the volume refactor is the first change to move it — which is the

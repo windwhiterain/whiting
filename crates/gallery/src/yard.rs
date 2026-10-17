@@ -106,11 +106,20 @@ fn node(x: f32, z: f32) -> PlanNode {
 fn site() -> BuildingSkeleton {
     let shed = derive::starter(&SHED).skeleton;
     let mut store = derive::starter(&STORE).skeleton;
-    // The second building moves up the slope: its mass, its roof, and the roof's host all shift together,
-    // because a roof that named the wrong mass would stand on the first building's walls.
+    // The second building moves up the slope: its mass, its plate, its roof and the roof's host all shift
+    // together, because a roof that named the wrong mass would stand on the first building's walls, and a
+    // plate left at the origin would lie under the shed instead of under the store it belongs to.
     for mass in &mut store.masses {
         for point in &mut mass.outline {
             point.position[0] += STORE_OFFSET;
+        }
+    }
+    // **The plate's own footprint shifts with the mass**, which is the half of the store that the mass loop
+    // above cannot reach: a slab carries plan positions and no elevations, so moving it is the same offset
+    // on the same axis, and the seat still owns the two levels.
+    for slab in &mut store.slabs {
+        for point in &mut slab.outline {
+            point[0] += STORE_OFFSET;
         }
     }
     for roof in &mut store.roofs {
@@ -126,6 +135,13 @@ fn site() -> BuildingSkeleton {
     let mut store_roof = store.roofs.remove(0);
     store_roof.host = MassId(1);
     skeleton.roofs.push(store_roof);
+    // **The store's plate crosses with its mass, and is hosted by the mass it has become.** A mass is a
+    // wall ring *and* a plate, so a store that carried only the ring across would be a building with no
+    // floor in the volume model — the same thing a starter's plate suffers when its mass is taken and it
+    // is not. The host is `MassId(1)`, the id the store's mass holds in this skeleton and not in its own.
+    skeleton
+        .slabs
+        .push(store.slabs.remove(0).with_host(MassId(1)));
 
     // The courtyard: four sides and a gate gap in the south one. The gate is where no wall was authored.
     skeleton.walls = vec![
