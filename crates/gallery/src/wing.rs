@@ -17,10 +17,10 @@ use definition::Value;
 use scene::standard::Stage;
 
 use building::derive::{self, HALL};
-use building::identity::Identity;
-use building::ops;
 use building::grid::{FaceRef, Rhythm};
+use building::identity::Identity;
 use building::openings::{Inset, Opening};
+use building::ops;
 use building::{Building, BuildingSkeleton, Mass, PlanNode};
 
 use crate::building_identity::{
@@ -140,7 +140,6 @@ const SUN_IRRADIANCE: f64 = 3.2;
 pub fn wing() -> Value {
     wing_at(6.0, 6.0, 4.0)
 }
-
 
 /// Builds the hall scene for a footprint and a storey count.
 pub fn wing_at(width: f32, depth: f32, wing_depth: f32) -> Value {
