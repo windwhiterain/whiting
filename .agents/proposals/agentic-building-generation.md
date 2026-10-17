@@ -1669,6 +1669,17 @@ impression — that is the standard this project has held itself to since the fi
   `validate` reports nothing, so a caller sees a missing opening rather than a stated reason. A `Violation` variant
   would say *why*, and that is a compiler-enforced audit of every match; whether it is worth that cost is a judgement
   for the next slice rather than a fault to fix.
+
+  **The judgement, made (2026-10-27): no `Violation`, because `validate` could never report this one.** A violation
+  is a statement about a **document**, and the refused opening never becomes part of one — `add_opening` returns
+  `None` and the face keeps its wall, so the document that exists is the one *without* the hole. A variant that
+  `validate` cannot reach is a variant that would sit in the enum carrying no reading, which is exactly the
+  placeholder shape this crate's discipline forbids.
+
+  The refusal is already visible to the caller, at the call, as `Option::None`. What would improve it is naming the
+  *cases* in `add_opening`'s own documentation — which it has — and the four scenes that cut openings all ignore the
+  return value because a scene picks its faces deliberately. Naming the reason would mean an enum only the callers
+  see, and the crate does not carry API for a caller that does not exist yet.
 - **`site::report`'s overlaps are plan bounding boxes** and say so in their own docs: two L-shaped buildings can
   have overlapping boxes and no shared wall. The report **lists** and does not judge.
 - **The shadow terminator toothing** is the shadow subsystem's, not this one's.
