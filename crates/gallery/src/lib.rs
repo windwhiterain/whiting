@@ -181,6 +181,7 @@ impl Gallery {
     pub fn build(name: &str) -> Value {
         match name {
             "bamboo" => vegetation_picture::bamboo_picture(),
+            "bamboo_wind" => vegetation_picture::windy_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),

@@ -1089,6 +1089,7 @@ the same unification `Section` made of a circle and a blade.
 | a child follows a bent parent | a branch moves **0.094587** and sits **8.227e-3** from the bent bough's spine against a taper less the sink of **0.008226** |
 | a baked spine is immune | two half-strength fields move it **0.000e0** |
 | two fields compose | the tip lands **7.641e-3** from the vector sum of their separate pushes, because the second field reads the first's bent tangents |
+| the picture | the still `bamboo` scene renders to the **same sha256** (`84510A4D…`) before and after fields existed, and the same plant under a wind (`bamboo_wind`, 13 passes) is another frame: a field is visible as a shape, and the plant without one did not move |
 
 **Four decisions the fields forced**, two of which were the first version being wrong:
 
@@ -1107,6 +1108,11 @@ the same unification `Section` made of a circle and a blade.
    branch ten times its size.
 4. **A baked spine is immune**, and the marker is read in exactly one place — `Plant::shape` — so every field
    inherits the rule without repeating it.
+5. **A scene owns its fields, and a species carries its defaults.** `Species::with_fields` replaces the plant's
+   fields and changes nothing else, so `bamboo` and `bamboo_wind` are **one plant drawn in two shapes** rather
+   than two plants: the tree, the templates and the leaf placements are the rule's and the seed's, and only the
+   forces differ. That is what makes a field a *scene's* decision — the light in a room, the wind on a ridge —
+   without a second species for every weather.
 
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs

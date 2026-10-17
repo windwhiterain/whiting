@@ -39,8 +39,9 @@
 
 use definition::Value;
 use scene::standard::Stage;
-use vegetation::derive::bamboo;
+use vegetation::derive::{Species, bamboo};
 use vegetation::expand::{Detail, Expansion, expand};
+use vegetation::field::Field;
 
 use crate::building_identity::{building_extras, not_authored_extras, outputs_field, stage_set};
 use crate::geometry::plane_facing;
@@ -52,8 +53,12 @@ use crate::shaders::post_shader;
 use crate::vegetation_instancing::standing;
 use crate::vegetation_mesh::{LEAF_BASE_ID, node_ids, template_points, wood_points};
 
-/// The name this scene is built and rendered under.
+/// The name the still scene is built and rendered under.
 pub const SCENE: &str = "bamboo";
+
+/// The name the same plant is built and rendered under **with a wind on it**, so a picture can show what a
+/// field does beside the plant it does it to.
+pub const WINDY: &str = "bamboo_wind";
 
 /// The seed the plant's leaf field is derived from.
 ///
@@ -144,8 +149,7 @@ const GRADE: &str = r#"
 ///
 /// The dial is [`Detail::DEFAULT`] and not a number written here, because the point of the picture is the
 /// plant and not a resolution: a scene that picked its own dial would be a second author of the geometry.
-fn expansion() -> Expansion {
-    let species = bamboo(SEED);
+fn expansion(species: &Species) -> Expansion {
     expand(&species.plant, Detail::DEFAULT, &species.fields)
 }
 
@@ -190,8 +194,20 @@ pub fn sidecar() -> String {
 
 /// Builds the bamboo scene: one camera, a key and a fill, a floor, the plant's wood and its blade.
 pub fn bamboo_picture() -> Value {
-    let species = bamboo(SEED);
-    let expanded = expansion();
+    plant_scene(&bamboo(SEED))
+}
+
+/// The same plant under a lateral wind, drawn beside it: a field bends spines, and a picture is the only place
+/// the bend is visible as a shape rather than as a number.
+pub fn windy_picture() -> Value {
+    plant_scene(&bamboo(SEED).with_fields(vec![Field::light([1.0, 0.0, 0.0], 0.12)]))
+}
+
+/// Builds one plant scene: the camera, the lights, the floor, the wood and the blade, under whatever fields the
+/// species carries.
+fn plant_scene(species: &Species) -> Value {
+    let species = species.clone();
+    let expanded = expansion(&species);
     let ids = node_ids(&species.plant);
 
     // **Two point schemas, and they are the two identities**: every authored mesh carries `authored_id`,

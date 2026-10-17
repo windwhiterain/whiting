@@ -41,6 +41,21 @@ pub struct Species {
     pub fields: Vec<LeafField>,
 }
 
+impl Species {
+    /// The same species under a set of fields: a scene's own wind or light, replacing the species' defaults.
+    ///
+    /// # Invariants
+    ///
+    /// Only the plant's fields change. The tree, its templates and its leaf placement are what the rule and the
+    /// seed made, so two scenes under two winds draw one plant in two shapes rather than two plants.
+    pub fn with_fields(self, fields: Vec<Field>) -> Self {
+        Self {
+            plant: self.plant.with_fields(fields),
+            ..self
+        }
+    }
+}
+
 /// A culm with three boughs, two branches on each, and a leaf band on the branches.
 pub fn bamboo(seed: u64) -> Species {
     Species {

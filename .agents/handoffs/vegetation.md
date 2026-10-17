@@ -45,6 +45,8 @@ expansion.leaves;                               // one LeafGroup { node, templat
 
 // The forces that shape a grown plant: gravity, a light, a wind. `amount` is a fraction of each spine's length.
 let plant = plant.with_fields(vec![field::Field::gravity(0.25), field::Field::light([1.0, 0.0, 0.0], 0.15)]);
+// …or the same species under a scene's weather, which changes nothing but the fields.
+let indoors = derive::bamboo(seed).with_fields(vec![field::Field::light([1.0, 0.4, 0.0], 0.1)]);
 
 let report = ops::apply(&mut plant, &[
     Edit::new(bough(2), Change::Offset { property: Property::Station, by: 0.1 }),
@@ -138,5 +140,6 @@ cargo run -p whiting-vegetation --example select_probe     # 8, the brush
 cargo run -p whiting-vegetation --example species_probe    # 8, the generator
 cargo run -p whiting-vegetation --example field_probe      # 8, the fields
 cargo run -p whiting-device-rasterize --example render -- bamboo out/bamboo
+cargo run -p whiting-device-rasterize --example render -- bamboo_wind out/bamboo-wind
 cargo run -p whiting-device-rasterize --example render -- sweep out/sweep
 ```
