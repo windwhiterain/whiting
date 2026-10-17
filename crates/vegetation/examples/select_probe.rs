@@ -259,7 +259,7 @@ fn a_station_band_reads_the_authored_number(plant: &Plant) -> bool {
         every_station_in_band &= station >= from && station <= to;
         stations.push(format!("{station:.2}"));
     }
-    println!("\n# StationBand {from}..{to}");
+    println!("\n# StationBand {from:?}..{to:?}");
     for handle in &named {
         let node = plant.get(handle).expect("a named handle resolves");
         println!(
@@ -284,61 +284,63 @@ fn a_station_band_reads_the_authored_number(plant: &Plant) -> bool {
 
 /// A slot band is the authored slot on the attachment, and it is cut at the seam rather than joined
 /// across it: `[0.9, 1.0]` and `[0.0, 0.1]` are two different brushes.
+///
+/// # Invariants
+///
+/// The thresholds are about the interval and not about this plant's slots: every band's names are
+/// read back inside that band and counted against the walk, and the two seam bands must be
+/// **disjoint** — which is what a wrapping implementation could not be.
 fn a_slot_band_reads_the_authored_number(plant: &Plant) -> bool {
-    let bands = [(0.9f32, 1.0f32), (0.0, 0.1), (0.3, 0.5)];
-    let mut every_slot_in_band = true;
-    let mut counts_agree = true;
-    let mut disjoint = true;
-    let mut seam_names = 0;
     println!("\n# SlotBand, and the seam");
-    for (from, to) in bands {
-        let named = Selector::SlotBand { from, to }.handles(plant);
-        let counted = plant
-            .walk()
-            .filter(|(_, node)| {
-                let slot = node.attachment().slot;
-                slot >= from && slot <= to
-            })
-            .count();
-        let mut slots = Vec::new();
-        for handle in &named {
-            let slot = plant
-                .get(handle)
-                .expect("a named handle resolves")
-                .attachment()
-                .slot;
-            every_slot_in_band &= slot >= from && slot <= to;
-            slots.push(format!("{slot:.3}"));
-        }
-        counts_agree &= named.len() == counted;
-        if from == 0.9 {
-            seam_names = named.len();
-            let past_the_seam = Selector::SlotBand { from: 0.0, to: 0.1 }.handles(plant);
-            disjoint = named.iter().all(|handle| !past_the_seam.contains(handle));
-            println!(
-                "  [{from}, {to}] names {} ({}); [0.0, 0.1] names {} ({}); disjoint: {disjoint}",
-                named.len(),
-                names(&named),
-                past_the_seam.len(),
-                names(&past_the_seam),
-            );
-            println!("    every named slot read back inside the band: {every_slot_in_band}");
-            println!("    slots: {}", slots.join(" "));
-        } else {
-            println!(
-                "  [{from}, {to}] names {} ({}), slots {} — the walk's own count is {counted}",
-                named.len(),
-                names(&named),
-                slots.join(" ")
-            );
-        }
-    }
+    let seam = read_slot_band(plant, 0.9, 1.0);
+    let past = read_slot_band(plant, 0.0, 0.1);
+    let middle = read_slot_band(plant, 0.3, 0.5);
+    // The control: a band that wrapped onto 0.0 would name the slot-0 nodes from both sides of 1.0,
+    // and the two lists would meet.
+    let disjoint = seam.0.iter().all(|handle| !past.0.contains(handle));
+    println!("  the two seam bands are disjoint: {disjoint}");
     println!(
-        "  this plant's slots are 0.000, 0.300, 0.333, 0.500 and 0.666, so the seam band finds none \
-         ({seam_names}) while the band just past it finds the slot-0 nodes"
+        "  this plant's slots are 0.000, 0.300, 0.333, 0.500 and 0.666, so the seam band finds \
+         none ({}) while the band just past it finds the slot-0 nodes ({})",
+        seam.0.len(),
+        past.0.len()
     );
-    println!("  a band that wrapped would name the slot-0 nodes twice, once for each side of 1.0");
-    every_slot_in_band && counts_agree && disjoint && seam_names == 0
+    println!("  the row asks about the interval, not about this plant's slots");
+    let every_slot_in_band = seam.1 && past.1 && middle.1;
+    let counts_agree = seam.2 && past.2 && middle.2;
+    every_slot_in_band && counts_agree && disjoint
+}
+
+/// One slot band's reading: the handles it names, whether every named slot is inside it, and
+/// whether the count is the walk's own — with the row printed where it is measured.
+fn read_slot_band(plant: &Plant, from: f32, to: f32) -> (Vec<Handle>, bool, bool) {
+    let named = Selector::SlotBand { from, to }.handles(plant);
+    let counted = plant
+        .walk()
+        .filter(|(_, node)| {
+            let slot = node.attachment().slot;
+            slot >= from && slot <= to
+        })
+        .count();
+    let mut slots = Vec::new();
+    let mut in_band = true;
+    for handle in &named {
+        let slot = plant
+            .get(handle)
+            .expect("a named handle resolves")
+            .attachment()
+            .slot;
+        in_band &= slot >= from && slot <= to;
+        slots.push(format!("{slot:.3}"));
+    }
+    let agrees = named.len() == counted;
+    println!(
+        "  [{from}, {to}] names {} ({}) at slots [{}] — the walk's own count is {counted}",
+        named.len(),
+        names(&named),
+        slots.join(" ")
+    );
+    (named, in_band, agrees)
 }
 
 /// A box reads the world origin, normalises its two corners, and a box a metre away names nothing.
@@ -489,7 +491,24 @@ fn the_two_routes_are_one(plant: &Plant) -> bool {
     println!(
         "  every list is a subsequence of the walk, so it is in walk order and has no repeats"
     );
-    agree
+    // A stale handle is the one place the two routes can read differently, and both readings are
+    // the contract: `matches` asks whether the list contains the handle, and the walk cannot reach
+    // it. The call below is deliberately mismatched — the handle and the node do not travel
+    // together — because there is no node for a stale handle, and a membership test is the only
+    // thing left for it to answer.
+    let stale = Selector::Ids(vec![past_the_end()]);
+    let asked = stale.matches(plant, &past_the_end(), plant.root());
+    let named_by_handles = stale.handles(plant);
+    let subtracts_nothing = Selector::Not(Box::new(stale)).handles(plant);
+    println!(
+        "  a stale handle: `matches` on it answers {asked} because it is in the list, and \
+         `handles` cannot answer for it at all"
+    );
+    println!(
+        "  so Not(that list) subtracts nothing and names {} — Not is over the plant's nodes",
+        subtracts_nothing.len()
+    );
+    agree && asked && named_by_handles.is_empty() && subtracts_nothing.len() == walked.len()
 }
 
 /// A box around one bough's crown: half a metre across, centred on the bough's own world origin.
