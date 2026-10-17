@@ -199,3 +199,17 @@ first one's triangles. The helper that turns triangles into faces has to be writ
   corners were shared), and their edges are unmatched because a face and its neighbour run opposite ways round the
   shared edge. **The next attempt flips the three plate faces as a group**, not one at a time: the ring flags in the
   floor `ring(...)` call, the paving's `polygon(..., true)`, and the underside's `false`.
+- **2026-10-27** — the group flip was measured and **rejected**: flipping all three plate faces together still
+  measures `loops: 1`, so the opening is not a winding disagreement either. Following the faces by hand says it is
+  a **modelling** question, and this is the finding to carry forward:
+  the courtyard wall stands **in the middle of the plate**, and a shell of faces has no way to express that without
+  a three-surface edge. Pair the edges at the outline elevation and it is plain — 4.7 (inner wall base) pairs with
+  the floor ring; 2.3 (wall outer base) pairs with the same ring; 2.0 (wall inner base) would have to pair with
+  **both** the paving and the courtyard-facing wall. Three surfaces on one edge, whichever of the three plate faces
+  exists or is flipped.
+  So a courtyard is not a winding bug but a decision about the plate: either **the courtyard floor is not the plate**
+  (a sunken patio, its own face below the rooms floor, the wall standing on that face — a riser closes the step), or
+  **the plate is solid** (a volume, not a shell) which this crate does not have, or **the courtyard has no floor face**
+  (its floor is the earth, and the plate has a hole under the courtyard). Each is a design change with its own
+  consequences for `SlabSoffit`, for the plate's thickness and for what a courtyard means in this vocabulary.
+  **That decision is the next session's first move, before any more geometry.**
