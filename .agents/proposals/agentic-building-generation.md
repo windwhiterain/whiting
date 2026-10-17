@@ -4402,9 +4402,121 @@ have passed a check that reported crossings under the wrong indices.
   happened to sum to its shoelace with positive-area overlap would pass it, and the gate would now name it rather than measure
   it — which is a strict improvement on being measured at `12.5000` against a true `50.0000`, and no reason to think the
   measurement was ever wanted.
-- **The gate is `self_meeting` and not `clip`.** A mass outline that meets itself is never asked; an outline `clip` declines for
-  some other reason still reaches `plans_share_area`, which answers "no overlap" about two masses it did not compare. **No such
-  outline was found and none was constructed**, so this is the spelling that is missing rather than a capability that is
-  absent — the first question to ask about any future report of it is which of the two lines in
-  [`plans_share_area`] declined.
+- **The gate is `self_meeting` and not `clip`, and the shape the gate cannot see exists** — closed by *What the plans-decline slice
+  found* below, which constructed it, measured `18.0000 m²` of real overlap being reported as none, and gave the refusal a name.
+
+## What the plans-decline slice found: the reader that cannot measure was answering "there is nothing there" (2026-11-01, branch `feature/building-plans-decline`)
+
+The open item above was a spelling with no shape behind it, and the shape was there all along: **the authored pinch**. `self_meeting` is
+deliberately silent about a point two of a loop's own nodes stand at, [`crate::clip`] declines to triangulate it, and nothing stood
+between the two. `plans_share_area` read the refusal through a `matches!` whose `None` arm fell into the same branch as "these two plans
+share nothing", so a mass outline with no triangulation answered **"no overlap" about a neighbour it was never compared with.**
+
+### The control, built first, and what it read before and after
+
+The control is **two `3 × 3` squares sharing an authored corner — `18.0000 m²` a person can check — standing inside an `8 × 8`
+neighbour.** The pinch is wholly inside it, so the two plans really share `18.0000 m²`, and the plan that names it is the one shape
+this crate writes on purpose: two lobes meeting at a point the author wrote twice.
+
+| the pair | `clip`'s own reading | the true shared area | `validate::document`, before | after |
+| --- | --- | --- | --- | --- |
+| **the control: the pinch against the `8 × 8` neighbour** | nothing — it cannot measure the first plan | **`18.0000 m²`** | **0 violations: "no overlap"** | **`OverlapNotMeasured { mass: MassId(0), other: MassId(1) }`** |
+| the same pinch against a neighbour its plan does not touch | nothing | `0.0000 m²` | 0 violations | **0 violations — unchanged** |
+| a square carrying the collinear node `ops::split_outline` writes, against the control's own neighbour | `16.0000 m²` | `16.0000 m²` | `UnattachedOverlap` | **`UnattachedOverlap` — unchanged** |
+
+**The first row reaches the subtraction and that is measured rather than argued: it carries no `OutlineNotSimple`.** The gate in front of
+`plans_share_area` skips a pair whose outline meets itself and names it through `check_masses`; the absence of that name *is* the evidence
+that the gate did not skip this pair, so the pair's reading was whatever the subtraction returned. The second row is the control that
+keeps the first honest — bounding boxes that miss are a **measurement** rather than a refusal, so a plan that cannot be measured beside a
+neighbour it provably does not touch must stay silent — and the third is the same neighbour against a plan the clipper can measure.
+
+### The shape of the answer, and why
+
+**`Option<bool>`, and one new `Violation` beside `UnattachedOverlap`.** `plans_share_area` answers `Some(true)`, `Some(false)` or
+`None`; the caller reports all three. The brief left the choice between a named reading and a visible decline open, and the crate has
+already answered it in the record — *"a gate with no report is a gate that has thrown a reading away"* — so `OverlapNotMeasured` is the
+answer, and the refusal is not left to a reader of an empty list.
+
+**The payload carries the mass whose plan could not be compared, not the lower index.** The first version reported the pair in list
+order, so a document whose first mass was sound pointed the author at the sound one; the control caught it — `house` carrying a pinched
+neighbour reads `MassId(1)` beside `MassId(0)`, and both unmeasurable goes to the lower index. Naming the culprit costs **one
+[`crate::clip`] call about one loop against itself**, on the refusal path only, in a module `build` never calls.
+
+**The two rejections in front of the subtraction stay `Some(false)`, and that is the judgement worth stating.** An outline of fewer than
+three nodes encloses no area whatever it stands beside, and bounding boxes that miss cannot make polygons that meet: both are facts about
+the two plans rather than about this module's ability to measure them, and the second row above is what says so with a number.
+
+**It is not a second name for `OutlineNotSimple`, and the gate is what keeps them apart.** A self-meeting outline is still skipped by the
+`self_meeting` gate and named there; what arrives at the new name is the one loop both readings are silent about. The rank is `3`'s, the
+outline-pair rank, in its **fourth slot** (`UnattachedOverlap` takes `0`, this takes `1`) — beside the reading it answers rather than at
+the end with the slab faults, which is the reason `PlateCoverage` took `41` and did not sit at `15`.
+
+### Every right reading, still right
+
+**`courtyard_probe` is 823 lines before and after and `Compare-Object` reports 0 differing records** — byte-identical, which is the
+mechanical form of the table every earlier section quotes:
+
+| the reading | the number |
+| --- | --- |
+| the `25`-cell overlap grid | `50.0000` at all 25 cells, **all 25 `fired`** |
+| the degenerate-edge sweep, `0.01` to `3.00 m` | `4 × over` exactly at all 11 steps (`0.0400`, `0.0800`, `0.1600`, `0.2000`, `0.4000`, `1.0000`, `2.0000`, `4.0000`, `6.0000`, `8.0000`, `12.0000`), `VoidNotInside and DidNotExpand` at every one |
+| a `4 × 4` rectangle / one collinear node / a node on every edge | `16.0000` / `16.0000` / `16.0000` |
+| the `0.0001 m` sliver | `15.9996` |
+| the `1 m` slit | `12.0000` — the walk stops and `covers` still passes it |
+| the simple-outside controls | `12.0000` against `20.0000` → `8.0000`, `over: 11.960006`; `15.5000` against `24.5000` → `9.0000` |
+| the two authored pinches, 9 walls each | builds, `validate says nothing`, volumes to `4 dp` (`24.1920` and `25.6560` at the `0.30` wall) |
+| the needle on a mass's own outline | `OutlineNotSimple and DidNotExpand`, and `50.0000` against a true `50.0000` beside it without the needle |
+
+**`validate_probe` is 416 lines before and 417 after, and its diff is 5 records — every one of them the control row** (`0` violations
+becoming `1`, and the name). `Compare-Object` reports **0 records only in the before run**, so every reading the probe made is unchanged.
+
+### The gate, measured on the branch
+
+- **29/29 building examples exit 0**, each run by name from the built binary. `cargo build --workspace --all-targets` exits 0 and warns
+  **only** of the `census.exe` / `census.pdb` output filename collision — the set every earlier section quotes, and no new warning.
+  `cargo fmt --all -- --check` is clean.
+- **Nine before/after pairs on this adapter, identical on all three hashes: 9 rows, 27 fields, 0 moved.** The before set was rendered with
+  **main's** `crates/building/src` in place and the after set with the branch's, both through the built binary and to fresh names.
+  **Which hash is which, because the three are not the same measurement:** `png` is the **SHA-256 of the written `.png` file**; `document`
+  and `image` are **the manifest's own fields**, the document hash over the documents the compile emitted and the image hash over the
+  **raw pixel buffer**. The `.png` column reproduces *The baseline* by fresh render (`house B13154AD7D29F938` … `identity 974FB5B24E1E7A35`),
+  which is the canary that says the pair is this machine and this tree; and `house`'s `image` field reads `4f343949d83b2064`, the second of
+  the two hashes of one frame that *Correction: the difference was the hash's domain* is about.
+- **No gallery scene's own document reaches the new name, and it is measured rather than grepped.** A throwaway probe read
+  `OverlapNotMeasured` out of **both** entry points for all nine scenes — `house`, `hall`, `hall_large`, `shed`, `terrace`, `wing`,
+  `workshop`, `yard`, `identity`, **13 masses** between them — and every one reads **0 from `document`, 0 from `Building::validate`, and 0
+  violations of any kind**. **The probe carried a control**, because an instrument that cannot fire agrees because it cannot differ: the
+  `house` with a pinched neighbour appended reads **1 from `document` and 1 from `Building::validate`**, payload
+  `OverlapNotMeasured { mass: MassId(1), other: MassId(0) }`. The probe was deleted after the measurement rather than committed.
+- `scene_identity_probe` reads **806 rows two-way** (`77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101`), contiguous, every name non-empty,
+  every name round-tripping, the channel two-way.
+
+### What this slice's brief got wrong
+
+**It carried forward "no such outline was found and none was constructed" as if it were a settled fact, and that sentence was one shape
+away from the truth.** The shape is the **authored pinch**, which the record already describes three times — as the gate's deliberate
+exception, as `clip`'s `9.0000` against a loop of `18.0000`, and as the mass outline the offset walk refuses. What no slice had done is put
+that shape in **two masses that overlap**, and that is the whole of what was missing: the pinch was always measured against a neighbour it
+did not touch, where the answer is `false` and the silence is correct. **A control placed beside a fault can be silent for the right reason
+and still leave the fault unmeasured.**
+
+**It offered `Option<f32>` or `Result`, and the quantity is not a number.** `AREA_TOLERANCE` is the square of the touch tolerance and is
+compared inside this one function, so handing the caller a float hands it a decision it does not make elsewhere; `Option<bool>` keeps the
+tolerance where it is and makes the three-way answer the function's own.
+
+**It asked for the caller to "decide visibly", which is under-specified in a way that matters.** Deciding to skip the pair is visible only
+as an absence — the fault the mass-gate slice refused to leave to an absence. The name is what makes the decision legible to a reader who
+never sees the call.
+
+### What remains open
+
+- **A plan that cannot be measured and no neighbour stands near is still silent**, and that is a boundary rather than an oversight: the
+  name is about a pair's question going unanswered, and a mass alone asks no pair question. **The fault itself is not nameless** — the
+  expander refuses the same loop by name through `DidNotExpand`, so an author is never left with nothing, and the only thing lost is that
+  the name arrives through the composition rather than through `document` alone. Naming it per mass instead would make the gate
+  unconditional and the `Option` unreachable in-tree, which is the spelling nothing exercises that this section exists to remove.
+- **`covers` is still a necessary condition and not a proof**, unchanged: a loop that meets itself whose triangles happened to sum to its
+  shoelace with positive-area overlap would pass it. What such a loop gets now is `OverlapNotMeasured` rather than a wrong number.
+- **The authored pinch is still the one courtyard whose areas nothing can check**, unchanged: for a void it builds a sound ring and the
+  areas go unchecked on purpose, and for a mass outline the offset walk refuses the loop outright.
 
