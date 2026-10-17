@@ -96,8 +96,8 @@ impl LeafTemplate {
     ) -> Self {
         // `shape` puts a section's `x` half axis on the frame's `normal`, so `+y` is what makes the
         // blade's width the template's side. A curve's own default is a perpendicular of its first
-        // tangent's smallest component, which for a `+x` midrib is `+z` and would stand the blade on
-        // its edge — the contract is stated here rather than left to the default.
+        // tangent's smallest component, which for a `+x` midrib is `-z` — so the blade's width would
+        // run along `z` and stand the blade on its edge. The contract is stated here, not defaulted.
         midrib.set_initial_normal(SIDE);
         let mut sweep = Sweep::new(midrib, section);
         sweep.scale = width;
