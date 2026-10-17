@@ -225,3 +225,19 @@ different heights (`FaceNotPlanar` with `departure = slab/2` on the shed), which
 **same** elevation as the outer — `inside_floor` was moved down for one commit and that is what produced the warped
 quads; and the plate must be **inset** from the wall's outer face, or the plate's side and the wall's face fight for
 the same pixels (measured on `hall_large` and `terrace`).
+
+## The strip fix, its measurement, and what is still open (2026-10-27)
+
+The strip now runs over the **cut** loops (`soffit_points`/`floor_points`), which is what the dump said it needed.
+Measured on the shed: `SolidNonManifold` **gone**, Euler `-8 → -6`, and one `FaceNotPlanar { departure: 0.19 }`
+left. **The mass and both parts are still `loops: 2`.**
+
+So the reveal sills pair now, and two boundary loops remain — on the mass **and on both parts**. The parts failing the
+same way is the strongest clue left: a part is a template's own mass, expanded by the same function, and nothing about
+a part is special. Two loops with Euler −6 on all three says a **shared, systematic** pair of holes rather than a
+shed-only shape.
+
+The next instrument is the same one that got this far: `SHED_DEBUG=1` is in `expand_mass` on this branch and prints
+the unmatched edges, so the next round reads **which two loops** and stops guessing. A `departure: 0.19` face points at
+a warped quad — likely the base strip again where the two cut loops disagree in **order** rather than length, which the
+same dump would show as a crossing pair.
