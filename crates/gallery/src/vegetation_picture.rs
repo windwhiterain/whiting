@@ -183,9 +183,14 @@ fn knots(species: &Species) -> Vec<Seat> {
         .plant
         .live()
         .filter(|(handle, _)| handle.depth() == 1)
-        .map(|(handle, node)| Seat::new(handle, 0, 0.1, node.attachment().slot).sunk(0.012).scaled(1.8))
+        .map(|(handle, node)| {
+            Seat::new(handle, 0, 0.1, node.attachment().slot)
+                .sunk(0.012)
+                .scaled(1.8)
+        })
         .collect()
 }
+
 /// Resolves an `authored_id` this scene's frame writes into the handle that names the node.
 ///
 /// # Invariants
