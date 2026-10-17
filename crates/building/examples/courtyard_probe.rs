@@ -29,9 +29,11 @@ fn outline(corners: &[[f32; 2]]) -> Vec<PlanNode> {
 /// Answers whether one concave plan expands into one watertight solid.
 fn measure(label: &str, corners: &[[f32; 2]], wall: f32) {
     let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![Mass::new(outline(corners), 3.2)
-        .with_wall(wall)
-        .with_slab(0.4)];
+    skeleton.masses = vec![
+        Mass::new(outline(corners), 3.2)
+            .with_wall(wall)
+            .with_slab(0.4),
+    ];
     let building = Building::new(skeleton);
     let violations = building.validate();
     match building.build() {

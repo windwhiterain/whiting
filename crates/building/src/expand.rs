@@ -2095,7 +2095,6 @@ fn loop_area(loop_points: &[Vec2]) -> f32 {
     total * 0.5
 }
 
-
 /// Returns whether two segments cross **properly**: each has the other's endpoints strictly on opposite sides.
 ///
 /// # Invariants
