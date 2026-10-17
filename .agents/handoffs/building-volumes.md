@@ -148,3 +148,26 @@ Step 2 is the rest: add the plate `Slab` wherever a mass is authored (`derive::s
 `wing.rs`, and every probe document that builds a mass), then bring `expand_probe`'s numbers up to the ring-plus-plate
 split, then re-record the nine hashes. **The volumes to check:** the old shell's `solid_signed_volume(Mass)` must
 equal the new ring's volume **plus** the plate's.
+
+## Where step 2 stands (2026-10-27, branch `feature/building-vol2`)
+
+**The building crate is green**: all thirteen probes pass with the strip base, the plate in `derive::starter`, and
+`expand_probe`/`validate_probe` brought up to the split. **The gallery is not**:
+
+| scene | hash | reading |
+| --- | --- | --- |
+| `house` | `B8384583E741BE57` | unchanged — the plate's top is the plane the floor already was |
+| `hall` | `A68F409B2DB9E9D9` | unchanged |
+| `wing` | `2050549F7611B0E4` | unchanged |
+| `yard` | `ECCEB09EE3FD0BD9` | unchanged |
+| `hall_large` | `37E166401574C75E` | **moved** — the plate's side and the wall's outer face are coplanar, so the face
+  fights for the same pixels |
+| `terrace` | `84EB54DEF1190BFE` | **moved**, same reason, three times over |
+| `shed`, `workshop`, `identity` | — | **render failed** |
+
+and `scene_identity_probe` says the channel is **not** two-way for every scene.
+
+**Read that as three separate jobs, not one defect:** (1) the coplanar fight — the plate should be inset from the
+wall's outer face by a millimetre or the wall should overhang it, so the two do not share a plane; (2) the three
+failing scenes, which need their render error read first; (3) the identity probe, whose failure is probably the same
+cause as (2) — a document that no longer expands the way its table was built from.
