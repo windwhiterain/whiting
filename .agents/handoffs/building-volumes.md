@@ -257,3 +257,23 @@ rectangle left open at every opening.
 **An instrument improvement that did not land:** attributing each open edge to its face's `element` needs a
 multi-line edit, which silently does nothing on these CRLF files through a script; write it with the `edit` tool, one
 anchor, or not at all.
+
+## The lengths are equal, so the pairing assumption was not the defect (2026-10-27)
+
+`SHED_DEBUG=1` now prints the two loops beside the station count:
+
+```text
+LOOPS outer 10 inner 10 stations 6     (the shed's mass, with its six opening stations)
+LOOPS outer 4 inner 4 stations 0       (each part, with no openings at all)
+```
+
+**Equal lengths, so the strip pairs node for node and the "one loop has the stations" hypothesis is dead.** And the
+decisive detail is the parts: `4/4` nodes, **no openings**, and they still report `SolidOpen { loops: 2 }` with
+`euler 0`. A plain four-node mass whose base strip is four quads does not close, so the defect is in the base strip's
+**own** geometry, not in its interaction with openings.
+
+Read the numbers as a shape: `euler 0` with two boundary loops is a **torus that is open at one seam** — which is
+what a ring looks like when one of its two end strips is missing. The base strip exists; the question is whether it is
+the **only** end. The wall top is the other, and it is emitted only where the walls are: a part whose mass is a
+closed loop of wall around a hole (a frame) would need both, and the top is emitted per edge — check whether the part
+mass's top ring is emitted at all (`WallTop` faces) before assuming anything about the base.
