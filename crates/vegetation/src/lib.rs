@@ -13,7 +13,9 @@
 //! [`shape::Section`], and the walk that turns a spine and a section into triangles is [`shape::Sweep`] —
 //! a branch, a leaf blade and an envelope are one primitive there, and this crate restates none of it.
 //! What is here is only what a *plant* adds: [`handle`], the derivation path that names a node; [`rng`],
-//! one random source per node, forked by that path.
+//! one random source per node, forked by that path; [`node`], a spine with the law that thickens it and the
+//! three numbers that attach it; [`plant`], the root, the walk, and the placement that composes from it; and
+//! [`expand`], the walk to triangles with one resolution dial.
 //!
 //! # The rules this crate may not break
 //!
