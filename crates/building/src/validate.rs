@@ -775,6 +775,17 @@ pub enum Violation {
         departure: f32,
     },
     /// A mass's void is not strictly inside its outline, so the hole it makes would open through the wall.
+    ///
+    /// # Invariants
+    ///
+    /// **The subtraction behind it reads two computed areas, and on a loop that meets itself the two
+    /// are not about the shape.** A symmetric bowtie `+8 − 8` gives `8.0` shared with the outline
+    /// against `12.0` shared with itself and fires; the same bowtie stood on its side as an hourglass
+    /// gives `8.0` against `8.0` and does not fire. Both were measured inside a mass **twice as wide
+    /// as the loop**, so neither is outside its outline. What the numbers are is whatever
+    /// [`crate::clip`]'s ear clipper made of a polygon that has no triangulation — so on a
+    /// self-intersecting loop this violation reports that the clipper disagreed with itself, and the
+    /// walk's own refusal of the same loop reaches the author through [`DidNotExpand`](Self::DidNotExpand).
     VoidNotInside {
         /// The mass.
         mass: MassId,
@@ -959,8 +970,10 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 /// refuses reaches the author through [`DidNotExpand`](Self::DidNotExpand).
 ///
 /// **"Inside" is measured, not eyeballed**: the area two plans share must equal the void's own area,
-/// which is a computation `crate::clip` already makes exact. A void that crosses the outline shares
-/// less than it encloses.
+/// which is a computation [`crate::clip`] makes exact for a simple loop. A void that crosses the
+/// outline shares less than it encloses; a void that **meets itself** shares something else again,
+/// because a loop with no triangulation has no area for the clipper to be exact about — see
+/// [`VoidNotInside`](Self::VoidNotInside).
 ///
 /// **The two loops a courtyard is built from are read through the same two calls the expander makes**
 /// — [`expand::offset_loop`](crate::expand::offset_loop) for the mass's inner loop and for the void's

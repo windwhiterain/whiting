@@ -3402,12 +3402,181 @@ walk `--locate` uses. Where a sentence was false — 53–92 % of every frame, i
 fixed rather than the sentence.
 
 **What is left, in order of what would teach the most:** a part on a **mass's inner wall** is now addressable and
-measured by no scene (the frame is proper: the part stands into the mass's own rooms); a **self-intersecting void
-loop** is untested — `VoidNotInside` reports a bowtie, but whether the walk refuses it is unmeasured; `--region` prints
+measured by no scene (the frame is proper: the part stands into the mass's own rooms); `--region` prints
 **at most 24 rows**, so no whole-frame sweep is a census; `terrace`'s third plate is a camera question for the owner.
+
+**The self-intersecting void loop is no longer on that list, because it was measured and the walk already refused
+it** — see *What the bowtie slice found* below for the five shapes and the numbers. The sentence it replaces said
+*"`VoidNotInside` reports a bowtie, but whether the walk refuses it is unmeasured"*, and **both halves were wrong
+in the same way**: the walk refused the bowtie before the question was asked, and `VoidNotInside` does not report a
+bowtie for the reason its name gives.
 
 **And the rule the arc earned, above all of it:** an instrument must be able to disagree with you, and must be shown
 to fire. The ground cut's first version shifted every triangle, showed sky through the ground, and still reported
 plausible pixel counts; the check that caught it was `--locate` on a floor pixel with an untouched channel as the
 control. Five briefs in a row carried a false premise, and every one was caught by a measurement rather than by
 argument — including two of the author's own.
+
+## What the bowtie slice found: the walk already refused it, and two sentences about it were wrong (2026-10-17, branch `feature/building-bowtie`)
+
+The open item was a **void loop that intersects or touches itself**. The sentence behind it read *"`VoidNotInside`
+reports a bowtie, but whether the walk refuses it is unmeasured"*, and the question was whether the outward walk
+refuses such a loop **or silently produces an inside-out or self-overlapping ring**.
+
+**It refuses. There was no bug to fix, and the deliverable is the reading.**
+
+### The five shapes, and every reading of each
+
+`courtyard_probe` grew a section for this, and it reads the **three questions separately**: what `validate` reports
+about the document, what `build` does with the loop, and — only where a solid came out — its volume against **plan
+geometry's own answer** and its manifold, closure and Euler readings. The offset loop is still **read back out of the
+drawn mesh** rather than recomputed, so the instrument can disagree with the crate; the mesh read-back was widened
+once, because a quad's two authored corners were being told apart by *first node that matches* and a loop that names
+one position from two of its nodes cannot be read that way. It is settled by **the loop's own order** now.
+
+A **12 × 12 mass**, a **0.3 m wall** and a **3.2 m ring** throughout, so that `VoidReachesTheWall` cannot join in and
+a shape's own fault is measured alone. Every loop inside its housing by more than the ring's own thickness.
+
+| void loop | simple | the loop's signed area, by hand | `validate` says | `build` | solid |
+| --- | --- | --- | --- | --- | --- |
+| **bowtie** `(0,0)(4,4)(4,0)(0,4)` | **false** | `+8 − 8 =` **`0.0000`** | `VoidNotInside` and `DidNotExpand` | **refused**: `OffsetSelfIntersecting { left: 0, right: 2 }` | none |
+| **hourglass** `(-3,0)(-1,-2)(1,2)(3,0)(1,-2)(-1,2)` | **false** | `0.0000` | `DidNotExpand` **only** | **refused**: `OffsetSelfIntersecting { left: 1, right: 4 }` | none |
+| **asymmetric bowtie** `(0,0)(4,6)(4,0)(0,2)`, walked as `(0,2)(4,0)(4,6)(0,0)` | **false** | `12 − 4 =` **`8.0000`** | `VoidNotInside` and `DidNotExpand` | **refused**: `OffsetSelfIntersecting { left: 0, right: 2 }` | none |
+| **two squares touching at a point**, `(-3,-3)(0,-3)(0,0)(3,0)(3,3)(0,3)(0,0)(-3,0)` | **false** | `9 + 9 =` **`18.0000`** | **nothing at all** | **builds** | manifold `true`, loops `0`, **euler `0`**, volume `24.1920` against `(offset − loop) × height = 24.1920`, off **`0.000002`** |
+| **a T-junction**, `(-3,-3)(3,-3)(3,3)(0,-3)(-3,3)` — touching at a point the author never wrote down | **false** | `18.0000` | `DidNotExpand` | **refused**: `MiterTooLong { node: 2, reach: 1.3057503 }` and `MiterTooLong { node: 4, reach: 1.3057507 }` | none |
+
+The one shape that built was measured against plan geometry on the same terms as every concave case above it, and
+every reading held: the offset loop is **simple**, every corner is `0.3000` m out on the correct side with a worst
+miss of **`0.0000001`**, its area is `25.5600` against plan geometry's `25.5600` — off **`0.000004`** — the solid is
+edge-manifold with **no boundary loop** and the **euler `0`** a torus has, and **every flat face stands on one of the
+ring's own loops**. `validate` reports **zero violations** for it. The swept refusal is monotone in the variable
+that would cause a limit and flat in the one that cannot: **six half-widths from 1.0 m to 3.5 m and eight walls
+from 0.05 m to 0.40 m all refuse by the same name**, so this is topological and not arithmetic, which is the
+opposite of the `2 × wall` boundary the notch slice found.
+
+### Where each refusal comes from, and why there is nothing new to name
+
+- **A crossing** is caught by [`Problem::OffsetSelfIntersecting`](crates/building/src/expand.rs), the expander's own
+  fault, and reaches the author as `Violation::DidNotExpand` carrying it untranslated. It fires on the **offset**
+  loop, which is where the fault is: the authored loop's crossing is a fact about the document, and the offset
+  loop's crossing is the one that would build a ring in the wrong shape.
+- **A touch the author did not author as a node** is caught by `Problem::MiterTooLong`, and for the right reason.
+  Where a loop pinches with its two lobes in *adjacent* directions the mitre has to run `wall / sin(θ / 2)` from a
+  corner that is nearly straight, which reaches `1.3057` at a `0.3` m wall and passes the crate's own join limit of
+  `4 × wall = 1.2`. The touch with the two lobes in *opposite* directions — two squares sharing a corner — mitres
+  normally, and the geometry is right.
+- **The asymmetric bowtie is a different walk and was worth measuring on its own.** Its signed area is `-8`, so the
+  expander **reverses** the loop before it walks it, and a reversal of a self-intersecting loop swaps which of its
+  two triangles is the positive one — which is the only thing that decides the side an edge offsets to. It is still
+  refused, by the same variant, and it is the case the two symmetric shapes cannot reach at all.
+
+**No variant was added**, and that is the point of the exercise rather than a shortfall in it: `OffsetSelfIntersecting`
+and `MiterTooLong` were already the neighbours for exactly these two ways, and a new name beside them would be a
+second spelling of a fault that is already spoken for. `Violation` did not grow either — `DidNotExpand` is the
+pairing every other refusal on this path uses.
+
+### Two sentences that were wrong, and are now not
+
+1. **`courtyard_probe`'s own `is_simple` said a ring built on a self-touching loop "has a face with no material
+   behind it".** It does not: the touching pair above is closed, manifold, of the right Euler characteristic and of
+   the right volume, and its two rings meet along the whole cross-section of the pinch point, which is why the
+   characteristic is `0` and not `-1`. The claim has been cut with the measurement that killed it.
+2. **`clip.rs` and `Violation::VoidNotInside` both said the area comparison is exact.** It is exact **for a simple
+   loop** and it is nothing of the kind for one that meets itself, because a loop with no triangulation has no area
+   for an ear clipper to be exact about. Measured, on loops **entirely inside a mass twice as wide as they are**:
+
+   | void loop | `shared_area(outline, loop)` | `shared_area(loop, loop)` | difference | `VoidNotInside` fires |
+   | --- | --- | --- | --- | --- |
+   | bowtie `(0,0)(4,4)(4,0)(0,4)` | `8.0000` | `12.0000` | `4.0000` | **yes** |
+   | the same bowtie as an hourglass | `8.0000` | `8.0000` | `0.0000` | **no** |
+   | asymmetric bowtie `(0,0)(4,6)(4,0)(0,2)` | `12.0000` | `15.0000` | `3.0000` | **yes** |
+   | two squares touching at a point | `9.0000` | `9.0000` | `0.0000` | **no** |
+   | a T-junction | `18.0000` | `18.0000` | `0.0000` | **no** |
+
+   **So "`VoidNotInside` reports a bowtie" is true by accident and false by reason**: it reports that the ear clipper
+   disagreed with itself, and it does not report the hourglass at all — which is the *same shape*, differing only in
+   which pair of its edges crosses. A reader who took that sentence as "a self-intersecting void reaches outside the
+   outline" has been told something no measurement supports. **Whether a self-intersecting loop should be named by a
+   document check of its own is the one open question this slice leaves**, and it is deliberately not answered here:
+   adding one refuses documents that build nothing today and are refused anyway, and that is a decision about what
+   `validate` is for rather than a measurement.
+
+### The canary's false positive, which is the more useful half of the evidence
+
+**Nine silent renders only say the render loop agreed with itself**, so the previous slices put a `panic!` at the top
+of `courtyard::ring` and rendered all nine scenes under it. **The first reading of that canary said the canary fired in
+all nine.** It had not. The probe matched the *string* `CANARY` in the render's combined output, and a diverging
+`panic!` makes the rest of the function unreachable, so `rustc`'s own `unreachable code` warning **quoted the panic's
+source line** and the match caught the compiler's diagnostic rather than the program. Re-run through the built binary
+instead of through `cargo run`, matching `thread '...' panicked` rather than a word:
+
+- **0 hits across all nine scenes**, every one exiting `0`.
+- **The same canary fires** on `courtyard_probe` — `CANARY: a document reached the courtyard ring walk with
+  Void { mass: MassId(0), void: 0 }`, exit `101`.
+- It was then removed.
+
+**An instrument that can be made to agree with you is worse than none**, and this one agreed for the wrong reason.
+
+**No scene authors a courtyard, and that was measured three ways rather than assumed.** `Mass::with_voids` has one
+definition and **every caller is an example**: `courtyard_probe`, `patio_probe`, `validate_probe`, and nothing else
+in the workspace. `derive.rs` writes `voids` **zero** times. `crates/gallery` — which builds all nine scenes —
+matches **none** of `with_voids`, `.voids`, `VoidWall`, `VoidInner`, `VoidTop`, `VoidBase` or `SolidId::Void`; the
+only other file in the workspace that names any of them is `part_probe`, which names `SolidId::Void` in a match arm to
+ignore it.
+
+### The gate
+
+- **All 29 building examples exit 0**, every one run by name from `crates/building/examples`.
+- `cargo build --workspace --all-targets` exits 0 and warns **only** of the `census.exe` / `census.pdb` output
+  filename collision — the set every earlier section quotes, and no new warning.
+- `cargo fmt --all -- --check` is clean.
+- `scene_identity_probe` reads **806** rows (77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101), contiguous, every name
+  non-empty, every name round-tripping, the four pinned readings unchanged, the channel two-way.
+- **Nine before/after pairs on this adapter, identical on all three hashes.** The before set is the branch point's
+  `crates/building` restored with `git checkout 57d5086 -- crates/building` and rebuilt; the after set is that tree
+  plus two comments and one probe. **Which hash is which, because the two are not the same measurement**: `png` is
+  the **SHA-256 of the written `.png` file**, `document` and `image` are the **manifest's own fields**, the document
+  hash over the documents the compile emitted and the image hash over the **raw pixel buffer**.
+
+  | scene | `.png` file SHA-256, before and after | manifest `document` | manifest `image` (raw buffer) |
+  | --- | --- | --- | --- |
+  | `house` | `B13154AD7D29F938` **same** | `F285144DA26FEC5E` **same** | `4F343949D83B2064` **same** |
+  | `hall` | `C4339E6310EA1C37` **same** | `8AD46AF4DEC6AD57` **same** | `D3861AB9A49E11DF` **same** |
+  | `hall_large` | `43D3780A15E3D08E` **same** | `7930ACDE40622338` **same** | `AC283053024091EF` **same** |
+  | `shed` | `882B8F9A7C671B0D` **same** | `FAB2859D5A542659` **same** | `929A983D1B57D8C3` **same** |
+  | `terrace` | `EDF3F4B3CF2A9686` **same** | `1D2963D762CC1F59` **same** | `D6478E6600918037` **same** |
+  | `wing` | `14E3E27F9F9E1A83` **same** | `0A890ABCB64118C9` **same** | `E92705C66973AD53` **same** |
+  | `workshop` | `7DD5D40894181EA7` **same** | `32C95C8AADE51358` **same** | `D9617C18C39B0FDB` **same** |
+  | `yard` | `FDC446B24E98CE04` **same** | `CA2FB43788334947` **same** | `2AB63DE3B0A4F727` **same** |
+  | `identity` | `974FB5B24E1E7A35` **same** | `E170170E5822C26C` **same** | `0F3026193CE73439` **same** |
+
+  **And the table of `.png` values above is the one every earlier section carries**, which settles the notch slice's
+  note that the table was stale for this adapter: `house` reproduces to `B13154AD7D29F938` by fresh render on this
+  machine. The two numbers the notch slice compared were never in conflict — `B13154AD…` is this file's hash and
+  `4F343949…` is the manifest's raw-buffer hash, which is exactly what *Correction: the difference was the hash's
+  domain* says. Rendered to fresh names (`btA-*` for after, `btB-*` for before) in a worktree whose `out/` was empty,
+  so no comparison was made against a render from a past era.
+
+### What this slice's brief got wrong
+
+**It said `Violation::VoidNotInside` "reports a void that reaches outside the outline, and a bowtie void reaches
+outside its own plan".** The bowtie measured here is **entirely inside a 12 × 12 mass** and `VoidNotInside` fires
+anyway, because the two areas it subtracts are `8.0000` and `12.0000` on a loop that has no triangulation. The
+violation was never about the outline. The half of the sentence that is right is the half nobody would have guessed:
+the same shape as an hourglass is **not reported at all**.
+
+**It named "a bowtie, an hourglass, and a loop that touches itself at a point" as three cases and they turned out to
+be four.** A touch *at a point the author wrote down* and a touch *found under an edge the author did not* are the
+same defect wearing two coats, and they take opposite paths through the walk: the first builds and the second is
+refused by `MiterTooLong`. The brief's third case could have been taken as covering both, and measuring only the one
+it named would have left the harder half unmeasured.
+
+**It asked whether the walk "refuses such a loop, or silently produces an inside-out or self-overlapping ring", and
+the second horn turned out to be a real shape rather than a failure.** One of the five builds, and what it builds is
+sound. The brief's framing left no room for "the walk takes it and the geometry is right", which is the answer, and
+the answer is a third thing rather than one of the two offered.
+
+**What is still open:** whether a void loop that meets itself should be named by a document check of its own, so that
+`validate` says *the loop is not simple* rather than leaving the author with a subtraction that happened to notice.
+It is not answered here on purpose: it refuses documents that build nothing today, and that is a decision about what
+`validate` is for, not a defect this measurement found.

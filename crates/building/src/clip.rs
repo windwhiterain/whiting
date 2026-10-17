@@ -14,8 +14,15 @@
 //!
 //! # Invariants
 //!
-//! - **Both polygons are simple** (non-self-intersecting). `validate` already reports a reversed or too-short
-//!   outline, so this is the crate's existing assumption rather than a new one.
+//! - **Both polygons are simple** (non-self-intersecting), and **this is an assumption rather than a
+//!   guarantee, measured rather than argued**: `validate` reports a reversed or too-short outline, and
+//!   nothing reports a loop that meets itself. `courtyard_probe`'s section on a void loop that meets
+//!   itself measured what happens then, and the answer is that the numbers this module returns are
+//!   whatever its ear clipper happened to produce, so a caller comparing two of them is reading the
+//!   clipper and not the shape — the `+8` and `-8` of a symmetric bowtie give `8.0` against `12.0`,
+//!   the same bowtie as an hourglass gives `8.0` against `8.0`, and `VoidNotInside` fires on the first
+//!   and not on the second. **Nothing here is wrong for a simple polygon**; the reading simply stops
+//!   being about the polygon the moment it stops being one.
 //! - **The result is a sum of exact triangle intersections**, so it is a lower bound only for degenerate input: a
 //!   polygon with collinear corners loses area-free triangles, never area.
 //! - Ear clipping **stops rather than loops** when no ear can be clipped (degenerate outline), and what it has
