@@ -1238,6 +1238,30 @@ where yard part 0, template mass 0, outer wall over edge 0: id 49 covers 13713 p
 where yard part 0, template mass 0, outer wall over edge 1: id 50 covers 238 pixel(s) in x 652..=657, y 582..=632
 ```
 
+## What the second hall found: a style composes, a scene does not (2026-10-27)
+
+The hall scene was one footprint and one camera, which made the style's promise half-tested: a style that only
+ever draws one building is a table of numbers with a picture attached. So the scene became
+`hall_at(width, depth, storeys)` — and, more to the point, **the frame follows the building**: the camera's
+distance and height and the sun's shadow page are derived from the ridge `HALL::starter` answers with, because a
+scene whose camera is right for one size and wrong for two is a scene that does not compose.
+
+Two scenes, one file:
+
+| scene | footprint | identity rows | the wall's edge 2 |
+| --- | --- | --- | --- |
+| `hall` | 10 × 16 | 72 | id 3 covers **82,813** px |
+| `hall_large` | 14 × 20 | **104** | id 3 covers **59,833** px |
+
+**The style changed the building, not the scene.** `HALL::bays(10.0)` = 3 and `HALL::bays(14.0)` = **5**: the same
+relations give a gable end with three windows and one with five, a rise that follows the span, and a wall that
+stays a twenty-sixth of it. Both tables round-trip through the probe, so both scenes are named and both are
+checked.
+
+That is the difference between a style and a preset: **a preset is the numbers, a style is the rule that produces
+them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
+chosen twice.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):

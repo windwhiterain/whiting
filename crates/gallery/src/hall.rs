@@ -17,7 +17,7 @@ use definition::Value;
 use scene::standard::Stage;
 
 use building::derive::{self, HALL};
-use building::grid::{FaceRef, Rhythm};
+use building::grid::Rhythm;
 use building::identity::Identity;
 use building::openings::{Inset, Opening};
 use building::ops;
@@ -45,8 +45,8 @@ use crate::shaders::post_shader;
 /// **The bays are one count round the building.** A hall's rhythm is uniform, so the count `HALL::bays`
 /// gives for the shorter span is used on every face; a scene that measured each face would be choosing a
 /// second rhythm the style did not name.
-pub fn document() -> Building {
-    let plan = HALL.starter(10.0, 16.0, 1);
+pub fn document_at(width: f32, depth: f32, storeys: usize) -> Building {
+    let plan = HALL.starter(width, depth, storeys);
     let mut skeleton = derive::starter(&plan).skeleton.clone();
     let mass = MassId(0);
     let bays = HALL.bays(plan.width);
@@ -67,8 +67,12 @@ pub fn document() -> Building {
             );
         }
     }
-    let _ = FaceRef::new(mass, 0);
     Building::new(skeleton)
+}
+
+/// Returns the hall's document at the size the scene draws: 10 × 16, one tall storey.
+pub fn document() -> Building {
+    document_at(10.0, 16.0, 1)
 }
 
 /// Where the sun stands. The hall's own middle is the origin, so this is a direction as much as a place:
@@ -77,16 +81,33 @@ pub fn document() -> Building {
 /// and the frame this scene exists to produce is not the place to discover that.
 const SUN: [f64; 3] = [-26.0, 34.0, 24.0];
 
-/// How far the sun's shadow page has to cover. The hall stands inside twenty units and its shadow reaches
-/// about thirty, so a tighter page than the scene's own extent is what puts texels where the frame looks.
-const SHADOW_EXTENT: f64 = 20.0;
-
 /// How much irradiance the ground receives from that sun, in the scene's own units.
 const SUN_IRRADIANCE: f64 = 3.2;
 
 /// Builds the hall scene.
+/// Builds the hall scene at the size the scene draws: 10 × 16, one tall storey.
 pub fn hall() -> Value {
-    let building = document();
+    hall_at(10.0, 16.0, 1)
+}
+
+/// Builds the hall scene at a **larger** footprint from the same style and the same code.
+///
+/// # Invariants
+///
+/// **Nothing but the footprint and the storey count is passed in**, and the frame follows the building: the
+/// camera's distance, its height and the sun's shadow page are all derived from the size the style answers
+/// with, so two sizes draw as two pictures of one building rather than one picture with a bigger box in it.
+pub fn hall_large() -> Value {
+    hall_at(14.0, 20.0, 1)
+}
+
+/// Builds the hall scene for a footprint and a storey count.
+pub fn hall_at(width: f32, depth: f32, storeys: usize) -> Value {
+    let building = document_at(width, depth, storeys);
+    // The ridge is the number the frame has to fit: the wall top plus the style's own rise.
+    let plan = HALL.starter(width, depth, storeys);
+    let ridge = f64::from(plan.height + plan.rise);
+    let extent = f64::from(width.max(depth)) * 1.3;
     let built = building
         .build()
         .expect("the starter house expands: its outline is a quad and its roof's rows are paired");
@@ -170,8 +191,12 @@ pub fn hall() -> Value {
             // volume rather than as a silhouette: the eave line and the ridge are both visible,
             // which is what says the roof has a soffit and a thickness.
             Value::List(vec![camera(
-                [14.5, 5.6, 17.0],
-                [0.0, 3.2, 0.0],
+                [
+                    f64::from(width) * 1.25,
+                    ridge * 0.75,
+                    f64::from(depth) * 0.95 + f64::from(width) * 0.3,
+                ],
+                [0.0, ridge * 0.42, 0.0],
                 std::f64::consts::FRAC_PI_3 * 0.92,
             )]),
         ),
@@ -184,7 +209,7 @@ pub fn hall() -> Value {
                 SUN,
                 [1.0, 0.87, 0.70],
                 flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(SUN)),
-                SHADOW_EXTENT,
+                extent,
                 160.0,
             )]),
         ),

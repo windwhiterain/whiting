@@ -238,6 +238,7 @@ pub fn id_in(scene: &str, name: &str) -> Option<u32> {
         "yard" => crate::yard::document(),
         "house" => crate::house::document(),
         "hall" => crate::hall::document(),
+        "hall_large" => crate::hall::document_at(14.0, 20.0, 1),
         _ => return None,
     };
     let built = building.build().ok()?;
@@ -271,6 +272,7 @@ pub fn locate_in(scene: &str, id: u32) -> Option<String> {
         "yard" => crate::yard::document(),
         "house" => crate::house::document(),
         "hall" => crate::hall::document(),
+        "hall_large" => crate::hall::document_at(14.0, 20.0, 1),
         _ => return None,
     };
     let built = building.build().ok()?;
