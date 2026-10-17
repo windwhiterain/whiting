@@ -182,6 +182,7 @@ impl Gallery {
         match name {
             "bamboo" => vegetation_picture::bamboo_picture(),
             "bamboo_wind" => vegetation_picture::windy_picture(),
+            "bamboo_crown" => vegetation_picture::crowned_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),

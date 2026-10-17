@@ -40,6 +40,7 @@
 use definition::Value;
 use scene::standard::Stage;
 use vegetation::derive::{Species, bamboo};
+use vegetation::envelope::{Envelope, trim};
 use vegetation::expand::{Detail, Expansion, expand};
 use vegetation::field::Field;
 
@@ -59,6 +60,8 @@ pub const SCENE: &str = "bamboo";
 /// The name the same plant is built and rendered under **with a wind on it**, so a picture can show what a
 /// field does beside the plant it does it to.
 pub const WINDY: &str = "bamboo_wind";
+/// The name the same plant is drawn under **fitted to a crown**, so a picture can show what the envelope took.
+pub const CROWNED: &str = "bamboo_crown";
 
 /// The seed the plant's leaf field is derived from.
 ///
@@ -201,6 +204,15 @@ pub fn bamboo_picture() -> Value {
 /// the bend is visible as a shape rather than as a number.
 pub fn windy_picture() -> Value {
     plant_scene(&bamboo(SEED).with_fields(vec![Field::light([1.0, 0.0, 0.0], 0.12)]))
+}
+
+/// The same plant fitted to a crown: `trim` writes length nudges until each tip is on the envelope, so the frame
+/// shows one tree with shorter boughs rather than a different tree.
+pub fn crowned_picture() -> Value {
+    let mut species = bamboo(SEED);
+    let crown = Envelope::radial(&[(0.0, 0.55), (0.5, 0.45), (1.0, 0.35)]);
+    trim(&mut species.plant, &crown);
+    plant_scene(&species)
 }
 
 /// Builds one plant scene: the camera, the lights, the floor, the wood and the blade, under whatever fields the

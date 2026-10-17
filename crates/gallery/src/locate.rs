@@ -66,7 +66,10 @@ pub fn locate(scene: &str, values: &[(String, f32)]) -> Option<String> {
         // the node rather than a building element's path: the id is the node's position in the plant's own
         // walk, and a leaf drawn by the blade mesh carries its twig's. The reserved zero is answered as
         // itself, because a pixel of the ground a plant stands on is a real answer about a real pixel.
-        if scene == crate::vegetation_picture::SCENE || scene == crate::vegetation_picture::WINDY {
+        if scene == crate::vegetation_picture::SCENE
+            || scene == crate::vegetation_picture::WINDY
+            || scene == crate::vegetation_picture::CROWNED
+        {
             let id = id.round() as u32;
             return Some(match crate::vegetation_picture::handle_of(id) {
                 Some(handle) => {
