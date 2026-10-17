@@ -4051,3 +4051,168 @@ nothing asks it to.** The gate makes it harmless today because `VoidNotSimple` d
 in `clip.rs` is still the sentence the brief found: true, and silent about which loops reach it. **The honest next step
 is a shape between "simple" and "self-meeting" that `self_meeting` is silent about and `clip` cannot finish**, and the
 zero-area lobe above is one that already existed.
+
+## What the decline slice found: `clip` now says when it cannot measure, and the caller it hurt most was the gate's own exception (2026-11-01, branch `feature/building-clip-declines`)
+
+The last sentence of the section above is closed, and the shape it asked for is named: **a needle that doubles back along
+its own line over the very node it repeats**. The gap is closed by making `clip` answer `None`, and the finding is that
+**the loop this gate was built to protect had been being read at half its area the whole time.**
+
+### The shape, and why the gate could not see it
+
+`(−4,−4)(4,−4)(4,0)(2,0)(4,0)(4,4)(−4,4)` — a square with a needle cut into its east edge at `y = 0` and straight back
+out. It encloses `64.0000 m²`, which a person can check, and it is **not simple**: the needle's mouth is a point two of
+the loop's own nodes stand at.
+
+**`self_meeting` is silent about it by design.** It returns `None` only for a crossing or for a node standing in the
+interior of a non-adjacent edge, and every meeting here is at a point **two adjacent edges share as their own ends** —
+which is the authored coincidence the check deliberately declines, because two `3 × 3` squares sharing a corner build a
+sound courtyard. `without_edges_of_no_length` cannot reach it either: the two repeated nodes are not neighbours in the
+node list, so `Vec::dedup` leaves both. **So this loop reaches `clip`'s ear walk with nothing behind it, and `clip` answers
+`32.0000` for it.**
+
+### What the read was hiding, measured
+
+`VoidNotInside` subtracts two areas, and a needle standing `over` metres out of the outline should be asked about `8 × over`
+because it is `8 m` tall. **The difference it read grows as the square of the leak where the truth grows as eight times it** —
+the same shape of fault, and the same direction, as the degenerate edge two slices back:
+
+| leak | the truth | `clip`'s two terms | the difference it asked about | `validate` said |
+| --- | --- | --- | --- | --- |
+| `0.01 m` | `0.0800` | `32.0000` / `32.0000` | `0.0000` | `DidNotExpand` only |
+| `0.02 m` | `0.1600` | `31.9998` / `32.0000` | `0.0002` | `DidNotExpand` only |
+| `0.05 m` | `0.4000` | `31.9988` / `32.0000` | `0.0012` | `VoidNotInside` and `DidNotExpand` |
+| `0.25 m` | `2.0000` | `31.9688` / `32.0000` | `0.0312` | `VoidNotInside` and `DidNotExpand` |
+| `1.00 m` | `8.0000` | `31.5000` / `32.0000` | `0.5000` | `VoidNotInside` and `DidNotExpand` |
+| `2.00 m` | `16.0000` | `30.0000` / `32.0000` | `2.0000` | `VoidNotInside` and `DidNotExpand` |
+
+**Every leak under `4 cm` was unreported, and every report above it was wrong by a factor of eight.** And the needle inside
+the outline read `32.0000` against `32.0000` and said nothing, so the two placements could not tell the two faults apart.
+
+**The other caller has no gate at all, and it read `12.5000` against a true `50.0000`** — a mass outline carrying the same
+needle, sharing half its plan with an unattached neighbour. Nothing in `document()` asks whether a mass's **outline** is
+simple; only a void loop's is asked. With the degenerate edge this was a `0.0000` and a silent `UnattachedOverlap`; with
+the needle it fires, four times too small.
+
+### The change, and the shape it takes
+
+**`Option`, decided by one test, and no new `Violation`.** The brief offered three answers and the code picks the first,
+for reasons that are measured rather than argued:
+
+- **`triangles` returns `Option<Vec<[Vec2; 3]>>`** and `shared_area` returns `Option<f32>`. **`None` is decided by
+  [`covers`], which asks whether the triangles it returns add up to the loop's own signed area at
+  `COVER_SLACK = 1.0e-3` of that area** — the only question that makes the returned sum an area of the loop rather than
+  of the clipper.
+- **The four callers decline.** `VoidNotInside` and `VoidOverlaps` skip the void, `VoidReachesTheWall` skips the courtyard,
+  and `plans_share_area` answers `false`. **Declining loses nothing measured**, and that is the load-bearing claim: every
+  loop `clip` cannot cover is **refused by the expander and reported by name through `DidNotExpand`** — the needle void by
+  `MiterUnresolved { loop_of: Void { mass: MassId(0), void: 0 }, node: 3 }`, the needle outline by the same walk — or is
+  already named by `VoidNotSimple`, as the spike, the slit and the bowtie are. **There is no building for a hole to have
+  opened in**, which is the crate's own staging argument from `check_void_walls`.
+- **No new `Violation`,** because a new variant would be a **second name for a fault the walk already names**, and this
+  project deletes those rather than keeps them. It would also rank wrongly: `order_key` is full at `0..=41`, so a new fault
+  takes `42` and sorts after every grid and wall fault, which is not where a statement about a mass's outline belongs.
+- **The walk is not made complete, and cannot be.** A loop that meets itself has no triangulation of an interior, so there
+  is nothing for any walk to complete: the spike's "true `10.0000`" is a **difference of two lobes**, not the area of any
+  region. The needle makes the same point from the other side — **its shoelace really is the area of the region it encloses,
+  `64.0000`, and the walk still cannot cut it**, because the node the pinch names stands inside every ear that spans it.
+  Repairing that is an edit to the author's loop, and the gate's own silence about it is a decision about building a
+  courtyard, not about areas.
+
+**One rule and not two, and the second was measured out.** The first version also refused on the walk *stopping*. That is
+wrong, and a shape in the tree says so: **a `1 m` slit cut four metres down from a square's north edge stops the walk and
+its triangles still read `12.0000` against a loop of `12.0000`.** Declining on the walk's word alone would have withheld a
+measurement this module can support, so the walk's stopping is a symptom and `covers` is the reading.
+
+### Correction: "the two areas were measured equal" was true of the subtraction and false of the clipper
+
+The gate that excludes an authored pinch says, in `validate.rs` and in the section above:
+
+> its two areas were measured equal (`9.0000` against `9.0000` for two `3 x 3` squares sharing a corner), so nothing is
+> reported for it — measured rather than assumed, which is the only reason the gate above is safe to state in one line.
+
+**Both halves of the loop came out halved.** The loop encloses `18.0000`, [`clip`] read `9.0000` for it, and the second
+pinch — a dart and a triangle — reads `4.5000` against a loop of `13.5000`. **The two terms of `VoidNotInside`'s subtraction
+were therefore equal, the check stayed silent, and the silence was cancellation rather than measurement.** The sentence in
+the record is the dangerous kind: it says the case was *measured*, and the measurement it reports was the one thing that
+could not have caught it. **`VoidNotInside` is now declined for both pinches**, which is the same silence for the reason it
+should be — and the gate's actual argument, which is a claim about a wall, was never about an area and is untouched: every
+pinch still builds, edge-manifold with no boundary loop, Euler `0`, and its ring's volume against `(offset − loop) × height`
+moves by nothing.
+
+### Every right reading, still right
+
+| the reading | before | after |
+| --- | --- | --- |
+| the `25`-cell overlap grid | `50.0000` at every cell, every one `fired` | **`50.0000` at all 25, all `fired`** |
+| the degenerate-edge sweep, `0.01` to `3.00 m` | `4 × over` exactly, `VoidNotInside and DidNotExpand` at every step | **identical at all 11 steps** |
+| a `4 × 4` rectangle | `16.0000` | `16.0000` |
+| one collinear node / one on every edge | `16.0000` / `16.0000` | `16.0000` / `16.0000` |
+| the `0.0001 m` sliver | `15.9996` | `15.9996` |
+| the zero-area lobe (a node written twice) | `16.0000` | `16.0000` |
+| the `1 m` slit | `12.0000` | **`12.0000` — the walk stops and `covers` still passes it** |
+| the simple-outside controls | `12.0000` against `20.0000` → `8.0000`; `15.5000` against `24.5000` → `9.0000` | **identical, both firing** |
+| the two authored pinches | builds, `validate says nothing`, at all 9 walls | **builds, `validate says nothing`, at all 9 walls**, volumes unchanged to `4 dp` |
+
+**`validate_probe` is byte-for-byte unchanged: 344 lines before and after, `Compare-Object` reports 0 differing records.**
+Every other line of `courtyard_probe` is unchanged too — the diff of the two runs is 153 records and every one of them is a
+clip reading, a `validate says:` line for a loop that is now declined, or the rewrap of a line that got shorter.
+
+**What now reads `cannot measure`, and what each was before:** the bowtie (`12.0000` against a loop of `0.0000`), the
+spike that doubles back over its own nodes (`38.3333` against `10.0000`), the needle (`32.0000` against `64.0000`), the two
+squares pinched (`9.0000` against `18.0000`) and the dart and a triangle pinched (`4.5000` against `13.5000`).
+
+### The gate, measured on the branch
+
+- **29/29 building examples exit 0**, each run by name from the built binary; **15/15 gallery probe examples exit 0**.
+  `cargo build --workspace --all-targets` exits 0 and warns **only** of the `census.exe` / `census.pdb` output filename
+  collision — the set every earlier section quotes. `cargo fmt --all -- --check` is clean.
+- **Nine before/after pairs on this adapter, identical on all three hashes: 9 rows, 27 fields, 0 moved.** The before set was
+  rendered with main's `crates/building/src` in place and the after set with the branch's, both through the built binary and
+  to fresh names. **Which hash is which, because the three are not the same measurement:** `png` is the **SHA-256 of the
+  written `.png` file**; `document` and `image` are **the manifest's own fields**, the document hash over the documents the
+  compile emitted and the image hash over the **raw pixel buffer**. The `.png` column reproduces the table two sections above
+  by fresh render, which is the canary that says the pair is this machine and this tree.
+- **No gallery scene authors a void, and the static half is unchanged:** `Mass::with_voids` has one definition and every one
+  of its 12 call sites is an example (`courtyard_probe` ×4, `patio_probe` ×6, `validate_probe` ×1), `derive.rs` writes
+  `voids` **zero** times, and `crates/gallery` matches **none** of `with_voids`, `.voids`, `VoidWall`, `VoidInner`,
+  `VoidTop`, `VoidBase` or `SolidId::Void`.
+- `scene_identity_probe` reads **806 rows two-way** (`77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101`), contiguous, every name
+  non-empty, every name round-tripping, the channel two-way.
+
+### What this slice's brief got wrong
+
+**It named the doubling-back spike as the shape, and the spike was the easy one.** `VoidNotSimple` declines it first and
+always did, so no number it read ever reached a caller. The gap the section above actually asked for — *"a shape between
+'simple' and 'self-meeting' that `self_meeting` is silent about and `clip` cannot finish"* — is a **third** reading, neither
+simple nor self-meeting: a loop whose only meeting is a point **two adjacent edges share as their own ends**. A spike cannot
+be that, and the previous section had already said so: a spike cannot double back over its own line and stay simple.
+
+**It did not name the loop this gate was built to protect.** The brief described the pinch cases as controls that must stay
+right, which they are — and **both of them were being measured at half their area while the check they exercise stayed
+silent on a cancellation.** The gate's exception was not a control the change had to preserve; it was the loop already being
+read wrong. A brief that asks "what does this gate let through" gets a shape; one that asks "what has this gate been
+measuring" gets the finding.
+
+**It offered "make the walk complete" as an option without the sentence that removes it.** A loop that meets itself has no
+triangulation to complete, and the needle is the proof in one shape: its shoelace *is* its region's area and the walk still
+cannot cut it. The answer to "can the walk be made complete" was never yes for any of these shapes.
+
+**And it asked for a canary the section already had.** The bowtie was in `courtyard_probe` as the row that shows a column of
+zero differences is the *right* zeroes; the needle was the row that was missing, and it took a new shape rather than a new
+instrument to get it.
+
+### What remains open
+
+- **`document()` alone is silent about a mass outline with no triangulation.** `plans_share_area` declines, and the name
+  arrives through `Building::validate()` as `DidNotExpand` — which is what every probe and every gallery scene calls, and
+  what `validate_probe`'s `report_document` does not. If an author ever calls `validate::document` by itself, that loop has
+  no name there. **The honest fix is a gate, not a violation:** ask `self_meeting` of a mass's own outline in `check_masses`
+  and refuse the subtraction where it answers, which would also give `UnattachedOverlap` a gate it has never had.
+- **`covers` is a necessary condition and not a proof.** A loop that meets itself whose triangles happened to sum to its
+  shoelace *with positive-area overlap* would pass it and be measured wrong. Nothing of that kind was found and none was
+  constructed; the slack is `1.0e-3` of the loop's own area and the smallest measured failure is `0.5` of it.
+- **The gate's own exception is still an exception.** An authored pinch builds a sound courtyard and `clip` cannot measure
+  it, so `VoidNotInside` and `VoidReachesTheWall` are now both silent for it — deliberately, and for the right reason, but it
+  is still the one courtyard in the crate whose areas nothing can check.
+

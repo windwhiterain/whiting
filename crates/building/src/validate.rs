@@ -835,10 +835,16 @@ pub enum Violation {
     /// `20.0000`, and a right triangle over the north-east corner gives `15.5000` against `24.5000` —
     /// both simple, both firing on the difference, both refused by the walk as well.
     ///
-    /// **A pinch at a point its author wrote twice is still this check's own question and not the
-    /// gate's**, because `self_meeting` is silent for it: the two areas were measured equal (`9.0000`
-    /// against `9.0000` for two `3 x 3` squares sharing a corner), so it reports nothing, which is
-    /// what it reported before the gate existed.
+    /// **A pinch at a point its author wrote twice is not asked, and the reason is that
+    /// [`crate::clip`] cannot measure it — not that it measured it correctly.** `self_meeting` is
+    /// silent for it, so the subtraction used to be asked of it, and the sentence in the record that
+    /// said the two areas "were measured equal (`9.0000` against `9.0000` for two `3 x 3` squares
+    /// sharing a corner)" was true of the **subtraction and false of the clipper**: that loop encloses
+    /// `18.0000`, [`crate::clip`] read `9.0000` for it, and both terms came out halved, so the check
+    /// stayed silent by cancellation rather than by being right. Measured after the walk learned to say
+    /// when it could not cover a loop, the same loop reads "cannot measure" and this declines it —
+    /// **still silent, now for the reason it should be**, and the building it stands in is sound either
+    /// way: `self_meeting`'s own argument for the silence is a claim about a wall, not about an area.
     VoidNotInside {
         /// The mass.
         mass: MassId,
@@ -1111,9 +1117,13 @@ fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             //
             // **The one loop this leaves to the subtraction is a pinch at a point its author wrote
             // twice**, which `self_meeting` answers `None` for because it builds and is deliberately
-            // silent. Its two areas were measured equal (`9.0000` against `9.0000` for two `3 x 3`
-            // squares sharing a corner), so nothing is reported for it — **measured rather than
-            // assumed, which is the only reason the gate above is safe to state in one line.**
+            // silent. **It is declined rather than subtracted, and that is a correction to what this
+            // comment used to say**: the two terms were measured "equal (`9.0000` against `9.0000`
+            // for two `3 x 3` squares sharing a corner)" and that was true of the subtraction and
+            // false of the clipper — the loop encloses `18.0000`, [`crate::clip`] read `9.0000` for
+            // it, both terms were halved, and the check was silent by cancellation rather than by
+            // being right. It now reads "cannot measure" and the check is not asked, which is the
+            // same silence for the reason it should be.
             // **The one loop this leaves to the subtraction that is not an authored pinch is one carrying
             // an edge of no length**, and `crate::clip` now takes that edge out before it clips rather than
             // clipping around it — **measured rather than assumed**: a `4 x 4` void with one node written
@@ -1123,9 +1133,24 @@ fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             // grows as four times it. The walk still names the edge itself
             // ([`Problem::OutlineEdgeDegenerate`](crate::expand::Problem::OutlineEdgeDegenerate)), so
             // nothing is silent because of this.
+            // **A loop `crate::clip` cannot cover is declined, not subtracted.** `self_meeting` is the
+            // gate above and `clip`'s own ear walk is the second gate, and they are not the same
+            // reading: `self_meeting` is silent for a meeting at a point the author wrote down,
+            // which is a needle that doubles back along its own line over the very node it repeats —
+            // `64.0000 m²` read as `32.0000`, so the subtraction would be asked about `0.0000` for a
+            // loop that had left the outline at every leak under `4 cm`. **`None` means this module
+            // cannot measure, and a check that cannot measure does not report**, which loses nothing
+            // because the expander refuses that loop by name and the refusal is already reported
+            // through [`Violation::DidNotExpand`] carrying
+            // [`Problem::MiterUnresolved`](crate::expand::Problem::MiterUnresolved): there is no
+            // building here for a hole to have opened in.
             if meeting.is_none() {
-                let enclosed = crate::clip::shared_area(&outline, held).abs();
-                let own = crate::clip::shared_area(held, held).abs();
+                let (Some(enclosed), Some(own)) = (
+                    crate::clip::shared_area(&outline, held),
+                    crate::clip::shared_area(held, held),
+                ) else {
+                    continue;
+                };
                 if (enclosed - own).abs() > VOID_AREA_TOLERANCE {
                     violations.push(Violation::VoidNotInside { mass: id, void });
                 }
@@ -1133,7 +1158,13 @@ fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
         }
         for first in 0..voids.len() {
             for second in (first + 1)..voids.len() {
-                if crate::clip::shared_area(&voids[first], &voids[second]) > VOID_AREA_TOLERANCE {
+                // **Declined for the reason [`Violation::VoidNotInside`] above is**, and read the same
+                // way: a pair of loops `crate::clip` cannot cover shares no area this module can
+                // stand behind, and reporting that as no overlap would be a guess.
+                if matches!(
+                    crate::clip::shared_area(&voids[first], &voids[second]),
+                    Some(shared) if shared > VOID_AREA_TOLERANCE
+                ) {
                     violations.push(Violation::VoidOverlaps {
                         mass: id,
                         first,
@@ -1317,8 +1348,19 @@ fn check_void_walls(id: MassId, mass: &Mass, violations: &mut Vec<Violation>) {
         // `VoidNotInside` above, which asks whether the loop is enclosed by the outline. A courtyard
         // that fits is enclosed by the mass's *inner* loop, so the two questions are one relation
         // read against two loops, and what is left over is exactly how much of the wall is outside.
+        // **A courtyard it cannot measure is declined rather than reported at `0.0000`.** Both loops
+        // here are the expander's own walks, so a loop `crate::clip` cannot cover is one this walk
+        // has already refused — and the refusal is staged above, by `offset_loop` answering `None`
+        // and the loop being skipped. The subtraction is staged the same way, for the same reason:
+        // [`Violation::DidNotExpand`] carries the walk's own name for the loop, and a check that
+        // reported a fault on a courtyard that cannot be built would be naming a second, vaguer one.
         let own = crate::clip::shared_area(&outer, &outer);
-        let over = (own - crate::clip::shared_area(&inside, &outer)).max(0.0);
+        let over = own.and_then(|own| {
+            crate::clip::shared_area(&inside, &outer).map(|shared| (own - shared).max(0.0))
+        });
+        let Some(over) = over else {
+            continue;
+        };
         if over > VOID_AREA_TOLERANCE {
             violations.push(Violation::VoidReachesTheWall {
                 mass: id,
@@ -1381,6 +1423,16 @@ fn attached_either_way(skeleton: &BuildingSkeleton, first: usize, second: usize)
 /// - **No assumption of convexity.** The separating-axis test is the cheaper answer for two boxes
 ///   and it is wrong here, because a building outline may be an L and an L has no single direction
 ///   that separates it from anything.
+/// - **A pair `crate::clip` cannot measure is declined rather than called disjoint.** This is the
+///   one caller in the module with **no gate in front of it** — nothing in
+///   [`document`](Self::document) asks whether a mass's own *outline* is simple, because a void loop's
+///   is asked and an outline's is not. Measured, a needle cut into the north edge of a mass sharing
+///   `50.0000 m²` with its neighbour read `12.5000` and fired on a number four times too small;
+///   `crate::clip` now answers "cannot measure" for it and this says there is no overlap, which is a
+///   statement about a measurement rather than about the two masses. **Declining is safe because the
+///   expander refuses that outline by name**, through [`Violation::DidNotExpand`] — so the answer
+///   reaches the author as a loop with no triangulation and not as two buildings that happen not to
+///   touch.
 fn plans_share_area(first: &[PlanNode], second: &[PlanNode]) -> bool {
     if first.len() < 3 || second.len() < 3 {
         return false;
@@ -1393,7 +1445,10 @@ fn plans_share_area(first: &[PlanNode], second: &[PlanNode]) -> bool {
     // **The shared area, computed rather than inferred.** A pair of rectangles sharing a wall has collinear
     // edges and a corner on an edge, which containment and proper crossing both miss; clipping the two
     // polygons and measuring what overlaps misses nothing, and a flush pair answers exactly zero.
-    crate::clip::shared_area(&one, &other) > AREA_TOLERANCE
+    matches!(
+        crate::clip::shared_area(&one, &other),
+        Some(shared) if shared > AREA_TOLERANCE
+    )
 }
 /// Returns whether the bounding boxes of two plan polygons share anything.
 ///

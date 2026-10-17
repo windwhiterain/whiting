@@ -445,23 +445,24 @@ fn measure_void_in(half: f32, label: &str, corners: &[[f32; 2]], wall: f32) {
     // **The two numbers `VoidNotInside` compares are printed rather than inferred from whether the
     // violation fired**, because "the loop is not inside the outline" is a reading about a shape and
     // the check is a subtraction of two computed areas. A loop that meets itself has no
-    // triangulation, so what `shared_area` returns for it is whatever its ear clipper happened to
-    // produce — and the difference between the two numbers is the whole of what that violation would
-    // say of it.
+    // triangulation, so what `shared_area` returns for it is `None` — and a subtraction of two
+    // `None`s is not a difference, which is what the line below says when it happens.
     //
     // **The line says the difference and not the verdict**, because the check is asked only of a loop
     // that does not meet itself: on a loop that does, the subtraction is not run at all, so a line
     // claiming it "fires" would be a reading the instrument did not take. The `validate says:` line
     // below is the verdict, and it is asked of the crate rather than predicted here.
-    println!(
-        "    the area check reads: {:.4} shared with the outline against {:.4} shared with itself, so \
-         the terms differ by {:.4}",
-        whiting_building::clip::shared_area(&enclosing, &authored),
-        whiting_building::clip::shared_area(&authored, &authored),
-        (whiting_building::clip::shared_area(&enclosing, &authored)
-            - whiting_building::clip::shared_area(&authored, &authored))
-        .abs()
-    );
+    let enclosed = whiting_building::clip::shared_area(&enclosing, &authored);
+    let own = whiting_building::clip::shared_area(&authored, &authored);
+    let terms = match (enclosed, own) {
+        (Some(enclosed), Some(own)) => format!(
+            "the area check reads: {enclosed:.4} shared with the outline against {own:.4} shared with \
+             itself, so the terms differ by {:.4}",
+            (enclosed - own).abs()
+        ),
+        _ => "the area check reads: it cannot measure, so it was not asked".to_owned(),
+    };
+    println!("    {terms}");
     println!(
         "    validate says: {}",
         if faults.is_empty() {
@@ -833,7 +834,7 @@ fn a_loop_the_clipper_cannot_close() {
     let wall = 0.3;
     let half = 8.0;
     let across = half * 2.0;
-    let shapes: [(&str, &[[f32; 2]]); 8] = [
+    let shapes: [(&str, &[[f32; 2]]); 9] = [
         (
             "the canary: a bowtie, which is NOT a simple loop and is here only so that a column of \
              zero differences can be told from an instrument that cannot disagree",
@@ -916,6 +917,19 @@ fn a_loop_the_clipper_cannot_close() {
                 [-2.0, 2.0],
             ],
         ),
+        (
+            "the control: a needle that doubles back along its own line over the very node it repeats,\n\
+             so the meeting is one an author wrote down and `VoidNotSimple` is silent about it",
+            &[
+                [-4.0, -4.0],
+                [4.0, -4.0],
+                [4.0, 0.0],
+                [2.0, 0.0],
+                [4.0, 0.0],
+                [4.0, 4.0],
+                [-4.0, 4.0],
+            ],
+        ),
     ];
     println!("\n# a loop that does not meet itself and the ear clipper cannot fully triangulate");
     println!(
@@ -929,10 +943,15 @@ fn a_loop_the_clipper_cannot_close() {
         let signed = shoelace(&authored);
         let clipped = whiting_building::clip::shared_area(&authored, &authored);
         println!(
-            "\n  {label}\n    the loop's own signed area {signed:+.4} ({:.4} absolute), the clip's triangles\n    \
-             sum to {clipped:.4}, so the two differ by {:.4}",
+            "\n  {label}\n    the loop's own signed area {signed:+.4} ({:.4} absolute), and clip {}",
             signed.abs(),
-            (clipped - signed.abs()).abs()
+            match clipped {
+                Some(area) => format!(
+                    "reads the loop's triangles as {area:.4}, so the two differ by {:.4}",
+                    (area - signed.abs()).abs()
+                ),
+                None => "cannot measure it".to_owned(),
+            }
         );
         measure_void_in(half, "inside the outline", corners, wall);
         measure_void_in(
@@ -943,6 +962,134 @@ fn a_loop_the_clipper_cannot_close() {
         );
     }
     the_degenerate_edge_is_the_crates_own();
+    the_loop_no_fault_names();
+}
+
+/// Asks the question every other section of this probe is arranged around: **is every loop
+/// [`clip`](whiting_building::clip) cannot triangulate named by something else?**
+///
+/// # Invariants
+///
+/// - **The needle is the shape the gate cannot see, and it is not a shape from nowhere.** Every
+///   loop `clip` mis-measures in the section above is a bowtie or a spike that runs *over* two of its
+///   own nodes, and both are [`Violation::VoidNotSimple`](whiting_building::validate::Violation::VoidNotSimple)'s
+///   to report, so nothing reaches the subtraction with them. The needle's meeting is **at a node the
+///   author wrote down twice**, which is the one coincidence that check is deliberately silent for,
+///   and [`without_edges_of_no_length`](whiting_building::clip)'s own removal cannot reach it either,
+///   because the two repeats are not neighbours in the node list. **It is `8 m` tall and encloses
+///   `64.0000 m²`, both of which a person can check, so every step below carries the number the
+///   subtraction *should* be asked about.**
+/// - **The walk's own verdict is on the same line as the numbers, because it is what decides whether
+///   a declining check loses anything.** A check that skips a loop the expander refuses by name has
+///   lost nothing: there is no building for the fault to have opened in. A check that skips a loop the
+///   expander *accepts* has thrown away a reading, and the two are told apart by asking `validate`
+///   rather than by predicting it here.
+/// - **The last reading is the other caller, and it is the one with no gate at all.** The overlap
+///   test asks `clip` about **mass outlines**, and no simplicity check is asked of a mass outline
+///   anywhere in [`document`](whiting_building::validate::document), so this loop reaches the
+///   subtraction with nothing behind it at all.
+fn the_loop_no_fault_names() {
+    let wall = 0.3;
+    let half = 8.0;
+    let needle: [[f32; 2]; 7] = [
+        [-4.0, -4.0],
+        [4.0, -4.0],
+        [4.0, 0.0],
+        [2.0, 0.0],
+        [4.0, 0.0],
+        [4.0, 4.0],
+        [-4.0, 4.0],
+    ];
+    println!(
+        "\n# the one loop above that no fault names: a needle that doubles back along its own line over\n  \
+         the very node it repeats. `VoidNotSimple` skips a meeting at a point the author wrote down, and\n  \
+         an edge of no length is not what this carries, so the subtraction is asked of it"
+    );
+    println!(
+        "  it is 8 m tall and encloses 64.0000 m2, so at every step below the check should be asked\n  \
+         about eight times the distance its east side stands outside the outline"
+    );
+    for over in [0.01f32, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0] {
+        report_the_subtraction(
+            &format!(
+                "{over:.2} m outside, so the check should be asked about {:.4}",
+                8.0 * over
+            ),
+            half,
+            &pushed_outside(&needle, half, over),
+            wall,
+        );
+    }
+
+    // The other caller, with no gate in front of it: the same needle cut into a mass's own outline.
+    let plain: [[f32; 2]; 4] = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]];
+    let needled: [[f32; 2]; 6] = [
+        [0.0, 0.0],
+        [10.0, 0.0],
+        [10.0, 10.0],
+        [6.0, 10.0],
+        [8.0, 10.0],
+        [0.0, 10.0],
+    ];
+    let other: [[f32; 2]; 4] = [[5.0, 0.0], [15.0, 0.0], [15.0, 10.0], [5.0, 10.0]];
+    let two_masses = |first: &[[f32; 2]]| {
+        let mut skeleton = BuildingSkeleton::default();
+        skeleton.masses = vec![
+            Mass::new(outline(first), 3.2)
+                .with_wall(wall)
+                .with_slab(0.4),
+            Mass::new(outline(&other), 3.2)
+                .with_wall(wall)
+                .with_slab(0.4),
+        ];
+        skeleton
+    };
+    for (label, first) in [
+        ("without the needle", &plain[..]),
+        ("with the needle", &needled[..]),
+    ] {
+        let skeleton = two_masses(first);
+        let shared = whiting_building::clip::shared_area(
+            &plan_nodes_of(&skeleton.masses[0]),
+            &plan_nodes_of(&skeleton.masses[1]),
+        );
+        let named = names_of(&Building::new(skeleton).validate());
+        println!(
+            "  the same needle on a mass's own outline, {label}: the two plans are {} against a true\n    \
+             50.0000, and validate says {}",
+            area_reading(shared),
+            if named.is_empty() {
+                "nothing".to_owned()
+            } else {
+                named.join(" and ")
+            }
+        );
+    }
+}
+
+/// Returns a measurement `clip` gave, or the sentence it gives when it could not measure.
+///
+/// **The two spellings are one reading and this probe needs both**, because a check that reports
+/// nothing because the loop measured `0.0000` and a check that reports nothing because the loop
+/// could not be measured at all print the same line otherwise — which is precisely the silence this
+/// slice is about.
+fn area_reading(area: Option<f32>) -> String {
+    match area {
+        Some(area) => format!("{area:.4}"),
+        None => "cannot measure it".to_owned(),
+    }
+}
+
+/// Returns a loop's own area as `clip` reads it, or the sentence it answers with when it cannot.
+///
+/// **It is [`reading`] asked of one loop against itself**, which is the loop's own area read the only
+/// way `shared_area` reads one: a loop's own area is the area of the intersection of the loop with
+/// itself, so a triangulation that does not tile the loop shows up here as a wrong number.
+fn clip_reads(loop_points: &[Vec2]) -> String {
+    area_reading(whiting_building::clip::shared_area(
+        loop_points,
+        loop_points,
+    ))
 }
 
 /// Prints the two areas [`Violation::VoidNotInside`](whiting_building::validate::Violation::VoidNotInside)
@@ -963,10 +1110,15 @@ fn report_the_subtraction(label: &str, half: f32, corners: &[[f32; 2]], wall: f3
             .with_voids(vec![outline(corners)]),
     ];
     let faults = names_of(&Building::new(skeleton).validate());
+    let terms = match (enclosed, own) {
+        (Some(enclosed), Some(own)) => format!(
+            "the terms are {enclosed:.4} and {own:.4}, so the check is asked about {:.4}",
+            (enclosed - own).abs()
+        ),
+        _ => "clip cannot measure, so the check is not asked at all".to_owned(),
+    };
     println!(
-        "  {label}: the terms are {enclosed:.4} and {own:.4}, so the check is asked about {:.4}, while\n    \
-         the loop itself encloses {:.4} — validate says {}",
-        (enclosed - own).abs(),
+        "  {label}: {terms}, while the loop itself encloses {:.4} — validate says {}",
         shoelace(&authored).abs(),
         if faults.is_empty() {
             "nothing".to_owned()
@@ -1112,7 +1264,7 @@ fn the_degenerate_edge_is_the_crates_own() {
                         &plan_nodes_of(&skeleton.masses[0]),
                         &plan_nodes_of(&skeleton.masses[1]),
                     );
-                    print!("{shared:>11.4}");
+                    print!("{:>11}", area_reading(shared));
                 } else {
                     let named = names_of(&Building::new(skeleton).validate())
                         .iter()
@@ -1358,6 +1510,12 @@ fn sweep_bowtie(half: f32, wall: f32) {
 /// sweep is what says whether the claim holds where it was measured, and the silence holds either way:
 /// the check declines every authored pinch at every wall, so the reading it gives is never a
 /// wall-dependent one.
+///
+/// **What the sweep also shows, and what it did not show before:** every row carries the reading
+/// [`clip`](whiting_building::clip) gives of the loop, and it is `cannot measure it` at every wall and
+/// for both pinches. **That is not a change in what these shapes build — the wall sweep and the ring's
+/// own manifold, closure and Euler readings are untouched — it is a change in what the check can say
+/// about them**, and the reason is in the line above.
 fn sweep_pinch(half: f32) {
     println!(
         "\n# the two authored pinches swept in the wall: the check is silent for both at every reading,\n\
@@ -1391,10 +1549,19 @@ fn sweep_pinch(half: f32) {
     }
 }
 
-/// Reports one loop in one line: what `validate` names and what `build` did with it.
+/// Reports one loop in one line: what `validate` names, what `build` did with it, and what `clip`
+/// reads of it.
 ///
-/// **A shape that builds is measured and a shape that does not is not**, because the readings below
-/// need a mesh to read and a missing mesh is the answer rather than a gap in it.
+/// # Invariants
+///
+/// - **The clip reading is on this line because "validate says nothing" cannot tell a silent check
+///   from a check that is not running.** It reads `cannot measure it` on the two authored pinches,
+///   and **that is the finding the sweep above was measuring without knowing it**: the loop `clip`
+///   used to read for two `3 × 3` squares sharing a corner was `9.0000` against a loop that encloses
+///   `18.0000`, so the two terms [`Violation::VoidNotInside`](whiting_building::validate::Violation::VoidNotInside)
+///   subtracts were both `9.0000` and the silence was cancellation rather than measurement.
+/// - **A shape that builds is measured and a shape that does not is not**, because the readings below
+///   need a mesh to read and a missing mesh is the answer rather than a gap in it.
 fn report_loop(label: &str, corners: &[[f32; 2]], wall: f32, half: f32) {
     let walked = wound_positive(corners);
     let mut skeleton = BuildingSkeleton::default();
@@ -1420,8 +1587,11 @@ fn report_loop(label: &str, corners: &[[f32; 2]], wall: f32, half: f32) {
                 return;
             };
             let ring = court_ring();
+            let measured = clip_reads(&walked);
+            let enclosed = shoelace(&walked).abs();
             println!(
-                "  {label} half {:.2} at wall {wall:.2}: builds, validate says {said}, simple {}, volume {:.4} against \
+                "  {label} half {:.2} at wall {wall:.2}: builds, validate says {said}, clip reads {measured} \
+                 of a loop enclosing {enclosed:.4}, simple {}, volume {:.4} against \
                  {:.4}, manifold {}, loops {}, euler {}",
                 corners[1][0] - corners[0][0],
                 is_simple(&offset),
