@@ -241,31 +241,38 @@ impl Section {
 /// `|dP/dθ|` is at least `min(x, y)`, which [`Section::ring`] asserts is positive, so every step of
 /// the table carries a positive length and the inversion divides without a guard — including at
 /// `y = 0`, where the speed vanishes only at `θ = 0` itself and the table samples step midpoints.
+///
+/// **The table is accumulated in `f64` and the coordinates are cast back at the end.** A step of the
+/// table is a difference of two numbers near the perimeter, so storing it in `f32` rounds every step's
+/// length to an ulp of the whole loop — about `4e-5` of it, which the probe sees as a circle whose
+/// chords differ in the fifth decimal. Only the ring's coordinates are `f32`, and the cast is their
+/// own single rounding.
 fn ellipse_ring(x: f32, y: f32, around: usize) -> Vec<Vec2> {
-    let width = std::f32::consts::TAU / ELLIPSE_STEPS as f32;
+    let (x, y) = (x as f64, y as f64);
+    let width = std::f64::consts::TAU / ELLIPSE_STEPS as f64;
     let mut cumulative = Vec::with_capacity(ELLIPSE_STEPS + 1);
     let mut total = 0.0;
     cumulative.push(0.0);
     for step in 0..ELLIPSE_STEPS {
-        total += ellipse_speed(x, y, (step as f32 + 0.5) * width) * width;
+        total += ellipse_speed(x, y, (step as f64 + 0.5) * width) * width;
         cumulative.push(total);
     }
     (0..around)
         .map(|index| {
-            let target = index as f32 / around as f32 * total;
+            let target = index as f64 / around as f64 * total;
             let step = cumulative
                 .partition_point(|&length| length < target)
                 .saturating_sub(1)
                 .min(ELLIPSE_STEPS - 1);
             let span = cumulative[step + 1] - cumulative[step];
-            let theta = (step as f32 + (target - cumulative[step]) / span) * width;
-            [x * theta.cos(), y * theta.sin()]
+            let theta = (step as f64 + (target - cumulative[step]) / span) * width;
+            [(x * theta.cos()) as f32, (y * theta.sin()) as f32]
         })
         .collect()
 }
 
-/// `|dP/dθ|` for the ellipse `P(θ) = (x cos θ, y sin θ)`.
-fn ellipse_speed(x: f32, y: f32, theta: f32) -> f32 {
+/// `|dP/dθ|` for the ellipse `P(θ) = (x cos θ, y sin θ)`, in the table's own `f64`.
+fn ellipse_speed(x: f64, y: f64, theta: f64) -> f64 {
     (x * theta.sin()).hypot(y * theta.cos())
 }
 
