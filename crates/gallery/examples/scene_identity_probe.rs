@@ -23,7 +23,7 @@ use definition::{Schema, SchemaKind};
 use whiting_gallery::building_identity::{building_extras, id_in, locate_in, not_authored_extras};
 
 /// The scenes that declare the channel, in the order the gallery lists them.
-const SCENES: [&str; 5] = ["identity", "house", "shed", "workshop", "yard"];
+const SCENES: [&str; 6] = ["hall", "identity", "house", "shed", "workshop", "yard"];
 
 /// Answers whether a point schema carries the `authored_id` field the channel writes.
 fn carries(schema: &Schema) -> bool {
