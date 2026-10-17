@@ -28,7 +28,11 @@ fn main() {
 
     // 1. The control: no void, and the mass is what it always was.
     let mut plain = BuildingSkeleton::default();
-    plain.masses = vec![Mass::new(outline.clone(), 3.2).with_wall(0.3).with_slab(0.4)];
+    plain.masses = vec![
+        Mass::new(outline.clone(), 3.2)
+            .with_wall(0.3)
+            .with_slab(0.4),
+    ];
     let control = Building::new(plain);
     let control_violations = control.validate();
     let control_volume = match control.build() {
@@ -43,10 +47,12 @@ fn main() {
 
     // 2. The same mass with a courtyard authored: refused, with the reason.
     let mut patio = BuildingSkeleton::default();
-    patio.masses = vec![Mass::new(outline, 3.2)
-        .with_wall(0.3)
-        .with_slab(0.4)
-        .with_voids(vec![rectangle(-2.0, -2.0, 2.0, 2.0)])];
+    patio.masses = vec![
+        Mass::new(outline, 3.2)
+            .with_wall(0.3)
+            .with_slab(0.4)
+            .with_voids(vec![rectangle(-2.0, -2.0, 2.0, 2.0)]),
+    ];
     let with_patio = Building::new(patio);
     let violations = with_patio.validate();
     println!("\n# the same mass with a 4 x 4 courtyard authored");
