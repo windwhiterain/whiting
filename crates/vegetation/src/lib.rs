@@ -33,6 +33,7 @@
 
 pub mod expand;
 pub mod handle;
+pub mod leaf;
 pub mod node;
 pub mod plant;
 pub mod rng;
