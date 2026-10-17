@@ -18,15 +18,24 @@
 //!    `fill::ring_fill` has always normalised the loop it bridges);
 //! 4. the volume is **the annulus times the height**, computed here rather than compared with the
 //!    mesh, because a ring that is wrong by area is the failure this crate has shipped twice;
-//! 5. the four faults a courtyard can break are each reported, and a fault still refuses the build.
+//! 5. the four faults a courtyard can break are each reported, and a fault still refuses the build;
+//! 6. **a hole cut in a courtyard's wall**, which is the same `Opening` a mass's wall takes: it is cut
+//!    through both of the ring's faces at once, its four reveals name it, and the ring reads one more
+//!    handle — `2 − 2(1 + 1) = −2` — which is measured here rather than assumed, against the mass's
+//!    own ring reading `0` beside it in the very same document;
+//! 7. **a doorway in that wall** is a notch in the ring's base and not a handle, and reads `0`;
+//! 8. every way the cut cannot be made is refused by name, and each names the **loop** it is about so
+//!    that "edge 1" is never two different walls.
 //!
 //! Run with `cargo run -p whiting-building --example patio_probe`.
 
 use whiting_building::identity::Identity;
-use whiting_building::mesh::MassSurface;
+use whiting_building::mesh::{MassSurface, SolidId};
+use whiting_building::openings::RevealSide;
+use whiting_building::parts::{Pin, Placement, Template};
 use whiting_building::{
     Building, BuildingSkeleton, Element, FaceRef, Inset, Mass, MassId, Opening, PlanNode, Rhythm,
-    SolidId, ops,
+    ops,
 };
 
 /// Returns a rectangular outline.
@@ -55,6 +64,71 @@ fn courtyard_ring() -> SolidId {
         mass: MassId(0),
         void: 0,
     }
+}
+
+/// Returns the mass a 4 × 4 courtyard stands in: a 10 × 10 outline, a 0.3 m wall, a 0.4 m slab.
+fn housed_patio() -> Mass {
+    Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
+        .with_wall(0.3)
+        .with_slab(0.4)
+        .with_voids(vec![rectangle(-2.0, -2.0, 2.0, 2.0)])
+}
+
+/// Returns that mass's skeleton with a rhythm laid on **one courtyard wall**: three bays across the
+/// void loop's own edge and two storeys up the ring, which is the same two rhythms a mass's facade
+/// takes and the same op that lays them.
+///
+/// The face is a courtyard's and not the mass's own, and that is the whole of the difference the
+/// document has to express: a face names a loop, and a courtyard is one of a mass's loops.
+fn court_face() -> FaceRef {
+    FaceRef::court(MassId(0), 0, 0)
+}
+
+/// Returns the rectangle an opening cuts, as the document reads it, for the report below.
+fn hole_of(skeleton: &BuildingSkeleton, index: usize) -> (f32, f32, f32, f32) {
+    let (_, extents) = skeleton.aperture(index).expect("the slot is in the grid");
+    (extents.from, extents.to, extents.low, extents.high)
+}
+
+/// Returns the volume of the 4 × 4 courtyard's ring with nothing cut into it, written down.
+///
+/// **The arithmetic, not a reading off the expander**: `(4 + 0.6)² − 4²` of annulus standing `3.2` m
+/// high, because a ring fill that overlaps itself is the failure this crate has shipped twice and the
+/// volume is where it shows. Every "and that is what a hole took away" number below is this one minus
+/// the mesh's own.
+fn uncut_ring_volume() -> f32 {
+    ((4.0 + 0.6) * (4.0 + 0.6) - 4.0 * 4.0) * 3.2
+}
+
+/// Returns how many base strips an un-cut ring's annulus is drawn in: one per loop edge.
+///
+/// `O(1)`, and it is the mesh's own face count read off the document's loop length rather than a
+/// number typed into a report.
+fn base_strips(skeleton: &BuildingSkeleton) -> usize {
+    skeleton
+        .face_loop(court_face())
+        .map_or(0, |loop_nodes| loop_nodes.len())
+}
+
+/// Returns a small template to stand in a courtyard's bay.
+///
+/// The leaf is a template like any other and its **slot** is a courtyard bay, so the placement itself
+/// is perfectly ordinary: everything the document says resolves, and the refusal comes from the frame
+/// the expander cannot read.
+fn leaf() -> Template {
+    let wall = 0.010;
+    let slab = 0.020;
+    let outline = vec![
+        PlanNode::new([0.0, 0.0], slab),
+        PlanNode::new([0.6, 0.0], slab),
+        PlanNode::new([0.6, 0.05], slab),
+        PlanNode::new([0.0, 0.05], slab),
+    ];
+    Template::new(
+        "courtyard leaf",
+        vec![Mass::new(outline, 1.8).with_wall(wall).with_slab(slab)],
+        Vec::new(),
+    )
 }
 
 fn main() {
@@ -269,5 +343,311 @@ fn main() {
 
     println!(
         "\n# the reading: a void is drawn as a ring of its own — manifold, closed, euler 0 — and every void it\n# cannot draw is refused by name rather than quietly left out of the mesh."
+    );
+
+    // **A hole in a courtyard's wall, cut by the same `Opening` a mass's wall takes.** The face here is
+    // the void loop's own edge, so the grid, the bay and the insets are laid out and read exactly as
+    // they are on a mass's facade: nothing about the cut knows it is in a courtyard except which loop
+    // the face names, which is what makes this a capability rather than a second implementation.
+    let mut opened_court = BuildingSkeleton::default();
+    opened_court.masses = vec![housed_patio()];
+    let face = court_face();
+    let columns = Rhythm::Even { count: 3 };
+    let rows = Rhythm::Even { count: 2 };
+    let bays = ops::split_face(&mut opened_court, face, &columns, &rows);
+    let length = opened_court
+        .face_length(face)
+        .expect("the courtyard's edge is there");
+    let (low, high) = opened_court
+        .face_extent(face)
+        .expect("the courtyard's edge is there");
+    println!(
+        "\n# a courtyard's own wall, read through its void loop\n  the face is {face:?}, {length:.4} m long, ground {low:.4}, top {high:.4}, and it carries {bays:?} bay/ies",
+    );
+
+    let window = Opening::new(face, 1, 1, Inset::new(0.3, 0.3, 0.3, 0.3));
+    let cut = ops::add_opening(&mut opened_court, window);
+    let Some(window_index) = cut else {
+        println!("  the window was refused: the slot is not in the grid");
+        return;
+    };
+    let (from, to, sill, head) = hole_of(&opened_court, window_index);
+    println!(
+        "  a window in the top storey's middle bay: index {window_index}, hole [{from:.4}, {to:.4}] x \
+         [{sill:.4}, {head:.4}], {:.4} m² of wall",
+        (to - from) * (head - sill)
+    );
+
+    let with_window = Building::new(opened_court.clone());
+    let violations = with_window.validate();
+    println!("  the document reports {} violation(s)", violations.len());
+    for violation in &violations {
+        println!("    {violation:?}");
+    }
+    match with_window.build() {
+        Ok(built) => {
+            let ring = courtyard_ring();
+            let mass = SolidId::Mass(MassId(0));
+            println!(
+                "  it builds: the courtyard reads manifold {}, loops {}, euler {}",
+                built.solid_is_manifold(ring),
+                built.solid_boundary_loops(ring),
+                built.solid_euler_characteristic(ring)
+            );
+            println!(
+                "    which is 2 - 2(1 + 1) = -2: a hole through a ring is what makes it not-a-ring",
+            );
+            println!(
+                "  the mass's own ring is untouched: manifold {}, loops {}, euler {}",
+                built.solid_is_manifold(mass),
+                built.solid_boundary_loops(mass),
+                built.solid_euler_characteristic(mass)
+            );
+            // **The material removed is the hole's own area times the ring's own thickness**, computed
+            // here rather than read back off the expander: a ring that closed and counted its handle
+            // correctly while removing the wrong amount of masonry would pass every predicate there is.
+            let removed = (to - from) * (head - sill) * 0.3;
+            let volume = built.solid_signed_volume(ring);
+            println!(
+                "  its volume {volume:.4} against the un-cut ring {:.4} less {removed:.4} of masonry \
+                 ({:.6} off)",
+                uncut_ring_volume(),
+                (volume - (uncut_ring_volume() - removed)).abs()
+            );
+            // **The reveal names the courtyard, not the mass**: the element carries the loop a hole was
+            // cut into, which is what keeps a ring's jambs in the ring's own face set and out of the
+            // mass's — otherwise the two would sum their Euler characteristics and read `0` for the
+            // wrong reason.
+            let reveals: Vec<RevealSide> = built
+                .faces
+                .iter()
+                .filter_map(|face| match face.element {
+                    Element::Mass(_, MassSurface::Reveal { side, .. }) => Some(side),
+                    _ => None,
+                })
+                .collect();
+            let mut sides: Vec<RevealSide> = RevealSide::ALL.to_vec();
+            sides.retain(|side| reveals.contains(side));
+            let named: Vec<String> = Identity::of(&built, 1)
+                .rows()
+                .iter()
+                .filter(|row| matches!(row.element, Element::Mass(_, MassSurface::Reveal { .. })))
+                .map(|row| row.path.clone())
+                .collect();
+            println!(
+                "  {} reveal face(s) for {} hole(s), covering {sides:?}, and the table names them:\n{}",
+                reveals.len(),
+                1,
+                named
+                    .iter()
+                    .map(|path| format!("    {path}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
+        Err(error) => println!("  it does not build: {:?}", error.problems.first()),
+    }
+
+    // **The same document without the hole reads what it always read.** This is the control for the
+    // reading above: if the courtyard's own ring moved when a window was cut somewhere else in the
+    // same document, the two numbers would be one measurement and not two.
+    let plain_court = Building::new(BuildingSkeleton {
+        masses: vec![housed_patio()],
+        ..BuildingSkeleton::default()
+    });
+    match plain_court.build() {
+        Ok(built) => println!(
+            "\n# the same courtyard with nothing cut into it\n  the courtyard reads euler {}, manifold {}, loops {}",
+            built.solid_euler_characteristic(courtyard_ring()),
+            built.solid_is_manifold(courtyard_ring()),
+            built.solid_boundary_loops(courtyard_ring()),
+        ),
+        Err(error) => println!("  it does not build: {:?}", error.problems.first()),
+    }
+
+    // **A doorway in a courtyard's wall.** Its sill stands on the ring's own base, which notches that
+    // base across the door and leaves a lintel above the head — so the ring is still a ring and the
+    // characteristic does not move. A courtyard and a mass are the same shape here too, and the two
+    // numbers that say so are measured rather than argued: the ring reads `0` with a door in it and
+    // `-2` with a window in it, in documents that differ by nothing else.
+    let mut doored = BuildingSkeleton {
+        masses: vec![housed_patio()],
+        ..BuildingSkeleton::default()
+    };
+    let door_face = FaceRef::court(MassId(0), 0, 1);
+    let _ = ops::split_face(&mut doored, door_face, &columns, &rows);
+    let doorway = Opening::new(door_face, 0, 1, Inset::new(0.5, 0.5, 0.0, 0.2));
+    let door = ops::add_opening(&mut doored, doorway);
+    let Some(door_index) = door else {
+        println!("\n# a door in the courtyard's wall\n  refused: the slot is not in the grid");
+        return;
+    };
+    let (from, to, sill, head) = hole_of(&doored, door_index);
+    let with_door = Building::new(doored.clone());
+    println!(
+        "\n# a door in the courtyard's wall, its sill on the ring's own base\n  hole [{from:.4}, {to:.4}] \
+         x [{sill:.4}, {head:.4}], so the sill is the ring's ground line exactly"
+    );
+    println!(
+        "  the document reports {} violation(s)",
+        with_door.validate().len()
+    );
+    match with_door.build() {
+        Ok(built) => {
+            let ring = courtyard_ring();
+            // **The base annulus is notched across the door rather than drawn under it**, which is the
+            // whole of what makes a door a notch in the ring's section and not a handle through it. It
+            // is counted in *triangles* because that is what the mesh holds: the door's edge gains a
+            // station at each jamb, so its base is two strips with the door's own span removed between
+            // them, and the three un-cut edges keep one each.
+            let strips = built
+                .faces
+                .iter()
+                .filter(|face| {
+                    matches!(
+                        face.element,
+                        Element::Mass(_, MassSurface::VoidBase { void: 0 })
+                    )
+                })
+                .count();
+            let removed = (to - from) * (head - sill) * 0.3;
+            let volume = built.solid_signed_volume(ring);
+            println!(
+                "  it builds: manifold {}, loops {}, euler {}, and the base annulus is {strips} triangles\n  \
+                 where the un-cut ring draws {} — the door's edge is two strips with the door's own span\n  \
+                 notched out between them\n  and the volume {volume:.4} is the un-cut {:.4} less {removed:.4} \
+                 ({:.6} off)",
+                built.solid_is_manifold(ring),
+                built.solid_boundary_loops(ring),
+                built.solid_euler_characteristic(ring),
+                2 * base_strips(&doored) as u32,
+                uncut_ring_volume(),
+                (volume - (uncut_ring_volume() - removed)).abs()
+            );
+        }
+        Err(error) => println!("  it does not build: {:?}", error.problems.first()),
+    }
+
+    // **The door and the window in one document**, which is the reading the two above are halves of.
+    let mut both = doored.clone();
+    let _ = ops::split_face(&mut both, court_face(), &columns, &rows);
+    let _ = ops::add_opening(
+        &mut both,
+        Opening::new(court_face(), 1, 1, Inset::new(0.3, 0.3, 0.3, 0.3)),
+    );
+    let with_both = Building::new(both);
+    println!(
+        "\n# the same courtyard with the door and the window\n  the document reports {} violation(s)",
+        with_both.validate().len()
+    );
+    match with_both.build() {
+        Ok(built) => println!(
+            "  it builds: euler {}, manifold {}, loops {} — one handle for the window and none for the door",
+            built.solid_euler_characteristic(courtyard_ring()),
+            built.solid_is_manifold(courtyard_ring()),
+            built.solid_boundary_loops(courtyard_ring()),
+        ),
+        Err(error) => println!("  it does not build: {:?}", error.problems.first()),
+    }
+
+    // **Every way the cut cannot be made, each reached through the document and named.** Every one of
+    // them names the **loop**, because a mass's wall and a courtyard's are both "edge 1" and reporting
+    // one as the other would send an author to the wrong piece of masonry.
+    println!("\n# every way a hole cannot be cut into a courtyard's wall");
+    let refusals: [(&str, fn(&mut BuildingSkeleton) -> Option<usize>); 6] = [
+        ("a slot the courtyard's grid no longer holds", |skeleton| {
+            let index = skeleton.openings.push(Opening::new(
+                court_face(),
+                1,
+                1,
+                Inset::new(0.3, 0.3, 0.3, 0.3),
+            ));
+            // **The rhythm is taken away under the opening**, which is the whole reason a slot is an
+            // index and not a place: an edit the author made elsewhere orphans this one.
+            ops::clear_face(skeleton, court_face());
+            Some(index)
+        }),
+        ("a head that stands at the ring's own top", |skeleton| {
+            ops::add_opening(
+                skeleton,
+                Opening::new(court_face(), 1, 1, Inset::new(0.3, 0.3, 0.3, 0.0)),
+            )
+        }),
+        ("a jamb at the ring's own end", |skeleton| {
+            ops::add_opening(
+                skeleton,
+                Opening::new(court_face(), 1, 0, Inset::new(0.0, 0.3, 0.3, 0.3)),
+            )
+        }),
+        (
+            "two holes that share wall in one courtyard face",
+            |skeleton| {
+                let first = ops::add_opening(
+                    skeleton,
+                    Opening::new(court_face(), 1, 1, Inset::new(0.1, 0.9, 0.2, 0.2)),
+                );
+                let second = ops::add_opening(
+                    skeleton,
+                    Opening::new(court_face(), 1, 1, Inset::new(0.3, 0.1, 0.2, 0.2)),
+                );
+                first.and(second)
+            },
+        ),
+        ("a part placed in a courtyard's bay", |skeleton| {
+            let index = ops::add_template(skeleton, leaf());
+            ops::place_part(
+                skeleton,
+                Placement::new(index, court_face(), 1, 1, Pin::new(0.2, 0.2)),
+            )
+        }),
+        (
+            "an opening naming a void the document does not hold",
+            |skeleton| {
+                skeleton
+                    .openings
+                    .push(Opening::new(
+                        FaceRef::court(MassId(0), 7, 0),
+                        0,
+                        0,
+                        Inset::new(0.1, 0.1, 0.1, 0.1),
+                    ))
+                    .into()
+            },
+        ),
+    ];
+    for (label, author) in refusals {
+        let mut skeleton = BuildingSkeleton {
+            masses: vec![housed_patio()],
+            ..BuildingSkeleton::default()
+        };
+        for at in skeleton.court_faces_of(MassId(0), 0) {
+            ops::split_face(&mut skeleton, at, &columns, &rows);
+        }
+        let authored = author(&mut skeleton);
+        if authored.is_none() {
+            println!("  {label}: refused at the verb, before the document holds it");
+            continue;
+        }
+        let document = Building::new(skeleton.clone());
+        let faults = document.validate();
+        let built = document.build();
+        println!("  {label}:");
+        for fault in &faults {
+            println!("    {fault:?}");
+        }
+        match built {
+            Ok(_) => println!(
+                "    and it builds: there is no ring for it to be cut into, so the document's own report is the name"
+            ),
+            Err(error) => {
+                for problem in &error.problems {
+                    println!("    and it does not build: {problem:?}");
+                }
+            }
+        }
+    }
+
+    println!(
+        "\n# the reading: a courtyard's wall takes an opening exactly as the building's own does — the\n# hole goes through both of the ring's faces, the reveals name the loop, and the ring's Euler\n# characteristic follows the document rather than staying at 0."
     );
 }

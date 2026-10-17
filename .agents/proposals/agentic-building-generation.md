@@ -1923,6 +1923,87 @@ The courtyard is drawn, and the refusal that said it could not be is deleted in 
 6. **The nine scene hashes did not move**, and the baseline was re-measured at `cc7aaa5` first so a move could be
    attributed rather than argued about: all nine reproduce the table below exactly, before and after.
 
+## What the courtyard's wall slice found: one walk, and one flag (2026-10-27, branch `feature/building-court-open`)
+
+The courtyard was drawn but **its wall took no openings** — there was no door from the rooms into it and no window
+through it, on either side. This slice makes an `Opening` cuttable into it, and the answer turned out to be one
+question asked once rather than a second cutting engine.
+
+**The design: a face names a loop, and everything downstream asks which one.** `FaceRef` gains
+`void: Option<usize>`, so a rhythm, a bay, an opening and a placement can be authored on a courtyard's wall exactly
+as they are on the building's — `FaceRef::court(mass, void, edge)` is the whole new vocabulary, and
+`FaceRef::new` keeps the mass's own. That is the unification D10 wants (a bay is a slot, and a slot is a slot
+whatever it is a slot of), and it is why the slice needed no second grid, no second bay and no second `Opening`.
+
+**The expander's answer is one walk with one flag.** `courtyard.rs` had its own four-quads-per-edge ring; the mass
+had `expand_mass`'s. Both are *two loops of the same length, one ground line, one top*, and they differ in exactly
+one fact — **which way the offset went**. So `Ring { loop_of, walked, offset, wall, top, side }` carries it and
+`ring_walk` is the mass's own walk with `OffsetSide::Outward`. Every winding then reduces to
+`Ring::authored_is_outer()`: a mass's authored loop *is* its outward-facing wall, a courtyard's is the face that
+looks into the courtyard, and **reversing a quad's corners is the entire difference**. That is the kind of fact
+that is invisible to every other predicate — a courtyard wound inside-out is closed, manifold, of the right Euler
+characteristic and *positive* volume if you also got the sign — so it is stated at the type.
+
+**`MassSurface::Reveal` gains the loop, and it had to.** A reveal in a courtyard's wall is a face of `SolidId::Void`,
+not of `SolidId::Mass`; without the loop it would have been gathered into the mass's face set, two disjoint rings in
+one solid, and their Euler characteristics would have summed to `0` for exactly the wrong reason — the same trap
+`SolidId::Void` was added to escape, re-entered through the one surface a hole can be on either ring.
+
+**Every opening refusal now names the loop**, because "edge 1" is two different pieces of masonry. The four
+`Problem` variants swap `mass: MassId` for `loop_of: AuthoredLoop`, which the offset walk was already carrying for
+the same reason.
+
+Measured by `examples/patio_probe.rs` on a 10 × 10 mass, a 0.3 m wall, a 4 × 4 courtyard, three bays across and two
+storeys on the courtyard's own edge 0:
+
+| document | courtyard ring | mass's ring |
+| --- | --- | --- |
+| no opening | manifold, `loops 0`, **euler 0** | euler 0 |
+| one window in the wall | manifold, `loops 0`, **euler −2** = `2 − 2(1 + 1)` | euler 0 |
+| one door, sill on the ring's base | manifold, `loops 0`, **euler 0**, base annulus 10 triangles where the un-cut ring draws 8 | euler 0 |
+| door **and** window | manifold, `loops 0`, **euler −2** | euler 0 |
+
+and the material: the window's ring reads **16.2920** against the un-cut ring's `(4.6² − 4²) · 3.2 = 16.5120` less
+`0.7333 m² · 0.3 = 0.2200` — **0.000006 off**, the same `f32` noise the un-cut ring already carries. The door's reads
+**16.3720** against `16.5120 − 0.1400` — **0.000004 off**. Four reveals per hole, named
+`mass 0, the left reveal of opening 0 in void 0, edge 0`. **0 violations** in all four documents.
+
+**Every refusal is reached by the probe and prints its name**, all four naming `loop_of: Void { mass: MassId(0),
+void: 0 }`: a slot the rhythm no longer holds (`OpeningUnresolved`), a head at the ring's own top and a jamb at the
+ring's own end (`OpeningOutsideWall`, `past: 0.001` — the grid's top row is the wall top, so a hole with no head inset
+*is* the one this catches), two holes sharing wall (`OpeningsOverlap`), and a part in a courtyard's bay
+(`PlacementOnACourtWall`).
+
+### What this slice got wrong about its own brief, recorded because it is the useful part
+
+1. **"a doorway that would eat the ring's whole thickness" is not a distinct case, and the reason is worth having.**
+   A mass's doorway notches the ring's base annulus, and a courtyard's does the same by the same code: the probe
+   counts **10 base triangles against 8** and the ring stays closed. What the brief may have meant — a hole standing
+   *on the ring's own base* — is exactly the doorway, and it is measured above, not refused.
+2. **"a station that overlaps a corner" is unreachable from a courtyard, and the geometry says why.** `resolve_one`
+   refuses a jamb that lands off the **offset** loop's mitred ends, which is the miter's reach. A mass's offset is
+   *shorter* than its outline, so a jamb can land in that reach; a courtyard's outward offset is **longer** at both
+   ends, so no jamb can. The check is vacuous for courtyards and reachable only for masses — a real asymmetry between
+   the two rings that the shared walk made visible and that no probe of a mass alone would ever have shown.
+3. **"an opening whose sill lands on the plate"** is reachable, and it is `OpeningOutsideWall` like any other sill
+   below the ground line — but only because `reaches_the_wall_edge`'s ground line is the **plate's underside**, one
+   slab below where the ring stands. That is the shell-era reading the check was written against and it is what makes
+   a door legal on either wall. Giving a courtyard its loop's own elevations instead — which looks more honest — makes
+   a courtyard door illegal while the identical mass door is legal, for a difference that is in nothing but which loop
+   the grid was laid out on. The probe is the control: the door reads **0 violations** only because both rings are read
+   the same way.
+
+### Still open
+
+- **A part in a courtyard's bay is refused, not built.** The frame is read from the wall's outward face, which for a
+  courtyard is the offset loop rather than the loop the face names, and `Ring` now makes that distinction available —
+  so supporting it is a small slice, and refusing it was the honest interim answer.
+- **An opening naming a void the document does not hold is named by `validate` (`OpeningBayMissing`) and dropped by
+  `build`,** because there is no ring to cut into. That is the same as a mass's behaviour today and this slice did not
+  change it, but it is the one opening fault with no `Problem` behind it.
+- **`roof_planarity_probe` is not run-to-run deterministic** (its plane grouping is printed in hash order). Verified
+  by running the same binary twice on this tip; it is pre-existing and unrelated.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton

@@ -235,16 +235,25 @@ fn mass_surface(surface: MassSurface) -> String {
         // floor a person walks on in a courtyard is the plate's own top and belongs to the plate.
         MassSurface::VoidBase { void } => format!("void {void}, its wall's base"),
         MassSurface::Reveal {
+            loop_of,
             edge,
             opening,
             side,
         } => format!(
-            "{} reveal of opening {opening} in edge {edge}",
+            "{} reveal of opening {opening} in {}edge {edge}",
             match side {
                 crate::openings::RevealSide::Left => "the left",
                 crate::openings::RevealSide::Right => "the right",
                 crate::openings::RevealSide::Head => "the head",
                 crate::openings::RevealSide::Sill => "the sill",
+            },
+            match loop_of {
+                // **A mass's own walls keep the wording they have always had**, because every scene in
+                // this repository reads that sentence back out of the channel by name and a rephrasing
+                // would be a change of identity rather than of geometry. A courtyard's reveal says which
+                // courtyard, for the reason its other four faces do: "void 0" gets every face of one ring.
+                crate::mass::AuthoredLoop::Outline { .. } => String::new(),
+                crate::mass::AuthoredLoop::Void { void, .. } => format!("void {void}, "),
             }
         ),
     }

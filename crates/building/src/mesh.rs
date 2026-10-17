@@ -53,8 +53,16 @@ pub enum MassSurface {
     /// across that corner would round off the one edge that says how thick the wall is. `opening` is
     /// the hole's index in the document's own list ([`Openings`](crate::openings::Openings)), so a
     /// face traces back to the opening an author wrote and not merely to the wall it is in.
+    ///
+    /// **It carries the loop and not the edge alone, because a courtyard's wall is cut through the
+    /// same way and is a solid of its own.** A reveal in a courtyard's wall belongs to that ring
+    /// ([`SolidId::Void`]) and not to the mass that authored the void, so gathering the faces by
+    /// element without it would put a ring's jambs in the mass's face set — two disjoint rings in one
+    /// solid, whose Euler characteristic would then be the sum of two numbers that each mean nothing.
     Reveal {
-        /// Index of the outline edge the hole is cut into.
+        /// Which authored loop the hole is cut into: the mass's own outline, or one of its courtyards.
+        loop_of: crate::mass::AuthoredLoop,
+        /// Index of the loop edge the hole is cut into.
         edge: usize,
         /// Index of the opening in the document's list.
         opening: usize,
@@ -139,17 +147,26 @@ impl MassSurface {
     ///
     /// # Invariants
     ///
-    /// **A courtyard's four surfaces are one solid and the mass's own are another**, which is the
-    /// whole reason [`SolidId::Void`] exists: the faces are gathered by element, so an element that
-    /// named the mass would gather the courtyard's ring into the mass's face set — two disjoint
-    /// rings in one solid, whose Euler characteristic would then be the sum of two zeros and would
-    /// read `0` for exactly the wrong reason. Every other surface is the mass's own.
+    /// **A courtyard's four surfaces and every reveal in its wall are one solid, and the mass's own
+    /// are another**, which is the whole reason [`SolidId::Void`] exists: the faces are gathered by
+    /// element, so an element that named the mass would gather the courtyard's ring into the mass's
+    /// face set — two disjoint rings in one solid, whose Euler characteristic would then be the sum
+    /// of two zeros and would read `0` for exactly the wrong reason. Every other surface is the
+    /// mass's own, and a reveal reads the loop it was cut into rather than the mass it sits in, which
+    /// is the same rule applied to the one surface that can be on either.
     pub fn solid(&self, mass: MassId) -> SolidId {
         match self {
             Self::VoidWall { void, .. }
             | Self::VoidInner { void, .. }
             | Self::VoidTop { void, .. }
             | Self::VoidBase { void } => SolidId::Void { mass, void: *void },
+            Self::Reveal { loop_of, .. } => match loop_of {
+                crate::mass::AuthoredLoop::Outline { mass } => SolidId::Mass(*mass),
+                crate::mass::AuthoredLoop::Void { mass, void } => SolidId::Void {
+                    mass: *mass,
+                    void: *void,
+                },
+            },
             _ => SolidId::Mass(mass),
         }
     }

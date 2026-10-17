@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::mass::{Mass, MassId};
+use crate::mass::{AuthoredLoop, Mass, MassId, PlanNode};
 
 /// How close two stops have to be, or a span has to match, before they are the same number.
 ///
@@ -43,7 +43,7 @@ pub const GRID_TOLERANCE: f32 = 1.0e-3;
 /// expansion for the same reason ("max flattened split children (rhythm) 4 096").
 pub const MAX_STOPS: usize = 4096;
 
-/// Which face of a mass a grid belongs to: one outline edge.
+/// Which face of a mass a grid belongs to: **one edge of one authored loop**.
 ///
 /// # Invariants
 ///
@@ -51,18 +51,63 @@ pub const MAX_STOPS: usize = 4096;
 /// elevations, the mass's wall top]` vertically. A face is therefore a trapezoid when the ground
 /// slopes under it, and the vertical extent is the **lowest** ground the wall stands on — the wall's
 /// own top is level, so the shortest part of the face is the one that decides what fits.
+///
+/// **A mass holds two kinds of wall and a face names which one it is on.** `void` is `None` for the
+/// mass's own outline and `Some` for one of its courtyards, so a rhythm — and everything a rhythm
+/// carries, an opening and a placement — can be authored on a courtyard's wall exactly as it is on
+/// the building's. This is [`AuthoredLoop`] in the form the document's own edits name things by:
+/// an index rather than a type of thing, because a courtyard wall and a mass wall are the same kind
+/// of face and differ only in which loop they were read off.
+///
+/// The key order puts `None` before `Some`, which is what makes every walk over a document's openings
+/// report a mass's own walls before its courtyards without comparing anything.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FaceRef {
     /// The mass the face belongs to.
     pub mass: MassId,
-    /// Index of the outline edge.
+    /// Index of the loop edge.
     pub edge: usize,
+    /// Which of the mass's voids this face is on, or `None` for the mass's own outline.
+    pub void: Option<usize>,
 }
 
 impl FaceRef {
-    /// Builds a face reference.
+    /// Builds a reference to one edge of a mass's own wall.
     pub fn new(mass: MassId, edge: usize) -> Self {
-        Self { mass, edge }
+        Self {
+            mass,
+            edge,
+            void: None,
+        }
+    }
+
+    /// Builds a reference to one edge of a courtyard's wall.
+    ///
+    /// The void is the loop the courtyard's ring is built **outward** from, so this edge is the face
+    /// that looks *into* the courtyard; the ring's other face — the one the rooms see — is the same
+    /// edge of the offset loop and is not separately addressable, because a hole is cut through both.
+    pub fn court(mass: MassId, void: usize, edge: usize) -> Self {
+        Self {
+            mass,
+            edge,
+            void: Some(void),
+        }
+    }
+
+    /// Returns whether this face is on a courtyard's wall rather than the mass's own.
+    pub fn is_court(&self) -> bool {
+        self.void.is_some()
+    }
+
+    /// Returns the authored loop this face's edge is read off, which is what a fault about it names.
+    pub fn loop_of(&self) -> AuthoredLoop {
+        match self.void {
+            Some(void) => AuthoredLoop::Void {
+                mass: self.mass,
+                void,
+            },
+            None => AuthoredLoop::Outline { mass: self.mass },
+        }
     }
 }
 
@@ -310,13 +355,7 @@ pub fn increasing(stops: &[f32]) -> bool {
 ///
 /// `O(1)` in the mass's node count: it reads the two nodes the edge joins.
 pub fn face_length(mass: &Mass, edge: usize) -> Option<f32> {
-    let count = mass.outline.len();
-    if count < 3 || edge >= count {
-        return None;
-    }
-    let from = mass.outline[edge].position;
-    let to = mass.outline[(edge + 1) % count].position;
-    Some(crate::math::distance(from, to))
+    loop_length(&mass.outline, edge)
 }
 
 /// Returns the vertical extent of one face: the lowest ground it stands on, and the wall top.
@@ -325,13 +364,41 @@ pub fn face_length(mass: &Mass, edge: usize) -> Option<f32> {
 /// level and it is the shorter side of a trapezoidal face that decides what a storey can be. `None`
 /// when there is no such edge.
 pub fn face_extent(mass: &Mass, edge: usize) -> Option<(f32, f32)> {
-    let count = mass.outline.len();
+    loop_extent(&mass.outline, edge, mass.top)
+}
+
+/// Returns the plan length of one edge of any authored loop, or `None` when the edge is not there.
+///
+/// # Invariants
+///
+/// **It takes the loop rather than the mass, which is what makes a courtyard's wall a face like any
+/// other.** The mass's own helpers are this function over [`Mass::outline`], and they keep their
+/// signature so a caller reading a mass's wall does not have to know a courtyard exists; a caller
+/// reading a courtyard's hands this the void loop instead. `O(1)`: it reads the two nodes the edge
+/// joins.
+pub fn loop_length(nodes: &[PlanNode], edge: usize) -> Option<f32> {
+    let count = nodes.len();
     if count < 3 || edge >= count {
         return None;
     }
-    let from = mass.outline[edge].elevation;
-    let to = mass.outline[(edge + 1) % count].elevation;
-    Some((from.min(to), mass.top))
+    let from = nodes[edge].position;
+    let to = nodes[(edge + 1) % count].position;
+    Some(crate::math::distance(from, to))
+}
+
+/// Returns the vertical extent of one edge of any authored loop: the lowest ground it stands on, and
+/// the wall top standing over it.
+///
+/// The floor of the range is the **lower** of the edge's two node elevations, for the reason
+/// [`face_extent`] gives. `None` when the loop has no such edge.
+pub fn loop_extent(nodes: &[PlanNode], edge: usize, top: f32) -> Option<(f32, f32)> {
+    let count = nodes.len();
+    if count < 3 || edge >= count {
+        return None;
+    }
+    let from = nodes[edge].elevation;
+    let to = nodes[(edge + 1) % count].elevation;
+    Some((from.min(to), top))
 }
 
 /// The grids of a building, one per face that has been given a rhythm.

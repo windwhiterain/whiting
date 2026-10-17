@@ -60,10 +60,10 @@
 //! inner loop nowhere: the slab is a slab, `slab` below the outline's own elevations, which is what
 //! [`Mass::slab`](crate::mass::Mass::slab) says it is.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::courtyard;
-use crate::grid::GRID_TOLERANCE;
+use crate::grid::{FaceRef, GRID_TOLERANCE};
 use crate::mass::{AuthoredLoop, Mass, MassId, PlanNode};
 use crate::math::{
     Vec2, Vec3, cross, cross3, difference, distance, dot, length, lift, normalized, subtract,
@@ -262,16 +262,22 @@ pub enum Problem {
     ///
     /// # Invariants
     ///
-    /// **An opening that cannot be cut stops the mass rather than being dropped.** The document says
+    /// **An opening that cannot be cut stops the wall rather than being dropped.** The document says
     /// a wall has a hole in it; a mesh built without one contradicts the document silently, and a
     /// solid nobody asked for is still a closed solid that every later check reads as sound. A
     /// vanished slot is [`validate`](crate::validate)'s own report as well — it can name the opening
     /// and the grid it missed — and the two are different statements: this one says the wall that
     /// would have carried the hole was not built.
+    ///
+    /// **The wall is named by its loop and not by a mass and an edge**, because a mass holds two
+    /// kinds of wall: its own outline and a courtyard's ring, and "edge 1" is two different pieces of
+    /// masonry with two different answers. Every fault below carries the loop for the reason
+    /// [`offset_loop`] carries it, and none of them widens into a catch-all: each names one way the
+    /// cut cannot be made.
     OpeningUnresolved {
-        /// The mass.
-        mass: MassId,
-        /// The outline edge the opening names, counted from the outline's first node.
+        /// The authored loop the opening names: a mass's outline, or one of its courtyards.
+        loop_of: AuthoredLoop,
+        /// The loop edge the opening names, counted from the loop's first node.
         edge: usize,
         /// The opening's index in the document's own list.
         opening: usize,
@@ -280,13 +286,13 @@ pub enum Problem {
     /// decomposes has no band for it.
     ///
     /// `past` is how far the hole leaves the strip, in metres, over every side that does: its two
-    /// ends along the edge, its head, its sill against the ground line, and the mitred inner edge
+    /// ends along the edge, its head, its sill against the ground line, and the mitred offset edge
     /// its four corners project onto. The greatest of those is what is reported, so a hole that is
     /// wrong in two ways names the worse one.
     OpeningOutsideWall {
-        /// The mass.
-        mass: MassId,
-        /// The outline edge the hole is cut into.
+        /// The authored loop the hole is cut into.
+        loop_of: AuthoredLoop,
+        /// The loop edge the hole is cut into.
         edge: usize,
         /// The opening's index in the document's own list.
         opening: usize,
@@ -296,9 +302,9 @@ pub enum Problem {
     /// The ground line under one wall crosses the elevation of one of that wall's own holes, so the
     /// complement of the hole in that band is a quad folded on itself rather than a quad.
     GroundCrossesOpening {
-        /// The mass.
-        mass: MassId,
-        /// The outline edge the hole is cut into.
+        /// The authored loop the hole is cut into.
+        loop_of: AuthoredLoop,
+        /// The loop edge the hole is cut into.
         edge: usize,
         /// The opening whose elevation the ground line crosses.
         opening: usize,
@@ -309,9 +315,9 @@ pub enum Problem {
     /// Touching is not overlapping: two openings that meet exactly along an edge remove no wall
     /// twice, and they are cut as two holes whose rims share their corner points.
     OpeningsOverlap {
-        /// The mass.
-        mass: MassId,
-        /// The outline edge both holes are cut into.
+        /// The authored loop both holes are cut into.
+        loop_of: AuthoredLoop,
+        /// The loop edge both are cut into.
         edge: usize,
         /// The earlier of the two openings, by the document's own order.
         left: usize,
@@ -330,6 +336,26 @@ pub enum Problem {
     /// fault in the document's own terms (`PlacementTemplateMissing`, `PlacementBayMissing`), so an
     /// author reading either sees it.
     PlacementUnresolved {
+        /// The placement, by its index in the document's placements.
+        placement: usize,
+    },
+    /// A placement stands in a bay of a **courtyard's** wall, and this crate does not build that.
+    ///
+    /// # Invariants
+    ///
+    /// **A courtyard's bay resolves like any other — the grid, the slot and the pin are all there —
+    /// and the frame a part would be stood in is the one thing about it that is not built.** The part
+    /// frame is read off the wall's **outer** face, which is the face an outside viewer sees, and
+    /// for a courtyard that is the offset loop rather than the loop the face is named by; a frame
+    /// resolved from the face's own loop would stand the part in the courtyard's open air, a
+    /// centimetre of masonry away from where its bay says it is. That is a part in a visible wrong
+    /// place, which is worse than no part, so the placement is refused by name rather than guessed at
+    /// a face it does not own.
+    ///
+    /// It is one variant and not a flag on [`PlacementUnresolved`](Self::PlacementUnresolved)
+    /// because the fix is different: that one says the slot has gone, and this says the slot is
+    /// there and the expander declines to stand anything in it.
+    PlacementOnACourtWall {
         /// The placement, by its index in the document's placements.
         placement: usize,
     },
@@ -693,6 +719,15 @@ pub fn part_frame(
             let Some(bay) = placed.bay else {
                 return Ok(None);
             };
+            // **A courtyard's bay resolves and its frame does not, so it is refused rather than
+            // approximated.** The frame below is read from the wall's *outer* face, and for a
+            // courtyard that is the offset loop rather than the loop the face is named by; a frame
+            // taken from the named loop would stand the part in the courtyard's open air. That is a
+            // part in a visible wrong place rather than no part, so the placement is named — see
+            // [`Problem::PlacementOnACourtWall`] for why this is a variant of its own.
+            if face.is_court() {
+                return Err(vec![Problem::PlacementOnACourtWall { placement: index }]);
+            }
             let Some(mass) = skeleton.mass(face.mass) else {
                 return Ok(None);
             };
@@ -707,7 +742,14 @@ pub fn part_frame(
             ) else {
                 return Err(problems);
             };
-            let wall = WallFace::of(mass, face.edge, &inner);
+            let wall = WallFace::of(
+                &mass.outline,
+                &inner,
+                mass.wall,
+                mass.top,
+                face.edge,
+                OffsetSide::Inward,
+            );
             let origin = lift(
                 wall.outer_at(bay.from + placed.at.along),
                 bay.low + placed.at.up,
@@ -825,8 +867,12 @@ fn expand_placement(
 /// carrying half a wall is worse than one carrying the problem instead. A roof's skin is the one
 /// place that reads its own numbering back — the boundary walk needs the faces in a mesh — and it
 /// reads them while the solid is still private.
+///
+/// **A courtyard's ring is a solid of this shape too**, and it is built in its own numbering and
+/// handed back whole rather than written into the mass's mesh: the two share no point and no edge by
+/// construction, and [`ring_walk`] is what builds each of them.
 #[derive(Debug, Default)]
-struct Solid {
+pub(crate) struct Solid {
     points: Vec<Vec3>,
     faces: Vec<BuildingFace>,
 }
@@ -910,6 +956,15 @@ impl Solid {
                 element: face.element,
             }));
     }
+
+    /// Returns this solid's own points and faces, for a caller that splices it as a whole.
+    ///
+    /// This is [`splice`](Self::splice)'s other shape: a courtyard's ring is a solid of its own and
+    /// the mesh must not be able to hold half of it, so it is handed over whole and shifted by
+    /// [`splice_expansion`] rather than added to face by face.
+    pub(crate) fn into_parts(self) -> (Vec<Vec3>, Vec<BuildingFace>) {
+        (self.points, self.faces)
+    }
 }
 
 /// Returns `from` moved `amount` along `direction`.
@@ -973,13 +1028,19 @@ impl OffsetSide {
 /// edge, not a face. That is what makes the courtyard free — the three-surface edge the shell model
 /// could not close does not arise, because no face is shared in the first place.
 ///
+/// **Both rings are built by the same walk, and the two differ only in which way they were offset.**
+/// A mass's wall is built *inward* from its outline and a courtyard's *outward* from its void loop, so
+/// [`Ring`] carries the side and everything downstream — the windings, which of the two faces is
+/// called outer, which surfaces the faces name — reads it rather than assuming the mass's
+/// arrangement. One walk, one set of windings, no second implementation to agree with.
+///
 /// **A void that cannot be drawn stops the mass, and the mass's own ring is withheld with it.** The
 /// rings are built into private point lists and spliced only once every one of them is whole, which
 /// is the whole-list-or-nothing rule this function already held for one solid; a document that
 /// authored a courtyard gets the courtyard or the refusal, never a mass with a hole drawn as wall.
 ///
-/// See [`cut_edge`] for the wall a hole is cut into, and [`resolve_holes`] for what is refused
-/// before a single point is added.
+/// See [`ring_walk`] for the walk itself, [`cut_edge`] for the wall a hole is cut into, and
+/// [`resolve_holes`] for what is refused before a single point is added.
 fn expand_mass(
     skeleton: &BuildingSkeleton,
     mesh: &mut BuildingMesh,
@@ -1011,170 +1072,37 @@ fn expand_mass(
     ) else {
         return Err(problems);
     };
+    // **Every opening in the document is grouped once per mass, and each ring reads the one group
+    // that names it.** A mass holds `1 + voids` rings and each may be cut, so grouping inside the
+    // ring walk would walk the whole opening list that many times; grouping here is `O(openings)` and
+    // the group is keyed by the exact face, which is what keeps a courtyard's hole out of the mass's
+    // own wall.
+    let grouped = skeleton.openings.by_face();
+    let ring = Ring {
+        loop_of: AuthoredLoop::Outline { mass: id },
+        walked: &mass.outline,
+        offset: &inner,
+        wall: mass.wall,
+        top: mass.top,
+        side: OffsetSide::Inward,
+    };
     let mut solid = Solid::default();
-    let mut outside_base = Vec::with_capacity(count);
-    let mut outside_top = Vec::with_capacity(count);
-    let mut inside_floor = Vec::with_capacity(count);
-    let mut inside_top = Vec::with_capacity(count);
-    for node in 0..count {
-        let plan = mass.outline[node].position;
-        // **The ring''s bottom is one elevation, inside and out.** The plate is its own solid below it, so the wall
-        // does not reach down to the plate's underside: a ring whose outer base sat a plate thickness lower would make
-        // its base strip a slanted band, and the band is a warped quad wherever an opening''s stations land unevenly
-        // (measured as `FaceNotPlanar { departure: 0.19 }` on the shed, which is half a plate).
-        outside_base.push(solid.point(lift(plan, mass.outline[node].elevation)));
-        outside_top.push(solid.point(lift(plan, mass.top)));
-        // **The ring's bottom is one elevation, inside and out** — the plate is its own solid below it, so neither face of
-        // the wall reaches down to the plate's underside. The two were a plate thickness apart until 2026-10-27, and
-        // that difference is what warped every base strip quad: measured y = 0.02 against y = 0 on the shed's parts,
-        // whose own slab is 0.02.
-        inside_floor.push(solid.point(lift(inner[node], mass.outline[node].elevation)));
-        inside_top.push(solid.point(lift(inner[node], mass.top)));
-    }
-    let faces: Vec<WallFace> = (0..count)
-        .map(|edge| WallFace::of(mass, edge, &inner))
-        .collect();
-    let nodes: Vec<EdgeNode> = (0..count)
-        .map(|node| EdgeNode {
-            outer_base: outside_base[node],
-            outer_top: outside_top[node],
-            inner_floor: inside_floor[node],
-            inner_top: inside_top[node],
-        })
-        .collect();
-    let by_edge = resolve_holes(skeleton, id, &faces, &mut problems);
-    if !problems.is_empty() {
-        return Err(problems);
-    }
-    // The stations each cut edge added to the ring's base loop, empty for a face with no hole, and
-    // the bands of that loop where a doorway notches the base.
-    let mut cuts: Vec<Vec<CutStation>> = vec![Vec::new(); count];
-    let mut notches: Vec<Vec<bool>> = vec![Vec::new(); count];
-    for edge in 0..count {
-        let holes = &by_edge[edge];
-        let next = (edge + 1) % count;
-        if holes.is_empty() {
-            solid.quad(
-                [
-                    outside_top[edge],
-                    outside_top[next],
-                    outside_base[next],
-                    outside_base[edge],
-                ],
-                Element::Mass(id, MassSurface::OuterWall { edge }),
-            );
-            solid.quad(
-                [
-                    outside_top[edge],
-                    inside_top[edge],
-                    inside_top[next],
-                    outside_top[next],
-                ],
-                Element::Mass(id, MassSurface::WallTop { edge }),
-            );
-            solid.quad(
-                [
-                    inside_top[next],
-                    inside_top[edge],
-                    inside_floor[edge],
-                    inside_floor[next],
-                ],
-                Element::Mass(id, MassSurface::InnerWall { edge }),
-            );
-            continue;
-        }
-        match cut_edge(
-            &mut solid,
-            id,
-            edge,
-            &faces[edge],
-            holes,
-            nodes[edge],
-            nodes[next],
-        ) {
-            Ok((stations, bands)) => {
-                cuts[edge] = stations;
-                notches[edge] = bands;
-            }
-            Err(found) => problems.extend(found),
-        }
-    }
-    if !problems.is_empty() {
-        return Err(problems);
-    }
-    // **The base is the wall top's strip, one plane down, over the two cut loops.** The cut loops carry the stations an
-    // opening's reveal added, which is what lets the strip's edges pair with the walls' bottoms; the raw outline arrays
-    // do not have them, and a strip built from those leaves every reveal's sill edge unpaired — measured on the shed,
-    // where each door's sill showed up in the open-edge dump. The two cut loops have the same length because the
-    // stations come from the same cuts, and the notch list belongs to the loop rather than to a face, so it is read once.
-    let (floor_points, _) = split_loop(&inside_floor, &cuts, &notches, |station| station.floor);
-    let (soffit_points, base_notched) =
-        split_loop(&outside_base, &cuts, &notches, |station| station.soffit);
-    for edge in 0..soffit_points.len() {
-        // **A doorway notches the base, so there is no strip across it.** The wall has no material at the
-        // ground line over that span, and a strip drawn there would be a face with material on neither
-        // side of it — one whose four edges are claimed by the two walls' bottoms and the two jambs'.
-        if base_notched[edge] {
-            continue;
-        }
-        let next = (edge + 1) % soffit_points.len();
-        solid.quad(
-            [
-                soffit_points[edge],
-                soffit_points[next],
-                floor_points[next],
-                floor_points[edge],
-            ],
-            Element::Mass(id, MassSurface::WallBase),
-        );
-    }
-    if std::env::var("SHED_DEBUG").is_ok() {
-        let bases = solid
-            .faces
-            .iter()
-            .filter(|face| matches!(face.element, Element::Mass(_, MassSurface::WallBase)))
-            .count();
-        eprintln!(
-            "BASES {bases} emitted for a loop of {} and {} walls",
-            soffit_points.len(),
-            count
-        );
-    }
-    if std::env::var("SHED_DEBUG").is_ok() {
-        let mut used: std::collections::HashMap<(u32, u32), usize> =
-            std::collections::HashMap::new();
-        for face in &solid.faces {
-            for edge in [
-                (face.indices[0], face.indices[1]),
-                (face.indices[1], face.indices[2]),
-                (face.indices[2], face.indices[0]),
-            ] {
-                *used.entry(edge).or_insert(0) += 1;
-            }
-        }
-        for (edge, count) in &used {
-            if count > &used.get(&(edge.1, edge.0)).copied().unwrap_or(0) {
-                let owner = solid.faces.iter().find(|face| {
-                    let held = face.indices;
-                    (0..3).any(|at| (held[at], held[(at + 1) % 3]) == *edge)
-                });
-                eprintln!(
-                    "OPEN mass {} owner {:?} {:?} -> {:?}",
-                    id.0,
-                    owner.map(|face| face.element),
-                    solid.points[edge.0 as usize],
-                    solid.points[edge.1 as usize]
-                );
-            }
-        }
-    }
+    ring_walk(&mut solid, &ring, skeleton, &grouped, &mut problems);
     // **A courtyard is built before anything is spliced, and refused with the mass.** The ring is
     // built in its own point numbering by the module that owns it, and only the ones that came back
     // whole are handed to the mesh — so a mass whose second courtyard cannot be drawn contributes
     // neither its first nor the wall around it.
     let mut courtyards = Vec::with_capacity(mass.voids.len());
-    for (void, loop_nodes) in mass.voids.iter().enumerate() {
-        match courtyard::ring(id, void, loop_nodes, mass.wall, mass.top) {
+    for void in 0..mass.voids.len() {
+        match courtyard::ring(
+            skeleton,
+            &grouped,
+            id,
+            void,
+            mass.wall,
+            mass.top,
+            &mut problems,
+        ) {
             Ok(expanded) => courtyards.push(expanded),
             Err(found) => problems.extend(found),
         }
@@ -1187,6 +1115,114 @@ fn expand_mass(
         splice_expansion(mesh, points, faces);
     }
     Ok(())
+}
+
+/// One wall ring to be built: an authored loop, the loop `wall` metres away from it, and the side it
+/// was offset to.
+///
+/// # Invariants
+///
+/// **A ring is the mass's own wall and a courtyard's wall, and the only fact that tells them apart is
+/// which way the offset went.** Both are two loops of the same length standing on the same ground
+/// line with the same top; a mass's is built inward from the outline and a courtyard's outward from
+/// its void loop. Everything downstream reads [`side`](Self::authored_is_outer) rather than carrying
+/// its own answer — which loop is the outward-facing wall face, and therefore which winding every
+/// quad on it must be — because a walk that assumed the mass's arrangement would wind every face of
+/// a courtyard backwards, and a courtyard with no hole in it is exactly the case that would have
+/// looked right while it was wrong.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Ring<'a> {
+    /// Which authored loop this ring is built from, which is what every fault about it names.
+    pub(crate) loop_of: AuthoredLoop,
+    /// The authored loop, normalised: wound so its plan area is positive.
+    pub(crate) walked: &'a [PlanNode],
+    /// The loop one wall's thickness away from it.
+    pub(crate) offset: &'a [Vec2],
+    /// The wall's thickness.
+    pub(crate) wall: f32,
+    /// The wall's top, which both loops stand at.
+    pub(crate) top: f32,
+    /// Which way the offset was taken from the authored loop.
+    pub(crate) side: OffsetSide,
+}
+
+impl Ring<'_> {
+    /// Returns whether the ring's **authored** loop is the face an outside viewer sees.
+    ///
+    /// A mass's wall is built inward, so its outline is the outer face and its offset the inner one. A
+    /// courtyard's ring is built outward, so the void loop is the face that looks *into* the courtyard
+    /// — the mass's **inner** face — and the offset loop is the one the rooms see. This is the single
+    /// question every winding in [`cut_edge`] and [`ring_walk`] is derived from.
+    fn authored_is_outer(&self) -> bool {
+        matches!(self.side, OffsetSide::Inward)
+    }
+
+    /// Returns one edge of the ring read as the vertical strip its wall is built in.
+    fn face(&self, edge: usize) -> WallFace {
+        WallFace::of(
+            self.walked,
+            self.offset,
+            self.wall,
+            self.top,
+            edge,
+            self.side,
+        )
+    }
+
+    /// Returns the four surfaces one edge of this ring is drawn on.
+    fn surfaces(&self, edge: usize) -> RingSurfaces {
+        RingSurfaces::of(self.loop_of, edge)
+    }
+}
+
+/// The four surfaces one wall ring is drawn on, which is all a mass's own wall and a courtyard's
+/// differ in once the loops they are between are the same two.
+///
+/// # Invariants
+///
+/// **They are named by the loop they sit on and not by which way they look**, because the way a face
+/// looks follows from the side the ring was offset to and the loop does not.
+/// [`Ring::authored_is_outer`] is what turns one into the other, in one place. A [`MassSurface`] is
+/// itself mass-agnostic — the mass rides on the [`Element`] — so this carries four names and the walk
+/// stamps the one mass every one of them belongs to.
+#[derive(Debug, Clone, Copy)]
+struct RingSurfaces {
+    /// The wall face on the loop the author drew.
+    authored: MassSurface,
+    /// The wall face on the offset loop.
+    offset: MassSurface,
+    /// The strip of wall top between them.
+    top: MassSurface,
+    /// The annulus at the loops' own elevations.
+    base: MassSurface,
+}
+
+impl RingSurfaces {
+    /// Returns the surfaces one edge of a ring is drawn on.
+    fn of(loop_of: AuthoredLoop, edge: usize) -> Self {
+        match loop_of {
+            AuthoredLoop::Outline { .. } => Self {
+                authored: MassSurface::OuterWall { edge },
+                offset: MassSurface::InnerWall { edge },
+                top: MassSurface::WallTop { edge },
+                base: MassSurface::WallBase,
+            },
+            AuthoredLoop::Void { void, .. } => Self {
+                authored: MassSurface::VoidWall { void, edge },
+                offset: MassSurface::VoidInner { void, edge },
+                top: MassSurface::VoidTop { void, edge },
+                base: MassSurface::VoidBase { void },
+            },
+        }
+    }
+
+    /// Returns the face one loop of the ring carries.
+    fn of_loop(&self, loop_side: LoopSide) -> MassSurface {
+        match loop_side {
+            LoopSide::Authored => self.authored,
+            LoopSide::Offset => self.offset,
+        }
+    }
 }
 
 /// Appends one expansion's own points and faces to the mesh, renumbering the faces.
@@ -1212,6 +1248,215 @@ pub(crate) fn splice_expansion(
         }));
 }
 
+/// Builds one wall ring into a solid: the two faces, the strip of wall top, and the annulus at the
+/// loops' own elevations — with every hole the document cut into it already removed.
+///
+/// # Invariants
+///
+/// **One walk, two rings.** A mass's own wall and a courtyard's wall are the same shape between the
+/// same two loops, and the only difference is which loop was authored and which way the offset went;
+/// [`Ring`] carries that and every winding below is derived from it rather than from the mass's
+/// arrangement. Nothing here reads a mass, a void, or a wall thickness of its own, so a third kind of
+/// ring is a new [`Ring`] and not a new walk.
+///
+/// **The base is the wall top's strip, one plane down, over the two cut loops.** The cut loops carry
+/// the stations an opening's reveal added, which is what lets the strip's edges pair with the walls'
+/// bottoms; the raw node arrays do not have them, and a strip built from those leaves every reveal's
+/// sill edge unpaired — measured on the shed, where each door's sill showed up in the open-edge dump.
+/// The two cut loops have the same length because the stations come from the same cuts, and the notch
+/// list belongs to the loop rather than to a face, so it is read once.
+///
+/// **The base's winding starts on the ring's outer face**, which is what makes the strip look down
+/// for either ring: the two loops swap which one that is, and a strip wound from the authored loop
+/// alone would be the underside of a courtyard's floor — a face with material on neither side of it.
+///
+/// **Every refusal lands in `problems` rather than in a return value**, so a ring with two bad holes
+/// reports both and the caller decides what to do with the list; the whole-list-or-nothing rule is
+/// the caller's, because it is the one that knows whether this ring is the only thing a mass has.
+pub(crate) fn ring_walk(
+    solid: &mut Solid,
+    ring: &Ring<'_>,
+    skeleton: &BuildingSkeleton,
+    grouped: &BTreeMap<FaceRef, Vec<usize>>,
+    problems: &mut Vec<Problem>,
+) {
+    let count = ring.walked.len();
+    let mass = ring.loop_of.mass();
+    let authored_is_outer = ring.authored_is_outer();
+    let mut authored_base = Vec::with_capacity(count);
+    let mut authored_top = Vec::with_capacity(count);
+    let mut offset_base = Vec::with_capacity(count);
+    let mut offset_top = Vec::with_capacity(count);
+    for node in 0..count {
+        // **The ring's bottom is one elevation, on both loops.** The plate is its own solid below it, so the wall
+        // does not reach down to the plate's underside: a ring whose base sat a plate thickness lower on one face would make
+        // its base strip a slanted band, and the band is a warped quad wherever an opening's stations land unevenly
+        // (measured as `FaceNotPlanar { departure: 0.19 }` on the shed, which is half a plate). The two were a plate
+        // thickness apart until 2026-10-27, and that difference is what warped every base strip quad.
+        authored_base.push(solid.point(lift(
+            ring.walked[node].position,
+            ring.walked[node].elevation,
+        )));
+        authored_top.push(solid.point(lift(ring.walked[node].position, ring.top)));
+        offset_base.push(solid.point(lift(ring.offset[node], ring.walked[node].elevation)));
+        offset_top.push(solid.point(lift(ring.offset[node], ring.top)));
+    }
+    let faces: Vec<WallFace> = (0..count).map(|edge| ring.face(edge)).collect();
+    let nodes: Vec<EdgeNode> = (0..count)
+        .map(|node| EdgeNode {
+            authored_base: authored_base[node],
+            authored_top: authored_top[node],
+            offset_base: offset_base[node],
+            offset_top: offset_top[node],
+        })
+        .collect();
+    let by_edge = resolve_holes(skeleton, grouped, ring, &faces, problems);
+    if !problems.is_empty() {
+        return;
+    }
+    // The stations each cut edge added to the ring's base loop, empty for a face with no hole, and
+    // the bands of that loop where a doorway notches the base.
+    let mut cuts: Vec<Vec<CutStation>> = vec![Vec::new(); count];
+    let mut notches: Vec<Vec<bool>> = vec![Vec::new(); count];
+    for edge in 0..count {
+        let holes = &by_edge[edge];
+        let next = (edge + 1) % count;
+        let surfaces = ring.surfaces(edge);
+        if holes.is_empty() {
+            solid.quad(
+                wound(
+                    authored_is_outer,
+                    [
+                        authored_top[edge],
+                        authored_top[next],
+                        authored_base[next],
+                        authored_base[edge],
+                    ],
+                ),
+                Element::Mass(mass, surfaces.authored),
+            );
+            solid.quad(
+                wound(
+                    authored_is_outer,
+                    [
+                        authored_top[edge],
+                        offset_top[edge],
+                        offset_top[next],
+                        authored_top[next],
+                    ],
+                ),
+                Element::Mass(mass, surfaces.top),
+            );
+            solid.quad(
+                wound(
+                    authored_is_outer,
+                    [
+                        offset_top[next],
+                        offset_top[edge],
+                        offset_base[edge],
+                        offset_base[next],
+                    ],
+                ),
+                Element::Mass(mass, surfaces.offset),
+            );
+            continue;
+        }
+        match cut_edge(
+            solid,
+            &surfaces,
+            ring,
+            authored_is_outer,
+            edge,
+            &faces[edge],
+            holes,
+            nodes[edge],
+            nodes[next],
+            problems,
+        ) {
+            Ok((stations, bands)) => {
+                cuts[edge] = stations;
+                notches[edge] = bands;
+            }
+            Err(found) => problems.extend(found),
+        }
+    }
+    if !problems.is_empty() {
+        return;
+    }
+    let (walked_loop, _) = split_loop(&authored_base, &cuts, &notches, |station| station.authored);
+    let (offset_loop, base_notched) =
+        split_loop(&offset_base, &cuts, &notches, |station| station.offset);
+    // **The annulus is wound from the ring's outer face across to its inner one**, and which loop that
+    // is follows from the side the ring was offset to rather than from which loop was authored.
+    let (outer, inner) = if authored_is_outer {
+        (&walked_loop, &offset_loop)
+    } else {
+        (&offset_loop, &walked_loop)
+    };
+    for edge in 0..outer.len() {
+        // **A doorway notches the base, so there is no strip across it.** The wall has no material at the
+        // ground line over that span, and a strip drawn there would be a face with material on neither
+        // side of it — one whose four edges are claimed by the two walls' bottoms and the two jambs'.
+        if base_notched[edge] {
+            continue;
+        }
+        let next = (edge + 1) % outer.len();
+        solid.quad(
+            [outer[edge], outer[next], inner[next], inner[edge]],
+            Element::Mass(mass, ring.surfaces(0).base),
+        );
+    }
+    if std::env::var("SHED_DEBUG").is_ok() {
+        report_unclosed(solid, ring.loop_of, outer.len());
+    }
+}
+
+/// Prints every edge of a ring that has no opposite, naming the face that drew it.
+///
+/// # Invariants
+///
+/// **It reads the welded indices and not the coordinates**, because that is the same question
+/// [`BuildingMesh::boundary_edges_of`] asks and the same answer: a face in the wrong place still meets
+/// its neighbours, so a closure dump taken before this slice found nothing on a courtyard built the
+/// other way round. It is behind an environment variable because a probe is the instrument here, not
+/// a log line.
+fn report_unclosed(solid: &Solid, loop_of: AuthoredLoop, nodes: usize) {
+    let mut used: std::collections::HashMap<(u32, u32), usize> = std::collections::HashMap::new();
+    for face in &solid.faces {
+        for edge in [
+            (face.indices[0], face.indices[1]),
+            (face.indices[1], face.indices[2]),
+            (face.indices[2], face.indices[0]),
+        ] {
+            *used.entry(edge).or_insert(0) += 1;
+        }
+    }
+    for (edge, count) in &used {
+        if count > &used.get(&(edge.1, edge.0)).copied().unwrap_or(0) {
+            let owner = solid.faces.iter().find(|face| {
+                let held = face.indices;
+                (0..3).any(|at| (held[at], held[(at + 1) % 3]) == *edge)
+            });
+            eprintln!(
+                "OPEN {loop_of:?} owner {:?} {:?} -> {:?}",
+                owner.map(|face| face.element),
+                solid.points[edge.0 as usize],
+                solid.points[edge.1 as usize]
+            );
+        }
+    }
+    let bases = solid
+        .faces
+        .iter()
+        .filter(|face| match face.element {
+            Element::Mass(_, MassSurface::WallBase)
+            | Element::Mass(_, MassSurface::VoidBase { .. }) => true,
+            _ => false,
+        })
+        .count();
+    eprintln!("BASES {bases} emitted for a loop of {nodes} walls");
+}
+
 /// Returns one face's walk of the ring's base loop: that face's own bottom points with every cut
 /// station written into it, and the spans over which the base is notched.
 ///
@@ -1226,7 +1471,7 @@ pub(crate) fn splice_expansion(
 /// two points standing at the same coordinates.
 ///
 /// The stations arrive in the loop's own order because they are walked from the node they follow,
-/// so one pass over the nodes reads both faces in the order the outline was authored in. **The
+/// so one pass over the nodes reads both faces in the order the loop was authored in. **The
 /// notch answers a span and not a point**, because a doorway notches the base between its two
 /// jambs; a node opens the first band of the edge that starts at it, and the loop's closing span
 /// belongs to the edge that ends at its last node.
@@ -1256,54 +1501,67 @@ fn split_loop(
     (welded, notched)
 }
 
-/// Resolves every opening of one mass against the walls it names, and reports every way the
-/// document's openings cannot be cut.
+/// Resolves every opening cut into one authored wall ring, and reports every way the document's
+/// openings cannot be cut.
 ///
 /// # Invariants
 ///
-/// **The two lookups are read as a pair, and both come from the document.** `apertures_of` answers
-/// what can be cut and filters the rest away; `unresolved_openings` answers what could not be. An
-/// expander reading only the first would build a wall with a hole silently missing and a document
-/// that says the wall has one, so both are read and neither is re-derived here.
+/// **The ring reads its own face and no other.** `grouped` is the whole document's openings keyed by
+/// the exact [`FaceRef`], and a ring looks up the faces its own loop names — so a hole in a
+/// courtyard's wall can never be cut into the mass's own wall two edges away, which is what a filter
+/// on the mass alone would have allowed once a courtyard's faces became addressable.
 ///
-/// The faces to read are enumerated through [`Openings::by_face`](crate::openings::Openings::by_face),
-/// which is `O(openings)` once, rather than by asking every face of the mass — that would put the
-/// whole document into the cost of every wall. The keys arrive in `(mass, edge)` order and the
-/// indices in the order they were authored, so two runs of one document report in one order.
+/// **The two lookups are read as a pair, and both come from the document.** `aperture` answers the
+/// rectangle a hole cuts and `None` for one that cannot be cut at all; `unresolved_openings` and
+/// `apertures_of` are this crate's stated pair of companions, and this walk composes them from the
+/// single definition both of them are built on, so there is one answer to "does this opening resolve"
+/// rather than two that could drift.
 ///
-/// **A refused mass carries none of its holes.** Nothing here writes to the solid, and
-/// [`expand_mass`] splices only once the whole mass is built, so a wall that cannot be cut is
-/// absent rather than half present.
+/// **A refused ring carries none of its holes.** Nothing here writes to the solid, and the caller
+/// splices only once the whole mass is built, so a wall that cannot be cut is absent rather than
+/// half present.
 fn resolve_holes(
     skeleton: &BuildingSkeleton,
-    id: MassId,
+    grouped: &BTreeMap<FaceRef, Vec<usize>>,
+    ring: &Ring<'_>,
     faces: &[WallFace],
     problems: &mut Vec<Problem>,
 ) -> Vec<Vec<Hole>> {
     let mut by_edge: Vec<Vec<Hole>> = vec![Vec::new(); faces.len()];
-    for (face, _) in skeleton.openings.by_face() {
-        if face.mass != id {
+    // **One pass over the document's own group for this ring**, rather than a lookup per edge: the
+    // group is keyed by the exact face, so an opening that names an edge this loop does not have is
+    // seen here instead of being missed by every edge's lookup — which is the difference between a
+    // named refusal and a hole that was quietly never cut.
+    for (face, indices) in grouped {
+        if face.mass != ring.loop_of.mass() || face.void != ring.loop_of.void() {
             continue;
         }
-        for index in skeleton.unresolved_openings(face) {
-            problems.push(Problem::OpeningUnresolved {
-                mass: id,
-                edge: face.edge,
-                opening: index,
-            });
-        }
-        for (index, extents) in skeleton.apertures_of(face) {
-            let Some(wall) = faces.get(face.edge) else {
+        let Some(wall) = faces.get(face.edge) else {
+            for index in indices {
                 problems.push(Problem::OpeningUnresolved {
-                    mass: id,
+                    loop_of: ring.loop_of,
                     edge: face.edge,
-                    opening: index,
+                    opening: *index,
                 });
-                continue;
-            };
-            match resolve_one(id, face.edge, index, extents, wall) {
-                Ok(hole) => by_edge[face.edge].push(hole),
-                Err(problem) => problems.push(problem),
+            }
+            continue;
+        };
+        for index in indices {
+            // **One definition of "resolved"**, which is [`BuildingSkeleton::aperture`]: a slot the grid
+            // no longer holds and insets that ate the bay are the same statement, and this walk needs both
+            // halves of the answer — the rectangle to cut and the refusal to report.
+            match skeleton.aperture(*index) {
+                None => problems.push(Problem::OpeningUnresolved {
+                    loop_of: ring.loop_of,
+                    edge: face.edge,
+                    opening: *index,
+                }),
+                Some((_, extents)) => {
+                    match resolve_one(ring.loop_of, face.edge, *index, extents, wall) {
+                        Ok(hole) => by_edge[face.edge].push(hole),
+                        Err(problem) => problems.push(problem),
+                    }
+                }
             }
         }
     }
@@ -1321,7 +1579,7 @@ fn resolve_holes(
                     let (first, second) =
                         ordered(by_edge[edge][left].opening, by_edge[edge][right].opening);
                     problems.push(Problem::OpeningsOverlap {
-                        mass: id,
+                        loop_of: ring.loop_of,
                         edge,
                         left: first,
                         right: second,
@@ -1347,20 +1605,20 @@ fn ordered(first: usize, second: usize) -> (usize, usize) {
 /// # Invariants
 ///
 /// **A hole must be strictly inside the strip, on both faces, and the two tests are not the same
-/// test.** Across, the strip is the edge's own length and the inner edge's own length; a mitre moves
-/// both ends of the inner edge, so a hole that clears the outer strip can still project off the
-/// inner one, and it is measured where it lands rather than assumed to have travelled with it. Down,
-/// the binding floor is the **inner** wall's own, because that is the line the mass's floor meets: a
-/// sill below it is a hole under the building, and a sill standing on it is a door.
+/// test.** Across, the strip is the edge's own length and the offset edge's own length; a mitre moves
+/// both ends of the offset edge, so a hole that clears the authored strip can still project off the
+/// other one, and it is measured where it lands rather than assumed to have travelled with it. Down,
+/// the binding floor is the **offset** wall's own, because that is the line the ring's base annulus
+/// meets: a sill below it is a hole under the building, and a sill standing on it is a door.
 ///
-/// **A sill may stand exactly on the inner wall's own floor, and that is a door.** The band below
-/// it is then empty rather than inverted, the reveal's inner edge lies in the floor's own plane,
-/// and the floor's edge closes it — no second mechanism and no special case in the walk. What is
+/// **A sill may stand exactly on the offset wall's own floor, and that is a door.** The band below
+/// it is then empty rather than inverted, the reveal's inner edge lies in the base's own plane,
+/// and the base's edge closes it — no second mechanism and no special case in the walk. What is
 /// refused is a sill below the ground line at either of the hole's own jambs, which is the same
 /// answer read at two places because the line is straight. `past` is the greatest of every way the
 /// hole leaves the strip, so a hole wrong in two ways names the worse one.
 fn resolve_one(
-    id: MassId,
+    loop_of: AuthoredLoop,
     edge: usize,
     opening: usize,
     extents: Extents,
@@ -1373,23 +1631,23 @@ fn resolve_one(
     // whole of that test: a sill at or above the ground everywhere is legal, a sill exactly on it
     // is a door, and both ends are the whole test because the line is straight between them.
     let below_ground = wall
-        .inner_floor_at(extents.from)
-        .max(wall.inner_floor_at(extents.to))
+        .offset_floor_at(extents.from)
+        .max(wall.offset_floor_at(extents.to))
         - extents.low;
-    // The hole's two jambs, projected onto the inner edge's line and measured against the ends the
-    // miter left it: the projection moves nothing along the edge, but the inner edge is shorter than
-    // the outer one at both ends, and a jamb that lands at or past one of them would put its reveal
+    // The hole's two jambs, projected onto the offset edge's line and measured against the ends the
+    // miter left it: the projection moves nothing along the edge, but the offset edge is shorter than
+    // the authored one at both ends, and a jamb that lands at or past one of them would put its reveal
     // on a corner the neighbouring wall still claims whole.
-    let past_inner = (GRID_TOLERANCE + wall.inner_from - extents.from)
-        .max(extents.to + GRID_TOLERANCE - wall.inner_to);
+    let past_offset = (GRID_TOLERANCE + wall.offset_from - extents.from)
+        .max(extents.to + GRID_TOLERANCE - wall.offset_to);
     let past = past_start
         .max(past_end)
         .max(past_head)
         .max(below_ground)
-        .max(past_inner);
+        .max(past_offset);
     if past > 0.0 {
         return Err(Problem::OpeningOutsideWall {
-            mass: id,
+            loop_of,
             edge,
             opening,
             past,
@@ -1401,122 +1659,139 @@ fn resolve_one(
     })
 }
 
-/// One outline edge read as the vertical strip its wall is built in.
+/// One edge of an authored loop read as the vertical strip its wall is built in.
 ///
 /// # Invariants
 ///
-/// **`u` is arc length along the outer edge, and it is also arc length along the inner edge's own
-/// line — the two are the same number, while the inner edge itself is shorter at both ends.** The
-/// miter moves the inner edge's *ends*: a right angle takes one wall's thickness off each, and a
-/// sharper corner takes more, so the inner loop's edge runs from `inner_from` to `inner_to` rather
-/// than from `0` to the outer edge's length. Projecting a point of the outer face onto the inner
-/// edge's line is therefore one dot product and moves nothing along the edge — the projection is the
-/// identity in `u` — while *where the inner edge is* is what the miter moved. Reading the inner rim
-/// as the outer rim shifted by a constant would move the hole's jambs; reading it as the projection
-/// and then refusing a hole that lands off the inner edge's own ends is what the geometry says.
+/// **`u` is arc length along the authored edge, and it is also arc length along the offset edge's own
+/// line — the two are the same number, while the offset edge itself is shorter at both ends.** The
+/// miter moves the offset edge's *ends*: a right angle takes one wall's thickness off each, and a
+/// sharper corner takes more, so the offset loop's edge runs from `offset_from` to `offset_to` rather
+/// than from `0` to the authored edge's length. Projecting a point of one face onto the other edge's
+/// line is therefore one dot product and moves nothing along the edge — the projection is the identity
+/// in `u` — while *where the other edge is* is what the miter moved. Reading the offset rim as the
+/// authored rim shifted by a constant would move the hole's jambs; reading it as the projection and
+/// then refusing a hole that lands off the offset edge's own ends is what the geometry says.
 ///
 /// The ground line is the whole of the wall's bottom, on both faces, and everything about a door
 /// follows from that. The plate is a solid of its own beneath the ring, so the wall does not reach
 /// down to its underside: a cut station whose floor stood a plate thickness below the authored
 /// corners would draw the ring's base as a sawtooth across every opening, and the base strip would
 /// be a warped plane rather than the ground. The two faces still read the ground line on two lines
-/// of their own — see [`WallFace::inner_floor_at`] — which is a fact about the mitred corners and
+/// of their own — see [`WallFace::offset_floor_at`] — which is a fact about the mitred corners and
 /// not about the plate.
+///
+/// **The loops are named by the walk, not by which way they look.** `origin` is the authored loop and
+/// `offset_origin` the one a wall's thickness away, whichever of the two is the ring's outward-facing
+/// face; [`Ring::authored_is_outer`] is what says that, and nothing here assumes it.
 #[derive(Debug, Clone, Copy)]
 struct WallFace {
-    /// Where the outer edge starts, in plan.
+    /// Where the authored edge starts, in plan.
     origin: Vec2,
-    /// The unit direction the outer edge runs.
+    /// The unit direction the authored edge runs.
     along: Vec2,
-    /// Where the outer edge's line meets the inner edge's line: the outer edge shifted along its own
-    /// inward normal by the wall's thickness.
-    inner_origin: Vec2,
-    /// How long the outer edge is.
+    /// Where the authored edge's line meets the offset edge's line: the authored edge shifted along
+    /// whichever way this ring's offset went by the wall's thickness.
+    offset_origin: Vec2,
+    /// How long the authored edge is.
     length: f32,
-    /// Where the inner edge starts along its own line, which the miter moved off the outer edge's
+    /// Where the offset edge starts along its own line, which the miter moved off the authored edge's
     /// start.
-    inner_from: f32,
-    /// Where the inner edge ends along its own line, which the miter moved off the outer edge's end.
-    inner_to: f32,
-    /// The ground line's own two elevations, at the outer edge's two ends.
+    offset_from: f32,
+    /// Where the offset edge ends along its own line, which the miter moved off the authored edge's
+    /// end.
+    offset_to: f32,
+    /// The ground line's own two elevations, at the authored edge's two ends.
     ground: [f32; 2],
     /// The wall top.
     top: f32,
 }
 
 impl WallFace {
-    /// Reads one outline edge as the strip its wall is built in.
-    fn of(mass: &Mass, edge: usize, inner: &[Vec2]) -> Self {
-        let count = mass.outline.len();
+    /// Reads one edge of an authored loop as the strip its wall is built in.
+    ///
+    /// **The side is the only difference between the two rings**: a mass's offset lies along the loop's
+    /// inward normal and a courtyard's along the outward one, which is exactly
+    /// [`OffsetSide::apply`] already computes for the offset walk, so the strip and the loop it is
+    /// offset from cannot disagree about which way "into the wall" is.
+    fn of(
+        loop_nodes: &[PlanNode],
+        offset: &[Vec2],
+        wall: f32,
+        top: f32,
+        edge: usize,
+        side: OffsetSide,
+    ) -> Self {
+        let count = loop_nodes.len();
         let next = (edge + 1) % count;
-        let origin = mass.outline[edge].position;
-        let far = mass.outline[next].position;
+        let origin = loop_nodes[edge].position;
+        let far = loop_nodes[next].position;
         let along = normalized(difference(far, origin));
         Self {
             origin,
             along,
-            inner_origin: step(origin, inward(along), mass.wall),
+            offset_origin: step(origin, side.apply(inward(along)), wall),
             length: distance(far, origin),
-            inner_from: dot(difference(inner[edge], origin), along),
-            inner_to: dot(difference(inner[next], origin), along),
-            ground: [mass.outline[edge].elevation, mass.outline[next].elevation],
-            top: mass.top,
+            offset_from: dot(difference(offset[edge], origin), along),
+            offset_to: dot(difference(offset[next], origin), along),
+            ground: [loop_nodes[edge].elevation, loop_nodes[next].elevation],
+            top,
         }
     }
 
-    /// Returns the ground line's elevation at an arc length along the **outer** edge.
+    /// Returns the ground line's elevation at an arc length along the **authored** edge.
     ///
     /// The line is straight between the edge's two nodes, which is what makes both ends the whole
     /// test: a linear function attains its extremes on an interval at the interval's ends.
     ///
-    /// **This is the outer wall's own floor at every station, the two corners included**, because
-    /// the ring's base is one elevation over the whole outline: `expand_mass` puts the authored
-    /// corners on this line, and a station that read anything else would draw the base strip across
+    /// **This is one of the wall's own faces' floor at every station, the two corners included**,
+    /// because the ring's base is one elevation over the whole loop: `ring_walk` puts the authored
+    /// corners on this line, and a station that read anything else would draw the base annulus across
     /// an opening as a band from one level to another.
     fn ground_at(&self, along: f32) -> f32 {
         self.ground[0] + (self.ground[1] - self.ground[0]) * (along / self.length)
     }
 
-    /// Returns the floor the inner wall stands on: the ground line itself, because that is where the
-    /// mass's floor is.
+    /// Returns the floor the offset wall stands on: the ground line itself, because that is where the
+    /// ring's base is.
     ///
-    /// **Read in the inner edge's own arc length, not the outer's.** The inner wall's bottom edge runs
-    /// between the two *inner* corners at the two *nodes'* elevations, so on a wall whose ground rises
-    /// it is a different line from the outer wall's: its slope is the ground's rise spread over the
-    /// inner edge's own length. Reading the same elevation at the same arc length for both faces would
-    /// redraw the inner wall's floor along a line the un-cut wall does not have, and a mass would then
-    /// hold a different amount of material depending on whether a window had been cut in it — a
-    /// difference in volume with nothing in the geometry to account for it.
-    fn inner_floor_at(&self, along: f32) -> f32 {
-        let inside = along.clamp(self.inner_from, self.inner_to);
-        let span = self.inner_to - self.inner_from;
-        self.ground[0] + (self.ground[1] - self.ground[0]) * ((inside - self.inner_from) / span)
+    /// **Read in the offset edge's own arc length, not the authored one's.** The offset wall's bottom
+    /// edge runs between the two *offset* corners at the two *nodes'* elevations, so on a wall whose
+    /// ground rises it is a different line from the authored wall's: its slope is the ground's rise
+    /// spread over the offset edge's own length. Reading the same elevation at the same arc length for
+    /// both faces would redraw the offset wall's floor along a line the un-cut wall does not have, and
+    /// a ring would then hold a different amount of material depending on whether a window had been
+    /// cut in it — a difference in volume with nothing in the geometry to account for it.
+    fn offset_floor_at(&self, along: f32) -> f32 {
+        let inside = along.clamp(self.offset_from, self.offset_to);
+        let span = self.offset_to - self.offset_from;
+        self.ground[0] + (self.ground[1] - self.ground[0]) * ((inside - self.offset_from) / span)
     }
 
-    /// Returns the plan position of an arc length along the outer edge.
+    /// Returns the plan position of an arc length along the authored edge.
     fn outer_at(&self, along: f32) -> Vec2 {
         step(self.origin, self.along, along)
     }
 
-    /// Returns the plan position of an arc length along the outer edge, on the inner edge.
+    /// Returns the plan position of an arc length along the authored edge, on the offset edge.
     ///
-    /// This is the **projection of the outer rim's corner onto the inner edge**, and it is the whole
-    /// of what the inner face needs: one dot product, and exact because the two lines are parallel
-    /// — the offset moves a line along its own normal, and a perpendicular projection puts the point
-    /// straight back at the same arc length. The arc length handed in is the outer's, so one number
-    /// describes a station on both faces of the wall, and that is what welds a hole's outer rim to
-    /// the reveal leaving it.
+    /// This is the **projection of the authored rim's corner onto the offset edge**, and it is the
+    /// whole of what the offset face needs: one dot product, and exact because the two lines are
+    /// parallel — the offset moves a line along its own normal, and a perpendicular projection puts
+    /// the point straight back at the same arc length. The arc length handed in is the authored edge's,
+    /// so one number describes a station on both faces of the wall, and that is what welds a hole's
+    /// rim on one face to the reveal leaving it on the other.
     ///
-    /// **The projection is onto a segment and not onto a line**, because the inner wall stops at the
-    /// two mitred corners. The two ends of the walk's own station list are those corners' outer
-    /// stations, which the projection puts a mitre's reach beyond the inner edge's own ends; clamped
+    /// **The projection is onto a segment and not onto a line**, because the offset wall stops at the
+    /// two mitred corners. The two ends of the walk's own station list are those corners' authored
+    /// stations, which the projection puts a miter's reach beyond the offset edge's own ends; clamped
     /// they land on the corner itself, which is where the node loop already put the floor and the top
-    /// and where the neighbouring wall's inner face ends. No hole is affected: a hole is refused
+    /// and where the neighbouring wall's offset face ends. No hole is affected: a hole is refused
     /// unless it lands strictly inside that segment.
-    fn inner_at(&self, along: f32) -> Vec2 {
+    fn offset_at(&self, along: f32) -> Vec2 {
         let corner = dot(difference(self.outer_at(along), self.origin), self.along);
-        let inside = corner.clamp(self.inner_from, self.inner_to);
-        step(self.inner_origin, self.along, inside)
+        let inside = corner.clamp(self.offset_from, self.offset_to);
+        step(self.offset_origin, self.along, inside)
     }
 }
 
@@ -1542,38 +1817,86 @@ struct Hole {
     outer: Extents,
 }
 
-/// Which of a wall's two faces a band is emitted on.
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum FaceSide {
-    /// Seen from outside, standing on the ground line itself.
-    Outer,
-    /// Seen from inside, standing on the ground line read along the inner edge.
-    Inner,
-}
-
-impl FaceSide {
-    /// Returns the elevation this face's own floor stands at.
-    fn floor_at(self, wall: &WallFace, along: f32) -> f32 {
-        match self {
-            Self::Outer => wall.ground_at(along),
-            Self::Inner => wall.inner_floor_at(along),
-        }
-    }
-
-    /// Returns this side's own points of one station, by the index the cut numbers them by.
-    fn pick(self, station: &StationPoints) -> &Vec<u32> {
-        match self {
-            Self::Outer => &station.outer,
-            Self::Inner => &station.inner,
-        }
-    }
-}
-
-/// One station of a cut wall: the points of both faces at every elevation the cut uses.
+/// Which of a ring's two loops a face is drawn on.
 ///
 /// # Invariants
 ///
-/// **Index `0` is the face's own floor — the ground line, on both faces — and index `1` is the wall
+/// **The loop is the fact the walk winds by, and it is not the same as which way the face looks.** A
+/// mass's authored loop *is* its outward-facing wall; a courtyard's authored loop is the face that
+/// looks into the courtyard, and its outward-facing wall is the offset loop. Naming the two by their
+/// loops is what lets one set of windings serve both: [`gap`] and [`corner_band`] ask for the loop and
+/// derive the winding, and [`Ring::authored_is_outer`] is the one place the swap is decided — by
+/// [`RingSurfaces::of_loop`], which turns a loop into the name the mesh carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LoopSide {
+    /// The loop the author drew.
+    Authored,
+    /// The loop a wall's thickness away from it.
+    Offset,
+}
+
+impl LoopSide {
+    /// Returns the elevation this loop's own floor stands at an arc length along the authored edge.
+    ///
+    /// The two floors are different lines wherever the ground slopes, because the offset loop's span is
+    /// shorter than the authored one and the miter moved its ends — see [`WallFace::offset_floor_at`]
+    /// for why reading one number for both would make a ring hold a different amount of material
+    /// depending on whether a window had been cut in it.
+    fn floor_at(self, wall: &WallFace, along: f32) -> f32 {
+        match self {
+            Self::Authored => wall.ground_at(along),
+            Self::Offset => wall.offset_floor_at(along),
+        }
+    }
+
+    /// Returns the corners of one band, wound so the face looks out of the material.
+    ///
+    /// **The windings differ between the two loops and not between the two rings, because which loop
+    /// carries the outward-facing wall has already been asked once** — `authored_is_outer` says which
+    /// of these two orders the ring needs, and a courtyard's are both the other way round.
+    fn corners(
+        self,
+        authored_is_outer: bool,
+        near: &[u32],
+        far: &[u32],
+        low: usize,
+        high: usize,
+    ) -> [u32; 4] {
+        wound(
+            authored_is_outer,
+            match self {
+                Self::Authored => [near[high], far[high], far[low], near[low]],
+                Self::Offset => [far[high], near[high], near[low], far[low]],
+            },
+        )
+    }
+}
+
+/// Returns one quad's four corners, wound for whichever loop carries the ring's outward face.
+///
+/// # Invariants
+///
+/// **Every quad in a ring walk spans the wall's thickness, and which way it must wind is one fact
+/// about the ring, not one fact per face.** A mass's authored loop carries the outward face, so the
+/// walk's orders are written once for that case; a courtyard's authored loop is the inward one, so its
+/// orders are the same lists **reversed**. That is the whole of it: reversing a quad's corners flips
+/// its normal and flips nothing else, so one reversal per quad and one flag per ring is enough — and a
+/// face that is right on a mass and inside-out on a courtyard would still close, still be manifold,
+/// still be counted and still be of positive volume, so [`SolidInsideOut`](crate::validate::Violation::SolidInsideOut)
+/// is the only thing in the crate that could ever have said so.
+fn wound(authored_is_outer: bool, corners: [u32; 4]) -> [u32; 4] {
+    if authored_is_outer {
+        corners
+    } else {
+        [corners[3], corners[2], corners[1], corners[0]]
+    }
+}
+
+/// One station of a cut wall: the points of both loops at every elevation the cut uses.
+///
+/// # Invariants
+///
+/// **Index `0` is the loop's own floor — the ground line, on both loops — and index `1` is the wall
 /// top, and a hole's sill that stands on the ground is that floor point itself.** The three are
 /// welded here rather than compared afterwards: a doorway's sill is the wall's own bottom edge, the
 /// ring's base is notched across the opening rather than drawn under it, and a second point at the
@@ -1581,27 +1904,48 @@ impl FaceSide {
 /// point of its own, and the same index is what both the wall's bands and the two reveals that
 /// border it read.
 struct StationPoints {
-    /// The outer face's points: the ground line, the wall top, then every hole elevation in
+    /// The authored loop's points: the ground line, the wall top, then every hole elevation in
     /// [`cuts`](../cuts).
-    outer: Vec<u32>,
-    /// The inner face's, in the same order.
-    inner: Vec<u32>,
+    authored: Vec<u32>,
+    /// The offset loop's, in the same order.
+    offset: Vec<u32>,
+}
+
+impl StationPoints {
+    /// Returns this station's own points on one loop.
+    fn pick(&self, loop_side: LoopSide) -> &[u32] {
+        match loop_side {
+            LoopSide::Authored => &self.authored,
+            LoopSide::Offset => &self.offset,
+        }
+    }
+
+    /// Returns whether one end of a span stands on the wall's own floor at that row, on both loops.
+    ///
+    /// **The test is on the welded indices and not on the two elevations**, because the walk welds a
+    /// sill that sits on a floor into that floor's own point: equal indices *are* equal elevations here,
+    /// and comparing the numbers again would compare what the walk has already decided. One end is one
+    /// reading; the span stands only when both of its ends do, which is what keeps the base's notch and
+    /// the absence of a sill one decision rather than two.
+    fn stands_on_floor(&self, row: usize) -> bool {
+        self.authored[row] == self.authored[0] && self.offset[row] == self.offset[0]
+    }
 }
 
 /// One station a cut added to an edge, as the two points the ring's base walk needs there.
 ///
 /// # Invariants
 ///
-/// **A station is one elevation on both faces of one edge, one point each**, and the base walk
-/// reads each through the side it is drawing. Both are the walls' own floor points, made where the
+/// **A station is one elevation on both loops of one edge, one point each**, and the base walk
+/// reads each through the loop it is drawing. Both are the walls' own floor points, made where the
 /// station is and never found by comparing coordinates afterwards — a base walk that rebuilt them
 /// would put a second vertex at one elevation and the ring would open along its bottom.
 #[derive(Debug, Clone, Copy)]
 struct CutStation {
-    /// The outer wall's own floor point there, which is the base's outer node.
-    soffit: u32,
-    /// The inner wall's own floor point there, which is the base's inner node.
-    floor: u32,
+    /// The authored loop's own floor point there, which is one of the base annulus's nodes.
+    authored: u32,
+    /// The offset loop's own floor point there, which is the other.
+    offset: u32,
 }
 
 /// One end of an edge: the four authored points of its node.
@@ -1609,20 +1953,20 @@ struct CutStation {
 /// # Invariants
 ///
 /// **A cut reuses these rather than making its own copies of them.** The first and last of an
-/// edge's stations are its own two nodes, and the ring, the floor and the soffit all meet there
+/// edge's stations are its own two nodes, and the ring, the base and the top strip all meet there
 /// through the points the node loop made — the neighbouring edge's wall claims the same corner
 /// points, and a second point at the same coordinates would leave the ring's two ends meeting
 /// nothing: a corner with no face across it, which reads as a boundary rather than as a corner.
 #[derive(Debug, Clone, Copy)]
 struct EdgeNode {
-    /// The outer wall's floor point at this node.
-    outer_base: u32,
-    /// The outer wall's top point at this node.
-    outer_top: u32,
-    /// The inner wall's floor point at this node.
-    inner_floor: u32,
-    /// The inner wall's top point at this node.
-    inner_top: u32,
+    /// The authored loop's floor point at this node.
+    authored_base: u32,
+    /// The authored loop's top point at this node.
+    authored_top: u32,
+    /// The offset loop's floor point at this node.
+    offset_base: u32,
+    /// The offset loop's top point at this node.
+    offset_top: u32,
 }
 
 /// Cuts one wall into the complement of its holes, and returns the stations it split.
@@ -1651,19 +1995,23 @@ struct EdgeNode {
 /// which no closure check reads and which a fan triangulation would fill inside out. Refused by
 /// name rather than clamped, because a clamped wall is a wall in a place the author did not draw.
 ///
-/// **The wall top, the floor and the soffit follow the cut rather than being authored twice.** Each
-/// band of the wall ends on its own top segment and its own floor segment, and each of those is used
-/// by exactly one face of the ring, the floor and the soffit, so the three are built band by band
-/// over the same stations. That is what the stations returned here are for.
+/// **The wall top, the floor and the base annulus follow the cut rather than being authored twice.**
+/// Each band of the wall ends on its own top segment and its own floor segment, and each of those is
+/// used by exactly one face of the ring — the top strip and the annulus — so the three are built band
+/// by band over the same stations. That is what the stations returned here are for.
 fn cut_edge(
     solid: &mut Solid,
-    id: MassId,
+    surfaces: &RingSurfaces,
+    ring: &Ring<'_>,
+    authored_is_outer: bool,
     edge: usize,
     wall: &WallFace,
     holes: &[Hole],
     near: EdgeNode,
     far: EdgeNode,
+    problems: &mut Vec<Problem>,
 ) -> Result<(Vec<CutStation>, Vec<bool>), Vec<Problem>> {
+    let mass = ring.loop_of.mass();
     let mut stations = vec![0.0, wall.length];
     let mut cuts = Vec::with_capacity(2 * holes.len());
     for hole in holes {
@@ -1681,22 +2029,23 @@ fn cut_edge(
     cuts.sort_by(f32::total_cmp);
     cuts.dedup();
 
-    for side in [FaceSide::Outer, FaceSide::Inner] {
+    for loop_side in [LoopSide::Authored, LoopSide::Offset] {
         for band in 0..stations.len() - 1 {
-            let low = side
+            let low = loop_side
                 .floor_at(wall, stations[band])
-                .min(side.floor_at(wall, stations[band + 1]));
-            let high = side
+                .min(loop_side.floor_at(wall, stations[band + 1]));
+            let high = loop_side
                 .floor_at(wall, stations[band])
-                .max(side.floor_at(wall, stations[band + 1]));
+                .max(loop_side.floor_at(wall, stations[band + 1]));
             for hole in holes {
                 for elevation in [hole.outer.low, hole.outer.high] {
                     if elevation > low && elevation < high {
-                        return Err(vec![Problem::GroundCrossesOpening {
-                            mass: id,
+                        problems.push(Problem::GroundCrossesOpening {
+                            loop_of: ring.loop_of,
                             edge,
                             opening: hole.opening,
-                        }]);
+                        });
+                        return Ok((Vec::new(), Vec::new()));
                     }
                 }
             }
@@ -1708,52 +2057,56 @@ fn cut_edge(
     let mut notches: Vec<bool> = Vec::with_capacity(stations.len() - 1);
     let last = stations.len() - 1;
     for (index, station) in stations.iter().enumerate() {
-        let mut outer = Vec::with_capacity(cuts.len() + 2);
-        let mut inner = Vec::with_capacity(cuts.len() + 2);
-        let authored = match index {
+        let mut authored = Vec::with_capacity(cuts.len() + 2);
+        let mut offset = Vec::with_capacity(cuts.len() + 2);
+        let node = match index {
             0 => Some(near),
             index if index == last => Some(far),
             _ => None,
         };
-        match authored {
+        match node {
             Some(node) => {
-                outer.push(node.outer_base);
-                inner.push(node.inner_floor);
-                outer.push(node.outer_top);
-                inner.push(node.inner_top);
+                authored.push(node.authored_base);
+                offset.push(node.offset_base);
+                authored.push(node.authored_top);
+                offset.push(node.offset_top);
             }
             None => {
-                outer.push(solid.point(lift(wall.outer_at(*station), wall.ground_at(*station))));
-                inner.push(
-                    solid.point(lift(wall.inner_at(*station), wall.inner_floor_at(*station))),
-                );
-                outer.push(solid.point(lift(wall.outer_at(*station), wall.top)));
-                inner.push(solid.point(lift(wall.inner_at(*station), wall.top)));
+                authored.push(solid.point(lift(wall.outer_at(*station), wall.ground_at(*station))));
+                offset.push(solid.point(lift(
+                    wall.offset_at(*station),
+                    wall.offset_floor_at(*station),
+                )));
+                authored.push(solid.point(lift(wall.outer_at(*station), wall.top)));
+                offset.push(solid.point(lift(wall.offset_at(*station), wall.top)));
                 // A hole's sill that stands on one of the two floors **is** that floor's point,
                 // welded by the walk rather than found by comparing coordinates afterwards. The
                 // comparison is exact because the band walk reads the same two numbers: a door's
-                // sill is the wall's own bottom edge on both faces, and the base's notch there is
-                // what the floor's edge closes. A corner station carries no such row: its vertical
+                // sill is the wall's own bottom edge on both loops, and the base's notch there is
+                // what the annulus's edge closes. A corner station carries no such row: its vertical
                 // line is one edge, which is what the neighbouring wall still draws.
                 for cut in &cuts {
-                    outer.push(if *cut == wall.ground_at(*station) {
-                        outer[0]
+                    authored.push(if *cut == wall.ground_at(*station) {
+                        authored[0]
                     } else {
                         solid.point(lift(wall.outer_at(*station), *cut))
                     });
-                    inner.push(if *cut == wall.inner_floor_at(*station) {
-                        inner[0]
+                    offset.push(if *cut == wall.offset_floor_at(*station) {
+                        offset[0]
                     } else {
-                        solid.point(lift(wall.inner_at(*station), *cut))
+                        solid.point(lift(wall.offset_at(*station), *cut))
                     });
                 }
             }
         }
-        let soffit = outer[0];
-        let floor = inner[0];
-        points.push(StationPoints { outer, inner });
+        let base = authored[0];
+        let other = offset[0];
+        points.push(StationPoints { authored, offset });
         if index > 0 && index + 1 < stations.len() {
-            added.push(CutStation { soffit, floor });
+            added.push(CutStation {
+                authored: base,
+                offset: other,
+            });
         }
     }
 
@@ -1773,13 +2126,10 @@ fn cut_edge(
         // stands on a floor into that floor's own point, so equal indices *are* equal elevations.
         notches.push(covering.first().is_some_and(|hole| {
             let sill = cut_index(&cuts, hole.outer.low);
-            stands_on_floor(&points[band], sill) && stands_on_floor(&points[band + 1], sill)
+            points[band].stands_on_floor(sill) && points[band + 1].stands_on_floor(sill)
         }));
-        for (side, surface) in [
-            (FaceSide::Outer, MassSurface::OuterWall { edge }),
-            (FaceSide::Inner, MassSurface::InnerWall { edge }),
-        ] {
-            let element = Element::Mass(id, surface);
+        for loop_side in [LoopSide::Authored, LoopSide::Offset] {
+            let element = Element::Mass(mass, surfaces.of_loop(loop_side));
             let starts_at_corner = band == 0;
             let ends_at_corner = band + 2 == stations.len();
             if starts_at_corner || ends_at_corner {
@@ -1789,29 +2139,42 @@ fn cut_edge(
                     (band + 1, band)
                 };
                 let corners = corner_band(
-                    side,
+                    loop_side,
+                    authored_is_outer,
                     ends_at_corner,
-                    side.pick(&points[corner]),
-                    levels.of(side),
-                    side.pick(&points[other]),
+                    points[corner].pick(loop_side),
+                    levels.of(loop_side),
+                    points[other].pick(loop_side),
                 );
                 solid.polygon(&corners, element);
             } else {
-                let near = side.pick(&points[band]);
-                let far = side.pick(&points[band + 1]);
-                for (low, high) in levels.of(side) {
-                    gap(solid, side, near, far, *low, *high, element);
+                let near = points[band].pick(loop_side);
+                let far = points[band + 1].pick(loop_side);
+                for (low, high) in levels.of(loop_side) {
+                    gap(
+                        solid,
+                        loop_side,
+                        authored_is_outer,
+                        near,
+                        far,
+                        *low,
+                        *high,
+                        element,
+                    );
                 }
             }
         }
         solid.quad(
-            [
-                points[band].outer[1],
-                points[band].inner[1],
-                points[band + 1].inner[1],
-                points[band + 1].outer[1],
-            ],
-            Element::Mass(id, MassSurface::WallTop { edge }),
+            wound(
+                authored_is_outer,
+                [
+                    points[band].authored[1],
+                    points[band].offset[1],
+                    points[band + 1].offset[1],
+                    points[band + 1].authored[1],
+                ],
+            ),
+            Element::Mass(mass, surfaces.top),
         );
     }
 
@@ -1837,15 +2200,19 @@ fn cut_edge(
         // orders below.
         for row in low..high {
             solid.quad(
-                [
-                    points[from].outer[row],
-                    points[from].outer[row + 1],
-                    points[from].inner[row + 1],
-                    points[from].inner[row],
-                ],
+                wound(
+                    authored_is_outer,
+                    [
+                        points[from].authored[row],
+                        points[from].authored[row + 1],
+                        points[from].offset[row + 1],
+                        points[from].offset[row],
+                    ],
+                ),
                 Element::Mass(
-                    id,
+                    mass,
                     MassSurface::Reveal {
+                        loop_of: ring.loop_of,
                         edge,
                         opening: hole.opening,
                         side: RevealSide::Left,
@@ -1853,15 +2220,19 @@ fn cut_edge(
                 ),
             );
             solid.quad(
-                [
-                    points[to].outer[row],
-                    points[to].inner[row],
-                    points[to].inner[row + 1],
-                    points[to].outer[row + 1],
-                ],
+                wound(
+                    authored_is_outer,
+                    [
+                        points[to].authored[row],
+                        points[to].offset[row],
+                        points[to].offset[row + 1],
+                        points[to].authored[row + 1],
+                    ],
+                ),
                 Element::Mass(
-                    id,
+                    mass,
                     MassSurface::Reveal {
+                        loop_of: ring.loop_of,
                         edge,
                         opening: hole.opening,
                         side: RevealSide::Right,
@@ -1885,15 +2256,19 @@ fn cut_edge(
         for pair in breaks.windows(2) {
             let (near, far) = (pair[0], pair[1]);
             solid.quad(
-                [
-                    points[near].outer[high],
-                    points[far].outer[high],
-                    points[far].inner[high],
-                    points[near].inner[high],
-                ],
+                wound(
+                    authored_is_outer,
+                    [
+                        points[near].authored[high],
+                        points[far].authored[high],
+                        points[far].offset[high],
+                        points[near].offset[high],
+                    ],
+                ),
                 Element::Mass(
-                    id,
+                    mass,
                     MassSurface::Reveal {
+                        loop_of: ring.loop_of,
                         edge,
                         opening: hole.opening,
                         side: RevealSide::Head,
@@ -1905,17 +2280,21 @@ fn cut_edge(
             // four points, and one face of them is the whole of the ground there. The test is the
             // weld the station table records, at both ends of the span, which is what
             // `band_levels` reads when it declines to emit a below-sill band.
-            if !stands_on_floor(&points[near], low) || !stands_on_floor(&points[far], low) {
+            if !points[near].stands_on_floor(low) || !points[far].stands_on_floor(low) {
                 solid.quad(
-                    [
-                        points[near].outer[low],
-                        points[near].inner[low],
-                        points[far].inner[low],
-                        points[far].outer[low],
-                    ],
+                    wound(
+                        authored_is_outer,
+                        [
+                            points[near].authored[low],
+                            points[near].offset[low],
+                            points[far].offset[low],
+                            points[far].authored[low],
+                        ],
+                    ),
                     Element::Mass(
-                        id,
+                        mass,
                         MassSurface::Reveal {
+                            loop_of: ring.loop_of,
                             edge,
                             opening: hole.opening,
                             side: RevealSide::Sill,
@@ -1945,21 +2324,22 @@ fn cut_index(cuts: &[f32], elevation: f32) -> usize {
     2 + cut_at(cuts, elevation)
 }
 
-/// Returns the horizontal edges of one band's complement on both faces, as index pairs into the
+/// Returns the horizontal edges of one band's complement on both loops, as index pairs into the
 /// station's own table.
 ///
 /// # Invariants
 ///
 /// **The complement is the gaps between the holes that span the band, and the gap under the lowest
-/// one is the face's own floor rather than a constant.** That gap's quad has a sloped bottom edge
+/// one is the loop's own floor rather than a constant.** That gap's quad has a sloped bottom edge
 /// and is still planar, because the whole wall lies in one vertical plane; the gaps above it are
 /// between two constant elevations. A gap with no height at **either** end is **not emitted**: it is
-/// the door's, and the floor's own edge closes its sill instead.
+/// the door's, and the base annulus's own edge closes its sill instead.
 ///
 /// The emptiness test is made at both of the band's own ends and the gap stands if it has height at
 /// **either** of them, which is what a ground line that rises needs and what keeps the two bands at
 /// a station agreeing: both read the shared station's own floor, so a gap is a face on both sides of
-/// a station or on neither.
+/// a station or on neither. **The two loops' floors are read separately** and are different lines
+/// wherever the ground slopes — see [`LoopSide::floor_at`].
 fn band_levels(
     wall: &WallFace,
     cuts: &[f32],
@@ -1975,11 +2355,18 @@ fn band_levels(
     }
     pieces.push((bottom, wall.top));
 
-    let mut sides = [(FaceSide::Outer, Vec::new()), (FaceSide::Inner, Vec::new())];
-    for (side, emitted) in &mut sides {
+    let mut sides = [
+        (LoopSide::Authored, Vec::new()),
+        (LoopSide::Offset, Vec::new()),
+    ];
+    for (loop_side, emitted) in &mut sides {
         for (bottom, top) in &pieces {
             let floor = bottom.map_or_else(
-                || side.floor_at(wall, start).min(side.floor_at(wall, end)),
+                || {
+                    loop_side
+                        .floor_at(wall, start)
+                        .min(loop_side.floor_at(wall, end))
+                },
                 |below| below,
             );
             let mut lower = *bottom;
@@ -1988,36 +2375,36 @@ fn band_levels(
                 .copied()
                 .filter(|cut| *cut > floor && *cut < *top)
             {
-                if let Some(pair) = piece(*side, cuts, wall, lower, cut, start, end) {
+                if let Some(pair) = piece(*loop_side, cuts, wall, lower, cut, start, end) {
                     emitted.push(pair);
                 }
                 lower = Some(cut);
             }
-            if let Some(pair) = piece(*side, cuts, wall, lower, *top, start, end) {
+            if let Some(pair) = piece(*loop_side, cuts, wall, lower, *top, start, end) {
                 emitted.push(pair);
             }
         }
     }
     BandLevels {
-        outer: sides[0].1.clone(),
-        inner: sides[1].1.clone(),
+        authored: sides[0].1.clone(),
+        offset: sides[1].1.clone(),
     }
 }
 
-/// One band's complement on both faces, as index pairs into the station's own table.
+/// One band's complement on both loops, as index pairs into the station's own table.
 struct BandLevels {
-    /// The outer face's gaps, from the bottom up.
-    outer: Vec<(usize, usize)>,
-    /// The inner face's gaps, from the bottom up.
-    inner: Vec<(usize, usize)>,
+    /// The authored loop's gaps, from the bottom up.
+    authored: Vec<(usize, usize)>,
+    /// The offset loop's, in the same order.
+    offset: Vec<(usize, usize)>,
 }
 
 impl BandLevels {
-    /// Returns one side's own gaps.
-    fn of(&self, side: FaceSide) -> &[(usize, usize)] {
-        match side {
-            FaceSide::Outer => &self.outer,
-            FaceSide::Inner => &self.inner,
+    /// Returns one loop's own gaps.
+    fn of(&self, loop_side: LoopSide) -> &[(usize, usize)] {
+        match loop_side {
+            LoopSide::Authored => &self.authored,
+            LoopSide::Offset => &self.offset,
         }
     }
 }
@@ -2039,7 +2426,8 @@ impl BandLevels {
 /// ways round that walk — the outer face crosses the top from the near station and returns along the
 /// bottom, and the inner face's own quad is wound the other way round.
 fn corner_band(
-    side: FaceSide,
+    loop_side: LoopSide,
+    authored_is_outer: bool,
     at_end: bool,
     corner: &[u32],
     gaps: &[(usize, usize)],
@@ -2051,25 +2439,31 @@ fn corner_band(
     let mut bounds: Vec<u32> = gaps.iter().map(|(low, _)| other[*low]).collect();
     bounds.push(other[*highest]);
     let mut corners = Vec::with_capacity(2 + bounds.len());
-    match (side, at_end) {
-        (FaceSide::Outer, false) => {
+    match (loop_side, at_end) {
+        (LoopSide::Authored, false) => {
             corners.extend([corner[0], corner[1]]);
             corners.extend(bounds.iter().rev().copied());
         }
-        (FaceSide::Outer, true) => {
+        (LoopSide::Authored, true) => {
             corners.extend([corner[1], corner[0]]);
             corners.extend(bounds.iter().copied());
         }
-        (FaceSide::Inner, false) => {
+        (LoopSide::Offset, false) => {
             corners.push(corner[0]);
             corners.extend(bounds.iter().copied());
             corners.push(corner[1]);
         }
-        (FaceSide::Inner, true) => {
+        (LoopSide::Offset, true) => {
             corners.push(corner[1]);
             corners.extend(bounds.iter().rev().copied());
             corners.push(corner[0]);
         }
+    }
+    // **The walk is reversed for a ring whose authored loop faces inward**, which flips the fan's
+    // normal and nothing else: a boundary walk is a closed list of the same corners either way round,
+    // so the polygon is the same face and the other side of it.
+    if !authored_is_outer {
+        corners.reverse();
     }
     corners
 }
@@ -2086,20 +2480,18 @@ fn corner_band(
 /// sits on a floor to that floor's own point, so equal indices *are* equal elevations here.
 ///
 /// A gap with no height at **either** end has no area at all and is not emitted: that is the door's,
-/// and the floor's own edge closes its sill instead.
+/// and the base annulus's own edge closes its sill instead.
 fn gap(
     solid: &mut Solid,
-    side: FaceSide,
+    loop_side: LoopSide,
+    authored_is_outer: bool,
     near: &[u32],
     far: &[u32],
     low: usize,
     high: usize,
     element: Element,
 ) {
-    let corners = match side {
-        FaceSide::Outer => [near[high], far[high], far[low], near[low]],
-        FaceSide::Inner => [far[high], near[high], near[low], far[low]],
-    };
+    let corners = loop_side.corners(authored_is_outer, near, far, low, high);
     match (near[high] == near[low], far[high] == far[low]) {
         (true, true) => {}
         (true, false) => solid.triangle([corners[0], corners[1], corners[2]], element),
@@ -2108,24 +2500,13 @@ fn gap(
     }
 }
 
-/// Returns whether one end of a span stands on the wall's own floor at that row.
-///
-/// **The test is on the welded indices and not on the two elevations**, because the walk welds a
-/// sill that sits on a floor into that floor's own point: equal indices *are* equal elevations here,
-/// and comparing the numbers again would compare what the walk has already decided. One end is one
-/// reading; the span stands only when both of its ends do, which is what keeps the base's notch and
-/// the absence of a sill one decision rather than two.
-fn stands_on_floor(station: &StationPoints, row: usize) -> bool {
-    station.outer[row] == station.outer[0] && station.inner[row] == station.inner[0]
-}
-
 /// Returns the index pair of one gap, or `None` when it has no height at either of the band's ends.
 ///
 /// `top` is resolved to the row the station's table holds it at, and **the wall top is not one of
 /// the cuts**: it has a row of its own, so a gap that ends there names that row rather than a second
 /// copy of the point.
 fn piece(
-    side: FaceSide,
+    loop_side: LoopSide,
     cuts: &[f32],
     wall: &WallFace,
     bottom: Option<f32>,
@@ -2141,7 +2522,7 @@ fn piece(
     let (from, stands) = match bottom {
         None => (
             0,
-            top > side.floor_at(wall, start) || top > side.floor_at(wall, end),
+            top > loop_side.floor_at(wall, start) || top > loop_side.floor_at(wall, end),
         ),
         Some(below) => (cut_index(cuts, below), top > below),
     };

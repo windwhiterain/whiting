@@ -509,6 +509,22 @@ pub enum Violation {
         /// The wall it names.
         face: FaceRef,
     },
+    /// A placement names a bay of a **courtyard's** wall, and the expander does not build that.
+    ///
+    /// # Invariants
+    ///
+    /// **It is a fault and not a fit.** Everything else this check reads — the template's box against
+    /// the bay's own extents — has a reading, and a wrong one is a report an author can act on. A
+    /// courtyard bay's frame has none: the frame is read from the wall's outward face, which for a
+    /// courtyard is the loop the rooms see rather than the loop the face is named by, and nothing in
+    /// the document says which of the two a part hung there was meant to hang from. It is reported here
+    /// for the same reason the expander refuses it, and the two are the same statement in the two
+    /// halves of the crate — see
+    /// [`Problem::PlacementOnACourtWall`](crate::expand::Problem::PlacementOnACourtWall).
+    PlacementOnACourtWall {
+        /// The placement.
+        placement: usize,
+    },
     /// A placement's template does not fit in the bay it stands in.
     ///
     /// # Invariants
@@ -1155,9 +1171,12 @@ fn check_roofs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 /// that, and the volume model's base notch is what makes it true — there is no material under a
 /// doorway's sill for a tunnel to be cut from.
 ///
-/// A hole is counted from the **document** and only when it resolves: an opening whose slot the grid
-/// no longer holds builds nothing at all (that mass does not splice, and `DidNotExpand` says so), so
-/// counting it here would name a shape the mesh does not have.
+/// **A hole is counted from the document and only when it resolves**, and only for **the ring it was
+/// cut into**. A mass's ring reads its own outline's openings and a courtyard's ring reads its void
+/// loop's, which is what makes `2 − 2(1 + h)` a statement about one solid: the two rings are two
+/// solids and each carries its own handles. An opening whose slot the grid no longer holds builds
+/// nothing at all (that mass does not splice, and `DidNotExpand` says so), so counting it here would
+/// name a shape the mesh does not have.
 fn check_solid(
     skeleton: &BuildingSkeleton,
     built: &BuildingMesh,
@@ -1177,36 +1196,25 @@ fn check_solid(
         violations.push(Violation::SolidInsideOut { solid, volume });
     }
     let holes = match solid {
-        SolidId::Mass(mass) => skeleton
-            .faces_of(mass)
-            .iter()
-            .map(|face| {
-                skeleton
-                    .apertures_of(*face)
-                    .into_iter()
-                    .filter(|(_, extents)| {
-                        !is_doorway(&skeleton.masses[mass.0], face.edge, extents)
-                    })
-                    .count()
-            })
-            .sum(),
+        SolidId::Mass(mass) => handles(skeleton, mass, None),
+        // **A courtyard's ring is cut by whatever the document cut into its wall, and by nothing
+        // else.** It is a ring by construction like the mass's own — which is why `ring` below counts
+        // it — and a door in its wall is a handle through the ring's own thickness exactly as a
+        // window in the mass's wall is a handle through the mass's.
+        SolidId::Void { mass, void } => handles(skeleton, mass, Some(void)),
         // A part, a wall and a roof are cut by nothing: a hole is authored against a mass's own wall,
-        // a template's masses are its own private document, and a wall's own box is solid. **A
-        // courtyard's ring is cut by nothing either** — it is a plain ring between two loops, the one
-        // solid here that is a torus by construction rather than because something was cut out of it.
-        SolidId::Void { .. }
-        | SolidId::Roof(_)
-        | SolidId::Part(_)
-        | SolidId::Wall(_)
-        | SolidId::Slab(_) => 0,
+        // a template's masses are its own private document, and a wall's own box is solid.
+        SolidId::Roof(_) | SolidId::Part(_) | SolidId::Wall(_) | SolidId::Slab(_) => 0,
     };
-    // **A mass's wall ring is one handle before any opening is cut.** The volume model makes a mass a closed tube: its
+    // **A ring is one handle before any opening is cut.** The volume model makes a mass a closed tube: its
     // inner and outer surfaces meet at the wall top and again at the base ring, so the solid is a torus and a torus is
     // `2 - 2g = 0`. The shell it replaced was a box, because its floor disc capped the inner surface and left exactly
     // one join at the wall top. Measured on the shed: `-6` for a mass with three openings, which is `2 - 2(1 + 3)`.
     // A part's solid is a template's own mass, expanded the same way, so it is a ring too. **A courtyard's ring is a
-    // ring the same way and for the same reason**, which is the whole of what its own kind buys: measured `0` on a
-    // 4 x 4 courtyard in a 0.3 m wall. A roof, a wall and a slab are boxes and are cut by nothing.
+    // ring the same way and for the same reason**: measured `0` on a 4 x 4 courtyard in a 0.3 m wall, and `-2` on the
+    // same courtyard with one window cut through its wall, which is `2 - 2(1 + 1)` — the number this expectation has
+    // to follow rather than assume, because a hole through a ring is what makes it not-a-ring. A roof, a wall and a
+    // slab are boxes and are cut by nothing.
     let ring = i64::from(matches!(
         solid,
         SolidId::Mass(_) | SolidId::Part(_) | SolidId::Void { .. }
@@ -1218,24 +1226,58 @@ fn check_solid(
     }
 }
 
+/// Counts the handles one ring carries: the openings cut into its own wall that resolve, less the
+/// doorways, which are notches in its section rather than tunnels through it.
+///
+/// # Invariants
+///
+/// **The ring is named by its loop and not by its mass**, and the openings are read out of the
+/// document's own grouping keyed by [`FaceRef`], so a window in the mass's outer wall is never counted
+/// against a courtyard standing inside it. Both are the same facts [`crate::expand::resolve_holes`]
+/// reads when it cuts, from the same place: a document's openings are one list, and a fault that was
+/// reported twice under two ring identities would be a fault an author has to triage twice.
+///
+/// `O(openings)` over the one group that names this ring, and each hole's own resolution is
+/// `O(log faces)` through [`BuildingSkeleton::aperture`].
+fn handles(skeleton: &BuildingSkeleton, mass: MassId, void: Option<usize>) -> usize {
+    skeleton
+        .openings
+        .by_face()
+        .iter()
+        .filter(|(face, _)| face.mass == mass && face.void == void)
+        .flat_map(|(_, indices)| indices.iter())
+        .filter(|index| match skeleton.aperture(**index) {
+            None => false,
+            Some((face, extents)) => !is_doorway(skeleton, face, &extents),
+        })
+        .count()
+}
+
 /// Returns whether an opening stands on the wall's own floor, which is a doorway.
 ///
 /// # Invariants
 ///
 /// **A doorway is a notch in the wall's section and not a tunnel through it.** It leaves a lintel
-/// above its head, so the wall's ring is still a ring and the mass's characteristic does not move —
-/// where the ring's base is notched across the opening, there is no material under the sill to make
-/// a tunnel of it. This is the document-level form of the question the expander answers on its
+/// above its head, so the wall's ring is still a ring and the solid's characteristic does not move —
+/// where the ring's base annulus is notched across the opening, there is no material under the sill to
+/// make a tunnel of it. This is the document-level form of the question the expander answers on its
 /// welded indices, and the two agree because both lines are straight between the same two nodes.
 ///
 /// **Both of the face's own nodes must stand at the sill**, which is the whole test: a ground line
 /// that reaches the sill at one jamb and not the other crosses it, and the expander refuses that
 /// before an opening is ever cut. An opening the expander refused does not reach here, so a sill
-/// below the ground line is not a case this has to answer.
-fn is_doorway(mass: &Mass, edge: usize, extents: &Extents) -> bool {
-    let count = mass.outline.len();
-    let next = (edge + 1) % count;
-    mass.outline[edge].elevation == extents.low && mass.outline[next].elevation == extents.low
+/// below the ground line is not a case this has to answer. The nodes are the **face's own loop's**,
+/// which for a courtyard is its void loop rather than the mass's outline.
+fn is_doorway(skeleton: &BuildingSkeleton, face: FaceRef, extents: &Extents) -> bool {
+    let Some(nodes) = skeleton.face_loop(face) else {
+        return false;
+    };
+    let count = nodes.len();
+    if count < 3 || face.edge >= count {
+        return false;
+    }
+    nodes[face.edge].elevation == extents.low
+        && nodes[(face.edge + 1) % count].elevation == extents.low
 }
 
 /// Which of a solid's surfaces a coverage reading is taken over.
@@ -1458,6 +1500,10 @@ fn check_openings(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) 
 /// two ends to stand between, has no strip to measure against and answers `false` — not a fault, and
 /// not a guess in the other direction either. Such a face is reported by the grid checks that can
 /// read the reference, and by [`Violation::OpeningBayMissing`] for an opening that names it.
+///
+/// **The face's strip is the face's own loop's**, so a courtyard's wall is measured against the void
+/// loop its bays were laid out on and not against the mass's outline, which is a different loop at a
+/// different place entirely.
 fn reaches_the_wall_edge(skeleton: &BuildingSkeleton, face: FaceRef, extents: &Extents) -> bool {
     let Some(mass) = skeleton.mass(face.mass) else {
         return false;
@@ -1465,7 +1511,7 @@ fn reaches_the_wall_edge(skeleton: &BuildingSkeleton, face: FaceRef, extents: &E
     let Some(length) = skeleton.face_length(face) else {
         return false;
     };
-    let Some(line) = ground_line(mass, face.edge) else {
+    let Some(line) = ground_line(skeleton, face) else {
         return false;
     };
     if length <= GRID_TOLERANCE {
@@ -1480,18 +1526,35 @@ fn reaches_the_wall_edge(skeleton: &BuildingSkeleton, face: FaceRef, extents: &E
         && extents.low > floor + GRID_TOLERANCE)
 }
 
-/// Returns the elevation of the slab's underside at the two ends of one outline edge: the ground line
-/// the wall face of that edge stands on.
+/// Returns the elevation one wall face stands on at the two ends of its edge: the ground line.
 ///
-/// `None` when the mass has no edge with two ends, which is the staged case [`reaches_the_wall_edge`]
+/// # Invariants
+///
+/// **It is one expression for both kinds of wall, and a courtyard's is the mass's.** A courtyard's
+/// ring stands on the same plate the mass's own ring stands on — the courtyard's floor *is* the
+/// plate's top — so the underside of that plate is the same line under both, and a hole in either
+/// wall is measured against it the same way. Reading a courtyard's line off its void loop's own
+/// elevations instead would make a door in a courtyard wall illegal while the identical door in the
+/// mass's wall is legal, for a difference that is in nothing but which loop the grid was laid out on.
+///
+/// The line is the plate's **underside**, one slab below the elevation the ring stands at, and that
+/// is also what makes a doorway legal in both: a door's sill stands on the ring's own base, one slab
+/// above this line, so the check has a whole slab of clearance where the expander has none. The
+/// expander is the stricter of the pair in both cases — `resolve_one` measures against the loop's own
+/// nodes — so this stays the loose half of a pair the mesh half already decides, rather than becoming
+/// a second and disagreeing arithmetic of its own.
+///
+/// `None` when the face has no loop with two ends, which is the staged case [`reaches_the_wall_edge`]
 /// skips.
-fn ground_line(mass: &Mass, edge: usize) -> Option<(f32, f32)> {
-    let count = mass.outline.len();
-    if count < 3 || edge >= count {
+fn ground_line(skeleton: &BuildingSkeleton, face: FaceRef) -> Option<(f32, f32)> {
+    let mass = skeleton.mass(face.mass)?;
+    let nodes = skeleton.face_loop(face)?;
+    let count = nodes.len();
+    if count < 3 || face.edge >= count {
         return None;
     }
-    let from = mass.outline[edge].elevation - mass.slab;
-    let to = mass.outline[(edge + 1) % count].elevation - mass.slab;
+    let from = nodes[face.edge].elevation - mass.slab;
+    let to = nodes[(face.edge + 1) % count].elevation - mass.slab;
     Some((from, to))
 }
 
@@ -1615,6 +1678,16 @@ fn check_parts(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             };
             if skeleton.anchor(face, bay, joint.anchor).is_none() {
                 violations.push(Violation::PlacementAnchorMissing { placement: index });
+                continue;
+            }
+        }
+        // **A courtyard's bay has no frame to measure a part in**, so it is reported before anything
+        // else is asked of it: the slot exists and the grid holds it, and what the expander declines
+        // to build has to be the same statement the document makes or an author fixing the other
+        // faults would find the build still refused.
+        if let Target::Bay { face, .. } = placement.target {
+            if face.is_court() {
+                violations.push(Violation::PlacementOnACourtWall { placement: index });
                 continue;
             }
         }
@@ -2075,18 +2148,48 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
             (16, *face as u64, ordered(*departure), 0, 0)
         }
         Violation::RoofSkinLeavesTheEave { roof, off } => (19, roof.0 as u64, *off as u64, 0, 0),
-        Violation::GridFaceMissing { face } => (20, face.mass.0 as u64, face.edge as u64, 0, 0),
-        Violation::GridTooShort { face } => (21, face.mass.0 as u64, face.edge as u64, 0, 0),
-        Violation::GridNotOrdered { face } => (22, face.mass.0 as u64, face.edge as u64, 0, 0),
-        Violation::GridOutsideFace { face } => (23, face.mass.0 as u64, face.edge as u64, 0, 0),
+        Violation::GridFaceMissing { face } => (
+            20,
+            face.mass.0 as u64,
+            face.edge as u64,
+            void_rank(*face),
+            0,
+        ),
+        Violation::GridTooShort { face } => (
+            21,
+            face.mass.0 as u64,
+            face.edge as u64,
+            void_rank(*face),
+            0,
+        ),
+        Violation::GridNotOrdered { face } => (
+            22,
+            face.mass.0 as u64,
+            face.edge as u64,
+            void_rank(*face),
+            0,
+        ),
+        Violation::GridOutsideFace { face } => (
+            23,
+            face.mass.0 as u64,
+            face.edge as u64,
+            void_rank(*face),
+            0,
+        ),
         Violation::PlacementTemplateMissing { placement } => (28, *placement as u64, 0, 0, 0),
         Violation::PlacementBayMissing { placement, face } => (
             29,
             *placement as u64,
             face.mass.0 as u64,
             face.edge as u64,
-            0,
+            void_rank(*face),
         ),
+        // **A courtyard's bay has a fault the mass's own bays cannot have**, so it sorts after every
+        // bay fault that both can have: an author fixing "the slot is gone" on a courtyard's wall has
+        // not fixed this one.
+        Violation::PlacementOnACourtWall { placement } => {
+            (29, *placement as u64, u64::MAX, u64::MAX, u64::MAX)
+        }
         Violation::PlacementOutsideBay { placement, past } => {
             (30, *placement as u64, ordered(*past), 0, 0)
         }
@@ -2110,14 +2213,33 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         Violation::PlacementMountOnAWall { placement } => (40, *placement as u64, 0, 0, 0),
         // The four opening faults in the order an author meets them: the slot is not there, the bay
         // cannot hold the hole, the hole leaves the wall, and two holes in one wall fight.
-        Violation::OpeningBayMissing { opening, face } => {
-            (24, *opening as u64, face.mass.0 as u64, face.edge as u64, 0)
-        }
+        Violation::OpeningBayMissing { opening, face } => (
+            24,
+            *opening as u64,
+            face.mass.0 as u64,
+            face.edge as u64,
+            void_rank(*face),
+        ),
         Violation::OpeningExceedsBay { opening } => (25, *opening as u64, 0, 0, 0),
         Violation::OpeningOutsideWall { opening } => (26, *opening as u64, 0, 0, 0),
         Violation::OpeningOverlaps { opening, other } => (27, *opening as u64, *other as u64, 0, 0),
         Violation::RoofSkinNotADisc { roof, loops } => (18, roof.0 as u64, *loops as u64, 0, 0),
         Violation::FaceDegenerate { face, area } => (17, *face as u64, ordered(*area), 0, 0),
+    }
+}
+
+/// Returns a number that sorts a face the way [`FaceRef`]'s own order does, a mass's own walls first.
+///
+/// # Invariants
+///
+/// A courtyard's faces sort after every one of the mass's own, which is [`Option`]'s own order and the
+/// order the key would be incomplete without: two faces on the same mass and the same edge are two
+/// different pieces of masonry once one of them is a courtyard's, and an order that could not tell them
+/// apart would not be total.
+fn void_rank(face: FaceRef) -> u64 {
+    match face.void {
+        Some(void) => void as u64 + 1,
+        None => 0,
     }
 }
 

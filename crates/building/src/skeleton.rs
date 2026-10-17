@@ -4,8 +4,9 @@
 //! never writes to it, so an edit is always a change to a value the author can see whole.
 
 use crate::expand::{BuildError, build};
-use crate::grid::{Bay, FaceGrid, FaceRef, Grids, face_extent, face_length};
-use crate::mass::{Mass, MassId};
+use crate::grid::{self, Bay, FaceGrid, FaceRef, Grids};
+use crate::mass::{Mass, MassId, PlanNode};
+use crate::math::Vec2;
 use crate::mesh::BuildingMesh;
 use crate::openings::{Extents, Openings};
 use crate::parts::{Anchor, Bounds, Parts, Pin, Placement, Target, Template};
@@ -240,21 +241,91 @@ impl BuildingSkeleton {
         self.grids.get(face)?.bay(face, row, column)
     }
 
-    /// Returns the plan length of a face's edge, or `None` when there is no such mass or edge.
+    /// Returns the plan length of a face's edge, or `None` when there is no such mass, void or edge.
+    ///
+    /// **The length is read off the loop the face names**, so a courtyard's wall measures as itself
+    /// and a rhythm laid out on it spans it exactly — the same invariant the mass's own faces have
+    /// always had, for the same reason. `O(1)`.
     pub fn face_length(&self, face: FaceRef) -> Option<f32> {
-        face_length(self.mass(face.mass)?, face.edge)
+        grid::loop_length(self.face_loop(face)?, face.edge)
     }
 
     /// Returns the vertical extent of a face: the lowest ground under it, and the wall top.
+    ///
+    /// **The ground is the loop's own**, for the same reason the length is: a courtyard's ring stands
+    /// on its void loop's elevations, which is where the ring's base is drawn, so a bay's lowest
+    /// level is that ground and not a slab below it. `O(1)`.
     pub fn face_extent(&self, face: FaceRef) -> Option<(f32, f32)> {
-        face_extent(self.mass(face.mass)?, face.edge)
+        let top = self.mass(face.mass)?.top;
+        grid::loop_extent(self.face_loop(face)?, face.edge, top)
     }
 
-    /// Returns every face of a mass, in edge order — the faces a rhythm can be authored on.
+    /// Returns the authored loop a face is read off: a mass's own outline, or one of its courtyards.
+    ///
+    /// # Invariants
+    ///
+    /// **The borrowed loop is the one the author wrote, not the walk the expander normalises.** A
+    /// courtyard's loop may be wound either way round and the expander reverses it before it builds
+    /// anything; nothing that reads *extent* can tell the two apart, because a reversed loop has the
+    /// same edges at the same lengths, so borrowing the author's own value is exact here and saves a
+    /// copy on every call. Where the winding **is** the question — the offset's direction, the ring's
+    /// own faces — the walk is taken once, by [`void_loop`](Self::void_loop).
+    ///
+    /// `O(1)`: an index into a mass's own two lists.
+    pub fn face_loop(&self, face: FaceRef) -> Option<&[PlanNode]> {
+        let mass = self.mass(face.mass)?;
+        match face.void {
+            Some(void) => mass.voids.get(void).map(Vec::as_slice),
+            None => Some(mass.outline.as_slice()),
+        }
+    }
+
+    /// Returns one of a mass's voids as the expander walks it: wound so its plan area is positive.
+    ///
+    /// # Invariants
+    ///
+    /// **Which way a loop is walked is what says which side its material is on**, so the offset walk
+    /// and every reading that depends on it must see the normalised value and not the author's. This
+    /// is the one place the two are separated, and [`face_loop`](Self::face_loop) is the other side of
+    /// that separation: it answers "how long is this edge", for which the winding is not a fact.
+    ///
+    /// `O(nodes)` for the copy a reversal needs; a loop already wound the right way is borrowed.
+    pub fn void_loop(&self, mass: MassId, void: usize) -> Option<std::borrow::Cow<'_, [PlanNode]>> {
+        let held = self.mass(mass)?.voids.get(void)?;
+        let positions: Vec<Vec2> = held.iter().map(|node| node.position).collect();
+        if crate::expand::loop_area(&positions) < 0.0 {
+            let mut reversed = held.clone();
+            reversed.reverse();
+            Some(std::borrow::Cow::Owned(reversed))
+        } else {
+            Some(std::borrow::Cow::Borrowed(held.as_slice()))
+        }
+    }
+
+    /// Returns every face of a mass's own wall, in edge order — the faces a rhythm is authored on by
+    /// default.
+    ///
+    /// **The mass's own outline only.** A courtyard's wall is a face like any other and
+    /// [`FaceRef::court`] names one, but a caller asking "the faces of this mass" is asking about the
+    /// building's envelope, and handing it the courtyard's inner walls as well would give a facade a
+    /// rhythm it never had. [`court_faces_of`](Self::court_faces_of) is the other list.
     pub fn faces_of(&self, mass: MassId) -> Vec<FaceRef> {
         match self.mass(mass) {
             Some(held) => (0..held.outline.len())
                 .map(|edge| FaceRef::new(mass, edge))
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// Returns every face of one courtyard's wall, in edge order.
+    ///
+    /// The counterpart of [`faces_of`](Self::faces_of) for a courtyard's ring, and the list a caller
+    /// walks to lay a rhythm on the wall around a courtyard. `O(nodes of that void)`.
+    pub fn court_faces_of(&self, mass: MassId, void: usize) -> Vec<FaceRef> {
+        match self.mass(mass).and_then(|held| held.voids.get(void)) {
+            Some(loop_nodes) => (0..loop_nodes.len())
+                .map(|edge| FaceRef::court(mass, void, edge))
                 .collect(),
             None => Vec::new(),
         }
