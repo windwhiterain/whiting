@@ -826,3 +826,32 @@ Three readings from one print:
 **The branch is otherwise finished and is not merged:** thirteen probes pass, six of nine scenes render, and the three
 that do not are rejected by these two fault classes alone. The handoff now carries ten measurements and no guesses;
 the next session should start from the two numbers above, not from the geometry.
+
+## Found it: the asymmetry was mine, one plate thickness wide (2026-10-27)
+
+The line, read at last:
+
+```rust
+inside_floor.push(solid.point(lift(inner[node], mass.outline[node].elevation - mass.slab)));
+```
+
+`inside_floor` sat **one plate thickness below** the outline while `outside_base` sat **on** it — and that asymmetry
+was introduced here, not inherited: the shell used to need it (its floor was the plate's top and its soffit the
+plate's underside), and when the ring was levelled the *inner* side was left behind. **`mass.slab` is exactly the warp
+measured** (`y = 0.02` against `y = 0` on a part whose own slab is 0.02).
+
+With both faces on the outline's elevation, the shed goes from **three warps and thirteen degenerate faces to one
+warp**:
+
+```text
+the shed's own document must be clean, and it is not: [FaceNotPlanar { face: 156, departure: 0.1837001 }]
+```
+
+**That is committed on the branch.** One fault left, and its `departure` (0.18) is the largest of the three, so it is
+probably a face spanning a **part** whose outline is at its own thickness — the next thing to print is that face's
+four ids, which the `QUAD` print already shows how to do.
+
+**A lesson worth keeping:** ten rounds of measurement chased the station machinery while the defect was two lines of
+my own, forty rounds old. The instrument that found it was the plainest one — *print the two numbers and put them side
+by side* — and every cleverer instrument before it (open edges, owners, elevations per corner) was circling it without
+ever showing the expression itself.
