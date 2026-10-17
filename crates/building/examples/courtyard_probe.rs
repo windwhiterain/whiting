@@ -24,6 +24,16 @@
 //! (`area + wall · perimeter + wall² · Σ tan(turn / 2)`), which is arithmetic on the authored loop and shares no
 //! code with the walk.
 //!
+//! # The control for the area check: a simple loop that reaches outside the outline
+//!
+//! `VoidNotInside` subtracts two areas, and the subtraction is exact only for a simple loop, so every
+//! shape below it is measured against is one that meets itself. **A probe made only of those shapes
+//! cannot tell a check that reads "the loop is not inside the outline" from one that reads "the ear
+//! clipper disagreed with itself"**, because on every one of them the two readings give the same
+//! answer. The control is a loop with no meeting at all that leaves the outline anyway, and the section
+//! for it stands before the shapes that meet themselves: two of them, one off an edge and one off a
+//! corner, so the overlap is a rectangle in the first and a triangle in the second.
+//!
 //! # The one class neither half reached: a loop that meets itself
 //!
 //! The concave half asks which *reflex* corners a ring can have, and the sweep beside it asks how narrow a bite
@@ -436,10 +446,16 @@ fn measure_void_in(half: f32, label: &str, corners: &[[f32; 2]], wall: f32) {
     // violation fired**, because "the loop is not inside the outline" is a reading about a shape and
     // the check is a subtraction of two computed areas. A loop that meets itself has no
     // triangulation, so what `shared_area` returns for it is whatever its ear clipper happened to
-    // produce — and the difference between the two numbers is the whole of what that violation says.
+    // produce — and the difference between the two numbers is the whole of what that violation would
+    // say of it.
+    //
+    // **The line says the difference and not the verdict**, because the check is asked only of a loop
+    // that does not meet itself: on a loop that does, the subtraction is not run at all, so a line
+    // claiming it "fires" would be a reading the instrument did not take. The `validate says:` line
+    // below is the verdict, and it is asked of the crate rather than predicted here.
     println!(
         "    the area check reads: {:.4} shared with the outline against {:.4} shared with itself, so \
-         `VoidNotInside` fires on a difference of {:.4}",
+         the terms differ by {:.4}",
         whiting_building::clip::shared_area(&enclosing, &authored),
         whiting_building::clip::shared_area(&authored, &authored),
         (whiting_building::clip::shared_area(&enclosing, &authored)
@@ -730,7 +746,57 @@ fn outward_walk() {
     );
 
     sweep_bite(wall);
+    a_simple_loop_that_leaves_the_outline();
     self_intersecting_voids();
+}
+
+/// Measures the loop [`Violation::VoidNotInside`](whiting_building::validate::Violation::VoidNotInside)
+/// exists for: **a loop that is simple and still reaches outside the outline**.
+///
+/// # Invariants
+///
+/// - **Both shapes here are simple, and that is the whole content of the section.** The area check is
+///   asked only where [`Violation::VoidNotSimple`](whiting_building::validate::Violation::VoidNotSimple)
+///   has nothing to report, so the question a control has to answer is what it *does* report: a loop
+///   with no meeting at all that the subtraction still fires on. A control that met itself would answer
+///   for a shape the check now declines and would say nothing about the one it does not.
+/// - **Both terms of the subtraction are numbers a person can do in their head** — a rectangle and a
+///   right triangle — so the reading can be checked rather than believed.
+/// - **`VoidReachesTheWall` joins in on both, and it is the same fact rather than a second one.** A
+///   courtyard's ring stands `wall` outside its loop, so a loop that leaves the outline puts its ring
+///   outside the rooms as well. Two names for one fault is the honest reading of one fault, and the
+///   section says which is which rather than dropping one to make the other look alone.
+fn a_simple_loop_that_leaves_the_outline() {
+    let wall = 0.3;
+    let half = 6.0;
+    println!(
+        "\n# a simple void loop that reaches outside the outline: the fault `VoidNotInside` exists for"
+    );
+    println!(
+        "  the same 12 x 12 mass and {wall:.1} m wall as the section below; both loops here are simple, so\n\
+         neither is a shape `VoidNotSimple` reports and the area check is the only reading left to speak"
+    );
+
+    // A `5 x 4` rectangle whose east side stands `2 m` outside the `12 x 12` outline: `20.0000 m²` of
+    // loop, of which the `2 x 4` the plan reaches is `8.0000 m²`, so the two terms are `12.0000` against
+    // `20.0000` and the check fires on a difference of `8.0000`.
+    measure_void_in(
+        half,
+        "a rectangle whose east side stands 2 m outside the outline",
+        &[[3.0, -2.0], [8.0, -2.0], [8.0, 2.0], [3.0, 2.0]],
+        wall,
+    );
+
+    // The same fault off a **corner** rather than off an edge, so the overlap is a triangle rather than
+    // a rectangle and no edge of the loop is square against the outline's. A `7 x 7` right triangle is
+    // `24.5000 m²`, the plan reaches all but the two `4.5 m²` corners of it, and the two terms are
+    // `15.5000` against `24.5000`.
+    measure_void_in(
+        half,
+        "a right triangle over the north-east corner",
+        &[[2.0, 2.0], [9.0, 2.0], [2.0, 9.0]],
+        wall,
+    );
 }
 
 /// Measures the one loop class the concave sweep never reached: **a void loop that meets itself**.

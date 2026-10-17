@@ -812,14 +812,24 @@ pub enum Violation {
     ///
     /// # Invariants
     ///
-    /// **The subtraction behind it reads two computed areas, and on a loop that meets itself the two
-    /// are not about the shape.** A symmetric bowtie `+8 − 8` gives `8.0` shared with the outline
-    /// against `12.0` shared with itself and fires; the same bowtie stood on its side as an hourglass
-    /// gives `8.0` against `8.0` and does not fire. Both were measured inside a mass **twice as wide
-    /// as the loop**, so neither is outside its outline. What the numbers are is whatever
-    /// [`crate::clip`]'s ear clipper made of a polygon that has no triangulation — so on a
-    /// self-intersecting loop this violation reports that the clipper disagreed with itself, and the
-    /// walk's own refusal of the same loop reaches the author through [`DidNotExpand`](Self::DidNotExpand).
+    /// **The subtraction behind it is exact only for a simple loop, so it is asked only of one.** A
+    /// symmetric bowtie `+8 − 8` gives `8.0` shared with the outline against `12.0` shared with itself,
+    /// and the same bowtie stood on its side as an hourglass gives `8.0` against `8.0` — both measured
+    /// inside a mass **twice as wide as the loop**, so neither is outside its outline. What the numbers
+    /// were is whatever [`crate::clip`]'s ear clipper made of a polygon that has no triangulation, so
+    /// this violation reported that the clipper disagreed with itself **and reported it for one of two
+    /// identical shapes**. The gate is [`self_meeting`]'s own answer: a loop it names is
+    /// [`VoidNotSimple`](Self::VoidNotSimple)'s to report, and the subtraction is not asked of it.
+    ///
+    /// **A loop that leaves the outline is still reported, and the fault is measured on one.** A
+    /// `5 x 4` rectangle with its east side `2 m` outside a `12 x 12` plan gives `12.0000` against
+    /// `20.0000`, and a right triangle over the north-east corner gives `15.5000` against `24.5000` —
+    /// both simple, both firing on the difference, both refused by the walk as well.
+    ///
+    /// **A pinch at a point its author wrote twice is still this check's own question and not the
+    /// gate's**, because `self_meeting` is silent for it: the two areas were measured equal (`9.0000`
+    /// against `9.0000` for two `3 x 3` squares sharing a corner), so it reports nothing, which is
+    /// what it reported before the gate existed.
     VoidNotInside {
         /// The mass.
         mass: MassId,
@@ -831,14 +841,16 @@ pub enum Violation {
     ///
     /// # Invariants
     ///
-    /// **This is the fault [`VoidNotInside`](Self::VoidNotInside) reports by accident and
+    /// **This is the fault [`VoidNotInside`](Self::VoidNotInside) reported by accident and
     /// [`DidNotExpand`](Self::DidNotExpand) reports as arithmetic.** Before it, a crossing reached
     /// the author as a subtraction that happened to disagree with itself — a bowtie reads `8.0000`
-    /// shared with the outline against `12.0000` shared with itself and fires, while the *same*
-    /// bowtie stood on its side as an hourglass reads `8.0000` against `8.0000` and says nothing —
+    /// shared with the outline against `12.0000` shared with itself and fired, while the *same*
+    /// bowtie stood on its side as an hourglass read `8.0000` against `8.0000` and said nothing —
     /// and a touch at an unauthored point reached them as `DidNotExpand` carrying
     /// [`Problem::MiterTooLong`], a mitre length rather than a shape. Both loops are refused either
-    /// way, so this reports nothing a build refuses today; it says the sentence the reading deserves.
+    /// way, so this reports nothing a build refuses today; it says the sentence the reading deserves,
+    /// **and [`VoidNotInside`](Self::VoidNotInside) no longer speaks for the same loop**, because the
+    /// subtraction is exact only where this check has nothing to say.
     ///
     /// **A point two of the loop's own nodes stand at is not this violation, and that is measured
     /// rather than assumed.** Two `3 × 3` squares sharing exactly one corner name that corner twice,
@@ -1039,10 +1051,12 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 /// walked. [`expand::offset_loop`](crate::expand::offset_loop) is what says so, by name, and a loop it
 /// refuses reaches the author through [`DidNotExpand`](Self::DidNotExpand).
 ///
-/// **"Inside" is measured, not eyeballed**: the area two plans share must equal the void's own area,
-/// which is a computation [`crate::clip`] makes exact for a simple loop. A void that crosses the
-/// outline shares less than it encloses; a void that **meets itself** shares something else again,
-/// because a loop with no triangulation has no area for the clipper to be exact about — see
+/// **"Inside" is measured, not eyeballed, and only where the loop can be**: the area two plans share
+/// must equal the void's own area, which is a computation [`crate::clip`] makes exact for a simple
+/// loop. A void that crosses the outline shares less than it encloses. A void that **meets itself**
+/// shares something else again, because a loop with no triangulation has no area for the clipper to be
+/// exact about — so the subtraction is asked only where the simplicity reading above is `None`, and
+/// the two are the same [`self_meeting`] answer rather than two tests of the same fact. See
 /// [`VoidNotInside`](Self::VoidNotInside).
 ///
 /// **The two loops a courtyard is built from are read through the same two calls the expander makes**
@@ -1067,17 +1081,36 @@ fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             .map(|loop_nodes| plan_of(loop_nodes))
             .collect();
         for (void, held) in voids.iter().enumerate() {
-            if let Some(meeting) = self_meeting(held) {
+            let meeting = self_meeting(held);
+            if let Some(meeting) = meeting {
                 violations.push(Violation::VoidNotSimple {
                     mass: id,
                     void,
                     meeting,
                 });
             }
-            let enclosed = crate::clip::shared_area(&outline, held).abs();
-            let own = crate::clip::shared_area(held, held).abs();
-            if (enclosed - own).abs() > VOID_AREA_TOLERANCE {
-                violations.push(Violation::VoidNotInside { mass: id, void });
+            // **The area comparison is exact for a simple loop and for nothing else, so it is asked
+            // where the loop is one.** `crate::clip` is a sum of triangle intersections and a loop
+            // that meets itself has no triangulation for it to be exact about: a symmetric bowtie
+            // gives `8.0000` against `12.0000` and the same bowtie stood on its side gives `8.0000`
+            // against `8.0000`, so the subtraction reported the clipper's own disagreement and
+            // nothing about the outline — **and it reported it for one of two identical shapes, which
+            // is what a fault with no name does.** The predicate is the one above rather than a second
+            // simplicity test, so the two readings cannot come apart: a loop that meets itself is
+            // reported by [`Violation::VoidNotSimple`], which names the shape, and the subtraction is
+            // not asked of it.
+            //
+            // **The one loop this leaves to the subtraction is a pinch at a point its author wrote
+            // twice**, which `self_meeting` answers `None` for because it builds and is deliberately
+            // silent. Its two areas were measured equal (`9.0000` against `9.0000` for two `3 x 3`
+            // squares sharing a corner), so nothing is reported for it — **measured rather than
+            // assumed, which is the only reason the gate above is safe to state in one line.**
+            if meeting.is_none() {
+                let enclosed = crate::clip::shared_area(&outline, held).abs();
+                let own = crate::clip::shared_area(held, held).abs();
+                if (enclosed - own).abs() > VOID_AREA_TOLERANCE {
+                    violations.push(Violation::VoidNotInside { mass: id, void });
+                }
             }
         }
         for first in 0..voids.len() {

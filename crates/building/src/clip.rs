@@ -14,15 +14,17 @@
 //!
 //! # Invariants
 //!
-//! - **Both polygons are simple** (non-self-intersecting), and **this is an assumption rather than a
-//!   guarantee, measured rather than argued**: `validate` reports a reversed or too-short outline, and
-//!   nothing reports a loop that meets itself. `courtyard_probe`'s section on a void loop that meets
-//!   itself measured what happens then, and the answer is that the numbers this module returns are
-//!   whatever its ear clipper happened to produce, so a caller comparing two of them is reading the
-//!   clipper and not the shape — the `+8` and `-8` of a symmetric bowtie give `8.0` against `12.0`,
-//!   the same bowtie as an hourglass gives `8.0` against `8.0`, and `VoidNotInside` fires on the first
-//!   and not on the second. **Nothing here is wrong for a simple polygon**; the reading simply stops
-//!   being about the polygon the moment it stops being one.
+//! - **Both polygons are simple** (non-self-intersecting), and **this is an assumption the one caller
+//!   that could not promise it now keeps to**: `validate` reports a reversed or too-short outline, and
+//!   a void loop that meets itself is named before anything here is asked of it. `courtyard_probe`'s
+//!   section on a void loop that meets itself measured what happens when the assumption is broken, and
+//!   the answer is that the numbers this module returns are whatever its ear clipper happened to
+//!   produce, so a caller comparing two of them is reading the clipper and not the shape — the `+8`
+//!   and `-8` of a symmetric bowtie give `8.0` against `12.0` and the same bowtie as an hourglass
+//!   gives `8.0` against `8.0`. **Nothing here is wrong for a simple polygon**; the reading simply
+//!   stops being about the polygon the moment it stops being one, which is why
+//!   [`Violation::VoidNotInside`](crate::validate::Violation::VoidNotInside) is asked only where
+//!   [`Violation::VoidNotSimple`](crate::validate::Violation::VoidNotSimple) has nothing to say.
 //! - **The result is a sum of exact triangle intersections**, so it is a lower bound only for degenerate input: a
 //!   polygon with collinear corners loses area-free triangles, never area.
 //! - Ear clipping **stops rather than loops** when no ear can be clipped (degenerate outline), and what it has

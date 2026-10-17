@@ -3735,3 +3735,135 @@ with itself on a loop with no triangulation, and the new variant names the same 
 readings both stand for a bowtie and only one of them means anything. Leaving it is the conservative choice and it keeps
 this slice to one variant; a follow-up that narrows `VoidNotInside` to loops that are simple would have to be argued on its
 own measurements, because nothing here measures it.
+
+## What the inside slice found: `VoidNotInside` is asked only of a loop that does not meet itself (2026-10-31, branch `feature/building-inside-simple`)
+
+The open item the loop-simplicity slice left is closed, and it needed **no second simplicity test**: the predicate the
+narrowing asks for already existed and was already being computed three lines above it. `self_meeting` returns
+`Option<SelfMeeting>`, `Violation::VoidNotSimple` is pushed from the `Some`, and the area comparison is now inside the
+`None` arm. **A question about ordering two checks turned out to have no content**, because the order was already
+decided by the one call both of them share.
+
+**What was false is now true in its name.** `VoidNotInside` is *"a mass's void is not strictly inside its outline"*, and on
+a loop with no triangulation the two areas it subtracts are whatever [`clip`](crates/building/src/clip.rs)'s ear clipper
+made: a bowtie reads `8.0000` against `12.0000` and fires, the *same* bowtie stood on its side reads `8.0000` against
+`8.0000` and says nothing. One defect, two documents, two reports, and one of them false in the only word it carries.
+Both of those numbers are unchanged here — the point is that the subtraction is no longer asked of either shape.
+
+### Every shape, before and after, at the same 12 × 12 mass and 0.3 m wall
+
+| void loop | `validate` before | `validate` after | `build`, before and after |
+| --- | --- | --- | --- |
+| **bowtie** `(0,0)(4,4)(4,0)(0,4)` | `VoidNotInside`, `VoidNotSimple`, `DidNotExpand` | **`VoidNotSimple`, `DidNotExpand`** | refused, `OffsetSelfIntersecting { left: 0, right: 2 }` — unchanged |
+| **hourglass** `(-3,0)(-1,-2)(1,2)(3,0)(1,-2)(-1,2)` | `VoidNotSimple`, `DidNotExpand` | **unchanged** | refused, `OffsetSelfIntersecting { left: 1, right: 4 }` — unchanged |
+| **asymmetric bowtie** `(0,0)(4,6)(4,0)(0,2)` | `VoidNotInside`, `VoidNotSimple`, `DidNotExpand` | **`VoidNotSimple`, `DidNotExpand`** | refused, `OffsetSelfIntersecting { left: 0, right: 2 }` — unchanged |
+| **a crossing the author wrote down** `(0,0)(2,2)(4,4)(4,0)(0,4)` | `VoidNotInside`, `VoidNotSimple`, `DidNotExpand` | **`VoidNotSimple`, `DidNotExpand`** | refused, `OffsetSelfIntersecting { left: 1, right: 3 }` — unchanged |
+| **a T-junction** `(-3,-3)(3,-3)(3,3)(0,-3)(-3,3)` | `VoidNotSimple`, `DidNotExpand` | **unchanged** | refused by `MiterTooLong` at `1.3057503` and `1.3057507` — unchanged |
+| **two squares touching at an authored point** | **nothing** | **nothing** | **builds** — manifold, loops `0`, euler `0`, volume `24.1920` — unchanged |
+| **a dart and a triangle sharing an authored point** | **nothing** | **nothing** | **builds** — unchanged |
+
+### The control the probe did not have, and now does
+
+**`courtyard_probe` had no shape on which the two readings of `VoidNotInside` differ, which is why this could not be seen
+from it.** Every loop the area check was asked about met itself, so a probe made only of those shapes cannot tell "the loop
+is not inside the outline" from "the ear clipper disagreed with itself" — on every one of them the two give the same
+answer, and on two of them they disagree. Two simple loops that leave the outline anyway are now measured beside them, one
+off an edge and one off a corner so that the overlap is a rectangle in the first and a triangle in the second:
+
+| loop, simple, in a 12 × 12 outline | shared with the outline | shared with itself | difference | `validate`, before and after |
+| --- | --- | --- | --- | --- |
+| **a `5 × 4` rectangle whose east side stands `2 m` outside** `(3,-2)(8,-2)(8,2)(3,2)` | `12.0000` | `20.0000` | `8.0000` | `VoidNotInside` and `VoidReachesTheWall { over: 11.960006 }` — **identical before and after** |
+| **a right triangle over the north-east corner** `(2,2)(9,2)(2,9)` | `15.5000` | `24.5000` | `9.0000` | `VoidNotInside` and `VoidReachesTheWall { over: 16.194408 }` — **identical before and after** |
+
+Both are hand-checkable — a rectangle, and a `7 × 7` right triangle less two `4.5 m²` corners — which is what a control
+has to be. `VoidReachesTheWall` joins in on both **because it is the same fact**: a ring stands `wall` outside its loop, so
+a loop that leaves the outline puts its ring outside the rooms too. Two names for one fault is the honest reading of one
+fault, and the probe says which is which rather than dropping one to make the other look alone.
+
+**The instrument also over-claimed and was cut with the change that made it false.** The probe's own line read *"`VoidNotInside`
+fires on a difference of `{:.4}`"* — a verdict printed from two areas, which after this change is a verdict the check never
+returns for the shapes above. It now prints *the terms differ by* and leaves the verdict to the `validate says:` line, which
+is asked of the crate rather than predicted in the probe.
+
+### What is left to the subtraction, and why that is not a hole
+
+**`self_meeting` is deliberately silent for a pinch at a point the author wrote down**, because that shape builds a sound
+courtyard. So "only for a simple loop" is not literally what the code says; it says **only for a loop that does not meet
+itself at a point its author did not write down**, and an authored pinch is still asked. **It is still asked and it still
+says nothing, which is a measurement rather than an argument**: two `3 × 3` squares sharing a corner read `9.0000` against
+`9.0000`, the dart and the triangle likewise, and both were swept over nine walls from `0.05` m to `0.45` m in the section
+above with the check silent at every reading.
+
+### The mechanical diff, rather than an argument that there is none
+
+The branch's `crates/building/src` was replaced with main's by `git checkout main -- crates/building/src`, the whole
+workspace rebuilt, `courtyard_probe` run into one file, the branch restored and run into another. **23 lines removed and 20
+added out of 361 and 358**, and the changed text is reconstructed from the unchanged text by three substitutions and one
+line removal:
+
+| the change | how many lines |
+| --- | --- |
+| a `validate says:` line that lost `VoidNotInside and ` — 3 shapes and 14 bowtie sweep readings | 17 |
+| the `VoidNotInside { mass: MassId(0), void: 0 }` debug line under those three shapes | 3 removed |
+| `refused by the document: 3 violation(s)` → `2 violation(s)` under those three shapes | 3 |
+
+**Rebuilding the whole "after" file from the "before" file with exactly those rules leaves zero lines that disagree** —
+which is the claim that no `OffsetSelfIntersecting`, `MiterTooLong`, `VoidReachesTheWall`, `DidNotExpand`, volume, manifold
+or euler reading moved, shown rather than asserted. Both control shapes are in that zero: their `VoidNotInside` lines are
+among the only three `VoidNotInside` lines left in the file.
+
+### The gate
+
+- **All 29 building examples exit 0**, every one run by name from the built binary. **None of the 28 that are not
+  `courtyard_probe` prints a `VoidNot` line at all**, and the two that author courtyards and exercise `validate`
+  (`validate_probe`, `patio_probe`) are among them.
+- **`cargo build --workspace --all-targets` exits 0** and warns **only** of the `census.exe` / `census.pdb` output filename
+  collision — the set every earlier section quotes, and no new warning.
+- `cargo fmt --all -- --check` is clean.
+- **`scene_identity_probe` reads 806 rows two-way** (`77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101`), contiguous, every name
+  non-empty, every name round-tripping, the four pinned readings unchanged, the channel two-way.
+- **Nine before/after pairs on this adapter, identical on all three hashes.** The before set was rendered with main's
+  `crates/building/src` in place and the after set with the branch's, both through the built binary and to fresh names
+  (`before-*` / `after-*`) in a worktree whose `out/` held only this slice's files. **Which hash is which, because the three
+  are not the same measurement**: `png` is the **SHA-256 of the written `.png` file**, and `document` and `image` are
+  **the manifest's own fields** — the document hash over the documents the compile emitted and the image hash over the
+  **raw pixel buffer**.
+
+  | scene | `.png` file SHA-256, before and after | manifest `document` | manifest `image` (raw buffer) |
+  | --- | --- | --- | --- |
+  | `house` | `B13154AD7D29F938` **same** | `f285144da26fec5e` **same** | `4f343949d83b2064` **same** |
+  | `hall` | `C4339E6310EA1C37` **same** | `8ad46af4dec6ad57` **same** | `d3861ab9a49e11df` **same** |
+  | `hall_large` | `43D3780A15E3D08E` **same** | `7930acde40622338` **same** | `ac283053024091ef` **same** |
+  | `shed` | `882B8F9A7C671B0D` **same** | `fab2859d5a542659` **same** | `929a983d1b57d8c3` **same** |
+  | `terrace` | `EDF3F4B3CF2A9686` **same** | `1d2963d762cc1f59` **same** | `d6478e6600918037` **same** |
+  | `wing` | `14E3E27F9F9E1A83` **same** | `0a890abcb64118c9` **same** | `e92705c66973ad53` **same** |
+  | `workshop` | `7DD5D40894181EA7` **same** | `32c95c8aade51358` **same** | `d9617c18c39b0fdb` **same** |
+  | `yard` | `FDC446B24E98CE04` **same** | `ca2fb43788334947` **same** | `2ab63de3b0a4f727` **same** |
+  | `identity` | `974FB5B24E1E7A35` **same** | `e170170e5822c26c` **same** | `0f3026193ce73439` **same** |
+
+  The `.png` column is the one every earlier section carries, reproduced by fresh render on this machine — which is
+  *Correction: the difference was the hash's domain* showing up a second time rather than a stale table.
+- **No gallery scene authors a void, and the static half is unchanged**: `Mass::with_voids` has one definition and **every
+  caller is an example** (`courtyard_probe`, `patio_probe`, `validate_probe`), `derive.rs` writes `voids` **zero** times,
+  and `crates/gallery` matches **none** of `with_voids`, `.voids`, `VoidWall`, `VoidInner`, `VoidTop`, `VoidBase` or
+  `SolidId::Void`. **One correction to the section above's sentence:** it says `part_probe` is the only other file in the
+  workspace naming any of them, and **`validate_probe` names `SolidId::Void` twice** — still an example, so the conclusion
+  stands, but the sentence is no longer true and has been corrected here.
+
+### What this slice's brief got wrong
+
+**It asked whether the two checks could be ordered "without a shared predicate", as though the predicate were missing.** It
+was not: `self_meeting` is one call, already in the same loop, and `VoidNotSimple` is pushed from its `Some` arm. The
+brief's contingency — propose the shape rather than duplicate a simplicity test — turned out to be unnecessary, and the
+right answer is the duller one: **ask the existing predicate and branch on the answer you already have.**
+
+**It said the area comparison should run "only for a simple loop", and the code cannot say that.** `self_meeting` is
+silent for an authored pinch on purpose, because that shape builds; so the gate is *"does not meet itself at a point its
+author did not write down"*, and an authored pinch is still asked. It reports nothing — measured, at `9.0000` against
+`9.0000` — but it is asked, and a reader told the first sentence would be told something slightly false.
+
+**It asked for a document showing `VoidNotInside` does not regress and said "find or build that document", which is where
+the real omission is: no such document existed in the tree, and nothing in the tree could have found one.** Every void loop
+any probe measured met itself, so the regression this change was most likely to cause — a simple loop that leaves the
+outline going unreported — would have passed every gate that was standing. A brief that narrows a check owes the tree a
+control for the check it is narrowing, and this one did not ask for it until after it had been done.
