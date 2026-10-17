@@ -32,6 +32,8 @@
 
 use crate::grid::FaceRef;
 use crate::mass::Mass;
+use crate::math::Vec3;
+use crate::mesh::BuildingMesh;
 use crate::roof::Roof;
 use crate::skeleton::BuildingSkeleton;
 
@@ -119,6 +121,56 @@ impl Joint {
             socket: socket.into(),
             anchor,
         }
+    }
+}
+
+/// Where a placement stands its template: the frame the template's own coordinates are read in.
+///
+/// # Invariants
+///
+/// **The same four directions the expansion uses, named once.** A scene that draws one template mesh with
+/// *n* of these draws exactly the geometry `build` measured, because `build` is written on the same two
+/// pieces — there is no second frame convention and no matrix: the crate's own vocabulary is an origin and
+/// three unit directions, and [`apply`](Self::apply) is one dot product per direction.
+///
+/// The directions are `along` the wall's edge, `up`, and `inward` into the wall, in the order the template
+/// authored `x`, `y` and `z` — which is what [`Template`](crate::parts::Template)'s documentation means by
+/// "authored in the placement's frame".
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PartFrame {
+    /// Where the template's own origin lands, in world space.
+    pub origin: Vec3,
+    /// The world direction the template's `x` runs along.
+    pub along: Vec3,
+    /// The world direction its `y` runs along.
+    pub up: Vec3,
+    /// The world direction its `z` runs along, which is into the wall.
+    pub inward: Vec3,
+}
+
+impl PartFrame {
+    /// Builds a frame.
+    pub fn new(origin: Vec3, along: Vec3, up: Vec3, inward: Vec3) -> Self {
+        Self {
+            origin,
+            along,
+            up,
+            inward,
+        }
+    }
+
+    /// Maps a point of the template's own frame into the world.
+    ///
+    /// `origin + x · along + y · up + z · inward`, which is the whole of the transform: no rotation, no
+    /// scale, no matrix — the template is authored in the frame it is stood in.
+    pub fn apply(&self, point: Vec3) -> Vec3 {
+        let mut moved = self.origin;
+        for (component, direction) in [(0, self.along), (1, self.up), (2, self.inward)] {
+            for axis in 0..3 {
+                moved[axis] += point[component] * direction[axis];
+            }
+        }
+        moved
     }
 }
 
@@ -211,6 +263,20 @@ impl Template {
     /// looking it up by name is the shape the document uses rather than an index nobody reads.
     pub fn socket(&self, name: &str) -> Option<&Socket> {
         self.sockets.iter().find(|socket| socket.name == name)
+    }
+
+    /// Expands the template **in its own frame**, once, as an ordinary mesh.
+    ///
+    /// # Invariants
+    ///
+    /// **It is a function of the template alone**, so one call answers for every placement of it: a scene
+    /// draws this mesh with a [`PartFrame`] per placement and draws exactly what [`build`] measured,
+    /// because `build` is written on the same two pieces. A template that cannot stand is a list of
+    /// problems — the same refusal the expansion gives — rather than a mesh that is nearly right.
+    ///
+    /// [`build`]: crate::expand::build
+    pub fn mesh(&self) -> Result<BuildingMesh, Vec<crate::expand::Problem>> {
+        crate::expand::build(&self.skeleton()).map_err(|error| error.problems)
     }
 
     /// Returns the template as the skeleton it is, ready to expand.

@@ -69,6 +69,7 @@ use crate::math::{
 };
 use crate::mesh::{BuildingFace, BuildingMesh, Element, MassSurface, PartSurface, RoofSurface};
 use crate::openings::{Extents, RevealSide};
+use crate::parts::PartFrame;
 use crate::roof::{EaveStation, Roof, RoofId, RoofRow};
 use crate::skeleton::BuildingSkeleton;
 use crate::slab::{Slab, SlabId, SlabSurface};
@@ -587,16 +588,27 @@ fn expand_wall(mesh: &mut BuildingMesh, id: WallId, wall: &Wall) -> Result<(), V
 /// A placement whose template holds no mass answers `None` from
 /// [`BuildingSkeleton::placed`](crate::skeleton::BuildingSkeleton::placed) and is
 /// [`Problem::PlacementUnresolved`], like one whose slot has gone.
-fn expand_placement(
+/// Returns the frame a placement stands its template in, or `None` when the placement does not resolve.
+///
+/// # Invariants
+///
+/// **One frame, used by both paths**: `build` applies it to a template's own mesh, and a scene applies the
+/// same frame to the same mesh, so an instanced part and a baked one are the same geometry rather than two
+/// renderings that agree approximately. The frame is the wall's own `along` direction, `up`, and
+/// `inward` across the wall's thickness, with the origin on the wall's **outer face** at the pin's arc
+/// length and elevation — the three facts the parts documentation states, resolved once.
+///
+/// A placement whose wall cannot be offset is **the mass's fault**, and the problems are returned rather
+/// than swallowed: a scene asking for a frame must hear about a wall the miter refused.
+pub fn part_frame(
     skeleton: &BuildingSkeleton,
     index: usize,
-) -> Result<Option<(Vec<Vec3>, Vec<BuildingFace>)>, Vec<Problem>> {
+) -> Result<Option<PartFrame>, Vec<Problem>> {
     let Some(placed) = skeleton.placed(index) else {
         return Ok(None);
     };
-    let placement = match skeleton.parts.placement(index) {
-        Some(placement) => placement.clone(),
-        None => return Ok(None),
+    let Some(placement) = skeleton.parts.placement(index) else {
+        return Ok(None);
     };
     let Some(mass) = skeleton.mass(placement.face.mass) else {
         return Ok(None);
@@ -612,27 +624,41 @@ fn expand_placement(
         return Err(problems);
     };
     let wall = WallFace::of(mass, placement.face.edge, &inner);
-    let held = build(&placed.template.skeleton()).map_err(|error| error.problems)?;
     let origin = lift(
         wall.outer_at(placed.bay.from + placed.at.along),
         placed.bay.low + placed.at.up,
     );
-    let along = [wall.along[0], 0.0, wall.along[1]];
     let inside = inward(wall.along);
-    let inward3 = [inside[0], 0.0, inside[1]];
-    let up = [0.0, 1.0, 0.0];
+    Ok(Some(PartFrame::new(
+        origin,
+        [wall.along[0], 0.0, wall.along[1]],
+        [0.0, 1.0, 0.0],
+        [inside[0], 0.0, inside[1]],
+    )))
+}
+
+/// Builds one placement's template in the frame its bay gives it, or `None` when it does not resolve.
+///
+/// # Invariants
+///
+/// It is **the two pieces and nothing else**: the template's own mesh ([`Template::mesh`]) mapped by
+/// [`part_frame`]. There is no second expansion of a template and no second frame somewhere in this file,
+/// which is what lets a scene instance the same geometry without a chance of drifting from it.
+fn expand_placement(
+    skeleton: &BuildingSkeleton,
+    index: usize,
+) -> Result<Option<(Vec<Vec3>, Vec<BuildingFace>)>, Vec<Problem>> {
+    let Some(placed) = skeleton.placed(index) else {
+        return Ok(None);
+    };
+    let Some(frame) = part_frame(skeleton, index)? else {
+        return Ok(None);
+    };
+    let held = placed.template.mesh()?;
     let points = held
         .points
         .iter()
-        .map(|point| {
-            let mut moved = origin;
-            for (axis, direction) in [(0, along), (1, up), (2, inward3)] {
-                for component in 0..3 {
-                    moved[component] += point[axis] * direction[component];
-                }
-            }
-            moved
-        })
+        .map(|point| frame.apply(*point))
         .collect();
     let faces = held
         .faces
@@ -644,9 +670,9 @@ fn expand_placement(
                 surface: match face.element {
                     Element::Mass(id, surface) => PartSurface::Mass(id, surface),
                     Element::Roof(id, surface) => PartSurface::Roof(id, surface),
-                    // A template holds masses and roofs and nothing else, so this arm is what a
-                    // template that somehow held a part would fold into: the face belongs to the part
-                    // it is spliced into, and its own surface is kept.
+                    // A template holds masses, roofs, walls and slabs, and a nested part is not a thing
+                    // this crate builds: this arm keeps the map total, and the part being spliced into
+                    // keeps its own surface.
                     Element::Part { surface, .. } => surface,
                     Element::Wall(id, surface) => PartSurface::Wall(id, surface),
                     Element::Slab(id, surface) => PartSurface::Slab(id, surface),
