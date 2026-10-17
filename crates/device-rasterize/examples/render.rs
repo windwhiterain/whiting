@@ -384,9 +384,10 @@ async fn run() -> Result<(), String> {
             outputs.push(record);
 
             // Where a pixel is, in the scene's own terms. Made **before** anything is written to
-            // disk, because the answer is worth most next to the picture and least without it.
-            if let Some((x, y)) = request.locate {
-                locate(&name, &rendered, x, y);
+            // disk, because the answer is worth most next to the picture and least without it. Every
+            // `--locate` is answered, in the order asked, so a comparison is one run.
+            for (x, y) in &request.locate {
+                locate(&name, &rendered, *x, *y);
             }
 
             // The three are reported apart because they are three different costs, and only
@@ -530,7 +531,9 @@ fn parse_arguments() -> Result<Request, String> {
     let mut times: Vec<String> = Vec::new();
     let mut debug: Vec<DebugChannel> = Vec::new();
     let mut census = false;
-    let mut locate_at: Option<(u32, u32)> = None;
+    // **--locate repeats**: one pixel per flag, in the order asked, because the interesting question is
+    // usually a comparison — five shutters, five pixels, five names — and one flag per run made that five runs.
+    let mut locate_at: Vec<(u32, u32)> = Vec::new();
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
@@ -543,7 +546,7 @@ fn parse_arguments() -> Result<Request, String> {
                 let asked = rest
                     .get(index)
                     .ok_or_else(|| "--locate needs a pixel, written x,y".to_owned())?;
-                locate_at = Some(parse_pixel(asked)?);
+                locate_at.push(parse_pixel(asked)?);
             }
             "--debug" => {
                 index += 1;
@@ -632,7 +635,7 @@ struct Request {
     /// Whether to report what the scene holds rather than drawing it.
     census: bool,
     /// The pixel to say what it is, answered once per moment beside the picture it belongs to.
-    locate: Option<(u32, u32)>,
+    locate: Vec<(u32, u32)>,
 }
 
 /// How the moments of a render are written out.

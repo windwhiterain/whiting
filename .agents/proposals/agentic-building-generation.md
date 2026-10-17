@@ -1039,6 +1039,59 @@ now carries a maximum, and the probe reads it back in its own words: *the smalle
 floor, the middle one by the share, the largest by the ceiling.* A relation between a share and a span is only
 a relation if both ends are bounded.
 
+## What the offset slice found: an instanced id is a point's plus a row's (2026-10-27)
+
+The identify slice recorded the tension — **the id channel and instancing do not compose**, because an
+`authored_id` is a per-vertex value and one mesh drawn five times carries one set of ids — and named two designs:
+a per-instance offset, or two channels. **The offset was chosen, and it turned out to need three things, each of
+them measured before it was built.**
+
+### 1. The arithmetic, measured first
+
+An offset is only a mapping if the baked table lays each placement's surfaces down as a **contiguous run in the
+template table's own order**:
+
+```text
+baked_id(placement, surface) = template_local_id(surface) + base(placement) - 1
+```
+
+`examples/instance_identity_probe.rs` measured it: six placements of one shutter gave runs `25..=38`,
+`39..=52`, …, `95..=108` — **all contiguous, all 14 rows** — and the equation held over **84 surfaces**, with the
+offsets `24, 38, 52, 66, 80, 94`. Continuity is not luck: `Identity::of` numbers its rows from a
+`BTreeSet<Element>`, and `Element::Part { placement, surface }` orders by `placement` first.
+
+### 2. Where the offset lives, which the first attempt got wrong
+
+I assumed a **per-instance** value. A scene's instance is `{label, mesh, transform, material}` — **it carries no
+custom values at all**, and the shader's custom inputs belong to the *material*. So the offset lives on a
+**material**, and five placements need **five material sets** that all name one shader. That is not a workaround;
+it is what the format says: a row is where a number that varies per draw belongs.
+
+### 3. The sum, which is inert at zero
+
+`shaders::Authored::Sum { name, components, flat, custom }` reads a **point** field and adds a **material** field,
+in the vertex stage, into the varying the fragment already reads. `building_extras()` uses it with
+`kit::AUTHORED_OFFSET`, whose default is `0.0` — and the identity scene, which bakes every surface it draws,
+renders **byte-identically** (`D36C5EF5…`) with the new code, which is the evidence that the plumbing changes
+nothing until a scene asks it to.
+
+### The join, measured in one run
+
+The render harness's `--locate` now **repeats**, because the interesting question is a comparison rather than a
+point — five shutters, five pixels, five names, and one flag per run made that five runs. On the workshop:
+
+| pixel | what it shows | the name |
+| --- | --- | --- |
+| `(620, 340)` | a shutter's corner | **`part 4, template mass 0, outer wall over edge 0`** |
+| `(620, 590)` | the same mesh, another placement | **`part 1, template mass 0, …`** |
+| `(860, 590)` | the same mesh, a third | **`part 0, template mass 0, …`** |
+| `(750, 340)` | a wall's reveal | `mass 0, the head reveal of opening 4 in edge 2` |
+| `(500, 900)` | **`0`** — the ground | *"no domain reading"*, which is the reserved zero meaning what it says |
+
+**Three different placements of one instanced mesh, named by three pixels, in one frame** — and the ground still
+answers the reserved zero. The tension the identify slice recorded is closed without giving up either D4's
+instancing or the identity channel.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
