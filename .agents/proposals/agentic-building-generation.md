@@ -1603,6 +1603,22 @@ knowing because it only ever shows up as a degenerate edge.
 The `wing` scene draws it and the channel names it: `where wing mass 1, outer wall over edge 2` answers **111,205
 pixels** — the wing's own face, as itself.
 
+## What the wing's windows found: the faces that meet the weather (2026-10-27)
+
+The L's two arms share one leaf, so **not every face may take a hole**: the host's east face is where the wing
+attaches and the wing's west face is the shared leaf, and a window cut there would open into the other arm. The
+scene therefore cuts bays on the faces that meet the weather only — host `0, 2, 3` and wing `0, 1, 2` — one window a
+bay at `HALL.glazing`'s inset.
+
+Measured: the wing's identity table grew from **41 to 89 rows** (a window brings its sill, its head and its jambs
+with it), the host's south face covers **40,282 pixels** as `mass 0, outer wall over edge 2`, and the nine-scene
+probe still reads every table two-way.
+
+That is an invariant the crate can state now that L-shapes exist: **a face shared between two solids is not a
+facade**, and the vocabulary has no way to say so — `attach_mass` records the attachment, but nothing stops a
+`split_face` on the shared face. It is the scene's job today, and it is written in the scene's own docs. If a later
+slice wants the crate to refuse it, the attachment's station is what a check would read.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
