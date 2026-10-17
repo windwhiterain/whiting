@@ -418,6 +418,57 @@ meet:
 **Deliberately not in P0:** `closest(point)`. Nothing consumes it until the envelope's trimming law (P1), and
 a query with no caller is the shape this repository has already learned to distrust.
 
+## What P1 measured (2026-10-17)
+
+P1 is **landed**: `scalar`, `section`, `sweep` and `loft` join `curve` and `mesh`, `building` names `shape`
+for `math`, and five probes print 38 readings between them, each with the control that could have failed it
+and each gating an exit code. Every number below is a probe's output.
+
+| invariant | reading | threshold |
+| --- | --- | --- |
+| a taper's signed volume against the frustum it is | **1.820843** against `1.820843`, relative **6.547e-8**; the *round* frustum is 6.455e-3 higher | `< 1e-5` |
+| …and its sign, which is the side winding's contract | **positive**, so the triangles face outward | `> 0` |
+| capping is the whole difference between a solid and a tube | capped: **0** boundary loops, **0** same-direction edges, χ = **2**; uncapped: **2** loops, χ = **0** | exact |
+| a vertex's parameter is its ring and its slot | **0 of 60** vertices disagree about `u`, **0** about `v` | `0` |
+| a ring lies in its station's plane, on its scale | centroid **2.415e-7** off the tangent plane, radius **1.788e-7** off the law, own plane normal \|cos\| **1.000000** | `< 1e-5`, `> 0.9999` |
+| `twist` turns the section in its own plane | slot 0 is **1.000000** along the normal, and **1.000000** along the binormal after π/2 | `> 0.999` |
+| a section's `x` is its spine's frame normal | slot 0 against its own frame: **0.000e0** for two spines whose normals differ by \|cos\| **0.000e0** | `< 1e-6` |
+| a blade is a closed solid with a pointed tip | χ = **2**, 0 boundary loops, volume **0.018270**, tip spread **0.000e0**, **80** vertices for 5 × 16 | closed, `> 0` |
+| refining an envelope is a section change | circle **2.671341** against a three-lobed outline **2.696712**, **9.498e-3** apart, **192** vertices each, both closed | `> 1e-3` |
+| a circle's ring is at equal arc length | chord spread **7.638e-8** relative to the mean; `ring[0]` is `(1, 0)` to **0.000e0** | `< 1e-6` |
+| a lens's ring is at equal arc length, not equal angle | worst fraction error **3.828e-7** against a 200 000-step integration; the control — the same 24 points at uniform θ — reads **5.162e-2** | `< 2e-3`, control `> 2e-3` |
+| an outline's ring is the loop's own table | distance to the boundary **0.000e0**, chord error **0.000e0**, `ring[0]` is `points[0]` exactly | `0` |
+| a clockwise outline is the same section | point-by-point difference after normalisation **0.000e0**, `points[0]` still first | `0` |
+| `flat` is an ellipse | `ellipse(0.5, 0.01)` and `flat(0.5, 0.01)` agree to **0.000e0** | `0` |
+| a scalar's limiter bounds every span | worst sample **1.000000** against the data's own maximum; the unlimited control reads **1.052347** | `<= max` |
+| the basis reproduces a quadratic through uneven knots | value error **1.192e-7**, slope error **4.768e-7** | `< 1e-6`, `< 1e-5` |
+| the mesh predicates read topology, not orientation | a reversed triangle leaves `is_manifold` true and 0 boundary loops while the volume drops to **0.666667** and 3 same-direction edges appear | exact |
+| …and a closed prism's volume is exact | **3.000000** against the exact prism, difference **4.441e-16**; the disc it stands in for is 4.51% larger | `< 1e-5` |
+
+**Four things P1 decided that this design did not say**, each of which a consumer meets:
+
+1. **`Section::at(v)` had to exist, and `ring` is it at uniform fractions.** A leaf's anchor hangs at a slot
+   between two of its parent's ring vertices, and the slot must not move when the parent's `around` changes —
+   an offset on a tessellation is exactly what this design forbids. So the section answers at any fraction,
+   `v` **wraps** (`v = 1` is `v = 0` bit for bit, and `-0.1` is `0.9`), and `ring(around)` is a map over it
+   rather than a second sampling rule.
+2. **The cap fans reuse the end rings' own vertices.** `Loft::positions().len() == rings * around` always,
+   so a consumer indexing by `(ring, slot)` never meets a centre vertex, and a ring that collapses to a point
+   (a leaf's tip) closes the surface because the fan shares its edges — not because anything special happened.
+3. **An ellipse's arc-length table is `f64`.** Accumulated in `f32`, every step's length rounds to an ulp of
+   the whole loop (~`4e-5`), which a 16-point circle shows as a chord spread of **2.979e-6** — the number
+   measured before the repair, and the reason the table is not f32.
+4. **`at(0)` and `at(1)` are the first and last knots exactly**, which took a change to `curve`'s `locate`:
+   an inversion whose target was the whole length used to land one bisection step (`1 − 2⁻³³`) short, leaving
+   a `1.164e-10` gap at a closed loop's seam. It is `0.000e0` now, and `curve_probe`'s *closed ends* row is
+   where the zero is printed.
+
+**One reading that is the reference's error, not the crate's:** at a 50:1 aspect a lens's true perimeter is
+**4.003837** while Ramanujan's second approximation says **3.992368** — the closed form is 1.147e-2 short, and
+the same instrument agrees with it to **1.217e-5** at 2:1. The probe therefore grades the recovered arc length
+against its own independent integration and prints Ramanujan beside it.
+
+
 ## Open questions
 
 Answered on 2026-10-17 under the superior's directive to choose by **strongest expressiveness and the most
