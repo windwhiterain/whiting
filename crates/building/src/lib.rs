@@ -63,6 +63,7 @@ pub mod openings;
 pub mod ops;
 pub mod parts;
 pub mod roof;
+pub mod site;
 pub mod skeleton;
 pub mod validate;
 
