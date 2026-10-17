@@ -71,6 +71,12 @@ const PLANARITY_TOLERANCE: f32 = 1.0e-3;
 /// and it is far below the gap between two masses that were meant to stand apart.
 const TOUCH_TOLERANCE: f32 = 1.0e-3;
 
+/// How much plan area two masses may share before it is an overlap, in square metres.
+///
+/// **A square of the touch tolerance**: a shared plane contributes zero area, and a shared strip wider than a
+/// millimetre contributes more than this at any length the crate draws.
+const AREA_TOLERANCE: f32 = TOUCH_TOLERANCE * TOUCH_TOLERANCE;
+
 /// How far a skin may miss its own eave loop, in metres of edge, before the missing area is a
 /// defect.
 ///
@@ -840,13 +846,11 @@ fn plans_share_area(first: &[PlanNode], second: &[PlanNode]) -> bool {
     if !boxes_overlap(&one, &other) {
         return false;
     }
-    strictly_contains(&one, &other)
-        || strictly_contains(&other, &one)
-        || edges_cross(&one, &other)
-        || edge_midpoints_inside(&one, &other)
-        || edge_midpoints_inside(&other, &one)
+    // **The shared area, computed rather than inferred.** A pair of rectangles sharing a wall has collinear
+    // edges and a corner on an edge, which containment and proper crossing both miss; clipping the two
+    // polygons and measuring what overlaps misses nothing, and a flush pair answers exactly zero.
+    crate::clip::shared_area(&one, &other) > AREA_TOLERANCE
 }
-
 /// Returns whether the bounding boxes of two plan polygons share anything.
 ///
 /// The one cheap rejection before any edge is read, and it is sound for the convex test it
@@ -870,124 +874,7 @@ fn extremes(polygon: &[Vec2]) -> ([f32; 2], [f32; 2]) {
     (low, high)
 }
 
-/// Returns whether a polygon has a vertex strictly inside another.
-///
-/// # Invariants
-///
-/// The test is by ray casting, and a vertex within [`TOUCH_TOLERANCE`] of the other's boundary is
-/// **not** inside for this purpose: the ray would cross an edge it is standing on, and the count
-/// it produced would be an answer about a corner that touches rather than one that overlaps.
-fn strictly_contains(outer: &[Vec2], inner: &[Vec2]) -> bool {
-    inner
-        .iter()
-        .any(|point| !on_boundary(outer, *point) && ray_casts_in(outer, *point))
-}
 
-/// Returns whether any **edge's midpoint** of `inner` stands strictly inside `outer`.
-///
-/// # Invariants
-///
-/// **This is what catches an overlap whose boundary is collinear.** Two rectangles overlapping by a strip share
-/// two collinear edges and touch corner-to-edge, so neither polygon strictly contains the other and no edge
-/// properly crosses — and the area they share is real, with both builds owning the same pixels. An edge's
-/// midpoint is *inside* the other polygon exactly when the edge runs through its interior, which the two
-/// predicate tests above never ask.
-///
-/// **A flush pair is not reported**: when two masses stand against each other, the shared edge's midpoint lies
-/// *on* the other polygon's boundary, and [`on_boundary`] excludes it — the same margin the rest of this file
-/// uses to tell a shared plane from a shared area.
-///
-/// **It is a detector, not a proof.** An overlap thin enough that every edge's midpoint falls outside the other
-/// polygon (a sliver that crosses a corner) is not caught here; the crate's own documents are rectilinear, where
-/// the midpoint of a shared edge's inside portion is inside the other polygon whenever the shared area is wider
-/// than [`TOUCH_TOLERANCE`]. The limitation is recorded rather than hidden: a sound test is a clipping area, and
-/// that is a larger change than this one.
-fn edge_midpoints_inside(outer: &[Vec2], inner: &[Vec2]) -> bool {
-    (0..inner.len()).any(|index| {
-        let from = inner[index];
-        let to = inner[(index + 1) % inner.len()];
-        let midpoint = [
-            (from[0] + to[0]) * 0.5,
-            (from[1] + to[1]) * 0.5,
-        ];
-        !on_boundary(outer, midpoint) && ray_casts_in(outer, midpoint)
-    })
-}
-
-/// Returns whether a plan point stands on a polygon's edge, within [`TOUCH_TOLERANCE`].
-fn on_boundary(polygon: &[Vec2], point: Vec2) -> bool {
-    (0..polygon.len()).any(|index| {
-        distance_to_segment(point, polygon[index], polygon[(index + 1) % polygon.len()])
-            <= TOUCH_TOLERANCE
-    })
-}
-
-/// Returns whether a ray cast from a point crosses a simple polygon an odd number of times.
-///
-/// # Invariants
-///
-/// The ray runs along `+x` and a vertex it passes exactly through is counted by the half-open rule
-/// `(from[1] > point[1]) != (to[1] > point[1])`, which is what stops a corner the ray grazes being
-/// counted twice. `mountain`'s validate uses the same rule for the same reason; the helper is not
-/// public there, so it is restated rather than shared.
-fn ray_casts_in(polygon: &[Vec2], point: Vec2) -> bool {
-    let mut inside = false;
-    let mut previous = polygon[polygon.len() - 1];
-    for &current in polygon {
-        if (current[1] > point[1]) != (previous[1] > point[1]) {
-            let width = previous[1] - current[1];
-            if width.abs() > f32::EPSILON {
-                let crossing =
-                    current[0] + (point[1] - current[1]) / width * (previous[0] - current[0]);
-                if point[0] < crossing {
-                    inside = !inside;
-                }
-            }
-        }
-        previous = current;
-    }
-    inside
-}
-
-/// Returns whether any edge of one plan polygon crosses any edge of the other.
-///
-/// # Invariants
-///
-/// A shared endpoint is not a crossing, and neither is a proper touch closer than
-/// [`TOUCH_TOLERANCE`], scaled by the two edges' lengths so the test is about the geometry rather
-/// than about the units: two masses meeting corner to corner have not been measured as overlapping
-/// because a hair of rounding put the crossing a millionth of a metre inside the segments.
-fn edges_cross(first: &[Vec2], second: &[Vec2]) -> bool {
-    for (a, b) in closed_edges(first) {
-        for (c, d) in closed_edges(second) {
-            if crosses(a, b, c, d) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Returns the closed loop's edges, the last one running back to the first node.
-fn closed_edges(polygon: &[Vec2]) -> Vec<(Vec2, Vec2)> {
-    (0..polygon.len())
-        .map(|index| (polygon[index], polygon[(index + 1) % polygon.len()]))
-        .collect()
-}
-
-/// Returns whether two plan segments cross in both their interiors.
-fn crosses(a: Vec2, b: Vec2, c: Vec2, d: Vec2) -> bool {
-    let first = crate::math::cross(crate::math::difference(b, a), crate::math::difference(c, a));
-    let second = crate::math::cross(crate::math::difference(b, a), crate::math::difference(d, a));
-    let third = crate::math::cross(crate::math::difference(d, c), crate::math::difference(a, c));
-    let fourth = crate::math::cross(crate::math::difference(d, c), crate::math::difference(b, c));
-    let straddles = |left: f32, right: f32, tolerance: f32| {
-        (left > tolerance && right < -tolerance) || (left < -tolerance && right > tolerance)
-    };
-    let scale = (distance(a, b) * distance(c, d)).max(f32::EPSILON);
-    let tolerance = TOUCH_TOLERANCE * scale;
-    straddles(first, second, tolerance) && straddles(third, fourth, tolerance)
-}
 
 /// Returns how far a plan point is from a plan segment.
 fn distance_to_segment(point: Vec2, from: Vec2, to: Vec2) -> f32 {

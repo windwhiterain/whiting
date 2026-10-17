@@ -52,6 +52,7 @@
 //! **positive** signed volume, and [`Building::validate`] reports the opposite sign as an
 //! inside-out solid rather than leaving it to be discovered in a frame.
 
+pub mod clip;
 pub mod derive;
 pub mod expand;
 pub mod grid;
