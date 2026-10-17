@@ -39,10 +39,38 @@ per-placement order is the same `PartSurface` order the template's own table use
 
 ## What is not in this slice
 
-**The shader half**: an `Extras` output whose value is `point field + instance field`, the instance field a
-scene sets to the placement's own offset, and a scene (the workshop) whose shutters then answer five different
-ids. This slice establishes that the numbers the shader would add are the right ones; the next one adds them.
+**The shader half**, and this slice's reconnaissance found where the offset can actually live — which is not
+where I first assumed.
+
+### The finding: an instance carries no custom values
+
+The scene format's instance is `{label, mesh, transform, material}`, and the custom values a shader reads
+(`emissive`, `metallic`, `roughness`, …) belong to the **material**: `kit::mesh_material(label, shader,
+custom_data)`. So every instance that names one material shares its values, and a per-instance number is
+**not expressible** in today's format.
+
+That leaves two routes:
+
+1. **Extend the scene format** so an instance may override its material's custom values. That is the `scene`
+   crate's slice and the compiler's, not the building crate's.
+2. **One material per placement**, each carrying its own offset. A material already carries custom data, and
+   five materials may all name the **same** shader — so five shutters become fifteen materials (three stages
+   each) whose `authored_offset` is `base − 1`, and the shader sums a **point** field (`authored_id`) with a
+   **material** field (`authored_offset`). No format change at all.
+
+**Route 2 is the plan**: it needs three edits and no new subsystem —
+
+- `kit`: an `authored_offset` float in `gallery_custom_schema`, written `0.0` by `mesh_material` (so every
+  existing scene is unchanged), and a variant a building scene uses to set it;
+- `shaders::Authored`: a `Sum { point, custom }` variant whose vertex assignment is `<read the point field> +
+  <custom field>`; the varying already carries one `f32`, so the fragment side does not change;
+- `building_identity`: `building_extras()` uses the Sum, and an `offset` variant sets the material field.
+
+The acceptance is the one the tension was recorded for: **the workshop's five shutters answer five different
+ids**, each naming its own placement, and a pixel of the ground still answers zero.
 
 ## Status log
 
 - **2026-10-27** — worktree and branch from `368a012`; the probe and the measurement above.
+- **2026-10-27** — reconnaissance for the shader half: the instance carries no custom values, so the offset
+  lives in a **material** field, one material per placement, and the plan above is exact.
