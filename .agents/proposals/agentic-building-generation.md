@@ -1804,6 +1804,27 @@ were needed, and each was earned by a measurement:
 it. The next slice is `Mass::voids` plus the shell, and the acceptance there is already written: a ring-shaped solid
 must measure an Euler characteristic of **0**.
 
+### The slice that remains, and the simplification that shrinks it (2026-10-27)
+
+`expand_mass` builds a mass's faces as **three per outline edge** — `OuterWall { edge }`, `WallTop { edge }`,
+`InnerWall { edge }` — plus the two plate surfaces, `FloorTop` and `SlabSoffit`. A void needs the same three around
+*its* loop, which reads as a second, smaller outline inside the first.
+
+**The simplification: the plate does not need a hole.** A courtyard has a floor — it is paved, and it is the same
+slab the rooms stand on — so `FloorTop` and `SlabSoffit` stay exactly as they are, and `ring_fill` is not needed for
+them at all. What a void actually adds is:
+
+- **the wall ring around it**, three faces per void edge: the courtyard-facing wall, the room-facing wall, and the
+  strip of wall top between them (the mirror of `OuterWall` / `InnerWall` / `WallTop`);
+- **its names**, so `--where` can say *void 0, the wall over edge 2* rather than *something in mass 0*.
+
+That leaves `ring_fill` where it is — a tested tool waiting for the one surface that *does* need a hole, which is the
+wall top of a mass whose own outline is a ring, and that is a later question than a courtyard.
+
+So the next slice is smaller than the design first said: a `voids` field, three faces a void edge, the names, and
+the acceptance **Euler characteristic 0**. The plate work and the fill of a ring-shaped mass are deferred, and both
+are written down rather than discovered again.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
