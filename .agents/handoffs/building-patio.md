@@ -80,3 +80,5 @@ courtyard and the same number from a topology defect, and it is the one thing th
 design did not anticipate.## Status log
 
 - **2026-10-27** — handoff written. Nothing implemented yet: `main` carries `ring_fill` and this plan.
+- **2026-10-27** — claims verified in the tree; the acceptance corrected: `euler 0` alone is a fault in the
+  existing diagnostics, and it is a courtyard only together with one authored void.
