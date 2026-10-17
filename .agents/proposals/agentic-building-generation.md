@@ -746,6 +746,60 @@ per-instance shadow pages), and `build` still expands each template per placemen
 template index is a performance change a caller can now make correctly, because a template's mesh is a
 function of the template alone.
 
+## What the floor slice found: two storeys, and a closed-form fault in the cutting (2026-10-16)
+
+Every building the crate could author was a **single storey**. The grid's `rows` could split a wall into
+storeys, but nothing put a **floor** between them, and the vocabulary was already there — `Slab` is a level
+plate and `host` moves it with its building. What was missing was the **authoring**: an intermediate floor
+is the mass's inner loop at an elevation, and the inner loop is `expand`'s private `offset_loop`. An author
+who computed it themselves would be writing down a second opinion about where the inside of the building is.
+
+So `derive::floor_slab(mass, id, elevation, thickness)` does it, with four invariants: the plate **is** the
+mass's inner loop (the same inset the walls are built on), it is **hosted** so seating moves it, the
+elevation must be **strictly inside** the mass's height and the thickness positive (every other case is
+`None`, not a plate that is invisible or sticking out), and a wall the miter refuses answers `None`.
+
+Measured by `examples/floor_probe.rs` on a 7 × 11 starter with a 0.35 wall and a floor at `2.0`:
+
+| measurement | value |
+| --- | --- |
+| the plate's plan | `6.3000 × 10.3000 = 64.889999 m²` by hand, and `64.889999` from its own loop |
+| its volume | `12.978000` written, `12.978002` measured |
+| the inset on each of four sides | `0.3500` — the wall's own |
+| the document, flat and seated | **0 violations** |
+| the refusals | at the ground, below it, at the wall top, above it, of no thickness — all `None` |
+
+The **workshop** scene (`crates/gallery/src/workshop.rs`, 13 passes) is the first two-storey building the
+crate draws: three windows above, a window, an open doorway and a window below, and a mezzanine plate at
+`2.2`. Its doc says plainly what the frame shows (the two storeys) and what it does **not** (the plate, of
+which about seven centimetres are visible as the doorway's own ceiling) — a frame that overclaims is the one
+kind of documentation this crate cannot check.
+
+### The defect the scene found, and its closed form
+
+The workshop's first configuration put the plate at `2.8` with the doorway's head at `2.05`, and the scene's
+own assert fired: `SolidOpen { loops: 4 }`, `SolidNonManifold`, `euler -14`. **The fault was in the openings'
+cutting and predated the slice.** Reduced by `examples/multi_row_probe.rs` to a table, and then to a form:
+
+> **A wall's bands and both discs are split at every station, so every face that meets them along a
+> horizontal or vertical edge must be split at the same stations — and every face that meets them along a
+> vertical edge must also be split at the same cuts.** The cutting had learned the second half in P2 (a jamb
+> split at every cut) and not the first: a hole's **head and sill** were single quads, which is right until
+> another hole's jamb station falls inside the hole's own span.
+
+The two failing rows and their fix:
+
+| configuration | before | after |
+| --- | --- | --- |
+| a door below and a window above, **jambs not aligned** | `loops 4, euler -6` | **`loops 0, euler -2, manifold true`** |
+| six holes, **a different inset per row** | `loops 12, euler -22` | **`loops 0, euler -10, manifold true`** |
+| every configuration that already closed | closed | **closed, with the same face counts** |
+
+The ownership dump that named it in one step is worth keeping as an instrument: for each boundary edge, print
+the elements of the faces that use it. It showed one edge owned by a door's **sill reveal** and a shorter pair
+owned by the **floor top** — two faces disagreeing about whether a horizontal edge is broken, which under
+**authored-identity welding** is an opening that no coordinate comparison would ever find.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
