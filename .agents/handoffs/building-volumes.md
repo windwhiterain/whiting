@@ -506,3 +506,27 @@ height. The measurements that got here: the strip winding (a flip closed the mas
 **The fix, in one sentence:** the base strip must be built from loop positions **projected to the wall base
 elevation**, and the walls own bottom edges must use the same projected points — one description of the loop, read
 by two faces. That is the change this slice has been circling since round 105, and it is now the only one left.
+
+## The strip's corners carry two different elevations, measured (2026-10-27)
+
+Printing the four corner elevations of every `WallBase` quad is the number that ends the guessing:
+
+```text
+STRIP edge 0: y 0.02 0.02 0 0        <- the outer corners at a sill, the inner at the base
+STRIP edge 0: y 0.05 0.05 0 0        <- another mass, another sill
+STRIP edge 0: y 0    0    -0.3 -0.3  <- a part whose own base is a slab lower
+```
+
+**So the outer corners come from `split_loop`'s station points, and a station point carries the elevation of the
+`soffit`/`floor` reader it was made for** — a reveal's sill or head — while the inner corners are the loop's own and
+sit at the base. The quad is therefore wound across two elevations and no winding or indexing fixes it: the points
+themselves are at the wrong height for this reader.
+
+**The fix this pins down exactly:** `split_loop` must produce, for each station, a point **per reader** — one at the
+wall's base for the strip, one at the reveal's elevation for the reveal — because `Solid::point` interns nothing, two
+readers already need two points, and today they are being handed the same one. That is the whole of it: one station,
+two heights, one shared id where there must be two.
+
+**A part's base can be a slab lower than its own outline** (`-0.3` above), which is the same phenomenon from the other
+side and confirms the reading: the strip's inner and outer corners are taken from readers that were never meant to
+agree.
