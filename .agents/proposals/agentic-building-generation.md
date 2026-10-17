@@ -4249,3 +4249,162 @@ kind of silence.
 than papered over. `validate::document` alone also stays silent about a mass outline with no triangulation — the name
 arrives through `Building::validate()` — and the honest fix is a **gate** in `check_masses` (asking `self_meeting` of a
 mass's own outline), which would give `UnattachedOverlap` a gate it has never had.
+
+## What the mass-outline gate found: `UnattachedOverlap` had a caller and no gate, and `document` said nothing (2026-11-01, branch `feature/building-mass-gate`)
+
+The open item above is closed, and the shape it names is the one the section above already wrote down: a needle cut into a
+mass's own outline, which reached the overlap subtraction with nothing behind it. **Two readings that were one gap**, and both
+halves of it are measured rather than argued.
+
+### The gate, and the shape of the answer
+
+**One new `Violation`, a parallel reading and not a widened [`VoidNotSimple`]**, so the choice the brief left open is decided
+by the payload: `VoidNotSimple` carries `{ mass, void, meeting }` and **a mass has no void to name**, so reusing it would have
+meant an `Option<usize>` whose `None` says "there may be no void here" — a variant that is true of a mass rather than one that
+is false of it, which every reader of the first kind pays for on the second. `OutlineNotSimple { mass, meeting }` carries the
+**same [`SelfMeeting`]**, and both are read by the **same [`self_meeting`] answer**, so the two readings cannot come apart.
+
+**`check_masses` asks it once per mass, and reads that one answer twice.** The report is the loop below; the gate is
+`check_overlap`, which **skips a pair outright** when either outline meets itself. Skipping rather than declining is the point:
+`plans_share_area` would have answered `false` for such a pair, which is a statement about a measurement rather than about two
+buildings. **Asking once is what makes the name and the gate the same fact** — the same argument `check_voids` already makes
+about `VoidNotInside` against `VoidNotSimple`.
+
+**The rank is `0`'s, not a new one.** `VoidNotSimple` took slot three of rank `6` because rank `6` is the rank this module
+already reserves for "a statement about one mass's own courtyards"; the parallel is rank `0`, the outline's own rank, where
+`OutlineReversed` sits, with the third through fifth slots (`0, 0, meeting_rank`). **A new rank at the end was rejected for the
+reason the decline slice recorded**: a statement about a mass's outline does not belong after every grid and wall fault. The
+third slot is `0` where `OutlineReversed`'s is `ordered(area)`, and the only `f32` bit pattern `ordered` folds to `0` is
+`0xFFFFFFFF` — a negative `NaN` — which `plan_area` cannot return for a loop of finite corners, so the two cannot collide and
+the key stays total.
+
+### What each shape now says, and what `document` says alone
+
+`validate_probe`'s new section is the control the change most needed, and it was built **first** — against this tree's
+`check_masses`, `document` reported **`0` violations** for both self-meeting outlines and `Building::validate` said
+`DidNotExpand` alone, so a gate that did nothing at all would have been green and wrong:
+
+| the mass outline | before, `document` alone | before, `Building::validate` | after, both entry points |
+| --- | --- | --- | --- |
+| a needle cut into the north edge | **0 violations** | `DidNotExpand { MiterUnresolved { node: 3 }, MiterUnresolved { node: 4 } }` | `OutlineNotSimple { mass: MassId(0), meeting: Touch { edge: 2, node: 4 } }`, and `DidNotExpand` beside it |
+| a spike crossing its own south edge | **0 violations** | `DidNotExpand { MiterTooLong { node: 4, reach: 1.8728669 }, MiterTooLong { node: 5, reach: 1.8728669 } }` | `OutlineNotSimple { mass: MassId(0), meeting: Crossing { left: 0, right: 3 } }`, and `DidNotExpand` beside it |
+| two `3 × 3` squares sharing one corner | 0 violations | `DidNotExpand { OffsetSelfIntersecting { left: 1, right: 6 }, … }` | **unchanged: 0 violations** — see below |
+| a square with one node on its east edge | `UnattachedOverlap { mass: MassId(0), other: MassId(1) }`, `clip` reads `50.0000` | the same | **identical** |
+| a plain `10 × 10` square | `UnattachedOverlap { mass: MassId(0), other: MassId(1) }`, `clip` reads `50.0000` | the same | **identical** |
+
+**Both readings of [`SelfMeeting`] are carried, not one of them,** because the payload is the author's two different edits and
+a needle is not a crossing: `Touch { edge: 2, node: 4 }` names one node standing inside the edge that runs over it, and
+`Crossing { left: 0, right: 3 }` names two edges out of order. The control was built to hold the second as well, because a gate
+proved only against a touch would pass a check that read crossings wrongly.
+
+**`validate::document` alone now says the same name `Building::validate` does**, which is the whole of requirement two: the
+name is in the **document** half, so it cannot depend on which entry point ran. `Building::validate` still adds `DidNotExpand`
+— nothing is lost, and the shape is no longer the only thing a reader has to reconstruct from a mitre length.
+
+### The two `3 × 3` squares sharing a corner: still silent, and this time the mass case is stronger than the void case
+
+**It is still silent, and that is right, for a reason the void half never had.** `self_meeting` is **one reading** now serving
+both loops, and its one judgement is that a point **two of the loop's own nodes stand at** is not a meeting — because a loop
+pinched that way builds. For a void that was measured: two `3 × 3` squares sharing a corner expand to an edge-manifold ring,
+no boundary loop, Euler `0`, volume `24.1920 m³` against `(offset − loop) × height` to `2 × 10⁻⁶`.
+
+**For a mass outline the same argument is stronger, and the new probe row is what measures it:** the pinched outline as a
+**mass** is refused by the expander's inward offset walk outright — `OffsetSelfIntersecting { loop_of: Outline { mass: MassId(0) },
+left: 1, right: 6 }` and `{ left: 2, right: 5 }` — so there is **no mass standing there at all**, and a document with no mass
+has no outline that needs a name. **`document` is silent and `Building::validate` names the walk's refusal**, which is exactly
+the arrangement the void half has and the one this slice did not invent: silent where the building is sound, named where it is
+not. The remaining gap is the one `clip` cannot measure, now stated about a loop with no building behind it rather than about a
+caller with no gate.
+
+**The row the gate was built for, at last:** `courtyard_probe`'s "the same needle on a mass's own outline, with the needle"
+read **`validate says DidNotExpand`** before and reads **`validate says OutlineNotSimple and DidNotExpand`** now. The paired
+row without the needle is untouched: `50.0000` against a true `50.0000`, `UnattachedOverlap`.
+
+### Every right reading, still right
+
+`courtyard_probe` is **823 lines before and 823 after**, and `Compare-Object` reports **4 differing records — 2 on each side**.
+Two are the two sentences in that probe's own doc and header this change falsified (they said the overlap test had "no gate at
+all" and that "no simplicity check is asked of a mass outline anywhere in `document`"); the other two are the needle row's name.
+**Every other line is byte-identical**, which is the mechanical form of:
+
+| the reading | before | after |
+| --- | --- | --- |
+| the `25`-cell overlap grid | `50.0000` at every cell, every one `fired` | **`50.0000` at all 25, all `fired`** |
+| the degenerate-edge sweep, `0.01` to `3.00 m` | `4 × over` exactly, `VoidNotInside and DidNotExpand` at all 11 steps | **identical at all 11 steps** |
+| a `4 × 4` rectangle | `16.0000` | `16.0000` |
+| one collinear node / one on every edge | `16.0000` / `16.0000` | `16.0000` / `16.0000` |
+| the `0.0001 m` sliver | `15.9996` | `15.9996` |
+| the zero-area lobe (a node written twice) | `16.0000` | `16.0000` |
+| the `1 m` slit | `12.0000` | `12.0000` |
+| the simple-outside controls | `12.0000` against `20.0000` → `8.0000`, `over: 11.960006`; `15.5000` against `24.5000` | **identical, both firing** |
+| the two authored pinches (9 walls each) | builds, `validate says nothing`, volumes to `4 dp` | **identical at all 9 walls** |
+
+`validate_probe` is **344 lines before and 397 after**, and its diff is **53 records, every one of them added** — `Compare-Object`
+reports **0 records only in the before run**, so every reading that probe made is unchanged and the new section is purely
+additive.
+
+### The gate, measured on the branch
+
+- **29/29 building examples exit 0** and **16/16 gallery probe examples exit 0**, each run by name from the built binary.
+  `cargo build --workspace --all-targets` exits 0 and warns **only** of the `census.exe` / `census.pdb` output filename
+  collision — the set every earlier section quotes, and no new warning. `cargo fmt --all -- --check` is clean.
+- **Nine before/after pairs on this adapter, identical on all three hashes: 9 rows, 27 fields, 0 moved.** The before set was
+  rendered with **main's** `crates/building/src` in place and the after set with the branch's, both through the built binary and
+  to fresh names. **Which hash is which, because the three are not the same measurement:** `png` is the **SHA-256 of the written
+  `.png` file**; `document` and `image` are **the manifest's own fields**, the document hash over the documents the compile
+  emitted and the image hash over the **raw pixel buffer**. The `.png` column reproduces the table in *The baseline* by fresh
+  render (`house B13154AD7D29F938` … `identity 974FB5B24E1E7A35`), which is the canary that says the pair is this machine and
+  this tree; and `house`'s `image` field reads `4f343949d83b2064`, which is the second of the two hashes of one frame the
+  section *Correction: the difference was the hash's domain* is about.
+- **No gallery scene authors a mass with a self-meeting outline, and it is measured rather than grepped.** A throwaway gallery
+  probe read `OutlineNotSimple` out of **both** entry points for all nine scenes' own `Building` documents —
+  `house`, `hall`, `hall_large`, `shed`, `terrace`, `wing`, `workshop`, `yard`, `identity`, **13 masses** between them —
+  and every one reads **0 from `document`, 0 from `Building::validate`, and 0 document faults of any kind**. **The probe
+  carried a control**, because an instrument that cannot fire agrees because it cannot differ: the `house` with its own outline
+  replaced by the needle reads **`1` from `document` and `1` from `Building::validate`**, with the payload
+  `OutlineNotSimple { mass: MassId(0), meeting: Touch { edge: 2, node: 4 } }` and `PlateCoverage` beside it. The probe was
+  deleted after the measurement rather than committed. Three of the nine (`shed`, `identity`, `workshop`) **assert**
+  `building.validate().is_empty()` in their own source, so a self-meeting outline would have panicked the render.
+- `scene_identity_probe` reads **806 rows two-way** (`77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101`), contiguous, every name
+  non-empty, every name round-tripping, the channel two-way.
+
+### What this slice's brief got wrong
+
+**It called the fix "a gate, not a violation", and a gate alone would have left requirement one unmet.** Asking `self_meeting` in
+`check_masses` and refusing the subtraction where it answers is what stops `clip` being asked about a plan it cannot measure —
+but on its own it would have produced a **document that declined silently**, which is the same fault the last slice closed for
+`VoidNotInside`, moved one caller over. **The violation is not a second name for the gate; it is the half of the gate that is a
+sentence an author can act on**, and a gate with no report is a gate that has thrown a reading away.
+
+**It framed the choice as "reuse `VoidNotSimple`'s reading, or add the parallel one", which is the right question and the
+answer is not symmetric.** Reuse was never available: the payload names a `void`, and **the deciding evidence is that a mass
+outline that meets itself does not merely fail to expand — the offset walk refuses it by name** (`MiterUnresolved`, `MiterTooLong`,
+`OffsetSelfIntersecting`), so there is no `Void { mass, void }` to point at. A `VoidNotSimple { void: 0 }` on a mass with no void
+would have been a number that names nothing, which is the failure mode this note has an entry for.
+
+**It asked for "the new reading, from `check_masses` and from `validate::document` alone", as if those were two things to
+report.** They are the same call — `document` *is* `check_masses`'s caller — and the only reason they could differ is the
+`DidNotExpand` that `Building::validate` adds. **So the measurement that matters is the one this section leads with**: against
+this tree, `document` reported **0 violations** for both shapes.
+
+**And it named "a needle" as the shape, which is only one of the two readings.** A needle is a `Touch`; a spike crossing its
+own edge is a `Crossing` and carries the same fault with a different payload, and a gate proved only against the needle would
+have passed a check that reported crossings under the wrong indices.
+
+### What remains open
+
+- **The authored pinch is still the one courtyard whose areas nothing can check**, and this slice did not change that: it is
+  now silent on **two** loops rather than one, because the mass outline is asked the same question and the same answer is
+  `None`. For the void that silence costs a sound ring whose areas cannot be checked; **for the mass outline it costs nothing,
+  because the offset walk refuses it outright** — the new row measures this, and it is the first evidence that the pinch is a
+  question about a *void* rather than about a loop in general.
+- **`covers` is still a necessary condition and not a proof**, unchanged by this slice: a loop that meets itself whose triangles
+  happened to sum to its shoelace with positive-area overlap would pass it, and the gate would now name it rather than measure
+  it — which is a strict improvement on being measured at `12.5000` against a true `50.0000`, and no reason to think the
+  measurement was ever wanted.
+- **The gate is `self_meeting` and not `clip`.** A mass outline that meets itself is never asked; an outline `clip` declines for
+  some other reason still reaches `plans_share_area`, which answers "no overlap" about two masses it did not compare. **No such
+  outline was found and none was constructed**, so this is the spelling that is missing rather than a capability that is
+  absent — the first question to ask about any future report of it is which of the two lines in
+  [`plans_share_area`] declined.
+

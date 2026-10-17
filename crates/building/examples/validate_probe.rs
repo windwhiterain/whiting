@@ -702,6 +702,7 @@ fn variant_name(violation: &Violation) -> &'static str {
     match violation {
         Violation::OutlineReversed { .. } => "OutlineReversed",
         Violation::OutlineTooShort { .. } => "OutlineTooShort",
+        Violation::OutlineNotSimple { .. } => "OutlineNotSimple",
         Violation::ZeroHeight { .. } => "ZeroHeight",
         Violation::UnattachedOverlap { .. } => "UnattachedOverlap",
         Violation::MassHostMissing { .. } => "MassHostMissing",
@@ -1140,6 +1141,8 @@ fn main() {
         &overlapping_pair(Some(MassId(0))),
     );
 
+    a_mass_outline_that_meets_itself();
+
     let mut lost_host = house();
     lost_host.masses[0].attachment = Some(Attachment {
         host: MassId(9),
@@ -1432,4 +1435,122 @@ fn overlapping_pair(attachment: Option<MassId>) -> BuildingSkeleton {
         None => second,
     };
     BuildingSkeleton::new(vec![first, second], Vec::new())
+}
+
+/// Asks whether a **mass's own outline** that meets itself has a name, which is the last loop in
+/// this module that nothing asked about.
+///
+/// # Invariants
+///
+/// - **Two shapes must be named and two must not**, or the check is not a gate but a width: a needle
+///   and a crossing are the two ways [`SelfMeeting`] reads, and an authored pinch and a collinear node
+///   are the two ways an outline this crate writes on purpose looks. The last of those is
+///   [`ops::split_outline`](whiting_building::ops::split_outline)'s own insertion, so a gate that caught
+///   it would refuse a document the crate builds itself.
+/// - **Both entry points are printed for every row**, because the fault this section is about is one
+///   that arrived only through [`Building::validate`]'s `DidNotExpand`: `report_document` is
+///   [`validate::document`] alone, and a name that exists in one and not the other is not the shape the
+///   author has to fix.
+/// - **The clip reading is printed too**, because "the check said nothing" cannot tell a plan that was
+///   measured and found disjoint from a plan that could not be measured at all — which is the whole of
+///   what the overlap subtraction used to be asked about.
+fn a_mass_outline_that_meets_itself() {
+    println!(
+        "\n# a mass outline that meets itself: the two shapes that meet, and the two that must not"
+    );
+    for (name, plan) in [
+        ("a needle cut into the north edge", needled_square()),
+        ("a spike crossing its own south edge", crossed_square()),
+        ("two 3 x 3 squares sharing one corner", pinched_pair()),
+        (
+            "a square with one node written on its east edge",
+            collinear_square(),
+        ),
+        (
+            "a plain 10 x 10 square",
+            square((0.0, 0.0), (10.0, 10.0), 0.0),
+        ),
+    ] {
+        let mut skeleton = BuildingSkeleton::default();
+        skeleton.masses = vec![
+            Mass::new(plan.clone(), 3.2).with_wall(0.3).with_slab(0.4),
+            Mass::new(square((5.0, 0.0), (15.0, 10.0), 0.0), 3.2)
+                .with_wall(0.3)
+                .with_slab(0.4),
+        ];
+        let plan_of =
+            |mass: &Mass| -> Vec<Vec2> { mass.outline.iter().map(|n| n.position).collect() };
+        let shared = whiting_building::clip::shared_area(
+            &plan_of(&skeleton.masses[0]),
+            &plan_of(&skeleton.masses[1]),
+        );
+        println!(
+            "\n{name}: the two plans share {}, of a true 50.0000",
+            match shared {
+                Some(area) => format!("{area:.4} m2"),
+                None => "nothing, because `clip` cannot measure the first plan".to_owned(),
+            }
+        );
+        report_document(&format!("{name}, through validate::document"), &skeleton);
+        report_building(&format!("{name}, through Building::validate"), &skeleton);
+    }
+}
+
+/// Returns a `10 × 10` square with a needle cut into its north edge and straight back out, the same
+/// shape [`courtyard_probe`](whiting_building) cuts into a void loop.
+///
+/// Two of its nodes stand at one place and a third stands inside the edge they run over, so the loop
+/// is not simple in a way no reader has to be told about: it encloses `50.0000 m²` a person can check.
+fn needled_square() -> Vec<PlanNode> {
+    vec![
+        PlanNode::new([0.0, 0.0], 0.0),
+        PlanNode::new([10.0, 0.0], 0.0),
+        PlanNode::new([10.0, 10.0], 0.0),
+        PlanNode::new([6.0, 10.0], 0.0),
+        PlanNode::new([8.0, 10.0], 0.0),
+        PlanNode::new([0.0, 10.0], 0.0),
+    ]
+}
+
+/// Returns a square with a spike running back across its own south edge: the second reading
+/// [`SelfMeeting`] carries, and the one a pinch cannot stand in for.
+fn crossed_square() -> Vec<PlanNode> {
+    vec![
+        PlanNode::new([0.0, 0.0], 0.0),
+        PlanNode::new([6.0, 0.0], 0.0),
+        PlanNode::new([6.0, 6.0], 0.0),
+        PlanNode::new([3.0, 6.0], 0.0),
+        PlanNode::new([3.0, -3.0], 0.0),
+        PlanNode::new([0.0, 6.0], 0.0),
+    ]
+}
+
+/// Returns two `3 × 3` squares sharing exactly one corner: the **authored** pinch, which builds a
+/// sound solid and which every simplicity reading in this crate declines on purpose.
+fn pinched_pair() -> Vec<PlanNode> {
+    vec![
+        PlanNode::new([-3.0, -3.0], 0.0),
+        PlanNode::new([0.0, -3.0], 0.0),
+        PlanNode::new([0.0, 0.0], 0.0),
+        PlanNode::new([3.0, 0.0], 0.0),
+        PlanNode::new([3.0, 3.0], 0.0),
+        PlanNode::new([0.0, 3.0], 0.0),
+        PlanNode::new([0.0, 0.0], 0.0),
+        PlanNode::new([-3.0, 0.0], 0.0),
+    ]
+}
+
+/// Returns a square with one node standing on its own edge, which is what
+/// [`ops::split_outline`](whiting_building::ops::split_outline) inserts at every junction.
+///
+/// A node on an edge is not a meeting: the two segments that meet there are the node's **own**, and
+/// naming it would refuse every document this crate splits.
+fn collinear_square() -> Vec<PlanNode> {
+    vec![
+        PlanNode::new([0.0, 0.0], 0.0),
+        PlanNode::new([10.0, 0.0], 0.0),
+        PlanNode::new([10.0, 5.0], 0.0),
+        PlanNode::new([10.0, 10.0], 0.0),
+        PlanNode::new([0.0, 10.0], 0.0),
+    ]
 }

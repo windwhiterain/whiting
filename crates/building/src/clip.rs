@@ -15,9 +15,12 @@
 //! # Invariants
 //!
 //! - **Both polygons are simple** (non-self-intersecting), and **this was an assumption this module's
-//!   one caller that could not promise it used to keep to**: `validate` reports a reversed or
-//!   too-short outline, and a void loop that meets itself is named before anything here is asked of
-//!   it. `courtyard_probe`'s section on a void loop that meets itself measured what happens when the
+//!   callers could not all promise**: `validate` reports a reversed or too-short outline, and a loop
+//!   that meets itself is named before anything here is asked of it — **a void loop's by
+//!   [`Violation::VoidNotSimple`](crate::validate::Violation::VoidNotSimple) and a mass outline's by
+//!   [`Violation::OutlineNotSimple`](crate::validate::Violation::OutlineNotSimple), which is the gate
+//!   the overlap subtraction never had until the two were given one reading between them**.
+//!   `courtyard_probe`'s section on a void loop that meets itself measured what happens when the
 //!   assumption is broken, and the answer was that the numbers this module returned were whatever its
 //!   ear clipper happened to produce, so a caller comparing two of them was reading the clipper and
 //!   not the shape — the `+8` and `-8` of a symmetric bowtie gave `8.0` against `12.0` and the same

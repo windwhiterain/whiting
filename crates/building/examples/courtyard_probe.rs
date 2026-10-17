@@ -970,7 +970,7 @@ fn a_loop_the_clipper_cannot_close() {
 ///
 /// # Invariants
 ///
-/// - **The needle is the shape the gate cannot see, and it is not a shape from nowhere.** Every
+/// - **The needle is the shape the void gate cannot see, and it is not a shape from nowhere.** Every
 ///   loop `clip` mis-measures in the section above is a bowtie or a spike that runs *over* two of its
 ///   own nodes, and both are [`Violation::VoidNotSimple`](whiting_building::validate::Violation::VoidNotSimple)'s
 ///   to report, so nothing reaches the subtraction with them. The needle's meeting is **at a node the
@@ -984,10 +984,13 @@ fn a_loop_the_clipper_cannot_close() {
 ///   lost nothing: there is no building for the fault to have opened in. A check that skips a loop the
 ///   expander *accepts* has thrown away a reading, and the two are told apart by asking `validate`
 ///   rather than by predicting it here.
-/// - **The last reading is the other caller, and it is the one with no gate at all.** The overlap
-///   test asks `clip` about **mass outlines**, and no simplicity check is asked of a mass outline
-///   anywhere in [`document`](whiting_building::validate::document), so this loop reaches the
-///   subtraction with nothing behind it at all.
+/// - **The last reading is the other caller, and it is the one that had no gate at all until the mass
+///   outline was asked the same question a void loop is.** The overlap test asks `clip` about **mass
+///   outlines**, and nothing in [`document`](whiting_building::validate::document) used to ask whether
+///   one is simple, so this loop reached the subtraction with nothing behind it. It now reads
+///   [`Violation::OutlineNotSimple`](whiting_building::validate::Violation::OutlineNotSimple) from the
+///   document check alone, and the pair is not asked at all — which is what makes the row below a
+///   measurement of the gate rather than of the two masses.
 fn the_loop_no_fault_names() {
     let wall = 0.3;
     let half = 8.0;
@@ -1001,7 +1004,7 @@ fn the_loop_no_fault_names() {
         [-4.0, 4.0],
     ];
     println!(
-        "\n# the one loop above that no fault names: a needle that doubles back along its own line over\n  \
+        "\n# the loop above that no void fault names: a needle that doubles back along its own line over\n  \
          the very node it repeats. `VoidNotSimple` skips a meeting at a point the author wrote down, and\n  \
          an edge of no length is not what this carries, so the subtraction is asked of it"
     );
@@ -1021,7 +1024,8 @@ fn the_loop_no_fault_names() {
         );
     }
 
-    // The other caller, with no gate in front of it: the same needle cut into a mass's own outline.
+    // The other caller: the same needle cut into a mass's own outline, which is now named by the same
+    // reading a void loop is.
     let plain: [[f32; 2]; 4] = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]];
     let needled: [[f32; 2]; 6] = [
         [0.0, 0.0],
