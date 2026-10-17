@@ -9,10 +9,14 @@
 //! the checks are not reading zero because they never fire. A check that has only ever seen a good
 //! building is indistinguishable from a check that does nothing.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use whiting_building::Building;
 use whiting_building::expand::build;
+use whiting_building::grid::{FaceRef, Rhythm};
 use whiting_building::mass::{Mass, MassId, PlanNode};
 use whiting_building::mesh::{BuildingMesh, Element, MassSurface, RoofSurface, SolidId};
+use whiting_building::openings::{Inset, Opening, RevealSide};
 use whiting_building::ops;
 use whiting_building::roof::{CrestPoint, EaveStation, Roof, RoofId, RoofPlane, RoofRow};
 use whiting_building::skeleton::BuildingSkeleton;
@@ -250,6 +254,186 @@ fn with_wing(host: Mass, station: f32, wing: Mass) -> BuildingSkeleton {
     skeleton
 }
 
+/// Returns a copy of the house with a rhythm on every face: three bays across, two storeys up.
+///
+/// **The grid is authored on all four faces and the openings only on one of them**, because the
+/// faces with no opening are the control: they must expand to exactly what they expanded to before
+/// openings existed, which is what the un-cut numbers in each section are compared against.
+fn gridded_house() -> BuildingSkeleton {
+    let mut skeleton = BuildingSkeleton::new(vec![house_mass()], Vec::new());
+    let columns = Rhythm::Even { count: 3 };
+    let rows = Rhythm::Even { count: 2 };
+    for face in skeleton.faces_of(MassId(0)) {
+        ops::split_face(&mut skeleton, face, &columns, &rows).expect("the face is there");
+    }
+    skeleton
+}
+
+/// Adds one opening and returns its index, or `None` when the verb refuses it.
+fn add(
+    skeleton: &mut BuildingSkeleton,
+    face: FaceRef,
+    row: usize,
+    column: usize,
+    inset: Inset,
+) -> usize {
+    ops::add_opening(skeleton, Opening::new(face, row, column, inset))
+        .expect("the slot is in the grid")
+}
+
+/// Prints what a set of openings takes out of one mass, and how the solid reads afterwards.
+///
+/// The number this exists for is `taken`: a wall with a hole holds less material by exactly
+/// `hole area × wall thickness`, and that is a check no predicate about closure can make — a solid
+/// built inside out, or one with a hole in the wrong place, still closes and still has Euler 2.
+fn report_cut(name: &str, skeleton: &BuildingSkeleton, uncut: f32, holes: &[usize]) {
+    println!("{name}");
+    let mass = SolidId::Mass(MassId(0));
+    let analytic: f32 = holes
+        .iter()
+        .map(|index| skeleton.aperture(*index).expect("just authored").1)
+        .map(|extents| extents.area() * skeleton.masses[0].wall)
+        .sum();
+    for (index, extents) in holes.iter().map(|index| {
+        let (_, extents) = skeleton.aperture(*index).expect("just authored");
+        (*index, extents)
+    }) {
+        println!(
+            "  opening {index}: hole [{:.4}, {:.4}] x [{:.4}, {:.4}], {:.4} m² of wall",
+            extents.from,
+            extents.to,
+            extents.low,
+            extents.high,
+            extents.area()
+        );
+    }
+    match build(skeleton) {
+        Ok(mesh) => {
+            let cut = mesh.solid_signed_volume(mass);
+            let reveals = mesh
+                .faces
+                .iter()
+                .filter(|face| matches!(face.element, Element::Mass(_, MassSurface::Reveal { .. })))
+                .count();
+            let per_hole = mesh.faces.iter().fold(
+                BTreeMap::<usize, BTreeSet<RevealSide>>::new(),
+                |mut sides, face| {
+                    if let Element::Mass(_, MassSurface::Reveal { opening, side, .. }) =
+                        face.element
+                    {
+                        sides.entry(opening).or_default().insert(side);
+                    }
+                    sides
+                },
+            );
+            println!(
+                "  the mass: {} faces, loops {}, euler {}, manifold {}, volume {cut:.4}",
+                mesh.faces_of(mass).len(),
+                mesh.solid_boundary_loops(mass),
+                mesh.solid_euler_characteristic(mass),
+                mesh.solid_is_manifold(mass),
+            );
+            let wall_faces = mesh
+                .faces
+                .iter()
+                .filter(|face| {
+                    face.element == Element::Mass(MassId(0), MassSurface::OuterWall { edge: 0 })
+                })
+                .count();
+            println!("  the first wall's outer face is {wall_faces} triangles");
+            // A through-opening is a **tunnel**, which is a handle on the solid's own surface, so the
+            // Euler characteristic is two less per hole than the un-cut shell's. The number printed
+            // here is that expectation read back, and the wall's own edges are why: the reveal joins
+            // two parts of one closed surface, and a surface with one handle is a torus.
+            println!(
+                "  euler {} against 2 - 2 x {} hole(s) = {}, manifold {}, plan area {:.4}",
+                mesh.solid_euler_characteristic(mass),
+                holes.len(),
+                2 - 2 * holes.len() as i64,
+                mesh.solid_is_manifold(mass),
+                mesh.solid_plan_area(mass),
+            );
+            println!(
+                "  un-cut {uncut:.4}, cut {cut:.4}, taken {:.4}",
+                uncut - cut
+            );
+            println!(
+                "  the holes' own areas say {analytic:.4}, and the difference is {:.6}",
+                (uncut - cut) - analytic
+            );
+            println!(
+                "  reveal faces {reveals} for {} hole(s), 4 quads = 8 triangles each",
+                holes.len()
+            );
+            for (opening, sides) in &per_hole {
+                println!(
+                    "    opening {opening} owns {} sides {sides:?}, one quad each",
+                    sides.len()
+                );
+            }
+        }
+        Err(failure) => {
+            println!("  {} problem(s), no mesh", failure.problems.len());
+            for problem in &failure.problems {
+                println!("    {problem:?}");
+            }
+        }
+    }
+}
+
+/// Returns a mass whose front edge stands on ground that rises a metre over its length.
+///
+/// **A hole can only cross a ground line where there is one to cross.** On the level house every
+/// sill is at or above the ground by its own inset, so this is the only way to author the refusal:
+/// the far end of a bay stands higher than the near end, and a window whose sill is below the far
+/// end's ground is below the ground it stands on.
+fn ramp_mass() -> Mass {
+    Mass::new(
+        vec![
+            PlanNode::new([0.0, 0.0], 0.0),
+            PlanNode::new([WIDTH, 0.0], 0.0),
+            PlanNode::new([WIDTH, DEPTH], 2.0),
+            PlanNode::new([0.0, DEPTH], 2.0),
+        ],
+        3.0,
+    )
+    .with_wall(0.3)
+    .with_slab(0.4)
+}
+
+/// Returns the ramp, with a rhythm on its rising face.
+fn gridded_ramp() -> (BuildingSkeleton, FaceRef) {
+    let mut skeleton = BuildingSkeleton::new(vec![ramp_mass()], Vec::new());
+    let face = FaceRef::new(MassId(0), 1);
+    ops::split_face(
+        &mut skeleton,
+        face,
+        &Rhythm::Even { count: 3 },
+        &Rhythm::Even { count: 2 },
+    )
+    .expect("the face is there");
+    (skeleton, face)
+}
+
+/// Returns a copy of the L-shaped mass with a rhythm on its first face and one window in it.
+///
+/// **A cut on a concave outline is where the two discs have to hold together.** The cut stations are
+/// collinear nodes of the floor's loop and of the soffit's, and the ear clip has to walk a polygon
+/// that is no longer four corners — with a reflex node in it — and still use every edge of the loop
+/// once, which is what closes the floor against the inner wall and the soffit against the outer one.
+fn gridded_wing() -> (BuildingSkeleton, FaceRef) {
+    let mut skeleton = BuildingSkeleton::new(vec![l_shaped()], Vec::new());
+    let face = FaceRef::new(MassId(0), 0);
+    ops::split_face(
+        &mut skeleton,
+        face,
+        &Rhythm::Even { count: 3 },
+        &Rhythm::Even { count: 2 },
+    )
+    .expect("the face is there");
+    (skeleton, face)
+}
+
 /// Prints what one solid of a mesh is closed with, and whether the host's two discs were cut whole.
 ///
 /// The disc count is the second half of the measurement: an `n`-node loop triangulates into
@@ -372,6 +556,146 @@ fn main() {
             2.0 / 28.0,
             box_mass([3.5, 5.0], [5.5, 7.0]),
         ),
+    );
+
+    println!();
+    println!("walls cut by openings, and the material the holes take out of them");
+
+    // Every case below is the same house with a rhythm on all four faces, so the un-cut volume is
+    // one number and each hole's share of it is `hole area x wall thickness`.
+    let uncut = build(&gridded_house())
+        .expect("the mass expands without openings")
+        .solid_signed_volume(SolidId::Mass(MassId(0)));
+    let face = FaceRef::new(MassId(0), 0);
+    println!(
+        "the un-cut mass is {uncut:.4}, and its wall is {} thick",
+        gridded_house().masses[0].wall
+    );
+
+    let mut windowed = gridded_house();
+    let window = add(&mut windowed, face, 0, 1, Inset::new(0.5, 0.5, 0.4, 0.3));
+    report_cut(
+        "a window, in a middle bay of the ground storey",
+        &windowed,
+        uncut,
+        &[window],
+    );
+
+    let mut doored = gridded_house();
+    // The sill inset is zero: a door's sill is the elevation the mass was authored at, and the
+    // margin under it is the slab's own thickness, one side, and the floor's own edge, the other.
+    // The two jambs stand further in than the wall's own thickness because the miter takes that much
+    // off each end of the inner edge: a jamb at the corner would put its reveal on a corner the
+    // neighbouring wall still claims whole, and that is refused below.
+    let door = add(&mut doored, face, 0, 0, Inset::new(0.6, 0.6, 0.0, 0.2));
+    report_cut(
+        "a door, whose sill stands on the ground the mass was authored at",
+        &doored,
+        uncut,
+        &[door],
+    );
+
+    let mut stacked = gridded_house();
+    let below = add(&mut stacked, face, 0, 1, Inset::new(0.5, 0.5, 0.4, 0.3));
+    let above = add(&mut stacked, face, 1, 1, Inset::new(0.5, 0.5, 0.4, 0.4));
+    report_cut(
+        "two windows stacked in one bay: the storey line between them is the mullion",
+        &stacked,
+        uncut,
+        &[below, above],
+    );
+
+    // The same cut on a concave outline, where the floor and the soffit are no longer four corners:
+    // the cut stations are collinear nodes of both loops and the clip has to carry them.
+    let (mut wing, wing_face) = gridded_wing();
+    let wing_volume = build(&gridded_wing().0)
+        .expect("the L expands without openings")
+        .solid_signed_volume(SolidId::Mass(MassId(0)));
+    let glazed = add(&mut wing, wing_face, 0, 1, Inset::new(0.5, 0.5, 0.4, 0.3));
+    report_cut(
+        "the same window on the L-shaped outline, whose floor is no longer a quadrilateral",
+        &wing,
+        wing_volume,
+        &[glazed],
+    );
+
+    println!();
+    println!("what is refused, and no mesh for the mass that asked for it");
+    // A hole past its own bay is refused by the verb, so the document is written past it on purpose:
+    // the question here is what the expander says when it finds one.
+    let mut past_bay = gridded_house();
+    past_bay
+        .openings
+        .push(Opening::new(face, 0, 0, Inset::new(0.0, 3.0, 0.3, 0.3)));
+    report_problems(
+        "  a hole that reaches past its own bay, written past the verb that refuses it",
+        &past_bay,
+    );
+
+    let (mut ramp, ramp_face) = gridded_ramp();
+    add(&mut ramp, ramp_face, 0, 0, Inset::new(0.5, 0.5, 0.5, 0.2));
+    report_problems(
+        "  a window whose sill is under the ground line at its far jamb, on a rising wall",
+        &ramp,
+    );
+
+    let mut overlapped = gridded_house();
+    add(&mut overlapped, face, 0, 1, Inset::new(0.5, 0.5, 0.4, 0.3));
+    add(&mut overlapped, face, 0, 1, Inset::new(0.8, 0.8, 0.5, 0.4));
+    report_problems("  two holes in one bay, one inside the other", &overlapped);
+
+    let mut orphaned = gridded_house();
+    let lone = add(&mut orphaned, face, 1, 1, Inset::new(0.5, 0.5, 0.4, 0.3));
+    ops::clear_face(&mut orphaned, face);
+    report_problems(
+        "  an opening whose bay a rhythm cleared after the hole was authored",
+        &orphaned,
+    );
+    println!("    (the opening it names was index {lone})");
+
+    // The ground line passes one sill's elevation inside a band that carries no hole at all, so the
+    // gap under that sill there would be a quad folded on itself: a bow tie, which closes over
+    // nothing and reads as no fault of any kind. Both windows are legal where they stand — each sill
+    // is above the ground under its own two jambs — and it is the stretch between them that fails.
+    let (mut folded, folded_face) = gridded_ramp();
+    add(
+        &mut folded,
+        folded_face,
+        0,
+        0,
+        Inset::new(0.5, 0.5, 0.7, 0.2),
+    );
+    add(
+        &mut folded,
+        folded_face,
+        0,
+        1,
+        Inset::new(0.5, 0.5, 1.3, 0.1),
+    );
+    report_problems(
+        "  two windows, the lower sill crossing the ground line in the stretch between them",
+        &folded,
+    );
+
+    // A window on the rising wall that clears its own ground: the gap under it has a **sloped bottom
+    // edge** from one jamb to the other, and is still planar, because the whole wall lies in one
+    // vertical plane.
+    let (mut rising, rising_face) = gridded_ramp();
+    let high = add(
+        &mut rising,
+        rising_face,
+        1,
+        2,
+        Inset::new(0.5, 0.5, 0.5, 0.3),
+    );
+    let ramp_volume = build(&gridded_ramp().0)
+        .expect("the ramp expands without openings")
+        .solid_signed_volume(SolidId::Mass(MassId(0)));
+    report_cut(
+        "a window on the rising wall, its gap's bottom edge sloped from jamb to jamb",
+        &rising,
+        ramp_volume,
+        &[high],
     );
 
     println!();

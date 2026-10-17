@@ -31,9 +31,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::expand::Problem;
 use crate::grid::{FaceRef, GRID_TOLERANCE, increasing};
-use crate::mass::{MassId, PlanNode};
+use crate::mass::{Mass, MassId, PlanNode};
 use crate::math::{Vec2, Vec3, distance, dot3, subtract};
 use crate::mesh::{BuildingMesh, Element, MassSurface, RoofSurface, SolidId};
+use crate::openings::Extents;
 use crate::roof::{Roof, RoofId};
 use crate::skeleton::BuildingSkeleton;
 
@@ -383,6 +384,96 @@ pub enum Violation {
         /// The face.
         face: FaceRef,
     },
+    /// An opening names a bay the document's grid does not hold.
+    ///
+    /// # Invariants
+    ///
+    /// **The wall travels with the index**, because a slot is a `(face, row, column)` triple and
+    /// "opening 3" does not tell an author which wall is wrong. The face is the one the opening named,
+    /// which is the only reading available: the whole point of the fault is that the document holds no
+    /// grid for it.
+    ///
+    /// This is the check that makes slot-naming honest. A placement keyed by coordinates would land
+    /// somewhere else after a re-split and read as a building; a placement keyed by slot is orphaned by
+    /// one, and this names it.
+    OpeningBayMissing {
+        /// The opening, by its index in the document's list.
+        opening: usize,
+        /// The wall whose slot the opening names.
+        face: FaceRef,
+    },
+    /// An opening's insets leave it no rectangle inside its own bay.
+    ///
+    /// # Invariants
+    ///
+    /// **It is the refusal [`Opening::extents`](crate::openings::Opening::extents) already makes,
+    /// carried rather than re-derived**: an inset that is not a distance inward, and a hole with no
+    /// width or no height left in its bay, are the same statement about the same opening, and this
+    /// check reads the one answer rather than a second arithmetic that could disagree with the
+    /// expander's.
+    ///
+    /// `ops::add_opening` refuses to write one, so what this catches is a document that went past the
+    /// op or had its bay re-split underneath it — a re-split into narrower bays is the ordinary way to
+    /// arrive here, and it is why the bay is read through the document's own grid.
+    ///
+    /// **The index is the whole of what it carries**, because all four insets belong to one opening
+    /// and are read off it: which of them was wrong is not a second fault with a second fix.
+    OpeningExceedsBay {
+        /// The opening.
+        opening: usize,
+    },
+    /// An opening's hole reaches the boundary of the wall face it is cut into.
+    ///
+    /// # Invariants
+    ///
+    /// **Reaching the boundary is the fault the cut depends on** ([`crate::openings`]): this phase
+    /// cuts rectangles out of a rectangle, and a hole that touches an edge makes the wall a set of
+    /// pieces joined at the author's own corners.
+    ///
+    /// **The strip a hole must stay inside runs `0..the edge's own length` across and the ground line
+    /// to the wall top up.** The ground line is `(node elevation − slab)` at each end of the edge,
+    /// linear between them: it is the underside of the slab, which is where the expander starts the
+    /// wall face (`expand.rs` lifts its `outside_base` to `elevation − slab`). **The floor is the
+    /// maximum of the line's two ends of the hole, and the maximum is over the ends because the ground
+    /// line is straight**: a linear function attains both its extremes on an interval at that
+    /// interval's ends, so the lowest ground under a hole is under one of its two jambs. Reading the
+    /// line at the hole's midpoint instead would clear a hole on a slope whose lower end stands over
+    /// higher ground than the centre does.
+    ///
+    /// **A door is not this fault, and on level ground nothing reaches the ground line at all.** The
+    /// wall face stands on the slab's underside, one slab below the elevation the mass is authored at,
+    /// and a grid's bottom row already starts at that elevation
+    /// ([`crate::grid::face_extent`](crate::grid::face_extent)), so the wall under a bottom-row sill is
+    /// the slab's own thickness and a hole there is an interior hole like any other. An inset only ever
+    /// moves a hole **inward** — the sill up, never down — so a bottom-row hole cannot be driven onto
+    /// the ground line by its own insets; the line is reached where the ground **rises across the
+    /// face**, which is a wall on a slope. A door is a hole in row 0 whose sill is at the elevation the
+    /// mass was authored at, and it clears this check by exactly the slab's thickness.
+    OpeningOutsideWall {
+        /// The opening.
+        opening: usize,
+    },
+    /// Two openings in one wall share area.
+    ///
+    /// # Invariants
+    ///
+    /// **Touching is not sharing**, and the comparison is [`Extents::overlaps`]'s: two holes meeting
+    /// exactly along an edge remove no wall twice. That is the case a divided facade produces on
+    /// purpose — a hole in each of two adjacent bays whose insets run them together at the mullion —
+    /// and a check that counted the shared line would report every facade that was divided and then
+    /// opened.
+    ///
+    /// **Each unordered pair once, the lower index first.** Three mutually overlapping holes are three
+    /// faults and not six, and the order is the document's own, so two runs diff.
+    ///
+    /// **Openings in different walls cannot share area**, and an opening with no rectangle is not
+    /// compared at all: a hole with no extents has no area to share, whatever else is in its wall.
+    OpeningOverlaps {
+        /// The earlier of the two openings, by its index in the document's list.
+        opening: usize,
+        /// The later of the two.
+        other: usize,
+    },
     /// A facet has no area because **two of its corners are one point**, so it is a facet of no
     /// surface.
     ///
@@ -441,23 +532,26 @@ pub enum Violation {
 /// Answers for a skeleton that cannot be built, which is why it is the half an agent should call
 /// while editing.
 ///
-/// # The one check here that is quadratic
+/// # The two checks here that are quadratic
 ///
 /// [`Violation::UnattachedOverlap`] compares every mass's plan with every other mass's: `O(n^2)` in
-/// the masses and `O(k^2)` in the nodes of a pair. That is the right cost here and the wrong one
-/// anywhere else — this is called by an author asking what is wrong, a few times a second at most,
-/// and **never** by `build`, which is why the expansion can stay linear. `mountain`'s validate
-/// makes the same trade for its rib-crossing scan and states it in the same terms. A bounding box
-/// rejects a pair in `O(1)` before any edge is read, so the quadratic part is only paid by masses
-/// whose plans really are near each other, which in a building is a handful of pairs.
+/// the masses and `O(k^2)` in the nodes of a pair. [`Violation::OpeningOverlaps`] compares every
+/// pair of holes in one wall. Both are the right cost here and the wrong one anywhere else — this is
+/// called by an author asking what is wrong, a few times a second at most, and **never** by `build`,
+/// which is why the expansion can stay linear. `mountain`'s validate makes the same trade for its
+/// rib-crossing scan and states it in the same terms. The mass one rejects a pair in `O(1)` on their
+/// bounding boxes before any edge is read, so the quadratic part is only paid by masses whose plans
+/// really are near each other; the opening one walks the walls rather than the document, so the pairs
+/// it compares are only the holes that share a wall.
 ///
-/// Everything else here is a pass: the outline checks are `O(k)` per mass and the roof checks are
-/// `O(rows)` per plane.
+/// Everything else here is a pass: the outline checks are `O(k)` per mass, the roof checks are
+/// `O(rows)` per plane, and the opening checks are `O(openings)` plus the quadratic above.
 pub fn document(skeleton: &BuildingSkeleton) -> Vec<Violation> {
     let mut violations = Vec::new();
     check_masses(skeleton, &mut violations);
     check_roofs(skeleton, &mut violations);
     check_grids(skeleton, &mut violations);
+    check_openings(skeleton, &mut violations);
     violations.sort_by_key(order_key);
     violations
 }
@@ -490,7 +584,7 @@ pub fn mesh(skeleton: &BuildingSkeleton, built: &BuildingMesh) -> Vec<Violation>
         solids.insert(face.element.solid());
     }
     for solid in solids {
-        check_solid(built, solid, &mut violations);
+        check_solid(skeleton, built, solid, &mut violations);
     }
     check_planarity(built, &mut violations);
     check_degenerate_faces(built, &mut violations);
@@ -783,8 +877,27 @@ fn check_roofs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     }
 }
 
-/// Checks that a solid is closed, edge-manifold, outward, and one sphere.
-fn check_solid(built: &BuildingMesh, solid: SolidId, violations: &mut Vec<Violation>) {
+/// Checks that a solid is closed, edge-manifold, outward, and of the Euler characteristic its holes
+/// account for.
+///
+/// # Invariants
+///
+/// **The Euler characteristic is `2 − 2 × the holes through the solid`, not `2`.** A closed shell with
+/// no hole in it is a sphere, and that is what this check said until walls could be cut through: an
+/// opening is a handle through the material, so each one takes the characteristic down by two, and a
+/// mass with three openings is a genus-3 surface reading `−4`. Reporting `2` there was the check
+/// outliving its assumption — measured, on the openings slice's acceptance wall, where the geometry
+/// had just been proved right (`loops 0`, manifold, volume exact) and this was the one violation left.
+///
+/// A hole is counted from the **document** and only when it resolves: an opening whose slot the grid
+/// no longer holds builds nothing at all (that mass does not splice, and `DidNotExpand` says so), so
+/// counting it here would name a shape the mesh does not have.
+fn check_solid(
+    skeleton: &BuildingSkeleton,
+    built: &BuildingMesh,
+    solid: SolidId,
+    violations: &mut Vec<Violation>,
+) {
     let faces = built.faces_of(solid);
     let loops = built.boundary_loops_of(&faces);
     if loops != 0 {
@@ -797,8 +910,17 @@ fn check_solid(built: &BuildingMesh, solid: SolidId, violations: &mut Vec<Violat
     if volume <= 0.0 {
         violations.push(Violation::SolidInsideOut { solid, volume });
     }
+    let holes = match solid {
+        SolidId::Mass(mass) => skeleton
+            .faces_of(mass)
+            .iter()
+            .map(|face| skeleton.apertures_of(*face).len())
+            .sum(),
+        SolidId::Roof(_) => 0,
+    };
+    let expected = 2 - 2 * holes as i64;
     let euler = built.euler_characteristic_of(&faces);
-    if euler != 2 {
+    if euler != expected {
         violations.push(Violation::SolidNotASphere { solid, euler });
     }
 }
@@ -957,6 +1079,161 @@ fn check_grids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             violations.push(Violation::GridOutsideFace { face });
         }
     }
+}
+
+/// Checks every opening: that it names a bay, that its insets leave one inside that bay, that the
+/// hole stays inside the wall face, and that no two holes in one wall share area.
+///
+/// # Invariants
+///
+/// **Three stages, and each stops where the next one could not read.** An opening whose slot is off
+/// the grid has no bay to measure, and one whose insets eat its bay has no rectangle to place on the
+/// wall, so the later checks skip them rather than guess — the module's staging rule, applied to the
+/// three openings faults one after another. **A hole that does reach the wall's boundary is still
+/// gathered for the overlap comparison**, because it removes wall and its position is still a
+/// position; staging skips what cannot be read, not what is wrong.
+///
+/// **The rectangle is read the way [`BuildingSkeleton::aperture`] reads it — the document's own `bay`
+/// and then [`Opening::extents`](crate::openings::Opening::extents)**, which are the two reads that
+/// method composes. The expander cuts from `apertures_of` and this measures from here, so the two
+/// cannot disagree about where a hole is: a second arithmetic written out again in this file would be
+/// a second answer, and would drift from the first the moment the cut's rule changed. The bay is read
+/// through the document for the same reason — a slot is a slot, and re-reading the grid here would be
+/// a second way to be wrong about it.
+///
+/// `O(openings)` for the three, plus the pair scan [`check_shared_wall`] does within one wall.
+fn check_openings(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
+    // The holes that have a rectangle, in the document's own order, which is what makes the pair
+    // scan report the lower index first without comparing anything.
+    let mut cut: Vec<(usize, Extents)> = Vec::new();
+    for (index, opening) in skeleton.openings.iter().enumerate() {
+        let Some(bay) = skeleton.bay(opening.face, opening.row, opening.column) else {
+            violations.push(Violation::OpeningBayMissing {
+                opening: index,
+                face: opening.face,
+            });
+            continue;
+        };
+        let Some(extents) = opening.extents(bay) else {
+            violations.push(Violation::OpeningExceedsBay { opening: index });
+            continue;
+        };
+        if reaches_the_wall_edge(skeleton, opening.face, &extents) {
+            violations.push(Violation::OpeningOutsideWall { opening: index });
+        }
+        cut.push((index, extents));
+    }
+    check_shared_wall(skeleton, &cut, violations);
+}
+
+/// Returns whether a hole stands within [`GRID_TOLERANCE`] of the boundary of its wall face.
+///
+/// # Invariants
+///
+/// **All four edges of the strip, and a single verdict.** The strip runs `0..face_length` across and
+/// the ground line to the wall top up (see [`Violation::OpeningOutsideWall`]), so a hole that reaches
+/// any one of its four boundaries is one fault and not four: the fix is the opening, and an author
+/// told four times would look for four mistakes.
+///
+/// **The four comparisons are strict, each with the tolerance outside**, so a hole that *touches* the
+/// boundary fires and one that stands a millimetre clear does not — touching is the case the phase's
+/// cut cannot express at all. The margin is read in metres on every side, which is why the same
+/// [`GRID_TOLERANCE`] this module's grid checks use applies here: it is the authored-number rounding,
+/// not a geometric nicety.
+///
+/// **Staged, and the skip is a skip.** A wall whose mass is not in the document, or whose edge has no
+/// two ends to stand between, has no strip to measure against and answers `false` — not a fault, and
+/// not a guess in the other direction either. Such a face is reported by the grid checks that can
+/// read the reference, and by [`Violation::OpeningBayMissing`] for an opening that names it.
+fn reaches_the_wall_edge(skeleton: &BuildingSkeleton, face: FaceRef, extents: &Extents) -> bool {
+    let Some(mass) = skeleton.mass(face.mass) else {
+        return false;
+    };
+    let Some(length) = skeleton.face_length(face) else {
+        return false;
+    };
+    let Some(line) = ground_line(mass, face.edge) else {
+        return false;
+    };
+    if length <= GRID_TOLERANCE {
+        return false;
+    }
+    // The extreme of a straight line over an interval is at one of its ends, so the lowest ground
+    // under the hole is under one of its two jambs rather than under its middle.
+    let floor = ground_at(line, length, extents.from).max(ground_at(line, length, extents.to));
+    !(extents.from > GRID_TOLERANCE
+        && extents.to < length - GRID_TOLERANCE
+        && extents.high < mass.top - GRID_TOLERANCE
+        && extents.low > floor + GRID_TOLERANCE)
+}
+
+/// Returns the elevation of the slab's underside at the two ends of one outline edge: the ground line
+/// the wall face of that edge stands on.
+///
+/// `None` when the mass has no edge with two ends, which is the staged case [`reaches_the_wall_edge`]
+/// skips.
+fn ground_line(mass: &Mass, edge: usize) -> Option<(f32, f32)> {
+    let count = mass.outline.len();
+    if count < 3 || edge >= count {
+        return None;
+    }
+    let from = mass.outline[edge].elevation - mass.slab;
+    let to = mass.outline[(edge + 1) % count].elevation - mass.slab;
+    Some((from, to))
+}
+
+/// Returns the ground line's elevation at one arc-length station along the edge, which is `O(1)` and
+/// a linear interpolation because the line between two nodes is straight.
+fn ground_at(line: (f32, f32), length: f32, station: f32) -> f32 {
+    let amount = crate::math::clamp(station / length, 0.0, 1.0);
+    line.0 + (line.1 - line.0) * amount
+}
+
+/// Reports every pair of holes in one wall that share area.
+///
+/// # Invariants
+///
+/// **The walls are the loop, and the document is not.** [`Openings::by_face`] is the lookup written
+/// for this walk — one pass that groups by wall — so a facade with openings on two of its forty walls
+/// pays for those two rather than comparing the whole document per wall. Within a wall the pairs are
+/// read out of the group, which the same lookup fills in the document's own order, so the lower index
+/// comes first without a comparison of index against index.
+///
+/// `O(k^2)` in the holes of one wall, `O(openings log openings)` outside it. The quadratic is the
+/// price of a pairwise area test and is paid only here; it is the trade [`document`] makes and states
+/// for the mass overlap check too, and it is never paid by `build`.
+fn check_shared_wall(
+    skeleton: &BuildingSkeleton,
+    cut: &[(usize, Extents)],
+    violations: &mut Vec<Violation>,
+) {
+    for (_, indices) in skeleton.openings.by_face() {
+        for first in 0..indices.len() {
+            for second in (first + 1)..indices.len() {
+                let (Some((index, left)), Some((other, right))) =
+                    (hole_of(cut, indices[first]), hole_of(cut, indices[second]))
+                else {
+                    continue;
+                };
+                if left.overlaps(&right) {
+                    violations.push(Violation::OpeningOverlaps {
+                        opening: index,
+                        other,
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Returns one hole's rectangle by the opening's index, or `None` when it has none — a slot off the
+/// grid or insets that ate the bay, neither of which has an area to share.
+///
+/// `O(log openings)`, over a list that is in index order because the caller walked the document in
+/// order.
+fn hole_of(cut: &[(usize, Extents)], index: usize) -> Option<(usize, Extents)> {
+    let at = cut.binary_search_by_key(&index, |(held, _)| *held).ok()?;
+    Some(cut[at])
 }
 
 /// Checks that no facet has no area.
@@ -1313,6 +1590,14 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         Violation::GridTooShort { face } => (21, face.mass.0 as u64, face.edge as u64, 0, 0),
         Violation::GridNotOrdered { face } => (22, face.mass.0 as u64, face.edge as u64, 0, 0),
         Violation::GridOutsideFace { face } => (23, face.mass.0 as u64, face.edge as u64, 0, 0),
+        // The four opening faults in the order an author meets them: the slot is not there, the bay
+        // cannot hold the hole, the hole leaves the wall, and two holes in one wall fight.
+        Violation::OpeningBayMissing { opening, face } => {
+            (24, *opening as u64, face.mass.0 as u64, face.edge as u64, 0)
+        }
+        Violation::OpeningExceedsBay { opening } => (25, *opening as u64, 0, 0, 0),
+        Violation::OpeningOutsideWall { opening } => (26, *opening as u64, 0, 0, 0),
+        Violation::OpeningOverlaps { opening, other } => (27, *opening as u64, *other as u64, 0, 0),
         Violation::RoofSkinNotADisc { roof, loops } => (18, roof.0 as u64, *loops as u64, 0, 0),
         Violation::FaceDegenerate { face, area } => (17, *face as u64, ordered(*area), 0, 0),
     }

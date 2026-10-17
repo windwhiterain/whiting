@@ -43,6 +43,7 @@
 use crate::grid::{FaceGrid, FaceRef, Rhythm};
 use crate::mass::{Attachment, Mass, MassId, PlanNode};
 use crate::math::{distance, lerp};
+use crate::openings::Opening;
 use crate::roof::{Roof, RoofId};
 use crate::skeleton::BuildingSkeleton;
 
@@ -276,4 +277,33 @@ pub fn split_face(
 /// under a placement without the placement having to be rewritten.
 pub fn clear_face(skeleton: &mut BuildingSkeleton, face: FaceRef) -> Option<FaceGrid> {
     skeleton.grids.take(face)
+}
+
+/// Cuts an opening into a bay, returning its index in the document's list.
+///
+/// # Invariants
+///
+/// - **The bay decides the domain.** The opening names a slot, and a slot the face's grid does not
+///   hold is refused here (`None`) rather than recorded and reported later: an opening nothing can be
+///   measured against is not an edit that half-happened, and the refusal is the same shape as
+///   [`split_face`]'s.
+/// - **Nothing is clamped.** An inset that would put the hole past its bay's own edge is refused by
+///   [`Opening::extents`] rather than pulled back to fit — the rule everywhere else here.
+/// - **Appending never renumbers.** The mesh's provenance names an opening by its index in the list,
+///   so an edit that renumbered the ones already there would rewrite the meaning of every reveal that
+///   has been built. [`remove_opening`] says in its own doc that it does renumber, because a list
+///   removal does.
+pub fn add_opening(skeleton: &mut BuildingSkeleton, opening: Opening) -> Option<usize> {
+    let bay = skeleton.bay(opening.face, opening.row, opening.column)?;
+    opening.extents(bay)?;
+    Some(skeleton.openings.push(opening))
+}
+
+/// Removes an opening by index and returns it.
+///
+/// The indices **after** the removed one shift down, which is what a list removal does and what
+/// [`remove_mass`] says of itself too: the operations are not symmetric about the middle of the list,
+/// and a caller that assumes they are gets a document that names the wrong hole.
+pub fn remove_opening(skeleton: &mut BuildingSkeleton, index: usize) -> Option<Opening> {
+    skeleton.openings.remove(index)
 }

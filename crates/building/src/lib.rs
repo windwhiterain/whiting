@@ -58,6 +58,7 @@ pub mod grid;
 pub mod mass;
 pub mod math;
 pub mod mesh;
+pub mod openings;
 pub mod ops;
 pub mod roof;
 pub mod skeleton;
@@ -69,6 +70,7 @@ pub use mass::{Attachment, Mass, MassId, PlanNode};
 pub use mesh::{
     BuildingFace, BuildingMesh, CornerNormals, Element, MassSurface, RoofSurface, SolidId,
 };
+pub use openings::{Extents, Inset, Opening, Openings, RevealSide};
 pub use roof::{CrestPoint, EaveStation, Roof, RoofId, RoofPlane, RoofRow};
 pub use skeleton::{Building, BuildingSkeleton};
 pub use validate::Violation;

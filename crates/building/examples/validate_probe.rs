@@ -18,10 +18,13 @@
 //! ```
 
 use whiting_building::derive::{RoofStyle, Starter, starter};
+use whiting_building::grid::{FaceRef, GRID_TOLERANCE, Rhythm};
 use whiting_building::mass::{Attachment, Mass, MassId, PlanNode};
 use whiting_building::mesh::{
     BuildingFace, BuildingMesh, Element, MassSurface, RoofSurface, SolidId,
 };
+use whiting_building::openings::{Inset, Opening};
+use whiting_building::ops::{clear_face, split_face};
 use whiting_building::roof::{CrestPoint, EaveStation, Roof, RoofPlane, RoofRow};
 use whiting_building::skeleton::{Building, BuildingSkeleton};
 use whiting_building::validate::{Violation, document, mesh};
@@ -395,8 +398,226 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::GridTooShort { .. } => "GridTooShort",
         Violation::GridNotOrdered { .. } => "GridNotOrdered",
         Violation::GridOutsideFace { .. } => "GridOutsideFace",
+        Violation::OpeningBayMissing { .. } => "OpeningBayMissing",
+        Violation::OpeningExceedsBay { .. } => "OpeningExceedsBay",
+        Violation::OpeningOutsideWall { .. } => "OpeningOutsideWall",
+        Violation::OpeningOverlaps { .. } => "OpeningOverlaps",
         Violation::FaceNotPlanar { .. } => "FaceNotPlanar",
         Violation::FaceDegenerate { .. } => "FaceDegenerate",
+    }
+}
+
+/// Returns a house with a rhythm on all four faces: three bays across and two storeys up, so every
+/// bay is `2.0` m wide and `1.6` m tall on a 6 m wall standing `3.2` m high over a `0.4` m slab.
+fn gridded_house() -> BuildingSkeleton {
+    let mut skeleton = house();
+    for face in skeleton.faces_of(MassId(0)) {
+        split_face(
+            &mut skeleton,
+            face,
+            &Rhythm::Even { count: 3 },
+            &Rhythm::Even { count: 2 },
+        )
+        .expect("a 6 by 6 wall carries three bays across and two storeys up");
+    }
+    skeleton
+}
+
+/// Returns the gridded house with a window and a door, both inset on every side: the opening half's
+/// reference, the way the welded cube is the mesh half's.
+fn windowed_house() -> BuildingSkeleton {
+    let mut skeleton = gridded_house();
+    let window = Opening::new(
+        FaceRef::new(MassId(0), 0),
+        0,
+        1,
+        Inset::new(0.25, 0.25, 0.5, 0.5),
+    );
+    // A door is a hole in the bottom row whose sill is at the elevation the mass is authored at: the
+    // wall face stands on the slab's underside, one slab below it, so the wall under that sill is the
+    // slab's own thickness and the hole is interior like any other.
+    let door = Opening::new(
+        FaceRef::new(MassId(0), 1),
+        0,
+        1,
+        Inset::new(0.25, 0.25, 0.0, 0.5),
+    );
+    skeleton.openings.push(window);
+    skeleton.openings.push(door);
+    skeleton
+}
+
+/// Returns the level house with one hole in the bottom row, its sill `sill` metres above the bay's own
+/// sill.
+///
+/// **Two door shapes, and both are legal.** An inset only ever moves a hole inward, so the sill can
+/// be raised but never lowered: `0.0` is a door, sitting on the elevation the mass is authored at with
+/// one slab of wall under it, and `0.4` — the mass's own slab thickness — stands a second slab higher
+/// and clears the ground line by twice the slab. Nothing about the bottom row can reach the ground
+/// line on level ground; that takes a wall on a slope, which is what [`sloped_house`] carries.
+fn bottom_row_hole(sill: f32) -> BuildingSkeleton {
+    let mut skeleton = gridded_house();
+    skeleton.openings.push(Opening::new(
+        FaceRef::new(MassId(0), 0),
+        0,
+        1,
+        Inset::new(0.25, 0.25, sill, 0.5),
+    ));
+    skeleton
+}
+
+/// Returns the gridded house with one face's rhythm taken away and an opening still naming a bay on
+/// it, and an opening naming a row and a column past the stops of a face that still has them.
+///
+/// **Both ways of missing a bay in one document**, because they are different mistakes: a face that
+/// was never divided is one, and a slot from a family that has since been replaced by a narrower one
+/// is the other.
+fn openings_off_the_grid() -> BuildingSkeleton {
+    let mut skeleton = gridded_house();
+    clear_face(&mut skeleton, FaceRef::new(MassId(0), 1))
+        .expect("edge 1 carried a rhythm a moment ago");
+    skeleton.openings.push(Opening::new(
+        FaceRef::new(MassId(0), 1),
+        0,
+        1,
+        Inset::new(0.25, 0.25, 0.5, 0.5),
+    ));
+    skeleton.openings.push(Opening::new(
+        FaceRef::new(MassId(0), 0),
+        5,
+        9,
+        Inset::new(0.25, 0.25, 0.5, 0.5),
+    ));
+    skeleton
+}
+
+/// Returns the gridded house with three openings that cannot be cut, one per way an inset fails: one
+/// that is not a distance inward, one whose two insets leave no width, one whose two leave no
+/// height.
+///
+/// They share a bay on purpose. A hole with no rectangle has no area to share, so these three never
+/// reach the overlap comparison — which is the staging, visible.
+fn openings_eating_their_bays() -> BuildingSkeleton {
+    let mut skeleton = gridded_house();
+    let face = FaceRef::new(MassId(0), 0);
+    for inset in [
+        Inset::new(-0.1, 0.25, 0.5, 0.5),
+        Inset::new(1.0, 1.0, 0.5, 0.5),
+        Inset::new(0.25, 0.25, 1.0, 0.8),
+    ] {
+        skeleton.openings.push(Opening::new(face, 0, 0, inset));
+    }
+    skeleton
+}
+
+/// Returns the gridded house with three holes that each reach one edge of their wall face, on three
+/// different walls so that no two of them are ever compared for overlap: the edge's own start, the
+/// edge's own end, and the wall top.
+///
+/// **The fourth boundary — the ground line — is a separate fixture**, because on level ground no hole
+/// can reach it: a grid's bottom row already starts one slab above the wall's foot, so the two
+/// boundaries are genuinely different shapes and one fixture cannot carry both.
+fn openings_reaching_the_wall() -> BuildingSkeleton {
+    let mut skeleton = gridded_house();
+    let cases = [
+        (0usize, 0usize, 0usize, Inset::new(0.0, 0.25, 0.5, 0.5)),
+        (1, 0, 2, Inset::new(0.25, 0.0, 0.5, 0.5)),
+        (2, 1, 1, Inset::new(0.25, 0.25, 0.5, 0.0)),
+    ];
+    for (edge, row, column, inset) in cases {
+        skeleton.openings.push(Opening::new(
+            FaceRef::new(MassId(0), edge),
+            row,
+            column,
+            inset,
+        ));
+    }
+    skeleton
+}
+
+/// Returns a house whose second wall climbs six metres over its own length, with one hole in it cut
+/// by `inset`.
+///
+/// **The slope is the whole point.** The wall face is then a trapezoid standing on a straight ground
+/// line, and it is the only geometry here in which a hole can reach that line without an inset that
+/// is not a distance inward: on level ground a bay's sill already stands a slab above the wall's
+/// foot. The mass is `6 x 6` with the wall top at `9.2`, so the grid is `u 0..6` by `y 0..4.6` and the
+/// second bay of the bottom storey spans `u 2..4`.
+fn sloped_house(inset: Inset) -> BuildingSkeleton {
+    let outline = vec![
+        PlanNode::new([0.0, 0.0], 0.0),
+        PlanNode::new([6.0, 0.0], 0.0),
+        PlanNode::new([6.0, 6.0], 6.0),
+        PlanNode::new([0.0, 6.0], 0.0),
+    ];
+    let mut skeleton = BuildingSkeleton::new(vec![Mass::new(outline, 9.2)], Vec::new());
+    split_face(
+        &mut skeleton,
+        FaceRef::new(MassId(0), 1),
+        &Rhythm::Even { count: 3 },
+        &Rhythm::Even { count: 2 },
+    )
+    .expect("a wall that climbs six metres carries three bays across and two storeys up");
+    skeleton
+        .openings
+        .push(Opening::new(FaceRef::new(MassId(0), 1), 0, 1, inset));
+    skeleton
+}
+
+/// Returns the gridded house with two windows cut in one bay, `inset` apart along it.
+///
+/// **The pair is the control**: `second` inset of `0.25` from the bay's own edges makes the second
+/// hole meet the first exactly at `u = 1.25` and share no area, which is what a facade divided and
+/// then opened produces on purpose; `second` inset of `1.0` overlaps it by a quarter of a metre and
+/// is the fault.
+fn two_windows_in_one_bay(first: Inset, second: Inset) -> BuildingSkeleton {
+    let mut skeleton = gridded_house();
+    let face = FaceRef::new(MassId(0), 0);
+    skeleton.openings.push(Opening::new(face, 0, 0, first));
+    skeleton.openings.push(Opening::new(face, 0, 0, second));
+    skeleton
+}
+
+/// Prints the numbers the boundary reading is made from, so a control is read against the comparison
+/// rather than against the word "outside": the strip the hole has to stay inside, the hole inside it,
+/// and how far each of the hole's four edges stands from the boundary it may not reach.
+///
+/// **The ground line is re-derived here from the mass rather than asked of the validator**, so the two
+/// readings are independent: `(node elevation - slab)` at each end of the edge, linear between them.
+fn report_strips(skeleton: &BuildingSkeleton) {
+    for (index, opening) in skeleton.openings.iter().enumerate() {
+        let face = opening.face;
+        let (Some(mass), Some(length)) = (skeleton.mass(face.mass), skeleton.face_length(face))
+        else {
+            println!("  opening {index}: the wall it names is not in the document");
+            continue;
+        };
+        let Some((_, extents)) = skeleton.aperture(index) else {
+            println!(
+                "  opening {index} on edge {}: no rectangle, so there is nothing to place on the wall",
+                face.edge
+            );
+            continue;
+        };
+        let count = mass.outline.len();
+        let under = |station: f32| {
+            let from = mass.outline[face.edge].elevation - mass.slab;
+            let to = mass.outline[(face.edge + 1) % count].elevation - mass.slab;
+            from + (to - from) * (station / length)
+        };
+        let floor = under(extents.from).max(under(extents.to));
+        println!(
+            "  opening {index} on edge {}: the strip runs u 0.0000..{length:.4}, its wall top is y {:.4}, and the\n    \
+             ground line under this hole is at y {floor:.4}; the hole is u {:.4}..{:.4} by y {:.4}..{:.4}",
+            face.edge, mass.top, extents.from, extents.to, extents.low, extents.high
+        );
+        println!(
+            "    margins, each of which must stand above {GRID_TOLERANCE:.4} m: start {:.4}, end {:.4}, head {:.4}, sill {:.4}",
+            extents.from,
+            length - extents.to,
+            mass.top - extents.high,
+            extents.low - floor
+        );
     }
 }
 
@@ -533,6 +754,108 @@ fn main() {
         &skeleton,
         &built,
         SolidId::Mass(MassId(0)),
+    );
+
+    println!("\n# openings: a bay, a hole, and the four ways to be wrong");
+    report_document(
+        "the gridded house: three bays across, two storeys up",
+        &gridded_house(),
+    );
+    let windowed = windowed_house();
+    report_document("a window and a door, inset on every side", &windowed);
+    report_strips(&windowed);
+
+    println!(
+        "\n# a door is a hole in the bottom row: neither sill is a fault, and both are measured"
+    );
+    for (name, sill) in [
+        (
+            "a door, its sill at the elevation the mass is authored at",
+            0.0,
+        ),
+        (
+            "the same door, its sill raised by the mass's slab thickness",
+            0.4,
+        ),
+    ] {
+        let door = bottom_row_hole(sill);
+        report_document(name, &door);
+        report_strips(&door);
+    }
+
+    let off = openings_off_the_grid();
+    report_document(
+        "one opening on a wall with no rhythm, one past the stops",
+        &off,
+    );
+    report_strips(&off);
+
+    let eaten = openings_eating_their_bays();
+    report_document("three openings that cannot be cut in their bay", &eaten);
+    report_strips(&eaten);
+
+    let reaching = openings_reaching_the_wall();
+    report_document(
+        "three holes reaching a corner, the far corner and the wall top",
+        &reaching,
+    );
+    report_strips(&reaching);
+
+    let into_ground = sloped_house(Inset::new(0.25, 0.25, 0.5, 0.5));
+    report_document(
+        "a hole run into the ground line of a sloping wall",
+        &into_ground,
+    );
+    report_strips(&into_ground);
+
+    let jamb = sloped_house(Inset::new(0.25, 0.25, 2.65, 0.5));
+    report_document(
+        "the same wall, a hole whose far jamb alone clears the line",
+        &jamb,
+    );
+    report_strips(&jamb);
+    println!(
+        "  the ground line under that hole reads 2.6000 at its middle and 3.3500 under its far jamb,\n  \
+         so the sill at 2.6500 clears a midpoint reading by {:.4} m and reaches the wall's foot at the jamb",
+        2.65 - 2.6
+    );
+
+    let overlapping = two_windows_in_one_bay(
+        Inset::new(0.25, 0.75, 0.5, 0.5),
+        Inset::new(1.0, 0.25, 0.5, 0.5),
+    );
+    report_document(
+        "two windows in one bay sharing a quarter of a metre",
+        &overlapping,
+    );
+    report_strips(&overlapping);
+
+    let touching = two_windows_in_one_bay(
+        Inset::new(0.25, 0.75, 0.5, 0.5),
+        Inset::new(1.25, 0.25, 0.5, 0.5),
+    );
+    report_document(
+        "two windows in one bay meeting exactly along a mullion",
+        &touching,
+    );
+    report_strips(&touching);
+    println!(
+        "  the two holes meet at u = 1.2500 and remove no wall twice, so no OpeningOverlaps is named"
+    );
+
+    let mut no_rhythm = house();
+    no_rhythm.openings.push(Opening::new(
+        FaceRef::new(MassId(0), 0),
+        0,
+        0,
+        Inset::new(0.25, 0.25, 0.5, 0.5),
+    ));
+    report_document(
+        "a house with one opening and no rhythm anywhere",
+        &no_rhythm,
+    );
+    println!(
+        "  the four grid checks read the rhythms the document holds, and there is none to read"
     );
 
     println!("\n# a skeleton that cannot expand at all");

@@ -44,6 +44,23 @@ pub enum MassSurface {
     /// The floor's upper surface: the inner loop's polygon at the outline's own elevations, facing
     /// up.
     FloorTop,
+    /// A surface of the wall's own thickness inside an opening: a jamb, a head or a sill.
+    ///
+    /// # Invariants
+    ///
+    /// One element per side per hole, because each side is its own plane and its own shading group —
+    /// a reveal is masonry seen at ninety degrees to the wall it pierces, and smoothing a normal
+    /// across that corner would round off the one edge that says how thick the wall is. `opening` is
+    /// the hole's index in the document's own list ([`Openings`](crate::openings::Openings)), so a
+    /// face traces back to the opening an author wrote and not merely to the wall it is in.
+    Reveal {
+        /// Index of the outline edge the hole is cut into.
+        edge: usize,
+        /// Index of the opening in the document's list.
+        opening: usize,
+        /// Which side of the reveal.
+        side: crate::openings::RevealSide,
+    },
     /// The slab's underside: the whole outline one slab thickness below it, facing down.
     ///
     /// # Invariants

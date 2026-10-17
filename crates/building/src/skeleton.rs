@@ -7,6 +7,7 @@ use crate::expand::{BuildError, build};
 use crate::grid::{Bay, FaceGrid, FaceRef, Grids, face_extent, face_length};
 use crate::mass::{Mass, MassId};
 use crate::mesh::BuildingMesh;
+use crate::openings::{Extents, Openings};
 use crate::roof::{Roof, RoofId};
 use crate::validate::{Violation, document, mesh};
 
@@ -20,16 +21,70 @@ pub struct BuildingSkeleton {
     /// The grids, one per face that has been given a rhythm. A face with no entry has no rhythm,
     /// which is a different state from a rhythm with no bays — see [`FaceGrid::is_empty`].
     pub grids: Grids,
+    /// The openings: holes cut through the walls, each naming a bay by slot.
+    pub openings: Openings,
 }
 
 impl BuildingSkeleton {
-    /// Builds a skeleton from its masses and its roofs, with no face yet given a rhythm.
+    /// Builds a skeleton from its masses and its roofs, with no rhythm authored and no wall cut.
     pub fn new(masses: Vec<Mass>, roofs: Vec<Roof>) -> Self {
         Self {
             masses,
             roofs,
             grids: Grids::new(),
+            openings: Openings::new(),
         }
+    }
+
+    /// Returns the rectangle an opening cuts, and the wall it is cut into.
+    ///
+    /// # Invariants
+    ///
+    /// **One place computes a hole's extents, so the expander that cuts it and the validator that
+    /// measures it cannot disagree.** The bay comes from the document's own grid — a slot the grid no
+    /// longer holds answers `None`, which is how a re-split that orphaned a placement becomes visible
+    /// rather than silently relocating it — and the insets come from the opening. `O(log faces)` for
+    /// the grid and `O(1)` for the arithmetic.
+    pub fn aperture(&self, index: usize) -> Option<(FaceRef, Extents)> {
+        let opening = self.openings.get(index)?;
+        let bay = self.bay(opening.face, opening.row, opening.column)?;
+        let extents = opening.extents(bay)?;
+        Some((opening.face, extents))
+    }
+
+    /// Returns the index of every opening in one wall that **cannot be resolved**.
+    ///
+    /// # Invariants
+    ///
+    /// This is the companion of [`apertures_of`](Self::apertures_of), and it exists because that
+    /// lookup **filters**: a hole whose slot the grid no longer holds, or whose insets leave it no area,
+    /// is simply absent from what it returns — which is right for a walk that asks "what can I cut"
+    /// and wrong for one that must not cut silently. An expander reading only `apertures_of` would
+    /// build a wall with a hole missing and no complaint, so the honest pair is these two: what can be
+    /// cut, and what could not be. Both go through [`aperture`](Self::aperture), so there is one
+    /// definition of "resolved" rather than one per caller. `O(openings of that face)`.
+    pub fn unresolved_openings(&self, face: FaceRef) -> Vec<usize> {
+        self.openings
+            .of_face(face)
+            .into_iter()
+            .filter_map(|(index, _)| self.aperture(index).is_none().then_some(index))
+            .collect()
+    }
+
+    /// Returns the index and the rectangle of every hole in one wall, in the order they were authored.
+    ///
+    /// A hole whose slot the grid no longer holds is **absent from this answer** rather than reported
+    /// here: this is the walk the expander cuts from, and a slot that vanished is the validator's to
+    /// report (it can name the opening), not a hole to cut somewhere else.
+    pub fn apertures_of(&self, face: FaceRef) -> Vec<(usize, Extents)> {
+        self.openings
+            .of_face(face)
+            .into_iter()
+            .filter_map(|(index, _)| {
+                self.aperture(index)
+                    .and_then(|(at, extents)| (at == face).then_some((index, extents)))
+            })
+            .collect()
     }
 
     /// Returns one face's rhythm, or `None` when that face has none.

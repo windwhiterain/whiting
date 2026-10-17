@@ -62,11 +62,13 @@
 
 use std::collections::HashMap;
 
+use crate::grid::GRID_TOLERANCE;
 use crate::mass::{Mass, MassId, PlanNode};
 use crate::math::{
     Vec2, Vec3, cross, cross3, difference, distance, dot, length, lift, normalized, subtract,
 };
 use crate::mesh::{BuildingFace, BuildingMesh, Element, MassSurface, RoofSurface};
+use crate::openings::{Extents, RevealSide};
 use crate::roof::{EaveStation, Roof, RoofId, RoofRow};
 use crate::skeleton::BuildingSkeleton;
 
@@ -229,6 +231,67 @@ pub enum Problem {
         /// The station it named.
         station: f32,
     },
+    /// An opening names a slot the wall's rhythm does not hold, or insets that leave no rectangle
+    /// inside its bay, so there is no hole of its own to cut.
+    ///
+    /// # Invariants
+    ///
+    /// **An opening that cannot be cut stops the mass rather than being dropped.** The document says
+    /// a wall has a hole in it; a mesh built without one contradicts the document silently, and a
+    /// solid nobody asked for is still a closed solid that every later check reads as sound. A
+    /// vanished slot is [`validate`](crate::validate)'s own report as well — it can name the opening
+    /// and the grid it missed — and the two are different statements: this one says the wall that
+    /// would have carried the hole was not built.
+    OpeningUnresolved {
+        /// The mass.
+        mass: MassId,
+        /// The outline edge the opening names, counted from the outline's first node.
+        edge: usize,
+        /// The opening's index in the document's own list.
+        opening: usize,
+    },
+    /// An opening's hole is not strictly inside the wall face it is cut into, so the strip the cut
+    /// decomposes has no band for it.
+    ///
+    /// `past` is how far the hole leaves the strip, in metres, over every side that does: its two
+    /// ends along the edge, its head, its sill against the ground line, and the mitred inner edge
+    /// its four corners project onto. The greatest of those is what is reported, so a hole that is
+    /// wrong in two ways names the worse one.
+    OpeningOutsideWall {
+        /// The mass.
+        mass: MassId,
+        /// The outline edge the hole is cut into.
+        edge: usize,
+        /// The opening's index in the document's own list.
+        opening: usize,
+        /// How far it reaches past the strip it has to stay inside, in metres.
+        past: f32,
+    },
+    /// The ground line under one wall crosses the elevation of one of that wall's own holes, so the
+    /// complement of the hole in that band is a quad folded on itself rather than a quad.
+    GroundCrossesOpening {
+        /// The mass.
+        mass: MassId,
+        /// The outline edge the hole is cut into.
+        edge: usize,
+        /// The opening whose elevation the ground line crosses.
+        opening: usize,
+    },
+    /// Two openings in one wall overlap, so the complement of their two holes is not a set of
+    /// bands.
+    ///
+    /// Touching is not overlapping: two openings that meet exactly along an edge remove no wall
+    /// twice, and they are cut as two holes whose rims share their corner points.
+    OpeningsOverlap {
+        /// The mass.
+        mass: MassId,
+        /// The outline edge both holes are cut into.
+        edge: usize,
+        /// The earlier of the two openings, by the document's own order.
+        left: usize,
+        /// The later.
+        right: usize,
+    },
 }
 
 /// Everything that stopped a build.
@@ -262,7 +325,7 @@ pub fn build(skeleton: &BuildingSkeleton) -> Result<BuildingMesh, BuildError> {
     let mut mesh = BuildingMesh::new();
     let mut problems = Vec::new();
     for (index, mass) in skeleton.masses.iter().enumerate() {
-        if let Err(found) = expand_mass(&mut mesh, MassId(index), mass) {
+        if let Err(found) = expand_mass(skeleton, &mut mesh, MassId(index), mass) {
             problems.extend(found);
         }
     }
@@ -312,6 +375,19 @@ impl Solid {
     fn quad(&mut self, corners: [u32; 4], element: Element) {
         self.triangle([corners[0], corners[1], corners[2]], element);
         self.triangle([corners[0], corners[2], corners[3]], element);
+    }
+
+    /// Adds a polygon as a fan of triangles from its first corner, wound as it is given.
+    ///
+    /// **The corner list is a boundary walk, so the fan keeps its winding.** A polygon that is not
+    /// convex is still filled correctly here because the callers build one long strip: every point
+    /// after the first two is a station on the far edge, in order, so each triangle of the fan is
+    /// the band between two neighbouring points of the walk and none of them overlap. `O(n)` in the
+    /// corners, which is what a strip of `k` bands costs whether it arrives as `k` quads or as one.
+    fn polygon(&mut self, corners: &[u32], element: Element) {
+        for index in 1..corners.len().saturating_sub(1) {
+            self.triangle([corners[0], corners[index], corners[index + 1]], element);
+        }
     }
 
     /// Returns whether a triangle of this solid's own points faces the way `up` names.
@@ -391,7 +467,20 @@ fn inward(direction: Vec2) -> Vec2 {
 /// whole outline one slab below, a disc rather than a ring. A ring reaching in to the inner loop at
 /// the floor level would put the wall's bottom, the floor's edge and the ring's inner edge on one
 /// edge, and a solid cannot be closed and outward with three faces on an edge.
-fn expand_mass(mesh: &mut BuildingMesh, id: MassId, mass: &Mass) -> Result<(), Vec<Problem>> {
+///
+/// **A face with no opening is built exactly as it was before openings existed**, on the same four
+/// authored node points and in the same order: the cut is a second walk, over the faces that have
+/// holes, and it touches nothing else. That is what keeps every P1 measurement where it was, and
+/// it is a property of where the branch is rather than of the branch itself.
+///
+/// See [`cut_edge`] for the wall a hole is cut into, and [`resolve_holes`] for what is refused
+/// before a single point is added.
+fn expand_mass(
+    skeleton: &BuildingSkeleton,
+    mesh: &mut BuildingMesh,
+    id: MassId,
+    mass: &Mass,
+) -> Result<(), Vec<Problem>> {
     let count = mass.outline.len();
     if count < 3 {
         return Err(vec![Problem::OutlineTooShort {
@@ -430,49 +519,978 @@ fn expand_mass(mesh: &mut BuildingMesh, id: MassId, mass: &Mass) -> Result<(), V
         inside_floor.push(solid.point(lift(inner[node], mass.outline[node].elevation)));
         inside_top.push(solid.point(lift(inner[node], mass.top)));
     }
+    let faces: Vec<WallFace> = (0..count)
+        .map(|edge| WallFace::of(mass, edge, &inner))
+        .collect();
+    let nodes: Vec<EdgeNode> = (0..count)
+        .map(|node| EdgeNode {
+            outer_base: outside_base[node],
+            outer_top: outside_top[node],
+            inner_floor: inside_floor[node],
+            inner_top: inside_top[node],
+        })
+        .collect();
+    let by_edge = resolve_holes(skeleton, id, &faces, &mut problems);
+    if !problems.is_empty() {
+        return Err(problems);
+    }
+    // The stations each cut edge added to the two discs' loops, empty for a face with no hole.
+    let mut cuts: Vec<Vec<CutStation>> = vec![Vec::new(); count];
     for edge in 0..count {
+        let holes = &by_edge[edge];
         let next = (edge + 1) % count;
-        solid.quad(
-            [
-                outside_top[edge],
-                outside_top[next],
-                outside_base[next],
-                outside_base[edge],
-            ],
-            Element::Mass(id, MassSurface::OuterWall { edge }),
-        );
-        solid.quad(
-            [
-                outside_top[edge],
-                inside_top[edge],
-                inside_top[next],
-                outside_top[next],
-            ],
-            Element::Mass(id, MassSurface::WallTop { edge }),
-        );
-        solid.quad(
-            [
-                inside_top[next],
-                inside_top[edge],
-                inside_floor[edge],
-                inside_floor[next],
-            ],
-            Element::Mass(id, MassSurface::InnerWall { edge }),
-        );
+        if holes.is_empty() {
+            solid.quad(
+                [
+                    outside_top[edge],
+                    outside_top[next],
+                    outside_base[next],
+                    outside_base[edge],
+                ],
+                Element::Mass(id, MassSurface::OuterWall { edge }),
+            );
+            solid.quad(
+                [
+                    outside_top[edge],
+                    inside_top[edge],
+                    inside_top[next],
+                    outside_top[next],
+                ],
+                Element::Mass(id, MassSurface::WallTop { edge }),
+            );
+            solid.quad(
+                [
+                    inside_top[next],
+                    inside_top[edge],
+                    inside_floor[edge],
+                    inside_floor[next],
+                ],
+                Element::Mass(id, MassSurface::InnerWall { edge }),
+            );
+            continue;
+        }
+        match cut_edge(
+            &mut solid,
+            id,
+            edge,
+            &faces[edge],
+            holes,
+            nodes[edge],
+            nodes[next],
+        ) {
+            Ok(stations) => cuts[edge] = stations,
+            Err(found) => problems.extend(found),
+        }
+    }
+    if !problems.is_empty() {
+        return Err(problems);
     }
     // The two discs are two authored planes one slab apart, so they are two elements: naming both
     // `Floor` put them in one shading group and one planarity group, and the merged validator
     // reported the group as a non-planar surface at `departure = slab/2`.
     let floor_top = Element::Mass(id, MassSurface::FloorTop);
     let slab_soffit = Element::Mass(id, MassSurface::SlabSoffit);
-    let walked = polygon(&mut solid, &inner, &inside_floor, floor_top, true)
-        && polygon(&mut solid, &outside, &outside_base, slab_soffit, false);
+    let (inner_loop, floor_points) = split_loop(&inner, &inside_floor, &cuts, |station| {
+        (station.inner, station.floor)
+    });
+    let (outside_loop, soffit_points) = split_loop(&outside, &outside_base, &cuts, |station| {
+        (station.outer, station.soffit)
+    });
+    let walked = polygon(&mut solid, &inner_loop, &floor_points, floor_top, true)
+        && polygon(
+            &mut solid,
+            &outside_loop,
+            &soffit_points,
+            slab_soffit,
+            false,
+        );
     if !walked {
         problems.push(Problem::FloorDegenerate { mass: id });
         return Err(problems);
     }
     solid.splice(mesh);
     Ok(())
+}
+
+/// Returns a disc's loop and its points, with the cut stations written into it.
+///
+/// # Invariants
+///
+/// **A cut wall's own bottom edge is several edges, so the disc it meets has to be several too.**
+/// The wall over one band ends on the segment between two stations, and nothing else uses that
+/// segment; a disc walked node to node has one long edge there instead, and the segment is then a
+/// boundary. The stations are therefore **collinear nodes of the loop**, which is the same state
+/// [`ops::attach_mass`](crate::ops::attach_mass) leaves behind, and which
+/// [`polygon`] answers with a facet of no area rather than with a lost edge.
+///
+/// The stations arrive in the loop's own order because they are walked from the node they follow,
+/// so one pass over the nodes reads both loops in the order the outline was authored in.
+fn split_loop(
+    loop_points: &[Vec2],
+    corners: &[u32],
+    cuts: &[Vec<CutStation>],
+    station_of: impl Fn(&CutStation) -> (Vec2, u32),
+) -> (Vec<Vec2>, Vec<u32>) {
+    let mut points = Vec::with_capacity(loop_points.len());
+    let mut welded = Vec::with_capacity(loop_points.len());
+    for (node, point) in loop_points.iter().enumerate() {
+        points.push(*point);
+        welded.push(corners[node]);
+        for station in &cuts[node] {
+            let (position, index) = station_of(station);
+            points.push(position);
+            welded.push(index);
+        }
+    }
+    (points, welded)
+}
+
+/// Resolves every opening of one mass against the walls it names, and reports every way the
+/// document's openings cannot be cut.
+///
+/// # Invariants
+///
+/// **The two lookups are read as a pair, and both come from the document.** `apertures_of` answers
+/// what can be cut and filters the rest away; `unresolved_openings` answers what could not be. An
+/// expander reading only the first would build a wall with a hole silently missing and a document
+/// that says the wall has one, so both are read and neither is re-derived here.
+///
+/// The faces to read are enumerated through [`Openings::by_face`](crate::openings::Openings::by_face),
+/// which is `O(openings)` once, rather than by asking every face of the mass — that would put the
+/// whole document into the cost of every wall. The keys arrive in `(mass, edge)` order and the
+/// indices in the order they were authored, so two runs of one document report in one order.
+///
+/// **A refused mass carries none of its holes.** Nothing here writes to the solid, and
+/// [`expand_mass`] splices only once the whole mass is built, so a wall that cannot be cut is
+/// absent rather than half present.
+fn resolve_holes(
+    skeleton: &BuildingSkeleton,
+    id: MassId,
+    faces: &[WallFace],
+    problems: &mut Vec<Problem>,
+) -> Vec<Vec<Hole>> {
+    let mut by_edge: Vec<Vec<Hole>> = vec![Vec::new(); faces.len()];
+    for (face, _) in skeleton.openings.by_face() {
+        if face.mass != id {
+            continue;
+        }
+        for index in skeleton.unresolved_openings(face) {
+            problems.push(Problem::OpeningUnresolved {
+                mass: id,
+                edge: face.edge,
+                opening: index,
+            });
+        }
+        for (index, extents) in skeleton.apertures_of(face) {
+            let Some(wall) = faces.get(face.edge) else {
+                problems.push(Problem::OpeningUnresolved {
+                    mass: id,
+                    edge: face.edge,
+                    opening: index,
+                });
+                continue;
+            };
+            match resolve_one(id, face.edge, index, extents, wall) {
+                Ok(hole) => by_edge[face.edge].push(hole),
+                Err(problem) => problems.push(problem),
+            }
+        }
+    }
+    // Two holes sharing wall remove it twice, and the complement of two overlapping rectangles is
+    // not a set of bands at all. Touching is not sharing — `Extents::overlaps` says so and the
+    // expander reads it rather than re-deriving it — so a divided facade opened bay by bay cuts.
+    // Each unordered pair once, in the document's own order.
+    for edge in 0..by_edge.len() {
+        for left in 0..by_edge[edge].len() {
+            for right in left + 1..by_edge[edge].len() {
+                if by_edge[edge][left]
+                    .outer
+                    .overlaps(&by_edge[edge][right].outer)
+                {
+                    let (first, second) =
+                        ordered(by_edge[edge][left].opening, by_edge[edge][right].opening);
+                    problems.push(Problem::OpeningsOverlap {
+                        mass: id,
+                        edge,
+                        left: first,
+                        right: second,
+                    });
+                }
+            }
+        }
+    }
+    by_edge
+}
+
+/// Returns two indices in the order they were authored.
+fn ordered(first: usize, second: usize) -> (usize, usize) {
+    if first <= second {
+        (first, second)
+    } else {
+        (second, first)
+    }
+}
+
+/// Resolves one hole against the wall it is cut into, or reports how it leaves the strip.
+///
+/// # Invariants
+///
+/// **A hole must be strictly inside the strip, on both faces, and the two tests are not the same
+/// test.** Across, the strip is the edge's own length and the inner edge's own length; a mitre moves
+/// both ends of the inner edge, so a hole that clears the outer strip can still project off the
+/// inner one, and it is measured where it lands rather than assumed to have travelled with it. Down,
+/// the two faces have **two different floors**: the outer wall stands on the ground line one slab
+/// below, and the inner wall stands on the ground line itself, because that is where the floor is.
+/// The binding floor is therefore the inner one, and the difference between the two is what makes a
+/// door legal rather than a hole in the ground.
+///
+/// **A sill may stand exactly on the inner wall's own floor, and that is a door.** The band below
+/// it is then empty rather than inverted, the reveal's inner edge lies in the floor's own plane,
+/// and the floor's edge closes it — no second mechanism and no special case in the walk. What is
+/// refused is a sill below the ground line at either of the hole's own jambs, which is the same
+/// answer read at two places because the line is straight. `past` is the greatest of every way the
+/// hole leaves the strip, so a hole wrong in two ways names the worse one.
+fn resolve_one(
+    id: MassId,
+    edge: usize,
+    opening: usize,
+    extents: Extents,
+    wall: &WallFace,
+) -> Result<Hole, Problem> {
+    let past_start = GRID_TOLERANCE - extents.from;
+    let past_end = extents.to - (wall.length - GRID_TOLERANCE);
+    let past_head = GRID_TOLERANCE - (wall.top - extents.high);
+    // How far the sill is below the ground line at the worse of the hole's two jambs, which is the
+    // whole of that test: a sill at or above the ground everywhere is legal, a sill exactly on it
+    // is a door, and both ends are the whole test because the line is straight between them.
+    let below_ground = wall
+        .inner_floor_at(extents.from)
+        .max(wall.inner_floor_at(extents.to))
+        - extents.low;
+    // The hole's two jambs, projected onto the inner edge's line and measured against the ends the
+    // miter left it: the projection moves nothing along the edge, but the inner edge is shorter than
+    // the outer one at both ends, and a jamb that lands at or past one of them would put its reveal
+    // on a corner the neighbouring wall still claims whole.
+    let past_inner = (GRID_TOLERANCE + wall.inner_from - extents.from)
+        .max(extents.to + GRID_TOLERANCE - wall.inner_to);
+    let past = past_start
+        .max(past_end)
+        .max(past_head)
+        .max(below_ground)
+        .max(past_inner);
+    if past > 0.0 {
+        return Err(Problem::OpeningOutsideWall {
+            mass: id,
+            edge,
+            opening,
+            past,
+        });
+    }
+    Ok(Hole {
+        opening,
+        outer: extents,
+    })
+}
+
+/// One outline edge read as the vertical strip its wall is built in.
+///
+/// # Invariants
+///
+/// **`u` is arc length along the outer edge, and it is also arc length along the inner edge's own
+/// line — the two are the same number, while the inner edge itself is shorter at both ends.** The
+/// miter moves the inner edge's *ends*: a right angle takes one wall's thickness off each, and a
+/// sharper corner takes more, so the inner loop's edge runs from `inner_from` to `inner_to` rather
+/// than from `0` to the outer edge's length. Projecting a point of the outer face onto the inner
+/// edge's line is therefore one dot product and moves nothing along the edge — the projection is the
+/// identity in `u` — while *where the inner edge is* is what the miter moved. Reading the inner rim
+/// as the outer rim shifted by a constant would move the hole's jambs; reading it as the projection
+/// and then refusing a hole that lands off the inner edge's own ends is what the geometry says.
+///
+/// The two floors are the other half of the reading: the outer wall starts one slab below the
+/// ground, the inner wall starts at the ground, and everything about a door follows from that pair.
+#[derive(Debug, Clone, Copy)]
+struct WallFace {
+    /// Where the outer edge starts, in plan.
+    origin: Vec2,
+    /// The unit direction the outer edge runs.
+    along: Vec2,
+    /// Where the outer edge's line meets the inner edge's line: the outer edge shifted along its own
+    /// inward normal by the wall's thickness.
+    inner_origin: Vec2,
+    /// How long the outer edge is.
+    length: f32,
+    /// Where the inner edge starts along its own line, which the miter moved off the outer edge's
+    /// start.
+    inner_from: f32,
+    /// Where the inner edge ends along its own line, which the miter moved off the outer edge's end.
+    inner_to: f32,
+    /// The ground line's own two elevations, at the outer edge's two ends.
+    ground: [f32; 2],
+    /// The wall top.
+    top: f32,
+    /// The floor slab's thickness, which is what the outer wall stands below the ground line by.
+    slab: f32,
+}
+
+impl WallFace {
+    /// Reads one outline edge as the strip its wall is built in.
+    fn of(mass: &Mass, edge: usize, inner: &[Vec2]) -> Self {
+        let count = mass.outline.len();
+        let next = (edge + 1) % count;
+        let origin = mass.outline[edge].position;
+        let far = mass.outline[next].position;
+        let along = normalized(difference(far, origin));
+        Self {
+            origin,
+            along,
+            inner_origin: step(origin, inward(along), mass.wall),
+            length: distance(far, origin),
+            inner_from: dot(difference(inner[edge], origin), along),
+            inner_to: dot(difference(inner[next], origin), along),
+            ground: [mass.outline[edge].elevation, mass.outline[next].elevation],
+            top: mass.top,
+            slab: mass.slab,
+        }
+    }
+
+    /// Returns the ground line's elevation at an arc length along the **outer** edge.
+    ///
+    /// The line is straight between the edge's two nodes, which is what makes both ends the whole
+    /// test: a linear function attains its extremes on an interval at the interval's ends.
+    fn ground_at(&self, along: f32) -> f32 {
+        self.ground[0] + (self.ground[1] - self.ground[0]) * (along / self.length)
+    }
+
+    /// Returns the floor the inner wall stands on: the ground line itself, because that is where the
+    /// mass's floor is.
+    ///
+    /// **Read in the inner edge's own arc length, not the outer's.** The inner wall's bottom edge runs
+    /// between the two *inner* corners at the two *nodes'* elevations, so on a wall whose ground rises
+    /// it is a different line from the outer wall's: its slope is the ground's rise spread over the
+    /// inner edge's own length. Reading the same elevation at the same arc length for both faces would
+    /// redraw the inner wall's floor along a line the un-cut wall does not have, and a mass would then
+    /// hold a different amount of material depending on whether a window had been cut in it — a
+    /// difference in volume with nothing in the geometry to account for it.
+    fn inner_floor_at(&self, along: f32) -> f32 {
+        let inside = along.clamp(self.inner_from, self.inner_to);
+        let span = self.inner_to - self.inner_from;
+        self.ground[0] + (self.ground[1] - self.ground[0]) * ((inside - self.inner_from) / span)
+    }
+
+    /// Returns the floor the outer wall stands on: the ground line one slab below it.
+    fn outer_floor_at(&self, along: f32) -> f32 {
+        self.ground_at(along) - self.slab
+    }
+
+    /// Returns the plan position of an arc length along the outer edge.
+    fn outer_at(&self, along: f32) -> Vec2 {
+        step(self.origin, self.along, along)
+    }
+
+    /// Returns the plan position of an arc length along the outer edge, on the inner edge.
+    ///
+    /// This is the **projection of the outer rim's corner onto the inner edge**, and it is the whole
+    /// of what the inner face needs: one dot product, and exact because the two lines are parallel
+    /// — the offset moves a line along its own normal, and a perpendicular projection puts the point
+    /// straight back at the same arc length. The arc length handed in is the outer's, so one number
+    /// describes a station on both faces of the wall, and that is what welds a hole's outer rim to
+    /// the reveal leaving it.
+    ///
+    /// **The projection is onto a segment and not onto a line**, because the inner wall stops at the
+    /// two mitred corners. The two ends of the walk's own station list are those corners' outer
+    /// stations, which the projection puts a mitre's reach beyond the inner edge's own ends; clamped
+    /// they land on the corner itself, which is where the node loop already put the floor and the top
+    /// and where the neighbouring wall's inner face ends. No hole is affected: a hole is refused
+    /// unless it lands strictly inside that segment.
+    fn inner_at(&self, along: f32) -> Vec2 {
+        let corner = dot(difference(self.outer_at(along), self.origin), self.along);
+        let inside = corner.clamp(self.inner_from, self.inner_to);
+        step(self.inner_origin, self.along, inside)
+    }
+}
+
+/// One opening resolved against the wall it is cut into.
+///
+/// # Invariants
+///
+/// **A hole is one rectangle, and the inner face's rim is where that rectangle projects rather than
+/// a second copy of it.** The station table holds one column per break in arc length and one row per
+/// elevation, for both faces at once, and the inner face's column is the projection — see
+/// [`WallFace::inner_at`] — so there is no second `Extents` that could disagree with the first about
+/// where a jamb lands. What the projection has to satisfy is checked once, where the hole is
+/// resolved: a jamb that lands off the inner edge's own ends would leave the inner wall's bands
+/// reaching past the corners that close them.
+///
+/// A door carries no flag: it is a hole whose sill stands on the inner wall's own floor, and the
+/// band walk finds that by measuring rather than by being told.
+#[derive(Debug, Clone, Copy)]
+struct Hole {
+    /// The opening's index in the document's list, which is what a reveal names.
+    opening: usize,
+    /// The rectangle it cuts in the outer face's own coordinates, which is the wall's own frame.
+    outer: Extents,
+}
+
+/// Which of a wall's two faces a band is emitted on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum FaceSide {
+    /// Seen from outside, with the ground line one slab below it.
+    Outer,
+    /// Seen from inside, standing on the ground line itself.
+    Inner,
+}
+
+impl FaceSide {
+    /// Returns the elevation this face's own floor stands at.
+    fn floor_at(self, wall: &WallFace, along: f32) -> f32 {
+        match self {
+            Self::Outer => wall.outer_floor_at(along),
+            Self::Inner => wall.inner_floor_at(along),
+        }
+    }
+
+    /// Returns this side's own points of one station, by the index the cut numbers them by.
+    fn pick(self, station: &StationPoints) -> &Vec<u32> {
+        match self {
+            Self::Outer => &station.outer,
+            Self::Inner => &station.inner,
+        }
+    }
+}
+
+/// One station of a cut wall: the points of both faces at every elevation the cut uses.
+///
+/// # Invariants
+///
+/// **Index `0` is the face's own floor and index `1` is the wall top, and a hole's sill that stands
+/// on that floor is the floor point itself.** The two are welded here rather than compared
+/// afterwards: a door's sill is the inner wall's own bottom edge, the floor's edge there closes it,
+/// and a second point at the same place would put that edge on the surface once and nowhere else.
+/// Every other elevation is a point of its own, and the same index is what both the wall's bands
+/// and the two reveals that border it read.
+struct StationPoints {
+    /// The outer face's points: floor, top, then every hole elevation in [`cuts`](../cuts).
+    outer: Vec<u32>,
+    /// The inner face's, in the same order.
+    inner: Vec<u32>,
+}
+
+/// One station a cut added to an edge, as the two loop nodes the discs need.
+#[derive(Debug, Clone, Copy)]
+struct CutStation {
+    /// Its plan position on the outline's own edge.
+    outer: Vec2,
+    /// Its plan position on the inner loop's own edge.
+    inner: Vec2,
+    /// The outer wall's floor point there, which is the soffit's own node.
+    soffit: u32,
+    /// The inner wall's floor point there, which is the floor's own node.
+    floor: u32,
+}
+
+/// One end of an edge: the four authored points of its node.
+///
+/// # Invariants
+///
+/// **A cut reuses these rather than making its own copies of them.** The first and last of an
+/// edge's stations are its own two nodes, and the ring, the floor and the soffit all meet there
+/// through the points the node loop made — the neighbouring edge's wall claims the same corner
+/// points, and a second point at the same coordinates would leave the ring's two ends meeting
+/// nothing: a corner with no face across it, which reads as a boundary rather than as a corner.
+#[derive(Debug, Clone, Copy)]
+struct EdgeNode {
+    /// The outer wall's floor point at this node.
+    outer_base: u32,
+    /// The outer wall's top point at this node.
+    outer_top: u32,
+    /// The inner wall's floor point at this node.
+    inner_floor: u32,
+    /// The inner wall's top point at this node.
+    inner_top: u32,
+}
+
+/// Cuts one wall into the complement of its holes, and returns the stations it split.
+///
+/// # Invariants
+///
+/// **The break points in `u` are the edge's own ends and every hole's two jambs, and the break
+/// points in elevation are the wall top and every hole's sill and head — the whole wall's, not the
+/// band's.** The first is the decomposition the holes ask for. The second is what makes the
+/// decomposition close, and it is not a refinement of the first: a band beside a hole is one quad
+/// from the ground line to the wall top while the hole's own band is two, so at the hole's jamb the
+/// one quad's vertical edge runs the whole height and the two run its halves. The three are not
+/// the same edges, every one of them is used once, and the wall reads open with no problem of any
+/// kind. Splitting every band at every elevation the wall names makes both sides of each jamb walk
+/// the same segments, so each is used exactly twice, and a band beside a hole comes out as several
+/// stacked quads that share the band's two `u` values with the band next to them. The cost is
+/// faces: a wall of `n` holes makes `O(n^2)` of them, which is the shape of the constraint and not
+/// an accident of the walk.
+///
+/// **A hole's corners are one point each, and the reveal leaving it reads the same indices.** The
+/// wall's bands and the two reveals that border each rim corner are built from the station's own
+/// table, so nothing is compared by coordinate to decide that two faces meet.
+///
+/// **The ground line may not cross one of the wall's own elevations inside a band.** A band whose
+/// floor rises past a hole's sill before the band ends would fold that quad on itself — a bow tie,
+/// which no closure check reads and which a fan triangulation would fill inside out. Refused by
+/// name rather than clamped, because a clamped wall is a wall in a place the author did not draw.
+///
+/// **The wall top, the floor and the soffit follow the cut rather than being authored twice.** Each
+/// band of the wall ends on its own top segment and its own floor segment, and each of those is used
+/// by exactly one face of the ring, the floor and the soffit, so the three are built band by band
+/// over the same stations. That is what the stations returned here are for.
+fn cut_edge(
+    solid: &mut Solid,
+    id: MassId,
+    edge: usize,
+    wall: &WallFace,
+    holes: &[Hole],
+    near: EdgeNode,
+    far: EdgeNode,
+) -> Result<Vec<CutStation>, Vec<Problem>> {
+    let mut stations = vec![0.0, wall.length];
+    let mut cuts = Vec::with_capacity(2 * holes.len());
+    for hole in holes {
+        stations.push(hole.outer.from);
+        stations.push(hole.outer.to);
+        cuts.push(hole.outer.low);
+        cuts.push(hole.outer.high);
+    }
+    // Sorted and deduped by value rather than by tolerance: two holes that meet exactly along one
+    // jamb are one station and one elevation, which is the divided facade's own case, and two that
+    // miss each other by a rounding error leave a sliver band — thin, positive, and closed, which is
+    // what any band between two breaks is.
+    stations.sort_by(f32::total_cmp);
+    stations.dedup();
+    cuts.sort_by(f32::total_cmp);
+    cuts.dedup();
+
+    for side in [FaceSide::Outer, FaceSide::Inner] {
+        for band in 0..stations.len() - 1 {
+            let low = side
+                .floor_at(wall, stations[band])
+                .min(side.floor_at(wall, stations[band + 1]));
+            let high = side
+                .floor_at(wall, stations[band])
+                .max(side.floor_at(wall, stations[band + 1]));
+            for hole in holes {
+                for elevation in [hole.outer.low, hole.outer.high] {
+                    if elevation > low && elevation < high {
+                        return Err(vec![Problem::GroundCrossesOpening {
+                            mass: id,
+                            edge,
+                            opening: hole.opening,
+                        }]);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut points: Vec<StationPoints> = Vec::with_capacity(stations.len());
+    let mut added: Vec<CutStation> = Vec::with_capacity(stations.len());
+    let last = stations.len() - 1;
+    for (index, station) in stations.iter().enumerate() {
+        let mut outer = Vec::with_capacity(cuts.len() + 2);
+        let mut inner = Vec::with_capacity(cuts.len() + 2);
+        let authored = match index {
+            0 => Some(near),
+            index if index == last => Some(far),
+            _ => None,
+        };
+        match authored {
+            Some(node) => {
+                outer.push(node.outer_base);
+                inner.push(node.inner_floor);
+                outer.push(node.outer_top);
+                inner.push(node.inner_top);
+            }
+            None => {
+                outer.push(
+                    solid.point(lift(wall.outer_at(*station), wall.outer_floor_at(*station))),
+                );
+                inner.push(
+                    solid.point(lift(wall.inner_at(*station), wall.inner_floor_at(*station))),
+                );
+                outer.push(solid.point(lift(wall.outer_at(*station), wall.top)));
+                inner.push(solid.point(lift(wall.inner_at(*station), wall.top)));
+                // A hole's sill that stands on one of the two floors **is** that floor's point,
+                // welded by the walk rather than found by comparing coordinates afterwards. The
+                // comparison is exact because the band walk reads the same two numbers: a door's
+                // sill is the inner wall's own bottom edge, and the floor's edge there is what
+                // closes it. A corner station carries no such row: its vertical line is one edge,
+                // which is what the neighbouring wall still draws.
+                for cut in &cuts {
+                    outer.push(if *cut == wall.outer_floor_at(*station) {
+                        outer[0]
+                    } else {
+                        solid.point(lift(wall.outer_at(*station), *cut))
+                    });
+                    inner.push(if *cut == wall.inner_floor_at(*station) {
+                        inner[0]
+                    } else {
+                        solid.point(lift(wall.inner_at(*station), *cut))
+                    });
+                }
+            }
+        }
+        let soffit = outer[0];
+        let floor = inner[0];
+        points.push(StationPoints { outer, inner });
+        if index > 0 && index + 1 < stations.len() {
+            added.push(CutStation {
+                outer: wall.outer_at(*station),
+                inner: wall.inner_at(*station),
+                soffit,
+                floor,
+            });
+        }
+    }
+
+    for band in 0..stations.len() - 1 {
+        let start = stations[band];
+        let end = stations[band + 1];
+        let covering: Vec<&Hole> = holes
+            .iter()
+            .filter(|hole| hole.outer.from <= start && hole.outer.to >= end)
+            .collect();
+        let levels = band_levels(wall, &cuts, &covering, start, end);
+        for (side, surface) in [
+            (FaceSide::Outer, MassSurface::OuterWall { edge }),
+            (FaceSide::Inner, MassSurface::InnerWall { edge }),
+        ] {
+            let element = Element::Mass(id, surface);
+            let starts_at_corner = band == 0;
+            let ends_at_corner = band + 2 == stations.len();
+            if starts_at_corner || ends_at_corner {
+                let (corner, other) = if starts_at_corner {
+                    (band, band + 1)
+                } else {
+                    (band + 1, band)
+                };
+                let corners = corner_band(
+                    side,
+                    ends_at_corner,
+                    side.pick(&points[corner]),
+                    levels.of(side),
+                    side.pick(&points[other]),
+                );
+                solid.polygon(&corners, element);
+            } else {
+                let near = side.pick(&points[band]);
+                let far = side.pick(&points[band + 1]);
+                for (low, high) in levels.of(side) {
+                    gap(solid, side, near, far, *low, *high, element);
+                }
+            }
+        }
+        solid.quad(
+            [
+                points[band].outer[1],
+                points[band].inner[1],
+                points[band + 1].inner[1],
+                points[band + 1].outer[1],
+            ],
+            Element::Mass(id, MassSurface::WallTop { edge }),
+        );
+    }
+
+    for hole in holes {
+        let from = station_index(&stations, hole.outer.from);
+        let to = station_index(&stations, hole.outer.to);
+        let low = cut_index(&cuts, hole.outer.low);
+        let high = cut_index(&cuts, hole.outer.high);
+        // **A jamb is split at every cut of its wall, because the wall's own faces are.** The cut
+        // elevations are global to the wall — that is what makes neighbouring bands share whole edges
+        // — so a reveal emitted as one quad from its sill to its head draws that jamb as a single
+        // segment while the wall beside it draws two, and the solid opens. Measured before it was
+        // understood: a door in one bay with a window in the next read `loops 8, euler -12, manifold
+        // false` while the volume was exactly right, the mismatch being the window's `[1.8, 2.7]` jamb
+        // against the wall's `[1.8, 2.5]` and `[2.5, 2.7]`, split by a cut that belongs to a hole in
+        // another bay. The head and the sill are single quads: their edges run along the wall rather
+        // than up it, and no cut divides a horizontal edge.
+        //
+        // Each quad is wound so its right-handed normal points out of the material and into the hole:
+        // the left one faces along the edge towards `to`, the right one back towards `from`. Read in
+        // the frame the wall is built in — `along`, `up`, and the inward normal — those are the two
+        // orders below.
+        for row in low..high {
+            solid.quad(
+                [
+                    points[from].outer[row],
+                    points[from].outer[row + 1],
+                    points[from].inner[row + 1],
+                    points[from].inner[row],
+                ],
+                Element::Mass(
+                    id,
+                    MassSurface::Reveal {
+                        edge,
+                        opening: hole.opening,
+                        side: RevealSide::Left,
+                    },
+                ),
+            );
+            solid.quad(
+                [
+                    points[to].outer[row],
+                    points[to].inner[row],
+                    points[to].inner[row + 1],
+                    points[to].outer[row + 1],
+                ],
+                Element::Mass(
+                    id,
+                    MassSurface::Reveal {
+                        edge,
+                        opening: hole.opening,
+                        side: RevealSide::Right,
+                    },
+                ),
+            );
+        }
+        for (side, corners) in [
+            (
+                RevealSide::Head,
+                [
+                    points[from].outer[high],
+                    points[to].outer[high],
+                    points[to].inner[high],
+                    points[from].inner[high],
+                ],
+            ),
+            (
+                RevealSide::Sill,
+                [
+                    points[from].outer[low],
+                    points[from].inner[low],
+                    points[to].inner[low],
+                    points[to].outer[low],
+                ],
+            ),
+        ] {
+            solid.quad(
+                corners,
+                Element::Mass(
+                    id,
+                    MassSurface::Reveal {
+                        edge,
+                        opening: hole.opening,
+                        side,
+                    },
+                ),
+            );
+        }
+    }
+    Ok(added)
+}
+
+/// Returns the index of a station in the walk's own table.
+///
+/// `O(log n)`, and exact: every station is one of the values the table was built from.
+fn station_index(stations: &[f32], along: f32) -> usize {
+    stations.partition_point(|station| *station < along)
+}
+
+/// Returns the index of an elevation in the walk's own cut list.
+fn cut_at(cuts: &[f32], elevation: f32) -> usize {
+    cuts.partition_point(|cut| *cut < elevation)
+}
+
+/// Returns the index an elevation is held at, counting the floor as `0` and the wall top as `1`.
+fn cut_index(cuts: &[f32], elevation: f32) -> usize {
+    2 + cut_at(cuts, elevation)
+}
+
+/// Returns the horizontal edges of one band's complement on both faces, as index pairs into the
+/// station's own table.
+///
+/// # Invariants
+///
+/// **The complement is the gaps between the holes that span the band, and the gap under the lowest
+/// one is the face's own floor rather than a constant.** That gap's quad has a sloped bottom edge
+/// and is still planar, because the whole wall lies in one vertical plane; the gaps above it are
+/// between two constant elevations. A gap with no height at **either** end is **not emitted**: it is
+/// the door's, and the floor's own edge closes its sill instead.
+///
+/// The emptiness test is made at both of the band's own ends and the gap stands if it has height at
+/// **either** of them, which is what a ground line that rises needs and what keeps the two bands at
+/// a station agreeing: both read the shared station's own floor, so a gap is a face on both sides of
+/// a station or on neither.
+fn band_levels(
+    wall: &WallFace,
+    cuts: &[f32],
+    covering: &[&Hole],
+    start: f32,
+    end: f32,
+) -> BandLevels {
+    let mut pieces: Vec<(Option<f32>, f32)> = Vec::with_capacity(covering.len() + 1);
+    let mut bottom: Option<f32> = None;
+    for hole in covering {
+        pieces.push((bottom, hole.outer.low));
+        bottom = Some(hole.outer.high);
+    }
+    pieces.push((bottom, wall.top));
+
+    let mut sides = [(FaceSide::Outer, Vec::new()), (FaceSide::Inner, Vec::new())];
+    for (side, emitted) in &mut sides {
+        for (bottom, top) in &pieces {
+            let floor = bottom.map_or_else(
+                || side.floor_at(wall, start).min(side.floor_at(wall, end)),
+                |below| below,
+            );
+            let mut lower = *bottom;
+            for cut in cuts
+                .iter()
+                .copied()
+                .filter(|cut| *cut > floor && *cut < *top)
+            {
+                if let Some(pair) = piece(*side, cuts, wall, lower, cut, start, end) {
+                    emitted.push(pair);
+                }
+                lower = Some(cut);
+            }
+            if let Some(pair) = piece(*side, cuts, wall, lower, *top, start, end) {
+                emitted.push(pair);
+            }
+        }
+    }
+    BandLevels {
+        outer: sides[0].1.clone(),
+        inner: sides[1].1.clone(),
+    }
+}
+
+/// One band's complement on both faces, as index pairs into the station's own table.
+struct BandLevels {
+    /// The outer face's gaps, from the bottom up.
+    outer: Vec<(usize, usize)>,
+    /// The inner face's gaps, from the bottom up.
+    inner: Vec<(usize, usize)>,
+}
+
+impl BandLevels {
+    /// Returns one side's own gaps.
+    fn of(&self, side: FaceSide) -> &[(usize, usize)] {
+        match side {
+            FaceSide::Outer => &self.outer,
+            FaceSide::Inner => &self.inner,
+        }
+    }
+}
+
+/// Returns the corners of one band that reaches a corner of the wall, as a polygon.
+///
+/// # Invariants
+///
+/// **A corner's vertical line is one edge, and the neighbouring wall still draws it as one.** So the
+/// corner station of a cut wall carries its floor and its top and nothing between them, the band that
+/// reaches it has one subdivided side and one side that is not subdivided — which no quad can have —
+/// and the band is emitted as a single polygon fanned from the corner instead. **The fan is also
+/// fewer faces than the quads it replaces**: `k` gaps over a corner side are `k + 1` triangles where
+/// they were `2k`, and none of them puts a point on the corner line, which is the whole point.
+///
+/// The far side is walked through the **gaps' own boundaries**, never through each gap's two ends:
+/// neighbouring gaps share the point between them, and a list that named both would put one point in
+/// the walk twice and build a triangle with two corners in one place. The four orders are the four
+/// ways round that walk — the outer face crosses the top from the near station and returns along the
+/// bottom, and the inner face's own quad is wound the other way round.
+fn corner_band(
+    side: FaceSide,
+    at_end: bool,
+    corner: &[u32],
+    gaps: &[(usize, usize)],
+    other: &[u32],
+) -> Vec<u32> {
+    let Some((_, highest)) = gaps.last() else {
+        return Vec::new();
+    };
+    let mut bounds: Vec<u32> = gaps.iter().map(|(low, _)| other[*low]).collect();
+    bounds.push(other[*highest]);
+    let mut corners = Vec::with_capacity(2 + bounds.len());
+    match (side, at_end) {
+        (FaceSide::Outer, false) => {
+            corners.extend([corner[0], corner[1]]);
+            corners.extend(bounds.iter().rev().copied());
+        }
+        (FaceSide::Outer, true) => {
+            corners.extend([corner[1], corner[0]]);
+            corners.extend(bounds.iter().copied());
+        }
+        (FaceSide::Inner, false) => {
+            corners.push(corner[0]);
+            corners.extend(bounds.iter().copied());
+            corners.push(corner[1]);
+        }
+        (FaceSide::Inner, true) => {
+            corners.push(corner[1]);
+            corners.extend(bounds.iter().rev().copied());
+            corners.push(corner[0]);
+        }
+    }
+    corners
+}
+
+/// Emits one gap of one band, as a quad or as the triangle it becomes where it stands on the floor.
+///
+/// # Invariants
+///
+/// **A gap with no height at one of its two ends is a triangle, and it is still a face.** A ground
+/// line that rises makes that ordinary — the wall thins to nothing exactly where the ground reaches
+/// the sill — and dropping that face would leave the edge its other end still draws unclaimed, which
+/// reads as a boundary on a solid that is otherwise whole. Whether an end stands is read from the
+/// **point indices**, which is the same answer as reading the elevations: the walk welds a sill that
+/// sits on a floor to that floor's own point, so equal indices *are* equal elevations here.
+///
+/// A gap with no height at **either** end has no area at all and is not emitted: that is the door's,
+/// and the floor's own edge closes its sill instead.
+fn gap(
+    solid: &mut Solid,
+    side: FaceSide,
+    near: &[u32],
+    far: &[u32],
+    low: usize,
+    high: usize,
+    element: Element,
+) {
+    let corners = match side {
+        FaceSide::Outer => [near[high], far[high], far[low], near[low]],
+        FaceSide::Inner => [far[high], near[high], near[low], far[low]],
+    };
+    match (near[high] == near[low], far[high] == far[low]) {
+        (true, true) => {}
+        (true, false) => solid.triangle([corners[0], corners[1], corners[2]], element),
+        (false, true) => solid.triangle([corners[0], corners[2], corners[3]], element),
+        (false, false) => solid.quad(corners, element),
+    }
+}
+
+/// Returns the index pair of one gap, or `None` when it has no height at either of the band's ends.
+///
+/// `top` is resolved to the row the station's table holds it at, and **the wall top is not one of
+/// the cuts**: it has a row of its own, so a gap that ends there names that row rather than a second
+/// copy of the point.
+fn piece(
+    side: FaceSide,
+    cuts: &[f32],
+    wall: &WallFace,
+    bottom: Option<f32>,
+    top: f32,
+    start: f32,
+    end: f32,
+) -> Option<(usize, usize)> {
+    let high = if top == wall.top {
+        1
+    } else {
+        cut_index(cuts, top)
+    };
+    let (from, stands) = match bottom {
+        None => (
+            0,
+            top > side.floor_at(wall, start) || top > side.floor_at(wall, end),
+        ),
+        Some(below) => (cut_index(cuts, below), top > below),
+    };
+    stands.then_some((from, high))
 }
 
 /// Returns the mass's inner loop, or `None` after reporting every way it could not be built.
