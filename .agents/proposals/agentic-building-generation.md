@@ -3508,7 +3508,7 @@ of `courtyard::ring` and rendered all nine scenes under it. **The first reading 
 all nine.** It had not. The probe matched the *string* `CANARY` in the render's combined output, and a diverging
 `panic!` makes the rest of the function unreachable, so `rustc`'s own `unreachable code` warning **quoted the panic's
 source line** and the match caught the compiler's diagnostic rather than the program. Re-run through the built binary
-instead of through `cargo run`, matching `thread '...' panicked` rather than a word:
+instead of through `cargo run`, matching the panic rather than a word:
 
 - **0 hits across all nine scenes**, every one exiting `0`.
 - **The same canary fires** on `courtyard_probe` — `CANARY: a document reached the courtyard ring walk with
@@ -3516,6 +3516,13 @@ instead of through `cargo run`, matching `thread '...' panicked` rather than a w
 - It was then removed.
 
 **An instrument that can be made to agree with you is worse than none**, and this one agreed for the wrong reason.
+
+**The pattern given here for the match, `thread '...' panicked`, does not work on this toolchain**, and the failure is worse
+than the one above rather than the opposite of it. The panic line is `thread 'main' (16748) panicked at …` — there is a
+thread id between the name and the word — so the pattern matches **nothing at all, including on the control**, and a zero
+read that way is vacuous: the canary would have been unable to fire and the "0 hits across the nine" would have said only
+that the pattern was wrong. It is corrected in *What the loop-simplicity slice found* below, which repeats the measurement
+against a pattern checked against its own fixture first.
 
 **No scene authors a courtyard, and that was measured three ways rather than assumed.** `Mass::with_voids` has one
 definition and **every caller is an example**: `courtyard_probe`, `patio_probe`, `validate_probe`, and nothing else
@@ -3576,7 +3583,155 @@ the second horn turned out to be a real shape rather than a failure.** One of th
 sound. The brief's framing left no room for "the walk takes it and the geometry is right", which is the answer, and
 the answer is a third thing rather than one of the two offered.
 
-**What is still open:** whether a void loop that meets itself should be named by a document check of its own, so that
-`validate` says *the loop is not simple* rather than leaving the author with a subtraction that happened to notice.
-It is not answered here on purpose: it refuses documents that build nothing today, and that is a decision about what
-`validate` is for, not a defect this measurement found.
+**What is still open:** nothing in this section. Whether a void loop that meets itself should be named by a
+document check of its own, so that `validate` says *the loop is not simple* rather than leaving the author with a
+subtraction that happened to notice, **is answered now** — see *What the loop-simplicity slice found* below.
+
+## What the loop-simplicity slice found: `validate` now says the shape, not the arithmetic (2026-10-31, branch `feature/building-loop-simple`)
+
+The open item the bowtie slice left on purpose is closed, and the owner's direction was the whole of it: **`validate`
+said nothing directly about a void loop not being simple.** It said `VoidNotInside`, from a subtraction that happened to
+notice, or `DidNotExpand` carrying the walk's own name. `Violation::VoidNotSimple` says the loop's shape and carries the
+reading that decided it.
+
+**It is additive by construction, because a pinch the author wrote down is deliberately not reported.** Two of the loop's
+own nodes standing at one place is the only way a loop's non-neighbouring edges may share a point, and that shape **builds**
+— so the check is silent for it, and everything it does report the walk refuses already. Measured, at the same 12 × 12 mass
+and 0.3 m wall the bowtie slice used, so the numbers are the ones above continued rather than a second experiment:
+
+| void loop | simple | `validate` says | `build` |
+| --- | --- | --- | --- |
+| **bowtie** `(0,0)(4,4)(4,0)(0,4)` | false | `VoidNotSimple { meeting: Crossing { left: 0, right: 2 } }`, with `VoidNotInside` and `DidNotExpand` | refused: `OffsetSelfIntersecting { left: 0, right: 2 }` |
+| **hourglass** `(-3,0)(-1,-2)(1,2)(3,0)(1,-2)(-1,2)` | false | `VoidNotSimple { meeting: Crossing { left: 1, right: 4 } }`, with `DidNotExpand` and **without** `VoidNotInside` | refused: `OffsetSelfIntersecting { left: 1, right: 4 }` |
+| **asymmetric bowtie**, walked `(0,2)(4,0)(4,6)(0,0)` | false | `VoidNotSimple { meeting: Crossing { left: 0, right: 2 } }`, with `VoidNotInside` and `DidNotExpand` | refused: `OffsetSelfIntersecting { left: 0, right: 2 }` |
+| **a crossing the author wrote down** `(0,0)(2,2)(4,4)(4,0)(0,4)` — edge 3 runs through node 1 at `(2,2)` | false | `VoidNotSimple { meeting: Touch { edge: 3, node: 1 } }`, with `VoidNotInside` and `DidNotExpand` | refused: `OffsetSelfIntersecting { left: 1, right: 3 }` |
+| **a T-junction** `(-3,-3)(3,-3)(3,3)(0,-3)(-3,3)` | false | `VoidNotSimple { meeting: Touch { edge: 0, node: 3 } }`, with `DidNotExpand` and **without** `VoidNotInside` | refused: `MiterTooLong { node: 2, reach: 1.3057503 }`, `{ node: 4, reach: 1.3057507 }` |
+| **two squares sharing an authored corner** | false | **nothing** | **builds**: offset loop simple, worst mitre miss `0.0000001`, offset area `25.5600` against plan geometry's `25.5600` (off `0.000004`), manifold, loops `0`, euler `0`, volume `24.1920` against `24.1920` (off `0.000002`), every flat face on one of the ring's own loops |
+| **a dart and a triangle sharing an authored point** | false | **nothing** | **builds**: worst mitre miss `0.0000002`, offset area `21.5175` against `21.5175` (off `0.000004`), manifold, loops `0`, euler `0`, volume `25.6560` against `25.6560` (off `0.000004`) |
+
+**The two readings are two different edits, and the one the brief did not ask for is the one that reads best.** A
+crossing names two edges — the author moves a node or reorders the loop — and a touch names an edge and a node standing in
+its interior, which is one node to move. **The touch is read first, because a touch and a crossing are the same contact
+read two ways**: a segment running *through* another's endpoint answers `segments_cross_properly` whenever the angle is
+not degenerate, and naming two edges for it asks the reader to find which of the pair's four ends is the point. The fourth
+row above is that case measured — `(2,2)` is a node the author wrote, and the sentence is "node 1 stands inside edge 3", not
+"edges 1 and 3 cross".
+
+### The first version of the check refused a document that builds, and the reason is worth more than the fix
+
+The check as first written asked `segments_cross_properly` directly, and it reported **`Crossing { left: 1, right: 6 }` on
+the two squares sharing a corner** — the one shape the constraint says must stay silent. The predicate compares
+`(first > 0.0) != (second > 0.0)`, and a point lying *on* the other segment's line gives `0.0`, which is "not above zero"
+and so straddles against a positive product. **Two edges that meet at one of their own ends therefore read as crossing.**
+
+`interior_to_both` now says the thing the predicate's name says: neither segment's own end lies on the other, so the
+contact is in the interior of both. It is four distance comparisons, it is asked before the crossing test, and on a simple
+loop it is the whole cost. **`segments_cross_properly` itself was not changed** — it belongs to
+[`Problem::OffsetSelfIntersecting`]'s sweep, and the constraint on this slice was not to move that name's behaviour, so
+the stricter question is asked beside it rather than by editing it.
+
+### The one question about a self-touching loop that the document alone cannot answer
+
+**Whether an authored pinch is carried is a question about `mass.wall`, not about the authored nodes**: a mitre's reach is
+`wall / sin(θ / 2)` against a join limit of `4 × wall`, so the same loop can be carried at one wall and refused at another.
+That is stated here rather than papered over, and **the check's silence does not rest on it** — it declines every authored
+pinch at every wall by construction, so the reading it gives is never a wall-dependent one. Where the claim does hold was
+measured rather than argued: **two pinches over nine walls from `0.05` m to `0.45` m — all 18 build**, validate silent, the
+offset loop simple, the ring manifold with no boundary loop and euler `0`, and the volume against
+`(offset − loop) × height` to the printed precision. `DidNotExpand` remains the reading for a pinch the walk does refuse,
+and **this slice found no wall that refuses one.**
+
+### The rank, and why not a new one
+
+`order_key` gives it **rank `6`, fourth slot `3`** — beside `VoidNotInside`, `VoidOverlaps` and `VoidReachesTheWall`, and
+after the ring's own at `2`, because a loop that meets itself is a fault about what the loop *is* while the other two are
+about where it stands. Ranks `41`–`43` went to the end instead because those variants are about a slab's host and an
+opening's bay, which are not a courtyard's, and because those three had no block of their own to sit in. **The retired
+`1` (the old `VoidNotConvex`) stays retired**, `14` stays retired, and the two indices of the reading are packed into the
+fifth slot as `(left << 16) | right` — the key is five wide and every arm already fills it, which is the same packing
+`void_rank` and `solid_rank` already use.
+
+### The canary's pattern in the section above is wrong, and the wrongness is worse than a bare string
+
+The bowtie slice recorded matching `thread '...' panicked`. **On this toolchain that pattern matches nothing at all**,
+including on the canary's own fixture: the line is
+
+```
+thread 'main' (16748) panicked at crates\building\src\courtyard.rs:101:5:
+```
+
+— there is a thread id between the name and the word. A canary read that way **cannot fire**, so the "0 hits across the
+nine" it would have produced is vacuous and the instrument is unable to disagree with anybody. The pattern this slice used
+is **`thread '.*'.*panicked`**, and it was checked against the control first:
+
+- **the control fires once**: `courtyard_probe` exits `101` with
+  `CANARY: a document reached the courtyard ring walk with Void { mass: MassId(0), void: 0 }`;
+- **0 hits across all nine scenes**, every one exiting `0`, run through the **built binary** rather than through
+  `cargo run`;
+- **a bare `CANARY` match gives 4 false hits in each of the nine**, from `rustc`'s own `unreachable code` warning quoting
+  the panic's source line — the false positive the section above records, reproduced exactly.
+
+The static half is unchanged and still holds: `Mass::with_voids` has one definition and **every caller is an example**
+(`courtyard_probe`, `patio_probe`, `validate_probe`), and `crates/gallery` matches **none** of `with_voids`, `.voids`,
+`VoidWall`, `VoidInner`, `VoidTop`, `VoidBase` or `SolidId::Void`.
+
+### The gate
+
+- **All 29 building examples exit 0**, every one run by name from the built binary.
+- **`cargo build --workspace --all-targets`** exits `0` and warns **only** of the `census.exe` / `census.pdb` output
+  filename collision — the set every earlier section quotes, and no new warning.
+- `cargo fmt --all -- --check` is clean.
+- `scene_identity_probe` reads **806** rows two-way (`77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101`), contiguous, every
+  name non-empty, every name round-tripping, the four pinned readings unchanged.
+- **The existing readings are unchanged, and it is a mechanical diff rather than an argument.** The branch's
+  `crates/building` was replaced with main's by `git checkout main -- crates/building`, rebuilt, and `courtyard_probe` run
+  into one file; the branch's was restored and run into another. **86 changed lines, and every one of them is either a
+  `validate says:` line that gained `VoidNotSimple`, a `refused by the document: 1 → 3 violation(s)` line, or one of the
+  two shapes this slice added.** No `OffsetSelfIntersecting`, `MiterTooLong`, `VoidNotInside` or `DidNotExpand` line appears
+  in the diff at all, and the two-squares block is byte-identical.
+- **The new violation fires in exactly one of the 29 examples** — `courtyard_probe`, on 24 lines — and in **none** of the
+  other 28, which includes the two that author courtyards and exercise `validate` (`validate_probe`, `patio_probe`).
+- **Nine before/after pairs on this adapter, identical on all three hashes.** The before set was rendered from the branch
+  point and the after set from the branch, both in a worktree whose `out/` was empty and both to fresh names
+  (`lsB-*` before, `lsA-*` after). **Which hash is which, because the two are not the same measurement**: `png` is the
+  **SHA-256 of the written `.png` file**; `document` and `image` are **the manifest's own fields**, the document hash over
+  the documents the compile emitted and the image hash over the **raw pixel buffer**.
+
+  | scene | `.png` file SHA-256, before and after | manifest `document` | manifest `image` (raw buffer) |
+  | --- | --- | --- | --- |
+  | `house` | `B13154AD7D29F938` **same** | `f285144da26fec5e` **same** | `4f343949d83b2064` **same** |
+  | `hall` | `C4339E6310EA1C37` **same** | `8ad46af4dec6ad57` **same** | `d3861ab9a49e11df` **same** |
+  | `hall_large` | `43D3780A15E3D08E` **same** | `7930acde40622338` **same** | `ac283053024091ef` **same** |
+  | `shed` | `882B8F9A7C671B0D` **same** | `fab2859d5a542659` **same** | `929a983d1b57d8c3` **same** |
+  | `terrace` | `EDF3F4B3CF2A9686` **same** | `1d2963d762cc1f59` **same** | `d6478e6600918037` **same** |
+  | `wing` | `14E3E27F9F9E1A83` **same** | `0a890abcb64118c9` **same** | `e92705c66973ad53` **same** |
+  | `workshop` | `7DD5D40894181EA7` **same** | `32c95c8aade51358` **same** | `d9617c18c39b0fdb` **same** |
+  | `yard` | `FDC446B24E98CE04` **same** | `ca2fb43788334947` **same** | `2ab63de3b0a4f727` **same** |
+  | `identity` | `974FB5B24E1E7A35` **same** | `e170170e5822c26c` **same** | `0f3026193ce73439` **same** |
+
+  **The table of `.png` values is the one every earlier section carries**, so the fresh render reproduces it on this machine
+  as well as reproducing itself.
+
+### What this slice's brief got wrong
+
+**It asked for the reading to be "which segments cross, or the pair of nodes that coincide", and the second half of that is
+the case the check must not report.** Two coinciding nodes *is* the authored pinch — it is the only way a loop's
+non-neighbouring edges may share a point, it is not simple, and it builds a sound courtyard. A variant that named it would
+have refused a document that draws. The reading is therefore "which segments cross" and "which node stands inside which
+edge", and the sentence the brief was reaching for is reached by the silence rather than by a payload.
+
+**It called `VoidNotInside` "the reading" and the `DidNotExpand` pair "the walk's", which is right, and that is what made the
+change look like a rename.** It is not: the new variant reports on a **document the walk refuses today**, which means it is
+a check and not a second spelling of `DidNotExpand`. What it is not — and the brief did not say this — is a *replacement*;
+`OffsetSelfIntersecting`, `MiterTooLong`, `VoidNotInside` and `DidNotExpand` all report exactly where they did, which the
+86-line diff above is the evidence for.
+
+**It framed the constraint as "fires only where the document already fails to build today", and the sharper statement is
+"fires only where the loop is not simple *at a point its author did not write down*".** The first is satisfied by accident;
+the second is the rule, and it is the second that survives a wall sweep.
+
+**What is still open:** whether `VoidNotInside` should now say less than it does. It reports that the ear clipper disagreed
+with itself on a loop with no triangulation, and the new variant names the same loop for the right reason — so the two
+readings both stand for a bowtie and only one of them means anything. Leaving it is the conservative choice and it keeps
+this slice to one variant; a follow-up that narrows `VoidNotInside` to loops that are simple would have to be argued on its
+own measurements, because nothing here measures it.

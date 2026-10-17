@@ -28,14 +28,21 @@
 //!
 //! The concave half asks which *reflex* corners a ring can have, and the sweep beside it asks how narrow a bite
 //! can get. Neither asks what happens when the loop's edges cross or touch, which is what the proposal's "where
-//! the system stands" left open. Five shapes answer it here, and they are five different questions rather than
-//! five sizes of one: a **bowtie** and an **hourglass** both cross with a signed area of exactly zero, so the
+//! the system stands" left open. Seven shapes answer it here, and they are seven different questions rather than
+//! seven sizes of one: a **bowtie** and an **hourglass** both cross with a signed area of exactly zero, so the
 //! expander's winding normalisation has nothing to normalise; an **asymmetric bowtie** crosses with a signed area
 //! that is not zero, so the expander *reverses* it, and a reversal of a self-intersecting loop turns each edge's
-//! outward side the other way round; **two squares touching at a point** touch rather than cross; and a
-//! **T-junction** touches at a point the author never wrote down, which the walk's crossing sweep cannot see at all
-//! because `segments_cross_properly` needs each segment to have the other's endpoints *strictly* on opposite
-//! sides.
+//! outward side the other way round; a **T-junction** touches at a point the author never wrote down, which the
+//! walk's crossing sweep cannot see at all because `segments_cross_properly` needs each segment to have the
+//! other's endpoints *strictly* on opposite sides; a **crossing the author wrote down** puts the crossing point in
+//! the node list, which is a third reading again and the one that says whether the check names a contact or a
+//! count of points on it.
+//!
+//! **The two shapes that must stay silent are the other half of the finding.** **Two squares touching at a
+//! point** and a **dart and a triangle sharing a point the author wrote down twice** are both not simple, and both
+//! build: `validate` reports nothing, the ring is edge-manifold with no boundary loop and Euler `0`, and its volume
+//! is `(offset − loop) × height` to `4 × 10⁻⁶`. The second is there so the exclusion is measured on a lobe that is
+//! reflex rather than on the one arrangement that happens to work; an argument would not have settled it.
 //!
 //! **Each is read three ways and none may answer for another**: what `validate` reports about the document, what
 //! `build` does with the loop, and — only where a solid came out — its volume against plan geometry's own answer
@@ -835,7 +842,42 @@ fn self_intersecting_voids() {
         wall,
     );
 
+    // **The same crossing with the crossing point written down as a node**, which is the case that
+    // says whether the reading is about the *contact* or about the count of points on it. The bowtie
+    // above crosses at `(2,2)` in the interior of two of its edges; here `(2,2)` is node 1 and edge 3
+    // runs straight through it, so the contact is at a place the author did write down — and yet no
+    // two of the loop's nodes stand at one place, so it is not the authored pinch. The question is
+    // whether the check says "these two edges cross" or "this node stands in this edge", and only a
+    // measurement says which.
+    measure_void_in(
+        half,
+        "a crossing the author wrote down: edge 3 runs through node 1 at (2,2)",
+        &[[0.0, 0.0], [2.0, 2.0], [4.0, 4.0], [4.0, 0.0], [0.0, 4.0]],
+        wall,
+    );
+
+    // **A pinch the author wrote down twice, with the lobes in the other arrangement.** The two
+    // squares above meet corner to corner with both lobes turning the same way; this one has a lobe
+    // that is a **dart**, so the corner the two lobes share is reflex. The question the probe has to
+    // answer is whether the ring still closes, because the check's silence rests on the measurement
+    // that this shape builds rather than on the argument that a shared node is not a fault.
+    measure_void_in(
+        half,
+        "a dart and a triangle sharing a point the author wrote down twice",
+        &[
+            [-3.0, 0.0],
+            [0.0, -3.0],
+            [0.0, 0.0],
+            [3.0, 0.0],
+            [0.0, 3.0],
+            [0.0, 0.0],
+            [-3.0, 3.0],
+        ],
+        wall,
+    );
+
     sweep_bowtie(half, wall);
+    sweep_pinch(half);
 }
 
 /// Sweeps a bowtie in the two variables that turned a bite into a limit rather than a defect.
@@ -870,6 +912,50 @@ fn sweep_bowtie(half: f32, wall: f32) {
             hundredth as f32 / 100.0,
             half,
         );
+        hundredth += 5;
+    }
+}
+
+/// Sweeps the one case the check is silent for, in the variable that decides whether the walk carries it.
+///
+/// # Invariants
+///
+/// **The exclusion `VoidNotSimple` rests on is "a pinch at an authored point builds", and that is a
+/// claim about a wall, not only about a loop.** A mitre's reach is `wall / sin(θ / 2)`, so whether an
+/// authored pinch is carried depends on `mass.wall` and on how the two lobes meet — which is the one
+/// question about a self-touching loop that **cannot** be answered from the authored nodes alone. The
+/// sweep is what says whether the claim holds where it was measured, and the silence holds either way:
+/// the check declines every authored pinch at every wall, so the reading it gives is never a
+/// wall-dependent one.
+fn sweep_pinch(half: f32) {
+    println!(
+        "\n# the two authored pinches swept in the wall: the check is silent for both at every reading,\n\
+         # and this says whether the walk carries them at every reading too"
+    );
+    let squares: [[f32; 2]; 8] = [
+        [-3.0, -3.0],
+        [0.0, -3.0],
+        [0.0, 0.0],
+        [3.0, 0.0],
+        [3.0, 3.0],
+        [0.0, 3.0],
+        [0.0, 0.0],
+        [-3.0, 0.0],
+    ];
+    let dart: [[f32; 2]; 7] = [
+        [-3.0, 0.0],
+        [0.0, -3.0],
+        [0.0, 0.0],
+        [3.0, 0.0],
+        [0.0, 3.0],
+        [0.0, 0.0],
+        [-3.0, 3.0],
+    ];
+    let mut hundredth = 5;
+    while hundredth <= 45 {
+        let wall = hundredth as f32 / 100.0;
+        report_loop("two squares pinched", &squares, wall, half);
+        report_loop("a dart and a triangle pinched", &dart, wall, half);
         hundredth += 5;
     }
 }

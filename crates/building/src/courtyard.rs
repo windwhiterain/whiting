@@ -52,9 +52,14 @@
 //! bite. Every way of failing that is one of [`expand::offset_loop`]'s own faults and each names the
 //! **loop** it is about, so a courtyard's fault and a mass's fault are never the same fault.
 //!
-//! [`Violation::VoidReachesTheWall`](crate::validate::Violation::VoidReachesTheWall) is the fourth
-//! courtyard fault in the document half, and it is the only one about the ring rather than the loop:
-//! a void loop inside the outline is not a courtyard that *fits*, because its wall stands outside it.
+//! [`Violation::VoidNotSimple`](crate::validate::Violation::VoidNotSimple) and
+//! [`Violation::VoidReachesTheWall`](crate::validate::Violation::VoidReachesTheWall) are the other two
+//! courtyard faults in the document half. The first is about the **loop's own shape** — a void loop that
+//! meets itself at a point its author did not write down, which the walk already refuses by
+//! [`Problem::OffsetSelfIntersecting`] or [`Problem::MiterTooLong`] and which `validate` now also says in
+//! those terms, because a subtraction that happened to disagree with itself is not the sentence. The
+//! second is the only one about the ring rather than the loop: a void loop inside the outline is not a
+//! courtyard that *fits*, because its wall stands outside it.
 
 use std::collections::BTreeMap;
 

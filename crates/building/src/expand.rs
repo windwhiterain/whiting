@@ -2883,7 +2883,13 @@ pub(crate) fn loop_area(loop_points: &[Vec2]) -> f32 {
 /// collinear segments — `0 <= 0` on both products — so the two halves of one face read as a crossing, and a
 /// concave outline's offset loop, which is exactly right, was refused for some wall thicknesses and accepted for
 /// others. This is the strict form the offset check asks for.
-fn segments_cross_properly(from_a: Vec2, to_a: Vec2, from_b: Vec2, to_b: Vec2) -> bool {
+///
+/// **It is `pub(crate)` because a document check asks the same question and must not answer it a second way.**
+/// [`validate`](crate::validate) reports a void loop that meets itself, and a second implementation of "do these
+/// two edges cross" here would be a second definition of the same relation — which is how a probe comes to agree
+/// with the crate by construction. What the caller adds around this is not the crossing but the reading: *which*
+/// pair of edges crossed, and what the loop is called when they do not cross at all.
+pub(crate) fn segments_cross_properly(from_a: Vec2, to_a: Vec2, from_b: Vec2, to_b: Vec2) -> bool {
     let along = difference(to_a, from_a);
     let first = cross(along, difference(from_b, from_a));
     let second = cross(along, difference(to_b, from_a));

@@ -145,6 +145,40 @@ const VOID_AREA_TOLERANCE: f32 = 1.0e-3;
 /// structural corner of a real building can be mistaken for a coincidence.
 const COINCIDENT_TOLERANCE: f32 = 1.0e-5;
 
+/// Where a loop meets itself, which is the reading that decides
+/// [`Violation::VoidNotSimple`].
+///
+/// # Invariants
+///
+/// **Two cases and not one, because they are two different edits.** A crossing names two edges, and
+/// an author fixes it by moving one node or by reordering the loop; a touch names an edge and a node
+/// standing in its interior, and an author fixes it by moving that one node. A count of meetings
+/// would tell them neither.
+///
+/// **The touch is read first, and the reason is that a touch and a crossing are the same contact read
+/// two ways.** A segment that runs *through* another's endpoint answers true to
+/// [`expand::segments_cross_properly`](crate::expand::segments_cross_properly) whenever the angle is
+/// not degenerate, because one side of the product is exactly zero; naming two edges for it would ask
+/// the reader to go and find which of the pair's four ends is the point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelfMeeting {
+    /// The loop's two edges cross, and the point they meet at is in the interior of both.
+    Crossing {
+        /// The first edge, counted from the loop's first node.
+        left: usize,
+        /// The second.
+        right: usize,
+    },
+    /// One of the loop's own nodes stands inside another of its edges, so the loop touches itself at a
+    /// point its author did not write down.
+    Touch {
+        /// The edge that runs through the node.
+        edge: usize,
+        /// The node it runs through.
+        node: usize,
+    },
+}
+
 /// One thing wrong with a building.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Violation {
@@ -792,6 +826,39 @@ pub enum Violation {
         /// Which of its voids, in the order it authored them.
         void: usize,
     },
+    /// A mass's void loop meets itself at a point its author did not write down, so it is not the
+    /// simple loop a courtyard's ring is built from.
+    ///
+    /// # Invariants
+    ///
+    /// **This is the fault [`VoidNotInside`](Self::VoidNotInside) reports by accident and
+    /// [`DidNotExpand`](Self::DidNotExpand) reports as arithmetic.** Before it, a crossing reached
+    /// the author as a subtraction that happened to disagree with itself — a bowtie reads `8.0000`
+    /// shared with the outline against `12.0000` shared with itself and fires, while the *same*
+    /// bowtie stood on its side as an hourglass reads `8.0000` against `8.0000` and says nothing —
+    /// and a touch at an unauthored point reached them as `DidNotExpand` carrying
+    /// [`Problem::MiterTooLong`], a mitre length rather than a shape. Both loops are refused either
+    /// way, so this reports nothing a build refuses today; it says the sentence the reading deserves.
+    ///
+    /// **A point two of the loop's own nodes stand at is not this violation, and that is measured
+    /// rather than assumed.** Two `3 × 3` squares sharing exactly one corner name that corner twice,
+    /// the loop is not simple by the textbook definition this check uses, and **the ring it builds is
+    /// sound**: edge-manifold, no boundary loop, Euler `0`, and a volume of `24.1920 m³` against
+    /// `(offset − loop) × height` to `2 × 10⁻⁶`. The two lobes meet along the whole cross-section of
+    /// the pinch, which is why the characteristic is `0` and not `-1`. A loop the author pinched at a
+    /// point they wrote down is a courtyard, and the walk carries it, so it is deliberately silent.
+    ///
+    /// **The reading is carried rather than a count**, because the author has to act on it and the two
+    /// ways are different edits: a crossing is two edges out of order and a touch is one node in the
+    /// wrong place.
+    VoidNotSimple {
+        /// The mass.
+        mass: MassId,
+        /// Which of its voids, in the order it authored them.
+        void: usize,
+        /// Where the loop meets itself, read off the authored loop.
+        meeting: SelfMeeting,
+    },
     /// Two of a mass's voids share plan area, so the hole they make is one hole with two descriptions.
     VoidOverlaps {
         /// The mass.
@@ -830,11 +897,12 @@ pub enum Violation {
 /// Answers for a skeleton that cannot be built, which is why it is the half an agent should call
 /// while editing.
 ///
-/// # The two checks here that are quadratic
+/// # The three checks here that are quadratic
 ///
 /// [`Violation::UnattachedOverlap`] compares every mass's plan with every other mass's: `O(n^2)` in
 /// the masses and `O(k^2)` in the nodes of a pair. [`Violation::OpeningOverlaps`] compares every
-/// pair of holes in one wall. Both are the right cost here and the wrong one anywhere else — this is
+/// pair of holes in one wall, and [`Violation::VoidNotSimple`] compares every pair of one void
+/// loop's edges. All three are the right cost here and the wrong one anywhere else — this is
 /// called by an author asking what is wrong, a few times a second at most, and **never** by `build`,
 /// which is why the expansion can stay linear. `mountain`'s validate makes the same trade for its
 /// rib-crossing scan and states it in the same terms. The mass one rejects a pair in `O(1)` on their
@@ -955,12 +1023,14 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 ///
 /// # Invariants
 ///
-/// **Three faults, and each is a statement about the document rather than about the drawing:**
+/// **Five faults, and each is a statement about the document rather than about the drawing:**
 ///
+/// - a void loop that **meets itself** ([`VoidNotSimple`](Self::VoidNotSimple)), which is a statement
+///   about the loop's own shape;
 /// - a void that is not strictly inside its mass's outline (the hole would open through the wall);
 /// - two voids that share plan area (one hole described twice); and
 /// - a void whose **wall** has no room inside the mass's own wall
-///   ([`VoidReachesTheWall`](Self::VoidReachesTheWall)), which is the only one of the three that is
+///   ([`VoidReachesTheWall`](Self::VoidReachesTheWall)), which is the only one of the four that is
 ///   about the ring rather than about the loop.
 ///
 /// **A void loop that is not convex is no longer one of them**, and what replaced it is narrower and
@@ -981,6 +1051,12 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 /// of where "inside" is. Both are **staged**: a loop that will not offset is a fault the expander
 /// already names through [`DidNotExpand`](Self::DidNotExpand), and a check that would read a loop
 /// that does not exist is skipped rather than guessed at.
+///
+/// **The simplicity reading above is the one that is not staged, and it is not staged because it
+/// needs nothing the walk has not already got.** It reads the authored nodes and compares them with
+/// each other, so it answers for a loop that offsets, one that does not, and one that never reaches
+/// the expander at all — which is the only way it can say what it says about a shape the walk would
+/// have refused by a name about its own output.
 fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     for (index, mass) in skeleton.masses.iter().enumerate() {
         let id = MassId(index);
@@ -991,6 +1067,13 @@ fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             .map(|loop_nodes| plan_of(loop_nodes))
             .collect();
         for (void, held) in voids.iter().enumerate() {
+            if let Some(meeting) = self_meeting(held) {
+                violations.push(Violation::VoidNotSimple {
+                    mass: id,
+                    void,
+                    meeting,
+                });
+            }
             let enclosed = crate::clip::shared_area(&outline, held).abs();
             let own = crate::clip::shared_area(held, held).abs();
             if (enclosed - own).abs() > VOID_AREA_TOLERANCE {
@@ -1012,11 +1095,123 @@ fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     }
 }
 
+/// Returns where a loop meets itself at a point its author did not write down, and `None` when it
+/// does not.
+///
+/// # Invariants
+///
+/// **A point two of the loop's own nodes stand at is a meeting this returns `None` for, and that is
+/// the one judgement in the function.** Two edges of a closed loop may only share a point when that
+/// point is an end of both — every other shared point is the loop meeting itself — and an end of both
+/// means two of the loop's nodes were authored at one place. A loop pinched that way is refused by
+/// nothing: two `3 × 3` squares sharing one corner expand to an edge-manifold solid with no boundary
+/// loop, Euler `0`, and a volume of `24.1920 m³` against `(offset − loop) × height` to
+/// `2 × 10⁻⁶`. Naming it would refuse a document that builds a sound courtyard, which is the one
+/// thing a check here must not do.
+///
+/// **The reading is the first meeting in the loop's own order**, and the pairs are walked
+/// `(left, right)` with `right ≥ left + 2` and `(0, n − 1)` left out — the same enumeration
+/// [`expand::offset_loop`](crate::expand::offset_loop)'s own crossing sweep uses, so the pair this
+/// names and the pair the walk refuses are the same pair of edges counted the same way.
+///
+/// **The touch is read before the crossing, and the reason is the two are one contact read two ways.**
+/// A segment running *through* another's endpoint answers
+/// [`expand::segments_cross_properly`](crate::expand::segments_cross_properly) whenever the angle is
+/// not degenerate, and naming two edges for it would ask the reader to find which of the pair's four
+/// ends is the point.
+///
+/// **`O(nodes²)` and it is the third quadratic in this module**, beside [`Violation::UnattachedOverlap`]
+/// and [`Violation::OpeningOverlaps`], for the same trade and the same reason: this is called by an
+/// author asking what is wrong and never by `build`. A loop that meets itself needs no bounding-box
+/// rejection either, because the two that would pay for it are the ones that get refused by the
+/// cheapest reading in the pair above.
+///
+/// **The tolerance is [`TOUCH_TOLERANCE`],** the millimetre the rest of this module's plan readings
+/// use, and both of the tests it serves are read at it: a node that stands on an edge, and two nodes
+/// that stand at one place. Reading them at one number is the point — a pinch its author wrote twice
+/// has to be the same pinch for the touching test and the coincidence test, or a courtyard is refused
+/// by a rounding artefact on one side of the comparison.
+fn self_meeting(loop_points: &[Vec2]) -> Option<SelfMeeting> {
+    let count = loop_points.len();
+    for left in 0..count {
+        for right in left + 2..count {
+            if left == 0 && right == count - 1 {
+                continue;
+            }
+            let (from_a, to_a) = (loop_points[left], loop_points[(left + 1) % count]);
+            let (from_b, to_b) = (loop_points[right], loop_points[(right + 1) % count]);
+            if let Some(node) = node_standing_on(from_b, to_b, from_a, to_a, right, count) {
+                return Some(SelfMeeting::Touch { edge: left, node });
+            }
+            if let Some(node) = node_standing_on(from_a, to_a, from_b, to_b, left, count) {
+                return Some(SelfMeeting::Touch { edge: right, node });
+            }
+            if crate::expand::segments_cross_properly(from_a, to_a, from_b, to_b)
+                && interior_to_both(from_a, to_a, from_b, to_b)
+            {
+                return Some(SelfMeeting::Crossing { left, right });
+            }
+        }
+    }
+    None
+}
+
+/// Returns the index of a node standing in the interior of a segment, given that segment's own two
+/// ends and the indices they answer to.
+///
+/// `None` when no end of the segment stands on it, and `None` for an end that is **also** one of the
+/// other segment's own ends — that is the authored coincidence [`self_meeting`] is silent for, and it
+/// is excluded here rather than by the caller so that the two readings cannot come apart.
+fn node_standing_on(
+    from: Vec2,
+    to: Vec2,
+    segment_from: Vec2,
+    segment_to: Vec2,
+    first: usize,
+    count: usize,
+) -> Option<usize> {
+    for (node, end) in [first, (first + 1) % count].into_iter().zip([from, to]) {
+        if distance_to_segment(end, segment_from, segment_to) > TOUCH_TOLERANCE {
+            continue;
+        }
+        if !is_an_end_of(end, segment_from, segment_to) {
+            return Some(node);
+        }
+    }
+    None
+}
+
+/// Returns whether two segments can cross away from their ends, which is what a crossing is.
+///
+/// # Invariants
+///
+/// **A product of exactly zero is what makes the strict crossing test answer true where it should
+/// not.** `segments_cross_properly` compares `(first > 0.0) != (second > 0.0)`, and a point lying
+/// *on* the other segment's line gives `0.0`, which is "not above zero" and so straddles against a
+/// positive product. Two edges that meet at one of their own ends therefore read as crossing, and
+/// the meeting is then either the touch [`node_standing_on`] reports or the authored pinch this
+/// check is silent for — never a crossing, which by definition is a contact in the interior of both.
+///
+/// **It costs four distance comparisons and no more**, so it is asked before the crossing test rather
+/// than after: on a loop that is simple it is the whole cost, and on one that is not the answer is the
+/// same either way.
+fn interior_to_both(from_a: Vec2, to_a: Vec2, from_b: Vec2, to_b: Vec2) -> bool {
+    !is_an_end_of(from_a, from_b, to_b)
+        && !is_an_end_of(to_a, from_b, to_b)
+        && !is_an_end_of(from_b, from_a, to_a)
+        && !is_an_end_of(to_b, from_a, to_a)
+}
+
+/// Returns whether a plan point is one of a segment's two own ends, within [`TOUCH_TOLERANCE`].
+fn is_an_end_of(point: Vec2, from: Vec2, to: Vec2) -> bool {
+    distance(point, from) <= TOUCH_TOLERANCE || distance(point, to) <= TOUCH_TOLERANCE
+}
+
 /// Reports a courtyard whose wall has no room between it and the mass's own wall.
 ///
 /// # Invariants
 ///
-/// **It is the fourth courtyard fault and it is the only one about the ring.** A void loop inside
+/// **It is the fifth courtyard fault and it is the only one about the ring.** A void loop inside
 /// the outline is not enough: the courtyard's ring stands `mass.wall` *outside* that loop, so a
 /// void authored within a wall's width of the outline has its wall standing in the mass's own wall.
 /// Both solids would still read closed, edge-manifold, outward and of the right Euler characteristic
@@ -2316,13 +2511,26 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         }
         Violation::UnattachedOverlap { mass, other } => (3, mass.0 as u64, other.0 as u64, 0, 0),
         // The void faults share a rank: each is a statement about one mass's own courtyards, and a document has
-        // whichever of them it has. The last is the ring's own, so it sorts after the ones that are about the loop.
+        // whichever of them it has. The rank's fourth slot says which part of the courtyard is wrong: `0` is the
+        // loop's own fit, `2` is the ring's own, and `3` is the loop's own shape — so it sorts after both, because
+        // a loop that meets itself is a fault about what the loop *is* and the other two are about where it stands.
         Violation::VoidNotInside { mass, void } => (6, mass.0 as u64, *void as u64, 0, 0),
         // **The fourth slot's `1` is retired and is not to be reused.** It was `VoidNotConvex`, the refusal of a
         // void loop with a reflex corner, which was lifted once the outward walk was measured across one; what the
         // walk still cannot do is refused by `offset_loop`'s own names and reaches the author through `DidNotExpand`.
         // The ranks are private to this function, so a hole costs nothing, and closing it would put every arm above
         // it in the diff of a one-variant deletion.
+        //
+        // `VoidNotSimple` took `3` rather than a rank of its own at the end, because rank `6` is the one this
+        // module already reserves for "a statement about one mass's own courtyards" and this is exactly that: a
+        // loop that is not simple is about the loop, next to the two faults that are about where it stands. Ranks
+        // `41`–`43` were taken at the end instead because their variants are about a slab's host and an opening's
+        // bay, which are not a courtyard's, and because those three had no block of their own to sit in.
+        Violation::VoidNotSimple {
+            mass,
+            void,
+            meeting,
+        } => (6, mass.0 as u64, *void as u64, 3, meeting_rank(meeting)),
         Violation::VoidOverlaps {
             mass,
             first,
@@ -2504,6 +2712,26 @@ fn void_rank(face: FaceRef) -> u64 {
         None => 0,
     };
     (loop_of << 1) | face.loop_side.rank()
+}
+
+/// Returns a number that sorts a void loop's own self-meeting.
+///
+/// # Invariants
+///
+/// **The two indices are halves rather than two slots, because the key is five wide and every arm
+/// already fills it.** A loop has far fewer than `2^16` nodes, which is the same packing
+/// [`void_rank`] and [`solid_rank`] already use where two indices had to share one slot.
+///
+/// **A crossing and a touch fold to the same number, and that is not a collision.** The key is read
+/// to be total within a rank, and the rank's first three slots already name one mass and one void;
+/// [`self_meeting`] returns the first meeting a loop has and stops, so a loop contributes one
+/// violation and its key is unique whatever the reading says.
+fn meeting_rank(meeting: &SelfMeeting) -> u64 {
+    let (left, right) = match meeting {
+        SelfMeeting::Crossing { left, right } => (*left, *right),
+        SelfMeeting::Touch { edge, node } => (*edge, *node),
+    };
+    ((left as u64) << 16) | right as u64
 }
 
 /// Returns a number that sorts a solid the way the enum's own order does, masses first.
