@@ -208,11 +208,6 @@ pub enum Problem {
         /// The area it encloses.
         area: f32,
     },
-    /// The offset loop has no triangulation left, which a self-crossing outline leaves behind.
-    FloorDegenerate {
-        /// The mass.
-        mass: MassId,
-    },
     /// A roof has no planes, so it expands to no solid at all.
     RoofEmpty {
         /// The roof.
