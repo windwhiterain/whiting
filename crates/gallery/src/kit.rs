@@ -23,6 +23,15 @@ pub const EMISSIVE: &str = "emissive";
 pub const METALLIC: &str = "metallic";
 /// How much of the sky a surface shows, from zero to one.
 pub const REFLECT: &str = "reflect";
+/// What an instanced mesh's own authored ids are offset by, one **material per placement**.
+///
+/// # Invariants
+///
+/// **It lives on the material rather than on the instance**, because a scene's instance carries no custom
+/// values at all — it is a label, a mesh, a transform and a material — and a material already carries them. So
+/// one material per placement is what an instanced identity needs, and the value is the number a bake would
+/// have written for that placement: `base − 1`, measured by `building`'s `instance_identity_probe`.
+pub const AUTHORED_OFFSET: &str = "authored_offset";
 /// How rough a surface is, from zero to one.
 pub const ROUGHNESS: &str = "roughness";
 /// The height of a fog bank, and how thick it is.
@@ -660,6 +669,14 @@ pub fn gallery_custom_schema() -> Schema {
             ),
         ),
         (
+            AUTHORED_OFFSET.to_owned(),
+            Schema::new(SchemaKind::Float).with_documentation(
+                "What an instanced mesh's own authored ids are offset by. Zero for a scene that \
+                 bakes its geometry, which is every scene before a building draws one template \
+                 in many places.",
+            ),
+        ),
+        (
             ROUGHNESS.to_owned(),
             Schema::new(SchemaKind::Float)
                 .with_documentation("How rough the surface is, from zero to one."),
@@ -694,5 +711,23 @@ pub fn surface_reflecting(
         (ROUGHNESS.to_owned(), Value::Float(roughness)),
         (EMISSIVE.to_owned(), triple(emissive)),
         (REFLECT.to_owned(), Value::Float(reflect)),
+        // **Zero unless a scene offsets it.** A baked mesh's ids are already the table's, so this default
+        // changes every existing scene by nothing at all.
+        (AUTHORED_OFFSET.to_owned(), Value::Float(0.0)),
     ])
+}
+
+/// Returns a surface's custom data with its authored-id offset set.
+///
+/// # Invariants
+///
+/// One material per **placement**: the offset belongs to a row rather than to a point, so an instanced mesh's
+/// corners answer their template's id plus this number — which is the id a bake would have written for that
+/// placement, measured by `building`'s `instance_identity_probe`.
+pub fn offset_by(custom_data: Value, offset: f64) -> Value {
+    let Value::Struct(mut fields) = custom_data else {
+        return custom_data;
+    };
+    fields.insert(AUTHORED_OFFSET.to_owned(), Value::Float(offset));
+    Value::Struct(fields)
 }

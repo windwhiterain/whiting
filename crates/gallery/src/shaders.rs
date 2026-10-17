@@ -765,6 +765,25 @@ pub fn lighting_declaring<'text>(
 /// nothing per-vertex about it to read.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Authored {
+    /// A point field **plus** a material field: the id an instanced mesh's corners carry, offset by the row the
+    /// instance stands for.
+    ///
+    /// # Invariants
+    ///
+    /// **The offset lives in the material, not in the instance**, because a scene's instance carries no custom
+    /// values at all — it is a label, a mesh, a transform and a material — and a material already carries them.
+    /// So one material per placement is what an instanced identity needs, and the sum is a **point** field plus
+    /// a **material** field. Teaching the scene format per-instance values would be another subsystem's slice.
+    Sum {
+        /// The point field, in the schema's own naming.
+        name: String,
+        /// How many components it is, which decides how the shader reads it.
+        components: u32,
+        /// Whether the point's value is carried **flat**, for the reason [`Authored::Field`] gives.
+        flat: bool,
+        /// The material field added to it.
+        custom: String,
+    },
     /// Read from a point field, which the point schema then has to carry.
     Field {
         /// The point field, in the schema's own naming.
@@ -838,6 +857,8 @@ struct PointField<'text> {
     field: &'text str,
     components: u32,
     flat: bool,
+    /// The **material** field this one is summed with, when the value is a point's plus a row's.
+    custom: Option<&'text str>,
 }
 
 impl Extras {
@@ -942,6 +963,18 @@ impl Extras {
                     field: name.as_str(),
                     components: *components,
                     flat: *flat,
+                    custom: None,
+                }),
+                Authored::Sum {
+                    name,
+                    components,
+                    flat,
+                    custom,
+                } => Some(PointField {
+                    field: name.as_str(),
+                    components: *components,
+                    flat: *flat,
+                    custom: Some(custom.as_str()),
                 }),
                 Authored::Constant(_) => None,
             })
@@ -987,11 +1020,14 @@ impl Extras {
     fn assigns(&self) -> String {
         let mut lines = String::new();
         for field in self.read_from_points() {
-            lines.push_str(&format!(
-                "    out.{} = {};\n",
-                field.field,
-                Self::read(&field)
-            ));
+            // **A sum is the point's value plus the row's**, written as one expression: the shader reads the
+            // mesh's own id and adds the placement's offset, and the varying then carries the number a bake
+            // would have written.
+            let value = match field.custom {
+                Some(custom) => format!("{} + {}", Self::read(&field), custom),
+                None => Self::read(&field),
+            };
+            lines.push_str(&format!("    out.{} = {};\n", field.field, value));
         }
         lines
     }
@@ -1061,7 +1097,9 @@ impl Extras {
         for extra in &self.outputs {
             let value = match &extra.source {
                 Authored::Constant(number) => format!("{number}"),
-                Authored::Field { name, .. } => format!("in.{name}"),
+                // **A sum is already summed in the vertex stage.** The varying carries the number the bake
+                // would have written, so the fragment reads it like any other field and adds nothing.
+                Authored::Field { name, .. } | Authored::Sum { name, .. } => format!("in.{name}"),
             };
             lines.push_str(&format!("    out.{} = {};\n", extra.name, value));
         }

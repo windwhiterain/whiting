@@ -74,3 +74,23 @@ ids**, each naming its own placement, and a pixel of the ground still answers ze
 - **2026-10-27** — worktree and branch from `368a012`; the probe and the measurement above.
 - **2026-10-27** — reconnaissance for the shader half: the instance carries no custom values, so the offset
   lives in a **material** field, one material per placement, and the plan above is exact.
+- **2026-10-27** — **the plumbing is in, and it is inert at zero.** `kit::gallery_custom_schema` gained
+  `authored_offset` (a `Float`, written `0.0` by `surface_reflecting` so no existing scene changes), plus
+  `kit::offset_by(custom_data, offset)` for a scene that wants one. `shaders::Authored` gained
+  **`Sum { name, components, flat, custom }`**: `read_from_points` carries the point field and the material
+  field, and the vertex assignment is `<point field> + <custom field>` — the varying already carries one `f32`,
+  so the fragment side reads it like any other field and adds nothing. `building_extras()` uses the Sum.
+
+  Verified inert: rendering the identity scene with every offset at zero gives a frame of
+  **`D36C5EF5…`** — the identical frame the scene produced before the change — and the gallery suite passes
+  (2 tests), which is the check that matters most because the change is in the **shader generator**.
+
+  Two things the edits taught, both of them mine rather than the code's: a scripted `Replace` with a
+  single-quoted `` `n `` writes a **literal** backtick-n into the file (a global repair then mangled doc comments
+  that legitimately contain backticks, and the file had to be restored from git), and four other scripted
+  replacements silently did nothing — `edit` is the tool for this and scripts are not.
+
+- **Next**: the consumer. The workshop's five shutters each get **their own material** carrying
+  `offset_by(surface(..), base − 1)`, with the bases the probe measured (`24, 38, 52, 66, 80, 94` for that
+  probe's six placements; the workshop's five need their own, taken from the same probe's arithmetic), and the
+  acceptance is `--locate` answering **five different element names** for five pixels on five shutters.

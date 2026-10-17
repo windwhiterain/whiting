@@ -53,10 +53,11 @@ pub fn building_extras() -> Extras {
     Extras::new([(
         ID_OUTPUT.to_owned(),
         1,
-        Authored::Field {
+        Authored::Sum {
             name: ID_OUTPUT.to_owned(),
             components: 1,
             flat: true,
+            custom: crate::kit::AUTHORED_OFFSET.to_owned(),
         },
     )])
 }
