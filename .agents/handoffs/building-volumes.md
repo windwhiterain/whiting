@@ -623,3 +623,32 @@ fe8c5bd Format the open-edge dump
 
 **Nothing else in the volume model is open.** The plate is a `Slab`, the wall ring closes, the Euler check counts the
 ring's own handle, and the remaining defect is one field pair.
+
+## The missing fact: `outer_floor_at` is the opening's floor, not the wall's ground (2026-10-27)
+
+Read at last, in `resolve_holes`: each station builds its band's corner arrays with
+
+```rust
+outer.push(solid.point(lift(wall.outer_at(*station), wall.outer_floor_at(*station))));
+inner.push(solid.point(lift(wall.inner_at(*station), wall.inner_floor_at(*station))));
+```
+
+and `wall.outer_floor_at(*station)` reads the **opening's floor** — the sill — which is exactly the `y = 0.02` and
+`y = 0.05` the strip measured. The wall's own ground line is `wall.ground: [f32; 2]`, and it is what a wall's base
+should be at.
+
+**So the two readers are these two elevations, and both already have a channel:**
+
+- the **band corners** (`outer`, `inner`, then `StationPoints` and `CutStation`'s `soffit`/`floor`) carry the
+  **opening's** floor, and the reveals need them there;
+- the **wall's ground line** (`wall.ground`) is where the base strip must sit.
+
+**The next edit is therefore one point pair at those two lines**, not a new field: create the station's
+`soffit`/`floor` at `wall.ground` (interpolated along the edge) while the band corners keep `*_floor_at`, and let the
+strip read the former. Round 129's failure is now explained rather than mysterious: it moved a point the **reveals**
+read, because the band corner *is* the station's point (`let soffit = outer[0];`). Give the ground its own two points
+and the reveals keep theirs.
+
+**If the mass reopens again, the reveal path is reading `CutStation.soffit`/`floor` after all**, and the fix becomes
+four fields on `CutStation`. The experiment that tells the two apart is two lines long: create the ground pair, emit
+the strip from it, and read `SolidOpen`.
