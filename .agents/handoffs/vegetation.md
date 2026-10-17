@@ -18,6 +18,8 @@ the state a next session needs, and it is deleted when the crate's design phases
   is the rule's control, with computed limbs and radii that are fractions of what carries them.
 - **In flight**: nothing. The brush (`selector.rs` + `select_probe`) and the generator (`species.rs` +
   `species_probe`, with `derive::shrub` as its control) are here too.
+- **The generator changed the authorship and not the plant**: the `bamboo` scene still renders to the same
+  sha256 after `derive::bamboo` became `grow(&bamboo_rule(), seed)`.
 
 ## What a consumer has
 

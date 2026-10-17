@@ -1067,6 +1067,7 @@ The two shipped species are the experiment:
 | the hand edits a grown tree | a length offset lands: **0.362484 → 0.312484**, and the report is clean |
 | a graft is one more of the rule's | `trunk/bough 0/branch 2` lands at station **0.2**, slot **0.75**, the plant goes **10 → 11** nodes, its spine is its sibling's (**0.482742**), and the leaf field fills it with **9** leaves |
 | a graft off the rule is refused | a node at depth 2 has no generation below it, and a station of **1.5** is not on the parent: **both refused**, the plant still **10** nodes |
+| the picture does not move | the `bamboo` scene renders to the **same sha256** (`84510A4D…`, 13 passes) before and after its tree became `grow(&bamboo_rule(), seed)` |
 
 **`derive::bamboo` is now `grow(&bamboo_rule(), seed)`, and every P1 probe passes unchanged against the grown
 tree** — same 10 nodes, same stations, same 6 branches, same 54 leaves. That is the reading that says the rule
