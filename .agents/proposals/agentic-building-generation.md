@@ -1004,6 +1004,41 @@ That is the shape a performance change should have in this crate: the *cost* bec
 be asked about, and the geometry stayed byte-identical, which the nineteen probes and the byte-identical `shed`
 frame both say.
 
+## What the style slice found: a style is a relation, and a share needs both its ends (2026-10-27)
+
+P2's record has owed **"one coherent style set"** since the facade phase, and D11 has been an open question
+since the design was written — *does a style's pick belong to the skeleton, which is authored and diffable, or
+to `derive`, which has no guarantee?* They are the same work, because a style is what D11 is about.
+
+`derive::Style` states the **relations** a building's numbers obey rather than the numbers: the wall's thickness
+as a share of the smaller plan span, the slab as a share of the wall, the eave as a share of the span, its seat
+as a share of the eave, the rise as a share of the **half** span, the roof as a share of the rise — plus the
+facade the style implies (one storey's height, one bay's width, a window's proportion of its bay, and
+`glazing()` in `Opening`'s own shape). `Style::starter(width, depth, storeys)` derives a `Starter`;
+`COTTAGE` and `HALL` are the two the crate ships.
+
+**D11 is decided here: a style belongs to `derive`, never to the skeleton.** The document-is-the-skeleton
+invariant says a skeleton holds what an author *authored* — a thickness, a rhythm, a rise. A style is a rule for
+computing those, and keeping it in the skeleton would make a document's geometry move when a constant changed,
+which is the "derivations have no guarantee" rule run backwards. A document built from a style holds the
+**numbers**; the rule stays in `derive`, where re-running it is a choice rather than a side effect.
+
+Measured by `examples/style_probe.rs`:
+
+| measurement | value |
+| --- | --- |
+| the same footprint, two styles | cottage `wall 0.3158, slab 0.3632, eave 0.4800, rise 1.6500, roof 0.2640` against hall `0.2308 / 0.2423 / 0.5400 / 2.5500 / 0.2550` |
+| one style, three sizes | wall `0.2200` at 2.4 m (**the floor**), `0.3158` at 6 m (**the share**), `0.4500` at 12 m (**the ceiling**) |
+| every coherence claim, every size | **true** |
+| every derived building | **0 violations, both solids closed**, at one and two storeys |
+| the facades | cottage 2/3/4/5 bays of 2.0–2.4 m with 0.62–0.74 m jambs; hall 1/2/3/4 bays of 3.0 m with 0.72 m jambs |
+
+**The probe found the style defective on its first run**, which is why a style needs a probe at all: a `1/19`
+share with **no ceiling** gave a 12 × 18 cottage a **0.63 m wall** — a fortress with a window in it. The relation
+now carries a maximum, and the probe reads it back in its own words: *the smallest cottage is limited by the
+floor, the middle one by the share, the largest by the ceiling.* A relation between a share and a span is only
+a relation if both ends are bounded.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
@@ -1118,6 +1153,9 @@ conversation, recorded there so it is not lost. If adopted, a `SPEC/building.md`
    authored once, every correspondence names its partner explicitly, and no expansion leans on
    coincident coordinates. The review's warning stands against a cosmetic renaming facade — it
    would hide structural facts, so rename only what the proof run shows agents actually trip on.
+
+   **Answered by implementation (P1): a building-native roof.** `roof.rs` owns `Roof`, `EaveStation` and the
+   fascia; nothing in the crate reuses a mountain type, and the proof run never asked for a shared one.
 2. **Parts representation.** Authored template meshes in code (P2, rust-API-consistent) versus
    `PackedList` snippets versus scene meshes — and where a part's material is named, given a
    material belongs to a scene document, not a mesh. The socket principle (§Parts) is decided; its
@@ -1129,3 +1167,7 @@ conversation, recorded there so it is not lost. If adopted, a `SPEC/building.md`
 4. **Style-coherence keys (D11).** Does the pick key belong to the skeleton (authored, survives
    edits, diffable) or to `derive` (transient)? The document-is-the-skeleton invariant argues
    skeleton; the R3 no-guarantee rule argues derive. Decide at P2, when the parts vocabulary lands.
+
+   **Answered (2026-10-27, the style slice): `derive`.** A style is a rule for computing numbers, not a
+   fact about a building, so the skeleton holds the numbers and the rule stays in `derive` — see *What the
+   style slice found*.

@@ -722,3 +722,140 @@ pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Op
     }
     Some(Slab::new(inside, elevation - thickness, elevation).with_host(id))
 }
+
+/// A style: the **relations** a building's numbers obey, rather than the numbers themselves.
+///
+/// # What problem this solves
+///
+/// A [`Starter`] is ten numbers an author writes, and coherence between them is the author's problem: a wall
+/// 0.3 thick is a bunker in a 3 m shed and a tent in a 12 m hall, and a 1.6 m rise is a roof over a 4 m
+/// half-span and a spire over a 1 m one. A style states the relations once — *a wall is a nineteenth of the
+/// smaller span and never thinner than 220 mm* — and every size the style is asked for comes out coherent for
+/// **that** size.
+///
+/// # Where a style lives, which is D11's answer
+///
+/// **In `derive`, never in the skeleton.** The document-is-the-skeleton invariant says a skeleton holds what
+/// an author *authored*: a wall's thickness, a rhythm, a roof's rise. A style is a **rule for computing**
+/// those numbers, not a fact about a building, and keeping it in the skeleton would make a document's geometry
+/// move when a constant changed — the "derivations have no guarantee" rule run backwards. So the style is a
+/// `derive` type, and a [`Starter`] is the record of what it produced: a document built from a style holds the
+/// numbers, not the rule.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Style {
+    /// What it is called, so a report reads.
+    pub name: &'static str,
+    /// Wall thickness: (share of the smaller plan span, minimum in metres, **maximum** in metres).
+    ///
+    /// **A share alone is not enough, and the probe found it**: at a twelfth of a 18 m span a cottage's wall is
+    /// 0.63 m, which is a fortress rather than a cottage. A relation between a share and a span needs both ends
+    /// bounded — the floor keeps a small building standing and the ceiling keeps a large one a building.
+    pub wall: (f32, f32, f32),
+    /// Floor slab depth as a share of the wall.
+    pub slab: f32,
+    /// Eave overhang as a share of the smaller span.
+    pub overhang: f32,
+    /// How far the eave sinks below the wall top, as a share of the overhang.
+    pub sink: f32,
+    /// Roof rise as a share of the **half** of the smaller span: the pitch, stated as the style's own.
+    pub rise: f32,
+    /// Roof thickness as a share of the rise.
+    pub roof: f32,
+    /// The roof form the style wears.
+    pub form: RoofStyle,
+    /// One storey's height.
+    pub storey: f32,
+    /// One bay's width across a facade.
+    pub bay: f32,
+    /// A window in its bay: (share of the bay's width, sill above the bay's floor, head as a share of the bay).
+    pub window: (f32, f32, f32),
+}
+
+impl Style {
+    /// Returns a starter of this style for a footprint and a storey count.
+    ///
+    /// # Invariants
+    ///
+    /// - **Every number is a function of the span it has to be compatible with**, so the style is coherent at
+    ///   any size rather than at one: the wall, the slab, the overhang, the sink, the rise and the roof's
+    ///   thickness all scale, and the minimum is the only constant.
+    /// - **The rise is read from the *shorter* span**, because the ridge runs along the longer axis and the
+    ///   roof's pitch is set across it.
+    /// - **The height is the storey times the count** and not a number of its own: a style that fixed a height
+    ///   would decide the storey count for the author.
+    pub fn starter(&self, width: f32, depth: f32, storeys: usize) -> Starter {
+        let span = width.min(depth);
+        let wall = (self.wall.0 * span).clamp(self.wall.1, self.wall.2);
+        let rise = self.rise * span * 0.5;
+        Starter {
+            width,
+            depth,
+            height: self.storey * storeys as f32,
+            wall,
+            slab: self.slab * wall,
+            overhang: self.overhang * span,
+            sink: self.sink * self.overhang * span,
+            rise,
+            roof_thickness: self.roof * rise,
+            roof: self.form,
+            seed: 1,
+        }
+    }
+
+    /// Returns how many bays this style gives a facade `span` metres wide.
+    ///
+    /// # Invariants
+    ///
+    /// **At least one**, and rounded to the nearest bay rather than truncated, so a facade a little shorter
+    /// than two bays is two bays of a slightly narrow rhythm rather than one bay and a stub.
+    pub fn bays(&self, span: f32) -> usize {
+        ((span / self.bay).round() as usize).max(1)
+    }
+
+    /// Returns a window's inset in a bay of this style's own rhythm.
+    ///
+    /// # Invariants
+    ///
+    /// The **same shape as [`Opening`](crate::openings::Opening)'s inset**: from each jamb, then the sill and
+    /// the height, so a scene can cut the windows a style implies without a second table of numbers.
+    pub fn glazing(&self, bay_width: f32, bay_height: f32) -> (f32, f32, f32, f32) {
+        let inset = (bay_width * (1.0 - self.window.0)) * 0.5;
+        let sill = self.window.1.min(bay_height * 0.5);
+        let head = (bay_height * self.window.2).min(bay_height - sill);
+        (inset, inset, sill, head)
+    }
+}
+
+/// A cottage: thick walls, a low hip, a deep eave, chunky floor plates and small windows.
+///
+/// Every number here is a relation, so a 4 m cottage and a 9 m one are both cottages: the wall stays a
+/// nineteenth of the span with a 220 mm floor, the eave stays just under a twelfth of it, and the pitch stays a
+/// little over half the half-span.
+pub const COTTAGE: Style = Style {
+    name: "cottage",
+    wall: (1.0 / 19.0, 0.22, 0.45),
+    slab: 1.15,
+    overhang: 0.08,
+    sink: 0.22,
+    rise: 0.55,
+    roof: 0.16,
+    form: RoofStyle::Hip,
+    storey: 2.6,
+    bay: 2.2,
+    window: (0.38, 0.95, 0.42),
+};
+
+/// A hall: thinner walls, a steep gable, a shallower seat, a thin roof and tall windows in wide bays.
+pub const HALL: Style = Style {
+    name: "hall",
+    wall: (1.0 / 26.0, 0.18, 0.50),
+    slab: 1.05,
+    overhang: 0.09,
+    sink: 0.14,
+    rise: 0.85,
+    roof: 0.10,
+    form: RoofStyle::Gable,
+    storey: 3.4,
+    bay: 3.0,
+    window: (0.52, 1.15, 0.55),
+};
