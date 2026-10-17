@@ -230,7 +230,10 @@ fn mass_surface(surface: MassSurface) -> String {
         MassSurface::VoidTop { void, edge } => {
             format!("void {void}, its wall top over edge {edge}")
         }
-        MassSurface::VoidFloor { void } => format!("void {void}, its paving"),
+        // **The base is called a base and not a floor**, for the reason the mass's own is
+        // (`MassSurface::WallBase`): it is the ring's underside, hidden inside the plate, while the
+        // floor a person walks on in a courtyard is the plate's own top and belongs to the plate.
+        MassSurface::VoidBase { void } => format!("void {void}, its wall's base"),
         MassSurface::Reveal {
             edge,
             opening,

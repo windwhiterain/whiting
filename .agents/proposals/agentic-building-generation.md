@@ -1884,6 +1884,45 @@ problem. It is removed from the tree and the handoff points at the new plan inst
    land together: the base strip is not drawn across the opening, and the sill reveal is not drawn either, because the
    two name the same four points and drawing both is the same face twice — measured as `SolidNonManifold` with an odd
    Euler characteristic, which is an orientation failure and nothing else.
+
+## What the courtyard slice measured (2026-10-27, branch `feature/building-court`)
+
+The courtyard is drawn, and the refusal that said it could not be is deleted in the same commit that draws it
+(`Problem::VoidNotDrawn` is gone; nothing carries that name).
+
+1. **The plate is not cut, so the three-surface edge never arises.** The courtyard is a **second ring**, built exactly
+   as the mass's own ring is: the void loop, the same loop offset **outward** by `mass.wall`, the strip of wall top
+   between them, and the annulus at the void loop's own elevations. The plate is a solid of its own beneath both, and
+   the courtyard's floor *is* the plate's top. Measured on a 4 × 4 courtyard in a 10 × 10 mass with a 0.3 m wall:
+   `manifold true`, `loops 0`, `euler 0`, volume **16.5120 against the annulus times the height 16.5120** (0.000008 off
+   — `f32` noise, and the arithmetic is in the probe rather than compared against a second reading of the same code).
+2. **`SolidId` gains a kind, and it is `Void { mass, void }`.** The alternative — folding the ring into
+   `SolidId::Mass` — was measured green **for the wrong reason**: the mass's ring reads `0` and the courtyard's reads
+   `0`, so one face set holding both sums to `0`, which is exactly what `SolidNotASphere` demands of a single ring.
+   Every predicate still passes (each edge used twice, no boundary, two positive volumes), so the closure checks would
+   have kept passing on a solid that is not a solid. With the ring its own solid the arithmetic is per-solid again.
+3. **`MassSurface` loses a variant and gains one.** `VoidFloor` is deleted — it existed because the shell's plate could
+   not be one disc across a courtyard, and in the volume model the plate is not cut at all, so a "paving" element
+   would name a face no expander emits. `VoidBase` is added: a ring is open at both ends, and the courtyard's ring is
+   no exception. `VoidWall`, `VoidInner` and `VoidTop` stay and mean what they said.
+4. **`fill::ring_fill` is no longer on the courtyard's path, and the convexity restriction is kept anyway.** Nothing is
+   filled: the ring is the mass's own construction, one quad per loop edge between two loops of the same length. The
+   restriction that survives is therefore not the filler's — it is that **this crate has no measurement of the
+   *outward* walk across a reflex corner**. A mass's outline is offset inward and a void is offset outward, and the
+   corner that fails in one is not the corner that fails in the other; a ring fill has been shipped wrong by area twice
+   here and the inward offset has closed a courtyard's mouth. So a non-convex void is **refused by name**
+   (`Problem::VoidNotConvex` in the expander, `Violation::VoidNotConvex` in the document) rather than walked. What
+   would lift it is a measurement, and `offset_loop` is the walk that would be measured.
+5. **A fourth courtyard fault, because the other three cannot see this one.** `Violation::VoidReachesTheWall`: a void
+   loop inside the outline is not a courtyard that *fits*, because its ring stands `wall` outside that loop, so a void
+   authored within a wall's width of the outline has its wall standing in the mass's own wall — and two rings
+   occupying the same material are **two sound solids**, so nothing else in the validator can see it. Measured on a
+   void at ±4.9 in a ±5.0 outline: `over: 19.800018` m², and `VoidNotInside` correctly *silent*, because the loop is
+   inside the outline and only its wall is not inside the rooms. Both loops in the check are `offset_loop`'s own walks,
+   so the document half cannot disagree with the drawing.
+6. **The nine scene hashes did not move**, and the baseline was re-measured at `cc7aaa5` first so a move could be
+   attributed rather than argued about: all nine reproduce the table below exactly, before and after.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton

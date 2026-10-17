@@ -53,6 +53,7 @@
 //! inside-out solid rather than leaving it to be discovered in a frame.
 
 pub mod clip;
+pub mod courtyard;
 pub mod derive;
 pub mod expand;
 pub mod fill;
@@ -73,7 +74,7 @@ pub mod wall;
 
 pub use expand::{BuildError, Problem, build};
 pub use grid::{Bay, FaceGrid, FaceRef, GRID_TOLERANCE, Grids, Rhythm};
-pub use mass::{Attachment, Mass, MassId, PlanNode};
+pub use mass::{Attachment, AuthoredLoop, Mass, MassId, PlanNode};
 pub use mesh::{
     BuildingFace, BuildingMesh, CornerNormals, Element, MassSurface, RoofSurface, SolidId,
 };

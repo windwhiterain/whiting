@@ -734,9 +734,10 @@ pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Op
     let mut problems = Vec::new();
     let inside = crate::expand::offset_loop(
         &mass.outline,
-        id,
+        crate::mass::AuthoredLoop::Outline { mass: id },
         mass.wall,
         mass.plan_area(),
+        crate::expand::OffsetSide::Inward,
         &mut problems,
     )?;
     if !problems.is_empty() {

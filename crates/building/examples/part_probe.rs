@@ -154,7 +154,8 @@ fn main() {
                     whiting_building::SolidId::Mass(_)
                     | whiting_building::SolidId::Roof(_)
                     | whiting_building::SolidId::Wall(_)
-                    | whiting_building::SolidId::Slab(_) => {}
+                    | whiting_building::SolidId::Slab(_)
+                    | whiting_building::SolidId::Void { .. } => {}
                     whiting_building::SolidId::Part(_) => {
                         let (low, high) = mesh.bounds_of(solid);
                         println!(

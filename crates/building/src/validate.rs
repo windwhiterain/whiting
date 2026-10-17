@@ -124,6 +124,15 @@ const COVERAGE_TOLERANCE: f32 = 1.0e-3;
 /// reasoning, read in the units the quantity is in.
 const DEGENERATE_AREA: f32 = 1.0e-4;
 
+/// How much plan area two voids may share before it is an overlap, in square metres.
+///
+/// **It is the same tolerance [`Violation::VoidNotInside`] allows between a void's own area and the
+/// area of it the outline encloses**, because both are the same measurement of the same relation —
+/// two loops that should coincide, compared through [`crate::clip`], whose flush case answers zero
+/// but not to the last bit of a float. A courtyard's wall within a millimetre of a wall's face is a
+/// touch; a courtyard's wall a centimetre inside one is metres of area and is reported.
+const VOID_AREA_TOLERANCE: f32 = 1.0e-3;
+
 /// How close two of a facet's corners have to be before they are called one point.
 ///
 /// # Invariants
@@ -674,13 +683,17 @@ pub enum Violation {
         /// Which of its voids, in the order it authored them.
         void: usize,
     },
-    /// A mass's void is not convex, and the ring it would make cannot be filled by a two-loop walk.
+    /// A mass's void is not convex, and the ring built from it is refused rather than walked.
     ///
     /// # Invariants
     ///
-    /// **The restriction is the filler's, stated rather than discovered.** `fill::ring_fill` bridges two convex loops;
-    /// a void with a notch would be filled by a walk that leaks. A later slice may widen this to any simple loop, and
-    /// this variant is where that change will show.
+    /// **The restriction is the ring's, stated rather than discovered.** The courtyard's wall is one
+    /// quad per loop edge between two loops of the same length — the mass's own construction — and a
+    /// loop with a notch is the one input this crate has no measurement for on the *outward* side.
+    /// [`fill::ring_fill`] is no longer on this path: in the volume model nothing is filled, because
+    /// the plate is not cut and the courtyard's floor is the plate's own top. So the reason is the
+    /// ring, and a later slice may widen it to any loop whose offset builds — this variant is where
+    /// that change will show.
     VoidNotConvex {
         /// The mass.
         mass: MassId,
@@ -695,6 +708,28 @@ pub enum Violation {
         first: usize,
         /// The other.
         second: usize,
+    },
+    /// A mass's void has no room for its own wall inside the mass's, so the two occupy the same space.
+    ///
+    /// # Invariants
+    ///
+    /// **A void inside the outline is not a courtyard that fits**, because the courtyard's ring stands
+    /// `mass.wall` *outside* the void's loop: a void authored within a wall's width of the outline
+    /// has its wall standing in the mass's own wall. Both rings would then read closed, edge-manifold,
+    /// outward and of the right Euler characteristic — two sound solids in the same material — so no
+    /// other check in this module can see it.
+    ///
+    /// `over` is the plan area of the courtyard's wall that falls outside the mass's inner loop, in
+    /// square metres, and it is `0.000000` for a courtyard that fits. Both loops are the expander's
+    /// own walks rather than a second derivation, so this cannot disagree with the drawing about
+    /// where they are.
+    VoidReachesTheWall {
+        /// The mass.
+        mass: MassId,
+        /// Which of its voids.
+        void: usize,
+        /// How much of the courtyard's wall stands inside the mass's own wall, in plan area.
+        over: f32,
     },
 }
 
@@ -827,14 +862,25 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 ///
 /// # Invariants
 ///
-/// **Three faults, and each is a statement about the document rather than about the drawing:** a void that is not
-/// strictly inside its mass's outline (the hole would open through the wall), a void that is not convex (the ring
-/// filler bridges convex loops and would leak on a notch), and two voids that share plan area (one hole described
-/// twice). Whether the mass **draws** its courtyard is not asked here — expansion answers that, and until the void
-/// slice lands it refuses every mass that has one.
+/// **Four faults, and each is a statement about the document rather than about the drawing:**
 ///
-/// **"Inside" is measured, not eyeballed**: the area two plans share must equal the void's own area, which is a
-/// computation `crate::clip` already makes exact. A void that crosses the outline shares less than it encloses.
+/// - a void that is not strictly inside its mass's outline (the hole would open through the wall);
+/// - a void that is not convex (the ring is refused by name rather than walked across a reflex corner);
+/// - two voids that share plan area (one hole described twice); and
+/// - a void whose **wall** has no room inside the mass's own wall
+///   ([`VoidReachesTheWall`](Self::VoidReachesTheWall)), which is the only one of the four that is
+///   about the ring rather than about the loop.
+///
+/// **"Inside" is measured, not eyeballed**: the area two plans share must equal the void's own area,
+/// which is a computation `crate::clip` already makes exact. A void that crosses the outline shares
+/// less than it encloses.
+///
+/// **The two loops a courtyard is built from are read through the same two calls the expander makes**
+/// — [`expand::offset_loop`](crate::expand::offset_loop) for the mass's inner loop and for the void's
+/// outward offset — so the document half cannot disagree with the drawing by carrying a second idea
+/// of where "inside" is. Both are **staged**: a loop that will not offset is a fault the expander
+/// already names through [`DidNotExpand`](Self::DidNotExpand), and a check that would read a loop
+/// that does not exist is skipped rather than guessed at.
 fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     for (index, mass) in skeleton.masses.iter().enumerate() {
         let id = MassId(index);
@@ -842,7 +888,7 @@ fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
         let voids: Vec<Vec<Vec2>> = mass
             .voids
             .iter()
-            .map(|loop_nodes| loop_nodes.iter().map(|node| node.position).collect())
+            .map(|loop_nodes| plan_of(loop_nodes))
             .collect();
         for (void, held) in voids.iter().enumerate() {
             if !crate::fill::convex(held) {
@@ -850,13 +896,13 @@ fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             }
             let enclosed = crate::clip::shared_area(&outline, held).abs();
             let own = crate::clip::shared_area(held, held).abs();
-            if (enclosed - own).abs() > 1.0e-3 {
+            if (enclosed - own).abs() > VOID_AREA_TOLERANCE {
                 violations.push(Violation::VoidNotInside { mass: id, void });
             }
         }
         for first in 0..voids.len() {
             for second in (first + 1)..voids.len() {
-                if crate::clip::shared_area(&voids[first], &voids[second]) > 1.0e-3 {
+                if crate::clip::shared_area(&voids[first], &voids[second]) > VOID_AREA_TOLERANCE {
                     violations.push(Violation::VoidOverlaps {
                         mass: id,
                         first,
@@ -865,7 +911,87 @@ fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
                 }
             }
         }
+        check_void_walls(id, mass, &mut *violations);
     }
+}
+
+/// Reports a courtyard whose wall has no room between it and the mass's own wall.
+///
+/// # Invariants
+///
+/// **It is the fourth courtyard fault and it is the only one about the ring.** A void loop inside
+/// the outline is not enough: the courtyard's ring stands `mass.wall` *outside* that loop, so a
+/// void authored within a wall's width of the outline has its wall standing in the mass's own wall.
+/// Both solids would still read closed, edge-manifold, outward and of the right Euler characteristic
+/// — two rings occupying the same material are two sound solids — so nothing else in this module can
+/// see it, and the building would be drawn with two walls occupying one space.
+///
+/// `over` is the plan area of the courtyard's wall that falls outside the mass's inner loop, so it
+/// answers in the units the author drew in and is `0.000000` for a courtyard that fits. It is a
+/// **remainder rather than an intersection**, which is the whole difference between this check and a
+/// misreading of it: a courtyard that fits is *entirely* inside the rooms, so the area the two loops
+/// share is the courtyard's own area, and what has to be compared is that against what it encloses.
+///
+/// **Both loops come from the expander's own walk.** The mass's inner loop is the one
+/// [`derive::floor_slab`](crate::derive::floor_slab) derives a plate from, and the void's offset is
+/// the one the ring is built on, so this check cannot hold a different idea of either. A loop that
+/// will not offset — which is a fault the mass's own expansion reports by name — skips the check
+/// rather than reporting a second, vaguer one.
+fn check_void_walls(id: MassId, mass: &Mass, violations: &mut Vec<Violation>) {
+    if mass.voids.is_empty() {
+        return;
+    }
+    let mut problems = Vec::new();
+    let Some(inside) = crate::expand::offset_loop(
+        &mass.outline,
+        crate::mass::AuthoredLoop::Outline { mass: id },
+        mass.wall,
+        mass.plan_area(),
+        crate::expand::OffsetSide::Inward,
+        &mut problems,
+    ) else {
+        return;
+    };
+    for (void, loop_nodes) in mass.voids.iter().enumerate() {
+        // **The void is normalised the way the expander normalises it**, because which side a walk
+        // offsets to is read from the winding: the same loop reversed is the same courtyard.
+        let mut walked = loop_nodes.clone();
+        if crate::expand::loop_area(&plan_of(loop_nodes)) < 0.0 {
+            walked.reverse();
+        }
+        let mut problems = Vec::new();
+        let Some(outer) = crate::expand::offset_loop(
+            &walked,
+            crate::mass::AuthoredLoop::Void { mass: id, void },
+            mass.wall,
+            crate::expand::loop_area(&plan_of(&walked)),
+            crate::expand::OffsetSide::Outward,
+            &mut problems,
+        ) else {
+            continue;
+        };
+        // **"Fits" is the void's own measure, compared against the rooms** — the same form as
+        // `VoidNotInside` above, which asks whether the loop is enclosed by the outline. A courtyard
+        // that fits is enclosed by the mass's *inner* loop, so the two questions are one relation
+        // read against two loops, and what is left over is exactly how much of the wall is outside.
+        let own = crate::clip::shared_area(&outer, &outer);
+        let over = (own - crate::clip::shared_area(&inside, &outer)).max(0.0);
+        if over > VOID_AREA_TOLERANCE {
+            violations.push(Violation::VoidReachesTheWall {
+                mass: id,
+                void,
+                over,
+            });
+        }
+    }
+}
+
+/// Returns a loop's plan positions, which is what every loop reading in this module takes.
+///
+/// `O(nodes)`, and it is a projection rather than a copy of the loop: the elevations stay where they
+/// were authored and only the plan is handed to the walks that read plan.
+fn plan_of(loop_nodes: &[PlanNode]) -> Vec<Vec2> {
+    loop_nodes.iter().map(|node| node.position).collect()
 }
 
 fn check_overlap(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
@@ -1065,16 +1191,26 @@ fn check_solid(
             })
             .sum(),
         // A part, a wall and a roof are cut by nothing: a hole is authored against a mass's own wall,
-        // a template's masses are its own private document, and a wall's own box is solid.
-        SolidId::Roof(_) | SolidId::Part(_) | SolidId::Wall(_) | SolidId::Slab(_) => 0,
+        // a template's masses are its own private document, and a wall's own box is solid. **A
+        // courtyard's ring is cut by nothing either** — it is a plain ring between two loops, the one
+        // solid here that is a torus by construction rather than because something was cut out of it.
+        SolidId::Void { .. }
+        | SolidId::Roof(_)
+        | SolidId::Part(_)
+        | SolidId::Wall(_)
+        | SolidId::Slab(_) => 0,
     };
     // **A mass's wall ring is one handle before any opening is cut.** The volume model makes a mass a closed tube: its
     // inner and outer surfaces meet at the wall top and again at the base ring, so the solid is a torus and a torus is
     // `2 - 2g = 0`. The shell it replaced was a box, because its floor disc capped the inner surface and left exactly
     // one join at the wall top. Measured on the shed: `-6` for a mass with three openings, which is `2 - 2(1 + 3)`.
-    // A part's solid is a template's own mass, expanded the same way, so it is a ring too. A roof, a wall and a slab
-    // are boxes and are cut by nothing.
-    let ring = i64::from(matches!(solid, SolidId::Mass(_) | SolidId::Part(_)));
+    // A part's solid is a template's own mass, expanded the same way, so it is a ring too. **A courtyard's ring is a
+    // ring the same way and for the same reason**, which is the whole of what its own kind buys: measured `0` on a
+    // 4 x 4 courtyard in a 0.3 m wall. A roof, a wall and a slab are boxes and are cut by nothing.
+    let ring = i64::from(matches!(
+        solid,
+        SolidId::Mass(_) | SolidId::Part(_) | SolidId::Void { .. }
+    ));
     let expected = 2 - 2 * (ring + holes as i64);
     let euler = built.euler_characteristic_of(&faces);
     if euler != expected {
@@ -1895,7 +2031,7 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         }
         Violation::UnattachedOverlap { mass, other } => (3, mass.0 as u64, other.0 as u64, 0, 0),
         // The void faults share a rank: each is a statement about one mass's own courtyards, and a document has
-        // whichever of them it has.
+        // whichever of them it has. The fourth is the ring's own, so it sorts after the three that are about the loop.
         Violation::VoidNotInside { mass, void } => (6, mass.0 as u64, *void as u64, 0, 0),
         Violation::VoidNotConvex { mass, void } => (6, mass.0 as u64, *void as u64, 1, 0),
         Violation::VoidOverlaps {
@@ -1903,6 +2039,9 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
             first,
             second,
         } => (6, mass.0 as u64, *first as u64, *second as u64, 0),
+        Violation::VoidReachesTheWall { mass, void, over } => {
+            (6, mass.0 as u64, *void as u64, 2, ordered(*over))
+        }
         Violation::MassHostMissing { mass, host } => (4, mass.0 as u64, host.0 as u64, 0, 0),
         Violation::RoofHostMissing { roof, host } => (5, roof.0 as u64, host.0 as u64, 0, 0),
         Violation::RoofEaveTooShort { roof, nodes } => (6, roof.0 as u64, *nodes as u64, 0, 0),
@@ -1986,9 +2125,13 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
 ///
 /// # Invariants
 ///
-/// The three kinds take three ranges that cannot meet — masses below `2^32`, roofs in the next one,
+/// The five kinds take five ranges that cannot meet — masses below `2^32`, roofs in the next one,
 /// parts above — so the order is total over any document and two runs diff. A part's rank is its
 /// placement's index, which is the index its own faces name it by.
+///
+/// **A courtyard's rank carries both of its indices**: the mass in the high half of the range and
+/// the void in the low, so the courtyards of one mass read in the order their author wrote them and
+/// every one of them sorts after every plain box.
 fn solid_rank(solid: &SolidId) -> u64 {
     match solid {
         SolidId::Mass(mass) => mass.0 as u64,
@@ -1996,6 +2139,7 @@ fn solid_rank(solid: &SolidId) -> u64 {
         SolidId::Part(placement) => (2 << 32) | *placement as u64,
         SolidId::Wall(wall) => (3 << 32) | wall.0 as u64,
         SolidId::Slab(slab) => (4 << 32) | slab.0 as u64,
+        SolidId::Void { mass, void } => (5 << 32) | ((mass.0 as u64) << 16) | *void as u64,
     }
 }
 

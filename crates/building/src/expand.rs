@@ -62,8 +62,9 @@
 
 use std::collections::HashMap;
 
+use crate::courtyard;
 use crate::grid::GRID_TOLERANCE;
-use crate::mass::{Mass, MassId, PlanNode};
+use crate::mass::{AuthoredLoop, Mass, MassId, PlanNode};
 use crate::math::{
     Vec2, Vec3, cross, cross3, difference, distance, dot, length, lift, normalized, subtract,
 };
@@ -102,19 +103,27 @@ const MITER_LIMIT: f32 = 4.0;
 /// One reason a skeleton does not expand.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Problem {
-    /// A mass has a void authored, which this crate can describe but cannot yet draw.
+    /// A mass's void loop is not convex, so the ring built from it and its offset is not built at all.
     ///
     /// # Invariants
     ///
-    /// **A refusal, not a silence.** The vocabulary can now say *this room has a courtyard in it*
-    /// ([`Mass::voids`](crate::mass::Mass::voids)); expansion draws nothing for one, so a document that authored a
-    /// void must be refused here rather than expanded into a solid that pretends the courtyard is not there. When the
-    /// void slice lands this variant goes away in the same commit that makes the drawing true.
-    VoidNotDrawn {
+    /// **A refusal rather than a guess, and the restriction is stated rather than discovered.**
+    /// A courtyard's ring is one quad per loop edge between two loops of the same length, which is
+    /// the mass's own ring construction and holds for any loop whose offset builds — the one case
+    /// the crate has no measurement for is the void loop with a reflex corner, because a mass
+    /// whose *outline* has one is offset **inward** and a void is offset **outward**: the corner
+    /// that fails in one is not the corner that fails in the other, and this crate has measured
+    /// both wrong in the past (a ring fill twice wrong by area, and the inward offset closing a
+    /// courtyard's mouth). Rather than ship an unmeasured ring, the loop is refused by name here and
+    /// reported in the document by
+    /// [`Violation::VoidNotConvex`](crate::validate::Violation::VoidNotConvex). What would lift
+    /// this is a measurement of the outward walk across a reflex corner, which is
+    /// [`offset_loop`](offset_loop) — the same walk, asked the other question.
+    VoidNotConvex {
         /// The mass.
         mass: MassId,
-        /// How many voids it authored.
-        voids: usize,
+        /// Which of its voids, in the order it authored them.
+        void: usize,
     },
     /// A mass's outline has fewer than three nodes, so it has no plan area to stand on.
     OutlineTooShort {
@@ -150,62 +159,67 @@ pub enum Problem {
         /// Its floor slab thickness.
         slab: f32,
     },
-    /// An outline edge has no length, so it names no inward direction to build the wall along.
+    /// A loop edge has no length, so it names no direction to build the second loop along.
     OutlineEdgeDegenerate {
-        /// The mass.
-        mass: MassId,
-        /// The outline edge, counted from the outline's first node.
+        /// The loop being offset.
+        loop_of: AuthoredLoop,
+        /// The loop edge, counted from the loop's first node.
         edge: usize,
     },
-    /// A node's two outline edges run back along each other, so there is no corner to mitre.
+    /// A node's two loop edges run back along each other, so there is no corner to mitre.
     MiterUnresolved {
-        /// The mass.
-        mass: MassId,
-        /// The outline node, counted from the outline's first node.
+        /// The loop being offset.
+        loop_of: AuthoredLoop,
+        /// The loop node, counted from the loop's first node.
         node: usize,
     },
     /// A miter reaches further from its corner than the join limit allows, so the corner it builds is
     /// not the corner that was authored.
     MiterTooLong {
-        /// The mass.
-        mass: MassId,
-        /// The outline node, counted from the outline's first node.
+        /// The loop being offset.
+        loop_of: AuthoredLoop,
+        /// The loop node, counted from the loop's first node.
         node: usize,
         /// How far it reached, from the corner.
         reach: f32,
     },
     /// An edge of the offset loop has no length left in it.
     OffsetEdgeVanished {
-        /// The mass.
-        mass: MassId,
+        /// The loop being offset.
+        loop_of: AuthoredLoop,
         /// The offset edge, counted over the offset loop.
         edge: usize,
         /// The length it was left with.
         length: f32,
     },
-    /// An offset edge runs backwards along the outline edge it was shifted from, which is what an
+    /// An offset edge runs backwards along the edge it was shifted from, which is what an
     /// offset wider than the corner it offsets does.
     OffsetEdgeFolded {
-        /// The mass.
-        mass: MassId,
+        /// The loop being offset.
+        loop_of: AuthoredLoop,
         /// The offset edge, counted over the offset loop.
         edge: usize,
     },
     /// Two offset edges that are not neighbours meet, so the loop is not the one the author drew.
     OffsetSelfIntersecting {
-        /// The mass.
-        mass: MassId,
+        /// The loop being offset.
+        loop_of: AuthoredLoop,
         /// The first offset edge, counted over the offset loop.
         left: usize,
         /// The second.
         right: usize,
     },
-    /// The offset loop has stopped enclosing the mass: its area is not positive, or it is not
-    /// smaller than the outline's.
+    /// The offset loop has stopped enclosing the mass: for an inward offset its area is not positive
+    /// or is not smaller than the authored loop's, and for an outward one it is not larger.
+    ///
+    /// **The comparison follows the side rather than being fixed**, because the two offsets fail in
+    /// opposite directions: a wall built inward has to leave room inside its outline, and a
+    /// courtyard's ring built outward has to stay outside the courtyard's own loop. An area that no
+    /// longer encloses the authored loop is a wall in a place the author did not draw.
     OffsetInverted {
-        /// The mass.
-        mass: MassId,
-        /// The area it encloses.
+        /// The loop being offset.
+        loop_of: AuthoredLoop,
+        /// The area the offset loop encloses.
         area: f32,
     },
     /// A roof has no planes, so it expands to no solid at all.
@@ -463,15 +477,7 @@ pub fn build_with(
     }
     for index in 0..skeleton.parts.len() {
         match expand_placement(skeleton, index, cache) {
-            Ok(Some((points, faces))) => {
-                let base = mesh.points.len() as u32;
-                mesh.points.extend(points);
-                mesh.faces
-                    .extend(faces.into_iter().map(|face| BuildingFace {
-                        indices: face.indices.map(|corner| corner + base),
-                        element: face.element,
-                    }));
-            }
+            Ok(Some(expanded)) => splice_expansion(&mut mesh, expanded.0, expanded.1),
             Ok(None) => problems.push(Problem::PlacementUnresolved { placement: index }),
             Err(found) => problems.extend(found),
         }
@@ -693,9 +699,10 @@ pub fn part_frame(
             let mut problems = Vec::new();
             let Some(inner) = offset_loop(
                 &mass.outline,
-                face.mass,
+                AuthoredLoop::Outline { mass: face.mass },
                 mass.wall,
                 mass.plan_area(),
+                OffsetSide::Inward,
                 &mut problems,
             ) else {
                 return Err(problems);
@@ -925,21 +932,51 @@ fn inward(direction: Vec2) -> Vec2 {
     [-direction[1], direction[0]]
 }
 
-/// Expands one mass into one closed solid of five surfaces.
+/// Which side of an authored loop a wall is built on.
 ///
 /// # Invariants
 ///
-/// **Five surfaces, and every edge of them belongs to exactly two.** The inner wall stops at the
-/// node's own elevation, which is where the floor is, so the inner loop carries two faces at that
-/// level — the wall's and the floor's — and the loop below it does not exist: the underside is the
-/// whole outline one slab below, a disc rather than a ring. A ring reaching in to the inner loop at
-/// the floor level would put the wall's bottom, the floor's edge and the ring's inner edge on one
-/// edge, and a solid cannot be closed and outward with three faces on an edge.
+/// **Two loops are walked by one mitre, and this is the only thing that differs between them.** A
+/// mass's wall stands *inside* its outline and a courtyard's ring stands *outside* the void's loop,
+/// which is the same offset with the normals turned around — so the walk is written once and the
+/// two callers pass this, rather than being written twice and having to agree by luck. It also
+/// decides the one check whose direction flips: an inward offset must enclose less than the loop it
+/// came from and an outward one must enclose more, so the area test in [`offset_loop`] reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OffsetSide {
+    /// Into the loop's own interior, where a mass's wall is built.
+    Inward,
+    /// Out of the loop's own interior, where a courtyard's ring is built.
+    Outward,
+}
+
+impl OffsetSide {
+    /// Returns the direction this side offsets a walked edge along.
+    fn apply(self, inward: Vec2) -> Vec2 {
+        match self {
+            Self::Inward => inward,
+            Self::Outward => [-inward[0], -inward[1]],
+        }
+    }
+}
+
+/// Expands one mass into the closed ring of its wall, plus the closed ring of every courtyard it
+/// authored.
 ///
-/// **A face with no opening is built exactly as it was before openings existed**, on the same four
-/// authored node points and in the same order: the cut is a second walk, over the faces that have
-/// holes, and it touches nothing else. That is what keeps every P1 measurement where it was, and
-/// it is a property of where the branch is rather than of the branch itself.
+/// # Invariants
+///
+/// **The surfaces are all one edge in two, and the courtyards are not among them.** The mass's own
+/// ring is the wall: the inner wall stops at the node's own elevation, which is where the plate's
+/// top is, so the inner loop carries two faces at that level — the wall's and the base's — and the
+/// loop below it does not exist. A courtyard is **another ring standing on the same plate**, built
+/// the same way from its own two loops, and the two solids share nothing: not a vertex, not an
+/// edge, not a face. That is what makes the courtyard free — the three-surface edge the shell model
+/// could not close does not arise, because no face is shared in the first place.
+///
+/// **A void that cannot be drawn stops the mass, and the mass's own ring is withheld with it.** The
+/// rings are built into private point lists and spliced only once every one of them is whole, which
+/// is the whole-list-or-nothing rule this function already held for one solid; a document that
+/// authored a courtyard gets the courtyard or the refusal, never a mass with a hole drawn as wall.
 ///
 /// See [`cut_edge`] for the wall a hole is cut into, and [`resolve_holes`] for what is refused
 /// before a single point is added.
@@ -949,12 +986,6 @@ fn expand_mass(
     id: MassId,
     mass: &Mass,
 ) -> Result<(), Vec<Problem>> {
-    if !mass.voids.is_empty() {
-        return Err(vec![Problem::VoidNotDrawn {
-            mass: id,
-            voids: mass.voids.len(),
-        }]);
-    }
     let count = mass.outline.len();
     if count < 3 {
         return Err(vec![Problem::OutlineTooShort {
@@ -972,9 +1003,10 @@ fn expand_mass(
     let mut problems = Vec::new();
     let Some(inner) = offset_loop(
         &mass.outline,
-        id,
+        AuthoredLoop::Outline { mass: id },
         mass.wall,
         mass.plan_area(),
+        OffsetSide::Inward,
         &mut problems,
     ) else {
         return Err(problems);
@@ -1136,8 +1168,48 @@ fn expand_mass(
             }
         }
     }
+    // **A courtyard is built before anything is spliced, and refused with the mass.** The ring is
+    // built in its own point numbering by the module that owns it, and only the ones that came back
+    // whole are handed to the mesh — so a mass whose second courtyard cannot be drawn contributes
+    // neither its first nor the wall around it.
+    let mut courtyards = Vec::with_capacity(mass.voids.len());
+    for (void, loop_nodes) in mass.voids.iter().enumerate() {
+        match courtyard::ring(id, void, loop_nodes, mass.wall, mass.top) {
+            Ok(expanded) => courtyards.push(expanded),
+            Err(found) => problems.extend(found),
+        }
+    }
+    if !problems.is_empty() {
+        return Err(problems);
+    }
     solid.splice(mesh);
+    for (points, faces) in courtyards {
+        splice_expansion(mesh, points, faces);
+    }
     Ok(())
+}
+
+/// Appends one expansion's own points and faces to the mesh, renumbering the faces.
+///
+/// # Invariants
+///
+/// **The expansion is welded before it is renumbered.** A template's mesh and a courtyard's ring are
+/// both built in a numbering that starts at zero and is private to their own builder, so this is
+/// the one place a shift is applied — once, at the end, and to the face indices only, which is why
+/// two expansions can be spliced in either order and still weld at the points they share by
+/// authored identity rather than by arithmetic.
+pub(crate) fn splice_expansion(
+    mesh: &mut BuildingMesh,
+    points: Vec<Vec3>,
+    faces: Vec<BuildingFace>,
+) {
+    let base = mesh.points.len() as u32;
+    mesh.points.extend(points);
+    mesh.faces
+        .extend(faces.into_iter().map(|face| BuildingFace {
+            indices: face.indices.map(|corner| corner + base),
+            element: face.element,
+        }));
 }
 
 /// Returns one face's walk of the ring's base loop: that face's own bottom points with every cut
@@ -2076,7 +2148,8 @@ fn piece(
     stands.then_some((from, high))
 }
 
-/// Returns the mass's inner loop, or `None` after reporting every way it could not be built.
+/// Returns the loop offset beside an authored one, or `None` after reporting every way it could not
+/// be built.
 ///
 /// # Invariants
 ///
@@ -2086,15 +2159,23 @@ fn piece(
 /// clamped corner is a wall in a place the author did not draw and no later check can see it: the
 /// faces still meet, so the mesh is still closed, and the mistake reads as a building.
 ///
-/// The checks read in this order: an outline edge with no length; a node whose two edges run back
-/// along each other; a miter past the join limit; an offset edge with no length left; an offset
-/// edge running backwards along the edge it was shifted from, which is what an offset wider than a
-/// corner does; two offset edges meeting; and an area that is no longer a smaller positive one.
+/// **One walk, two sides, and the loop is named in every fault.** A mass's wall is built inward
+/// from its outline and a courtyard's ring is built outward from the void's loop; both are the same
+/// mitred walk with the normals turned around, so there is one implementation and no second one to
+/// drift from it. What a fault is *about* is the authored loop, not the mass, so `loop_of` rides
+/// in all of them — "offset edge 2 has no length left" must not be answerable as a courtyard edge.
+///
+/// The checks read in this order: a loop edge with no length; a node whose two edges run back along
+/// each other; a miter past the join limit; an offset edge with no length left; an offset edge
+/// running backwards along the edge it was shifted from, which is what an offset wider than a
+/// corner does; two offset edges meeting; and an area that no longer stands on the side it was
+/// offset to.
 pub(crate) fn offset_loop(
     outline: &[PlanNode],
-    id: MassId,
+    loop_of: AuthoredLoop,
     wall: f32,
     outline_area: f32,
+    side: OffsetSide,
     problems: &mut Vec<Problem>,
 ) -> Option<Vec<Vec2>> {
     let count = outline.len();
@@ -2102,7 +2183,7 @@ pub(crate) fn offset_loop(
     for edge in 0..count {
         let along = difference(outline[(edge + 1) % count].position, outline[edge].position);
         if length(along) <= LENGTH_EPSILON {
-            problems.push(Problem::OutlineEdgeDegenerate { mass: id, edge });
+            problems.push(Problem::OutlineEdgeDegenerate { loop_of, edge });
             break;
         }
         directions.push(normalized(along));
@@ -2110,7 +2191,11 @@ pub(crate) fn offset_loop(
     if !problems.is_empty() {
         return None;
     }
-    let normals: Vec<Vec2> = directions.iter().copied().map(inward).collect();
+    let normals: Vec<Vec2> = directions
+        .iter()
+        .copied()
+        .map(|along| side.apply(inward(along)))
+        .collect();
 
     let mut inner = Vec::with_capacity(count);
     for node in 0..count {
@@ -2118,7 +2203,7 @@ pub(crate) fn offset_loop(
         let turn = cross(directions[before], directions[node]);
         if turn.abs() <= ANGLE_EPSILON {
             if dot(directions[before], directions[node]) <= 0.0 {
-                problems.push(Problem::MiterUnresolved { mass: id, node });
+                problems.push(Problem::MiterUnresolved { loop_of, node });
                 continue;
             }
             inner.push(step(outline[node].position, normals[node], wall));
@@ -2132,7 +2217,7 @@ pub(crate) fn offset_loop(
         let distance_reached = distance(mitred, corner);
         if distance_reached > MITER_LIMIT * wall {
             problems.push(Problem::MiterTooLong {
-                mass: id,
+                loop_of,
                 node,
                 reach: distance_reached,
             });
@@ -2149,14 +2234,14 @@ pub(crate) fn offset_loop(
         let size = length(along);
         if size <= LENGTH_EPSILON {
             problems.push(Problem::OffsetEdgeVanished {
-                mass: id,
+                loop_of,
                 edge,
                 length: size,
             });
             continue;
         }
         if dot(along, directions[edge]) <= 0.0 {
-            problems.push(Problem::OffsetEdgeFolded { mass: id, edge });
+            problems.push(Problem::OffsetEdgeFolded { loop_of, edge });
         }
     }
     for left in 0..count {
@@ -2171,7 +2256,7 @@ pub(crate) fn offset_loop(
                 inner[(right + 1) % count],
             ) {
                 problems.push(Problem::OffsetSelfIntersecting {
-                    mass: id,
+                    loop_of,
                     left,
                     right,
                 });
@@ -2179,8 +2264,15 @@ pub(crate) fn offset_loop(
         }
     }
     let area = loop_area(&inner);
-    if area <= 0.0 || area >= outline_area {
-        problems.push(Problem::OffsetInverted { mass: id, area });
+    // **The side decides which way the area must have gone**, and both sides want a loop that is
+    // still wound the way the authored loop was: an inward offset has to be smaller and an outward
+    // one larger, so a single fixed comparison would refuse every outward ring the moment it built.
+    let turned = match side {
+        OffsetSide::Inward => area <= 0.0 || area >= outline_area,
+        OffsetSide::Outward => area <= outline_area,
+    };
+    if turned {
+        problems.push(Problem::OffsetInverted { loop_of, area });
     }
     if problems.is_empty() {
         Some(inner)
@@ -2190,7 +2282,14 @@ pub(crate) fn offset_loop(
 }
 
 /// Returns the signed plan area a closed loop encloses, positive when its interior is on the left.
-fn loop_area(loop_points: &[Vec2]) -> f32 {
+///
+/// # Invariants
+///
+/// **It is `O(nodes)` and reads the whole loop once**, which is what both callers need: the offset
+/// walk compares the loop it built against the one it came from, and a void's loop is normalised to
+/// this sign before anything is built from it, because which way the loop is walked is what says
+/// which side the material is on.
+pub(crate) fn loop_area(loop_points: &[Vec2]) -> f32 {
     let count = loop_points.len();
     if count < 3 {
         return 0.0;

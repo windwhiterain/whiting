@@ -343,8 +343,9 @@ fn report_areas(skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidI
         SolidId::Mass(id) => skeleton.mass(id).map(|mass| mass.plan_area()),
         SolidId::Roof(id) => skeleton.roof(id).map(|roof| roof.plan_area()),
         // A part has no authored loop of its own in this document: its geometry lives in its template.
-        // A wall is a box rather than a loop, so it has none either.
-        SolidId::Part(_) | SolidId::Wall(_) => None,
+        // A wall is a box rather than a loop, so it has none either. A courtyard's ring is the annulus
+        // between two loops of its own rather than a loop that could be compared against one of them.
+        SolidId::Part(_) | SolidId::Wall(_) | SolidId::Void { .. } => None,
         // A slab's plan *is* an authored loop, and it is the one solid whose loop this probe can compare
         // directly: the coverage check measures the mesh against the document's own polygon.
         SolidId::Slab(id) => skeleton.slab(id).map(|slab| slab.plan_area()),
@@ -425,6 +426,7 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::VoidNotInside { .. } => "VoidNotInside",
         Violation::VoidNotConvex { .. } => "VoidNotConvex",
         Violation::VoidOverlaps { .. } => "VoidOverlaps",
+        Violation::VoidReachesTheWall { .. } => "VoidReachesTheWall",
         Violation::FaceDegenerate { .. } => "FaceDegenerate",
     }
 }

@@ -30,6 +30,50 @@ impl PlanNode {
     }
 }
 
+/// Which of a mass's authored plan loops a statement is about.
+///
+/// # Invariants
+///
+/// **A mass holds two kinds of loop and every fault about either must say which.** The outline is
+/// the wall's outer face and the wall is built inward from it; a void is a hole in the mass's plan
+/// and a ring of wall is built *outward* from it. [`expand::offset_loop`](crate::expand) walks both
+/// with one miter, and every way that walk can fail — a degenerate edge, a corner with no miter, a
+/// join past its limit — is a statement about one of these two loops. Carrying the loop rather than
+/// the mass alone is what keeps "offset edge 2 has no length left" from naming the courtyard's edge
+/// as if it were the building's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum AuthoredLoop {
+    /// The mass's own outline, the loop its wall is built inward from.
+    Outline {
+        /// The mass that authored it.
+        mass: MassId,
+    },
+    /// One of the mass's voids: the loop a courtyard's ring is built outward from.
+    Void {
+        /// The mass that authored it.
+        mass: MassId,
+        /// Which of that mass's voids, in the order it authored them.
+        void: usize,
+    },
+}
+
+impl AuthoredLoop {
+    /// Returns the mass that holds this loop.
+    pub fn mass(&self) -> MassId {
+        match self {
+            Self::Outline { mass } | Self::Void { mass, .. } => *mass,
+        }
+    }
+
+    /// Returns the void's index, or `None` for a mass's outline.
+    pub fn void(&self) -> Option<usize> {
+        match self {
+            Self::Outline { .. } => None,
+            Self::Void { void, .. } => Some(*void),
+        }
+    }
+}
+
 /// Where a mass lands on its host.
 ///
 /// # Invariants
@@ -72,9 +116,10 @@ pub struct Attachment {
 ///   all: a missing building rather than a visible fault, so it is
 ///   [`validate`](crate::validate)'s business and not the expander's — a loop whose signed plan area
 ///   comes out negative is reported by name.
-/// - **The solid is closed**: outer wall, inner wall, the ring of wall top, and the floor. Its
-///   bottom is `slab` below the outline's own elevations, so a mass on sloping ground is authored
-///   by giving its outline nodes their own elevations.
+/// - **The wall is a ring, closed at both ends**: outer wall, inner wall, the ring of wall top, and
+///   the ring's base, which stands on the outline's own elevations — so a mass on sloping ground is
+///   authored by giving its outline nodes their own elevations, and the plate is **not** part of it:
+///   the plate is a [`Slab`](crate::slab::Slab) of its own, and the floor is its top.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mass {
     /// The outer face of the wall, wound so [`Mass::plan_area`] is positive, stored open.
@@ -104,9 +149,14 @@ pub struct Mass {
     ///
     /// **A void is authored, not inferred.** Each loop must stand strictly inside [`Mass::outline`] and the two must
     /// not cross: a hole is what the document says it is, never a self-crossing outline that happens to enclose
-    /// different ways. [`validate`](crate::validate) reports the ones that break that, and expansion refuses a mass
-    /// that has one until the void slice lands — a refusal rather than a solid that pretends the courtyard is not
-    /// there.
+    /// different ways. [`validate`](crate::validate) reports the ones that break that.
+    ///
+    /// **A void is drawn as a ring of wall of its own**, standing on the plate: the loop is the courtyard's inner
+    /// face and the same loop offset outward by [`wall`](Self::wall) is the face the rooms see, closed at the top
+    /// and at the base exactly as the mass's own ring is closed. The plate is not cut by it — the courtyard's floor
+    /// **is** the plate's own top — so nothing has to be split and the two rings never share an edge. The loop must
+    /// also be convex, which [`validate`](crate::validate) reports as [`VoidNotConvex`](crate::validate::Violation::VoidNotConvex)
+    /// and expansion refuses by the same name.
     pub voids: Vec<Vec<PlanNode>>,
 }
 

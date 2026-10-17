@@ -87,6 +87,14 @@ pub enum MassSurface {
     /// different solids — the ring's base is hidden inside the plate, the plate's top is the floor a person walks on.
     WallBase,
     /// The face of a courtyard wall seen from **inside the courtyard**, one per void edge.
+    ///
+    /// # Invariants
+    ///
+    /// This is the **inner** loop of a courtyard's ring and it faces *into* the courtyard, so it is
+    /// the same face as [`InnerWall`](Self::InnerWall) is for the mass's own ring — the wall's face
+    /// turned towards the open space inside it. It belongs to a solid of its own
+    /// ([`SolidId::Void`]), because a ring standing in the middle of a mass is a second ring and a
+    /// single solid cannot be two of them.
     VoidWall {
         /// Which of the mass's voids, in the order it authored them.
         void: usize,
@@ -94,6 +102,10 @@ pub enum MassSurface {
         edge: usize,
     },
     /// The face of a courtyard wall seen from **the rooms**, one per void edge.
+    ///
+    /// This is the **outer** loop of the same ring, standing `wall` metres out from
+    /// [`VoidWall`](Self::VoidWall), and it faces away from the courtyard into the rooms it
+    /// encloses — the same face as [`OuterWall`](Self::OuterWall) is for the mass's own ring.
     VoidInner {
         /// Which of the mass's voids.
         void: usize,
@@ -107,20 +119,40 @@ pub enum MassSurface {
         /// Index of the void loop's edge.
         edge: usize,
     },
-    /// A courtyard's paving: the plate's own top surface **inside** the courtyard wall.
+    /// The annulus between a courtyard's two loops, at the void loop's own elevations.
     ///
     /// # Invariants
     ///
-    /// **It is its own element and not part of [`FloorTop`](Self::FloorTop), for the reason this file already
-    /// records for the soffit:** the plate's top cannot be one disc across a courtyard, because the courtyard wall
-    /// meets it along an edge, and a disc continuing on both sides of that edge would put a third face on the wall's
-    /// bottom edge — a non-manifold junction. So the plate's top is **a ring from the room-side loop out to the
-    /// courtyard's outer loop** ([`FloorTop`](Self::FloorTop)) **plus the paving inside the courtyard's own loop**
-    /// (this variant), two regions of one plane told apart by the wall between them.
-    VoidFloor {
+    /// **It is [`WallBase`](Self::WallBase)'s counterpart and not a face of the mass's own**, for the
+    /// reason the mass's is its own: the plate is one solid under both the rooms and the courtyard,
+    /// so the courtyard's wall stands *on* it and closes itself at its own base, and that base is a
+    /// ring of its own annulus. Drawing it as a face of the mass's base would put the mass's solid
+    /// and the courtyard's on one face set, which is two rings where the closure checks read one.
+    VoidBase {
         /// Which of the mass's voids.
         void: usize,
     },
+}
+
+impl MassSurface {
+    /// Returns the solid this surface is a face of.
+    ///
+    /// # Invariants
+    ///
+    /// **A courtyard's four surfaces are one solid and the mass's own are another**, which is the
+    /// whole reason [`SolidId::Void`] exists: the faces are gathered by element, so an element that
+    /// named the mass would gather the courtyard's ring into the mass's face set — two disjoint
+    /// rings in one solid, whose Euler characteristic would then be the sum of two zeros and would
+    /// read `0` for exactly the wrong reason. Every other surface is the mass's own.
+    pub fn solid(&self, mass: MassId) -> SolidId {
+        match self {
+            Self::VoidWall { void, .. }
+            | Self::VoidInner { void, .. }
+            | Self::VoidTop { void, .. }
+            | Self::VoidBase { void } => SolidId::Void { mass, void: *void },
+            _ => SolidId::Mass(mass),
+        }
+    }
 }
 
 /// Which surface of a roof a face belongs to.
@@ -210,7 +242,7 @@ impl Element {
     /// Returns the solid this element belongs to.
     pub fn solid(&self) -> SolidId {
         match self {
-            Self::Mass(id, _) => SolidId::Mass(*id),
+            Self::Mass(id, surface) => surface.solid(*id),
             Self::Roof(id, _) => SolidId::Roof(*id),
             Self::Part { placement, .. } => SolidId::Part(*placement),
             Self::Wall(id, _) => SolidId::Wall(*id),
@@ -232,6 +264,29 @@ impl Element {
 pub enum SolidId {
     /// A mass.
     Mass(MassId),
+    /// **The wall ring one of a mass's voids is built as**: the courtyard itself, closed.
+    ///
+    /// # Invariants
+    ///
+    /// **It is a kind of its own because a solid is one connected closed surface, and a mass with a
+    /// courtyard is two of them.** The alternative — folding the ring into [`Mass`](Self::Mass) —
+    /// was measured to be green for the wrong reason: the mass's own ring reads Euler `0` and the
+    /// courtyard's reads `0`, so one face set holding both sums to `0`, which is exactly what the
+    /// check demands of a single ring. Every predicate still passes — each edge is used twice,
+    /// there is no boundary, the signed volume is two positive volumes — so the closure checks
+    /// would keep passing on a solid that is not a solid, and `SolidNotASphere`'s number would stop
+    /// meaning what it says. With the ring its own solid the arithmetic is per-solid again: one
+    /// ring is one handle, `2 − 2×1 = 0`, which is what the courtyard reports.
+    ///
+    /// `void` is the void's own index in [`Mass::voids`](crate::mass::Mass::voids), and `mass` is the
+    /// mass that authored it, so a void is named the way its author named it — by two indices
+    /// rather than by a new document-level list.
+    Void {
+        /// The mass whose void this ring stands in.
+        mass: MassId,
+        /// Which of that mass's voids, in the order it authored them.
+        void: usize,
+    },
     /// A roof.
     Roof(RoofId),
     /// A part, by its placement's index in the document's placements.
