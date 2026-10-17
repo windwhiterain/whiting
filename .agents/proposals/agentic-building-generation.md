@@ -1524,6 +1524,26 @@ miter produces a loop that `segments_cross` reads as self-intersecting for some 
 first attempt's own summary line — *"a thinner wall builds, so it is a limit"* — was wrong, and the probe now tests
 **monotonicity** rather than "did anything thin build", because that is the property a limit actually has.
 
+### The offset loop is right; the detector is wrong
+
+Printing the loop settled it. For a wall of 0.05 m the offset is
+
+```text
+0: (-4.9500, -4.9500)   1: ( 4.9500, -4.9500)   2: ( 4.9500,  4.9500)   3: ( 2.0500, 4.9500)
+4: ( 2.0500, -1.0500)   5: (-2.0500, -1.0500)   6: (-2.0500,  4.9500)   7: (-4.9500, 4.9500)
+```
+
+which is a **correct inward offset**: the outer rectangle shrunk by 0.05, the courtyard widened by 0.05, every
+corner mitred cleanly, and **no self-intersection anywhere**. The 0.10 m loop is the same shape. So the geometry is
+right at both walls and the **detector** is what refuses one of them:
+
+`segments_cross` is asked about non-adjacent edges, and edges **2** and **6** — the two halves of the north face —
+lie on the **same line** `z = 4.95` with disjoint spans. A crossing test that is not strict about collinear input
+can report a "crossing" for exactly that pair, and the wall thickness then only decides by accident, because the two
+edges' coordinates move with it. **A false positive in the self-intersection test**, not a defect in the offset —
+and the non-monotone sweep is what that looks like from outside, which is why the sweep was worth more than reading
+the formula.
+
 **The next slice decided neither, and narrowed the place to look.** `offset_loop`'s miter is already general: for
 each node it takes `turn = cross(directions[before], directions[node])`, and computes
 `reach = cross(far − near, directions[node]) / turn` with `mitred = near + direction[before] * reach` — a negative
