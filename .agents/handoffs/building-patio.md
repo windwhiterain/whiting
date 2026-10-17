@@ -109,8 +109,14 @@ which is the reason to add them in one commit with the emission, not after it.
 
 **Acceptance, restated for this slice**: a mass with one rectangular void has **0 violations**, builds, measures
 **Euler 0**, and the nine scene hashes do not move. `Problem::VoidNotDrawn` is deleted **in the same commit** — its
-own documentation promises that.## Status log
+own documentation promises that.
+
+
+## Status log
 
 - **2026-10-27** — handoff written. Nothing implemented yet: `main` carries `ring_fill` and this plan.
 - **2026-10-27** — claims verified in the tree; the acceptance corrected: `euler 0` alone is a fault in the
   existing diagnostics, and it is a courtyard only together with one authored void.
+
+- **2026-10-27** — `Mass::voids`, `Problem::VoidNotDrawn` and the three `validate` faults landed (`8e83ea8`, `0ac2b49`);
+  `expand_mass`'s structure is mapped above, so the drawing is the only thing left.
