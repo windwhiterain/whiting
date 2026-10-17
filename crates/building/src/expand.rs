@@ -1849,7 +1849,7 @@ fn piece(
 /// along each other; a miter past the join limit; an offset edge with no length left; an offset
 /// edge running backwards along the edge it was shifted from, which is what an offset wider than a
 /// corner does; two offset edges meeting; and an area that is no longer a smaller positive one.
-fn offset_loop(
+pub(crate) fn offset_loop(
     outline: &[PlanNode],
     id: MassId,
     wall: f32,

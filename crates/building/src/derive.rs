@@ -684,3 +684,41 @@ fn rectangle(width: f32, depth: f32) -> Vec<PlanNode> {
     .map(|position| PlanNode::new(position, 0.0))
     .collect()
 }
+
+/// Builds an intermediate floor inside a mass's own walls, at `elevation`, `thickness` deep.
+///
+/// # Invariants
+///
+/// - **The plate is the mass's inner loop**, which is what `expand::offset_loop` computes for the walls: the
+///   floor meets its walls rather than overlapping them or leaving a gap, and it is the same inset the walls
+///   themselves are built on, so the two cannot disagree about where the inside is.
+/// - **It is hosted by the mass**, so seating moves it with the building.
+/// - **The elevation must be strictly inside the mass's own height.** A floor at or below the ground is under
+///   the building and one at or above the wall top is the roof's business; both answer `None` rather than a
+///   plate that would be invisible or sticking out.
+/// - A wall the miter cannot offset answers `None`: the mass's own expansion reports that fault, and a floor
+///   derived from a wall that has no inside has no inside either.
+///
+/// `O(nodes)` to offset, once.
+pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Option<Slab> {
+    let lowest = mass
+        .outline
+        .iter()
+        .map(|node| node.elevation)
+        .fold(f32::INFINITY, f32::min);
+    if !(elevation > lowest && elevation < mass.top && thickness > 0.0) {
+        return None;
+    }
+    let mut problems = Vec::new();
+    let inside = crate::expand::offset_loop(
+        &mass.outline,
+        id,
+        mass.wall,
+        mass.plan_area(),
+        &mut problems,
+    )?;
+    if !problems.is_empty() {
+        return None;
+    }
+    Some(Slab::new(inside, elevation - thickness, elevation).with_host(id))
+}
