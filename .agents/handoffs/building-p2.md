@@ -270,6 +270,35 @@ typo: the first draft of `Problem::PlacementUnresolved` said a part that cannot 
 its host unbuildable", but `build` is all-or-nothing — problems come back as a list and the mesh is
 refused — so the doc now says the truth: it refuses the build like every other problem.
 
+## Slice 4: the shed scene — the facade in one frame
+
+`crates/gallery/src/shed.rs`, registered as `"shed"`. It is the phase's end-to-end proof and the only
+place a viewer sees what the three slices were for: the same derivation as the house, then a **rhythm**
+of three bays on the gable end, a **doorway and two windows** cut through that end, and **two parts** —
+a door leaf and a canopy — standing in the middle bay by slot. The scene asserts its own document is
+clean before it draws anything, so a fault becomes a panic rather than a frame.
+
+Three things the scene found, all of them real:
+
+1. **A part that does not fit its bay cannot be authored by eye.** The first canopy was 1.70 m across
+   in a 1.667 m bay and its pin started outside it: `PlacementOutsideBay { past: 0.05 }`, caught by the
+   scene's own assertion on its document.
+2. **A plate is not a `Mass`.** The crate's room model is walls between a soffit and a top with a floor
+   disc between them, so a body whose floor coincides with its top is **degenerate**, not thin:
+   measured, eight facets of no area on the canopy and `FaceDegenerate` saying so. A slab has to stand
+   its floor strictly between the two, which is what `canopy` now does and its doc records.
+3. **The air in the grade had an asymptote at `1 − c`, not at zero.** `1 − exp(−L·k)·c` fogs a
+   twelve-metre shed by a fifth whatever the distance, which made the first frame of this scene read
+   monochrome; the house's grade has the same shape. Measured against the corrected
+   `1 − exp(−L·k)`, the difference is the difference between a beige wash and a lit wall.
+
+The frame (`out/shed4.png`, 16 passes, compiled 194 ms, rendered 732 ms) shows the three bays, the two
+window reveals at the wall's own depth, the leaf in the doorway, the canopy's underside and its
+shadow. The one artifact it shows is the shadow terminator's toothing under the eave and the canopy —
+the same one P1 measured and attributed to the shadow subsystem, whose three proposals are in flight.
+
+Still owed in P2: the identity **sibling** mechanism (D6).
+
 **The acceptance probe is the chief designer's** (`examples/opening_probe.rs`), and its strongest
 number is the one no predicate can fake: a wall with a hole holds less material by exactly
 `hole area × wall thickness`. Measured on the document half before the cut landed — three holes (a

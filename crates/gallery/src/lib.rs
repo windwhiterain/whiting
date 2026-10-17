@@ -87,6 +87,8 @@ pub mod house;
 pub mod landscape;
 mod lanterns;
 mod monoliths;
+/// The shed scene: the facade — a rhythm, holes cut in it, and parts standing in the bays.
+pub mod shed;
 mod spotlight;
 mod stilllife;
 mod sunlight;
@@ -130,6 +132,7 @@ impl Gallery {
             "landscape",
             "lanterns",
             "monoliths",
+            "shed",
             "spotlight",
             "stilllife",
             "studio",
@@ -154,6 +157,7 @@ impl Gallery {
             "landscape" => landscape(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
+            "shed" => shed::shed(),
             "spotlight" => spotlight(),
             "stilllife" => stilllife(),
             "studio" => scene::standard::example_standard_scene(),
