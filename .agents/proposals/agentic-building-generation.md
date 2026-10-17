@@ -1158,6 +1158,30 @@ With it, **every building scene the crate ships** answers the question:
 and in every one of them the ground answers **zero**, which the harness reports as *"no domain reading"* — the
 reserved value saying *"not an element of this building"* rather than anything ambiguous.
 
+## What the where slice found: the tool now runs in both directions (2026-10-27)
+
+Every building scene answered **"what is this pixel?"**; nothing answered **"where is this element?"** — which is
+the other half of a debugging tool, and the half that catches the failure a pixel query cannot see: *the element
+you meant to draw is not on screen at all*, or is smaller than you think.
+
+`building_identity::id_in(scene, name)` resolves a name back to its `authored_id` from the same table
+`locate_in` reads (one table, two directions), and the render harness gained **`--where <id|name>`**, repeatable
+like `--locate`, which scans the id image and reports a pixel count and a bounding box. Measured:
+
+```text
+render house out/hsi --where "roof 0, the skin of plane 0" --where 9999 --where "nothing at all"
+  where house roof 0, the skin of plane 0: id 15 covers 47261 pixel(s) in x 408..=915, y 286..=457
+  where house 9999: id 9999 is not visible in this frame
+  where house nothing at all: no element of this scene is called that
+```
+
+**Three different answers, kept different**: an element with pixels, an id with none, and a name that does not
+exist. The last two are the pair that matters — a tool that answered `0 pixels` for a typo would be telling an
+agent its geometry was off screen when in fact it had misremembered the name, and that is precisely the failure
+mode this crate has spent many slices making impossible to confuse.
+
+The two directions are now one table: the id `locate` reads off a pixel is the id `where_is` finds pixels for.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):

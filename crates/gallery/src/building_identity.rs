@@ -219,6 +219,35 @@ pub fn stage_set<'text>(
     shaders
 }
 
+/// Resolves a **name** back to the `authored_id` a frame writes for it.
+///
+/// # Invariants
+///
+/// - **The table is the one [`locate_in`] reads**, so a name that round-trips through a pixel answers the same
+///   number the pixel carried: the two directions are one table and one document.
+/// - **O(rows) per call**, which is what a tool costs and a frame never pays: the harness asks once per query
+///   and a scene asks nothing.
+/// - A name the table does not hold answers `None` rather than zero, because *"no such element"* and *"an
+///   element off screen"* are different answers and a caller that conflated them would read the second as the
+///   first.
+pub fn id_in(scene: &str, name: &str) -> Option<u32> {
+    let building = match scene {
+        "identity" => crate::authored::document(),
+        "shed" => crate::shed::document(),
+        "workshop" => crate::workshop::document(),
+        "yard" => crate::yard::document(),
+        "house" => crate::house::document(),
+        _ => return None,
+    };
+    let built = building.build().ok()?;
+    let numbering = Identity::of(&built, 1);
+    numbering
+        .rows()
+        .iter()
+        .find(|row| row.path == name)
+        .map(|row| row.id)
+}
+
 /// Resolves an `authored_id` written by **any building scene this crate knows** into the name of the element
 /// it shows.
 ///

@@ -212,6 +212,62 @@ fn describe_texel(texel: &[f32; 4]) -> String {
     }
 }
 
+/// Answers **where an element is** in the frame just rendered: how many pixels carry its id and the box they
+/// occupy.
+///
+/// # Invariants
+///
+/// - **A number is an id and anything else is a name**, resolved by `gallery::building_identity::id_in`, so the
+///   two directions are one table: the id `locate` reads off a pixel is the id `where_is` finds pixels for.
+/// - **"No such element" and "not visible" are different answers.** A name the table does not hold says so; an
+///   id that holds but covers no pixel says the element is not in this frame. A caller that conflated them would
+///   read a typo as an element that happened to be off screen.
+/// - A scene that writes no `authored_id` says so rather than reporting zero pixels, for the same reason the
+///   harness's `--locate` refuses a scene whose content does not name its own.
+fn where_is(scene: &str, rendered: &RenderedFrame, asked: &str) {
+    let Some(image) = rendered
+        .images
+        .iter()
+        .find(|image| image.name == "authored_id")
+    else {
+        println!(
+            "where {scene} {asked}: this scene writes no authored_id, so there is nowhere to look"
+        );
+        return;
+    };
+    let id = match asked.parse::<u32>() {
+        Ok(id) => Some(id),
+        Err(_) => gallery::building_identity::id_in(scene, asked),
+    };
+    let Some(id) = id else {
+        println!("where {scene} {asked}: no element of this scene is called that");
+        return;
+    };
+    let mut covered = 0u64;
+    let mut box_: Option<(u32, u32, u32, u32)> = None;
+    for y in 0..image.height {
+        for x in 0..image.width {
+            let Some(texel) = image.texel(x, y) else {
+                continue;
+            };
+            if texel[0].round() < 0.5 || texel[0].round() as u32 != id {
+                continue;
+            }
+            covered += 1;
+            box_ = Some(match box_ {
+                None => (x, y, x, y),
+                Some((x0, y0, x1, y1)) => (x0.min(x), y0.min(y), x1.max(x), y1.max(y)),
+            });
+        }
+    }
+    match box_ {
+        Some((x0, y0, x1, y1)) => println!(
+            "where {scene} {asked}: id {id} covers {covered} pixel(s) in x {x0}..={x1}, y {y0}..={y1}"
+        ),
+        None => println!("where {scene} {asked}: id {id} is not visible in this frame"),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     if let Err(failure) = run().await {
@@ -390,6 +446,11 @@ async fn run() -> Result<(), String> {
                 locate(&name, &rendered, *x, *y);
             }
 
+            // The other direction: the element asked for, and where the frame put it.
+            for asked in &request.where_is {
+                where_is(&name, &rendered, asked);
+            }
+
             // The three are reported apart because they are three different costs, and only
             // one of them is the delta's business: a delta is small or large, and the work
             // that finds it is the same size either way.
@@ -534,6 +595,7 @@ fn parse_arguments() -> Result<Request, String> {
     // **--locate repeats**: one pixel per flag, in the order asked, because the interesting question is
     // usually a comparison — five shutters, five pixels, five names — and one flag per run made that five runs.
     let mut locate_at: Vec<(u32, u32)> = Vec::new();
+    let mut where_is: Vec<String> = Vec::new();
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
@@ -547,6 +609,13 @@ fn parse_arguments() -> Result<Request, String> {
                     .get(index)
                     .ok_or_else(|| "--locate needs a pixel, written x,y".to_owned())?;
                 locate_at.push(parse_pixel(asked)?);
+            }
+            "--where" => {
+                index += 1;
+                let asked = rest
+                    .get(index)
+                    .ok_or_else(|| "--where needs an id or a name".to_owned())?;
+                where_is.push(asked.clone());
             }
             "--debug" => {
                 index += 1;
@@ -607,6 +676,7 @@ fn parse_arguments() -> Result<Request, String> {
         debug,
         census,
         locate: locate_at,
+        where_is,
     })
 }
 
@@ -636,6 +706,8 @@ struct Request {
     census: bool,
     /// The pixel to say what it is, answered once per moment beside the picture it belongs to.
     locate: Vec<(u32, u32)>,
+    /// The element to say **where** it is: an id or a name, answered as a pixel count and a box.
+    where_is: Vec<String>,
 }
 
 /// How the moments of a render are written out.
