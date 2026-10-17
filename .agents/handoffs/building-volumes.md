@@ -777,3 +777,27 @@ needs the ground.
 **So the edit is the round-134 one after all, and it failed only because a door's below-band then went degenerate:**
 station index 0 at `wall.ground`, *and* skip a band whose two elevations coincide. Both halves are now explained and
 measured; neither is a guess.
+
+## Zero effect: the bands are not where these faces come from (2026-10-27)
+
+Both halves were implemented — a cut station's floor at `wall.ground` on both faces, and a guard that skips a band
+whose two ends name the same point — and the readings came back **bit-identical**:
+
+```text
+FaceNotPlanar 0.2606509, 0.01, 0.025000095   FaceDegenerate x13   (exactly as before either edit)
+```
+
+**So neither the cut-station corners nor the band loop produce these faces.** That is a hard negative and it retires
+the whole line of reasoning that has occupied the last several rounds: the defect is not in `resolve_holes`' corner
+construction, because changing it changes nothing at all.
+
+**Where it must be instead, and the one measurement that settles it:** the `WallBase` quads are emitted in
+`expand_mass` from `soffit_points`/`floor_points`, which `split_loop` builds out of `cuts`. The `QUAD ids` print showed
+the outer corners are **authored** ids (`0`, `4` — below `2 * count`) at `y = 0.02`. So the next print is the one that
+was skipped: **`cuts` itself**, per edge, with each station's two plan positions and the ids `resolve_holes` wrote into
+it. If `cuts` holds the authored ids, then `resolve_holes` wrote them and the `Some(authored)` branch is the one to
+change; if it holds station ids at 0.02, the elevation is being taken from `*_floor_at` in a third place.
+
+**And the degenerate faces are not `WallBase`** (the `WARP` instrument named only `WallBase`): they are almost
+certainly the reveals, which means the cover for them is a separate defect that this line of work was conflating.
+Printing the owning element of a `FaceDegenerate` costs one line and would settle it.
