@@ -1262,9 +1262,9 @@ That is the difference between a style and a preset: **a preset is the numbers, 
 them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
 chosen twice.
 
-## The baseline a later slice measures against (2026-10-27)
+## The baseline a later slice measures against (2026-10-27, refreshed when the ninth scene landed)
 
-Seven building scenes render, and each one's picture has a hash. They are recorded here because the question a
+Nine building scenes render, and each one's picture has a hash. They are recorded here because the question a
 refactor has to answer is *"did the picture change?"*, and a hash answers it in a way that looking at two images
 does not:
 
@@ -1273,20 +1273,25 @@ does not:
 | `house` | `B8384583E741BE57` | the hip, the plate, three walls |
 | `hall` | `A68F409B2DB9E9D9` | `HALL` at 10 × 16, three bays |
 | `hall_large` | `FAD1938EF8BA6A2A` | `HALL` at 14 × 20, five bays |
-| `shed` | `0AF51AEC5A9164A8` | unchanged since the instancing slice, which is itself a baseline |
+| `shed` | **`0AF51AEC5A9164A8`** | unchanged since the instancing slice, which is itself a baseline |
+| `terrace` | `AD13FCA917FD9FF4` | three units that touch, nine windows |
+| `wing` | `2050549F7611B0E4` | host plus attached wing, windows on the weather faces |
 | `workshop` | `6AAEC033FD29643E` | two storeys, a plate, five instanced shutters |
 | `yard` | `ECCEB09EE3FD0BD9` | the courtyard and its gate |
-| `identity` | `D36C5EF54B2E7FEA` | the identity picture, unchanged through the channel's whole history |
+| `identity` | **`D36C5EF54B2E7FEA`** | the identity picture, unchanged through the channel's whole history |
 
-And the probes behind them: `scene_identity_probe` reads **seven** tables two-way (72 + 104 + 26 + 64 + 124 + 92 +
-74 = **556 rows**), the gallery suite passes, and the building crate's twenty probes exit zero — `census`,
-`expand_probe`, `validate_probe`, `authoring_probe`, `roof_planarity_probe`, `grid_probe`, `opening_probe`,
+And the probes behind them: `scene_identity_probe` reads **nine** tables two-way — 26 + 72 + 104 + 64 + 108 + 89 +
+124 + 92 + 74 = **753 rows** — the gallery suite passes, and the building crate's **twenty-seven** probes exit zero.
+`census`, `expand_probe`, `validate_probe`, `authoring_probe`, `roof_planarity_probe`, `grid_probe`, `opening_probe`,
 `part_probe`, `identity_probe`, `socket_probe`, `seat_probe`, `wall_probe`, `site_probe`, `slab_probe`,
-`instance_probe`, `floor_probe`, `multi_row_probe`, `wall_part_probe`, `template_cache_probe`, `style_probe`.
+`instance_probe`, `floor_probe`, `multi_row_probe`, `wall_part_probe`, `template_cache_probe`, `style_probe`,
+`instance_identity_probe`, `terrace_probe`, `courtyard_probe`, `courtyard_widths`, `wing_probe`,
+`shared_face_probe`, `ring_probe`.
 
-**The `identity` frame is the strongest of the seven**, because it has been byte-identical through every slice that
-touched the shader generator: a channel's plumbing can be rewritten beneath a scene without moving a pixel, and
-that hash is how the rewrite was known to be inert.
+**The `identity` frame is the strongest of the nine**, because it has been byte-identical through every slice that
+touched the shader generator: a channel's plumbing can be rewritten beneath a scene without moving a pixel, and that
+hash is how the rewrite was known to be inert. `shed` carries the same kind of weight for the *building* side — it
+has not moved since the instancing slice.
 
 ## What the terrace asked, and the answer the vocabulary already gave (2026-10-27)
 
