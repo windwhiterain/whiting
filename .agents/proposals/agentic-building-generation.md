@@ -2782,15 +2782,15 @@ again, and the tree was restored. **Every frame hash and every document hash is 
 
 | scene | frame hash, before and after | document hash, identical |
 | --- | --- | --- |
-| `house` | `4F343949D83B2064` **same** | yes |
-| `hall` | `D3861AB9A49E11DF` **same** | yes |
-| `hall_large` | `AC283053024091EF` **same** | yes |
-| `shed` | `929A983D1B57D8C3` **same** | yes |
-| `terrace` | `D6478E6600918037` **same** | yes |
-| `wing` | `E92705C66973AD53` **same** | yes |
-| `workshop` | `D9617C18C39B0FDB` **same** | yes |
-| `yard` | `2AB63DE3B0A4F727` **same** | yes |
-| `identity` | `0F3026193CE73439` **same** | yes |
+| `house` | `B13154AD7D29F938` **same** | yes |
+| `hall` | `C4339E6310EA1C37` **same** | yes |
+| `hall_large` | `43D3780A15E3D08E` **same** | yes |
+| `shed` | `882B8F9A7C671B0D` **same** | yes |
+| `terrace` | `EDF3F4B3CF2A9686` **same** | yes |
+| `wing` | `14E3E27F9F9E1A83` **same** | yes |
+| `workshop` | `7DD5D40894181EA7` **same** | yes |
+| `yard` | `FDC446B24E98CE04` **same** | yes |
+| `identity` | `974FB5B24E1E7A35` **same** | yes |
 
 **No scene authors a courtyard, and that was measured three ways rather than assumed.** `Mass::with_voids` has one
 definition and **every caller is an example**: `courtyard_probe`, `patio_probe`, `validate_probe`, and nothing
@@ -2815,3 +2815,20 @@ merely *touches* itself, because `segments_cross_properly` answers false for a t
 at `bite = 2 × wall` the floor offset edge vanishes before the two side offsets can meet, so the pinch is caught by
 `OffsetEdgeVanished` rather than slipping through as a self-touching loop. That is a measurement and not a proof —
 a shape that closes a corridor from two directions at once would have to be swept separately.
+
+### Which adapter a hash belongs to (2026-10-27)
+
+The frame hash is **not portable**, and this project's own renderer says so (`render.rs:1505`: "another machine,
+another adapter, or a document the hash does not cover"). One slice in the volume arc ran on a different adapter and
+recorded **its** numbers here; this session's renders are `house B13154AD7D29F938`, `hall C4339E6310EA1C37`,
+`hall_large 43D3780A15E3D08E`, `shed 882B8F9A7C671B0D`, `terrace EDF3F4B3CF2A9686`, `wing 14E3E27F9F9E1A83`,
+`workshop 7DD5D40894181EA7`, `yard FDC446B24E98CE04`, `identity 974FB5B24E1E7A35` — the set the table carries again,
+and the set every session on this machine has reproduced by fresh render.
+
+**So the rule for a merge gate is not "match the table".** It is: **render before and after on one adapter and compare
+the pair**, and only then ask whether the table still describes the adapter you are on. A table written by a different
+adapter is not a regression; a before/after pair that changes is.
+
+A second trap in the same area: `out/` accumulates renders from every past baseline (`base-house.png` is still the
+shell-era `B8384583E741BE57`). Render to a **fresh name** or clear the file first — a comparison against whatever is
+already in `out/` compares two eras.
