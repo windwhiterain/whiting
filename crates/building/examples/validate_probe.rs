@@ -705,6 +705,7 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::OutlineNotSimple { .. } => "OutlineNotSimple",
         Violation::ZeroHeight { .. } => "ZeroHeight",
         Violation::UnattachedOverlap { .. } => "UnattachedOverlap",
+        Violation::OverlapNotMeasured { .. } => "OverlapNotMeasured",
         Violation::MassHostMissing { .. } => "MassHostMissing",
         Violation::RoofHostMissing { .. } => "RoofHostMissing",
         Violation::RoofEaveTooShort { .. } => "RoofEaveTooShort",

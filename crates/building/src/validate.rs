@@ -255,6 +255,42 @@ pub enum Violation {
         /// The other.
         other: MassId,
     },
+    /// Two masses' plans could not be compared, so whether they overlap is not known.
+    ///
+    /// # Invariants
+    ///
+    /// **It is the answer the subtraction had no way to give, reported rather than dropped.** A pair
+    /// whose bounding boxes meet and at least one of whose plans [`crate::clip`] cannot triangulate is
+    /// **not** a pair that shares no area: it is a pair this module never compared, and a reader told
+    /// nothing about it reads the silence as a measurement. Measured on this tree, two `3 × 3` squares
+    /// sharing an authored corner standing inside a neighbour that wholly contains them really share
+    /// `18.0000 m²`, and the check said nothing at all.
+    ///
+    /// **It is not a second name for [`OutlineNotSimple`](Self::OutlineNotSimple), and the gate is
+    /// what keeps the two apart.** An outline that meets itself never reaches this comparison at all:
+    /// [`check_overlap`] skips the pair and [`check_masses`] has already named the loop, which is the
+    /// same argument [`check_voids`] makes about [`VoidNotInside`](Self::VoidNotInside) against
+    /// [`VoidNotSimple`](Self::VoidNotSimple). **What arrives here is the one shape that gate is
+    /// silent about by design** — a point two of the loop's own nodes stand at, where two `3 × 3`
+    /// squares sharing a corner build a sound courtyard for a void loop and a mass the expander's
+    /// inward offset walk refuses outright (`OffsetSelfIntersecting`). There is no other reading of
+    /// that loop to arrive under, so it arrives here.
+    ///
+    /// **It carries the pair and not one mass, because it is the pair's question that went
+    /// unanswered**, and each pair is reported once in the same order as
+    /// [`UnattachedOverlap`](Self::UnattachedOverlap). The expander still names the loop itself through
+    /// [`DidNotExpand`](Self::DidNotExpand), so nothing is lost by this reading being about the
+    /// comparison: it says the question is open, and the other says which loop closed it.
+    ///
+    /// **A plan that cannot be measured beside a neighbour it provably does not touch is still
+    /// silent**, because bounding boxes that miss are a measurement rather than a refusal, and this
+    /// variant is only about the pair the subtraction could not run.
+    OverlapNotMeasured {
+        /// One mass.
+        mass: MassId,
+        /// The other.
+        other: MassId,
+    },
     /// A mass names a host that does not exist, so the attachment it authorizes is not one.
     MassHostMissing {
         /// The mass.
@@ -1113,25 +1149,6 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     check_voids(skeleton, violations);
 }
 
-/// Reports two masses whose plans share area with no attachment between them.
-///
-/// # Invariants
-///
-/// An attachment in **either** direction ends the question: a wing overlaps its host by
-/// construction and the host's own outline is what the attachment's station splits, so a pair with
-/// one is a named joint rather than a coincidence of coordinates. What is left is two shells whose
-/// plans share area with nothing written down about how they meet, which is a pile of boxes and
-/// not a building.
-///
-/// **A pair is not asked at all when either outline meets itself**, and that is the gate this check
-/// never had. [`plans_share_area`] would answer `false` for such a pair — not because the two
-/// masses are apart but because [`crate::clip`] cannot triangulate the outline, and **an answer
-/// about a measurement is not an answer about the two masses**. The fault is already named beside
-/// this call, by [`check_masses`], so declining costs the author nothing and stops a number being
-/// read that could not have been.
-///
-/// The pairs are read in list order and each pair is reported once, with the lower index first, so
-/// the list is the same whatever order the masses were found in.
 /// Reports every mass's voids that break the contract a courtyard is authored under.
 ///
 /// # Invariants
@@ -1467,6 +1484,35 @@ fn plan_of(loop_nodes: &[PlanNode]) -> Vec<Vec2> {
     loop_nodes.iter().map(|node| node.position).collect()
 }
 
+/// Reports two masses whose plans share area with no attachment between them.
+///
+/// # Invariants
+///
+/// An attachment in **either** direction ends the question: a wing overlaps its host by
+/// construction and the host's own outline is what the attachment's station splits, so a pair with
+/// one is a named joint rather than a coincidence of coordinates. What is left is two shells whose
+/// plans share area with nothing written down about how they meet, which is a pile of boxes and
+/// not a building.
+///
+/// **A pair is not asked at all when either outline meets itself**, and that is the gate this check
+/// never had. [`plans_share_area`] would answer `None` for such a pair — not because the two
+/// masses are apart but because [`crate::clip`] cannot triangulate the outline, and **an answer
+/// about a measurement is not an answer about the two masses**. The fault is already named beside
+/// this call, by [`check_masses`], so skipping the pair costs the author nothing and stops a number
+/// being read that could not have been.
+///
+/// **The pair that *is* asked gets all three answers, and the third is the point of this change.**
+/// [`plans_share_area`] answers whether the two plans share area and `None` when this module cannot
+/// compare them, and each is reported: [`Violation::UnattachedOverlap`] for the overlap,
+/// [`Violation::OverlapNotMeasured`] for the refusal. The gate above cannot catch the second, because
+/// the outline [`crate::clip`] declines is not the one [`self_meeting`] names — the authored pinch is
+/// silent to both, and it was that silence which answered "no overlap" about two masses that really
+/// do share `18.0000 m²`. **A reader that could not measure must not report that there is nothing
+/// there**, so the refusal is a name rather than an absence.
+///
+/// The pairs are read in list order and each pair is reported once, with the lower index first, so
+/// the list is the same whatever order the masses were found in.
+///
 /// `meetings` is [`check_masses`]'s own reading, one entry per mass and in the same order, so the
 /// gate cannot be a second simplicity test that drifts from the one that reports.
 fn check_overlap(
@@ -1487,14 +1533,25 @@ fn check_overlap(
             if meetings[first].is_some() || meetings[second].is_some() {
                 continue;
             }
-            if plans_share_area(
+            match plans_share_area(
                 &skeleton.masses[first].outline,
                 &skeleton.masses[second].outline,
             ) {
-                violations.push(Violation::UnattachedOverlap {
+                Some(true) => violations.push(Violation::UnattachedOverlap {
                     mass: MassId(first),
                     other: MassId(second),
-                });
+                }),
+                // The two plans were compared and share nothing, which is the one answer this check
+                // has always given and the only one it is allowed to give silently.
+                Some(false) => {}
+                // **The refusal is named rather than inherited.** The pair was not compared, so the
+                // overlap question is open rather than answered, and this is where that is said out
+                // loud; the loop the expander refused by name reaches the author through
+                // [`Violation::DidNotExpand`].
+                None => violations.push(Violation::OverlapNotMeasured {
+                    mass: MassId(first),
+                    other: MassId(second),
+                }),
             }
         }
     }
@@ -1508,7 +1565,8 @@ fn attached_either_way(skeleton: &BuildingSkeleton, first: usize, second: usize)
     names(first, MassId(second)) || names(second, MassId(first))
 }
 
-/// Returns whether two closed plan polygons share an area.
+/// Returns whether two closed plan polygons share an area, or `None` when this module cannot
+/// compare them.
 ///
 /// # Invariants
 ///
@@ -1517,7 +1575,7 @@ fn attached_either_way(skeleton: &BuildingSkeleton, first: usize, second: usize)
 /// with a shared area have an intersection whose boundary is made of pieces of both, and a vertex
 /// of that region is either a crossing or an original corner that fell inside the other polygon.
 ///
-/// Two details are what make it answer the question this module means:
+/// Three details are what make it answer the question this module means:
 ///
 /// - "Strictly". A corner standing **on** the other's edge is a touch, not an overlap, and the
 ///   margin is [`TOUCH_TOLERANCE`]. Two masses whose walls are flush share a plane and no area,
@@ -1525,31 +1583,33 @@ fn attached_either_way(skeleton: &BuildingSkeleton, first: usize, second: usize)
 /// - **No assumption of convexity.** The separating-axis test is the cheaper answer for two boxes
 ///   and it is wrong here, because a building outline may be an L and an L has no single direction
 ///   that separates it from anything.
-/// - **A pair `crate::clip` cannot measure is declined rather than called disjoint.** The gate is in
-///   front of this function, in [`check_overlap`]: an outline that meets itself is named by
-///   [`Violation::OutlineNotSimple`] and its pairs are never asked. Measured, a needle cut into the
-///   north edge of a mass sharing `50.0000 m²` with its neighbour read `12.5000` and fired on a
-///   number four times too small, and an outline carrying an edge of no length read `0.0000` and
-///   said nothing at all. **What is left for this branch is a loop [`crate::clip` declines for some
-///   other reason**, and the answer is the same: declining is a statement about a measurement rather
-///   than about the two masses, so the pair is not reported and the loop reaches the author through
-///   the expander's own refusal, [`Violation::DidNotExpand`].
-fn plans_share_area(first: &[PlanNode], second: &[PlanNode]) -> bool {
+/// - **`None` is this function saying it cannot compare the two plans, and it is said rather than
+///   returned as `false`.** The two are not the same statement: one is a measurement and the other
+///   is an absence of one, and a caller that cannot tell them apart reports "these two share
+///   nothing" about masses it never looked at. Measured, a needle cut into the north edge of a mass
+///   sharing `50.0000 m²` with its neighbour read `12.5000` before [`crate::clip`] learned to decline,
+///   an outline carrying an edge of no length read `0.0000`, and a mass outline pinched at an
+///   authored point — which the gate in [`check_overlap`] is silent about by design — read `false`
+///   about a true `18.0000 m²`. What a caller does with `None` is its own decision, and the one here
+///   is to name it ([`Violation::OverlapNotMeasured`]) rather than to inherit the silence.
+///
+/// **`None` is not reached by a pair this function can answer, and the two rejections before it are
+/// both answers.** A loop of fewer than three nodes encloses no area whatever it stands beside, and
+/// bounding boxes that miss cannot make polygons that meet: both are `Some(false)` because both are
+/// facts about the two plans rather than about this module's ability to measure them.
+fn plans_share_area(first: &[PlanNode], second: &[PlanNode]) -> Option<bool> {
     if first.len() < 3 || second.len() < 3 {
-        return false;
+        return Some(false);
     }
     let one: Vec<Vec2> = first.iter().map(|node| node.position).collect();
     let other: Vec<Vec2> = second.iter().map(|node| node.position).collect();
     if !boxes_overlap(&one, &other) {
-        return false;
+        return Some(false);
     }
     // **The shared area, computed rather than inferred.** A pair of rectangles sharing a wall has collinear
     // edges and a corner on an edge, which containment and proper crossing both miss; clipping the two
     // polygons and measuring what overlaps misses nothing, and a flush pair answers exactly zero.
-    matches!(
-        crate::clip::shared_area(&one, &other),
-        Some(shared) if shared > AREA_TOLERANCE
-    )
+    crate::clip::shared_area(&one, &other).map(|shared| shared > AREA_TOLERANCE)
 }
 /// Returns whether the bounding boxes of two plan polygons share anything.
 ///
@@ -2730,6 +2790,14 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
             (2, mass.0 as u64, ordered(*top), ordered(*highest), 0)
         }
         Violation::UnattachedOverlap { mass, other } => (3, mass.0 as u64, other.0 as u64, 0, 0),
+        // **Rank `3` and its fourth slot, beside `UnattachedOverlap` and not at the end.** The two are
+        // one question asked of one pair of masses — whether two unattached plans share area — and the
+        // fourth slot is what tells the answer from the refusal to answer: `0` is the pair measured
+        // and overlapping, `1` is the pair not measured at all. They cannot both be reported for one
+        // pair, so the slot only has to order them; putting this one at the end would sort a statement
+        // about two masses' plans after every part, wall and plate fault, which is not where a
+        // statement about the document's own geometry belongs.
+        Violation::OverlapNotMeasured { mass, other } => (3, mass.0 as u64, other.0 as u64, 1, 0),
         // The void faults share a rank: each is a statement about one mass's own courtyards, and a document has
         // whichever of them it has. The rank's fourth slot says which part of the courtyard is wrong: `0` is the
         // loop's own fit, `2` is the ring's own, and `3` is the loop's own shape — so it sorts after both, because
