@@ -879,6 +879,46 @@ one command. The rule it argues for is not "be careful with scripts" but **commi
 you did not read digests of**: the recovery was one `git checkout --` because the file was already on disk
 in the history.
 
+## What the instancing slice found: a scene finally stands one mesh many times (2026-10-27)
+
+D4's mesh half was honoured in the crate — `Template::mesh()` plus `PartFrame`, with `build` rewritten on both
+so the baked and instanced paths cannot diverge — and **the gallery never used it**. Every scene still drew
+whatever `build` baked, so a facade with five shutters uploaded five copies of the same twenty-eight faces.
+The proposal had recorded the fix as the gallery's and named exactly what it needed: *one mesh per template and
+one instance transform per placement*. This slice is the scene side of that sentence.
+
+`crates/gallery/src/instancing.rs` is the join:
+
+- **`standing(frame) -> (translation, rotation, scale)`** — the transform a scene instance carries, read from
+  the frame's **own axes**: `yaw = atan2(inward.x, inward.z)`, translation = the frame's origin, unit scale.
+  The invariant that makes it possible is a fact about walls rather than about scenes: a wall-mounted frame's
+  `along` and `inward` lie in the plan and its `up` is world up, so the rotation is **one angle** and an
+  instance transform can carry it exactly rather than approximately.
+- **`template_points(template)`** — one expansion in the template's own frame, which is the space the
+  instance transform expects.
+
+The **workshop** changed in three ways, all consequences: five shutters in its five windows from **one**
+template; the shutters drawn from `template_points` and stood five times by `standing`; the five windows made
+one height, because one template behind five placements is the point and five heights would be five templates.
+
+**And the scene had been drawing no parts at all.** Its meshes filtered `Mass`, `Roof` and `Slab`; a part is
+`Element::Part`, so the canopy it used to carry was authored and invisible — a fault no check could catch,
+because a scene that does not draw something is a perfectly valid document. The shutters are the first parts
+this scene draws, and the lesson is worth keeping: **a scene's mesh filters are a claim about what the frame
+contains, and nothing compares that claim to the document.**
+
+Measured by `examples/building_instancing_probe.rs` on six placements of one shutter:
+
+| measurement | value |
+| --- | --- |
+| the upload | **168** baked part faces against **28** in the template — six copies, one upload; `84` points once instead of `84 × 6` |
+| frame vs the scene's instance transform (as point sets, `1e-4`) | **0** placements disagree |
+| frame vs the baked geometry | **0** placements disagree |
+| the rotation | one yaw per part (`-3.1416 rad` on the front wall, where `along` is `(-1, 0)`) |
+
+The scene renders at 16 passes (three more than before: the shutter mesh adds its stages), its own document
+assert is clean, and the gallery suite passes.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
