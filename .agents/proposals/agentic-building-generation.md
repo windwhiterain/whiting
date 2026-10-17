@@ -4549,3 +4549,176 @@ reading it answers.
 a mass outline that meets itself is named `OutlineNotSimple` **and** gated out of the plan subtraction; and a pair that
 cannot be compared is `OverlapNotMeasured`. A measurement that could not be taken is never reported as an absence — and
 **every one of those changes was caught by an instrument that had first been shown to fire.**
+
+## What the inner-face slice found: a mass's inner wall face is a feature with no spelling (2026-11-01, branch `feature/building-inner-part`)
+
+The rooms-facing slice closed with a claim it had not measured: *once `loop_side` is on `FaceRef` it is
+writable on a mass's own outline too — the mass's inner wall face — and that one is **not** refused: the
+machinery is side-symmetric, so a part named there is framed properly and stands proud of the inner wall
+into the mass's own rooms.* This measures it. A `7 × 11` starter with a `0.3 m` wall, the same door
+leaf, the same `Pin(0.5, 0.0)` and the same `3 × 2` rhythm laid by the same op on **both** faces of the
+mass's own ring, so every difference below is `loop_side` and nothing else.
+
+### The measurements, and which of them decides
+
+| reading | the outer face | the mass's own inner face |
+| --- | --- | --- |
+| the face | `{ mass: 0, edge: 1, void: None, loop_side: Authored }` | `{ mass: 0, edge: 1, void: None, loop_side: Offset }` |
+| its edge | `11.0000` m | **`10.4000` m** — `0.3 m` shorter at *each* end |
+| bay (0, 0) | `[0.0000, 3.6667]` | `[0.0000, 3.4667]` |
+| the frame's origin | `(3.5000, 0.0000, -5.0000)` | `(3.2000, 0.0000, -4.7000)` |
+| `along`, `up` | `(0, 0, 1)`, `(0, 1, 0)` | `(0, 0, 1)`, `(0, 1, 0)` |
+| `inward` | `(-1.0, 0.0, 0.0)` — into the masonry | `(-1.0, 0.0, 0.0)` — **through it, into the rooms** |
+| `(along × up) · inward` | **`+1.0`** | **`+1.0`** |
+| the document | **0 violations** | **0 violations** |
+| the part's solid | 32 faces, loops 0, euler 0, manifold, volume `0.025002` | 32 faces, loops 0, euler 0, manifold, volume `0.025003` |
+| `template volume`, own frame | `0.025004` | `0.025004` |
+| where it stands | `x [3.4400, 3.5000]`, `z [-5.0000, -4.1000]` | `x [3.1400, 3.2000]`, `z [-4.7000, -3.8000]` |
+
+**The determinant cannot tell these two faces apart and the distance can.** `inward` is the walker's
+left on every face of a ring, so `(along × up) · inward` reads `+1` on all four and the handedness test
+says nothing about which loop a face named. What says it is the way the part's own thickness runs: the
+outer face at `x 3.5` and the inner at `x 3.2`, with the same `-1` in `inward` and the same three
+directions in every other digit, `0.3 m` further in. Against the mass's own outline at
+`x [-3.5000, 3.5000]` and its inner loop — **the plate's extent, because `derive::starter` seats the
+plate on that loop** — at `x [-3.2000, 3.2000]`, the part's box `x [3.1400, 3.2000]` is **in the
+rooms, out of the wall's own `0.3 m` thickness, and inside the building**: three booleans, all `true`.
+
+**And the volume comparison needed the sign, not an equality.** The two parts stand `0.000002` and
+`0.000001` from the template's own solid: the sixth digit is `f32` cancellation in the divergence sum
+over world coordinates near `3.5 m` where the result is `0.025`, and `0.025002` against `0.025004` is
+what the outer-face part has **always** read. An equality against the template would be a check that
+fails on correct geometry, which is why the crate's own predicate is the **sign**.
+
+### The control, put where it can fail
+
+**The same part, on the same face, at the same pin, with `inward` reversed** — the improper frame the
+part-in-a-court slice measured as unavailable, and the one this section's claim would be wrong about if
+the frame were wrong. Its determinant reads `-1.0`, the same solid reads volume **`-0.025004`** where
+the part reads `+0.025003`, and `validate::mesh` — asked of a copy of the document's own mesh with that
+one solid remapped through the mirrored frame, rather than of a second build — reports exactly one
+violation:
+
+```text
+SolidInsideOut { solid: Part(1), volume: -0.025003694 }
+```
+
+**It is beside the part rather than beside a document that cannot express one.** Every `PartFrame`
+`expand::part_frame` hands out is a rotation on all four faces of a ring, so no document in the tree
+could ever have produced a mirrored part: a control standing on its own would agree because it had
+nothing to disagree with.
+
+### What the face gives up, measured rather than carried over
+
+A **hole** is the one thing it will not take, and the refusal is the one a courtyard's rooms-facing loop
+gets, because the reason is the same — a hole is cut through both of a ring's faces from the loop the
+walk reads:
+
+```text
+OpeningOnAFarLoop { opening: 0, face: FaceRef { mass: MassId(0), edge: 1, void: None, loop_side: Offset } }
+DidNotExpand { problems: [OpeningOnAFarLoop { loop_of: Outline { mass: MassId(0) }, edge: 1, opening: 0 }] }
+```
+
+So a **window seen from inside a room is a second rectangle for one hole with no second wall to put it
+in**, refused by name from both halves. A rhythm, a bay, a pin and a part are not refused.
+
+### The answer: a feature, and the thing missing is a spelling
+
+**It is a feature.** It builds, `validate` is silent, the frame is a rotation, and it stands where an
+author means when they write it — a sconce, a skirting run, a door surround seen from the room side. It
+is **not** a gap: nothing in the language refuses it and nothing in it is a thing the vocabulary cannot
+say. And it **does not need a name of its own**, because the word it needs — *which loop* — is already
+in the crate, is already on `FaceRef`, and is already what keeps the frame one rule across all four faces
+of a ring.
+
+**What it is missing is a spelling, and there are three, all of them the three every other face has:**
+
+1. **No constructor.** `FaceRef::new(mass, edge)` builds `Authored`, and `FaceRef::court_rooms` is the
+   only constructor that reaches `Offset` — about a courtyard's ring. The address above is a struct
+   literal, `FaceRef { mass, edge, void: None, loop_side: LoopSide::Offset }`, and the crate's own rule
+   elsewhere is that a document names things by a name.
+2. **No list.** `BuildingSkeleton::faces_of` returns the authored faces; `court_faces_of` and
+   `room_faces_of` return a courtyard's two. There is no `inner_faces_of(mass)`, so *"lay a rhythm on
+   every face of this mass"* walks the outside and stops.
+3. **No sentence in the API.** `LoopSide::Offset`'s own doc reads *"a mass's inner wall, or the wall a
+   courtyard's ring shows to the rooms"* — the face is named in prose and in no spelling.
+
+**The recommendation, with the measurement in hand: add `FaceRef::inner(mass, edge)` and
+`BuildingSkeleton::inner_faces_of(mass)`, the exact counterparts of `court_rooms` and `room_faces_of`,
+and change nothing else.** It is vocabulary and not mechanism — two constructors, no new element kind, no
+new violation, no new geometry path, no new walk, and not one number in this section moves. **This slice
+records the recommendation rather than making it**, because the question the brief asked was *what does
+the language say*, and the answer is a decision about the API surface rather than a measurement.
+
+**What must not happen, and why.** There must be **no refusal**: no `PlacementOnAnInnerFace` and no
+`OpeningOnAnInnerFace`. `validate` reports documents that exist and are wrong, and this one is neither.
+And there must be **no "room"**. A mass's interior is not a documented concept in this crate and need
+not become one: the vocabulary names **faces and loops**, and the fact that a part on the inner face
+lands in the rooms is a consequence of `inward` being the walker's left, not a place a document can
+name. Promoting it would be a second concept where the crate needs none, and it would have to answer a
+question this measurement shows nobody is asking.
+
+### The gate, measured on the branch
+
+- **29/29 building examples exit 0**, every one run by name from the built binary; **16/16 gallery
+  examples exit 0**. `cargo build --workspace --all-targets` exits 0 and warns **only** of the
+  pre-existing `census.exe` / `census.pdb` output filename collision. `cargo fmt --all -- --check` clean.
+- **`part_probe`'s own first 28 lines are byte-identical to main's** — `Part(0) 0.025002`,
+  `Part(1) 0.044745`, the mass-wall frame's `origin (3.5000, 0.0000, -5.0000)`,
+  `inward (-1.0, 0.0, 0.0)`, `+1.0`, and the doorway and bay readings. The new section is appended
+  after them and shares no document with them.
+- **`patio_probe` reproduces the courtyard table to the digit**: near `4.0000` against rooms-facing
+  `4.6000`, bays `[0.0000, 1.3333]` and `[0.0000, 1.5333]`, origins `(-1.8000, 0.1000, -2.0000)` and
+  `(-2.1000, 0.1000, -2.3000)`, both `+1.0`, volume `0.025004`, `x [-2.1000, -1.2000]`,
+  `z [-2.3000, -2.2400]`, `y 0.1200` to `1.4500`, and both rings `manifold true, loops 0, euler 0`.
+- **Nine before/after pairs on this machine, identical on all three hashes — 9 rows, 27 fields, 0 moved.**
+  The before set was rendered from a **second worktree checked out detached at `main` (`22b312b`)** with
+  its own `target`, the two sets named `before-*` and `after-*`, and compared **field by field**. **Which
+  hash is which, because the three are not the same measurement**: `png` is the **SHA-256 of the written
+  `.png` file**; `document` and `image` are **the manifest's own fields**, the document hash over the two
+  definitions the compile emitted and the image hash over the **raw pixel buffer the gpu returned**. The
+  `.png` column reproduces the table in *The baseline a later slice measures against* exactly: `house
+  B13154AD7D29F938`, `hall C4339E6310EA1C37`, `hall_large 43D3780A15E3D08E`, `shed 882B8F9A7C671B0D`,
+  `terrace EDF3F4B3CF2A9686`, `wing 14E3E27F9F9E1A83`, `workshop 7DD5D40894181EA7`, `yard FDC446B24E98CE04`,
+  `identity 974FB5B24E1E7A35`.
+- **The hash's domain, confirmed on this tip rather than re-argued.** `house`'s `image` — the raw-pixel
+  buffer — reads **`4F343949D83B2064`**, which is the exact number *Correction: the difference was the
+  hash's domain, not an adapter* records as the other reading of the same frame. Both are in one
+  manifest here: **one frame, two hashes, two domains.** The rule that survives is a before/after pair
+  **naming which hash it compares**, and this run is the evidence for it.
+- **No gallery scene places a part on a mass's inner face, and the canary was fired to make the claim
+  mean something.** `LoopSide` and `loop_side` appear in `crates/building/src` and **nowhere** in
+  `crates/gallery` — neither `src` nor `examples` — and the pattern was proved on its **control first**:
+  it fires three times on this very probe, including the literal `loop_side: LoopSide::Offset`. Every
+  gallery `place_part` names a `front` face built by `FaceRef::new`, and `with_voids`, `.voids`,
+  `SolidId::Void`, `VoidWall` and `VoidInner` match **no** file in `crates/gallery`, so no gallery scene
+  holds a courtyard either.
+- **`scene_identity_probe` reads 806 rows two-way** (`77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101`),
+  contiguous, every name non-empty, every name round-tripping, the channel two-way.
+
+### What this slice's brief got wrong
+
+**It asked whether a mass's inner wall face is a "feature, a gap, or does it need a name of its own", as
+if those were three shapes the vocabulary could be in.** They are not three states: a face is addressable
+or it is not, and *"is it a feature"* was answered by the slice that wrote the mechanism — *framed
+properly and stands proud of the inner wall into the mass's own rooms*. What the three options have no
+slot for is the answer this measurement gives: **the face is a feature, and what is missing is a
+spelling.** The distinction is not pedantry, because a "gap" reading invites a refusal and a "name of its
+own" invites a new element kind, and **both would have been wrong** — the frame is one rule precisely
+because this face is not a new kind of thing.
+
+**It asked for the bounds "inside the mass's rooms, not in the wall and not outside the building", which
+is right and which the crate answers more cheaply than the brief framed it.** There are no "rooms" to
+measure against, and the measurement does not need any: `derive::starter` seats the floor plate on the
+mass's own inner loop, so **the plate's own bounds are that loop**, and the part's box is read against
+three numbers a reader can check by hand — the outline, the inner loop, and the gap between them. The
+probe found the rooms by *reading the plate*, not by asking for a concept that does not exist.
+
+**It asked for "the volume against `template volume` … so a mirrored one would be caught", which is the
+right question at the wrong threshold.** The two parts stand `0.000002` and `0.000001` from the
+template's own solid — `f32` cancellation in the divergence sum, and the outer-face part has always read
+`0.025002` against the same template's `0.025004`. An equality against the template would fail on the
+**correct** geometry. The control is what makes the comparison mean anything and it has to be read as a
+**sign**: `-1.0` against `+1.0`, `-0.025004` against `+0.025003`, one `SolidInsideOut`. **A tolerance
+close enough to be useful is close enough to be wrong**, which is why the crate's predicate is `<= 0.0`
+and not a tolerance.
