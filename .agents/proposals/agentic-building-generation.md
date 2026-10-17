@@ -1648,6 +1648,15 @@ impression — that is the standard this project has held itself to since the fi
 - **A shared face is not a facade, and the crate does not say so.** `attach_mass` records the attachment, but
   nothing stops a `split_face` on the face two arms share; the scene avoids it by choosing which faces to split. A
   violation would need the attachment's station, and a new `Violation` is a compiler-enforced audit of every match.
+
+  **Corrected by measurement (2026-10-27, `shared_face_probe`).** That sentence was too strong. On an attached
+  pair — a 6 × 6 host with a 6 × 4 wing overlapping it by the wall — splitting the host's shared face and cutting a
+  2.1 m door through it is **refused**: `ops::add_opening` answers `None`, the document reports **0 violations**,
+  and both solids stay manifold and closed. So the crate does not accept a hole in a shared face today, and the
+  question a `Violation` would answer is a different one: *is the refusal for the right reason?* The probe cannot
+  yet tell an attachment-aware refusal from a grid or reveal limit, and **that distinction is the next slice's** —
+  because a refusal that happens for the wrong reason is the same failure as an acceptance for the wrong reason,
+  one layer down.
 - **`site::report`'s overlaps are plan bounding boxes** and say so in their own docs: two L-shaped buildings can
   have overlapping boxes and no shared wall. The report **lists** and does not judge.
 - **The shadow terminator toothing** is the shadow subsystem's, not this one's.
