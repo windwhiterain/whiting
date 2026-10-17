@@ -966,8 +966,18 @@ crate landed `handle`, `rng`, `node`, `plant` and `expand`, with `tree_probe` (5
 | the taper is the law, not a cone | worst radius against the law **5.960e-8** over 33 rings; the law's node rise of 0.006 reads **0.005429** in the solid, where a straight cone would read **0.023600** against the law's **0.028000** at `t = 0.32` | `< 1e-6` |
 | a joint is on the skin, sunk by what it asked | **9** joints, worst **1.132e-7** from *the parent's taper less the sink* | `< 1e-5` |
 | one resolution dial | 1400 triangles at `Detail::DEFAULT` (6 × 12), 5720 at twice that (**4.086** times), every solid still closed, the same nodes in the same order | ratio in `3.5..4.5` |
+| a field is one group per node it carries | **6** groups over 6 twigs, **24** leaves, one template, each group's count its own density law rounded | one group per node |
+| a leaf is one transform | 24 leaves draw the template's **108** triangles once and carry **24** transforms; baked instead they would be **2592** triangles and **1344** vertices | stated, not paid |
+| the count and the stations are the law | 4 leaves at 20 per unit over a 0.6 band of a 0.3-long twig, at 0.375 / 0.525 / 0.675 / 0.825, each half a spacing in from the band's start; a density that rises toward the tip gives 7 with gaps shrinking **0.1152 → 0.0633**, and 12 above the band's middle against 9 below | inside the band, increasing |
+| a leaf's anchor is on its parent's skin | origin against the composed attachment **0.000e0**, radius against the parent's taper **5.588e-9**; control: 0.05 of station moves the radius **2.000e-3** | `< 1e-6` |
+| the slots advance by the phyllotaxy | 9 consecutive pairs against **0.38196602** to **8.941e-8**; three nodes' first slots read **0.995155 / 0.984525 / 0.749440**, so the spirals do not line up | `< 1e-6` |
+| pitch turns forward toward the parent's tip | at pitch 0, forward·outward **1.000000** and forward·tangent **0.000000**; at π/2, forward·tangent **1.000000** and forward·outward **−4.371e-8** | `< 1e-6` |
+| twist turns the face about forward | side against the *untwisted face* **4.425e-8**, face against the *negated* untwisted side **4.284e-8**, forward unchanged **0.000e0** | `< 1e-6` |
+| every instance frame is orthonormal | worst `\|axis\| − 1` **5.960e-8** and worst pairwise dot **7.078e-8**, over a twist of 0 and 1.1 rad | `< 1e-6` |
+| the size law and its jitter | with jitter 0, every scale is the law exactly; with jitter 0.2 the widest departure is **0.194** of it and 11 of 12 differ; the same field twice is identical | exact / `≤ 0.2` |
+| a blade is a closed solid | χ = 2, volume **0.006387** over 9 × 12; slot 0 at the midrib's first point **0.000e0**; base ring's `\|x\|` **0.000e0**; tip spread **0.000e0** | closed |
 
-**Four decisions P1 made that this design did not say**, each of which a consumer meets:
+**Six decisions P1 made that this design did not say**, each of which a consumer meets:
 
 1. **The parent is the tree, not a field of the attachment.** The design wrote
    `Attachment { parent, station, slot, sink }`; a node's parent is the path that reaches it, so the type is
@@ -983,6 +993,18 @@ crate landed `handle`, `rng`, `node`, `plant` and `expand`, with `tree_probe` (5
    between a child's base and its parent's skin, and the measured reading is that the child's origin is on the
    parent's surface to `1.1e-7` of the sink. That is `building`'s socket rule (*a joint is one subtraction, not
    a transform*) one crate over.
+5. **A template's frame is stated by its midrib's initial normal.** A blade's width must land on the template's
+   `y` and its thickness on `z`, and `shape` puts a section's `x` half axis on the frame's **normal** — so the
+   midrib's initial normal is `+y`, and a `+x` midrib's default (`−z`) stands the blade on its edge. That is a
+   trap a leaf author meets once, so `LeafTemplate` states it in one place and the probe measures it: the
+   blade's own width reaches `|y| 0.494932` while its face reaches `|z| 0.009924`, so a transposed section
+   would swap two numbers that both look plausible.
+6. **A leaf's per-instance numbers are a rigid frame and one uniform scale, and the bill for that is measured.**
+   No per-instance bend and no per-instance shape, because either would need one material set per leaf; shape
+   variety across leaves is a second template. What it buys: 24 leaves draw the template's **108** triangles
+   once and carry **24** transforms, where baking them would be **2592** triangles and **1344** vertices. What
+   it costs: a leaf cannot bend differently from its neighbours, and the design says so rather than leaving a
+   reader to find out.
 
 ## What SPEC would say if this is adopted
 
@@ -1032,8 +1054,11 @@ so a later session reopens it by argument rather than by forgetting it.
    *"leaves point away from the trunk"* is a curve edit and not a placement-level fix — which is the sentence
    the open question asked for.
 
-   P1 implements the anchor, `reference`, the phyllotaxy and `pitch`; `twist` and `aim` are the same
-   composition with two more terms and land when the first frame needs them (each is one law, not one stage).
+   P1 implements the anchor, the phyllotaxy, `pitch` **and `twist`** — the first four terms, measured in
+   `leaf_probe`. **`reference` is the one term that waits, and it waits on `closest`**: reading the frame from
+   an ancestor means knowing where the leaf's own anchor lands on *that* ancestor, which is a closest-point
+   query and is already owed by the envelope's trimming law (shape's open question 4). `aim` is one more term
+   in the same composition and arrives with the first crown whose leaves need to turn to the light.
 2. **The identity granularity P1 ships** — **per field group**, with per-placement available for a field the
    author *names*, and `report()` printing the group count either way. The number at which a field must go
    unnumbered stays unmeasured on purpose: a document-entry budget is a fact about a frame's page pool, and a

@@ -1,7 +1,7 @@
-# Handoff: `vegetation` P1 — the tree, its wood, and the leaf field in flight
+# Handoff: `vegetation` P1 — the tree, its wood and its leaf field
 
 Started 2026-10-17. Branch `feature/vegetation-p1`, worktree `.worktrees/vegetation`, from `main` at
-`997b45e`. The design is
+`9b860e1`. The design is
 [proposals/agentic-vegetation-generation.md](../proposals/agentic-vegetation-generation.md); this file is
 only the state a next session needs, and it is deleted when P1 is finished.
 
@@ -11,10 +11,9 @@ only the state a next session needs, and it is deleted when P1 is finished.
   five probes reading 38 invariants. Everything this crate draws with is there.
 - **On this branch**: `handle` (a node's derivation path), `rng` (one stream per node, forked by path),
   `node` (a spine, a taper, a section, and three numbers that attach it), `plant` (the root, the walk, the
-  placement, the world spine), `expand` (one closed solid per node, one resolution dial), and two probes:
-  `tree_probe` (5 rows) and `plant_probe` (5 rows, wood only).
-- **In flight**: `feature/vegetation-leaves`, worktree `.worktrees/leaf`, branched from `6addeb3` —
-  `leaf.rs` (`LeafTemplate`, `LeafField`, `LeafGroup`, `LeafInstance`) and `leaf_probe`.
+  placement, the world spine), `expand` (`wood` and `expand`, one closed solid per node, one resolution dial),
+  `leaf` (`LeafTemplate`, `LeafField`, `LeafGroup`, `LeafInstance`), and three probes: `tree_probe` (5 rows),
+  `plant_probe` (7 rows, wood and leaves) and `leaf_probe` (8 rows).
 
 ## What a consumer has
 
@@ -30,8 +29,14 @@ plant.placement(&handle);                             // the node's world frame 
 plant.surface(&handle, attachment);                   // a frame on the node's own skin
 plant.spine(&handle);                                 // the node's spine in the world
 
-let solids = expand::wood(&plant, Detail::DEFAULT);   // one Wood { handle, loft } per node
-mesh::signed_volume(solids[0].loft.view());           // every loft is a closed solid
+let template = LeafTemplate::blade(midrib, width_law, thickness, 7, 8);
+let mut field = LeafField::new(2, 0);                 // generation 2, template 0
+field.band = (0.25, 0.9); field.jitter = 0.15;
+
+let plant_geometry = expand::expand(&plant, Detail::DEFAULT, &[field]);
+plant_geometry.wood;                                  // one Wood { handle, loft } per node
+plant_geometry.leaves;                                // one LeafGroup { node, template, leaves } per node
+mesh::signed_volume(plant_geometry.wood[0].loft.view());   // every wood loft is a closed solid
 ```
 
 `Attachment { station, slot, sink }` is the whole of a joint: where along the parent, where around its
@@ -39,13 +44,15 @@ section, and how far the child's origin sinks **inward along the parent's outwar
 
 ## What P1 still owes
 
-- **The leaf rows in `plant_probe`** — the field's groups, the instance count, and the statement that one
-  group is one instanced draw. The leaf module is in flight; the rows land when it merges.
 - **A rendered plant.** P1's exit asks for *one rendered plant whose leaves are instances of one template
-  drawn in one pass*. Two gallery pictures exist or are in flight: `sweep_picture` (a tube, a blade and an
-  envelope from one `Sweep` call, which is `shape`'s exit) and, after that, a plant.
+  drawn in one pass*, and nothing has drawn a plant yet. `sweep_picture` (a tube, a blade and an envelope from
+  one `Sweep` call, which is `shape`'s exit) is the picture that teaches the gallery the pattern; a plant
+  wants it next, with wood baked into one mesh named by the identity channel and one instance buffer per
+  `LeafGroup`.
 - **`report()`** — P1 names it (the crown against the envelope's own radius curve, the counts, the instance
   count). The probes print counts; there is no `report()` type yet, and the envelope is P2's field.
+- **`reference` on a leaf field** — the one orientation term P1 did not implement, because it needs a
+  closest-point query on an ancestor and that is the query `shape` has not built (its open question 4).
 - **P2's edits.** A node's attachment is set when it is built and cannot be moved afterwards, which is
   deliberate — the design's edits are *replacements* (D10) and a moved bough will be a rebuilt one. If a
   selector has to retarget an existing node, it needs `Plant::get_mut` plus a stated replace semantics, and
@@ -64,6 +71,13 @@ section, and how far the child's origin sinks **inward along the parent's outwar
   spine does.
 - **The rng draw order is data**: the node's phase is drawn first, then one jitter per leaf in index order.
   Reordering the draws moves every leaf in the plant, which is why it is stated here and in `leaf`.
+- **A template's frame is its midrib's initial normal.** A blade's width must land on the template's `y` and
+  its thickness on `z`, so the midrib's initial normal is `+y`; a `+x` midrib's default is `−z`, which stands
+  the blade on its edge. `LeafTemplate` states it once, and `leaf_probe` measures `|y| 0.494932` against
+  `|z| 0.009924` — a transposed section would swap two numbers that both look plausible.
+- **One twist is a quarter turn of the *face* onto the negated side**, not onto the side: the right-handed
+  formulas `side' = side·cos + face·sin`, `face' = face·cos − side·sin` are what keep `(forward, side, face)`
+  right-handed, and `leaf_probe` reads `4.425e-8` and `4.284e-8` for the two halves of that statement.
 - **`Detail` is the only resolution.** `Detail::scaled` is a probe's convenience; a scene that wants a
   coarser preview expands the same plant at a smaller dial.
 
@@ -71,7 +85,7 @@ section, and how far the child's origin sinks **inward along the parent's outwar
 
 ```text
 cargo run -p whiting-vegetation --example tree_probe     # 5 invariants
-cargo run -p whiting-vegetation --example plant_probe    # 5 invariants, wood
-cargo run -p whiting-vegetation --example leaf_probe     # the leaf field, once it lands
+cargo run -p whiting-vegetation --example plant_probe    # 7 invariants: wood and leaves
+cargo run -p whiting-vegetation --example leaf_probe     # 8 invariants of the leaf field
 cargo check -p whiting-vegetation --all-targets
 ```

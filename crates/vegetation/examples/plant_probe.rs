@@ -14,7 +14,9 @@
 use shape::math::{length3, span, subtract};
 use shape::mesh::{boundary_loops, euler_characteristic, is_manifold, signed_volume};
 use shape::{Curve, Jet, Scalar};
-use whiting_vegetation::expand::{Detail, wood};
+use std::f32::consts::FRAC_PI_4;
+use whiting_vegetation::expand::{Detail, expand, wood};
+use whiting_vegetation::leaf::{GOLDEN_ANGLE, LeafField, LeafTemplate};
 use whiting_vegetation::node::{Attachment, Node};
 use whiting_vegetation::plant::Plant;
 
@@ -25,6 +27,8 @@ fn main() {
     checks.push(("the taper is the law", the_taper_is_the_law_not_a_cone()));
     checks.push(("a joint is on the skin", a_joint_sits_on_its_parents_skin()));
     checks.push(("one resolution dial", the_dial_is_the_only_resolution()));
+    checks.push(("leaves are groups", the_leaves_are_groups_of_placements()));
+    checks.push(("a leaf is one transform", a_leaf_costs_one_transform()));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -294,4 +298,109 @@ fn the_dial_is_the_only_resolution() -> bool {
         "  every solid stays closed: {closed}; the same nodes in the same order: {same_places}, so a coarser plant is the same plant"
     );
     closed && same_places && (3.5..4.5).contains(&ratio)
+}
+
+/// The blade: a midrib that arcs up from the origin, widest at 45% of its own length.
+fn blade() -> LeafTemplate {
+    LeafTemplate::blade(
+        spine(&[
+            ([0.0, 0.0, 0.0], [0.20, 0.05, 0.0]),
+            ([0.17, 0.06, 0.01], [0.16, 0.11, 0.02]),
+            ([0.31, 0.17, 0.03], [0.07, 0.10, 0.01]),
+        ]),
+        Scalar::new(&[(0.0, 0.0), (0.45, 0.06), (1.0, 0.0)]).expect("the blade's width is a law"),
+        0.06,
+        7,
+        8,
+    )
+}
+
+/// The leaves hang from the twigs, which are the third generation: depth 2 below the trunk.
+fn leaf_field() -> LeafField {
+    let mut field = LeafField::new(2, 0);
+    field.band = (0.25, 0.9);
+    field.density = Scalar::constant(12.0);
+    field.phyllotaxy = GOLDEN_ANGLE;
+    field.pitch = Scalar::constant(FRAC_PI_4);
+    field.size = Scalar::new(&[(0.0, 0.05), (1.0, 0.08)]).expect("the leaf's size is a law");
+    field.jitter = 0.15;
+    field
+}
+
+/// A field is a distribution: one group per node it puts leaves on, and the group's count is its own law.
+fn the_leaves_are_groups_of_placements() -> bool {
+    let plant = plant();
+    let expansion = expand(&plant, Detail::DEFAULT, &[leaf_field()]);
+    let leaves: usize = expansion
+        .leaves
+        .iter()
+        .map(|group| group.leaves.len())
+        .sum();
+    let twigs: usize = plant
+        .walk()
+        .filter(|(handle, _)| handle.depth() == 2)
+        .count();
+    let one_template = expansion.leaves.iter().all(|group| group.template == 0);
+    let ordered = expansion
+        .leaves
+        .windows(2)
+        .all(|pair| pair[0].node < pair[1].node);
+    let counts_match_the_law = expansion.leaves.iter().all(|group| {
+        let node = plant.get(&group.node).expect("the group's node resolves");
+        let expected = (12.0 * (0.9 - 0.25) * node.spine().length()).round() as usize;
+        group.leaves.len() == expected
+    });
+    println!("\n# the leaves");
+    println!(
+        "  {} groups over {twigs} twigs · {leaves} leaves · one template: {one_template}",
+        expansion.leaves.len()
+    );
+    for group in &expansion.leaves {
+        println!(
+            "  {:<28} {:>2} leaves · template {}",
+            group.node.to_string(),
+            group.leaves.len(),
+            group.template
+        );
+    }
+    println!("  a group is one node's leaves of one template, in walk order: {ordered}");
+    println!("  and each group's count is its own density law, rounded: {counts_match_the_law}");
+    expansion.leaves.len() == twigs && leaves > 0 && one_template && ordered && counts_match_the_law
+}
+
+/// A leaf is a rigid frame: `k` of them cost the template's triangles once and `k` transforms.
+fn a_leaf_costs_one_transform() -> bool {
+    let plant = plant();
+    let template = blade();
+    let loft = template.loft();
+    let expansion = expand(&plant, Detail::DEFAULT, &[leaf_field()]);
+    let leaves: usize = expansion
+        .leaves
+        .iter()
+        .map(|group| group.leaves.len())
+        .sum();
+    let surface = loft.view();
+    let closed = boundary_loops(surface) == 0
+        && is_manifold(surface)
+        && euler_characteristic(surface) == 2
+        && signed_volume(surface) > 0.0;
+    println!("\n# what one leaf costs");
+    println!(
+        "  {leaves} leaves draw the template's {} triangles once and carry {leaves} transforms",
+        loft.triangles().len()
+    );
+    println!(
+        "  the template is a closed blade at χ = {}, volume {:.3e}, {} vertices, {} rings of {}",
+        euler_characteristic(surface),
+        signed_volume(surface),
+        loft.positions().len(),
+        loft.rings(),
+        loft.around()
+    );
+    println!(
+        "  baked instead, the same leaves would be {} triangles and {} vertices, which is the bill D7 refuses to pay",
+        leaves * loft.triangles().len(),
+        leaves * loft.positions().len()
+    );
+    closed && leaves > 0
 }

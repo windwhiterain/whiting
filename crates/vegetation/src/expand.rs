@@ -23,6 +23,7 @@
 use shape::{Loft, Sweep};
 
 use crate::handle::Handle;
+use crate::leaf::{LeafField, LeafGroup};
 use crate::plant::Plant;
 
 /// How finely a plant is expanded: rings along each spine, and vertices around each section.
@@ -82,4 +83,30 @@ pub fn wood(plant: &Plant, detail: Detail) -> Vec<Wood> {
             }
         })
         .collect()
+}
+
+/// A plant's whole geometry: the wood as solids, the leaves as groups of rigid placements.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Expansion {
+    /// One closed solid per node, in walk order.
+    pub wood: Vec<Wood>,
+    /// One group per node a field put leaves on, in walk order and then in field order.
+    pub leaves: Vec<LeafGroup>,
+}
+
+/// The whole plant at one dial: every node's solid, and every field's groups.
+///
+/// # Invariants
+///
+/// **The leaves are numbers, not geometry.** A group holds a template index and one rigid placement per
+/// leaf, so `k` leaves of one template cost the template's own triangles once and `k` transforms — which is
+/// the whole reason a field is a distribution rather than a generator. The wood is the opposite by design: it
+/// is baked, one solid per node, because a branch's shape is the document and a leaf's is a template.
+pub fn expand(plant: &Plant, detail: Detail, fields: &[LeafField]) -> Expansion {
+    let wood = wood(plant, detail);
+    let mut leaves = Vec::new();
+    for field in fields {
+        leaves.extend(field.groups(plant));
+    }
+    Expansion { wood, leaves }
 }
