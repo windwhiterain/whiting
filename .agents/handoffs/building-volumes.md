@@ -67,3 +67,19 @@ With volumes:
 
 - **2026-10-27** — handoff written; the shell slice (`feature/building-patio3`) is deleted, so this plan starts from
   `main` alone. Nothing implemented.
+
+## The blast radius, measured before starting (2026-10-27)
+
+`SolidId::Mass` is referenced **39 times**: **3 in the library** (`mesh.rs` once, `validate.rs` twice) and **36 across
+16 probes**. So the audit the compiler enforces is small where it matters and mechanical where it does not — the
+refactor is not the monster the phrase "rewrite `expand_mass`" suggests.
+
+**And the recorded volumes survive it.** A shell around a mass closes on: the outer walls, the wall tops, the inner
+walls, the floor and the soffit — so the region it encloses is exactly the **wall material plus the plate material**,
+which is what the two volumes hold together. Every volume in the acceptance record (the model building scale, the
+slab arithmetic, the floor area) is therefore still the number to check against, and a volume that does not match is
+a mistake rather than a new normal.
+
+**The shape of the change, then:** `SolidId::Mass(MassId)` stays as **the wall ring** (the name keeps its meaning:
+the mass's walls), a **`MassPlate(MassId)`** is added for the plate, and the emitter produces both. The 36 probe
+sites need no edit at all, and the plate gets its own probes.
