@@ -1,9 +1,9 @@
 # Agentic procedural vegetation generation: the `vegetation` crate
 
-Status: **DRAFT, revision 1 — design only.** No implementation exists, so this file carries no
-measurements of its own. Every number in it is read from a source file, from a document that measured
-it, or from SpeedTree's own documentation, and says which. Where a report's *shape* is shown, it is
-labelled as written before it exists.
+Status: **DRAFT, revision 2 — design only, amended by the second round of verdicts.** No implementation
+exists, so this file carries no measurements of its own. Every number in it is read from a source file,
+from a document that measured it, or from SpeedTree's own documentation, and says which. Where a report's
+*shape* is shown, it is labelled as written before it exists.
 
 The reconnaissance note is
 [investigate/vegetation-modeling-techniques.md](../investigate/vegetation-modeling-techniques.md)
@@ -17,11 +17,31 @@ Decisions taken with the superior on 2026-10-17, before this draft:
   which is why `building`'s D9 rejected `architecture`).
 - **Three tiers of manual detail**: the generator computes, a node offset nudges what it computed, and
   an explicit `bake` promotes one spine to authored control points. See D3.
-- **Scope of the first phase: one plant.** A grove, ground cover and wind are later phases.
+- **Scope of the first phase: one plant.** A grove and ground cover are later phases; wind is not in this
+  design at all (see the second round of verdicts below).
 - **Authoring interface: a rust construction API first**, exactly like `mountain`'s R5 and `building`'s
   D1. Document/`Delta` authoring is a possible later phase; D2 records what it would actually cost.
 - **Deliverable: this proposal and the reconnaissance note.** No implementation code until the design
   is approved.
+
+**Verdicts of the second round, 2026-10-17** (recorded verbatim, because each one overrides a decision
+above and the reason must survive with it):
+
+> 先做共享（尤其是曲线很值得做出来，后面必然导出都会依赖它）；曲线同意 Cubic Hermit。
+> 设计的时候叶子就用 instancing 的方式设计，相当于设计叶子的分布场，然后某个算子在场里面 instancing。
+> 包络线粗版本用曲线参数空间的 radius 曲线，可以精化到曲线参数空间上的垂直平面上的曲线的曲面。
+> 先不管风；先不管 attach building；validate 看着办，需要的时候自然会产生这个需求。
+
+What each one changes:
+
+| verdict | what it decides here |
+| --- | --- |
+| the shared crate comes first, with the curve | a `shape` crate is P0 and this crate's P1 sits on it; its design is [shape-primitives.md](shape-primitives.md). **D5's basis question is closed: cubic Hermite.** |
+| leaves are instanced through a distribution field | **D7 flips**: leaves are a field expanded into instances of a leaf template, not geometry baked into a plant mesh. D8's identity story is amended to the instance row it now depends on |
+| the envelope is a radius curve in the curve's parameter space, refinable to a section curve in the normal plane | **D13 rewritten**: the envelope is a `shape::Sweep` about the spine, and refining it is a `Section` change rather than a new type |
+| no wind | **D17 withdrawn.** The wind weights also leave the point schema, on the repository's own rule that *"a field nothing reads is data waiting for a stage"* |
+| no attachment to a building | open question 6 deferred, and recorded as deferred rather than dropped |
+| `validate` as it comes up | the violation list is **demoted from a designed contract to a candidate list**; what stays designed is the discipline (report, never repair) |
 
 ## Motivation
 
@@ -126,7 +146,7 @@ is: **every gesture becomes either a named write against a handle, or a predicat
 | paint a value over a brushed region | `paint(selector, change)` — **the brush is a predicate** (D10) |
 | soft-select vertices and move them | **refused as a representation.** The equivalent write is against `(station, ring slot)`, which moves with the tessellation instead of being destroyed by it (D9) |
 | bend a region | a `Field` in the document, applied per station in the expansion walk (D12) |
-| constrain a crown to a sphere | an `Envelope`, authored; and `report()` answers with the profile the mesh actually has (D13) |
+| constrain a crown to a sphere | an `Envelope` — a radius curve in the spine's parameter space (V4) — and `report()` answers with the reach the mesh actually has at each station (D13) |
 | leaf collision | a **report** with handles, and `derive::thin` writing prune marks the document holds — never a silent removal (D14) |
 | knot / fin / cap / shell decorators | a `Decorator`: a small authored template attached at a station with a stated frame, which is `building`'s parts and sockets under another name (D11) |
 
@@ -164,40 +184,102 @@ pub struct Document {
 }
 ```
 
-**V1 — the spine tree.** A node is a spine plus a skin law. The spine is a **cubic Hermite control
-polygon**: a position and a tangent per control point, so continuity is structural and there is no
-reconciliation pass — the argument `patch::hermite` already makes one dimension up (*"the corner jets
-are shared rather than reconciled"*). The skin law is a radius profile (a curve of the station) times an
-absolute-plus-relative radius, a radial segment count, an optional squash (an elliptical cross-section)
-and a roll. A node's attachment is `Attachment { parent: Handle, station: Station, slot: f32, sink:
-f32 }` — the station and ring slot it hangs from, and how far it sinks into the parent's skin.
+**V1 — the spine tree.** A node is a spine plus a skin law, and both are `shape`'s (see
+[shape-primitives.md](shape-primitives.md) D1–D4, which the superior's verdict made P0):
 
-**V2 — the leaf.** A `Template::Blade` is a closed outline control polygon in `(along, across)`, a
-station count, a midrib law (droop and curl along `along`), a fold (curl across), a twist, and a
-two-sided marking. Expansion is a loft of the outline along the midrib — the same walk as a branch, one
-dimension smaller, and the general form of what `geometry::blade` computes as a fixed taper formula.
-Placement is by generation mode (interval, phyllotaxy, bifurcation, proportional, absolute, flood) with
-a station band on the parent (`first`, `last`, `clip`), an orientation pipeline in three stages (local
-orientation, sensitivity to an anchor, final adjustments), a deformation group (fold, curl, twist, noise,
-per-axis scale) and a **normal law** (smooth, puffiness toward an anchor at one of five anchor levels,
-world-up for grass). The anchor levels are SpeedTree's and they are the mechanism behind both "leaves
-point away from the trunk" and "a crown shades as a volume rather than as a bag of leaves".
+- **the spine** is a `shape::Curve` — a chain of Hermite jets, a position and a tangent per knot, so C1
+  at every interior knot is structural and there is no reconciliation pass;
+- **the skin** is a `shape::Sweep` whose section is `Section::Circle { radius }`, and the radius is
+  **itself a curve of the station** — so a branch's taper, a culm's internodes and a root flare are one
+  mechanism (a radius curve) rather than three special cases;
+- **the attachment** is `Attachment { parent: Handle, station: f32, slot: f32, sink: f32 }`: the
+  arc-length fraction on the parent's spine, the fraction around its section, and how far the base sinks
+  into the parent's skin.
+
+The station is an **arc-length fraction**, not a knot index, which is `shape` D2's decision and is what
+makes "the top third of the culm" a number that means what a botanist means by it.
+
+**V2 — the leaf, as a distribution field over instances.** The superior's verdict: *"设计的时候叶子就用
+instancing 的方式设计，相当于设计叶子的分布场，然后某个算子在场里面 instancing"*. So a leaf is not
+geometry the plant expands; it is two things:
+
+```rust
+/// What one leaf looks like, in its own frame. A `shape::Sweep` with an open section.
+pub struct LeafTemplate {
+    pub midrib: Curve,          // the blade's own spine: droop, curl and twist are this curve's shape
+    pub section: Section,       // Flat { half_width, thickness } — a thin closed solid, so both faces light (D18)
+    pub stations: usize,
+}
+
+/// Where leaves go: a field, and the operator that instances within it.
+pub struct LeafField {
+    pub target: Target,         // a generation, or a selector (D10)
+    pub band: (f32, f32),       // `first`/`last`, as arc-length fractions of the target's spine
+    pub density: Curve,         // leaves per metre of spine, as a function of the station
+    pub phyllotaxy: Phyllotaxy, // the turn law: golden angle, decussate, distichous, whorled(n)
+    pub size: Curve,            // leaf size as a function of the station
+    pub orientation: Orientation, // the three stages: local, anchor sensitivity, final adjustments
+    pub template: TemplateId,
+}
+
+impl LeafField {
+    /// The operator: sample the field, and produce one placement per leaf.
+    pub fn instances(&self, plant: &Plant) -> Vec<LeafInstance>;
+}
+```
+
+`LeafInstance { node: Handle, station: f32, slot: f32, frame: Frame, scale: f32 }` is exactly what a
+scene's instance needs — a translation, a rotation and a per-axis scale — so **a placement becomes one
+scene instance of one leaf mesh with no per-placement document entry at all** (D7). Identity is the one
+thing a placement cannot carry for free, and D8 states that boundary.
+
+Editing a leaf is therefore editing the **field** — its band, its density curve, its turn law, its size
+law, its orientation laws — and a hand edit to *one* leaf is a `bake` of that placement into an authored
+exception (D3's third tier). This is a better fit for the brief than per-leaf geometry was: an agent
+looking at a crown does not want to name four thousand leaves, it wants to say "fewer, and smaller, above
+six metres", which is one curve edit.
+
+The orientation and normal laws are SpeedTree's and they survive the change: an orientation pipeline in
+three stages (local orientation, sensitivity to an anchor, final adjustments) and a **normal law**
+(smooth, puffiness toward an anchor at one of five anchor levels, world-up for grass). The anchor levels
+are the mechanism behind both *"leaves point away from the trunk"* and *"a crown shades as a volume
+rather than as a bag of leaves"* — and with instancing they are per-placement data the crate computes,
+not per-vertex geometry.
 
 **V3 — the decorator.** A knot, a burl, a scar, a bracket fungus, a thorn, a root flare, a fruit, a tip
 cap. A small authored template attached at a station with a stated frame — and the frame is stated, not
 inferred, on `building`'s socket rule: *"a joint is one subtraction, not a transform"*, so mating a
 socket to an anchor moves the origin and no rotation is expressible, and therefore none can be got
 wrong. A tip cap is a decorator the expander places by default at the end of a visible branch, which is
-how an open tube stops being a hole seen from below.
+how an open tube stops being a hole seen from below (D6).
 
 **V4 — the field and the envelope.** A `Field` is a named law with a per-generation allow, a strength
 and a profile curve of influence along the spine: gravity (world down), ancestor (toward or away from
 the parent's direction), light (toward a direction the *scene* supplies, because the crate does not know
 a sun), obstacle (an `impl Fn(Vec3) -> f32` occupancy, so a caller with a `terrain::HeightField` passes
 its sampler and a caller with a building passes its mesh's signed distance — the same move
-`building::site::seat` makes by taking a function rather than a crate). An `Envelope` is
-`radius_at(height) -> f32` plus a plan outline, and its law is per node, not a search: a branch's length
-is scaled so its tip lands on the envelope.
+`building::site::seat` makes by taking a function rather than a crate).
+
+An `Envelope` is, on the superior's verdict, **a radius curve in the spine's parameter space**:
+
+```rust
+pub struct Envelope {
+    pub spine: Curve,     // usually the trunk's own curve, so a leaning trunk's crown leans with it
+    pub section: Section, // Circle { radius } — the coarse form; Outline — the refined form
+}
+
+impl Envelope {
+    /// How far outside the envelope a point stands, measured in the envelope's own parameter space:
+    /// `t` is the closest station on `spine`, and the answer is the distance to `section` at that `t`.
+    pub fn outside(&self, point: Vec3) -> f32;
+}
+```
+
+The coarse form is a `radius(t)` curve about the spine; **the refined form replaces the section with a
+curve in the plane perpendicular to the spine at each `t`** — a `Section::Outline`, which is `shape`'s
+D4 and the reason refining an envelope is a data change rather than a new type. Its law is per node and
+not a search: a branch's length is scaled so that its tip's `outside()` is zero, and a tip the author
+deliberately let past it is a **note** rather than a violation (see the validate section).
 
 **V5 — the edit table.** One shape, six kinds, one application order:
 
@@ -310,28 +392,30 @@ reason under *Deliberately not proposed*. *(b) an index into the expanded node l
 "no index is ever a handle" is that document's rule and `SPEC.align/mountain.md`'s before it. *(c)
 naming leaves by a species-wide ordinal* — 20 000 of them, and an ordinal is a slot by another name.
 
-### D5: a branch is a loft of rings with authored correspondence; triangles only
+### D5: the expansion is a `shape` sweep, and the output is triangles only
 
-The expander walks a spine's stations, lays a ring of `radial` points around each in the spine's own
-frame, and zips ring *i* to ring *i+1*. The frame is **new machinery and is named as such**: a massif's
-frame is a height field's (`up`, plus a plan direction), and a branch is a space curve, so the ring
-frame is a transported one — the tangent plus a normal carried along the spine without spinning, with
-the authored `roll` and `twist` applied on top of it. The design does not promise a specific transport
-law; it promises one definition, written once, that `surface_uv` and the expander both read (D8).
+The expander walks the spine's `stations`, asks `shape` for each one's frame, evaluates the node's
+`Section` in that plane, and zips consecutive rings — which is `shape::Sweep::sample`, not code this
+crate owns. The superior's verdict put the curve and its frame in `shape` (P0), and the reason is that a
+branch's skin, a leaf's blade and the envelope are **one primitive at three sections**; a second
+implementation here would be the copy the shared crate exists to prevent.
+
+The two things this crate still owns are the **buckets** (a wood loft and a leaf mesh are separate meshes
+because they carry different materials and different point schemas) and the **`(u, v)` values it writes
+into its points**, which come from `shape::Loft`'s one definition — `u` the station's arc-length fraction,
+`v` the fraction around the section. `mountain`'s `belt_uv` discipline, unchanged: one function, one
+definition, one consumer (D8).
 
 `Topology` has exactly `Triangles` and `Segments` (`SPEC.md`, `scene_schema.rs`, `emit.rs`), which is a
-hard gate and the reason a branch skin is two triangles per quad and not a quad. **Rejected:** emitting
-quads and depending on `Topology::Quads`, which does not exist and would be a SPEC change; and emitting
-a `patch::PatchMesh`/`HermiteSurface` — tempting, because a leaf blade is naturally a Hermite surface
-whose one boundary is the spine's Hermite curve, and `patch::HermiteSurface` is on `main` (exactly C1
-inside a soft-edge component, measured `across 0.000e+00` on every soft seam by
-[handoffs/hermite-surface.md](../handoffs/hermite-surface.md) — a handoff still present, whose own
-caveat is *"Not verified: that any scene renders"*). It is recorded as a **later unification** with its
-condition stated: a leaf would be one patch, so `HermiteSurface::build`'s refusals about neighbouring
-faces disagreeing on an edge's kind do not arise, but the crate would then depend on a representation
-whose own lib doc still says the two models are "kept side by side while `HermiteSurface` is being
-measured against real input". P1 emits triangles and keeps the authoring truth in the crate, exactly as
-`building`'s D3 did.
+hard gate and the reason a lofted quad is two triangles. **Rejected:** emitting quads and depending on
+`Topology::Quads`, which does not exist and would be a SPEC change. **Recorded as a later unification, not
+assumed:** a leaf *template* could be a `patch::HermiteSurface` once its one-patch case is worth a
+dependency — `patch::HermiteSurface` is on `main` and is exactly C1 inside a soft-edge component
+(`across 0.000e+00` on every soft seam, measured by
+[handoffs/hermite-surface.md](../handoffs/hermite-surface.md), whose own caveat is *"Not verified: that
+any scene renders"*), and a leaf is one patch so its refusals about disagreeing neighbours do not arise.
+P1 does not take that dependency; the midrib is already a `shape::Curve`, so the swap is a
+representation change and not a design change.
 
 ### D6: every branch is a closed solid; a plant is deliberately not manifold
 
@@ -347,7 +431,8 @@ onto the parent, with a flag to keep the welds that failed. It is a search, and 
 crate exists. *(b) an open tube with a buried base* — cheaper by one disc, and it gives up the strongest
 check in the crate: an open tube has no volume to be negative. *(c) `manifold` consolidation* — the
 opt-in boolean `building`'s D3 nominated for the one case where parts must behave as a single solid. A
-plant has no such case at this phase; a vine that must read as one solid with a wall is P3's question.
+plant has no such case at this phase; a vine that must read as one solid with a wall is deferred with the
+rest of the building attachment.
 
 The interpenetration is licensed by `building`'s own measurement: *"Touching is allowed: a
 zero-volume meeting is not an overlap"*, and a courtyard is *"several wall solids and not one cleverer
@@ -355,38 +440,55 @@ element"*. A branch entering a trunk is the same fact with a non-zero overlap, a
 overlap judgement is written against **unauthored** overlaps only — an attachment authorizes its own
 junction, the way `attach_mass` ends the overlap question for a wing.
 
-### D7: within a plant, bake; between plants, instance
+### D7: wood is baked; leaves are instanced from a field (revision 2, on the superior's verdict)
 
 The cost model, read from `main` rather than from a scene's comment:
 
 - one pass draws **every row of one instance buffer**, and instances group by `(stage, shader, mesh,
-  images)` (`emit.rs`, `Group` and `groups`);
+  images)` (`emit.rs`, `Group` and `groups`) — **the material is not in the key**;
 - the instance row is the model matrix, an optional normal matrix, and **the material's custom data**
   (`emit.rs`'s own sentence: *"once one pass draws several instances at once a per instance attribute is
   the only place either can go"*);
-- so per-instance numbers are reachable, but only through a material, and a material is a document entry
-  that is verified and packed per instance;
-- points, by contrast, are `Value::Packed`, and the compile cost now scales with **bytes**: `monoliths`
-  at 182k points compiles in 32 ms and renders in 10 ([compile-cost.md](compile-cost.md)).
+- so a placement carries a transform for free, and any *number* about a placement only through a
+  material, which is a document entry verified and packed per instance;
+- points are `Value::Packed`, and the compile cost scales with **bytes**: `monoliths` at 182k points
+  compiles in 32 ms and renders in 10 ([compile-cost.md](compile-cost.md)).
 
-Therefore: **a plant is baked into a few meshes, one per material, with everything that varies carried
-in the points** — position, normal, `(u, v)`, `authored_id`, a wind weight, a tint. A leaf count in the
-tens of thousands costs point bytes, which are cheap, and one pass per material, which is what a scene
-wants. **Instancing returns at the plant level**: a grove is one plant's mesh stood N times, which is
-`building`'s D4 (*"the plan is baked; the vocabulary is instanced"*) one scale up, and the stranded
-bamboo scene's 600 placements of two meshes are that shape already.
+**The correction, recorded rather than silently fixed.** Revision 1 of this file said leaves are baked
+into the plant's mesh, and gave two reasons. The superior's verdict is that leaves are instanced, and
+re-reading the measurement says the verdict is right and one of my two reasons was wrong:
 
-**Rejected:** an instance per leaf. It would need a material per leaf for any per-leaf number at all,
-including the identity offset, and a document of 20 000 verified material entries to draw what one packed
-mesh draws in one pass. Its *shadow* cost is the second reason: pages are fitted to instance boxes, so a
-leaf-level instancing scheme multiplies the boxes the page pool sees, where a baked plant is a handful.
+- **Right, and now answered by bucket choice rather than by baking:** my objection was that pages are
+  fitted to instance boxes, so a leaf-level instancing scheme multiplies the boxes the page pool sees.
+  That is true of the **shadowing** bucket, and it is why leaves are not put in it. `tidewater`'s water
+  makes the same move for the same class of reason (*"The water is in the `depthing` and `emission`
+  buckets and not the `shadowing` one"*), and the schema already names the idiom for exactly this case:
+  `shadow_density: 0` means *"the instance is drawn into the coarsest level only, which is what a distant
+  hillside or a foliage billboard wants"*. So the page pool sees the wood, which is tens of boxes, and the
+  leaves cost rows.
+- **Wrong:** I claimed an instance per leaf would need "a material per leaf for any per-leaf number at
+  all". A leaf's transform is **not** a per-instance number in that sense — it is the row itself — so
+  instancing costs one row per leaf and no material at all. Only *identity and colour variation* need a
+  material, and that granularity is a choice (D8), not a property of instancing.
 
-**The boundary this creates, stated rather than discovered.** Per-instance identity needs a per-instance
-material (that is how `building` solved it: `Authored::Sum` plus one material a placement, measured at
-five shutters). A grove of hundreds of plants therefore cannot give every plant its own id range without
-hundreds of materials. So identity is a **plant-level** channel: a single-plant scene numbers every
-element, and a grove either numbers the plants it can afford materials for or declares no id channel and
-says so. `report()` states the element count so an agent knows the size of the table before it renders.
+So the split is:
+
+| what | baked or instanced | why |
+| --- | --- | --- |
+| trunk, boughs, branches, twigs, culms, roots | **baked** into one mesh per material, with `(u, v)` and `authored_id` in the points | the wood is where a face needs provenance and where the counts are moderate (hundreds of nodes); it is also what casts the shadow |
+| leaves, and ground cover | **instanced**: one leaf mesh, one instance per `LeafInstance` (V2) | the counts are in the tens of thousands; a row costs 64 bytes and a packed leaf would cost ~24 triangles of point data each |
+| a whole plant in a grove | **instanced** at plant level | `building`'s D4 one scale up: the plan is baked, the vocabulary is instanced |
+
+Measured consequences, from the same table: a plant with 320 twigs and 12 480 leaves uploads its wood
+once (a few hundred KB of packed points) and one instance buffer of 12 480 rows (~800 KB at a 64-byte
+row), drawn in **one pass** because the leaf mesh, the shader and the images are one group. The baked
+alternative would have been ~100k triangles of leaf points in a second mesh — affordable, but three times
+the bytes for the same pixels, and it would have made "fewer leaves above six metres" a rebuild of the
+whole mesh rather than a curve edit on a field.
+
+**Rejected:** baking the leaves (revision 1's answer, for the reason above); one leaf mesh per leaf field
+(an extra mesh per field, for no pixel); and a per-placement material for every leaf (D8's boundary,
+where the cost is stated rather than paid by default).
 
 ### D8: the identity channel, and an answer that is an edit
 
@@ -395,20 +497,20 @@ The mechanism exists and is landed: a scene declares `outputs: { authored_id: { 
 exact to 2^24 where an `rgba16float` is exact only to 2048, an identity is carried `@interpolate(flat)`
 because a triangle is one facet of one element, and zero is reserved for *"not an authored element"*
 ([agent-content-identity.md](agent-content-identity.md), `gallery/src/building_identity.rs`). This crate
-adds a third registration, not a mechanism, with two decisions of its own:
+adds a third registration, not a mechanism, with three decisions of its own:
 
-1. **An element is a node's surface, and a place on it is `(u, v)`.** `Element::Skin { node }`,
-   `Collar { node }`, `TipCap { node }`, `Leaf { leaf }`, `Decorator { decorator, face }` — so the
-   table is ~nodes + leaves rather than ~faces, and *"where on the branch"* is answered by the
-   continuous half of the channel. A doubled blade's two ribbons are **one** element, because an element
-   is what an author names and an author names a leaf, not a ribbon; which side a pixel is on is a fact
-   about `(u, v)`, not a second row. **`(u, v)` has one definition, owned by the crate**: for a branch
-   skin, `u` is the station fraction along the spine and `v` the ring fraction around it; for a leaf,
-   `u` is along the blade and `v` across it. `PlantMesh::surface_uv(face, corner)` is the one function
-   that returns them and the scene writes what it returns — mountain's `belt_uv` rule, adopted because
-   the alternative is a second table: *"A `u` that meant 'fraction along the belt's top path' in the
-   crate and 'first barycentric coordinate' in the shader would make every answer off by a rotation of
-   the triangle, silently, and only on faces where the two differ."*
+1. **An element is a node's surface, and a place on it is `(u, v)`.** For the wood, `Element::Skin { node
+   }`, `Collar { node }`, `TipCap { node }`, `Decorator { decorator, face }` — so the table is ~nodes
+   rather than ~faces, and *"where on the branch"* is answered by the continuous half of the channel.
+   A doubled blade's two ribbons are **one** leaf, because an element is what an author names and an
+   author names a leaf, not a ribbon; which side a pixel is on is a fact about `(u, v)`, not a second row.
+   **`(u, v)` has one definition, owned by `shape`**: for a branch skin, `u` is the station's arc-length
+   fraction and `v` the fraction around the section; for a leaf template, `u` is along its midrib and `v`
+   across its section. `shape::Loft` returns them with the positions, and the crate writes what it
+   returns — mountain's `belt_uv` rule, adopted because the alternative is a second table: *"A `u` that
+   meant 'fraction along the belt's top path' in the crate and 'first barycentric coordinate' in the
+   shader would make every answer off by a rotation of the triangle, silently, and only on faces where
+   the two differ."*
 2. **`locate` answers with the edit, not only with the path.** Mountain's answer ends at
    `massifs[0].skeleton.ridges[5].nodes[21]`; this crate's ends at the call that would change what the
    pixel shows, because the pixel's `(u, v)` says *where on the element* the complaint is and the
@@ -425,6 +527,22 @@ render oak out/oak --locate 742,508
 
 The shape above is **written before it exists** and is an aspiration, not an output. The property it is
 for is the one that document states: *"Not 'can look it up' — cannot look it up wrong."*
+3. **A leaf's id comes from the instance row, so its granularity is a choice with a stated cost.** A leaf
+   is drawn as an instance of one template mesh (D7), and the only per-instance *number* a row can carry
+   is its material's `custom_data` — so naming a leaf costs one **material set** (one per stage), and
+   `Authored::Sum { name: "authored_id", flat: true, custom: AUTHORED_OFFSET }` adds the placement's base
+   to the template's local id, exactly as `building` names five instanced shutters. Three granularities,
+   and the author picks:
+
+   | granularity | materials | what a pixel answers |
+   | --- | --- | --- |
+   | per placement | one per leaf | `leaf 4213 of twig 12` — the leaf itself |
+   | per field group (the default) | one per node's leaf field, so ~370 for the report's oak | `a leaf of twig 12`, with `(u, v)` locating the point on the template |
+   | unnumbered | none | the node the leaf hangs from, and no leaf row at all |
+
+   All three name **one shader and one mesh**, so they are one *pass* by D7's key and cost only document
+   entries. The third row is what a 200 000-leaf meadow uses; `report()` states the element count, so an
+   agent knows which row it is in before it renders.
 
 ### D9: the finest detail is written against `(station, slot)`, never against a vertex
 
@@ -499,35 +617,41 @@ stays terrain-independent (`terrain` produces numbers, never geometry; this crat
 never erosion). A root flare is a decorator seated by the same function, and "a culm's base is not on the
 ground" is a violation rather than a picture of a floating plant.
 
-### D13: the report is the crown profile against the envelope
+### D13: the report is the crown profile against the envelope, in the envelope's own space
 
 `report()` answers what arrived, in numbers, and the headline number is a comparison:
 
-> **the mesh's own radius-versus-height profile, measured against the envelope that was asked for, is
-> this crate's one-number check that the geometry is what the plan said** — the sibling of
-> `Massif::footprint_area` against `FacetMesh::plan_area`, and of `building`'s measured coverage against
-> a footprint.
+> **the mesh's own reach at each station of the envelope's spine, measured against the envelope's own
+> `radius(t)`, is this crate's one-number check that the geometry is what the plan said** — the sibling of
+> `Massif::footprint_area` against `FacetMesh::plan_area`, and of `building`'s measured coverage against a
+> footprint.
+
+The superior's verdict is why the comparison is **exact rather than approximate**: the envelope is a
+radius curve in the *curve's* parameter space (V4), so the measured reach and the asked-for radius are
+both functions of the same `t`. Revision 1 measured the profile against height, which is a different
+parameterisation — a leaning trunk, or an envelope whose spine is not the world's up axis, would have made
+the two disagree for reasons that are not the plant's fault.
 
 ```text
 vegetation report oak_starter            # the shape of the report, written before it exists
-  generations   trunk 1 · bough 8 · branch 41 · twig 320 · leaf 12 480
-  elements      13 589 numbered (370 skins, 369 collars, 370 tip caps, 12 480 leaves),
-                ids 1..=13 589, zero never written
-  triangles     402 118 · points 1 206 354 · packed 48.3 MB at a 40 byte stride
+  generations   trunk 1 · bough 8 · branch 41 · twig 320 · leaf fields 370
+  instances     12 480 leaf placements in 1 pass
+  elements      1 479 numbered (370 skins, 369 collars, 370 tip caps, 370 leaf groups),
+                ids 1..=1 479, zero never written
+  wood          60 480 triangles · 181 440 points · 7.3 MB at a 40 byte stride
+  leaf mesh     16 points · 8 triangles · 12 480 instance rows
   bounds        x [-3.10, 3.40] · y [0.00, 9.20] · z [-3.00, 3.20]
-  crown         height 9.200 · radius at 6.00 m: asked 2.10, measured 2.34 (+0.24)
-  wood          volume 0.4182 m³ · leaf area 214.6 m² · leaf area index 3.9
+  crown         at t 0.66 (y 6.00 m): asked 2.10, measured 2.34 (+0.24) · worst +0.31 at t 0.71
+  wood volume   0.4182 m³ · leaf area 214.6 m² · leaf area index 3.9
   junctions     369 measured, 4 outside the ratio band [1.8, 2.4]
-  wind weight   zero at all 12 849 pivots, non-zero at none
-  violations    0
 ```
 
 Every line is a fact the crate has before a frame is drawn, and each answers a complaint an agent
-actually makes: *the crown is too narrow at six metres* (the crown line), *it reads as a hedge* (the leaf
-distribution over the station band, which is a `report` line and not a guess), *the trunk is too thin for
-its boughs* (the junction line), *the leaves are floating* (the violations), *the frame is too big* (the
-counts). `wood volume` is `building`'s signed-volume argument at plant scale: a number no closure
-predicate can fake.
+actually makes: *the crown is too narrow at six metres* (the crown line, and the worst station named with
+it), *it reads as a hedge* (the leaf field's band and density, which is a `report` line and not a guess),
+*the trunk is too thin for its boughs* (the junction line), *the frame is too big* (the counts).
+`wood volume` is `building`'s signed-volume argument at plant scale: a number no closure predicate can
+fake.
 
 ### D14: collision is a report, and its removal is an authored prune
 
@@ -579,91 +703,95 @@ spine is sampled rather than a curve.
 If a runtime ever arrives, an LOD chain attaches at the same place `building`'s D4 instancing would: a
 per-generation resolution and a per-generation visibility threshold, both already in the document.
 
-### D17: wind is the crate's weights and the scene's law
+### D17: wind is withdrawn, and so is every number it would have needed
 
-A still frame does not move, but the harness renders a `time` range and `time` reaches every pass
-(`scene_schema.rs`: *"Seconds since the scene started, which every pass carries to its shader"*), so a
-wind law is checkable with `--sheet`. The split:
+The superior's verdict: *"先不管风"*. So this design has no wind law, no wind weight in the point schema,
+and no wind group — and the last two are a consequence worth stating, because the repository's own rule
+makes them wrong to keep: *"a field nothing reads is data waiting for a stage"*. A point schema carrying
+a `wind` weight for a shader that does not exist is exactly that field.
 
-- the crate writes a **per-point wind weight** and a group, with the invariant SpeedTree states and this
-  design adopts as a mesh self-check: the weight is **zero at the attachment**, because a non-zero weight
-  at the pivot detaches a leaf from its parent (*"The left-hand side of the profile curve must be zero to
-  avoid disconnecting from the parent"*). It also writes the weight's natural parameterisation — along the
-  spine for a branch, along the blade for a leaf, with the leaf's cross term weighting the edges more than
-  the centreline — because those are facts about the geometry the crate has and the shader does not.
-- the scene writes the **law**, in its own WGSL, because a shader carries its own source and a wind law is
-  a shading decision.
+What is *not* withdrawn is the finding, because it is about the framework rather than about wind: the
+gallery's shader template splices a body into the *fragment* stage, and the `Authored` extras carry values
+into a varying from the vertex stage but **cannot move a vertex**. [photographic-scenes.md](photographic-scenes.md)
+item 1 already has that on record — *"a leaf that turns … wants the silhouette to move too, which is a
+vertex-stage hook and a different decision"* — so the gap is owed by the framework, not by this crate, and
+nothing in this design waits on it.
 
-**What is owed, named rather than assumed.** The gallery's shader template splices a body into the
-*fragment* stage (`{surface}`, and the normal-displacement point before it); the `Authored` extras carry
-values into a varying from the vertex stage but **cannot move a vertex**. [photographic-scenes.md](photographic-scenes.md)
-item 1 already named this as the missing half: *"a leaf that turns … wants the silhouette to move too,
-which is a vertex-stage hook and a different decision."* So wind needs either a scene-authored vertex
-stage (available today: `kit::shader` takes arbitrary source) or a vertex splice in the template. P3
-decides which, and until it does, `tidewater`'s reeds remain the precedent — *"sway in shading only and
-the file says so"*.
+### D18: a leaf template is a thin closed solid, so two-sidedness is closure rather than a shading trick
 
-### D18: two-sided leaves are a shading law if the builtin is available, and doubled geometry otherwise
+The device draws both sides of every triangle whether one asks or not: the pipeline is built with
+`PrimitiveState { topology, ..Default::default() }` (`device-rasterize/src/wgpu_renderer/raster.rs`), and
+`PrimitiveState` derives `Default` with `cull_mode: Option<Face>` (`wgpu-types 30.0.1`, `src/render.rs`,
+read 2026-10-17), so `None`. **So culling was never the problem; the normal is** — a leaf seen from behind
+is lit by the normal of its front.
 
-The device creates its pipeline with `PrimitiveState { topology, ..Default::default() }`
-(`device-rasterize/src/wgpu_renderer/raster.rs`), and that default is **no culling**: `PrimitiveState`
-derives `Default` and its `cull_mode` is an `Option<Face>` (`wgpu-types 30.0.1`, `src/render.rs`, read
-2026-10-17), so `None`. **Both sides of every triangle are already drawn** — the problem is not culling,
-it is that a leaf seen from behind is lit by its front normal. Two answers, in order of cost:
+The superior's instancing verdict makes the better answer available, and it is not a shading trick. A leaf
+template is `shape::Sweep` with `Section::Flat { half_width, thickness }` and `closed: true`, i.e. **a
+thin closed solid**: two faces and a rim. Then:
 
-1. a fragment-stage flip in the surface body (`@builtin(front_facing)`), which costs nothing in geometry
-   and lands in the splice point that already exists;
-2. `geometry::double_blade`'s doubled ribbon — the same taper run twice with opposed normals **and the
-   winding reversed**, which its own doc records as the fix for the version that reversed only the
-   normals.
+- both sides are lit correctly by their own outward normals, with no fragment-stage special case and no
+  per-instance flag;
+- the leaf has a **positive signed volume**, so `shape::signed_volume` — the same check D6 uses for a
+  branch — applies to it, and a template expanded inside out is a named violation;
+- the silhouette has a rim, which a zero-thickness ribbon does not.
 
-**Which of the two is available is not measured here.** Whether a scene's fragment entry may declare
-`@builtin(front_facing)` past the interface check is a **probe**, and this design states it as a question
-rather than a capability, on the rule that a capability claim is a hypothesis until it is measured. The
-check is known to be one-directional and to skip at least one builtin — `@builtin(vertex_index)`, *"which
-`check_vertex_inputs` deliberately does not check"* — so the answer is probably yes. Probably is not
-measured.
+The thickness is a species relation and it can be as small as the frame tolerates (a 0.2 mm blade at a
+nine-metre crown, which is nothing in a picture and everything in a normal).
 
-### D19: the branching ratio is a check with a stated exponent and no botanical guarantee
+**Rejected, and both are now unnecessary rather than merely worse:** `geometry::double_blade`'s doubled
+ribbon (the same taper run twice with opposed normals *and* the winding reversed — its own doc records the
+version that reversed only the normals and produced *"a leaf lit as though it were edge on"*) costs the
+same triangles as a closed blade with no rim and no volume; and a `@builtin(front_facing)` flip in the
+surface body would be one more place for a shader to be wrong. Whether `front_facing` even passes the
+interface check is still unmeasured, and this design no longer needs to know.
 
-A junction's radii obey `r_parent^n = Σ r_children^n`, with `n = 2` the relation attributed to Leonardo
-and argued from a constant wind-stress criterion; measurements on real trees give a range rather than a
-number ([survey §2](../investigate/vegetation-modeling-techniques.md), whose [S20] and [S21] are the two
-— **neither paper was read this session**, so the range is not established here). The crate therefore
-computes the ratio at
-every junction in O(1), reports the ones outside an **authored band** whose default is stated in the
-report, and guarantees nothing botanically. It is the same kind of instrument as `plan_area`: a number
-that turns an invisible error — a bough too thin for what it carries, which reads as a tree that has been
-drawn rather than grown — into a named violation. The band is a `Species` relation, so a palm and an oak
-are not judged by one number.
+## `validate()`: reports, never repairs — and it accrues rather than being designed
 
-## `validate()`: reports, never repairs
+The superior's verdict: *"validate 看着办，需要的时候自然会产生这个需求"*. So this section does not design a
+contract. What it does is fix the **discipline**, which is `mountain`'s measured shape and does not depend
+on which checks exist:
 
-`mountain`'s measured shape, adopted without amendment: **all** violations returned in a deterministic
-order so two runs diff; checks **staged**, so a downstream check is skipped when the document cannot
-support it; ops never refuse an edit except one that would leave a dangling handle, which refuses by
-returning `None`; **build failure is a list**, not a first error; geometry self-checks live on the mesh;
-and the reporting vehicle during implementation is an `examples/` probe, not a test file.
+- **all** violations returned in a deterministic order, so two runs diff;
+- checks **staged**, so a downstream check is skipped when the document cannot support it;
+- ops never refuse an edit except one that would leave a dangling handle, which refuses by returning
+  `None`;
+- **build failure is a list**, not a first error;
+- geometry self-checks live on the mesh, not on the document;
+- and the reporting vehicle during implementation is an `examples/` probe, not a test file.
 
-Non-exhaustive violation list, in the order the stages run:
+A check is added when a probe or a scene needs one, and the trigger is concrete each time. The list below
+is therefore a **candidate list** — every entry is a check some measured failure in this repository or in
+the survey would have caught — and none of them is owed by P1 as a contract:
 
-| stage | violation |
-| --- | --- |
-| the document | `GenerationCycle`; `PropertyNotComputed` (an offset on a property this generation does not compute — a field nothing reads is data waiting for a stage); `HandleOrphaned`; `EditOnAPrunedNode`; `GraftStationOutOfRange`; `AttachmentStationOutOfRange`; `SpineControlPointDuplicated`; `BladeOutlineNotSimple`; `DecoratorSocketUnresolved` |
-| the walk | `BaseNotBuried { node, clearance }`; `RingDegenerate { node, station }` (zero radius, coincident points, a facet of no area); `RingSelfIntersecting`; `SpineKinked { node, station, angle }`; `ZeroLengthBranch`; `LeafOffItsParent`; `LeafInsideABranch { leaf, node, depth }` (bounded to the worst N, with the bound stated, per D14); `BranchRatioOutside { node, parent, children, exponent }` (D19); `TipOutsideTheEnvelope { node, distance }` |
-| the mesh | `WindingInconsistent { face }`; per branch: boundary loops not zero, not manifold, Euler not 2, **signed volume not positive**; `FaceWithoutAnElement`; `IdsNotContiguous`; `WindWeightNotZeroAtTheAttachment` |
+| stage | candidate check | the failure it would catch |
+| --- | --- | --- |
+| the document | `HandleOrphaned`; `EditOnAPrunedNode`; `GraftStationOutOfRange`; `AttachmentStationOutOfRange`; `SpineControlPointDuplicated`; `BladeOutlineNotSimple`; `DecoratorSocketUnresolved`; `PropertyNotComputed` | SpeedTree's silent loss of a node's edits when the node stops existing (D4); a leaf template that cannot be lofted; an offset on a property nothing computes |
+| the walk | `BaseNotBuried`; `RingDegenerate`; `RingSelfIntersecting`; `SpineKinked`; `ZeroLengthBranch`; `LeafInsideABranch` (bounded); `BranchRatioOutside`; `TipOutsideTheEnvelope` | a branch floating off its parent's skin; a facet of no area (the square hip's own defect in `building`); a transported frame that flips; a leaf in a branch (D14); a bough too thin for what it carries (D19) |
+| the mesh | `WindingInconsistent`; per branch: boundary loops not zero, not manifold, Euler not 2, **signed volume not positive**; per leaf template the same volume check (D18); `FaceWithoutAnElement`; `IdsNotContiguous` | an inside-out tube or blade, which no closure predicate can see; a frame whose numbers disagree with its table |
 
 `TipOutsideTheEnvelope` is the one whose severity is the author's: an envelope is a plan and a branch may
 deliberately exceed it, so it is a **note** unless the envelope is marked strict, on the policy
 [adapter-limits-and-the-page-pool.md](adapter-limits-and-the-page-pool.md) settled — a note distinguishes
-*a smaller frame* from *a wrong one*. The crown profile's departure from the envelope is a `report()`
+*a smaller frame* from *a wrong one*. And the crown profile's departure from the envelope is a `report()`
 number and not a violation at all, because it is a measurement of what arrived rather than a claim the
 document made (D13).
 
-Three of these are new machinery and are named as such: **signed volume** (which `mountain` has none of,
-and which `building` had to write), **the transported ring frame's degeneracies** (a spine that turns
-back on itself flips a transported normal, which is a kink and must be reported before it is a mesh), and
-**the junction ratio** (D19).
+**Two of the candidates are new machinery** and are named as such rather than discovered later: **signed
+volume** (which `mountain` has none of, which `building` had to write, and which now belongs to `shape`),
+and **the transported frame's degeneracies** (a spine that turns back on itself flips a transported normal,
+which is a kink that must be reported before it is a mesh).
+
+### D19 (candidate): the branching ratio, if a check is ever asked for
+
+The one candidate with a botanical content, kept here because the reasoning is worth not rediscovering:
+a junction's radii obey `r_parent^n = Σ r_children^n`, with `n = 2` the relation attributed to Leonardo and
+argued from a constant wind-stress criterion; measurements on real trees give a range rather than a number
+([survey §2](../investigate/vegetation-modeling-techniques.md), whose [S20] and [S21] are the two — **neither
+paper was read this session**, so the range is not established here). It is O(1) per junction, and it turns
+an invisible error — a bough too thin for what it carries, which reads as a tree drawn rather than grown —
+into a number. It is a **candidate** and not a decision: under the superior's verdict a check arrives when a
+probe asks for it, and the natural moment is the first probe that reports a junction and finds the number
+useless without a band.
 
 ## The agentic loop
 
@@ -695,26 +823,30 @@ geometry. `validate()` is therefore also the cheapest known guard against an LLM
 
 ### The crate (new)
 
-`crates/vegetation`, publish `whiting-vegetation`, with `document`, `spine`, `expand`, `leaf`,
-`decorator`, `field`, `edit`, `selector`, `derive`, `validate`, `report`, `identity`, `mesh` — small files
-for sparse exploring, on the workspace's own rule. Its dependency is `mountain` for `math` alone, exactly
-as `building`'s, and for the same reason: one definition of which axis is up, which two crates authoring
-into one scene must share.
+`crates/vegetation`, publish `whiting-vegetation`, with `document`, `spine`, `expand`, `leaf`, `field`,
+`decorator`, `edit`, `selector`, `derive`, `report`, `identity`, `mesh` — small files for sparse exploring,
+on the workspace's own rule.
 
-**And that is now a third crate.** `building`'s Cargo.toml records the arrangement and its debt: *"`mountain`
-for the plan/space arithmetic only … the unification of the two is a future proposal rather than a copy
-made here"*, and its D2 named *"a shared mesh crate (with the plan-geometry helpers `mountain` keeps
-private)"* as the unification to propose when a second caller needs it. `building` was that second caller;
-this is the third. The predicates
-this crate would otherwise write a third time — boundary loops, manifoldness, Euler characteristic, signed
-volume, consistent winding — are the same ones `building` wrote because `mountain`'s are inherent to
-`FacetMesh`. **This design records the demand and does not perform the unification**, because doing it
-inside a P1 would couple a new crate to a refactor of two existing ones; it is open question 1.
+**Its only dependency is `shape`**, and that is the superior's verdict made structural: the curve, the
+frame, the sweep, the `(u, v)` definition and the mesh predicates are all `shape`'s
+([shape-primitives.md](shape-primitives.md)), so this crate authors plants and expands nothing it did not
+have to. What it does not depend on: `patch` (D5's later unification), `terrain` (the ground is a function,
+D12), and `graphics`/`scene` (a crate that emits geometry does not know what a frame is).
 
 ### The gallery
 
 `vegetation_identity.rs` (the third sibling of `identity.rs` and `building_identity.rs`), `vegetation_mesh.rs`
-(the conversion from `PlantMesh` to a `PackedList`, as `building_mesh.rs` is), and the scenes.
+(the conversion from `PlantMesh` to a `PackedList`, as `building_mesh.rs` is),
+`vegetation_instancing.rs` (a `LeafInstance`'s frame as a scene instance's transform), and the scenes.
+
+**The one place leaf instancing is not like `building`'s part instancing**, stated because it is where a
+defect would hide: `instancing.rs` derives **one yaw** from a wall-mounted frame, because such a frame's
+`up` is world up. A leaf's frame is not — its normal points out of the stem in any direction — so a leaf
+instance needs **all three** of the transform's Euler angles, which the schema defines as *"rotation in
+radians about x, then y, then z"*. The conversion is therefore one function with a stated order, and the
+probe is `building`'s `instance_probe` precedent: the instanced placement's points against the baked
+placement's points, **as point sets at 1e-4**, zero differing. An Euler triple written in the wrong order
+is a leaf that is in the right place facing the wrong way, which no picture names.
 
 **And one debt it inherits.** `gallery::locate` asks two domains in sequence and takes whichever answers —
 building first, then mountain. [agent-content-identity.md](agent-content-identity.md) already named the
@@ -736,14 +868,19 @@ by, and without it a paint op can only be aimed by a box in world space.
 ### Nothing
 
 No SPEC change, no graphics change, no device change. `Topology::Triangles` is enough (D5); the declared
-output channel is landed (D8); per-instance data through a material is landed (D7); images as scene data
-are landed, which is what a procedural bark or leaf mask would use when a phase wants one; `time` reaches
-every pass (D17). The one gap this design touches is the vertex-stage hook, and it is a **gallery** change
-or a scene's own source, not a device or graphics one — and it is already on record as missing in
-`photographic-scenes` item 1 (D17).
+output channel is landed (D8); per-instance transforms and per-material custom data are landed (D7); leaf
+instancing needs no new mechanism at all (D7); images as scene data are landed, which is what a procedural
+bark or leaf mask would use when a phase wants one. The one gap this design *touches* — a vertex-stage hook
+— belongs to the framework and is already on record as missing in `photographic-scenes` item 1; with wind
+withdrawn (D17) nothing here waits on it.
 
 ## Deliberately not proposed
 
+- **Wind.** Withdrawn on the superior's verdict (D17), together with the per-point weights it would have
+  needed. The framework-side gap it exposed stays on record.
+- **Attaching a plant to a building.** Deferred on the superior's verdict (*"先不管 attach building"*), and
+  recorded as deferred rather than dropped: the vocabulary exists on both sides (`Socket`/`Anchor`,
+  `Station`) and the open question is only who owns the joint.
 - **Cards and billboards, and any alpha-tested leaf.** The mechanism exists — an image is scene data named
   by a material, the compiler lifts it into a texture with a sampler, and `tiles` proves a scene may
   generate its own pixels — but there is no consumer at this phase, and a camera-facing card needs a
@@ -756,9 +893,10 @@ or a scene's own source, not a device or graphics one — and it is already on r
 - **Growth animation.** SpeedTree's growth group is a timeline over the same geometry. A `time`-keyed
   station band would express it; it is not proposed, because the deliverable is a plant.
 - **Photogrammetry.** Nothing in this framework reads the filesystem, and there are no scanned assets.
-- **Fronds as a distinct generator.** A palm frond or a fern is a blade loft along a spine, which is V2
-  with a midrib that is itself a node's spine. SpeedTree needs a separate generator because its leaf mesh
-  is an asset; this crate's leaf is authored, so the case does not arise.
+- **Fronds as a distinct generator.** A palm frond or a fern is a leaf template whose midrib curve is long
+  and whose section is lobed — V2 with a different `shape::Curve`, and speed-controlled by the same field.
+  SpeedTree needs a separate generator because its leaf mesh is an asset; this crate's leaf is authored, so
+  the case does not arise.
 - **L-systems, space colonization and stochastic botanical rules as the representation.** Admissible in
   exactly one role: producing default spines and default placements, guarantee-free and immediately
   editable (R3), never the mesh.
@@ -766,40 +904,41 @@ or a scene's own source, not a device or graphics one — and it is already on r
   list, unchanged. `History` in the `definition` crate is the undo mechanism if the document phase (D2)
   ever lands, and the edit table is already in its shape.
 - **A whole-plant boolean.** No `manifold` consolidation, on `building`'s D3 reasoning: a plant has no case
-  where parts must behave as one solid, and a vine on a wall is P3's question, not a dependency.
+  where parts must behave as one solid, and a plant-on-a-wall is deferred above.
 
 ## Phasing
 
-- **P1 — one plant.** The document and the handle; the Hermite spine and the transported ring frame; the
-  ring-loft expander with base and tip discs; the leaf template and its loft, with `derive::blade_taper`
-  as the default outline (the taper `geometry::blade` already computes as a formula, promoted to a
-  starting point an agent then edits), the placement modes
-  (interval, phyllotaxy, absolute, proportional) and the station band; the edit table's six changes and
-  its stated application order; `derive::Species` for `PINE`, `OAK` and `BAMBOO`; `validate()` with the
-  document, walk and mesh stages including signed volume, winding, burial, degenerate rings and orphaned
-  handles; `report()` with the crown profile against the envelope and the junction ratio; identity
-  (`Element`, contiguous ids, the reserved zero, one walk producing both the numbers and the table); the
-  gallery proof scene. **Exit: one rendered plant in which every branch is closed and outward, every base
-  is buried, every face names its element, the crown profile matches its envelope to a stated tolerance,
-  and a wrong plant refuses to be wrong silently.** The proof scene is the bamboo courtyard's subject —
-  one culm with its leaves in the top third — because that is the plant three agent runs each hand-rolled,
-  and because it exercises the station band, the ringed profile and the two-sided leaf at once.
+- **P0 — `shape`.** The curve, the frame, the sweep, the mesh predicates, and `math` moving behind a
+  re-export. Detailed in [shape-primitives.md](shape-primitives.md) P0–P2, and **it comes first on the
+  superior's verdict**: every spine, every leaf midrib and every envelope in this crate is that curve, so
+  building this crate first would mean writing the curve twice.
+- **P1 — one plant.** The document and the handle; spines and skins as `shape::Sweep`s with base and tip
+  discs; the `LeafField` and its instance operator, with `derive::blade_taper` as the default section (the
+  taper `geometry::blade` already computes as a formula, promoted to a starting point an agent then edits);
+  `derive::Species` for `PINE`, `OAK` and `BAMBOO`; the edit table's six changes and their stated order;
+  `report()` — the crown against the envelope's own radius curve, the counts, the instance count; identity
+  for the wood (points) and for leaf groups (materials); and the checks a probe asks for on the way.
+  **Exit: one rendered plant whose leaves are instances of one template drawn in one pass** — branch closed
+  and outward, base buried, wood faces naming their elements, the measured crown within a stated tolerance
+  of the envelope's radius curve, and the element and instance counts printed before the frame is drawn.
+  The proof scene is the bamboo courtyard's subject — one culm with its leaves in the top third — because
+  that is the plant three agent runs each hand-rolled, and because one culm exercises the station band, a
+  ringed profile, a leaf field, and a leaf template in one picture.
 - **P2 — the hand.** The selectors and `paint`; `bake` and the authored-spine path; the decorators with
   sockets; the fields (gravity, ancestor, light, obstacle) and the envelope as a trimming law; the
   collision report and `derive::thin`; the leaf normal laws (puffiness toward an anchor, world-up for
-  grass); the two-sided leaf decided by the probe D18 names; `--region`; the segmentation scene; the
-  promotion of `geometry::{culm, blade, double_blade, leaf_spray, tuft}` into `derive`, which retires five
-  uncalled generators from the gallery.
-- **P3 — the site and the motion.** A grove (instancing at plant level, with D7's identity boundary
-  stated in the scene's own doc); ground cover (a tuft mesh stood many times, world-up normals); seating on
-  a `terrain::HeightField` by the `site::seat` precedent; wind weights plus the vertex-stage decision; the
-  offline backend's view of a plant, where a two-sided leaf is a different question than it is in a
-  rasteriser (`cycles-mesh-normal-orientation.md` is the note to read first); and the `locate` registry the
-  gallery is owed.
+  grass); `--region`; the segmentation scene; and the promotion of
+  `geometry::{culm, blade, double_blade, leaf_spray, tuft}` into `derive`, which retires five uncalled
+  generators from the gallery.
+- **P3 — the site.** A grove (instancing at plant level, with D7's identity granularity stated in the
+  scene's own doc); ground cover (one tuft template and a field, which is the same mechanism as leaves);
+  seating on a `terrain::HeightField` by the `site::seat` precedent; the offline backend's view of a plant
+  (`cycles-mesh-normal-orientation.md` is the note to read first); and the `locate` registry the gallery is
+  owed.
 
-Out of scope, all phases: LOD chains; cards and alpha maps; seasons; growth timelines; photogrammetry;
-simulation of any kind (a plant's mechanics are a report, not a solver); a DSL and serialization; an
-editor frontend; an undo/redo service.
+Out of scope, all phases: wind; attaching a plant to a building; LOD chains; cards and alpha maps;
+seasons; growth timelines; photogrammetry; simulation of any kind (a plant's mechanics are a report, not a
+solver); a DSL and serialization; an editor frontend; an undo/redo service.
 
 ## What SPEC would say if this is adopted
 
@@ -811,43 +950,41 @@ attachments are named rather than found (R4.1's sentence, one dimension up); man
 a computed value or an authored spine, never an offset on a tessellation; derived defaults carry no
 guarantee and are ordinary editable data the moment they exist; the output is planar-facet triangles; and
 the crate is a pure rust crate with a rust api, no editor frontend and no runtime service of its own.
-**No `Topology::Quads` is required** (D5) and no graphics or device change is required (D7, D8, D17).
+**No `Topology::Quads` is required** (D5) and no graphics or device change is required (D7, D8).
 
 ## Open questions
 
-1. **The shared mesh crate.** `mountain`, `building` and now `vegetation` each need the plan/space
-   arithmetic and four mesh predicates, and `building`'s D2 already named the unification. Does P1 write
-   them a third time and propose the crate afterwards, or does the crate come first? Writing them a third
-   time is the choice this design makes, because a P1 that depends on a refactor of two crates in flight
-   (`building` merged its volume model into `main` while this file was being written) is a P1 that cannot
-   start; the cost is a third copy of predicates whose disagreement would be silent.
-2. **The spine's basis.** A cubic Hermite control polygon is the recommendation (D5), because the jet is
-   the data and continuity is structural — the argument `patch::hermite` makes one dimension up. The
-   alternatives are a Catmull-Rom polygon (tangents derived, so inserting a control point moves its
-   neighbours' tangents and an edit is not local in shape) and a NURBS curve (a knot vector and weights an
-   agent would have to write, for a property — exact rational conics — a branch does not need).
-   [investigate/nurbs-libraries.md](../investigate/nurbs-libraries.md) and
-   [investigate/hierarchical-spline-bases.md](../investigate/hierarchical-spline-bases.md) already surveyed
-   the surface side; neither surveyed curves, and `feature/catmull-probe` is about surfaces too.
-3. **A leaf's identity when the count is large.** Every leaf is an element (D8), so 20 000 leaves are
-   20 000 table rows beside every frame. SpeedTree's answer to the same pressure is a generator that
-   *"forgoes individual node editing for orders-of-magnitude faster computation"*. The equivalent here is a
-   generation marked **unnumbered**, whose leaves are answered by their parent node and a `(u, v)`; whether
-   P1 needs it depends on a count nobody has measured yet, so it is a question and not a decision.
-4. **The envelope's form.** A `radius_at(height)` profile revolved about the trunk is enough for a conifer
-   and an oak and cheap to author; a plan outline plus a height profile covers an espalier and a hedge; a
-   mesh or an occupancy function covers everything and cannot be written down. Which one P1 ships decides
-   what an agent can say about a silhouette in one line.
-5. **Where the wind hook lands** (D17): a vertex splice in the gallery's template, which every scene would
-   carry, or a scene-authored vertex stage, which one scene would write. The template already grew one
-   splice for the normal and the argument there was that a body which cannot reach a value cannot use it;
-   the same argument applies to a position.
-6. **Whether a plant may attach to a building.** A vine on a wall, a creeper in a courtyard, a tree whose
-   roots meet a foundation: the attachment vocabulary exists on both sides (`Socket`/`Anchor`, `Station`),
-   and the cross-crate question is who owns the joint. P3's site phase, recorded here so it is not
-   rediscovered as a surprise.
-7. **Whether `validate()`'s junction ratio belongs in P1.** It is O(1) per junction, it is the check that
-   makes a tree read as grown rather than drawn, and its tolerance is not established from a primary source
-   ([survey §2](../investigate/vegetation-modeling-techniques.md)). A band with no botanical guarantee is
-   still a report an agent can use; a band that fires on every oak is worse than no check. Decide at P1,
-   with a probe over the three species rather than an argument.
+Closed by the second round of verdicts, recorded so they are not reopened:
+
+- **The shared crate, its name and its contents** — decided: `shape` first, curve included, as
+  [shape-primitives.md](shape-primitives.md).
+- **The spine's basis** — decided: cubic Hermite, because the jet is the data and continuity is structural
+  (D5, and `shape` D1).
+- **The envelope's form** — decided: a radius curve in the curve's parameter space, refinable to a curve in
+  the perpendicular plane (V4, `shape` D4).
+- **Where the wind hook lands** — withdrawn with wind (D17).
+- **Whether a plant may attach to a building** — deferred (not proposed, above).
+
+Still open, and each is a question a first probe or frame will answer:
+
+1. **The leaf field's orientation contract.** A placement's frame comes from three stages (local
+   orientation, anchor sensitivity, final adjustments), and the anchor is named by a *level* — SpeedTree's
+   Global/Deep/Intermediate/Local/None. Which of the three stages P1 implements, and how an anchor level
+   resolves to a point on an ancestor, decides whether *"leaves point away from the trunk"* is a curve edit
+   or a placement-level fix. The reference's vocabulary is recorded in the survey; the choice is P1's.
+2. **The identity granularity P1 ships.** D8 item 3 offers three rows (per placement, per field group, or
+   unnumbered). The default is per field group, and the number at which a field *must* go unnumbered is a
+   document-entry budget nobody has measured; `report()` prints the count so the number is visible before
+   it is a problem.
+3. **Whether leaves cast shadow.** D7 puts them outside the `shadowing` bucket, which is right for a
+   distant grove and possibly wrong for a close crown, where self-shadowing is most of what makes a canopy
+   read as deep. `shadow_density: 0` is the documented middle — the coarsest page level only — and the
+   decision belongs to the first frame whose crown looks flat.
+4. **The section's own orientation** (`shape` open question 2). A leaf template and the twig it hangs from
+   must not start their sections at different angles, or every leaf is rotated against its stem. The rule
+   is a contract, and it should be checked rather than assumed.
+5. **Whether the junction ratio earns a place in `report()`** (candidate D19). It is O(1) per junction and
+   it is the number that says *this bough is too thin for what it carries*; the band is the part that is not
+   established. Decide on the first probe that prints it.
+6. **`closest`'s accuracy** (`shape` open question 4), because the envelope's trimming law calls it once per
+   branch tip and the answer's error is a number the caller should be told rather than trust.
