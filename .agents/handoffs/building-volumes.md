@@ -241,3 +241,19 @@ The next instrument is the same one that got this far: `SHED_DEBUG=1` is in `exp
 the unmatched edges, so the next round reads **which two loops** and stops guessing. A `departure: 0.19` face points at
 a warped quad — likely the base strip again where the two cut loops disagree in **order** rather than length, which the
 same dump would show as a crossing pair.
+
+## The 73 edges, read (2026-10-27)
+
+`SHED_DEBUG=1` on the shed now prints **73 unmatched edges, every one at `y = 0`**, and they trace small rectangles
+around each opening — `0..1.1 × 0..0.05` for one, `0..1.45 × -0.7..0` for another. So the open edges are the
+**strips of wall under each opening**, not the ring's own base: the base strip spans the loop once, and the openings
+need it to follow their stations.
+
+**The cheapest next measurement is two numbers, not a fix:** print `soffit_points.len()` and `floor_points.len()`. The
+strip pairs node for node because the two cut loops were *assumed* equal, and if the opening's stations land on one
+loop only, the lengths differ and every station beyond the shorter loop is off by one — which is exactly a small
+rectangle left open at every opening.
+
+**An instrument improvement that did not land:** attributing each open edge to its face's `element` needs a
+multi-line edit, which silently does nothing on these CRLF files through a script; write it with the `edit` tool, one
+anchor, or not at all.
