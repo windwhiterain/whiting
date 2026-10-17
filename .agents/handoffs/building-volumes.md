@@ -480,3 +480,29 @@ corners that are three at the base and one at a sill, and the quad is warped by 
 base's elevation, and the same station read by a **reveal** should carry the reveal's. That is the "one description,
 two readers" problem this whole slice has been circling, now with a name and a number: three warps, one a sill's
 height, two the tops of jambs.
+
+## Pick this up cold: the state, in one place (2026-10-27)
+
+**Branch** `feature/building-vol2` (worktree `.worktrees/building-vol2`), last commit `57114e5`. Do not merge it:
+three scenes are rejected. **Do not delete it**: it is the volume model, working except for one defect.
+
+**What the branch has proved, with measurements:**
+
+- a mass is now two solids — a wall **ring** and a plate **`Slab`** — and the ring closes on its own;
+- the plate is added in `derive::starter` and in `terrace`/`wing`;
+- all thirteen building probes pass;
+- **topology is clean on every solid**: the Euler check now counts the ring own handle
+  (`expected = 2 - 2 x (ring + openings)` with `ring = 1` for a `Mass` and a `Part`), and the measured numbers match
+  the arithmetic (`-6 = 2 - 2(1 + 3)` on the shed, `0 = 2 - 2` on each part);
+- **six of nine scenes render** with new hashes (recorded above), and the three that do not are rejected by **one**
+  fault class: `FaceNotPlanar`, every instance of which is the **`WallBase`** strip.
+
+**The one defect, exactly:** the base strip quad takes its four corners from the **cut** loops (`soffit_points`,
+`floor_points`), and a corner that came from a cut station carries the **station elevation** — a door sill, a jamb
+head — rather than the wall base. So the quad is three corners at the base and one at a sill, and it is warped by that
+height. The measurements that got here: the strip winding (a flip closed the mass), its face count (`BASES 20` for a
+10-node loop), the shared ids (`0/0`, `2/2`), and the `WARP` instrument element name.
+
+**The fix, in one sentence:** the base strip must be built from loop positions **projected to the wall base
+elevation**, and the walls own bottom edges must use the same projected points — one description of the loop, read
+by two faces. That is the change this slice has been circling since round 105, and it is now the only one left.
