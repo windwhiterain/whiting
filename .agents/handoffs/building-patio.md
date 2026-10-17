@@ -177,3 +177,9 @@ first one's triangles. The helper that turns triangles into faces has to be writ
   written give **1** loop; flipping the wall top gives **3**; flipping the courtyard-facing strip gives **3**. So the
   remaining seam is *not* in either of those — try the paving (`polygon(..., true)`), the room-facing strip, or the
   floor ring, and remember `euler 3` is odd, so exactly one group still disagrees.
+- **2026-10-27** — the last seam is identified and needs a **fifth face kind**. The courtyard wall stands on the
+  plate, so its **underside** is a 0.3 m annulus at the outline elevation between the void loop and the wall outer
+  loop. Nothing emits it, so the shell is open there (`loops: 1`, `euler 3`). Two attempts confirm it: carrying the
+  plate ring inward to the void loop instead puts **three** faces on that edge (ring, paving, courtyard-facing wall)
+  and measures `loops: 2`, non-manifold. So the fix is a face, not a retraction: a `VoidUnderside { void }` (or a
+  reused name that is honest) filled by `ring` between the wall outer loop and the void loop, facing **down**.
