@@ -19,6 +19,8 @@ use scene::standard::Stage;
 use building::derive::{self, HALL};
 use building::identity::Identity;
 use building::ops;
+use building::grid::{FaceRef, Rhythm};
+use building::openings::{Inset, Opening};
 use building::{Building, BuildingSkeleton, Mass, PlanNode};
 
 use crate::building_identity::{
@@ -84,6 +86,28 @@ pub fn document_at(width: f32, depth: f32, wing_depth: f32) -> Building {
             plan.roof_thickness,
         ) {
             ops::add_roof(&mut skeleton, roof);
+        }
+    }
+    // **Windows only on the faces that meet the weather.** The host east face is where the wing attaches and the
+    // wing west face is the shared leaf, so neither takes a window: a hole there would open into the other arm.
+    // Every other face takes HALL.bays bays and one window a bay, sized by the style own glazing.
+    let bays = HALL.bays(width);
+    let (left, right, sill, height) = HALL.glazing(width / bays as f32, plan.height);
+    for (arm, faces) in [(host, [0usize, 2, 3]), (wing, [0, 1, 2])] {
+        for face in faces {
+            let front = FaceRef::new(arm, face);
+            ops::split_face(
+                &mut skeleton,
+                front,
+                &Rhythm::Even { count: bays },
+                &Rhythm::Even { count: 1 },
+            );
+            for column in 0..bays {
+                let _ = ops::add_opening(
+                    &mut skeleton,
+                    Opening::new(front, 0, column, Inset::new(left, right, sill, height)),
+                );
+            }
         }
     }
     Building::new(skeleton)
