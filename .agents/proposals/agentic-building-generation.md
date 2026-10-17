@@ -1288,6 +1288,31 @@ And the probes behind them: `scene_identity_probe` reads **seven** tables two-wa
 touched the shader generator: a channel's plumbing can be rewritten beneath a scene without moving a pixel, and
 that hash is how the rewrite was known to be inert.
 
+## What the terrace asked, and the answer the vocabulary already gave (2026-10-27)
+
+A terrace is houses side by side sharing one wall, and the vocabulary has no "shared wall". So the slice started
+with the question rather than the picture:
+
+> Is a party wall **one wall claimed by two masses**, or **two leaves whose outer faces meet**?
+
+The second reading costs nothing if the crate accepts two solids that touch. `examples/terrace_probe.rs` measured
+it — two 6 × 8 masses flush at `x = 0`, a 0.15 m wall each:
+
+| measurement | value |
+| --- | --- |
+| violations | **0** |
+| the left house | manifold **true**, boundary loops **0**, volume **32.3520** |
+| the right house | manifold **true**, boundary loops **0**, volume **32.3520** |
+
+**Touching is allowed**: a zero-volume meeting is not an overlap, and `validate`'s overlap judgement was written
+against interiors rather than against faces. So a terrace is **two closed solids whose leaves meet** — 0.15 + 0.15
+of wall that reads as one 0.3 m party wall, which is how a great many real party walls are built. No new
+vocabulary, no new violation, no decision owed.
+
+That is worth recording as a *method* as much as a result: the slice's first artifact was a probe about the
+**domain**, not a scene. The alternative — build the terrace and discover the refusal halfway through the picture —
+is how a system ends up with a violation nobody can date.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):

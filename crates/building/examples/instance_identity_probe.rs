@@ -22,8 +22,8 @@ use std::collections::BTreeMap;
 use whiting_building::derive::{RoofStyle, Starter, starter};
 use whiting_building::grid::{FaceRef, Rhythm};
 use whiting_building::identity::Identity;
-use whiting_building::ops;
 use whiting_building::mesh::PartSurface;
+use whiting_building::ops;
 use whiting_building::parts::{Pin, Placement, Template};
 use whiting_building::{Building, Element, Mass, MassId, PlanNode};
 
@@ -102,7 +102,10 @@ fn main() {
     let mut by_placement: BTreeMap<usize, Vec<(u32, PartSurface)>> = BTreeMap::new();
     for row in table.rows() {
         if let Element::Part { placement, surface } = row.element {
-            by_placement.entry(placement).or_default().push((row.id, surface));
+            by_placement
+                .entry(placement)
+                .or_default()
+                .push((row.id, surface));
         }
     }
 
@@ -110,8 +113,14 @@ fn main() {
     let mut contiguous = true;
     let mut in_step = true;
     for (placement, rows) in &by_placement {
-        let first = rows.first().expect("a placement draws at least one surface").0;
-        let last = rows.last().expect("a placement draws at least one surface").0;
+        let first = rows
+            .first()
+            .expect("a placement draws at least one surface")
+            .0;
+        let last = rows
+            .last()
+            .expect("a placement draws at least one surface")
+            .0;
         let run = (last - first) as usize + 1;
         if run != rows.len() {
             contiguous = false;
@@ -126,7 +135,10 @@ fn main() {
     // The equation, surface by surface: baked = local + base - 1.
     let mut checked = 0;
     for rows in by_placement.values() {
-        let base = rows.first().expect("a placement draws at least one surface").0;
+        let base = rows
+            .first()
+            .expect("a placement draws at least one surface")
+            .0;
         for (id, surface) in rows {
             let local_element = match surface {
                 PartSurface::Mass(id, held_surface) => Element::Mass(*id, *held_surface),
@@ -149,13 +161,14 @@ fn main() {
             in_step = false;
         }
     }
-    println!(
-        "\n# baked = local + base - 1, over {checked} surface(s): {in_step}"
-    );
+    println!("\n# baked = local + base - 1, over {checked} surface(s): {in_step}");
 
     println!("\n# what a shader would need, per placement");
     for (placement, rows) in &by_placement {
-        let base = rows.first().expect("a placement draws at least one surface").0;
+        let base = rows
+            .first()
+            .expect("a placement draws at least one surface")
+            .0;
         println!(
             "  placement {placement}: instance offset {} (so local id 1 answers {})",
             base as i64 - 1,
