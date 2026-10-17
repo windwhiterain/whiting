@@ -2454,3 +2454,21 @@ ground-hole slice's first cut emitted one triangle per four-corner piece, which 
 one; the frame showed sky through the ground while `--where` still reported plausible floor counts. What caught it was
 `--locate` on a floor pixel with an untouched channel (`monoliths`) as the control. **Measure with an instrument that
 can disagree with you.**
+
+## The merge procedure every brief must state correctly (2026-10-27)
+
+Four subagent reports in a row hit the same step, and the fault is in the briefs, not in them:
+
+1. **`git merge --squash` never marks the branch merged**, so the `git branch -d` that follows exits 1 with "not fully
+   merged" — which reads exactly like a failed merge. The correct sequence is: squash-merge and read its exit code;
+   verify the merged tree; then compare `git -C <main> rev-parse <merge>^{tree}` with the branch tree and delete the
+   branch with **`-D`**.
+2. **`comments-check` does not exist in this repository.** AGENTS.md prescribes it as a merge gate and there is no
+   `comments-test.toml` in the tree and no such binary installed. `cargo fmt --all -- --check` is the gate that runs.
+3. **The `order_key` arms are not in rank order in the source** (24–27 sit after 28–40; 17/18 last), and `0..=41` is
+   full with only 14 retired — so a new fault takes 42 or renumbers. "Read the neighbours" does not tell you that.
+4. **A count is not evidence.** The first ground cut emitted one triangle per four-corner piece, shifted every
+   following triangle, showed sky through the ground, and still produced plausible `--where` counts. The check that
+   caught it was `--locate` on a floor pixel with an untouched channel as the control; the orphan check was proved by
+   a canary that panicked on the new variant (0 hits across nine scenes and 29 examples, then shown to fire on its own
+   fixture). **Build the instrument so it can disagree with you, then prove it can fire.**
