@@ -183,3 +183,10 @@ first one's triangles. The helper that turns triangles into faces has to be writ
   plate ring inward to the void loop instead puts **three** faces on that edge (ring, paving, courtyard-facing wall)
   and measures `loops: 2`, non-manifold. So the fix is a face, not a retraction: a `VoidUnderside { void }` (or a
   reused name that is honest) filled by `ring` between the wall outer loop and the void loop, facing **down**.
+- **2026-10-27** — `VoidUnderside` exists and is emitted (a ring between the wall outer loop and the void loop at the
+  outline elevation). **It did not close the shell**: `loops: 1` with the ring facing down *and* facing up, so the
+  opening is not that face orientation. Two readings to guide the next attempt: `euler 3` is still odd (one group
+  disagrees), and the seams that remain are the plate ring inner edge (`outer_base`, closed by the room-facing
+  strip), the paving edge (`base`, closed by the courtyard-facing strip), or the paving own facing. Locate the loop
+  before flipping anything else: print the boundary loop vertices (`BuildingMesh` has `boundary_loops_of`; a
+  temporary debug print of the loop indices is the cheapest next instrument).
