@@ -276,11 +276,14 @@ pub enum Violation {
     /// inward offset walk refuses outright (`OffsetSelfIntersecting`). There is no other reading of
     /// that loop to arrive under, so it arrives here.
     ///
-    /// **It carries the pair and not one mass, because it is the pair's question that went
-    /// unanswered**, and each pair is reported once in the same order as
-    /// [`UnattachedOverlap`](Self::UnattachedOverlap). The expander still names the loop itself through
-    /// [`DidNotExpand`](Self::DidNotExpand), so nothing is lost by this reading being about the
-    /// comparison: it says the question is open, and the other says which loop closed it.
+    /// **It carries the mass whose plan could not be compared, and the neighbour it stands against.**
+    /// The first is the loop an author can fix and the second is only the plan it was measured
+    /// against, and where both plans are unmeasurable the lower index takes the first — so the
+    /// payload always names a loop this module could not triangulate. Each pair is reported once, in
+    /// the same order as [`UnattachedOverlap`](Self::UnattachedOverlap). The expander still names the
+    /// loop itself through [`DidNotExpand`](Self::DidNotExpand), so nothing is lost by this reading
+    /// being about the comparison: it says the question is open, and the other says which loop closed
+    /// it.
     ///
     /// **A plan that cannot be measured beside a neighbour it provably does not touch is still
     /// silent**, because bounding boxes that miss are a measurement rather than a refusal, and this
@@ -1546,12 +1549,22 @@ fn check_overlap(
                 Some(false) => {}
                 // **The refusal is named rather than inherited.** The pair was not compared, so the
                 // overlap question is open rather than answered, and this is where that is said out
-                // loud; the loop the expander refused by name reaches the author through
+                // loud. The mass the name points at is **the one whose plan could not be compared**,
+                // because that is the loop an author can do something about and the other is only
+                // the neighbour it stands against; both unmeasurable is reported with the lower
+                // index. The expander still names the loop itself through
                 // [`Violation::DidNotExpand`].
-                None => violations.push(Violation::OverlapNotMeasured {
-                    mass: MassId(first),
-                    other: MassId(second),
-                }),
+                None => {
+                    let (mass, other) = if plan_is_measurable(&skeleton.masses[first].outline) {
+                        (second, first)
+                    } else {
+                        (first, second)
+                    };
+                    violations.push(Violation::OverlapNotMeasured {
+                        mass: MassId(mass),
+                        other: MassId(other),
+                    });
+                }
             }
         }
     }
@@ -1563,6 +1576,19 @@ fn attached_either_way(skeleton: &BuildingSkeleton, first: usize, second: usize)
         skeleton.masses[index].attachment.map(|one| one.host) == Some(host)
     };
     names(first, MassId(second)) || names(second, MassId(first))
+}
+
+/// Returns whether a mass's own plan has a triangulation to measure with.
+///
+/// **It asks [`crate::clip`] about the loop against itself, which is the one question that answers it**,
+/// and it costs a second measurement of a pair only on the refusal path — the path that already
+/// returned no answer. A loop of fewer than three nodes answers `false` here and never reaches the
+/// refusal, because [`plans_share_area`] has already answered for it.
+///
+/// `O(nodes²)`, like every other quadratic in this module, and paid once per refused pair.
+fn plan_is_measurable(outline: &[PlanNode]) -> bool {
+    let plan: Vec<Vec2> = outline.iter().map(|node| node.position).collect();
+    crate::clip::shared_area(&plan, &plan).is_some()
 }
 
 /// Returns whether two closed plan polygons share an area, or `None` when this module cannot
