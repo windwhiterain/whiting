@@ -30,7 +30,6 @@ use building::{Building, BuildingSkeleton, Element, Mass, MassId, PlanNode};
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
-use crate::geometry::heightfield;
 use crate::instancing::standing;
 use crate::kit::{
     camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
@@ -207,9 +206,8 @@ pub fn yard() -> Value {
         seated.len(),
         seated.walls
     );
-    let built = Building::new(skeleton.clone())
-        .build()
-        .expect("the seated site expands");
+    let document = Building::new(skeleton.clone());
+    let built = document.build().expect("the seated site expands");
 
     // **Every mesh the frame draws carries its elements' ids** — the shells, the roofs, the walls and the gate —
     // so a pixel of this yard can be asked what it is. The gate is one template drawn once, so its mesh carries
@@ -409,7 +407,7 @@ pub fn yard() -> Value {
                     "ground",
                     "Triangles",
                     shaded_point_schema(),
-                    heightfield(160, 42.0, |x, z| ground(x, z)),
+                    crate::ground::mesh(&document, 160, 42.0, |x, z| ground(x, z)),
                 ),
             ]),
         ),

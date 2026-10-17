@@ -1262,7 +1262,7 @@ That is the difference between a style and a preset: **a preset is the numbers, 
 them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
 chosen twice.
 
-## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, and again on 2026-10-30 when the starter's plate was seated on the inner loop)
+## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, and again on 2026-10-31 when the ground was cut away from under every plate)
 
 Nine building scenes render, and each one's picture has a hash. They are recorded here because the question a
 refactor has to answer is *"did the picture change?"*, and a hash answers it in a way that looking at two images
@@ -1271,15 +1271,15 @@ does not. The hash is the first sixteen hex of the `sha256` of the scene's own `
 
 | scene | frame hash (first 16) | notes |
 | --- | --- | --- |
-| `house` | `D6EDBADCC7BD6C3D` | the hip, the plate, three walls; the starter's plate is seated on the inner loop and is **buried: 0 plate pixels** |
-| `hall` | `0D196DA8035448CB` | `HALL` at 10 × 16, three bays; the shared three-quarter camera is untouched, and the plate reads **665** |
-| `hall_large` | `26EBA2656E1A00CF` | `HALL` at 14 × 20, five bays, **its own lower and closer camera**; the plate reads **1,656** |
-| `shed` | `32E70B7865492056` | a doorway, two windows, a door leaf and a canopy; the 0.30 m plate, **2,246** |
-| `terrace` | `2326C57243C9B30A` | three units that touch, nine windows; **only `slab 2`'s plate is in frame, 2,528 — unchanged** |
-| `wing` | `965DEDC907148149` | host plus attached wing, windows on the weather faces; **4 — unchanged** |
-| `workshop` | `B85B0988EC240016` | two storeys, a plate, five instanced shutters |
-| `yard` | `9E6AF5F04A386CF8` | the courtyard and its gate; **both 1.20 m foundations, 15,458 pixels** |
-| `identity` | `F1D17F028AB5D4BC` | the identity picture, and every pixel still names itself; the plate is **buried: 0** |
+| `house` | `B13154AD7D29F938` | the hip, the plate, three walls; the ground is cut away under the plate, and the plate stays **buried: 0 plate pixels** because the house has no opening |
+| `hall` | `C4339E6310EA1C37` | `HALL` at 10 × 16, three bays; the camera is untouched and the plate's top went **665 → 3,166** now that the ground is not tied with it |
+| `hall_large` | `43D3780A15E3D08E` | `HALL` at 14 × 20, five bays, its own lower and closer camera; the plate reads **2,483**, and `--locate` inside it now answers the slab where it answered a wall |
+| `shed` | `882B8F9A7C671B0D` | a doorway, two windows, a door leaf and a canopy; the 0.30 m plate **2,246 → 2,255** |
+| `terrace` | `EDF3F4B3CF2A9686` | three units that touch, nine windows; **only `slab 2`'s plate is in frame, 2,525 — unchanged** |
+| `wing` | `14E3E27F9F9E1A83` | host plus attached wing, windows on the weather faces; `slab 0`'s top went **0 → 380** and `slab 1`'s is 3 — unchanged |
+| `workshop` | `7DD5D40894181EA7` | two storeys, a plate, five instanced shutters; the ground plate's top **1,844 → 3,082** and the mezzanine's is still 0 |
+| `yard` | `FDC446B24E98CE04` | the courtyard and its gate; the two 1.20 m foundations still stand clear of the slope, **15,458 → 15,460** pixels of their own sides |
+| `identity` | `974FB5B24E1E7A35` | the identity picture, and every pixel still names itself; the plate's top went **0 → 1,261** through the one opening |
 
 **Every one of the nine moved, and for one reason: a mass is two solids.** The wall ring's inner base stands on the
 ground line where the shell's floor disc stood a plate thickness lower, the plate is a solid of its own and brings
@@ -1430,6 +1430,78 @@ it.
 `workshop` at 1,987 through openings, and `yard` at 15,458 standing clear of a slope.
 
 And the probes behind them: `scene_identity_probe` still reads **nine** tables two-way and **806 rows** is unchanged
+(77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101), and the building crate's **twenty-nine** probes exit zero.
+
+### The ground is not drawn under a building (2026-10-31, branch `feature/building-ground-holes`)
+
+**The decision was the owner's and is implemented as taken.** A plate's top and the ground are both at `y = 0`, so
+every visible pixel of a plate was a **depth tie** and the raster settled it by draw order — which is what the paragraph
+above measured and could not interpret. `gallery::ground::mesh` now builds each scene's ground exactly as
+`geometry::heightfield` built it **with the building's own floor cut out of it**, and nothing else about the scene
+changed: no geometry, no camera, no material, no widened element predicate, and the ground still carries no
+`authored_id` and still writes the reserved zero from a constant.
+
+**The hole is the ground plate's own plan loop, read from the document the scene already builds**, and not the mass's
+whole footprint. Both are inside the mass, and the difference is what the frame shows: `derive::starter` seats its plate
+on the mass's **inner loop**, so cutting the outline would only take away ground that the wall ring's base annulus
+already stands over and that no camera above the ground can see, while `terrace` and `wing` author their plates over the
+whole footprint and there the hole reaches the wall's outer face exactly. One rule read off the document is the right
+hole in both cases and leaves no moat in either, which a hole quantised to the ground grid could not do — a ground cell
+is metres across and a building is metres across too. A slab is a ground plate when its own two elevations span its host
+mass's lowest node; that is what excludes `workshop`'s and `identity`'s mezzanine, which is a `Slab` too.
+
+#### The measurement that can fail: `--locate` on a floor pixel
+
+A count was proved misleading last slice, so the reading here is a **pixel asked what it is**, and each pixel below has
+plate on all four sides two pixels off, so it is inside the floor rather than on its edge:
+
+| scene | pixel | `--locate` answers | `--where "slab 0, its top"` before | after |
+| --- | --- | --- | --- | --- |
+| `hall` | 236, 668 | `slab 0, its top` | 665 | **3,166** |
+| `hall_large` | 133, 704 | `slab 0, its top` | 1,656 | **2,483** |
+| `shed` | 632, 606 | `slab 0, its top` | 2,246 | **2,255** |
+| `terrace` | 815, 620 | `slab 2, its top` | 2,525 | **2,525** |
+| `wing` | 401, 558 | `slab 0, its top` | 0 | **380** |
+| `workshop` | 744, 724 | `slab 0, its top` | 1,844 | **3,082** |
+| `identity` | 593, 659 | `slab 0, its top` | 0 | **1,261** |
+
+**Two of the nine have no floor pixel in the frame at all, and the record says so rather than choosing another pixel.**
+`house` has no opening and its plate reads **0** on every surface, before and after, so the pixel a floor would be at
+`(250, 700)` answers `mass 0, outer wall over edge 2` — the wall, which is right, and the frame simply has no floor in
+it. `yard`'s plate tops read **0** too, because both foundations are seated on a terrace above the slope and their tops
+are the room's floor seen through nothing; what the yard's frame shows of a plate is its sides standing clear of the
+ground, and those name themselves: `(354, 626)`, `(352, 626)`, `(356, 626)`, `(354, 624)` and `(354, 628)` all answer
+`slab 0, the edge from node 3`, and `(800, 410)` answers `slab 1, the edge from node 3`.
+
+**The before column was measured, not copied.** Main's gallery sources were checked out into the worktree, rebuilt and
+rendered beside the branch's; main reproduced all nine recorded hashes exactly (`D6EDBADCC7BD6C3D`, `0D196DA8035448CB`,
+`26EBA2656E1A00CF`, `32E70B7865492056`, `2326C57243C9B30A`, `965DEDC907148149`, `B85B0988EC240016`, `9E6AF5F04A386CF8`,
+`F1D17F028AB5D4BC`), so the pair compared is main-against-branch and not two runs of one tree. One number differs from
+the table above it: `workshop`'s ground plate measured **1,844** here against the recorded **1,987**, because that earlier
+reading was taken under a different element name and this one is taken under `"slab 0, its top"` on both sides.
+
+#### What this slice got wrong about its own brief
+
+**The brief's premise is right for eight of the nine and wrong for `yard`, and the ninth is `yard`.** "A building's plate
+is at `y = 0` and the ground is also at `y = 0`" is true for the eight scenes whose ground is `heightfield(_, _, |_, _|
+0.0)` and false for `yard`, whose ground is the slope `0.16 * x` and whose foundations are seated on terraces above it.
+`yard` has no tie to break: its plate's top was 0 pixels before this slice and is 0 after, and its sides moved by two
+pixels out of 15,458. The rule is still applied to it, because the rule is read from the document rather than from a
+per-scene list, and on `yard` it removes ground that was inside the foundation solid and could not be seen anyway.
+
+**The brief also said "pick a pixel well inside the building's floor area in the frame" as though every scene had one,
+and two do not.** `house` and `yard` are reported above as what they are rather than answered with a pixel that happens
+to be nearby.
+
+**And the first cut of the ground was wrong in a way the counts alone would not have caught.** The first implementation
+wrote each cut piece's corners as one triangle, so a piece with four corners shifted every triangle after it by one —
+the shed's ground came out **86,446 points, which is not a multiple of three**, and the frame showed wedges of missing
+ground across the whole foreground with the sky through them. The `--where` counts still looked like floors. What found
+it was the `position` debug channel against an untouched scene as a control: `monoliths`, whose ground this slice does
+not touch, draws a continuous one. Each piece is now fanned from its own first corner, and the point count is a
+multiple of three again.
+
+The probes behind this one are unchanged: `scene_identity_probe` reads nine tables two-way at **806 rows**
 (77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101), and the building crate's **twenty-nine** probes exit zero.
 
 ### The store's plate, and why `yard` is the one hash this did not move (2026-10-28)

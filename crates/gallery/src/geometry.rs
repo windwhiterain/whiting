@@ -84,6 +84,32 @@ impl Shaded {
     }
 }
 
+/// One corner of a heightfield cell, as the four numbers a cell carries: where the corner stands in
+/// plan, and where it sits in the grid the texture coordinate names.
+///
+/// # Invariants
+///
+/// **The texture coordinate travels with the station rather than being looked up again**, so a
+/// corner the grid put there keeps the exact value [`heightfield`] would have written. A cell no
+/// cutter touches has to come out byte for byte what it was, or every ground in the gallery moves
+/// for the sake of a mesh that has no hole in it.
+pub type Station = [f64; 4];
+
+/// Returns the plan position a station stands at.
+pub fn plan_of(station: Station) -> [f64; 2] {
+    [station[0], station[1]]
+}
+
+/// Returns the station `amount` of the way from one to another, in all four of its numbers.
+pub fn between(from: Station, to: Station, amount: f64) -> Station {
+    [
+        from[0] + (to[0] - from[0]) * amount,
+        from[1] + (to[1] - from[1]) * amount,
+        from[2] + (to[2] - from[2]) * amount,
+        from[3] + (to[3] - from[3]) * amount,
+    ]
+}
+
 /// How long an accumulated normal below which it is thrown away.
 ///
 /// A vertex whose every incident triangle has no area — the ring at a station the scale law has
@@ -368,47 +394,92 @@ pub fn fract(value: f64) -> f64 {
 /// a caller whose height depends on anything but its argument produces a surface whose
 /// normals disagree with its geometry.
 pub fn heightfield(divisions: usize, extent: f64, height: impl Fn(f64, f64) -> f64) -> PackedList {
+    // The one walk is [`heightfield_over`]'s; a heightfield is that walk with a cutter that cuts
+    // nothing, so the grid a hole changes and the grid it does not are the same arithmetic.
+    heightfield_over(divisions, extent, height, |cell| vec![cell.to_vec()])
+}
+
+/// Builds a heightfield whose cells are cut by `over`, which returns the pieces of one triangle.
+///
+/// # Invariants
+///
+/// - **`over` is handed one triangle at a time and returns whole convex pieces in the winding that
+///   triangle had**, and each piece is then **fanned from its own first corner**. A piece with four
+///   corners is two triangles and not one triangle with four points: a mesh is a stream of corners
+///   three at a time, so writing a quadrilateral as four corners shifts every triangle after it by
+///   one and the surface stops being the surface the generator described.
+/// - A corner a cutter invented is **shaded from the same surface as every other corner**: its
+///   position and normal come from `height` at its own plan position and its texture coordinate
+///   from the grid it was interpolated in, so a cut edge is lit like the ground either side of it
+///   rather than as a facet with no law behind it.
+/// - Everything about the grid is [`heightfield`]'s, down to the order the two triangles of a cell
+///   are written in.
+pub fn heightfield_over(
+    divisions: usize,
+    extent: f64,
+    height: impl Fn(f64, f64) -> f64,
+    over: impl Fn(&[Station]) -> Vec<Vec<Station>>,
+) -> PackedList {
     let step = 2.0 * extent / divisions as f64;
     let origin = -extent;
     let mut points = Shaded::with_capacity(divisions * divisions * 6);
 
-    // The position, normal and texture coordinate of one grid point. The gradient is
-    // the difference either side along each axis; a heightfield sampled on a grid is
-    // smooth enough that the difference over one step is its slope.
-    let at = |column: usize, row: usize| {
-        let (x, z) = (origin + column as f64 * step, origin + row as f64 * step);
-        let (dx, dz) = (step * 0.5, step * 0.5);
-        let slope_x = (height(x + dx, z) - height(x - dx, z)) / (2.0 * dx);
-        let slope_z = (height(x, z + dz) - height(x, z - dz)) / (2.0 * dz);
-        // The normal of a surface whose height rises by one per unit of x and z.
-        let normal = normalized([-slope_x, 1.0, -slope_z]);
-        let position = [x, height(x, z), z];
-        let texture = [
+    // One grid corner as a station: where it stands in plan, and where it sits in the grid.
+    let corner = |column: usize, row: usize| {
+        [
+            origin + column as f64 * step,
+            origin + row as f64 * step,
             column as f64 / divisions as f64,
             row as f64 / divisions as f64,
-        ];
-        (position, normal, texture)
+        ]
     };
-
     for row in 0..divisions {
         for column in 0..divisions {
-            let (p00, n00, t00) = at(column, row);
-            let (p10, n10, t10) = at(column + 1, row);
-            let (p01, n01, t01) = at(column, row + 1);
-            let (p11, n11, t11) = at(column + 1, row + 1);
+            let (near_left, near_right) = (corner(column, row), corner(column + 1, row));
+            let (far_right, far_left) = (corner(column + 1, row + 1), corner(column, row + 1));
             // Two triangles per cell, wound counter clockwise seen from above, so the winding
             // points the way the normals point — the convention in `offline_backend.md`. Each
             // corner keeps the texture coordinate of its own position; only the order the three
             // are written in changes.
-            points.push(p00, n00, t00);
-            points.push(p01, n01, t01);
-            points.push(p10, n10, t10);
-            points.push(p10, n10, t10);
-            points.push(p01, n01, t01);
-            points.push(p11, n11, t11);
+            for cell in [
+                [near_left, far_left, near_right],
+                [near_right, far_left, far_right],
+            ] {
+                for piece in over(&cell) {
+                    for corner in 1..piece.len().saturating_sub(1) {
+                        for station in [piece[0], piece[corner], piece[corner + 1]] {
+                            let (position, normal, texture) = shade(&height, step, station);
+                            points.push(position, normal, texture);
+                        }
+                    }
+                }
+            }
         }
     }
     points.finish()
+}
+
+/// Returns the shaded point one station stands as: where it is on the surface, the normal of that
+/// surface, and the texture coordinate the station carried.
+///
+/// # Invariants
+///
+/// The normal is taken from the heightfield's own gradient at that point, so it is perpendicular to
+/// the surface rather than to the cell it happens to be drawn in. A normal per cell shades a
+/// smooth hillside as tiled facets, and a terrace riser — a slope a cell wide — as a stripe of
+/// alternating triangles, which is the single most common way a lit scene stops reading as lit.
+fn shade(
+    height: &impl Fn(f64, f64) -> f64,
+    step: f64,
+    station: Station,
+) -> ([f64; 3], [f64; 3], [f64; 2]) {
+    let [x, z, u, v] = station;
+    let (dx, dz) = (step * 0.5, step * 0.5);
+    let slope_x = (height(x + dx, z) - height(x - dx, z)) / (2.0 * dx);
+    let slope_z = (height(x, z + dz) - height(x, z - dz)) / (2.0 * dz);
+    // The normal of a surface whose height rises by one per unit of x and z.
+    let normal = normalized([-slope_x, 1.0, -slope_z]);
+    ([x, height(x, z), z], normal, [u, v])
 }
 
 /// Builds a flat horizontal plane at one height, as packed shaded points.

@@ -20,6 +20,8 @@
 //!   over, for a horizon that is otherwise a patch of sky a shade off.
 //! - [`geometry`] — the generators that produce points: a heightfield, a sphere, a cuboid, and the
 //!   noise a heightfield is usually given.
+//! - [`ground`] — the ground a building scene stands on, with each building's own floor cut out of
+//!   it, so a plate's pixels are the plate's own rather than a tie the raster settled by draw order.
 //! - [`shaders`] — WGSL the standard stages are written from, and the vertex attribute lists they
 //!   read.
 //! - [`attributes`] — derives those attribute lists from the schemas a scene declares, so a scene
@@ -70,6 +72,8 @@ pub mod building_identity;
 pub mod building_mesh;
 pub mod built;
 pub mod geometry;
+/// The ground a building scene stands on, with each building's own floor cut out of it.
+pub mod ground;
 pub mod identity;
 /// Standing one template's mesh in many places.
 pub mod instancing;

@@ -31,7 +31,6 @@ use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode};
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
-use crate::geometry::heightfield;
 use crate::kit::{
     camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
     post_processes, screen_material, surface,
@@ -270,7 +269,7 @@ pub fn terrace() -> Value {
                     "ground",
                     "Triangles",
                     plain.point_schema(),
-                    heightfield(140, 460.0, |_, _| 0.0),
+                    crate::ground::mesh(&building, 140, 460.0, |_, _| 0.0),
                 ),
             ]),
         ),

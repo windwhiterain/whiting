@@ -29,7 +29,6 @@ use building::{Building, Mass, MassId, PlanNode};
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
-use crate::geometry::heightfield;
 use crate::instancing::standing;
 use crate::kit::{
     camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
@@ -387,7 +386,7 @@ pub fn workshop() -> Value {
                     "ground",
                     "Triangles",
                     shaded_point_schema(),
-                    heightfield(160, 200.0, |_, _| 0.0),
+                    crate::ground::mesh(&building, 160, 200.0, |_, _| 0.0),
                 ),
             ]),
         ),
