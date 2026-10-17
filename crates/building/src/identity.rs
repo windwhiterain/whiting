@@ -157,6 +157,7 @@ fn describe(element: Element) -> String {
     match element {
         Element::Mass(id, surface) => format!("mass {}, {}", id.0, mass_surface(surface)),
         Element::Roof(id, surface) => format!("{}, {}", roof_title(id), roof_surface(surface)),
+        Element::Wall(id, surface) => format!("wall {}, {}", id.0, wall_surface(surface)),
         Element::Part { placement, surface } => match surface {
             PartSurface::Mass(id, surface) => format!(
                 "part {placement}, template mass {}, {}",
@@ -168,7 +169,24 @@ fn describe(element: Element) -> String {
                 roof_title(id),
                 roof_surface(surface)
             ),
+            PartSurface::Wall(id, surface) => format!(
+                "part {placement}, template wall {}, {}",
+                id.0,
+                wall_surface(surface)
+            ),
         },
+    }
+}
+
+/// Returns the sentence for one of a wall's surfaces.
+fn wall_surface(surface: crate::wall::WallSurface) -> String {
+    match surface {
+        crate::wall::WallSurface::Side { left: true } => "its left side, looking out".to_owned(),
+        crate::wall::WallSurface::Side { left: false } => "its right side".to_owned(),
+        crate::wall::WallSurface::End { start: true } => "its start end".to_owned(),
+        crate::wall::WallSurface::End { start: false } => "its far end".to_owned(),
+        crate::wall::WallSurface::Bottom => "its underside".to_owned(),
+        crate::wall::WallSurface::Top => "its top".to_owned(),
     }
 }
 

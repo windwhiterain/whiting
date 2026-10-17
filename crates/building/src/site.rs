@@ -67,6 +67,8 @@ impl Seat {
 pub struct SeatReport {
     /// One entry per mass, in the order the masses are held.
     pub masses: Vec<Seat>,
+    /// How many walls were given the ground under their own ends.
+    pub walls: usize,
 }
 
 impl SeatReport {
@@ -162,6 +164,24 @@ pub fn seat(
             highest,
             delta,
         });
+    }
+    // **Walls follow the ground instead of sitting on a terrace**, which is the difference between a
+    // building and a fence: a building is cut and filled to a level floor, and a wall is built on the
+    // ground it crosses, so each end takes the ground under *it*. Its top moves by the change in its own
+    // mean ground, which keeps its height above the ground rather than above a plane.
+    for index in 0..skeleton.walls.len() {
+        let from_at = skeleton.walls[index].from.position;
+        let to_at = skeleton.walls[index].to.position;
+        let (from_ground, to_ground) = (ground(from_at), ground(to_at));
+        if !(from_ground.is_finite() && to_ground.is_finite()) {
+            continue;
+        }
+        let was = (skeleton.walls[index].from.elevation + skeleton.walls[index].to.elevation) * 0.5;
+        let now = (from_ground + to_ground) * 0.5;
+        skeleton.walls[index].from.elevation = from_ground;
+        skeleton.walls[index].to.elevation = to_ground;
+        skeleton.walls[index].top += now - was;
+        report.walls += 1;
     }
     report
 }

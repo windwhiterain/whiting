@@ -66,6 +66,7 @@ pub mod roof;
 pub mod site;
 pub mod skeleton;
 pub mod validate;
+pub mod wall;
 
 pub use expand::{BuildError, Problem, build};
 pub use grid::{Bay, FaceGrid, FaceRef, GRID_TOLERANCE, Grids, Rhythm};

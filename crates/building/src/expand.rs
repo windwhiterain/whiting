@@ -71,6 +71,7 @@ use crate::mesh::{BuildingFace, BuildingMesh, Element, MassSurface, PartSurface,
 use crate::openings::{Extents, RevealSide};
 use crate::roof::{EaveStation, Roof, RoofId, RoofRow};
 use crate::skeleton::BuildingSkeleton;
+use crate::wall::{Wall, WallId, WallSurface};
 
 /// Two outline edges whose turn is smaller than this, in sine, are treated as parallel.
 ///
@@ -307,6 +308,29 @@ pub enum Problem {
         /// The placement, by its index in the document's placements.
         placement: usize,
     },
+    /// A wall's two ends coincide, so it has no direction and no box.
+    WallTooShort {
+        /// The wall.
+        wall: WallId,
+        /// The length that was measured.
+        length: f32,
+    },
+    /// A wall's thickness is not a thickness.
+    WallNotThick {
+        /// The wall.
+        wall: WallId,
+        /// The thickness that was given.
+        thickness: f32,
+    },
+    /// A wall's top is at or below the ground it stands on, so it is not a wall.
+    WallTooLow {
+        /// The wall.
+        wall: WallId,
+        /// The top it was given.
+        top: f32,
+        /// The highest ground under its ends.
+        highest: f32,
+    },
 }
 
 /// Everything that stopped a build.
@@ -364,11 +388,108 @@ pub fn build(skeleton: &BuildingSkeleton) -> Result<BuildingMesh, BuildError> {
             Err(found) => problems.extend(found),
         }
     }
+    for (index, wall) in skeleton.walls.iter().enumerate() {
+        if let Err(found) = expand_wall(&mut mesh, WallId(index), wall) {
+            problems.extend(found);
+        }
+    }
     if problems.is_empty() {
         Ok(mesh)
     } else {
         Err(BuildError { problems })
     }
+}
+
+/// Builds one wall run as the box it is: six quads, twelve triangles, all wound outward.
+///
+/// # Invariants
+///
+/// The six windings are checked against the run's own frame rather than against a picture: the left face
+/// is `+n`, the right `−n`, the bottom `−up`, the top `+up`, and the two ends `∓d`, where `d` is the
+/// run's direction and `n` its left normal. Each is the right-handed cross product of that face's own
+/// first two edges, so a run whose ends coincide is a `Problem` rather than a box with a face of no area.
+///
+/// **The bottom follows the ground and the top does not**, which is the only asymmetry in the shape: the
+/// lower four points carry their own node elevations and the upper four carry `top`. Every face is
+/// therefore a quad with two parallel edges — both ends across the thickness, both sides up — so the box
+/// is planar wherever it is looked at from.
+fn expand_wall(mesh: &mut BuildingMesh, id: WallId, wall: &Wall) -> Result<(), Vec<Problem>> {
+    if wall.direction().is_none() || wall.normal().is_none() {
+        return Err(vec![Problem::WallTooShort {
+            wall: id,
+            length: wall.length(),
+        }]);
+    }
+    if wall.thickness <= 0.0 {
+        return Err(vec![Problem::WallNotThick {
+            wall: id,
+            thickness: wall.thickness,
+        }]);
+    }
+    if wall.top <= wall.highest_ground() {
+        return Err(vec![Problem::WallTooLow {
+            wall: id,
+            top: wall.top,
+            highest: wall.highest_ground(),
+        }]);
+    }
+    let normal = wall.normal().expect("checked above");
+    let half = wall.thickness * 0.5;
+    let mut corner = |node: crate::mass::PlanNode, out: f32, up: f32| {
+        let plan = [
+            node.position[0] + normal[0] * half * out,
+            node.position[1] + normal[1] * half * out,
+        ];
+        mesh.points.push(lift(plan, up));
+        (mesh.points.len() - 1) as u32
+    };
+    let (start, finish) = (wall.from, wall.to);
+    let from_low = corner(start, 1.0, start.elevation);
+    let from_floor = corner(start, -1.0, start.elevation);
+    let from_top_left = corner(start, 1.0, wall.top);
+    let from_top_right = corner(start, -1.0, wall.top);
+    let to_low = corner(finish, 1.0, finish.elevation);
+    let to_floor = corner(finish, -1.0, finish.elevation);
+    let to_top_left = corner(finish, 1.0, wall.top);
+    let to_top_right = corner(finish, -1.0, wall.top);
+    let element = |surface: WallSurface| Element::Wall(id, surface);
+    for (surface, corners) in [
+        (
+            WallSurface::Side { left: true },
+            [from_low, from_top_left, to_top_left, to_low],
+        ),
+        (
+            WallSurface::Side { left: false },
+            [from_floor, to_floor, to_top_right, from_top_right],
+        ),
+        (
+            WallSurface::Bottom,
+            [from_low, to_low, to_floor, from_floor],
+        ),
+        (
+            WallSurface::Top,
+            [from_top_left, from_top_right, to_top_right, to_top_left],
+        ),
+        (
+            WallSurface::End { start: true },
+            [from_low, from_floor, from_top_right, from_top_left],
+        ),
+        (
+            WallSurface::End { start: false },
+            [to_low, to_top_left, to_top_right, to_floor],
+        ),
+    ] {
+        for indices in [
+            [corners[0], corners[1], corners[2]],
+            [corners[0], corners[2], corners[3]],
+        ] {
+            mesh.faces.push(BuildingFace {
+                indices,
+                element: element(surface),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Builds one placement's template in the frame its bay gives it, or `None` when it does not resolve.
@@ -451,6 +572,7 @@ fn expand_placement(
                     // template that somehow held a part would fold into: the face belongs to the part
                     // it is spliced into, and its own surface is kept.
                     Element::Part { surface, .. } => surface,
+                    Element::Wall(id, surface) => PartSurface::Wall(id, surface),
                 },
             },
         })

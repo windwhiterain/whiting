@@ -100,3 +100,39 @@ which is the number an author needs to see and the only place they can see it.
   thickness or a chain of wall segments, and whether a gate is an opening in it (the answer that would
   reuse the most is: a wall is a mass with a thin outline and its gate is an opening, which the openings
   slice already knows how to cut).
+
+- **2026-10-16** — **slice 2 (walls and courtyards) implemented and measured**, and the open question
+  above answered **against** its own suggestion. A wall is **not** a mass with a thin outline: `Mass` is
+  the room model (a shell with a floor disc and a slab), so a thin mass either leaves a cavity — a gate
+  would look into the wall's inside instead of through it — or degenerates its floor onto its top, the
+  fault the shed's canopy already paid for. And a gate is **not** a hole through a wall: it is a **gap
+  between two runs**, which needs no cutting at all.
+
+  So: `wall.rs` — `WallId`, `Wall { from, to, thickness, top }` (one straight run: a box whose bottom
+  follows the ground and whose top is level), `WallSurface { Side { left }, End { start }, Bottom, Top }`,
+  `length`/`direction`/`normal`/`highest_ground`/`lowest_ground`/`mean_height`/`volume`. Wired through
+  `SolidId::Wall`, `Element::Wall`, `expand_wall` (six quads, twelve triangles), three document checks
+  (`WallTooShort`, `WallNotThick`, `WallTooLow`), and `identity`'s naming ("wall 0, its left side,
+  looking out"). `site::seat` also seats walls now — a **wall follows the ground** at both ends while a
+  **building sits on a terrace**, and the report counts each.
+
+  Measured by `examples/wall_probe.rs`, where every number can be written down as well as measured:
+
+  - a 10 × 6 yard is **5 walls, 29.6 m of wall, 17.76 m³ written down**; every run is **12 faces, loops
+    0, Euler 2, manifold**, and the measured total is `17.760012` against the written `17.760000` (off by
+    `1.1e-5`), with each run compared in its own line (`6.000001` against `6.000000`);
+  - **the gate is the gap**, measured at `2.4000 m` between the two south runs;
+  - **each corner is shared by two runs that interpenetrate, and `0` walls are unclosed** — the
+    two-level watertightness rule is what makes a courtyard work without a cleverer element;
+  - seated on the plane `z = 0.3 x`, the north run stands on `−1.5000` at one end and `+1.5000` at the
+    other with its top at `2.0000`, its volume **unchanged at `6.000000`** (exact for a linear slope,
+    because the bottom turns about its mean) and its box now running from `y −1.5000` to `2.0000`, still
+    closed;
+  - the three faults fire and are refused by the build, each named: `WallTooShort { length: 0.0 }`,
+    `WallNotThick { thickness: 0.0 }`, `WallTooLow { top: 0.0, highest: 0.0 }` — and the document's own
+    `DidNotExpand` carries the same three.
+
+- **Next**: slice 3 — **several buildings as one site**: the site as the unit an agent composes. The
+  question to answer first is whether a *site* is a new document type (several skeletons, one ground)
+  or whether the existing skeleton is already a site (it holds several masses and walls today) — and the
+  answer changes what "the unit an agent composes" means.

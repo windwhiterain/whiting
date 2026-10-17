@@ -130,6 +130,8 @@ pub enum Element {
         /// What the face was inside the template.
         surface: PartSurface,
     },
+    /// A face of a wall.
+    Wall(crate::wall::WallId, crate::wall::WallSurface),
 }
 
 /// What a part's face was inside the template it was copied from.
@@ -143,6 +145,12 @@ pub enum PartSurface {
     Mass(MassId, MassSurface),
     /// A face of one of the template's roofs.
     Roof(RoofId, RoofSurface),
+    /// A face of one of the template's walls.
+    ///
+    /// A `Template` holds masses and roofs and no walls, so nothing builds this today; the variant
+    /// exists because the map from an element to a template's own element has to be total, and a
+    /// `panic!` in that map would be a crash for a type the document can express.
+    Wall(crate::wall::WallId, crate::wall::WallSurface),
 }
 
 impl Element {
@@ -152,6 +160,7 @@ impl Element {
             Self::Mass(id, _) => SolidId::Mass(*id),
             Self::Roof(id, _) => SolidId::Roof(*id),
             Self::Part { placement, .. } => SolidId::Part(*placement),
+            Self::Wall(id, _) => SolidId::Wall(*id),
         }
     }
 }
@@ -173,6 +182,8 @@ pub enum SolidId {
     Roof(RoofId),
     /// A part, by its placement's index in the document's placements.
     Part(usize),
+    /// A wall, by its index in the document's walls.
+    Wall(crate::wall::WallId),
 }
 
 /// One triangle, and the element that produced it.

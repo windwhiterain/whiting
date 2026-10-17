@@ -11,6 +11,7 @@ use crate::openings::{Extents, Openings};
 use crate::parts::{Anchor, Bounds, Parts, Pin, Placement, Template};
 use crate::roof::{Roof, RoofId};
 use crate::validate::{Violation, document, mesh};
+use crate::wall::{Wall, WallId};
 
 /// Everything a placement resolves to: what stands, where, and where it lands.
 ///
@@ -46,6 +47,8 @@ pub struct BuildingSkeleton {
     pub openings: Openings,
     /// The parts: the templates a document authors and the places they stand.
     pub parts: Parts,
+    /// The walls: the site's enclosures, one straight run each.
+    pub walls: Vec<Wall>,
 }
 
 impl BuildingSkeleton {
@@ -58,6 +61,7 @@ impl BuildingSkeleton {
             grids: Grids::new(),
             openings: Openings::new(),
             parts: Parts::new(),
+            walls: Vec::new(),
         }
     }
 
@@ -258,6 +262,16 @@ impl BuildingSkeleton {
     /// Returns one roof.
     pub fn roof(&self, id: RoofId) -> Option<&Roof> {
         self.roofs.get(id.0)
+    }
+
+    /// Returns one wall by id.
+    pub fn wall(&self, id: WallId) -> Option<&Wall> {
+        self.walls.get(id.0)
+    }
+
+    /// Returns every wall's id, in the document's own order.
+    pub fn wall_ids(&self) -> Vec<WallId> {
+        (0..self.walls.len()).map(WallId).collect()
     }
 
     /// Returns the roofs that name a mass as their host.

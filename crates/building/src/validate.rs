@@ -531,6 +531,34 @@ pub enum Violation {
         /// The placement.
         placement: usize,
     },
+    /// A wall's two ends coincide, so it has no run and no box.
+    WallTooShort {
+        /// The wall.
+        wall: crate::wall::WallId,
+        /// The length that was measured.
+        length: f32,
+    },
+    /// A wall's thickness is not a thickness.
+    WallNotThick {
+        /// The wall.
+        wall: crate::wall::WallId,
+        /// The thickness that was given.
+        thickness: f32,
+    },
+    /// A wall's top is at or below the ground it stands on, so it is not a wall.
+    ///
+    /// # Invariants
+    ///
+    /// The comparison is against the **higher** of the run's two ground elevations, because a top that
+    /// clears the ground at one end and not the other is a wall that disappears into a slope.
+    WallTooLow {
+        /// The wall.
+        wall: crate::wall::WallId,
+        /// The top it was given.
+        top: f32,
+        /// The highest ground under its ends.
+        highest: f32,
+    },
     /// A facet has no area because **two of its corners are one point**, so it is a facet of no
     /// surface.
     ///
@@ -609,6 +637,7 @@ pub fn document(skeleton: &BuildingSkeleton) -> Vec<Violation> {
     check_roofs(skeleton, &mut violations);
     check_grids(skeleton, &mut violations);
     check_parts(skeleton, &mut violations);
+    check_walls(skeleton, &mut violations);
     check_openings(skeleton, &mut violations);
     violations.sort_by_key(order_key);
     violations
@@ -974,9 +1003,9 @@ fn check_solid(
             .iter()
             .map(|face| skeleton.apertures_of(*face).len())
             .sum(),
-        // A part and a roof are cut by nothing: a hole is authored against a mass's own wall, and a
-        // template's masses are its own private document rather than this one's.
-        SolidId::Roof(_) | SolidId::Part(_) => 0,
+        // A part, a wall and a roof are cut by nothing: a hole is authored against a mass's own wall,
+        // a template's masses are its own private document, and a wall's own box is solid.
+        SolidId::Roof(_) | SolidId::Part(_) | SolidId::Wall(_) => 0,
     };
     let expected = 2 - 2 * holes as i64;
     let euler = built.euler_characteristic_of(&faces);
@@ -1358,6 +1387,40 @@ fn check_parts(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     }
 }
 
+/// Checks every wall: that it has a run, a thickness, and a top above the ground it crosses.
+///
+/// # Invariants
+///
+/// It mirrors the expander's own three refusals rather than deferring to them, so an author hears about
+/// a wall that cannot be built before a mesh is asked for — the same pairing the openings' checks have
+/// with their cutting. `O(walls)`, one comparison each.
+fn check_walls(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
+    for (index, wall) in skeleton.walls.iter().enumerate() {
+        let id = crate::wall::WallId(index);
+        if wall.length() <= GRID_TOLERANCE {
+            violations.push(Violation::WallTooShort {
+                wall: id,
+                length: wall.length(),
+            });
+            continue;
+        }
+        if wall.thickness <= GRID_TOLERANCE {
+            violations.push(Violation::WallNotThick {
+                wall: id,
+                thickness: wall.thickness,
+            });
+            continue;
+        }
+        if wall.top <= wall.highest_ground() + GRID_TOLERANCE {
+            violations.push(Violation::WallTooLow {
+                wall: id,
+                top: wall.top,
+                highest: wall.highest_ground(),
+            });
+        }
+    }
+}
+
 /// Checks that no facet has no area.
 ///
 /// # Invariants
@@ -1725,6 +1788,9 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         }
         Violation::PlacementSocketMissing { placement, .. } => (31, *placement as u64, 0, 0, 0),
         Violation::PlacementAnchorMissing { placement } => (32, *placement as u64, 0, 0, 0),
+        Violation::WallTooShort { wall, .. } => (33, wall.0 as u64, 0, 0, 0),
+        Violation::WallNotThick { wall, .. } => (34, wall.0 as u64, 0, 0, 0),
+        Violation::WallTooLow { wall, .. } => (35, wall.0 as u64, 0, 0, 0),
         // The four opening faults in the order an author meets them: the slot is not there, the bay
         // cannot hold the hole, the hole leaves the wall, and two holes in one wall fight.
         Violation::OpeningBayMissing { opening, face } => {
@@ -1750,6 +1816,7 @@ fn solid_rank(solid: &SolidId) -> u64 {
         SolidId::Mass(mass) => mass.0 as u64,
         SolidId::Roof(roof) => (1 << 32) | roof.0 as u64,
         SolidId::Part(placement) => (2 << 32) | *placement as u64,
+        SolidId::Wall(wall) => (3 << 32) | wall.0 as u64,
     }
 }
 
