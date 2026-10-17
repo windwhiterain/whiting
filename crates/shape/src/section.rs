@@ -195,29 +195,52 @@ impl Section {
         Outline::new(points).map(Self::Outline)
     }
 
-    /// Returns `around` points around the loop, point `i` at arc-length fraction `i / around`.
+    /// The point at an arc-length fraction around the loop.
     ///
     /// # Invariants
     ///
-    /// **`v` is a fraction of arc length**, the convention [`crate::curve`]'s `t` uses along a spine,
-    /// so `v = 0` is the same named place for every section and a sweep's quads do not bunch where the
+    /// **`v` is a fraction of arc length**, the convention [`crate::curve`]'s `t` uses along a spine, so
+    /// `v = 0` is the same named place for every section and a sweep's quads do not bunch where the
     /// section happens to be curved. It is `points[0]` for an [`Outline`] and `(+x, 0)` for an
     /// [`Section::Ellipse`], and `v` increases from there counter-clockwise in `(x, y)`.
     ///
-    /// The last point is at `(around - 1) / around` and not at `1`: the loop is closed by the caller's
-    /// wrap-around rather than by a vertex written twice. `around` is asserted at three or more — a
-    /// ring of two points has no area and no inside.
+    /// **`v` wraps**, because a loop is periodic: `v = 1` is `v = 0` bit for bit, `v = -0.1` is
+    /// `v = 0.9`, and a caller holding an angle does not normalise it first. That is also what makes a
+    /// loop's seam a place rather than an approximation.
+    pub fn at(&self, v: f32) -> Vec2 {
+        assert!(v.is_finite(), "an arc-length fraction is a number");
+        self.track().at(v.rem_euclid(1.0))
+    }
+
+    /// `around` points around the loop, point `i` at `v = i / around`.
     ///
-    /// An ellipse's arc length has no closed form, so the [`Section::Ellipse`] arm builds a
-    /// [`ELLIPSE_STEPS`]-step midpoint table of it per call and inverts each target by binary search
-    /// and one interpolation inside the step: `O(ELLIPSE_STEPS + around · log ELLIPSE_STEPS)`. An
-    /// [`Outline`]'s table is exact from its points and was measured once in [`Outline::new`], so the
-    /// same inversion is `O(around · log points)` and allocates nothing.
+    /// # Invariants
+    ///
+    /// The loop is closed by the caller's wrap-around, so the last point is at
+    /// `(around - 1) / around` and there is no vertex written twice at the seam. `around` is asserted at
+    /// three or more: a ring of two points has no area and no inside.
+    ///
+    /// This is [`Section::at`] at uniform fractions and not a second sampling rule, so the two cannot
+    /// disagree, and an ellipse's table is measured **once per call** either way:
+    /// `O(ELLIPSE_STEPS + around · log ELLIPSE_STEPS)`.
     pub fn ring(&self, around: usize) -> Vec<Vec2> {
         assert!(
             around >= 3,
             "a ring of {around} points has no area and no inside"
         );
+        let track = self.track();
+        (0..around)
+            .map(|index| track.at(index as f32 / around as f32))
+            .collect()
+    }
+
+    /// This section's sampling rule, with its arc-length table measured once.
+    ///
+    /// # Invariants
+    ///
+    /// An ellipse's half axes are asserted here rather than in its constructor, because a ring is the
+    /// only query that has to divide by the shape and this is the one place both queries pass through.
+    fn track(&self) -> Track<'_> {
         match self {
             Self::Ellipse { x, y } => {
                 assert!(
@@ -225,50 +248,87 @@ impl Section {
                     "an ellipse needs a positive half axis along the normal, a non-negative one along \
                      the binormal, and both finite"
                 );
-                ellipse_ring(*x, *y, around)
+                Track::Ellipse(EllipseTrack::new(*x, *y))
             }
-            Self::Outline(outline) => (0..around)
-                .map(|index| outline.at(index as f32 / around as f32))
-                .collect(),
+            Self::Outline(outline) => Track::Outline(outline),
         }
     }
 }
 
-/// The closed loop of an ellipse, sampled at `around` arc-length fractions.
+/// One section's sampling rule, with its table measured once per call.
+enum Track<'a> {
+    Ellipse(EllipseTrack),
+    Outline(&'a Outline),
+}
+
+impl Track<'_> {
+    /// The point at an arc-length fraction in `[0, 1)`.
+    fn at(&self, v: f32) -> Vec2 {
+        match self {
+            Self::Ellipse(ellipse) => ellipse.at(v),
+            Self::Outline(outline) => outline.at(v),
+        }
+    }
+}
+
+/// An ellipse's arc-length table and the inversion that samples it.
 ///
 /// # Invariants
 ///
-/// `|dP/dθ|` is at least `min(x, y)`, which [`Section::ring`] asserts is positive, so every step of
-/// the table carries a positive length and the inversion divides without a guard — including at
-/// `y = 0`, where the speed vanishes only at `θ = 0` itself and the table samples step midpoints.
+/// `|dP/dθ|` is at least `min(x, y)`, which [`Section::track`] asserts is positive, so every step of the
+/// table carries a positive length and the inversion divides without a guard — including at `y = 0`,
+/// where the speed vanishes only at `θ = 0` itself and the table samples step midpoints.
 ///
-/// **The table is accumulated in `f64` and the coordinates are cast back at the end.** A step of the
+/// **The table is accumulated in `f64` and only the sampled coordinates are cast back.** A step of the
 /// table is a difference of two numbers near the perimeter, so storing it in `f32` rounds every step's
-/// length to an ulp of the whole loop — about `4e-5` of it, which the probe sees as a circle whose
-/// chords differ in the fifth decimal. Only the ring's coordinates are `f32`, and the cast is their
-/// own single rounding.
-fn ellipse_ring(x: f32, y: f32, around: usize) -> Vec<Vec2> {
-    let (x, y) = (x as f64, y as f64);
-    let width = std::f64::consts::TAU / ELLIPSE_STEPS as f64;
-    let mut cumulative = Vec::with_capacity(ELLIPSE_STEPS + 1);
-    let mut total = 0.0;
-    cumulative.push(0.0);
-    for step in 0..ELLIPSE_STEPS {
-        total += ellipse_speed(x, y, (step as f64 + 0.5) * width) * width;
-        cumulative.push(total);
+/// length to an ulp of the whole loop — about `4e-5` of it, which the probe sees as a circle whose chords
+/// differ in the fifth decimal.
+struct EllipseTrack {
+    x: f64,
+    y: f64,
+    /// The uniform parameter step the table was measured at.
+    width: f64,
+    /// Cumulative arc length at each step: `ELLIPSE_STEPS + 1` entries, starting at zero.
+    cumulative: Vec<f64>,
+}
+
+impl EllipseTrack {
+    fn new(x: f32, y: f32) -> Self {
+        let (x, y) = (x as f64, y as f64);
+        let width = std::f64::consts::TAU / ELLIPSE_STEPS as f64;
+        let mut cumulative = Vec::with_capacity(ELLIPSE_STEPS + 1);
+        let mut total = 0.0;
+        cumulative.push(0.0);
+        for step in 0..ELLIPSE_STEPS {
+            let midpoint = (step as f64 + 0.5) * width;
+            total += ellipse_speed(x, y, midpoint) * width;
+            cumulative.push(total);
+        }
+        Self {
+            x,
+            y,
+            width,
+            cumulative,
+        }
     }
-    (0..around)
-        .map(|index| {
-            let target = index as f64 / around as f64 * total;
-            let step = cumulative
-                .partition_point(|&length| length < target)
-                .saturating_sub(1)
-                .min(ELLIPSE_STEPS - 1);
-            let span = cumulative[step + 1] - cumulative[step];
-            let theta = (step as f64 + (target - cumulative[step]) / span) * width;
-            [(x * theta.cos()) as f32, (y * theta.sin()) as f32]
-        })
-        .collect()
+
+    /// The point at an arc-length fraction in `[0, 1)`.
+    fn at(&self, v: f32) -> Vec2 {
+        let target = f64::from(v) * self.cumulative[ELLIPSE_STEPS];
+        let step = self
+            .cumulative
+            .partition_point(|&length| length < target)
+            .saturating_sub(1)
+            .min(ELLIPSE_STEPS - 1);
+        let span = self.cumulative[step + 1] - self.cumulative[step];
+        let within = if span > 0.0 {
+            (target - self.cumulative[step]) / span
+        } else {
+            0.0
+        };
+        let theta = (step as f64 + within) * self.width;
+        [(self.x * theta.cos()) as f32, (self.y * theta.sin()) as f32]
+    }
 }
 
 /// `|dP/dθ|` for the ellipse `P(θ) = (x cos θ, y sin θ)`, in the table's own `f64`.
