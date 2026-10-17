@@ -28,7 +28,7 @@ const RIDGE: f32 = 5.0;
 const THICKNESS: f32 = 0.3;
 
 /// The house's mass: a 6 by 10 rectangle, its outline wound so that [`Mass::plan_area`] is
-/// positive — which, in the frame `mountain::math` defines (`x` east, `y` up, `z` south), puts the
+/// positive — which, in the frame `shape::math` defines (`x` east, `y` up, `z` south), puts the
 /// enclosed ground on the walker's **right** and every outer face away from it.
 fn house_mass() -> Mass {
     Mass::new(

@@ -6,11 +6,12 @@ rust-version.workspace = true
 license.workspace = true
 description = "Author a building as skeletons that carry their correspondence, and expand them into closed planar-facet solids."
 
-# `mountain` for the plan/space arithmetic only. What this crate does not take from it is
-# `FacetMesh`: a building face's provenance is a mass face, a bay or a roof plane, and
-# `mountain`'s per-face attributes are keyed by a belt — reusing that type would mean writing
-# belt ids onto walls, which is a document that says something untrue about itself. The mesh
-# and its predicates are this crate's own for that reason, and the unification of the two is a
-# future proposal rather than a copy made here. See .agents/proposals/agentic-building-generation.md D2.
+# `shape` for the plan/space arithmetic only — the module `mountain` re-exports, named here at its
+# owner. What this crate does not take from either of them is `FacetMesh`: a building face's
+# provenance is a mass face, a bay or a roof plane, and `mountain`'s per-face attributes are keyed by
+# a belt — reusing that type would mean writing belt ids onto walls, which is a document that says
+# something untrue about itself. The mesh and its predicates are this crate's own for that reason,
+# and the unification of the two is a future proposal rather than a copy made here. See
+# .agents/proposals/agentic-building-generation.md D2 and .agents/proposals/shape-primitives.md.
 [dependencies]
-mountain = { workspace = true }
+shape = { workspace = true }

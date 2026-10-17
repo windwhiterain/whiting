@@ -106,7 +106,7 @@ pub struct Attachment {
 ///   outline is the face a viewer sees and the thickness never moves it.
 /// - **The outline is wound so its `plan_area` is positive**, and the rule is written as the test
 ///   rather than as a memory of a diagram, because the memory is where this goes wrong: in the
-///   frame `mountain::math` defines (`x` east, `y` up, `z` **south**), `up × along` is the walker's
+///   frame `shape::math` defines (`x` east, `y` up, `z` **south**), `up × along` is the walker's
 ///   **left** — `gallery::built::edge_normal`'s formula for a wall's outer face — so a positively
 ///   wound loop is one whose solid lies on the walker's **right** and whose outer faces therefore
 ///   point away from it. (The prose in `gallery::built` that puts the enclosed ground on the
@@ -210,7 +210,7 @@ impl Mass {
     ///
     /// The sign carries the winding, and the winding carries the orientation of every face this
     /// mass expands to. The rule, verified numerically against the frame rather than reasoned from
-    /// a diagram: `up × along` is the walker's **left** in the `(x, z)` plan of `mountain::math`
+    /// a diagram: `up × along` is the walker's **left** in the `(x, z)` plan of `shape::math`
     /// (`x` east, `z` south), so **positive means the solid is on the walker's right**, which is
     /// exactly the condition under which `up × along` — the formula `gallery::built` uses for a
     /// wall ring's outer face — points **away** from the solid. A loop that comes out negative is a

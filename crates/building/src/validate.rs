@@ -23,9 +23,9 @@
 //! # The three numbers here
 //!
 //! [`PLANARITY_TOLERANCE`], [`TOUCH_TOLERANCE`] and [`COVERAGE_TOLERANCE`], each justified where it
-//! is declared. None is imported from `mountain`: this crate depends on that crate for `math` alone
+//! is declared. None is imported from `mountain`: this crate depends on `shape` for `math` alone
 //! (the handoff for `building-p1` says so), and a weld tolerance from `mountain::sampling` would be
-//! a second dependency on a module this crate does not otherwise read.
+//! a second dependency on a crate this crate does not otherwise read.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 

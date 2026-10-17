@@ -1774,7 +1774,7 @@ dependencies = [
 name = "whiting-building"
 version = "0.1.0"
 dependencies = [
- "whiting-mountain",
+ "whiting-shape",
 ]
 
 [[package]]
