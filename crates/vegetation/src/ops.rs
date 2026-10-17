@@ -23,10 +23,12 @@
 //! difference is what makes a tool an agent can use rather than one it has to guess about.
 
 use shape::math::{Vec3, dot3};
+use shape::{Curve, CurveError, Jet};
 
 use crate::handle::Handle;
 use crate::node::{Nudges, Prune};
 use crate::plant::{Placement, Plant};
+use crate::selector::Selector;
 
 /// Which computed number an edit nudges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,6 +102,17 @@ pub enum Change {
         /// Why it was removed.
         reason: Prune,
     },
+    /// A bake: the node's spine from here on, in the node's own frame.
+    ///
+    /// It **replaces** the authored curve rather than offsetting it, which is V5's third tier: the author has
+    /// stopped saying *"nearly right"* and said *"this"*. A nudge on the same node still applies on top,
+    /// because the tiers compose; what the bake forbids is a *field* reshaping it later, which is what
+    /// [`crate::node::Node::baked`] exists for.
+    Spine {
+        /// The new spine as its knots, in the coordinates the node's authored spine is in: the first knot's
+        /// tangent is the direction the node leaves its parent, and the knots are the whole curve.
+        jets: Vec<Jet>,
+    },
 }
 
 impl Change {
@@ -109,6 +122,7 @@ impl Change {
             Change::Offset { .. } => "offset",
             Change::Shift { .. } => "shift",
             Change::Prune { .. } => "prune",
+            Change::Spine { .. } => "spine",
         }
     }
 }
@@ -165,6 +179,22 @@ pub enum Problem {
         /// The value it would have had.
         value: f32,
     },
+    /// A baked spine could not be built, so the node keeps the one it had.
+    SpineRefused {
+        /// The handle the edit was aimed at.
+        at: Handle,
+        /// Why `shape` refused the curve.
+        error: CurveError,
+    },
+}
+
+/// What `shape` refused, in a sentence a report can print.
+fn why(error: CurveError) -> &'static str {
+    match error {
+        CurveError::TooFewKnots => "fewer than two knots",
+        CurveError::NotFinite => "a knot that is not finite",
+        CurveError::CoincidentKnots => "two consecutive knots at the same place",
+    }
 }
 
 impl std::fmt::Display for Problem {
@@ -193,6 +223,9 @@ impl std::fmt::Display for Problem {
                 "{at}'s {} would be {value}, which is not positive",
                 property.name()
             ),
+            Problem::SpineRefused { at, error } => {
+                write!(formatter, "{at}'s new spine was refused: {}", why(*error))
+            }
         }
     }
 }
@@ -228,22 +261,40 @@ impl std::fmt::Display for EditReport {
 ///
 /// # Invariants
 ///
-/// **Prunes run first, then offsets and shifts.** Both stages keep the batch's own order otherwise, so the
-/// report reads in the order a caller wrote it. An edit whose handle does not resolve, whose node is a
-/// tombstone, or whose value would leave its range changes nothing and appears in the report's problems.
+/// **The stages run in [`stage`]'s order — prunes, then spine bakes, then the nudges — and the batch's own
+/// order inside a stage**, so the report reads in the order a caller wrote it and an edit aimed at a node the
+/// same batch prunes is reported rather than written onto a tombstone. An edit whose handle does not resolve,
+/// whose node is a tombstone, or whose value would leave its range changes nothing and appears in the
+/// report's problems.
 pub fn apply(plant: &mut Plant, edits: &[Edit]) -> EditReport {
     let mut report = EditReport::default();
-    for edit in edits {
-        if matches!(edit.what, Change::Prune { .. }) {
-            apply_one(plant, edit, &mut report);
-        }
-    }
-    for edit in edits {
-        if !matches!(edit.what, Change::Prune { .. }) {
-            apply_one(plant, edit, &mut report);
+    for stage in 0..=LAST_STAGE {
+        for edit in edits {
+            if stage_of(&edit.what) == stage {
+                apply_one(plant, edit, &mut report);
+            }
         }
     }
     report
+}
+
+/// The last stage an edit can belong to, so [`apply`] can walk them without naming each one.
+const LAST_STAGE: u8 = 2;
+
+/// Which stage an edit belongs to. Lower runs first.
+///
+/// # Invariants
+///
+/// The order is V5's, with the stages this crate has no data for left out: **(1) prunes, (2) spine bakes,
+/// (3) offsets and shifts.** A prune runs before the nudges so that a nudge on a pruned node is reported; a
+/// bake runs before the nudges so that a nudge on a baked node applies to the authored spine rather than being
+/// thrown away by it.
+fn stage_of(what: &Change) -> u8 {
+    match what {
+        Change::Prune { .. } => 0,
+        Change::Spine { .. } => 1,
+        Change::Offset { .. } | Change::Shift { .. } => 2,
+    }
 }
 
 /// One edit, with its checks and its report line.
@@ -327,6 +378,19 @@ fn apply_one(plant: &mut Plant, edit: &Edit, report: &mut EditReport) {
             }
             report.applied += 1;
         }
+        Change::Spine { jets } => match Curve::new(jets.clone()) {
+            Ok(spine) => {
+                plant
+                    .get_mut(&edit.at)
+                    .expect("the handle resolved above")
+                    .set_spine(spine);
+                report.applied += 1;
+            }
+            Err(error) => report.problems.push(Problem::SpineRefused {
+                at: edit.at.clone(),
+                error,
+            }),
+        },
         Change::Shift { frame, by } => {
             let local = framed(plant, &edit.at, *frame, *by);
             let shift = plant
@@ -341,8 +405,7 @@ fn apply_one(plant: &mut Plant, edit: &Edit, report: &mut EditReport) {
     }
 }
 
-/// A translation `by`, written in `frame`, as the node's own frame reads it.
-///
+/// A translation `by`, written in `frame`, as the node's own frame reads it.///
 /// # Invariants
 ///
 /// A shift is stored in the node's own frame, so each other frame is undone by one rotation: the parent's
@@ -378,4 +441,20 @@ fn framed(plant: &Plant, at: &Handle, frame: Frame, by: Vec3) -> Vec3 {
             ]
         }
     }
+}
+
+/// The edits a brush writes: one per handle the selector names, all with the same change.
+///
+/// # Invariants
+///
+/// **The brush is a predicate that writes the edit table, not a second editing path.** A caller can print the
+/// list before applying it, filter it, log it, or hand it to the same [`apply`], which is what makes a brush
+/// safe to aim: what it will do is a list of handles before it does it. The list is in walk order and without
+/// duplicates, because [`Selector::handles`] is.
+pub fn paint(plant: &Plant, selector: &Selector, change: Change) -> Vec<Edit> {
+    selector
+        .handles(plant)
+        .into_iter()
+        .map(|at| Edit::new(at, change.clone()))
+        .collect()
 }

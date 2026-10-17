@@ -9,9 +9,10 @@ the state a next session needs, and it is deleted when the crate's design phases
 - **P1 is on `main`** (`140af41` and later): `handle`, `rng`, `node`, `plant`, `leaf`, `expand`, `derive`, and
   three probes — `tree_probe` (5 rows), `plant_probe` (8), `leaf_probe` (8). One plant renders: `gallery`'s
   `bamboo` scene, 13 passes, every blade buffer 24 rows of 168 bytes, so the leaves are one instanced pass.
-- **P2's first slice is on this branch**: `ops` — the edit table of V5 with three of its six kinds — and
-  `edit_probe` (8 rows). `shape` gained `Scalar::offset`, with its own row in `scalar_probe`.
-- **In flight**: the brush, `selector.rs` + `select_probe`, on `feature/selector` (worktree `.worktrees/selector`).
+- **P2's first slice is on this branch**: `ops` — the edit table of V5 with four of its six kinds — the brush
+  (`selector` + `ops::paint`), and their probes: `edit_probe` (11 rows) and `select_probe` (8). `shape` gained
+  `Scalar::offset`, with its own row in `scalar_probe`.
+- **In flight**: nothing. `selector.rs` and `select_probe` are here too (merged from `feature/selector`).
 
 ## What a consumer has
 
@@ -32,18 +33,19 @@ expansion.leaves;                               // one LeafGroup { node, templat
 
 let report = ops::apply(&mut plant, &[
     Edit::new(bough(2), Change::Offset { property: Property::Station, by: 0.1 }),
-    Edit::new(bough(1), Change::Prune { reason: Prune::ByAuthor }),
+    Edit::new(bough(1), Change::Spine { jets }),
+    Edit::new(bough(0), Change::Prune { reason: Prune::ByAuthor }),
 ]);
 report.applied; report.problems;                // what landed, and per edit that did not, why
+
+// The brush writes that list: one edit per handle a selector names, in walk order.
+let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { property: Property::Radius, by: 0.001 });
 ```
 
 ## What P2 still owes
 
-- **The brush's glue**: `paint(plant, selector, change) -> Vec<Edit>` — one edit per handle a selector names,
-  in walk order. Lands with `selector.rs`; it is the sentence that makes the brush a predicate that *writes*
-  the edit table rather than a second editing path.
-- **`Change::Spine`** (a bake) and **`Change::Curve`** (a law added to a law), and **`Change::Graft`** — the
-  last needs `GenerationId`, which arrives with the generator.
+- **`Change::Curve`** (a law added to a law) and **`Change::Graft`** — the last needs `GenerationId`, which
+  arrives with the generator.
 - **Decorators and their sockets**, the four fields (gravity, ancestor, light, obstacle), and the envelope as a
   trimming law.
 - **The collision report** and `derive::thin`.
@@ -68,6 +70,15 @@ report.applied; report.problems;                // what landed, and per edit tha
   root's placement *is* the identity — a reading, not a defect.
 - **Only `Station`, `Slot` and `Length` are range-checked.** A radius offset can fold a section through its
   spine; nothing refuses it yet, and a validation pass is where that belongs.
+- **A bake replaces; a nudge adds on top.** The stages run prunes, then bakes, then nudges, so a batch may bake
+  a spine and thin it in one go. `Node::baked` is the marker a field must read before reshaping anything, and it
+  is set only by `Change::Spine`.
+- **A brush edits nothing.** `Selector` answers `matches` and `handles`; `ops::paint` is the only bridge, and it
+  goes one way — a selector writes the edit list that `apply` reads. A predicate that tried to change a plant
+  would be a second editing path, which is what the design exists to avoid.
+- **The design's vocabulary is a contract**: depth 0 trunk, 1 bough, 2 branch, 3 twig, 4 sprig (`Handle`'s
+  `NAMES`). `derive::bamboo`'s second level is a *branch*, and the code said "twig" until a probe printed
+  `trunk/bough 0/branch 1` beside prose that disagreed with it.
 - **`Scalar::offset` keeps every slope, to a rounding.** The slope is evaluated from the shifted knots, so it
   agrees to ~4e-7 rather than exactly; `scalar_probe`'s row says so.
 - **A template's frame is its midrib's initial normal**, and a flat section's thin axis is the frame's

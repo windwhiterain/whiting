@@ -38,29 +38,29 @@ pub struct Species {
     pub fields: Vec<LeafField>,
 }
 
-/// A culm with three boughs, two twigs on each, and a leaf band on the twigs.
+/// A culm with three boughs, two branches on each, and a leaf band on the branches.
 ///
 /// # Invariants
 ///
 /// The seed reaches the leaf field and nothing else, so two seeds are the same plant with two leaf layouts.
-/// Every number here is a starting point: the field's band is the top of each twig, the taper's rise at
+/// Every number here is a starting point: the field's band is the top of each branch, the taper's rise at
 /// `t = 0.32` is a node, and a caller that moves either is editing the species rather than fighting it.
 pub fn bamboo(seed: u64) -> Species {
     let mut root = culm();
     for index in 0..3 {
         let station = 0.45 + 0.18 * index as f32;
         let slot = 0.333 * index as f32;
-        let mut branch = bough(index as f32, Attachment::new(station, slot).sunk(0.004));
-        for twig_index in 0..2 {
-            branch.push(twig(
+        let mut limb = bough(index as f32, Attachment::new(station, slot).sunk(0.004));
+        for branch_index in 0..2 {
+            limb.push(branch(
                 Attachment::new(
-                    0.35 + 0.25 * twig_index as f32,
-                    0.3 + 0.2 * twig_index as f32,
+                    0.35 + 0.25 * branch_index as f32,
+                    0.3 + 0.2 * branch_index as f32,
                 )
                 .sunk(0.0015),
             ));
         }
-        root.push(branch);
+        root.push(limb);
     }
     Species {
         plant: Plant::new(root, seed),
@@ -116,15 +116,22 @@ fn bough(lean: f32, attachment: Attachment) -> Node {
     )
 }
 
-/// A twig: shorter, thinner, and the generation the leaves hang from.
-fn twig(attachment: Attachment) -> Node {
+/// A branch: shorter, thinner, and the generation the leaves hang from.
+///
+/// # Invariants
+///
+/// **This is depth 2, which [`Handle`](crate::handle::Handle)'s own vocabulary calls a *branch*, not a branch**:
+/// the design's V6 reserves *branch* for depth 3, and a probe that prints `trunk/bough 0/branch 1` while its own
+/// prose says "branch" teaches a reader the wrong word. A bamboo's leaves hang from branchlets, so a three-level
+/// species puts them here and a four-level one will put them a step lower.
+fn branch(attachment: Attachment) -> Node {
     Node::attached(
         spine(&[
             ([0.0, 0.0, 0.0], [0.20, 0.16, 0.02]),
             ([0.16, 0.13, 0.02], [0.10, 0.26, 0.02]),
             ([0.26, 0.38, 0.03], [0.04, 0.20, 0.0]),
         ]),
-        Scalar::new(&[(0.0, 0.005), (1.0, 0.0015)]).expect("the twig's taper is a law"),
+        Scalar::new(&[(0.0, 0.005), (1.0, 0.0015)]).expect("the branch's taper is a law"),
         attachment,
     )
 }
@@ -144,15 +151,15 @@ fn blade() -> LeafTemplate {
     )
 }
 
-/// The leaves hang from the twigs, which are the third generation: depth 2 below the trunk.
+/// The leaves hang from the branches, which are the third generation: depth 2 below the trunk.
 ///
 /// # Invariants
 ///
 /// **`size` multiplies a template that is 0.31 m long in its own coordinates**, so `0.35` here draws a
 /// 11 cm blade and a real bamboo's leaf. The first version of this species asked for `0.05`, which is a
 /// 1.5 cm leaf: correct arithmetic on a number chosen as if the template were one unit long, and a plant
-/// that reads as a bare broom. The density says four blades per centimetre of twig, which is what makes a
-/// crown out of two twigs rather than a row of flecks.
+/// that reads as a bare broom. The density says four blades per centimetre of branch, which is what makes a
+/// crown out of two branches rather than a row of flecks.
 fn leaves() -> LeafField {
     let mut field = LeafField::new(2, 0);
     field.band = (0.25, 0.9);

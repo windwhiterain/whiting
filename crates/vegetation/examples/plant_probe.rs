@@ -105,7 +105,7 @@ fn every_loft_is_a_closed_solid() -> bool {
         solids.len()
     );
     println!(
-        "  the twigs end at a radius of 8e-4 rather than a point, and a leaf's blade ends at a point; both close"
+        "  the branches end at a radius of 8e-4 rather than a point, and a leaf's blade ends at a point; both close"
     );
     closed == solids.len() && worst_volume > 0.0
 }
@@ -188,7 +188,7 @@ fn a_joint_sits_on_its_parents_skin() -> bool {
         "  {joints} joints · worst distance from the parent's spine against its taper less the sink: {worst:.3e}"
     );
     println!(
-        "  so a bough starts on the bark and a twig starts on the bough's, without a pass that places either"
+        "  so a bough starts on the bark and a branch starts on the bough's, without a pass that places either"
     );
     joints == 9 && worst < 1.0e-5
 }
@@ -237,7 +237,7 @@ fn the_leaves_are_groups_of_placements() -> bool {
         .iter()
         .map(|group| group.leaves.len())
         .sum();
-    let twigs: usize = plant
+    let branches: usize = plant
         .walk()
         .filter(|(handle, _)| handle.depth() == 2)
         .count();
@@ -255,7 +255,7 @@ fn the_leaves_are_groups_of_placements() -> bool {
     });
     println!("\n# the leaves");
     println!(
-        "  {} groups over {twigs} twigs · {leaves} leaves · one template: {one_template}",
+        "  {} groups over {branches} branches · {leaves} leaves · one template: {one_template}",
         expansion.leaves.len()
     );
     for group in &expansion.leaves {
@@ -268,7 +268,11 @@ fn the_leaves_are_groups_of_placements() -> bool {
     }
     println!("  a group is one node's leaves of one template, in walk order: {ordered}");
     println!("  and each group's count is its own density law, rounded: {counts_match_the_law}");
-    expansion.leaves.len() == twigs && leaves > 0 && one_template && ordered && counts_match_the_law
+    expansion.leaves.len() == branches
+        && leaves > 0
+        && one_template
+        && ordered
+        && counts_match_the_law
 }
 
 /// A leaf is a rigid frame: `k` of them cost the template's triangles once and `k` transforms.
@@ -308,7 +312,7 @@ fn a_leaf_costs_one_transform() -> bool {
     closed && leaves > 0
 }
 
-/// A leaf's scale is applied in the template's own frame, so the anchor stays on its twig.
+/// A leaf's scale is applied in the template's own frame, so the anchor stays on its branch.
 ///
 /// # Invariants
 ///
@@ -350,7 +354,7 @@ fn a_leafs_scale_is_in_its_own_frame() -> bool {
         "  the control — scaling the placed point instead — moves the same corner by up to {worst_wrong:.3e} m"
     );
     println!(
-        "  so the order is measured rather than assumed, and a blade keeps its twig however small it is drawn"
+        "  so the order is measured rather than assumed, and a blade keeps its branch however small it is drawn"
     );
     worst_base < 1.0e-6 && worst_wrong > 1.0e-3 && leaves > 0
 }

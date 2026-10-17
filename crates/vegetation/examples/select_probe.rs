@@ -4,7 +4,7 @@
 //! Every row is one threshold and one control that could have failed it, because a row that only
 //! says "the number is what I expected" cannot tell a selector that works from one that answers
 //! `10` for everything. The plant is the crate's own species — `derive::bamboo` — because a brush
-//! is only measured against a real tree: a trunk, three boughs at authored stations, and two twigs
+//! is only measured against a real tree: a trunk, three boughs at authored stations, and two branches
 //! on each.
 //!
 //! ```text
@@ -134,7 +134,7 @@ fn every_selector(plant: &Plant) -> Vec<(&'static str, Selector)> {
             },
         ),
         (
-            "Ids([bough 1, twig 0 of it])",
+            "Ids([bough 1, branch 0 of it])",
             Selector::Ids(vec![bough(), bough().child(0)]),
         ),
         (
@@ -180,20 +180,20 @@ fn every_node_in_walk_order(plant: &Plant) -> bool {
 fn a_generation_is_a_level(plant: &Plant) -> bool {
     let trunk = Selector::Generation(0).handles(plant);
     let boughs = Selector::Generation(1).handles(plant);
-    let twigs = Selector::Generation(2).handles(plant);
+    let branches = Selector::Generation(2).handles(plant);
     let past = Selector::Generation(9).handles(plant);
     let depths_read_back =
         |handles: &[Handle]| -> Vec<usize> { handles.iter().map(Handle::depth).collect() };
     let at_its_depth = depths_read_back(&boughs).iter().all(|depth| *depth == 1)
-        && depths_read_back(&twigs).iter().all(|depth| *depth == 2)
+        && depths_read_back(&branches).iter().all(|depth| *depth == 2)
         && depths_read_back(&trunk) == vec![0];
-    let covers_the_plant = trunk.len() + boughs.len() + twigs.len() == plant.walk().count();
+    let covers_the_plant = trunk.len() + boughs.len() + branches.len() == plant.walk().count();
     println!("\n# Generation");
     println!(
         "  0: {}  ·  1: {}  ·  2: {}",
         names(&trunk),
         names(&boughs),
-        names(&twigs)
+        names(&branches)
     );
     println!("  every handle reads back at its own depth: {at_its_depth}");
     println!(
@@ -207,7 +207,7 @@ fn a_generation_is_a_level(plant: &Plant) -> bool {
     at_its_depth
         && trunk.len() == 1
         && boughs.len() == 3
-        && twigs.len() == 6
+        && branches.len() == 6
         && past.is_empty()
         && covers_the_plant
 }
@@ -410,17 +410,17 @@ fn any_and_not_are_over_the_plant(plant: &Plant) -> bool {
     let union =
         Selector::Any(vec![Selector::Generation(1), Selector::Generation(2)]).handles(plant);
     let boughs = Selector::Generation(1).handles(plant);
-    let twigs = Selector::Generation(2).handles(plant);
+    let branches = Selector::Generation(2).handles(plant);
     let above = Selector::Not(Box::new(Selector::Generation(2))).handles(plant);
     let nothing = Selector::Not(Box::new(Selector::Every)).handles(plant);
     let empty_join = Selector::Any(Vec::new()).handles(plant);
     let trunk = Selector::Generation(0).handles(plant);
-    let is_the_join = union.len() == boughs.len() + twigs.len()
+    let is_the_join = union.len() == boughs.len() + branches.len()
         && union
             .iter()
-            .all(|handle| boughs.contains(handle) || twigs.contains(handle));
+            .all(|handle| boughs.contains(handle) || branches.contains(handle));
     let above_is_the_rest = above.len() == trunk.len() + boughs.len()
-        && above.iter().all(|handle| !twigs.contains(handle));
+        && above.iter().all(|handle| !branches.contains(handle));
     println!("\n# Any and Not");
     println!(
         "  Any([Generation(1), Generation(2)]) names {}: {}",
@@ -438,7 +438,7 @@ fn any_and_not_are_over_the_plant(plant: &Plant) -> bool {
         names(&empty_join)
     );
     println!("  the join is the two levels with no overlap: {is_the_join}");
-    println!("  the complement is everything above the twigs: {above_is_the_rest}");
+    println!("  the complement is everything above the branches: {above_is_the_rest}");
     union.len() == 9
         && above.len() == 4
         && nothing.is_empty()

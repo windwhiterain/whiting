@@ -99,6 +99,7 @@ pub struct Node {
     nudges: Nudges,
     shift: [f32; 3],
     pruned: Option<Prune>,
+    baked: bool,
     children: Vec<Node>,
 }
 
@@ -113,6 +114,7 @@ impl Node {
             nudges: Nudges::default(),
             shift: [0.0; 3],
             pruned: None,
+            baked: false,
             children: Vec::new(),
         }
     }
@@ -127,6 +129,7 @@ impl Node {
             nudges: Nudges::default(),
             shift: [0.0; 3],
             pruned: None,
+            baked: false,
             children: Vec::new(),
         }
     }
@@ -229,6 +232,22 @@ impl Node {
     /// Why this node is a tombstone, or `None` while it is alive.
     pub fn pruned(&self) -> Option<Prune> {
         self.pruned
+    }
+
+    /// Whether the node's spine was **authored** rather than derived.
+    ///
+    /// # Invariants
+    ///
+    /// A baked spine is the third tier of the design: the author stopped saying *"nearly right"* and said
+    /// *"this"*. The marker is what a field reads before it decides to reshape anything — a bake is not field
+    /// material — and it is set by [`crate::ops::Change::Spine`] and by nothing else.
+    pub fn baked(&self) -> bool {
+        self.baked
+    }
+
+    pub(crate) fn set_spine(&mut self, spine: Curve) {
+        self.spine = spine;
+        self.baked = true;
     }
 
     /// The node's children, in the order they were added.

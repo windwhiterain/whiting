@@ -8,13 +8,15 @@
 //! cargo run -p whiting-vegetation --example edit_probe
 //! ```
 
+use shape::Jet;
 use shape::math::{length3, span, subtract};
 use shape::mesh::signed_volume;
 use whiting_vegetation::derive::{Species, bamboo};
 use whiting_vegetation::expand::{Detail, Wood, wood};
 use whiting_vegetation::handle::Handle;
 use whiting_vegetation::node::Prune;
-use whiting_vegetation::ops::{Change, Edit, Frame, Problem, Property, apply};
+use whiting_vegetation::ops::{Change, Edit, Frame, Problem, Property, apply, paint};
+use whiting_vegetation::selector::Selector;
 
 fn main() {
     let mut checks: Vec<(&str, bool)> = Vec::new();
@@ -38,6 +40,15 @@ fn main() {
         "a value out of range is refused",
         a_value_out_of_range_is_refused(),
     ));
+    checks.push(("a bake replaces the spine", a_bake_replaces_the_spine()));
+    checks.push((
+        "a bake shape refuses is kept out",
+        a_bake_shape_refuses_is_not_applied(),
+    ));
+    checks.push((
+        "the brush writes the edits",
+        a_brush_writes_the_edit_table(),
+    ));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -58,8 +69,8 @@ fn bough(index: u32) -> Handle {
     Handle::root().child(index)
 }
 
-fn twig(bough_index: u32, twig_index: u32) -> Handle {
-    bough(bough_index).child(twig_index)
+fn branch(bough_index: u32, branch_index: u32) -> Handle {
+    bough(bough_index).child(branch_index)
 }
 
 /// The solid a handle names, in an expansion.
@@ -145,8 +156,8 @@ fn a_length_nudge_carries_its_children() -> bool {
         .map(|index| {
             before
                 .plant
-                .placement(&twig(0, index as u32))
-                .expect("the twig resolves")
+                .placement(&branch(0, index as u32))
+                .expect("the branch resolves")
                 .origin
         })
         .collect();
@@ -170,8 +181,8 @@ fn a_length_nudge_carries_its_children() -> bool {
         .map(|index| {
             after
                 .plant
-                .placement(&twig(0, index as u32))
-                .expect("the twig resolves")
+                .placement(&branch(0, index as u32))
+                .expect("the branch resolves")
                 .origin
         })
         .collect();
@@ -181,19 +192,19 @@ fn a_length_nudge_carries_its_children() -> bool {
     for index in 0..2 {
         let moved = span(origins_before[index], origins_after[index]);
         least_move = least_move.min(moved);
-        // The twig still sits on the bough's bark, now drawn at the shorter length.
-        let twig_node = after
+        // The branch still sits on the bough's bark, now drawn at the shorter length.
+        let branch_node = after
             .plant
-            .get(&twig(0, index as u32))
-            .expect("the twig resolves");
-        let station = twig_node.effective_attachment().station.clamp(0.0, 1.0);
+            .get(&branch(0, index as u32))
+            .expect("the branch resolves");
+        let station = branch_node.effective_attachment().station.clamp(0.0, 1.0);
         let skin = after
             .plant
             .get(&bough(0))
             .expect("the bough resolves")
             .taper_now()
             .at(station)
-            - twig_node.effective_attachment().sink;
+            - branch_node.effective_attachment().sink;
         let spine = after.plant.spine(&bough(0)).expect("the bough resolves");
         let radial = span(origins_after[index], spine.at(station));
         worst_skin = worst_skin.max((radial - skin).abs());
@@ -203,10 +214,10 @@ fn a_length_nudge_carries_its_children() -> bool {
         "  {report} · the bough is {shortened:.6} shorter where it was asked to be 0.15 shorter"
     );
     println!(
-        "  both twigs moved, the least by {least_move:.6} m, and both still sit on the shorter bough's bark to {worst_skin:.3e}"
+        "  both branches moved, the least by {least_move:.6} m, and both still sit on the shorter bough's bark to {worst_skin:.3e}"
     );
     println!(
-        "  the control is the move: a nudge that shortened the spine without carrying the twigs would read 0.000000"
+        "  the control is the move: a nudge that shortened the spine without carrying the branches would read 0.000000"
     );
     report.clean() && (shortened - 0.15).abs() < 1e-4 && least_move > 0.01 && worst_skin < 1e-5
 }
@@ -268,7 +279,7 @@ fn a_station_nudge_slides_the_node() -> bool {
 /// One translation written in three frames lands in three places, and the world one is the world's.
 fn a_shift_reads_its_frame() -> bool {
     let by = [0.05f32, 0.0, 0.0];
-    let target = twig(0, 0);
+    let target = branch(0, 0);
     let mut origins: Vec<[f32; 3]> = Vec::new();
     for frame in [Frame::Local, Frame::Parent, Frame::World] {
         let mut species = species();
@@ -276,9 +287,12 @@ fn a_shift_reads_its_frame() -> bool {
             &mut species.plant,
             &[Edit::new(target.clone(), Change::Shift { frame, by })],
         );
-        let placement = species.plant.placement(&target).expect("the twig resolves");
+        let placement = species
+            .plant
+            .placement(&target)
+            .expect("the branch resolves");
         println!(
-            "\n# a shift in the {} frame\n  {report} · the twig's origin is now {:.6} {:.6} {:.6}",
+            "\n# a shift in the {} frame\n  {report} · the branch's origin is now {:.6} {:.6} {:.6}",
             frame.name(),
             placement.origin[0],
             placement.origin[1],
@@ -289,7 +303,7 @@ fn a_shift_reads_its_frame() -> bool {
     let unshifted = species()
         .plant
         .placement(&target)
-        .expect("the twig resolves")
+        .expect("the branch resolves")
         .origin;
     let world = span(unshifted, origins[2]);
     let local_versus_world = span(origins[0], origins[2]);
@@ -368,8 +382,8 @@ fn a_prune_is_a_tombstone() -> bool {
         .get(&bough(1))
         .expect("a tombstone still resolves")
         .pruned();
-    let child_still_named = named.contains(&twig(1, 0));
-    let child_not_drawn = !live.contains(&twig(1, 0));
+    let child_still_named = named.contains(&branch(1, 0));
+    let child_not_drawn = !live.contains(&branch(1, 0));
     println!("\n# a prune");
     println!(
         "  {report} · the walk names {} nodes and the plant draws {} · the bough's reason is {tombstone:?}",
@@ -377,7 +391,7 @@ fn a_prune_is_a_tombstone() -> bool {
         live.len()
     );
     println!(
-        "  its twig is still named: {child_still_named}, and no longer drawn: {child_not_drawn}, and the wood has {} solids",
+        "  its branch is still named: {child_still_named}, and no longer drawn: {child_not_drawn}, and the wood has {} solids",
         solids.len()
     );
     println!("  the control is the walk: a removal from a list would renumber the boughs after it");
@@ -486,7 +500,7 @@ fn a_value_out_of_range_is_refused() -> bool {
                 },
             ),
             Edit::new(
-                twig(0, 0),
+                branch(0, 0),
                 Change::Offset {
                     property: Property::Length,
                     by: -100.0,
@@ -502,8 +516,8 @@ fn a_value_out_of_range_is_refused() -> bool {
         .station;
     let length = species
         .plant
-        .spine(&twig(0, 0))
-        .expect("the twig resolves")
+        .spine(&branch(0, 0))
+        .expect("the branch resolves")
         .length();
     let refused = report
         .problems
@@ -517,7 +531,7 @@ fn a_value_out_of_range_is_refused() -> bool {
         .count();
     println!("\n# a number outside its range");
     println!(
-        "  {report} · the bough's station is still {station:.6} and the twig is still {length:.6} m long"
+        "  {report} · the bough's station is still {station:.6} and the branch is still {length:.6} m long"
     );
     for problem in &report.problems {
         println!("  {problem}");
@@ -526,4 +540,164 @@ fn a_value_out_of_range_is_refused() -> bool {
         "  the control is the refusal: a clamp would have left the station at 1.0 and the length at a positive floor"
     );
     report.applied == 0 && refused == 2 && (station - 0.81).abs() < 1e-6 && length > 0.0
+}
+
+/// A bake replaces the node's spine, and everything that hangs from it follows the new skin.
+fn a_bake_replaces_the_spine() -> bool {
+    let mut species = species();
+    let authored = species
+        .plant
+        .spine(&bough(0))
+        .expect("the bough resolves")
+        .length();
+    // A hand-written S in the bough's own frame: out, up and out again, with a shape the authored curve has
+    // nowhere. These are the node's own coordinates, which is the space a bake is written in.
+    let jets = vec![
+        Jet::new([0.0, 0.0, 0.0], [0.30, 0.40, 0.0]),
+        Jet::new([0.25, 0.30, 0.0], [0.10, 0.35, 0.0]),
+        Jet::new([0.40, 0.62, 0.0], [0.05, 0.10, 0.0]),
+    ];
+    let report = apply(
+        &mut species.plant,
+        &[Edit::new(bough(0), Change::Spine { jets })],
+    );
+    let baked = species
+        .plant
+        .spine(&bough(0))
+        .expect("the bough resolves")
+        .length();
+    let marked = species
+        .plant
+        .get(&bough(0))
+        .expect("the bough resolves")
+        .baked();
+    let mut worst_skin = 0.0f32;
+    for index in 0..2 {
+        let handle = branch(0, index as u32);
+        let node = species.plant.get(&handle).expect("the branch resolves");
+        let attachment = node.effective_attachment();
+        let at = attachment.station.clamp(0.0, 1.0);
+        let skin = species
+            .plant
+            .get(&bough(0))
+            .expect("the bough resolves")
+            .taper_now()
+            .at(at)
+            - attachment.sink;
+        let origin = species
+            .plant
+            .placement(&handle)
+            .expect("the branch resolves")
+            .origin;
+        let spine = species.plant.spine(&bough(0)).expect("the bough resolves");
+        worst_skin = worst_skin.max((span(origin, spine.at(at)) - skin).abs());
+    }
+    println!("\n# a bake");
+    println!(
+        "  {report} · the bough's drawn length went {authored:.6} → {baked:.6}, and the node is marked baked: {marked}"
+    );
+    println!(
+        "  both branches still hang on the new skin to {worst_skin:.3e}, so a bake moves what hangs from it"
+    );
+    println!(
+        "  the control is the length: a bake that was ignored would read the authored length back"
+    );
+    report.clean() && marked && (baked - authored).abs() > 0.05 && worst_skin < 1e-5
+}
+
+/// A spine `shape` refuses changes nothing and is reported with the reason.
+fn a_bake_shape_refuses_is_not_applied() -> bool {
+    let mut species = species();
+    let before = species
+        .plant
+        .spine(&bough(0))
+        .expect("the bough resolves")
+        .length();
+    // Two knots at the same place: a segment with no direction, which `shape` refuses by name.
+    let jets = vec![
+        Jet::new([0.1, 0.2, 0.0], [0.3, 0.0, 0.0]),
+        Jet::new([0.1, 0.2, 0.0], [0.0, 0.3, 0.0]),
+    ];
+    let report = apply(
+        &mut species.plant,
+        &[Edit::new(bough(0), Change::Spine { jets })],
+    );
+    let after = species
+        .plant
+        .spine(&bough(0))
+        .expect("the bough resolves")
+        .length();
+    let marked = species
+        .plant
+        .get(&bough(0))
+        .expect("the bough resolves")
+        .baked();
+    let refused = matches!(report.problems.as_slice(), [Problem::SpineRefused { .. }]);
+    println!("\n# a bake that shape refuses");
+    println!(
+        "  {report} · the length is still {after:.6} (it was {before:.6}) and the node is marked baked: {marked}"
+    );
+    for problem in &report.problems {
+        println!("  {problem}");
+    }
+    println!(
+        "  the control is the marker: a refusal that had set it would let a later field think the spine was authored"
+    );
+    report.applied == 0 && refused && (after - before).abs() < 1e-6 && !marked
+}
+
+/// The brush is a predicate that writes the edit table: one edit per handle it names, and the same table.
+fn a_brush_writes_the_edit_table() -> bool {
+    let mut species = species();
+    let selector = Selector::Generation(2);
+    let named = selector.handles(&species.plant);
+    let edits = paint(
+        &species.plant,
+        &selector,
+        Change::Offset {
+            property: Property::Radius,
+            by: 0.001,
+        },
+    );
+    let report = apply(&mut species.plant, &edits);
+    let nudged = named
+        .iter()
+        .filter(|handle| {
+            species
+                .plant
+                .get(handle)
+                .map(|node| node.nudges().radius == 0.001)
+                .unwrap_or(false)
+        })
+        .count();
+    let above = (0..3).all(|index| {
+        species
+            .plant
+            .get(&bough(index))
+            .map(|node| node.nudges().radius == 0.0)
+            .unwrap_or(false)
+    });
+    let trunk = species
+        .plant
+        .get(&Handle::root())
+        .map(|node| node.nudges().radius == 0.0)
+        .unwrap_or(false);
+    println!("\n# the brush");
+    println!(
+        "  Generation(2) names {} handles and the brush writes {} edits, one each, in walk order",
+        named.len(),
+        edits.len()
+    );
+    println!(
+        "  {report} · {nudged} of them carry the nudge, and the boughs and the trunk are untouched: {}",
+        above && trunk
+    );
+    println!(
+        "  the control is the untouched nodes: a brush that ignored its selector would have nudged the trunk too"
+    );
+    edits.len() == named.len()
+        && report.applied == named.len()
+        && nudged == named.len()
+        && above
+        && trunk
 }

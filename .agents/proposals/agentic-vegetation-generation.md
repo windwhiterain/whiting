@@ -1015,22 +1015,44 @@ crate landed `handle`, `rng`, `node`, `plant` and `expand`, with `tree_probe` (5
 
 ## What P2 has implemented (2026-10-17)
 
-**The hand.** V5's edit table is `ops`: `Edit { at: Handle, what: Change }` with three of the six kinds, and
-the other three are owed for stated reasons rather than left out quietly:
+**The hand.** V5's edit table is `ops`: `Edit { at: Handle, what: Change }` with four of the six kinds, and
+the other two are owed for stated reasons rather than left out quietly:
 
 | kind | state | why |
 | --- | --- | --- |
 | `Offset { property, by }` | **landed**, for `Length`, `Radius`, `Station`, `Slot` | the middle tier of V5's three: a nudge on a computed number, added at every use and never written into the authored law |
 | `Shift { frame, by }` | **landed**, `Frame::Local` / `Parent` / `World` | the local X/Y/Z offset, stored in the node's own frame so two shifts add and a later parent edit still carries them |
 | `Prune { reason }` | **landed**, as a tombstone | nothing renumbers: the walk still names the node and the plant stops drawing it |
-| `Spine { points }` | owed | it is a *bake*, and a bake needs the authored-from-here-on marker a document has; it lands with `bake` |
+| `Spine { jets }` | **landed**, as a bake | it *replaces* the spine and marks the node `baked`, which is what forbids a field reshaping it later; the branches that hang from it follow the new skin |
 | `Curve { property, points }` | owed | V5 says *an offset curve added to the profile* — with the profile now a `Scalar` law, that is a law-plus-law operation `shape` does not carry yet, and the constant `Offset` is what an author reaches for first |
 | `Graft { generation, station, slot, seed }` | owed | it needs `GenerationId`, which a *computed* plant has and an authored species does not; it lands with the generator |
 
-**The order is enforced, not documented.** `apply` runs prunes first, then offsets and shifts, so an edit aimed
-at a node the same batch prunes is reported as `Problem::Pruned` instead of being written onto a tombstone
-where no frame would show it. `edit_probe` reads this off the report and off the node's own nudge: 1 landed,
-1 refused, the radius nudge still `0.000000`.
+**The brush.** `Selector` is a predicate over a plant's nodes — `Every`, `Generation`, `Descendants`,
+`StationBand`, `SlotBand`, `Inside`, `Ids`, `Any`, `Not` — and it **edits nothing**. `ops::paint` turns it into
+the edit table: one `Edit` per handle it names, in walk order. That is D10's sentence made structural: a brush
+is not a second way to change a plant, it is the thing that *writes the first way's list*, so a caller can print
+what it is about to do before it does it. `select_probe` reads the eight predicates: `Every` names all 10 nodes
+in walk order, `Generation(1)` the 3 boughs, `Descendants(trunk)` all 10, `StationBand 0.5..1.0` 5,
+`Inside` a crown's box 2, `Any` 9, `Not(Generation(2))` 4, and **every selector's `handles` equals the walk
+filtered by `matches`** — one rule, two routes.
+
+Three decisions the brush forced:
+
+1. **`SlotBand` does not wrap, and says so.** `[0.9, 1.0]` and `[0.0, 0.1]` are two brushes, measured disjoint
+   (0 and 2 names); a wrapping band would make the same interval reachable two ways and a picture's id list
+   would name a leaf twice.
+2. **The root carries station 0 and slot 0**, so a band that contains 0 includes the trunk. That is a reading
+   of the root's own attachment and not a special case; the escape is composition (`Not(Generation(0))`).
+3. **`Ids` is a linear scan.** A picture-sized id list against hundreds of nodes is cheap, and a set would make
+   `matches` and `handles` two different rules — the identity row that says they are one route depends on both
+   being the same test, so the cost is the honesty of the check.
+
+**The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
+spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
+first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before
+the nudges so that a nudge on a baked node applies to the authored spine rather than being thrown away by it.
+`edit_probe` reads both: a batch with an offset and a prune on one node lands 1, refuses 1, and the node's radius
+nudge is still `0.000000`.
 
 **Report, never repair** has a shape: `EditReport { applied, problems }` with `Problem::{Orphaned, Pruned,
 OutOfRange, NotPositive}`, each naming the handle and, for a value, the number it would have had. Nothing is
@@ -1044,8 +1066,11 @@ than floored. The readings:
 | a station nudge slides a node along its parent | moved **0.221284** m where a tenth of the trunk's 2.211879 m is 0.221188 — the difference is the chord against the arc, which is what a slide along a curve is |
 | three frames, three places | Local, Parent and World land **7.542e-2**, **9.989e-2** and **6.657e-2** apart; the world one moves exactly **0.050000** for a 0.05 shift |
 | the parent frame of a child of the root | **0.000e0** from the world frame, because the root's placement *is* the identity — a reading, not a defect |
-| a prune is a tombstone | the walk names **10** nodes, the plant draws **7**, the wood has **7** solids, and the pruned bough's twig is still named and no longer drawn |
+| a prune is a tombstone | the walk names **10** nodes, the plant draws **7**, the wood has **7** solids, and the pruned bough's branch is still named and no longer drawn |
 | a stale handle | `Problem::Orphaned`, `0` applied, the largest solid's volume unchanged |
+| a bake replaces the spine | the bough's drawn length **1.054910 → 0.748342** m, the node marked `baked`, and its two branches still on the new skin to **4.703e-8** |
+| a refused bake changes nothing | `0` applied, one `Problem::SpineRefused`, the length unchanged, and the node **not** marked baked |
+| the brush writes the edit table | `Generation(2)` names **6** handles, `paint` writes **6** edits, `apply` lands **6**, and the trunk and the boughs are untouched |
 
 **`Scalar::offset` is the one `shape` operation this needed**, and its row is in `scalar_probe`: the values
 differ by exactly the number (**1.192e-7** to a rounding) and the slopes agree to **3.576e-7**, so a nudge cannot
