@@ -44,7 +44,7 @@ use crate::grid::{FaceGrid, FaceRef, Rhythm};
 use crate::mass::{Attachment, Mass, MassId, PlanNode};
 use crate::math::{distance, lerp};
 use crate::openings::Opening;
-use crate::parts::{Placement, Template};
+use crate::parts::{Placement, Target, Template};
 use crate::roof::{Roof, RoofId};
 use crate::skeleton::BuildingSkeleton;
 
@@ -331,11 +331,21 @@ pub fn add_template(skeleton: &mut BuildingSkeleton, template: Template) -> usiz
 ///   centimetres. `O(log faces)` for the bay and `O(1)` for the rest.
 pub fn place_part(skeleton: &mut BuildingSkeleton, placement: Placement) -> Option<usize> {
     let template = skeleton.parts.template(placement.template)?;
-    skeleton.bay(placement.face, placement.row, placement.column)?;
+    // **The document decides the domain, for both targets.** A bay its grid does not hold, or a wall run it
+    // does not hold, is refused here rather than recorded and reported later: there is nothing to measure the
+    // part against.
+    match placement.target {
+        Target::Bay { face, row, column } => {
+            skeleton.bay(face, row, column)?;
+        }
+        Target::Wall { wall } => {
+            skeleton.walls.get(wall.0)?;
+        }
+    }
     // A mounted part is refused when its joint does not resolve — a socket the template does not name,
-    // or an anchor naming an opening in another wall. That is a domain question like the bay's own
-    // existence, and unlike a part that merely does not fit it has no reading at all: there is nowhere
-    // to put the part. Fitting stays a reported fault.
+    // an anchor naming an opening in another wall, or a mount on a wall run, which has no bay to anchor
+    // to. That is a domain question like the bay's own existence, and unlike a part that merely does not
+    // fit it has no reading at all: there is nowhere to put the part. Fitting stays a reported fault.
     let at = skeleton.pin_of(&placement)?;
     placement.reach(template, at)?;
     Some(skeleton.parts.place(placement))

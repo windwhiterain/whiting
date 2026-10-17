@@ -69,7 +69,7 @@ use crate::math::{
 };
 use crate::mesh::{BuildingFace, BuildingMesh, Element, MassSurface, PartSurface, RoofSurface};
 use crate::openings::{Extents, RevealSide};
-use crate::parts::PartFrame;
+use crate::parts::{PartFrame, Target};
 use crate::roof::{EaveStation, Roof, RoofId, RoofRow};
 use crate::skeleton::BuildingSkeleton;
 use crate::slab::{Slab, SlabId, SlabSurface};
@@ -610,31 +610,68 @@ pub fn part_frame(
     let Some(placement) = skeleton.parts.placement(index) else {
         return Ok(None);
     };
-    let Some(mass) = skeleton.mass(placement.face.mass) else {
-        return Ok(None);
-    };
-    let mut problems = Vec::new();
-    let Some(inner) = offset_loop(
-        &mass.outline,
-        placement.face.mass,
-        mass.wall,
-        mass.plan_area(),
-        &mut problems,
-    ) else {
-        return Err(problems);
-    };
-    let wall = WallFace::of(mass, placement.face.edge, &inner);
-    let origin = lift(
-        wall.outer_at(placed.bay.from + placed.at.along),
-        placed.bay.low + placed.at.up,
-    );
-    let inside = inward(wall.along);
-    Ok(Some(PartFrame::new(
-        origin,
-        [wall.along[0], 0.0, wall.along[1]],
-        [0.0, 1.0, 0.0],
-        [inside[0], 0.0, inside[1]],
-    )))
+    match placement.target {
+        Target::Bay { face, .. } => {
+            let Some(bay) = placed.bay else {
+                return Ok(None);
+            };
+            let Some(mass) = skeleton.mass(face.mass) else {
+                return Ok(None);
+            };
+            let mut problems = Vec::new();
+            let Some(inner) = offset_loop(
+                &mass.outline,
+                face.mass,
+                mass.wall,
+                mass.plan_area(),
+                &mut problems,
+            ) else {
+                return Err(problems);
+            };
+            let wall = WallFace::of(mass, face.edge, &inner);
+            let origin = lift(
+                wall.outer_at(bay.from + placed.at.along),
+                bay.low + placed.at.up,
+            );
+            let inside = inward(wall.along);
+            Ok(Some(PartFrame::new(
+                origin,
+                [wall.along[0], 0.0, wall.along[1]],
+                [0.0, 1.0, 0.0],
+                [inside[0], 0.0, inside[1]],
+            )))
+        }
+        // **A wall run is its own frame**: the run's direction is `along`, the ground **under the pin** is the
+        // base a pin's `up` is measured from, and `inward` is the run's normal — so a part hung on a wall
+        // spans the wall's thickness about the line the author drew, and needs no miter to resolve.
+        //
+        // The base is interpolated along the run rather than read at its start, because the run's own bottom
+        // follows the ground between its two nodes: a gate hung on a wall that climbs a slope must stand on
+        // the ground at the gate, not at the far end of the wall. Measured before it was understood — a gate
+        // on a `0.25 x` slope hung 1.5 m under its own doorway when the base was the run's start.
+        Target::Wall { wall } => {
+            let Some(run) = skeleton.walls.get(wall.0) else {
+                return Ok(None);
+            };
+            let Some(direction) = run.direction() else {
+                return Ok(None);
+            };
+            let span = run.length().max(GRID_TOLERANCE);
+            let climb = run.to.elevation - run.from.elevation;
+            let base = run.from.elevation + climb * (placed.at.along / span).clamp(0.0, 1.0);
+            let origin = lift(
+                step(run.from.position, direction, placed.at.along),
+                base + placed.at.up,
+            );
+            let inside = inward(direction);
+            Ok(Some(PartFrame::new(
+                origin,
+                [direction[0], 0.0, direction[1]],
+                [0.0, 1.0, 0.0],
+                [inside[0], 0.0, inside[1]],
+            )))
+        }
+    }
 }
 
 /// Builds one placement's template in the frame its bay gives it, or `None` when it does not resolve.

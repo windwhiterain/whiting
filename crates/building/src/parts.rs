@@ -36,6 +36,7 @@ use crate::math::Vec3;
 use crate::mesh::BuildingMesh;
 use crate::roof::Roof;
 use crate::skeleton::BuildingSkeleton;
+use crate::wall::WallId;
 
 /// A named mount point on a template: where the part touches what it hangs from.
 ///
@@ -323,26 +324,60 @@ impl Template {
     }
 }
 
-/// One template standing in one bay.
+/// What a placement stands its template on.
 ///
 /// # Invariants
 ///
-/// It names its template **by index** into the document's list and its bay **by slot**, and it holds
-/// no position in the world: [`Pin`] is measured from the bay's own corner, and the bay is read out of
-/// the grid when the part is expanded or checked. So a grid that is re-split moves the parts that hang
-/// in it, a slot that vanishes is reported rather than guessed at, and the document never holds two
+/// **A target is a place the document already has** — a bay of a wall of a mass, or a wall run's own line —
+/// so every part stands on something an author authored rather than at a coordinate. The two differ in the
+/// one fact everything downstream reads: a bay is a rectangle with a width and a height, and a wall run is a
+/// line with a length and a top.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Target {
+    /// A bay of a wall of a mass. The placement's frame is the wall's edge frame at the bay's own slot.
+    Bay {
+        /// Which wall of which mass.
+        face: FaceRef,
+        /// Which storey, counting from the face's base.
+        row: usize,
+        /// Which bay across, counting from the edge's start.
+        column: usize,
+    },
+    /// A wall run's own line. `at.along` is the arc length from the run's start and `at.up` the height above
+    /// the ground at `from`.
+    ///
+    /// **A part may reach past its wall**, and the crate says so rather than forbidding it: a gate leaf hangs
+    /// from the post at the end of one run and closes the gap beyond it, and a sign hangs off a wall's middle
+    /// and sticks out. What is checked is that the **pin** is on the run — a part hung where the wall is not
+    /// is a part floating — and nothing about where the part's own geometry reaches, because that is what the
+    /// template was authored to do.
+    Wall {
+        /// Which run.
+        wall: WallId,
+    },
+}
+
+/// One template standing in one bay or on one wall run.
+///
+/// # Invariants
+///
+/// It names its template **by index** into the document's list and what it stands on **by target**, and it
+/// holds no position in the world: [`Pin`] is measured from the target's own corner, and the target is read
+/// out of the document when the part is expanded or checked. So a grid that is re-split moves the parts that
+/// hang in it, a slot that vanishes is reported rather than guessed at, and the document never holds two
 /// statements of where the same part is.
+///
+/// **The pin is in the target's own frame**, so `at` means the same thing for both: the arc length across a
+/// bay (from its start) and the height above its sill, or the arc length along a run (from its start) and the
+/// height above the ground at `from`. `at` is ignored when `joint` is set, because a joint resolves the origin
+/// from the document instead — see [`Joint`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Placement {
     /// Which template, by index in the document's list.
     pub template: usize,
-    /// The wall it stands in.
-    pub face: FaceRef,
-    /// Which storey of that wall, counting from the face's base.
-    pub row: usize,
-    /// Which bay across, counting from the edge's start.
-    pub column: usize,
-    /// Where the template's own origin is pinned, from the bay's corner. Ignored when `joint` is set.
+    /// What it stands on.
+    pub target: Target,
+    /// Where the template's own origin is pinned, in the target's frame. Ignored when `joint` is set.
     pub at: Pin,
     /// What the part hangs from, when it is mounted rather than merely placed.
     pub joint: Option<Joint>,
@@ -353,9 +388,23 @@ impl Placement {
     pub fn new(template: usize, face: FaceRef, row: usize, column: usize, at: Pin) -> Self {
         Self {
             template,
-            face,
-            row,
-            column,
+            target: Target::Bay { face, row, column },
+            at,
+            joint: None,
+        }
+    }
+
+    /// Builds a placement on a wall run: a part pinned along the wall's own line.
+    ///
+    /// # Invariants
+    ///
+    /// It is the shape a gate or a lamp needs — something hung on a wall rather than fitted into a bay — and
+    /// `at.along` is measured **from the run's start**, so a part hung at the end of a wall is written as the
+    /// wall's own length.
+    pub fn on_wall(template: usize, wall: WallId, at: Pin) -> Self {
+        Self {
+            template,
+            target: Target::Wall { wall },
             at,
             joint: None,
         }
@@ -460,7 +509,9 @@ impl Parts {
         self.placements
             .iter()
             .enumerate()
-            .filter(|(_, placement)| placement.face == face)
+            .filter(|(_, placement)| {
+                matches!(placement.target, Target::Bay { face: held, .. } if held == face)
+            })
             .map(|(index, _)| index)
             .collect()
     }

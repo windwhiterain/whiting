@@ -176,7 +176,11 @@ fn main() {
     let frame = part_frame(&skeleton, mounted)
         .expect("the wall offsets")
         .expect("the placement resolves");
-    let bay = skeleton.placed(mounted).expect("it resolves").bay;
+    let bay = skeleton
+        .placed(mounted)
+        .expect("it resolves")
+        .bay
+        .expect("the canopy hangs in a bay rather than on a wall");
     println!(
         "  the canopy's origin stands at y {:.4}; the bay's head is at {:.4} and the socket is {:.4} \
          below its top, so the frame is {:.4} above the bay's own sill",

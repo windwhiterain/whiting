@@ -207,7 +207,9 @@ fn main() {
             let mut owners = Vec::new();
             for index in &faces {
                 let corners = built.faces[*index].indices;
-                let forward = corners.windows(2).any(|pair| pair[0] == *from && pair[1] == *to)
+                let forward = corners
+                    .windows(2)
+                    .any(|pair| pair[0] == *from && pair[1] == *to)
                     || corners.contains(from) && corners.contains(to);
                 if forward {
                     owners.push(format!("{:?}", built.faces[*index].element));
@@ -215,7 +217,14 @@ fn main() {
             }
             println!(
                 "  ({:.3},{:.3},{:.3})->({:.3},{:.3},{:.3}): {} owner(s) {:?}",
-                a[0], a[1], a[2], b[0], b[1], b[2], owners.len(), owners
+                a[0],
+                a[1],
+                a[2],
+                b[0],
+                b[1],
+                b[2],
+                owners.len(),
+                owners
             );
         }
     }

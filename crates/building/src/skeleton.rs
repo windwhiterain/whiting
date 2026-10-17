@@ -8,7 +8,7 @@ use crate::grid::{Bay, FaceGrid, FaceRef, Grids, face_extent, face_length};
 use crate::mass::{Mass, MassId};
 use crate::mesh::BuildingMesh;
 use crate::openings::{Extents, Openings};
-use crate::parts::{Anchor, Bounds, Parts, Pin, Placement, Template};
+use crate::parts::{Anchor, Bounds, Parts, Pin, Placement, Target, Template};
 use crate::roof::{Roof, RoofId};
 use crate::slab::{Slab, SlabId};
 use crate::validate::{Violation, document, mesh};
@@ -26,11 +26,13 @@ use crate::wall::{Wall, WallId};
 pub struct Placed<'a> {
     /// The template that stands.
     pub template: &'a Template,
-    /// The bay it stands in.
-    pub bay: Bay,
-    /// The origin its own frame is placed at, in the bay's frame.
+    /// The bay it stands in, when it stands in one.
+    pub bay: Option<Bay>,
+    /// The wall run it stands on, when it stands on one.
+    pub wall: Option<WallId>,
+    /// The origin its own frame is placed at, in the target's frame.
     pub at: Pin,
-    /// The box it then occupies, in the bay's frame.
+    /// The box it then occupies, in the target's frame.
     pub reach: Bounds,
 }
 
@@ -83,12 +85,16 @@ impl BuildingSkeleton {
     pub fn placed(&self, index: usize) -> Option<Placed<'_>> {
         let placement = self.parts.placement(index)?;
         let template = self.parts.template(placement.template)?;
-        let bay = self.bay(placement.face, placement.row, placement.column)?;
         let at = self.pin_of(placement)?;
         let reach = placement.reach(template, at)?;
+        let (bay, wall) = match placement.target {
+            Target::Bay { face, row, column } => (Some(self.bay(face, row, column)?), None),
+            Target::Wall { wall } => (None, Some(wall)),
+        };
         Some(Placed {
             template,
             bay,
+            wall,
             at,
             reach,
         })
@@ -109,10 +115,16 @@ impl BuildingSkeleton {
         let Some(joint) = &placement.joint else {
             return Some(placement.at);
         };
+        // **A joint needs a bay to anchor to.** Every anchor names a feature of a bay — its sill, its head,
+        // an opening's head — and none of them exists on a wall run, so a mounted placement on a wall is a
+        // document the crate refuses rather than one it resolves against the run's own ends by guesswork.
+        let Target::Bay { face, row, column } = placement.target else {
+            return None;
+        };
         let template = self.parts.template(placement.template)?;
         let socket = template.socket(&joint.socket)?;
-        let bay = self.bay(placement.face, placement.row, placement.column)?;
-        let (along, up) = self.anchor(placement.face, bay, joint.anchor)?;
+        let bay = self.bay(face, row, column)?;
+        let (along, up) = self.anchor(face, bay, joint.anchor)?;
         Some(Pin::new(along - socket.at.0, up - socket.at.1))
     }
 

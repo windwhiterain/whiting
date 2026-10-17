@@ -35,6 +35,7 @@ use crate::mass::{Mass, MassId, PlanNode};
 use crate::math::{Vec2, Vec3, distance, dot3, subtract};
 use crate::mesh::{BuildingMesh, Element, MassSurface, RoofSurface, SolidId};
 use crate::openings::Extents;
+use crate::parts::Target;
 use crate::roof::{Roof, RoofId};
 use crate::skeleton::BuildingSkeleton;
 
@@ -510,6 +511,42 @@ pub enum Violation {
         placement: usize,
         /// How far the worst edge of its box stands past the bay.
         past: f32,
+    },
+    /// A placement names a wall run the document does not hold.
+    ///
+    /// A document that has lost a wall since a part was hung on it is a document whose part stands nowhere;
+    /// nothing about the run can be measured, so the placement is reported and skipped.
+    PlacementWallMissing {
+        /// The placement.
+        placement: usize,
+        /// The wall it names.
+        wall: crate::wall::WallId,
+    },
+    /// A wall-mounted placement's **pin** stands off its run.
+    ///
+    /// # Invariants
+    ///
+    /// **This is a check on the pin and not on the part's box**, which is the one place the crate's two
+    /// targets deliberately differ: a gate leaf is hung at the end of one run and closes the gap beyond it, so
+    /// its geometry *must* reach past the wall. What may not reach past the wall is the point it hangs from —
+    /// a part pinned where its wall is not is a part floating, and `past` is how far the pin stands out along
+    /// the run or below its base.
+    PlacementOffItsWall {
+        /// The placement.
+        placement: usize,
+        /// The run it names.
+        wall: crate::wall::WallId,
+        /// How far the pin stands past the run's own line: beyond either end, or below its base.
+        past: f32,
+    },
+    /// A wall-mounted placement is also mounted on a joint.
+    ///
+    /// Every anchor names a feature of a **bay** — its sill, its head, an opening's head — and a wall run has
+    /// none of them, so a joint on a wall-mounted part has nothing to resolve against. Refused by name rather
+    /// than resolved against the run's own ends by guesswork.
+    PlacementMountOnAWall {
+        /// The placement.
+        placement: usize,
     },
     /// A placement hangs from a socket its template does not name.
     ///
@@ -1359,17 +1396,41 @@ fn check_parts(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             violations.push(Violation::PlacementTemplateMissing { placement: index });
             continue;
         };
-        let Some(bay) = skeleton.bay(placement.face, placement.row, placement.column) else {
-            violations.push(Violation::PlacementBayMissing {
-                placement: index,
-                face: placement.face,
-            });
-            continue;
+        // **What the part stands on decides what is measured.** A bay is a rectangle and is measured against
+        // its width and height; a wall run is a line and is measured against its length — and, because a part
+        // hung on a wall may reach past it, against the **pin** alone rather than the part's box.
+        let (bay, run) = match placement.target {
+            Target::Bay { face, row, column } => match skeleton.bay(face, row, column) {
+                Some(bay) => (Some(bay), None),
+                None => {
+                    violations.push(Violation::PlacementBayMissing {
+                        placement: index,
+                        face,
+                    });
+                    continue;
+                }
+            },
+            Target::Wall { wall } => match skeleton.walls.get(wall.0) {
+                Some(run) => (None, Some((wall, run))),
+                None => {
+                    violations.push(Violation::PlacementWallMissing {
+                        placement: index,
+                        wall,
+                    });
+                    continue;
+                }
+            },
         };
         // A mounted part is resolved through its joint before anything is measured: a socket the
         // template does not name and an anchor naming an opening in another wall are faults of the
         // document, and neither has a box to compare until it is fixed.
         if let Some(joint) = &placement.joint {
+            let Some(bay) = bay else {
+                // Every anchor names a feature of a bay, so a mount on a wall run has nothing to resolve
+                // against — reported by name rather than silently treated as a free placement.
+                violations.push(Violation::PlacementMountOnAWall { placement: index });
+                continue;
+            };
             if template.socket(&joint.socket).is_none() {
                 violations.push(Violation::PlacementSocketMissing {
                     placement: index,
@@ -1377,13 +1438,31 @@ fn check_parts(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
                 });
                 continue;
             }
-            if skeleton.anchor(placement.face, bay, joint.anchor).is_none() {
+            let Target::Bay { face, .. } = placement.target else {
+                continue;
+            };
+            if skeleton.anchor(face, bay, joint.anchor).is_none() {
                 violations.push(Violation::PlacementAnchorMissing { placement: index });
                 continue;
             }
         }
         let Some(at) = skeleton.pin_of(placement) else {
             violations.push(Violation::PlacementAnchorMissing { placement: index });
+            continue;
+        };
+        if let Some((wall, run)) = run {
+            // The **pin**, not the box: a gate leaf is hung at a wall's end and closes the gap beyond it.
+            let past = (-at.along).max(at.along - run.length()).max(-at.up);
+            if past > GRID_TOLERANCE {
+                violations.push(Violation::PlacementOffItsWall {
+                    placement: index,
+                    wall,
+                    past,
+                });
+            }
+            continue;
+        }
+        let Some(bay) = bay else {
             continue;
         };
         let Some(reach) = placement.reach(template, at) else {
@@ -1834,6 +1913,17 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         Violation::WallTooLow { wall, .. } => (35, wall.0 as u64, 0, 0, 0),
         Violation::SlabNotThick { slab, .. } => (36, slab.0 as u64, 0, 0, 0),
         Violation::SlabNotAPolygon { slab, .. } => (37, slab.0 as u64, 0, 0, 0),
+        // The three faults a part hung on a wall can have, after the bay ones because they are the rarer
+        // target and an author meets a bay's faults first.
+        Violation::PlacementWallMissing { placement, wall } => {
+            (38, *placement as u64, wall.0 as u64, 0, 0)
+        }
+        Violation::PlacementOffItsWall {
+            placement,
+            wall,
+            past,
+        } => (39, *placement as u64, wall.0 as u64, ordered(*past), 0),
+        Violation::PlacementMountOnAWall { placement } => (40, *placement as u64, 0, 0, 0),
         // The four opening faults in the order an author meets them: the slot is not there, the bay
         // cannot hold the hole, the hole leaves the wall, and two holes in one wall fight.
         Violation::OpeningBayMissing { opening, face } => {

@@ -82,7 +82,9 @@ fn main() {
     let placed = ops::place_part(&mut skeleton, Placement::new(template, face, 0, 0, at))
         .expect("the template and the slot are both there");
     let standing = skeleton.placed(placed).expect("just placed");
-    let bay = standing.bay;
+    let bay = standing
+        .bay
+        .expect("the leaf stands in a bay rather than on a wall");
     let reach = standing.reach;
     println!(
         "# the leaf placed in bay [{:.4}, {:.4}] x [{:.4}, {:.4}]: x [{:.4}, {:.4}], y [{:.4}, {:.4}]",
