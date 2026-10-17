@@ -437,3 +437,25 @@ So **no solid is open, non-manifold or wrongly counted any more.** The remaining
 that differ by a centimetre between the two faces. **The large ones are the base strip's quad at a station where the
 outer and inner cuts are spaced differently**, which is the same class of problem one degree higher. Neither is a
 closure fault, and both are now visible as "a quad is not planar" rather than as a hole.
+
+## Six of nine scenes render on the branch, with new hashes (2026-10-27)
+
+| scene | branch hash |
+| --- | --- |
+| `house` | `D6EDBADCC7BD6C3D` |
+| `hall` | `E0C1F46C3E9035D5` |
+| `hall_large` | `8983DF2105A40B9D` |
+| `terrace` | `51862007E2F526A1` |
+| `wing` | `9B7610210E8CC7C2` |
+| `yard` | `F934F309B9B5A4EE` |
+| `shed`, `workshop`, `identity` | **still rejected** — the warped faces of the last note |
+
+**Every hash moved, and it should:** the plate is a new solid with its own side faces, and the wall ring's bottom is
+now at the wall's own elevation instead of a plate thickness below. These are the numbers to record in the proposal's
+baseline table **when the branch merges**, not before — a baseline that predicts the future is not a baseline.
+
+**What remains is one class of fault:** `FaceNotPlanar`, five small (0.01) and one large per scene. The small ones are
+the reveals — a reveal's width is the wall thickness, and its two ends are cut at stations that differ by a centimetre
+between the inner and outer faces. The large ones are the base strip where the two loops' stations are spaced
+differently. Both are "a quad is not planar", not "the surface is broken", which is why six scenes pass the closure and
+topology checks.
