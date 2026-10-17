@@ -68,4 +68,32 @@ fn main() {
             "touching is refused, so the vocabulary has no terrace until a decision is made"
         }
     );
+
+    // **The boundary of that answer: one shared leaf instead of two.** Overlap the two houses by the leaf's
+    // thickness, so the strip `-0.15 .. 0` is wall to *both* of them. Two closed solids then share a volume, which
+    // is the case a terrace's two leaves exist to avoid — and the case the crate should refuse rather than draw,
+    // because a pixel of that strip belongs to two buildings and no id can say which.
+    let mut shared = BuildingSkeleton::default();
+    shared.masses = vec![
+        Mass::new(rectangle(-6.0, -4.0, 0.0, 4.0, 0.0), 3.2).with_wall(0.15),
+        Mass::new(rectangle(-0.15, -4.0, 6.0, 4.0, 0.0), 3.2).with_wall(0.15),
+    ];
+    let shared_building = Building::new(shared);
+    let shared_violations = shared_building.validate();
+    println!("\n# the other reading: one leaf, shared by both houses");
+    println!(
+        "  the document reports {} violation(s)",
+        shared_violations.len()
+    );
+    for violation in &shared_violations {
+        println!("    {violation:?}");
+    }
+    println!(
+        "  the boundary reading: {}",
+        if shared_violations.is_empty() {
+            "a shared leaf is accepted, which the id channel cannot name: the strip belongs to two buildings"
+        } else {
+            "a shared leaf is refused, so the domain stops exactly where one pixel would have two owners"
+        }
+    );
 }
