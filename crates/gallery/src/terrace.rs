@@ -85,6 +85,25 @@ pub fn document() -> Building {
         .with_wall(PARTY_LEAF)
         .with_slab(style.slab);
         let id = ops::add_mass(&mut skeleton, mass);
+        // **Each unit's plate is its own solid**, spanning the unit's footprint from one plate thickness below the
+        // floor level up to it, so the wall ring overlaps it and no floor is split at a wall.
+        skeleton.slabs.push(
+            building::slab::Slab::new(
+                rectangle(
+                    centre - UNIT_WIDTH * 0.5,
+                    -UNIT_DEPTH * 0.5,
+                    centre + UNIT_WIDTH * 0.5,
+                    UNIT_DEPTH * 0.5,
+                    0.0,
+                )
+                .into_iter()
+                .map(|node| node.position)
+                .collect(),
+                -style.slab,
+                0.0,
+            )
+            .with_host(id),
+        );
         // The roof is derived from the mass it covers, so a unit's eave follows its own walls rather than a
         // number the scene keeps beside them.
         if let Some(roof) = derive::gable_roof(

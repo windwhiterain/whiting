@@ -17,6 +17,19 @@
 //! A pixel-level assertion needs the device, and the gallery suite renders every scene; what that suite cannot
 //! see is whether a pixel's number *means* anything, which is exactly what this pins.
 //!
+//! # The pins, and what moves them
+//!
+//! **An id is a position in a scene's own element order, so any change to what a document emits moves every id
+//! after it.** The volume refactor is such a change: a mass emits a wall ring and a plate rather than one shell,
+//! so `house` id 15 read *the skin of plane 1* where the shell's order had read *plane 0*, and the pin had been
+//! stale since that change rather than since the last edit here. A **doorway takes its row with it** as well: a
+//! sill standing on the wall's own floor is the ring's base and is not a face of its own, so every scene carrying
+//! a doorway is one row shorter than it was — measured, `shed` 67 to 66 rows, `workshop` 124 to 123, and the
+//! `identity` scene 78 to 77, with the seven scenes that carry no doorway unmoved.
+//!
+//! So a pin is re-read after a change that emits elements, never edited to make a run green without that reading
+//! being the one the reports quote.
+//!
 //! Run with `cargo run -p whiting-gallery --example scene_identity_probe`.
 
 use definition::{Schema, SchemaKind};
@@ -97,13 +110,13 @@ fn main() {
         (
             "identity",
             16,
-            "mass 0, the head reveal of opening 0 in edge 2",
+            "mass 0, the left reveal of opening 1 in edge 2",
         ),
-        ("house", 15, "roof 0, the skin of plane 0"),
+        ("house", 15, "roof 0, the skin of plane 1"),
         (
             "workshop",
             49,
-            "part 0, template mass 0, outer wall over edge 0",
+            "part 0, template mass 0, outer wall over edge 2",
         ),
     ] {
         let answered = locate_in(scene, id);

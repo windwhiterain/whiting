@@ -215,7 +215,7 @@ fn hip_starter_slab_short() -> (BuildingSkeleton, BuildingMesh) {
         .filter(|index| {
             matches!(
                 built.faces[*index].element,
-                Element::Mass(_, MassSurface::SlabSoffit)
+                Element::Mass(_, MassSurface::WallBase)
             )
         })
         .collect();
@@ -333,7 +333,7 @@ fn report_areas(skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidI
         .filter(|index| {
             matches!(
                 built.faces[*index].element,
-                Element::Mass(_, MassSurface::SlabSoffit)
+                Element::Mass(_, MassSurface::WallBase)
                     | Element::Roof(_, RoofSurface::Skin { .. })
             )
         })

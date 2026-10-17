@@ -1262,36 +1262,46 @@ That is the difference between a style and a preset: **a preset is the numbers, 
 them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
 chosen twice.
 
-## The baseline a later slice measures against (2026-10-27, refreshed when the ninth scene landed)
+## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor)
 
 Nine building scenes render, and each one's picture has a hash. They are recorded here because the question a
 refactor has to answer is *"did the picture change?"*, and a hash answers it in a way that looking at two images
-does not:
+does not. The hash is the first sixteen hex of the `sha256` of the scene's own `.png`, and it is stable across runs
+— measured, by rendering `shed` twice and reading the same number twice:
 
 | scene | frame hash (first 16) | notes |
 | --- | --- | --- |
-| `house` | `B8384583E741BE57` | the hip, the plate, three walls |
-| `hall` | `A68F409B2DB9E9D9` | `HALL` at 10 × 16, three bays |
-| `hall_large` | `FAD1938EF8BA6A2A` | `HALL` at 14 × 20, five bays |
-| `shed` | **`0AF51AEC5A9164A8`** | unchanged since the instancing slice, which is itself a baseline |
-| `terrace` | `AD13FCA917FD9FF4` | three units that touch, nine windows |
-| `wing` | `2050549F7611B0E4` | host plus attached wing, windows on the weather faces |
-| `workshop` | `6AAEC033FD29643E` | two storeys, a plate, five instanced shutters |
-| `yard` | `ECCEB09EE3FD0BD9` | the courtyard and its gate |
-| `identity` | **`D36C5EF54B2E7FEA`** | the identity picture, unchanged through the channel's whole history |
+| `house` | `D9B4204502FC41E0` | the hip, the plate, three walls |
+| `hall` | `8172E3DD3F032294` | `HALL` at 10 × 16, three bays |
+| `hall_large` | `11579A16F341F49F` | `HALL` at 14 × 20, five bays |
+| `shed` | `9F7ADE4E843AA760` | a doorway, two windows, a door leaf and a canopy |
+| `terrace` | `CCBA7FF2FAD71A57` | three units that touch, nine windows |
+| `wing` | `73A68D3C3BDAF97D` | host plus attached wing, windows on the weather faces |
+| `workshop` | `CB975B31D8E936C7` | two storeys, a plate, five instanced shutters |
+| `yard` | `7F1D25D497EF50B0` | the courtyard and its gate |
+| `identity` | `D0C45EF53EE51909` | the identity picture, and every pixel still names itself |
 
-And the probes behind them: `scene_identity_probe` reads **nine** tables two-way — 26 + 72 + 104 + 64 + 108 + 89 +
-124 + 92 + 74 = **753 rows** — the gallery suite passes, and the building crate's **twenty-seven** probes exit zero.
-`census`, `expand_probe`, `validate_probe`, `authoring_probe`, `roof_planarity_probe`, `grid_probe`, `opening_probe`,
-`part_probe`, `identity_probe`, `socket_probe`, `seat_probe`, `wall_probe`, `site_probe`, `slab_probe`,
-`instance_probe`, `floor_probe`, `multi_row_probe`, `wall_part_probe`, `template_cache_probe`, `style_probe`,
-`instance_identity_probe`, `terrace_probe`, `courtyard_probe`, `courtyard_widths`, `wing_probe`,
-`shared_face_probe`, `ring_probe`.
+**Every one of the nine moved, and for one reason: a mass is two solids.** The wall ring's inner base stands on the
+ground line where the shell's floor disc stood a plate thickness lower, the plate is a solid of its own and brings
+its own sides and top, and a doorway notches that base instead of being floored by one — so the six scenes that cut
+no opening moved for the first two reasons alone and `shed`, `workshop` and `identity` for all three. A baseline that
+held these nine still would have been the shell's, and a baseline predicting the new ones before the branch merged
+would have been a guess; these are the numbers the merged tip renders.
 
-**The `identity` frame is the strongest of the nine**, because it has been byte-identical through every slice that
-touched the shader generator: a channel's plumbing can be rewritten beneath a scene without moving a pixel, and that
-hash is how the rewrite was known to be inert. `shed` carries the same kind of weight for the *building* side — it
-has not moved since the instancing slice.
+And the probes behind them: `scene_identity_probe` reads **nine** tables two-way — 77 + 109 + 77 + 31 + 66 + 123 +
+123 + 99 + 95 = **800 rows** in the gallery's own scene order, every id contiguous from the first and every name
+round-tripping back to it — and the building crate's **twenty-nine** probes exit zero. `census`, `expand_probe`,
+`validate_probe`, `authoring_probe`, `roof_planarity_probe`, `grid_probe`, `opening_probe`, `part_probe`,
+`identity_probe`, `socket_probe`, `seat_probe`, `wall_probe`, `site_probe`, `slab_probe`, `instance_probe`,
+`floor_probe`, `multi_row_probe`, `wall_part_probe`, `template_cache_probe`, `style_probe`, `instance_identity_probe`,
+`terrace_probe`, `courtyard_probe`, `courtyard_widths`, `wing_probe`, `shared_face_probe`, `ring_probe`, and the
+volume refactor's own two, `patio_probe` and `ring_fill_probe`.
+
+**The `identity` frame is no longer the number a shader rewrite has to leave alone.** It was byte-identical through
+every slice that touched the shader generator, and the volume refactor is the first change to move it — which is the
+point rather than a loss: a channel's plumbing and a document's geometry are separate concerns, and a slice that
+changes the geometry was always going to move this picture. What the hash is for now is what the other eight are for,
+the next slice's number to measure against.
 
 ## What the terrace asked, and the answer the vocabulary already gave (2026-10-27)
 
@@ -1859,6 +1869,21 @@ With volumes the same courtyard is **trivial**:
 **The shell work is deleted, not merged.** `feature/building-patio3` carried a working courtyard emitter against the
 shell; with the model changing underneath it, keeping it would be keeping a careful solution to the abandoned
 problem. It is removed from the tree and the handoff points at the new plan instead.
+
+**What the implementation measured against that list (2026-10-27, branch `feature/building-vol2`):**
+
+1. **Item 1 did not apply: no `SolidId` variant was needed.** `SolidId::Mass(MassId)` is the wall ring and the
+   plate is authored as a `Slab`, which the crate already had as a first-class volume — `derive::floor_slab` derives
+   one from a mass, and two scenes were already drawing their plates that way. The compiler-enforced audit the list
+   predicted shrank to zero sites, because only the mass was pretending not to be a volume.
+2. **A ring is a torus, so the sphere check has to count handles**, and one of them is the ring's own: measured, a
+   mass with no opening reads `0`, one window `-2`, two windows `-4`, and **a doorway reads `0` as well — it is a
+   notch in the wall's section and not a tunnel through it**, because it leaves a lintel and there is no material
+   under its sill for a tunnel to be cut from. The count is therefore over the openings that are *not* doorways.
+3. **A doorway notches the base, and a sill standing on the wall's own floor is not a face of its own.** Both halves
+   land together: the base strip is not drawn across the opening, and the sill reveal is not drawn either, because the
+   two name the same four points and drawing both is the same face twice — measured as `SolidNonManifold` with an odd
+   Euler characteristic, which is an orientation failure and nothing else.
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton

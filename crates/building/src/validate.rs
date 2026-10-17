@@ -1023,6 +1023,12 @@ fn check_roofs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 /// outliving its assumption — measured, on the openings slice's acceptance wall, where the geometry
 /// had just been proved right (`loops 0`, manifold, volume exact) and this was the one violation left.
 ///
+/// **An opening is that handle unless it stands on the wall's own floor**, which makes it a doorway
+/// and a notch in the wall's section rather than a tunnel through it: it leaves a lintel, the ring is
+/// still a ring, and the characteristic does not move. [`is_doorway`] is the document's own reading of
+/// that, and the volume model's base notch is what makes it true — there is no material under a
+/// doorway's sill for a tunnel to be cut from.
+///
 /// A hole is counted from the **document** and only when it resolves: an opening whose slot the grid
 /// no longer holds builds nothing at all (that mass does not splice, and `DidNotExpand` says so), so
 /// counting it here would name a shape the mesh does not have.
@@ -1048,17 +1054,52 @@ fn check_solid(
         SolidId::Mass(mass) => skeleton
             .faces_of(mass)
             .iter()
-            .map(|face| skeleton.apertures_of(*face).len())
+            .map(|face| {
+                skeleton
+                    .apertures_of(*face)
+                    .into_iter()
+                    .filter(|(_, extents)| {
+                        !is_doorway(&skeleton.masses[mass.0], face.edge, extents)
+                    })
+                    .count()
+            })
             .sum(),
         // A part, a wall and a roof are cut by nothing: a hole is authored against a mass's own wall,
         // a template's masses are its own private document, and a wall's own box is solid.
         SolidId::Roof(_) | SolidId::Part(_) | SolidId::Wall(_) | SolidId::Slab(_) => 0,
     };
-    let expected = 2 - 2 * holes as i64;
+    // **A mass's wall ring is one handle before any opening is cut.** The volume model makes a mass a closed tube: its
+    // inner and outer surfaces meet at the wall top and again at the base ring, so the solid is a torus and a torus is
+    // `2 - 2g = 0`. The shell it replaced was a box, because its floor disc capped the inner surface and left exactly
+    // one join at the wall top. Measured on the shed: `-6` for a mass with three openings, which is `2 - 2(1 + 3)`.
+    // A part's solid is a template's own mass, expanded the same way, so it is a ring too. A roof, a wall and a slab
+    // are boxes and are cut by nothing.
+    let ring = i64::from(matches!(solid, SolidId::Mass(_) | SolidId::Part(_)));
+    let expected = 2 - 2 * (ring + holes as i64);
     let euler = built.euler_characteristic_of(&faces);
     if euler != expected {
         violations.push(Violation::SolidNotASphere { solid, euler });
     }
+}
+
+/// Returns whether an opening stands on the wall's own floor, which is a doorway.
+///
+/// # Invariants
+///
+/// **A doorway is a notch in the wall's section and not a tunnel through it.** It leaves a lintel
+/// above its head, so the wall's ring is still a ring and the mass's characteristic does not move —
+/// where the ring's base is notched across the opening, there is no material under the sill to make
+/// a tunnel of it. This is the document-level form of the question the expander answers on its
+/// welded indices, and the two agree because both lines are straight between the same two nodes.
+///
+/// **Both of the face's own nodes must stand at the sill**, which is the whole test: a ground line
+/// that reaches the sill at one jamb and not the other crosses it, and the expander refuses that
+/// before an opening is ever cut. An opening the expander refused does not reach here, so a sill
+/// below the ground line is not a case this has to answer.
+fn is_doorway(mass: &Mass, edge: usize, extents: &Extents) -> bool {
+    let count = mass.outline.len();
+    let next = (edge + 1) % count;
+    mass.outline[edge].elevation == extents.low && mass.outline[next].elevation == extents.low
 }
 
 /// Which of a solid's surfaces a coverage reading is taken over.

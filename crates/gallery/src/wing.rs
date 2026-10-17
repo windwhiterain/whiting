@@ -76,6 +76,29 @@ pub fn document_at(width: f32, depth: f32, wing_depth: f32) -> Building {
         .with_slab(plan.slab),
     )
     .expect("the host outline takes a station off its corners");
+    // **A plate for each arm**, over its own footprint, so both wall rings overlap their floors.
+    for (arm, x0, z0, x1, z1) in [
+        (host, -width * 0.5, -depth * 0.5, width * 0.5, depth * 0.5),
+        (
+            wing,
+            width * 0.5 - plan.wall,
+            -wing_depth * 0.5,
+            width * 0.5 + width,
+            wing_depth * 0.5,
+        ),
+    ] {
+        skeleton.slabs.push(
+            building::slab::Slab::new(
+                rectangle(x0, z0, x1, z1)
+                    .into_iter()
+                    .map(|node| node.position)
+                    .collect(),
+                -plan.slab,
+                0.0,
+            )
+            .with_host(arm),
+        );
+    }
     for arm in [host, wing] {
         if let Some(roof) = derive::gable_roof(
             arm,

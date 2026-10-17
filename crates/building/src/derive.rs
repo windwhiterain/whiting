@@ -150,6 +150,24 @@ pub fn starter(starter: &Starter) -> Building {
     let mass = Mass::new(rectangle(starter.width, starter.depth), starter.height)
         .with_wall(starter.wall)
         .with_slab(starter.slab);
+    // **The plate the mass stands on, now its own solid.** It spans the whole footprint from one plate thickness
+    // below the outline's elevation up to it, so the wall ring overlaps it through the wall's own footprint — the
+    // property that makes a volume model work: two closed solids may intersect, and no shared edge is created where
+    // the floor meets the wall. `derive::floor_slab` is not the tool here: it is for an **upper** floor, seated on the
+    // inner loop with its top above the outline's elevation, and this plate's top is the elevation itself.
+    let plate = {
+        let lowest = mass
+            .outline
+            .iter()
+            .map(|node| node.elevation)
+            .fold(f32::INFINITY, f32::min);
+        Slab::new(
+            mass.outline.iter().map(|node| node.position).collect(),
+            lowest - starter.slab,
+            lowest,
+        )
+        .with_host(MassId(0))
+    };
     // The body is the first mass, which is the whole of what makes `MassId(0)` the honest host for
     // the roof below.
     let host = MassId(0);
@@ -161,7 +179,9 @@ pub fn starter(starter: &Starter) -> Building {
         // `UnattachedOverlap`, `MassHostMissing`, `RoofHostMissing`, `RoofEaveTooShort`,
         // `RoofPlaneTooShort`, `RoofCrestMissing`, and the four solid faults with
         // `FaceNotPlanar`), so a mass without a roof would be silent rather than reported.
-        return Building::new(BuildingSkeleton::new(vec![mass], Vec::new()));
+        let mut skeleton = BuildingSkeleton::new(vec![mass], Vec::new());
+        skeleton.slabs.push(plate);
+        return Building::new(skeleton);
     };
     let roof = match starter.roof {
         RoofStyle::Hip => {
@@ -188,7 +208,9 @@ pub fn starter(starter: &Starter) -> Building {
             return Building::new(skeleton);
         }
     };
-    Building::new(BuildingSkeleton::new(vec![mass], vec![roof]))
+    let mut skeleton = BuildingSkeleton::new(vec![mass], vec![roof]);
+    skeleton.slabs.push(plate);
+    Building::new(skeleton)
 }
 
 /// Builds the plate a flat roof is: a slab over the eave outline, `thickness` thick, seated on the eave.
