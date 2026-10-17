@@ -459,3 +459,24 @@ the reveals — a reveal's width is the wall thickness, and its two ends are cut
 between the inner and outer faces. The large ones are the base strip where the two loops' stations are spaced
 differently. Both are "a quad is not planar", not "the surface is broken", which is why six scenes pass the closure and
 topology checks.
+
+## Every warped face is `WallBase`, and the cause is the stations' elevations (2026-10-27)
+
+A one-line instrument in `validate` (`WARP {:?} departure {departure}` behind `SHED_DEBUG`) named them on the shed:
+
+```text
+WARP Mass(MassId(0), WallBase) departure 0.15704492
+WARP Part { placement: 0, surface: Mass(MassId(0), WallBase) } departure 0.01
+WARP Part { placement: 1, surface: Mass(MassId(0), WallBase) } departure 0.025000095
+```
+
+All three are the base strip — and the strip's corners are all supposed to lie at the wall's own elevation, which is
+what made the last fix work. **So the strip's warped corner is not one the strip computes: it is a station's point.**
+`split_loop` returns the loop's points with each cut station interpolated in, and a station carries the elevation of
+the **hole** it belongs to — a door's jamb is at the door's sill, not at the wall's base. The strip then takes four
+corners that are three at the base and one at a sill, and the quad is warped by exactly the sill's height.
+
+**The next step is therefore not in the strip but in `split_loop`:** a station that the **base** reads should carry the
+base's elevation, and the same station read by a **reveal** should carry the reveal's. That is the "one description,
+two readers" problem this whole slice has been circling, now with a name and a number: three warps, one a sill's
+height, two the tops of jambs.
