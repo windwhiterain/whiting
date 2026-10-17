@@ -43,7 +43,9 @@ pub mod scalar;
 pub mod section;
 pub mod sweep;
 
-pub use curve::{Bezier, Curve, CurveError, Frame, Jet, Station};
+pub use curve::{
+    Bezier, CLOSEST_SAMPLES, CLOSEST_STEPS, Closest, Curve, CurveError, Frame, Jet, Station,
+};
 pub use loft::Loft;
 pub use math::{Vec2, Vec3};
 pub use scalar::{Scalar, ScalarError};

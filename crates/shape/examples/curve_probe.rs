@@ -24,6 +24,10 @@ fn main() {
     checks.push(("closed loop", a_closed_planar_loop_has_no_holonomy()));
     checks.push(("closed ends", a_closed_curve_ends_where_it_starts()));
     checks.push(("bezier form", the_bezier_form_is_the_same_curve()));
+    checks.push(("the foot", the_foot_on_a_straight_line()));
+    checks.push(("past the end", a_point_past_the_end_answers_the_end()));
+    checks.push(("at a knot", a_point_at_a_knot_answers_the_knot()));
+    checks.push(("against a denser search", the_search_against_a_denser_one()));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -369,4 +373,145 @@ fn scaled(vector: Vec3, factor: f32) -> Vec3 {
 
 fn add(left: Vec3, right: Vec3) -> Vec3 {
     [left[0] + right[0], left[1] + right[1], left[2] + right[2]]
+}
+
+/// On a straight line the nearest point is the perpendicular foot, which has a closed form.
+///
+/// # Invariants
+///
+/// The line runs along `+x` from the origin, so the foot of a point at `(x, y, z)` is at arc-length fraction
+/// `x / length`, and the distance there is `√(y² + z²)`. The control is a point whose foot is *not* at a
+/// sample: it is at 0.37, between two of the search's own samples.
+///
+/// **The distance is exact and the fraction is only as exact as the parameterisation**: the foot's distance
+/// agrees with the closed form to a rounding, while its `t` differs by the same amount `at` itself differs,
+/// because `at` interpolates inside a segment's arc table rather than inverting the cubic. The row measures that
+/// separately instead of blaming the search for it.
+fn the_foot_on_a_straight_line() -> bool {
+    let line = straight();
+    let length = line.length();
+    let query = [1.48f32, 0.9, -0.35];
+    let found = line.closest(query);
+    let expected_t = 1.48 / length;
+    let expected_distance = (0.9f32 * 0.9 + 0.35 * 0.35).sqrt();
+    let by_parameter = line.at(expected_t);
+    let parameter_error = length3(subtract(by_parameter, [1.48, 0.0, 0.0]));
+    println!("\n# the foot on a straight line");
+    println!(
+        "  a point at (1.48, 0.9, -0.35) against a line of {:?}: t {:.6} against {expected_t:.6}, distance {:.6} against {expected_distance:.6}",
+        length, found.t, found.distance
+    );
+    println!(
+        "  and `at({expected_t:.6})` lands {parameter_error:.3e} from the point that fraction names, so a difference in t is not the parameterisation's"
+    );
+    println!(
+        "  near a foot the distance is quadratic, so f32 cannot pin the fraction better than about 1e-4: the distance is the exact quantity and t is only as exact as the flatness"
+    );
+    println!(
+        "  the sample step is {:.6} of the curve, so the answer is not one of the search's own samples",
+        1.0 / (line.segment_count() * whiting_shape::CLOSEST_SAMPLES) as f32
+    );
+    (found.distance - expected_distance).abs() < 1e-6 && (found.t - expected_t).abs() < 5e-4
+}
+
+/// A point past the tip answers the tip, exactly.
+fn a_point_past_the_end_answers_the_end() -> bool {
+    let line = straight();
+    let end = line.at(1.0);
+    let query = [end[0] + 1.5, end[1] + 0.4, end[2]];
+    let found = line.closest(query);
+    let expected = length3(subtract(found.position, query));
+    println!("\n# a point past the end");
+    println!(
+        "  the answer is t {:.6} (the tip is {:.6}) at a distance of {:.6}, which is the distance to the tip: {:.6}",
+        found.t,
+        line.at(1.0)[0],
+        found.distance,
+        expected
+    );
+    println!(
+        "  the control is the tip's own position: `at(1)` is the last knot exactly, so this is not a search result"
+    );
+    found.t > 0.999_999 && (found.distance - expected).abs() < 1e-6
+}
+
+/// A query point on a knot answers that knot: the closest point is where the curve itself is.
+fn a_point_at_a_knot_answers_the_knot() -> bool {
+    let curve = s_curve();
+    let fractions = curve.knot_parameters();
+    let knot = fractions[2];
+    let query = curve.at(knot);
+    let found = curve.closest(query);
+    println!("\n# a point on a knot");
+    println!(
+        "  the middle knot is at {knot:.6} and the search answers {:.6}, at a distance of {:.3e}",
+        found.t, found.distance
+    );
+    println!(
+        "  the control is the knot's fraction: a search that stopped at its nearest sample would answer the sample instead"
+    );
+    (found.t - knot).abs() < 1e-4 && found.distance < 1e-5
+}
+
+/// The budget is enough: the search agrees with one thirty-two times denser over a curve that bends.
+fn the_search_against_a_denser_one() -> bool {
+    let curve = spine();
+    // The reference is the same method with far more samples and steps, which answers whether the stated
+    // budget is enough rather than whether the method is the method.
+    let reference = |point: Vec3| -> f32 {
+        let samples = curve.segment_count() * whiting_shape::CLOSEST_SAMPLES * 32;
+        let mut best = 0.0f32;
+        let mut best_distance = f32::MAX;
+        for index in 0..=samples {
+            let t = index as f32 / samples as f32;
+            let distance = length3(subtract(curve.at(t), point));
+            if distance < best_distance {
+                best_distance = distance;
+                best = t;
+            }
+        }
+        let step = 1.0 / samples as f32;
+        let mut low = (best - step).max(0.0);
+        let mut high = (best + step).min(1.0);
+        for _ in 0..60 {
+            let first = high - (high - low) * 0.618_034f32;
+            let second = low + (high - low) * 0.618_034f32;
+            if length3(subtract(curve.at(first), point))
+                < length3(subtract(curve.at(second), point))
+            {
+                high = second;
+            } else {
+                low = first;
+            }
+        }
+        length3(subtract(curve.at(0.5 * (low + high)), point))
+    };
+    let mut worst = 0.0f32;
+    let mut queries = 0;
+    for index in 0..40 {
+        let angle = index as f32 * 0.157_079_6;
+        let point = [
+            1.4 + 0.9 * angle.cos(),
+            1.0 + 0.9 * angle.sin(),
+            0.6 + 0.4 * angle.cos(),
+        ];
+        let found = curve.closest(point).distance;
+        worst = worst.max((found - reference(point)).abs());
+        queries += 1;
+    }
+    println!("\n# the budget against a denser search");
+    println!(
+        "  {queries} query points around a curve of {} segments · worst distance error {worst:.3e} against a search with {} samples per segment",
+        curve.segment_count(),
+        whiting_shape::CLOSEST_SAMPLES * 32
+    );
+    println!(
+        "  the stated budget is {} samples per segment and {} steps",
+        whiting_shape::CLOSEST_SAMPLES,
+        whiting_shape::CLOSEST_STEPS
+    );
+    println!(
+        "  the control is the near miss: an error of zero would say the two searches are the same search, which they are not"
+    );
+    worst < 1e-4
 }

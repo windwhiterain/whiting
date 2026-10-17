@@ -1114,12 +1114,48 @@ the same unification `Section` made of a circle and a blade.
    forces differ. That is what makes a field a *scene's* decision — the light in a room, the wind on a ridge —
    without a second species for every weather.
 
+**The envelope and the report.** V4's envelope is `envelope::Envelope { radius: Scalar, section: Section }`: the
+station of a world point is where the trunk comes nearest to it (`shape::Curve::closest`, whose three owed numbers
+are in `shape-primitives.md`), the direction is read in the trunk's own `(normal, binormal)` plane, and the
+question *"is this outside the crown?"* is one query and one division. The **refined** form is the same sentence
+with `radius(t)` replaced by `Section::reach` in the point's own direction — an ellipse answers exactly and an
+outline answers where the ray first crosses an edge — so refining is the data change V4 asked for.
+
+| invariant | reading |
+| --- | --- |
+| the radius is the envelope | at one station the law allows 0.450000: a point 0.1 inside reads **0.000e0**, on the boundary **5.364e-6**, a metre beyond **1.000042**, and the trunk's own axis **0.000e0** |
+| a section refines it | a circle of radius 1 and the same law as a 2:1 section read **0.500000** and **0.000000** at 1.5 across the normal, and **0.500000** and **1.000000** at 1.5 along the binormal |
+| the trim pulls tips in | **5** nodes trimmed, **2.549793** m of length taken, the tallest tip **2.234609 → 2.200000**, and the trimmed nodes' worst exceedance after the trim **3.308e-6**; **4** nodes pressed and reported |
+| an unsavable node is pressed | a crown narrower than the trunk: **0** trimmed, **9** pressed, and the bough's length still **1.054910** |
+| the report agrees with a walk | the widest band reads **1.061403** and a walk over every tip reads **1.061403** |
+
+**Three decisions the envelope forced:**
+
+1. **The trim writes length nudges and applies them through `ops`.** A trimmed plant is an *edited* plant: every
+   number the trim chose is a `Change::Offset` at a handle, so the report says how much came off each one and a
+   caller can read, keep or undo the list. The alternative — moving spines directly — would be a second editing
+   path, which is exactly what `selector`/`ops` exist to prevent.
+2. **A trim cannot make a branch vanish.** V4's sentence taken literally scaled a bough from **1.054910 m** to
+   **0.000007 m**: a solid with no length and a node nobody meant to keep. A node that would have to go below a
+   tenth of its length is **pressed** instead — reported to its author, who decides whether it is pruned.
+3. **The model is linear and the result is measured.** A length scale moves a node's tip along the segment from its
+   origin, which is exact without fields and *approximate* with them, because a field bends a shorter spine
+   differently. So the trim runs one pass on the model and then re-reads every tip, which is why `Trim::pressed`
+   exists rather than a claim that the crown now fits.
+
+**The report** is P1's owed item: `report::report(plant, detail, fields, envelope)` returns the live node count,
+the wood's solids, the triangles, the leaf instances and their groups, and the crown band by band — each band's
+station, what the plant reaches there and what the envelope allows. `worst_exceedance()` is the one number a
+caller compares against zero, and the crown is measured on **every live node's tip**, in the trunk's own
+arc-length fractions, which is the same space the radius law is written in.
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before
 the nudges so that a nudge on a baked node applies to the authored spine rather than being thrown away by it.
 `edit_probe` reads both: a batch with an offset and a prune on one node lands 1, refuses 1, and the node's radius
 nudge is still `0.000000`.
+
 **Report, never repair** has a shape: `EditReport { applied, problems }` with `Problem::{Orphaned, Pruned,
 OutOfRange, NotPositive}`, each naming the handle and, for a value, the number it would have had. Nothing is
 clamped: a station of `1.71` is refused rather than pinned to `1.0`, and a length of `−99.5` is refused rather

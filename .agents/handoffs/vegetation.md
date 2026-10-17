@@ -39,6 +39,16 @@ plant.spine(&handle);                           // the node's spine in the world
 let plant = species::grow(&rule, seed);         // deterministic in (rule, seed), node for node
 let grafted = species::graft(&mut plant, &derive::bamboo_rule(), &bough, 0.2, 0.75);  // one more of the rule's
 
+// The crown a plant may reach, and the trim that fits it there without losing a number.
+let crown = envelope::Envelope::radial(&[(0.0, 0.55), (0.5, 0.45), (1.0, 0.35)])
+    .with_section(shape::Section::ellipse(1.3, 1.0));
+crown.outside(&plant, [x, y, z]);                  // 0 inside, the radial excess beyond it
+let trim = envelope::trim(&mut plant, &crown);     // Trim { trimmed: Vec<(Handle, f32)>, pressed: Vec<(Handle, f32)> }
+
+// What the plant arrived at: counts, and the crown against the envelope in the trunk's own fractions.
+let report = report::report(&plant, Detail::DEFAULT, &species.fields, Some(&crown));
+report.worst_exceedance();                         // zero or negative when the plant fits
+
 let expansion = expand::expand(&plant, Detail::DEFAULT, &species.fields);
 expansion.wood;                                 // one Wood { handle, loft } per live node
 expansion.leaves;                               // one LeafGroup { node, template, leaves } per node
@@ -73,6 +83,17 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 
 ## Traps
 
+- **`Curve::closest` pins the distance exactly and the fraction only as well as the distance is flat.** Near a foot
+  the distance is quadratic in `t`, so `f32` stops resolving the fraction at about `1e-4` on a metre-scale curve.
+  An envelope's `outside` therefore reads a few millionths on its own boundary, and a probe that demanded an exact
+  zero there would be demanding something `f32` cannot give.
+- **The trim writes length nudges through `ops`**, so a trimmed plant is an edited plant: every amount is a
+  `Change::Offset` at a handle. It runs on a **linear** model of the tip, which is exact without fields and
+  approximate with them, and then re-reads every tip — that is why `Trim::pressed` exists.
+- **A trim cannot make a branch vanish.** V4's sentence taken literally took a bough from 1.054910 m to
+  0.000007 m; a node that would have to go below a tenth of its length is pressed and reported instead.
+- **The trunk is not trimmed**: it is the envelope's own axis, so shortening it would move the crown rather than
+  fit it.
 - **A field is applied where a spine is drawn, and only there.** `Plant::shape` folds the plant's `fields` over
   `Node::spine_now`, and `spine`, `surface` and `placement` all read it — so a field bends a parent and its
   children follow. A new reader that reaches for `Node::spine_now` directly bypasses every field.
@@ -131,6 +152,8 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 ## How to verify
 
 ```text
+cargo run -p whiting-shape --example curve_probe           # 12 invariants, closest included
+cargo run -p whiting-shape --example section_probe         # 8 invariants, each included
 cargo run -p whiting-shape --example scalar_probe          # 8 invariants, the offset row included
 cargo run -p whiting-vegetation --example tree_probe       # 5
 cargo run -p whiting-vegetation --example plant_probe      # 8
@@ -139,6 +162,7 @@ cargo run -p whiting-vegetation --example edit_probe       # 8, the hand
 cargo run -p whiting-vegetation --example select_probe     # 8, the brush
 cargo run -p whiting-vegetation --example species_probe    # 8, the generator
 cargo run -p whiting-vegetation --example field_probe      # 8, the fields
+cargo run -p whiting-vegetation --example envelope_probe   # 6, the envelope, the trim and the report
 cargo run -p whiting-device-rasterize --example render -- bamboo out/bamboo
 cargo run -p whiting-device-rasterize --example render -- bamboo_wind out/bamboo-wind
 cargo run -p whiting-device-rasterize --example render -- sweep out/sweep

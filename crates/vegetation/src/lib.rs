@@ -34,6 +34,7 @@
 //! [`.agents/proposals/agentic-vegetation-generation.md`](../../../.agents/proposals/agentic-vegetation-generation.md).
 
 pub mod derive;
+pub mod envelope;
 pub mod expand;
 pub mod field;
 pub mod handle;
@@ -41,6 +42,7 @@ pub mod leaf;
 pub mod node;
 pub mod ops;
 pub mod plant;
+pub mod report;
 pub mod rng;
 pub mod selector;
 pub mod species;

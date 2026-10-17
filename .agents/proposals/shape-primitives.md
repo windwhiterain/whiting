@@ -496,8 +496,14 @@ recorded so it is not re-derived.
    arc-length *inversion* was, and it landed one bisection step (`1 − 2⁻³³`) short of the end. `locate` now
    answers `t = 0` and `t = 1` with the segments' own ends, so a closed loop's seam closes bit for bit
    (`curve_probe`'s *closed ends* row) and a swept envelope's first and last rings coincide.
-4. **How far does `closest` go?** — **Not yet, and the obligation is named rather than deferred
-   silently.** Its first caller is the envelope's trimming law; when it lands the answer owes (a) its
-   per-segment sample budget, (b) a measured worst-case distance error, and (c) a stated answer for a point
-   whose nearest place is a knot, where two segments meet. A query whose accuracy is not printed is a query
-   a caller will trust wrongly.
+4. **How far does `closest` go?** — **Landed, with the three answers it owed.** `Curve::closest` brackets its
+   answer with [`CLOSEST_SAMPLES`] = **16** positions per segment and narrows that bracket with
+   [`CLOSEST_STEPS`] = **24** golden-section steps on squared distances. The measured worst departure from a
+   search with **32×** the samples is **2.384e-7** over 40 query points on a four-segment curve, and a point on a
+   knot answers that knot (**5.962e-7** away). **The distance is the exact quantity and the fraction is not**: near
+   a foot the distance is quadratic in `t`, so once the squared distance stops changing at `f32`'s precision the
+   fraction can still move — a point 2 cm from a 4 m line pins its foot to **4.3e-5** of the curve and no search in
+   `f32` can do better. A query whose accuracy is not printed is a query a caller will trust wrongly, so both
+   numbers are in `curve_probe`. `Section::reach` is the same proposal's other half: an ellipse answers exactly and
+   an outline answers where the ray first crosses an edge, which is what makes V4's *refined* envelope a data
+   change.

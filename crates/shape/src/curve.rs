@@ -112,6 +112,29 @@ pub struct Station {
     pub frame: Frame,
 }
 
+/// The nearest point on a curve to somewhere else: what a search is for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Closest {
+    /// The arc-length fraction of the nearest point.
+    pub t: f32,
+    /// The nearest point itself.
+    pub position: Vec3,
+    /// How far the query point is from it.
+    pub distance: f32,
+}
+
+/// How many positions per segment [`Curve::closest`] brackets its answer with.
+pub const CLOSEST_SAMPLES: usize = 16;
+
+/// How many golden-section steps [`Curve::closest`] narrows the bracket with.
+pub const CLOSEST_STEPS: usize = 24;
+
+/// The squared distance between two points: what a nearest-point search compares.
+fn squared_distance(one: Vec3, other: Vec3) -> f32 {
+    let step = subtract(one, other);
+    dot3(step, step)
+}
+
 /// One segment as the cubic Bezier every exporter speaks.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bezier {
@@ -362,6 +385,61 @@ impl Curve {
         *self.cumulative.last().unwrap_or(&0.0)
     }
 
+    /// The nearest point on the curve to `point`.
+    ///
+    /// # Invariants
+    ///
+    /// **A bracketed search with both budgets stated**: [`CLOSEST_SAMPLES`] positions per segment are compared
+    /// through [`Curve::at`], so they are evenly spaced in arc length; the best one brackets the answer, and
+    /// [`CLOSEST_STEPS`] golden-section steps narrow the bracket on the position's own distance. A query point
+    /// beyond either end answers that end, exactly, because `at(0)` and `at(1)` are the knots.
+    ///
+    /// **The error is measured and not promised.** `curve_probe` reads the foot on a straight line against its
+    /// closed form, the answer at a knot, and the worst departure from a denser search on a curve that bends —
+    /// which is the shape of the answer this crate owes a caller (`closest` was deferred with that obligation).
+    ///
+    /// **The distance is the exact quantity and the fraction is not.** Near a foot the distance is *quadratic* in
+    /// `t`, so once the squared distance stops changing at `f32`'s own precision the fraction can still move: a
+    /// point 2 cm from a 4 m line pins its foot to about `1e-4` of the curve and no search in `f32` can do better.
+    /// The comparisons are therefore made on squared distances, which is one rounding better than on their roots.
+    pub fn closest(&self, point: Vec3) -> Closest {
+        let samples = self.segment_count().max(1) * CLOSEST_SAMPLES;
+        let mut best = 0.0f32;
+        let mut best_squared = f32::MAX;
+        for index in 0..=samples {
+            let t = index as f32 / samples as f32;
+            let squared = squared_distance(self.at(t), point);
+            if squared < best_squared {
+                best_squared = squared;
+                best = t;
+            }
+        }
+        let step = 1.0 / samples as f32;
+        let mut low = (best - step).max(0.0);
+        let mut high = (best + step).min(1.0);
+        // Golden section: the distance to a point is unimodal inside a bracket narrow enough to see one
+        // minimum, and shrinking the longer side by the same ratio each step needs no derivative.
+        const RATIO: f32 = 0.618_034;
+        for _ in 0..CLOSEST_STEPS {
+            let first = high - (high - low) * RATIO;
+            let second = low + (high - low) * RATIO;
+            let one = squared_distance(self.at(first), point);
+            let other = squared_distance(self.at(second), point);
+            if one < other {
+                high = second;
+            } else {
+                low = first;
+            }
+        }
+        let t = clamp(0.5 * (low + high), 0.0, 1.0);
+        let position = self.at(t);
+        Closest {
+            t,
+            position,
+            distance: length3(subtract(position, point)),
+        }
+    }
+
     /// The arc-length fraction of each knot, `0` first and `1` last.
     ///
     /// # Invariants
@@ -392,8 +470,7 @@ impl Curve {
     }
 
     /// The frame at an arc-length fraction.
-    ///
-    /// # Invariants
+    ///    /// # Invariants
     ///
     /// Between two frame samples the normal is transported from the earlier one in a single step, so the
     /// answer is continuous in `t` and does not depend on which side of a sample `t` fell.

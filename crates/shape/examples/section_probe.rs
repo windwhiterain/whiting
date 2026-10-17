@@ -31,6 +31,7 @@ fn main() {
     checks.push(("L outline", l_shape_ring()));
     checks.push(("errors refused", errors_are_refused()));
     checks.push(("flat is an ellipse", flat_is_an_ellipse()));
+    checks.push(("reach", reach_in_a_direction()));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -431,4 +432,56 @@ fn report(result: &Result<Section, SectionError>) -> String {
         Err(SectionError::RepeatedPoint) => "RepeatedPoint".to_string(),
         Ok(_) => "a section, which it must not be".to_string(),
     }
+}
+
+/// How far a section reaches in a direction: the closed form for an ellipse, the first edge for an outline.
+///
+/// # Invariants
+///
+/// A unit circle reaches one in every direction; a 2:1 ellipse reaches its two half axes on the axes and
+/// `1 / √(0.5/4 + 0.5)` on the diagonal; a square outline reaches one on an axis and `√2` at its corner; a flat lens
+/// reaches its half width and its thickness. The control is a direction of no length, which answers zero rather
+/// than a guess.
+fn reach_in_a_direction() -> bool {
+    let circle = Section::circle();
+    let mut worst_circle = 0.0f32;
+    for step in 0..16 {
+        let angle = step as f32 * std::f32::consts::TAU / 16.0;
+        let reach = circle.reach([angle.cos(), angle.sin()]);
+        worst_circle = worst_circle.max((reach - 1.0).abs());
+    }
+    let ellipse = Section::ellipse(2.0, 1.0);
+    let along_x = ellipse.reach([1.0, 0.0]);
+    let along_y = ellipse.reach([0.0, 1.0]);
+    let diagonal = ellipse.reach([1.0, 1.0]);
+    let expected_diagonal = 1.0 / (0.5f32 / 4.0 + 0.5).sqrt();
+    let flat = Section::flat(1.0, 0.1);
+    let flat_wide = flat.reach([1.0, 0.0]);
+    let flat_thin = flat.reach([0.0, 1.0]);
+    let square = Section::outline(&[[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]])
+        .expect("the square is a loop");
+    let square_axis = square.reach([1.0, 0.0]);
+    let square_corner = square.reach([1.0, 1.0]);
+    let nothing = circle.reach([0.0, 0.0]);
+    println!("\n# how far a section reaches");
+    println!("  a unit circle, 16 directions: worst |reach - 1| {worst_circle:.3e}");
+    println!(
+        "  a 2:1 ellipse: {along_x:.6} along x, {along_y:.6} along y, {diagonal:.6} on the diagonal against {expected_diagonal:.6}"
+    );
+    println!("  a flat lens of half width 1 and thickness 0.1: {flat_wide:.6} and {flat_thin:.6}");
+    println!(
+        "  a square outline: {square_axis:.6} on an axis and {square_corner:.6} at its corner, which is the √2 the ray travels"
+    );
+    println!(
+        "  a direction of no length answers {nothing:.6}, and the control is that it is not one"
+    );
+    worst_circle < 1e-6
+        && (along_x - 2.0).abs() < 1e-6
+        && (along_y - 1.0).abs() < 1e-6
+        && (diagonal - expected_diagonal).abs() < 1e-6
+        && (flat_wide - 1.0).abs() < 1e-6
+        && (flat_thin - 0.1).abs() < 1e-6
+        && (square_axis - 1.0).abs() < 1e-6
+        && (square_corner - std::f32::consts::SQRT_2).abs() < 1e-6
+        && nothing == 0.0
 }

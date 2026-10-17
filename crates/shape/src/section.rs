@@ -212,8 +212,53 @@ impl Section {
         self.track().at(v.rem_euclid(1.0))
     }
 
-    /// `around` points around the loop, point `i` at `v = i / around`.
+    /// How far the section reaches from its own origin in a direction.
     ///
+    /// # Invariants
+    ///
+    /// - **The section's own plane is the frame it is swept in**, so a direction is read in `(x, y)`: the
+    ///   section's `+x` half axis is on `+x`, as [`Section::at`]'s first point is.
+    /// - **An [`Section::Ellipse`] answers exactly**: the ray `t · d` is on the ellipse where
+    ///   `(t·d.x / x)² + (t·d.y / y)² = 1`, so the reach is `1 / √((d.x/x)² + (d.y/y)²)` — no sampling, and the
+    ///   same formula covers a circle, a flat lens and any aspect ratio.
+    /// - **An [`Section::Outline`] answers where the ray first crosses an edge**, walked in order, so a
+    ///   refined envelope costs one pass over the authored points and not a table.
+    /// - **A direction with no length answers `0.0`**, because there is no direction to answer about.
+    pub fn reach(&self, direction: Vec2) -> f32 {
+        let size = (direction[0] * direction[0] + direction[1] * direction[1]).sqrt();
+        if !size.is_finite() || size < 1.0e-9 {
+            return 0.0;
+        }
+        let unit = [direction[0] / size, direction[1] / size];
+        match self {
+            Section::Ellipse { x, y } => {
+                let one = unit[0] / x;
+                let two = unit[1] / y;
+                1.0 / (one * one + two * two).sqrt()
+            }
+            Section::Outline(outline) => {
+                let points = outline.points();
+                let mut nearest = f32::MAX;
+                for index in 0..points.len() {
+                    let start = points[index];
+                    let end = points[(index + 1) % points.len()];
+                    let edge = [end[0] - start[0], end[1] - start[1]];
+                    let base = cross(unit, edge);
+                    if base.abs() < 1.0e-12 {
+                        continue;
+                    }
+                    let reach = cross(start, edge) / base;
+                    let along = cross(start, unit) / base;
+                    if reach > 0.0 && (0.0..=1.0).contains(&along) {
+                        nearest = nearest.min(reach);
+                    }
+                }
+                if nearest == f32::MAX { 0.0 } else { nearest }
+            }
+        }
+    }
+
+    /// `around` points around the loop, point `i` at `v = i / around`.    ///
     /// # Invariants
     ///
     /// The loop is closed by the caller's wrap-around, so the last point is at
