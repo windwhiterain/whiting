@@ -356,3 +356,22 @@ shed has three openings, so one of them is being counted twice or the reveals ad
 still report `euler 0` — they are expanded by the template path, and their own closure is a separate question still
 open. A single `FaceNotPlanar { departure: 0.19 }` remains and is the strip's own warped quad wherever the two loops'
 stations disagree in a way the lengths do not show.
+
+## `SolidNotASphere` is a shell-era invariant, and the volume model must break it (2026-10-27)
+
+The readings after the flip are `euler -6` on the mass and `euler 0` on each part, and the shed's own assertion calls
+all three faults — but **`euler 0` is the correct answer for a wall ring**: a ring of wall is a torus, and a torus has
+`2 - 2g = 0`. The shell-era solid was a *box* (euler 2) because its inner and outer surfaces were one closed surface
+with the plate, and the check named "the solid is a sphere" was true of that box.
+
+**A wall volume is not a sphere, ever.** So `SolidNotASphere` cannot remain a fault in the volume model without
+flagging every wall in the project. What it has to become is a **reading with an expectation**:
+
+*`euler = 2 - 2 × <handles>`*, where a plain ring of four walls has **one** handle (the wall's own tube) and each
+opening through the ring adds another. The number is then checkable rather than merely spherical, and the acceptance
+in `scenes` becomes "the euler characteristic is what this document's openings imply" — which is exactly the kind of
+statement the crate prefers: a fact about the document, computed.
+
+**And the mass's `-6` says one more thing:** four handles where a plain ring has one, so the strip is pairing its
+**depth edges** (the `soffit[i] → floor[i]` edges) into extra loops at the stations. That is the remaining defect,
+and it is now a question of *which* handles, not *whether* the shell is closed.
