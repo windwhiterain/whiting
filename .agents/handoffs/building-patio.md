@@ -171,3 +171,9 @@ first one's triangles. The helper that turns triangles into faces has to be writ
   `SolidOpen { loops: 4 }` with `SolidNonManifold`. The faces exist and do not meet, so the next session starts from
   that branch rather than from `main`, and its first job is to close the seams: the floor ring winding, the wall
   strips orientation against it, and the paving edge where it meets the courtyard-facing strip.
+- **2026-10-27** — corners now shared: `Solid::point` interns nothing, so the plate ring, the paving and the wall
+  strips must be built from **one** set of ids. That closed three of the four seams in one edit (`loops 4 → 1`).
+  Measured windings, so the next session does not repeat them: the courtyard-facing strip and the wall top as first
+  written give **1** loop; flipping the wall top gives **3**; flipping the courtyard-facing strip gives **3**. So the
+  remaining seam is *not* in either of those — try the paving (`polygon(..., true)`), the room-facing strip, or the
+  floor ring, and remember `euler 3` is odd, so exactly one group still disagrees.
