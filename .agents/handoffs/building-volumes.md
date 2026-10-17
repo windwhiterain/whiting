@@ -418,3 +418,22 @@ The large warp fell and small ones appeared: the band is level now, and what rem
 ones (`-6 = 2 - 2(1 + 3)` handles on the mass; `0 = 2 - 2` on each part). That replacement is the next slice and it is
 a crate change, not a scene tweak: `validate` must expect `2 - 2 × (1 + openings)` for a mass and `2 - 2` for a slab,
 and every scene's own assertion follows it.
+
+## Topology is clean; what is left is warped faces (2026-10-27)
+
+The Euler check was already counting handles — `2 - 2 x holes` — and the volume model adds exactly **one**: a mass
+(and a part, whose solid is a template's own mass) is a **closed tube** now, so it is a torus before any opening is
+cut. With `ring = 1` for `Mass` and `Part`:
+
+| scene | before | after |
+| --- | --- | --- |
+| `shed` | `SolidNotASphere` x3, `FaceNotPlanar` x3 | **only `FaceNotPlanar` x3** |
+| `workshop` | `SolidOpen`, `SolidNonManifold`, `SolidNotASphere` x? | **only `FaceNotPlanar` x6** |
+
+So **no solid is open, non-manifold or wrongly counted any more.** The remaining faults are small warps: five at
+`departure = 0.01` (one centimetre) and one larger on each of the shed (`0.157`) and the workshop (`0.268`).
+
+**The 0.01 ones are almost certainly the reveals** — a reveal span whose width is the wall thickness, cut at stations
+that differ by a centimetre between the two faces. **The large ones are the base strip's quad at a station where the
+outer and inner cuts are spaced differently**, which is the same class of problem one degree higher. Neither is a
+closure fault, and both are now visible as "a quad is not planar" rather than as a hole.
