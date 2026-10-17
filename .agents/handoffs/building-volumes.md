@@ -335,3 +335,24 @@ the fix is one winding. If it is 4 (the outline's length), the strip is built fr
 `soffit_points` binding is not what the emission reads. If it is **0**, the strip is not emitted and the reason is in
 the code path between the loop and the quad — which is where the `let _ = walked; walked = true;` lines I left in while
 carving deserve a hard look: they were scaffolding, and scaffolding is exactly what can silently swallow an emission.
+
+## The strip turned round closes the mass (2026-10-27)
+
+A quad's base strip (`soffit[edge] → soffit[next] → floor[next] → floor[edge]`) makes the mass closed:
+
+| reading | before the flip | after |
+| --- | --- | --- |
+| `SolidOpen` | `loops: 2` | **gone** |
+| `SolidNonManifold` | present | **gone** |
+| `SolidNotASphere` | `euler: -6` | `euler: -6` (still) |
+| `FaceNotPlanar` | 1 × 0.19 | 1 × 0.19 |
+
+**Why the flip is right, and how it was reached without guessing:** `BASES 20 for a loop of 10` said the strip was
+emitted with the right count, the four ids said it shared vertices with the walls, and the walls' own bottom edge
+runs `base[next] → base[edge]` — so the strip had to run the **other** way to pair. Three measurements, one flip.
+
+**What remains is not closure but counting.** `euler -6` on a closed surface means the solid has four handles, and the
+shed has three openings, so one of them is being counted twice or the reveals add a handle of their own. The parts
+still report `euler 0` — they are expanded by the template path, and their own closure is a separate question still
+open. A single `FaceNotPlanar { departure: 0.19 }` remains and is the strip's own warped quad wherever the two loops'
+stations disagree in a way the lengths do not show.
