@@ -1,75 +1,107 @@
-//! The courtyard's question: **can a mass be concave, and can it have a hole?**
+//! The concave shapes, measured as a matrix rather than one case.
 //!
-//! # Two things are being asked
+//! # What this pins
 //!
-//! 1. **A hole.** A courtyard closed on all four sides is a room whose plan is a ring, and a `Mass` is authored as
-//!    **one simple polygon** — a ring is not simple, so a closed courtyard is not expressible by construction. What
-//!    *is* expressible is a courtyard **open on one side**: a U-shaped outline.
-//! 2. **A concave outline.** A U has two reflex corners, and the crate's walls, miters, slab, reveals and roof all
-//!    read the outline — so whether a U expands into one watertight solid is a real question, not a formality.
+//! `courtyard_probe` measured one U-shaped mass and found it refused; `courtyard_widths` proved the refusal was a
+//! defect and not a boundary, and the strict crossing test fixed it. This probe is the record of what the fix
+//! bought: **three concave plans the crate could not draw before**, each with the wall the crate would use for it.
 //!
-//! This probe measures the second, because the first is a vocabulary answer rather than a measurement.
+//! - **U** — a courtyard open to the north: two reflex corners at the mouth.
+//! - **L** — a wing off a square: one reflex corner.
+//! - **porch** — a shallow notch two metres deep: the case a cottage's front door wants.
+//!
+//! Each must report **no violations, a manifold solid and zero boundary loops**. A volume is printed for the
+//! record rather than asserted: what makes a solid a solid is the first three readings, and the volume is what a
+//! later change would move if it moved the geometry.
 //!
 //! Run with `cargo run -p whiting-building --example courtyard_probe`.
 
 use whiting_building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, SolidId};
 
-/// Returns a U-shaped outline: 10 × 10 outside, with a 4 × 6 courtyard open to the north.
-///
-/// The nodes run clockwise from the south-west corner, up the west side, round the courtyard's three sides, and
-/// back down the east side — eight nodes, of which the two at the courtyard's mouth are reflex.
-fn u_shape() -> Vec<PlanNode> {
-    let elevation = 0.0;
-    [
-        [-5.0, -5.0],
-        [5.0, -5.0],
-        [5.0, 5.0],
-        [2.0, 5.0],
-        [2.0, -1.0],
-        [-2.0, -1.0],
-        [-2.0, 5.0],
-        [-5.0, 5.0],
-    ]
-    .into_iter()
-    .map(|corner| PlanNode::new(corner, elevation))
-    .collect()
+/// Returns an outline from plan corners at one elevation.
+fn outline(corners: &[[f32; 2]]) -> Vec<PlanNode> {
+    corners
+        .iter()
+        .map(|corner| PlanNode::new(*corner, 0.0))
+        .collect()
 }
 
-fn main() {
+/// Answers whether one concave plan expands into one watertight solid.
+fn measure(label: &str, corners: &[[f32; 2]], wall: f32) {
     let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![Mass::new(u_shape(), 3.2).with_wall(0.3).with_slab(0.4)];
-    println!("# a U-shaped mass: 10 x 10 outside, a 4 x 6 courtyard open to the north");
-    println!(
-        "  the outline is {} nodes, two of them reflex",
-        u_shape().len()
-    );
-
+    skeleton.masses = vec![Mass::new(outline(corners), 3.2)
+        .with_wall(wall)
+        .with_slab(0.4)];
     let building = Building::new(skeleton);
     let violations = building.validate();
-    println!("  the document reports {} violation(s)", violations.len());
-    for violation in &violations {
-        println!("    {violation:?}");
-    }
-
     match building.build() {
         Ok(built) => {
             let solid = SolidId::Mass(MassId(0));
             println!(
-                "  the mass: manifold {}, boundary loops {}, volume {:.4}",
+                "  {label:<7} {} node(s), wall {wall:.2}: {} violation(s), manifold {}, loops {}, volume {:.4}",
+                corners.len(),
+                violations.len(),
                 built.solid_is_manifold(solid),
                 built.solid_boundary_loops(solid),
                 built.solid_signed_volume(solid)
             );
-            let (low, high) = built.bounds();
-            println!(
-                "  its bounds: x {:.2}..{:.2}, y {:.2}..{:.2}, z {:.2}..{:.2}",
-                low[0], high[0], low[1], high[1], low[2], high[2]
-            );
         }
-        Err(error) => println!("  the document does not build: {error:?}"),
+        Err(error) => println!(
+            "  {label:<7} {} node(s), wall {wall:.2}: {} violation(s), does not build: {:?}",
+            corners.len(),
+            violations.len(),
+            error.problems.first()
+        ),
     }
+}
+
+fn main() {
+    println!("# three concave plans, each with the wall a cottage would use");
+    // A courtyard open to the north: 10 x 10 outside, a 4 x 6 notch.
+    measure(
+        "U",
+        &[
+            [-5.0, -5.0],
+            [5.0, -5.0],
+            [5.0, 5.0],
+            [2.0, 5.0],
+            [2.0, -1.0],
+            [-2.0, -1.0],
+            [-2.0, 5.0],
+            [-5.0, 5.0],
+        ],
+        0.3,
+    );
+    // A wing off a square: 10 x 10 with a 4 x 4 corner taken out.
+    measure(
+        "L",
+        &[
+            [-5.0, -5.0],
+            [5.0, -5.0],
+            [5.0, -1.0],
+            [1.0, -1.0],
+            [1.0, 5.0],
+            [-5.0, 5.0],
+        ],
+        0.3,
+    );
+    // A shallow porch two metres deep: the notch a front door wants.
+    measure(
+        "porch",
+        &[
+            [-5.0, -5.0],
+            [5.0, -5.0],
+            [5.0, 5.0],
+            [2.0, 5.0],
+            [2.0, 3.0],
+            [-2.0, 3.0],
+            [-2.0, 5.0],
+            [-5.0, 5.0],
+        ],
+        0.3,
+    );
 
     println!(
-        "\n# the vocabulary answer: a closed courtyard needs a plan with a hole, and a mass is authored as one\n# simple polygon, so the crate draws a courtyard that is open on one side and not one that is closed."
+        "\n# a closed courtyard would need a plan with a hole, and a mass is one simple polygon — so the crate draws\n# a courtyard open on one side and not one that is closed."
     );
 }
