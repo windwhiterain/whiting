@@ -1762,7 +1762,11 @@ ear-clip each** (the bridge duplicated consistently, which is what the first att
 decomposition** of the bridged ring. Either way the probe's acceptance does not change, and neither attempt's code
 survives: both are reverted, so the tree carries the requirement and the number, not a half-right fill.
 
-### The third rule, written down but not yet measured (2026-10-27)
+### The third rule (2026-10-27, and measured in the section below)
+
+**Measured afterwards: 84/84, 92/92, 92/92 on three cases, and a non-convex loop refused with 0 triangles and 0
+stray.** The rule written here is the one that shipped; the "not yet measured" this heading used to carry stopped being
+true in the same session that wrote it.
 
 The two-pointer walk was right about the *shape* of the answer and wrong about the *rule*. The classic form of it
 does not choose the smaller ear; it chooses the ear whose triangle **holds no other vertex of either ring**:
