@@ -465,6 +465,72 @@ so a bias term is involved too. That belongs to the shadow subsystem, where thre
 in flight (`virtual-shadow-maps`, `shadow-texel-push`, `shadow-level-walk`), and the scene says so in
 its own doc comment.
 
+## What P2 found: the facade, in five mechanisms and one frame (2026-10-16)
+
+P2 built the other half of the design — **grid, openings, parts, sockets, identity** — and the second
+demonstration scene. Its record is here rather than in a handoff, because a handoff is deleted when its
+phase closes.
+
+### The five mechanisms, and the one invariant each turned on
+
+| mechanism | the invariant that made it small |
+| --- | --- |
+| **S2 grid** (`grid.rs`) | A family **is** its stops: levels and divisions must span the face exactly, so tiling is structural rather than a check to infer, and a bay is a **slot** `(row, column)` so a re-split carries what hangs in it (D10). A rhythm is a **function with a domain** — `Rhythm::stops(extent) -> Option<Vec<f32>>` — so `Even { count: 0 }`, stops that do not span, a module wider than the face, and a **module so small it asks for millions of stops** are all refusals rather than guesses. `split_face` **replaces** the family; measured, 6 bays became 10 rather than 16. |
+| **openings** (`openings.rs`) | A hole is **strictly inside its wall face**, which keeps the wall a rectangle with holes and lets the cut be proved; and it is authored **relative to its bay** (`Inset` in metres from the bay's four edges), so "the opening exceeds its bay" is a checkable violation. Measured on a 7×11 starter: three holes totalling `7.3 m²` of wall removed exactly `2.348 m³` of material — the number no closure predicate can fake. |
+| **parts** (`parts.rs`) | **A template is a small skeleton**, so `Template::skeleton()` hands it back to the same `build` that builds a building; and the placement frame is **stated**, `x` along the edge, `y` up, `z` into the wall with `x × y = z`. Measured: a hollow door leaf stands as `SolidId::Part(0)` with `loops 0`, Euler 2, manifold, volume `0.026083` against the analytic `0.026084`. |
+| **sockets** (`Socket`/`Anchor`/`Joint`) | **A joint is one subtraction, not a transform**: every part is authored in the placement's frame, so mating a socket to an anchor only moves the origin, and no rotation is expressible — and therefore none can be got wrong. Measured, and this is the slice's whole point: with the doorway's head moved from 2.35 to 2.55, a canopy **hung on the head** stayed exactly `+0.0000` above it while the same canopy **pinned by numbers** went from `+0.2200` to `+0.0200`. A pin cannot notice. |
+| **identity** (`identity.rs`) | **One walk produces both the numbers and the table**, ids are **a contiguous run from `first_id`**, and **zero is reserved** for "not an authored element" — the sibling's three invariants. Measured: 108 faces naming 42 elements, 0 faces without an id, 0 rows without a face, two builds giving an identical table, and **0 of 42 ids changed** by adding a part on another face. |
+
+**One deliberate divergence, recorded with its reason.** The mountain sibling's table is a function of
+the skeleton alone; a building's cannot be, because a roof's **fascia is numbered by its position in the
+skin's own boundary edge list** and that count is a fact the **expansion proves** rather than a number
+the document holds. Re-deriving it in `identity` would be a second derivation of the skin's boundary —
+the failure this crate has paid for twice — so the module asks the mesh, and says so in its own doc.
+What survives is the property the invariant is *for*: ids stay put across edits that do not change a
+surface's own boundary.
+
+### The second demonstration scene
+
+`crates/gallery/src/shed.rs` ("shed") is the phase's end-to-end proof: a 5×8 gable-roofed shed whose
+gable end carries a **rhythm of three bays**, a **doorway and two windows cut through it**, and **two
+parts** — a leaf and a canopy, the latter **hung on the doorway's head** — in 16 passes. It asserts its
+own document is clean before drawing, so a fault is a panic rather than a frame, and that assertion
+earned its place immediately by finding two real faults: a canopy **0.05 m outside its bay**, and a
+"thin" body whose floor coincided with its top, which is not thin but **degenerate** — eight facets of
+no area, because `Mass` is the crate's room model and a plate is a room with a very shallow floor.
+
+### Four lessons this phase paid for, stated so the next one does not
+
+1. **A check's shape outlives the shape it assumed.** `SolidNotASphere` required Euler characteristic
+   `2` and was right while a mass was a sphere; an opening is a **handle through the material**, so each
+   one takes the characteristic down by two and a wall with three holes is a genus-3 surface reading
+   `−4`. The check now reads `2 − 2 × the openings that resolve`. The same lesson one layer up: a
+   plate is degenerate in a room model even though it is a perfectly ordinary solid.
+2. **Two modules measured separately are not a system**, and this phase proved it three times: the
+   expander cut holes while the validator measured a stub; the closure fix emitted a zero-area ear
+   facet that the degenerate-face check then reported *on the phase's own verb*; and every jamb had to
+   be split at every other hole's cut elevations before the wall closed. Each was invisible to either
+   module alone.
+3. **A lookup that filters needs a companion that names what it dropped.** `apertures_of` and
+   `unresolved_openings`, `placed` and `unresolved_placements`: the filter is right for a walk that
+   asks "what can I cut" and wrong for one that must not build silently.
+4. **A grade's air needs an exponential with no asymptote.** `1 − exp(−L·k)·c` has its limit at
+   `1 − c`, so it fogs a twelve-metre shed by a fifth whatever the distance: measured, that is the
+   difference between a monochrome wash and a lit wall, and it had been copied into two scenes before
+   anyone looked.
+
+### What P2 owes, and what it does not
+
+**D4's instancing is honoured in the document and not in the mesh.** One `Template` is authored once and
+every `Placement` names it **by index** — the vocabulary side of D4 — but the expansion **rebuilds the
+template's skeleton per placement**, so forty identical windows hold forty copies of the geometry. That
+is correct and cheap at this scale and it is *not* what a scene wants; the fix is the gallery's (one
+mesh per template, one instance transform per placement, which the kit's `instance` already supports),
+and it is recorded here so the next session does not read the mesh as instanced because the document is.
+
+Also owed: the **render half of identity** — an `id` channel the mesh shader writes is the device
+layer's business, exactly as it is for the mountains.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
