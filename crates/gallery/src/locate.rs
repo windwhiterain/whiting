@@ -62,6 +62,25 @@ pub fn locate(scene: &str, values: &[(String, f32)]) -> Option<String> {
         if let Some(answer) = crate::building_identity::locate_in(scene, id.round() as u32) {
             return Some(answer);
         }
+        // **A plant's frame answers through the same channel**, and its answer is the handle that names
+        // the node rather than a building element's path: the id is the node's position in the plant's own
+        // walk, and a leaf drawn by the blade mesh carries its twig's. The reserved zero is answered as
+        // itself, because a pixel of the ground a plant stands on is a real answer about a real pixel.
+        if scene == crate::vegetation_picture::SCENE {
+            let id = id.round() as u32;
+            return Some(match crate::vegetation_picture::handle_of(id) {
+                Some(handle) => {
+                    format!("{handle}\n  authored_id {id}: this pixel is that node of the bamboo, and a \
+                             leaf drawn by the blade mesh carries its twig's")
+                }
+                None if id == crate::identity::NOT_AUTHORED => {
+                    "not an authored element: this pixel is the ground the plant stands on, or the sky \
+                     above it"
+                        .to_owned()
+                }
+                None => format!("authored_id {id} is not one of this plant's nodes"),
+            });
+        }
     }
     crate::identity::locate(
         scene,

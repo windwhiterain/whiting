@@ -113,6 +113,8 @@ mod tiles;
 pub mod vegetation_instancing;
 /// A plant's wood, and the blade every leaf instances, as a scene draws them.
 pub mod vegetation_mesh;
+/// The bamboo picture: one plant's wood as a mesh and its leaves as one instanced blade.
+pub mod vegetation_picture;
 pub mod wing;
 /// The workshop scene: two storeys with a floor between them.
 pub mod workshop;
@@ -178,6 +180,7 @@ impl Gallery {
     /// is usually a command line and a list is more use than a backtrace.
     pub fn build(name: &str) -> Value {
         match name {
+            "bamboo" => vegetation_picture::bamboo_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),

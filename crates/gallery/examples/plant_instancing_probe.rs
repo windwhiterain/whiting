@@ -29,9 +29,16 @@
 //! and has to agree, and the same leaves read in a deliberately wrong Euler order, which **must**
 //! disagree.
 //!
+//! The last section is the other half of the claim the picture makes. **One blade, `n` placements, one
+//! pass**: the emitter groups a stage's instances by shader, mesh and images, so every leaf of every twig
+//! is one group with one instance buffer, and the row of the emitted document says how many rows that
+//! buffer holds against how many leaves the scene placed.
+//!
 //! Run with `cargo run -p whiting-gallery --example plant_instancing_probe`.
 
+use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use scene::standard::math::{apply, transform_matrix};
+use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
 use vegetation::derive::bamboo;
 use vegetation::expand::{Detail, expand};
 use vegetation::leaf::LeafInstance;
@@ -157,6 +164,23 @@ fn distance(left: [f64; 3], right: [f64; 3]) -> f64 {
         .sqrt()
 }
 
+/// The width of a set of points on each axis: the box a caller has to place them in.
+fn extent(points: &[[f64; 3]]) -> [f64; 3] {
+    let mut low = [f64::INFINITY; 3];
+    let mut high = [f64::NEG_INFINITY; 3];
+    for point in points {
+        for axis in 0..3 {
+            low[axis] = low[axis].min(point[axis]);
+            high[axis] = high[axis].max(point[axis]);
+        }
+    }
+    (0..3)
+        .map(|axis| high[axis] - low[axis])
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap_or([0.0; 3])
+}
+
 /// The blade's own points, read back out of the packed mesh the scene uploads.
 ///
 /// The probe reads the **buffer** rather than the geometry it was packed from: the claim is about the
@@ -264,6 +288,30 @@ fn main() {
         expansion.wood.len(),
         expansion.leaves.len(),
         template.len()
+    );
+    // The blade's own size, and the size it is drawn at, because a leaf field's numbers decide both and a
+    // picture that cannot say how big its leaves are cannot be read for whether they are there.
+    let blade = extent(&template);
+    let widest = leaves
+        .iter()
+        .max_by(|left, right| left.scale.total_cmp(&right.scale))
+        .expect("the field put at least one leaf on the plant");
+    let leaf_box = extent(&drawn(widest, &template, f64::from(widest.scale)));
+    println!(
+        "  the blade is {:.3} m long in its own frame and is drawn at a scale of {:.3} to {:.3}, so this \
+         plant's largest leaf is drawn in a box of {:.3} by {:.3} by {:.3} m",
+        blade[0],
+        leaves
+            .iter()
+            .map(|leaf| f64::from(leaf.scale))
+            .fold(f64::INFINITY, f64::min),
+        leaves
+            .iter()
+            .map(|leaf| f64::from(leaf.scale))
+            .fold(f64::NEG_INFINITY, f64::max),
+        leaf_box[0],
+        leaf_box[1],
+        leaf_box[2]
     );
 
     let mut rows: Vec<Row> = Vec::new();
@@ -414,4 +462,130 @@ fn main() {
         eprintln!("error: a row did not find what it was written to find");
         std::process::exit(1);
     }
+
+    if !passes(leaves.len()) {
+        eprintln!("error: the leaves are not one pass over one instance buffer");
+        std::process::exit(1);
+    }
+}
+
+/// Prints every pass the bamboo scene compiled to, with the instance buffer each one binds.
+///
+/// # Invariants
+///
+/// - **The rows are counted from the emitted buffer and divided by the size of a buffer that holds one
+///   row.** The document writes no row count — a buffer is a byte range and a schema — so a probe that
+///   re-derived the stride from the schema would be measuring its own arithmetic; taking the stride from a
+///   single-placement buffer that was compiled by the same emitter measures the document's.
+/// - **A leaf buffer's rows have to equal the number of leaves the scene placed.** That is the claim: one
+///   blade, `n` placements, one buffer. A scene that gave every leaf its own mesh would show `n` buffers
+///   of one row, which is the shape this is here to catch.
+fn passes(leaves: usize) -> bool {
+    let scene = whiting_gallery::vegetation_picture::bamboo_picture();
+    let mut registry = Registry::new();
+    registry.put_schema(
+        SchemaIdentifier::new(graphics::GRAPHICS_SCHEMA),
+        graphics::graphics_schema(),
+    );
+    registry.put_schema(
+        SchemaIdentifier::new(graphics::INSTANCE_SCHEMA),
+        graphics::instance_schema(),
+    );
+    scene::register_standard_scene_schema(&mut registry);
+    let source = Definition::new(
+        DefinitionIdentifier::new("gallery.source"),
+        SchemaIdentifier::new(STANDARD_SCENE_SCHEMA),
+        scene,
+    );
+    source
+        .validate(&registry)
+        .expect("the bamboo scene satisfies the scene schema");
+    let compiled = StandardScene::new(
+        DefinitionIdentifier::new("gallery.graphics"),
+        DefinitionIdentifier::new("gallery.instance"),
+    )
+    .compile(&CompileContext {
+        scene: &source,
+        previous_graphics: None,
+        previous_instance: None,
+        registry: &registry,
+        camera: 0,
+        limits: None,
+    })
+    .expect("the bamboo scene compiles");
+
+    let entries = compiled
+        .instance
+        .value
+        .as_field_map()
+        .and_then(|document| document.get("entries"))
+        .and_then(Value::as_field_map)
+        .expect("the instance document holds its entries under `entries`");
+    let bytes = |name: &str| -> i64 {
+        entries
+            .get(name)
+            .and_then(|entry| entry.variant_fields())
+            .and_then(|fields| fields.get(graphics::binders::SIZE_BYTES))
+            .and_then(Value::as_int)
+            .unwrap_or_else(|| panic!("the document carries an instance entry named {name}"))
+    };
+    let passes = graphics::passes(&compiled.graphics.value).expect("the emitted passes read");
+
+    println!("\n# every pass the scene compiled to, and the instance buffer it binds");
+    println!("  {:<44} {:>12}  {}", "pass", "bytes", "instance buffer");
+    let mut single = 0i64;
+    // Every pass over the blade, with the stage it is in and the size of the buffer it binds.
+    let mut blades: Vec<(&str, i64)> = Vec::new();
+    for pass in &passes {
+        let label = pass.label().expect("a pass names itself");
+        let bound = pass
+            .binder_names()
+            .expect("a pass lists its binders")
+            .into_iter()
+            .find(|name| name.ends_with("_instance_data"))
+            .unwrap_or("none");
+        let size = if bound == "none" { 0 } else { bytes(bound) };
+        if size > 0 && single == 0 {
+            single = size;
+        }
+        println!("  {label:<44} {size:>12}  {bound}");
+        if let Some(stage) = label.split('/').next().filter(|_| label.contains("/leaf")) {
+            blades.push((stage, size));
+        }
+    }
+    let passes_over = |stage: &str| blades.iter().filter(|(held, _)| *held == stage).count();
+    let rows_in = |stage: &str| {
+        blades
+            .iter()
+            .find(|(held, _)| *held == stage)
+            .map_or(0, |(_, size)| size / single.max(1))
+    };
+    let shadows = passes_over("shadow");
+    let depths = passes_over("depth");
+    let lighting = passes_over("lighting");
+    println!(
+        "  one placement is {single} bytes of instance row, and every blade buffer is {single} bytes a \
+         row: {} leaves in {} row(s)",
+        rows_in("lighting"),
+        rows_in("lighting")
+    );
+    // **The claim is one pass per stage and not one pass per leaf.** A stage draws a group at a time and
+    // the group's rows are the leaves, so a scene that gave every leaf its own mesh would show one buffer
+    // per leaf and a shadowing pass per leaf per light.
+    let held = lighting == 1
+        && depths == 1
+        && shadows == 2
+        && rows_in("lighting") == leaves as i64
+        && rows_in("depth") == leaves as i64
+        && rows_in("shadow") == leaves as i64;
+    println!(
+        "  {leaves} leaves are drawn by {lighting} lighting pass, {depths} depth pass and {shadows} shadow \
+         pass (one per light) over one blade mesh, each binding one buffer of {leaves} rows: {}",
+        if held {
+            "one pass and one instance buffer"
+        } else {
+            "NOT one pass and one instance buffer"
+        }
+    );
+    held
 }
