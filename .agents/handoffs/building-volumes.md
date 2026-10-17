@@ -530,3 +530,32 @@ two heights, one shared id where there must be two.
 **A part's base can be a slab lower than its own outline** (`-0.3` above), which is the same phenomenon from the other
 side and confirms the reading: the strip's inner and outer corners are taken from readers that were never meant to
 agree.
+
+## The fix shape, from the structure itself (2026-10-27)
+
+`CutStation` already carries both things the strip needs and is handing out the wrong one:
+
+```rust
+struct CutStation {
+    outer: Vec2,   // plan position on the outline edge
+    inner: Vec2,   // plan position on the inner loop edge
+    soffit: u32,   // the outer wall floor point there
+    floor: u32,    // the inner wall floor point there
+}
+```
+
+`split_loop` returns `(points, welded)` — the plan points and the ids — and the base strip is built from the **ids**
+(`soffit_points`, `floor_points`), which a reveal also uses at **its own** elevation. Measured: the outer corners read
+`y = 0.02` and `y = 0.05` while the inner read `y = 0`, and a part inner read `y = -0.3`.
+
+**So the change is: the base strip takes its corners from `CutStation::outer`/`inner` with the wall base elevation,**
+creating its own points through `solid.point` — and the **walls lowest band must be emitted from the same new points**
+so the two faces share an edge. The reveals keep the `soffit`/`floor` ids they already have; nothing about them moves.
+
+Concretely, in `expand_mass`: build `base_outer`/`base_inner` as `Vec<u32>` beside `outside_base`/`inside_floor`, one
+entry per cut-loop node, from the station **plan position at the base elevation** (and from the raw corner where
+there is no station); use those for the strip; and in the wall emission, wherever a band bottom edge is read, read
+`base_outer`/`base_inner` rather than `outside_base`/`inside_floor`.
+
+**Acceptance is already written and needs no reinterpretation:** the three scenes stop reporting `FaceNotPlanar`, the
+nine hashes are re-recorded in the proposal baseline table, and the building crate thirteen probes stay green.
