@@ -18,7 +18,7 @@
 //! ```
 
 use whiting_building::BuildingSkeleton as Skeleton;
-use whiting_building::derive::{RoofStyle, Starter, starter};
+use whiting_building::derive::{RoofStyle, Starter, floor_slab, starter};
 use whiting_building::grid::{FaceRef, GRID_TOLERANCE, Rhythm};
 use whiting_building::mass::{Attachment, Mass, MassId, PlanNode};
 use whiting_building::mesh::{
@@ -350,6 +350,65 @@ fn hip_starter_base_short() -> (BuildingSkeleton, BuildingMesh) {
     (skeleton, built)
 }
 
+/// Returns the hip starter with its plate pulled `inset` metres in on every side, so it no longer
+/// reaches the outline of the mass it stands under.
+///
+/// **The plate is the only thing that moves.** A mass has one plate and one outline, and an author
+/// arrives at this fault by carrying a footprint across from a smaller building rather than by
+/// editing the mass, so the mass is left exactly as `derive::starter` wrote it and every number the
+/// check reports is the plate's alone against the outline it has to meet.
+fn hip_starter_plate_too_small(inset: f32) -> BuildingSkeleton {
+    let mut skeleton = hip_starter();
+    let plate = &mut skeleton.slabs[0];
+    // **The centre of the plate's own bounding box**, which is the middle of a rectangle's four
+    // corners, so the loop goes in by `inset` on all four sides whatever size the starter is.
+    let mut low = [f32::INFINITY; 2];
+    let mut high = [f32::NEG_INFINITY; 2];
+    for point in &plate.outline {
+        for axis in 0..2 {
+            low[axis] = low[axis].min(point[axis]);
+            high[axis] = high[axis].max(point[axis]);
+        }
+    }
+    let middle = [(low[0] + high[0]) * 0.5, (low[1] + high[1]) * 0.5];
+    for point in plate.outline.iter_mut() {
+        for axis in 0..2 {
+            point[axis] += inset * (middle[axis] - point[axis]).signum();
+        }
+    }
+    skeleton
+}
+
+/// Returns the hip starter with an intermediate floor on its own inner loop: a second hosted slab on
+/// the same mass, and deliberately smaller than the outline.
+///
+/// **This is the control the plate check's staging needs, and it is the reason the staging exists.**
+/// [`floor_slab`] seats the floor on the mass's inner loop so the floor *meets* its walls rather than
+/// running under them, and it names the same host a plate does. Nothing but the slab's own elevations
+/// tells a floor from a plate, and a floor that covered the whole outline would be a deck running
+/// through the masonry. On this starter the floor measures `6.4000 x 10.4000 = 66.5600` against the
+/// outline's `77.0000`, so an unstaged check would fire on it loudly.
+fn hip_starter_with_a_floor() -> BuildingSkeleton {
+    let mut skeleton = hip_starter();
+    let mass = skeleton.masses[0].clone();
+    let floor = floor_slab(&mass, MassId(0), 2.2, 0.22).expect("2.2 m is inside a 3.2 m wall");
+    skeleton.slabs.push(floor);
+    skeleton
+}
+
+/// Returns the hip starter with its plate taken away: a mass standing on nothing.
+///
+/// **This is the case the report has to answer in one line, and the answer is that it is not a
+/// fault.** A part template's skeleton is one mass and no slabs — the shutter is exactly that — and
+/// the `yard` scene's store carries no plate because its plate was never carried across with its
+/// mass. A check that reported this would report the crate's own documents, so the check starts from
+/// the slabs a document holds rather than from the masses it wants to see them under.
+fn hip_starter_with_no_plate() -> BuildingSkeleton {
+    let mut skeleton = hip_starter();
+    skeleton.slabs.clear();
+    skeleton
+}
+
 /// Returns the reference with one corner walked onto the line through its own face's other two
 /// corners: that face's first facet has no area, and nothing about it has left its plane.
 ///
@@ -487,10 +546,10 @@ fn report_solid(skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidI
 /// of the loop it has to reach, which are the two numbers the violation carries.
 ///
 /// **The two surfaces measured are the two that cover an authored loop.** A roof's skin has to tile
-/// its eave loop and a plate's top has to stand over its own polygon; a mass's ring base is the
-/// annulus between the outline and the offset loop, which is not a loop an author drew and cannot be
-/// compared with the outline's area — the reading the shell model made possible, and the one
-/// [`Violation::RoofDoesNotCover`] is still the last word on.
+/// its eave loop and a plate's top has to stand over its host mass's outline; a mass's ring base is
+/// the annulus between the outline and the offset loop, which is not a loop an author drew and
+/// cannot be compared with the outline's area — the reading the shell model made possible, and the
+/// one [`Violation::RoofDoesNotCover`] is still the last word on.
 fn report_areas(skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidId) {
     let faces = built.faces_of(solid);
     let measured: Vec<usize> = faces
@@ -504,16 +563,7 @@ fn report_areas(skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidI
         })
         .collect();
     let covered = built.plan_area_of(&measured);
-    let authored = match solid {
-        SolidId::Roof(id) => skeleton.roof(id).map(|roof| roof.plan_area()),
-        // A slab's plan *is* an authored loop, and it is the one solid whose loop this probe can compare
-        // directly: the coverage check measures the mesh against the document's own polygon.
-        SolidId::Slab(id) => skeleton.slab(id).map(|slab| slab.plan_area()),
-        // A mass's ring is an annulus, a part has no loop of its own in this document — its geometry
-        // lives in its template — a wall is a box rather than a loop, and a courtyard's ring is the
-        // annulus between two loops of its own.
-        SolidId::Mass(_) | SolidId::Part(_) | SolidId::Wall(_) | SolidId::Void { .. } => None,
-    };
+    let authored = authored_loop_area(skeleton, solid);
     println!(
         "  coverage: measured {:.4} against authored loop {}, over {} faces",
         covered.abs(),
@@ -522,6 +572,32 @@ fn report_areas(skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidI
             .unwrap_or_default(),
         measured.len(),
     );
+}
+
+/// Returns the plan area a solid's measured surface has to reach, or `None` when the solid names no
+/// loop at all.
+///
+/// **A plate's loop is its host mass's outline and every other slab's is its own**, and the two are
+/// told apart by the slab's elevations — a plate's top stands at its host's ground line, while an
+/// intermediate floor and a flat roof stand above it and cover less than the outline on purpose. That
+/// rule is **re-derived here rather than asked of the validator**, so the number printed and the
+/// number reported are two readings rather than one answer printed twice, the way [`report_strips`]
+/// re-derives the ground line under a hole.
+fn authored_loop_area(skeleton: &BuildingSkeleton, solid: SolidId) -> Option<f32> {
+    match solid {
+        SolidId::Roof(id) => skeleton.roof(id).map(|roof| roof.plan_area()),
+        SolidId::Slab(id) => {
+            let slab = skeleton.slab(id)?;
+            match slab.host.and_then(|host| skeleton.mass(host)) {
+                Some(mass) if slab.top <= mass.lowest() => Some(mass.plan_area()),
+                _ => Some(slab.plan_area()),
+            }
+        }
+        // A mass's ring is an annulus, a part has no loop of its own in this document — its geometry
+        // lives in its template — a wall is a box rather than a loop, and a courtyard's ring is the
+        // annulus between two loops of its own.
+        SolidId::Mass(_) | SolidId::Part(_) | SolidId::Wall(_) | SolidId::Void { .. } => None,
+    }
 }
 
 /// Prints every violation the document check found for a skeleton.
@@ -581,6 +657,7 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::WallTooLow { .. } => "WallTooLow",
         Violation::SlabNotThick { .. } => "SlabNotThick",
         Violation::SlabNotAPolygon { .. } => "SlabNotAPolygon",
+        Violation::PlateCoverage { .. } => "PlateCoverage",
         Violation::OpeningBayMissing { .. } => "OpeningBayMissing",
         Violation::OpeningExceedsBay { .. } => "OpeningExceedsBay",
         Violation::OpeningOutsideWall { .. } => "OpeningOutsideWall",
@@ -957,6 +1034,34 @@ fn main() {
         "hip 7x11 with one base strip triangle deleted",
         &skeleton,
         &built,
+    );
+
+    println!(
+        "\n# the plate's coverage: a mass's own plate against the outline it stands under, and the two\n\
+         # hosted slabs that are not plates"
+    );
+    report_building(
+        "the hip starter, its plate as derive authored it",
+        &hip_starter(),
+    );
+    let shrunk = hip_starter_plate_too_small(0.5);
+    report_building(
+        "the same starter, its plate pulled half a metre in on every side",
+        &shrunk,
+    );
+    println!(
+        "  the plate reads 6.0000 x 10.0000 = 60.0000 against an outline of 7.0000 x 11.0000 = 77.0000, and the\n  \
+         outline's perimeter of 36.0000 m allows only {:.4} m2 of it to be missing, so 17.0000 m2 is a fault by four\n  \
+         decades of area rather than by a rounding error",
+        0.001 * 36.0
+    );
+    report_building(
+        "the same starter with an intermediate floor on the inner loop",
+        &hip_starter_with_a_floor(),
+    );
+    report_building(
+        "the same starter with no plate at all, which is not a fault",
+        &hip_starter_with_no_plate(),
     );
 
     println!("\n# openings: a bay, a hole, and the four ways to be wrong");

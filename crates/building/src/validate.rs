@@ -594,6 +594,59 @@ pub enum Violation {
         /// How many nodes it had.
         nodes: usize,
     },
+    /// A mass's plate covers less of the mass's own outline than the outline is.
+    ///
+    /// # Invariants
+    ///
+    /// **It is a reading between two loops the author wrote, and not between a mesh and a document.**
+    /// The shell-era `MassDoesNotCover` compared the shell's soffit face set against the outline, and
+    /// that face set was the only thing that could fill a coverage bucket. In the volume model the
+    /// plate is a [`Slab`](crate::slab::Slab) of its own, so both sides are authored and the reading
+    /// is about the **document** — which is why this is one of [`document`]'s and not one of
+    /// [`mesh`]'s. A plate too small for its mass is an authoring fault, and an author hears about it
+    /// for a skeleton that cannot be expanded at all.
+    ///
+    /// **A plate is the hosted slab whose top stands at its host's own ground line, and the
+    /// elevations are what select it.** `host` alone cannot: [`derive::floor_slab`](crate::derive::floor_slab)
+    /// builds an **intermediate** floor on the mass's inner loop — smaller than the outline on
+    /// purpose, so that the floor meets its walls rather than running under them — and
+    /// [`derive::starter`](crate::derive::starter) builds a **flat roof** on the same host at the
+    /// wall top. Both name the mass, both cover less than its outline, and neither is a plate. A
+    /// role field would be the other answer; it would also be a second thing every author has to
+    /// fill in for the crate to stop guessing, and the elevations already tell the three apart.
+    ///
+    /// **It is a shortfall only, never an overshoot**, which is where it differs in kind from
+    /// [`RoofDoesNotCover`](Self::RoofDoesNotCover). That one compares magnitudes because a skin
+    /// that skirts its eave has no other reading — the fascia follows the skin's own boundary — and
+    /// [`RoofSkinLeavesTheEave`](Self::RoofSkinLeavesTheEave) catches the overshoot as well. A plate
+    /// that stands outside its host's outline is a deck, a canopy or a plinth, all three of which
+    /// [`Slab`](crate::slab::Slab)'s own documentation names as plates, so there is nothing to
+    /// compare an overshoot against.
+    ///
+    /// **A mass with no plate at all is not this fault.** A plate is optional, and two of the
+    /// crate's own documents are the evidence: a part template's skeleton is one mass and no slabs
+    /// (the shutter), and the `yard` scene's store carries no plate because its plate was never
+    /// carried across with its mass. A check that reported that would report the crate's work, so
+    /// this one starts from the slabs a document holds rather than from the masses it wants to see
+    /// them under.
+    ///
+    /// **The tolerance is a width times the outline's own perimeter** ([`COVERAGE_TOLERANCE`]), the
+    /// conversion [`RoofDoesNotCover`](Self::RoofDoesNotCover) already makes, so a plate is held to
+    /// the same millimetre of edge whether its mass is a shed or a hall.
+    PlateCoverage {
+        /// The mass the plate stands under.
+        mass: MassId,
+        /// The plate.
+        slab: crate::slab::SlabId,
+        /// The plan area the plate covers.
+        plate: f32,
+        /// The plan area of the mass's own outline it has to reach.
+        outline: f32,
+        /// How much of the outline the plate misses, which is `outline - plate`. It is carried so a
+        /// reader can see the size of the fault without doing the subtraction, and it is the same
+        /// number twice rather than a reading of its own.
+        short: f32,
+    },
     /// A facet has no area because **two of its corners are one point**, so it is a facet of no
     /// surface.
     ///
@@ -720,7 +773,8 @@ pub enum Violation {
 /// it compares are only the holes that share a wall.
 ///
 /// Everything else here is a pass: the outline checks are `O(k)` per mass, the roof checks are
-/// `O(rows)` per plane, and the opening checks are `O(openings)` plus the quadratic above.
+/// `O(rows)` per plane, a plate's coverage is `O(k)` in its host's outline, and the opening checks
+/// are `O(openings)` plus the quadratic above.
 pub fn document(skeleton: &BuildingSkeleton) -> Vec<Violation> {
     let mut violations = Vec::new();
     check_masses(skeleton, &mut violations);
@@ -1238,9 +1292,11 @@ fn is_doorway(skeleton: &BuildingSkeleton, face: FaceRef, extents: &Extents) -> 
 /// **The bucket is a roof's skin, and that is the whole of it.** A mass's plate covers an authored
 /// loop too — its top stands over the outline — but a plate is [`Slab`](crate::slab::Slab)'s own
 /// solid and its outline is a level polygon the expander derived from the same loop, so a disagreement
-/// there would be the expander checked against itself rather than a reading across the two halves of
-/// the crate. What no expander can build is gone with the shell's soffit, and with it the variant
-/// that was the only consumer of this other arm.
+/// here would be the expander checked against itself rather than a reading across the two halves of
+/// the crate. The shell's soffit is gone with the shell, and with it the mesh half of the mass's own
+/// coverage fault; what replaced it, [`Violation::PlateCoverage`], is the **document half's**: it
+/// compares the plate's authored polygon against its host's authored outline, so it is answered by
+/// [`document`] and never reaches this gathering pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Coverage {
     /// A roof's skin, measured against the roof's eave loop.
@@ -1696,13 +1752,14 @@ fn check_walls(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     }
 }
 
-/// Checks every slab: that its outline is a polygon and its two elevations are the right way round.
+/// Checks every slab: that its outline is a polygon, its two elevations are the right way round, and
+/// a plate reaches the mass it stands under.
 ///
 /// # Invariants
 ///
 /// It mirrors the expander's own two refusals rather than deferring to them, so an author hears about a
 /// slab that cannot be built before a mesh is asked for — the same pairing the walls' checks have.
-/// `O(slabs)`, one comparison each.
+/// `O(slabs)`, one comparison each, plus `O(nodes)` for a plate's host outline.
 fn check_slabs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     for (index, slab) in skeleton.slabs.iter().enumerate() {
         let id = crate::slab::SlabId(index);
@@ -1711,6 +1768,9 @@ fn check_slabs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
                 slab: id,
                 nodes: slab.outline.len(),
             });
+            // **Staged rather than measured on**: a loop of two nodes encloses nothing, so its plan
+            // area is `0.0` whatever the mass it stands under is, and a shortfall of the whole
+            // outline would be the answer to a question the line above has already answered.
             continue;
         }
         if slab.thickness() <= GRID_TOLERANCE {
@@ -1719,7 +1779,88 @@ fn check_slabs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
                 thickness: slab.thickness(),
             });
         }
+        check_plate_coverage(skeleton, slab, id, violations);
     }
+}
+
+/// Reads one hosted slab against the mass it stands under, when that slab is the mass's plate.
+///
+/// # Invariants
+///
+/// **It is staged four times and each stage has a reading of its own already made elsewhere**,
+/// which is what keeps the fault this names about the plate an author drew:
+///
+/// - **No host is not this fault.** An unhoused plate is a step or a canopy standing on its own,
+///   which is what [`Slab::host`](crate::slab::Slab::host) documents it to be.
+/// - **A host the document does not hold is not this fault either.** There is no outline to measure
+///   against, and the crate answers a reference that names nothing from its own reader — the mass
+///   half's [`Violation::MassHostMissing`] is about a mass's host, and a slab's is a different
+///   question this check leaves alone.
+/// - **A host with fewer than three outline nodes has no plan area to compare**, and
+///   [`Violation::OutlineTooShort`] has already said so.
+/// - **A slab whose top stands above the host's ground line is not a plate**: it is an intermediate
+///   floor or a flat roof, both of which cover less than the outline *by design*.
+///
+/// **The areas are compared as magnitudes**, for the reason [`Violation::RoofDoesNotCover`] says it
+/// compares a skin's area that way: coverage asks how much of the loop is covered, and the sign that
+/// would say otherwise is the winding's business, reported by its own check.
+fn check_plate_coverage(
+    skeleton: &BuildingSkeleton,
+    slab: &crate::slab::Slab,
+    id: crate::slab::SlabId,
+    violations: &mut Vec<Violation>,
+) {
+    let Some(host) = slab.host else {
+        return;
+    };
+    let Some(mass) = skeleton.mass(host) else {
+        return;
+    };
+    if mass.outline.len() < 3 {
+        return;
+    }
+    // **A plate's top is its host's own ground line.** The comparison is against `lowest` rather than
+    // against `0.0` because a mass stands on a terrace: `site::seat` gives every node of a mass the
+    // same delta and gives a hosted slab the same one, so a plate's top and its mass's lowest node
+    // stay together under a seat as they were under an author. `TOUCH_TOLERANCE` is the margin for
+    // the reason it is the margin everywhere else — the two numbers mean one place and only `f32`
+    // rounding separates them.
+    if slab.top > mass.lowest() + TOUCH_TOLERANCE {
+        return;
+    }
+    let outline = mass.plan_area().abs();
+    let plate = slab.plan_area().abs();
+    let short = outline - plate;
+    if short > COVERAGE_TOLERANCE * outline_length(mass) {
+        violations.push(Violation::PlateCoverage {
+            mass: host,
+            slab: id,
+            plate,
+            outline,
+            short,
+        });
+    }
+}
+
+/// Returns the total plan length of a mass's closed outline.
+///
+/// # Invariants
+///
+/// **It is the outline's own polyline and not its bounding box**, which is what makes the tolerance
+/// [`COVERAGE_TOLERANCE`] converts mean the same millimetre here as it does on a roof: a gap of `w`
+/// metres along an edge `L` long is an area of `w·L`, and a box would turn a millimetre of slip on
+/// an L-shaped outline into an allowance several times the area the slip costs. `O(nodes)`, once per
+/// plate that reaches the check.
+fn outline_length(mass: &Mass) -> f32 {
+    let count = mass.outline.len();
+    (0..count)
+        .map(|index| {
+            distance(
+                mass.outline[index].position,
+                mass.outline[(index + 1) % count].position,
+            )
+        })
+        .sum()
 }
 
 /// Checks that no facet has no area.
@@ -2142,6 +2283,27 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
             past,
         } => (39, *placement as u64, wall.0 as u64, ordered(*past), 0),
         Violation::PlacementMountOnAWall { placement } => (40, *placement as u64, 0, 0, 0),
+        // **Rank `41`, at the end, because the block is full.** Every rank from `0` to `13` is a mass, void or
+        // roof authoring fault that predates the plate becoming a solid of its own, and `15` onward is the mesh
+        // half and then the feature checks; the only hole in `0..=40` is `14`, which is retired above and must
+        // not be reopened. So a plate's coverage cannot sit beside the roof's at `15` without renumbering
+        // thirty arms, and the slice that retired `14` declined to renumber for a reason that applies here too:
+        // an order that is already total and already printed by every report keeps the meaning a report may
+        // already have read a number with. The cost is stated rather than hidden — a document's own plate no
+        // longer sorts with the rest of that document's faults but last, after the placements'.
+        Violation::PlateCoverage {
+            mass,
+            slab,
+            plate,
+            outline,
+            ..
+        } => (
+            41,
+            mass.0 as u64,
+            slab.0 as u64,
+            ordered(*plate),
+            ordered(*outline),
+        ),
         // The four opening faults in the order an author meets them: the slot is not there, the bay
         // cannot hold the hole, the hole leaves the wall, and two holes in one wall fight.
         Violation::OpeningBayMissing { opening, face } => (
