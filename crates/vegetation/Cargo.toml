@@ -1,0 +1,15 @@
+[package]
+name = "whiting-vegetation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Author a plant as a spine tree whose attachments are named, and expand it into closed solids and instanced leaves."
+
+# `shape` for the curve every spine is, the section every branch and blade is, and the sweep that turns
+# one into the other. Nothing here is duplicated from it: a branch, a leaf and an envelope are one
+# primitive there, and this crate owns only what a *plant* adds — the tree, the attachment that joins two
+# spines, the leaf field, and the expansion that walks them. See
+# .agents/proposals/agentic-vegetation-generation.md.
+[dependencies]
+shape = { workspace = true }

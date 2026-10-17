@@ -13,6 +13,7 @@ members = [
     "crates/building",
     "crates/patch",
     "crates/terrain",
+    "crates/vegetation",
 ]
 
 [workspace.package]
@@ -35,6 +36,7 @@ mountain = { path = "crates/mountain", package = "whiting-mountain" }
 building = { path = "crates/building", package = "whiting-building" }
 patch = { path = "crates/patch", package = "whiting-patch" }
 terrain = { path = "crates/terrain", package = "whiting-terrain" }
+vegetation = { path = "crates/vegetation", package = "whiting-vegetation" }
 
 # The `facet` facade and `facet-core` must be the same line: `facet-json 0.44.7`
 # requires `facet ^0.45`, which pins `facet-core =0.45.0`. Declaring `facet = "0.44"`
