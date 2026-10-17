@@ -30,6 +30,10 @@
 //!   sampled into the triangles a scene document holds. It replaced the `nurbs` scene, which drew the
 //!   same picture on the per-patch Bernstein model; keeping both would have been two scenes doing one
 //!   job, and the crease is made by one call rather than a tag plus two order-sensitive writes.
+//! - [`vegetation_mesh`] and [`vegetation_instancing`] — a plant's wood as one mesh and its blade as
+//!   one instanced template, which is the `vegetation` crate's first caller here for the same reason
+//!   [`patchmesh`] is `mountain`'s: neither crate may know about a scene, so the conversion lives in
+//!   the one crate that sees both.
 //! - [`Gallery`] — the named scenes, built out of all of the above.
 //!
 //! # Why it is its own crate
@@ -105,6 +109,10 @@ pub mod terrace;
 mod terraces;
 mod tidewater;
 mod tiles;
+/// Standing a leaf's rigid frame as the scene instance that draws it.
+pub mod vegetation_instancing;
+/// A plant's wood, and the blade every leaf instances, as a scene draws them.
+pub mod vegetation_mesh;
 pub mod wing;
 /// The workshop scene: two storeys with a floor between them.
 pub mod workshop;

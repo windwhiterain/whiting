@@ -1844,6 +1844,7 @@ dependencies = [
  "whiting-scene",
  "whiting-shape",
  "whiting-terrain",
+ "whiting-vegetation",
 ]
 
 [[package]]

@@ -30,3 +30,8 @@ building = { workspace = true }
 # scene cannot be written without the crate that owns the sweep. A library module cannot reach a
 # dev-dependency, which is why this is an ordinary edge and not one under `[dev-dependencies]`.
 shape = { workspace = true }
+# The `bamboo` picture: a scene that draws a plant owns the conversion from that crate's geometry
+# to this crate's documents, the way `building_mesh` owns the one for a building's solids. A plant
+# is a tree of lofts and a field of rigid frames; a scene is packed points and instance transforms,
+# and neither crate may know about the other.
+vegetation = { workspace = true }
