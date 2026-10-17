@@ -1262,6 +1262,32 @@ That is the difference between a style and a preset: **a preset is the numbers, 
 them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
 chosen twice.
 
+## The baseline a later slice measures against (2026-10-27)
+
+Seven building scenes render, and each one's picture has a hash. They are recorded here because the question a
+refactor has to answer is *"did the picture change?"*, and a hash answers it in a way that looking at two images
+does not:
+
+| scene | frame hash (first 16) | notes |
+| --- | --- | --- |
+| `house` | `B8384583E741BE57` | the hip, the plate, three walls |
+| `hall` | `A68F409B2DB9E9D9` | `HALL` at 10 × 16, three bays |
+| `hall_large` | `FAD1938EF8BA6A2A` | `HALL` at 14 × 20, five bays |
+| `shed` | `0AF51AEC5A9164A8` | unchanged since the instancing slice, which is itself a baseline |
+| `workshop` | `6AAEC033FD29643E` | two storeys, a plate, five instanced shutters |
+| `yard` | `ECCEB09EE3FD0BD9` | the courtyard and its gate |
+| `identity` | `D36C5EF54B2E7FEA` | the identity picture, unchanged through the channel's whole history |
+
+And the probes behind them: `scene_identity_probe` reads **seven** tables two-way (72 + 104 + 26 + 64 + 124 + 92 +
+74 = **556 rows**), the gallery suite passes, and the building crate's twenty probes exit zero — `census`,
+`expand_probe`, `validate_probe`, `authoring_probe`, `roof_planarity_probe`, `grid_probe`, `opening_probe`,
+`part_probe`, `identity_probe`, `socket_probe`, `seat_probe`, `wall_probe`, `site_probe`, `slab_probe`,
+`instance_probe`, `floor_probe`, `multi_row_probe`, `wall_part_probe`, `template_cache_probe`, `style_probe`.
+
+**The `identity` frame is the strongest of the seven**, because it has been byte-identical through every slice that
+touched the shader generator: a channel's plumbing can be rewritten beneath a scene without moving a pixel, and
+that hash is how the rewrite was known to be inert.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
