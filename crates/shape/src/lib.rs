@@ -25,6 +25,7 @@
 pub mod curve;
 pub mod math;
 pub mod mesh;
+pub mod section;
 
 pub use curve::{Bezier, Curve, CurveError, Frame, Jet, Station};
 pub use math::{Vec2, Vec3};
