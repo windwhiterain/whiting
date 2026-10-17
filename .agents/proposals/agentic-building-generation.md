@@ -1645,6 +1645,20 @@ impression — that is the standard this project has held itself to since the fi
 
 - **A closed courtyard is not expressible.** A `Mass` is one simple polygon; a ring is not simple. A courtyard open
   on one side is what the vocabulary has (see the `U` in `courtyard_probe`).
+
+  **And it is refused, not silently mis-drawn** (`ring_probe`, 2026-10-27). A 10 × 10 ring with a 4 × 4 hole, authored
+  the way a hole is smuggled into a single loop — round the outside, in through a neck, round the inside the other
+  way, back out through the same neck — reports
+
+  ```text
+  DidNotExpand { problems: [OffsetSelfIntersecting { mass: MassId(0), left: 4, right: 7 }] }
+  ```
+
+  and does not build. So the boundary is **stated rather than discovered**, which is the crate's own standard for a
+  domain it does not cover. Two things follow: **a hole in a plan is a feature to add, not a defect to repair**, and
+  if it is added the refusal is where the new shape has to be admitted — `OffsetSelfIntersecting` is the mechanism
+  that catches it, not the cause, and a vocabulary with holes would have to say *"this outline is a ring"* rather
+  than *"this offset crosses itself"*.
 - **A shared face is not a facade, and the crate does not say so.** `attach_mass` records the attachment, but
   nothing stops a `split_face` on the face two arms share; the scene avoids it by choosing which faces to split. A
   violation would need the attachment's station, and a new `Violation` is a compiler-enforced audit of every match.
