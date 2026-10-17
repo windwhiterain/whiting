@@ -162,6 +162,86 @@ fn parse_pixel(written: &str) -> Result<(u32, u32), String> {
     Ok((read(x, "x")?, read(y, "y")?))
 }
 
+/// Reads a rectangle, written `x0,y0,x1,y1`.
+///
+/// # Invariants
+///
+/// **The corners are made a rectangle rather than trusted as one**: a caller who writes the far corner first meant
+/// the same rectangle, and a scan whose bounds are the other way round is empty for a reason the caller cannot see.
+fn parse_region(written: &str) -> Result<[u32; 4], String> {
+    let parts: Vec<&str> = written.split(',').collect();
+    if parts.len() != 4 {
+        return Err(format!(
+            "`{written}` is not a rectangle: write it x0,y0,x1,y1"
+        ));
+    }
+    let mut numbers = [0u32; 4];
+    for (index, part) in parts.iter().enumerate() {
+        numbers[index] = part
+            .trim()
+            .parse::<u32>()
+            .map_err(|_| format!("`{written}` has a corner that is not a number"))?;
+    }
+    let [x0, y0, x1, y1] = numbers;
+    Ok([x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)])
+}
+
+/// Prints what a rectangle of the frame is, in the terms the scene that drew it uses.
+///
+/// # Invariants
+///
+/// - **The answer is the id channel's, counted**, so a rectangle becomes the set of authored elements whose pixels
+///   it covers: the distinct ids, each with how many pixels it owns, deepest first. That set is exactly what an
+///   edit's selector is fed by — a box in world space cannot answer it, which is why the picture has to.
+/// - **The naming is the content's**, asked of the same table `--locate` asks: what an id *means* lives with the
+///   content, and this harness only counts.
+/// - **A rectangle outside the frame is clamped rather than refused**: a caller comparing two frames of different
+///   sizes has already made the interesting decision, and an empty answer would hide it.
+fn region(scene: &str, rendered: &RenderedFrame, region: [u32; 4]) {
+    let [x0, y0, x1, y1] = region;
+    println!("region {scene} ({x0}, {y0})..({x1}, {y1}):");
+    let Some(image) = rendered
+        .images
+        .iter()
+        .find(|image| image.name == "authored_id")
+    else {
+        println!("  this scene writes no authored_id, so there is nothing in it to name");
+        return;
+    };
+    let right = x1.min(image.width.saturating_sub(1));
+    let bottom = y1.min(image.height.saturating_sub(1));
+    let mut counts: std::collections::BTreeMap<u32, u64> = std::collections::BTreeMap::new();
+    let mut covered = 0u64;
+    for y in y0..=bottom {
+        for x in x0..=right {
+            let Some(texel) = image.texel(x, y) else {
+                continue;
+            };
+            let id = texel[0].round().max(0.0) as u32;
+            *counts.entry(id).or_insert(0) += 1;
+            covered += 1;
+        }
+    }
+    let mut rows: Vec<(u32, u64)> = counts.into_iter().collect();
+    rows.sort_by(|one, other| other.1.cmp(&one.1).then(one.0.cmp(&other.0)));
+    let naming = gallery::locate::naming(scene);
+    for (id, count) in rows.iter().take(24) {
+        let name = match naming {
+            Some(naming) => match (naming.resolve)(*id) {
+                Some(handle) => handle,
+                None if *id == 0 => "not an authored element: the ground or the sky".to_owned(),
+                None => format!("id {id} names nothing here"),
+            },
+            None => format!("id {id}, and this scene names nothing"),
+        };
+        println!("  {count:>7} px  id {id:<6} {name}");
+    }
+    if rows.len() > 24 {
+        println!("  …{} more ids", rows.len() - 24);
+    }
+    println!("  {} distinct id(s) over {covered} px", rows.len());
+}
+
 /// Prints what one pixel is, in the terms the scene that drew it uses.
 ///
 /// # Invariants
@@ -446,6 +526,13 @@ async fn run() -> Result<(), String> {
                 locate(&name, &rendered, *x, *y);
             }
 
+            // **A rectangle is a selection**, and this is the answer that turns a picture into the set of handles an
+            // edit can be aimed at: the ids the rectangle covers, each with the pixels it owns, named by the content's
+            // own table. A box in world space cannot answer this, which is why it is asked of the frame.
+            for rectangle in &request.regions {
+                region(&name, &rendered, *rectangle);
+            }
+
             // The other direction: the element asked for, and where the frame put it.
             for asked in &request.where_is {
                 where_is(&name, &rendered, asked);
@@ -595,6 +682,9 @@ fn parse_arguments() -> Result<Request, String> {
     // **--locate repeats**: one pixel per flag, in the order asked, because the interesting question is
     // usually a comparison — five shutters, five pixels, five names — and one flag per run made that five runs.
     let mut locate_at: Vec<(u32, u32)> = Vec::new();
+    // **--region repeats for the same reason and answers the other question**: a rectangle, in the order asked,
+    // scanned for the ids under it. It is what turns a picture into the set of handles an edit can be aimed at.
+    let mut regions: Vec<[u32; 4]> = Vec::new();
     let mut where_is: Vec<String> = Vec::new();
     let mut index = 0;
     while index < rest.len() {
@@ -609,6 +699,13 @@ fn parse_arguments() -> Result<Request, String> {
                     .get(index)
                     .ok_or_else(|| "--locate needs a pixel, written x,y".to_owned())?;
                 locate_at.push(parse_pixel(asked)?);
+            }
+            "--region" => {
+                index += 1;
+                let asked = rest
+                    .get(index)
+                    .ok_or_else(|| "--region needs a rectangle, written x0,y0,x1,y1".to_owned())?;
+                regions.push(parse_region(asked)?);
             }
             "--where" => {
                 index += 1;
@@ -676,6 +773,7 @@ fn parse_arguments() -> Result<Request, String> {
         debug,
         census,
         locate: locate_at,
+        regions,
         where_is,
     })
 }
@@ -706,6 +804,8 @@ struct Request {
     census: bool,
     /// The pixel to say what it is, answered once per moment beside the picture it belongs to.
     locate: Vec<(u32, u32)>,
+    /// The rectangle to say **what is in it**, answered as the ids it covers and how many pixels each.
+    regions: Vec<[u32; 4]>,
     /// The element to say **where** it is: an id or a name, answered as a pixel count and a box.
     where_is: Vec<String>,
 }

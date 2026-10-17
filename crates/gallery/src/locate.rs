@@ -19,23 +19,84 @@
 //! would be able to chain them wrong, and would be wrong in the middle, where the answer looks
 //! like an answer.
 //!
+//! # The registry
+//!
+//! **One row per scene, and the row is data rather than a branch.** A scene that names its own elements registers
+//! a [`Naming`]: the resolver that turns an id into a handle, and the one clause that says what an id means in that
+//! scene. `--locate` and `--region` ask the same table and want different sentences, so the table answers handles and
+//! the asker writes the prose — which is also why a scene absent from it is refused rather than guessed at.
+//!
 //! # Why it takes three numbers and not a frame
 //!
 //! **The dependency runs device → gallery, and a frame is the device's type.** Taking the three
 //! values keeps that true: this crate asks nothing of the renderer, and a caller that has the
 //! values from anywhere — a readback, a sidecar, a test — can ask the same question. It also
 //! keeps the arithmetic here honest about what it actually needs, which is three floats.
-//!
-//! # What it refuses
-//!
-//! - A scene it has no naming for, and a value of zero — which is the plain, and is what the
-//!   reserved zero is for.
-//! - Values from a frame and a mesh that are from different builds. The id arrives in pixels and
-//!   the mesh comes from a fresh build, and the two agreeing is a fact about history that no
-//!   single call can establish; the caller's manifest is what says so, and this says nothing
-//!   rather than naming another element's path.
 
-use crate::identity::{ID_OUTPUT, U_OUTPUT, V_OUTPUT};
+use crate::identity::{ID_OUTPUT, NOT_AUTHORED, U_OUTPUT, V_OUTPUT};
+
+/// A scene's own answer to *"which authored element is this id?"*.
+pub type Resolver = fn(u32) -> Option<String>;
+
+/// What a scene says about its own ids: how to resolve one, and what one means.
+#[derive(Debug, Clone, Copy)]
+pub struct Naming {
+    /// The scene's name, which is the name a document carries and a frame is asked about.
+    pub scene: &'static str,
+    /// The id's handle, or `None` when the id names nothing in this scene's content.
+    pub resolve: Resolver,
+    /// What an id means here, as one clause: the sentence an asker puts after the handle.
+    pub note: &'static str,
+}
+
+/// Every scene that names its own elements, keyed by name.
+///
+/// # Invariants
+///
+/// - **A scene appears once.** A name in this table is a scene whose pixels can be answered; a scene absent from it
+///   falls through to [`crate::identity::locate`]'s own answer, which is the landscape's, and is refused by a caller
+///   that has no naming for it.
+/// - **The resolver answers the handle and nothing else**, so the two askers — a pixel and a rectangle — cannot
+///   disagree about what an id means: they read one function.
+/// - **The four still scenes share one resolver**, because they draw one plant; the sculpted and grove scenes have
+///   their own because their trees differ from the reference tree by at least one node.
+pub const NAMINGS: &[Naming] = &[
+    Naming {
+        scene: crate::vegetation_picture::SCENE,
+        resolve: crate::vegetation_picture::handle_of,
+        note: "this pixel is that node of the plant, and a leaf drawn by the blade mesh carries its twig's",
+    },
+    Naming {
+        scene: crate::vegetation_picture::WINDY,
+        resolve: crate::vegetation_picture::handle_of,
+        note: "this pixel is that node of the plant under its wind, and a leaf drawn by the blade mesh carries its twig's",
+    },
+    Naming {
+        scene: crate::vegetation_picture::CROWNED,
+        resolve: crate::vegetation_picture::handle_of,
+        note: "this pixel is that node of the crowned plant, and a leaf drawn by the blade mesh carries its twig's",
+    },
+    Naming {
+        scene: crate::vegetation_picture::KNOTTED,
+        resolve: crate::vegetation_picture::handle_of,
+        note: "this pixel is that node of the knotted plant, and a leaf or a knot drawn by an instanced mesh carries its node's",
+    },
+    Naming {
+        scene: crate::vegetation_picture::SCULPTED,
+        resolve: crate::vegetation_picture::sculpted_handle_of,
+        note: "this pixel is that node of the sculpted plant, and a leaf drawn by the blade mesh carries its twig's",
+    },
+    Naming {
+        scene: crate::vegetation_picture::GROVE,
+        resolve: crate::vegetation_picture::grove_handle_of,
+        note: "the planting is the id's quotient by the stride and the node is its remainder",
+    },
+];
+
+/// The row a scene registered, or `None` when it names nothing.
+pub fn naming(scene: &str) -> Option<&'static Naming> {
+    NAMINGS.iter().find(|naming| naming.scene == scene)
+}
 
 /// Resolves the three values a frame declared at one pixel to the authored part they name.
 ///
@@ -59,61 +120,19 @@ pub fn locate(scene: &str, values: &[(String, f32)]) -> Option<String> {
     // and a belt coordinate. Asking both and taking whichever answers is what keeps this one function rather
     // than one per subsystem — and neither answers for a scene it does not know.
     if let Some(id) = one(ID_OUTPUT) {
-        if let Some(answer) = crate::building_identity::locate_in(scene, id.round() as u32) {
+        let id = id.round() as u32;
+        if let Some(answer) = crate::building_identity::locate_in(scene, id) {
             return Some(answer);
         }
-        // **A plant's frame answers through the same channel**, and its answer is the handle that names
-        // the node rather than a building element's path: the id is the node's position in the plant's own
-        // walk, and a leaf drawn by the blade mesh carries its twig's. The reserved zero is answered as
-        // itself, because a pixel of the ground a plant stands on is a real answer about a real pixel.
-        // **A grove's frame answers a step further out**, because one id has to name two things: the planting is
-        // the id's quotient by the stride and the node is its remainder, so the answer is *which plant* as well as
-        // *which node* and no table is needed to split them.
-        if scene == crate::vegetation_picture::GROVE {
-            let id = id.round() as u32;
-            return Some(match crate::vegetation_picture::grove_handle_of(id) {
-                Some(answer) => {
-                    format!("{answer}\n  authored_id {id}: the planting is the id's quotient by \
-                             {} and the node is its remainder", crate::vegetation_picture::PLANTING_STRIDE)
-                }
-                None if id == crate::identity::NOT_AUTHORED => {
-                    "not an authored element: this pixel is the ground the grove stands on, or the sky \
-                     above it"
-                        .to_owned()
-                }
-                None => format!("authored_id {id} is not one of the grove's nodes"),
-            });
-        }
-        if scene == crate::vegetation_picture::SCULPTED {
-            let id = id.round() as u32;
-            return Some(match crate::vegetation_picture::sculpted_handle_of(id) {
-                Some(handle) => format!(
-                    "{handle}\n  authored_id {id}: this pixel is that node of the sculpted plant, and a leaf drawn by the blade mesh carries its twig's"
-                ),
-                None if id == crate::identity::NOT_AUTHORED => {
-                    "not an authored element: this pixel is the ground the plant stands on, or the sky above it"
-                        .to_owned()
-                }
-                None => format!("authored_id {id} is not one of the sculpted plant's nodes"),
-            });
-        }
-        if scene == crate::vegetation_picture::SCENE
-            || scene == crate::vegetation_picture::WINDY
-            || scene == crate::vegetation_picture::CROWNED
-            || scene == crate::vegetation_picture::KNOTTED
-        {
-            let id = id.round() as u32;
-            return Some(match crate::vegetation_picture::handle_of(id) {
-                Some(handle) => {
-                    format!("{handle}\n  authored_id {id}: this pixel is that node of the plant, and a \
-                             leaf drawn by the blade mesh carries its twig's")
-                }
-                None if id == crate::identity::NOT_AUTHORED => {
+        if let Some(naming) = naming(scene) {
+            return Some(match (naming.resolve)(id) {
+                Some(handle) => format!("{handle}\n  authored_id {id}: {}", naming.note),
+                None if id == NOT_AUTHORED => {
                     "not an authored element: this pixel is the ground the plant stands on, or the sky \
                      above it"
                         .to_owned()
                 }
-                None => format!("authored_id {id} is not one of this plant's nodes"),
+                None => format!("authored_id {id} is not one of this scene's elements"),
             });
         }
     }

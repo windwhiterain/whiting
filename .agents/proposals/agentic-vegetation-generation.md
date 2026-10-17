@@ -1346,6 +1346,24 @@ ambient *and* the exporter's Cycles `background` strength.
    wants its shade blue and its sky bright cannot have one without the other, which is the honest coupling.
 3. **The map is 512×256 because 256×128 banded**, measured in the raster frame rather than argued from a texel budget.
 
+**The registry and the rectangle.** P2's `--region` and the registry the gallery was owed are one thing read twice:
+`gallery::locate::NAMINGS` holds **one row per scene** — a resolver and the clause that says what an id means there —
+and the harness asks it for a pixel (`--locate`) and for a rectangle (`--region`).
+
+| invariant | reading |
+| --- | --- |
+| a rectangle is a selection | `--region 300,200,900,1200` on `bamboo` answers **11** distinct ids over **601601** px: the trunk **14941** px, then every bough and branch in descending order |
+| one id names two things in a grove | `--region 400,200,1000,900` on `grove` answers `8193 → planting 2, trunk` and `1 → planting 0, trunk`, which is the id's quotient and its remainder |
+| a scene's own table | `sculpted` answers `8 → trunk/bough 1/branch 2`: the graft, numbered by the sculpted plant's own walk |
+| three answers stay three | `--locate` still prints the values, the handle and the note; `--where` still prints a count and a box; `--region` adds the set |
+
+**Two decisions the rectangle forced:**
+
+1. **The registry is data: (scene, resolver, note).** The prose left the table, so one resolver serves both askers and
+   a scene's answer cannot differ between them. A scene absent from the table is still refused rather than guessed at.
+2. **A rectangle answers pixel counts, not a set.** The ids come back with how many pixels each owns, deepest first,
+   because the caller's question is *"what am I pointing at?"* and the order is the answer to it.
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before
