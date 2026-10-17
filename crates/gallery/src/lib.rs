@@ -189,6 +189,7 @@ impl Gallery {
             "bamboo_crown" => vegetation_picture::crowned_picture(),
             "bamboo_knots" => vegetation_picture::knots_picture(),
             "grove" => vegetation_picture::grove_picture(),
+            "sculpted" => vegetation_picture::sculpted_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),

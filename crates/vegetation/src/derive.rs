@@ -22,13 +22,17 @@
 //! from a length, a departure angle and a droop, and tapers that are fractions of the parent's radius — so the
 //! two together show that a species is numbers and a drawing, not a special case per plant.
 
-use shape::{Curve, Scalar};
+use shape::{Curve, Jet, Scalar};
 
+use crate::decorator::Seat;
 use crate::field::Field;
+use crate::handle::Handle;
 use crate::leaf::{LeafField, LeafTemplate};
+use crate::node::Prune;
+use crate::ops::{Change, Edit, EditReport, Property};
 use crate::plant::Plant;
 use crate::rng::Rng;
-use crate::species::{Generation, Joint, Rule, grow, spine, taper};
+use crate::species::{Generation, Joint, Rule, graft, grow, spine, taper};
 
 /// A plant and what hangs on it: its tree, the templates it instances, and the fields that place them.
 #[derive(Debug, Clone, PartialEq)]
@@ -71,6 +75,94 @@ pub fn shrub(seed: u64) -> Species {
         plant: grow(&shrub_rule(), seed),
         templates: vec![blade()],
         fields: vec![shrub_leaves()],
+    }
+}
+
+/// A plant the hand has worked on, and the pieces of the work.
+///
+/// # Invariants
+///
+/// The script's targets are **handles**, so it is the same work on the same plant every time: a bake on the first
+/// bough, a thickness on that bough's first branch, a cut on the third bough's second branch, a station slide on the
+/// second bough, a graft on the second bough, and a knot where the graft landed. A probe measures it and a scene
+/// draws it, which is why the script lives here rather than in either: **the composition is the claim**, and two
+/// copies of it would be two claims.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Sculpted {
+    /// The plant with every edit applied.
+    pub species: Species,
+    /// What the edit table did, so a caller can see nothing was refused.
+    pub report: EditReport,
+    /// The spine the hand baked onto the first bough, which is the third tier of the design.
+    pub authored: Curve,
+    /// The node the graft added.
+    pub grafted: Handle,
+    /// The decorator seated on the graft.
+    pub seats: Vec<Seat>,
+}
+
+/// The hand's whole vocabulary on one bamboo: bake, thickness, cut, slide, graft, seat.
+pub fn sculpted(seed: u64) -> Sculpted {
+    let mut species = bamboo(seed);
+    // The spine the hand bakes onto the first bough: an S that no rule made.
+    let authored = Curve::new(vec![
+        Jet::new([0.0, 0.0, 0.0], [0.02, 0.12, 0.0]),
+        Jet::new([0.07, 0.20, 0.02], [0.12, 0.04, 0.04]),
+        Jet::new([0.26, 0.26, 0.06], [0.12, -0.08, 0.05]),
+        Jet::new([0.48, 0.18, 0.10], [0.10, -0.10, 0.03]),
+    ])
+    .expect("the authored spine's knots are distinct");
+    let first = Handle::root().child(0);
+    let report = crate::ops::apply(
+        &mut species.plant,
+        &[
+            // The authored tier: this bough's spine is the hand's from here on, and no field may shape it.
+            Edit::new(
+                first.clone(),
+                Change::Spine {
+                    jets: authored.jets(),
+                },
+            ),
+            // A nudge: the branch is thick enough to carry a knot.
+            Edit::new(
+                first.child(0),
+                Change::Offset {
+                    property: Property::Radius,
+                    by: 0.010,
+                },
+            ),
+            // A tombstone: this branch is cut, and its handle goes on naming it.
+            Edit::new(
+                Handle::root().child(2).child(1),
+                Change::Prune {
+                    reason: Prune::ByAuthor,
+                },
+            ),
+            // A spatial nudge: the second bough slides up the culm.
+            Edit::new(
+                Handle::root().child(1),
+                Change::Offset {
+                    property: Property::Station,
+                    by: 0.08,
+                },
+            ),
+        ],
+    );
+    // The generator's own operation, which needs the rule and is therefore not an edit.
+    let second = Handle::root().child(1);
+    let grafted = graft(&mut species.plant, &bamboo_rule(), &second, 0.55, 0.8)
+        .expect("the graft lands on a bough");
+    let seats = vec![
+        Seat::new(grafted.clone(), 0, 0.05, 0.5)
+            .sunk(0.004)
+            .scaled(2.5),
+    ];
+    Sculpted {
+        species,
+        report,
+        authored,
+        grafted,
+        seats,
     }
 }
 

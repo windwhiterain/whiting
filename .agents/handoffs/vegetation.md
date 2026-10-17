@@ -198,10 +198,12 @@ cargo run -p whiting-vegetation --example field_probe      # 8, the fields
 cargo run -p whiting-vegetation --example envelope_probe   # 6, the envelope, the trim and the report
 cargo run -p whiting-vegetation --example decorator_probe  # 6, the decorators
 cargo run -p whiting-vegetation --example obstacle_probe   # 6, the obstacle, the contacts and the thinning
+cargo run -p whiting-vegetation --example sculpt_probe     # 7, the hand's whole vocabulary on one plant
 cargo run -p whiting-device-rasterize --example render -- bamboo out/bamboo
 cargo run -p whiting-device-rasterize --example render -- bamboo_wind out/bamboo-wind
 cargo run -p whiting-device-rasterize --example render -- bamboo_crown out/bamboo-crown
 cargo run -p whiting-device-rasterize --example render -- bamboo_knots out/bamboo-knots
 cargo run -p whiting-device-rasterize --example render -- grove out/grove
+cargo run -p whiting-device-rasterize --example render -- sculpted out/sculpted
 cargo run -p whiting-device-rasterize --example render -- sweep out/sweep
 ```

@@ -1242,6 +1242,32 @@ species, a `Placement` and its seats; a `Framing` is the camera, the frame and t
    it back too. So a hash is evidence that **something moved at pixel scale**; only a probe is evidence that a
    meaning held.
 
+**The hand's picture.** `derive::sculpted(seed)` is the whole vocabulary on one plant — a bake, a thickness, a cut, a
+station slide, a graft and a seat — and two things read it: `sculpt_probe` measures it and the `sculpted` scene draws
+it. That is the composition claim of the three tiers, measured end to end instead of tier by tier.
+
+| invariant | reading |
+| --- | --- |
+| the script lands clean | **4** edits landed, **0** refused; the graft lands at `trunk/bough 1/branch 2`; **10** live nodes of **11** walked |
+| a bake is drawn as authored | the bough's drawn spine is the authored curve to **0.000e0**, and the spine is marked baked |
+| a thickness is on the skin | the branch's base **0.005000 → 0.015000**, which is **+0.010000** |
+| a tombstone still resolves | `trunk/bough 2/branch 1` is named by the walk, not drawn, still resolves, and its reason is `ByAuthor` |
+| a graft is filled at once | `trunk/bough 1/branch 2` is **0.482742** long against its sibling's **0.482742**, and the field filled it with **9** leaves |
+| a sculpted plant is a plant | **10** solids, **10** closed at χ = 2, the smallest volume **1.639e-5**, and **63** leaves in **7** groups |
+| a seat rides the graft | the knot sits **8.250e-4** from the grafted branch's spine against a taper less the sink of **8.250e-4** |
+| the picture | `sculpted` draws it in **17** passes: the arched baked bough, the thickened branch, the cut, the slid bough, the graft and its knot are one frame |
+
+**Two decisions the picture forced:**
+
+1. **The script lives in `derive::sculpted`, not in the probe and not in the scene.** The composition is the claim, so
+   there is one script and two readers; two copies would be two claims that could drift apart, and the probe would
+   stop being evidence about the picture.
+2. **An id table cannot be shared between two trees.** The graft adds a node, so every id after the second bough's
+   children is one higher than the plain bamboo's; `sculpted_handle_of` therefore builds its table from the sculpted
+   plant's own walk. A scene whose tree differs from the reference tree by even one node needs its own table, which is
+   the real reason `handle_of` is a function per scene rather than one function with a name argument.
+
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before

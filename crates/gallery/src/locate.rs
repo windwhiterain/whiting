@@ -84,6 +84,19 @@ pub fn locate(scene: &str, values: &[(String, f32)]) -> Option<String> {
                 None => format!("authored_id {id} is not one of the grove's nodes"),
             });
         }
+        if scene == crate::vegetation_picture::SCULPTED {
+            let id = id.round() as u32;
+            return Some(match crate::vegetation_picture::sculpted_handle_of(id) {
+                Some(handle) => format!(
+                    "{handle}\n  authored_id {id}: this pixel is that node of the sculpted plant, and a leaf drawn by the blade mesh carries its twig's"
+                ),
+                None if id == crate::identity::NOT_AUTHORED => {
+                    "not an authored element: this pixel is the ground the plant stands on, or the sky above it"
+                        .to_owned()
+                }
+                None => format!("authored_id {id} is not one of the sculpted plant's nodes"),
+            });
+        }
         if scene == crate::vegetation_picture::SCENE
             || scene == crate::vegetation_picture::WINDY
             || scene == crate::vegetation_picture::CROWNED

@@ -435,6 +435,33 @@ pub fn knots_picture() -> Value {
     plant_scene(&[Planting::new(species).with_seats(seats)], &STILL, KNOTTED)
 }
 
+/// The name the hand's work is drawn under: one plant, six edits, and nothing authored twice.
+pub const SCULPTED: &str = "sculpted";
+
+/// The plant the hand worked on, drawn: a bake, a thickness, a cut, a slide, a graft and a knot.
+pub fn sculpted_picture() -> Value {
+    let sculpted = vegetation::derive::sculpted(SEED);
+    plant_scene(
+        &[Planting::new(sculpted.species).with_seats(sculpted.seats)],
+        &STILL,
+        SCULPTED,
+    )
+}
+
+/// Resolves a sculpted frame's `authored_id` into the handle that names the node.
+///
+/// # Invariants
+///
+/// The table is **the sculpted plant's own walk**, not the plain bamboo's: the graft added a node, so every id after
+/// the second bough's children is one higher, and a table built from `bamboo(SEED)` would answer with the wrong node
+/// from there on. That is the reason this resolver exists rather than reusing [`handle_of`].
+pub fn sculpted_handle_of(id: u32) -> Option<String> {
+    let sculpted = vegetation::derive::sculpted(SEED);
+    node_ids(&sculpted.species.plant)
+        .into_iter()
+        .find(|(_, held)| *held == id)
+        .map(|(handle, _)| handle.to_string())
+}
 /// Builds one scene of plants: the camera, the lights, the floor, every planting's wood and the one blade mesh
 /// every leaf of every planting instances.
 ///
