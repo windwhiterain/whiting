@@ -500,6 +500,15 @@ earned its place immediately by finding two real faults: a canopy **0.05 m outsi
 "thin" body whose floor coincided with its top, which is not thin but **degenerate** — eight facets of
 no area, because `Mass` is the crate's room model and a plate is a room with a very shallow floor.
 
+**What happened to `foldyard`, which P2's plan named.** The plan said *"`foldyard`'s shed and enclosure
+rebuilt as the second demonstration"*. That is what `shed` and `yard` **are** — a shed with a bay-mounted
+door and window, and a walled yard with a gate, both authored in the crate instead of in `built::`. The
+`foldyard` *scene* itself is not rebuilt and will not be: it is a 1655-line `built::` composition whose
+subject is a **landscape** — a valley, cut terraces, a massif, a far range, vessels and a rack of poles —
+and only its architectural part is the crate's business. So the debt is closed as **superseded rather than
+outstanding**: the demonstration exists, and `foldyard` remains the `built::` showcase until that module is
+retired. Rebuilding the landscape half would be a different proposal.
+
 ### Four lessons this phase paid for, stated so the next one does not
 
 1. **A check's shape outlives the shape it assumed.** `SolidNotASphere` required Euler characteristic
@@ -690,6 +699,52 @@ two probes' exhaustive matches over `SolidId` — and the fix was not to widen a
 measured coverage, which is the one solid in that document whose loop can be compared directly. **A new
 variant is a compiler-enforced audit of every `match` in the crate**, and the audit is only worth the
 trouble if each site it stops at gains a reading rather than a `_`.
+
+## What the instancing slice found: a template's mesh and the frame that stands it (2026-10-16)
+
+D4 says *"plan baked, vocabulary instanced"*, and only its document half was honoured: one `Template` is
+authored once and every `Placement` names it by index, but `expand_placement` **rebuilt the template's
+skeleton per placement**, so a building with forty identical windows expanded forty copies of the same
+twenty-eight faces. The proposal recorded the fix as the gallery's and named what the gallery would need:
+one mesh per template and one instance transform per placement.
+
+**The gallery could not get there from what the crate handed out.** `BuildingMesh` is baked — every part's
+points in world space with provenance — which is right for validation and useless for instancing: a scene
+received `40 × 28` faces and no way to know they were one shape forty times.
+
+So the crate now hands out **the two pieces**, and the baked mesh stays the thing `validate` measures:
+
+- **`Template::mesh()`** — the template expanded **in its own frame**, once, as an ordinary `BuildingMesh`.
+- **`PartFrame { origin, along, up, inward }`** with `apply` — where a placement stands its template, in the
+  crate's own vocabulary (an origin and three unit directions, one dot product per direction) rather than a
+  matrix, and `expand::part_frame` resolves it through the **same** `placed`/`offset_loop`/`WallFace` path
+  the expansion used, so a mounted part's frame is its joint's and not a second reading of its pin. A wall
+  the miter refuses returns its **problems** rather than a frame.
+
+**The invariant that makes it one derivation.** `expand_placement` was **rewritten** on those two pieces and
+nothing else — not given a parallel path — so the instanced geometry and the baked geometry cannot disagree,
+and the probe proves it by comparing them as **point sets** rather than by eye.
+
+Measured by `examples/instance_probe.rs` on a shed with six placements of one shutter and a canopy hung on a
+bay's head:
+
+| measurement | value |
+| --- | --- |
+| faces to upload | **168** baked against **28** in the template's own mesh — six times fewer, for the same geometry |
+| instanced points vs baked points (as sets, `1e-4`) | **0** placements differ |
+| instanced box vs baked box (per axis, `1e-5`) | **0** placements differ |
+| a mounted part's frame | origin at `y 1.3000` = the bay's head `1.4000` less the socket's `0.10`; the baked canopy runs `1.3000 .. 1.4000` |
+| an unresolved placement | **no frame** (`Ok(None)`), so a scene cannot instance what the document cannot resolve |
+| the existing acceptance | `Part(0)` still `0.026083`, `Part(1)` still `0.045825`, the socketed canopy still exactly `0.0000` above a moving head, and the `shed` frame's SHA256 **byte-identical** to before the rewrite |
+
+That last row is the point of doing it as a rewrite: a rendering that changed would have been a rewrite that
+had quietly changed something else.
+
+**What is still not done, and where it belongs.** A *scene* still draws the baked mesh; switching `shed` or
+`yard` to template meshes plus transforms is a gallery change with its own questions (per-instance materials,
+per-instance shadow pages), and `build` still expands each template per placement — a cache keyed by
+template index is a performance change a caller can now make correctly, because a template's mesh is a
+function of the template alone.
 
 ## `validate()`: reports, never repairs
 
