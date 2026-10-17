@@ -965,26 +965,51 @@ Closed by the second round of verdicts, recorded so they are not reopened:
 - **Where the wind hook lands** — withdrawn with wind (D17).
 - **Whether a plant may attach to a building** — deferred (not proposed, above).
 
-Still open, and each is a question a first probe or frame will answer:
+Decided on 2026-10-17 by the chief engineer, under the superior's directive to choose by **strongest
+expressiveness and the most elegant architecture**. Each answer states what it costs and what it rules out,
+so a later session reopens it by argument rather than by forgetting it.
 
-1. **The leaf field's orientation contract.** A placement's frame comes from three stages (local
-   orientation, anchor sensitivity, final adjustments), and the anchor is named by a *level* — SpeedTree's
-   Global/Deep/Intermediate/Local/None. Which of the three stages P1 implements, and how an anchor level
-   resolves to a point on an ancestor, decides whether *"leaves point away from the trunk"* is a curve edit
-   or a placement-level fix. The reference's vocabulary is recorded in the survey; the choice is P1's.
-2. **The identity granularity P1 ships.** D8 item 3 offers three rows (per placement, per field group, or
-   unnumbered). The default is per field group, and the number at which a field *must* go unnumbered is a
-   document-entry budget nobody has measured; `report()` prints the count so the number is visible before
-   it is a problem.
-3. **Whether leaves cast shadow.** D7 puts them outside the `shadowing` bucket, which is right for a
-   distant grove and possibly wrong for a close crown, where self-shadowing is most of what makes a canopy
-   read as deep. `shadow_density: 0` is the documented middle — the coarsest page level only — and the
-   decision belongs to the first frame whose crown looks flat.
-4. **The section's own orientation** (`shape` open question 2). A leaf template and the twig it hangs from
-   must not start their sections at different angles, or every leaf is rotated against its stem. The rule
-   is a contract, and it should be checked rather than assumed.
-5. **Whether the junction ratio earns a place in `report()`** (candidate D19). It is O(1) per junction and
-   it is the number that says *this bough is too thin for what it carries*; the band is the part that is not
-   established. Decide on the first probe that prints it.
-6. **`closest`'s accuracy** (`shape` open question 4), because the envelope's trimming law calls it once per
-   branch tip and the answer's error is a number the caller should be told rather than trust.
+1. **The leaf field's orientation contract** — **one composition in one stated order, and the anchor is a
+   place on the parent's surface rather than a *level*.** A placement names `(parent, station, slot)` — the
+   same `Attachment` a branch uses — and resolves to a point on the parent's **swept surface**, evaluated
+   with the section arithmetic the twig's own loft used, so a leaf sits on the bark and not in the pith, and
+   a bough attaches through the same code. The frame is composed in this order and no other:
+
+   > anchor point → the reference ancestor's frame → the slot's radial direction → `pitch` (a `Scalar` of the
+   > parent's `t`: radians from the radial direction toward the parent's tangent) → `twist` (radians about the
+   > leaf's own midrib) → `aim` (a world axis and a `Scalar` weight) → scale.
+
+   Three consequences, each of which is the reason for the choice. **SpeedTree's five anchor levels become one
+   integer** — `reference: u32`, how many generations up the frame is read from, `0` meaning the parent — so
+   "Global/Deep/Intermediate/Local/None" is one number and not five cases; the survey's vocabulary is
+   expressible and nothing is left out. **The phyllotaxy is the slot, not a separate azimuth**: the golden
+   angle decides *which slot the n-th leaf takes*, so there is one degree of freedom with one home and a
+   `density` change and a rotation change cannot disagree. **`pitch` is a curve of the parent's `t`**, so
+   *"leaves point away from the trunk"* is a curve edit and not a placement-level fix — which is the sentence
+   the open question asked for.
+
+   P1 implements the anchor, `reference`, the phyllotaxy and `pitch`; `twist` and `aim` are the same
+   composition with two more terms and land when the first frame needs them (each is one law, not one stage).
+2. **The identity granularity P1 ships** — **per field group**, with per-placement available for a field the
+   author *names*, and `report()` printing the group count either way. The number at which a field must go
+   unnumbered stays unmeasured on purpose: a document-entry budget is a fact about a frame's page pool, and a
+   number invented before the first crown existed would be a budget no frame was ever measured against.
+3. **Whether leaves cast shadow** — **yes, and `shadow_density` is the dial**, not a bucket exclusion. D7's
+   "outside the `shadowing` bucket" becomes the *default setting* for a distant grove rather than a
+   prohibition, because a close crown's self-shadowing is most of what makes a canopy read as deep, and a
+   design that cannot express it has thrown away the thing it was built for. Which bucket a plant's leaves go
+   in is a scene decision, and the documented middle (`shadow_density: 0`, the coarsest page level only) keeps
+   the billboard case expressible.
+4. **The section's own orientation** — **closed by `shape`'s answer** (its D4 and open question 2): the
+   section's `x` is the station frame's normal, and the spine's initial normal is the one place an author says
+   which way the first section faces. Vegetation therefore applies **one rule to every spine it builds** —
+   the same initial normal for the twig and for the leaf template — which is what makes the contract
+   structural rather than per-call discipline, and `shape`'s `sweep_probe` checks the primitive half of it.
+5. **Whether the junction ratio earns a place in `report()`** — **no, and not yet.** A report entry has to be
+   checkable, and the band in `r_parent^n = Σ r_children^n` is not botanically established: a number with an
+   invented threshold would be the first entry a reader learns to ignore. It stays candidate D19, and it lands
+   only if a plant that is visibly too thin at a junction shows that the ratio says so where no other reading
+   does.
+6. **`closest`'s accuracy** — **deferred with the obligation `shape` recorded**: when the envelope's trimming
+   law needs it, the answer owes its sample budget, a measured worst-case error, and a stated answer at a
+   knot. Nothing in P1 or P2 calls it.
