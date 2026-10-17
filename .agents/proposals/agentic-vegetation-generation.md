@@ -1047,6 +1047,30 @@ Three decisions the brush forced:
    `matches` and `handles` two different rules — the identity row that says they are one route depends on both
    being the same test, so the cost is the honesty of the check.
 
+**The generator.** `species` is V5's stage (1) made real: a `Rule` is a trunk and one `Generation` per level —
+how many children, the station band they spread over, the slot they step by, how far the seed may move them, how
+deep they sink, and a `Shape` function for the spine and taper — and `grow(rule, seed)` walks the tree out
+depth by depth. **The shape is a function and the rest is data**: counts, bands and slots are numbers a whorl and
+a spiral differ in, but a branch's curve is a small drawing, and a rule that could only say angles would force
+an author to describe a curve they can see. A shape function also reads the joint's `parent_radius`, which is how
+a taper becomes a fraction of what carries it without a second channel.
+
+The two shipped species are the experiment:
+
+| invariant | reading |
+| --- | --- |
+| a rule without chance | bamboo's skeleton is **identical** at two seeds, and its leaves differ — the seed reaches the leaf field and nothing else (**54** leaves over **10** nodes) |
+| the rule's numbers are the tree's | bough stations **0.45 / 0.63 / 0.81**, slots **0.000 / 0.333 / 0.666**, branch stations **0.35 / 0.60** — read off the plant |
+| a rule with chance | shrubs of **49** and **34** nodes at two seeds, the same seed identical, both inside the rule's own **31..=53** |
+| a limb is a fraction of what carries it | **33** limbs, worst departure of a limb's base radius from its rule's fraction **5.960e-8** |
+| a grown plant is a plant | **37** live nodes, **37** solids, all closed at χ = 2 (the smallest volume **6.098e-9**), **82** leaves in **9** groups |
+| the hand edits a grown tree | a length offset lands: **0.362484 → 0.312484**, and the report is clean |
+
+**`derive::bamboo` is now `grow(&bamboo_rule(), seed)`, and every P1 probe passes unchanged against the grown
+tree** — same 10 nodes, same stations, same 6 branches, same 54 leaves. That is the reading that says the rule
+*says what the author typed* rather than approximating it: the generator did not change the plant, it changed who
+gets to write it.
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before

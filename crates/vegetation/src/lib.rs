@@ -14,8 +14,10 @@
 //! a branch, a leaf blade and an envelope are one primitive there, and this crate restates none of it.
 //! What is here is only what a *plant* adds: [`handle`], the derivation path that names a node; [`rng`],
 //! one random source per node, forked by that path; [`node`], a spine with the law that thickens it and the
-//! three numbers that attach it; [`plant`], the root, the walk, and the placement that composes from it; and
-//! [`expand`], the walk to triangles with one resolution dial.
+//! three numbers that attach it; [`plant`], the root, the walk, and the placement that composes from it;
+//! [`species`], a species as a rule and the seed that fills in what the rule left open; [`leaf`], a blade and
+//! the field that distributes it; [`expand`], the walk to triangles with one resolution dial; and the hand —
+//! [`selector`], a predicate that names nodes, and [`ops`], the edits it writes.
 //!
 //! # The rules this crate may not break
 //!
@@ -40,3 +42,4 @@ pub mod ops;
 pub mod plant;
 pub mod rng;
 pub mod selector;
+pub mod species;

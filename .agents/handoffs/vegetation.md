@@ -12,12 +12,18 @@ the state a next session needs, and it is deleted when the crate's design phases
 - **P2's first slice is on this branch**: `ops` — the edit table of V5 with four of its six kinds — the brush
   (`selector` + `ops::paint`), and their probes: `edit_probe` (11 rows) and `select_probe` (8). `shape` gained
   `Scalar::offset`, with its own row in `scalar_probe`.
-- **In flight**: nothing. `selector.rs` and `select_probe` are here too (merged from `feature/selector`).
+- **P2's second slice is on this branch**: `species` — a species as a rule and the seed that fills it in — and
+  `species_probe` (6 rows). `derive::bamboo` is now `grow(&bamboo_rule(), seed)`, **and every P1 probe passes
+  unchanged against the grown tree**, which is the reading that the rule says what the author typed; `derive::shrub`
+  is the rule's control, with computed limbs and radii that are fractions of what carries them.
+- **In flight**: nothing. The brush (`selector.rs` + `select_probe`) and the generator (`species.rs` +
+  `species_probe`, with `derive::shrub` as its control) are here too.
 
 ## What a consumer has
 
 ```rust
 let species = derive::bamboo(seed);             // Species { plant, templates, fields }
+let species = derive::shrub(seed);              // the same, grown from a rule that leaves numbers to the seed
 let mut plant = species.plant;
 
 for (handle, node) in plant.walk() { }          // every node, tombstones included: addressing
@@ -26,6 +32,9 @@ plant.get(&handle);  plant.get_mut(&handle);    // Ok(&Node) | Err(HandleOrphane
 plant.placement(&handle);                       // the world frame, composed from the root down
 plant.surface(&handle, attachment);             // a frame on the node's own skin
 plant.spine(&handle);                           // the node's spine in the world
+
+// A species is a rule: the trunk, and one generation of children below it.
+let plant = species::grow(&rule, seed);         // deterministic in (rule, seed), node for node
 
 let expansion = expand::expand(&plant, Detail::DEFAULT, &species.fields);
 expansion.wood;                                 // one Wood { handle, loft } per live node
@@ -56,6 +65,13 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 
 ## Traps
 
+- **A species is a rule, and the seed's draw order is data.** `species::grow` draws, per parent: the count (only
+  when its range can vary), then per child the station jitter and the slot jitter — **unconditionally, even when
+  the jitter is zero** — then whatever the generation's shape function draws. Reordering those draws changes
+  every plant a rule makes.
+- **A rule may leave nothing to chance**: bamboo's counts, bands and jitters are fixed and its shapes draw no
+  numbers, so its seed reaches the leaf field and nothing else. Two bamboo seeds are the same tree with two leaf
+  layouts; two shrub seeds are two shrubs.
 - **A prune is a tombstone, and both walks exist for a reason.** `walk` names tombstones so a handle goes on
   naming what it named; `live` skips them *and their subtrees*. `expand::wood` reads `live`. A new reader that
   takes `walk` will draw deleted branches.
@@ -97,7 +113,8 @@ cargo run -p whiting-vegetation --example tree_probe       # 5
 cargo run -p whiting-vegetation --example plant_probe      # 8
 cargo run -p whiting-vegetation --example leaf_probe       # 8
 cargo run -p whiting-vegetation --example edit_probe       # 8, the hand
-cargo run -p whiting-vegetation --example select_probe     # the brush, once it lands
+cargo run -p whiting-vegetation --example select_probe     # 8, the brush
+cargo run -p whiting-vegetation --example species_probe    # 6, the generator
 cargo run -p whiting-device-rasterize --example render -- bamboo out/bamboo
 cargo run -p whiting-device-rasterize --example render -- sweep out/sweep
 ```
