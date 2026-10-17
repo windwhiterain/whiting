@@ -277,3 +277,19 @@ what a ring looks like when one of its two end strips is missing. The base strip
 the **only** end. The wall top is the other, and it is emitted only where the walls are: a part whose mass is a
 closed loop of wall around a hole (a frame) would need both, and the top is emitted per edge — check whether the part
 mass's top ring is emitted at all (`WallTop` faces) before assuming anything about the base.
+
+## The dump now names the mass, and it corrects the last note (2026-10-27)
+
+`SHED_DEBUG=1` prints the mass id, and the reading is one line: **all 72 open edges belong to `MassId(0)`; the parts
+have none.** So the parts' `SolidOpen { loops: 2 }` is **not** the mass's defect and not the base strip's: a part is
+expanded by the template machinery, which is a different path that `expand_mass` does not own, and its closure is its
+own question.
+
+**That retires the round-114 inference** (which read the parts as decisive evidence about the base strip). The correct
+statement: the mass's open edges are the strips under its six openings — 72 of them, all at `y = 0` — and the parts
+fail separately. Two defects, not one.
+
+**For the mass**, the next print that pays is the face's `element` for each open edge (write it with the `edit` tool:
+a multi-line scripted replace does nothing on these files), because 72 edges under six openings is consistent with
+either the strip's quads being emitted with the wrong winding at each station pair, or the reveals' sills landing on
+the strip's corners. The element will say which.
