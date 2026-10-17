@@ -1619,6 +1619,39 @@ facade**, and the vocabulary has no way to say so — `attach_mass` records the 
 `split_face` on the shared face. It is the scene's job today, and it is written in the scene's own docs. If a later
 slice wants the crate to refuse it, the attachment's station is what a check would read.
 
+## Where the system stands (2026-10-27, written at a session's close)
+
+**Nine building scenes, nine identity tables, no recorded debt.** The scenes are `house`, `hall`, `hall_large`,
+`shed`, `terrace`, `wing`, `workshop`, `yard` and `identity`; `scene_identity_probe` reads every table two-way
+(**705 rows**: 26 + 72 + 104 + 64 + 108 + 41 + 124 + 92 + 74), the gallery suite renders all nine, and the building
+crate's twenty-four probes exit zero. Every reading in this document is a probe's output, not a picture's
+impression — that is the standard this project has held itself to since the first census.
+
+**What this session added, in the order it was found:**
+
+| capability | what proved it |
+| --- | --- |
+| template caching (`TemplateCache`, `build_with`) | 12 placements expand **1** template; geometry byte-identical |
+| `Style` — relations rather than numbers | the same footprint in two styles; three sizes of one style |
+| the identity channel on every scene, in both directions | `--locate x,y` names a pixel; `--where <id\|name>` counts it |
+| instanced identities (`Authored::Sum`, one material a placement) | three placements of one mesh, three different names |
+| walls as part placement (`Target::Wall`) | a gate leaf hung on a run, closing 2.4 m of a gap |
+| terraces (two masses that touch) | 0 violations, two watertight solids |
+| overlap by **computed area** (`crate::clip`) | a shared leaf refused, a flush pair still accepted |
+| concave plans (a **proper** crossing test) | U / L / porch all manifold with 0 boundary loops |
+| an L as **host + attached wing** | 0 violations, four solids closed, windows on the weather faces |
+
+**The boundaries that remain, stated so nobody rediscovers them as bugs:**
+
+- **A closed courtyard is not expressible.** A `Mass` is one simple polygon; a ring is not simple. A courtyard open
+  on one side is what the vocabulary has (see the `U` in `courtyard_probe`).
+- **A shared face is not a facade, and the crate does not say so.** `attach_mass` records the attachment, but
+  nothing stops a `split_face` on the face two arms share; the scene avoids it by choosing which faces to split. A
+  violation would need the attachment's station, and a new `Violation` is a compiler-enforced audit of every match.
+- **`site::report`'s overlaps are plan bounding boxes** and say so in their own docs: two L-shaped buildings can
+  have overlapping boxes and no shared wall. The report **lists** and does not judge.
+- **The shadow terminator toothing** is the shadow subsystem's, not this one's.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
