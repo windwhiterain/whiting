@@ -1206,6 +1206,38 @@ are `locate_in`'s own answers:
 **380 rows, all two-way.** The tool is no longer a thing that can be used; it is a thing whose answers are
 checked every time the probe runs.
 
+## What the reverse query found on its first real question: the gate the frame could not name (2026-10-27)
+
+The `--where` half of the debugging tool was added for the case a pixel query cannot see: *the element you meant to
+draw is not on screen*. Its first real question found the opposite — an element that **is** on screen and whose
+pixels name the wrong thing:
+
+```text
+where yard part 0, template mass 0, outer wall over edge 0: id 49 is not visible in this frame
+where yard wall 1, its right side:                id 69 covers 14973 pixel(s) in x 669..=934, y 406..=512
+```
+
+The yard's gate has been drawn since the wall-placement slice. Its **three materials** carried the placement's
+offset correctly; its **instance row** still named the unoffset `board-{stage}`, so every gate pixel reported the
+*template's local ids* — numbers that alias onto the mass's walls. **The picture was right, the table was right,
+and the join between them was wrong in a way that made the frame answer confidently about the wrong element.**
+
+That is the failure mode this project keeps meeting in new clothes: *a material is named twice*. First the shed's
+ground, then the workshop's shutters, now the gate — three occurrences, each caught by a different reading (a
+compile error, a pixel query, a coverage query). The rule that emerges is worth stating plainly:
+
+> **Every join that is written in two places is a join that will be wrong in one of them.** The instance row and
+> the material declaration are one join; the mesh's ids and `locate_in`'s table are another; a scene's output
+> declaration and its material's stage set are a third. Each has been wrong at least once, and each was found by
+> asking the frame a question rather than by looking at it.
+
+Fixed and measured:
+
+```text
+where yard part 0, template mass 0, outer wall over edge 0: id 49 covers 13713 pixel(s) in x 657..=788, y 540..=697
+where yard part 0, template mass 0, outer wall over edge 1: id 50 covers 238 pixel(s) in x 652..=657, y 582..=632
+```
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):

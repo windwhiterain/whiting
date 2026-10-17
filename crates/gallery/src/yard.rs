@@ -322,12 +322,15 @@ pub fn yard() -> Value {
             gate_standing.0,
             gate_standing.1,
             gate_standing.2,
-            &format!("board-{stage}"),
+            // **The gate's own material**, which carries the offset. One material per placement is what makes
+            // an instanced mesh's pixels answer the rows a bake would have written — and the row naming
+            // `board-{stage}` instead was the third time this slice's material was named twice and once wrong.
+            &format!("gate-{stage}"),
         ));
         rows
     };
 
-    // **Two point schemas**: every authored mesh carries uthored_id; the ground carries none and writes
+    // **Two point schemas**: every authored mesh carries `authored_id`; the ground carries none and writes
     // the reserved zero from a constant.
     let extras = building_extras();
     let point = extras.point_schema();
