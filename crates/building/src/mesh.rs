@@ -132,6 +132,8 @@ pub enum Element {
     },
     /// A face of a wall.
     Wall(crate::wall::WallId, crate::wall::WallSurface),
+    /// A face of a slab.
+    Slab(crate::slab::SlabId, crate::slab::SlabSurface),
 }
 
 /// What a part's face was inside the template it was copied from.
@@ -151,6 +153,12 @@ pub enum PartSurface {
     /// exists because the map from an element to a template's own element has to be total, and a
     /// `panic!` in that map would be a crash for a type the document can express.
     Wall(crate::wall::WallId, crate::wall::WallSurface),
+    /// A face of one of the template's slabs.
+    ///
+    /// A `Template` holds masses and roofs and no slabs, so nothing builds this today; it exists for the
+    /// same reason as the wall variant above — the map from an element to a template's own element has to
+    /// be total, and a `panic!` there would be a crash for a type the document can express.
+    Slab(crate::slab::SlabId, crate::slab::SlabSurface),
 }
 
 impl Element {
@@ -161,6 +169,7 @@ impl Element {
             Self::Roof(id, _) => SolidId::Roof(*id),
             Self::Part { placement, .. } => SolidId::Part(*placement),
             Self::Wall(id, _) => SolidId::Wall(*id),
+            Self::Slab(id, _) => SolidId::Slab(*id),
         }
     }
 }
@@ -184,6 +193,8 @@ pub enum SolidId {
     Part(usize),
     /// A wall, by its index in the document's walls.
     Wall(crate::wall::WallId),
+    /// A slab, by its index in the document's slabs.
+    Slab(crate::slab::SlabId),
 }
 
 /// One triangle, and the element that produced it.

@@ -65,6 +65,7 @@ pub mod parts;
 pub mod roof;
 pub mod site;
 pub mod skeleton;
+pub mod slab;
 pub mod validate;
 pub mod wall;
 
@@ -78,4 +79,5 @@ pub use openings::{Extents, Inset, Opening, Openings, RevealSide};
 pub use parts::{Bounds, Parts, Pin, Placement, Template};
 pub use roof::{CrestPoint, EaveStation, Roof, RoofId, RoofPlane, RoofRow};
 pub use skeleton::{Building, BuildingSkeleton};
+pub use slab::{Slab, SlabId, SlabSurface};
 pub use validate::Violation;

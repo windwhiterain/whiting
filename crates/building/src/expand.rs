@@ -71,6 +71,7 @@ use crate::mesh::{BuildingFace, BuildingMesh, Element, MassSurface, PartSurface,
 use crate::openings::{Extents, RevealSide};
 use crate::roof::{EaveStation, Roof, RoofId, RoofRow};
 use crate::skeleton::BuildingSkeleton;
+use crate::slab::{Slab, SlabId, SlabSurface};
 use crate::wall::{Wall, WallId, WallSurface};
 
 /// Two outline edges whose turn is smaller than this, in sine, are treated as parallel.
@@ -331,6 +332,20 @@ pub enum Problem {
         /// The highest ground under its ends.
         highest: f32,
     },
+    /// A slab's two elevations are the wrong way round, so it is not a prism.
+    SlabNotThick {
+        /// The slab.
+        slab: SlabId,
+        /// The thickness that came out of its elevations.
+        thickness: f32,
+    },
+    /// A slab's outline is not a polygon.
+    SlabNotAPolygon {
+        /// The slab.
+        slab: SlabId,
+        /// How many nodes it had.
+        nodes: usize,
+    },
 }
 
 /// Everything that stopped a build.
@@ -393,11 +408,72 @@ pub fn build(skeleton: &BuildingSkeleton) -> Result<BuildingMesh, BuildError> {
             problems.extend(found);
         }
     }
+    for (index, slab) in skeleton.slabs.iter().enumerate() {
+        if let Err(found) = expand_slab(&mut mesh, SlabId(index), slab) {
+            problems.extend(found);
+        }
+    }
     if problems.is_empty() {
         Ok(mesh)
     } else {
         Err(BuildError { problems })
     }
+}
+
+/// Builds one slab as the level prism it is: two caps through the ear clipper, and a rectangle per edge.
+///
+/// # Invariants
+///
+/// **The caps are the polygon and the sides are rectangles**, so every face is planar by construction —
+/// the property a slab exists to have. A side is wound up, along, down, back (`[bottom_i, top_i,
+/// top_i+1, bottom_i+1]`), which puts its normal out of the material for a positively wound loop; a cap
+/// takes the loop's own winding, with the clipper's `up` flag deciding which way it faces.
+fn expand_slab(mesh: &mut BuildingMesh, id: SlabId, slab: &Slab) -> Result<(), Vec<Problem>> {
+    if slab.outline.len() < 3 {
+        return Err(vec![Problem::SlabNotAPolygon {
+            slab: id,
+            nodes: slab.outline.len(),
+        }]);
+    }
+    if slab.thickness() <= 0.0 {
+        return Err(vec![Problem::SlabNotThick {
+            slab: id,
+            thickness: slab.thickness(),
+        }]);
+    }
+    let mut solid = Solid::default();
+    let bottom: Vec<u32> = slab
+        .outline
+        .iter()
+        .map(|at| solid.point(lift(*at, slab.bottom)))
+        .collect();
+    let top: Vec<u32> = slab
+        .outline
+        .iter()
+        .map(|at| solid.point(lift(*at, slab.top)))
+        .collect();
+    polygon(
+        &mut solid,
+        &slab.outline,
+        &top,
+        Element::Slab(id, SlabSurface::Top),
+        true,
+    );
+    polygon(
+        &mut solid,
+        &slab.outline,
+        &bottom,
+        Element::Slab(id, SlabSurface::Bottom),
+        false,
+    );
+    for index in 0..slab.outline.len() {
+        let next = (index + 1) % slab.outline.len();
+        let element = Element::Slab(id, SlabSurface::Edge { index });
+        solid.triangle([bottom[index], top[index], top[next]], element);
+        solid.triangle([bottom[index], top[next], bottom[next]], element);
+    }
+    solid.splice(mesh);
+    Ok(())
 }
 
 /// Builds one wall run as the box it is: six quads, twelve triangles, all wound outward.
@@ -573,6 +649,7 @@ fn expand_placement(
                     // it is spliced into, and its own surface is kept.
                     Element::Part { surface, .. } => surface,
                     Element::Wall(id, surface) => PartSurface::Wall(id, surface),
+                    Element::Slab(id, surface) => PartSurface::Slab(id, surface),
                 },
             },
         })

@@ -559,6 +559,20 @@ pub enum Violation {
         /// The highest ground under its ends.
         highest: f32,
     },
+    /// A slab's two elevations are the wrong way round, so it is not a prism.
+    SlabNotThick {
+        /// The slab.
+        slab: crate::slab::SlabId,
+        /// The thickness that came out of its elevations.
+        thickness: f32,
+    },
+    /// A slab's outline is not a polygon.
+    SlabNotAPolygon {
+        /// The slab.
+        slab: crate::slab::SlabId,
+        /// How many nodes it had.
+        nodes: usize,
+    },
     /// A facet has no area because **two of its corners are one point**, so it is a facet of no
     /// surface.
     ///
@@ -638,6 +652,7 @@ pub fn document(skeleton: &BuildingSkeleton) -> Vec<Violation> {
     check_grids(skeleton, &mut violations);
     check_parts(skeleton, &mut violations);
     check_walls(skeleton, &mut violations);
+    check_slabs(skeleton, &mut violations);
     check_openings(skeleton, &mut violations);
     violations.sort_by_key(order_key);
     violations
@@ -1005,7 +1020,7 @@ fn check_solid(
             .sum(),
         // A part, a wall and a roof are cut by nothing: a hole is authored against a mass's own wall,
         // a template's masses are its own private document, and a wall's own box is solid.
-        SolidId::Roof(_) | SolidId::Part(_) | SolidId::Wall(_) => 0,
+        SolidId::Roof(_) | SolidId::Part(_) | SolidId::Wall(_) | SolidId::Slab(_) => 0,
     };
     let expected = 2 - 2 * holes as i64;
     let euler = built.euler_characteristic_of(&faces);
@@ -1421,6 +1436,32 @@ fn check_walls(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     }
 }
 
+/// Checks every slab: that its outline is a polygon and its two elevations are the right way round.
+///
+/// # Invariants
+///
+/// It mirrors the expander's own two refusals rather than deferring to them, so an author hears about a
+/// slab that cannot be built before a mesh is asked for — the same pairing the walls' checks have.
+/// `O(slabs)`, one comparison each.
+fn check_slabs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
+    for (index, slab) in skeleton.slabs.iter().enumerate() {
+        let id = crate::slab::SlabId(index);
+        if slab.outline.len() < 3 {
+            violations.push(Violation::SlabNotAPolygon {
+                slab: id,
+                nodes: slab.outline.len(),
+            });
+            continue;
+        }
+        if slab.thickness() <= GRID_TOLERANCE {
+            violations.push(Violation::SlabNotThick {
+                slab: id,
+                thickness: slab.thickness(),
+            });
+        }
+    }
+}
+
 /// Checks that no facet has no area.
 ///
 /// # Invariants
@@ -1791,6 +1832,8 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         Violation::WallTooShort { wall, .. } => (33, wall.0 as u64, 0, 0, 0),
         Violation::WallNotThick { wall, .. } => (34, wall.0 as u64, 0, 0, 0),
         Violation::WallTooLow { wall, .. } => (35, wall.0 as u64, 0, 0, 0),
+        Violation::SlabNotThick { slab, .. } => (36, slab.0 as u64, 0, 0, 0),
+        Violation::SlabNotAPolygon { slab, .. } => (37, slab.0 as u64, 0, 0, 0),
         // The four opening faults in the order an author meets them: the slot is not there, the bay
         // cannot hold the hole, the hole leaves the wall, and two holes in one wall fight.
         Violation::OpeningBayMissing { opening, face } => {
@@ -1817,6 +1860,7 @@ fn solid_rank(solid: &SolidId) -> u64 {
         SolidId::Roof(roof) => (1 << 32) | roof.0 as u64,
         SolidId::Part(placement) => (2 << 32) | *placement as u64,
         SolidId::Wall(wall) => (3 << 32) | wall.0 as u64,
+        SolidId::Slab(slab) => (4 << 32) | slab.0 as u64,
     }
 }
 

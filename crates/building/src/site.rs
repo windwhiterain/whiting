@@ -70,6 +70,8 @@ pub struct SeatReport {
     pub masses: Vec<Seat>,
     /// How many walls were given the ground under their own ends.
     pub walls: usize,
+    /// How many slabs were moved with the building that hosts them.
+    pub slabs: usize,
 }
 
 impl SeatReport {
@@ -183,6 +185,20 @@ pub fn seat(
         skeleton.walls[index].to.elevation = to_ground;
         skeleton.walls[index].top += now - was;
         report.walls += 1;
+    }
+    // **A hosted slab moves with its building, and an unhoused one does not.** A flat roof's elevations
+    // are the wall top's, so a seat that moved the mass and not its plate would leave the roof behind at
+    // the old level; a canopy standing on its own is a plate with no host and stays where it was authored.
+    for slab in &mut skeleton.slabs {
+        let Some(host) = slab.host else {
+            continue;
+        };
+        let Some(seat) = report.masses.iter().find(|seat| seat.mass == host) else {
+            continue;
+        };
+        slab.bottom += seat.delta;
+        slab.top += seat.delta;
+        report.slabs += 1;
     }
     report
 }

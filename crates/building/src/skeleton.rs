@@ -10,6 +10,7 @@ use crate::mesh::BuildingMesh;
 use crate::openings::{Extents, Openings};
 use crate::parts::{Anchor, Bounds, Parts, Pin, Placement, Template};
 use crate::roof::{Roof, RoofId};
+use crate::slab::{Slab, SlabId};
 use crate::validate::{Violation, document, mesh};
 use crate::wall::{Wall, WallId};
 
@@ -49,6 +50,8 @@ pub struct BuildingSkeleton {
     pub parts: Parts,
     /// The walls: the site's enclosures, one straight run each.
     pub walls: Vec<Wall>,
+    /// The slabs: level prisms over plan polygons, which is what a flat roof is.
+    pub slabs: Vec<Slab>,
 }
 
 impl BuildingSkeleton {
@@ -62,6 +65,7 @@ impl BuildingSkeleton {
             openings: Openings::new(),
             parts: Parts::new(),
             walls: Vec::new(),
+            slabs: Vec::new(),
         }
     }
 
@@ -272,6 +276,16 @@ impl BuildingSkeleton {
     /// Returns every wall's id, in the document's own order.
     pub fn wall_ids(&self) -> Vec<WallId> {
         (0..self.walls.len()).map(WallId).collect()
+    }
+
+    /// Returns one slab by id.
+    pub fn slab(&self, id: SlabId) -> Option<&Slab> {
+        self.slabs.get(id.0)
+    }
+
+    /// Returns every slab's id, in the document's own order.
+    pub fn slab_ids(&self) -> Vec<SlabId> {
+        (0..self.slabs.len()).map(SlabId).collect()
     }
 
     /// Returns the roofs that name a mass as their host.

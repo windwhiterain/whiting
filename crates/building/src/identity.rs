@@ -158,6 +158,7 @@ fn describe(element: Element) -> String {
         Element::Mass(id, surface) => format!("mass {}, {}", id.0, mass_surface(surface)),
         Element::Roof(id, surface) => format!("{}, {}", roof_title(id), roof_surface(surface)),
         Element::Wall(id, surface) => format!("wall {}, {}", id.0, wall_surface(surface)),
+        Element::Slab(id, surface) => format!("slab {}, {}", id.0, slab_surface(surface)),
         Element::Part { placement, surface } => match surface {
             PartSurface::Mass(id, surface) => format!(
                 "part {placement}, template mass {}, {}",
@@ -174,7 +175,23 @@ fn describe(element: Element) -> String {
                 id.0,
                 wall_surface(surface)
             ),
+            PartSurface::Slab(id, surface) => format!(
+                "part {placement}, template slab {}, {}",
+                id.0,
+                slab_surface(surface)
+            ),
         },
+    }
+}
+
+/// Returns the sentence for one of a slab's surfaces.
+fn slab_surface(surface: crate::slab::SlabSurface) -> String {
+    match surface {
+        crate::slab::SlabSurface::Top => "its top".to_owned(),
+        crate::slab::SlabSurface::Bottom => "its underside".to_owned(),
+        crate::slab::SlabSurface::Edge { index } => {
+            format!("the edge from node {index}")
+        }
     }
 }
 

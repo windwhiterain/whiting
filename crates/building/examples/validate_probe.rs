@@ -345,6 +345,9 @@ fn report_areas(skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidI
         // A part has no authored loop of its own in this document: its geometry lives in its template.
         // A wall is a box rather than a loop, so it has none either.
         SolidId::Part(_) | SolidId::Wall(_) => None,
+        // A slab's plan *is* an authored loop, and it is the one solid whose loop this probe can compare
+        // directly: the coverage check measures the mesh against the document's own polygon.
+        SolidId::Slab(id) => skeleton.slab(id).map(|slab| slab.plan_area()),
     };
     println!(
         "  coverage: measured {:.4} against authored loop {}, over {} faces",
@@ -409,6 +412,8 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::WallTooShort { .. } => "WallTooShort",
         Violation::WallNotThick { .. } => "WallNotThick",
         Violation::WallTooLow { .. } => "WallTooLow",
+        Violation::SlabNotThick { .. } => "SlabNotThick",
+        Violation::SlabNotAPolygon { .. } => "SlabNotAPolygon",
         Violation::OpeningBayMissing { .. } => "OpeningBayMissing",
         Violation::OpeningExceedsBay { .. } => "OpeningExceedsBay",
         Violation::OpeningOutsideWall { .. } => "OpeningOutsideWall",

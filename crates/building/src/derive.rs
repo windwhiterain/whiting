@@ -48,6 +48,7 @@ use crate::math::{Vec2, cross, difference, distance, dot, length};
 use crate::ops::closed_spans;
 use crate::roof::{CrestPoint, EaveStation, Roof, RoofPlane, RoofRow};
 use crate::skeleton::{Building, BuildingSkeleton};
+use crate::slab::Slab;
 
 /// Which roof a starter builds.
 ///
@@ -64,6 +65,8 @@ pub enum RoofStyle {
     Hip,
     /// Two planes meeting at a ridge, with gable ends.
     Gable,
+    /// A plate over the eave outline: the third primitive, not a zero-rise roof.
+    Flat,
 }
 
 /// What a starter building is made of.
@@ -174,8 +177,35 @@ pub fn starter(starter: &Starter) -> Building {
             hip_over(&eave, host, starter.rise, starter.roof_thickness, inset)
         }
         RoofStyle::Gable => gable_over(&eave, host, starter.rise, starter.roof_thickness),
+        // **A flat roof is a plate, not a roof**, so this arm returns a slab and there is no roof at all:
+        // the roof model's skin is a strip between a crest row and an eave row, and zero rise would make
+        // those rows coincide and every facet of the strip have no area.
+        RoofStyle::Flat => {
+            let mut skeleton = BuildingSkeleton::new(vec![mass], Vec::new());
+            skeleton
+                .slabs
+                .push(flat_over(&eave, host, starter.roof_thickness));
+            return Building::new(skeleton);
+        }
     };
     Building::new(BuildingSkeleton::new(vec![mass], vec![roof]))
+}
+
+/// Builds the plate a flat roof is: a slab over the eave outline, `thickness` thick, seated on the eave.
+///
+/// # Invariants
+///
+/// Its underside is the eave's own elevation, so the plate sits on the wall top with the same `sink` the
+/// pitched roofs get, and its top is one thickness above it. It carries its `host`, which is what makes
+/// seating move it with the building instead of leaving the roof behind at the old level.
+fn flat_over(eave: &Eave, host: MassId, thickness: f32) -> Slab {
+    let bottom = eave.elevation;
+    let outline = eave
+        .nodes
+        .iter()
+        .map(|node| node.position)
+        .collect::<Vec<_>>();
+    Slab::new(outline, bottom, bottom + thickness).with_host(host)
 }
 
 /// Builds a hip roof over a mass's outline, standing `overhang` outside it.
