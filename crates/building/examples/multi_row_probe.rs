@@ -173,4 +173,50 @@ fn main() {
         }
         Err(error) => println!("  refused: {:?}", error.problems),
     }
+
+    println!("\n# every face of the failing mass near the door, with its corners");
+    let failing = with_opening(with_opening(shed(2), 0, 1, door()), 1, 1, window());
+    if let Ok(built) = failing.build() {
+        for (index, face) in built.faces.iter().enumerate() {
+            let corners: Vec<[f32; 3]> = face
+                .indices
+                .iter()
+                .map(|corner| built.points[*corner as usize])
+                .collect();
+            let near = corners.iter().all(|at| at[0].abs() < 0.7 && at[2] > 3.5);
+            if !near {
+                continue;
+            }
+            let shape: Vec<String> = corners
+                .iter()
+                .map(|at| format!("({:.3},{:.3},{:.3})", at[0], at[1], at[2]))
+                .collect();
+            println!("  {index}: {:?} {}", face.element, shape.join(" "));
+        }
+    }
+
+    println!("\n# who owns each boundary edge of the failing mass");
+    let failing = with_opening(with_opening(shed(2), 0, 1, door()), 1, 1, window());
+    if let Ok(built) = failing.build() {
+        let solid = SolidId::Mass(MassId(0));
+        let faces = built.faces_of(solid);
+        let edges = built.boundary_edges_of(&faces);
+        for (from, to) in edges.iter().take(6) {
+            let a = built.points[*from as usize];
+            let b = built.points[*to as usize];
+            let mut owners = Vec::new();
+            for index in &faces {
+                let corners = built.faces[*index].indices;
+                let forward = corners.windows(2).any(|pair| pair[0] == *from && pair[1] == *to)
+                    || corners.contains(from) && corners.contains(to);
+                if forward {
+                    owners.push(format!("{:?}", built.faces[*index].element));
+                }
+            }
+            println!(
+                "  ({:.3},{:.3},{:.3})->({:.3},{:.3},{:.3}): {} owner(s) {:?}",
+                a[0], a[1], a[2], b[0], b[1], b[2], owners.len(), owners
+            );
+        }
+    }
 }

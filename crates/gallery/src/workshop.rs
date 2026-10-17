@@ -98,7 +98,7 @@ fn workshop_document() -> Building {
     // The ground floor: a doorway in the middle bay and a window either side of it.
     ops::add_opening(
         &mut skeleton,
-        Opening::new(front, 0, 1, Inset::new(0.34, 0.34, 0.0, 0.75)),
+        Opening::new(front, 0, 1, Inset::new(0.28, 0.28, 0.0, 0.75)),
     )
     .expect("the middle bay of the ground storey is in the grid");
     for column in [0, 2] {

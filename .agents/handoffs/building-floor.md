@@ -86,6 +86,31 @@ thickness) -> Option<Slab>`**.
 
 - **Next**: the reveal-splitting fix above, with `multi_row_probe` as its acceptance (the failing row of
   that table must read `loops 0, euler -6, manifold true`).
+- **2026-10-16** — **fixed, and the fault was the mirror of the one P2 fixed.** The boundary-edge ownership
+  dump named it in one step: the door's **sill reveal** owns one edge `(0.553, 0, 3.7) → (-0.553, 0, 3.7)`
+  while the **floor top** owns `(0.483, 0, 3.7) → (0.553, 0, 3.7)` — the sill's inner edge is **one** edge
+  across the doorway, and the floor's rim is **two** there because a station (the window's jamb) falls
+  inside the doorway's span. The two faces disagree about whether a horizontal edge is broken, and since the
+  crate welds by authored identity they never meet.
+
+  So the head and the sill reveal must be split at **every station the hole's own span holds**, exactly as
+  P2 had already made the jambs split at **every cut of the wall**. P2's comment — *"the head and the sill
+  are single quads: their edges run along the wall rather than up it, and no cut divides a horizontal
+  edge"* — was true of **cuts** and false of **stations**, and is corrected in place.
+
+  New table from `multi_row_probe`, the two rows that failed now the first two that pass:
+
+  | configuration | before | after |
+  | --- | --- | --- |
+  | a door below and a window above, jambs not aligned | `loops 4, euler -6` | **`loops 0, euler -2, manifold true`** |
+  | six holes, a different inset per row | `loops 12, euler -22` | **`loops 0, euler -10, manifold true`** |
+  | every configuration that closed before | closed | **closed, and by the same counts** |
+
+  The failing mass now has **0 boundary edges**. The workshop's doorway is restored to its **wider** inset
+  (`0.28` against the windows' `0.34`) — the configuration that could not be drawn when the scene was
+  written — and the scene re-renders at 13 passes with its own document assert clean.
+
+  The gate is re-run on all seventeen probes and green; `census` reads 0 violations on all three starters.
 - **2026-10-16** — **the reduction tightened, and the diagnosis narrowed.** `multi_row_probe` was rewritten
   around a table of configurations, and it now measures which ones close:
 

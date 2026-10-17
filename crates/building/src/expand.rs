@@ -1549,8 +1549,9 @@ fn cut_edge(
         // understood: a door in one bay with a window in the next read `loops 8, euler -12, manifold
         // false` while the volume was exactly right, the mismatch being the window's `[1.8, 2.7]` jamb
         // against the wall's `[1.8, 2.5]` and `[2.5, 2.7]`, split by a cut that belongs to a hole in
-        // another bay. The head and the sill are single quads: their edges run along the wall rather
-        // than up it, and no cut divides a horizontal edge.
+        // another bay. The head and the sill are split at every **station** the hole's own span holds, for
+        // the mirror reason given where they are emitted: their edges run along the wall, and a station
+        // inside the span is a place where the wall's own horizontal edge is already broken.
         //
         // Each quad is wound so its right-handed normal points out of the material and into the hole:
         // the left one faces along the edge towards `to`, the right one back towards `from`. Read in
@@ -1590,37 +1591,53 @@ fn cut_edge(
                 ),
             );
         }
-        for (side, corners) in [
-            (
-                RevealSide::Head,
-                [
-                    points[from].outer[high],
-                    points[to].outer[high],
-                    points[to].inner[high],
-                    points[from].inner[high],
-                ],
-            ),
-            (
-                RevealSide::Sill,
-                [
-                    points[from].outer[low],
-                    points[from].inner[low],
-                    points[to].inner[low],
-                    points[to].outer[low],
-                ],
-            ),
-        ] {
-            solid.quad(
-                corners,
-                Element::Mass(
-                    id,
-                    MassSurface::Reveal {
-                        edge,
-                        opening: hole.opening,
-                        side,
-                    },
+        // **A head or a sill is split at every station its own span holds, for the same reason a jamb is
+        // split at every cut.** The wall's bands and both discs have a node at every station, so a hole
+        // whose `u` span contains another hole's jamb station meets the wall along **two** horizontal edges
+        // there and not one: emitted as a single quad, its edge is used once while the floor's or the
+        // band's is used twice, and the solid reads open. Measured, and it is the closed form of the
+        // failure: a doorway with one inset and a window above it with another gave `loops 4, euler -6`
+        // while the same pair with equal insets closed.
+        //
+        // With no intermediate station — the ordinary case — this emits exactly the one quad it used to.
+        let mut breaks = Vec::with_capacity(to - from + 1);
+        breaks.push(from);
+        breaks.extend((from + 1)..to);
+        breaks.push(to);
+        for pair in breaks.windows(2) {
+            let (near, far) = (pair[0], pair[1]);
+            for (side, corners) in [
+                (
+                    RevealSide::Head,
+                    [
+                        points[near].outer[high],
+                        points[far].outer[high],
+                        points[far].inner[high],
+                        points[near].inner[high],
+                    ],
                 ),
-            );
+                (
+                    RevealSide::Sill,
+                    [
+                        points[near].outer[low],
+                        points[near].inner[low],
+                        points[far].inner[low],
+                        points[far].outer[low],
+                    ],
+                ),
+            ] {
+                solid.quad(
+                    corners,
+                    Element::Mass(
+                        id,
+                        MassSurface::Reveal {
+                            edge,
+                            opening: hole.opening,
+                            side,
+                        },
+                    ),
+                );
+            }
         }
     }
     Ok(added)
