@@ -22,6 +22,7 @@ fn main() {
     checks.push(("straight frame", a_straight_curve_has_a_constant_frame()));
     checks.push(("inflection", an_inflection_does_not_flip_the_frame()));
     checks.push(("closed loop", a_closed_planar_loop_has_no_holonomy()));
+    checks.push(("closed ends", a_closed_curve_ends_where_it_starts()));
     checks.push(("bezier form", the_bezier_form_is_the_same_curve()));
 
     println!("\n# the exit");
@@ -244,12 +245,21 @@ fn an_inflection_does_not_flip_the_frame() -> bool {
 }
 
 /// A closed planar loop's frame returns to where it started.
+///
+/// # Invariants
+///
+/// The frame's normal is the loop's own plane normal and a transported frame carries it unchanged, so the
+/// holonomy is not small but **zero**, and the control is the same instrument on the tangent: at
+/// `t = 0.999` the tangent has turned `6.6e-3` rad, which is the reading the normal would have shown had
+/// it turned with the curve. A zero on the normal is therefore a measurement rather than a blind spot.
 fn a_closed_planar_loop_has_no_holonomy() -> bool {
     let curve = circle(1.5);
     let analytic = std::f32::consts::TAU * 1.5;
-    let start = curve.frame(0.0).normal;
-    let almost = angle(start, curve.frame(0.999).normal);
-    let whole = angle(start, curve.frame(1.0).normal);
+    let start = curve.frame(0.0);
+    let almost = curve.frame(0.999);
+    let whole = curve.frame(1.0);
+    let twist = angle(start.normal, whole.normal);
+    let control = angle(start.tangent, almost.tangent);
     let short = (analytic - curve.length()) / analytic;
     println!("\n# a closed planar loop of eight segments");
     println!(
@@ -258,11 +268,12 @@ fn a_closed_planar_loop_has_no_holonomy() -> bool {
         curve.length(),
         analytic
     );
+    println!("  twist after one loop {twist:.3e} rad: the plane normal is carried unchanged");
     println!(
-        "  twist after one loop {whole:.3e} rad (at t = 0.999 it reads {almost:.3e}, which is the last \
-         tenth of a percent of the turn rather than a transported defect)"
+        "  the same instrument on the tangent at t = 0.999 reads {control:.3e} rad, so the zero above is a \
+         reading and not a blind spot"
     );
-    whole < 1.0e-4 && short.abs() < 1.0e-3
+    twist < 1.0e-4 && control > 1.0e-3 && short.abs() < 1.0e-3
 }
 
 /// The Bezier form an exporter receives is the same curve, not an approximation of it.
@@ -296,6 +307,39 @@ fn the_bezier_form_is_the_same_curve() -> bool {
     worst_corner < 1.0e-6 && worst_handle < 1.0e-6
 }
 
+/// A curve whose last jet repeats its first returns to its start **exactly**, not nearly.
+///
+/// # Invariants
+///
+/// The last span evaluates its end value as `h01(1)` times the last knot's position, and the four basis
+/// weights at `t = 1` are exactly `0, 0, 1, 0` — so the answer is that position bit for bit, and a closed
+/// loop has no gap for a sweep to hide. The control is an open spine, whose ends must differ by a
+/// distance a reader can see.
+fn a_closed_curve_ends_where_it_starts() -> bool {
+    let loop_ = exact_loop();
+    let open = spine();
+    let closed_gap = length3(subtract(loop_.at(1.0), loop_.at(0.0)));
+    let open_gap = length3(subtract(open.at(1.0), open.at(0.0)));
+    println!("\n# where a curve ends");
+    println!(
+        "  a closed loop's |at(1) − at(0)| = {closed_gap:.3e} · an open spine's = {open_gap:.3e}"
+    );
+    println!("  the closed gap is exactly zero because the basis at t = 1 is (0, 0, 1, 0)");
+    closed_gap == 0.0 && open_gap > 0.1
+}
+
+/// A loop whose closing knot is its first knot, written out rather than derived from it.
+fn exact_loop() -> Curve {
+    Curve::new(vec![
+        Jet::new([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+        Jet::new([0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]),
+        Jet::new([-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]),
+        Jet::new([0.0, -1.0, 0.0], [1.0, 0.0, 0.0]),
+        Jet::new([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+    ])
+    .expect("the loop's knots are distinct")
+}
+
 /// The angle between two directions, in radians.
 fn angle(left: Vec3, right: Vec3) -> f32 {
     dot3(normalized3(left), normalized3(right))
@@ -303,8 +347,7 @@ fn angle(left: Vec3, right: Vec3) -> f32 {
         .acos()
 }
 
-/// A Frenet normal from the curve's own points: `P''` with its tangential part removed.
-///
+/// A Frenet normal from the curve's own points: `P''` with its tangential part removed.///
 /// # Invariants
 ///
 /// It is here as the *control* for the transported frame, and a second difference is the only way to ask

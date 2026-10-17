@@ -605,8 +605,23 @@ impl Curve {
     }
 
     /// The segment index and local parameter an arc-length fraction names.
+    ///
+    /// # Invariants
+    ///
+    /// **The two ends are the two ends, not one bisection step away from them.** `t = 0` answers the
+    /// first segment at `u = 0` and `t = 1` the last at `u = 1`, so [`Curve::at`] returns the first and
+    /// last jets' positions bit for bit and [`Curve::tangent`] returns their authored tangents. Without
+    /// this, an inversion whose target is the whole length lands on `1 − 2⁻³³` and a closed loop leaves a
+    /// `1.2e-10` gap at the seam — invisible, and enough to make "a closed curve's `at(1)` is its
+    /// `at(0)`" false.
     fn locate(&self, t: f32) -> (usize, f32) {
         let t = clamp(t, 0.0, 1.0);
+        if t <= 0.0 {
+            return (0, 0.0);
+        }
+        if t >= 1.0 {
+            return (self.segments.len() - 1, 1.0);
+        }
         let target = t * self.length();
         let last = self.segments.len().saturating_sub(1);
         let index = self
