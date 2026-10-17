@@ -103,12 +103,19 @@ fn main() {
         0.3,
     );
 
+    // **The three shapes above are outlines, not courtyards**, and the distinction is what the volume
+    // decision turned on: a mass's outline is still one simple polygon, so a U-shaped *building* is
+    // drawn as a U. A courtyard is a **void** inside that outline, and the wall round it is a second
+    // ring standing on the plate — which is why a courtyard can be closed, where the shell could not
+    // draw one that was. `patio_probe` measures that ring.
     println!(
-        "\n# a closed courtyard would need a plan with a hole, and a mass is one simple polygon — so the crate draws\n# a courtyard open on one side and not one that is closed."
+        "\n# these three are outlines and not courtyards: a mass's outline is one simple polygon, so a U-shaped\n# building is drawn as a U. A courtyard is a void inside the outline and its wall is a second ring on the\n# plate, which is why a courtyard can be closed — `patio_probe` measures that ring."
     );
 
     // **The identity table of a concave mass**, which is what a scene would draw through: every face of the
-    // courtyard must name itself, and the two sides of the mouth must be two different elements.
+    // mass must name itself, and the two sides of the mouth must be two different elements. (The word
+    // "courtyard" is not used for this shape anywhere in the crate: it names a void, which is a hole in
+    // a mass's plan rather than a notch in its outline.)
     let mut skeleton = BuildingSkeleton::default();
     skeleton.masses = vec![
         Mass::new(
