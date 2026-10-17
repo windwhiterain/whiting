@@ -138,6 +138,15 @@ pub fn sculpted(seed: u64) -> Sculpted {
                     reason: Prune::ByAuthor,
                 },
             ),
+            // A law: this branch is thick at its base and thinner than its rule allows at its tip — the verb an
+            // offset cannot express, because it is not one number.
+            Edit::new(
+                Handle::root().child(1).child(0),
+                Change::Curve {
+                    curve: Scalar::new(&[(0.0, 0.004), (0.55, 0.001), (1.0, -0.0008)])
+                        .expect("three knots are a law"),
+                },
+            ),
             // A spatial nudge: the second bough slides up the culm.
             Edit::new(
                 Handle::root().child(1),

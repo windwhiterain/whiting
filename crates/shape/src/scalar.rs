@@ -161,6 +161,36 @@ impl Scalar {
         }
     }
 
+    /// The sum of this law and another: **the profile an author adds to a computed one**.
+    ///
+    /// # Invariants
+    ///
+    /// - **Every breakpoint of both laws survives**, so a knot either law is exact at is still exact in the sum:
+    ///   the two laws are evaluated at the union of their knots and the results added. A sum that dropped a
+    ///   breakpoint would move an authored number by the span it fell in.
+    /// - **This cannot refuse.** Both laws start at zero and end at one, so their union does too and has at least
+    ///   two knots, which is the whole of what [`Scalar::new`] checks about the domain; a slope the sum makes
+    ///   too steep is limited by `new` rather than refused.
+    pub fn plus(&self, other: &Self) -> Self {
+        let ends = |law: &Self| -> Vec<f32> {
+            law.spans
+                .iter()
+                .map(|span| span.t0)
+                .chain(std::iter::once(law.spans[law.spans.len() - 1].t1))
+                .collect()
+        };
+        let mut times: Vec<f32> = ends(self).into_iter().chain(ends(other)).collect();
+        times.sort_by(|one, other| {
+            one.partial_cmp(other)
+                .expect("a law's knots are finite, which `new` checked")
+        });
+        times.dedup();
+        let knots: Vec<(f32, f32)> = times
+            .into_iter()
+            .map(|time| (time, self.at(time) + other.at(time)))
+            .collect();
+        Self::new(&knots).expect("the union of two laws' knots is a domain from zero to one")
+    }
     /// The span holding `t` and the local parameter inside it.
     ///
     /// # Invariants

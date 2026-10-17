@@ -84,15 +84,13 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 
 ## What P2 still owes
 
-- **`Change::Curve`** (a law added to a law) and **`Change::Graft`** — the last needs `GenerationId`, which
-  arrives with the generator.
-- **Decorators and their sockets**, the four fields (gravity, ancestor, light, obstacle), and the envelope as a
-  trimming law.
-- **The collision report** and `derive::thin`.
-- **`--region`** in the render harness, and the segmentation scene.
-- **`report()`** — the crown against the envelope's own radius curve, the counts, the instance count.
-- **`reference` on a leaf field** — needs a closest-point query (`shape`'s open question 4).
-- ~~The promotion of `gallery::geometry::{culm, blade, double_blade, leaf_spray, tuft}` into `derive`.~~ Landed in round 14: the five generators are deleted and every scene is bit-identical without them.
+- **`reference` on a leaf field** — the one item left: a leaf field whose anchor or orientation law consults another
+  node through `shape::Curve::closest` (landed in round 3, and already used by the envelope and the crown report).
+
+Landed since this list was written, with the round: `Change::Graft` became `species::graft` (2), `Change::Curve` (15),
+decorators and their sockets (5), the gravity/light/obstacle fields (4 and 6), the envelope as a trimming law (4),
+the collision report and `derive::thin` (6), `--region` (12), the segmentation scene (13), `report()` (4), seating
+(10), and the promotion of the five gallery generators (14).
 
 ## Traps
 

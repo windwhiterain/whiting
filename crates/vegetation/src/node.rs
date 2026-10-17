@@ -195,6 +195,16 @@ impl Node {
         self.taper.offset(self.nudges.radius)
     }
 
+    /// Adds an author's law to the authored taper: the edit table's `Curve`, which is `Offset` with a law.
+    ///
+    /// # Invariants
+    ///
+    /// **It writes the authored law, not the nudge**, so a nudge stays recoverable beside it and a later curve
+    /// reads the sum of the curves before it — the same reading [`Node::baked`] gives a spine, one tier down.
+    pub(crate) fn add_taper_law(&mut self, law: &Scalar) {
+        self.taper = self.taper.plus(law);
+    }
+
     /// The section the node sweeps.
     pub fn section(&self) -> &Section {
         &self.section

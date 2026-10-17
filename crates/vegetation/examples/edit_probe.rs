@@ -8,9 +8,9 @@
 //! cargo run -p whiting-vegetation --example edit_probe
 //! ```
 
-use shape::Jet;
 use shape::math::{length3, span, subtract};
 use shape::mesh::signed_volume;
+use shape::{Jet, Scalar};
 use whiting_vegetation::derive::{Species, bamboo};
 use whiting_vegetation::expand::{Detail, Wood, wood};
 use whiting_vegetation::handle::Handle;
@@ -48,6 +48,16 @@ fn main() {
     checks.push((
         "the brush writes the edits",
         a_brush_writes_the_edit_table(),
+    ));
+    checks.push(("a curve is a law added", a_curve_is_a_law_added()));
+    checks.push(("two curves add up", two_curves_add_up()));
+    checks.push((
+        "a curve of zero changes nothing",
+        a_curve_of_zero_changes_nothing(),
+    ));
+    checks.push((
+        "a law that thins to nothing is refused",
+        a_law_that_thins_to_nothing_is_refused(),
     ));
 
     println!("\n# the exit");
@@ -700,4 +710,130 @@ fn a_brush_writes_the_edit_table() -> bool {
         && nudged == named.len()
         && above
         && trunk
+}
+
+/// The law the curve rows add: four millimetres at the base, nothing at the tip.
+fn thickening() -> Scalar {
+    Scalar::new(&[(0.0, 0.004), (1.0, 0.0)]).expect("two knots are a law")
+}
+
+/// A node's base and tip radius, as it is drawn.
+fn radii(plant: &whiting_vegetation::plant::Plant, handle: &Handle) -> (f32, f32) {
+    let taper = plant.get(handle).expect("the node resolves").taper_now();
+    (taper.at(0.0), taper.at(1.0))
+}
+
+/// A curve is an offset whose number is a law: added at every station, not replacing the profile.
+fn a_curve_is_a_law_added() -> bool {
+    let mut species = species();
+    let target = Handle::root().child(0);
+    let (base, tip) = radii(&species.plant, &target);
+    let report = apply(
+        &mut species.plant,
+        &[Edit::new(
+            target.clone(),
+            Change::Curve {
+                curve: thickening(),
+            },
+        )],
+    );
+    let (after_base, after_tip) = radii(&species.plant, &target);
+    println!("\n# a curve");
+    println!(
+        "  {report} · the bough's base went {base:.6} → {after_base:.6} and its tip {tip:.6} → {after_tip:.6}"
+    );
+    println!(
+        "  the control is the law's own shape: a curve added everywhere would move the tip too, and the tip's knot is zero"
+    );
+    report.clean() && (after_base - base - 0.004).abs() < 1e-6 && (after_tip - tip).abs() < 1e-6
+}
+
+/// Two curves on one node add, which is what makes the verb composable rather than last-wins.
+fn two_curves_add_up() -> bool {
+    let mut species = species();
+    let target = Handle::root().child(0);
+    let (base, _) = radii(&species.plant, &target);
+    let half = Scalar::new(&[(0.0, 0.002), (1.0, 0.0)]).expect("two knots are a law");
+    apply(
+        &mut species.plant,
+        &[
+            Edit::new(
+                target.clone(),
+                Change::Curve {
+                    curve: half.clone(),
+                },
+            ),
+            Edit::new(target.clone(), Change::Curve { curve: half }),
+        ],
+    );
+    let (after, _) = radii(&species.plant, &target);
+    println!("\n# two curves");
+    println!(
+        "  two laws of two millimetres add on one node: the base went {base:.6} → {after:.6}, which is {:+.6}",
+        after - base
+    );
+    println!("  the control is the sum: a last-wins verb would read +0.002 here");
+    (after - base - 0.004).abs() < 1e-6
+}
+
+/// The neutral element: a law of zero leaves the profile exactly as it was.
+fn a_curve_of_zero_changes_nothing() -> bool {
+    let mut species = species();
+    let target = Handle::root().child(1).child(0);
+    let before = species
+        .plant
+        .get(&target)
+        .expect("the node resolves")
+        .taper_now();
+    apply(
+        &mut species.plant,
+        &[Edit::new(
+            target.clone(),
+            Change::Curve {
+                curve: Scalar::constant(0.0),
+            },
+        )],
+    );
+    let after = species
+        .plant
+        .get(&target)
+        .expect("the node resolves")
+        .taper_now();
+    let mut worst = 0.0f32;
+    for step in 0..=32 {
+        let t = step as f32 / 32.0;
+        worst = worst.max((before.at(t) - after.at(t)).abs());
+    }
+    println!("\n# a curve of zero");
+    println!("  the taper moved by {worst:.3e} at its worst station");
+    println!(
+        "  the control is the neutral element: a verb that could not be cancelled would be a verb that always writes"
+    );
+    worst < 1e-6
+}
+
+/// A law that would thin the branch past nothing is refused, and the profile is left alone.
+fn a_law_that_thins_to_nothing_is_refused() -> bool {
+    let mut species = species();
+    let target = Handle::root().child(1).child(0);
+    let (base, tip) = radii(&species.plant, &target);
+    let report = apply(
+        &mut species.plant,
+        &[Edit::new(
+            target.clone(),
+            Change::Curve {
+                curve: Scalar::constant(-1.0),
+            },
+        )],
+    );
+    let (after_base, after_tip) = radii(&species.plant, &target);
+    let refused = matches!(report.problems.first(), Some(Problem::NotPositive { .. }));
+    println!("\n# a law that thins to nothing");
+    println!(
+        "  {report} · the branch reads {base:.6}/{tip:.6} before and {after_base:.6}/{after_tip:.6} after"
+    );
+    println!(
+        "  the control is the refusal: a swept section of negative radius would draw the solid turned inside out"
+    );
+    refused && report.applied == 0 && after_base == base && after_tip == tip
 }

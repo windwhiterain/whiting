@@ -1390,6 +1390,29 @@ derived from `authored_id` … one colour per element with no new channel and no
 2. **A segmentation frame is not tone-mapped.** Its colours *are* ids, so a Reinhard curve and an S-curve would
    collapse neighbouring elements into each other — the one thing the frame exists to keep apart.
 
+**`Change::Curve`: the offset's general case.** The design's own row — *"`edit(Curve { at, property, points })` — a
+curve added to the computed profile, which is SpeedTree's own semantics"* — is now the edit table's fifth verb, and it
+is [`Offset`] with a law where the offset has a number: both are **added to** the profile, both compose, and a law of
+zero is the neutral element an offset's zero already was.
+
+| invariant | reading |
+| --- | --- |
+| a law lands where it is not zero | a law of **+4 mm at the base and 0 at the tip** takes a bough's base from **0.014000 → 0.018000** and leaves its tip at **0.003000** |
+| two curves add | two 2 mm laws on one node read **+0.004000** at the base, where a last-wins verb would read **+0.002** |
+| a law of zero changes nothing | the taper moves **0.000e0** at its worst station |
+| a taper may not thin past nothing | a **−1 m** law is **refused** (`NotPositive`), **0** edits land, and the branch still reads **0.005000 / 0.001500** |
+| the offset gained the same check | it had none: a negative `Offset { Radius }` reached the nudge and would have drawn a solid inside out. Both verbs now go through one `thinnest`, a sample of **33** stations, which reports rather than repairs |
+| the picture | the sculpted plant's script is now **six** edits (`9DD7522D…`): a bake, a thickness, a **law**, a cut, a slide, and the graft with its knot |
+
+**Two decisions the verb forced:**
+
+1. **`Curve` writes the authored taper; `Offset` writes the nudge.** A law reads as the author's own profile — the
+   sentence `Node::baked` makes about a spine, one tier down — while a number stays a recoverable nudge beside it.
+   They compose because a curve reads the authored law and an offset is added at every use.
+2. **One positivity check for two verbs.** A radius is a swept section's size, so a profile that crosses zero draws
+   the solid turned inside out; `thinnest` names the worst value and refuses, and it closed a hole the offset had
+   since the edit table landed.
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before

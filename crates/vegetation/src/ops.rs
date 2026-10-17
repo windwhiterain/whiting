@@ -23,7 +23,7 @@
 //! difference is what makes a tool an agent can use rather than one it has to guess about.
 
 use shape::math::{Vec3, dot3};
-use shape::{Curve, CurveError, Jet};
+use shape::{Curve, CurveError, Jet, Scalar};
 
 use crate::handle::Handle;
 use crate::node::{Nudges, Prune};
@@ -97,6 +97,16 @@ pub enum Change {
         /// How far, in that frame.
         by: Vec3,
     },
+    /// A law added to the node's taper at every station: the profile is too thin **here** and not there.
+    ///
+    /// It is [`Change::Offset`] with a curve where the offset has a number — the general case of one act, *"the
+    /// profile is this much off, everywhere or along its length"* — and like the offset it is **added to the
+    /// computed profile** rather than replacing it, which is the semantics the design took from SpeedTree. Two
+    /// curves on one node add up, and an offset on top of them still moves the whole profile by its number.
+    Curve {
+        /// The law to add, in the taper's own units, over the node's arc-length fraction.
+        curve: Scalar,
+    },
     /// A tombstone: the node stays, its handle keeps naming it, and it draws nothing.
     Prune {
         /// Why it was removed.
@@ -121,6 +131,7 @@ impl Change {
         match self {
             Change::Offset { .. } => "offset",
             Change::Shift { .. } => "shift",
+            Change::Curve { .. } => "curve",
             Change::Prune { .. } => "prune",
             Change::Spine { .. } => "spine",
         }
@@ -278,6 +289,22 @@ pub fn apply(plant: &mut Plant, edits: &[Edit]) -> EditReport {
     report
 }
 
+/// The thinnest value a law takes, sampled at every thirty-second of the node, or `None` when it is positive.
+///
+/// # Invariants
+///
+/// **A report, not a proof**: the check samples rather than brackets, because a law is a spline whose minimum
+/// need not be at a knot, and a radius that went negative between two positive knots would draw a solid turned
+/// inside out. Thirty-three stations is one per vertex of the coarsest sweep the crate expands, so a dip the
+/// check misses is a dip no frame shows.
+fn thinnest(law: &Scalar) -> Option<f32> {
+    let mut worst = f32::MAX;
+    for step in 0..=32 {
+        worst = worst.min(law.at(step as f32 / 32.0));
+    }
+    if worst <= 0.0 { Some(worst) } else { None }
+}
+
 /// The last stage an edit can belong to, so [`apply`] can walk them without naming each one.
 const LAST_STAGE: u8 = 2;
 
@@ -293,13 +320,13 @@ fn stage_of(what: &Change) -> u8 {
     match what {
         Change::Prune { .. } => 0,
         Change::Spine { .. } => 1,
-        Change::Offset { .. } | Change::Shift { .. } => 2,
+        Change::Offset { .. } | Change::Shift { .. } | Change::Curve { .. } => 2,
     }
 }
 
 /// One edit, with its checks and its report line.
 fn apply_one(plant: &mut Plant, edit: &Edit, report: &mut EditReport) {
-    let (length, nudged, attachment) = {
+    let (length, nudged, attachment, taper) = {
         let node = match plant.get(&edit.at) {
             Ok(node) => node,
             Err(_) => {
@@ -319,6 +346,7 @@ fn apply_one(plant: &mut Plant, edit: &Edit, report: &mut EditReport) {
             node.spine().length(),
             node.nudges().length,
             node.effective_attachment(),
+            node.taper().clone(),
         )
     };
     match &edit.what {
@@ -364,7 +392,17 @@ fn apply_one(plant: &mut Plant, edit: &Edit, report: &mut EditReport) {
                         return;
                     }
                 }
-                Property::Radius => {}
+                Property::Radius => {
+                    let after = taper.offset(nudged + by);
+                    if let Some(value) = thinnest(&after) {
+                        report.problems.push(Problem::NotPositive {
+                            at: edit.at.clone(),
+                            property: *property,
+                            value,
+                        });
+                        return;
+                    }
+                }
             }
             let nudges: &mut Nudges = plant
                 .get_mut(&edit.at)
@@ -376,6 +414,22 @@ fn apply_one(plant: &mut Plant, edit: &Edit, report: &mut EditReport) {
                 Property::Station => nudges.station += by,
                 Property::Slot => nudges.slot += by,
             }
+            report.applied += 1;
+        }
+        Change::Curve { curve } => {
+            let after = taper.plus(curve);
+            if let Some(value) = thinnest(&after) {
+                report.problems.push(Problem::NotPositive {
+                    at: edit.at.clone(),
+                    property: Property::Radius,
+                    value,
+                });
+                return;
+            }
+            plant
+                .get_mut(&edit.at)
+                .expect("the handle resolved above")
+                .add_taper_law(curve);
             report.applied += 1;
         }
         Change::Spine { jets } => match Curve::new(jets.clone()) {
