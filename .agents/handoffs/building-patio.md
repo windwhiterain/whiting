@@ -53,6 +53,30 @@ A void mirrors that, with a discriminator so a face traces back to the courtyard
 - Attachment stations land off the corners: `split_outline` always inserts, so a station on a corner makes a
   degenerate edge.
 
-## Status log
+## Verified claims (2026-10-27, before any implementation)
+
+Every symbol this handoff names was read in the tree, not remembered:
+
+| claim | where it was checked |
+| --- | --- |
+| `fill::ring_fill(outer, inner) -> Vec<[Vec2; 3]>` | `crates/building/src/fill.rs:30`, module at `lib.rs:58` |
+| `offset_loop` offsets **inward** and is `pub(crate)` | `expand.rs:1986` — usable inside `expand`, which is where the void's outward offset belongs |
+| the mass's three faces per edge | `mesh.rs:30` `OuterWall`, `:35` `InnerWall`, `:40` `WallTop` |
+| the crate measures boundary loops and Euler characteristic | `mesh.rs:347` `boundary_loops_of`, `:444` `solid_boundary_loops`; `expand.rs` reports `euler` in its own diagnostics |
+
+## A nuance the acceptance must carry
+
+**The crate's existing diagnostics read `euler 0` as a fault.** `expand.rs` records a real incident that way: *"an L
+written from its concave node expanded to `loops 2, euler 0, manifold false` with no problem of any kind"*. A
+courtyard's `euler 0` is the opposite — it is the correct answer for a solid with one hole.
+
+So the acceptance is **not** "Euler characteristic 0" alone. It is:
+
+> **Euler 0 together with one authored void**, and a mass **without** a void must still measure 2.
+
+Any diagnostic that treats `euler 0` as a defect — and there is at least one in `expand.rs`'s comments — must learn
+to ask whether the document authored a hole before it calls the number wrong. That is the difference between a
+courtyard and the same number from a topology defect, and it is the one thing this slice has to get right that the
+design did not anticipate.## Status log
 
 - **2026-10-27** — handoff written. Nothing implemented yet: `main` carries `ring_fill` and this plan.
