@@ -136,3 +136,37 @@ which is the number an author needs to see and the only place they can see it.
   question to answer first is whether a *site* is a new document type (several skeletons, one ground)
   or whether the existing skeleton is already a site (it holds several masses and walls today) — and the
   answer changes what "the unit an agent composes" means.
+
+- **2026-10-16** — **slice 3 (the site as a unit) implemented and measured**, and the question above
+  answered: **the skeleton is already a site** — it has held several masses and walls since P1 — so a new
+  document type would be a second place to hold the same thing. What was missing was a way to **look at
+  it as one place**, and two things that only a site can say:
+
+  - `Mass.name: Option<String>` with `Mass::named(..)`, because "mass 3" is not how an author speaks of
+    their buildings. **A name is for a reader and never a handle**: the crate resolves nothing by name,
+    two buildings may share one, and the doc on the field says so.
+  - `site::report(&skeleton) -> SiteReport { buildings, walls, wall_length, ground, overlaps }`, with
+    `Building { mass, name, footprint, top, lowest, roofs, openings, parts }`, `Overlap { first, second,
+    area }`, and `SiteReport::{building, footprint, relief}`.
+
+  Measured by `examples/site_probe.rs` on a place of three buildings (two sheds 12 m apart and a store)
+  and a five-wall courtyard with a gate, then seated on `z = 0.3 x`:
+
+  - before seating: **3 buildings, 5 walls, 38.0000 m of wall, footprint 92.0000 m²**, and the store's
+    box overlapping the first shed's by **4.5 m²** — `1.5 × 3` by hand, and the report agrees;
+  - the overlap **is legal** because the store is attached to the shed as a wing: the first version of
+    the probe left it unattached, and `UnattachedOverlap` said so — the validator caught the author, not
+    the report;
+  - seated: **3 masses seated and 5 walls grounded**, the ground running `0.7500 .. 4.3500` (relief
+    `3.6000`), the sheds standing on `0.7500` and `4.3500` — which is what `0.3 × 2.5` and `0.3 × 14.5`
+    say by hand — and their tops moving with them (`3.5500`, `7.1500`);
+  - the seated place **builds** (88 points, 144 faces) and **validates with 0 violations**;
+  - a **derived** house is a site without being told: the starter reports `1 building`, footprint
+    `77.0000 m²`, `1 roof`, ground `(0.0, 0.0)` — so the report works on what P1 already made.
+
+  `Bounds2` (a plan bounding box) and `overlap_of` live in `site.rs` with the overlap's doc stating the
+  bound plainly: two L-shaped buildings can have overlapping boxes and no shared wall at all, which is
+  why the report **lists** overlaps and nothing **judges** them.
+
+- **Next**: slice 4 — **a site scene**: the shed and its yard on a slope, drawn. That is the last item
+  in the phase's own scope, and it is the one that shows whether the site reads as a place.

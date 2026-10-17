@@ -87,6 +87,17 @@ pub struct Mass {
     pub slab: f32,
     /// Where this mass lands on another, if it is a wing rather than a body.
     pub attachment: Option<Attachment>,
+    /// What the building is called, when its author named it.
+    ///
+    /// # Invariants
+    ///
+    /// **A name is for a reader and never for a lookup.** Nothing in the crate resolves a mass by name:
+    /// two buildings may share one (`"shed"` beside `"shed"`), and an author who renames one must not
+    /// silently repoint anything at it — the indices are the handles, and [`site::report`] is what
+    /// prints the names beside them.
+    ///
+    /// [`site::report`]: crate::site::report
+    pub name: Option<String>,
 }
 
 impl Mass {
@@ -98,7 +109,14 @@ impl Mass {
             wall: 0.3,
             slab: 0.4,
             attachment: None,
+            name: None,
         }
+    }
+
+    /// Gives the building a name, for a report to print and an agent to speak of.
+    pub fn named(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
     }
 
     /// Sets the wall thickness.

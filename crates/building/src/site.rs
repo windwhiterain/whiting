@@ -33,6 +33,7 @@
 //! so the building sits above its ground rather than inside it. A proper interior sampling is a
 //! triangulation question and is not this slice's.
 
+use crate::grid::GRID_TOLERANCE;
 use crate::mass::{MassId, PlanNode};
 use crate::math::{Vec2, lerp};
 use crate::skeleton::BuildingSkeleton;
@@ -214,4 +215,190 @@ fn samples_of(outline: &[PlanNode]) -> Vec<Vec2> {
         samples.push([middle[0] / count as f32, middle[1] / count as f32]);
     }
     samples
+}
+
+/// What one building is, as a place.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Building {
+    /// The building, by its mass's index.
+    pub mass: MassId,
+    /// What its author called it, if anything.
+    pub name: Option<String>,
+    /// The plan area its outline encloses, as authored.
+    pub footprint: f32,
+    /// The elevation of its wall top.
+    pub top: f32,
+    /// The lowest ground under its own outline.
+    pub lowest: f32,
+    /// How many roofs sit on it.
+    pub roofs: usize,
+    /// How many openings its own walls carry.
+    pub openings: usize,
+    /// How many parts stand in its own bays.
+    pub parts: usize,
+}
+
+/// Two buildings whose **plan bounding boxes** share area.
+///
+/// # Invariants
+///
+/// It is a **bound and not an intersection**, and it says so: two L-shaped buildings can have overlapping
+/// boxes and no shared wall at all. It is a reading for an author to look at — wings overlap their hosts
+/// by design, and two bodies that overlap may or may not be a mistake — which is why the report lists it
+/// and nothing judges it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Overlap {
+    /// The earlier building, by its mass's index.
+    pub first: MassId,
+    /// The later.
+    pub second: MassId,
+    /// The area their bounding boxes share, in plan.
+    pub area: f32,
+}
+
+/// What a site holds, as a place an agent can reason about.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SiteReport {
+    /// Every building, in the document's own order.
+    pub buildings: Vec<Building>,
+    /// How many wall runs the site encloses itself with.
+    pub walls: usize,
+    /// How much wall that is, end to end.
+    pub wall_length: f32,
+    /// The ground the buildings stand on, as (lowest, highest) after seating, or `None` when the
+    /// document holds no building.
+    pub ground: Option<(f32, f32)>,
+    /// Buildings whose bounding boxes share plan area.
+    pub overlaps: Vec<Overlap>,
+}
+
+impl SiteReport {
+    /// Returns one building by its mass.
+    pub fn building(&self, mass: MassId) -> Option<&Building> {
+        self.buildings.iter().find(|building| building.mass == mass)
+    }
+
+    /// Returns the total plan area the buildings stand on, which is a site's own footprint.
+    pub fn footprint(&self) -> f32 {
+        self.buildings
+            .iter()
+            .map(|building| building.footprint)
+            .sum()
+    }
+
+    /// Returns how far the ground falls under the site's own buildings.
+    pub fn relief(&self) -> f32 {
+        self.ground
+            .map(|(lowest, highest)| highest - lowest)
+            .unwrap_or(0.0)
+    }
+}
+
+/// Reports what a document holds as a **place**: its buildings by name, the ground they stand on, the
+/// walls that enclose them, and which of them share plan area.
+///
+/// # Invariants
+///
+/// **It reads and never judges.** Every number here is a fact about the document that no single element
+/// can state: a mass knows its own footprint, and only the site knows that two of them overlap by twelve
+/// square metres or that its ground falls eight. That is the whole of "the site as the unit": a document
+/// of several buildings is a site already, and what was missing was a way to look at it.
+///
+/// `O(masses · (nodes + walls))` for the summary and `O(masses²)` for the overlaps, once, on demand.
+pub fn report(skeleton: &BuildingSkeleton) -> SiteReport {
+    let mut buildings = Vec::with_capacity(skeleton.masses.len());
+    let mut lowest = f32::INFINITY;
+    let mut highest = f32::NEG_INFINITY;
+    for (index, mass) in skeleton.masses.iter().enumerate() {
+        let id = MassId(index);
+        let mut own_lowest = f32::INFINITY;
+        for node in &mass.outline {
+            own_lowest = own_lowest.min(node.elevation);
+            lowest = lowest.min(node.elevation);
+            highest = highest.max(node.elevation);
+        }
+        let roofs = skeleton.roofs_of(id).len();
+        let openings = skeleton
+            .faces_of(id)
+            .iter()
+            .map(|face| skeleton.openings.of_face(*face).len())
+            .sum();
+        let parts = skeleton
+            .faces_of(id)
+            .iter()
+            .map(|face| skeleton.parts.of_face(*face).len())
+            .sum();
+        buildings.push(Building {
+            mass: id,
+            name: mass.name.clone(),
+            footprint: mass.plan_area().abs(),
+            top: mass.top,
+            lowest: own_lowest,
+            roofs,
+            openings,
+            parts,
+        });
+    }
+    let mut overlaps = Vec::new();
+    for first in 0..skeleton.masses.len() {
+        for second in (first + 1)..skeleton.masses.len() {
+            let area = overlap_of(&skeleton.masses[first], &skeleton.masses[second]);
+            if area > GRID_TOLERANCE {
+                overlaps.push(Overlap {
+                    first: MassId(first),
+                    second: MassId(second),
+                    area,
+                });
+            }
+        }
+    }
+    SiteReport {
+        buildings,
+        walls: skeleton.walls.len(),
+        wall_length: skeleton.walls.iter().map(|wall| wall.length()).sum(),
+        ground: (lowest.is_finite() && highest.is_finite()).then_some((lowest, highest)),
+        overlaps,
+    }
+}
+
+/// A plan bounding box, which is what a site's overlaps are measured between.
+struct Bounds2 {
+    low: [f32; 2],
+    high: [f32; 2],
+}
+
+impl Bounds2 {
+    fn empty() -> Self {
+        Self {
+            low: [f32::INFINITY; 2],
+            high: [f32::NEG_INFINITY; 2],
+        }
+    }
+
+    fn grow(&mut self, at: Vec2) {
+        for axis in 0..2 {
+            self.low[axis] = self.low[axis].min(at[axis]);
+            self.high[axis] = self.high[axis].max(at[axis]);
+        }
+    }
+
+    fn of(mass: &crate::mass::Mass) -> Self {
+        let mut bounds = Self::empty();
+        for node in &mass.outline {
+            bounds.grow(node.position);
+        }
+        bounds
+    }
+}
+
+/// Returns the plan area two buildings' bounding boxes share.
+fn overlap_of(first: &crate::mass::Mass, second: &crate::mass::Mass) -> f32 {
+    let (a, b) = (Bounds2::of(first), Bounds2::of(second));
+    let mut area = 1.0;
+    for axis in 0..2 {
+        let low = a.low[axis].max(b.low[axis]);
+        let high = a.high[axis].min(b.high[axis]);
+        area *= (high - low).max(0.0);
+    }
+    area
 }
