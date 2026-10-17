@@ -100,6 +100,7 @@ mod spotlight;
 mod stilllife;
 mod sunlight;
 pub mod terrace;
+pub mod wing;
 mod terraces;
 mod tidewater;
 mod tiles;
@@ -149,6 +150,7 @@ impl Gallery {
             "monoliths",
             "shed",
             "terrace",
+            "wing",
             "spotlight",
             "stilllife",
             "studio",
@@ -178,6 +180,7 @@ impl Gallery {
             "monoliths" => monoliths(),
             "shed" => shed::shed(),
             "terrace" => terrace::terrace(),
+            "wing" => wing::wing(),
             "workshop" => workshop::workshop(),
             "yard" => yard::yard(),
             "spotlight" => spotlight(),

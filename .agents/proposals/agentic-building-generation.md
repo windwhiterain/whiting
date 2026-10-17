@@ -1586,6 +1586,23 @@ here was four slices long and none of them changed the offset: a probe that meas
 proved it was not a boundary, a debug print that showed the loop was right, and finally the one-line strictness the
 detector needed.
 
+## What the wing found: an L is two masses with an attachment (2026-10-27)
+
+The L-shaped building raised one design question — *one concave outline, or two rectangles with the wing attached?* —
+and the crate answered it before the picture did: `attach_mass` writes an `Attachment { host, station }` into the
+wing, and `check_overlap`'s own docs say an attachment **ends the overlap question** because "a wing overlaps its
+host by construction". So the L is **a host and an attached wing, one gable each**, which is also how an L is roofed
+in practice: two ridges meeting at a valley rather than one saddle over both arms.
+
+`wing_probe` measured it before the scene was written: **0 violations**, and host, wing and both roofs each
+**manifold with 0 boundary loops** (volumes 26.8296 and 21.3692). One trap on the way: an attachment station of
+`0.25` on a 6 × 6 host lands exactly on a corner, and `split_outline` **always inserts**, so the outline gained a
+zero-length edge and reported `OutlineEdgeDegenerate`. A station off the corners (0.2) builds. The rule is worth
+knowing because it only ever shows up as a degenerate edge.
+
+The `wing` scene draws it and the channel names it: `where wing mass 1, outer wall over edge 2` answers **111,205
+pixels** — the wing's own face, as itself.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
