@@ -166,3 +166,8 @@ first one's triangles. The helper that turns triangles into faces has to be writ
   `expand_mass`'s structure is mapped above, so the drawing is the only thing left.
 - **2026-10-27** — the floor simplification is struck: the courtyard wall meets the plate along a three-surface
   edge unless the plate top is split into a rooms floor ring and the courtyard paving.
+- **2026-10-27** — the emitter is on `feature/building-patio3` (worktree `.worktrees/building-patio3`) and is red:
+  a courtyard expands now (offset, paving, two wall strips and the wall top are all emitted) and the solid comes out
+  `SolidOpen { loops: 4 }` with `SolidNonManifold`. The faces exist and do not meet, so the next session starts from
+  that branch rather than from `main`, and its first job is to close the seams: the floor ring winding, the wall
+  strips orientation against it, and the paving edge where it meets the courtyard-facing strip.
