@@ -1013,6 +1013,45 @@ crate landed `handle`, `rng`, `node`, `plant` and `expand`, with `tree_probe` (5
    order and `plant_probe` measures both sides: the base ring lands on its anchor at **0.000e0**, and the wrong
    order moves it by the metre above.
 
+## What P2 has implemented (2026-10-17)
+
+**The hand.** V5's edit table is `ops`: `Edit { at: Handle, what: Change }` with three of the six kinds, and
+the other three are owed for stated reasons rather than left out quietly:
+
+| kind | state | why |
+| --- | --- | --- |
+| `Offset { property, by }` | **landed**, for `Length`, `Radius`, `Station`, `Slot` | the middle tier of V5's three: a nudge on a computed number, added at every use and never written into the authored law |
+| `Shift { frame, by }` | **landed**, `Frame::Local` / `Parent` / `World` | the local X/Y/Z offset, stored in the node's own frame so two shifts add and a later parent edit still carries them |
+| `Prune { reason }` | **landed**, as a tombstone | nothing renumbers: the walk still names the node and the plant stops drawing it |
+| `Spine { points }` | owed | it is a *bake*, and a bake needs the authored-from-here-on marker a document has; it lands with `bake` |
+| `Curve { property, points }` | owed | V5 says *an offset curve added to the profile* — with the profile now a `Scalar` law, that is a law-plus-law operation `shape` does not carry yet, and the constant `Offset` is what an author reaches for first |
+| `Graft { generation, station, slot, seed }` | owed | it needs `GenerationId`, which a *computed* plant has and an authored species does not; it lands with the generator |
+
+**The order is enforced, not documented.** `apply` runs prunes first, then offsets and shifts, so an edit aimed
+at a node the same batch prunes is reported as `Problem::Pruned` instead of being written onto a tombstone
+where no frame would show it. `edit_probe` reads this off the report and off the node's own nudge: 1 landed,
+1 refused, the radius nudge still `0.000000`.
+
+**Report, never repair** has a shape: `EditReport { applied, problems }` with `Problem::{Orphaned, Pruned,
+OutOfRange, NotPositive}`, each naming the handle and, for a value, the number it would have had. Nothing is
+clamped: a station of `1.71` is refused rather than pinned to `1.0`, and a length of `−99.5` is refused rather
+than floored. The readings:
+
+| invariant | reading |
+| --- | --- |
+| a radius nudge moves one node's rings | `0.006936 → 0.010936`, growth **4.000e-3**, and **one** of ten solids' rings moved |
+| a length nudge carries what hangs from it | the bough is **0.150000** shorter, both twigs moved (**0.050637** m at least), both still on the bark to **6.380e-8** |
+| a station nudge slides a node along its parent | moved **0.221284** m where a tenth of the trunk's 2.211879 m is 0.221188 — the difference is the chord against the arc, which is what a slide along a curve is |
+| three frames, three places | Local, Parent and World land **7.542e-2**, **9.989e-2** and **6.657e-2** apart; the world one moves exactly **0.050000** for a 0.05 shift |
+| the parent frame of a child of the root | **0.000e0** from the world frame, because the root's placement *is* the identity — a reading, not a defect |
+| a prune is a tombstone | the walk names **10** nodes, the plant draws **7**, the wood has **7** solids, and the pruned bough's twig is still named and no longer drawn |
+| a stale handle | `Problem::Orphaned`, `0` applied, the largest solid's volume unchanged |
+
+**`Scalar::offset` is the one `shape` operation this needed**, and its row is in `scalar_probe`: the values
+differ by exactly the number (**1.192e-7** to a rounding) and the slopes agree to **3.576e-7**, so a nudge cannot
+change what a law does. The slope is not *exactly* equal because it is evaluated from the shifted knots, and the
+row says so rather than claiming a zero it does not have.
+
 ## What SPEC would say if this is adopted
 
 SPEC is human-editable only, so this proposal states the delta rather than writing it: a
