@@ -112,6 +112,32 @@ which is the reason to add them in one commit with the emission, not after it.
 own documentation promises that.
 
 
+## The correction: the floor **does** need the ring (2026-10-27, later the same day)
+
+An earlier note in the design said *"a courtyard's floor is the plate, so no plate work is needed"*. **That is
+wrong**, and the reason is topological rather than aesthetic.
+
+Follow the shell by hand. The courtyard wall's courtyard-facing face meets the plate at the void loop, at the
+outline's own elevation. If the plate's top is **one** polygon spanning the whole outline — courtyard included —
+then that edge has the wall going up on one side and the plate continuing on **both** sides of it. Three surfaces
+meet along one edge. The solid is **non-manifold there**, and no amount of "the courtyard's floor is the plate"
+makes it a corner: a corner needs the plate to **stop** at the wall.
+
+So the plate's top is **two faces**, not one:
+
+| face | what it is | how it is filled |
+| --- | --- | --- |
+| the rooms' floor | between the outline's room-side loop (`inner`) and the courtyard's **outer** loop | `fill::ring_fill` |
+| the courtyard's paving | the void loop's own polygon | the polygon itself |
+| the courtyard wall | courtyard-facing, room-facing, and the wall top ring | two vertical strips and `fill::ring_fill` at the top |
+
+Four new `MassSurface` kinds, not three, and both `FloorTop` and the new paving live in the same plane — which is
+exactly why the crate needs two elements there and not one: they are two regions of one plane, told apart by the
+wall between them.
+
+**`ring_fill` is therefore used three times** (rooms' floor, wall top, and — if the mass's own outline ever becomes a
+ring — the mass's wall top), which is what it was built for. The design's "no plate work" line is struck; the tool was
+never the problem.
 ## Status log
 
 - **2026-10-27** — handoff written. Nothing implemented yet: `main` carries `ring_fill` and this plan.
