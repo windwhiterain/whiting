@@ -84,6 +84,7 @@ mod foldyard;
 ///
 /// Public before it is listed in [`Gallery::names`] because the scene is the phase's acceptance
 /// picture and a session that is iterating on it should be able to call it directly.
+pub mod hall;
 pub mod house;
 /// The mountain scene, and the massif it stands on.
 ///
@@ -138,6 +139,7 @@ impl Gallery {
             "foldyard",
             "hermite",
             "hermite_massif",
+            "hall",
             "house",
             "identity",
             "landscape",
@@ -164,6 +166,7 @@ impl Gallery {
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
             "hermite_massif" => hermite_massif::hermite_massif(),
+            "hall" => hall::hall(),
             "house" => house::house(),
             "identity" => authored::identity(),
             "landscape" => landscape(),
