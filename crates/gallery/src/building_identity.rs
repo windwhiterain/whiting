@@ -239,6 +239,7 @@ pub fn locate_in(scene: &str, id: u32) -> Option<String> {
         "shed" => crate::shed::document(),
         "workshop" => crate::workshop::document(),
         "yard" => crate::yard::document(),
+        "house" => crate::house::document(),
         _ => return None,
     };
     let built = building.build().ok()?;

@@ -1128,6 +1128,36 @@ than slips:
 the attempt ran out of a round, was reverted rather than half-landed, and is recorded here so the next slice
 starts from a known tree.
 
+## What the house slice found: every building scene answers (2026-10-27)
+
+`house` was the last building scene without the identity channel — the same four edits as `shed`, which is why it
+was its own slice rather than a footnote. It now declares the output, packs its walls and its hip with ids, gives
+its ground the reserved zero, and **`locate_in` learned the scene**:
+
+```text
+render house out/hsi --locate 512,430
+  locate house (512, 430):
+  roof 0, the skin of plane 0
+```
+
+**That last arm is the lesson, and it is a second registration.** A correctly packed frame whose scene is missing
+from `locate_in`'s match answers *"no domain reading"* at every pixel — which looks exactly like a channel that
+was never written. **The channel and the naming are two separate registrations and both are needed**; a scene's
+picture and its names can each be right while the join between them is absent.
+
+With it, **every building scene the crate ships** answers the question:
+
+| scene | a pixel's answer |
+| --- | --- |
+| `identity` | `mass 0, outer wall over edge 3` |
+| `house` | `roof 0, the skin of plane 0` |
+| `shed` | `roof 0, the skin of plane 1` |
+| `workshop` | `part 4` / `part 1` / `part 0` — three placements of one instanced mesh |
+| `yard` | `wall 1, its right side` |
+
+and in every one of them the ground answers **zero**, which the harness reports as *"no domain reading"* — the
+reserved value saying *"not an element of this building"* rather than anything ambiguous.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):

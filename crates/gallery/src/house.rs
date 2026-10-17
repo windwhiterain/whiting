@@ -21,16 +21,19 @@
 use definition::Value;
 use scene::standard::Stage;
 
+use building::Building;
 use building::derive::{self, RoofStyle, Starter};
-use building::{MassId, RoofId, SolidId};
+use building::identity::Identity;
 
-use crate::building_mesh::points_of;
+use crate::building_identity::{
+    building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
+};
 use crate::geometry::heightfield;
 use crate::kit::{
     camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
-    post_processes, screen_material, shaded_point_schema, surface,
+    post_processes, screen_material, surface,
 };
-use crate::shaders::{mesh_shaders, post_shader};
+use crate::shaders::post_shader;
 
 /// What the derived house is: a rectangular two-bay cottage with a hipped roof.
 ///
@@ -67,13 +70,20 @@ const SUN_IRRADIANCE: f64 = 3.2;
 
 /// Builds the house scene.
 pub fn house() -> Value {
-    let building = derive::starter(&STARTER);
+    let building = document();
     let built = building
         .build()
         .expect("the starter house expands: its outline is a quad and its roof's rows are paired");
 
-    let walls = points_of(&built, SolidId::Mass(MassId(0)));
-    let roof = points_of(&built, SolidId::Roof(RoofId(0)));
+    // **Every mesh the frame draws carries its elements' ids**, so a pixel of this house can be asked what it
+    // is: the walls name their edges, the hip names its skins and its fascia.
+    let table = Identity::of(&built, 1);
+    let walls = packed_where(&built, &table, |element| {
+        matches!(element, building::Element::Mass(_, _))
+    });
+    let roof = packed_where(&built, &table, |element| {
+        matches!(element, building::Element::Roof(_, _))
+    });
 
     // A plaster wall, a tiled roof and dry ground. The three differ in tint and roughness and in
     // nothing else: what a surface *does* is the shader's business and this scene adds no body to
@@ -86,11 +96,30 @@ pub fn house() -> Value {
     for (name, body) in [
         ("wall", plaster as fn() -> Value),
         ("roof", tiles as fn() -> Value),
-        ("ground", ground as fn() -> Value),
     ] {
-        materials.push(mesh_material(&format!("{name}-cast"), "shadowing", body()));
-        materials.push(mesh_material(&format!("{name}-depth"), "depthing", body()));
-        materials.push(mesh_material(&format!("{name}-shade"), "lighting", body()));
+        materials.push(mesh_material(
+            &format!("{name}-cast"),
+            "authored_shadowing",
+            body(),
+        ));
+        materials.push(mesh_material(
+            &format!("{name}-depth"),
+            "authored_depthing",
+            body(),
+        ));
+        materials.push(mesh_material(
+            &format!("{name}-shade"),
+            "authored_lighting",
+            body(),
+        ));
+    }
+    // The ground is not an element of the house, and it still writes the output — with the reserved zero.
+    for (stage, shader) in [
+        ("cast", "plain_shadowing"),
+        ("depth", "plain_depthing"),
+        ("shade", "plain_lighting"),
+    ] {
+        materials.push(mesh_material(&format!("ground-{stage}"), shader, ground()));
     }
 
     // Every mesh is authored in world coordinates, so its three instances carry no transform: a
@@ -110,6 +139,12 @@ pub fn house() -> Value {
             })
             .collect::<Vec<_>>()
     };
+
+    // **Two point schemas**: the walls and the hip carry `authored_id`; the ground carries none and writes
+    // the reserved zero from a constant.
+    let extras = building_extras();
+    let point = extras.point_schema();
+    let plain = not_authored_extras();
 
     Value::structure([
         ("name".to_owned(), Value::String("house".to_owned())),
@@ -139,22 +174,24 @@ pub fn house() -> Value {
         ),
         (
             "shaders".to_owned(),
-            Value::List(
-                mesh_shaders("", "")
-                    .into_iter()
-                    .chain(std::iter::once(post_shader(GRADE, SKY, None)))
-                    .collect(),
-            ),
+            Value::List({
+                let mut shaders = stage_set("authored", "", "", &point, &extras);
+                shaders.extend(stage_set("plain", "", "", &plain.point_schema(), &plain));
+                shaders.push(post_shader(GRADE, SKY, None));
+                shaders
+            }),
         ),
+        // The one image this scene writes beside the frame: which element each pixel shows.
+        ("outputs".to_owned(), outputs_field()),
         (
             "meshes".to_owned(),
             Value::List(vec![
-                mesh("walls", "Triangles", shaded_point_schema(), walls),
-                mesh("roof", "Triangles", shaded_point_schema(), roof),
+                mesh("walls", "Triangles", point.clone(), walls),
+                mesh("roof", "Triangles", point, roof),
                 mesh(
                     "ground",
                     "Triangles",
-                    shaded_point_schema(),
+                    plain.point_schema(),
                     heightfield(140, 420.0, |_, _| 0.0),
                 ),
             ]),
@@ -232,3 +269,8 @@ const GRADE: &str = r#"
     let centred = in.uv - vec2<f32>(0.5, 0.5);
     color = color * clamp(1.0 - dot(centred, centred) * 0.45, 0.0, 1.0);
 "#;
+
+/// Returns the house's document alone, for a caller that wants to name what a frame shows.
+pub fn document() -> Building {
+    derive::starter(&STARTER)
+}
