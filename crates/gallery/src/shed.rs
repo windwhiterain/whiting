@@ -25,7 +25,7 @@ use crate::building_identity::{
 use crate::geometry::heightfield;
 use crate::kit::{
     camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
-    post_processes, screen_material, shaded_point_schema, surface,
+    post_processes, screen_material, surface,
 };
 use crate::shaders::post_shader;
 use building::identity::Identity;
