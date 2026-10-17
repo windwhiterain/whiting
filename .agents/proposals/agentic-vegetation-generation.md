@@ -1179,6 +1179,40 @@ is the leaf's: **`k` decorators of one template are one mesh and `k` transforms.
    sweep's own end ring; a cap decorator would be a second, slower way to say the same thing and one that a caller
    could leave off.
 
+**The obstacle, the contact and the thinning.** V4's obstacle field is `Field::Obstacle { occupancy, amount }`: the
+occupancy is a **signed distance in the world, negative inside**, and a spine is pushed along the occupancy's own
+gradient by the penetration the knot stands in. The report is the same occupancy read rather than shaping anything
+(`contact::collide`), and `thin` is what a crown can afford when its branches crowd each other.
+
+| invariant | reading |
+| --- | --- |
+| the push is the penetration | a stem standing 0.150000 inside a wall moves its tip **−0.146957**, which is **3.044e-3** short of the penetration, and its segments keep their own lengths to **2.980e-8**; the base moves **0.000e0** |
+| a wall bends a bough out | **13** contacts, deepest **0.344099** before; **9** and **0.111837** after; the worst knot moved **0.370793** |
+| a wall out of reach is nothing | every knot is where it was to **0.000e0** and the report finds **0** contacts — a scene can add the field and keep a picture it already has |
+| the report says what is left | one push is not a solver: **13 → 9** contacts and **0.344099 → 0.111837** deep, and a second push gives **7** and **0.087586** |
+| amount zero reports without shaping | every knot where it was to **0.000e0**, and the report still finds **13** contacts: *"what does this hit?"* without shaping the plant |
+| thinning takes the crowded tips | the closest sibling pair was **0.396457**, the spacing set to **0.792914**: **3** pruned, the plant **10 → 7** nodes, every pruned tip had a kept sibling inside the spacing, and a second call prunes **0** more |
+
+**Three decisions the obstacle forced:**
+
+1. **The occupancy is a signed distance and its sign is the whole contract.** `negative inside` — and the first
+   version of the probe wrote `x − face`, which is *positive* inside, so the field pushed the boughs **deeper into
+   the wall** and the row passed anyway (47 → 35 contacts, "improved"). Nothing but a convention can catch that, so
+   the convention is in `Field::Obstacle`'s doc, in this record, and in the handoff's traps.
+2. **A function pointer, not a closure.** A field is `Copy` and comparable, which a boxed closure is not; a caller
+   with state to carry keeps it in the scene and calls `contact::collide` with a closure instead — the same
+   occupancy read as a report rather than as a force. Two obstacles are equal when they are the same function
+   address, which is the only thing a function pointer has.
+3. **One push is not a solver, and the report says so.** The weight is `t²` for the same reason a tropism's is —
+   the base of a branch is its parent's business — so a knot in the middle of a spine is pushed a quarter of what a
+   tip is, and the contacts that remain are the ones the author sees. A solver would need iteration and would move
+   the plant differently each time; a report is what an author can act on.
+
+**The thinning is a function over a grown plant and not a number in a rule**, because crowding depends on where the
+branches actually went: a `count` band cannot know that two of its children grew into the same space. Only siblings
+compete — a rule against cousins would need a resolution the author has not stated — and the decision is made on
+every tip **before** any prune lands, so the result does not depend on the order the prunes happen in.
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before

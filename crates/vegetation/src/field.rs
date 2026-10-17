@@ -8,6 +8,14 @@
 //! plant apply one after the other, each reading the last one's result, which is what makes gravity and a
 //! light direction compose without either knowing about the other.
 //!
+//! # Two ways to say where a push comes from
+//!
+//! A [`Field::Tropism`] is a push toward a **direction**, the same everywhere: gravity, a light, a prevailing
+//! wind. A [`Field::Obstacle`] is a push out of **a place**, and it is a function rather than a shape because the
+//! crate does not know what the place is: a caller with a `terrain::HeightField` passes its sampler, a caller with
+//! a building passes its mesh's signed distance. Both families push with the same weight and the same bend, which
+//! is why they are one enum and one pipeline rather than two subsystems.
+//!
 //! # A push, not a stretch
 //!
 //! The displacement grows as `t²` along the spine: nothing at the base, so a branch leaves its parent in the
@@ -26,8 +34,14 @@ use shape::{Curve, Jet};
 
 use crate::plant::Placement;
 
+/// The step [`outward`] measures an occupancy's gradient with, in the plant's units.
+///
+/// One millimetre: small enough that a wall's gradient is a wall's, large enough that `f32`'s own noise in a
+/// sampled occupancy does not become a direction.
+const GRADIENT_STEP: f32 = 1.0e-3;
+
 /// A force that shapes a plant, expressed in the world and applied in the frame a spine is drawn in.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub enum Field {
     /// A push toward a world direction, growing along each spine: gravity, a light a plant grows toward, a
     /// prevailing wind.
@@ -42,6 +56,62 @@ pub enum Field {
         /// meant for a branch ten times its size.
         amount: f32,
     },
+    /// A push out of something solid: a wall, a building's shell, the space a neighbour already occupies.
+    ///
+    /// # Invariants
+    ///
+    /// The occupancy is a **signed distance in the world**: negative inside the obstacle, positive outside, and
+    /// the magnitude is the distance to its surface. A spine is pushed along the occupancy's own gradient by the
+    /// penetration the knot stands in, so a branch that only grazes a wall is moved a little and one that is
+    /// buried in it is moved a lot — and the push is measured where the wood *is*, which is why this is the one
+    /// field that has to be given the world's own geometry rather than a direction.
+    ///
+    /// **A function pointer, not a closure**, because a field is `Copy` and comparable: a caller with state to
+    /// carry keeps it in the scene and calls [`crate::contact::collide`] with a closure instead, which is the same
+    /// occupancy read as a report rather than as a force.
+    Obstacle {
+        /// The occupancy, evaluated at a world point: negative inside, positive outside.
+        occupancy: fn([f32; 3]) -> f32,
+        /// How much of the penetration the spine is pushed out by. `1.0` puts the spine on the surface, `1.2`
+        /// leaves a fifth of the penetration as clearance, and `0.0` declares an obstacle and moves nothing —
+        /// which is how a scene asks *"what does this hit?"* without shaping the plant to answer.
+        amount: f32,
+    },
+}
+
+/// Two fields are equal when they are the same law with the same numbers.
+///
+/// # Invariants
+///
+/// An obstacle is compared by **the function's own address**, which is the only thing a function pointer has: a
+/// field carrying a second occupancy is a different field even when the two functions agree everywhere, and this
+/// says so rather than guessing from behaviour.
+impl PartialEq for Field {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Field::Tropism {
+                    toward: one,
+                    amount: first,
+                },
+                Field::Tropism {
+                    toward: two,
+                    amount: second,
+                },
+            ) => one == two && first == second,
+            (
+                Field::Obstacle {
+                    occupancy: one,
+                    amount: first,
+                },
+                Field::Obstacle {
+                    occupancy: two,
+                    amount: second,
+                },
+            ) => std::ptr::fn_addr_eq(*one, *two) && first == second,
+            _ => false,
+        }
+    }
 }
 
 impl Field {
@@ -58,60 +128,39 @@ impl Field {
         Field::Tropism { toward, amount }
     }
 
+    /// A push out of whatever `occupancy` calls solid.
+    pub fn obstacle(occupancy: fn([f32; 3]) -> f32, amount: f32) -> Self {
+        Field::Obstacle { occupancy, amount }
+    }
+
     /// The spine this field makes of `curve`, which is drawn in the frame `placement` puts in the world.
     ///
     /// # Invariants
     ///
     /// - The base of the spine does not move: the weight is `t²`, which is zero and flat at `t = 0`.
-    /// - **The push is what the spine feels across it**: only the part of the field perpendicular to each knot's
-    ///   own tangent displaces it. A limb along the field is compressed rather than pulled, so a trunk under
-    ///   gravity does not leave the ground and a branch pointing at the sun does not grow longer — a force that
-    ///   moved a spine along itself would be a stretch wearing a bend's clothes.
-    /// - The tip moves by `amount ×` the spine's length times the sine of the angle between them, because the
-    ///   weight there is one and the across component is a unit push times that sine.
     /// - **Every segment keeps the length it had**, so the push bends the spine and cannot stretch it.
     /// - The initial normal is the input's, carried: a field turns the spine, and a section's roll is not the
     ///   field's to change.
+    /// - **A field whose push is zero everywhere returns the curve untouched**, so a plant with no obstacle in
+    ///   reach is bit-identical to the plant without the field. That is the property a scene relies on to add a
+    ///   field and keep a picture it already has.
     pub fn shape(&self, curve: &Curve, placement: &Placement) -> Curve {
-        let Field::Tropism { toward, amount } = *self;
-        let length = curve.length();
-        if amount == 0.0 || length <= 0.0 {
+        if curve.length() <= 0.0 {
             return curve.clone();
         }
-        let local = [
-            dot3(toward, placement.x),
-            dot3(toward, placement.y),
-            dot3(toward, placement.z),
-        ];
-        let size = length3(local);
-        if size < 1.0e-6 {
+        let offsets = self.offsets(curve, placement);
+        if offsets.iter().all(|offset| *offset == [0.0; 3]) {
             return curve.clone();
         }
-        let push = [local[0] / size, local[1] / size, local[2] / size];
-        let reach = amount * length;
         let jets = curve.jets();
-        let fractions = curve.knot_parameters();
         let mut points: Vec<[f32; 3]> = jets.iter().map(|jet| jet.position).collect();
         let chords: Vec<f32> = points
             .windows(2)
             .map(|pair| length3(subtract(pair[1], pair[0])))
             .collect();
-        for (index, fraction) in fractions.iter().enumerate() {
-            let direction = jets[index].tangent;
-            let heading = length3(direction);
-            let weight = fraction * fraction;
-            if heading < 1.0e-9 || weight == 0.0 {
-                continue;
-            }
-            let unit = [
-                direction[0] / heading,
-                direction[1] / heading,
-                direction[2] / heading,
-            ];
-            let along = dot3(push, unit);
+        for (index, offset) in offsets.iter().enumerate() {
             for axis in 0..3 {
-                let across = push[axis] - unit[axis] * along;
-                points[index][axis] += across * reach * weight;
+                points[index][axis] += offset[axis];
             }
         }
         keep_lengths(&mut points, &chords);
@@ -125,6 +174,97 @@ impl Field {
         bent.set_initial_normal(curve.frame(0.0).normal);
         bent
     }
+
+    /// What this field asks of every knot, in the frame the spine is drawn in.
+    ///
+    /// # Invariants
+    ///
+    /// Every offset is a **vector in the spine's own frame**, which is what lets the two families share one
+    /// pipeline: a tropism's direction is read into that frame once, and an obstacle's gradient is read into it
+    /// per knot, because an obstacle's direction is different at every place the wood stands.
+    fn offsets(&self, curve: &Curve, placement: &Placement) -> Vec<[f32; 3]> {
+        let jets = curve.jets();
+        let fractions = curve.knot_parameters();
+        let mut offsets = vec![[0.0f32; 3]; jets.len()];
+        match *self {
+            Field::Tropism { toward, amount } => {
+                let size = length3(toward);
+                if amount == 0.0 || size < 1.0e-9 {
+                    return offsets;
+                }
+                let push = [toward[0] / size, toward[1] / size, toward[2] / size];
+                let local = placement.unrotate(push);
+                let reach = amount * curve.length();
+                for (index, fraction) in fractions.iter().enumerate() {
+                    let direction = jets[index].tangent;
+                    let heading = length3(direction);
+                    let weight = fraction * fraction;
+                    if heading < 1.0e-9 || weight == 0.0 {
+                        continue;
+                    }
+                    let unit = [
+                        direction[0] / heading,
+                        direction[1] / heading,
+                        direction[2] / heading,
+                    ];
+                    // **Only the part across the spine bends it**: a limb along the field is compressed rather
+                    // than pulled, so a trunk under gravity does not leave the ground and a branch pointing at
+                    // the sun does not grow longer.
+                    let along = dot3(local, unit);
+                    for axis in 0..3 {
+                        offsets[index][axis] = (local[axis] - unit[axis] * along) * reach * weight;
+                    }
+                }
+            }
+            Field::Obstacle { occupancy, amount } => {
+                if amount == 0.0 {
+                    return offsets;
+                }
+                for (index, jet) in jets.iter().enumerate() {
+                    let weight = fractions[index] * fractions[index];
+                    if weight == 0.0 {
+                        continue;
+                    }
+                    let world = placement.place(jet.position);
+                    let value = occupancy(world);
+                    if value >= 0.0 {
+                        continue;
+                    }
+                    let Some(out) = outward(occupancy, world) else {
+                        continue;
+                    };
+                    let local = placement.unrotate(out);
+                    for axis in 0..3 {
+                        offsets[index][axis] = local[axis] * -value * amount * weight;
+                    }
+                }
+            }
+        }
+        offsets
+    }
+}
+
+/// The direction an occupancy grows in at a point, from central differences on it.
+///
+/// # Invariants
+///
+/// **A direction of no length is no direction**: a flat occupancy (a constant, or the inside of a slab measured
+/// exactly) answers `None`, and a spine with nothing to be pushed out of is left where it is rather than pushed
+/// somewhere arbitrary.
+fn outward(occupancy: fn([f32; 3]) -> f32, point: [f32; 3]) -> Option<[f32; 3]> {
+    let mut gradient = [0.0f32; 3];
+    for axis in 0..3 {
+        let mut low = point;
+        let mut high = point;
+        low[axis] -= GRADIENT_STEP;
+        high[axis] += GRADIENT_STEP;
+        gradient[axis] = occupancy(high) - occupancy(low);
+    }
+    let size = length3(gradient);
+    if size < 1.0e-9 {
+        return None;
+    }
+    Some([gradient[0] / size, gradient[1] / size, gradient[2] / size])
 }
 
 /// Moves the points so every segment is as long as `chords` says it was.
@@ -140,7 +280,7 @@ fn keep_lengths(points: &mut [[f32; 3]], chords: &[f32]) {
         let direction = if size > 1.0e-9 {
             [step[0] / size, step[1] / size, step[2] / size]
         } else {
-            [0.0, 0.0, 0.0]
+            [0.0; 3]
         };
         for axis in 0..3 {
             points[index + 1][axis] = points[index][axis] + direction[axis] * chords[index];

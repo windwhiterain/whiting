@@ -33,6 +33,7 @@
 //! The design is
 //! [`.agents/proposals/agentic-vegetation-generation.md`](../../../.agents/proposals/agentic-vegetation-generation.md).
 
+pub mod contact;
 pub mod decorator;
 pub mod derive;
 pub mod envelope;
@@ -47,3 +48,4 @@ pub mod report;
 pub mod rng;
 pub mod selector;
 pub mod species;
+pub mod thin;

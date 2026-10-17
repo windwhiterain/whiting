@@ -60,6 +60,14 @@ let placed = decorator::placed(&plant, &[seat]);   // Placed { node, template, p
 
 // The forces that shape a grown plant: gravity, a light, a wind. `amount` is a fraction of each spine's length.
 let plant = plant.with_fields(vec![field::Field::gravity(0.25), field::Field::light([1.0, 0.0, 0.0], 0.15)]);
+
+// An obstacle is a signed distance in the world: NEGATIVE INSIDE. `1.0` puts a spine on its surface.
+let wall = |point: [f32; 3]| 0.55 - point[0];     // solid where x > 0.55
+let plant = plant.with_fields(vec![field::Field::obstacle(wall, 1.0)]);
+let contacts = contact::collide(&plant, wall, Detail::DEFAULT);   // deepest first, spine samples only
+
+// What a crown can afford: a sibling whose tip is closer than `spacing` to one already kept is pruned.
+let taken = thin::thin(&mut plant, 0.08);         // Thin { pruned: Vec<Handle> }
 // …or the same species under a scene's weather, which changes nothing but the fields.
 let indoors = derive::bamboo(seed).with_fields(vec![field::Field::light([1.0, 0.4, 0.0], 0.1)]);
 
@@ -87,6 +95,15 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 - The promotion of `gallery::geometry::{culm, blade, double_blade, leaf_spray, tuft}` into `derive`.
 
 ## Traps
+
+- **The occupancy's sign is the whole contract: negative inside.** The first version of `obstacle_probe` wrote
+  `x − face`, which is positive inside, so the field pushed the boughs *deeper into the wall* and the row passed
+  anyway ("47 → 35 contacts"). A scene that passes the inverted function pushes plants into walls and nothing
+  complains.
+- **One push is not a solver.** The weight is `t²`, so a knot mid-spine is pushed a quarter of what a tip is, and
+  the contacts that remain after a field are the author's to read (`contact::collide`), not a failure of the push.
+- **`thin` compares siblings only**, keeps the first of a crowding group, decides on every tip before any prune
+  lands, and prunes with `Prune::Thinned` through `ops` — so a second call finds nothing to do.
 
 - **A decorator's frame is the node's surface frame taken whole**, and `Seat` carries no angle: a decorator that
   needs a roll is a decorator whose *template* should be authored rolled. A seat on a tombstone draws nothing,
@@ -172,6 +189,7 @@ cargo run -p whiting-vegetation --example species_probe    # 8, the generator
 cargo run -p whiting-vegetation --example field_probe      # 8, the fields
 cargo run -p whiting-vegetation --example envelope_probe   # 6, the envelope, the trim and the report
 cargo run -p whiting-vegetation --example decorator_probe  # 6, the decorators
+cargo run -p whiting-vegetation --example obstacle_probe   # 6, the obstacle, the contacts and the thinning
 cargo run -p whiting-device-rasterize --example render -- bamboo out/bamboo
 cargo run -p whiting-device-rasterize --example render -- bamboo_wind out/bamboo-wind
 cargo run -p whiting-device-rasterize --example render -- bamboo_crown out/bamboo-crown

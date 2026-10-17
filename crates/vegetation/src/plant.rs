@@ -14,7 +14,7 @@
 //! leaves its descendants' handles stale, and a stale handle has to be a named fact rather than a silent
 //! re-binding to whatever branch took the place.
 
-use shape::math::{Vec3, clamp, cross3, length3, normalized3};
+use shape::math::{Vec3, clamp, cross3, dot3, length3, normalized3, subtract};
 use shape::{Curve, Jet};
 
 use crate::field::Field;
@@ -70,6 +70,27 @@ impl Placement {
                 + self.z[axis] * direction[2];
         }
         rotated
+    }
+
+    /// A point in the parent's coordinates, expressed in this frame's: the inverse of [`Placement::place`].
+    ///
+    /// # Invariants
+    ///
+    /// It is the exact inverse because the frame is orthonormal — `unplace(place(p))` is `p` to a rounding — and
+    /// **not** because a placement is a rotation matrix in general: a placement never scales, which is what makes
+    /// the inverse a projection rather than a linear solve. A field that pushes a spine in world directions reads
+    /// its push back into the frame the spine is authored in, and this is that reading.
+    pub fn unplace(&self, point: Vec3) -> Vec3 {
+        self.unrotate(subtract(point, self.origin))
+    }
+
+    /// A direction in the parent's coordinates, expressed in this frame's: the inverse of [`Placement::rotate`].
+    pub fn unrotate(&self, direction: Vec3) -> Vec3 {
+        [
+            dot3(direction, self.x),
+            dot3(direction, self.y),
+            dot3(direction, self.z),
+        ]
     }
 
     /// `self` applied **after** `inner`: the composition an expansion walks down the tree with.
