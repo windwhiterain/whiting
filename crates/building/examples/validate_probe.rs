@@ -432,6 +432,43 @@ fn hip_starter_with_a_floor_at_the_ground_line() -> BuildingSkeleton {
     skeleton
 }
 
+/// Returns the hip starter carrying **one hosted slab of every role**, with each of them seated on
+/// `host`: its own plate, an intermediate floor on the same inner loop, and the plate a flat roof is.
+///
+/// # Why one document carries all three
+///
+/// The three are either one fault or they are not, and a fixture that shows them one at a time cannot
+/// answer that: three documents that each happen to be silent is also what a check reading only the
+/// plate would produce. One document with the seating moved on all three at once is the pair that makes
+/// the answer mean something, and it is the only control here where the roles are the *only* difference
+/// between the two reports — the plan, the elevations and the host index are one value read twice.
+///
+/// **The roof is the flat arm's own slab**, carried across from a [`Starter`] built with
+/// [`RoofStyle::Flat`], because that is the only place the crate builds a
+/// [`SlabRole::Roof`](whiting_building::slab::SlabRole::Roof). It is
+/// seated over the **eave** — the outline offset *outward* by the overhang and sunk — which is the half
+/// of the question the plate and the floor do not raise: a roof is seated on something a plate never
+/// was, and the check still says the same thing about it. The hip starter's own pitched roof stays where
+/// it is, because a validation control has no business changing what is drawn.
+fn three_hosted_roles(host: MassId) -> BuildingSkeleton {
+    let mut skeleton = hip_starter();
+    let mass = skeleton.masses[0].clone();
+    let flat = starter(&Starter {
+        width: 7.0,
+        depth: 11.0,
+        roof: RoofStyle::Flat,
+        ..Starter::default()
+    })
+    .skeleton;
+    let floor = floor_slab(&mass, MassId(0), 2.2, 0.22).expect("2.2 m is inside a 3.2 m wall");
+    skeleton.slabs.push(floor);
+    skeleton.slabs.push(flat.slabs[0].clone());
+    for slab in &mut skeleton.slabs {
+        slab.host = Some(host);
+    }
+    skeleton
+}
+
 /// Returns the hip starter with its plate taken away: a mass standing on nothing.
 ///
 /// **This is the case the report has to answer in one line, and the answer is that it is not a
@@ -693,6 +730,7 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::WallTooLow { .. } => "WallTooLow",
         Violation::SlabNotThick { .. } => "SlabNotThick",
         Violation::SlabNotAPolygon { .. } => "SlabNotAPolygon",
+        Violation::SlabHostMissing { .. } => "SlabHostMissing",
         Violation::PlateCoverage { .. } => "PlateCoverage",
         Violation::OpeningBayMissing { .. } => "OpeningBayMissing",
         Violation::OpeningExceedsBay { .. } => "OpeningExceedsBay",
@@ -1110,6 +1148,33 @@ fn main() {
     report_building(
         "the same starter with no plate at all, which is not a fault",
         &hip_starter_with_no_plate(),
+    );
+
+    println!(
+        "\n# the other half of the slab's host question: the mass itself is not there, and all three\n\
+         # roles say the same thing about it"
+    );
+    report_building(
+        "a plate, a floor and a flat roof, every one of them hosted on the mass the document holds",
+        &three_hosted_roles(MassId(0)),
+    );
+    report_building(
+        "the same three slabs, every one of them hosted on a mass the document does not hold",
+        &three_hosted_roles(MassId(9)),
+    );
+    println!(
+        "  the second document is what the first staging swallowed: `check_plate_coverage` returns on a\n  \
+         host it cannot find, so a plate, a floor and a flat roof all named a mass that was gone and none of\n  \
+         them said so. The three answers differ in nothing but the role the document gave the slab — the\n  \
+         plate is seated on the host's inner loop, the floor on the same loop at a storey, and the flat roof\n  \
+         over the eave, which is outside the outline — and the fault is the same in all three, because it is\n  \
+         in the reference and not in the seating: a missing mass takes nothing away from a slab's own plan\n  \
+         or its two elevations, and there is nothing of its left to measure"
+    );
+    println!(
+        "  an unhoused slab is not this fault and is not reported by it: a step, a plinth and a canopy are\n  \
+         plates that stand on nothing, which is what `Slab::host` documents, and the starter with no plate\n  \
+         at all — read above — is the same answer from the other side"
     );
 
     println!("\n# openings: a bay, a hole, and the four ways to be wrong");

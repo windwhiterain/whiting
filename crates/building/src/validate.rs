@@ -594,6 +594,55 @@ pub enum Violation {
         /// How many nodes it had.
         nodes: usize,
     },
+    /// A slab names a mass the document does not hold, so the seating it authorizes is not one.
+    ///
+    /// # Invariants
+    ///
+    /// **This is the third element's own answer to a fault two of its siblings already name, and the
+    /// third is the only one that was silent.** A mass names a host ([`MassHostMissing`](Self::MassHostMissing))
+    /// and a roof names a host ([`RoofHostMissing`](Self::RoofHostMissing)), and both were reported; a
+    /// slab has carried the same field since it became a prism of its own, and it was **staged out** —
+    /// the plate's coverage check returns early on a host the document does not hold, because there is no
+    /// outline to measure the plate against, and behind that early return a document that had lost its
+    /// mass said nothing at all about the floor or the roof still standing where that mass was.
+    ///
+    /// **One variant for the three roles, and the role travels in the payload.** The three are seated
+    /// differently — [`derive::floor_slab`](crate::derive::floor_slab) and `derive::starter`'s plate on
+    /// the host's **inner** loop, `derive::starter`'s `RoofStyle::Flat` arm over the host's **eave**,
+    /// which stands outside its outline — so the host is what determines the loop each was written
+    /// against, and a roof really is seated on something a plate never was. But **the fault is in the
+    /// reference and not in the seating**: a missing host is a statement about an index, and the slab's
+    /// own plan and its two elevations are in the document already and are unaffected by the mass's
+    /// absence — there is nothing of the host's left to measure. The reading that decides it is one
+    /// lookup, `skeleton.mass(slab.host)`, and it is the *same* lookup for all three roles, so three
+    /// variants would be one check spelled three times over a field that holds a single [`MassId`]. The
+    /// role is carried because **it is the only thing that says what the missing mass was carrying**:
+    /// between "the ground plate under a mass that is gone" and "the flat roof over a wall top that is
+    /// gone" there is the difference between looking in the mass's list and looking for a roof, and a
+    /// reader holding a `SlabId` alone has to go and read the slab back to learn which it is.
+    ///
+    /// **It and [`PlateCoverage`](Self::PlateCoverage) are the host that is not there and the host that
+    /// is.** A plate whose host exists and falls short of its floor is one fault with an area in it; a
+    /// plate whose host does not exist has no floor to fall short of, so there is no number for that
+    /// check to report and this one reports the fact instead.
+    ///
+    /// **No host is not this fault**, and that is [`Slab::host`](crate::slab::Slab::host)'s own
+    /// documented reading: a step, a plinth and a canopy are plates that stand on nothing and are left
+    /// exactly where their author put them.
+    ///
+    /// **It is not staged by the outline the way the coverage check is.** The other two slab checks read
+    /// the plan and the two elevations, so a loop of two nodes has already answered for them; this one
+    /// reads nothing but the host, so a slab that is a degenerate polygon *and* names a mass that is gone
+    /// is two faults with two fixes rather than one reported twice.
+    SlabHostMissing {
+        /// The slab, by its index in the document's list.
+        slab: crate::slab::SlabId,
+        /// The mass it named, which the document does not hold.
+        host: MassId,
+        /// What the slab is, and therefore what the missing mass was carrying: a ground plate, an
+        /// intermediate floor, or the plate a flat roof is.
+        role: crate::slab::SlabRole,
+    },
     /// A mass's plate covers less of the mass's own outline than the outline is.
     ///
     /// # Invariants
@@ -1759,17 +1808,32 @@ fn check_walls(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     }
 }
 
-/// Checks every slab: that its outline is a polygon, its two elevations are the right way round, and
-/// a plate reaches the mass it stands under.
+/// Checks every slab: that its outline is a polygon, its two elevations are the right way round, that
+/// the mass it names is one the document holds, and a plate reaches the mass it stands under.
 ///
 /// # Invariants
 ///
 /// It mirrors the expander's own two refusals rather than deferring to them, so an author hears about a
 /// slab that cannot be built before a mesh is asked for — the same pairing the walls' checks have.
-/// `O(slabs)`, one comparison each, plus `O(nodes)` for a plate's host outline.
+/// The host is **the one check here that reads no geometry at all**, and it is reported first for the
+/// reason [`check_roofs`] reports a roof's host first: a reference that names nothing is a fault in its
+/// own right and it does not stage out anything below it, since every other question about the slab is
+/// about the slab alone. `O(slabs)`, one comparison each, plus `O(nodes)` for a plate's host outline.
 fn check_slabs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     for (index, slab) in skeleton.slabs.iter().enumerate() {
         let id = crate::slab::SlabId(index);
+        // **Read before the outline, and not staged by it.** The role is the whole of what is reported
+        // and it is already on the slab, so this is one lookup per hosted slab in whatever role it was
+        // built in; an unhoused slab is a step, a plinth or a canopy and is skipped by the `Some` itself.
+        if let Some(host) = slab.host {
+            if skeleton.mass(host).is_none() {
+                violations.push(Violation::SlabHostMissing {
+                    slab: id,
+                    host,
+                    role: slab.role,
+                });
+            }
+        }
         if slab.outline.len() < 3 {
             violations.push(Violation::SlabNotAPolygon {
                 slab: id,
@@ -2337,6 +2401,16 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
             ordered(*plate),
             ordered(*outline),
         ),
+        // **Rank `42`, beside `PlateCoverage` and for the reason that one took `41`.** The two are the
+        // slab's own host faults — one where the host is there and the plate is short of its floor, one
+        // where the host is not there at all — so they read together at the end of the list instead of
+        // being split by the ranks the other elements' host faults occupy: `4` is a mass's and `5` a
+        // roof's, this one is a slab's, and seating it beside them would renumber the forty arms above
+        // them for a list no reader outside this function can see. The role is **carried but not sorted
+        // by**, and that is the same fact twice over: a slab has exactly one host, so `slab` alone makes
+        // the key unique within this rank, and the role is in the payload for the reader rather than for
+        // the order — the order's job is to make two runs diff, not to restate the variant.
+        Violation::SlabHostMissing { slab, host, .. } => (42, slab.0 as u64, host.0 as u64, 0, 0),
         // The four opening faults in the order an author meets them: the slot is not there, the bay
         // cannot hold the hole, the hole leaves the wall, and two holes in one wall fight.
         Violation::OpeningBayMissing { opening, face } => (

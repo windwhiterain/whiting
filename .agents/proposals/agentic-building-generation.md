@@ -2396,7 +2396,45 @@ session should take it, each with the measurement that decides it:
    would have had the ground cut away from under the storey above it. All nine frames render byte-identical
    (`house B13154AD7D29F938` … `identity 974FB5B24E1E7A35`), `scene_identity_probe` still reads **806** rows, and the
    role is not in the identity channel: an id is an element of the document, and what a slab *is* names no new one.
-2. **A hosted slab naming a mass the document does not hold is silent** — it is staged out and no violation names it.
+2. ~~**A hosted slab naming a mass the document does not hold is silent** — it is staged out and no violation names it.~~ **DONE (2026-10-17, `feature/building-orphan-slab`).**
+   `Violation::SlabHostMissing { slab, host, role }` is the third element's own answer to the fault
+   `MassHostMissing` and `RoofHostMissing` already name, and `check_slabs` now reads the host **before**
+   the outline — the check reads nothing but an index, so the staging that swallowed it (`check_plate_coverage`
+   returning on a host it cannot find) has nothing left to hide behind.
+
+   **The pair that decided one variant for the three roles.** One document on the hip starter carries a
+   plate, a floor and a flat roof, and the two reports differ in one value:
+
+   | the three hosted slabs, all named | what `Building::validate` answers |
+   | --- | --- |
+   | `MassId(0)`, the mass the document holds | **0 violations** |
+   | `MassId(9)`, a mass it does not | **3**, and all three are the new one: `SlabHostMissing { slab: SlabId(0), host: MassId(9), role: Plate }`, `{ slab: SlabId(1), …, role: Floor }`, `{ slab: SlabId(2), …, role: Roof }` |
+
+   **A hostless roof is *not* a different fault from a hostless plate, and the reason is that the
+   difference is in the seating rather than in the fault.** A roof really is seated on something a plate
+   never was: `derive::starter`'s `RoofStyle::Flat` arm builds it through `flat_over` over the **eave**,
+   which is the outline offset *outward* by the overhang, while `floor_slab` and the starter's plate sit
+   on the host's **inner** loop. But the mass is gone either way, so there is nothing of it left to
+   measure: the fault is in the reference, the reading is one `skeleton.mass(slab.host)` lookup, and the
+   three roles run the same line. **The role travels in the payload** because it is the only thing that
+   says what the missing mass was carrying — between "the ground plate under a mass that is gone" and
+   "the flat roof over a wall top that is gone" is the difference between looking in the mass's list and
+   looking for a roof — and it is **not** in `order_key`, because a slab has exactly one host and `slab`
+   alone makes the key unique within the rank.
+
+   **Rank `42`, beside `PlateCoverage`'s `41`, and not beside `4` and `5`.** Those two are a mass's and a
+   roof's host faults; seating this one with them would renumber the forty arms above them for a list no
+   reader outside the function can see, which is the reason rank `14` is retired and left retired. The
+   two slab faults read together at the end instead: **the host that is not there, and the host that is.**
+
+   **Nothing that was clean is not.** Measured on the rebased tip, not argued: all nine frames render
+   byte-identical (`house B13154AD7D29F938` … `identity 974FB5B24E1E7A35`), all **29** building examples
+   exit 0, `scene_identity_probe` is two-way across **806** rows, and `PlateCoverage` still reads
+   `plate: 50.759995, outline: 66.56, short: 15.800003` on the control the role slice recorded. That the
+   nine scenes are clean was measured with a **canary** rather than with the three scenes that assert
+   their own documents — one line in `Building::build` that panics on the new variant, run over all nine
+   scenes and all 29 examples — and the canary was then proved able to fire by running it against the
+   orphan fixture, which is the only reason its silence means anything.
 3. **A part on the rooms-facing side of a courtyard wall** is unaddressable: `FaceRef` names one loop, and the offset
    edge is longer at both ends. Vocabulary gap; `validate` cannot see such a document.
 4. **A non-convex courtyard** is refused (`VoidNotConvex`) because the outward walk across a reflex corner has never
