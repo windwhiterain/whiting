@@ -467,6 +467,9 @@ fn main() {
         eprintln!("error: the leaves are not one pass over one instance buffer");
         std::process::exit(1);
     }
+
+    println!("\n# the sidecar table a frame of this scene is read beside");
+    print!("{}", whiting_gallery::vegetation_picture::sidecar());
 }
 
 /// Prints every pass the bamboo scene compiled to, with the instance buffer each one binds.
