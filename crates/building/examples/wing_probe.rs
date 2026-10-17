@@ -87,7 +87,10 @@ fn main() {
                 );
             }
         }
-        Err(error) => println!("  the document does not build: {:?}", error.problems.first()),
+        Err(error) => println!(
+            "  the document does not build: {:?}",
+            error.problems.first()
+        ),
     }
     println!(
         "\n# the reading: two rectangles, one attached, one gable each — the shape the vocabulary intends"
