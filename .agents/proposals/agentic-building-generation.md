@@ -1503,6 +1503,20 @@ Both readings are recorded here and neither is decided in this slice:
 - if the offset is **right**, then the domain genuinely stops at convex plans, and the refusal is the crate doing
   what it promises, with the limit now stated.
 
+**The next slice decided neither, and narrowed the place to look.** `offset_loop`'s miter is already general: for
+each node it takes `turn = cross(directions[before], directions[node])`, and computes
+`reach = cross(far − near, directions[node]) / turn` with `mitred = near + direction[before] * reach` — a negative
+`reach` at a reflex corner, which is the correct retreat. There is no separable "convex case" to have got wrong.
+
+But the arithmetic and the report disagree: for the U below, the two offset edges the problem names (edges 2 and 6,
+the two halves of the north face) both land near `z = 4.7` over **disjoint** x ranges (2..5 and −5..−2), so
+`segments_cross` should answer false. Either the miter overshoots by more than `MITER_LIMIT` (which would report
+`MiterTooLong` first) or `inner` is not the loop the geometry suggests — and **the only way to tell is to print
+`inner`**, which lives inside `crate::expand` and needs a temporary debug print or a debug-only accessor.
+
+That is the next slice's first move: print the eight offset points for this outline and compare them with the eight
+a hand offset gives ((1.7,4.7) and (−1.7,4.7) for the mouth, and so on).
+
 **The next slice decides which**, by reading the offset at a reflex corner against a hand-computed answer: a U of
 10 × 10 with a 4 m notch and a 0.3 m wall should offset to a loop that clears the notch by 0.3 on both sides.
 
