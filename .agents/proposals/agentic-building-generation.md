@@ -1092,6 +1092,42 @@ point — five shutters, five pixels, five names, and one flag per run made that
 answers the reserved zero. The tension the identify slice recorded is closed without giving up either D4's
 instancing or the identity channel.
 
+## What the scenes slice found: four of five buildings answer, and the fifth is named (2026-10-27)
+
+The offset slice closed the tension between instancing and the identity channel. This one spent the answer: the
+channel is now declared by **every building scene but one**, and the harness's `--locate` is the single door to
+it.
+
+**What each scene needed was the same three things** — `outputs_field()` on the scene, `stage_set` for two point
+layouts (authored meshes carry `authored_id`, the ground carries none and writes the reserved zero from a
+constant), and `packed_where` for the meshes — plus, where a part is instanced, **one material set per placement**
+whose `offset_by(..)` is the base the baked table gives it. Measured:
+
+| scene | what a pixel answers |
+| --- | --- |
+| `identity` | `mass 0, outer wall over edge 3` |
+| `shed` | `roof 0, the skin of plane 1`; `mass 0, outer wall over edge 3` |
+| `workshop` | `part 4` / `part 1` / `part 0`, three placements of one instanced mesh |
+| `yard` | `mass 0, outer wall over edge 3`; `wall 1, its right side` |
+
+and the ground answers **zero** in all four, which the harness reports as *"no domain reading"* — the reserved
+zero saying what it says.
+
+**Two traps the slice paid for twice each**, both worth stating because they are properties of the code rather
+than slips:
+
+1. **A material is named twice** — once where it is declared and once by the instance row that draws with it — so
+   renaming a material's set (`earth-*` → `ground-*`) without renaming the row is `no mesh material in this scene
+   is labelled …`, and the compiler finds it only when the scene is compiled to a document.
+2. **A squash merge takes the branch's copy of every file it touches**, so a fix made on the trunk between the
+   branch's last commit and the merge is silently undone. The shed's unused import came back exactly that way.
+   The rule: after a squash merge, re-run the check that caught the original fault, or make the fix *on the
+   branch*.
+
+**`house` is the fifth scene and it is not done.** It is the same shape as `shed` and needs the same four edits;
+the attempt ran out of a round, was reverted rather than half-landed, and is recorded here so the next slice
+starts from a known tree.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
