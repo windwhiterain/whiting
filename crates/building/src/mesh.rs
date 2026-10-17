@@ -76,6 +76,16 @@ pub enum MassSurface {
     /// [`validate`](crate::validate) — measured at `departure = slab/2` on the first merged tip —
     /// and would smooth a shading normal across the two.
     SlabSoffit,
+    /// The wall ring's **base**: the annulus between the outline and the inner loop, at the plate's bottom plane.
+    ///
+    /// # Invariants
+    ///
+    /// **It exists because a mass is becoming a volume, and a volume closes itself.** Once the plate is its own solid
+    /// ([`Slab`](crate::mesh::Element::Slab)), the mass's faces are the wall ring and nothing else, and a ring is open
+    /// at both ends: the top is [`WallTop`](Self::WallTop) and the base is this. It is called a base rather than a
+    /// floor because the floor is the plate's own top face, one plane up, and the two are different elements of
+    /// different solids — the ring's base is hidden inside the plate, the plate's top is the floor a person walks on.
+    WallBase,
     /// The face of a courtyard wall seen from **inside the courtyard**, one per void edge.
     VoidWall {
         /// Which of the mass's voids, in the order it authored them.
