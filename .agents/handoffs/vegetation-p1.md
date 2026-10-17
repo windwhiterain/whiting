@@ -45,10 +45,9 @@ section, and how far the child's origin sinks **inward along the parent's outwar
 ## What P1 still owes
 
 - **A rendered plant.** P1's exit asks for *one rendered plant whose leaves are instances of one template
-  drawn in one pass*, and nothing has drawn a plant yet. `sweep_picture` (a tube, a blade and an envelope from
-  one `Sweep` call, which is `shape`'s exit) is the picture that teaches the gallery the pattern; a plant
-  wants it next, with wood baked into one mesh named by the identity channel and one instance buffer per
-  `LeafGroup`.
+  drawn in one pass*, and nothing has drawn a plant yet — `shape`'s `sweep` scene was the picture that taught
+  the pattern, and it draws a tube, a blade and two envelopes rather than a plant. See *the gallery's pattern*
+  below for what that costs.
 - **`report()`** — P1 names it (the crown against the envelope's own radius curve, the counts, the instance
   count). The probes print counts; there is no `report()` type yet, and the envelope is P2's field.
 - **`reference` on a leaf field** — the one orientation term P1 did not implement, because it needs a
@@ -57,6 +56,36 @@ section, and how far the child's origin sinks **inward along the parent's outwar
   deliberate — the design's edits are *replacements* (D10) and a moved bough will be a rebuilt one. If a
   selector has to retarget an existing node, it needs `Plant::get_mut` plus a stated replace semantics, and
   that is P2's decision rather than a convenience to add here.
+
+## The gallery's pattern, for the plant picture
+
+`gallery` builds **documents**; it does not render them. The one renderer is
+`crates\device-rasterize\examples\render.rs`:
+
+```text
+cargo run -p whiting-device-rasterize --example render -- <scene> <out> [--locate x,y] [--where name] [--debug channel] [--census]
+```
+
+which draws `Gallery::build(name)` and writes `<out>.png`, `<out>-manifest.json` and the id sidecar. A scene is
+a module in `crates\gallery\src\` with a `pub fn <name>() -> Value`, registered in `Gallery::build` — follow
+`sweep_picture.rs`, which is the smallest complete one.
+
+- **`Gallery::build` and `Gallery::names` are two lists, and the second is not a shorter first.** `names()` is
+  what `wgsl_validation`, `gallery_render` and `scene`'s `clustered_lights` hold themselves to, and
+  `clustered_lights` pins a **pass count per scene**, so adding a name there is a change to three suites.
+  Unlisted scenes are the house pattern (`workshop` and `yard` are buildable and unlisted), and the harness's
+  usage text does not enumerate names.
+- **That pass-count test is already red on `main`**, for the seven scenes `882c0d8` added and the table never
+  learned (`hall`, `hall_large`, `house`, `identity`, `shed`, `terrace`, `wing`). It is not any one slice's
+  doing and it is not P1's to fix; know it before reading a red suite as your own.
+- **`gallery` now depends on `shape` as a normal dependency**, because a module in `src\` is the library and a
+  library cannot reach a dev-dependency. That is the design's migration row 3 (*`gallery` depends on `shape`
+  for the curve*) and it is met; `vegetation` will be the next such edge, for the leaf instances.
+- **A `Triangles` mesh is a flat soup** — three shaded points per triangle, no indices — so `Loft`'s indices
+  are consumed at the boundary and not passed on.
+- **The `image` field is a marker, not a row field.** The shader's declared `custom_schema` carries it; the
+  vertex attribute list must come from `gallery_custom_schema()` *without* it, or every later field shifts a
+  location and the frame is refused with a message about `metallic` at vertex location 6.
 
 ## Traps
 
@@ -74,7 +103,10 @@ section, and how far the child's origin sinks **inward along the parent's outwar
 - **A template's frame is its midrib's initial normal.** A blade's width must land on the template's `y` and
   its thickness on `z`, so the midrib's initial normal is `+y`; a `+x` midrib's default is `−z`, which stands
   the blade on its edge. `LeafTemplate` states it once, and `leaf_probe` measures `|y| 0.494932` against
-  `|z| 0.009924` — a transposed section would swap two numbers that both look plausible.
+  `|z| 0.009924` — a transposed section would swap two numbers that both look plausible. **The gallery's
+  `sweep` scene hit the same contract from the other side**: a flat section's thin axis is the frame's
+  *binormal*, so its first attempt with `+z` drew a green sliver lying on the floor. Two independent slices,
+  one rule — which is why it is written here rather than in either slice's own notes.
 - **One twist is a quarter turn of the *face* onto the negated side**, not onto the side: the right-handed
   formulas `side' = side·cos + face·sin`, `face' = face·cos − side·sin` are what keep `(forward, side, face)`
   right-handed, and `leaf_probe` reads `4.425e-8` and `4.284e-8` for the two halves of that statement.

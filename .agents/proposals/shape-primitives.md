@@ -371,8 +371,11 @@ being written, and again while this file was).
   `(position, u, v)` return that the consumers pack. `mountain::math` becomes `shape::math` behind a
   re-export; `building`'s dependency switches. **Exit: a tube, a blade and an envelope built from one call,
   and the vertices that disagree about `u` are zero.** **Landed** with `scalar`, `section`, `sweep` and
-  `loft`: see *What P1 measured*. The gallery picture is the one item of the exit that is still owed, and it
-  is the gallery's file rather than this crate's.
+  `loft`: see *What P1 measured*. **The picture is landed too**: `gallery`'s `sweep` scene draws a tapered
+  tube whose checker bands along `u` and around `v`, a blade, and the same envelope twice — once with a round
+  section and once with a three-lobed outline — through the repository's own harness
+  (`cargo run -p whiting-device-rasterize --example render -- sweep out/sweep`, 21 passes, 1280×720, sha256
+  `f1a1418a…`), and no defect showed in any of the four solids.
 - **P2 — the predicates, and the first consumer.** The `mesh` functions land with their first consumer: the
   loft, whose `view()` is what `sweep_probe` grades — and which is why the predicates arrived in the same
   checkpoint as the sweep rather than before it. `building`'s probes still read their own copies and can
