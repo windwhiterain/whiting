@@ -3867,3 +3867,27 @@ the real omission is: no such document existed in the tree, and nothing in the t
 any probe measured met itself, so the regression this change was most likely to cause — a simple loop that leaves the
 outline going unreported — would have passed every gate that was standing. A brief that narrows a check owes the tree a
 control for the check it is narrowing, and this one did not ask for it until after it had been done.
+
+## The rule a narrowed check owes the tree (2026-10-27)
+
+The inside slice narrowed `VoidNotInside` to loops that do not meet themselves. It then built the control the change
+most needed — a **simple** void that reaches outside its outline — and the report says the important thing about it:
+
+> **the gate would have passed without that control.** Every void loop any probe in the tree measured met itself, so no
+existing document could have reported "`VoidNotInside` stopped firing for a simple outside void". The change would have
+been green, and wrong, and nothing in the tree would have said so.
+
+The two controls it added now read `VoidNotInside` + `VoidReachesTheWall { over: 11.96… }` and `{ over: 16.19… }` — a
+rectangle standing 2 m outside the outline, and a triangle over a corner, both simple, both correctly refused for the
+reason the violation names.
+
+**So: when a brief narrows a check, the brief owes the tree a control that would fail if the narrowing went too far,**
+and the control must be built **first**, so the gate is measured against it rather than around it. This is the same rule
+as "an instrument must be able to disagree with you" turned on the *document set* instead of on a tool: a suite that
+cannot express the regression is an instrument that agrees because it cannot differ.
+
+Two smaller things from the same slice, both worth keeping: an instrument that prints a **verdict** must be split into
+one that prints the **measurement** (the probe was printing "`VoidNotInside` fires on a difference of X" from two areas,
+which the check no longer decides) and the check that gives the verdict; and a predicate that already exists three lines
+above is not a design question — the brief asked whether two checks could be ordered "without a shared predicate" and
+the predicate was already there.
