@@ -86,3 +86,30 @@ thickness) -> Option<Slab>`**.
 
 - **Next**: the reveal-splitting fix above, with `multi_row_probe` as its acceptance (the failing row of
   that table must read `loops 0, euler -6, manifold true`).
+- **2026-10-16** — **the reduction tightened, and the diagnosis narrowed.** `multi_row_probe` was rewritten
+  around a table of configurations, and it now measures which ones close:
+
+  | configuration | result |
+  | --- | --- |
+  | 1/2/3 holes in one row, one storey | `loops 0`, `euler 0/-2/-4`, manifold ✓ |
+  | 1/2/3 holes in one row, two storeys | the same ✓ |
+  | a door below and a window above, **jambs aligned** | `loops 0, euler -2` ✓ |
+  | six holes, the same inset in every column | `loops 0, euler -10` ✓ |
+  | a door below and a window above, **jambs not aligned** | `loops 4, euler -6` ✗ |
+  | six holes, **a different inset per row** | `loops 12, euler -22` ✗ |
+
+  Two facts the detail section added, which **narrow the fault and rule out my first guess**:
+
+  - **every reveal is emitted** — the mass holds `2 ×` (two triangles per quad) for all four sides of
+    *both* openings, so the defect is not a missing reveal, which is what the "split the jambs at every
+    cut" theory assumed;
+  - the boundary edges sit on the **inner face** at the *window's* jamb positions (`±0.483`) but at the
+    *door's* elevations (`0` and `2.050`), while the outer face's are at the door's own jambs (`±0.553`).
+    So two points that should be one are in **different places in plan**: the rim as the wall's bands build
+    it and the rim as the reveals build it disagree, and because the crate welds by **authored identity**
+    rather than by coordinate, the two edges never meet.
+
+  That points at the jamb-point arithmetic on the **inner** face (`WallFace::inner_at` and the mitre's
+  `inner_from`/`inner_to`) rather than at the reveal loop, and the next instrument is to print each
+  cut station's outer and inner plan positions beside the reveal corners that use them. Recorded rather
+  than guessed: the fix is a slice of its own, and the scene renders today with column-aligned insets.
