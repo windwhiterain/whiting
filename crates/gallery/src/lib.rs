@@ -95,6 +95,8 @@ mod sunlight;
 mod terraces;
 mod tidewater;
 mod tiles;
+/// The workshop scene: two storeys with a floor between them.
+pub mod workshop;
 /// The yard scene: a site on a slope, with a courtyard and a gate.
 pub mod yard;
 
@@ -160,6 +162,7 @@ impl Gallery {
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
             "shed" => shed::shed(),
+            "workshop" => workshop::workshop(),
             "yard" => yard::yard(),
             "spotlight" => spotlight(),
             "stilllife" => stilllife(),

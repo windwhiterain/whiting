@@ -47,5 +47,42 @@ thickness) -> Option<Slab>`**.
 
 - **2026-10-16** — worktree and branch from `352795a`; `expand::offset_loop` made `pub(crate)`;
   `derive::floor_slab` added; probe written and run; gate green (16 probes).
-- **Next**: a **two-storey scene** — the floor is the last authoring capability a multi-storey building
-  needs, and nothing yet draws one.
+- **2026-10-16** — **the two-storey scene added** (`crates/gallery/src/workshop.rs`, "workshop"): a 6 × 9
+  two-storey building with three windows above, a window, an **open doorway** and a window below, and a
+  mezzanine plate at `2.2` derived by `floor_slab`. 13 passes; the scene asserts its own document is clean.
+
+  ## A real defect the scene found, reduced and recorded
+
+  The scene's first configuration put the plate at `2.8` and the doorway's head at `2.05`, and the assert
+  fired: `SolidOpen { loops: 4 }`, `SolidNonManifold`, `euler -14` on the mass. **The fault is in the
+  openings' cutting and predates this slice.** Reduced by `examples/multi_row_probe.rs` to a **minimal
+  reproduction**:
+
+  | configuration on one wall | result |
+  | --- | --- |
+  | one ground-sill opening ("a door"), alone | `loops 0, euler 0` ✓ |
+  | a door and a window **beside it** (same row) | `loops 0, euler -2` ✓ |
+  | a door and a window **above it**, same column, **the same insets** | `loops 0, euler -10` ✓ |
+  | six openings in two rows, **the same insets per row** | `loops 0, euler -10` ✓ |
+  | a door and a window above it, **different insets** (u spans overlap, jambs not aligned) | **`loops 4, euler -6`, non-manifold ✗** |
+
+  The diagnosis, measured rather than guessed: the cut elevations are **global to the wall** (that is what
+  makes neighbouring bands share whole edges — the P2 fix), so the wall's vertical edges are split at
+  **every** cut; but a hole's jamb reveals are emitted over `low..high` **of that hole** only. When a second
+  hole's jamb station falls **inside** the first hole's `u` span — which is exactly what different insets
+  produce — the wall's band splits at that station leave segments inside the first hole's height that no
+  reveal covers, and the surface reads open. The wall's own edges are right; the *jamb reveals* of the hole
+  that spans the extra station are what is missing.
+
+  **The scene was then rebuilt with column-aligned insets** so it renders (13 passes), and the fault is
+  recorded here as the next slice's subject rather than worked around silently: the fix belongs in
+  `cut_edge`'s reveal emission, where a jamb must be split at **every** cut of the wall that lies strictly
+  between the hole's own sill and head — the same rule the wall's bands already follow — so that two holes
+  whose spans overlap close even when their jambs disagree.
+
+  The scene's doc says plainly what the frame shows (two storeys) and what it does not (the plate, of which
+  about seven centimetres are visible as the doorway's own ceiling), because a frame that overclaims is the
+  one kind of documentation this crate cannot check.
+
+- **Next**: the reveal-splitting fix above, with `multi_row_probe` as its acceptance (the failing row of
+  that table must read `loops 0, euler -6, manifold true`).
