@@ -1025,7 +1025,7 @@ the other two are owed for stated reasons rather than left out quietly:
 | `Prune { reason }` | **landed**, as a tombstone | nothing renumbers: the walk still names the node and the plant stops drawing it |
 | `Spine { jets }` | **landed**, as a bake | it *replaces* the spine and marks the node `baked`, which is what forbids a field reshaping it later; the branches that hang from it follow the new skin |
 | `Curve { property, points }` | owed | V5 says *an offset curve added to the profile* — with the profile now a `Scalar` law, that is a law-plus-law operation `shape` does not carry yet, and the constant `Offset` is what an author reaches for first |
-| `Graft { generation, station, slot, seed }` | owed | it needs `GenerationId`, which a *computed* plant has and an authored species does not; it lands with the generator |
+| `Graft { generation, station, slot, seed }` | **landed as `species::graft`**, not as a `Change` | a graft needs the rule that made the tree, and an `Edit` is a handle and a change — putting a rule in the edit table would make every edit carry a species. The generation is the parent's own depth, so a caller cannot disagree with the rule about what grows there |
 
 **The brush.** `Selector` is a predicate over a plant's nodes — `Every`, `Generation`, `Descendants`,
 `StationBand`, `SlotBand`, `Inside`, `Ids`, `Any`, `Not` — and it **edits nothing**. `ops::paint` turns it into
@@ -1065,6 +1065,8 @@ The two shipped species are the experiment:
 | a limb is a fraction of what carries it | **33** limbs, worst departure of a limb's base radius from its rule's fraction **5.960e-8** |
 | a grown plant is a plant | **37** live nodes, **37** solids, all closed at χ = 2 (the smallest volume **6.098e-9**), **82** leaves in **9** groups |
 | the hand edits a grown tree | a length offset lands: **0.362484 → 0.312484**, and the report is clean |
+| a graft is one more of the rule's | `trunk/bough 0/branch 2` lands at station **0.2**, slot **0.75**, the plant goes **10 → 11** nodes, its spine is its sibling's (**0.482742**), and the leaf field fills it with **9** leaves |
+| a graft off the rule is refused | a node at depth 2 has no generation below it, and a station of **1.5** is not on the parent: **both refused**, the plant still **10** nodes |
 
 **`derive::bamboo` is now `grow(&bamboo_rule(), seed)`, and every P1 probe passes unchanged against the grown
 tree** — same 10 nodes, same stations, same 6 branches, same 54 leaves. That is the reading that says the rule

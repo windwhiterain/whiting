@@ -59,7 +59,7 @@ pub fn shrub(seed: u64) -> Species {
 }
 
 /// The bamboo's rule: fixed counts and bands, shapes that draw nothing, so its seed cannot change the tree.
-fn bamboo_rule() -> Rule {
+pub fn bamboo_rule() -> Rule {
     Rule {
         trunk: culm,
         generations: vec![
@@ -84,7 +84,7 @@ fn bamboo_rule() -> Rule {
 }
 
 /// The shrub's rule: three generations, each smaller and thinner than the one that carries it.
-fn shrub_rule() -> Rule {
+pub fn shrub_rule() -> Rule {
     Rule {
         trunk: stem,
         generations: vec![

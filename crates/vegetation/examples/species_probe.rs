@@ -11,10 +11,11 @@
 //! ```
 
 use shape::mesh::{boundary_loops, euler_characteristic, signed_volume};
-use whiting_vegetation::derive::{Species, bamboo, shrub};
+use whiting_vegetation::derive::{Species, bamboo, bamboo_rule, shrub};
 use whiting_vegetation::expand::{Detail, expand};
 use whiting_vegetation::handle::Handle;
 use whiting_vegetation::ops::{Change, Edit, Property, apply};
+use whiting_vegetation::species::graft;
 
 fn main() {
     let mut checks: Vec<(&str, bool)> = Vec::new();
@@ -38,6 +39,14 @@ fn main() {
     checks.push((
         "the hand edits a grown plant",
         the_hand_edits_a_grown_plant(),
+    ));
+    checks.push((
+        "a graft is one more of the rule's",
+        a_graft_is_one_more_of_the_rules(),
+    ));
+    checks.push((
+        "a graft off the rule is refused",
+        a_graft_off_the_rule_is_refused(),
     ));
 
     println!("\n# the exit");
@@ -306,4 +315,90 @@ fn the_hand_edits_a_grown_plant() -> bool {
         "  the control is the landed edit: a grown node the hand could not name would be a tree nobody can sculpt"
     );
     report.clean() && (moved - 0.05).abs() < 1e-5
+}
+
+/// A graft is one more of what the rule would have made, and the leaf field fills it at once.
+fn a_graft_is_one_more_of_the_rules() -> bool {
+    let mut species = bamboo(20_261_017);
+    let bough = Handle::root().child(0);
+    let sibling = bough.child(0);
+    let sibling_length = species
+        .plant
+        .spine(&sibling)
+        .expect("the branch resolves")
+        .length();
+    let before = species.plant.live().count();
+    let grafted = match graft(&mut species.plant, &bamboo_rule(), &bough, 0.2, 0.75) {
+        Ok(handle) => handle,
+        Err(error) => {
+            println!("\n# a graft\n  refused: {error}");
+            return false;
+        }
+    };
+    let after = species.plant.live().count();
+    let node = species
+        .plant
+        .get(&grafted)
+        .expect("the graft resolves")
+        .attachment();
+    let length = species
+        .plant
+        .spine(&grafted)
+        .expect("the graft resolves")
+        .length();
+    let expansion = expand(&species.plant, Detail::DEFAULT, &species.fields);
+    let filled = expansion
+        .leaves
+        .iter()
+        .find(|group| group.node == grafted)
+        .map(|group| group.leaves.len())
+        .unwrap_or(0);
+    println!("\n# a graft");
+    println!(
+        "  {grafted} landed at station {:.4} slot {:.4} · the plant went {before} → {after} nodes",
+        node.station, node.slot
+    );
+    println!(
+        "  its spine is its sibling's ({length:.6} against {sibling_length:.6}) and the field filled it with {filled} leaves"
+    );
+    println!(
+        "  the control is the fill: a graft the field did not see would be a node nobody would ever draw"
+    );
+    after == before + 1
+        && (node.station - 0.2).abs() < 1e-6
+        && (node.slot - 0.75).abs() < 1e-6
+        && (length - sibling_length).abs() < 1e-6
+        && filled > 0
+}
+
+/// A graft where the rule has nothing to say, or where the parent has no such place, is refused and changes
+/// nothing.
+fn a_graft_off_the_rule_is_refused() -> bool {
+    let mut species = bamboo(20_261_017);
+    let before = species.plant.live().count();
+    let rule = bamboo_rule();
+    let branch = Handle::root().child(0).child(0);
+    let too_deep = graft(&mut species.plant, &rule, &branch, 0.5, 0.5);
+    let out_of_range = graft(&mut species.plant, &rule, &Handle::root(), 1.5, 0.5);
+    let after = species.plant.live().count();
+    let deep_refused = matches!(
+        too_deep,
+        Err(whiting_vegetation::species::GraftError::NoGeneration { .. })
+    );
+    let range_refused = matches!(
+        out_of_range,
+        Err(whiting_vegetation::species::GraftError::OutOfRange { .. })
+    );
+    println!("\n# a graft that cannot land");
+    if let Err(error) = &too_deep {
+        println!("  a branch is as deep as the rule goes: {error}");
+    }
+    if let Err(error) = &out_of_range {
+        println!("  and a station of 1.5 is not on the parent: {error}");
+    }
+    println!("  the plant is still {after} nodes (it was {before})");
+    println!(
+        "  the control is the count: a refusal that had added a node would pass a check that only read the error"
+    );
+    deep_refused && range_refused && after == before
 }

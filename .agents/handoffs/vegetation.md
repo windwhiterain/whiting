@@ -35,6 +35,7 @@ plant.spine(&handle);                           // the node's spine in the world
 
 // A species is a rule: the trunk, and one generation of children below it.
 let plant = species::grow(&rule, seed);         // deterministic in (rule, seed), node for node
+let grafted = species::graft(&mut plant, &derive::bamboo_rule(), &bough, 0.2, 0.75);  // one more of the rule's
 
 let expansion = expand::expand(&plant, Detail::DEFAULT, &species.fields);
 expansion.wood;                                 // one Wood { handle, loft } per live node
@@ -72,6 +73,11 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 - **A rule may leave nothing to chance**: bamboo's counts, bands and jitters are fixed and its shapes draw no
   numbers, so its seed reaches the leaf field and nothing else. Two bamboo seeds are the same tree with two leaf
   layouts; two shrub seeds are two shrubs.
+- **A graft is the generator's operation, not an edit.** `species::graft(plant, &rule, at, station, slot)` needs the
+  rule that made the tree, so it cannot be a `Change` — an edit is a handle and a change, and carrying a species in
+  every edit is what the layering exists to avoid. The generation is the parent's own depth, and the new node's
+  shape draws from **its own** forked stream, so a graft is as deterministic and as local as a grown child. The
+  leaf field sees it at once: a grafted branch took **9** leaves with no extra call.
 - **A prune is a tombstone, and both walks exist for a reason.** `walk` names tombstones so a handle goes on
   naming what it named; `live` skips them *and their subtrees*. `expand::wood` reads `live`. A new reader that
   takes `walk` will draw deleted branches.

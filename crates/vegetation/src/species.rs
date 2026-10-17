@@ -143,6 +143,98 @@ fn spread(band: (f32, f32), index: u32, count: u32) -> f32 {
     band.0 + (band.1 - band.0) * index as f32 / (count - 1) as f32
 }
 
+/// Why a graft did not land.
+#[derive(Debug, Clone, PartialEq)]
+pub enum GraftError {
+    /// The handle names no node.
+    Orphaned(crate::plant::HandleOrphaned),
+    /// The rule has no generation below that node: it is as deep as the species goes.
+    NoGeneration {
+        /// The depth of the node the graft was aimed at.
+        depth: usize,
+        /// How deep the rule goes: one generation per level below the trunk.
+        generations: usize,
+    },
+    /// The station or the slot is not a place on the parent.
+    OutOfRange {
+        /// Where the graft was aimed along the parent.
+        station: f32,
+        /// Where it was aimed around the parent.
+        slot: f32,
+    },
+}
+
+impl std::fmt::Display for GraftError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GraftError::Orphaned(orphaned) => write!(formatter, "{orphaned}"),
+            GraftError::NoGeneration { depth, generations } => write!(
+                formatter,
+                "a node at depth {depth} has no generation below it: the rule has {generations}"
+            ),
+            GraftError::OutOfRange { station, slot } => write!(
+                formatter,
+                "station {station} and slot {slot} are not both places on the parent"
+            ),
+        }
+    }
+}
+
+/// Adds one child to a node, from the generation the rule puts below it: V5's *click-place a node where you
+/// clicked*, with the species still deciding what that node is.
+///
+/// # Invariants
+///
+/// **The generation is the node's own depth**, not a parameter: the rule already says what grows below a node at
+/// that depth, so there is nothing for a caller to disagree with — a graft is one more of what the rule would
+/// have made, at the place the author pointed at. Its shape is the generation's shape function, drawn from **the
+/// new node's own stream**, forked by the handle it lands on, so a graft is as deterministic and as local as a
+/// grown child and adding one moves no other node's numbers.
+pub fn graft(
+    plant: &mut Plant,
+    rule: &Rule,
+    at: &Handle,
+    station: f32,
+    slot: f32,
+) -> Result<Handle, GraftError> {
+    let depth = at.depth();
+    let generation = *rule
+        .generations
+        .get(depth)
+        .ok_or(GraftError::NoGeneration {
+            depth,
+            generations: rule.generations.len(),
+        })?;
+    if !(0.0..=1.0).contains(&station) || !(0.0..=1.0).contains(&slot) {
+        return Err(GraftError::OutOfRange { station, slot });
+    }
+    let parent_radius = plant
+        .get(at)
+        .map_err(GraftError::Orphaned)?
+        .taper_now()
+        .at(station);
+    let index = plant
+        .get(at)
+        .map_err(GraftError::Orphaned)?
+        .children()
+        .len() as u32;
+    let handle = at.child(index);
+    let mut rng = plant.rng(&handle);
+    let joint = Joint {
+        parent_radius,
+        depth: depth + 1,
+        index,
+        siblings: index + 1,
+    };
+    let (spine, taper) = (generation.shape)(&mut rng, &joint);
+    let attachment = Attachment::new(station, slot).sunk(generation.sink);
+    plant
+        .get_mut(at)
+        .map_err(GraftError::Orphaned)?
+        .push(Node::attached(spine, taper, attachment));
+    Ok(handle)
+}
+
 /// A spine through the given `(position, tangent)` pairs, in the node's own frame.
 ///
 /// A shape function's drawing tool: it is `shape::Curve` with the species' own refusal message, kept here so
