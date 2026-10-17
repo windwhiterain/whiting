@@ -1320,6 +1320,32 @@ is drawn from it, so a plant cannot stand at a height the floor does not have.
 `terrain::HeightField`'s `sample(plan)` has the same shape and is the intended caller, but no scene in this tree feeds
 one yet, so that swap is a hypothesis rather than a reading.
 
+**The offline backend's view of a plant.** P3's fourth item, and the first render answered with a defect: the plant
+scenes' sky was a hand-written WGSL `sky_at`, so a path tracer — which has no shader stage of its own — drew the plant
+against **black**. The fix is `dunes`'s precedent adopted whole: one `air::Atmosphere` in Rust whose numbers produce
+**both** the shader's helpers and the environment map, plus one `environment_light` whose radiance is the rasteriser's
+ambient *and* the exporter's Cycles `background` strength.
+
+| invariant | reading |
+| --- | --- |
+| the tracer sees the plant | `bamboo` traces in **10.29 s** at **64** samples on the CPU, with **22** fields dropped by `LossyMode::Degrade` |
+| what a tracer cannot use | **three** kinds, all raster-only by design: the identity channel (`authored_offset`), the shadowing and depth stages, and any screen-space grade |
+| the sky is one map | before the fix the traced background was **black** and the document carried no `images`; after it the frame's background is the same **512×256** latlong map the grade reads |
+| the map's resolution is measured | at **256×128** the gradient banded visibly in the raster frame; at **512×256** it does not |
+| the residual difference | the rasteriser's grade applies a Reinhard curve and a 0.4545 encode *after* the sky and a tracer does its own film transform, so the two skies now differ by the grade rather than by a law |
+| the pictures | every plant scene changed with the sky — `1D533E76…` bamboo, `884C7C85…` windy, `4213A47B…` crowned, `0A7AFD1B…` knots, `2937B7B6…` grove, `8D287A4A…` sculpted — because an ambient was added and the sky stopped being a shader |
+
+**Three decisions the tracer forced:**
+
+1. **One source for the sky's numbers.** `air::Atmosphere` emits the WGSL the grade calls and the pixels the tracer
+   reads, so the two backends cannot disagree about the sky's colour. `dunes` measured what the alternative costs: a
+   rasterised sky at **155.8** of mean luma against a traced **0.0**, and a whole-frame correlation of **−0.6585** —
+   a picture whose bright part is the other picture's dark part.
+2. **A tracer's world is an image and a radiance, not a sky law.** The `environment_light`'s radiance is the ambient
+   the shadows are lit by *and* the `background` strength the exporter writes; one number, two backends. A scene that
+   wants its shade blue and its sky bright cannot have one without the other, which is the honest coupling.
+3. **The map is 512×256 because 256×128 banded**, measured in the raster frame rather than argued from a texel budget.
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before

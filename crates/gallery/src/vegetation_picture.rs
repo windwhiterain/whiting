@@ -48,13 +48,14 @@ use vegetation::handle::Handle;
 use vegetation::leaf::LeafTemplate;
 use vegetation::plant::Placement;
 
+use crate::air::Atmosphere;
 use crate::building_identity::{building_extras, not_authored_extras, outputs_field, stage_set};
 use crate::geometry::plane_facing;
 use crate::kit::{
-    camera_placed, flux_for_irradiance, instance, instances, light, light_with_radius, mesh,
-    mesh_material, offset_by, post_processes, screen_material, surface,
+    camera_placed, environment_light, flux_for_irradiance, image, instance, instances, light,
+    light_with_radius, mesh, mesh_material, offset_by, post_processes, screen_material, surface,
 };
-use crate::shaders::post_shader;
+use crate::shaders::{Projection, post_shader};
 use crate::vegetation_mesh::{LEAF_BASE_ID, node_ids, node_ids_from, template_points};
 
 /// The name the still scene is built and rendered under.
@@ -127,27 +128,44 @@ const CULM_TINT: [f64; 3] = [0.46, 0.50, 0.24];
 const LEAF_TINT: [f64; 3] = [0.20, 0.38, 0.15];
 
 /// The sky this scene draws where nothing else is, written once so the haze and the horizon agree.
-const SKY: &str = r#"
-fn sky_at(ray: vec3<f32>) -> vec3<f32> {
-    let above = pow(clamp(ray.y, 0.0, 1.0), 0.60);
-    let horizon = vec3<f32>(0.62, 0.68, 0.72);
-    let zenith = vec3<f32>(0.16, 0.28, 0.50);
-    return mix(horizon, zenith, above);
+fn atmosphere() -> Atmosphere {
+    Atmosphere::new()
+        .zenith([0.16, 0.28, 0.50])
+        .horizon([0.62, 0.68, 0.72])
+        .ground([0.38, 0.37, 0.34])
+        // A thin day over a garden: the air is a haze on the far wood and nothing more, so the
+        // scale height is short and the density is low.
+        .density(0.0012)
+        .scale_height(60.0)
 }
-"#;
+
+/// How bright the sky is, as the one number both backends read.
+///
+/// # Invariants
+///
+/// It is the environment light's `radiance`, which the rasteriser reads as the ambient the shadows
+/// are lit by and as the sky behind the plant, and which the exporter writes as Cycles'
+/// `background` strength — so the two frames cannot disagree about how bright the day is. The map
+/// is the sky's colour and this is its brightness, which is why changing the sky's look does not
+/// mean touching this number.
+const SKY_RADIANCE: f64 = 1.0;
 
 /// What the post stage does to the frame.
 ///
 /// The air is an exponential over the geometry only, for the reason the shed's grade gives: the sky is
 /// already the far field, and a haze that reached it as well would put two different greys on one horizon.
 const GRADE: &str = r#"
+    // **The sky is the scene's own environment map**, which is what a path tracer draws its world
+    // from: writing a sky law here instead gave the two backends two different skies over one
+    // plant, and no number could bring them together. The map is the sky's colour and the
+    // environment light's radiance is its brightness.
     if depth >= 1.0 {
-        color = sky_at(ray_through(in.uv));
+        color = environment_sky(ray_through(in.uv));
     }
     if depth < 1.0 {
         let along_ray = length(world_position(in.uv, depth) - uniforms.camera.position);
         let air = clamp(1.0 - exp(-along_ray * 0.012), 0.0, 0.45);
-        color = mix(color, sky_at(vec3<f32>(ray_through(in.uv).x, 0.02, ray_through(in.uv).z)), air);
+        color = mix(color, environment_sky(vec3<f32>(ray_through(in.uv).x, 0.02, ray_through(in.uv).z)), air);
     }
     color = color / (color + vec3<f32>(1.0));
     color = pow(color, vec3<f32>(0.4545));
@@ -622,6 +640,10 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
         })
         .collect();
 
+    // **One copy of the air**: the shader's helpers and the environment map are the same struct's numbers, so the
+    // rasterised sky and the traced one cannot drift apart.
+    let helpers = atmosphere().wgsl();
+
     let mut materials = vec![
         mesh_material(
             "culm-cast",
@@ -791,6 +813,20 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
             )]),
         ),
         (
+            // The sky as an **image**, which is what lets this scene render on a backend that has no
+            // shader stage of its own: a path tracer draws its world from the map, and the grade
+            // reads the same map for the pixels no geometry covered. Latlong, because that is the
+            // projection a path tracer reads an environment in.
+            "images".to_owned(),
+            Value::List(vec![image(
+                "air",
+                512,
+                256,
+                atmosphere().environment_pixels(512, 256),
+                Projection::Latlong,
+            )]),
+        ),
+        (
             "lights".to_owned(),
             Value::List(vec![
                 light_with_radius(
@@ -808,6 +844,9 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
                     flux_for_irradiance(0.7, 3.0),
                     KEY_EXTENT,
                 ),
+                // The day itself: the ambient every shadowed leaf is lit by *and* the sky the frame's
+                // background is drawn from, which is one number read by both backends.
+                environment_light("air", "air", [1.0; 3], SKY_RADIANCE),
             ]),
         ),
         (
@@ -815,7 +854,7 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
             Value::List({
                 let mut shaders = stage_set("plant", "", "", &point, &extras);
                 shaders.extend(stage_set("ground", "", "", &ground.point_schema(), &ground));
-                shaders.push(post_shader(GRADE, SKY, None));
+                shaders.push(post_shader(GRADE, &helpers, Some(Projection::Latlong)));
                 shaders
             }),
         ),

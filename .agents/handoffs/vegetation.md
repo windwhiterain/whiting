@@ -96,6 +96,11 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 
 ## Traps
 
+- **A scene's sky must be an image and one `environment_light`, not a shader.** A path tracer has no shader stage:
+  the plant scenes drew black backgrounds until they adopted `air::Atmosphere` (one struct emits the grade's helpers
+  and the 512x256 latlong map, and the light's radiance is the raster ambient *and* Cycles' `background` strength). A
+  hand-written `sky_at` is a sky only one backend can see.
+
 - **The ground is one function**: the scene draws its floor from it *and* seats every planting on it (Ground::Fielded /
   egetation::ground::seat). A second ground function is the defect a seated plant exists to rule out. Framing::ground is
   Ground::Plane for the five single-plant scenes, so a plane's seating is the identity and their hashes do not move.
@@ -214,5 +219,7 @@ cargo run -p whiting-device-rasterize --example render -- bamboo_crown out/bambo
 cargo run -p whiting-device-rasterize --example render -- bamboo_knots out/bamboo-knots
 cargo run -p whiting-device-rasterize --example render -- grove out/grove
 cargo run -p whiting-device-rasterize --example render -- sculpted out/sculpted
+# The same document through the path tracer: the sky comes from the environment map, not a shader.
+cargo run -p whiting-device-cycles --example render_cycles -- bamboo out/cycles-bamboo.png 64
 cargo run -p whiting-device-rasterize --example render -- sweep out/sweep
 ```
