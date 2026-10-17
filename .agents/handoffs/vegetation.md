@@ -53,6 +53,11 @@ let expansion = expand::expand(&plant, Detail::DEFAULT, &species.fields);
 expansion.wood;                                 // one Wood { handle, loft } per live node
 expansion.leaves;                               // one LeafGroup { node, template, leaves } per node
 
+// Small authored things on a node's surface: a knot, a thorn, a fruit. No angle is expressible anywhere.
+let knot = decorator::Template { sweep, stations: 7, around: 12 };
+let seat = decorator::Seat::new(bough, 0, 0.1, slot).sunk(0.01).scaled(1.0);
+let placed = decorator::placed(&plant, &[seat]);   // Placed { node, template, placement, scale }
+
 // The forces that shape a grown plant: gravity, a light, a wind. `amount` is a fraction of each spine's length.
 let plant = plant.with_fields(vec![field::Field::gravity(0.25), field::Field::light([1.0, 0.0, 0.0], 0.15)]);
 // …or the same species under a scene's weather, which changes nothing but the fields.
@@ -83,6 +88,9 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 
 ## Traps
 
+- **A decorator's frame is the node's surface frame taken whole**, and `Seat` carries no angle: a decorator that
+  needs a roll is a decorator whose *template* should be authored rolled. A seat on a tombstone draws nothing,
+  which is the one place a decorator can be absent without an error.
 - **`Curve::closest` pins the distance exactly and the fraction only as well as the distance is flat.** Near a foot
   the distance is quadratic in `t`, so `f32` stops resolving the fraction at about `1e-4` on a metre-scale curve.
   An envelope's `outside` therefore reads a few millionths on its own boundary, and a probe that demanded an exact
@@ -163,6 +171,7 @@ cargo run -p whiting-vegetation --example select_probe     # 8, the brush
 cargo run -p whiting-vegetation --example species_probe    # 8, the generator
 cargo run -p whiting-vegetation --example field_probe      # 8, the fields
 cargo run -p whiting-vegetation --example envelope_probe   # 6, the envelope, the trim and the report
+cargo run -p whiting-vegetation --example decorator_probe  # 6, the decorators
 cargo run -p whiting-device-rasterize --example render -- bamboo out/bamboo
 cargo run -p whiting-device-rasterize --example render -- bamboo_wind out/bamboo-wind
 cargo run -p whiting-device-rasterize --example render -- sweep out/sweep

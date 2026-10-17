@@ -1149,6 +1149,35 @@ station, what the plant reaches there and what the envelope allows. `worst_excee
 caller compares against zero, and the crown is measured on **every live node's tip**, in the trunk's own
 arc-length fractions, which is the same space the radius law is written in.
 
+**The decorators.** V3's decorator is `decorator::{Template, Seat, placed}`: a template is a small
+`shape::Sweep` authored with its base at the origin and its axis along `+x`, a seat is the same
+`(station, slot, sink)` a joint is made of plus a scale, and `placed` returns the world frame every seat lands in.
+
+**A decorator's template is a sweep, and that is the whole design.** A knot is a short tube that bulges, a thorn is
+a thin cone, a burl is a lumpy stub — all three are a spine, a law that thickens it and a section, which is
+`shape::Sweep`. So a decorator template and a leaf template are the same kind of object, and the instancing claim
+is the leaf's: **`k` decorators of one template are one mesh and `k` transforms.**
+
+| invariant | reading |
+| --- | --- |
+| a seat is three numbers | **3** seats: their origins against the node's composed surface frame **0.000e0**, against its skin **6.845e-8** |
+| no rotation is expressible | every placement's axes are its surface frame's to **0.000e0**; two seats on two nodes get different frames |
+| a template is a closed solid | the knot is **164** triangles at χ = 2, **0** boundary loops, volume **2.784e-5** |
+| `k` seats are one draw | **6** seats of one template: **164** triangles once and **6** transforms, where baking would be **984** |
+| a seat follows its node | a 0.12 station nudge moves the knot **0.261735** m and it sits **2.784e-3** from the bough's spine against a taper less the sink of **0.002784** |
+| a tombstone takes its knot | pruning a bough takes its seat and no other: **3 → 2** placed |
+
+**Two decisions the decorators forced:**
+
+1. **A rotation is not expressible, and that is a type rather than a promise.** `Seat` carries a station, a slot, a
+   sink and a scale; the frame is the node's surface frame taken whole and moved by the node's placement. V3's
+   sentence — *"a joint is one subtraction, not a transform"* — is therefore enforced by what a caller can write,
+   which is stronger than a check that could be forgotten. A decorator that needs a roll is a decorator whose
+   *template* should be authored rolled.
+2. **A tip cap is not a decorator.** An open tube is a hole seen from below, and `Sweep::capped` closes it with the
+   sweep's own end ring; a cap decorator would be a second, slower way to say the same thing and one that a caller
+   could leave off.
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before
