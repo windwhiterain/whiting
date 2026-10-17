@@ -747,6 +747,7 @@ fn outward_walk() {
 
     sweep_bite(wall);
     a_simple_loop_that_leaves_the_outline();
+    a_loop_the_clipper_cannot_close();
     self_intersecting_voids();
 }
 
@@ -797,6 +798,370 @@ fn a_simple_loop_that_leaves_the_outline() {
         &[[2.0, 2.0], [9.0, 2.0], [2.0, 9.0]],
         wall,
     );
+}
+
+/// Measures the case [`Violation::VoidNotInside`](whiting_building::validate::Violation::VoidNotInside)'s
+/// own gate leaves open: **a void loop that does not meet itself and the ear clipper cannot fully
+/// triangulate**.
+///
+/// # Invariants
+///
+/// - **The gate is `self_meeting`, and `self_meeting` is silent for every degeneracy that is not a
+///   meeting.** A corner standing on the line through its two neighbours, a corner the author wrote
+///   down twice, a finger a hundredth of a millimetre wide: none of them is a crossing and none is a
+///   touch at a point the author did not write down, so every one of them reaches the subtraction —
+///   and the subtraction is exact only where the clipper's own triangles cover the loop. **This is
+///   the section that says whether that gate is enough**, and it says it with a measurement.
+/// - **Three readings are printed and none of them may answer for another.** The loop's own signed
+///   area is the shoelace of the authored nodes; `clip::shared_area(loop, loop)` is the sum of the
+///   areas of the triangles the ear clipper made; the verdict is asked of `validate`. A loop whose
+///   two areas differ has a **number**, and only the `validate says:` line says whether the check
+///   fired on it.
+/// - **Every shape is measured twice, because one placement cannot tell the two failures apart.** A
+///   loop that leaves the outline must fire; a loop that stays inside must not. A clipper that
+///   under-reports makes `own` too small and **silences** the first, and a clipper that leaves a
+///   residue makes the second fire for a loop that never left. Same instrument, opposite faults.
+/// - **The collinear rows are the crate's own shapes and not the probe's.** `ops::split_outline`
+///   inserts a node on the edge a junction lands on, so a mass that has had a wing attached carries
+///   corners standing on the line through their neighbours; `clip`'s own module docs claim that "a
+///   polygon with collinear corners loses area-free triangles, never area", and that is a claim
+///   about exactly these rows, so it is measured here rather than believed.
+/// - **The first row is the canary.** A section whose every difference reads `0.0000` is an
+///   instrument that cannot disagree with the crate; the bowtie is here so that a column of zeroes is
+///   visibly the *right* zeroes and not a line that never reads its argument.
+fn a_loop_the_clipper_cannot_close() {
+    let wall = 0.3;
+    let half = 8.0;
+    let across = half * 2.0;
+    let shapes: [(&str, &[[f32; 2]]); 8] = [
+        (
+            "the canary: a bowtie, which is NOT a simple loop and is here only so that a column of \
+             zero differences can be told from an instrument that cannot disagree",
+            &[[-2.0, -2.0], [2.0, 2.0], [2.0, -2.0], [-2.0, 2.0]],
+        ),
+        (
+            "a plain 4 x 4 rectangle: the reference every other row is read against",
+            &[[-2.0, -2.0], [2.0, -2.0], [2.0, 2.0], [-2.0, 2.0]],
+        ),
+        (
+            "one collinear node, on the south edge: what `split_outline` inserts at a junction",
+            &[
+                [-2.0, -2.0],
+                [0.0, -2.0],
+                [2.0, -2.0],
+                [2.0, 2.0],
+                [-2.0, 2.0],
+            ],
+        ),
+        (
+            "a collinear node on every edge: four junctions on one loop",
+            &[
+                [-2.0, -2.0],
+                [0.0, -2.0],
+                [2.0, -2.0],
+                [2.0, 0.0],
+                [2.0, 2.0],
+                [0.0, 2.0],
+                [-2.0, 2.0],
+                [-2.0, 0.0],
+            ],
+        ),
+        (
+            "a spike: a one metre slit cut four metres down from the north edge",
+            &[
+                [-2.0, -2.0],
+                [2.0, -2.0],
+                [2.0, 2.0],
+                [0.5, 2.0],
+                [0.5, -2.0],
+                [-0.5, -2.0],
+                [-0.5, 2.0],
+                [-2.0, 2.0],
+            ],
+        ),
+        (
+            "a sliver: a 0.0001 m finger four metres long, standing off the south edge",
+            &[
+                [-2.0, -2.0],
+                [2.0, -2.0],
+                [2.0, 2.0],
+                [0.0, 2.0],
+                [0.0, -1.9999],
+                [-0.0001, -1.9999],
+                [-0.0001, 2.0],
+                [-2.0, 2.0],
+            ],
+        ),
+        (
+            "a zero-area lobe: a node the author wrote down twice, leaving an edge of no length",
+            &[
+                [-2.0, -2.0],
+                [2.0, -2.0],
+                [2.0, 0.0],
+                [2.0, 0.0],
+                [2.0, 2.0],
+                [-2.0, 2.0],
+            ],
+        ),
+        (
+            "a spike that doubles back along its own line and so runs over two of its own nodes",
+            &[
+                [-2.0, -2.0],
+                [2.0, -2.0],
+                [2.0, -1.0],
+                [4.0, -1.0],
+                [4.0, -4.0],
+                [2.0, -4.0],
+                [2.0, 2.0],
+                [-2.0, 2.0],
+            ],
+        ),
+    ];
+    println!("\n# a loop that does not meet itself and the ear clipper cannot fully triangulate");
+    println!(
+        "  every shape is measured twice against a {across:.0} x {across:.0} outline and a {wall:.1} m wall:\n  \
+         once inside it, where `VoidNotInside` must stay silent, and once with its east side 2 m outside\n  \
+         it, where it must fire. A clipper that under-reports silences the second and a clipper that\n  \
+         leaves a residue fires the first, so one placement answers neither question."
+    );
+    for (label, corners) in shapes {
+        let authored: Vec<Vec2> = corners.iter().map(|node| *node).collect();
+        let signed = shoelace(&authored);
+        let clipped = whiting_building::clip::shared_area(&authored, &authored);
+        println!(
+            "\n  {label}\n    the loop's own signed area {signed:+.4} ({:.4} absolute), the clip's triangles\n    \
+             sum to {clipped:.4}, so the two differ by {:.4}",
+            signed.abs(),
+            (clipped - signed.abs()).abs()
+        );
+        measure_void_in(half, "inside the outline", corners, wall);
+        measure_void_in(
+            half,
+            "the same loop with its east side 2 m outside the outline",
+            &pushed_outside(corners, half, 2.0),
+            wall,
+        );
+    }
+    the_degenerate_edge_is_the_crates_own();
+}
+
+/// Prints the two areas [`Violation::VoidNotInside`](whiting_building::validate::Violation::VoidNotInside)
+/// subtracts, what it is therefore asked about, and what `validate` says — and nothing else.
+///
+/// **It asks the document and never builds.** The sweep this prints is a question about the
+/// subtraction, and a walk that refuses a loop the subtraction is still asked of would put a second
+/// fault in the same line and make the column unreadable.
+fn report_the_subtraction(label: &str, half: f32, corners: &[[f32; 2]], wall: f32) {
+    let enclosing = square_plan(half);
+    let authored: Vec<Vec2> = corners.iter().map(|node| *node).collect();
+    let enclosed = whiting_building::clip::shared_area(&enclosing, &authored);
+    let own = whiting_building::clip::shared_area(&authored, &authored);
+    let mut skeleton = BuildingSkeleton::default();
+    skeleton.masses = vec![
+        housing_sized(half)
+            .with_wall(wall)
+            .with_voids(vec![outline(corners)]),
+    ];
+    let faults = names_of(&Building::new(skeleton).validate());
+    println!(
+        "  {label}: the terms are {enclosed:.4} and {own:.4}, so the check is asked about {:.4}, while\n    \
+         the loop itself encloses {:.4} — validate says {}",
+        (enclosed - own).abs(),
+        shoelace(&authored).abs(),
+        if faults.is_empty() {
+            "nothing".to_owned()
+        } else {
+            faults.join(" and ")
+        }
+    );
+}
+
+/// Shows that the degenerate edge of the section above is **the crate's own product**, and sweeps a loop
+/// carrying one out past the outline half a metre at a time.
+///
+/// # Invariants
+///
+/// - **The first reading is `ops::split_outline` asked to do the thing its own docs say it always
+///   does.** "A station that lands exactly on an existing node still inserts one", so a junction at a
+///   corner leaves an edge of no length behind — **and the walk names that edge by name**
+///   ([`DidNotExpand`](whiting_building::validate::Violation::DidNotExpand) carrying
+///   `OutlineEdgeDegenerate`), which is the fault that owns it and the one this section must not
+///   swallow. A fix that made the subtraction exact while also silencing this would be a fix that
+///   traded one fault for another, and the two lines are printed together so that trade cannot happen
+///   unnoticed.
+/// - **The sweep is the control the fix needs, and it is built before the fix.** A clipper that
+///   under-reports does not merely mis-size a difference it already fires on: **it silences the fault
+///   entirely** wherever the part it loses is the part that left the outline. The sweep walks a
+///   degenerate-edged loop from flush with the outline to three metres out, and every row carries the
+///   number a person can do in their head — a `4 x 4` rectangle `over` metres out of a square shares
+///   `4 * (4 - over)` and encloses `16`, so the check *should* be asked about `4 * over` at every row.
+/// - **The last reading is the other caller.** `clip::shared_area` is asked about **mass outlines** as
+///   well as void loops, by the overlap test, so the same degenerate edge hides a **whole missing
+///   overlap** and not only a void's. Two unattached masses standing a half in one another are the
+///   control: `50.0000 m²` of shared plan area is either reported or it is not, and a clipper that
+///   answers `0` for it has reported nothing.
+fn the_degenerate_edge_is_the_crates_own() {
+    let wall = 0.3;
+    let half = 8.0;
+    println!(
+        "\n# the degenerate edge of the row above is the crate's own product, and the faults it hides"
+    );
+
+    // The mass `attach_mass` leaves behind when the junction lands exactly on a corner.
+    let mut host = Mass::new(outline(&square_plan(5.0)), 3.2)
+        .with_wall(wall)
+        .with_slab(0.4);
+    let at =
+        whiting_building::ops::split_outline(&mut host, 0.0).expect("a square carries a corner");
+    println!(
+        "  `ops::split_outline(&mut mass, 0.0)` inserted its node at index {at} and the outline now reads"
+    );
+    print_loop("    the host's own outline", &plan_nodes_of(&host));
+    println!(
+        "    the edge it leaves runs ({:.4}, {:.4}) to ({:.4}, {:.4}), which is {} long",
+        host.outline[at - 1].position[0],
+        host.outline[at - 1].position[1],
+        host.outline[at].position[0],
+        host.outline[at].position[1],
+        length(difference(
+            host.outline[at].position,
+            host.outline[at - 1].position
+        ))
+    );
+    let mut skeleton = BuildingSkeleton::default();
+    skeleton.masses = vec![host];
+    let faults = names_of(&Building::new(skeleton).validate());
+    println!(
+        "    validate says: {} — the walk names that edge by name, so it is never this check's to report",
+        faults.join(" and ")
+    );
+
+    // The sweep: the same degenerate loop carried further and further out of the outline.
+    let doubled = [
+        [-2.0, -2.0],
+        [2.0, -2.0],
+        [2.0, 0.0],
+        [2.0, 0.0],
+        [2.0, 2.0],
+        [-2.0, 2.0],
+    ];
+    println!(
+        "\n  the same loop swept out past the outline. It encloses 16.0000, so the check should be asked\n  \
+         about four times its distance past the edge, and it is asked about that only while the\n  \
+         difference it reads stays above validate's own 0.0010 m2:"
+    );
+    for over in [
+        0.01f32, 0.02, 0.04, 0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0,
+    ] {
+        report_the_subtraction(
+            &format!(
+                "{over:.2} m outside, so the check should be asked about {:.4}",
+                4.0 * over
+            ),
+            half,
+            &pushed_outside(&doubled, half, over),
+            wall,
+        );
+    }
+
+    // The other caller: `clip::shared_area` is asked about mass outlines too, by the overlap test.
+    let first = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]];
+    let second = [[5.0, 0.0], [15.0, 0.0], [15.0, 10.0], [5.0, 10.0]];
+    let none = [None, Some(0usize), Some(1), Some(2), Some(3)];
+    println!(
+        "\n  two unattached masses standing 50.0000 m2 in one another, with the degenerate edge at none\n  \
+         of the first mass's corners or at one of them, and the same for the second. The top grid is\n  \
+         clip's own reading of the shared area and the lower one is whether `UnattachedOverlap` fired:"
+    );
+    for reading in [true, false] {
+        if reading {
+            print!("              second:");
+        } else {
+            print!("                        ");
+        }
+        for at_second in none {
+            print!(
+                "{:>11}",
+                if at_second.is_none() {
+                    "none".to_owned()
+                } else {
+                    format!("at {}", at_second.unwrap())
+                }
+            );
+        }
+        println!();
+        for at_first in none {
+            let one = with_degenerate_edge(&first, at_first);
+            print!(
+                "    first {:>6}:",
+                if at_first.is_none() {
+                    "none".to_owned()
+                } else {
+                    format!("at {}", at_first.unwrap())
+                }
+            );
+            for at_second in none {
+                let two = with_degenerate_edge(&second, at_second);
+                let mut skeleton = BuildingSkeleton::default();
+                skeleton.masses = vec![
+                    Mass::new(outline(&one), 3.2).with_wall(wall).with_slab(0.4),
+                    Mass::new(outline(&two), 3.2).with_wall(wall).with_slab(0.4),
+                ];
+                if reading {
+                    let shared = whiting_building::clip::shared_area(
+                        &plan_nodes_of(&skeleton.masses[0]),
+                        &plan_nodes_of(&skeleton.masses[1]),
+                    );
+                    print!("{shared:>11.4}");
+                } else {
+                    let named = names_of(&Building::new(skeleton).validate())
+                        .iter()
+                        .any(|fault| fault == "UnattachedOverlap");
+                    print!("{:>11}", if named { "fired" } else { "SILENT" });
+                }
+            }
+            println!();
+        }
+    }
+    println!(
+        "    the true answer is 50.0000 at every cell, so a cell under it is the overlap check reading the\n  \
+         clipper rather than the two masses, and a cell reading SILENT is a fault the tree cannot see"
+    );
+}
+
+/// Returns a loop with an edge of no length inserted at `at`, or the loop untouched for `None`.
+///
+/// **It inserts at `at + 1` a copy of node `at`, which is exactly what `ops::split_outline` does**, so
+/// every loop carrying the degenerate edge here is one the crate's own op would have written.
+fn with_degenerate_edge(corners: &[[f32; 2]], at: Option<usize>) -> Vec<[f32; 2]> {
+    let mut held = corners.to_vec();
+    if let Some(at) = at {
+        held.insert(at + 1, held[at]);
+    }
+    held
+}
+
+/// Returns a mass's own plan positions in node order, which is what every loop reading in this probe
+/// takes.
+fn plan_nodes_of(mass: &Mass) -> Vec<Vec2> {
+    mass.outline.iter().map(|node| node.position).collect()
+}
+
+/// Returns the loop walked east until its own east side stands `over` metres outside an outline whose
+/// own east side is `half` metres from the origin.
+///
+/// **This is the placement [`Violation::VoidNotInside`](whiting_building::validate::Violation::VoidNotInside)
+/// exists for, and it is computed from the loop rather than written down per shape**, so every row of the
+/// section above leaks by the same `over` and the column of differences is comparable down it.
+fn pushed_outside(corners: &[[f32; 2]], half: f32, over: f32) -> Vec<[f32; 2]> {
+    let east = corners
+        .iter()
+        .fold(f32::NEG_INFINITY, |farthest, node| farthest.max(node[0]));
+    let shift = half + over - east;
+    corners
+        .iter()
+        .map(|node| [node[0] + shift, node[1]])
+        .collect()
 }
 
 /// Measures the one loop class the concave sweep never reached: **a void loop that meets itself**.

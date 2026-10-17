@@ -25,10 +25,26 @@
 //!   stops being about the polygon the moment it stops being one, which is why
 //!   [`Violation::VoidNotInside`](crate::validate::Violation::VoidNotInside) is asked only where
 //!   [`Violation::VoidNotSimple`](crate::validate::Violation::VoidNotSimple) has nothing to say.
-//! - **The result is a sum of exact triangle intersections**, so it is a lower bound only for degenerate input: a
-//!   polygon with collinear corners loses area-free triangles, never area.
-//! - Ear clipping **stops rather than loops** when no ear can be clipped (degenerate outline), and what it has
-//!   clipped is returned: a partial triangulation can only under-report an overlap.
+//! - **The result is a sum of exact triangle intersections**, so it is a lower bound only for input the ear
+//!   clipper cannot finish. **Measured rather than assumed:** a polygon with **collinear** corners is covered
+//!   exactly — a `4 × 4` rectangle with one node inserted on an edge reads `16.0000` against its own
+//!   `16.0000`, one with a node on every edge likewise, and a `0.0001 m` sliver four metres long reads
+//!   `15.9996` against `15.9996`. **The one input measured that lost real area was an edge of no length**,
+//!   and it is taken out of the loop before the walk rather than measured around.
+//! - **An edge of no length is removed first**, by [`without_edges_of_no_length`]. Such an edge bounds no
+//!   area and no part of the interior, so the loop it hands the clipper is the same region and the clipper
+//!   is free to triangulate it. **This is not a nicety: [`ops::split_outline`](crate::ops::split_outline)
+//!   writes one on purpose** — "a station that lands exactly on an existing node still inserts one" — and
+//!   measured *before* the removal, the clipper lost half of a `16.0000 m²` loop, which made
+//!   [`validate`](crate::validate) **miss two faults**: a void loop `4 cm` outside its own outline, and two
+//!   masses standing `50.0000 m²` in one another, both reported as sharing nothing at all. The walk still
+//!   names the degenerate edge itself, through
+//!   [`Problem::OutlineEdgeDegenerate`](crate::expand::Problem::OutlineEdgeDegenerate) and
+//!   [`Violation::DidNotExpand`](crate::validate::Violation::DidNotExpand), so measuring it here silences
+//!   nothing — it gives the other checks an exact number to subtract.
+//! - Ear clipping **stops rather than loops** when no ear can be clipped (a loop that meets itself, or one
+//!   shape this section has not been shown), and what it has clipped is returned: a partial triangulation
+//!   can only under-report an overlap.
 
 use crate::math::Vec2;
 
@@ -57,8 +73,12 @@ pub fn shared_area(first: &[Vec2], second: &[Vec2]) -> f32 {
 ///
 /// The polygon is wound counter-clockwise first, so a corner is convex exactly when its cross product is
 /// positive — the same sign convention every other plan test in this crate reads.
+///
+/// **An edge of no length is out of the loop before the walk starts**, by [`without_edges_of_no_length`],
+/// because a corner between two nodes at one place is never strictly convex and blocks every ear it stands
+/// inside, so leaving one in stops the walk with the loop unbroken.
 fn triangles(polygon: &[Vec2]) -> Vec<[Vec2; 3]> {
-    let mut remaining: Vec<Vec2> = polygon.to_vec();
+    let mut remaining = without_edges_of_no_length(polygon);
     if signed_area(&remaining) < 0.0 {
         remaining.reverse();
     }
@@ -95,6 +115,39 @@ fn triangles(polygon: &[Vec2]) -> Vec<[Vec2; 3]> {
         ears.push([remaining[0], remaining[1], remaining[2]]);
     }
     ears
+}
+
+/// Returns a loop with every edge of no length taken out of it.
+///
+/// # Invariants
+///
+/// **It changes no area and no part of the interior, which is the whole permission to do it.** A segment
+/// whose two ends stand at one place bounds nothing, so the region either loop encloses is the region this
+/// one encloses, and every area computed from the returned loop is the area of the loop handed in.
+///
+/// **It runs before the ear clipper rather than inside it, and the clipper is the reason.** Ear clipping
+/// needs a corner that is convex **strictly** — `cross > 0` — so a corner between two nodes at one place is
+/// never an ear, and it also **blocks** every ear whose triangle it stands inside, boundary included. On a
+/// loop carrying such a corner **no** corner is an ear, the walk stops with the loop unbroken, and the final
+/// triangle is dropped with it: a `4 × 4` loop with one node written down twice read `8.0000` against its
+/// own `16.0000`. **`Vec::dedup` is the whole removal for the open chain** and the closing edge is the one
+/// case it cannot see — a loop whose last node stands at its first names that edge too, so it is taken off
+/// the end here.
+///
+/// **The test is exact equality and not a tolerance**, because this is the same arithmetic the clipper itself
+/// runs: `cross` and `inside_triangle` compare at `0.0`, so an edge that is very short rather than exactly
+/// zero is left in and the loop is clipped as the author wrote it. **The walk is what names such an edge** —
+/// [`Problem::OutlineEdgeDegenerate`](crate::expand::Problem::OutlineEdgeDegenerate), at its own
+/// `LENGTH_EPSILON` — so a near-degenerate edge is still reported by name and is not silently dropped here.
+///
+/// `O(nodes)`, one pass and one comparison per node.
+fn without_edges_of_no_length(polygon: &[Vec2]) -> Vec<Vec2> {
+    let mut held = polygon.to_vec();
+    held.dedup();
+    if held.len() > 1 && held[held.len() - 1] == held[0] {
+        held.pop();
+    }
+    held
 }
 
 /// Returns how much of two triangles is shared.

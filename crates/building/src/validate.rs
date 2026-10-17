@@ -821,6 +821,15 @@ pub enum Violation {
     /// identical shapes**. The gate is [`self_meeting`]'s own answer: a loop it names is
     /// [`VoidNotSimple`](Self::VoidNotSimple)'s to report, and the subtraction is not asked of it.
     ///
+    /// **"Simple" is the gate and it is not the whole of what the clipper can measure.** A loop carrying
+    /// an edge of no length does not meet itself, so it is asked — and it is asked **correctly**,
+    /// because [`crate::clip`] removes such an edge before it clips. That is measured rather than assumed
+    /// and it was the other way round: with the edge left in, a `4 x 4` void with one node written down
+    /// twice read `8.0000` against its own `16.0000`, and **this violation then missed the fault at every
+    /// leak under `5 cm`** — the difference it read grew as the square of the leak where the truth grows as
+    /// four times it. [`DidNotExpand`](Self::DidNotExpand) still names the edge by name, so nothing is
+    /// silent because of it.
+    ///
     /// **A loop that leaves the outline is still reported, and the fault is measured on one.** A
     /// `5 x 4` rectangle with its east side `2 m` outside a `12 x 12` plan gives `12.0000` against
     /// `20.0000`, and a right triangle over the north-east corner gives `15.5000` against `24.5000` —
@@ -1105,6 +1114,15 @@ fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             // silent. Its two areas were measured equal (`9.0000` against `9.0000` for two `3 x 3`
             // squares sharing a corner), so nothing is reported for it — **measured rather than
             // assumed, which is the only reason the gate above is safe to state in one line.**
+            // **The one loop this leaves to the subtraction that is not an authored pinch is one carrying
+            // an edge of no length**, and `crate::clip` now takes that edge out before it clips rather than
+            // clipping around it — **measured rather than assumed**: a `4 x 4` void with one node written
+            // down twice read `8.0000` against its own `16.0000` before that removal, and the subtraction
+            // was then **wrong in the direction that hides faults**: it missed `VoidNotInside` at every leak
+            // under `5 cm`, because the difference it read grew as the square of the leak where the truth
+            // grows as four times it. The walk still names the edge itself
+            // ([`Problem::OutlineEdgeDegenerate`](crate::expand::Problem::OutlineEdgeDegenerate)), so
+            // nothing is silent because of this.
             if meeting.is_none() {
                 let enclosed = crate::clip::shared_area(&outline, held).abs();
                 let own = crate::clip::shared_area(held, held).abs();

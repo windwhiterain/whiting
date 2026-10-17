@@ -3891,3 +3891,163 @@ one that prints the **measurement** (the probe was printing "`VoidNotInside` fir
 which the check no longer decides) and the check that gives the verdict; and a predicate that already exists three lines
 above is not a design question — the brief asked whether two checks could be ordered "without a shared predicate" and
 the predicate was already there.
+
+## What the clip slice found: `clip` was exact for every loop but the one the crate writes on purpose (2026-10-31, branch `feature/building-clip-degenerate`)
+
+The gap the inside slice left was written down in `clip.rs` and not here: *"a partial triangulation can only
+under-report an overlap"*. **That sentence is true and it is also a silence** — it says what happens when the ear
+clipper stops and not which loops stop it, so the open question was one shape: **a void loop that does not meet itself
+and the clipper cannot finish.** The narrowing slice had removed the *self-meeting* case; this is the other case, and
+nothing in the tree could have found it: every void loop any probe measured was either simple and cleanly covered, or
+not simple and named by [`Violation::VoidNotSimple`]. **No shape sat between the two**, so `clip`'s own fallback was
+untested.
+
+### Every shape, its own area, and the clip's answer to it
+
+Each loop is measured twice at a `16 × 16` outline and a `0.3 m` wall — once inside, where `VoidNotInside` **must**
+stay silent, and once with its east side `2 m` outside, where it **must** fire. *The difference* is the clip's triangle
+sum against the loop's own shoelace, and it is a **number, not a verdict**: the verdict is the `validate` column.
+
+| void loop | the probe's own simplicity | the loop's own area | the clip's triangles | the difference | inside the outline | `2 m` outside |
+| --- | --- | --- | --- | --- | --- | --- |
+| **a plain `4 × 4` rectangle** (the reference) | simple | `16.0000` | `16.0000` | `0.0000` | **nothing** | `VoidNotInside`, `8.0000` |
+| **one collinear node** on the south edge | simple | `16.0000` | `16.0000` | `0.0000` | **nothing** | `VoidNotInside`, `8.0000` |
+| **a collinear node on every edge** (four) | simple | `16.0000` | `16.0000` | `0.0000` | **nothing** | `VoidNotInside`, `8.0000` |
+| **a `1 m` slit cut `4 m` down from the north edge** | **not simple** — `Touch { edge: 0, node: 4 }` | `12.0000` | `12.0000` | `0.0000` | `VoidNotSimple` | `VoidNotSimple` |
+| **a `0.0001 m` finger four metres long** | simple | `15.9996` | `15.9996` | `0.0000` | `VoidNotSimple`, walk says `OutlineEdgeDegenerate` | the same |
+| **a zero-area lobe: a node written down twice** | **not simple by the probe's stricter test, `None` by `self_meeting`** | `16.0000` | **`8.0000`** | **`8.0000`** | **`DidNotExpand` only — silent by cancellation** | **`VoidNotInside` on `2.0000` where the truth is `8.0000`** |
+| **a spike doubling back over its own nodes** | not simple — `Touch { edge: 5, node: 1 }` | `10.0000` | `38.3333` | `28.3333` | `VoidNotSimple` | `VoidNotSimple` |
+| **the canary: a bowtie** | not simple | `0.0000` | `12.0000` | `12.0000` | `VoidNotSimple` | `VoidNotSimple` |
+
+**The three rows the brief named are all clean.** The rectangle with **collinear** nodes is covered exactly at one node
+and at four, and the `0.0001 m` sliver is covered to `15.9996` against `15.9996`. `clip`'s old claim — "a polygon with
+collinear corners loses area-free triangles, never area" — is **measured true**, on exactly the shapes it was written
+about. The sliver is nonetheless **declined**, and for a different reason: its `0.0001 m` neck puts a node `1e-4` off
+its neighbour's edge, which `TOUCH_TOLERANCE` reads as a `Touch`, so `VoidNotSimple` names it. **Two checks declining one
+shape for two different reasons is the honest reading**, and neither of them is the ear clipper.
+
+**The row that fails is the zero-area lobe**, and it is the only row where `self_meeting` answers `None` *and* the clip
+loses area. The last row above — `38.3333` against a loop of `10.0000` — is `clip` answering for a loop it has no
+triangulation of at all; nothing asks it to, so the number is the only evidence left, and it is wrong by a factor of
+three.
+
+### The defect is an edge of no length, and the crate writes one on purpose
+
+`ops::split_outline`'s own docs say it: **"It always inserts. A station that lands exactly on an existing node still
+inserts one"**, because refusing it would make "attach a wing at the corner" a different expression from "attach a wing
+half way along the wall". `courtyard_probe` runs it — `split_outline(&mut mass, 0.0)` inserts at index `1`, the outline
+reads `(-5,-5) (-5,-5) (5,-5) (5,5) (-5,5)`, and **the edge it leaves runs `(-5,-5)` to `(-5,-5)`, `0` long**.
+
+**A node standing at its own predecessor is never a strictly convex corner (`cross > 0` fails) and it blocks every
+candidate ear whose triangle it stands inside, boundary included**, so on a loop carrying one *no* corner is an ear,
+the walk stops with the loop unbroken, and the final triangle is dropped with it. `clip` returned **half** the loop.
+
+### Two faults were missed, and one number caused both
+
+**`VoidNotInside`, swept.** The degenerate loop is `4 × 4` and stands `over` metres out of the outline, so it encloses
+`16.0000`, shares `4 × (4 − over)` and **should be asked about `4 × over`**. What it was asked about:
+
+| `over` | the truth | the difference `clip` read | `validate` |
+| --- | --- | --- | --- |
+| `0.01 m` | `0.0400` | **`0.0000`** | **`DidNotExpand` — `VoidNotInside` silent** |
+| `0.02 m` | `0.0800` | `0.0002` | **silent** |
+| `0.04 m` | `0.1600` | `0.0008` | **silent** |
+| `0.05 m` | `0.2000` | `0.0013` | `VoidNotInside` |
+| `0.50 m` | `2.0000` | `0.1250` | `VoidNotInside` |
+| `2.00 m` | `8.0000` | `2.0000` | `VoidNotInside` |
+| `3.00 m` | `12.0000` | `4.5000` | `VoidNotInside` |
+
+**The difference it read grew as the square of the leak where the truth grows as four times it**, and
+`VOID_AREA_TOLERANCE` is `1.0e-3`, so **a void loop leaking under `5 cm` past its own mass's outline was not reported at
+all.** A check that under-reports does not merely mis-size a fault it already fires on; it hides the small ones
+completely, which is the worst direction for a check whose whole content is a hole that would open through a wall.
+
+**`UnattachedOverlap`, and this one is worse.** `clip::shared_area` is asked about **mass outlines** as well as void
+loops, by `plans_share_area`. Two unattached masses standing `50.0000 m²` in one another, with the degenerate edge at
+none of the first's corners or at one of them, and the same for the second — the true answer is `50.0000` at every cell:
+
+| first / second | none | at 0 | at 1 | at 2 | at 3 |
+| --- | --- | --- | --- | --- | --- |
+| **none** | `50.0000` | **`12.5000`** | `37.5000` | `37.5000` | **`12.5000`** |
+| **at 0** | `37.5000` | `12.5000` | `31.2500` | `25.0000` | `6.2500` |
+| **at 1** | **`12.5000`** | `6.2500` | `12.5000` | `6.2500` | **`0.0000`** |
+| **at 2** | **`12.5000`** | **`0.0000`** | `6.2500` | `12.5000` | `6.2500` |
+| **at 3** | `37.5000` | `6.2500` | `25.0000` | `31.2500` | `12.5000` |
+
+**Two cells read `0.0000` and `UnattachedOverlap` was SILENT on both**: two masses standing a `50 m²` overlap in one
+another, reported as sharing nothing at all — over the one crossing that neither `split_outline` nor `attach_mass`
+refuses. `DidNotExpand` fires for the degenerate edge, and nothing in the tree read the number.
+
+### The fix, and the two controls it was owed
+
+`clip::triangles` now begins at `without_edges_of_no_length`: `Vec::dedup` for the open chain, and the closing edge a
+`pop`, because a loop whose last node stands at its first names one too. **An edge of no length bounds no area and no
+part of the interior, so the loop handed to the clipper is the same region.** The test is **exact equality**, not a
+tolerance, because `cross` and `inside_triangle` already compare at `0.0`; a near-degenerate edge is left in and clipped
+as authored, and **the walk is what names such an edge**, at its own `LENGTH_EPSILON`.
+
+Two controls were built **before** the fix and are what the decision rests on:
+
+1. **The fault the walk owns must survive.** `split_outline` at a corner still reads `DidNotExpand { OutlineEdgeDegenerate }`
+   in every row of both grids and in every sweep step. **The fix makes the subtraction exact; it does not silence the
+   name.** A fix that had traded one fault for another would have been green on every gate and one line shorter.
+2. **The clipper must still decline what it cannot measure.** The canary — the bowtie — reads `12.0000` against a
+   signed area of `0.0000` **before and after**, and the doubling-back spike reads `38.3333` against `10.0000` **before
+   and after**. `clip` still refuses to answer for a loop that meets itself, and `VoidNotSimple` still declines to ask.
+
+**After: every sweep step reads `4 × over` exactly** (`0.0400`, `0.0800`, `0.1600`, `0.2000`, `0.4000`, `1.0000`,
+`2.0000`, `4.0000`, `6.0000`, `8.0000`, `12.0000`) with `enclosed = 16 − 4 × over`, `VoidNotInside` fires at every one
+including `0.01 m`, **and all twenty-five cells of the corner grid read `50.0000` and `fired`.**
+
+### The mechanical diff, rather than an argument that there is none
+
+`courtyard_probe` run into `out/clip-degenerate-before.txt` with main's `crates/building/src` and into
+`out/clip-degenerate-after.txt` with the branch's: **788 lines each**, and `Compare-Object` reports **48 differing
+records — 24 on each side, every one of them a line carrying a degenerate-edge number.** No `VoidNotSimple`,
+`DidNotExpand`, `MiterTooLong`, `OffsetSelfIntersecting`, `VoidReachesTheWall`, offset-area, mitre-error, volume,
+manifold, euler or loop reading anywhere in the file moved by a digit.
+
+### The gate, measured on the branch
+
+- **29/29 building examples exit 0**, every one run by name from the built binary.
+- `cargo build --workspace --all-targets` exits 0 and warns **only** of the `census.exe` / `census.pdb` output filename
+  collision — the set every earlier section quotes, and no new warning. `cargo fmt --all -- --check` is clean.
+- **Nine before/after pairs on this adapter, identical on all three hashes**, the before set rendered with main's
+  `crates/building/src` in place and the after set with the branch's, both through the built binary and to fresh names
+  (`before-*` / `after-*`). **Which hash is which, because the three are not the same measurement:** `png` is the
+  **SHA-256 of the written `.png` file**; `document` and `image` are **the manifest's own fields**, the document hash over
+  the documents the compile emitted and the image hash over the **raw pixel buffer**. Compared field by field:
+  **9 rows, 27 fields, 0 moved.** The `.png` column reproduces the table in the inside slice's gate by fresh render.
+- `scene_identity_probe` reads **806 rows two-way** (`77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101`), contiguous, every
+  name non-empty, every name round-tripping, the channel two-way.
+- **No gallery scene authors a void, and the static half is unchanged:** `Mass::with_voids` has one definition and **every
+  caller is an example** (`courtyard_probe`, `patio_probe`, `validate_probe`), `derive.rs` writes `voids` **zero** times,
+  and `crates/gallery` matches **none** of `with_voids`, `.voids`, `VoidWall`, `VoidInner`, `VoidTop`, `VoidBase` or
+  `SolidId::Void`.
+
+### What this slice's brief got wrong
+
+**It offered collinear nodes as *the* shape and as the shape most likely to be a bug, and they were the one class that
+was already correct.** A `4 × 4` rectangle with a node inserted on one edge, and one with a node on every edge, are both
+covered exactly, so `clip.rs`'s own sentence about them is right. **The class the brief did not name is the one that
+fails, and it is a node written down *twice* rather than a node standing *on* a line** — a distinction the crate's own ops
+docs draw (`split_outline`'s "always inserts") and the brief never asked about.
+
+**It said a spike is a shape "that could still fire `VoidNotInside` for a wrong reason", and measured, neither kind of
+spike fires it at all.** A `1 m` slit is a `Touch`; a spike that doubles back over its own nodes is a `Touch`. The gate
+already had them. **The shape that reached the subtraction was the one the gate is deliberately silent about** —
+`self_meeting` returns `None` for two nodes at one place, because two squares pinched at an authored point build a sound
+courtyard — and the brief's own summary of the gap pointed one clause away from it.
+
+**It asked for a spike of a particular spelling** — `(0,0)(4,0)(4,2)(6,2)(6,-1)(4,-1)(4,4)(0,4)` — and that spelling is
+a `Touch` for the same reason the probe's own slit is: the return leg runs over two of the loop's own nodes. **A spike
+cannot double back over its own line and stay simple**, which is worth stating because it means the word "spike" was
+never going to name the shape the defect lived in.
+
+### What remains open
+
+**`clip` still answers for a loop it cannot triangulate — the doubling-back spike reads `38.3333` against `10.0000` — and
+nothing asks it to.** The gate makes it harmless today because `VoidNotSimple` declines that loop first, but the fallback
+in `clip.rs` is still the sentence the brief found: true, and silent about which loops reach it. **The honest next step
+is a shape between "simple" and "self-meeting" that `self_meeting` is silent about and `clip` cannot finish**, and the
+zero-area lobe above is one that already existed.
