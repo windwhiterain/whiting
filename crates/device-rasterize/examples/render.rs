@@ -193,8 +193,10 @@ fn parse_region(written: &str) -> Result<[u32; 4], String> {
 /// - **The answer is the id channel's, counted**, so a rectangle becomes the set of authored elements whose pixels
 ///   it covers: the distinct ids, each with how many pixels it owns, deepest first. That set is exactly what an
 ///   edit's selector is fed by — a box in world space cannot answer it, which is why the picture has to.
-/// - **The naming is the content's**, asked of the same table `--locate` asks: what an id *means* lives with the
-///   content, and this harness only counts.
+/// - **The naming is the content's**, asked of the tables `--locate` and `--where` ask and in that order: a
+///   building's own elements from `gallery::building_identity`, the reserved zero from `gallery::locate`, and
+///   the vegetation naming registry only after both have declined. What an id *means* lives with the content,
+///   and this harness only counts.
 /// - **A rectangle outside the frame is clamped rather than refused**: a caller comparing two frames of different
 ///   sizes has already made the interesting decision, and an empty answer would hide it.
 fn region(scene: &str, rendered: &RenderedFrame, region: [u32; 4]) {
@@ -226,20 +228,77 @@ fn region(scene: &str, rendered: &RenderedFrame, region: [u32; 4]) {
     rows.sort_by(|one, other| other.1.cmp(&one.1).then(one.0.cmp(&other.0)));
     let naming = gallery::locate::naming(scene);
     for (id, count) in rows.iter().take(24) {
-        let name = match naming {
-            Some(naming) => match (naming.resolve)(*id) {
-                Some(handle) => handle,
-                None if *id == 0 => "not an authored element: the ground or the sky".to_owned(),
-                None => format!("id {id} names nothing here"),
-            },
-            None => format!("id {id}, and this scene names nothing"),
-        };
-        println!("  {count:>7} px  id {id:<6} {name}");
+        println!(
+            "  {count:>7} px  id {id:<6} {}",
+            name_for_row(scene, naming, *id)
+        );
     }
     if rows.len() > 24 {
         println!("  …{} more ids", rows.len() - 24);
     }
+    // **The counted zero is a rectangle, while the sentence on it is a pixel's.** A region counts the
+    // reserved zero like any other id -- that is what the scan above did before anything here named it,
+    // and it is what a rectangle is for -- so the number on that row is this rectangle's pixels rather
+    // than one pixel's reading, and the words beside them are asked of `locate` rather than written here.
+    if rows
+        .iter()
+        .any(|(id, _)| *id == gallery::identity::NOT_AUTHORED)
+    {
+        println!(
+            "  the reserved zero is counted here like any other id, so its row is this rectangle's \
+             pixels and not one pixel's reading; the sentence on it is the one `--where 0` answers"
+        );
+    }
     println!("  {} distinct id(s) over {covered} px", rows.len());
+}
+
+/// Returns what one counted id is called in a row of `--region`'s table.
+///
+/// # Invariants
+///
+/// - **A building's own id is asked of `gallery::building_identity`, and that table comes before the
+///   naming registry.** The registry is the *vegetation* one -- a scene registers there to say its ids
+///   are nodes of a plant -- and no building scene registers in it, so asking it first is what printed
+///   `id 0, and this scene names nothing` for *every* id of *every* building: a wall, a slab and the
+///   reserved zero alike, on the scenes whose elements [`locate`] and [`where_is`] both name.
+/// - **The reserved zero is asked of [`reserved_zero_answers`] and never written here**, for the reason
+///   [`where_is`] gives at length: it is no element to name, it is the one id every subsystem answers,
+///   and `--where 0` asks that same call about the same number.
+/// - **A scene the gallery cannot name at all still answers in the harness's own words**, which are true
+///   rather than a fallback for want of trying, and are the sentences this table carried before.
+fn name_for_row(scene: &str, naming: Option<&'static gallery::locate::Naming>, id: u32) -> String {
+    if id == gallery::identity::NOT_AUTHORED {
+        if let Some(answer) = reserved_zero_answers(scene) {
+            return answer;
+        }
+    }
+    if let Some(path) = gallery::building_identity::locate_in(scene, id) {
+        return path;
+    }
+    match naming {
+        Some(naming) => match (naming.resolve)(id) {
+            Some(handle) => handle,
+            None if id == gallery::identity::NOT_AUTHORED => {
+                "not an authored element: the ground or the sky".to_owned()
+            }
+            None => format!("id {id} names nothing here"),
+        },
+        None => format!("id {id}, and this scene names nothing"),
+    }
+}
+
+/// Returns the sentence the reserved zero is given by whichever domain owns the scene, or `None` when the
+/// gallery names neither the scene nor the number.
+///
+/// # Invariants
+///
+/// **One ask, for every direction.** `--where 0` and the zero row of `--region` are the same question about
+/// the same number, and two call sites each spelling out the `locate` call is two places to be wrong the day
+/// the answer moves. A building scene gets its answer from the building's own identity table's refusal, a
+/// landscape from the plain's, and a scene neither names from the sentence the gallery itself carries.
+fn reserved_zero_answers(scene: &str) -> Option<String> {
+    let the_values = &[(String::from(gallery::identity::ID_OUTPUT), 0.0)];
+    gallery::locate::locate(scene, the_values)
 }
 
 /// Prints what one pixel is, in the terms the scene that drew it uses.
@@ -340,8 +399,7 @@ fn where_is(scene: &str, rendered: &RenderedFrame, asked: &str) {
     // Nothing is lost by not counting it either: `--region` reads the same image and counts the reserved zero
     // like any other id, which is what a rectangle is for.
     if id == gallery::identity::NOT_AUTHORED {
-        let the_values = &[(String::from(gallery::identity::ID_OUTPUT), 0.0)];
-        match gallery::locate::locate(scene, the_values) {
+        match reserved_zero_answers(scene) {
             Some(answer) => println!("where {scene} {asked}: {answer}"),
             None => println!(
                 "where {scene} {asked}: id 0 is the reserved `not an authored element`, and this scene \

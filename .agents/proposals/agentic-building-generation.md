@@ -1420,6 +1420,62 @@ picture: the shared view is now the named function `three_quarter`, `hall_large`
 | `yard` | **20,313** | **15,458** | yes | both 1.20 m foundations stand clear of the slope and are still visible — inset by their own wall, so 4,855 fewer pixels of side |
 | `identity` | **41** | **0** | yes | the same burial as `house`, through a catch-all mesh that draws every element |
 
+#### What that column measured: a total over every slab surface, not one element's pixels (2026-10-31, branch `feature/building-region-truth`)
+
+**"Plate pixels" was never one element's count — it was a total over every slab surface the frame shows.**
+Not one digit of the table is edited, and the same nine numbers appear in the 2026-10-29 table above it. Every reading
+below was taken on the two trees the table was measured on, `140af41` for the *before* column and `131f8d0` for
+the *after* one — the tip that recorded them — each rendered on this machine, each slab surface asked of by its
+own name with `render --where "<element name>"`:
+
+| scene | before, measured | after, measured | what the number is |
+| --- | --- | --- | --- |
+| `house` | 5 = **1** + **4** | 0 | before: `slab 0`'s top **1** and its `edge from node 1` **4**; after: every surface reads 0 |
+| `hall` | **128**, `slab 0`'s top alone | **665**, `slab 0`'s top alone | the two cells that are one element |
+| `hall_large` | 0 | **1,656**, `slab 0`'s top alone | after: one element |
+| `shed` | 1,483 = **1,479** + **4** | **2,246**, `slab 0`'s top alone | before: the top **1,479** and its `edge from node 2` **4** |
+| `terrace` | 2,528 = **2,525** + **3** | 2,528 = **2,525** + **3** | one plate, two surfaces, in both columns |
+| `wing` | 4 = **3** + **1** | 4 = **3** + **1** | one plate, two surfaces, in both columns |
+| `workshop` | **3,318 = 3,173 + 2 + 143** | **1,987 = 1,844 + 143** | before: two surfaces of `slab 0` **and** `slab 1`'s edge; after: `slab 0`'s top **1,844** plus `slab 1`'s **143** — two plates |
+| `yard` | 20,313 = **3,985 + 11,658 + 960 + 3,710** | 15,458 = **2,960 + 8,503 + 657 + 3,338** | four visible edges across **two** slabs; four more of the eight edges read 0 |
+| `identity` | 41 = **40** + **1** | 0 | before: `slab 0`'s top **40** and its `edge from node 3` **1** |
+
+**Eleven of the eighteen cells are sums, four are one element, and three are a frame that shows no plate at all.**
+Every one of the eleven sums is exact to the digit, and that is the proof the column was a total rather than a
+near miss: `yard`'s four edges are 2,960 + 8,503 + 657 + 3,338 = **15,458**, the digit the table prints, and the
+before column's four are 3,985 + 11,658 + 960 + 3,710 = **20,313**.
+
+**And the 3,318 is three ids, which the pair sweep stopped one term short of.** Sweeping every id 0…170 of that
+frame at `140af41`: **48 ids carry pixels and sum to 362,261, no id reads 3,318 and no pair of them sums to it** —
+the earlier slice's reading, and it is right — but three do. Id **112** is `slab 0, its top` at **3,173**, id
+**116** is `slab 0, the edge from node 2` at **2**, and id **122** is `slab 1, the edge from node 2` at **143**, and
+**3,173 + 2 + 143 = 3,318**. The row's own sentence already named two of its three terms — *"the ground plate loses
+its coplanar edge texels; the mezzanine's own 143 are unchanged"* — so the number was the plate's top plus the two
+edge texels that edit removed plus the mezzanine's edge, and the same three terms on the other side of the table
+read 1,844 + 0 + 143 = **1,987**.
+
+**What a reader measures today, on `main`'s tip.** The two trees above are dead branches behind, so the same sweep
+on `3d441ad` (this machine, this adapter, every scene rendered fresh) is the reading that reproduces:
+
+| scene | the slab surfaces carrying pixels | total |
+| --- | --- | --- |
+| `house` | none: all six of `slab 0`'s surfaces read 0 | **0** |
+| `hall` | `slab 0`'s top **3,166** | 3,166 |
+| `hall_large` | `slab 0`'s top **2,483** | 2,483 |
+| `shed` | `slab 0`'s top **2,255** | 2,255 |
+| `terrace` | `slab 0`'s top **1**, `slab 2`'s top **2,525**, `slab 2`'s `edge from node 2` **1** | 2,527 |
+| `wing` | `slab 0`'s top **380**, `slab 1`'s top **3**, `slab 1`'s `edge from node 2` **1** | 384 |
+| `workshop` | `slab 0`'s top **3,082**, `slab 1`'s `edge from node 2` **143** | 3,225 |
+| `yard` | `slab 0`'s edges **2,961 + 8,504**, `slab 1`'s **658 + 3,337** | 15,460 |
+| `identity` | `slab 0`'s top **1,261** | 1,261 |
+
+**Eight of those nine agree with the baseline table above it to the digit**, which is the check that the sweep is
+reading what that table meant to record: `hall` 3,166, `hall_large` 2,483, `shed` 2,255, `identity` 1,261,
+`wing`'s 380 and 3, `workshop`'s 3,082, and `yard`'s **15,460** — the ground cut's own after, two pixels more than
+the four edges carry on the plate-vis tree. `terrace` is the one row that moved for a reason of its own: a single
+tied top texel on `slab 0` and a single edge texel on `slab 2`, where the baseline table's note quotes only
+`slab 2`'s 2,525 because that is the surface it was reading.
+
 **Three of the nine did not move: `terrace`, `wing` and `hall`.** The first two never took their plate from
 `derive::starter` — `wing.rs:90` and `terrace.rs:90` each build a `Slab` over their own footprint by hand — so no
 change to the starter could reach them, and the brief's expectation that `wing` would stop reading 4–5 pixels could
@@ -2974,6 +3030,10 @@ because `region` asks the *naming* registry (which no building scene registers i
 `building_identity` (which names every one of them). It is not `--where`, it was not in scope, and it is left as
 found rather than widened into: **an open item for whoever takes the next diagnostic.**
 
+**Closed 2026-10-31 by `feature/building-region-truth`**, in *What the region slice found* at the end of this file:
+`region` asks `gallery::building_identity` before the naming registry, and the reserved zero is asked of the same
+`gallery::locate` call `--where 0` and `--locate` ask, so all three directions answer one string.
+
 ### The gate
 
 - All **29** building examples exit 0 (and `census` through `cargo run -p whiting-building --example census` as
@@ -2995,3 +3055,105 @@ found rather than widened into: **an open item for whoever takes the next diagno
 `workshop`"*, which is exactly the false sentence punch item 6 recorded and that slice fixed. **The historical tree
 reproduces the pre-fix behaviour**, which is what makes the `--where` sentence above a finding rather than a guess:
 the two tools carried the same wrong sentence about the same number, and only one of them had been caught.
+
+## What the region slice found: the third sentence, and the column that was never one element (2026-10-31, branch `feature/building-region-truth`)
+
+The open item the section above left is closed, and the column it left half-explained is annotated rather than
+edited. Both are the same discipline as the two slices before: settle a sentence by asking the table that owns it,
+and settle a number by rendering the tree the number came from.
+
+### `--region` asked the vegetation registry, and no building scene is in it
+
+`region` resolved each counted id through `gallery::locate::naming(scene)` — the table a scene registers in to say
+its ids are nodes of a plant — and fell through to `id {id}, and this scene names nothing` for anything else. **No
+building scene registers there**, so every row of every building's rectangle carried that sentence, the walls and
+the slabs included:
+
+```text
+region house (400, 600)..(900, 900):          # before
+   107441 px  id 0      id 0, and this scene names nothing
+    40883 px  id 2      id 2, and this scene names nothing
+     2477 px  id 3      id 3, and this scene names nothing
+  3 distinct id(s) over 150801 px
+```
+
+`name_for_row` asks `gallery::building_identity` first — the table `--where` asks the other way, and the one that
+numbers a building's elements from one — and keeps the harness's own sentences for a scene the gallery cannot name
+at all, which are true rather than a fallback for want of trying. **The same rectangles after**, on the same machine,
+and the counts beside the names are the counts the run before it read:
+
+```text
+region house (400, 600)..(900, 900):          # after
+   107441 px  id 0      not an authored element: this pixel is the ground the scene stands on, or the sky above it
+    40883 px  id 2      mass 0, outer wall over edge 1
+     2477 px  id 3      mass 0, outer wall over edge 2
+  3 distinct id(s) over 150801 px
+```
+
+`hall_large` and `workshop` read the same way — twenty rows and seventeen, every one of them named, from `mass 0,
+outer wall over edge 2` and `slab 0, its top` to `part 1, template mass 0, outer wall over edge 0` — and the two
+directions now agree by measurement rather than by reading: `--locate house (500, 700)` answers `mass 0, outer wall
+over edge 1` and `--where workshop "slab 0, its top"` answers **id 112 covers 3,082 pixels**, which is the number
+the region row for id 112 carries.
+
+### The reserved zero's sentence is `--where`'s, and the rectangle is what differs
+
+**The same sentence, asked rather than written**, and the reason is the channel again: `authored_id` carries no
+distinction between a pixel of ground and a pixel of sky, so there is nothing in the counted number for a region's
+sentence to add that `--where 0` does not already say. What makes a region's row different is **the unit on it** —
+the count is this rectangle's pixels rather than one pixel's reading — and that is one line under the table rather
+than a second meaning written beside the first:
+
+```text
+  the reserved zero is counted here like any other id, so its row is this rectangle's pixels and not one pixel's
+  reading; the sentence on it is the one `--where 0` answers
+```
+
+It is printed only when the rectangle actually covers the reserved zero, because a rectangle deep inside a wall has
+no such row to explain.
+
+**One call, both directions.** `reserved_zero_answers` is what `--where 0` and the region's zero row each ask, so
+the claim in that line is a fact about the code rather than a promise: `--where house 0`, `--where hall_large 0`,
+`--where workshop 0`, `--locate` on a sky pixel and the region's zero row all answer the *same string*, and a
+building's reserved zero is answered by `building_identity`'s own refusal rather than by a word chosen here.
+
+**A scene that registers in the naming table keeps its own wording, and one row per id is kept.** `segmentation`
+before and after prints `trunk`, `trunk/bough 1/branch 1` … exactly as it did, because a row of a rectangle wants a
+handle and not `locate`'s two-line prose; only the reserved zero's row changed, from the harness's local *"not an
+authored element: the ground or the sky"* to the gallery's *"…the ground the plant stands on, or the sky above it"*,
+which is the same fact with the scene's own noun in it and the same one `--where segmentation 0` gives.
+
+### The plate column was annotated, and one of the two trees says the number is a sum
+
+**No digit was edited.** The note under the plate table gives the column's definition, marks **eleven of the
+eighteen cells as sums**, decomposes each of them, and records what `main`'s tip reads today. It also **completes
+the earlier slice's reading of the 3,318**: no id and no pair on that frame sum to it — and *three* ids do, 3,173 +
+2 + 143, the plate's top, the edge texels the edit removed, and the mezzanine's edge, which is what the row's own
+sentence had been saying all along. The earlier slice stopped one term short, not one step too far.
+
+### The gate
+
+- All **29** building examples exit 0, `census` included (the binary in `target\debug\examples` that `render` shares
+  a directory with is not one of them and exits 1 on no arguments, as it must).
+- `cargo build --workspace --all-targets` exits 0 and warns **only** of the `census.exe` / `census.pdb` filename
+  collision, which is the set the earlier sections quote.
+- `cargo fmt --all -- --check` is clean. `scene_identity_probe` reads **806** rows (77 + 109 + 77 + 31 + 66 + 123 +
+  123 + 99 + 101), contiguous, every name non-empty, every name round-tripping, the four pinned readings unchanged,
+  the channel two-way.
+- **Nine before/after pairs on this adapter, every frame hash, every document hash and every pixel-buffer hash
+  identical**, rendered to fresh names (`rg-before-hash-*`, `rg-after-hash-*`): `house B13154AD7D29F938`,
+  `hall C4339E6310EA1C37`, `hall_large 43D3780A15E3D08E`, `shed 882B8F9A7C671B0D`, `terrace EDF3F4B3CF2A9686`,
+  `wing 14E3E27F9F9E1A83`, `workshop 7DD5D40894181EA7`, `yard FDC446B24E98CE04`, `identity 974FB5B24E1E7A35` — the
+  nine the baseline table carries, read on this adapter, before and after one sentence in the harness.
+
+### What this slice's brief got wrong
+
+**It named the wrong column.** It said the *"before"* column was the one whose "plate pixels" was a total, and then
+cited **15,458 and 1,987 as its evidence — which are the *after* column's numbers**; the before column's are
+20,313 and 3,318. The fault is in both columns and in neither column alone, and the note says so. **It also said
+`yard`'s 15,458 is "eight slab edges summed", and the eight are the two slabs' eight edges of which four read
+zero**: the sum is four visible surfaces, 2,960 + 8,503 + 657 + 3,338, which is the same 15,458 and a different
+statement. And it said the 3,318 "names nothing", which is true of every id and of every pair and false of the
+number: three ids sum to it exactly. What the brief got **right** is the instruction not to edit a digit — the cause
+is the column's definition, which no edit to a number could have carried, and the note under the table now carries it.
+
