@@ -44,10 +44,6 @@ section, and how far the child's origin sinks **inward along the parent's outwar
 
 ## What P1 still owes
 
-- **A rendered plant.** P1's exit asks for *one rendered plant whose leaves are instances of one template
-  drawn in one pass*, and nothing has drawn a plant yet — `shape`'s `sweep` scene was the picture that taught
-  the pattern, and it draws a tube, a blade and two envelopes rather than a plant. See *the gallery's pattern*
-  below for what that costs.
 - **`report()`** — P1 names it (the crown against the envelope's own radius curve, the counts, the instance
   count). The probes print counts; there is no `report()` type yet, and the envelope is P2's field.
 - **`reference` on a leaf field** — the one orientation term P1 did not implement, because it needs a
@@ -56,6 +52,22 @@ section, and how far the child's origin sinks **inward along the parent's outwar
   deliberate — the design's edits are *replacements* (D10) and a moved bough will be a rebuilt one. If a
   selector has to retarget an existing node, it needs `Plant::get_mut` plus a stated replace semantics, and
   that is P2's decision rather than a convenience to add here.
+
+**The rendered plant is done**: `gallery`'s `bamboo` scene draws `derive::bamboo` — the wood as one mesh
+carrying per-point `authored_id`s, the blade as one mesh instanced once per leaf — and
+
+```text
+cargo run -p whiting-device-rasterize --example render -- bamboo out/bamboo
+```
+
+writes a 1200×1400 frame in 13 passes. **The leaves are one pass over one instance buffer**, and the evidence
+is the emitter's own documents: every blade buffer is 4032 bytes of instance rows, which is 24 rows of 168 — so
+`k` leaves cost one buffer and one lighting pass, not `k` draws. `vegetation_mesh.rs` is the wood's mesh and its
+identity, `vegetation_instancing.rs` the leaf frame's conversion, `vegetation_picture.rs` the scene.
+
+The crown is **sparse on purpose at this size**: three boughs, two twigs each, nine 11 cm blades a twig. A fuller
+crown is a species edit — `derive::bamboo`'s twig count and `leaf::LeafField::density` are ordinary numbers —
+and not a mechanism the picture is missing.
 
 ## The gallery's pattern, for the plant picture
 
@@ -100,6 +112,15 @@ a module in `crates\gallery\src\` with a `pub fn <name>() -> Value`, registered 
   spine does.
 - **The rng draw order is data**: the node's phase is drawn first, then one jitter per leaf in index order.
   Reordering the draws moves every leaf in the plant, which is why it is stated here and in `leaf`.
+- **The emitter groups a pass by shader, mesh and images — not by material.** So six `LeafGroup`s of one
+  template draw in **one** pass over **one** instance buffer, and their six materials are the *rows'*
+  `authored_offset`, not six buffers. Giving each group its own mesh "to match the brief" would have made six
+  meshes and six passes, which is the cost the design exists to avoid.
+- **A leaf's `scale` is in the template's own frame**: `placement.place(point · scale)`. The other order moves
+  the anchor by `(1 − scale) · |origin|`, measured at **1.362 m** on this plant's topmost leaf, and a picture
+  cannot show it because the blade stays the right size while sitting in the wrong place.
+- **A template's length is in its own coordinates**, so a species' `size` law multiplies it: `0.05` on a
+  0.31 m blade is a 1.5 cm fleck. The first species asked for exactly that.
 - **A template's frame is its midrib's initial normal.** A blade's width must land on the template's `y` and
   its thickness on `z`, so the midrib's initial normal is `+y`; a `+x` midrib's default is `−z`, which stands
   the blade on its edge. `LeafTemplate` states it once, and `leaf_probe` measures `|y| 0.494932` against
