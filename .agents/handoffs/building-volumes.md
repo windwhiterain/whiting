@@ -652,3 +652,32 @@ and the reveals keep theirs.
 **If the mass reopens again, the reveal path is reading `CutStation.soffit`/`floor` after all**, and the fix becomes
 four fields on `CutStation`. The experiment that tells the two apart is two lines long: create the ground pair, emit
 the strip from it, and read `SolidOpen`.
+
+## The discriminant ran, and the band below an opening is the last piece (2026-10-27)
+
+The ground pair was added to `CutStation` (`soffit_ground`, `floor_ground`, created at `wall.ground` interpolated)
+and the strip was pointed at it. Result:
+
+```text
+SolidOpen { Mass, loops: 2 }   SolidNonManifold { Mass }   euler: -8
+```
+
+**The mass reopened, so the walls bottoms are not on the ground pair.** And reading the band corner creation
+explains why in one line:
+
+```rust
+outer.push(solid.point(lift(wall.outer_at(*station), wall.outer_floor_at(*station))));
+```
+
+For a **door** the opening floor *is* the ground, so this point already sits where the ground pair would — at the
+same position under a **different id**. `Solid::point` interns nothing, so the strip and the band were two rings in
+one plane, and the mass opened exactly as it did in round 97.
+
+**So the last piece is the band *below* an opening:** when a sill stands above the ground, that band bottom edge
+belongs to `wall.ground` and must be emitted from the ground pair, while the band above it keeps the sill point. The
+strip then pairs with the band, and the reveals are untouched. The two edits that fail on their own (the strip alone,
+the band alone) are the two halves of one change, and both were measured this round.
+
+**A note for whoever implements it:** the ground pair must be *reused*, not created, when the sill stands **on** the
+ground — the code already does this for floors in the line below it (`if *cut == wall.inner_floor_at(*station)`) and
+the ground pair needs the same guard, or every door gains a duplicate ring.
