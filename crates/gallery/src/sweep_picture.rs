@@ -7,9 +7,19 @@
 //! point. **Those are numbers about a mesh, and a mesh can satisfy all of them and still look like
 //! nothing** — inside out, edge on, lit so flat that it reads as a silhouette, or wound the wrong
 //! way round so that every cap is a hole. This is the scene that shows the primitive reaching a
-//! frame, and it is here rather than in an example because a gallery scene is the tree's one
-//! picture format: this one is drawn by [`render`], `--locate`d by a person pointing at a pixel, and
-//! swept by every suite that holds that every named scene draws at all.
+//! frame, and it lives here rather than in an example because a gallery scene is the tree's one
+//! picture format: [`render`] draws it, `--locate` answers what a pixel is, and nothing in the tree
+//! needs a second renderer to see it.
+//!
+//! **It is in [`crate::Gallery::build`] and not in [`crate::Gallery::names`].** Those are two lists
+//! and the second is not a shorter way of writing the first: `names` is the set the tree's suites
+//! hold themselves to, and `scene`'s `clustered_lights` carries a table of expected pass counts per
+//! scene. `workshop` and `yard` are buildable and unlisted for the same reason, and this one is
+//! rendered by name on request rather than by every suite on every run.
+//!
+//! ```text
+//! cargo run -p whiting-device-rasterize --example render -- sweep out/sweep
+//! ```
 //!
 //! The four shapes are the table in `shape::sweep`'s own module, drawn side by side:
 //!

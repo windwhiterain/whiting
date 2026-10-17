@@ -158,7 +158,6 @@ impl Gallery {
             "stilllife",
             "studio",
             "sunlight",
-            "sweep",
             "terraces",
             "tidewater",
             "tiles",
