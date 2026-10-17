@@ -61,7 +61,7 @@ use whiting_gallery::geometry::{Shaded, cross, normalized, plane_facing, subtrac
 use whiting_gallery::kit::{
     IMAGE_FIELD, camera_placed, gallery_custom_schema_with_image, gallery_instance_schema, image,
     instance, instances, light, light_with_radius, mesh, mesh_material, post_processes,
-    screen_material, shader, shaded_point_schema, surface,
+    screen_material, shaded_point_schema, shader, surface,
 };
 use whiting_gallery::shaders::{
     Projection, depthing, lighting_with_normal, post_shader, shadowing, textured,
@@ -77,13 +77,13 @@ const OUTPUT: &str = "out/sweep-picture.png";
 const STATIONS: usize = 28;
 const AROUND: usize = 32;
 
-/// How far a surface's own normal is from straight away from the shape's centre before the
-/// accumulation is called unusable.
+/// The length of an accumulated normal below which it is thrown away.
 ///
 /// A vertex whose every incident triangle has no area — the ring at a station the scale law has
-/// collapsed — accumulates nothing, and a normal of zero length is a normal the shader would read
-/// as `NaN` on the one vertex where it is asked about. The floor is far above the rounding of a
-/// summed face normal, so it only ever catches the genuinely degenerate case.
+/// collapsed to a point — accumulates nothing, and a normal of zero length is a normal the shader
+/// would read as `NaN` on the one vertex where it is asked about. The floor is far above the
+/// rounding of a sum of a few thousand face normals and far below any real one, so it catches the
+/// genuinely degenerate case and nothing else.
 const NORMAL_FLOOR: f64 = 1.0e-12;
 
 /// The checker the tube is painted with, in texels a side.
@@ -110,19 +110,19 @@ const GRADE: &str = r#"
 
 /// The camera, which is placed rather than fitted.
 ///
-/// **The azimuth is thirty degrees and the elevation fourteen**, and both are the whole of the
-/// framing: dead on, all three are silhouettes; past sixty, the tube stops being round and the
-/// envelope stops being an envelope. Thirty reads the tube as a tube, keeps the blade's face — its
-/// width lies in the plane its spine turns in — broad rather than edge on, and separates the three
-/// in the plan instead of stacking them.
+/// **The azimuth is thirty one degrees and the elevation seventeen**, and both are the whole of the
+/// framing: dead on, all four are silhouettes; past sixty, the tube stops being round and the
+/// envelope stops being an envelope. Thirty one reads the tube as a tube, keeps the blade's broad
+/// face towards the lens rather than edge on, and separates the four in the plan instead of
+/// stacking them.
 const EYE: [f64; 3] = [1.62, 1.34, 2.72];
 const TARGET: [f64; 3] = [0.22, 0.42, 0.0];
 const FIELD_OF_VIEW: f64 = 0.70;
 const NEAR: f64 = 0.05;
 const FAR: f64 = 12.0;
 
-/// The frame, which is **not square**: three shapes side by side in a square are three shapes in a
-/// square with a band of floor above them and nothing to say about it.
+/// The frame, which is **not square**: four shapes side by side in a square are four shapes in a
+/// square with a band of empty sky above them and nothing to say about it.
 const WIDTH: i64 = 1280;
 const HEIGHT: i64 = 720;
 
@@ -138,12 +138,13 @@ const FLOOR_TINT: [f64; 3] = [0.50, 0.49, 0.47];
 /// floor speckled with the seams of four coincident surfaces.
 const STANDING: f64 = 0.002;
 
-/// The key, which is the light that makes the three read as solids rather than as outlines.
+/// The key, which is the light that makes the four read as solids rather than as outlines.
 ///
-/// It stands **front left and above**, so every shape has a lit side and a shadowed side at once —
-/// a light straight overhead gives all three a lit top and a dark side that is the same value, which
-/// is a silhouette with a highlight on it. The reach is the distance to the far corner of the floor
-/// plus the shapes, so nothing in frame falls out of the cluster grid at its boundary.
+/// It stands **above and a little to the lens's right**, so every shape has a lit side and a
+/// shadowed side at once and every shadow falls across the floor to the left of its caster — a light
+/// straight overhead gives all four a lit top and a dark side of the same value, which is a
+/// silhouette with a highlight on it. The reach is the distance from the lamp to the far corner of
+/// the floor and past the shapes, so nothing in frame falls out of the cluster grid at its boundary.
 const KEY_POSITION: [f64; 3] = [1.5, 2.3, 1.9];
 const KEY_COLOUR: [f64; 3] = [1.0, 0.95, 0.87];
 const KEY_IRRADIANCE: f64 = 2.6;
@@ -180,11 +181,13 @@ const REFINED_AT: [f64; 3] = [1.30, STANDING, -0.04];
 ///
 /// The frame's `binormal` is `tangent × normal`, and the midrib leaves its base along `+x`, so a
 /// normal of `(0, a, b)` gives a binormal of `(0, -b, a)` — it can only ever point somewhere in the
-/// `y`/`z` plane. The camera stands at `(1.55, 1.30, 2.60)` and looks down and to the left, so the
-/// direction that shows a plate its broad face here is up and towards that eye, and this is the
-/// normal that puts the binormal there. Writing `(0, 1, 0)` instead gives a binormal of `(0, 0, 1)`,
-/// which is right; writing `(0, 0.95, -0.31)` tilts it fifteen degrees back from the eye, which is
-/// what leaves the blade a shade of its own width in shadow rather than a flat lit card.
+/// `y`/`z` plane. The lens stands at `(1.62, 1.34, 2.72)` and looks down and to the left, so the
+/// direction that shows a plate its broad face here is up and towards that eye. Writing `(0, 1, 0)`
+/// would give a binormal of `(0, 0, 1)`, straight at the lens and a flat lit card; this tilts it
+/// fifteen degrees back, which is what leaves the blade a shade of its own width in shadow down one
+/// side and makes it read as a solid rather than as a cut-out. The first run of this picture wrote
+/// `(0, 0, 1)` and drew the blade lying on the floor like a table top, because a binormal of `-y` is
+/// a lens whose thickness stands up.
 const BLADE_NORMAL: [f32; 3] = [0.0, 0.95, -0.31];
 
 /// The tube's tint, which is near white because the checker is multiplied onto it and a coloured
@@ -256,9 +259,12 @@ async fn draw() -> Result<(), String> {
     };
 
     if let Some(directory) = std::path::Path::new(OUTPUT).parent() {
-        std::fs::create_dir_all(directory).map_err(|error| format!("{directory:?} is not made: {error}"))?;
+        std::fs::create_dir_all(directory)
+            .map_err(|error| format!("{directory:?} is not made: {error}"))?;
     }
-    let png = frame.to_png().map_err(|error| format!("the frame does not encode: {error}"))?;
+    let png = frame
+        .to_png()
+        .map_err(|error| format!("the frame does not encode: {error}"))?;
     std::fs::write(OUTPUT, &png).map_err(|error| format!("{OUTPUT} does not write: {error}"))?;
 
     let present = frame
@@ -274,8 +280,8 @@ async fn draw() -> Result<(), String> {
 /// The tube: a straight spine, a circular section, and a three knot taper.
 fn tube() -> Shape {
     let mut sweep = Sweep::new(straight(1.0), Section::circle());
-    sweep.scale = Scalar::new(&[(0.0, 0.10), (0.5, 0.075), (1.0, 0.02)])
-        .expect("three knots are a law");
+    sweep.scale =
+        Scalar::new(&[(0.0, 0.10), (0.5, 0.075), (1.0, 0.02)]).expect("three knots are a law");
     Shape {
         label: "tube",
         at: TUBE_AT,
@@ -298,8 +304,8 @@ fn tube() -> Shape {
 /// is what makes a leaf's tip a number in a law rather than a case in the sweep.
 fn blade() -> Shape {
     let mut sweep = Sweep::new(midrib(), Section::flat(1.0, 0.06));
-    sweep.scale = Scalar::new(&[(0.0, 0.0), (0.45, 0.09), (1.0, 0.0)])
-        .expect("three knots are a law");
+    sweep.scale =
+        Scalar::new(&[(0.0, 0.0), (0.45, 0.09), (1.0, 0.0)]).expect("three knots are a law");
     Shape {
         label: "blade",
         at: BLADE_AT,
@@ -312,8 +318,8 @@ fn blade() -> Shape {
 /// thing that differs between the two of them.
 fn envelope(label: &'static str, at: [f64; 3], section: Section) -> Shape {
     let mut sweep = Sweep::new(trunk(), section);
-    sweep.scale = Scalar::new(&[(0.0, 0.055), (0.45, 0.10), (1.0, 0.20)])
-        .expect("three knots are a law");
+    sweep.scale =
+        Scalar::new(&[(0.0, 0.055), (0.45, 0.10), (1.0, 0.20)]).expect("three knots are a law");
     Shape {
         label,
         at,
@@ -444,7 +450,11 @@ fn scene(shapes: &[Shape]) -> Value {
 
     let materials = vec![
         mesh_material("caster", "shadowing", surface([1.0; 3], 0.0, 1.0, [0.0; 3])),
-        mesh_material("occluder", "depthing", surface([1.0; 3], 0.0, 1.0, [0.0; 3])),
+        mesh_material(
+            "occluder",
+            "depthing",
+            surface([1.0; 3], 0.0, 1.0, [0.0; 3]),
+        ),
         mesh_material("floor", "lighting", surface(FLOOR_TINT, 0.0, 1.0, [0.0; 3])),
         // Only the tube's row names the image: a shadow map and a depth buffer are the pipeline's
         // own textures, and the other three surfaces are the colours the frame is about.
@@ -454,8 +464,16 @@ fn scene(shapes: &[Shape]) -> Value {
             surface_naming(TUBE_TINT, "checker"),
         ),
         mesh_material("blade", "lighting", surface(BLADE_TINT, 0.0, 1.0, [0.0; 3])),
-        mesh_material("coarse", "lighting", surface(COARSE_TINT, 0.0, 1.0, [0.0; 3])),
-        mesh_material("refined", "lighting", surface(REFINED_TINT, 0.0, 1.0, [0.0; 3])),
+        mesh_material(
+            "coarse",
+            "lighting",
+            surface(COARSE_TINT, 0.0, 1.0, [0.0; 3]),
+        ),
+        mesh_material(
+            "refined",
+            "lighting",
+            surface(REFINED_TINT, 0.0, 1.0, [0.0; 3]),
+        ),
     ];
 
     let mut meshes = vec![mesh(
@@ -496,13 +514,10 @@ fn scene(shapes: &[Shape]) -> Value {
                 ("height".to_owned(), Value::Int(HEIGHT)),
             ]),
         ),
-        ("cameras".to_owned(), Value::List(vec![camera_placed(
-            EYE,
-            TARGET,
-            FIELD_OF_VIEW,
-            NEAR,
-            FAR,
-        )])),
+        (
+            "cameras".to_owned(),
+            Value::List(vec![camera_placed(EYE, TARGET, FIELD_OF_VIEW, NEAR, FAR)]),
+        ),
         (
             "lights".to_owned(),
             Value::List(vec![
@@ -662,7 +677,11 @@ fn points_of(loft: &Loft) -> PackedList {
         let [a, b, c] = *triangle;
         let [first, second, third] = [a, b, c].map(|index| {
             let point = positions[index as usize];
-            [f64::from(point[0]), f64::from(point[1]), f64::from(point[2])]
+            [
+                f64::from(point[0]),
+                f64::from(point[1]),
+                f64::from(point[2]),
+            ]
         });
         let face = cross(subtract(second, first), subtract(third, first));
         for index in [a, b, c] {
@@ -694,13 +713,16 @@ fn points_of(loft: &Loft) -> PackedList {
                 f64::from(position[1]) - centre[1],
                 f64::from(position[2]) - centre[2],
             ];
-            let squared =
-                normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2];
+            let squared = normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2];
             if squared <= NORMAL_FLOOR * NORMAL_FLOOR {
                 normal = outward;
             }
             points.push(
-                [f64::from(position[0]), f64::from(position[1]), f64::from(position[2])],
+                [
+                    f64::from(position[0]),
+                    f64::from(position[1]),
+                    f64::from(position[2]),
+                ],
                 normalized(normal),
                 [f64::from(parameter[0]), f64::from(parameter[1])],
             );
