@@ -1559,6 +1559,25 @@ so a later session reopens it by argument rather than by forgetting it.
    law needs it, the answer owes its sample budget, a measured worst-case error, and a stated answer at a
    knot. Nothing in P1 or P2 calls it.
 
+## What is not done, and why
+
+Recorded so a later session reopens these by argument rather than by forgetting them:
+
+- **The species' forms are drafts.** The bamboo is a young culm and the shrub is twiggy; every picture reads as a
+  specimen rather than as a plant. That is art, not architecture — the vocabulary that would fix it exists — and it is
+  the largest quality gap between these pictures and SpeedTree's.
+- **Two laws have no scene using them.** `LeafField::reference` and `LeafField::aim` are measured in probes and
+  default to the identity, so no frame shows them yet.
+- **The picture → selection → edit loop is half-wired.** `--region` answers a rectangle's ids and `Selector::Ids`
+  accepts ids, but nothing hands one to the other: a scene or a script would have to read the answer and write the
+  edit. The mechanism is there; the one-step loop is not.
+- **Seating has never been fed a `terrain::HeightField`.** The crate takes `impl Fn([f32; 2]) -> f32` and the scenes
+  pass their own swell; the `sample` a heightfield offers has the same shape and is untested here.
+- **The offline backend has seen one scene.** The bamboo is traced (10.3 s at 64 samples) and the grove, the sculpted
+  plant and the segmentation view are not; the first two would show whether 146 plantings' shadows converge, and the
+  last is a raster-only artefact by design.
+- **The framework's vertex-stage hook is still missing**, which is what a wind law or a camera-facing card would need.
+  Withdrawn from this design with wind (D17), and recorded in `photographic-scenes` item 1.
 ## Traps the implementation learned
 
 Every one of these is an invariant the code now relies on or a defect it was written to avoid, recorded here because
