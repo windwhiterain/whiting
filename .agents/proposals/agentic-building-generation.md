@@ -1313,6 +1313,33 @@ That is worth recording as a *method* as much as a result: the slice's first art
 **domain**, not a scene. The alternative — build the terrace and discover the refusal halfway through the picture —
 is how a system ends up with a violation nobody can date.
 
+## What the terrace found: a row is three buildings that touch (2026-10-27)
+
+With the vocabulary question answered — touching is allowed — the scene followed: **three units of `COTTAGE`'s
+proportions, flush at their party walls**, each its own closed solid, each with its own gable roof running along
+the row.
+
+```text
+locate terrace (500, 600): mass 2, outer wall over edge 2
+where terrace mass 0, … edge 2: id 3 covers 15847 pixel(s)
+where terrace mass 1, … edge 2: id 29 covers 35505 pixel(s)
+```
+
+**Each unit answers as itself** — the row is not one building with two internal walls, it is three buildings that
+touch, and the frame's table says so in three id ranges.
+
+Two decisions the scene had to make, both recorded in its own docs:
+
+- **The party leaf is 0.15 m, not the style's `1/19`.** A party wall is thin because nothing weathers it; the
+  style's relation describes a wall that faces the sky. That is the one number in the document the style does not
+  decide, and the terrace's own type does.
+- **Each unit's roof is a gable along the row**, so the ridges are parallel and the party walls read as the
+  valleys between them. A hip per unit would have cut the row into three separate cottages — the form is the
+  terrace's, not the style's.
+
+The `terrace_probe` that preceded it is the reason this took one round instead of three: the domain question was
+answered by measurement, and the scene inherited the answer.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):

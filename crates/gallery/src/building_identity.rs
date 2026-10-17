@@ -234,6 +234,7 @@ pub fn id_in(scene: &str, name: &str) -> Option<u32> {
     let building = match scene {
         "identity" => crate::authored::document(),
         "shed" => crate::shed::document(),
+        "terrace" => crate::terrace::document(),
         "workshop" => crate::workshop::document(),
         "yard" => crate::yard::document(),
         "house" => crate::house::document(),
@@ -268,6 +269,7 @@ pub fn locate_in(scene: &str, id: u32) -> Option<String> {
     let building = match scene {
         "identity" => crate::authored::document(),
         "shed" => crate::shed::document(),
+        "terrace" => crate::terrace::document(),
         "workshop" => crate::workshop::document(),
         "yard" => crate::yard::document(),
         "house" => crate::house::document(),
