@@ -949,6 +949,41 @@ Out of scope, all phases: wind; attaching a plant to a building; LOD chains; car
 seasons; growth timelines; photogrammetry; simulation of any kind (a plant's mechanics are a report, not a
 solver); a DSL and serialization; an editor frontend; an undo/redo service.
 
+## What P1 implemented (2026-10-17)
+
+**The tree and its wood are on the branch and measured; the leaf field is the part still in flight.** The
+crate landed `handle`, `rng`, `node`, `plant` and `expand`, with `tree_probe` (5 rows) and `plant_probe`
+(5 rows). Every number below is a probe's output.
+
+| invariant | reading | threshold |
+| --- | --- | --- |
+| a handle reaches the node it names | 7 of 7 expected names matched, worst spine length error **5.960e-8** | `< 1e-6` |
+| a stale handle says where it stopped | `trunk/bough 1/branch 2` → *"trunk/bough 1 has no child 2"*, and a path two generations past the end names its own last resolved handle | named |
+| a node's numbers are its seed and its path | the same 8 draws in a 2-bough and a 3-bough plant; a different path differs (**0.832899** against **0.222013**); mean of 10 000 draws **0.498087** | identical / `±0.01` |
+| a child hangs on its parent's skin | origin against the composed surface frame **0.000e0**; radius against the parent's taper law **3.725e-9**; `x` unit and square to the tangent **0.000e0** | `< 1e-6` |
+| a placed spine keeps its shape | length change **8.941e-8**, start against the placement's origin **0.000e0**, initial normal turned **0.000e0** | `< 1e-5`, `< 1e-6` |
+| a plant's wood is closed solids | **10 of 10** at χ = 2 with a positive volume, the smallest **7.367e-6** | all |
+| the taper is the law, not a cone | worst radius against the law **5.960e-8** over 33 rings; the law's node rise of 0.006 reads **0.005429** in the solid, where a straight cone would read **0.023600** against the law's **0.028000** at `t = 0.32` | `< 1e-6` |
+| a joint is on the skin, sunk by what it asked | **9** joints, worst **1.132e-7** from *the parent's taper less the sink* | `< 1e-5` |
+| one resolution dial | 1400 triangles at `Detail::DEFAULT` (6 × 12), 5720 at twice that (**4.086** times), every solid still closed, the same nodes in the same order | ratio in `3.5..4.5` |
+
+**Four decisions P1 made that this design did not say**, each of which a consumer meets:
+
+1. **The parent is the tree, not a field of the attachment.** The design wrote
+   `Attachment { parent, station, slot, sink }`; a node's parent is the path that reaches it, so the type is
+   three numbers and a handle cannot disagree with the tree it is in.
+2. **A child's frame is stated once**: `x` outward from the parent's surface, `y` along the parent's tangent,
+   `z = x × y`. `sink` therefore moves a joint **inward along `x`**, and a zero taper at the station leaves `x`
+   undefined — the fallback is the section's own `+x`, stated in `Plant::surface` rather than discovered.
+3. **The plant carries the orientation contract down.** `Plant::spine` sets the world spine's initial normal to
+   the node's own first frame normal, moved by the placement, so a twig's section is oriented by the surface it
+   hangs from — `shape`'s open question 2 applied by the *plant* rather than by each sweep, and measured as
+   `0.000e0` of turn.
+4. **A joint is not welded.** Every node is its own closed solid, sunk into its parent; there is no merge pass
+   between a child's base and its parent's skin, and the measured reading is that the child's origin is on the
+   parent's surface to `1.1e-7` of the sink. That is `building`'s socket rule (*a joint is one subtraction, not
+   a transform*) one crate over.
+
 ## What SPEC would say if this is adopted
 
 SPEC is human-editable only, so this proposal states the delta rather than writing it: a

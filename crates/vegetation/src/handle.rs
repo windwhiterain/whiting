@@ -68,7 +68,11 @@ impl std::fmt::Display for Handle {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "{}", NAMES[0])?;
         for (depth, index) in self.path.iter().enumerate() {
-            write!(formatter, "/{} {index}", NAMES[(depth + 1).min(NAMES.len() - 1)])?;
+            write!(
+                formatter,
+                "/{} {index}",
+                NAMES[(depth + 1).min(NAMES.len() - 1)]
+            )?;
         }
         Ok(())
     }
