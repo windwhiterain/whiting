@@ -174,5 +174,7 @@ cargo run -p whiting-vegetation --example envelope_probe   # 6, the envelope, th
 cargo run -p whiting-vegetation --example decorator_probe  # 6, the decorators
 cargo run -p whiting-device-rasterize --example render -- bamboo out/bamboo
 cargo run -p whiting-device-rasterize --example render -- bamboo_wind out/bamboo-wind
+cargo run -p whiting-device-rasterize --example render -- bamboo_crown out/bamboo-crown
+cargo run -p whiting-device-rasterize --example render -- bamboo_knots out/bamboo-knots
 cargo run -p whiting-device-rasterize --example render -- sweep out/sweep
 ```

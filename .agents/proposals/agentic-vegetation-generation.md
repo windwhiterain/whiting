@@ -1166,6 +1166,7 @@ is the leaf's: **`k` decorators of one template are one mesh and `k` transforms.
 | `k` seats are one draw | **6** seats of one template: **164** triangles once and **6** transforms, where baking would be **984** |
 | a seat follows its node | a 0.12 station nudge moves the knot **0.261735** m and it sits **2.784e-3** from the bough's spine against a taper less the sink of **0.002784** |
 | a tombstone takes its knot | pruning a bough takes its seat and no other: **3 → 2** placed |
+| the picture | amboo_knots draws one knot at the base of every bough in **17** passes, and the three scenes without a seat keep their exact hashes (84510A4D…, 1A3ACC93…, 708EF240…) because a decorator mesh exists only when a seat asks for one |
 
 **Two decisions the decorators forced:**
 

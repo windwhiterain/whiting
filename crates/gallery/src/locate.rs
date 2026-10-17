@@ -69,6 +69,7 @@ pub fn locate(scene: &str, values: &[(String, f32)]) -> Option<String> {
         if scene == crate::vegetation_picture::SCENE
             || scene == crate::vegetation_picture::WINDY
             || scene == crate::vegetation_picture::CROWNED
+            || scene == crate::vegetation_picture::KNOTTED
         {
             let id = id.round() as u32;
             return Some(match crate::vegetation_picture::handle_of(id) {

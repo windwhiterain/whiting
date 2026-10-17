@@ -39,6 +39,7 @@
 
 use definition::Value;
 use scene::standard::Stage;
+use vegetation::decorator::{Seat, Template, placed};
 use vegetation::derive::{Species, bamboo};
 use vegetation::envelope::{Envelope, trim};
 use vegetation::expand::{Detail, Expansion, expand};
@@ -62,6 +63,8 @@ pub const SCENE: &str = "bamboo";
 pub const WINDY: &str = "bamboo_wind";
 /// The name the same plant is drawn under **fitted to a crown**, so a picture can show what the envelope took.
 pub const CROWNED: &str = "bamboo_crown";
+/// The name the same plant is drawn under **with a knot at the base of every bough**.
+pub const KNOTTED: &str = "bamboo_knots";
 
 /// The seed the plant's leaf field is derived from.
 ///
@@ -156,6 +159,33 @@ fn expansion(species: &Species) -> Expansion {
     expand(&species.plant, Detail::DEFAULT, &species.fields)
 }
 
+/// A knot: a short tube that bulges, seated on a bough's base so the culm shows where a limb leaves it.
+fn knot() -> Template {
+    let spine = shape::Curve::new(vec![
+        shape::Jet::new([0.0, 0.0, 0.0], [0.012, 0.0, 0.0]),
+        shape::Jet::new([0.014, 0.0, 0.0], [0.010, 0.0, 0.0]),
+        shape::Jet::new([0.026, 0.0, 0.0], [0.004, 0.0, 0.0]),
+    ])
+    .expect("the knot's knots are distinct");
+    let mut sweep = shape::Sweep::new(spine, shape::Section::circle());
+    sweep.scale = shape::Scalar::new(&[(0.0, 0.010), (0.5, 0.026), (1.0, 0.004)])
+        .expect("the knot's law is a law");
+    Template {
+        sweep,
+        stations: 7,
+        around: 12,
+    }
+}
+
+/// One knot at the base of every bough: the seats a scene places.
+fn knots(species: &Species) -> Vec<Seat> {
+    species
+        .plant
+        .live()
+        .filter(|(handle, _)| handle.depth() == 1)
+        .map(|(handle, node)| Seat::new(handle, 0, 0.1, node.attachment().slot).sunk(0.012).scaled(1.8))
+        .collect()
+}
 /// Resolves an `authored_id` this scene's frame writes into the handle that names the node.
 ///
 /// # Invariants
@@ -197,13 +227,16 @@ pub fn sidecar() -> String {
 
 /// Builds the bamboo scene: one camera, a key and a fill, a floor, the plant's wood and its blade.
 pub fn bamboo_picture() -> Value {
-    plant_scene(&bamboo(SEED))
+    plant_scene(&bamboo(SEED), &[])
 }
 
 /// The same plant under a lateral wind, drawn beside it: a field bends spines, and a picture is the only place
 /// the bend is visible as a shape rather than as a number.
 pub fn windy_picture() -> Value {
-    plant_scene(&bamboo(SEED).with_fields(vec![Field::light([1.0, 0.0, 0.0], 0.12)]))
+    plant_scene(
+        &bamboo(SEED).with_fields(vec![Field::light([1.0, 0.0, 0.0], 0.12)]),
+        &[],
+    )
 }
 
 /// The same plant fitted to a crown: `trim` writes length nudges until each tip is on the envelope, so the frame
@@ -212,13 +245,22 @@ pub fn crowned_picture() -> Value {
     let mut species = bamboo(SEED);
     let crown = Envelope::radial(&[(0.0, 0.55), (0.5, 0.45), (1.0, 0.35)]);
     trim(&mut species.plant, &crown);
-    plant_scene(&species)
+    plant_scene(&species, &[])
 }
 
 /// Builds one plant scene: the camera, the lights, the floor, the wood and the blade, under whatever fields the
 /// species carries.
-fn plant_scene(species: &Species) -> Value {
+/// The same plant with a knot at the base of every bough: a decorator is a template and three numbers, and the
+/// frame shows the three numbers on the bark rather than in a table.
+pub fn knots_picture() -> Value {
+    let species = bamboo(SEED);
+    let seats = knots(&species);
+    plant_scene(&species, &seats)
+}
+
+fn plant_scene(species: &Species, seats: &[Seat]) -> Value {
     let species = species.clone();
+    let decorators = placed(&species.plant, seats);
     let expanded = expansion(&species);
     let ids = node_ids(&species.plant);
 
@@ -269,6 +311,28 @@ fn plant_scene(species: &Species) -> Value {
             "plant_lighting",
             offset_by(leaf_body.clone(), f64::from(node - LEAF_BASE_ID)),
         ));
+    }
+    // A knot is drawn by every seat of its template, so its corners carry the blade's base id and each seat's row
+    // carries the node it sits on: one mesh, one material per seat, and the seats still draw in one pass.
+    if !decorators.is_empty() {
+        for (stage, shader) in [("cast", "plant_shadowing"), ("depth", "plant_depthing")] {
+            materials.push(mesh_material(
+                &format!("knot-{stage}"),
+                shader,
+                surface(CULM_TINT, 0.0, 0.72, [0.0; 3]),
+            ));
+        }
+        for (index, instance) in decorators.iter().enumerate() {
+            let node = ids[&instance.node];
+            materials.push(mesh_material(
+                &format!("knot-shade-{index}"),
+                "plant_lighting",
+                offset_by(
+                    surface(CULM_TINT, 0.0, 0.72, [0.0; 3]),
+                    f64::from(node - LEAF_BASE_ID),
+                ),
+            ));
+        }
     }
     let earth = surface(FLOOR_TINT, 0.0, 0.94, [0.0; 3]);
     for (stage, shader) in [
@@ -322,6 +386,24 @@ fn plant_scene(species: &Species) -> Value {
                 ));
             }
         }
+        // **One placement per decorator, and its frame is the seat's**: a knot has no orientation of its own to
+        // choose, which is why the same conversion a blade uses converts it.
+        for (index, decorator) in decorators.iter().enumerate() {
+            let material = if stage == "shade" {
+                format!("knot-shade-{index}")
+            } else {
+                format!("knot-{stage}")
+            };
+            let (translation, rotation, scale) = crate::vegetation_instancing::seated(decorator);
+            placements.push(instance(
+                format!("knot-{stage}-{index}"),
+                "knot",
+                translation,
+                rotation,
+                scale,
+                &material,
+            ));
+        }
         placements
     };
 
@@ -369,9 +451,8 @@ fn plant_scene(species: &Species) -> Value {
         ),
         // The one image this scene writes beside the frame: which node each pixel shows.
         ("outputs".to_owned(), outputs_field()),
-        (
-            "meshes".to_owned(),
-            Value::List(vec![
+        ("meshes".to_owned(), {
+            let mut meshes = vec![
                 mesh(
                     "culm",
                     "Triangles",
@@ -381,17 +462,31 @@ fn plant_scene(species: &Species) -> Value {
                 mesh(
                     "leaf",
                     "Triangles",
-                    point,
+                    point.clone(),
                     template_points(&species.templates[0]),
                 ),
-                mesh(
-                    "floor",
+            ];
+            // **A decorator mesh only when a seat asks for one**: a scene with no seats is the same document
+            // it was before decorators existed, down to the frame it writes.
+            if !decorators.is_empty() {
+                meshes.push(mesh(
+                    "knot",
                     "Triangles",
-                    ground.point_schema(),
-                    plane_facing(FLOOR_EXTENT, 0.0, true),
-                ),
-            ]),
-        ),
+                    point,
+                    crate::vegetation_mesh::decorator_points(&knot()),
+                ));
+            } else {
+                // The knot mesh would be unused; `point` stays moved exactly once either way.
+                let _ = &point;
+            }
+            meshes.push(mesh(
+                "floor",
+                "Triangles",
+                ground.point_schema(),
+                plane_facing(FLOOR_EXTENT, 0.0, true),
+            ));
+            Value::List(meshes)
+        }),
         ("mesh_materials".to_owned(), Value::List(materials)),
         (
             "screen_materials".to_owned(),

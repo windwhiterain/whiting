@@ -103,12 +103,27 @@ pub fn euler(placement: &Placement) -> [f64; 3] {
 ///   translation, rotation, scale, so the order is fixed by the document and only the extraction is a
 ///   choice.
 pub fn standing(leaf: &LeafInstance) -> Standing {
-    let (translation, rotation, scale) = (
+    (
         leaf.placement.origin.map(f64::from),
         euler(&leaf.placement),
         [f64::from(leaf.scale); 3],
-    );
-    (translation, rotation, scale)
+    )
+}
+
+/// Returns the instance transform that stands a decorator's template where a seat puts it.
+///
+/// # Invariants
+///
+/// **It is the leaf's own conversion with a decorator's frame in it**, which is the point of V3's *no rotation is
+/// expressible*: a seat's frame is the node's surface frame, `euler` reads it, and nothing about a decorator needs
+/// a rule the blade does not. A decorator and a leaf of the same plant therefore stand in the same way, and a probe
+/// that measures one has measured the other.
+pub fn seated(placed: &vegetation::decorator::Placed) -> Standing {
+    (
+        placed.placement.origin.map(f64::from),
+        euler(&placed.placement),
+        [f64::from(placed.scale); 3],
+    )
 }
 
 /// Returns the matrix [`standing`]'s transform stands as, which is what a scene compiles the instance

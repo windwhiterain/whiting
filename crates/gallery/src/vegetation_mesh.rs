@@ -115,6 +115,23 @@ pub fn template_points(template: &LeafTemplate) -> PackedList {
     )
 }
 
+/// Returns a decorator's own mesh, in the decorator's own frame: what every seat of a template instances.
+///
+/// # Invariants
+///
+/// **The same base id as a blade**, because a decorator is seated on a node and answers the same question a leaf
+/// does: *which node is this pixel*. Its material's `authored_offset` carries the node, exactly as a leaf's does,
+/// so a knot names the bough it grew out of and the id space needs no second channel.
+pub fn decorator_points(template: &vegetation::decorator::Template) -> PackedList {
+    let loft = template.loft();
+    packed(
+        loft_corners(&loft)
+            .into_iter()
+            .map(|corner| (corner, LEAF_BASE_ID)),
+        loft.triangles().len(),
+    )
+}
+
 /// Packs corners against the authored point schema, one id per corner.
 ///
 /// The layout is the extras' own, read through the same `packed_layout` the renderer reads it with, so a
