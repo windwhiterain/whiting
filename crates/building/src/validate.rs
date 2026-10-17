@@ -33,7 +33,7 @@ use crate::expand::Problem;
 use crate::grid::{FaceRef, GRID_TOLERANCE, increasing};
 use crate::mass::{Mass, MassId, PlanNode};
 use crate::math::{Vec2, Vec3, distance, dot3, subtract};
-use crate::mesh::{BuildingMesh, Element, MassSurface, RoofSurface, SolidId};
+use crate::mesh::{BuildingMesh, Element, RoofSurface, SolidId};
 use crate::openings::Extents;
 use crate::parts::Target;
 use crate::roof::{Roof, RoofId};
@@ -259,46 +259,6 @@ pub enum Violation {
         solid: SolidId,
         /// The characteristic that came out.
         euler: i64,
-    },
-    /// A mass's floor slab does not cover the outline the author drew.
-    ///
-    /// # Invariants
-    ///
-    /// **It is raised only for a mesh carrying a [`MassSurface::SlabSoffit`] face, and the expander
-    /// emits none.** A mass is two solids now — its wall ring and its plate — so nothing in a shipped
-    /// document reaches this check: `expand_probe` counts `0` such facets on every mass it reports,
-    /// measured, and this name appears in none of the twenty-nine examples' output. The one mesh that
-    /// still carries the face is `validate_probe`'s reference cube, and that probe measures it against
-    /// an empty skeleton, where the `mass(id)` lookup in `check_coverage` stages the check out before
-    /// it can compare anything. Deleting this variant would remove a check whose input no expander
-    /// can build; keeping it costs one match arm and is the reason the staging below has a subject.
-    ///
-    /// The contract it was written under is still why the question is well posed. A mass used to be
-    /// built inward from its outline — the walls, the wall top and the floor one walk — and the one
-    /// face that had to span the whole outline was the soffit, whose plan projection is the outline
-    /// itself whatever the ground under it does. So its area against
-    /// [`Mass::plan_area`](crate::mass::Mass::plan_area) is a reading across the two halves of the
-    /// crate — the author's loop against the expander's disc.
-    ///
-    /// Two readings that look like coverage checks are not, and neither is this one:
-    ///
-    /// - **The solid's own plan area is zero, and must be.** Measured `0.0000` on every starter
-    ///   solid, and it is an identity rather than a fact: a closed surface's projections cancel,
-    ///   because the floor looks up over the inner loop and the soffit looks down over the whole
-    ///   outline, and every wall projects to a line of no area. Checking a solid's plan area against
-    ///   its outline would compare zero with something and could never fire.
-    /// - **The floor against the inner loop is the expander checked against itself.** Both are
-    ///   products of the same offset walk, so a disagreement between them is not a thing that can
-    ///   happen without a face the closure checks already name. There is no authored inner loop to
-    ///   measure against either: the loop is derived from `wall`, which is why an inner loop that
-    ///   will not build is a [`Problem`], and [`Violation::DidNotExpand`] is what carries it.
-    MassDoesNotCover {
-        /// The mass.
-        mass: MassId,
-        /// The plan area its soffit covers.
-        soffit: f32,
-        /// The plan area of the outline it must cover.
-        outline: f32,
     },
     /// A roof's skin does not tile the eave loop the author drew.
     ///
@@ -1274,25 +1234,25 @@ fn is_doorway(skeleton: &BuildingSkeleton, face: FaceRef, extents: &Extents) -> 
 }
 
 /// Which of a solid's surfaces a coverage reading is taken over.
+///
+/// **The bucket is a roof's skin, and that is the whole of it.** A mass's plate covers an authored
+/// loop too — its top stands over the outline — but a plate is [`Slab`](crate::slab::Slab)'s own
+/// solid and its outline is a level polygon the expander derived from the same loop, so a disagreement
+/// there would be the expander checked against itself rather than a reading across the two halves of
+/// the crate. What no expander can build is gone with the shell's soffit, and with it the variant
+/// that was the only consumer of this other arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Coverage {
-    /// A mass's slab soffit, measured against the mass's outline. Only a hand-built mesh reaches
-    /// this bucket: no expander emits a [`MassSurface::SlabSoffit`] face, so this arm is empty for
-    /// every document the crate builds.
-    Slab(MassId),
     /// A roof's skin, measured against the roof's eave loop.
     Skin(RoofId),
 }
 
-/// Checks that a roof's skin tiles its eave loop, and that a mass's slab soffit covers its outline.
-///
-/// The roof half is the one a shipped document reaches; the mass half is staged behind a face no
-/// expander emits — see [`Coverage::Slab`] and [`Violation::MassDoesNotCover`], which carry the
-/// measurement.
+/// Checks that a roof's skin tiles its eave loop.
 ///
 /// # Invariants
 ///
-/// **One pass gathers both, and the reading is a net area over a gathered set of faces.** The
+/// **One pass gathers every roof's skin, and the reading is a net area over a gathered set of
+/// faces.** The
 /// buckets are keyed by the surface rather than by the solid, so the faces of a roof's four planes
 /// land in one bucket however they were expanded, and a solid contributes `O(faces of that solid)`
 /// between the gathering and the arithmetic.
@@ -1312,7 +1272,6 @@ fn check_coverage(
     let mut measured: BTreeMap<Coverage, Vec<usize>> = BTreeMap::new();
     for (index, face) in built.faces.iter().enumerate() {
         let surface = match face.element {
-            Element::Mass(id, MassSurface::SlabSoffit) => Coverage::Slab(id),
             Element::Roof(id, RoofSurface::Skin { .. }) => Coverage::Skin(id),
             _ => continue,
         };
@@ -1321,22 +1280,6 @@ fn check_coverage(
     for (surface, faces) in measured {
         let covered = built.plan_area_of(&faces).abs();
         match surface {
-            Coverage::Slab(id) => {
-                // Staged: a face naming a mass the document does not hold is a mesh of another
-                // building, and there is no outline here to measure it against.
-                let Some(mass) = skeleton.mass(id) else {
-                    continue;
-                };
-                let outline = mass.plan_area().abs();
-                let (_, perimeter) = crate::ops::closed_spans(&mass.outline);
-                if (covered - outline).abs() > COVERAGE_TOLERANCE * perimeter {
-                    violations.push(Violation::MassDoesNotCover {
-                        mass: id,
-                        soffit: covered,
-                        outline,
-                    });
-                }
-            }
             Coverage::Skin(id) => {
                 let Some(roof) = skeleton.roof(id) else {
                     continue;
@@ -2129,11 +2072,12 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         Violation::SolidNotASphere { solid, euler } => {
             (13, solid_rank(solid), ordered_integer(*euler), 0, 0)
         }
-        Violation::MassDoesNotCover {
-            mass,
-            soffit,
-            outline,
-        } => (14, mass.0 as u64, ordered(*soffit), ordered(*outline), 0),
+        // **Rank `14` is retired and is not to be reused.** It was `MassDoesNotCover`, the only
+        // consumer of a coverage bucket nothing but the shell's soffit could fill. The ranks are
+        // private to this function and no reader outside it can see one, so a hole costs nothing —
+        // and renumbering the twenty-six arms above `14` to close it would put every one of them in
+        // the diff of a one-variant deletion, which is how a change of this size becomes hard to
+        // read. A retired rank is a name a report may already have quoted.
         Violation::RoofDoesNotCover { roof, skin, eave } => {
             (15, roof.0 as u64, ordered(*skin), ordered(*eave), 0)
         }

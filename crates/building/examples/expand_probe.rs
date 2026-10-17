@@ -434,13 +434,19 @@ fn gridded_wing() -> (BuildingSkeleton, FaceRef) {
     (skeleton, face)
 }
 
-/// Prints what one solid of a mesh is closed with, and whether the host's two discs were cut whole.
+/// Prints what one solid of a mesh is closed with, and whether the host's base annulus was cut whole.
 ///
-/// The disc count is the second half of the measurement: an `n`-node loop triangulates into
-/// exactly `n - 2` facets, **degenerate ones included**, so a disc carrying fewer than that has
-/// lost a facet and the two ring edges around the node that lost it are each used once. `nodes` is
-/// the host's own node count and is printed for the host alone: the wing was never split, and its
-/// facets are not what this section is about.
+/// The annulus is the second half of the measurement: the ring carries one quad per outline node on
+/// each of its four surfaces, and the base strip is one of them, so an `n`-node outline must close
+/// with `2 x n` base facets — **degenerate ones included**. A base carrying fewer has lost a facet and
+/// the two ring edges around the node that lost it are each used once. `nodes` is the host's own node
+/// count and is printed for the host alone: the wing was never split, and its facets are not what
+/// this section is about.
+///
+/// **This reads the base strip and not one of the shell's two discs**, because a mass has no discs: a
+/// floor a person walks on is the plate's own top, a [`Slab`](whiting_building::slab::Slab) solid of
+/// its own, and the base annulus is the ring's closing surface — the one the collinear node
+/// `ops::attach_mass` inserts lands in, which is what the reading was for.
 fn report_solid(mesh: &BuildingMesh, solid: SolidId, nodes: Option<usize>) {
     println!(
         "  {solid:?}: {} faces, loops {}, euler {}, manifold {}, volume {:.3}",
@@ -453,17 +459,15 @@ fn report_solid(mesh: &BuildingMesh, solid: SolidId, nodes: Option<usize>) {
     let (SolidId::Mass(id), Some(nodes)) = (solid, nodes) else {
         return;
     };
-    for surface in [MassSurface::FloorTop, MassSurface::SlabSoffit] {
-        let count = mesh
-            .faces
-            .iter()
-            .filter(|face| face.element == Element::Mass(id, surface))
-            .count();
-        println!(
-            "    {surface:?}: {count} facet(s), and {nodes} node(s) ask for {}",
-            nodes - 2
-        );
-    }
+    let count = mesh
+        .faces
+        .iter()
+        .filter(|face| face.element == Element::Mass(id, MassSurface::WallBase))
+        .count();
+    println!(
+        "    the base annulus: {count} facet(s), and {nodes} node(s) ask for {}",
+        2 * nodes
+    );
 }
 
 /// Prints one host that `ops::attach_mass` split, and whatever the build says about it.

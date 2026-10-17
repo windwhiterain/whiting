@@ -41,18 +41,6 @@ pub enum MassSurface {
         /// Index of the outline edge.
         edge: usize,
     },
-    /// A mass's floor top: the inner loop's polygon at the outline's own elevations, facing up.
-    ///
-    /// # Invariants
-    ///
-    /// **Nothing in the expander produces this face.** A mass is two solids — its wall ring and its
-    /// plate — and the floor a person walks on is the plate's own top, an
-    /// [`Element::Slab`](crate::mesh::Element::Slab) face carrying
-    /// [`SlabSurface::Top`](crate::slab::SlabSurface::Top), not a mass's. `expand_probe` prints this
-    /// variant's facet count beside every mass it reports and it is `0` on all three, measured. The
-    /// variant is therefore vocabulary a hand-built mesh may name and no shipped document does, and
-    /// the wording above is kept because the name is the one the shell's own model used.
-    FloorTop,
     /// A surface of the wall's own thickness inside an opening: a jamb, a head or a sill.
     ///
     /// # Invariants
@@ -78,43 +66,18 @@ pub enum MassSurface {
         /// Which side of the reveal.
         side: crate::openings::RevealSide,
     },
-    /// The slab's underside: the whole outline one slab thickness below it, facing down.
-    ///
-    /// # Invariants
-    ///
-    /// A **disc across the whole outline**, not a ring between the outer and inner loops: a ring
-    /// would put a third face on the inner wall's bottom edge and the solid would not be manifold.
-    /// Measured 2026-10-16 in `expand` while closing the shell — the ring version came out with one
-    /// boundary loop and Euler characteristic 1.
-    ///
-    /// It is its own variant rather than sharing one with [`FloorTop`](Self::FloorTop) because the
-    /// two are genuinely different planes, one slab thickness apart, and a face's element is also its
-    /// shading group: one group spanning both would be reported as a non-planar surface by
-    /// [`validate`](crate::validate) — measured at `departure = slab/2` on the first merged tip —
-    /// and would smooth a shading normal across the two.
-    ///
-    /// **The expander does not produce this face, and neither does any shipped document.** What a
-    /// mass really carries is its ring: the three per-edge faces, the reveals cut through them, and
-    /// the base — and a mass's underside is the plate's own bottom, a
-    /// [`SlabSurface::Bottom`](crate::slab::SlabSurface::Bottom) face of an
-    /// [`Element::Slab`](crate::mesh::Element::Slab) solid. `expand_probe` prints this variant's facet
-    /// count beside every mass it reports and it is `0` on all three, measured.
-    ///
-    /// **It survives because one hand-built mesh still names it.** `validate_probe`'s reference cube
-    /// is closed by this face, and naming it here is what keeps that cube a single
-    /// [`SolidId::Mass`] solid — the Euler characteristic, boundary loop count, manifold flag and
-    /// volume every closure control in that probe is read against are readings of one closed box, and
-    /// a cube whose floor belonged to the plate would be two solids and would say something else.
-    SlabSoffit,
-    /// The wall ring's **base**: the annulus between the outline and the inner loop, at the plate's bottom plane.
+    /// The wall ring's **base**: the annulus between the outline and the inner loop, at the plate's top plane.
     ///
     /// # Invariants
     ///
     /// **It exists because a mass is becoming a volume, and a volume closes itself.** Once the plate is its own solid
     /// ([`Slab`](crate::mesh::Element::Slab)), the mass's faces are the wall ring and nothing else, and a ring is open
     /// at both ends: the top is [`WallTop`](Self::WallTop) and the base is this. It is called a base rather than a
-    /// floor because the floor is the plate's own top face, one plane up, and the two are different elements of
-    /// different solids — the ring's base is hidden inside the plate, the plate's top is the floor a person walks on.
+    /// floor because the floor is the plate's own top face and the two are different elements of different solids —
+    /// **and they are the same plane, not two planes apart**: the plate spans one thickness *below* the outline's own
+    /// elevation up to it (`expand`'s ring walk builds the base at that elevation on both loops, for exactly this
+    /// reason), so the ring stands on the plate rather than reaching into it. The ring's base is the seam between two
+    /// solids and the plate's top is the floor a person walks on.
     WallBase,
     /// The face of a courtyard wall seen from **inside the courtyard**, one per void edge.
     ///

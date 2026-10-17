@@ -5,10 +5,10 @@
 //! `mountain`'s census probe: it prints facts, never asserts intent. Two things make it worth
 //! running rather than a list of pass messages:
 //!
-//! - The **base case** is a hand-built welded cube, because a check that is only ever shown on a
-//!   derived building shows itself working only where `derive` happens to be right. The cube is
-//!   what a correct expansion of a mass looks like, so zero violations on it is the reference every
-//!   other number is read against.
+//! - The **base case** is a hand-built reference volume — a wall ring and the plate under it — because
+//!   a check that is only ever shown on a derived building shows itself working only where `derive`
+//!   happens to be right. The reference is what a correct expansion of a mass looks like, so zero
+//!   violations on it is the reference every other number is read against.
 //! - Every check has a **positive control** beside it: the same cube damaged one way, or the same
 //!   starter broken one way, so a check that cannot be made to fire is visible as such rather than
 //!   as silence.
@@ -17,6 +17,7 @@
 //! cargo run -p whiting-building --example validate_probe
 //! ```
 
+use whiting_building::BuildingSkeleton as Skeleton;
 use whiting_building::derive::{RoofStyle, Starter, starter};
 use whiting_building::grid::{FaceRef, GRID_TOLERANCE, Rhythm};
 use whiting_building::mass::{Attachment, Mass, MassId, PlanNode};
@@ -27,109 +28,232 @@ use whiting_building::openings::{Inset, Opening};
 use whiting_building::ops::{clear_face, split_face};
 use whiting_building::roof::{CrestPoint, EaveStation, Roof, RoofPlane, RoofRow};
 use whiting_building::skeleton::{Building, BuildingSkeleton};
+use whiting_building::slab::{SlabId, SlabSurface};
 use whiting_building::validate::{Violation, document, mesh};
-use whiting_building::{BuildingSkeleton as Skeleton, RoofId};
 
-/// The cube's points, welded: eight corners, each written down once.
-const CUBE_POINTS: [[f32; 3]; 8] = [
-    [0.0, 0.0, 0.0],
-    [2.0, 0.0, 0.0],
-    [2.0, 0.0, 2.0],
-    [0.0, 0.0, 2.0],
-    [0.0, 2.0, 0.0],
-    [2.0, 2.0, 0.0],
-    [2.0, 2.0, 2.0],
-    [0.0, 2.0, 2.0],
-];
-
-/// The cube's triangles, one row per side, each wound so the right handed normal points out.
-const CUBE_FACES: [([u32; 3], usize); 12] = [
-    // the floor, normal down
-    ([0, 1, 2], 5),
-    ([0, 2, 3], 5),
-    // the wall at z = 0, normal -z
-    ([0, 4, 1], 0),
-    ([1, 4, 5], 0),
-    // the wall at x = 2, normal +x
-    ([1, 5, 2], 1),
-    ([2, 5, 6], 1),
-    // the wall at z = 2, normal +z
-    ([2, 6, 3], 2),
-    ([3, 6, 7], 2),
-    // the wall at x = 0, normal -x
-    ([3, 7, 0], 3),
-    ([0, 7, 4], 3),
-    // the wall top, normal up
-    ([4, 6, 5], 4),
-    ([4, 7, 6], 4),
-];
-
-/// The element each side of the cube came from: one authored surface per side.
+/// The reference volume's shape: a square `PLAN` wide, a wall `WALL` thick standing `TOP` up, and a
+/// plate `SLAB` thick under it.
 ///
-/// The underside is [`MassSurface::SlabSoffit`] — the mass's floor is a disc across the whole
-/// outline, one slab below, and it is a different element from [`MassSurface::FloorTop`] because
-/// the two are different planes and one element is one shading group.
-fn cube_element(side: usize) -> Element {
-    let surface = match side {
-        0 => MassSurface::OuterWall { edge: 0 },
-        1 => MassSurface::OuterWall { edge: 1 },
-        2 => MassSurface::OuterWall { edge: 2 },
-        3 => MassSurface::OuterWall { edge: 3 },
-        4 => MassSurface::WallTop { edge: 0 },
-        _ => MassSurface::SlabSoffit,
-    };
-    Element::Mass(MassId(0), surface)
-}
+/// A point is `[x, y, z]` with **`y` up**, so a plan point is the `x, z` pair — the crate's
+/// [`lift`](whiting_building::math::lift) is the one place the two are joined. The inner loop is
+/// `WALL` in from the outline, so the ring's section is an annulus `PLAN - 2 x WALL` across.
+const PLAN: f32 = 2.0;
+const WALL: f32 = 0.4;
+const SLAB: f32 = 0.4;
+const TOP: f32 = 2.0;
 
-/// Builds the reference cube: twelve triangles, outward, one element per side.
+/// The ring's sixteen welded points: the outline's four corners at its base and at the wall top, and
+/// the four corners `WALL` metres inside them at the same two elevations.
+const RING_POINTS: [[f32; 3]; 16] = [
+    // the outline at the base, in the loop's own order
+    [0.0, 0.0, 0.0],
+    [PLAN, 0.0, 0.0],
+    [PLAN, 0.0, PLAN],
+    [0.0, 0.0, PLAN],
+    // the outline at the wall top
+    [0.0, TOP, 0.0],
+    [PLAN, TOP, 0.0],
+    [PLAN, TOP, PLAN],
+    [0.0, TOP, PLAN],
+    // the inner loop at the base
+    [WALL, 0.0, WALL],
+    [PLAN - WALL, 0.0, WALL],
+    [PLAN - WALL, 0.0, PLAN - WALL],
+    [WALL, 0.0, PLAN - WALL],
+    // the inner loop at the wall top
+    [WALL, TOP, WALL],
+    [PLAN - WALL, TOP, WALL],
+    [PLAN - WALL, TOP, PLAN - WALL],
+    [WALL, TOP, PLAN - WALL],
+];
+
+/// The ring's thirty-two facets: four edges and four surfaces each, two triangles per quad, with
+/// the base annulus last because that is the order `expand`'s own ring walk emits them in.
+///
+/// Every quad is wound out of its own material, and the windings are the four the walk uses: the
+/// authored face across its top and base, the top annulus inward, the offset face back, and the
+/// base annulus from the outer loop across to the inner one.
+const RING_FACES: [([u32; 3], MassSurface); 32] = [
+    // edge 0
+    ([4, 5, 1], MassSurface::OuterWall { edge: 0 }),
+    ([4, 1, 0], MassSurface::OuterWall { edge: 0 }),
+    ([4, 12, 13], MassSurface::WallTop { edge: 0 }),
+    ([4, 13, 5], MassSurface::WallTop { edge: 0 }),
+    ([13, 12, 8], MassSurface::InnerWall { edge: 0 }),
+    ([13, 8, 9], MassSurface::InnerWall { edge: 0 }),
+    // edge 1
+    ([5, 6, 2], MassSurface::OuterWall { edge: 1 }),
+    ([5, 2, 1], MassSurface::OuterWall { edge: 1 }),
+    ([5, 13, 14], MassSurface::WallTop { edge: 1 }),
+    ([5, 14, 6], MassSurface::WallTop { edge: 1 }),
+    ([14, 13, 9], MassSurface::InnerWall { edge: 1 }),
+    ([14, 9, 10], MassSurface::InnerWall { edge: 1 }),
+    // edge 2
+    ([6, 7, 3], MassSurface::OuterWall { edge: 2 }),
+    ([6, 3, 2], MassSurface::OuterWall { edge: 2 }),
+    ([6, 14, 15], MassSurface::WallTop { edge: 2 }),
+    ([6, 15, 7], MassSurface::WallTop { edge: 2 }),
+    ([15, 14, 10], MassSurface::InnerWall { edge: 2 }),
+    ([15, 10, 11], MassSurface::InnerWall { edge: 2 }),
+    // edge 3
+    ([7, 4, 0], MassSurface::OuterWall { edge: 3 }),
+    ([7, 0, 3], MassSurface::OuterWall { edge: 3 }),
+    ([7, 15, 12], MassSurface::WallTop { edge: 3 }),
+    ([7, 12, 4], MassSurface::WallTop { edge: 3 }),
+    ([12, 15, 11], MassSurface::InnerWall { edge: 3 }),
+    ([12, 11, 8], MassSurface::InnerWall { edge: 3 }),
+    // the base annulus, one strip per edge
+    ([0, 1, 9], MassSurface::WallBase),
+    ([0, 9, 8], MassSurface::WallBase),
+    ([1, 2, 10], MassSurface::WallBase),
+    ([1, 10, 9], MassSurface::WallBase),
+    ([2, 3, 11], MassSurface::WallBase),
+    ([2, 11, 10], MassSurface::WallBase),
+    ([3, 0, 8], MassSurface::WallBase),
+    ([3, 8, 11], MassSurface::WallBase),
+];
+
+/// The plate's eight welded points: the **whole** outline at the ring's base elevation and one
+/// `SLAB` below it.
+///
+/// The plate is written twice over — four points at `0` and four at `-SLAB` — rather than sharing the
+/// ring's own base corners, because the expander builds the two solids separately and splices them
+/// separately: they stand at one elevation over the same ground and never name the same vertex.
+const PLATE_POINTS: [[f32; 3]; 8] = [
+    [0.0, 0.0, 0.0],
+    [PLAN, 0.0, 0.0],
+    [PLAN, 0.0, PLAN],
+    [0.0, 0.0, PLAN],
+    [0.0, -SLAB, 0.0],
+    [PLAN, -SLAB, 0.0],
+    [PLAN, -SLAB, PLAN],
+    [0.0, -SLAB, PLAN],
+];
+
+/// The plate's twelve facets: two caps over the whole outline and two triangles per edge.
+const PLATE_FACES: [([u32; 3], SlabSurface); 12] = [
+    ([3, 1, 0], SlabSurface::Top),
+    ([1, 3, 2], SlabSurface::Top),
+    ([7, 4, 5], SlabSurface::Bottom),
+    ([5, 6, 7], SlabSurface::Bottom),
+    ([4, 0, 1], SlabSurface::Edge { index: 0 }),
+    ([4, 1, 5], SlabSurface::Edge { index: 0 }),
+    ([5, 1, 2], SlabSurface::Edge { index: 1 }),
+    ([5, 2, 6], SlabSurface::Edge { index: 1 }),
+    ([6, 2, 3], SlabSurface::Edge { index: 2 }),
+    ([6, 3, 7], SlabSurface::Edge { index: 2 }),
+    ([7, 3, 0], SlabSurface::Edge { index: 3 }),
+    ([7, 0, 4], SlabSurface::Edge { index: 3 }),
+];
+
+/// Builds the reference volume: the wall ring and the plate under it, twenty-four points and
+/// forty-four facets, both wound outward and both closed.
+///
+/// # The numbers every other reading is against
+///
+/// | solid | faces | points | volume | euler | loops | manifold |
+/// | --- | --- | --- | --- | --- | --- | --- |
+/// | the ring, [`SolidId::Mass`] | 32 | 16 | `5.1200` | **`0`** | 0 | true |
+/// | the plate, [`SolidId::Slab`] | 12 | 8 | `1.6000` | **`2`** | 0 | true |
+///
+/// **The ring's `0` and the plate's `2` are the two halves of `check_solid`'s expectation, and they
+/// are not interchangeable.** A ring is a tube: its outer and inner surfaces meet at the wall top
+/// and again along the base annulus, so the surface is a torus and `2 - 2g = 0` at one genus. A
+/// plate is a prism, so it is a sphere and reads `2`. `check_solid` derives the same two numbers from
+/// the document rather than from the mesh — `2 - 2 x (one ring + holes)` for anything that is a ring
+/// and `2` for anything that is not — so **a reference that read `2` for the mass would report
+/// `SolidNotASphere` on a mass that is exactly right**, which is what this fixture did while it was
+/// still the shell's single closed box.
+///
+/// The ring's volume is `(PLAN^2 - (PLAN - 2 x WALL)^2) x TOP = 2.56 x 2` and the plate's is
+/// `PLAN^2 x SLAB`: both are on paper beside the measurement, so the two readings can differ for a
+/// reason rather than because the sum of the triangles is what volume means.
 fn cube() -> BuildingMesh {
-    let mut built = BuildingMesh::new();
-    built.points = CUBE_POINTS.to_vec();
-    built.faces = CUBE_FACES
-        .iter()
-        .map(|(indices, side)| BuildingFace {
-            indices: *indices,
-            element: cube_element(*side),
-        })
-        .collect();
+    let mut built = ring();
+    let below = plate();
+    let offset = built.points.len() as u32;
+    built.points.extend(below.points);
+    built.faces.extend(below.faces.into_iter().map(|mut face| {
+        face.indices = face.indices.map(|corner| corner + offset);
+        face
+    }));
     built
 }
 
-/// Returns the cube with one face's winding reversed: an inconsistent surface, closed and
+/// Builds the wall ring alone: a closed tube, and the only one of the two solids that is a mass.
+fn ring() -> BuildingMesh {
+    BuildingMesh {
+        points: RING_POINTS.to_vec(),
+        faces: RING_FACES
+            .iter()
+            .map(|(indices, surface)| BuildingFace {
+                indices: *indices,
+                element: Element::Mass(MassId(0), *surface),
+            })
+            .collect(),
+    }
+}
+
+/// Builds the plate alone: the prism over the whole outline, which is a slab solid and nothing else.
+fn plate() -> BuildingMesh {
+    BuildingMesh {
+        points: PLATE_POINTS.to_vec(),
+        faces: PLATE_FACES
+            .iter()
+            .map(|(indices, surface)| BuildingFace {
+                indices: *indices,
+                element: Element::Slab(SlabId(0), *surface),
+            })
+            .collect(),
+    }
+}
+
+/// Returns the reference with one face's winding reversed: an inconsistent surface, closed and
 /// edge-manifold, which is the only way to open a surface without breaking manifoldness.
+///
+/// Face `0` is the ring's first outer wall, so this damages the mass and leaves the plate green.
 fn one_face_turned_inside_out() -> BuildingMesh {
     let mut built = cube();
     built.faces[0].indices.swap(1, 2);
     built
 }
 
-/// Returns the cube with one face taken away: a hole with no area, so its plan area cannot see it.
+/// Returns the reference with one face taken away: a hole with no area, so its plan area cannot see it.
 fn one_face_missing() -> BuildingMesh {
     let mut built = cube();
     built.faces.remove(6);
     built
 }
 
-/// Returns the cube with one face written twice: an edge three faces use, which no orientation of
-/// a closed surface can fix.
+/// Returns the reference with one face written twice: an edge three faces use, which no orientation
+/// of a closed surface can fix.
 fn one_face_duplicated() -> BuildingMesh {
     let mut built = cube();
     built.faces.insert(6, built.faces[0]);
     built
 }
 
-/// Returns the cube with one corner lifted a quarter of a metre off the planes it belongs to.
+/// Returns the reference with one corner lifted a quarter of a metre off the planes it belongs to.
+///
+/// Point `6` is the ring's outline corner at `z = PLAN` under the wall top, so three of the ring's
+/// surfaces leave their planes and the plate is untouched.
 fn one_corner_lifted() -> BuildingMesh {
     let mut built = cube();
     built.points[6][1] += 0.25;
     built
 }
 
-/// Returns two cubes welded into one solid: closed, manifold, outward, and two spheres.
-fn two_cubes_one_solid() -> BuildingMesh {
-    let first = cube();
+/// Returns two plates welded into one solid: closed, manifold, outward, and two spheres.
+///
+/// **The plates are the pair, and not the rings, because the rings would have gone quiet.** Two rings
+/// in one [`SolidId::Mass`] handle read euler `0 + 0 = 0`, which is exactly what `check_solid` expects
+/// of one ring — the failure [`SolidId::Void`] exists to name, reached by the fixture rather than by a
+/// document. Two plates in one [`SolidId::Slab`] handle read `2 + 2 = 4` against an expected `2`, so
+/// the control still says what it was built to say: one handle holding two bodies is not a solid.
+fn two_plates_one_solid() -> BuildingMesh {
+    let first = plate();
     let offset = first.points.len() as u32;
-    let mut built = cube();
+    let mut built = plate();
     built.points.extend(
         first
             .points
@@ -202,14 +326,17 @@ fn hip_starter_missing_an_end_plane() -> BuildingSkeleton {
     skeleton
 }
 
-/// Returns the starter hip with one soffit triangle deleted: a slab that does not reach the whole
-/// outline, which is the mass-side reading of the same fault.
-fn hip_starter_slab_short() -> (BuildingSkeleton, BuildingMesh) {
+/// Returns the starter hip with one triangle of the wall ring's base annulus deleted: a ring that no
+/// longer closes on its own inner loop, which is the mass-side reading of the same fault.
+///
+/// It is the **base strip** that is cut and not the plate's underside, because the base is the mass's
+/// own face; the plate is a solid of its own and has faults of its own to report.
+fn hip_starter_base_short() -> (BuildingSkeleton, BuildingMesh) {
     let skeleton = hip_starter();
     let mut built = Building::new(skeleton.clone())
         .build()
         .expect("the starter expands");
-    let soffit: Vec<usize> = built
+    let base: Vec<usize> = built
         .faces_of(SolidId::Mass(MassId(0)))
         .into_iter()
         .filter(|index| {
@@ -219,25 +346,34 @@ fn hip_starter_slab_short() -> (BuildingSkeleton, BuildingMesh) {
             )
         })
         .collect();
-    built.faces.remove(soffit[0]);
+    built.faces.remove(base[0]);
     (skeleton, built)
 }
 
-/// Returns the cube with one corner walked onto the line through its own face's other two corners:
-/// the floor's first facet has no area, and nothing else has changed.
+/// Returns the reference with one corner walked onto the line through its own face's other two
+/// corners: that face's first facet has no area, and nothing about it has left its plane.
 ///
-/// This is the fault a planarity check cannot see either — the other three corners of the wall that
-/// corner belonged to are still in their planes — and it is the shape a node written one step along
-/// the edge behind it takes. Closure is untouched by it on purpose: the edges are welded by index,
-/// so a corner standing on a line is still a corner every neighbour shares.
+/// This is the fault a planarity check cannot see either — the other corners of the wall that corner
+/// belonged to are still in their planes — and it is the shape a node written one step along the edge
+/// behind it takes. Closure is untouched by it on purpose: the edges are welded by index, so a corner
+/// standing on a line is still a corner every neighbour shares.
+///
+/// **Point `5` is walked to `1.5 x` along the edge from the ring's first outer wall's corner `4`
+/// through `2`**, which is past both ends and therefore distinct from every other point: the facet
+/// `[4, 5, 2]` becomes exactly collinear and the walk is visible as a shape rather than as a
+/// coincidence. [`two_corners_at_one_point`] walks the same corner to the one place this one is not.
 fn one_corner_on_the_line() -> BuildingMesh {
     let mut built = cube();
-    built.points[2] = [4.0, 0.0, 0.0];
+    built.points[5] = [3.0, -1.0, 0.0];
     built
 }
 
-/// Returns the cube with one corner walked onto **the position of another corner of its own faces**:
-/// two corners at one point, so the facets between them have no area.
+/// Returns the reference with one corner walked onto **the position of its own neighbour on the face
+/// beside it**: two corners at one point, so the facets between them have no area.
+///
+/// It walks the **same corner onto the same neighbour** that [`one_corner_on_the_line`] walks away
+/// from, so the two controls read the same facet `[4, 5, 1]` and the only difference between them is
+/// the one under test: a corner a step further along its line, or a corner on top of another.
 ///
 /// **This is the class `FaceDegenerate` reports**, and it is the other class from
 /// [`one_corner_on_the_line`]: the phase's own square hip roof stood two crest points at one spot —
@@ -247,7 +383,7 @@ fn one_corner_on_the_line() -> BuildingMesh {
 /// a fault, because no authored element has two corners in one place on purpose.
 fn two_corners_at_one_point() -> BuildingMesh {
     let mut built = cube();
-    built.points[2] = built.points[1];
+    built.points[5] = built.points[4];
     built
 }
 
@@ -299,32 +435,62 @@ fn triangle_area(built: &BuildingMesh, index: usize) -> f32 {
     0.5 * (whiting_building::math::dot3(normal, normal)).sqrt()
 }
 
-/// Prints the solid's four measurements and every violation the mesh check found.
-fn report_mesh(name: &str, built: &BuildingMesh) {
-    report_solid(name, &Skeleton::default(), built, SolidId::Mass(MassId(0)));
+/// Returns the distinct solids a mesh holds, in the order its faces first name them.
+///
+/// **This is [`validate::mesh`](whiting_building::validate::mesh)'s own gathering rule** — a
+/// `BuildingMesh` carries no count of what it was built from, so the solids are read out of the
+/// faces' own provenance — and a mesh of one solid reports one solid rather than an empty reading for
+/// every kind the document could have held.
+fn solids(built: &BuildingMesh) -> Vec<SolidId> {
+    let mut found: Vec<SolidId> = Vec::new();
+    for face in &built.faces {
+        let solid = face.element.solid();
+        if !found.contains(&solid) {
+            found.push(solid);
+        }
+    }
+    found
 }
 
-/// Prints one solid's four measurements, the two areas the coverage check compares, and every
-/// violation the mesh check found.
-fn report_solid(name: &str, skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidId) {
-    let faces = built.faces_of(solid);
-    let violations = mesh(skeleton, built);
+/// Prints one mesh's size, every solid it holds with its four measurements and its coverage reading,
+/// and every violation the mesh check found for the whole mesh.
+///
+/// The violations are printed once per mesh and not once per solid, because [`mesh`] answers about
+/// the whole mesh: printing them under each solid would report the same list twice over a fixture
+/// that is two solids, and say the fault belonged to whichever solid happened to be read last.
+fn report_mesh(name: &str, skeleton: &BuildingSkeleton, built: &BuildingMesh) {
     println!(
-        "{name}: {} faces, {} points, solid volume {:.4}, euler {}, boundary loops {}, manifold {}",
+        "{name}: {} faces, {} points",
         built.faces.len(),
-        built.points.len(),
+        built.points.len()
+    );
+    for solid in solids(built) {
+        report_solid(skeleton, built, solid);
+    }
+    report(&mesh(skeleton, built));
+}
+
+/// Prints one solid's four measurements and the two areas the coverage check compares.
+fn report_solid(skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidId) {
+    println!(
+        "  {solid:?}: {} faces, volume {:.4}, euler {}, boundary loops {}, manifold {}",
+        built.faces_of(solid).len(),
         built.solid_signed_volume(solid),
         built.solid_euler_characteristic(solid),
         built.solid_boundary_loops(solid),
         built.solid_is_manifold(solid),
     );
-    println!("  solid holds {} faces", faces.len());
     report_areas(skeleton, built, solid);
-    report(&violations);
 }
 
 /// Prints the coverage reading: the plan area of the surface the check measures and the plan area
 /// of the loop it has to reach, which are the two numbers the violation carries.
+///
+/// **The two surfaces measured are the two that cover an authored loop.** A roof's skin has to tile
+/// its eave loop and a plate's top has to stand over its own polygon; a mass's ring base is the
+/// annulus between the outline and the offset loop, which is not a loop an author drew and cannot be
+/// compared with the outline's area — the reading the shell model made possible, and the one
+/// [`Violation::RoofDoesNotCover`] is still the last word on.
 fn report_areas(skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidId) {
     let faces = built.faces_of(solid);
     let measured: Vec<usize> = faces
@@ -333,22 +499,20 @@ fn report_areas(skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidI
         .filter(|index| {
             matches!(
                 built.faces[*index].element,
-                Element::Mass(_, MassSurface::WallBase)
-                    | Element::Roof(_, RoofSurface::Skin { .. })
+                Element::Roof(_, RoofSurface::Skin { .. }) | Element::Slab(_, SlabSurface::Top)
             )
         })
         .collect();
     let covered = built.plan_area_of(&measured);
     let authored = match solid {
-        SolidId::Mass(id) => skeleton.mass(id).map(|mass| mass.plan_area()),
         SolidId::Roof(id) => skeleton.roof(id).map(|roof| roof.plan_area()),
-        // A part has no authored loop of its own in this document: its geometry lives in its template.
-        // A wall is a box rather than a loop, so it has none either. A courtyard's ring is the annulus
-        // between two loops of its own rather than a loop that could be compared against one of them.
-        SolidId::Part(_) | SolidId::Wall(_) | SolidId::Void { .. } => None,
         // A slab's plan *is* an authored loop, and it is the one solid whose loop this probe can compare
         // directly: the coverage check measures the mesh against the document's own polygon.
         SolidId::Slab(id) => skeleton.slab(id).map(|slab| slab.plan_area()),
+        // A mass's ring is an annulus, a part has no loop of its own in this document — its geometry
+        // lives in its template — a wall is a box rather than a loop, and a courtyard's ring is the
+        // annulus between two loops of its own.
+        SolidId::Mass(_) | SolidId::Part(_) | SolidId::Wall(_) | SolidId::Void { .. } => None,
     };
     println!(
         "  coverage: measured {:.4} against authored loop {}, over {} faces",
@@ -397,7 +561,6 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::SolidNonManifold { .. } => "SolidNonManifold",
         Violation::SolidInsideOut { .. } => "SolidInsideOut",
         Violation::SolidNotASphere { .. } => "SolidNotASphere",
-        Violation::MassDoesNotCover { .. } => "MassDoesNotCover",
         Violation::RoofDoesNotCover { .. } => "RoofDoesNotCover",
         Violation::RoofSkinNotADisc { .. } => "RoofSkinNotADisc",
         Violation::RoofSkinLeavesTheEave { .. } => "RoofSkinLeavesTheEave",
@@ -646,19 +809,40 @@ fn report_strips(skeleton: &BuildingSkeleton) {
 }
 
 fn main() {
-    println!("# the reference cube: one element per side, wound outward");
-    report_mesh("welded cube", &cube());
+    println!("# the reference volume: a wall ring and the plate under it, both wound outward");
+    report_mesh("welded ring and plate", &Skeleton::default(), &cube());
 
-    println!("\n# positive controls: the cube damaged one way each");
-    report_mesh("winding reversed on every face", &inverted_cube());
-    report_mesh("one face's winding reversed", &one_face_turned_inside_out());
-    report_mesh("one face deleted", &one_face_missing());
-    report_mesh("one face duplicated", &one_face_duplicated());
+    println!("\n# positive controls: the reference damaged one way each");
+    report_mesh(
+        "winding reversed on every face",
+        &Skeleton::default(),
+        &inverted_cube(),
+    );
+    report_mesh(
+        "one face's winding reversed",
+        &Skeleton::default(),
+        &one_face_turned_inside_out(),
+    );
+    report_mesh(
+        "one face deleted",
+        &Skeleton::default(),
+        &one_face_missing(),
+    );
+    report_mesh(
+        "one face duplicated",
+        &Skeleton::default(),
+        &one_face_duplicated(),
+    );
     report_mesh(
         "one corner lifted 0.25 off its planes",
+        &Skeleton::default(),
         &one_corner_lifted(),
     );
-    report_mesh("two cubes welded into one solid", &two_cubes_one_solid());
+    report_mesh(
+        "two plates welded into one solid",
+        &Skeleton::default(),
+        &two_plates_one_solid(),
+    );
 
     println!("\n# the fitter against a plane that is not a coordinate plane");
     // The patch is two triangles rather than a solid, so only its planarity is read here: the
@@ -686,21 +870,23 @@ fn main() {
     println!("\n# a facet of no area: two classes, and only one of them is the author's");
     report_mesh(
         "one corner walked onto its own face's line (three distinct collinear corners)",
+        &Skeleton::default(),
         &one_corner_on_the_line(),
     );
     let built = one_corner_on_the_line();
     println!(
-        "  the floor's first facet measures {:.9} m2 and it is NOT reported: a collinear node is what\n  \
+        "  the outer wall's first facet measures {:.9} m2 and it is NOT reported: a collinear node is what\n  \
          `ops::attach_mass` inserts when it splits a host, and the facet closing the ring there is structural",
         triangle_area(&built, 0)
     );
     report_mesh(
         "two corners at one point (a collapsed ridge)",
+        &Skeleton::default(),
         &two_corners_at_one_point(),
     );
     let built = two_corners_at_one_point();
     println!(
-        "  the floor's first facet measures {:.9} m2 and it IS reported",
+        "  the outer wall's first facet measures {:.9} m2 and it IS reported",
         triangle_area(&built, 0)
     );
 
@@ -753,31 +939,24 @@ fn main() {
     }
     report_document("roof row naming a crest that does not exist", &lost_crest);
 
-    println!("\n# coverage: a starter, and the same starter with a corner or a slab missing");
+    println!("\n# coverage: a starter, and the same starter with a corner or a base strip missing");
     let whole = hip_starter();
     let built = Building::new(whole.clone())
         .build()
         .expect("the starter expands");
-    report_solid("hip 7x11", &whole, &built, SolidId::Roof(RoofId(0)));
-    report_solid("hip 7x11", &whole, &built, SolidId::Mass(MassId(0)));
+    report_mesh("hip 7x11", &whole, &built);
 
     let holed = hip_starter_missing_an_end_plane();
     let built = Building::new(holed.clone())
         .build()
         .expect("a roof with a corner missing still expands: it is a closed solid");
-    report_solid(
-        "hip 7x11 with one end plane deleted",
-        &holed,
-        &built,
-        SolidId::Roof(RoofId(0)),
-    );
+    report_mesh("hip 7x11 with one end plane deleted", &holed, &built);
 
-    let (skeleton, built) = hip_starter_slab_short();
-    report_solid(
-        "hip 7x11 with one soffit triangle deleted",
+    let (skeleton, built) = hip_starter_base_short();
+    report_mesh(
+        "hip 7x11 with one base strip triangle deleted",
         &skeleton,
         &built,
-        SolidId::Mass(MassId(0)),
     );
 
     println!("\n# openings: a bay, a hole, and the four ways to be wrong");
