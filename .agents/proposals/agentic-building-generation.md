@@ -2590,8 +2590,11 @@ session should take it, each with the measurement that decides it:
    sentences they had. **Nothing else moved**: nine frame hashes and nine document hashes identical before and after
    on this adapter, and every answer on an authored pixel unchanged in all nine. **`terrace` shows one plate of three**
    (the other two are behind the row) is still open, and is a camera fact.
-7. **`workshop`'s `--where` count changed name** between slices (1,987 under one element spelling, 1,844 under
-   another). Recorded rather than reconciled; a session that reads it should settle the name first.
+7. ~~**`workshop`'s `--where` count changed name** between slices (1,987 under one element spelling, 1,844 under
+   another).~~ **DONE (2026-10-31, `feature/building-where-truth`) — and the premise was false: there is only one
+   spelling, and `1,987` names nothing at all.** Settled by rendering the two trees the numbers came from, on this
+   machine; see *What the where-truth slice settled* below for the whole column, because **the same fault runs through
+   four of the nine rows of that table and not through the other five.**
 8. ~~**Three gallery probes carry pre-existing warnings** (`seam_shading_probe`, `alpine_probe`, `step_fit_probe`) and
    `roof_planarity_probe` is not run-to-run deterministic (it prints a plane grouping in hash order), so it cannot be
    a regression gate.~~ **DONE (2026-10-27, `feature/building-gate-cleanup`).** All three warnings were unreachable code
@@ -2859,3 +2862,136 @@ adapter is not a regression; a before/after pair that changes is.
 A second trap in the same area: `out/` accumulates renders from every past baseline (`base-house.png` is still the
 shell-era `B8384583E741BE57`). Render to a **fresh name** or clear the file first — a comparison against whatever is
 already in `out/` compares two eras.
+
+## What the where-truth slice settled: the reserved zero, and the 1,987 that names nothing (2026-10-31, branch `feature/building-where-truth`)
+
+Two sentences in the frame's own debugging tool were not true of the frame, and the second one was a number in this
+file that four sessions have quoted. Both were settled by rendering, not by reading.
+
+### `--where 0` said the ground and the sky were not in the picture
+
+The scan in `where_is` skips `id 0` on purpose — a tool that counts *elements* has no element 0 to count — and the
+sentence that fell out of the skip was **`id 0 is not visible in this frame`**. It is the opposite of the truth, and
+the truth is large: the reserved zero is what a surface that is not an authored element writes, and `--region` counts
+it on this machine at
+
+| scene | pixels carrying id 0, of 1,048,576 | scene | pixels carrying id 0 |
+| --- | --- | --- | --- |
+| `wing` | **962,094** | `terrace` | **745,312** |
+| `shed` | **790,319** | `yard` | **703,086** |
+| `house` | **762,282** | `workshop` | **686,410** |
+| `hall` | **722,384** | `identity` | **674,417** |
+| `hall_large` | **553,214** | | |
+
+— between **53 % and 92 %** of every frame, the ground and the sky between them. **`--where 0` now asks
+`gallery::locate` the same question `--locate` asks**, rather than writing a sentence of its own, so the two
+directions cannot drift:
+
+```text
+where workshop 0: not an authored element: this pixel is the ground the scene stands on, or the sky above it
+```
+
+### **One sentence for the sky and the ground, and the channel that settles it**
+
+The brief asked whether a sky pixel and a ground pixel deserve the same sentence or two. **The same one**, and the
+reason is in the channel rather than in taste: **`authored_id` carries no distinction to make**. Both write the
+reserved zero from the one constant the shaders declare, and `--locate --debug position` shows the difference the id
+cannot:
+
+| pixel | `authored_id` | `position` | what it is |
+| --- | --- | --- | --- |
+| `workshop` (100, 50) | `0` | `0` — nothing written | sky |
+| `workshop` (512, 20) | `0` | `0` — nothing written | sky |
+| `workshop` (100, 700) | `0` | `[-5.2265625, 0.00018155575, -2.6523438]` | ground, on the ground line |
+| `workshop` (900, 980) | `0` | `[-4.1914063, 0.00016307831, 9.3671875]` | ground, on the ground line |
+
+`--locate` answered **the same sentence on all four**, and that is right rather than lazy: *not an authored element*
+is one fact, and the ground and the sky are both instances of it. A second sentence is available only to a tool that
+reads a second channel — `--where` reads `authored_id` and asks about an **id**, not about a pixel, so there is
+nothing there to distinguish. **The count is deliberately still not printed**: `--where` counts elements, and
+`--region` already counts the reserved zero like any other id, which is what a rectangle is for.
+
+### Punch item 7 was a false premise, and the number it asked about names nothing
+
+**There is only one spelling of the workshop's ground plate, and `--where` cannot be sensitive to spelling at all.**
+`where_is` resolves `asked` to an id first (`id_in`) and then counts pixels **by id**, and `describe` is a total
+function over `Element` with `id_in` matching `row.path == name` exactly — so one element has one name, and two
+spellings of one element would give the same count on the same frame. The recorded explanation ("that earlier
+reading was taken under a different element name") is not a mechanism the harness has.
+
+**So the two trees were rendered and swept id by id.** `131f8d0` is the tip of the branch whose table carries the
+1,987, and `613001b` is the main the next slice measured its 1,844 against; both were built in a worktree of their
+own and rendered here:
+
+| what | measured on this machine |
+| --- | --- |
+| the nine frames at `613001b` | `D6EDBADCC7BD6C3D`, `0D196DA8035448CB`, `26EBA2656E1A00CF`, `32E70B7865492056`, `2326C57243C9B30A`, `965DEDC907148149`, `B85B0988EC240016`, `9E6AF5F04A386CF8`, `F1D17F028AB5D4BC` — **the nine the ground-cut slice recorded for main, exactly** |
+| the nine frames at `131f8d0` (the tip that recorded 1,987) | the same nine, and `workshop` is `B85B0988EC240016` |
+| `--where "slab 0, its top"` at `131f8d0` | **id 112 covers 1,844** |
+| every id on that frame, swept 1…250 | 48 ids carry pixels and sum to 360,932; **not one reads 1,987**, and one reads 1,844 |
+| every **pair** of ids on that frame summing to 1,987 | exactly one: **112 (1,844) + 122 (143)** |
+| `--where "slab 1, the edge from node 2"` | **id 122 covers 143** |
+
+**1,987 is the plate's own 1,844 plus the mezzanine's 143** — and the row that recorded it says, in the same
+sentence, *"the ground plate loses its coplanar edge texels; the mezzanine's own 143 are unchanged"*. **The true
+reading for the workshop's plate is `slab 0, its top`: 1,844 on that tree, and 3,082 on this one**, which is the
+ground-cut slice's own before/after pair and reproduces exactly here.
+
+### The fault is the column's definition, and it runs through four of the nine rows
+
+**"Plate pixels" was a total over every surface of the plate the frame shows**, not one element's count. Five rows
+coincide with a single surface because only the top is visible in them; four are sums, and `workshop` is the only
+row where the sum crossed into another slab. All measured on `131f8d0`, the tree that recorded the column:
+
+| scene | the table's number | what that number is, measured |
+| --- | --- | --- |
+| `house`, `hall`, `hall_large`, `shed`, `identity` | 0, 665, 1,656, 2,246, 0 | **`slab 0, its top`, exactly** — five rows that are right |
+| `terrace` | 2,528 | `slab 2, its top` **2,525** + `slab 2, the edge from node 2` **3** — one plate, two surfaces |
+| `wing` | 4 | `slab 1, its top` **3** + `slab 1, the edge from node 2` **1** — one plate, two surfaces |
+| `workshop` | 1,987 | `slab 0, its top` **1,844** + **`slab 1`'s** `the edge from node 2` **143** — two plates |
+| `yard` | 15,458 | the **eight** slab edges, tops at 0: `slab 0`'s node 3 alone is 8,503 and `slab 1`'s is 3,338, and **all eight sum to exactly 15,458** |
+
+**The column's own "before" is off in the same way and for the same reason**: at the branch point `140af41`,
+`slab 0, its top` reads **3,173** against the recorded **3,318**, and on that frame no id reads 3,318 and no pair
+sums to it. Nothing in this file was edited to match: **every number above is a fresh render**, and the two wrong
+ones are recorded here as wrong.
+
+### What this slice's brief got wrong
+
+**It asked which of two spellings produced which number, and the question has no answer because a name cannot reach
+the count.** That is checkable in three lines of `where_is` and I checked it there before building anything, which is
+why the work went to rendering two dead trees instead of to a diff. **It also implied the two numbers were both
+readings of one element, when one of them is a sum of two** — and it did not suspect that the same column's other
+rows carry the same fault, which is why four rows of a nine-row table are now re-recorded above and one
+(`yard`'s 15,458 = eight surfaces) is arithmetically exact rather than approximate. What the brief got **right** is
+the instruction not to edit the number: the cause turned out to be the reading's definition, which no edit to a
+digit could have carried.
+
+### A third false sentence, found and left
+
+`--region` prints id 0 on a building scene as **`id 0, and this scene names nothing`** — false in the same family,
+because `region` asks the *naming* registry (which no building scene registers in) rather than
+`building_identity` (which names every one of them). It is not `--where`, it was not in scope, and it is left as
+found rather than widened into: **an open item for whoever takes the next diagnostic.**
+
+### The gate
+
+- All **29** building examples exit 0 (and `census` through `cargo run -p whiting-building --example census` as
+  well, because the filename collides with the mountain crate's).
+- `cargo build --workspace --all-targets` exits 0 with **the `census.exe` filename-collision warning only** — the
+  three gallery probe warnings were deleted by punch item 8, so the set the earlier sections quote is no longer the
+  whole of it.
+- `cargo fmt --all -- --check` is clean. `scene_identity_probe` reads **806** rows (77 + 109 + 77 + 31 + 66 + 123 +
+  123 + 99 + 101), all contiguous, all names non-empty, all round-tripping, all four pinned readings unchanged.
+- **Nine before/after pairs on this adapter, every frame hash and every document hash identical**, rendered to fresh
+  names (`wt-before-*`, `wt-after-*`) in a worktree whose `out/` was empty: `house B13154AD7D29F938`,
+  `hall C4339E6310EA1C37`, `hall_large 43D3780A15E3D08E`, `shed 882B8F9A7C671B0D`, `terrace EDF3F4B3CF2A9686`,
+  `wing 14E3E27F9F9E1A83`, `workshop 7DD5D40894181EA7`, `yard FDC446B24E98CE04`, `identity 974FB5B24E1E7A35`.
+  The before set is the branch point's own tree and the after set is that tree plus one sentence, so the pair is one
+  tree against itself-plus-a-sentence rather than two runs of one binary.
+
+**One more reading, because it is the same defect class and it is now visible.** Rendered on `131f8d0` — the tree
+*before* the previous slice — `--locate` on a sky pixel answers *"this harness has no domain reading for
+`workshop`"*, which is exactly the false sentence punch item 6 recorded and that slice fixed. **The historical tree
+reproduces the pre-fix behaviour**, which is what makes the `--where` sentence above a finding rather than a guess:
+the two tools carried the same wrong sentence about the same number, and only one of them had been caught.

@@ -302,6 +302,12 @@ fn describe_texel(texel: &[f32; 4]) -> String {
 /// - **"No such element" and "not visible" are different answers.** A name the table does not hold says so; an
 ///   id that holds but covers no pixel says the element is not in this frame. A caller that conflated them would
 ///   read a typo as an element that happened to be off screen.
+/// - **The reserved zero is a third answer, and it is asked rather than written.** `Identity::of` numbers from
+///   one, so id 0 is not an element that happened to be off screen: it is what a surface that is not an authored
+///   element writes, and the scan below skips it on purpose. Reported as "not visible" it said the opposite of
+///   the truth about the largest region of a building frame — the ground and the sky between them cover
+///   686,410 of `workshop`'s 1,048,576 pixels — so the sentence is `gallery::locate`'s own, asked for the same
+///   number `--locate` is asked, and the two directions cannot drift apart.
 /// - A scene that writes no `authored_id` says so rather than reporting zero pixels, for the same reason the
 ///   harness's `--locate` refuses a scene whose content does not name its own.
 fn where_is(scene: &str, rendered: &RenderedFrame, asked: &str) {
@@ -323,6 +329,27 @@ fn where_is(scene: &str, rendered: &RenderedFrame, asked: &str) {
         println!("where {scene} {asked}: no element of this scene is called that");
         return;
     };
+    // **The reserved zero is answered before the scan, and it is not counted.** It is what a surface that is
+    // not an authored element writes — the ground from the one constant the shaders declare, and the sky from
+    // the same value the target was cleared to — so it is the ground and the sky between them, both of them
+    // plainly in the frame. The scan below skips it on purpose, which is right for a tool that counts
+    // *elements*, and wrong for the sentence: an id that covers the largest region of the picture and reads
+    // "not visible in this frame" is the sentence's whole content for anyone who asks. **The sentence is
+    // asked of `locate` rather than written here**, because `--locate` on a ground pixel and `--where 0` are
+    // the same question about the same number, and two places to write one answer are two places to be wrong.
+    // Nothing is lost by not counting it either: `--region` reads the same image and counts the reserved zero
+    // like any other id, which is what a rectangle is for.
+    if id == gallery::identity::NOT_AUTHORED {
+        let the_values = &[(String::from(gallery::identity::ID_OUTPUT), 0.0)];
+        match gallery::locate::locate(scene, the_values) {
+            Some(answer) => println!("where {scene} {asked}: {answer}"),
+            None => println!(
+                "where {scene} {asked}: id 0 is the reserved `not an authored element`, and this scene \
+                 gives it no reading of its own"
+            ),
+        }
+        return;
+    }
     let mut covered = 0u64;
     let mut box_: Option<(u32, u32, u32, u32)> = None;
     for y in 0..image.height {
