@@ -1733,6 +1733,25 @@ crate has been computing all along, finally with a shape that can exercise the n
 courtyard authored through a void is a different document, and the two must not be conflated. That is the same
 distinction the strict-crossing fix drew between a shared line and a proper crossing.
 
+### The ring fill: two attempts, both measured wrong, and what each ruled out (2026-10-27)
+
+The prerequisite for any of the above is **a fill of the region between two loops** — the plate's top and bottom and
+the wall's top ring all need it — and its acceptance is arithmetic: the triangles' areas must sum to the outer area
+minus the inner area, to within `1e-4`. Two attempts were written, measured, and reverted:
+
+| attempt | triangles | filled | wanted | what it ruled out |
+| --- | --- | --- | --- | --- |
+| bridge the loops into one polygon, ear-clip it | 6 | **87.0000** | 84.0000 | a bridged ring **is not a simple polygon**, so ear clipping emits overlapping triangles (+3 m²); excluding the duplicated vertices by position did not fix it |
+| two-pointer walk over two convex loops, greedy smaller ear | 8 (the right count) | **140.0000** | 84.0000 | the greedy rule is a heuristic for monotone pieces, **not a triangulation**: the count is right and the area is 56 m² wrong |
+
+**A correct triangle count is not evidence of a correct triangulation** — the second attempt would have passed any
+test that counted triangles, and it is the area that said it was wrong. That is why the acceptance is a number.
+
+What is left to try is known rather than speculative: **cut the annulus at the bridge into two simple polygons and
+ear-clip each** (the bridge duplicated consistently, which is what the first attempt lacked), or a **monotone
+decomposition** of the bridged ring. Either way the probe's acceptance does not change, and neither attempt's code
+survives: both are reverted, so the tree carries the requirement and the number, not a half-right fill.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
