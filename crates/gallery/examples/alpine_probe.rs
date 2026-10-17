@@ -196,36 +196,6 @@ fn write_basins() {
     }
 }
 
-/// Reports where the ranges stand in the frame, seen from the eye.
-///
-/// Reports where the two ranges stand in the frame, seen from the eye.
-///
-/// # Invariants
-///
-/// **Azimuth and not a position**, because the question is whether a range fills the frame or sits in
-/// it, and a point's distance from the eye says nothing about that while its angle off the view axis
-/// says exactly it.
-///
-/// **The spread across the frame is the number that matters for a range**, and it is the reason the
-/// spine was authored as a line rather than a disc: a blob subtends one narrow slice of azimuth
-/// wherever its nearest point is, and a range that runs across the view puts its two ends many
-/// degrees apart. A report that gave only the summit would say nothing about whether the frame holds
-/// the whole of it.
-fn write_framing() {
-    let half = landscape::field_of_view() * 0.5 * 180.0 / std::f64::consts::PI;
-    println!("framing from the eye, half frame {half:.1} degrees off the axis:");
-    for (name, summit, nearest) in landscape::framing() {
-        let verdict = if nearest > half {
-            "past the edge"
-        } else {
-            "inside"
-        };
-        println!(
-            "  {name}: summit at {summit:.1} degrees, nearest point at {nearest:.1} — {verdict}"
-        );
-    }
-}
-
 /// Reports the faces that are long and thin, and where they are.
 ///
 /// # Invariants

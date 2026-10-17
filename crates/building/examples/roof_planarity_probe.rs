@@ -142,8 +142,7 @@ fn measure(starter: &Starter) {
     for (index, face) in mesh.faces.iter().enumerate() {
         groups.entry(face.element).or_default().push(index);
     }
-    let mut order: Vec<Element> = groups.keys().copied().collect();
-    order.sort_by_key(|element| format!("{element:?}"));
+    let order = ordered(&groups);
     let mut worst = 0.0f32;
     for element in &order {
         if !matches!(element, Element::Roof(_, RoofSurface::Skin { .. })) {
@@ -265,9 +264,15 @@ fn compact(starter: &Starter) {
     for (index, face) in mesh.faces.iter().enumerate() {
         groups.entry(face.element).or_default().push(index);
     }
+    let order = ordered(&groups);
     let worst = {
         let mut worst: Option<(String, f32)> = None;
-        for (element, faces) in &groups {
+        // **The walk is the ordered one and not the map's own**, because a tie is decided by which
+        // element is read first: two planes of a starter are as planar as one another, so the name
+        // printed beside the worst departure was whichever the map happened to yield first, and the
+        // map yields a different one in every process.
+        for element in &order {
+            let faces = &groups[element];
             if !matches!(element, Element::Roof(_, RoofSurface::Skin { .. })) {
                 continue;
             }
@@ -286,13 +291,17 @@ fn compact(starter: &Starter) {
         }
         worst.unwrap_or_else(|| (String::from("none"), 0.0))
     };
-    let skin: Vec<usize> = groups
+    // **The skin's faces are gathered in that same order, and the reason is arithmetic rather than
+    // tidiness.** `plan_area_of` adds one term per face, and floating point addition is not
+    // associative, so the sum a map-ordered walk produces differs from the ordered one's in the last
+    // bits — which is a number the report prints, and a report that changes its own coverage reading
+    // between two runs of one binary cannot be a gate on anything.
+    let skin: Vec<usize> = order
         .iter()
-        .filter(|(element, _)| matches!(element, Element::Roof(_, RoofSurface::Skin { .. })))
-        .flat_map(|(_, faces)| faces.iter().copied())
+        .filter(|element| matches!(element, Element::Roof(_, RoofSurface::Skin { .. })))
+        .flat_map(|element| groups[element].iter().copied())
         .collect();
     let coverage = (mesh.plan_area_of(&skin).abs() - roof.plan_area().abs()).abs();
-    let order: Vec<Element> = groups.keys().copied().collect();
     let solid = SolidId::Roof(RoofId(0));
     println!(
         "  {}x{} {:?} seed {}: crest {} at {:?}, worst departure {:.7} m ({}), coverage {:.7} m2, volume {:.4}, {} zero-area facet(s), feet {}",
@@ -747,6 +756,25 @@ fn scale_of(value: [[f32; 3]; 3]) -> f32 {
         }
     }
     largest
+}
+
+/// Returns a mesh's grouped elements in one fixed order, so that two runs of one binary print the
+/// same lines.
+///
+/// # Invariants
+///
+/// **The key is the element's own spelling and never the map's own walk.** A `HashMap` yields its
+/// keys in an order that differs between two processes running the same binary, so every reading
+/// derived from that walk moves: which of two equally non-planar planes is named as the worst, and
+/// the order a floating point sum adds its terms in. This is what makes the probe usable as a
+/// regression gate at all — a gate whose own text moves between two runs of the tree it gates.
+///
+/// **Two distinct elements spell differently**, so the order is total and the sort is not left to
+/// decide anything by the order it happened to be handed.
+fn ordered(groups: &HashMap<Element, Vec<usize>>) -> Vec<Element> {
+    let mut order: Vec<Element> = groups.keys().copied().collect();
+    order.sort_by_key(|element| format!("{element:?}"));
+    order
 }
 
 /// Returns every face of an element whose facet has no area, as the element, the face and its plan

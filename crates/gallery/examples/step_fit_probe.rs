@@ -35,10 +35,6 @@ use mountain::{FacetMesh, Starter, starter};
 use patch::Point3;
 use whiting_gallery::blockmesh::{self, BlockSurfaces};
 
-fn parameters() -> [f64; 3] {
-    [0.25, 0.5, 0.75]
-}
-
 /// The rock at `(u, v)`, averaged over every face of the set that covers it.
 fn sample(faces: &[&mountain::Face], massif: &FacetMesh, u: f32, v: f32) -> Option<Point3> {
     let mut sum = [0.0f64; 3];

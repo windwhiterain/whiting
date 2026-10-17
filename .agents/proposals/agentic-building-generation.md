@@ -2578,13 +2578,40 @@ session should take it, each with the measurement that decides it:
    *What the notch slice found* below for the numbers and for the one shape that is still refused.
 5. **`house` and `yard` cannot answer a floor question**: `house` has no opening on the camera side, and `yard`'s
    plates sit inside foundation solids on terraces above a sloped ground. Camera facts, not cut facts.
-6. **`terrace` shows one plate of three** (the other two are behind the row) and **`hall_large` is not registered in
-   `locate_in`**, so `--locate` answers "no domain reading" there while `--where` works. Pre-existing.
+6. ~~**`hall_large` is not registered in `locate_in`**, so `--locate` answers "no domain reading" there while
+   `--where` works.~~ **DONE (2026-10-27, `feature/building-gate-cleanup`) — and the item itself was false.** The scene
+   was registered, and had been for eight hours before this list was written: `locate_in`'s `hall_large` arm landed
+   with `0352a6d` (11:53) and this list in `27c9a07` (20:03), and `--locate hall_large 512,300` answered
+   `roof 0, the skin of plane 0` before anything was edited. **The symptom is real and the cause is another one.**
+   The reserved-zero arm in `crate::locate` sat inside the `naming` lookup, and **no building scene has a naming**,
+   so every sky or ground pixel of **all nine scenes** — measured on each, not `hall_large` alone — was handed the
+   sentence that says the scene does not name its own, which is false of a scene whose walls are all named. The arm is
+   hoisted above the fall-through and the landscape's own answer is asked first, so the plain and the plant keep the
+   sentences they had. **Nothing else moved**: nine frame hashes and nine document hashes identical before and after
+   on this adapter, and every answer on an authored pixel unchanged in all nine. **`terrace` shows one plate of three**
+   (the other two are behind the row) is still open, and is a camera fact.
 7. **`workshop`'s `--where` count changed name** between slices (1,987 under one element spelling, 1,844 under
    another). Recorded rather than reconciled; a session that reads it should settle the name first.
-8. **Three gallery probes carry pre-existing warnings** (`seam_shading_probe`, `alpine_probe`, `step_fit_probe`) and
+8. ~~**Three gallery probes carry pre-existing warnings** (`seam_shading_probe`, `alpine_probe`, `step_fit_probe`) and
    `roof_planarity_probe` is not run-to-run deterministic (it prints a plane grouping in hash order), so it cannot be
-   a regression gate.
+   a regression gate.~~ **DONE (2026-10-27, `feature/building-gate-cleanup`).** All three warnings were unreachable code
+   and all three are **deleted rather than allowed**, because an uncalled function produces no reading to preserve:
+   `write_framing`, which is not among the three things `alpine_probe`'s own header claims it reports; `parameters`,
+   whose quantiles the report now writes inline; and a hand-rolled `cross` duplicating the `Point3::cross` the loop
+   already calls, together with a `flipped` count nothing reads. **Every reading of all three probes is byte-identical**
+   — the only lines that differ between the before and after runs are the warnings themselves.
+
+   **The probe was not deterministic for the two reasons that one walk implied, and both are real measurements.**
+   Which plane is named as the worst is a **tie** — several planes of a starter are equally non-planar, and the
+   winner was whichever the map yielded first. And `plan_area_of` adds one term per face, and addition is not
+   associative, so the order the map handed the terms in moved the **coverage figure itself**: the 6×6 hip read
+   `0.0000000 m2` in one run and `0.0000038 m2` in the next. Both now walk one ordered grouping, and **two runs of
+   one binary are byte-identical** (`sha256 B6A361C133EA8CCA…` twice, against 7 differing lines before).
+
+   **What determinism cost, stated rather than glossed:** it changed **two readings that were previously arbitrary**.
+   Five lines now name `Skin { plane: 0 }` where a run could name any tied plane, and one line's coverage moved from
+   `0.0000000 m2` to `0.0000076 m2`. Every other number — departures, volumes, facet counts, feet, crests — and the
+   line count, `111`, are unchanged.
 
 **And the rule these slices earned, worth keeping above the list:** a pixel count is not evidence of visibility. The
 ground-hole slice's first cut emitted one triangle per four-corner piece, which shifted every following triangle by

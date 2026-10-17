@@ -109,8 +109,8 @@ pub fn naming(scene: &str) -> Option<&'static Naming> {
 ///
 /// - **A value of zero is answered as itself, not as "unknown".** It is a real answer about a
 ///   real pixel — this one is the plain — and a caller told "not an authored element" knows not
-///   to go looking for a crest there. `None` is reserved for a scene with no naming, which is a
-///   different thing entirely.
+///   to go looking for a crest there. `None` is reserved for a scene whose content names nothing
+///   at all, which is a different thing entirely.
 /// - **An id above the count is reported, not clamped.** A frame and a mesh from different builds
 ///   produce exactly that, and the number in the message is what tells the two apart.
 pub fn locate(scene: &str, values: &[(String, f32)]) -> Option<String> {
@@ -124,8 +124,32 @@ pub fn locate(scene: &str, values: &[(String, f32)]) -> Option<String> {
     // channels exist: a building scene declares `authored_id` and nothing else, the landscape declares the id
     // and a belt coordinate. Asking both and taking whichever answers is what keeps this one function rather
     // than one per subsystem — and neither answers for a scene it does not know.
-    if let Some(id) = one(ID_OUTPUT) {
-        let id = id.round() as u32;
+    if let Some(authored) = one(ID_OUTPUT) {
+        let id = authored.round() as u32;
+        // **The reserved zero is answered before anything refuses, and by the subsystem that owns the
+        // sentence.** Zero is what a surface that is not an authored element writes — the ground, the
+        // sky — and the reservation is one across the gallery rather than one per content, so the
+        // answer belongs to whoever else would have answered a non-zero id: the landscape's own for
+        // the plain, and the sentence below for a scene whose content names its elements some other
+        // way. Asked only inside the naming below, this arm was unreachable for every building scene,
+        // and a pixel of sky was handed the sentence that says the scene does not name its own —
+        // false of a scene whose walls are all named.
+        if id == NOT_AUTHORED && naming(scene).is_none() {
+            return Some(
+                crate::identity::locate(
+                    scene,
+                    Some([authored, 0.0, 0.0, 0.0]),
+                    one(U_OUTPUT).unwrap_or(0.0),
+                    one(V_OUTPUT).unwrap_or(0.0),
+                )
+                .unwrap_or_else(|| {
+                    String::from(
+                        "not an authored element: this pixel is the ground the scene stands on, or \
+                         the sky above it",
+                    )
+                }),
+            );
+        }
         if let Some(answer) = crate::building_identity::locate_in(scene, id) {
             return Some(answer);
         }

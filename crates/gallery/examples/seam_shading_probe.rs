@@ -54,14 +54,6 @@ const AREA_FLOOR: f64 = 1.0e-9;
 /// A cross product below this is a normal with no direction.
 const NORMAL_FLOOR: f64 = 1.0e-12;
 
-fn cross(a: Point3, b: Point3) -> Point3 {
-    Point3::new(
-        a.y * b.z - a.z * b.y,
-        a.z * b.x - a.x * b.z,
-        a.x * b.y - a.y * b.x,
-    )
-}
-
 /// What one triangle of the drawn mesh looks like.
 struct Triangle {
     area: f64,
@@ -169,10 +161,6 @@ fn main() {
     let degenerate = triangles
         .iter()
         .filter(|tri| tri.area <= AREA_FLOOR)
-        .count();
-    let flipped = triangles
-        .iter()
-        .filter(|tri| tri.from_vertices > 1.0)
         .count();
     let missing = triangles
         .iter()
