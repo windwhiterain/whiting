@@ -735,3 +735,25 @@ The two-line change (a cut station's index 0 at `wall.ground` instead of the hol
    gains 13 degenerate faces. That is a real defect the change exposed rather than caused.
 
 **The change is reverted** because with the warps untouched it bought nothing and cost 13 degenerate faces.
+
+## The quad's four ids, printed, and a contradiction to resolve (2026-10-27)
+
+The strip's quads with their ids and points:
+
+```text
+QUAD ids [0, 4, 6, 2] at [[0.0, 0.02, 0.0], [1.1, 0.02, 0.0], [1.09, 0.0, 0.01], [0.01, 0.0, 0.010000002]]
+```
+
+**Ids 0 and 4 are the raw outline corners (ids below `2 * count`), and they sit at `y = 0.02`.** Ids 6 and 2 are the
+inner loop's, at `y = 0.0`. So the outer corners of the strip are the mass's own outline corners raised by a sill's
+height — and correcting the *cut station* branch changed nothing, because these two corners are never built there.
+
+**The contradiction to resolve next:** `shed.rs` builds its mass with `Mass::new(outline, height)`, which sets one
+elevation for every node, and the scene passes `with_slab(slab)`. Yet the outline's own corners measure `y = 0.02`.
+So either `Mass::new`'s elevation is not the outline's y, or something raises the authored corners by a slab or a
+sill between the document and the solid. **That is a one-question investigation with a definite answer, and it is the
+right next move** — the warp is in the authored corners, not in the stations, and every station-side change has now
+been measured against it and left the numbers bit-identical.
+
+Also still true and independent: a door's below-band is emitted with zero area (13 `FaceDegenerate` on the shed) and
+must be skipped when its two elevations coincide.
