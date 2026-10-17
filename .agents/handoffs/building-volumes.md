@@ -681,3 +681,34 @@ the band alone) are the two halves of one change, and both were measured this ro
 **A note for whoever implements it:** the ground pair must be *reused*, not created, when the sill stands **on** the
 ground — the code already does this for floors in the line below it (`if *cut == wall.inner_floor_at(*station)`) and
 the ground pair needs the same guard, or every door gains a duplicate ring.
+
+## The exact edit, now that the band emission is read (2026-10-27)
+
+The band loop emits each band through `gap(solid, side, near, far, low, high, element)`, where `near`/`far` are the
+stations' `StationPoints` and `levels` are the elevation pairs `band_levels` returns — **including the ground level for
+the band below an opening**. And `StationPoints` holds exactly four points:
+
+```rust
+outer_base  (the wall's base, for an authored corner; the *sill* for a cut station)
+outer_top
+inner_base  (the same asymmetry)
+inner_top
+```
+
+**A cut station therefore has no point at the wall's ground**, and `gap` can only place the below-band's bottom edge by
+interpolating between the two jambs' sill points — which is the warp, measured as the `WallBase` strip's outer corners
+at `y = 0.02` and `y = 0.05`. The strip itself was never the defect; it inherited the only points the stations had.
+
+**So the edit is one struct, its picker, and one function:**
+
+1. `StationPoints` gains `outer_ground` and `inner_ground`, created at `wall.ground` interpolated along the edge;
+2. the `pick` that answers a station's four points by side and elevation gains the two ground points, so a `gap`
+   whose `low` is the ground reads them;
+3. `CutStation`'s `soffit_ground`/`floor_ground` (already drafted and measured this session) are then the same two
+   points, reused rather than created — **the guard matters**: a door's sill *is* the ground, and a second point at the
+   same position is a second vertex, which is how the mass reopened twice in this slice.
+
+**Why this shape and not the earlier two:** the strip alone reopened the mass (its corners stopped pairing with the
+bands), and the ground pair alone reopened it too (the bands kept their sill corners). The bands and the strip are the
+same two readers of one station, and the points must be created once, where the station is read — which is
+`StationPoints`, not `CutStation`. That is the correction this round's reading earns.
