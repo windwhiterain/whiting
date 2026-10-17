@@ -3355,3 +3355,19 @@ below the line are named only by `--where`. Which is the reading limitation abov
 anyway, but the brief treated the defect as the last one in the class and it was the last one in the class **and not
 the only thing standing between a reader and a complete picture**.
 
+
+### Correction: the difference was the hash's domain, not an adapter (2026-10-27)
+
+The section above said one slice "ran on a different adapter" because its `house` read `4F343949D83B2064` where the
+table carries `B13154AD7D29F938`. **That was wrong, and the measurement that corrects it is a later slice's:** both
+numbers are real and they are **two hashes of one frame** — one over the raw pixel buffer the gpu returned, one over
+the written `.png`. The table's nine values reproduce on this machine by fresh render, which the "adapter" story could
+not explain.
+
+**What survives of the rule, and why it still matters:** the renderer's own comment (`render.rs:1505`) asserts that a
+hash does not survive another machine or adapter, and nothing here contradicts that — it only says **that was not the
+cause of this pair**. So a merge gate is still a **before/after pair on one machine, naming which hash it is**; and when
+two numbers disagree, the first question is *which hash is this?*, not *which machine?*.
+
+**A false rule in a record is worse than no rule**, because the next session budgets for the wrong problem: one slice
+spent part of its turn re-baselining on a second adapter that did not exist.
