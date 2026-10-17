@@ -107,7 +107,8 @@ fn shutter(width: f32, height: f32, thickness: f32) -> Template {
 /// **The doorway is the only opening without a shutter**, and that is the scene's argument: an open doorway
 /// is the one place a viewer can see into the building, and what is inside it is the plate the floor slice
 /// derived.
-fn workshop_document() -> (Building, usize) {
+/// Returns the workshop's document and the template its shutters come from.
+pub fn workshop_document() -> (Building, usize) {
     let mut skeleton = derive::starter(&STARTER).skeleton;
     let mass = MassId(0);
     let front = FaceRef::new(mass, FRONT_EDGE);
@@ -386,3 +387,8 @@ const GRADE: &str = r#"
     let centred = in.uv - vec2<f32>(0.5, 0.5);
     color = color * clamp(1.0 - dot(centred, centred) * 0.40, 0.0, 1.0);
 "#;
+
+/// Returns the workshop's document alone, for a caller that wants to name what a frame shows.
+pub fn document() -> Building {
+    workshop_document().0
+}

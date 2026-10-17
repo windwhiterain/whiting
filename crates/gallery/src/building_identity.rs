@@ -201,21 +201,37 @@ pub fn stage_set<'text>(
     shaders
 }
 
-/// Resolves an `authored_id` written by the **identity scene** into the name of the element it shows.
+/// Resolves an `authored_id` written by **any building scene this crate knows** into the name of the element
+/// it shows.
 ///
 /// # Invariants
 ///
-/// - **The document is rebuilt, not remembered.** An id is a position in a table that is a function of the
-///   document and its mesh, so a caller holding a number from a frame must be handed the name the *same*
-///   document gives it: rebuilding is what makes the two agree by construction rather than by hope.
-/// - **An id the table does not hold answers `None`** — zero, the sky's, the ground's, and any number from
-///   another build. That is the reserved zero doing its job: "not an element of this building" is an answer,
-///   and it is different from "an element I cannot name".
-/// - It is the building side of [`crate::identity::locate`], with the same argument: the hops happen here
-///   and nowhere else, because a caller that chained them itself would be wrong in the middle where the
-///   answer looks like an answer.
-pub fn locate(id: u32) -> Option<String> {
-    let built = crate::authored::document().build().ok()?;
+/// - **The document is rebuilt from the scene's own builder**, so a caller holding a number from a frame is
+///   handed the name the *same* document gives it: rebuilding is what makes the two agree by construction
+///   rather than by hope.
+/// - **A scene this module cannot name answers `None`**, and so does an id the table does not hold — zero, the
+///   sky's, the ground's, and any number from another build. That is the reserved zero doing its job: *"not an
+///   element of this building"* is an answer, and it is different from *"an element I cannot name"*.
+/// - It is the building side of [`crate::identity::locate`], with the same argument: the hops happen here and
+///   nowhere else, because a caller that chained them itself would be wrong in the middle where the answer
+///   looks like an answer.
+pub fn locate_in(scene: &str, id: u32) -> Option<String> {
+    let building = match scene {
+        "identity" => crate::authored::document(),
+        "shed" => crate::shed::document(),
+        "workshop" => crate::workshop::document(),
+        "yard" => crate::yard::document(),
+        _ => return None,
+    };
+    let built = building.build().ok()?;
     let numbering = Identity::of(&built, 1);
     numbering.row(id).map(|row| row.path.clone())
+}
+
+/// Resolves an `authored_id` written by the **identity scene** into the name of the element it shows.
+///
+/// It is [`locate_in`] with the scene this module was built for, kept because that scene is the one the crate
+/// documents as its identity picture.
+pub fn locate(id: u32) -> Option<String> {
+    locate_in("identity", id)
 }

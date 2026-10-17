@@ -124,7 +124,7 @@ fn canopy(width: f32, thickness: f32, reach: f32) -> Template {
 /// **Every slot is named, never a coordinate**, so the whole facade moves if the grid changes and
 /// nothing here has to be rewritten. The one coordinate the document cannot avoid is the pin that
 /// says where inside its bay a part stands, and even that is in metres from the bay's own corner.
-fn shed_document() -> Building {
+pub fn document() -> Building {
     let mut skeleton = derive::starter(&STARTER).skeleton;
     let mass = MassId(0);
     let front = FaceRef::new(mass, FRONT_EDGE);
@@ -169,7 +169,7 @@ fn shed_document() -> Building {
 
 /// Builds the shed scene.
 pub fn shed() -> Value {
-    let building = shed_document();
+    let building = document();
     let built = building
         .build()
         .expect("the shed expands: its outline is a quad, its grid tiles every face, and its parts are closed");

@@ -369,3 +369,19 @@ const GRADE: &str = r#"
     let centred = in.uv - vec2<f32>(0.5, 0.5);
     color = color * clamp(1.0 - dot(centred, centred) * 0.40, 0.0, 1.0);
 "#;
+
+/// Returns the yard's document **as the scene builds it**: the site, seated on the ground it crosses.
+///
+/// # Invariants
+///
+/// It is the same document the scene draws — the seat is part of the picture, so a caller naming what a frame
+/// shows must name it after the seating rather than before.
+pub fn document() -> Building {
+    let mut skeleton = site();
+    seat(
+        &mut skeleton,
+        |plan| ground(plan[0] as f64, plan[1] as f64) as f32,
+        0.0,
+    );
+    Building::new(skeleton)
+}

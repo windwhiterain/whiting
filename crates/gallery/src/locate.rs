@@ -54,6 +54,15 @@ pub fn locate(scene: &str, values: &[(String, f32)]) -> Option<String> {
             .find(|(held, _)| held == name)
             .map(|(_, value)| *value)
     };
+    // **A building's frame answers through its own id**, and the two domains are asked in the order their
+    // channels exist: a building scene declares `authored_id` and nothing else, the landscape declares the id
+    // and a belt coordinate. Asking both and taking whichever answers is what keeps this one function rather
+    // than one per subsystem — and neither answers for a scene it does not know.
+    if let Some(id) = one(ID_OUTPUT) {
+        if let Some(answer) = crate::building_identity::locate_in(scene, id.round() as u32) {
+            return Some(answer);
+        }
+    }
     crate::identity::locate(
         scene,
         one(ID_OUTPUT).map(|value| [value, 0.0, 0.0, 0.0]),
