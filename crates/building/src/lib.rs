@@ -55,6 +55,7 @@
 pub mod clip;
 pub mod derive;
 pub mod expand;
+pub mod fill;
 pub mod grid;
 pub mod identity;
 pub mod mass;
