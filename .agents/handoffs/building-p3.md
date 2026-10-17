@@ -170,3 +170,29 @@ which is the number an author needs to see and the only place they can see it.
 
 - **Next**: slice 4 — **a site scene**: the shed and its yard on a slope, drawn. That is the last item
   in the phase's own scope, and it is the one that shows whether the site reads as a place.
+
+- **2026-10-16** — **slice 4 (the site scene) drawn**: `crates/gallery/src/yard.rs`, registered as
+  `"yard"`, 13 passes. A shed and a store up a `0.16 x` slope, inside a five-run courtyard with a gate,
+  everything seated by one `seat` call and expanded from one document.
+
+  Three things the frame had to get right, each of which was a decision rather than a tweak:
+
+  - **One law for the ground.** `ground(x, z)` is called once by the terrain mesh and once by `seat`, so
+    what the frame draws is exactly what the document was seated on. Two laws would draw buildings
+    hovering over a slope or buried in it, and the picture would still look plausible — the one failure a
+    render cannot show and a shared function cannot have.
+  - **The scene refuses to draw a site it could not seat**: it asserts `2` masses and `5` walls were
+    seated, because a mass the ground did not answer for stays at its authored elevation, which on this
+    slope means floating.
+  - **A building on a slope needs a deep foundation, and the frame proved it.** The terrace is cut to the
+    *highest* ground under a building, so its downhill edge stands the relief above the ground; with the
+    starter's 0.3 m slab the whole downhill side floated, and the scene's buildings were given a `1.20 m`
+    slab — which is what a real building on a slope has, and the reason the slab exists.
+
+  First render (`out/yard.png`) read as a beige plane: the 0.09 slope was too gentle and the four
+  materials too close in value. Second (`out/yard2.png`) with `0.16` and separated materials reads as a
+  site; the remaining artifact is the shadow terminator's toothing, which is the shadow subsystem's.
+
+- **Next**: **closing P3.** All four slices are in. What remains is book-keeping: fold this handoff's
+  durable findings into the proposal as P3's record, delete the handoff, and let the phase branch be
+  merged and removed — the same closing P2 got.

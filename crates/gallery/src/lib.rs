@@ -95,6 +95,8 @@ mod sunlight;
 mod terraces;
 mod tidewater;
 mod tiles;
+/// The yard scene: a site on a slope, with a courtyard and a gate.
+pub mod yard;
 
 pub use dunes::dunes;
 pub use foldyard::foldyard;
@@ -158,6 +160,7 @@ impl Gallery {
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
             "shed" => shed::shed(),
+            "yard" => yard::yard(),
             "spotlight" => spotlight(),
             "stilllife" => stilllife(),
             "studio" => scene::standard::example_standard_scene(),
