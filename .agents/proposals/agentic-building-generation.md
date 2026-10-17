@@ -1774,6 +1774,36 @@ fill, **print every triangle's three vertices and its area for the centred recta
 lies in the annulus before trusting any total, and only then compare the sum with `84.0000`. A correct triangle count
 has already lied once.
 
+### The ring fill works: three rules, and the symmetric case that needed a fourth (2026-10-27)
+
+`crate::fill::ring_fill` fills the region between an outline and a loop inside it, and all four measured cases are
+**exact**:
+
+| case | triangles | filled | wanted | stray triangles |
+| --- | --- | --- | --- | --- |
+| centred 4 × 4 void in a 10 × 10 outline | 8 | **84.0000** | 84.0000 | **0** |
+| off-centre void | 8 | **92.0000** | 92.0000 | **0** |
+| triangular void | 7 | **92.0000** | 92.0000 | **0** |
+| a notched (non-convex) void | **0** | — | 88.0000 | 0 — refused, as designed |
+
+The probe prints every triangle and checks each one's **centroid** against the annulus before it trusts any total,
+because the third attempt's predecessor had the right triangle *count* and 140 m² of overlapping ones. Three rules
+were needed, and each was earned by a measurement:
+
+1. **The ear rule is "holds no vertex", not "is smaller"** — the failed walk used the smaller-area heuristic and
+   produced 140 m² against an 84 m² annulus.
+2. **A candidate must also cross no ring edge** — the first pass of the vertex rule let a triangle whose corners all
+   sat *on* the hole cover the hole's interior: its edges crossed the hole's boundary, and the fill leaked to 168 m².
+3. **A candidate must not contain the hole's centre** — and this one is the pretty one: in the **symmetric** case a
+   chord from one outer corner to the hole's corner passes *through* the hole's opposite corner, so it crosses
+   nothing **properly** and contains no vertex strictly, yet it runs straight through the hole. The off-centre and
+   triangular cases already measured exact; only the centred one failed, and only because symmetry made every
+   crossing degenerate. **A centre-inside test is what a symmetry needs.**
+
+`ring_fill` is the prerequisite for a plan with a hole: the plate's top and bottom and the wall's top ring all need
+it. The next slice is `Mass::voids` plus the shell, and the acceptance there is already written: a ring-shaped solid
+must measure an Euler characteristic of **0**.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
