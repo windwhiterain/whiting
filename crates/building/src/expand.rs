@@ -67,7 +67,7 @@ use crate::mass::{Mass, MassId, PlanNode};
 use crate::math::{
     Vec2, Vec3, cross, cross3, difference, distance, dot, length, lift, normalized, subtract,
 };
-use crate::mesh::{BuildingFace, BuildingMesh, Element, MassSurface, RoofSurface};
+use crate::mesh::{BuildingFace, BuildingMesh, Element, MassSurface, PartSurface, RoofSurface};
 use crate::openings::{Extents, RevealSide};
 use crate::roof::{EaveStation, Roof, RoofId, RoofRow};
 use crate::skeleton::BuildingSkeleton;
@@ -292,6 +292,21 @@ pub enum Problem {
         /// The later.
         right: usize,
     },
+    /// A placement could not be resolved, so nothing stands in its bay.
+    ///
+    /// # Invariants
+    ///
+    /// **It refuses the build, like every other problem here** — this crate's shape is that problems
+    /// come back as a list and the mesh is all-or-nothing, so a document with an orphaned placement is
+    /// not buildable until its author fixes the slot. What is *not* allowed is silence: a lookup that
+    /// answers `None` filters, and [`BuildingSkeleton::unresolved_placements`] is the companion that
+    /// names what it dropped, which is why this variant exists at all. The validator reports the same
+    /// fault in the document's own terms (`PlacementTemplateMissing`, `PlacementBayMissing`), so an
+    /// author reading either sees it.
+    PlacementUnresolved {
+        /// The placement, by its index in the document's placements.
+        placement: usize,
+    },
 }
 
 /// Everything that stopped a build.
@@ -334,11 +349,113 @@ pub fn build(skeleton: &BuildingSkeleton) -> Result<BuildingMesh, BuildError> {
             problems.extend(found);
         }
     }
+    for index in 0..skeleton.parts.len() {
+        match expand_placement(skeleton, index) {
+            Ok(Some((points, faces))) => {
+                let base = mesh.points.len() as u32;
+                mesh.points.extend(points);
+                mesh.faces
+                    .extend(faces.into_iter().map(|face| BuildingFace {
+                        indices: face.indices.map(|corner| corner + base),
+                        element: face.element,
+                    }));
+            }
+            Ok(None) => problems.push(Problem::PlacementUnresolved { placement: index }),
+            Err(found) => problems.extend(found),
+        }
+    }
     if problems.is_empty() {
         Ok(mesh)
     } else {
         Err(BuildError { problems })
     }
+}
+
+/// Builds one placement's template in the frame its bay gives it, or `None` when it does not resolve.
+///
+/// # Invariants
+///
+/// **The template is built by the crate's own `build`, in its own coordinates, and then moved** — not
+/// rebuilt in the wall's frame. A part is therefore as closed, as welded and as oriented as a mass or
+/// a roof, because it went through the same code; what this function adds is one affine map and one
+/// rewriting of provenance.
+///
+/// The map is the frame the placement's own documentation states: the template's `x` runs along the
+/// edge, its `y` up, and its `z` **into the wall**, with `x × y = z`. The origin is the point on the
+/// wall's **outer face** at the pin's arc length and elevation, so a part authored from its own outer
+/// face lies in the wall's thickness rather than hanging outside it. The wall's frame comes from
+/// [`WallFace::of`] — the same reading the wall itself is built from — so there is no second
+/// derivation of what "along" or "inward" means for an edge.
+///
+/// A placement whose template holds no mass answers `None` from
+/// [`BuildingSkeleton::placed`](crate::skeleton::BuildingSkeleton::placed) and is
+/// [`Problem::PlacementUnresolved`], like one whose slot has gone.
+fn expand_placement(
+    skeleton: &BuildingSkeleton,
+    index: usize,
+) -> Result<Option<(Vec<Vec3>, Vec<BuildingFace>)>, Vec<Problem>> {
+    let Some((template, bay, _reach)) = skeleton.placed(index) else {
+        return Ok(None);
+    };
+    let placement = match skeleton.parts.placement(index) {
+        Some(placement) => *placement,
+        None => return Ok(None),
+    };
+    let Some(mass) = skeleton.mass(placement.face.mass) else {
+        return Ok(None);
+    };
+    let mut problems = Vec::new();
+    let Some(inner) = offset_loop(
+        &mass.outline,
+        placement.face.mass,
+        mass.wall,
+        mass.plan_area(),
+        &mut problems,
+    ) else {
+        return Err(problems);
+    };
+    let wall = WallFace::of(mass, placement.face.edge, &inner);
+    let held = build(&template.skeleton()).map_err(|error| error.problems)?;
+    let origin = lift(
+        wall.outer_at(bay.from + placement.at.along),
+        bay.low + placement.at.up,
+    );
+    let along = [wall.along[0], 0.0, wall.along[1]];
+    let inside = inward(wall.along);
+    let inward3 = [inside[0], 0.0, inside[1]];
+    let up = [0.0, 1.0, 0.0];
+    let points = held
+        .points
+        .iter()
+        .map(|point| {
+            let mut moved = origin;
+            for (axis, direction) in [(0, along), (1, up), (2, inward3)] {
+                for component in 0..3 {
+                    moved[component] += point[axis] * direction[component];
+                }
+            }
+            moved
+        })
+        .collect();
+    let faces = held
+        .faces
+        .iter()
+        .map(|face| BuildingFace {
+            indices: face.indices,
+            element: Element::Part {
+                placement: index,
+                surface: match face.element {
+                    Element::Mass(id, surface) => PartSurface::Mass(id, surface),
+                    Element::Roof(id, surface) => PartSurface::Roof(id, surface),
+                    // A template holds masses and roofs and nothing else, so this arm is what a
+                    // template that somehow held a part would fold into: the face belongs to the part
+                    // it is spliced into, and its own surface is kept.
+                    Element::Part { surface, .. } => surface,
+                },
+            },
+        })
+        .collect();
+    Ok(Some((points, faces)))
 }
 
 /// One solid being built, in its own point numbering.

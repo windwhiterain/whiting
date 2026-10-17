@@ -44,6 +44,7 @@ use crate::grid::{FaceGrid, FaceRef, Rhythm};
 use crate::mass::{Attachment, Mass, MassId, PlanNode};
 use crate::math::{distance, lerp};
 use crate::openings::Opening;
+use crate::parts::{Placement, Template};
 use crate::roof::{Roof, RoofId};
 use crate::skeleton::BuildingSkeleton;
 
@@ -306,4 +307,36 @@ pub fn add_opening(skeleton: &mut BuildingSkeleton, opening: Opening) -> Option<
 /// and a caller that assumes they are gets a document that names the wrong hole.
 pub fn remove_opening(skeleton: &mut BuildingSkeleton, index: usize) -> Option<Opening> {
     skeleton.openings.remove(index)
+}
+
+/// Adds a template to the document and returns the index it was given.
+///
+/// Appending never renumbers, which matters here because a placement names its template by index: an
+/// edit that renumbered the templates already there would move every part that names one.
+pub fn add_template(skeleton: &mut BuildingSkeleton, template: Template) -> usize {
+    skeleton.parts.add_template(template)
+}
+
+/// Places a template in a bay and returns the placement's index.
+///
+/// # Invariants
+///
+/// - **The document decides the domain.** A template index it does not hold, or a bay slot its grid
+///   does not hold, is refused here (`None`) rather than recorded and reported later — the rule
+///   [`add_opening`] follows, and for the same reason: there is no bay to measure anything against.
+/// - **A part that does not fit its bay is still placed.** Fitting is a question about a template's
+///   box against a bay's extents, and the answer belongs in a report
+///   ([`PlacementOutsideBay`](crate::validate::Violation::PlacementOutsideBay)) while the author moves
+///   the part; refusing it here would make a document unbuildable for a fault that is a matter of
+///   centimetres. `O(log faces)` for the bay and `O(1)` for the rest.
+pub fn place_part(skeleton: &mut BuildingSkeleton, placement: Placement) -> Option<usize> {
+    let template = skeleton.parts.template(placement.template)?;
+    let bay = skeleton.bay(placement.face, placement.row, placement.column)?;
+    placement.reach(template, bay)?;
+    Some(skeleton.parts.place(placement))
+}
+
+/// Removes a placement by index and returns it.
+pub fn remove_placement(skeleton: &mut BuildingSkeleton, index: usize) -> Option<Placement> {
+    skeleton.parts.remove(index)
 }

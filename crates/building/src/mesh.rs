@@ -114,6 +114,35 @@ pub enum Element {
     Mass(MassId, MassSurface),
     /// A face of a roof.
     Roof(RoofId, RoofSurface),
+    /// A face of a part: which placement stands it, and what it was inside its template.
+    ///
+    /// # Invariants
+    ///
+    /// The two halves answer the two questions a part's face can be asked. `placement` is the index of
+    /// the placement in the document, which is also the index its [`SolidId::Part`] carries, so a face
+    /// traces back to the authored placement rather than to the template it happens to be a copy of —
+    /// the identity a scene needs when the same door leaf stands in four doorways. `surface` is the
+    /// **template's own** element, unchanged, so a face still knows whether it is a wall, a slab, or a
+    /// reveal, and a report can say "the second leaf's inner wall" without a second vocabulary.
+    Part {
+        /// The placement, by its index in the document's placements.
+        placement: usize,
+        /// What the face was inside the template.
+        surface: PartSurface,
+    },
+}
+
+/// What a part's face was inside the template it was copied from.
+///
+/// It is [`Element`] without the part, which is what keeps the recursion out of the type: a template
+/// is a skeleton of masses and roofs, and a template holding a part is not a thing this crate builds,
+/// so one level is the whole of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PartSurface {
+    /// A face of one of the template's masses.
+    Mass(MassId, MassSurface),
+    /// A face of one of the template's roofs.
+    Roof(RoofId, RoofSurface),
 }
 
 impl Element {
@@ -122,17 +151,28 @@ impl Element {
         match self {
             Self::Mass(id, _) => SolidId::Mass(*id),
             Self::Roof(id, _) => SolidId::Roof(*id),
+            Self::Part { placement, .. } => SolidId::Part(*placement),
         }
     }
 }
 
 /// One closed solid the mesh is made of.
+///
+/// # Invariants
+///
+/// One variant per kind of body a document holds, and the index is that body's own index in the
+/// document's list of its kind. A **part** is a solid of its own rather than a surface of its host's:
+/// it is closed, it is oriented outward, and the two-level watertightness rule reads it exactly as it
+/// reads a mass — which is what lets a door leaf stand in a hole without the wall and the leaf having
+/// to agree about a single vertex.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SolidId {
     /// A mass.
     Mass(MassId),
     /// A roof.
     Roof(RoofId),
+    /// A part, by its placement's index in the document's placements.
+    Part(usize),
 }
 
 /// One triangle, and the element that produced it.
@@ -178,6 +218,29 @@ impl BuildingMesh {
             for axis in 0..3 {
                 low[axis] = low[axis].min(point[axis]);
                 high[axis] = high[axis].max(point[axis]);
+            }
+        }
+        (low, high)
+    }
+
+    /// Returns the box one solid stands in, as (lowest, highest) corners.
+    ///
+    /// # Invariants
+    ///
+    /// It reads the points the solid's **own faces** name, not the mesh's whole point list, which is
+    /// the difference that matters as soon as a document holds more than one body: a part's box
+    /// against its host's says where the part was placed, and the mesh's own box says nothing about
+    /// either. `O(faces of that solid)`, the same pass the other `_of` readings make.
+    pub fn bounds_of(&self, solid: SolidId) -> (Vec3, Vec3) {
+        let mut low = [f32::INFINITY; 3];
+        let mut high = [f32::NEG_INFINITY; 3];
+        for face in self.faces_of(solid) {
+            for corner in self.faces[face].indices {
+                let point = self.points[corner as usize];
+                for axis in 0..3 {
+                    low[axis] = low[axis].min(point[axis]);
+                    high[axis] = high[axis].max(point[axis]);
+                }
             }
         }
         (low, high)

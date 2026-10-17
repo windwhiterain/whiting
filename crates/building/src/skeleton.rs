@@ -8,6 +8,7 @@ use crate::grid::{Bay, FaceGrid, FaceRef, Grids, face_extent, face_length};
 use crate::mass::{Mass, MassId};
 use crate::mesh::BuildingMesh;
 use crate::openings::{Extents, Openings};
+use crate::parts::{Bounds, Parts, Template};
 use crate::roof::{Roof, RoofId};
 use crate::validate::{Violation, document, mesh};
 
@@ -23,17 +24,57 @@ pub struct BuildingSkeleton {
     pub grids: Grids,
     /// The openings: holes cut through the walls, each naming a bay by slot.
     pub openings: Openings,
+    /// The parts: the templates a document authors and the places they stand.
+    pub parts: Parts,
 }
 
 impl BuildingSkeleton {
-    /// Builds a skeleton from its masses and its roofs, with no rhythm authored and no wall cut.
+    /// Builds a skeleton from its masses and its roofs, with no rhythm authored, no wall cut, and
+    /// nothing placed.
     pub fn new(masses: Vec<Mass>, roofs: Vec<Roof>) -> Self {
         Self {
             masses,
             roofs,
             grids: Grids::new(),
             openings: Openings::new(),
+            parts: Parts::new(),
         }
+    }
+
+    /// Returns everything a placement resolves to: its template, its bay, and the box it occupies in
+    /// that bay's own frame.
+    ///
+    /// # Invariants
+    ///
+    /// **One place resolves a placement**, so the expander that stands the part and the validator that
+    /// measures it cannot disagree — the same rule [`aperture`](Self::aperture) follows for a hole. A
+    /// template index the document does not hold, a bay slot the grid does not hold, or a template
+    /// with no mass all answer `None`, which is exactly what
+    /// [`unresolved_placements`](Self::unresolved_placements) names. `O(log faces)` for the bay and
+    /// `O(1)` for the rest.
+    pub fn placed(&self, index: usize) -> Option<(&Template, Bay, Bounds)> {
+        let placement = self.parts.placement(index)?;
+        let template = self.parts.template(placement.template)?;
+        let bay = self.bay(placement.face, placement.row, placement.column)?;
+        let reach = placement.reach(template, bay)?;
+        Some((template, bay, reach))
+    }
+
+    /// Returns the index of every placement that **cannot be resolved** in one wall.
+    ///
+    /// # Invariants
+    ///
+    /// The companion of [`placed`](Self::placed), and it exists because a lookup that answers `None`
+    /// is a lookup that **filters**: an expander reading only the resolvable placements would stand a
+    /// wall's other parts and say nothing about the one whose slot the grid no longer holds — a mesh
+    /// quietly disagreeing with its document. Both go through `placed`, so there is one definition of
+    /// "resolved" rather than one per caller. `O(placements of that face)`.
+    pub fn unresolved_placements(&self, face: FaceRef) -> Vec<usize> {
+        self.parts
+            .of_face(face)
+            .into_iter()
+            .filter_map(|index| self.placed(index).is_none().then_some(index))
+            .collect()
     }
 
     /// Returns the rectangle an opening cuts, and the wall it is cut into.

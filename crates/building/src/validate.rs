@@ -474,6 +474,43 @@ pub enum Violation {
         /// The later of the two.
         other: usize,
     },
+    /// A placement names a template the document does not hold.
+    ///
+    /// Staged like the others: with no template there is no box, so nothing about where the part
+    /// stands can be asked.
+    PlacementTemplateMissing {
+        /// The placement, by its index in the document's list.
+        placement: usize,
+    },
+    /// A placement names a bay the grid does not hold.
+    ///
+    /// The face may have no rhythm at all, or the row and column may be past its stops — the same
+    /// question [`OpeningBayMissing`](Self::OpeningBayMissing) asks of a hole, because a part and a
+    /// hole are both authored against a bay and both are orphaned the same way by a re-split.
+    PlacementBayMissing {
+        /// The placement.
+        placement: usize,
+        /// The wall it names.
+        face: FaceRef,
+    },
+    /// A placement's template does not fit in the bay it stands in.
+    ///
+    /// # Invariants
+    ///
+    /// **It is a statement about the template's box against the bay's own extents**, both measured in
+    /// the bay's coordinates, and it is a fault rather than a refusal: a part whose box overhangs its
+    /// bay by a centimetre is a part an author wants placed while they move it, which is why
+    /// [`place_part`](crate::ops::place_part) accepts it and this check reports it. `past` is how far
+    /// the worst edge stands out, so the answer reads the way an author measures.
+    ///
+    /// A template with no mass is not this fault: it has no box, and a part of no material is caught by
+    /// the fact that it emits no solid rather than by a containment reading.
+    PlacementOutsideBay {
+        /// The placement.
+        placement: usize,
+        /// How far the worst edge of its box stands past the bay.
+        past: f32,
+    },
     /// A facet has no area because **two of its corners are one point**, so it is a facet of no
     /// surface.
     ///
@@ -551,6 +588,7 @@ pub fn document(skeleton: &BuildingSkeleton) -> Vec<Violation> {
     check_masses(skeleton, &mut violations);
     check_roofs(skeleton, &mut violations);
     check_grids(skeleton, &mut violations);
+    check_parts(skeleton, &mut violations);
     check_openings(skeleton, &mut violations);
     violations.sort_by_key(order_key);
     violations
@@ -916,7 +954,9 @@ fn check_solid(
             .iter()
             .map(|face| skeleton.apertures_of(*face).len())
             .sum(),
-        SolidId::Roof(_) => 0,
+        // A part and a roof are cut by nothing: a hole is authored against a mass's own wall, and a
+        // template's masses are its own private document rather than this one's.
+        SolidId::Roof(_) | SolidId::Part(_) => 0,
     };
     let expected = 2 - 2 * holes as i64;
     let euler = built.euler_characteristic_of(&faces);
@@ -1234,6 +1274,48 @@ fn check_shared_wall(
 fn hole_of(cut: &[(usize, Extents)], index: usize) -> Option<(usize, Extents)> {
     let at = cut.binary_search_by_key(&index, |(held, _)| *held).ok()?;
     Some(cut[at])
+}
+
+/// Checks every placement: that its template is there, that its bay is there, and that what it holds
+/// fits.
+///
+/// # Invariants
+///
+/// **The containment reading is in the bay's own coordinates**, which is what makes it `O(1)` and what
+/// makes it independent of the frame the part will be built in: [`Placement::reach`] has already moved
+/// the template's box to the bay's corner, so this compares four numbers against the bay's two extents
+/// and reports how far past the worst one stands.
+///
+/// Staged: a placement whose template is missing is reported as that and nothing else, because there
+/// is no box to compare; a template with no mass answers `None` from `reach` and is not this check's
+/// business at all.
+fn check_parts(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
+    for (index, placement) in skeleton.parts.placements().iter().enumerate() {
+        let Some(template) = skeleton.parts.template(placement.template) else {
+            violations.push(Violation::PlacementTemplateMissing { placement: index });
+            continue;
+        };
+        let Some(bay) = skeleton.bay(placement.face, placement.row, placement.column) else {
+            violations.push(Violation::PlacementBayMissing {
+                placement: index,
+                face: placement.face,
+            });
+            continue;
+        };
+        let Some(reach) = placement.reach(template, bay) else {
+            continue;
+        };
+        let past = (-reach.x.0)
+            .max(reach.x.1 - bay.width())
+            .max(-reach.y.0)
+            .max(reach.y.1 - bay.height());
+        if past > GRID_TOLERANCE {
+            violations.push(Violation::PlacementOutsideBay {
+                placement: index,
+                past,
+            });
+        }
+    }
 }
 
 /// Checks that no facet has no area.
@@ -1590,6 +1672,17 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         Violation::GridTooShort { face } => (21, face.mass.0 as u64, face.edge as u64, 0, 0),
         Violation::GridNotOrdered { face } => (22, face.mass.0 as u64, face.edge as u64, 0, 0),
         Violation::GridOutsideFace { face } => (23, face.mass.0 as u64, face.edge as u64, 0, 0),
+        Violation::PlacementTemplateMissing { placement } => (28, *placement as u64, 0, 0, 0),
+        Violation::PlacementBayMissing { placement, face } => (
+            29,
+            *placement as u64,
+            face.mass.0 as u64,
+            face.edge as u64,
+            0,
+        ),
+        Violation::PlacementOutsideBay { placement, past } => {
+            (30, *placement as u64, ordered(*past), 0, 0)
+        }
         // The four opening faults in the order an author meets them: the slot is not there, the bay
         // cannot hold the hole, the hole leaves the wall, and two holes in one wall fight.
         Violation::OpeningBayMissing { opening, face } => {
@@ -1604,10 +1697,17 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
 }
 
 /// Returns a number that sorts a solid the way the enum's own order does, masses first.
+///
+/// # Invariants
+///
+/// The three kinds take three ranges that cannot meet — masses below `2^32`, roofs in the next one,
+/// parts above — so the order is total over any document and two runs diff. A part's rank is its
+/// placement's index, which is the index its own faces name it by.
 fn solid_rank(solid: &SolidId) -> u64 {
     match solid {
         SolidId::Mass(mass) => mass.0 as u64,
         SolidId::Roof(roof) => (1 << 32) | roof.0 as u64,
+        SolidId::Part(placement) => (2 << 32) | *placement as u64,
     }
 }
 

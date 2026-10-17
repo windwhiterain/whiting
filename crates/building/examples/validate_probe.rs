@@ -342,6 +342,8 @@ fn report_areas(skeleton: &BuildingSkeleton, built: &BuildingMesh, solid: SolidI
     let authored = match solid {
         SolidId::Mass(id) => skeleton.mass(id).map(|mass| mass.plan_area()),
         SolidId::Roof(id) => skeleton.roof(id).map(|roof| roof.plan_area()),
+        // A part has no authored loop of its own in this document: its geometry lives in its template.
+        SolidId::Part(_) => None,
     };
     println!(
         "  coverage: measured {:.4} against authored loop {}, over {} faces",
@@ -398,6 +400,9 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::GridTooShort { .. } => "GridTooShort",
         Violation::GridNotOrdered { .. } => "GridNotOrdered",
         Violation::GridOutsideFace { .. } => "GridOutsideFace",
+        Violation::PlacementTemplateMissing { .. } => "PlacementTemplateMissing",
+        Violation::PlacementBayMissing { .. } => "PlacementBayMissing",
+        Violation::PlacementOutsideBay { .. } => "PlacementOutsideBay",
         Violation::OpeningBayMissing { .. } => "OpeningBayMissing",
         Violation::OpeningExceedsBay { .. } => "OpeningExceedsBay",
         Violation::OpeningOutsideWall { .. } => "OpeningOutsideWall",

@@ -232,6 +232,44 @@ With that, slice 2 is complete: `fcf5afa` (interface) → `bacc44f` (cut + check
 `4d63f67` (acceptance) → this fix. The phase's remaining slices are parts, identity and the second
 demonstration scene.
 
+## Slice 3: parts
+
+**The interface is frozen** (`9d31ccd`): `parts.rs` — `Template` (a small skeleton in its own frame,
+`Template::skeleton()` handing it back as an ordinary `BuildingSkeleton` so the crate's own builder
+builds a part), `Placement` (template by index, bay by slot, `Pin` in metres from the bay's corner),
+`Bounds`, `Parts`; `Element::Part { placement, surface }` with `PartSurface` for the template's own
+element; `SolidId::Part(usize)`; `BuildingSkeleton.{parts, placed, unresolved_placements}`; the verbs
+`ops::{add_template, place_part, remove_placement}`; and three checks
+(`PlacementTemplateMissing`, `PlacementBayMissing`, `PlacementOutsideBay`).
+
+The frame a placement maps into, stated because everything else follows from it: the template's **`x`
+runs along the edge, `y` up, `z` into the wall**, with `x × y = z`; its origin lands on the wall's
+**outer face** at the pin's arc length and elevation. A template's own origin is its **floor**, which
+is why a part is authored with its outline at the elevation of its own slab.
+
+**The expansion is the chief designer's** (`bp-place` died before producing anything, the third
+work on this file to do so): the template is built by the crate's own `build` in its own coordinates
+and then moved by one affine map, with every face's provenance rewritten to
+`Element::Part { placement, surface }`. Measured by `examples/part_probe.rs`:
+
+- a hollow door leaf (0.9 m across, 1.35 m tall, 0.06 m thick, wall 0.01, slab 0.02) stands in the
+  doorway as `SolidId::Part(0)`: **28 faces, loops 0, Euler 2, manifold true, volume `0.026083`**
+  against the analytic `0.026084` (`0.9 × 0.06 × 1.35 − 0.88 × 0.04 × 1.33`), and a second,
+  deliberately over-tall leaf reads `0.045825` against `0.045824`;
+- **where it stands**, which the volume alone cannot prove: `Part(0)` occupies plan `x [3.4400,
+  3.5000]`, `z [−5.0000, −4.1000]` and `y [0.0000, 1.3500]` — 0.06 m of thickness into the wall from
+  its outer face, 0.9 m across the bay, standing on the ground — inside the host mass's own box
+  (`x [−3.5, 3.5]`, `z [−5.5, 5.5]`, `y [−0.4, 3.2]`);
+- a placement whose slot has gone is **named, not silently dropped**: clearing the face's rhythm makes
+  the build report three problems, **two of them `PlacementUnresolved`** (the third being the doorway
+  the same edit orphaned), and the document's own verdict names the same two as `PlacementBayMissing`
+  alongside `DidNotExpand` carrying the problems.
+
+One correction of the chief designer's own, recorded because it was a contract claim rather than a
+typo: the first draft of `Problem::PlacementUnresolved` said a part that cannot stand "does not make
+its host unbuildable", but `build` is all-or-nothing — problems come back as a list and the mesh is
+refused — so the doc now says the truth: it refuses the build like every other problem.
+
 **The acceptance probe is the chief designer's** (`examples/opening_probe.rs`), and its strongest
 number is the one no predicate can fake: a wall with a hole holds less material by exactly
 `hole area × wall thickness`. Measured on the document half before the cut landed — three holes (a
