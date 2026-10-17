@@ -801,3 +801,28 @@ change; if it holds station ids at 0.02, the elevation is being taken from `*_fl
 **And the degenerate faces are not `WallBase`** (the `WARP` instrument named only `WallBase`): they are almost
 certainly the reveals, which means the cover for them is a separate defect that this line of work was conflating.
 Printing the owning element of a `FaceDegenerate` costs one line and would settle it.
+
+## `cuts` printed: every station is on one edge, and its ids are the head of a block of eleven (2026-10-27)
+
+```text
+CUT edge 2 outer [2.2, 4.0] inner [2.2, 3.75] ids 16 17
+CUT edge 2 outer [1.1333334, 4.0] inner [1.1333334, 3.75] ids 27 28
+CUT edge 2 outer [-2.1999998, 4.0] inner [-2.1999998, 3.75] ids 71 72
+```
+
+Three readings from one print:
+
+1. **Every station is on edge 2** — the shed's openings are all on one wall, so the warp is confined to one edge's
+   bands and the strip quads across them.
+2. **The ids advance by exactly eleven per station** (`16 → 27 → 38 → 49 → 60 → 71`), so each station allocates
+   eleven points and `soffit`/`floor` are the **first two** of that block. The strip therefore reads the head of the
+   block, which is the pair built in the branch the last two rounds tried to change — and changing it left the
+   readings bit-identical, which means the strip's warped quads are **not** the ones adjacent to a station.
+3. **The warped quads are between the authored corners**, ids `0`/`4` in the earlier `QUAD` print, whose outer pair is
+   at `y = 0.02` and whose inner pair is at `y = 0`. So the mismatch is in the **authored** pair, and the one number
+   left to print is `mass.outline[node].elevation` beside `inside_floor[0]`'s y for the same node — the two are built
+   from the same expression, so if they differ the `inner` loop is not what `expand_mass` thinks it is.
+
+**The branch is otherwise finished and is not merged:** thirteen probes pass, six of nine scenes render, and the three
+that do not are rejected by these two fault classes alone. The handoff now carries ten measurements and no guesses;
+the next session should start from the two numbers above, not from the geometry.
