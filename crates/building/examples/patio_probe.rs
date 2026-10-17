@@ -73,4 +73,47 @@ fn main() {
             "the crate says it cannot draw a courtyard yet, which is the refusal the slice needs until it can"
         }
     );
+
+    // **Three courtyards that break the contract, each reported rather than repaired.** The good one above is
+    // refused for a different reason — it cannot be drawn yet — so these three are the faults that survive the
+    // drawing: a void outside the outline, a void with a notch, and two voids that overlap.
+    let outline = rectangle(-5.0, -5.0, 5.0, 5.0);
+    let cases = [
+        (
+            "a void reaching outside the outline",
+            vec![rectangle(3.0, -2.0, 7.0, 2.0)],
+        ),
+        (
+            "a void with a notch (not convex)",
+            vec![vec![
+                PlanNode::new([-2.0, -2.0], 0.0),
+                PlanNode::new([2.0, -2.0], 0.0),
+                PlanNode::new([2.0, 2.0], 0.0),
+                PlanNode::new([0.0, 0.0], 0.0),
+                PlanNode::new([-2.0, 2.0], 0.0),
+            ]],
+        ),
+        (
+            "two voids sharing plan area",
+            vec![
+                rectangle(-2.0, -2.0, 1.0, 1.0),
+                rectangle(0.0, 0.0, 2.0, 2.0),
+            ],
+        ),
+    ];
+    println!("\n# three courtyards that break the contract");
+    for (label, voids) in cases {
+        let mut skeleton = BuildingSkeleton::default();
+        skeleton.masses = vec![
+            Mass::new(outline.clone(), 3.2)
+                .with_wall(0.3)
+                .with_slab(0.4)
+                .with_voids(voids),
+        ];
+        let faults = Building::new(skeleton).validate();
+        println!("  {label}: {} fault(s)", faults.len());
+        for fault in &faults {
+            println!("    {fault:?}");
+        }
+    }
 }

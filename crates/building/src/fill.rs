@@ -185,7 +185,7 @@ fn area(triangle: [Vec2; 3]) -> f32 {
 }
 
 /// Returns whether a loop turns the same way at every corner.
-fn convex(polygon: &[Vec2]) -> bool {
+pub fn convex(polygon: &[Vec2]) -> bool {
     let mut sign = 0.0f32;
     for index in 0..polygon.len() {
         let previous = polygon[(index + polygon.len() - 1) % polygon.len()];

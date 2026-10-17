@@ -667,6 +667,35 @@ pub enum Violation {
         /// How far the group's farthest vertex stands off the group's own fitted plane.
         departure: f32,
     },
+    /// A mass's void is not strictly inside its outline, so the hole it makes would open through the wall.
+    VoidNotInside {
+        /// The mass.
+        mass: MassId,
+        /// Which of its voids, in the order it authored them.
+        void: usize,
+    },
+    /// A mass's void is not convex, and the ring it would make cannot be filled by a two-loop walk.
+    ///
+    /// # Invariants
+    ///
+    /// **The restriction is the filler's, stated rather than discovered.** `fill::ring_fill` bridges two convex loops;
+    /// a void with a notch would be filled by a walk that leaks. A later slice may widen this to any simple loop, and
+    /// this variant is where that change will show.
+    VoidNotConvex {
+        /// The mass.
+        mass: MassId,
+        /// Which of its voids.
+        void: usize,
+    },
+    /// Two of a mass's voids share plan area, so the hole they make is one hole with two descriptions.
+    VoidOverlaps {
+        /// The mass.
+        mass: MassId,
+        /// The lower-indexed void.
+        first: usize,
+        /// The other.
+        second: usize,
+    },
 }
 
 /// Reports what a skeleton has got wrong, without expanding it.
@@ -779,6 +808,7 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
         }
     }
     check_overlap(skeleton, violations);
+    check_voids(skeleton, violations);
 }
 
 /// Reports two masses whose plans share area with no attachment between them.
@@ -793,6 +823,51 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 ///
 /// The pairs are read in list order and each pair is reported once, with the lower index first, so
 /// the list is the same whatever order the masses were found in.
+/// Reports every mass's voids that break the contract a courtyard is authored under.
+///
+/// # Invariants
+///
+/// **Three faults, and each is a statement about the document rather than about the drawing:** a void that is not
+/// strictly inside its mass's outline (the hole would open through the wall), a void that is not convex (the ring
+/// filler bridges convex loops and would leak on a notch), and two voids that share plan area (one hole described
+/// twice). Whether the mass **draws** its courtyard is not asked here — expansion answers that, and until the void
+/// slice lands it refuses every mass that has one.
+///
+/// **"Inside" is measured, not eyeballed**: the area two plans share must equal the void's own area, which is a
+/// computation `crate::clip` already makes exact. A void that crosses the outline shares less than it encloses.
+fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
+    for (index, mass) in skeleton.masses.iter().enumerate() {
+        let id = MassId(index);
+        let outline: Vec<Vec2> = mass.outline.iter().map(|node| node.position).collect();
+        let voids: Vec<Vec<Vec2>> = mass
+            .voids
+            .iter()
+            .map(|loop_nodes| loop_nodes.iter().map(|node| node.position).collect())
+            .collect();
+        for (void, held) in voids.iter().enumerate() {
+            if !crate::fill::convex(held) {
+                violations.push(Violation::VoidNotConvex { mass: id, void });
+            }
+            let enclosed = crate::clip::shared_area(&outline, held).abs();
+            let own = crate::clip::shared_area(held, held).abs();
+            if (enclosed - own).abs() > 1.0e-3 {
+                violations.push(Violation::VoidNotInside { mass: id, void });
+            }
+        }
+        for first in 0..voids.len() {
+            for second in (first + 1)..voids.len() {
+                if crate::clip::shared_area(&voids[first], &voids[second]) > 1.0e-3 {
+                    violations.push(Violation::VoidOverlaps {
+                        mass: id,
+                        first,
+                        second,
+                    });
+                }
+            }
+        }
+    }
+}
+
 fn check_overlap(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     for first in 0..skeleton.masses.len() {
         for second in (first + 1)..skeleton.masses.len() {
@@ -1778,6 +1853,15 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
             (2, mass.0 as u64, ordered(*top), ordered(*highest), 0)
         }
         Violation::UnattachedOverlap { mass, other } => (3, mass.0 as u64, other.0 as u64, 0, 0),
+        // The void faults share a rank: each is a statement about one mass's own courtyards, and a document has
+        // whichever of them it has.
+        Violation::VoidNotInside { mass, void } => (6, mass.0 as u64, *void as u64, 0, 0),
+        Violation::VoidNotConvex { mass, void } => (6, mass.0 as u64, *void as u64, 1, 0),
+        Violation::VoidOverlaps {
+            mass,
+            first,
+            second,
+        } => (6, mass.0 as u64, *first as u64, *second as u64, 0),
         Violation::MassHostMissing { mass, host } => (4, mass.0 as u64, host.0 as u64, 0, 0),
         Violation::RoofHostMissing { roof, host } => (5, roof.0 as u64, host.0 as u64, 0, 0),
         Violation::RoofEaveTooShort { roof, nodes } => (6, roof.0 as u64, *nodes as u64, 0, 0),
