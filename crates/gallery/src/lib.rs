@@ -59,6 +59,8 @@ use definition::Value;
 
 pub mod air;
 pub mod attributes;
+/// The identity scene: a building drawn so every pixel names its element.
+pub mod authored;
 /// The identity a building's frame can carry: which element a pixel shows.
 pub mod building_identity;
 pub mod building_mesh;
@@ -135,6 +137,7 @@ impl Gallery {
             "hermite",
             "hermite_massif",
             "house",
+            "identity",
             "landscape",
             "lanterns",
             "monoliths",
@@ -160,6 +163,7 @@ impl Gallery {
             "hermite" => hermite::hermite(),
             "hermite_massif" => hermite_massif::hermite_massif(),
             "house" => house::house(),
+            "identity" => authored::identity(),
             "landscape" => landscape(),
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),

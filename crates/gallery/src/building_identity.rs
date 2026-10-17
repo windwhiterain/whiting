@@ -35,7 +35,11 @@ use building::identity::Identity;
 use definition::{PackedBuilder, PackedList, Value};
 
 use crate::identity::ID_OUTPUT;
-use crate::shaders::{Authored, Extras};
+use crate::shaders::{
+    Authored, Block, Extras, Projection, lighting_shader_declaring, mesh_shaders_over,
+};
+use definition::Schema;
+use scene::standard::Stage;
 
 /// Returns the extra output a building's shader writes beside the frame.
 ///
@@ -143,4 +147,75 @@ pub fn packed(built: &BuildingMesh, identity: &Identity) -> PackedList {
     points
         .finish()
         .expect("every generator writes whole elements of its own layout")
+}
+
+/// Returns the extras a surface that is **not** an authored element writes: the reserved zero.
+///
+/// # Invariants
+///
+/// **A scene's second surface has to write the outputs too.** A stage that drew geometry and did not would
+/// leave the image holding whatever an earlier fragment put there, and the ground a building stands on is
+/// the one thing in such a frame that is not an element of it. Every value is the constant zero for the
+/// reason zero is reserved.
+pub fn not_authored_extras() -> Extras {
+    Extras::new([(
+        ID_OUTPUT.to_owned(),
+        1,
+        Authored::Constant(f64::from(building::identity::NOT_AUTHORED)),
+    )])
+}
+
+/// Returns the four stage shaders of one mesh, with the lighting one **declaring the extra outputs**.
+///
+/// # Invariants
+///
+/// **The lighting stage is the only one that writes the outputs**, and it is built here rather than
+/// filtered out of [`mesh_shaders_over`](crate::shaders::mesh_shaders_over)'s four by re-deriving the
+/// stage table: the one comparison this needs is a tag, and the tag is [`Stage::tag`]'s own.
+///
+/// The point schema handed in must be the **extras' own** ([`building_extras().point_schema`]) when the
+/// mesh carries ids, because a varying numbered by one schema and a fragment output by another is a
+/// picture of somebody else's numbers.
+pub fn stage_set<'text>(
+    prefix: &str,
+    body: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+    point: &Schema,
+    extras: &Extras,
+) -> Vec<Value> {
+    let body = body.into();
+    let helpers = helpers.into();
+    let mut shaders = mesh_shaders_over(prefix, "", body, helpers, point.clone());
+    shaders.retain(
+        |shader| !matches!(shader, Value::Enum { tag, .. } if tag == Stage::Lighting.tag()),
+    );
+    shaders.push(lighting_shader_declaring(
+        &format!("{prefix}_lighting"),
+        "",
+        body,
+        helpers,
+        crate::kit::gallery_custom_schema(),
+        extras,
+        Projection::default(),
+    ));
+    shaders
+}
+
+/// Resolves an `authored_id` written by the **identity scene** into the name of the element it shows.
+///
+/// # Invariants
+///
+/// - **The document is rebuilt, not remembered.** An id is a position in a table that is a function of the
+///   document and its mesh, so a caller holding a number from a frame must be handed the name the *same*
+///   document gives it: rebuilding is what makes the two agree by construction rather than by hope.
+/// - **An id the table does not hold answers `None`** — zero, the sky's, the ground's, and any number from
+///   another build. That is the reserved zero doing its job: "not an element of this building" is an answer,
+///   and it is different from "an element I cannot name".
+/// - It is the building side of [`crate::identity::locate`], with the same argument: the hops happen here
+///   and nowhere else, because a caller that chained them itself would be wrong in the middle where the
+///   answer looks like an answer.
+pub fn locate(id: u32) -> Option<String> {
+    let built = crate::authored::document().build().ok()?;
+    let numbering = Identity::of(&built, 1);
+    numbering.row(id).map(|row| row.path.clone())
 }

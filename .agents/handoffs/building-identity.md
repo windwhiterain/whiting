@@ -65,3 +65,46 @@ and the sentence a missing one is refused with.
 ## Status log
 
 - **2026-10-16** — branch from `b24faa8`; module, extras accessor, probe, and the measurements above.
+- **2026-10-16** — **the frame half, and the loop closes.** `building_identity` gained
+  `not_authored_extras()` (the reserved zero as a **constant**, so a surface that is not an element carries
+  no id field at all), `stage_set(prefix, body, helpers, point, extras)` (the four stages of one mesh, with
+  the lighting one declaring the outputs, filtered by `Stage::tag()` rather than by a second stage table),
+  and **`locate(id) -> Option<String>`**, which rebuilds the identity scene's own document and answers with
+  the row's path.
+
+  The scene is `crates/gallery/src/authored.rs` (registered as **`identity`**, 7 passes): a two-storey shell
+  with a plate, a courtyard wall and a shutter in a bay, one mesh, one material body, and the ground drawn
+  with the constant zero. `cargo run -p whiting-device-rasterize --example render -- identity out/identity`
+  writes **three** files: the frame, `identity-authored_id.png`, and `identity-authored_id.txt` — the values,
+  because a png cannot hold floats.
+
+  Measured, from the rendered frame's own sidecar:
+
+  | fact | value |
+  | --- | --- |
+  | the image | `1024x1024, r32float`, red over **`[0.000, 44.000]`** |
+  | building pixels | ids `3, 4, 16, 20, …` |
+  | sky and ground pixels | **`0.000`** — the reserved zero doing its job |
+  | the join | `id 3 → mass 0, outer wall over edge 2`; `id 4 → edge 3`; `id 16 → roof 0, the skin of plane 1`; `id 20 → roof 0, the fascia over the skin's boundary edge 1` |
+  | an id the table does not hold | `0` and `9999` both answer **`None`** |
+
+  Three things the wiring taught, all of them measured rather than reasoned:
+
+  - **A material names its shader by the label `stage_set` built** (`<prefix>_<stage>`), so a scene with two
+    meshes needs two labels and the two cannot read each other's point layouts.
+  - **A constant is not a field.** `not_authored_extras().point_schema()` is the **three**-field shaded schema,
+    so the ground must be packed as a heightfield — packing it over the building's four-field layout is
+    `the points are packed as normal, position, texture but the mesh's point schema lays them out as
+    authored_id, …`, which the compiler caught at the first attempt.
+  - **The pipeline needed nothing.** `render_outputs` already reads a scene's `outputs` and hands back one
+    image per declaration, and the render example already writes each as `<out>-<channel>.png` plus a sidecar
+    of the values. The whole frame half was the scene's declaration and the points' packing.
+
+  One accident worth recording: a failed scripted edit wrote an **empty** `landscape/mod.rs` (a `Set-Content`
+  on a null variable after a `Substring` threw), and the build named it immediately; it was restored from the
+  previous commit with `git checkout --`, which is the reason the file was committed before it was touched.
+
+- **Next**: nothing owed in the crate. Possible next slices, in the order this session would take them: a
+  scene drawing **instances** (`Template::mesh` + `PartFrame`, so a gallery scene stops uploading one copy
+  per placement); **`build` caching** a template's expansion per document; and the **shadow terminator**,
+  which belongs to another subsystem.

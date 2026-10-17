@@ -164,4 +164,12 @@ fn main() {
         empty_identity.len(),
         ids(&empty, &empty_identity).len()
     );
+
+    println!("\n# the join closes: an id from a frame names the element it shows");
+    for id in [3, 4, 16, 20, 0, 9999] {
+        println!(
+            "  id {id:4} → {:?}",
+            whiting_gallery::building_identity::locate(id)
+        );
+    }
 }
