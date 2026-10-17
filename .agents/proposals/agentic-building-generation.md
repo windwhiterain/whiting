@@ -1825,6 +1825,40 @@ So the next slice is smaller than the design first said: a `voids` field, three 
 the acceptance **Euler characteristic 0**. The plate work and the fill of a ring-shaped mass are deferred, and both
 are written down rather than discovered again.
 
+## The volume decision: walls, plates and roofs as solids (2026-10-27, the project's own)
+
+The courtyard slice stopped on a modelling question, and the answer came back as a direction rather than a patch:
+**make walls, floors and roofs volumes, not faces of one shell.**
+
+That decision does not merely unblock the courtyard — **it removes the reason the courtyard was hard.** The shell
+model forced one closed surface to carry both the plate and the courtyard wall, and the wall standing *in the middle
+of* the plate then had to produce a three-surface edge (measured at the outline elevation: the wall's inner base would
+have to pair with both the paving and the courtyard-facing face). No winding fixes that; it is inherent.
+
+With volumes the same courtyard is **trivial**:
+
+- a mass is **two solids** — the wall ring and the plate — and **each closes itself**;
+- the courtyard is the wall ring carrying a **void loop**, so it becomes a ring-shaped solid: closed, manifold, and its
+  Euler characteristic is **0** where a plain box is 2 — the number the crate has been computing all along;
+- the plate is a box under both the rooms and the courtyard, so nothing has to be split, and the three-surface edge
+  never arises because no face is shared between the plate and the wall in the first place.
+
+**What this costs, stated plainly:**
+
+1. **`SolidId` gains parts.** One mass can no longer be one solid: it is a wall and a plate, so
+   `SolidId::Mass(MassId)` becomes two kinds (or one kind with a part). The enum is matched across the crate, so the
+   compiler will find every site — the same audit that made `MassSurface` and `Violation` safe to change.
+2. **`expand_mass` is rewritten**, not patched: the shell's vertices, `WallFace`, `EdgeNode`, `resolve_holes` and the
+   plate's disc are replaced by two closed volumes. `WallFace`'s hole machinery is still needed for windows, but it
+   now cuts **a wall volume**, which is the ordinary "wall with a hole" problem rather than a shell's.
+3. **`validate`'s solid checks stay meaningful and get simpler**: every volume answers manifold and Euler on its own,
+   so a courtyard's ring is `euler 0` by construction rather than by luck.
+4. **The roof is already a volume** and the `Wall` and `Slab` primitives already are too, so the change is confined
+   to the mass — which is where the shell's complexity lived.
+
+**The shell work is deleted, not merged.** `feature/building-patio3` carried a working courtyard emitter against the
+shell; with the model changing underneath it, keeping it would be keeping a careful solution to the abandoned
+problem. It is removed from the tree and the handoff points at the new plan instead.
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
