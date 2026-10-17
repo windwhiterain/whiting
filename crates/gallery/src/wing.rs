@@ -232,11 +232,11 @@ pub fn wing_at(width: f32, depth: f32, wing_depth: f32) -> Value {
             // which is what says the roof has a soffit and a thickness.
             Value::List(vec![camera(
                 [
-                    f64::from(width) * 1.25,
-                    ridge * 0.75,
-                    f64::from(depth) * 0.95 + f64::from(width) * 0.3,
+                    f64::from(width) * 2.2 + 4.0,
+                    ridge * 1.2,
+                    f64::from(depth) * 2.4 + 10.0,
                 ],
-                [0.0, ridge * 0.45, f64::from(width) * 0.35],
+                [f64::from(width) * 0.5, ridge * 0.4, 0.0],
                 std::f64::consts::FRAC_PI_3 * 0.92,
             )]),
         ),
