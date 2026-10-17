@@ -874,8 +874,6 @@ fn extremes(polygon: &[Vec2]) -> ([f32; 2], [f32; 2]) {
     (low, high)
 }
 
-
-
 /// Returns how far a plan point is from a plan segment.
 fn distance_to_segment(point: Vec2, from: Vec2, to: Vec2) -> f32 {
     let edge = crate::math::difference(to, from);
