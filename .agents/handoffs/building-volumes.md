@@ -109,3 +109,29 @@ between the outline and the inner loop), drops the floor disc and the soffit, an
 **The pictures may move slightly** — a plate box adds its own side faces and the ring's inner faces now begin a slab
 lower — so the nine hashes are re-recorded with that reason rather than held as unchanged: a volume change is a
 geometry change, and pretending otherwise would make the baseline a lie.
+
+## The simplification that makes this small: the plate is already a `Slab` (2026-10-27)
+
+**No new ids are needed for the plate.** The crate already has a volume plate as a first-class element:
+
+- `derive::floor_slab(mass, id, elevation, thickness) -> Option<Slab>` derives one from a mass;
+- `Slab` carries its own `SlabSurface`, and its solid is `SolidId::Slab(SlabId)`;
+- **two scenes already draw their plates that way** — `workshop` (its two storeys) and `authored` — so the path is
+  not a plan, it is in use.
+
+So the slice becomes:
+
+1. **`expand_mass` keeps the wall ring and nothing else.** The inner walls run down to the plate's bottom plane
+   (`elevation − slab`), the ring closes with a **bottom ring** between the outline and the inner loop, and the floor
+   disc and the soffit are **dropped** — they belong to the plate now.
+2. **The plate is authored as a `Slab`**, derived by `floor_slab` where a building is derived (`derive::starter`) and
+   written into the documents that author masses by hand.
+3. **The plate and the ring overlap** through the wall's footprint, which is the whole point of volumes: no shared
+   edge, so no three-surface edge, and no split floor.
+
+**No `Element` variant, no `SolidId` variant, no new surface kind** — the audit that looked like three sites of
+trouble shrinks to zero, because the plate was already a volume and only the mass was pretending otherwise.
+
+**What still has to be measured:** the sum of the ring's volume and the plate's volume against every recorded
+number (the plate's own numbers come from `floor_slab`'s thickness), and the nine hashes re-recorded with the
+reason — a mass with no floor disc renders differently at its inner base by one plate thickness.
