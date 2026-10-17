@@ -27,6 +27,7 @@ use scene::standard::Stage;
 use building::derive::{self, RoofStyle, Starter, floor_slab};
 use building::grid::{FaceRef, Rhythm};
 use building::identity::Identity;
+use building::openings::{Inset, Opening};
 use building::ops;
 use building::parts::{Pin, Placement, Template};
 use building::wall::Wall;
@@ -108,11 +109,25 @@ pub fn document() -> Building {
         );
     }
     skeleton.walls.push(Wall::new(
-        PlanNode::new([-7.0, 6.0], 0.0),
-        PlanNode::new([7.0, 6.0], 0.0),
+        PlanNode::new([-7.0, -6.5], 0.0),
+        PlanNode::new([7.0, -6.5], 0.0),
         0.35,
         1.9,
     ));
+    // A doorway and five windows, so the frame has a facade and the ids have something to name: the
+    // doorway's head is below the plate, and the upper windows sit above it.
+    ops::add_opening(
+        &mut skeleton,
+        Opening::new(front, 0, 1, Inset::new(0.34, 0.34, 0.0, 0.75)),
+    )
+    .expect("the middle bay of the ground storey is in the grid");
+    for (row, column) in [(0, 0), (0, 2), (1, 0), (1, 1), (1, 2)] {
+        ops::add_opening(
+            &mut skeleton,
+            Opening::new(front, row, column, Inset::new(0.34, 0.34, 1.05, 0.7)),
+        )
+        .expect("every bay of the grid is there");
+    }
     let template = ops::add_template(&mut skeleton, shutter(0.9, 1.1, 0.05));
     ops::place_part(
         &mut skeleton,
