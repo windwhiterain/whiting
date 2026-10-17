@@ -39,8 +39,10 @@ pub fn ring_fill(outer: &[Vec2], inner: &[Vec2]) -> Vec<[Vec2; 3]> {
         ring.reverse();
     }
     let (count, holes) = (outer.len(), ring.len());
-    let centre = [ ring.iter().map(|corner| corner[0]).sum::<f32>() / holes as f32,
-        ring.iter().map(|corner| corner[1]).sum::<f32>() / holes as f32 ];
+    let centre = [
+        ring.iter().map(|corner| corner[0]).sum::<f32>() / holes as f32,
+        ring.iter().map(|corner| corner[1]).sum::<f32>() / holes as f32,
+    ];
     let mut every: Vec<Vec2> = outer.to_vec();
     every.extend_from_slice(&ring);
     let (mut a, mut b) = closest_pair(outer, &ring);
@@ -55,12 +57,12 @@ pub fn ring_fill(outer: &[Vec2], inner: &[Vec2]) -> Vec<[Vec2; 3]> {
             !unusable(outer_ear, &every, [outer, &ring], centre),
             !unusable(hole_ear, &every, [outer, &ring], centre),
         ) {
-                (true, false) => true,
+            (true, false) => true,
             (false, true) => false,
-                // Both clean happens when the loops are nearly aligned, and the smaller ear is then the safe
-                // choice. Both holding a vertex cannot happen for two convex loops.
-                _ => area(outer_ear) <= area(hole_ear),
-            };
+            // Both clean happens when the loops are nearly aligned, and the smaller ear is then the safe
+            // choice. Both holding a vertex cannot happen for two convex loops.
+            _ => area(outer_ear) <= area(hole_ear),
+        };
         if take_outer {
             triangles.push(outer_ear);
             a = next_a;
@@ -123,9 +125,18 @@ fn unusable(triangle: [Vec2; 3], every: &[Vec2], loops: [&[Vec2]; 2], centre: Ve
 
 /// Returns whether a point is inside a triangle or on its boundary.
 fn triangle_contains(point: Vec2, triangle: [Vec2; 3]) -> bool {
-    let one = cross(subtract2(triangle[1], triangle[0]), subtract2(point, triangle[0]));
-    let two = cross(subtract2(triangle[2], triangle[1]), subtract2(point, triangle[1]));
-    let three = cross(subtract2(triangle[0], triangle[2]), subtract2(point, triangle[2]));
+    let one = cross(
+        subtract2(triangle[1], triangle[0]),
+        subtract2(point, triangle[0]),
+    );
+    let two = cross(
+        subtract2(triangle[2], triangle[1]),
+        subtract2(point, triangle[1]),
+    );
+    let three = cross(
+        subtract2(triangle[0], triangle[2]),
+        subtract2(point, triangle[2]),
+    );
     (one >= 0.0 && two >= 0.0 && three >= 0.0) || (one <= 0.0 && two <= 0.0 && three <= 0.0)
 }
 
@@ -147,9 +158,18 @@ fn properly_crosses(from_a: Vec2, to_a: Vec2, from_b: Vec2, to_b: Vec2) -> bool 
 /// **Strictness is load-bearing.** The boundary-inclusive test would veto every ear whose leg runs along another
 /// loop's edge, and those are most of the ears a two-convex-loop walk closes.
 fn strictly_inside_triangle(point: Vec2, triangle: [Vec2; 3]) -> bool {
-    let one = cross(subtract2(triangle[1], triangle[0]), subtract2(point, triangle[0]));
-    let two = cross(subtract2(triangle[2], triangle[1]), subtract2(point, triangle[1]));
-    let three = cross(subtract2(triangle[0], triangle[2]), subtract2(point, triangle[2]));
+    let one = cross(
+        subtract2(triangle[1], triangle[0]),
+        subtract2(point, triangle[0]),
+    );
+    let two = cross(
+        subtract2(triangle[2], triangle[1]),
+        subtract2(point, triangle[1]),
+    );
+    let three = cross(
+        subtract2(triangle[0], triangle[2]),
+        subtract2(point, triangle[2]),
+    );
     (one > 1.0e-9 && two > 1.0e-9 && three > 1.0e-9)
         || (one < -1.0e-9 && two < -1.0e-9 && three < -1.0e-9)
 }

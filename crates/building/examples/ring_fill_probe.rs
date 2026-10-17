@@ -103,7 +103,12 @@ fn main() {
     let outer = rectangle(-5.0, -5.0, 5.0, 5.0);
     let centred = rectangle(-2.0, -2.0, 2.0, 2.0);
     measure("centred", &outer, &centred, true);
-    measure("off-centre", &outer, &rectangle(-4.0, -1.0, 0.0, 1.0), false);
+    measure(
+        "off-centre",
+        &outer,
+        &rectangle(-4.0, -1.0, 0.0, 1.0),
+        false,
+    );
     measure(
         "triangular void",
         &outer,
@@ -114,7 +119,13 @@ fn main() {
     measure(
         "a notched void (refused)",
         &outer,
-        &vec![[-2.0, -2.0], [2.0, -2.0], [2.0, 2.0], [0.0, 0.0], [-2.0, 2.0]],
+        &vec![
+            [-2.0, -2.0],
+            [2.0, -2.0],
+            [2.0, 2.0],
+            [0.0, 0.0],
+            [-2.0, 2.0],
+        ],
         false,
     );
 }
