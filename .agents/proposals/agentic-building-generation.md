@@ -1698,6 +1698,36 @@ impression — that is the standard this project has held itself to since the fi
   have overlapping boxes and no shared wall. The report **lists** and does not judge.
 - **The shadow terminator toothing** is the shadow subsystem's, not this one's.
 
+## The design for a plan with a hole, written before it is built (2026-10-27)
+
+The last capability this crate lacks is a room whose plan is a ring. `ring_probe` measured that the failure is
+**stated** (`DidNotExpand { OffsetSelfIntersecting }`) rather than silent, so this is a feature to add and not a
+defect to repair — and the shape of the addition is worth writing down before any of it exists, because five parts of
+the crate have to agree about it.
+
+**The one idea: a void is authored, not smuggled.** A `Mass` gains `voids: Vec<Vec<PlanNode>>` — inner loops, each
+wound opposite the outline, each strictly inside it and disjoint from its fellows. Nothing about the ring is inferred
+from a self-crossing neck; the document says *here is a hole* in the same way it says *here is an outline*.
+
+**What each part has to answer:**
+
+| part | the question a void asks |
+| --- | --- |
+| `mass` | the field and its invariants: simple, inside, disjoint — reported or refused, never repaired |
+| `expand` | the wall shell becomes *outline to void* for each void, and each void's own wall ring; the slab becomes a plate with a hole |
+| `identity` | a void's faces need names: `void 0, its wall over edge 2` alongside `mass 0, outer wall over edge 0` |
+| `openings` | a face on a void's wall is a **facade that looks inward** — a window onto the courtyard, which is the whole point of one |
+| `validate` | three new faults (a void not inside, two voids overlapping, a void not simple) and one new surface arm |
+
+**The acceptance criterion already exists**, and that is the nicest thing about this design. The crate measures
+`2 − 2 × resolved holes` as a solid's Euler characteristic, so **a ring-shaped solid must come out at 0** — one hole
+— where a plain box comes out at 2. A courtyard is therefore not a new kind of measurement: it is the number the
+crate has been computing all along, finally with a shape that can exercise the non-zero case.
+
+**What does not change:** the smuggled-neck ring stays refused, because it *is* a self-intersecting polygon; a
+courtyard authored through a void is a different document, and the two must not be conflated. That is the same
+distinction the strict-crossing fix drew between a shared line and a proper crossing.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
