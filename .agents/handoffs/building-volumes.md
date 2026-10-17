@@ -855,3 +855,24 @@ four ids, which the `QUAD` print already shows how to do.
 my own, forty rounds old. The instrument that found it was the plainest one — *print the two numbers and put them side
 by side* — and every cleverer instrument before it (open edges, owners, elevations per corner) was circling it without
 ever showing the expression itself.
+
+## The last warp needs the two-point design, and that is now proven from both sides (2026-10-27)
+
+Retried the station-side change **after** the authored asymmetry was fixed (round 139). This time it did what it was
+meant to do — **every `FaceNotPlanar` disappeared** — and it took the solid with it:
+
+```text
+shed   : SolidNonManifold { Mass }, euler: -3, FaceDegenerate x2
+workshop: SolidNonManifold { Mass }, euler: -5, FaceDegenerate x2
+identity: SolidNonManifold { Mass }, euler: -9, FaceDegenerate x2
+```
+
+An **odd** Euler characteristic means an orientation failure, and it appears exactly where it must: the station point
+is read by the **band** and by the **reveal**, and the reveal attaches at the opening's floor while the band now
+attaches at the ground, so the two no longer share an edge. **That is the two-point requirement demonstrated for the
+second time, now from the closing side rather than the closing side failing to move the number.**
+
+**So the branch stands at:** one `FaceNotPlanar` per affected scene (the shed: `face 156, departure 0.1837001`), no
+open or non-manifold solid, and thirteen probes green. The remaining fix is the four-field version on `StationPoints`
+(a ground pair beside the floor pair), which is written out two sections up and needs a session that can hold the
+change together — the two halves cannot be applied separately, and both separate attempts are now measured.
