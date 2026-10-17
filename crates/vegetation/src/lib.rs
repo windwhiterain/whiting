@@ -31,6 +31,7 @@
 //! The design is
 //! [`.agents/proposals/agentic-vegetation-generation.md`](../../../.agents/proposals/agentic-vegetation-generation.md).
 
+pub mod derive;
 pub mod expand;
 pub mod handle;
 pub mod leaf;

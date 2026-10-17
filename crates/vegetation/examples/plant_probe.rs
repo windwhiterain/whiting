@@ -1,11 +1,10 @@
 //! Measures the plant `vegetation` P1 promises, and exits non-zero if a reading leaves its threshold.
 //!
-//! The plant is hand-authored — a culm with three boughs, each carrying two twigs, and a leaf field on the
-//! twigs — because P1's job is to prove the *representation* and not a generator: a law that is nearly
-//! right is P2's business, and a default that is nearly right is data the moment it exists. The rows are
-//! the design's P1 exit (`.agents/proposals/agentic-vegetation-generation.md` V1, V2 and V6): the wood is
-//! closed solids, a joint sits on its parent's skin, the taper is the *law* rather than a cone, and the
-//! leaves are instances of one template.
+//! The plant is the crate's own species — `derive::bamboo` — and not a tree this file writes, because a
+//! default is ordinary data the moment it exists: the rows below measure the numbers a caller would start
+//! from, and the same rows would measure any other species. The design's P1 exit
+//! (`.agents/proposals/agentic-vegetation-generation.md` V1, V2 and V6) asks for closed wood, joints on the
+//! parent's skin, a taper that is the *law* rather than a cone, and leaves that are instances of one template.
 //!
 //! ```text
 //! cargo run -p whiting-vegetation --example plant_probe
@@ -13,12 +12,8 @@
 
 use shape::math::{length3, span, subtract};
 use shape::mesh::{boundary_loops, euler_characteristic, is_manifold, signed_volume};
-use shape::{Curve, Jet, Scalar};
-use std::f32::consts::FRAC_PI_4;
+use whiting_vegetation::derive::{Species, bamboo};
 use whiting_vegetation::expand::{Detail, expand, wood};
-use whiting_vegetation::leaf::{GOLDEN_ANGLE, LeafField, LeafTemplate};
-use whiting_vegetation::node::{Attachment, Node};
-use whiting_vegetation::plant::Plant;
 
 fn main() {
     let mut checks: Vec<(&str, bool)> = Vec::new();
@@ -41,92 +36,17 @@ fn main() {
     }
 }
 
-/// A spine through the given `(position, tangent)` pairs.
-fn spine(knots: &[([f32; 3], [f32; 3])]) -> Curve {
-    Curve::new(
-        knots
-            .iter()
-            .map(|(position, tangent)| Jet::new(*position, *tangent))
-            .collect(),
-    )
-    .expect("the plant's knots are distinct")
-}
-
-/// The culm: 2.2 metres tall, its taper rising at a node and falling between them.
-fn culm() -> Node {
-    Node::root(
-        spine(&[
-            ([0.0, 0.0, 0.0], [0.02, 0.75, 0.0]),
-            ([0.02, 0.75, 0.0], [0.05, 0.75, 0.01]),
-            ([0.09, 1.5, 0.02], [0.06, 0.7, 0.02]),
-            ([0.19, 2.2, 0.05], [0.05, 0.6, 0.02]),
-        ]),
-        Scalar::new(&[
-            (0.0, 0.030),
-            (0.28, 0.022),
-            (0.32, 0.028),
-            (0.62, 0.018),
-            (0.66, 0.024),
-            (1.0, 0.010),
-        ])
-        .expect("the culm's taper is a law"),
-    )
-}
-
-/// A bough: out along `x`, up along `y`, and out again — authored in its parent's attachment frame.
-fn bough(lean: f32, attachment: Attachment) -> Node {
-    Node::attached(
-        spine(&[
-            ([0.0, 0.0, 0.0], [0.42, 0.10, 0.0]),
-            ([0.30, 0.06, 0.02 * lean], [0.38, 0.30, 0.04]),
-            ([0.62, 0.26, 0.06 * lean], [0.28, 0.42, 0.02]),
-            ([0.86, 0.52, 0.08 * lean], [0.18, 0.30, 0.0]),
-        ]),
-        Scalar::new(&[(0.0, 0.011), (0.5, 0.007), (1.0, 0.002)])
-            .expect("the bough's taper is a law"),
-        attachment,
-    )
-}
-
-/// A twig: shorter, thinner, and the generation the leaves hang from.
-fn twig(attachment: Attachment) -> Node {
-    Node::attached(
-        spine(&[
-            ([0.0, 0.0, 0.0], [0.20, 0.16, 0.02]),
-            ([0.16, 0.13, 0.02], [0.10, 0.26, 0.02]),
-            ([0.26, 0.38, 0.03], [0.04, 0.20, 0.0]),
-        ]),
-        Scalar::new(&[(0.0, 0.0035), (1.0, 0.0008)]).expect("the twig's taper is a law"),
-        attachment,
-    )
-}
-
-/// The plant: a culm, three boughs, two twigs on each.
-fn plant() -> Plant {
-    let mut root = culm();
-    for index in 0..3 {
-        let station = 0.45 + 0.18 * index as f32;
-        let slot = 0.333 * index as f32;
-        let mut branch = bough(index as f32, Attachment::new(station, slot).sunk(0.004));
-        for twig_index in 0..2 {
-            branch.push(twig(
-                Attachment::new(
-                    0.35 + 0.25 * twig_index as f32,
-                    0.3 + 0.2 * twig_index as f32,
-                )
-                .sunk(0.0015),
-            ));
-        }
-        root.push(branch);
-    }
-    Plant::new(root, 20_261_017)
+/// The species every row measures: the crate's own bamboo, at one seed.
+fn species() -> Species {
+    bamboo(20_261_017)
 }
 
 /// The whole plant's numbers, and the one reading that says the parts add up.
 fn the_census() -> bool {
-    let plant = plant();
+    let species = species();
+    let plant = &species.plant;
     let detail = Detail::DEFAULT;
-    let solids = wood(&plant, detail);
+    let solids = wood(plant, detail);
     let triangles: usize = solids
         .iter()
         .map(|solid| solid.loft.triangles().len())
@@ -160,8 +80,8 @@ fn the_census() -> bool {
 
 /// Every node is a closed solid, whatever its taper does at its ends.
 fn every_loft_is_a_closed_solid() -> bool {
-    let plant = plant();
-    let solids = wood(&plant, Detail::DEFAULT);
+    let species = species();
+    let solids = wood(&species.plant, Detail::DEFAULT);
     let mut worst_volume = f32::MAX;
     let mut closed = 0;
     for solid in &solids {
@@ -188,9 +108,10 @@ fn every_loft_is_a_closed_solid() -> bool {
 
 /// The culm's radius is the taper law at every ring, including the rise the law puts at a node.
 fn the_taper_is_the_law_not_a_cone() -> bool {
-    let plant = plant();
+    let species = species();
+    let plant = &species.plant;
     let solids = wood(
-        &plant,
+        plant,
         Detail {
             stations: 33,
             around: 24,
@@ -237,7 +158,8 @@ fn the_taper_is_the_law_not_a_cone() -> bool {
 
 /// Every child's first point is on its parent's skin, and sunk by the amount it asked for.
 fn a_joint_sits_on_its_parents_skin() -> bool {
-    let plant = plant();
+    let species = species();
+    let plant = &species.plant;
     let mut worst = 0.0f32;
     let mut joints = 0;
     for (handle, node) in plant.walk() {
@@ -269,9 +191,10 @@ fn a_joint_sits_on_its_parents_skin() -> bool {
 
 /// The dial is the only resolution: doubling it quadruples the triangles and moves nothing else.
 fn the_dial_is_the_only_resolution() -> bool {
-    let plant = plant();
-    let coarse = wood(&plant, Detail::DEFAULT);
-    let fine = wood(&plant, Detail::DEFAULT.scaled(2));
+    let species = species();
+    let plant = &species.plant;
+    let coarse = wood(plant, Detail::DEFAULT);
+    let fine = wood(plant, Detail::DEFAULT.scaled(2));
     let coarse_triangles: usize = coarse
         .iter()
         .map(|solid| solid.loft.triangles().len())
@@ -300,37 +223,11 @@ fn the_dial_is_the_only_resolution() -> bool {
     closed && same_places && (3.5..4.5).contains(&ratio)
 }
 
-/// The blade: a midrib that arcs up from the origin, widest at 45% of its own length.
-fn blade() -> LeafTemplate {
-    LeafTemplate::blade(
-        spine(&[
-            ([0.0, 0.0, 0.0], [0.20, 0.05, 0.0]),
-            ([0.17, 0.06, 0.01], [0.16, 0.11, 0.02]),
-            ([0.31, 0.17, 0.03], [0.07, 0.10, 0.01]),
-        ]),
-        Scalar::new(&[(0.0, 0.0), (0.45, 0.06), (1.0, 0.0)]).expect("the blade's width is a law"),
-        0.06,
-        7,
-        8,
-    )
-}
-
-/// The leaves hang from the twigs, which are the third generation: depth 2 below the trunk.
-fn leaf_field() -> LeafField {
-    let mut field = LeafField::new(2, 0);
-    field.band = (0.25, 0.9);
-    field.density = Scalar::constant(12.0);
-    field.phyllotaxy = GOLDEN_ANGLE;
-    field.pitch = Scalar::constant(FRAC_PI_4);
-    field.size = Scalar::new(&[(0.0, 0.05), (1.0, 0.08)]).expect("the leaf's size is a law");
-    field.jitter = 0.15;
-    field
-}
-
 /// A field is a distribution: one group per node it puts leaves on, and the group's count is its own law.
 fn the_leaves_are_groups_of_placements() -> bool {
-    let plant = plant();
-    let expansion = expand(&plant, Detail::DEFAULT, &[leaf_field()]);
+    let species = species();
+    let plant = &species.plant;
+    let expansion = expand(plant, Detail::DEFAULT, &species.fields);
     let leaves: usize = expansion
         .leaves
         .iter()
@@ -347,7 +244,7 @@ fn the_leaves_are_groups_of_placements() -> bool {
         .all(|pair| pair[0].node < pair[1].node);
     let counts_match_the_law = expansion.leaves.iter().all(|group| {
         let node = plant.get(&group.node).expect("the group's node resolves");
-        let expected = (12.0 * (0.9 - 0.25) * node.spine().length()).round() as usize;
+        let expected = (12.0f32 * (0.9 - 0.25) * node.spine().length()).round() as usize;
         group.leaves.len() == expected
     });
     println!("\n# the leaves");
@@ -370,10 +267,10 @@ fn the_leaves_are_groups_of_placements() -> bool {
 
 /// A leaf is a rigid frame: `k` of them cost the template's triangles once and `k` transforms.
 fn a_leaf_costs_one_transform() -> bool {
-    let plant = plant();
-    let template = blade();
+    let species = species();
+    let template = &species.templates[0];
     let loft = template.loft();
-    let expansion = expand(&plant, Detail::DEFAULT, &[leaf_field()]);
+    let expansion = expand(&species.plant, Detail::DEFAULT, &species.fields);
     let leaves: usize = expansion
         .leaves
         .iter()
