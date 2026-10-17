@@ -100,10 +100,10 @@ mod spotlight;
 mod stilllife;
 mod sunlight;
 pub mod terrace;
-pub mod wing;
 mod terraces;
 mod tidewater;
 mod tiles;
+pub mod wing;
 /// The workshop scene: two storeys with a floor between them.
 pub mod workshop;
 /// The yard scene: a site on a slope, with a courtyard and a gate.
