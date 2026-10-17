@@ -98,6 +98,16 @@ pub struct Mass {
     ///
     /// [`site::report`]: crate::site::report
     pub name: Option<String>,
+    /// Loops this mass has a hole into: courtyards, patios, any room whose plan is a ring.
+    ///
+    /// # Invariants
+    ///
+    /// **A void is authored, not inferred.** Each loop must stand strictly inside [`Mass::outline`] and the two must
+    /// not cross: a hole is what the document says it is, never a self-crossing outline that happens to enclose
+    /// different ways. [`validate`](crate::validate) reports the ones that break that, and expansion refuses a mass
+    /// that has one until the void slice lands — a refusal rather than a solid that pretends the courtyard is not
+    /// there.
+    pub voids: Vec<Vec<PlanNode>>,
 }
 
 impl Mass {
@@ -110,7 +120,14 @@ impl Mass {
             slab: 0.4,
             attachment: None,
             name: None,
+            voids: Vec::new(),
         }
+    }
+
+    /// Authors a courtyard: a loop inside the outline that the mass has a hole into.
+    pub fn with_voids(mut self, voids: Vec<Vec<PlanNode>>) -> Self {
+        self.voids = voids;
+        self
     }
 
     /// Gives the building a name, for a report to print and an agent to speak of.

@@ -102,6 +102,20 @@ const MITER_LIMIT: f32 = 4.0;
 /// One reason a skeleton does not expand.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Problem {
+    /// A mass has a void authored, which this crate can describe but cannot yet draw.
+    ///
+    /// # Invariants
+    ///
+    /// **A refusal, not a silence.** The vocabulary can now say *this room has a courtyard in it*
+    /// ([`Mass::voids`](crate::mass::Mass::voids)); expansion draws nothing for one, so a document that authored a
+    /// void must be refused here rather than expanded into a solid that pretends the courtyard is not there. When the
+    /// void slice lands this variant goes away in the same commit that makes the drawing true.
+    VoidNotDrawn {
+        /// The mass.
+        mass: MassId,
+        /// How many voids it authored.
+        voids: usize,
+    },
     /// A mass's outline has fewer than three nodes, so it has no plan area to stand on.
     OutlineTooShort {
         /// The mass.
@@ -940,6 +954,12 @@ fn expand_mass(
     id: MassId,
     mass: &Mass,
 ) -> Result<(), Vec<Problem>> {
+    if !mass.voids.is_empty() {
+        return Err(vec![Problem::VoidNotDrawn {
+            mass: id,
+            voids: mass.voids.len(),
+        }]);
+    }
     let count = mass.outline.len();
     if count < 3 {
         return Err(vec![Problem::OutlineTooShort {
