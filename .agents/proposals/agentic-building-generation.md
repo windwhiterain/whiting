@@ -531,6 +531,115 @@ and it is recorded here so the next session does not read the mesh as instanced 
 Also owed: the **render half of identity** — an `id` channel the mesh shader writes is the device
 layer's business, exactly as it is for the mountains.
 
+## What P3 found: the site, in four slices and one picture (2026-10-16)
+
+P3 built the third layer — **ground, walls, and the site as a unit** — and its record is here rather
+than in a handoff, because a handoff is deleted when its phase closes.
+
+### Slice 1: ground seating — the crate stays terrain-independent
+
+The decision list says this crate takes **no `terrain` dependency**, and seating does not need one: a
+height field is a function from plan to elevation, so `site::seat(skeleton, ground: impl Fn(Vec2) ->
+f32, offset)` takes the **function**, and a caller with a `HeightField` passes `|plan|
+field.sample(plan)`. That keeps the dependency decision true and, just as important, makes the slice
+**measurable against an analytic ground** — which is why its numbers are exact rather than plausible.
+
+Three invariants, each paid for:
+
+- **One level per mass, at the highest ground under it.** The shell's floor top is a polygon at its
+  nodes' elevations, so a quad with four different elevations is a **ruled surface and not a plane**, and
+  the planarity contract would report it — correctly. A building therefore sits on a **terrace**: the
+  highest sampled ground under its outline plus the offset. Measured against the analytic plane `z = 0.3
+  x`: level `0.750000` = `0.3 × 2.5`, the plane's own maximum over the outline.
+- **A seat is rigid.** The delta goes to every node, to `top`, and to the eaves and crest of every roof
+  that names the mass as host, so the walls keep their height and the roof keeps its rise. Measured:
+  volume `36.832001` before and after, bounds moved by exactly `0.750000`, the roof's rise unchanged at
+  `1.850000`. Moving only the outline would have shortened every wall and flattened every pitch, and
+  nothing in the closure predicates would have said so.
+- **A half-known ground is not a ground.** Any non-finite sample refuses the mass outright; the first
+  implementation skipped the bad sample and used the rest, which is exactly the guess this crate refuses
+  elsewhere. Measured after the fix: a ground unknown over one half seats **0 of 1** masses.
+
+### Slice 2: walls and courtyards — and the suggestion this phase rejected
+
+The previous handoff guessed that the most-reusing answer was "a wall is a `Mass` with a thin outline and
+its gate is an opening". **Both halves are wrong**, and the reason is the same one that bit the shed's
+canopy: `Mass` is the crate's **room** model — a shell with a floor disc and a slab — so a thin mass
+either leaves a cavity (a gate would look into the wall's inside rather than through it) or degenerates
+its floor onto its top (eight facets of no area, measured). A freestanding wall has no inside.
+
+So a wall is its own kind and deliberately the smallest useful one: **one straight run**, a box whose
+bottom follows the ground and whose top is level. And a gate is **not a hole through a wall** — it is a
+**gap between two runs**, which needs no cutting at all.
+
+**A courtyard is several wall solids and not one cleverer element**, and that is the two-level
+watertightness rule doing the job it was written for: offsetting a chain of runs into a ribbon would need
+a miter on an open path, and the shared faces where two runs meet would coincide or interpenetrate
+*inside one solid* — which a closed surface cannot do without interior faces. Several solids may overlap
+at a corner freely. Measured by `examples/wall_probe.rs`:
+
+- a 10 × 6 yard is **5 walls, 29.6 m of wall, 17.76 m³ written down**; every run is **12 faces, loops 0,
+  Euler 2, manifold**, and the measured total is `17.760012` against the written `17.760000`;
+- the gate is the gap, measured at `2.4000 m` between the two south runs;
+- each corner is shared by two runs that interpenetrate, and **0 walls are unclosed**;
+- seated on the plane `z = 0.3 x`, a wall's ends take their own ground (`−1.5000`, `+1.5000`) with its
+  top still level at `2.0000`, its volume **unchanged** at `6.000000` — exact for a linear slope, because
+  the bottom turns about its mean — and its box running from `y −1.5000` to `2.0000`, still closed.
+
+**Walls follow the ground; buildings sit on terraces.** That is the difference between a fence and a
+building, and `seat` now does both and says how many of each.
+
+### Slice 3: the site is the skeleton
+
+The open question was whether a *site* needs a new document type. It does not: the skeleton has held
+several masses and walls since P1. What was missing was a way to **look at it as one place**, and two
+things only a site can say:
+
+- `Mass.name` with `Mass::named(..)` — and the invariant that makes it safe: **a name is for a reader and
+  never a handle.** Nothing in the crate resolves by name, two buildings may share one, and the doc on the
+  field says so, because an author who renames a building must not silently repoint anything at it.
+- `site::report(&skeleton) -> SiteReport { buildings, walls, wall_length, ground, overlaps }` with
+  `SiteReport::{building, footprint, relief}`. The overlap is between **plan bounding boxes** and the
+  doc states the bound plainly: two L-shaped buildings can have overlapping boxes and no shared wall at
+  all, which is why the report **lists** overlaps and nothing **judges** them.
+
+Measured by `examples/site_probe.rs` on three buildings and a five-wall courtyard: **3 buildings, 5 walls,
+38.0000 m of wall, footprint 92.0000 m²**, a box overlap of **4.5 m²** (`1.5 × 3` by hand), the ground
+running `0.7500 .. 4.3500` after seating, the buildings' tops moving with it, and the seated place
+building (88 points, 144 faces) with **0 violations**. The overlap was legal because the store is
+attached to the shed as a wing; the probe's first version left it unattached and `UnattachedOverlap` said
+so — **the validator caught the author, not the report**.
+
+### Slice 4: the site scene — one law for the ground
+
+`crates/gallery/src/yard.rs` ("yard"): a shed and a store up a `0.16 x` slope inside a five-run courtyard
+with a gate, `13` passes. Three decisions the frame forced:
+
+- **One law for the ground.** `ground(x, z)` is called once by the terrain mesh and once by `seat`, so
+  what the frame draws is exactly what the document was seated on. **Two laws would draw buildings
+  hovering over a slope or buried in it and the picture would still look plausible** — the one failure a
+  render cannot show and a shared function cannot have.
+- **The scene refuses to draw a site it could not seat**, asserting `2` masses and `5` walls were seated.
+- **A building on a slope needs a deep foundation, and the frame proved it.** The terrace is cut to the
+  *highest* ground, so the downhill edge stands the relief above the ground; with the starter's `0.3 m`
+  slab the whole downhill side floated, and the scene's buildings were given `1.20 m` — which is what a
+  real building on a slope has, and the reason the slab exists.
+
+The first render read as a beige plane (a `0.09` slope and four materials too close in value); the
+second, at `0.16` with separated materials, reads as a site.
+
+### Three lessons, recorded so the next phase does not pay for them
+
+1. **The room model cannot express a solid.** That is now **three** findings of one shape: the shed's
+   canopy plate, walls, and any future slab. `Mass` is a room; a plate is a room with a very shallow
+   floor; a wall is not a room at all. The pattern is worth knowing: **when a shape has no inside, look
+   for the model's assumption that it has one.**
+2. **A geometric rule with a consequence is not a bug.** Seating at the highest ground *implies* a
+   foundation on the downhill side; the terrace is right and the missing slab was the fault. The frame
+   found it because a picture is where a consequence becomes visible.
+3. **The bound is not the intersection, and the report must say which it is.** An overlap of bounding
+   boxes is a reading, not a fact about the buildings, and the doc says so at the type.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
