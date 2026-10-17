@@ -375,3 +375,29 @@ statement the crate prefers: a fact about the document, computed.
 **And the mass's `-6` says one more thing:** four handles where a plain ring has one, so the strip is pairing its
 **depth edges** (the `soffit[i] → floor[i]` edges) into extra loops at the stations. That is the remaining defect,
 and it is now a question of *which* handles, not *whether* the shell is closed.
+
+## `euler -6` is the right number, and the arithmetic proves it (2026-10-27)
+
+The mass's readings — six stations, which is **three openings** — and the shape of a wall ring give the expected
+Euler characteristic exactly:
+
+```text
+a ring of wall               1 handle   (the wall's own tube)
+three openings through it    3 handles  (one each)
+euler = 2 - 2 * (1 + 3) = -6
+```
+
+and the measured value is **−6**. The parts measure **0**, which is `2 - 2 * 1`: a ring of wall with nothing cut
+through it. **So nothing is wrong with the mass's topology.** The only thing wrong is the check that called it names:
+`SolidNotASphere` expects 2, and no wall volume will ever give 2.
+
+That converts the remaining work from geometry to accounting:
+
+1. **`SolidNotASphere` must become a counting check** — `euler = 2 - 2 * (1 + openings)` for a mass, `2 - 2` for a
+   slab, `2` for a box — which is a change to `validate` and to the scenes' own assertions;
+2. **one `FaceNotPlanar { departure: 0.19 }`** is the only geometric fault left, and it is the strip's quad where the
+   two cut loops' stations land at different distances along the corner — a warped quad, not a hole;
+3. **re-record the nine hashes** once the three scenes stop being rejected.
+
+This is the first time in the slice that a measured violation turned out to be **the instrument's** fault rather than
+the geometry's, and the arithmetic is what settled it: `-6` is not "bad", it is `1 + 3` handles.
