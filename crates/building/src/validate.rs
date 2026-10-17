@@ -840,7 +840,11 @@ fn plans_share_area(first: &[PlanNode], second: &[PlanNode]) -> bool {
     if !boxes_overlap(&one, &other) {
         return false;
     }
-    strictly_contains(&one, &other) || strictly_contains(&other, &one) || edges_cross(&one, &other)
+    strictly_contains(&one, &other)
+        || strictly_contains(&other, &one)
+        || edges_cross(&one, &other)
+        || edge_midpoints_inside(&one, &other)
+        || edge_midpoints_inside(&other, &one)
 }
 
 /// Returns whether the bounding boxes of two plan polygons share anything.
@@ -877,6 +881,37 @@ fn strictly_contains(outer: &[Vec2], inner: &[Vec2]) -> bool {
     inner
         .iter()
         .any(|point| !on_boundary(outer, *point) && ray_casts_in(outer, *point))
+}
+
+/// Returns whether any **edge's midpoint** of `inner` stands strictly inside `outer`.
+///
+/// # Invariants
+///
+/// **This is what catches an overlap whose boundary is collinear.** Two rectangles overlapping by a strip share
+/// two collinear edges and touch corner-to-edge, so neither polygon strictly contains the other and no edge
+/// properly crosses — and the area they share is real, with both builds owning the same pixels. An edge's
+/// midpoint is *inside* the other polygon exactly when the edge runs through its interior, which the two
+/// predicate tests above never ask.
+///
+/// **A flush pair is not reported**: when two masses stand against each other, the shared edge's midpoint lies
+/// *on* the other polygon's boundary, and [`on_boundary`] excludes it — the same margin the rest of this file
+/// uses to tell a shared plane from a shared area.
+///
+/// **It is a detector, not a proof.** An overlap thin enough that every edge's midpoint falls outside the other
+/// polygon (a sliver that crosses a corner) is not caught here; the crate's own documents are rectilinear, where
+/// the midpoint of a shared edge's inside portion is inside the other polygon whenever the shared area is wider
+/// than [`TOUCH_TOLERANCE`]. The limitation is recorded rather than hidden: a sound test is a clipping area, and
+/// that is a larger change than this one.
+fn edge_midpoints_inside(outer: &[Vec2], inner: &[Vec2]) -> bool {
+    (0..inner.len()).any(|index| {
+        let from = inner[index];
+        let to = inner[(index + 1) % inner.len()];
+        let midpoint = [
+            (from[0] + to[0]) * 0.5,
+            (from[1] + to[1]) * 0.5,
+        ];
+        !on_boundary(outer, midpoint) && ray_casts_in(outer, midpoint)
+    })
 }
 
 /// Returns whether a plan point stands on a polygon's edge, within [`TOUCH_TOLERANCE`].
