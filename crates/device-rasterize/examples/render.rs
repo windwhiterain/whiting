@@ -264,6 +264,10 @@ fn region(scene: &str, rendered: &RenderedFrame, region: [u32; 4]) {
 /// - **The reserved zero is asked of [`reserved_zero_answers`] and never written here**, for the reason
 ///   [`where_is`] gives at length: it is no element to name, it is the one id every subsystem answers,
 ///   and `--where 0` asks that same call about the same number.
+/// - **A row wants a handle and asks [`gallery::locate::handle_in`] for one.** A row of a rectangle is a count of
+///   ids and carries no pixel, so the sentences `--locate` puts under the handle — a face, a place on it, an edit —
+///   are about a pixel this table does not have. The registry answers both questions from one table, and which of the
+///   two a caller asks is the caller's decision rather than the registry's.
 /// - **A scene the gallery cannot name at all still answers in the harness's own words**, which are true
 ///   rather than a fallback for want of trying, and are the sentences this table carried before.
 fn name_for_row(scene: &str, naming: Option<&'static gallery::locate::Naming>, id: u32) -> String {
@@ -272,17 +276,14 @@ fn name_for_row(scene: &str, naming: Option<&'static gallery::locate::Naming>, i
             return answer;
         }
     }
-    if let Some(path) = gallery::building_identity::locate_in(scene, id) {
-        return path;
+    if let Some(handle) = gallery::locate::handle_in(scene, id) {
+        return handle;
     }
     match naming {
-        Some(naming) => match (naming.resolve)(id) {
-            Some(handle) => handle,
-            None if id == gallery::identity::NOT_AUTHORED => {
-                "not an authored element: the ground or the sky".to_owned()
-            }
-            None => format!("id {id} names nothing here"),
-        },
+        Some(_) if id == gallery::identity::NOT_AUTHORED => {
+            "not an authored element: the ground or the sky".to_owned()
+        }
+        Some(_) => format!("id {id} names nothing here"),
         None => format!("id {id}, and this scene names nothing"),
     }
 }

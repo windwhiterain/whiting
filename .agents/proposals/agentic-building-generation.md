@@ -3157,3 +3157,201 @@ statement. And it said the 3,318 "names nothing", which is true of every id and 
 number: three ids sum to it exactly. What the brief got **right** is the instruction not to edit a digit — the cause
 is the column's definition, which no edit to a number could have carried, and the note under the table now carries it.
 
+## What the landscape-handle slice found: the registry answers two questions, and one of them is a handle (2026-10-31, branch `feature/building-landscape-handles`)
+
+The region slice above closed `--region`'s sentence for the nine building scenes and left the harness sentence in
+place for everything else — as a fallback for want of trying rather than as a claim. **On the landscape it was not
+a fallback but a lie, and the reason it fell through is structural rather than accidental: nothing could answer the
+question a row has to ask.** The three slices before this each asked a table a question it already knew how to
+answer; the question this one needs — *what is this id called, with nothing about a pixel* — had no function behind
+it at all.
+
+### The last hole, and what it looked like from the inside
+
+`name_for_row` resolved a counted id through `gallery::building_identity` and then through
+`gallery::locate::naming`, and the second of those is the **vegetation** registry: a scene registers there to say
+its ids are nodes of a plant. **No landscape scene registers there, because the landscape is not a plant** — its ids
+are belts, and they are numbered by a different table entirely, `gallery::identity`, which `locate` falls through to
+only at the very end. So every non-zero row of every landscape rectangle read `id N, and this scene names nothing`,
+on the one scene whose whole purpose is to name its pixels:
+
+```text
+region landscape (400, 600)..(900, 900):          # before
+   40302 px  id 0      not an authored element: the pixel is the plain
+    9607 px  id 148    id 148, and this scene names nothing
+    8434 px  id 139    id 139, and this scene names nothing
+    7293 px  id 142    id 142, and this scene names nothing
+    6666 px  id 151    id 151, and this scene names nothing
+   …31 more ids
+  55 distinct id(s) over 150801 px
+```
+
+and the same id, asked about a pixel, named itself in six lines:
+
+```text
+locate landscape (500, 700):
+  authored_id          [148.0, 0.0, 0.0, 1.0]
+  ->
+landscape/near/valley_10/right_flank
+  id 148  face 16  u 0.303  v 0.582
+  top    Ridge(RidgeId(8)), reached between the stations of valley 10 nodes 4 and 5
+  bottom valley 10 nodes 4 and 5, at elevation 1725.0
+  the edit: massif.skeleton.valleys[10].nodes[4].elevation  (or node 5)
+```
+
+**That is the whole of the defect: an answer that is true, six lines long, and unusable in a row.** The five lines
+under the handle are about a pixel — which face of the belt held it, what its parameters were, which ridge it ran
+along, which two nodes an author would move. **A rectangle has a count and no pixel**, so there is nothing for those
+lines to be about, and printing them would be printing an answer to a question nobody asked.
+
+### The handle is derivable, and the derivation is `Row::path` rather than the first line
+
+The brief's first option was to derive the handle from what the registry already returns. **It is derivable, and the
+thing it is derived from is the table rather than the string**, for a reason that is visible in the branches rather
+than in the output: **`identity::locate` does not always begin with the handle.** One of its returns is a refusal that
+names the id and says the frame and the mesh are from different builds, which is the right answer and has no handle
+in it at all; another puts the handle and the belt and the parameters on **one** line. Taking `lines().next()` is
+therefore not a handle, and it is only accidentally right on the branch most pixels take.
+
+So the handle is **`Row::path` read out of the very `Identity` walk `locate` already runs** — the numbering and the
+names are built together in `Identity::of` and there is no second walk. `flank_identities` is that walk, factored out
+of `locate` so both questions read it, and `identity::handle_of` asks it and returns the path. **It builds no mesh
+and needs no `(u, v)`**, which is not a micro-optimisation but the reason it can exist: the faces and the parameters
+are what a handle must *not* depend on.
+
+### One registry, two questions, and the prose is the caller's
+
+`gallery::locate` now answers two things:
+
+| question | function | answer |
+| --- | --- | --- |
+| **what is this id called** | `locate::handle_in` | the handle, one line, from an id alone |
+| **what does this pixel show** | `locate::locate` | the handle on the first line, and the face, the place and the edit under it |
+
+Both ask the same tables in the same order — a building's own `building_identity` first, then the naming registry
+for a scene that registered there, then the landscape's `identity` — so **the answer of the first is the first line of
+the second by construction rather than by discipline**, and neither asker can drift from the other. **Which of the
+two a caller wants is the caller's decision**: a row of a rectangle wants the handle, a single pixel wants the prose,
+and a registry that returned one string would force one shape on both. `name_for_row` asks `handle_in`; nothing else
+does, because `--locate` and `--where` are correct already.
+
+**The landscape is deliberately not registered in `NAMINGS`,** and reading `locate` says why in three lines: a row
+there would put a resolver and a note beside the scene, and `locate`'s arms would then stop falling through to
+`identity::locate` — so a sky pixel would lose *"the pixel is the plain"* and gain the vegetation's *"…the ground
+the plant stands on"*, and a crest would lose its face, its ridge and its edit. **Adding a row would have bought the
+handle and cost `--locate`, which is the opposite of what this slice was for.**
+
+### The same rectangles after, on the same machine
+
+```text
+region landscape (400, 600)..(900, 900):          # after
+   40302 px  id 0      not an authored element: the pixel is the plain
+    9607 px  id 148    landscape/near/valley_10/right_flank
+    8434 px  id 139    landscape/near/valley_10/left_flank
+    7293 px  id 142    landscape/near/valley_10/left_flank
+    6666 px  id 151    landscape/near/valley_10/right_flank
+   …31 more ids
+  55 distinct id(s) over 150801 px
+```
+
+**Every printed row is named, and the counts are the counts the run before it read** — the counts are the rectangle's,
+the names are now the scene's. The check that the two questions agree is not a reading of the two tables side by
+side: **id 148 is the `authored_id` at (500, 700), and that row reads `landscape/near/valley_10/right_flank`, which
+is the first line `--locate` prints for the pixel carrying id 148.** The two directions are one number and one name.
+
+### A table of ids is not a census: `--region` prints at most 24 rows
+
+**`--region` names the deepest 24 ids and no more**, and it says so — `…N more ids` — but the line sits under the
+table like a footer and reads like a detail. **A whole-frame sweep is therefore not a census of the frame**, and on
+this machine it is not a near miss either; every row below was rendered here, on this adapter:
+
+| scene | whole-frame sweep | rows printed | ids reported beyond the table | distinct ids in the frame |
+| --- | --- | --- | --- | --- |
+| `terrace` | `--region 0,0,1023,1023` | 24 | **26** | 50 |
+| `workshop` | `--region 0,0,1023,1023` | 24 | **25** | 49 |
+| `yard` | `--region 0,0,1023,1023` | 24 | **27** | 51 |
+| `landscape` | `--region 0,0,1023,1023` | 24 | **116** | 140 |
+| `landscape` | `--region 400,600,900,900` | 24 | **31** | 55 |
+
+**The cap hides more than half of a frame's elements, and on the landscape it hides five sixths of them** — 25 of
+`workshop`'s 49, 26 of `terrace`'s 50, 27 of `yard`'s 51, and 116 of the landscape's **140**. A reader who took the
+table for the frame would be wrong about the majority of it and the table would not say so, which is what makes the
+`…N more ids` line part of the answer rather than a detail under it.
+
+**Sweeping by name is the census.** `--where` resolves a name to an id through `building_identity::id_in`, the same
+table `scene_identity_probe` walks, so a sweep over that table's **806** rows (77 + 109 + 77 + 31 + 66 + 123 + 123 +
+99 + 101) visits every element the crate knows and is truncated nowhere. `--region` is the right tool for *a
+rectangle* — which elements a box covers, and how much of each — and the wrong tool for *the frame's inventory*. The
+cap is the **deepest 24 by pixel count**, so a rectangle covering 140 ids shows the same 24 however it is drawn, and
+narrowing a rectangle lifts the cap only by covering fewer ids: the landscape's own 55-element rectangle shows its
+deepest 24 and reports 31 more. The number is printed on the row precisely so that a reader who wants the inventory
+knows the table is not it.
+
+### The gate
+
+- **All 29 building examples exit 0**, `census` included (run as `cargo run -p whiting-building --example census`,
+  because the `census.exe` in the shared `target\debug\examples` is whichever of two collided binaries was linked
+  last).
+- `cargo build --workspace --all-targets` exits 0 and warns **only** of the `census.exe` / `census.pdb` filename
+  collision — the set every earlier section quotes, and no new warning.
+- `cargo fmt --all -- --check` is clean. `scene_identity_probe` reads **806** rows (77 + 109 + 77 + 31 + 66 + 123 +
+  123 + 99 + 101), contiguous, every name non-empty, every name round-tripping, the four pinned readings unchanged,
+  the channel two-way.
+- **Nine before/after pairs on this adapter, every frame hash, every document hash and every pixel-buffer hash
+  identical**, rendered to fresh names (`lhB-hash-*`, `lhA-hash-*`) in a worktree whose `out/` was empty. The before
+  set is the branch point's own three source files restored under `git checkout 5ec604e -- …` and rebuilt, and the
+  after set is that tree plus one function.
+
+**And the table above *is* current for this adapter, which corrects an earlier section.** The notch slice recorded
+that `crates/gallery`'s `house` renders to `4F343949D83B2064` here "rather than the `B13154AD7D29F938` the table
+carries". **Both numbers are real and they are hashes of different artefacts**: `4F343949…` is the manifest's `image`
+field, which hashes the **raw pixel buffer**, and `B13154AD…` is the SHA-256 of the **written `.png` file**. Hashing
+the nine files this slice wrote gives `house B13154AD7D29F938`, `hall C4339E6310EA1C37`, `hall_large 43D3780A15E3D08E`,
+`shed 882B8F9A7C671B0D`, `terrace EDF3F4B3CF2A9686`, `wing 14E3E27F9F9E1A83`, `workshop 7DD5D40894181EA7`,
+`yard FDC446B24E98CE04`, `identity 974FB5B24E1E7A35` — **the nine the table carries, reproduced exactly.** So the
+table was never stale for this adapter, and the earlier reading compared two different hashes and called one of them a
+regression. The rule in *Which adapter a hash belongs to* stands and is the one this slice used — **compare the
+before/after pair on one adapter** — and it is worth adding which artefact a number is: a manifest `image` field and a
+file's SHA-256 are both called a frame hash and are not the same measurement.
+
+### The three building scenes did not move a byte
+
+`--locate`, `--where` and `--region` on `house`, `hall_large` and `workshop`, captured whole and compared as bytes
+before and after — the same three source files restored and rebuilt on both sides, the same rectangle
+`400,600..900,900` and the same whole-frame `0,0..1023,1023`, the same two `--locate` pixels and the same three
+`--where` questions:
+
+| scene | diagnostic lines compared | differing lines | SHA-256 (first 16) before | after |
+| --- | --- | --- | --- | --- |
+| `house` | 31 | **0** | `F28BEE049CDAFAA4` | `F28BEE049CDAFAA4` |
+| `hall_large` | 62 | **0** | `C62C94D6AA0A5BE5` | `C62C94D6AA0A5BE5` |
+| `workshop` | 59 | **0** | `1A94EF79A5B18250` | `1A94EF79A5B18250` |
+| `landscape` | 75 | **46** | `3F0D84F3E026B356` | `95D54EBCCD300750` |
+
+**Every one of the 46 differing lines on the landscape is a `--region` id row**, and all 46 are non-zero ids; no
+`--locate` line and no `--where` line differs on any of the four scenes. `where landscape 0` still answers *not an
+authored element: the pixel is the plain* and `where landscape 2` still answers *id 2 is not visible in this frame* —
+the reserved zero and the "not an element of this content" refusal are the previous slices' sentences and were not
+touched.
+
+### What this slice's brief got wrong
+
+**It said `--locate` prints "the two lines", twice, and the landscape prints six** — the handle and five beneath it.
+The size of the gap is the substance of the fix rather than a detail of it: a two-line answer would have been a
+handle and one of those five lines, and the argument for a second question in the registry would have been much
+weaker, because a caller could have taken the first line and been right more often.
+
+**It said the prose lives in "the naming registry".** The landscape has no row in `gallery::locate::NAMINGS` — that
+registry is the *vegetation* one, and the previous slice's own section says so — and the landscape's answer comes
+from `gallery::identity`, a different table that `locate` reaches only by falling through. That mis-naming matters
+because it points at the wrong place to fix: "add a landscape row to the naming registry" is the change this slice
+had to measure and reject, since a row would have moved `--locate`'s zero sentence and its six-line answer, both of
+which are the previous slices' work and both of which the brief required to stay.
+
+**It asked for "every row named", which the tool cannot deliver for every id.** The rectangle carries 55 ids and
+`--region` prints 24 of them; **31 of the landscape's ids are still not shown, now for the reason the cap gives and
+not the reason the defect gave.** The acceptance as worded is met — every row that prints is named — and the ids
+below the line are named only by `--where`. Which is the reading limitation above, and it would have been recorded
+anyway, but the brief treated the defect as the last one in the class and it was the last one in the class **and not
+the only thing standing between a reader and a complete picture**.
+

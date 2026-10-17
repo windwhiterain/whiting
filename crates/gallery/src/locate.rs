@@ -26,6 +26,14 @@
 //! scene. `--locate` and `--region` ask the same table and want different sentences, so the table answers handles and
 //! the asker writes the prose — which is also why a scene absent from it is refused rather than guessed at.
 //!
+//! **The table answers two questions, and only one of them is a sentence.** [`handle_in`] is the *handle* question —
+//! one line, no pixel required — and [`locate`] is the *prose* question, whose first line is the handle. Both read
+//! the same tables in the same order, so a caller printing a row of a rectangle and a caller printing one pixel are
+//! looking at the same number and the same name. **The prose is the caller's concern**: which lines of the answer a
+//! caller wants is a property of the question it asked, and a registry that returned a single string would force one
+//! shape on both. The landscape is not in [`NAMINGS`] because it is answered by [`crate::identity`], which has its
+//! own table and its own two questions.
+//!
 //! # Why it takes three numbers and not a frame
 //!
 //! **The dependency runs device → gallery, and a frame is the device's type.** Taking the three
@@ -103,6 +111,35 @@ pub fn naming(scene: &str) -> Option<&'static Naming> {
     NAMINGS.iter().find(|naming| naming.scene == scene)
 }
 
+/// Resolves an `authored_id` written by **any scene this crate names** into the handle of the element it shows.
+///
+/// This is the **handle** question; [`locate`] is the **prose** question. Both are asked of the same tables, in the
+/// same order, and the answer of this one is the first line of that one's — so a caller that wants a handle and a
+/// caller that wants a sentence are reading the same number and cannot disagree about what it is.
+///
+/// # Invariants
+///
+/// - **The order is [`locate`]'s, and each domain is asked by the content that owns it**: a building's own
+///   [`crate::building_identity`] table first, then the naming registry for a scene that registered there, then the
+///   landscape's own [`crate::identity`], which is the last because it is the one every other domain falls through
+///   to. Neither answers for a scene it does not know, so a scene none of them names answers `None` here exactly as
+///   it does there.
+/// - **The reserved zero has no handle, and says so rather than naming the first element.** It is not an authored
+///   element and no table allocates it; the sentence about it is a *pixel's*, and it belongs to [`locate`].
+/// - **The prose around a handle is the caller's, not this table's.** A rectangle of the frame is a count of ids and
+///   carries no pixel to place, so a row of one wants the handle alone; a single pixel wants the handle and the face,
+///   the parameters and the edit beneath it. One registry answering two questions is what keeps those from being two
+///   tables that can disagree.
+pub fn handle_in(scene: &str, id: u32) -> Option<String> {
+    if let Some(path) = crate::building_identity::locate_in(scene, id) {
+        return Some(path);
+    }
+    if let Some(naming) = naming(scene) {
+        return (naming.resolve)(id);
+    }
+    crate::identity::handle_of(scene, id)
+}
+
 /// Resolves the three values a frame declared at one pixel to the authored part they name.
 ///
 /// # Invariants
@@ -113,6 +150,9 @@ pub fn naming(scene: &str) -> Option<&'static Naming> {
 ///   at all, which is a different thing entirely.
 /// - **An id above the count is reported, not clamped.** A frame and a mesh from different builds
 ///   produce exactly that, and the number in the message is what tells the two apart.
+/// - **The first line of an answer is its handle, and [`handle_in`] gives that line alone.** The lines beneath it
+///   are about a pixel — a face, a place on it, an edit — and are this function's to add; a caller holding only an
+///   id asks [`handle_in`] rather than being handed a sentence with a pixel it does not have in it.
 pub fn locate(scene: &str, values: &[(String, f32)]) -> Option<String> {
     let one = |name: &str| {
         values

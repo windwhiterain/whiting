@@ -239,30 +239,22 @@ pub fn locate(scene: &str, id: Option<[f32; 4]>, u: f32, v: f32) -> Option<Strin
         return None;
     }
     let massif = crate::landscape::massif();
-    // **Both ranges are rebuilt and the id is asked of each**, because each numbers its belts
-    // from its own walk and only one of the two runs carries the number a pixel wrote. A reader
-    // that asked the wrong table first would be told the id is unknown, which is the right
-    // answer for a number nothing owns and the wrong one for a number the other flank has.
     let authored = massif.build().ok()?;
     let (low, high) = authored.bounds();
     let radius = (((high[0] - low[0]).powi(2) + (high[2] - low[2]).powi(2)) as f64).sqrt() * 0.5;
-    // **Both ranges are rebuilt and the id is asked of each**, because each numbers its belts from
-    // its own walk and only one of the two runs carries the number a pixel wrote. A reader that
-    // asked one table and stopped would be told the id is unknown — the right answer for a number
-    // nothing owns, and the wrong one for a number the flank on the other side has.
-    let mut next = 1u32;
-    let mut tables = Vec::new();
-    for range in crate::landscape::ranges() {
-        let identity = Identity::of(&massif, next, |belt| {
-            crate::landscape::belt_path(range.name, belt)
-        });
-        next += identity.rows().len() as u32;
-        let at = [range.centre[0] * radius, range.centre[1] * radius];
-        tables.push((
-            crate::landscape::stood_at(&authored, at, range.scale, range.turn),
-            identity,
-        ));
-    }
+    // **The meshes are stood beside the very ids they are asked about**, one range's walk to one
+    // range's placement, so the pair a pixel is resolved against is the pair this walk numbers.
+    let tables: Vec<(FacetMesh, Identity)> = flank_identities(&massif)
+        .into_iter()
+        .zip(crate::landscape::ranges())
+        .map(|(identity, range)| {
+            let at = [range.centre[0] * radius, range.centre[1] * radius];
+            (
+                crate::landscape::stood_at(&authored, at, range.scale, range.turn),
+                identity,
+            )
+        })
+        .collect();
 
     // The value is the **first** component, which is where a one component image puts it: an
     // `r32float` target is a single channel and the readback pads the row out to four floats.
@@ -335,6 +327,55 @@ pub fn locate(scene: &str, id: Option<[f32; 4]>, u: f32, v: f32) -> Option<Strin
         valley.nodes[segment].elevation,
         row.belt.valley.0,
     ))
+}
+
+/// Resolves an `authored_id` written by the **landscape** into the handle of the element it shows, in one line.
+///
+/// It is [`locate`] without the sentences, and it answers the same question the first line of [`locate`] answers.
+///
+/// # Invariants
+///
+/// - **The handle is [`locate`]'s first line, and both read it from this one table.** [`locate`]'s first line is
+///   [`Row::path`] of the row its own walk found, and this asks the same walk for the same row, so a caller that
+///   wants the short answer and a caller that wants the long one are reading one number and one name.
+/// - **No mesh is built and no `(u, v)` is needed, because a handle does not name a place.** The lines under the
+///   handle in [`locate`] are about a pixel — which face of the belt held it, what the parameters were, which ridge
+///   it ran along — and a reader that has only an id has no pixel to place. The ids come from the skeleton alone,
+///   which is what makes this O(number of belts) rather than O(geometry).
+/// - **Both flanks are asked and the answer is the first that holds.** Each numbers its belts from its own walk,
+///   so a reader that stopped at one table would refuse the other's ids — the right answer for a number nothing
+///   owns, and the wrong one for a number the flank on the other side has.
+/// - **A scene this module cannot name answers `None`,** and so does an id neither flank holds: the reserved zero
+///   among them, which [`Identity::row`] refuses rather than handing over the first row.
+pub fn handle_of(scene: &str, id: u32) -> Option<String> {
+    if scene != "landscape" {
+        return None;
+    }
+    flank_identities(&crate::landscape::massif())
+        .iter()
+        .find_map(|identity| identity.row(id))
+        .map(|row| row.path.clone())
+}
+
+/// Numbers the belts of every range from one, in the order a pixel asks them.
+///
+/// # Invariants
+///
+/// **Both ranges are numbered by one walk, and this is the only walk that numbers them.** Each range runs its own
+/// [`Identity`] from where the one before it ended, because two tables that both began at one would hand the same
+/// number to two different flanks — which is the collision the reserved zero exists to make impossible. The meshes
+/// a long answer needs are stood beside these ids rather than numbered a second time.
+fn flank_identities(massif: &Massif) -> Vec<Identity> {
+    let mut next = 1u32;
+    let mut identities = Vec::new();
+    for range in crate::landscape::ranges() {
+        let identity = Identity::of(massif, next, |belt| {
+            crate::landscape::belt_path(range.name, belt)
+        });
+        next += identity.rows().len() as u32;
+        identities.push(identity);
+    }
+    identities
 }
 
 fn field(name: &str) -> Authored {
