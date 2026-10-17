@@ -1,18 +1,17 @@
-//! One frame with a tube, a blade and an envelope in it, every one of them a sweep.
+//! A tube, a blade and two envelopes in one frame: every one of them a `shape::sweep`.
 //!
-//! ```text
-//! cargo run -p whiting-gallery --example sweep_picture
-//! ```
+//! # What this scene is for
 //!
-//! # What the picture is for
+//! `shape::sweep` measures itself in [`sweep_probe`](../../shape/examples/sweep_probe.rs): the
+//! frustum volume, the closed solid, the `(u, v)` of every vertex, the tip that collapses to a
+//! point. **Those are numbers about a mesh, and a mesh can satisfy all of them and still look like
+//! nothing** — inside out, edge on, lit so flat that it reads as a silhouette, or wound the wrong
+//! way round so that every cap is a hole. This is the scene that shows the primitive reaching a
+//! frame, and it is here rather than in an example because a gallery scene is the tree's one
+//! picture format: this one is drawn by [`render`], `--locate`d by a person pointing at a pixel, and
+//! swept by every suite that holds that every named scene draws at all.
 //!
-//! `shape::sweep`'s own probe measures the geometry: the frustum volume, the closed solid, the
-//! `(u, v)` of every vertex, the tip that collapses to a point. **Nothing has ever drawn one.**
-//! Those are numbers about a mesh, and a mesh can satisfy all of them and still look like nothing
-//! — inside out, edge on, lit so flat that it reads as a silhouette, or wound the wrong way round so
-//! that every cap is a hole. This is the one picture that shows the primitive reaching a frame.
-//!
-//! The three are the table in `shape::sweep`'s own module, drawn side by side:
+//! The four shapes are the table in `shape::sweep`'s own module, drawn side by side:
 //!
 //! | in the frame | spine | section | scale |
 //! | --- | --- | --- | --- |
@@ -28,47 +27,42 @@
 //! # The `(u, v)` the loft returns is drawn, not printed
 //!
 //! There is no `u`/`v` debug channel in this tree: `scene::DebugChannel` is `Position`, `Depth` and
-//! `Grade`, and none of them is a surface's own parameter. **What the gallery does offer is the
-//! `tiles` scene's own material** — the `textured` lighting shader sampling a generated image by a
-//! point's `texture` field — and the loft hands back a `(u, v)` per vertex, so the tube's are
-//! written straight into that field and sampled by a checker written here. No channel, no feature
-//! and no shader: the material is the one `tiles` already renders with, and the image is a picture a
-//! loop can make, which is the same reason `tile_pixels` exists.
+//! `Grade`, and none of them is a surface's own parameter. **What the gallery does offer is this
+//! crate's own [`textured`] material** — the same one [`tiles`] draws its floor with — sampling a
+//! generated image by a point's `texture` field, and the loft hands back a `(u, v)` per vertex, so
+//! the tube's are written straight into that field and sampled by a checker written here. No
+//! channel, no feature and no shader: the material is the one `tiles` already renders with, and the
+//! image is a picture a loop can make, which is the same reason [`tile_pixels`] exists.
 //!
 //! # What is not built here
 //!
 //! No normals: [`shape::loft::Loft`] carries none, because a consumer's shading chooses its own, so
-//! the ones below are accumulated from the triangles the loft wrote. No windings of their own either:
-//! every triangle comes out of the loft in the order it was wound, and the picture is evidence of
-//! that order rather than a correction to it.
+//! the ones in [`points_of`] are accumulated from the triangles the loft wrote. No windings of their
+//! own either: every triangle comes out of the loft in the order it was wound, and the frame is
+//! evidence of that order rather than a correction to it.
+//!
+//! [`render`]: ../../../device-rasterize/examples/render.rs
+//! [`textured`]: crate::shaders::textured
 
-use std::f32::consts::{FRAC_PI_2, TAU};
-
-use definition::{
-    Definition, DefinitionIdentifier, PackedList, Registry, Schema, SchemaIdentifier, Value,
-};
-use device::{RenderedFrame, Renderer};
-use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
-use scene::{CompileContext, CompileOutput, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
+use definition::{PackedList, Schema, Value};
+use scene::standard::Stage;
 use shape::curve::{Curve, Jet};
 use shape::loft::Loft;
 use shape::math::Vec2;
 use shape::scalar::Scalar;
 use shape::section::Section;
 use shape::sweep::Sweep;
-use whiting_gallery::attributes::gallery_vertex_inputs;
-use whiting_gallery::geometry::{Shaded, cross, normalized, plane_facing, subtract};
-use whiting_gallery::kit::{
-    IMAGE_FIELD, camera_placed, gallery_custom_schema_with_image, gallery_instance_schema, image,
-    instance, instances, light, light_with_radius, mesh, mesh_material, post_processes,
-    screen_material, shaded_point_schema, shader, surface,
+
+use crate::attributes::gallery_vertex_inputs;
+use crate::geometry::{Shaded, cross, normalized, plane_facing, subtract};
+use crate::kit::{
+    IMAGE_FIELD, camera_placed, flux_for_irradiance, gallery_custom_schema_with_image,
+    gallery_instance_schema, image, instance, instances, light, light_with_radius, mesh,
+    mesh_material, post_processes, screen_material, shaded_point_schema, shader, surface,
 };
-use whiting_gallery::shaders::{
+use crate::shaders::{
     Projection, depthing, lighting_with_normal, post_shader, shadowing, textured,
 };
-
-/// Where the frame goes, which `out` already keeps out of the tree.
-const OUTPUT: &str = "out/sweep-picture.png";
 
 /// How many rings a sweep is sampled at, and how many points a ring has.
 ///
@@ -105,7 +99,7 @@ const CHECKER_AROUND_V: i64 = 16;
 /// difference keeps them the same shade. See [`checker_pixels`].
 const CHECKER_CYCLE: i64 = 3;
 
-/// What the post stage does to the frame, which is `tiles`' own grade.
+/// What the post stage does to the frame, which is [`tiles`]' own grade.
 const GRADE: &str = r#"
     color = color / (color + vec3<f32>(1.0));
     color = pow(color, vec3<f32>(0.4545));
@@ -168,11 +162,11 @@ const FILL_COLOUR: [f64; 3] = [0.42, 0.52, 0.74];
 /// reader compares two silhouettes; stacked, they compare one silhouette and an occlusion.
 ///
 /// **The blade is first and is given a whole unit of its own, because its midrib is a quarter arc of
-/// radius one and it sweeps that whole unit sideways as it rises.** The first run of this picture put
+/// radius one and it sweeps that whole unit sideways as it rises.** The first run of this scene put
 /// it second and drew half of it behind the coarse envelope: a shape that occupies a unit of plan is
 /// a unit of plan whichever slot it is in, and the slot is the only thing that decides whether it is
-/// seen or hidden. Nothing overlaps: the picture's claim is that they are four **different shapes**,
-/// and two solids sharing a pixel is a picture where that claim cannot be checked by looking.
+/// seen or hidden. Nothing overlaps: the scene's claim is that they are four **different shapes**,
+/// and two solids sharing a pixel is a frame where that claim cannot be checked by looking.
 const BLADE_AT: [f64; 3] = [-1.20, STANDING, 0.0];
 const TUBE_AT: [f64; 3] = [0.06, STANDING, 0.02];
 const COARSE_AT: [f64; 3] = [0.70, STANDING, 0.04];
@@ -188,7 +182,7 @@ const REFINED_AT: [f64; 3] = [1.30, STANDING, -0.04];
 /// direction that shows a plate its broad face here is up and towards that eye. Writing `(0, 1, 0)`
 /// would give a binormal of `(0, 0, 1)`, straight at the lens and a flat lit card; this tilts it
 /// fifteen degrees back, which is what leaves the blade a shade of its own width in shadow down one
-/// side and makes it read as a solid rather than as a cut-out. The first run of this picture wrote
+/// side and makes it read as a solid rather than as a cut-out. The first run of this scene wrote
 /// `(0, 0, 1)` and drew the blade lying on the floor like a table top, because a binormal of `-y` is
 /// a lens whose thickness stands up.
 const BLADE_NORMAL: [f32; 3] = [0.0, 0.95, -0.31];
@@ -212,35 +206,8 @@ struct Shape {
     loft: Loft,
 }
 
-#[tokio::main]
-async fn main() {
-    if let Err(failure) = draw().await {
-        eprintln!("error: {failure}");
-        std::process::exit(1);
-    }
-}
-
-/// Builds the scene, renders it once, and writes the frame beside the report.
-async fn draw() -> Result<(), String> {
-    let owned = device_rasterize::rasterizer().await;
-    let renderer: &dyn Renderer = &owned;
-
-    let mut registry = Registry::new();
-    registry.put_schema(
-        SchemaIdentifier::new(GRAPHICS_SCHEMA),
-        graphics::graphics_schema(),
-    );
-    registry.put_schema(
-        SchemaIdentifier::new(INSTANCE_SCHEMA),
-        graphics::instance_schema(),
-    );
-    scene::register_standard_scene_schema(&mut registry);
-
-    let compiler = StandardScene::new(
-        DefinitionIdentifier::new("sweep_picture.graphics"),
-        DefinitionIdentifier::new("sweep_picture.instance"),
-    );
-
+/// Builds the scene: one camera, two lights, a floor and the four shapes, each in its own material.
+pub fn sweep_picture() -> Value {
     let shapes = [
         tube(),
         blade(),
@@ -251,33 +218,234 @@ async fn draw() -> Result<(), String> {
             Section::outline(&lobes()).expect("three lobes of twenty four points is a loop"),
         ),
     ];
-    report(&shapes);
 
-    let compiled = compile(&compiler, &registry, renderer, &scene(&shapes))?;
-    let frame = RenderedFrame {
-        renderer: renderer.name(),
-        images: renderer
-            .render_outputs(&compiled.graphics.value, &compiled.instance.value)
-            .map_err(|error| format!("the frame does not render: {error}"))?,
-    };
+    let point = shaded_point_schema();
+    // **The attribute list is derived from the gallery's own custom schema, not from the one the
+    // shaders below declare.** `image` is a marker rather than a value the row carries — the
+    // compiler reads it out of the material and drops it before the bytes are packed — so a vertex
+    // struct derived from the schema *with* the image field would put every field after it one
+    // location too high, and the frame would refuse to bind an attribute of one component where the
+    // shader read a matrix column. This is the half of [`tiles`] that is easy to copy wrong.
+    let inputs = gallery_vertex_inputs(&point);
+    // Every shader in the frame declares the custom schema **with** the image field, so one
+    // instance row is one layout in every pass and the tube's material may name its checker. A
+    // scene whose lighting shader added a field the shadowing stage's did not would be a scene
+    // whose shadow pass reads the wrong offsets.
+    let custom = gallery_custom_schema_with_image();
 
-    if let Some(directory) = std::path::Path::new(OUTPUT).parent() {
-        std::fs::create_dir_all(directory)
-            .map_err(|error| format!("{directory:?} is not made: {error}"))?;
+    let shaders = vec![
+        shader(
+            Stage::Shadowing,
+            "shadowing",
+            &shadowing(&inputs),
+            scene::standard::shadow_pass_schema(),
+            point.clone(),
+            gallery_instance_schema(),
+            custom.clone(),
+        ),
+        shader(
+            Stage::Depthing,
+            "depthing",
+            &depthing(&inputs),
+            scene::standard::depth_pass_schema(),
+            point.clone(),
+            gallery_instance_schema(),
+            custom.clone(),
+        ),
+        // **Two lighting shaders, and that is the whole of the `(u, v)` channel.** The plain one
+        // draws the three shapes whose colour is the point; the textured one draws the tube and
+        // multiplies the checker by its tint. Both are declared against the same point schema and
+        // the same custom schema, so either can draw either mesh, and which one draws a shape is a
+        // property of the material it names.
+        lighting_shader("lighting", &inputs, &point, &custom),
+        shader(
+            Stage::Lighting,
+            "parameterised",
+            &textured(&inputs, ""),
+            scene::standard::light_pass_schema(),
+            point.clone(),
+            gallery_instance_schema(),
+            custom.clone(),
+        ),
+        post_shader(GRADE, "", None),
+    ];
+
+    let materials = vec![
+        mesh_material("caster", "shadowing", surface([1.0; 3], 0.0, 1.0, [0.0; 3])),
+        mesh_material(
+            "occluder",
+            "depthing",
+            surface([1.0; 3], 0.0, 1.0, [0.0; 3]),
+        ),
+        mesh_material("floor", "lighting", surface(FLOOR_TINT, 0.0, 1.0, [0.0; 3])),
+        // Only the tube's row names the image: a shadow map and a depth buffer are the pipeline's
+        // own textures, and the other three surfaces are the colours the frame is about.
+        mesh_material(
+            "tube",
+            "parameterised",
+            surface_naming(TUBE_TINT, "checker"),
+        ),
+        mesh_material("blade", "lighting", surface(BLADE_TINT, 0.0, 1.0, [0.0; 3])),
+        mesh_material(
+            "coarse",
+            "lighting",
+            surface(COARSE_TINT, 0.0, 1.0, [0.0; 3]),
+        ),
+        mesh_material(
+            "refined",
+            "lighting",
+            surface(REFINED_TINT, 0.0, 1.0, [0.0; 3]),
+        ),
+    ];
+
+    let mut meshes = vec![mesh(
+        "floor",
+        "Triangles",
+        point.clone(),
+        plane_facing(FLOOR_EXTENT, 0.0, true),
+    )];
+    for shape in &shapes {
+        meshes.push(mesh(
+            shape.label,
+            "Triangles",
+            point.clone(),
+            points_of(&shape.loft),
+        ));
     }
-    let png = frame
-        .to_png()
-        .map_err(|error| format!("the frame does not encode: {error}"))?;
-    std::fs::write(OUTPUT, &png).map_err(|error| format!("{OUTPUT} does not write: {error}"))?;
 
-    let present = frame
-        .present()
-        .ok_or("the frame carries no image declared as the present")?;
-    println!(
-        "\n# the frame\n  {OUTPUT} is {} by {} from {}",
-        present.width, present.height, frame.renderer
-    );
-    Ok(())
+    let placed = |stage: &str, label: &str, at: [f64; 3], material: &str| -> Value {
+        instance(
+            format!("{stage}-{label}"),
+            label,
+            at,
+            [0.0; 3],
+            [1.0; 3],
+            material,
+        )
+    };
+    let standing: Vec<(&str, [f64; 3])> = std::iter::once(("floor", [0.0; 3]))
+        .chain(shapes.iter().map(|shape| (shape.label, shape.at)))
+        .collect();
+
+    Value::structure([
+        ("name".to_owned(), Value::String("sweep".to_owned())),
+        (
+            "frame".to_owned(),
+            Value::structure([
+                ("width".to_owned(), Value::Int(WIDTH)),
+                ("height".to_owned(), Value::Int(HEIGHT)),
+            ]),
+        ),
+        (
+            "cameras".to_owned(),
+            Value::List(vec![camera_placed(EYE, TARGET, FIELD_OF_VIEW, NEAR, FAR)]),
+        ),
+        (
+            "lights".to_owned(),
+            Value::List(vec![
+                light_with_radius(
+                    "key",
+                    KEY_POSITION,
+                    KEY_COLOUR,
+                    flux_for_irradiance(KEY_IRRADIANCE, KEY_REACH),
+                    KEY_EXTENT,
+                    KEY_REACH,
+                ),
+                light(
+                    "fill",
+                    FILL_POSITION,
+                    FILL_COLOUR,
+                    flux_for_irradiance(0.55, 3.0),
+                    KEY_EXTENT,
+                ),
+            ]),
+        ),
+        ("shaders".to_owned(), Value::List(shaders)),
+        (
+            "images".to_owned(),
+            Value::List(vec![image(
+                "checker",
+                CHECKER_SIZE,
+                CHECKER_SIZE,
+                checker_pixels(),
+                Projection::Latlong,
+            )]),
+        ),
+        ("meshes".to_owned(), Value::List(meshes)),
+        ("mesh_materials".to_owned(), Value::List(materials)),
+        (
+            "screen_materials".to_owned(),
+            Value::List(vec![screen_material("post", "post")]),
+        ),
+        ("post_processes".to_owned(), post_processes(&["post"])),
+        (
+            "instances".to_owned(),
+            instances(vec![
+                (
+                    Stage::Shadowing,
+                    standing
+                        .iter()
+                        .map(|(label, at)| placed("shadowing", label, *at, "caster"))
+                        .collect(),
+                ),
+                (
+                    Stage::Depthing,
+                    standing
+                        .iter()
+                        .map(|(label, at)| placed("depthing", label, *at, "occluder"))
+                        .collect(),
+                ),
+                (
+                    Stage::Lighting,
+                    standing
+                        .iter()
+                        .map(|(label, at)| {
+                            let material = if *label == "floor" {
+                                "floor"
+                            } else {
+                                shapes
+                                    .iter()
+                                    .find(|shape| shape.label == *label)
+                                    .map_or("blade", |shape| shape.material)
+                            };
+                            placed("lighting", label, *at, material)
+                        })
+                        .collect(),
+                ),
+            ]),
+        ),
+    ])
+}
+
+/// The plain lighting stage, declared against this scene's own custom schema.
+///
+/// `crate::shaders` has a builder that carries its own schema and one that takes the attribute
+/// list, and **this scene needs the second**: the schema a shader *declares* is the one with the
+/// image field, and the attribute list a shader *reads* is the one without it. A builder that
+/// derived one from the other would put them one location apart and the frame would refuse to draw.
+fn lighting_shader(label: &str, inputs: &str, point: &Schema, custom: &Schema) -> Value {
+    shader(
+        Stage::Lighting,
+        label,
+        &lighting_with_normal(inputs, "", "", "", Projection::default()),
+        scene::standard::light_pass_schema(),
+        point.clone(),
+        gallery_instance_schema(),
+        custom.clone(),
+    )
+}
+
+/// The custom data of a row that names the image its shader samples.
+///
+/// **The field goes into the row and not into the material**, because a material's `custom_data` is
+/// a value the shader's own `custom_schema` is checked against and the material around it is a
+/// fixed three fields: `label`, `shader`, `custom_data`. This is the row [`tiles`] writes, unchanged.
+fn surface_naming(tint: [f64; 3], image: &str) -> Value {
+    let mut row = surface(tint, 0.0, 1.0, [0.0; 3]);
+    if let Value::Struct(fields) = &mut row {
+        fields.insert(IMAGE_FIELD.to_owned(), Value::String(image.to_owned()));
+    }
+    row
 }
 
 /// The tube: a straight spine, a circular section, and a three knot taper.
@@ -347,16 +515,16 @@ fn straight(length: f32) -> Curve {
 /// A flat section is an ellipse of a half width along the frame's `normal` and a half thickness
 /// along its `binormal`, so **the blade's thin axis is the binormal and `set_initial_normal` is what
 /// chooses it.** With the normal written as `+z` the binormal is `-y` — the lens lies flat, like a
-/// table top, and the first run of this picture drew exactly that: a green sliver on the floor. The
+/// table top, and the first run of this scene drew exactly that: a green sliver on the floor. The
 /// normal here is chosen so the binormal comes out **up and towards the camera**, which stands the
 /// blade on its broad face where the frame can read its width. A sweep has no "which way is up" of
-/// its own, so this is a statement the spine makes and the picture inherits.
+/// its own, so this is a statement the spine makes and the frame inherits.
 fn midrib() -> Curve {
     let steps = 4;
-    let step = FRAC_PI_2 / steps as f32;
+    let step = std::f32::consts::FRAC_PI_2 / steps as f32;
     let jets = (0..=steps)
         .map(|index| {
-            let angle = -FRAC_PI_2 + index as f32 * step;
+            let angle = -std::f32::consts::FRAC_PI_2 + index as f32 * step;
             let (sin, cos) = angle.sin_cos();
             Jet::new([cos, 1.0 + sin, 0.0], [-sin * step, cos * step, 0.0])
         })
@@ -391,270 +559,11 @@ fn trunk() -> Curve {
 fn lobes() -> Vec<Vec2> {
     (0..24)
         .map(|index| {
-            let angle = index as f32 / 24.0 * TAU;
+            let angle = index as f32 / 24.0 * std::f32::consts::TAU;
             let radius = 1.0 + 0.25 * (3.0 * angle).cos();
             [radius * angle.cos(), radius * angle.sin()]
         })
         .collect()
-}
-
-/// Builds the scene: one camera, two lights, a floor and the four shapes, each in its own material.
-fn scene(shapes: &[Shape]) -> Value {
-    let point = shaded_point_schema();
-    // **The attribute list is derived from the gallery's own custom schema, not from the one the
-    // shaders below declare.** `image` is a marker rather than a value the row carries — the
-    // compiler reads it out of the material and drops it before the bytes are packed — so a vertex
-    // struct derived from the schema *with* the image field would put every field after it one
-    // location too high, and the frame would refuse to bind an attribute of one component where the
-    // shader read a matrix column. This is the half of `tiles` that is easy to copy wrong.
-    let inputs = gallery_vertex_inputs(&point);
-    // Every shader in the frame declares the custom schema **with** the image field, so one
-    // instance row is one layout in every pass and the tube's material may name its checker. A
-    // scene whose lighting shader added a field the shadowing stage's did not would be a scene
-    // whose shadow pass reads the wrong offsets.
-    let custom = gallery_custom_schema_with_image();
-
-    let shaders = vec![
-        shader(
-            scene::standard::Stage::Shadowing,
-            "shadowing",
-            &shadowing(&inputs),
-            scene::standard::shadow_pass_schema(),
-            point.clone(),
-            gallery_instance_schema(),
-            custom.clone(),
-        ),
-        shader(
-            scene::standard::Stage::Depthing,
-            "depthing",
-            &depthing(&inputs),
-            scene::standard::depth_pass_schema(),
-            point.clone(),
-            gallery_instance_schema(),
-            custom.clone(),
-        ),
-        // **Two lighting shaders, and that is the whole of the `(u, v)` channel.** The plain one
-        // draws the three shapes whose colour is the point; the textured one draws the tube and
-        // multiplies the checker by its tint. Both are declared against the same point schema and
-        // the same custom schema, so either can draw either mesh, and which one draws a shape is a
-        // property of the material it names.
-        lighting_shader("lighting", &inputs, &point, &custom),
-        shader(
-            scene::standard::Stage::Lighting,
-            "parameterised",
-            &textured(&inputs, ""),
-            scene::standard::light_pass_schema(),
-            point.clone(),
-            gallery_instance_schema(),
-            custom.clone(),
-        ),
-        post_shader(GRADE, "", None),
-    ];
-
-    let materials = vec![
-        mesh_material("caster", "shadowing", surface([1.0; 3], 0.0, 1.0, [0.0; 3])),
-        mesh_material(
-            "occluder",
-            "depthing",
-            surface([1.0; 3], 0.0, 1.0, [0.0; 3]),
-        ),
-        mesh_material("floor", "lighting", surface(FLOOR_TINT, 0.0, 1.0, [0.0; 3])),
-        // Only the tube's row names the image: a shadow map and a depth buffer are the pipeline's
-        // own textures, and the other three surfaces are the colours the frame is about.
-        mesh_material(
-            "tube",
-            "parameterised",
-            surface_naming(TUBE_TINT, "checker"),
-        ),
-        mesh_material("blade", "lighting", surface(BLADE_TINT, 0.0, 1.0, [0.0; 3])),
-        mesh_material(
-            "coarse",
-            "lighting",
-            surface(COARSE_TINT, 0.0, 1.0, [0.0; 3]),
-        ),
-        mesh_material(
-            "refined",
-            "lighting",
-            surface(REFINED_TINT, 0.0, 1.0, [0.0; 3]),
-        ),
-    ];
-
-    let mut meshes = vec![mesh(
-        "floor",
-        "Triangles",
-        point.clone(),
-        plane_facing(FLOOR_EXTENT, 0.0, true),
-    )];
-    for shape in shapes {
-        meshes.push(mesh(
-            shape.label,
-            "Triangles",
-            point.clone(),
-            points_of(&shape.loft),
-        ));
-    }
-
-    let placed = |stage: &str, label: &str, at: [f64; 3], material: &str| -> Value {
-        instance(
-            format!("{stage}-{label}"),
-            label,
-            at,
-            [0.0; 3],
-            [1.0; 3],
-            material,
-        )
-    };
-    let standing: Vec<(&str, [f64; 3])> = std::iter::once(("floor", [0.0; 3]))
-        .chain(shapes.iter().map(|shape| (shape.label, shape.at)))
-        .collect();
-
-    Value::structure([
-        ("name".to_owned(), Value::String("sweep-picture".to_owned())),
-        (
-            "frame".to_owned(),
-            Value::structure([
-                ("width".to_owned(), Value::Int(WIDTH)),
-                ("height".to_owned(), Value::Int(HEIGHT)),
-            ]),
-        ),
-        (
-            "cameras".to_owned(),
-            Value::List(vec![camera_placed(EYE, TARGET, FIELD_OF_VIEW, NEAR, FAR)]),
-        ),
-        (
-            "lights".to_owned(),
-            Value::List(vec![
-                light_with_radius(
-                    "key",
-                    KEY_POSITION,
-                    KEY_COLOUR,
-                    whiting_gallery::kit::flux_for_irradiance(KEY_IRRADIANCE, KEY_REACH),
-                    KEY_EXTENT,
-                    KEY_REACH,
-                ),
-                light(
-                    "fill",
-                    FILL_POSITION,
-                    FILL_COLOUR,
-                    whiting_gallery::kit::flux_for_irradiance(0.55, 3.0),
-                    KEY_EXTENT,
-                ),
-            ]),
-        ),
-        ("shaders".to_owned(), Value::List(shaders)),
-        (
-            "images".to_owned(),
-            Value::List(vec![image(
-                "checker",
-                CHECKER_SIZE,
-                CHECKER_SIZE,
-                checker_pixels(),
-                Projection::Latlong,
-            )]),
-        ),
-        ("meshes".to_owned(), Value::List(meshes)),
-        ("mesh_materials".to_owned(), Value::List(materials)),
-        (
-            "screen_materials".to_owned(),
-            Value::List(vec![screen_material("post", "post")]),
-        ),
-        ("post_processes".to_owned(), post_processes(&["post"])),
-        (
-            "instances".to_owned(),
-            instances(vec![
-                (
-                    scene::standard::Stage::Shadowing,
-                    standing
-                        .iter()
-                        .map(|(label, at)| placed("shadowing", label, *at, "caster"))
-                        .collect(),
-                ),
-                (
-                    scene::standard::Stage::Depthing,
-                    standing
-                        .iter()
-                        .map(|(label, at)| placed("depthing", label, *at, "occluder"))
-                        .collect(),
-                ),
-                (
-                    scene::standard::Stage::Lighting,
-                    standing
-                        .iter()
-                        .map(|(label, at)| {
-                            let material = if *label == "floor" {
-                                "floor"
-                            } else {
-                                shapes
-                                    .iter()
-                                    .find(|shape| shape.label == *label)
-                                    .map_or("blade", |shape| shape.material)
-                            };
-                            placed("lighting", label, *at, material)
-                        })
-                        .collect(),
-                ),
-            ]),
-        ),
-    ])
-}
-
-/// The plain lighting stage, declared against this scene's own custom schema.
-///
-/// `gallery::shaders` has a builder that carries its own schema and one that takes the attribute
-/// list, and **this scene needs the second**: the schema a shader *declares* is the one with the
-/// image field, and the attribute list a shader *reads* is the one without it. A builder that
-/// derived one from the other would put them one location apart and the frame would refuse to draw.
-/// This is the `tiles` scene's arrangement written out.
-fn lighting_shader(label: &str, inputs: &str, point: &Schema, custom: &Schema) -> Value {
-    shader(
-        scene::standard::Stage::Lighting,
-        label,
-        &lighting_with_normal(inputs, "", "", "", Projection::default()),
-        scene::standard::light_pass_schema(),
-        point.clone(),
-        gallery_instance_schema(),
-        custom.clone(),
-    )
-}
-
-/// The custom data of a row that names the image its shader samples.
-///
-/// **The field goes into the row and not into the material**, because a material's `custom_data`
-/// is a value the shader's own `custom_schema` is checked against and the material around it is a
-/// fixed three fields: `label`, `shader`, `custom_data`. This is the row `tiles` writes, unchanged.
-fn surface_naming(tint: [f64; 3], image: &str) -> Value {
-    let mut row = surface(tint, 0.0, 1.0, [0.0; 3]);
-    if let Value::Struct(fields) = &mut row {
-        fields.insert(IMAGE_FIELD.to_owned(), Value::String(image.to_owned()));
-    }
-    row
-}
-
-/// Compiles the scene document against the machine behind the renderer.
-fn compile(
-    compiler: &StandardScene,
-    registry: &Registry,
-    renderer: &dyn Renderer,
-    scene: &Value,
-) -> Result<CompileOutput, String> {
-    let source = Definition::new(
-        DefinitionIdentifier::new("sweep_picture.source"),
-        SchemaIdentifier::new(STANDARD_SCENE_SCHEMA),
-        scene.clone(),
-    );
-    source
-        .validate(registry)
-        .map_err(|error| format!("the scene does not satisfy the scene schema: {error}"))?;
-    compiler
-        .compile(&CompileContext {
-            scene: &source,
-            previous_graphics: None,
-            previous_instance: None,
-            registry,
-            camera: 0,
-            limits: renderer.limits(),
-        })
-        .map_err(|error| error.to_string())
 }
 
 /// The loft written as the triangle list a scene document draws: one shaded point per corner.
@@ -662,7 +571,7 @@ fn compile(
 /// # Invariants
 ///
 /// - **Every triangle is emitted in the order the loft wound it**, and every corner carries the
-///   `(u, v)` the loft gave that vertex. Nothing here reorders, re-winds or re-samples: the picture
+///   `(u, v)` the loft gave that vertex. Nothing here reorders, re-winds or re-samples: the frame
 ///   is the evidence of what `Sweep::sample` wrote, and a normal computed from the same triangles
 ///   is the only normal this scene knows how to be right about.
 /// - **A normal is accumulated per loft vertex and normalised once**, not per triangle, so a tube
@@ -764,24 +673,4 @@ fn checker_pixels() -> Vec<u8> {
         }
     }
     pixels
-}
-
-/// What each shape sampled into, printed before the frame so a reader knows what they are looking at.
-fn report(shapes: &[Shape]) {
-    println!("\n# what is in the frame");
-    for shape in shapes {
-        let loft = &shape.loft;
-        println!(
-            "  {:<8} {:>4} vertices · {:>4} triangles · {} rings of {} around",
-            shape.label,
-            loft.positions().len(),
-            loft.triangles().len(),
-            loft.rings(),
-            loft.around()
-        );
-    }
-    println!(
-        "  every one of them is `Sweep::sample({}, {})`: the two envelopes differ only in their section",
-        STATIONS, AROUND
-    );
 }

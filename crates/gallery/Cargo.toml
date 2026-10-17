@@ -26,14 +26,7 @@ terrain = { workspace = true }
 # a building carries its provenance per face and a scene carries a material per instance, and the
 # conversion between those two facts is nobody else's business.
 building = { workspace = true }
-
-# The sweep picture, which is the only caller of any of the three. An example that draws a document
-# needs pixels to draw it into, so it needs the rasterising backend, and it needs `shape` for the
-# geometry it is drawing. None of it is used by the library: the dependency goes the other way round
-# (`device-rasterize` names this crate to render its scenes) and is a cycle through dev-dependencies
-# only, which cargo permits for exactly this reason.
-[dev-dependencies]
+# The `sweep_picture` scene: its four shapes are four `Sweep::sample` calls and nothing else, so the
+# scene cannot be written without the crate that owns the sweep. A library module cannot reach a
+# dev-dependency, which is why this is an ordinary edge and not one under `[dev-dependencies]`.
 shape = { workspace = true }
-device = { workspace = true }
-device-rasterize = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

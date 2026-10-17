@@ -99,6 +99,8 @@ pub mod shed;
 mod spotlight;
 mod stilllife;
 mod sunlight;
+/// The sweep picture: a tube, a blade and two envelopes, every one of them one `shape::sweep` call.
+pub mod sweep_picture;
 pub mod terrace;
 mod terraces;
 mod tidewater;
@@ -126,6 +128,7 @@ pub mod hermite_massif;
 pub use spotlight::spotlight;
 pub use stilllife::stilllife;
 pub use sunlight::sunlight;
+pub use sweep_picture::sweep_picture;
 pub use terraces::terraces;
 pub use tidewater::tidewater;
 pub use tiles::tiles;
@@ -155,6 +158,7 @@ impl Gallery {
             "stilllife",
             "studio",
             "sunlight",
+            "sweep",
             "terraces",
             "tidewater",
             "tiles",
@@ -187,6 +191,7 @@ impl Gallery {
             "stilllife" => stilllife(),
             "studio" => scene::standard::example_standard_scene(),
             "sunlight" => sunlight(),
+            "sweep" => sweep_picture(),
             "terraces" => terraces(),
             "tidewater" => tidewater(),
             "tiles" => tiles(),
