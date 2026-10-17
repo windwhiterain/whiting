@@ -1836,12 +1836,16 @@ dependencies = [
 name = "whiting-gallery"
 version = "0.1.0"
 dependencies = [
+ "tokio",
  "whiting-building",
  "whiting-definition",
+ "whiting-device",
+ "whiting-device-rasterize",
  "whiting-graphics",
  "whiting-mountain",
  "whiting-patch",
  "whiting-scene",
+ "whiting-shape",
  "whiting-terrain",
 ]
 
