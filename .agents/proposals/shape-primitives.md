@@ -212,34 +212,62 @@ and that order is stated because two orders give two different tubes.
 a world up vector (fails on a vertical trunk, which is the one case every plant has); and "whatever the
 first segment chose" (the spin is then a function of the seed rather than of the shape).
 
-### D4: a sweep is a spine plus a section law, and the four sections are the whole vocabulary
+### D4: a sweep is a spine, a section, and two laws — and the section is two shapes
 
 ```rust
 pub enum Section {
-    /// A radius that varies along the spine: the taper of a branch, a culm's internodes, a crown's reach.
-    Circle { radius: Curve },
-    /// A circle squashed on one axis, rotated: a branch cross-section that is not round.
-    Ellipse { radius: Curve, squash: f32, roll: f32 },
-    /// A closed authored outline in the section's own `(x, y)`, scaled by a curve of `t`: a leaf blade,
-    /// a stalk's ribbed section, a refined envelope.
-    Outline { outline: Vec<Vec2>, scale: Curve },
-    /// A flat ribbon of a given half-width and thickness: a blade that needs to be lit from both sides.
-    Flat { half_width: Curve, thickness: f32 },
+    /// A circle at any aspect ratio: `Ellipse { x: 1.0, y: 1.0 }` is a circle, `flat` is a lens.
+    Ellipse { x: f32, y: f32 },
+    /// A closed authored outline in the section's own `(x, y)`, normalised counter-clockwise.
+    Outline(Outline),
 }
 
-pub struct Sweep { pub spine: Curve, pub section: Section, pub closed: bool }
+pub struct Sweep {
+    pub spine: Curve,
+    pub section: Section,
+    /// The radius law: one number multiplying both axes, in the spine's parameter space.
+    pub scale: Scalar,
+    /// The roll law: radians in the section's plane, from `x` toward `y`.
+    pub twist: Scalar,
+    /// Whether the two ends are closed by a fan: the difference between a tube and a solid.
+    pub capped: bool,
+}
 ```
 
-`Sweep::sample(stations, around) -> Loft` walks the spine's stations, asks the frame, evaluates the
-section in that plane, and zips consecutive rings. **`closed: bool` is the difference between a tube and a
-ribbon, and it is the only difference** — which is the unification this crate is for:
+**The four sections collapsed into two, because they were one shape at different aspect ratios.**
+`Circle` is `Ellipse { x: 1, y: 1 }`; `Flat` is `Ellipse { half_width, thickness }`, a lens; and
+`Ellipse`'s `roll` is the sweep's `twist`, which is now the only place an angle is said. What is left is
+an analytic ellipse and a general outline, and the four names survive as constructors —
+`Section::circle`, `Section::flat`, `Section::ellipse`, `Section::outline` — so a caller reads the
+vocabulary revision 1 promised while the code behind it has two arms.
 
-| what | spine | section | closed |
+**The taper moved out of the section and became `Sweep::scale`, of the new type `Scalar`.** Revision 1
+wrote `Circle { radius: Curve }`: it asked a three-dimensional curve for a number, and a `Curve`'s `t` is
+a fraction of *its own* length while a radius is not a length of anything. The type that sentence meant is
+one-dimensional. It is `Scalar`: the same Hermite basis — `scalar` is `curve` with the space taken out, and
+both now evaluate one `hermite` module — with knots that are total on `[0, 1]` and a `t` read as **the
+spine's** arc-length fraction, which is exactly the superior's *"a radius curve in the curve's parameter
+space"*. Putting it on the sweep instead of inside each of four sections is what makes a branch's taper, a
+blade's width and a crown's reach one law. A section that must change *shape* along the spine is an
+`Outline`, not a second law.
+
+**`closed: bool` became `capped: bool`.** Every section is a closed loop, so a flag called "closed" could
+only have been saying that the *ends* are closed — and the name now says it. An uncapped sweep is a tube
+with two boundary loops; a capped one is a solid, which is what `mesh::signed_volume` grades and what D18's
+thin leaf needs. A station whose `scale` is zero collapses its ring to a point and the fan is still built,
+so a leaf's tip is closed by geometry that has degenerated, not by a special case.
+
+**The section's plane, stated once.** `x` is the station frame's `normal` and `y` its `binormal`, so a
+section wound counter-clockwise in `(x, y)` faces along `+tangent`. Which way `x` points is therefore the
+**spine's** statement, made by `Curve::set_initial_normal`, and `twist` is the only other rotation — two
+sections cannot be rotated against each other unless their spines were given different initial normals.
+
+| what | spine | section | scale |
 | --- | --- | --- | --- |
-| a branch, a trunk, a culm | the branch's curve | `Circle { radius: taper }` | yes |
-| a leaf blade | the midrib | `Outline { the blade's outline }` or `Flat` | no |
-| a canopy envelope, coarse | the trunk's curve | `Circle { radius: r(t) }` | yes |
-| a canopy envelope, refined | the trunk's curve | `Outline { a curve in each normal plane }` | yes |
+| a branch, a trunk, a culm | the branch's curve | `Section::circle()` | the taper |
+| a leaf blade | the midrib | `Section::flat(half_width, thickness)` | the blade's width |
+| a canopy envelope, coarse | the trunk's curve | `Section::circle()` | the crown's reach |
+| a canopy envelope, refined | the trunk's curve | `Section::outline(points)` | the crown's reach |
 
 The last two rows are the superior's verdict made into data: *"包络线粗版本用曲线参数空间的 radius 曲线，
 可以精化到曲线参数空间上的垂直平面上的曲线的曲面"* — the envelope is a radius curve in the spine's
@@ -248,15 +276,20 @@ spine. **Refining an envelope is therefore a `Section` change and not a new type
 "start coarse, refine later" a one-line authoring move rather than a rewrite.
 
 `Loft` also owns the **`(u, v)` definition** every consumer writes into its point data: `u` is the station
-fraction `t` (D2's arc-length fraction) and `v` is the fraction around the section, and the two are read
-from the same call that produced the positions. That is `mountain`'s `belt_uv` discipline — one function,
-one definition, one consumer — and it is the reason `Loft` returns `(position, u, v)` triples rather than
-positions alone.
+fraction `t` (D2's arc-length fraction) and `v` is `slot / around`, the fraction around the section's loop
+measured the same way — by arc length. Both are read from the same arrays as the positions, which is
+`mountain`'s `belt_uv` discipline — one function, one definition, one consumer. The grid is triangulated
+by the walk that produced it (the scene layer's `Topology` has no quads), the cap fans reuse the end rings'
+own vertices so `positions.len() == rings * around` always, and the winding is counter-clockwise seen from
+outside, so a positive volume is a check rather than a coincidence.
 
-**Rejected:** a general "implicit surface" or "distance field" primitive (no consumer, and a field is a
-different crate's job); a quad-mesh output (`Topology` in the scene layer has exactly `Triangles` and
-`Segments` — a hard gate, and the reason `Loft` triangulates its own grid); and a per-section function
-pointer (an `Outline` is data an agent writes, and a closure cannot be written into a document later).
+**Rejected:** a per-section radius or scale (four ways to say one thing, and a blade's width and a branch's
+taper are the same law); a `roll` on a section (two places to say an angle); a zero-thickness ribbon arm
+(an `Ellipse` with `y == 0` is the same surface and the sweep of it is still a closed loop); a general
+"implicit surface" or "distance field" primitive (no consumer, and a field is a different crate's job); a
+quad-mesh output (`Topology` has exactly `Triangles` and `Segments` — a hard gate); and a per-section
+function pointer (an `Outline` is data an agent writes, and a closure cannot be written into a document
+later).
 
 ### D5: the mesh predicates are over a triangle list, and one of them is new to the workspace
 
@@ -310,9 +343,9 @@ being written, and again while this file was).
 
 ## What lands where
 
-- **The crate**: `crates/shape`, publish `whiting-shape`, modules `math`, `curve`, `sweep`, `mesh`, with
-  the arc-length table and the Bezier conversion each in its own small file ("organize large file into
-  multiple small ones for sparse exploring").
+- **The crate**: `crates/shape`, publish `whiting-shape`, modules `math`, `hermite` (the one basis,
+  private), `curve`, `scalar`, `section`, `sweep`, `loft`, `mesh` — the arc-length table, the basis and the
+  loft each in its own small file ("organize large file into multiple small ones for sparse exploring").
 - **`mountain`**: one `pub use`, and its own arithmetic deleted rather than kept beside the shared one.
 - **`building`**: `mountain` → `shape` in `Cargo.toml`, and its private predicates become calls.
 - **`gallery`**: a probe that draws a curve and a sweep, so the crate is exercised by a picture before
@@ -329,12 +362,18 @@ being written, and again while this file was).
   of the curve's length, and the length within `1e-6` relative), a straight curve's constant frame, and a
   closed planar curve's zero holonomy. **Exit: those numbers printed, with a positive control for each** —
   an insert whose tangent is *not* the curve's derivative must be able to fail the second one.
+  **Landed** (`57b1184`).
 - **P1 — the sweep, and `math` moving.** `Section`, `Sweep`, `Loft`, the `(u, v)` definition, and the
   `(position, u, v)` return that the consumers pack. `mountain::math` becomes `shape::math` behind a
-  re-export; `building`'s dependency switches. **Exit: a gallery probe that draws a tube, a blade and an
-  envelope from the same call, and the two vertices that disagree about `u` are zero.**
-- **P2 — the predicates, and the first consumer.** The five `mesh` functions, with `building`'s probes
-  reading them instead of its own; then `vegetation` P1 starts on top of `curve` and `sweep`.
+  re-export; `building`'s dependency switches. **Exit: a tube, a blade and an envelope built from one call,
+  and the vertices that disagree about `u` are zero.** **Landed** with `scalar`, `section`, `sweep` and
+  `loft`: see *What P1 measured*. The gallery picture is the one item of the exit that is still owed, and it
+  is the gallery's file rather than this crate's.
+- **P2 — the predicates, and the first consumer.** The `mesh` functions land with their first consumer: the
+  loft, whose `view()` is what `sweep_probe` grades — and which is why the predicates arrived in the same
+  checkpoint as the sweep rather than before it. `building`'s probes still read their own copies and can
+  switch when one of them needs a predicate this crate does not have.
+- **P3 — `vegetation` P1** starts on top of `curve`, `section`, `sweep` and `scalar`.
 
 Phases P0 and P1 are the ones the superior's verdict asks for; P2 rides with the first consumer that needs
 a predicate, because a predicate with no caller is the shape this repository has already learned to
@@ -381,22 +420,26 @@ a query with no caller is the shape this repository has already learned to distr
 
 ## Open questions
 
-1. **Does the sweep belong in `shape` or in `vegetation`?** The envelope's refined form (a section curve
-   in the normal plane) proves it is more general than a branch, and a leaf blade uses the same walk. The
-   argument for `shape` is that `vegetation` would otherwise own the only sweep and the next caller would
-   copy it. The argument against is that a `Loft` that knows about `(u, v)` is already opinionated about
-   rendering. **This proposal puts it in `shape`**; the superior's envelope verdict is the evidence, and
-   the alternative is recorded rather than dismissed.
-2. **The section's own orientation.** A `Circle` needs no orientation; an `Outline` needs a stated `x` and
-   `y` in the section plane, and the transported frame's normal is an arbitrary but continuous choice. Two
-   sections on one plant must not start their outlines at different angles, or a leaf and its twig are
-   rotated against each other — so the rule ("section `x` is the frame's normal; a section that cares
-   names its start angle") is a contract this design states and a probe should check.
-3. **`t` for a closed curve.** `t = 0` and `t = 1` are the same point, and `at(1)` should equal `at(0)`
-   bit-identically for a swept envelope that closes — which a summed arc-length table will not give
-   without a decision about the last segment. Not needed by P0; it is needed the moment an envelope is a
-   closed loop.
-4. **How far does `closest` go?** A closest-point query on a Hermite polyline has no closed form; the
-   honest implementation is per-segment sampling plus a refinement, which is O(segments × samples). The
-   envelope trimming law asks it once per branch tip, so it is cheap in the only caller there is — but the
-   answer's *accuracy* is a number the caller should be told, not a promise the crate makes silently.
+Answered on 2026-10-17 under the superior's directive to choose by **strongest expressiveness and the most
+elegant architecture**; each answer is a decision above or a measurement below, and the alternative is
+recorded so it is not re-derived.
+
+1. **Does the sweep belong in `shape` or in `vegetation`?** — **`shape`.** The envelope's refined form
+   settles it: `Section::Outline` in the normal plane is not a branch, and a `Loft` that owns `(u, v)` is a
+   statement about a surface rather than about a plant. The recorded objection — *a loft that knows `(u, v)`
+   is opinionated about rendering* — is true and accepted: `mountain` made the same bet with `belt_uv`, and
+   it is why its consumers never wrote a second table.
+2. **The section's own orientation.** — **`x` is the frame's normal, `y` its binormal; the spine's initial
+   normal is the one place a caller says which way the first section faces, and `twist` is the only other
+   rotation.** An ellipse starts at `+x` and an outline at `points[0]`, and those are the only two starting
+   points in the vocabulary. `sweep_probe` checks it against each spine's own frame rather than assuming it.
+3. **`t` for a closed curve.** — **`at(0)` and `at(1)` are the first and last knots exactly.** A Hermite
+   span's end value is `h01(1) = 1` times the last knot's position, so the basis was never the obstacle; the
+   arc-length *inversion* was, and it landed one bisection step (`1 − 2⁻³³`) short of the end. `locate` now
+   answers `t = 0` and `t = 1` with the segments' own ends, so a closed loop's seam closes bit for bit
+   (`curve_probe`'s *closed ends* row) and a swept envelope's first and last rings coincide.
+4. **How far does `closest` go?** — **Not yet, and the obligation is named rather than deferred
+   silently.** Its first caller is the envelope's trimming law; when it lands the answer owes (a) its
+   per-segment sample budget, (b) a measured worst-case distance error, and (c) a stated answer for a point
+   whose nearest place is a knot, where two segments meet. A query whose accuracy is not printed is a query
+   a caller will trust wrongly.
