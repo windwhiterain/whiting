@@ -401,3 +401,20 @@ That converts the remaining work from geometry to accounting:
 
 This is the first time in the slice that a measured violation turned out to be **the instrument's** fault rather than
 the geometry's, and the arithmetic is what settled it: `-6` is not "bad", it is `1 + 3` handles.
+
+## The ring's bottom is level now, and the only check left is the shell-era one (2026-10-27)
+
+The outer base was one plate thickness below the inner, which made the base strip a **slanted** band — a warped quad
+wherever an opening's stations land unevenly. With both at the wall's own elevation:
+
+| fault | before | after |
+| --- | --- | --- |
+| `FaceNotPlanar` | 1 × 0.19 | 3 × (0.157, 0.01, 0.025) |
+| `SolidOpen` / `SolidNonManifold` | gone | gone |
+| `SolidNotASphere` | `-6` / `0` / `0` | `-6` / `0` / `0` |
+
+The large warp fell and small ones appeared: the band is level now, and what remains is at the reveals' own stations.
+**The three scenes cannot render until `SolidNotASphere` is replaced**, because the numbers it rejects are the right
+ones (`-6 = 2 - 2(1 + 3)` handles on the mass; `0 = 2 - 2` on each part). That replacement is the next slice and it is
+a crate change, not a scene tweak: `validate` must expect `2 - 2 × (1 + openings)` for a mass and `2 - 2` for a slab,
+and every scene's own assertion follows it.
