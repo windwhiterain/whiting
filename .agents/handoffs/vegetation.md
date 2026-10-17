@@ -96,6 +96,10 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 
 ## Traps
 
+- **The ground is one function**: the scene draws its floor from it *and* seats every planting on it (Ground::Fielded /
+  egetation::ground::seat). A second ground function is the defect a seated plant exists to rule out. Framing::ground is
+  Ground::Plane for the five single-plant scenes, so a plane's seating is the identity and their hashes do not move.
+
 - **The wood is one mesh per scene, not per planting.** A mesh per plant is a pass per plant (the emitter groups by
   mesh) and the ids live in the corners, so merging the geometry does not merge the names. A planting with **no**
   template is legal — a tuft's blades are its wood — and the builder's lade_of is an Option because of it.
@@ -203,6 +207,7 @@ cargo run -p whiting-vegetation --example envelope_probe   # 6, the envelope, th
 cargo run -p whiting-vegetation --example decorator_probe  # 6, the decorators
 cargo run -p whiting-vegetation --example obstacle_probe   # 6, the obstacle, the contacts and the thinning
 cargo run -p whiting-vegetation --example sculpt_probe     # 7, the hand's whole vocabulary on one plant
+cargo run -p whiting-vegetation --example ground_probe     # 6, seating and the ground
 cargo run -p whiting-device-rasterize --example render -- bamboo out/bamboo
 cargo run -p whiting-device-rasterize --example render -- bamboo_wind out/bamboo-wind
 cargo run -p whiting-device-rasterize --example render -- bamboo_crown out/bamboo-crown

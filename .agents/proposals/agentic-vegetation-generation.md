@@ -1291,6 +1291,35 @@ and fixed it: the wood had been **one mesh per planting**, and is now **one mesh
    builder's `blade_of` is therefore an `Option`, and the one place that unwraps it is the leaves loop, which is empty
    for a tuft by construction.
 
+**The ground and the seating.** P3's third item, read as the design states it — *"seating on a `terrain::HeightField` by
+the `site::seat` precedent"* — is `vegetation::ground`: seating takes **`impl Fn([f32; 2]) -> f32`**, so a caller with
+a heightfield passes its sampler and this crate stays terrain-independent (which crate produces numbers and which
+produces geometry, kept apart exactly as `building`'s D8 keeps them). The scene's ground is one function and the floor
+is drawn from it, so a plant cannot stand at a height the floor does not have.
+
+| invariant | reading |
+| --- | --- |
+| a plant is seated | the ground under `(0.62, −0.35)` is **0.222212** high: the base goes **0.000000 → 0.222212** and its footing reads **0.000e0** |
+| only the height moves | the plan position moves **0.000e0** and the frame's own axes **0.000e0** |
+| a flat ground changes nothing | a planting at `y = 0.000000` on a ground at zero comes back at `y = 0.000000`, the whole placement equal |
+| a floating base is reported | **0.200000** above the surface, and a base of **0.030000** m is not on the ground |
+| a sunk base is reported | **−0.150000**, and it is not on the ground either: the defect has two signs and one report |
+| a grove is seated together | **5** of **5** on the ground, the worst footing **0.000e0** |
+| the picture | the grove stands on a swell (`298D43AC…`) and the five single-plant scenes are **bit-identical** (`84510A4D…`, `D7488DF2…`, `708EF240…`, `A56BBE62…`, `F3A94C6A…`), because their ground is a plane and a plane's seating is the identity |
+
+**Two decisions the ground forced:**
+
+1. **A ground is a function and the floor is drawn from the same one.** The scene's `swell(x, z)` is what the floor's
+   heightfield is made of *and* what every planting is seated on; a second function would be a second ground, and a
+   plant could stand where the floor is not — the one defect a picture of a seated plant exists to rule out.
+2. **"On the ground" is judged by the base's own radius.** A tolerance picked by this crate would ask a two-centimetre
+   culm and a half-metre shrub for the same accuracy; the base's radius is the only number the geometry already has,
+   and both a floating and a sunk base are reported by its sign.
+
+**What is *not* exercised**: the crate takes a function, and this round passes the scene's own `fn swell`; a
+`terrain::HeightField`'s `sample(plan)` has the same shape and is the intended caller, but no scene in this tree feeds
+one yet, so that swap is a hypothesis rather than a reading.
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before

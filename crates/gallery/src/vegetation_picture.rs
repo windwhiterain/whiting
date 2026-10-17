@@ -257,6 +257,28 @@ pub struct Framing {
     pub far: f64,
     /// How far the floor reaches from the origin.
     pub floor: f64,
+    /// The ground the scene stands on: a plane at zero, or a heightfield's own law.
+    pub ground: Ground,
+}
+
+/// The ground a scene stands on.
+///
+/// # Invariants
+///
+/// **A ground is a function and not a type**, so a caller with a `terrain::HeightField` passes its sampler and this
+/// crate stays terrain-independent — the same rule [`vegetation::ground`] states for a plant's base, kept by the
+/// scene that draws where the base sits. A plane is [`Ground::Plane`] and is the floor every still scene stands on.
+#[derive(Debug, Clone, Copy)]
+pub enum Ground {
+    /// A plane at zero.
+    Plane,
+    /// A heightfield: a swell, a dune, a courtyard's camber.
+    Fielded {
+        /// The height at a plan position, in metres.
+        height: fn(f64, f64) -> f64,
+        /// How many cells across the field is drawn with.
+        divisions: usize,
+    },
 }
 
 /// One plant in a scene: a species, where it stands, and any decorators it carries.
@@ -311,6 +333,7 @@ const STILL: Framing = Framing {
     near: NEAR,
     far: FAR,
     floor: FLOOR_EXTENT,
+    ground: Ground::Plane,
 };
 
 /// The framing of a grove: back far enough for three culms, and no further.
@@ -323,6 +346,10 @@ const GROVE_FRAMING: Framing = Framing {
     near: 0.05,
     far: 32.0,
     floor: 7.0,
+    ground: Ground::Fielded {
+        height: swell,
+        divisions: 56,
+    },
 };
 
 /// The name a grove of three culms and three shrubs is built and rendered under.
@@ -363,6 +390,20 @@ fn planted_at(position: [f32; 3], turn: f32) -> Placement {
     }
 }
 
+/// The swell a grove stands on: a long slow roll across the frame and a shorter one across it.
+///
+/// # Invariants
+///
+/// It is the **one** ground of the scene: the same function draws the floor's heightfield and seats every planting, so
+/// a plant cannot stand at a height the floor does not have. A second function would be a second ground.
+fn swell(x: f64, z: f64) -> f64 {
+    0.34 * (1.3 * x + 0.4).sin() * (1.1 * z).cos()
+}
+
+/// The same swell as a seating function, which takes a plan position in the plant's own units.
+fn seated_swell(plan: [f32; 2]) -> f32 {
+    swell(f64::from(plan[0]), f64::from(plan[1])) as f32
+}
 /// The ground cover's grid: how many tufts across, and how many deep.
 const GROVE_TUFTS: (usize, usize) = (14, 10);
 
@@ -388,8 +429,9 @@ fn grove_tufts() -> Vec<Planting> {
             let z = -0.5 * GROVE_TUFT_SPAN.1 + deep * (row as f32 + 0.2 + 0.6 * rng.unit());
             let turn = std::f32::consts::TAU * rng.unit();
             plantings.push(
-                Planting::new(vegetation::derive::tuft(9_000 + index as u64))
-                    .at(planted_at([x, 0.0, z], turn)),
+                Planting::new(vegetation::derive::tuft(9_000 + index as u64)).at(
+                    vegetation::ground::seat(planted_at([x, 0.0, z], turn), seated_swell),
+                ),
             );
         }
     }
@@ -397,13 +439,17 @@ fn grove_tufts() -> Vec<Planting> {
 }
 /// The six plantings a grove is, in the order their ids are numbered: the culms first, then the undergrowth.
 fn grove_plantings() -> Vec<Planting> {
+    // **Every planting is seated on the scene's own ground**, so the grove is on its swell rather than at zero; the
+    // ground is an authored function (`vegetation::ground`), and it is the one the floor is drawn from.
+    let place = |position: [f32; 3], turn: f32| {
+        vegetation::ground::seat(planted_at(position, turn), seated_swell)
+    };
     let mut plantings = Vec::new();
     for (seed, (position, turn)) in GROVE_CULMS.iter().zip(GROVE_CULM_PLACES.iter()) {
-        plantings.push(Planting::new(bamboo(*seed)).at(planted_at(*position, *turn)));
+        plantings.push(Planting::new(bamboo(*seed)).at(place(*position, *turn)));
     }
     for (seed, (position, turn)) in GROVE_SHRUBS.iter().zip(GROVE_SHRUB_PLACES.iter()) {
-        plantings
-            .push(Planting::new(vegetation::derive::shrub(*seed)).at(planted_at(*position, *turn)));
+        plantings.push(Planting::new(vegetation::derive::shrub(*seed)).at(place(*position, *turn)));
     }
     // The ground cover last, so the ids an author names stay the small ones.
     plantings.extend(grove_tufts());
@@ -814,12 +860,15 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
                     crate::vegetation_mesh::decorator_points(&knot()),
                 ));
             }
-            meshes.push(mesh(
-                "floor",
-                "Triangles",
-                ground.point_schema(),
-                plane_facing(framing.floor, 0.0, true),
-            ));
+            // **The floor is the ground the plantings were seated on**: a plane, or the same function as a
+            // heightfield. A second function would be a second ground, and a plant could stand where the floor is not.
+            let floor = match framing.ground {
+                Ground::Plane => plane_facing(framing.floor, 0.0, true),
+                Ground::Fielded { height, divisions } => {
+                    crate::geometry::heightfield(divisions, framing.floor, height)
+                }
+            };
+            meshes.push(mesh("floor", "Triangles", ground.point_schema(), floor));
             Value::List(meshes)
         }),
         ("mesh_materials".to_owned(), Value::List(materials)),
