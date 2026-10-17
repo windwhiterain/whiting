@@ -2343,6 +2343,116 @@ in the courtyard's own reveal rather than 0.06 m inside it.
   (**800 rows**), with the building crate's twenty-nine probes at zero. `roof_planarity_probe` is still
   not run-to-run deterministic, re-verified here by running the same binary twice on this tip.
 
+## What the rooms-facing side found: the frame was already a rule on all four faces (2026-10-27, branch `feature/building-court-rooms`)
+
+The item the part-in-a-court slice could not close is closed. **A courtyard's wall has two addressable faces, a
+part stands on either, and the one the rooms see is the seating that slice measured as unavailable.**
+
+**The vocabulary is one word, and it is a word the crate already had.** `LoopSide { Authored, Offset }` was private to
+`expand.rs`, where the ring walk winds by it; it is now `grid::LoopSide` and rides on `FaceRef` as `loop_side`. That is
+the whole of the change in shape: a face names a loop, and the two loops of a ring are named by the word the walk
+already used. `FaceRef::court_rooms(mass, void, edge)` and `BuildingSkeleton::room_faces_of` are the new spellings;
+`FaceRef::new` and `FaceRef::court` build `LoopSide::Authored`, so **every face this crate could name before is the
+value it was**, and the derived key order keeps them where they were — `mass`, `edge`, `void`, then the side last, so
+`Authored` sorts before `Offset` within one (mass, edge, void) and nothing between two existing keys moves.
+
+**The expander needed no new walk, which is the measurement that decided the design.** `WallFace::of` is the same two
+lines with the loops swapped: `along` is the same direction for either face and the direction *towards the other loop*
+is `side.apply(inward(along))` and then its reverse, which is the normal the offset walk already applied. What genuinely
+differs is where the strip **starts and how long it is** — and that is why `BuildingSkeleton::face_length` is `O(1)` on
+the authored side and `O(nodes)` on the offset side: the far edge is the mitre's edge, and asking the walk is the
+cheaper of the two answers in everything but time. `face_extent` stays `O(1)` for both, because a ring's base annulus
+runs between the offset corners **at the authored corners' own elevations** — the two loops of a ring share one ground
+line, which `ring_walk` has always done.
+
+**`inward` is the walker's left on every face of a ring, so `along × up` holds everywhere and what differs is only
+which side the material lies on.** A mass's outline has it on the left, so a part runs *into* the masonry; a courtyard's
+void loop has it on the right, so a part runs *out of* the ring and into the courtyard; a courtyard's **offset** loop
+has it on the left again, so a part named there runs **into the ring**. That last one is the seating the part-in-a-court
+slice could not have: it tried to get it by reversing `inward` on the courtyard's own face, which is what made the frame
+improper, and it is reached instead by naming the other face — where no reversal is needed because the material is
+already on the left. A mass's inner wall face is the fourth of the four and comes free with the same rule: its material
+is on the walker's **right**, so a part named there stands proud of it into the mass's own rooms, which is the same
+answer the courtyard's own face gives.
+
+Measured by `examples/patio_probe.rs` on the same 10 × 10 mass, 0.3 m wall and 4 × 4 courtyard as the slice before it,
+with the **same rhythm laid on both loops by the same op**, so the only difference between the two documents is which
+loop each face names:
+
+| reading | the courtyard's own face | the rooms-facing face |
+| --- | --- | --- |
+| the face | `{ mass: 0, edge: 0, void: 0, loop_side: Authored }` | `{ mass: 0, edge: 0, void: 0, loop_side: Offset }` |
+| its length | `4.0000` m | **`4.6000` m** — 0.3 m longer at *each* end |
+| bay (0, 0) | `[0.0000, 1.3333]` | `[0.0000, 1.5333]` |
+| the frame's origin | `(-1.8000, 0.1000, -2.0000)` | `(-2.1000, 0.1000, -2.3000)` |
+| `along`, `up` | `(1, 0, 0)`, `(0, 1, 0)` | `(1, 0, 0)`, `(0, 1, 0)` |
+| `inward` | `(-0.0, 0.0, 1.0)` — into the courtyard | `(-0.0, 0.0, 1.0)` — into the ring |
+| `(along × up) · inward` | **`+1.0`** | **`+1.0`** |
+| the document | **0 violations** | **0 violations** |
+| the part's solid | 32 faces, loops 0, euler 0, volume `0.025004` | 32 faces, loops 0, euler 0, volume `0.025004` |
+| where it stands | `x [-1.8000, -0.9000]`, `z [-2.0000, -1.9400]` | `x [-2.1000, -1.2000]`, `z [-2.3000, -2.2400]` |
+
+**How you can tell which loop it stands on from the numbers alone**, which is the part that has to be true rather than
+argued: the two origins differ in `z` by exactly the wall's thickness and in `x` by the pin's arc plus the mitre's reach.
+`z = -2.0000` **is** the void loop's own line — `rectangle(-2, -2, 2, 2)`'s edge 0 runs along `z = -2` — and `z =
+-2.3000` is the same line one `mass.wall` outward, the courtyard's ring being offset **outward**. `inward` is `(0, 0, 1)`
+in both, so the near-side part runs `z -2.0000 .. -1.9400` (into the courtyard) and the rooms-side part `z -2.3000 ..
+-2.2400` (into the ring's own `-2.3000 .. -2.0000` thickness). A third reading agrees: the **bays differ in width**
+(`1.3333` against `1.5333`) because they span two different edges, which is the asymmetry the punch list named and the
+reason one arc is not an arc on the other.
+
+**The one document the new name makes writable that this crate will not honour is a hole, and it is named from both
+halves.** `Violation::OpeningOnAFarLoop` (rank `43`) and `Problem::OpeningOnAFarLoop`: a hole is cut through both of a
+ring's faces **from the loop the walk reads**, so one authored on the far loop is a second rectangle for one hole with
+no second wall to put it in, and the ring's walk would decline to see it — a filter with no companion. Measured on the
+document above: `the document reports 2 violation(s)` — the new one and the `DidNotExpand` that carries the expander's
+own — and `and it does not build: OpeningOnAFarLoop { loop_of: Void { mass: MassId(0), void: 0 }, edge: 0, opening: 0 }`;
+the **same window** on `loop_side: Authored` is `0 violations` and cuts, with the ring reading `euler -2` as it always
+has. `handles` filters on the same side for the same reason: a hole the expander refused must not put a handle on a
+solid that has none. **A rhythm and a part may name the far loop and are seated on it** — where a hole is cut *from* is
+a different question from where a part stands, and this is the answer to the first of them.
+
+**What this slice got wrong about its own brief, recorded because it is the useful part.**
+
+1. **The brief's asymmetry — "an arc measured from one is not an arc from the other" — is about the *ends*, not about
+   the middle, and that is the whole reason the vocabulary is a loop side rather than a second face kind.** An arc
+   measured from `0` on the void loop projects onto the offset loop at `offset_from`, which for an outward mitre is
+   **negative**: the rooms-facing edge is longer at *both* ends, so the near loop's whole span is a strict sub-segment
+   of the far one and a near-loop rhythm would have left the two corners without bays. Which is exactly what the numbers
+   above show — `4.0000` inside `4.6000`, and the far loop's own `0.0` sitting `0.3` m before the near loop's.
+2. **The brief called this "the best-behaved frame of all" and the mechanism is one the previous slice had already
+   found and could not use.** `inward` is the walker's left on every face; the previous slice reversed `inward` to seat a
+   part inside a courtyard's ring, which is what made the basis improper. The material's side is a property of *which
+   loop* the face is, not of the part, so the fix was to name the loop whose material is on the left — and the
+   courtyard's offset loop is that one. The improper frame was never necessary; it was a second face wearing the first
+   face's name.
+3. **"Make `validate` able to see a document that names something it should not" turned out to have two answers, and
+   only one of them was asked for.** Once `loop_side` is on `FaceRef` it is writable on a mass's own outline too — the
+   mass's inner wall face — and that one is *not* refused: the machinery is side-symmetric, so a part named there is
+   framed properly and stands proud of the inner wall into the mass's own rooms. Naming it here rather than adding a
+   variant for it is the decision that keeps the rule one rule; a mass's inner face is a **feature that became
+   addressable** (a part in a mass's rooms), not a fault.
+4. **The `{:?}` spelling of `FaceRef` changed for every existing probe line**, because a struct that gains a field
+   prints it. Every **number** is unchanged — the courtyard-side frame above is byte-identical to the one the previous
+   slice recorded — but a `diff` of two probe runs shows `loop_side: Authored` on eleven lines and a reader who has
+   never seen a `FaceRef` printed should not read those as changes.
+
+**The instrument, and the proof it can fire.** The canary is one line in `Building::validate`'s opening walk and one in
+the ring walk's, each panicking when a far-loop opening reaches its half, armed by an environment variable so the same
+binary is the instrument and the instrument under test. Run over **all 29 building examples and all nine scenes**, it
+fires in **exactly two** — `patio_probe` and `validate_probe`, the two that author a far-loop hole on purpose — and is
+silent in the other **27**. Silence that means nothing is the failure this crate has paid for; this one has a control.
+And the absence of courtyard geometry in a scene was **verified, not assumed**: `Mass::with_voids` appears in
+`crates/gallery/src` **nowhere**, so no gallery scene holds a courtyard at all, let alone a part on one.
+
+**Everything else did not move.** All nine frame hashes reproduce the table exactly — `house B13154AD7D29F938`, `hall
+C4339E6310EA1C37`, `hall_large 43D3780A15E3D08E`, `shed 882B8F9A7C671B0D`, `terrace EDF3F4B3CF2A9686`, `wing
+14E3E27F9F9E1A83`, `workshop 7DD5D40894181EA7`, `yard FDC446B24E98CE04`, `identity 974FB5B24E1E7A35` — with the canary
+armed, `scene_identity_probe` still reads **806** rows across nine two-way tables (`77 + 109 + 77 + 31 + 66 + 123 + 123 +
+99 + 101`), all 29 building examples exit 0, the mass-wall part frame in `part_probe` reads `origin (3.5000, 0.0000,
+-5.0000)`, `inward (-1.0, 0.0, 0.0)`, `+1.0`, `Part(0) 0.025002` and `Part(1) 0.044745` unchanged, and the only
+warnings in `cargo build --workspace --all-targets` are the three pre-existing gallery probes punch-list item 8 names.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
@@ -2448,8 +2558,19 @@ session should take it, each with the measurement that decides it:
    their own documents — one line in `Building::build` that panics on the new variant, run over all nine
    scenes and all 29 examples — and the canary was then proved able to fire by running it against the
    orphan fixture, which is the only reason its silence means anything.
-3. **A part on the rooms-facing side of a courtyard wall** is unaddressable: `FaceRef` names one loop, and the offset
-   edge is longer at both ends. Vocabulary gap; `validate` cannot see such a document.
+3. ~~**A part on the rooms-facing side of a courtyard wall** is unaddressable: `FaceRef` names one loop, and the offset
+   edge is longer at both ends. Vocabulary gap; `validate` cannot see such a document.~~ **DONE (2026-10-27,
+   `feature/building-court-rooms`).** `LoopSide { Authored, Offset }` is the side a `FaceRef` names, promoted out of
+   `expand.rs` so the document and the walk cannot hold two answers to it; `FaceRef::court_rooms` and
+   `BuildingSkeleton::room_faces_of` name the rooms-facing loop, `WallFace::of` reads a strip from either loop, and a
+   part pinned in one of its bays stands in the rooms with its depth **into** the ring. The reading that closed it is
+   the fourth face of one ring: the courtyard's own edge reads **4.0000 m** and the rooms-facing one **4.6000 m**, so
+   three bays of one rhythm are `[0.0000, 1.3333]` on one and `[0.0000, 1.5333]` on the other, and the part framed on
+   the second stands at origin `(-2.1000, 0.1000, -2.3000)` with `along (1.0, 0.0, 0.0)`, `up (0.0, 1.0, 0.0)`,
+   `inward (-0.0, 0.0, 1.0)`, `(along × up) · inward = +1.0`, `32` faces, `loops 0`, `euler 0`, volume `0.025004`, and
+   **0 violations** — its own `0.0600` m of depth inside the ring's `−2.3000 .. −2.0000`, which is the seating the
+   part-in-a-court slice measured as unavailable. The one document the new name makes writable that the crate will
+   not honour is a **hole** on that loop, refused by name from both halves.
 4. **A non-convex courtyard** is refused (`VoidNotConvex`) because the outward walk across a reflex corner has never
    been measured. `offset_loop` is the walk to measure; two inward measurements of the same family are recorded above.
 5. **`house` and `yard` cannot answer a floor question**: `house` has no opening on the camera side, and `yard`'s

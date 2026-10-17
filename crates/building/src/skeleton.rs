@@ -245,16 +245,24 @@ impl BuildingSkeleton {
     ///
     /// **The length is read off the loop the face names**, so a courtyard's wall measures as itself
     /// and a rhythm laid out on it spans it exactly — the same invariant the mass's own faces have
-    /// always had, for the same reason. `O(1)`.
+    /// always had, for the same reason. The face's [`LoopSide`](crate::grid::LoopSide) is part of
+    /// that: the rooms-facing
+    /// loop of a courtyard's ring is **longer** than the void's own at both ends, because the outward
+    /// mitre keeps the corner's angle past it, so the two faces of one wall are two different lengths
+    /// and a rhythm laid out over one of them does not span the other. `O(1)` on the authored side,
+    /// `O(nodes)` on the offset side — see [`crate::expand::face_length`].
     pub fn face_length(&self, face: FaceRef) -> Option<f32> {
-        grid::loop_length(self.face_loop(face)?, face.edge)
+        crate::expand::face_length(self, face)
     }
 
     /// Returns the vertical extent of a face: the lowest ground under it, and the wall top.
     ///
     /// **The ground is the loop's own**, for the same reason the length is: a courtyard's ring stands
     /// on its void loop's elevations, which is where the ring's base is drawn, so a bay's lowest
-    /// level is that ground and not a slab below it. `O(1)`.
+    /// level is that ground and not a slab below it. **Both loops of a ring share that ground line**,
+    /// because the ring's base annulus runs between the offset corners at the authored corners' own
+    /// elevations — so this answers for either side of a face's
+    /// [`LoopSide`](crate::grid::LoopSide) without reading the offset. `O(1)`.
     pub fn face_extent(&self, face: FaceRef) -> Option<(f32, f32)> {
         let top = self.mass(face.mass)?.top;
         grid::loop_extent(self.face_loop(face)?, face.edge, top)
@@ -321,11 +329,33 @@ impl BuildingSkeleton {
     /// Returns every face of one courtyard's wall, in edge order.
     ///
     /// The counterpart of [`faces_of`](Self::faces_of) for a courtyard's ring, and the list a caller
-    /// walks to lay a rhythm on the wall around a courtyard. `O(nodes of that void)`.
+    /// walks to lay a rhythm on the wall around a courtyard. **These are the faces the courtyard
+    /// itself looks at** — the void loop's own edges. The rooms-facing half of the same ring is
+    /// [`room_faces_of`](Self::room_faces_of), and the two are two different lists because a mitre
+    /// makes them two different walls. `O(nodes of that void)`.
     pub fn court_faces_of(&self, mass: MassId, void: usize) -> Vec<FaceRef> {
         match self.mass(mass).and_then(|held| held.voids.get(void)) {
             Some(loop_nodes) => (0..loop_nodes.len())
                 .map(|edge| FaceRef::court(mass, void, edge))
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// Returns every face of one courtyard's wall **as the rooms see it**, in edge order.
+    ///
+    /// The other half of [`court_faces_of`](Self::court_faces_of): the same ring's offset loop, a
+    /// wall's thickness outside the void's own, which is the face a building shows when it looks
+    /// across at its own courtyard. A rhythm laid on these spans the **offset** edge — the longer
+    /// one — and a part pinned in one of those bays stands in the rooms with its depth running into
+    /// the ring.
+    ///
+    /// `O(nodes of that void)`, the same walk as the other list; the edges are the same indices,
+    /// because the two loops are walked in step.
+    pub fn room_faces_of(&self, mass: MassId, void: usize) -> Vec<FaceRef> {
+        match self.mass(mass).and_then(|held| held.voids.get(void)) {
+            Some(loop_nodes) => (0..loop_nodes.len())
+                .map(|edge| FaceRef::court_rooms(mass, void, edge))
                 .collect(),
             None => Vec::new(),
         }

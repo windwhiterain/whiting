@@ -25,7 +25,7 @@ use whiting_building::math::Vec2;
 use whiting_building::mesh::{
     BuildingFace, BuildingMesh, Element, MassSurface, RoofSurface, SolidId,
 };
-use whiting_building::openings::{Inset, Opening};
+use whiting_building::openings::{Inset, Opening, Openings};
 use whiting_building::ops::{clear_face, split_face};
 use whiting_building::roof::{CrestPoint, EaveStation, Roof, RoofPlane, RoofRow};
 use whiting_building::skeleton::{Building, BuildingSkeleton};
@@ -740,6 +740,7 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::OpeningExceedsBay { .. } => "OpeningExceedsBay",
         Violation::OpeningOutsideWall { .. } => "OpeningOutsideWall",
         Violation::OpeningOverlaps { .. } => "OpeningOverlaps",
+        Violation::OpeningOnAFarLoop { .. } => "OpeningOnAFarLoop",
         Violation::FaceNotPlanar { .. } => "FaceNotPlanar",
         Violation::VoidNotInside { .. } => "VoidNotInside",
         Violation::VoidNotConvex { .. } => "VoidNotConvex",
@@ -917,6 +918,76 @@ fn two_windows_in_one_bay(first: Inset, second: Inset) -> BuildingSkeleton {
     let face = FaceRef::new(MassId(0), 0);
     skeleton.openings.push(Opening::new(face, 0, 0, first));
     skeleton.openings.push(Opening::new(face, 0, 0, second));
+    skeleton
+}
+
+/// Returns a 4 × 4 courtyard in a 10 × 10 mass with a rhythm laid on **both** of one ring edge's
+/// loops, and one window authored on the rooms-facing one.
+///
+/// **The pair is what makes the fault a statement about the loop rather than about the courtyard.** The
+/// far face carries a grid of its own and holds a bay the window's slot resolves against, so nothing
+/// here is malformed in any way a bay can be — and the hole is refused anyway because the ring's walk
+/// cuts from the loop the author drew. The near loop of the same ring carries the same window in
+/// [`far_loop_hole_on_the_near_loop`] and is cut.
+fn far_loop_hole() -> BuildingSkeleton {
+    let mut skeleton = BuildingSkeleton::default();
+    skeleton.masses = vec![
+        Mass::new(
+            vec![
+                PlanNode::new([-5.0, -5.0], 0.0),
+                PlanNode::new([5.0, -5.0], 0.0),
+                PlanNode::new([5.0, 5.0], 0.0),
+                PlanNode::new([-5.0, 5.0], 0.0),
+            ],
+            3.2,
+        )
+        .with_wall(0.3)
+        .with_slab(0.4)
+        .with_voids(vec![vec![
+            PlanNode::new([-2.0, -2.0], 0.0),
+            PlanNode::new([2.0, -2.0], 0.0),
+            PlanNode::new([2.0, 2.0], 0.0),
+            PlanNode::new([-2.0, 2.0], 0.0),
+        ]]),
+    ];
+    for face in skeleton.court_faces_of(MassId(0), 0) {
+        split_face(
+            &mut skeleton,
+            face,
+            &Rhythm::Even { count: 3 },
+            &Rhythm::Even { count: 2 },
+        );
+    }
+    for face in skeleton.room_faces_of(MassId(0), 0) {
+        split_face(
+            &mut skeleton,
+            face,
+            &Rhythm::Even { count: 3 },
+            &Rhythm::Even { count: 2 },
+        );
+    }
+    skeleton.openings.push(Opening::new(
+        FaceRef::court_rooms(MassId(0), 0, 0),
+        1,
+        1,
+        Inset::new(0.3, 0.3, 0.3, 0.3),
+    ));
+    skeleton
+}
+
+/// Returns [`far_loop_hole`]'s document with the same window on the loop the walk reads.
+///
+/// The control: nothing about the two rectangles differs but the face they were authored on, so the one
+/// is cut and reads `0` violations and the other is refused by name.
+fn far_loop_hole_on_the_near_loop() -> BuildingSkeleton {
+    let mut skeleton = far_loop_hole();
+    skeleton.openings = Openings::new();
+    skeleton.openings.push(Opening::new(
+        FaceRef::court(MassId(0), 0, 0),
+        1,
+        1,
+        Inset::new(0.3, 0.3, 0.3, 0.3),
+    ));
     skeleton
 }
 
@@ -1266,6 +1337,30 @@ fn main() {
     report_strips(&touching);
     println!(
         "  the two holes meet at u = 1.2500 and remove no wall twice, so no OpeningOverlaps is named"
+    );
+
+    // **The one document the far loop's name makes writable that this crate will not honour**, with the
+    // identical window on the near loop beside it: the two rectangles differ in nothing but the face
+    // they were authored on, and only one of them is cut.
+    let on_the_far_loop = far_loop_hole();
+    report_document(
+        "a window on a courtyard wall's rooms-facing loop",
+        &on_the_far_loop,
+    );
+    let on_the_near_loop = far_loop_hole_on_the_near_loop();
+    report_document(
+        "the same window on the loop the walk reads",
+        &on_the_near_loop,
+    );
+    println!(
+        "  the rooms-facing edge is {:.4} m and the void loop's own is {:.4} m, so the two bays the\n  \
+         windows stand in are not the same span of the same wall",
+        on_the_far_loop
+            .face_length(FaceRef::court_rooms(MassId(0), 0, 0))
+            .unwrap_or(f32::NAN),
+        on_the_far_loop
+            .face_length(FaceRef::court(MassId(0), 0, 0))
+            .unwrap_or(f32::NAN),
     );
 
     let mut no_rhythm = house();

@@ -43,6 +43,43 @@ pub const GRID_TOLERANCE: f32 = 1.0e-3;
 /// expansion for the same reason ("max flattened split children (rhythm) 4 096").
 pub const MAX_STOPS: usize = 4096;
 
+/// Which of a wall ring's two loops a face is read off.
+///
+/// # Invariants
+///
+/// **A wall is two loops of the same shape, and this names which one a face is on.** A mass's wall
+/// stands *inside* its outline and a courtyard's ring *outside* the void's loop, so the ring's two
+/// faces are the loop the author drew and the loop a wall's thickness away from it. [`FaceRef`] holds
+/// one value of this rather than deriving it from whether the mass has a courtyard, because the two
+/// loops are two **different pieces of masonry** and an arc along one is not an arc along the other:
+/// a mitre moves the offset edge's ends, so one ring's two faces do not even measure the same.
+///
+/// It is the word [`crate::expand`]'s ring walk already winds by, which is what keeps the expander and
+/// the document from holding two answers to "which loop is this face on".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum LoopSide {
+    /// The loop the author drew: a mass's own outline, or a courtyard's void loop. Every face this
+    /// crate named before the offset loop became addressable is on this one.
+    Authored,
+    /// The loop a wall's thickness away from the authored one: a mass's inner wall, or the wall a
+    /// courtyard's ring shows **to the rooms**.
+    Offset,
+}
+
+impl LoopSide {
+    /// Returns the number this side sorts after by: `0` for the loop the author drew and `1` for the
+    /// loop a wall's thickness away.
+    ///
+    /// A rank rather than a cast, so a report that orders two faces of one mass reads *the loop the
+    /// author drew first* whatever order the enum's own variants are declared in.
+    pub fn rank(self) -> u64 {
+        match self {
+            Self::Authored => 0,
+            Self::Offset => 1,
+        }
+    }
+}
+
 /// Which face of a mass a grid belongs to: **one edge of one authored loop**.
 ///
 /// # Invariants
@@ -59,8 +96,10 @@ pub const MAX_STOPS: usize = 4096;
 /// an index rather than a type of thing, because a courtyard wall and a mass wall are the same kind
 /// of face and differ only in which loop they were read off.
 ///
-/// The key order puts `None` before `Some`, which is what makes every walk over a document's openings
-/// report a mass's own walls before its courtyards without comparing anything.
+/// The key order puts `None` before `Some` and the authored loop before the offset one, which is what
+/// makes every walk over a document's openings report a mass's own walls, then each courtyard's own
+/// face, then each courtyard's face **as the rooms see it**, without comparing anything. Every face
+/// this crate named before [`LoopSide`] existed is `Authored`, and it sorts where it always did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FaceRef {
     /// The mass the face belongs to.
@@ -69,6 +108,8 @@ pub struct FaceRef {
     pub edge: usize,
     /// Which of the mass's voids this face is on, or `None` for the mass's own outline.
     pub void: Option<usize>,
+    /// Which of that ring's two loops the edge is on.
+    pub loop_side: LoopSide,
 }
 
 impl FaceRef {
@@ -78,25 +119,60 @@ impl FaceRef {
             mass,
             edge,
             void: None,
+            loop_side: LoopSide::Authored,
         }
     }
 
     /// Builds a reference to one edge of a courtyard's wall.
     ///
     /// The void is the loop the courtyard's ring is built **outward** from, so this edge is the face
-    /// that looks *into* the courtyard; the ring's other face — the one the rooms see — is the same
-    /// edge of the offset loop and is not separately addressable, because a hole is cut through both.
+    /// that looks *into* the courtyard; the ring's other face — the one the rooms see — is
+    /// [`court_rooms`](Self::court_rooms).
     ///
     /// **A part pinned in one of these bays stands on the courtyard's side of that wall**, flush with
     /// the face this names and with its own depth running out of it into the courtyard — which is what
     /// `along × up = inward` requires here, and what `expand::part_frame` reads. See
     /// [`PartFrame`](crate::parts::PartFrame) for the frame a placement is stood in and why it is a
     /// rotation on this face as much as on a mass's.
+    ///
+    /// **A hole is still authored here and not on the far face**, because a hole is cut through both
+    /// of the ring's faces from the loop the walk reads: naming the far one would be a second
+    /// document for one hole, and the walk would never see it. That is
+    /// [`Violation::OpeningOnAFarLoop`](crate::validate::Violation::OpeningOnAFarLoop).
     pub fn court(mass: MassId, void: usize, edge: usize) -> Self {
         Self {
             mass,
             edge,
             void: Some(void),
+            loop_side: LoopSide::Authored,
+        }
+    }
+
+    /// Builds a reference to one edge of a courtyard's wall **as the rooms see it**.
+    ///
+    /// This is the ring's **offset** loop, a wall's thickness outside the void's own: the face on the
+    /// far side of the same masonry from [`court`](Self::court), and the one the expander names
+    /// [`MassSurface::VoidInner`](crate::mesh::MassSurface::VoidInner). It is a face like any other
+    /// and takes a rhythm, a bay and a part exactly as the near one does.
+    ///
+    /// **It measures differently, and that is the whole of why it needed its own name.** A mitre runs
+    /// the offset edge's ends past the authored edge's at both corners — outward for a courtyard, so
+    /// the rooms-facing wall is the *longer* of the two — so an arc length measured here is not an arc
+    /// length there, and the two ends of this edge are two different pieces of masonry from the two
+    /// ends of the near one. [`BuildingSkeleton::face_length`](crate::skeleton::BuildingSkeleton::face_length)
+    /// reads the offset loop's own length for a face that names it, which is what makes a rhythm laid
+    /// here span it exactly.
+    ///
+    /// **A part pinned in one of these bays stands in the rooms with its depth running into the ring**,
+    /// which is the same rule the near face follows — `inward` is the walker's left, so `along × up`
+    /// holds on both — and it is the only one of the four faces of a ring whose material is on the
+    /// walker's left and whose depth therefore runs *into* the masonry.
+    pub fn court_rooms(mass: MassId, void: usize, edge: usize) -> Self {
+        Self {
+            mass,
+            edge,
+            void: Some(void),
+            loop_side: LoopSide::Offset,
         }
     }
 
@@ -105,7 +181,15 @@ impl FaceRef {
         self.void.is_some()
     }
 
+    /// Returns whether this face is on the loop a wall's thickness away from the one the author drew.
+    pub fn is_offset(&self) -> bool {
+        self.loop_side == LoopSide::Offset
+    }
+
     /// Returns the authored loop this face's edge is read off, which is what a fault about it names.
+    ///
+    /// **Both loops of a ring answer with the loop the author drew**, because a ring is one wall and
+    /// the fault is about the wall; which of its two faces a reader wants is [`loop_side`](Self::loop_side).
     pub fn loop_of(&self) -> AuthoredLoop {
         match self.void {
             Some(void) => AuthoredLoop::Void {

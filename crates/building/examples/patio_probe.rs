@@ -25,7 +25,11 @@
 //!    own ring reading `0` beside it in the very same document;
 //! 7. **a doorway in that wall** is a notch in the ring's base and not a handle, and reads `0`;
 //! 8. every way the cut cannot be made is refused by name, and each names the **loop** it is about so
-//!    that "edge 1" is never two different walls.
+//!    that "edge 1" is never two different walls;
+//! 9. **a part on the rooms-facing side of the same ring** — the loop a wall's thickness away, which is
+//!    0.6 m longer than the void's own and therefore needed a name of its own — where the part's depth
+//!    runs *into* the ring; and **a hole on that loop is refused by name** from both halves, because a
+//!    hole is cut through both faces from the loop the walk reads.
 //!
 //! Run with `cargo run -p whiting-building --example patio_probe`.
 
@@ -165,6 +169,191 @@ fn shutter() -> Template {
 /// measured on this very document as `SolidInsideOut { solid: Part(0), volume: -0.02242782 }`.
 fn handedness(frame: &PartFrame) -> f32 {
     dot3(cross3(frame.along, frame.up), frame.inward)
+}
+
+/// Measures the **far side** of a courtyard's wall: a part standing in the rooms, with its depth
+/// running into the ring.
+///
+/// # Invariants
+///
+/// **The same rhythm is laid on both loops, by the same op, from the same numbers** — so the only
+/// difference between the two documents is which loop each face names, and every reading below is
+/// about that one fact. Three bays across the void loop's own `4.0000` m edge and three across the
+/// rooms-facing `4.6000` m one come out different widths, and *that* is the measure: an arc measured on
+/// one loop is not an arc on the other, which is why the far face needed a name of its own and not a
+/// second copy of the near one.
+///
+/// **The depth is what makes this side worth having.** `inward` is the walker's left on every face of a
+/// ring, so `along × up` holds on all four; what differs is which side the material lies on. A mass's
+/// outline has it on the left, a courtyard's void loop on the right — so a part on those two runs its
+/// depth *out of* the wall — and a courtyard's offset loop has it on the left again, so a part named
+/// there runs its depth **into the ring**. That is the seating the part-in-a-court slice measured as
+/// unavailable (`SolidInsideOut { volume: -0.02242782 }`), reached instead by naming the other face.
+fn rooms_side(columns: &Rhythm, rows: &Rhythm) {
+    let mut skeleton = BuildingSkeleton {
+        masses: vec![housed_patio()],
+        ..BuildingSkeleton::default()
+    };
+    for at in skeleton.court_faces_of(MassId(0), 0) {
+        let _ = ops::split_face(&mut skeleton, at, columns, rows);
+    }
+    for at in skeleton.room_faces_of(MassId(0), 0) {
+        let _ = ops::split_face(&mut skeleton, at, columns, rows);
+    }
+    let near = court_face();
+    let rooms = FaceRef::court_rooms(MassId(0), 0, 0);
+    let near_length = skeleton.face_length(near).expect("the void loop's edge");
+    let rooms_length = skeleton.face_length(rooms).expect("the offset loop's edge");
+    let near_bay = skeleton.bay(near, 0, 0).expect("the near grid");
+    let rooms_bay = skeleton.bay(rooms, 0, 0).expect("the far grid");
+    println!(
+        "\n# a part in the rooms, on the far side of the same ring\n  the near face is {near:?}, \
+         {:.4} m long; the rooms-facing one is {rooms:?}, {:.4} m long — {:.1} m longer at **each** \
+         end, which is the outward mitre keeping the corner's angle",
+        near_length,
+        rooms_length,
+        (rooms_length - near_length) * 0.5
+    );
+    println!(
+        "  bay (0, 0) is [{:.4}, {:.4}] across the near face and [{:.4}, {:.4}] across the rooms-facing \
+         one: three bays of one rhythm over two different edges",
+        near_bay.from, near_bay.to, rooms_bay.from, rooms_bay.to
+    );
+
+    let template = ops::add_template(&mut skeleton, shutter());
+    let Some(index) = ops::place_part(
+        &mut skeleton,
+        Placement::new(template, rooms, 0, 0, Pin::new(0.2, 0.1)),
+    ) else {
+        println!("  the part was refused at the verb, which would be the fault");
+        return;
+    };
+    let frame = part_frame(&skeleton, index)
+        .expect("the frame resolves")
+        .expect("the placement resolves");
+    println!(
+        "  its frame: origin ({:.4}, {:.4}, {:.4}), along ({:.1}, {:.1}, {:.1}), up ({:.1}, {:.1}, \
+         {:.1}), inward ({:.1}, {:.1}, {:.1})",
+        frame.origin[0],
+        frame.origin[1],
+        frame.origin[2],
+        frame.along[0],
+        frame.along[1],
+        frame.along[2],
+        frame.up[0],
+        frame.up[1],
+        frame.up[2],
+        frame.inward[0],
+        frame.inward[1],
+        frame.inward[2],
+    );
+    println!(
+        "  and (along x up) . inward = {:+.1}: the same rotation the near face reads, because `inward` \
+         is the walker's left on both",
+        handedness(&frame)
+    );
+    let document = Building::new(skeleton.clone());
+    let faults = document.validate();
+    println!("  the document reports {} violation(s)", faults.len());
+    for fault in &faults {
+        println!("    {fault:?}");
+    }
+    match document.build() {
+        Ok(built) => {
+            let part = SolidId::Part(index);
+            println!(
+                "  it builds: the part reads {} faces, loops {}, euler {}, manifold {}, volume {:.6}",
+                built.faces_of(part).len(),
+                built.solid_boundary_loops(part),
+                built.solid_euler_characteristic(part),
+                built.solid_is_manifold(part),
+                built.solid_signed_volume(part)
+            );
+            let (low, high) = built.bounds_of(part);
+            println!(
+                "    it stands in plan x [{:.4}, {:.4}], z [{:.4}, {:.4}], and from y {:.4} to {:.4}",
+                low[0], high[0], low[2], high[2], low[1], high[1]
+            );
+            println!(
+                "    so its own thickness runs from z {:.4} to z {:.4}: inside the ring's own \
+                 {:.4} .. {:.4}, one wall's thickness from the face it was named on to the void loop's \
+                 own line. The near-side part runs the *other* way, out of the wall and into the \
+                 courtyard — one rule, four faces, and only this one seats a part in the masonry.",
+                low[2],
+                high[2],
+                low[2],
+                low[2] + 0.3
+            );
+            println!(
+                "  the courtyard's ring keeps its reading: manifold {}, loops {}, euler {}",
+                built.solid_is_manifold(courtyard_ring()),
+                built.solid_boundary_loops(courtyard_ring()),
+                built.solid_euler_characteristic(courtyard_ring())
+            );
+            println!(
+                "  and the mass's own ring keeps its reading: manifold {}, loops {}, euler {}",
+                built.solid_is_manifold(SolidId::Mass(MassId(0))),
+                built.solid_boundary_loops(SolidId::Mass(MassId(0))),
+                built.solid_euler_characteristic(SolidId::Mass(MassId(0)))
+            );
+        }
+        Err(error) => println!("  it does not build: {:?}", error.problems.first()),
+    }
+
+    // **The one document the new name makes writable that this crate will not honour, and it has to be
+    // named from both halves.** A hole is cut through both of a ring's faces from the loop the walk
+    // reads; one authored on the far loop is a second rectangle for one hole with no second wall to put
+    // it in. The document reports it and the expander refuses the build, so an author hears it before
+    // a mesh is asked for rather than after a picture comes back without their window.
+    let mut cut = skeleton.clone();
+    let _ = ops::add_opening(
+        &mut cut,
+        Opening::new(rooms, 1, 1, Inset::new(0.3, 0.3, 0.3, 0.3)),
+    );
+    let document = Building::new(cut);
+    let faults = document.validate();
+    println!(
+        "\n# a window on the rooms-facing loop, which is a hole this crate will not cut\n  the \
+         document reports {} violation(s):",
+        faults.len()
+    );
+    for fault in &faults {
+        println!("    {fault:?}");
+    }
+    match document.build() {
+        Ok(_) => println!("    and it builds, which would be the fault: the hole would be missing"),
+        Err(error) => {
+            for problem in &error.problems {
+                println!("    and it does not build: {problem:?}");
+            }
+        }
+    }
+
+    // **The control, and the reason the refusal is a statement about the loop rather than about the
+    // courtyard**: the same window, on the loop the walk reads and in a document that carries nothing
+    // else, is cut and the ring reads one more handle. Nothing about the two rectangles differs but
+    // which face they were authored on.
+    let mut control = skeleton.clone();
+    let _ = ops::add_opening(
+        &mut control,
+        Opening::new(near, 1, 1, Inset::new(0.3, 0.3, 0.3, 0.3)),
+    );
+    let control = Building::new(control);
+    println!(
+        "  and the same window on {near:?}, the loop the walk reads, is cut as any other is: \
+         {} violation(s)",
+        control.validate().len()
+    );
+    match control.build() {
+        Ok(built) => println!(
+            "    it builds, and the courtyard's ring reads manifold {}, loops {}, euler {} — one \
+             handle for one hole",
+            built.solid_is_manifold(courtyard_ring()),
+            built.solid_boundary_loops(courtyard_ring()),
+            built.solid_euler_characteristic(courtyard_ring())
+        ),
+        Err(error) => println!("    and it does not build: {:?}", error.problems.first()),
+    }
 }
 
 fn main() {
@@ -713,6 +902,8 @@ fn main() {
         Err(error) => println!("  it does not build: {:?}", error.problems.first()),
     }
 
+    rooms_side(&columns, &rows);
+
     // **Every way the cut cannot be made, each reached through the document and named.** Every one of
     // them names the **loop**, because a mass's wall and a courtyard's are both "edge 1" and reporting
     // one as the other would send an author to the wrong piece of masonry.
@@ -921,6 +1112,6 @@ fn main() {
     }
 
     println!(
-        "\n# the reading: a courtyard's wall takes an opening exactly as the building's own does — the\n# hole goes through both of the ring's faces, the reveals name the loop, the ring's Euler\n# characteristic follows the document rather than staying at 0, and a part stands in one of its\n# bays on the courtyard's own face."
+        "\n# the reading: a courtyard's wall takes an opening exactly as the building's own does — the\n# hole goes through both of the ring's faces, the reveals name the loop, the ring's Euler\n# characteristic follows the document rather than staying at 0, and a part stands in one of its\n# bays on either of its two faces: on the courtyard's own, its depth out into the courtyard, and\n# on the rooms-facing one, its depth into the ring."
     );
 }

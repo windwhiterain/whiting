@@ -65,7 +65,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 
 use crate::courtyard;
-use crate::grid::{FaceRef, GRID_TOLERANCE};
+use crate::grid::{FaceRef, GRID_TOLERANCE, LoopSide};
 use crate::mass::{AuthoredLoop, Mass, MassId, PlanNode};
 use crate::math::{
     Vec2, Vec3, cross, cross3, difference, distance, dot, length, lift, normalized, subtract,
@@ -325,6 +325,28 @@ pub enum Problem {
         left: usize,
         /// The later.
         right: usize,
+    },
+    /// An opening names the ring's **far** loop — the face a wall's thickness away from the one the
+    /// walk cuts from — so no cut would ever be made from it.
+    ///
+    /// # Invariants
+    ///
+    /// **A hole is cut through both faces at once**, which is why the far loop never needed a name
+    /// before this one gave it one: a window in a courtyard's wall is one rectangle on the void loop
+    /// and it goes through the ring. Authoring it on the offset loop as well would be a second
+    /// rectangle for one hole, with no second wall to put it in — and a lookup that declines to see it
+    /// is a filter, and this crate does not ship a filter whose companion does not exist.
+    ///
+    /// A rhythm and a part may name the far loop, and are seated on it: a bay is a slot on a face and
+    /// a part stands on the face its bay names, which is a different question from where a hole is
+    /// cut from.
+    OpeningOnAFarLoop {
+        /// The authored loop the opening's wall stands on: a mass's outline, or one of its courtyards.
+        loop_of: AuthoredLoop,
+        /// The loop edge the opening names, counted from the loop's first node.
+        edge: usize,
+        /// The opening's index in the document's own list.
+        opening: usize,
     },
     /// A placement could not be resolved, so nothing stands in its bay.
     ///
@@ -695,9 +717,18 @@ fn expand_wall(mesh: &mut BuildingMesh, id: WallId, wall: &Wall) -> Result<(), V
 /// its outward offset, which is what the last slice made a single flag. There is no second frame and
 /// no second opinion about which way a courtyard's wall went.
 ///
-/// **The part stands on the courtyard's face with its depth running into the courtyard, and the
-/// alternative was measured rather than argued.** A part's origin is on the face its bay names and its
-/// depth runs *across* that face, which for a mass's outer wall means into the masonry. A courtyard's
+/// **The ring's other loop is a frame too, and it is the best-behaved of the four.** `inward` is
+/// always the walker's **left**, which is `along × up` and therefore proper on every face of a ring —
+/// what changes between them is only which way the material lies. A mass's outline has it on the left
+/// and the part runs into the masonry; a courtyard's void loop has it on the right and the part runs
+/// into the courtyard; a courtyard's **offset loop — the wall the rooms see** — has it on the left
+/// again, so a part named there stands in the rooms with its depth running **into the ring**. That is
+/// [`FaceRef::court_rooms`](crate::grid::FaceRef::court_rooms), and its arc lengths are the offset
+/// edge's own, which the outward mitre makes longer at both ends.
+///
+/// **A part's depth runs across the face its bay names, and the alternative was measured rather than
+/// argued.** A part's origin is on the face its bay names and its depth runs *across* that face,
+/// which for a mass's outer wall means into the masonry. A courtyard's
 /// face looks the other way: its loop is walked with the courtyard on the walker's **right**, so
 /// `inward` runs into the courtyard rather than into the ring. Seating a part **inside the ring's
 /// thickness** instead needs `inward` reversed — and that makes the frame **improper**, because
@@ -738,6 +769,12 @@ pub fn part_frame(
             // matters here for what the walk **refuses** — a courtyard's offset has to enclose more than
             // its loop or `OffsetInverted` says so — and not for the three directions below, which are
             // the wall's own walk read one way.
+            //
+            // **`face.loop_side` then says which of the two faces this bay is on**, so a rhythm laid on
+            // a courtyard's rooms-facing loop is framed on that loop's own strip: its own start, its
+            // own length, and the depth running across it. The ring walk is not consulted and does not
+            // need to be — the two loops are the same two lines, and `Ring::face` is what says which
+            // one it is handing back.
             let mut problems = Vec::new();
             let loop_of = face.loop_of();
             let Some(loops) = loops_of(skeleton, loop_of, mass.wall, &mut problems) else {
@@ -750,7 +787,9 @@ pub fn part_frame(
                     Err(problems)
                 };
             };
-            let wall = loops.ring(loop_of, mass.wall, mass.top).face(face.edge);
+            let wall = loops
+                .ring(loop_of, mass.wall, mass.top)
+                .face(face.edge, face.loop_side);
             let origin = lift(
                 wall.outer_at(bay.from + placed.at.along),
                 bay.low + placed.at.up,
@@ -1145,8 +1184,15 @@ impl Ring<'_> {
         matches!(self.side, OffsetSide::Inward)
     }
 
-    /// Returns one edge of the ring read as the vertical strip its wall is built in.
-    fn face(&self, edge: usize) -> WallFace {
+    /// Returns one edge of the ring read as the vertical strip its wall is built in, on the loop
+    /// `loop_side` names.
+    ///
+    /// **The strip is the same masonry either way and the two readings are not interchangeable.** A
+    /// ring is two parallel faces a wall's thickness apart, and each is its own frame: the offset edge
+    /// starts somewhere else, runs a different length, and a mitre has moved both its ends. A caller
+    /// that asks for the ring's own face gets today's reading and today's numbers; a caller standing a
+    /// part on the far face gets the far face's, and nothing is transposed between them.
+    fn face(&self, edge: usize, loop_side: LoopSide) -> WallFace {
         WallFace::of(
             self.walked,
             self.offset,
@@ -1154,6 +1200,7 @@ impl Ring<'_> {
             self.top,
             edge,
             self.side,
+            loop_side,
         )
     }
 
@@ -1247,6 +1294,43 @@ impl FaceLoops<'_> {
             side: self.side,
         }
     }
+}
+
+/// Returns the plan length of one face's own edge, read off the loop that face names.
+///
+/// # Invariants
+///
+/// **The near side is two nodes and the far side is the miter's edge, and they are not the same
+/// number.** A courtyard's ring is offset **outward**, so its offset edge runs past the void's own at
+/// both ends — the miter keeps the corner's angle and the wall its thickness, and the price is a
+/// longer edge — and a rhythm laid out over the near face's length would leave the two ends of the
+/// rooms-facing wall without bays. So this reads the loop [`LoopSide`] names, through the same walk the
+/// ring was built from, rather than transposing one reading into the other.
+///
+/// **The near side stays the two-node read it has always been.** It is not routed through the walk
+/// to share one line with the far side, because it already answers the same number and the near side
+/// is every face this crate named before the far loop became addressable.
+///
+/// The walk's own refusals on the way — a void it will not convexify, an offset it will not take — are
+/// this module's [`Problem`]s and are reported by the expander. Here they are the staged `None` that
+/// [`crate::validate`] already reports as [`GridFaceMissing`](crate::validate::Violation::GridFaceMissing),
+/// which is the pairing every other read of a ring's loops has.
+///
+/// `O(1)` on the authored side and `O(nodes)` on the offset side, which is the price of asking the
+/// walk rather than re-deriving a miter in a second place.
+pub(crate) fn face_length(skeleton: &BuildingSkeleton, face: FaceRef) -> Option<f32> {
+    let count = skeleton.face_loop(face)?.len();
+    if face.edge >= count {
+        return None;
+    }
+    if face.loop_side == LoopSide::Authored {
+        return crate::grid::loop_length(skeleton.face_loop(face)?, face.edge);
+    }
+    let mass = skeleton.mass(face.mass)?;
+    let mut problems = Vec::new();
+    let loops = loops_of(skeleton, face.loop_of(), mass.wall, &mut problems)?;
+    let ring = loops.ring(face.loop_of(), mass.wall, mass.top);
+    Some(ring.face(face.edge, LoopSide::Offset).length)
 }
 
 /// Returns the two loops one authored loop's ring is built from: the loop the author wrote, walked
@@ -1388,7 +1472,9 @@ pub(crate) fn ring_walk(
         offset_base.push(solid.point(lift(ring.offset[node], ring.walked[node].elevation)));
         offset_top.push(solid.point(lift(ring.offset[node], ring.top)));
     }
-    let faces: Vec<WallFace> = (0..count).map(|edge| ring.face(edge)).collect();
+    let faces: Vec<WallFace> = (0..count)
+        .map(|edge| ring.face(edge, LoopSide::Authored))
+        .collect();
     let nodes: Vec<EdgeNode> = (0..count)
         .map(|node| EdgeNode {
             authored_base: authored_base[node],
@@ -1593,10 +1679,12 @@ fn split_loop(
 ///
 /// # Invariants
 ///
-/// **The ring reads its own face and no other.** `grouped` is the whole document's openings keyed by
-/// the exact [`FaceRef`], and a ring looks up the faces its own loop names — so a hole in a
-/// courtyard's wall can never be cut into the mass's own wall two edges away, which is what a filter
-/// on the mass alone would have allowed once a courtyard's faces became addressable.
+/// **The ring reads its own loop's authored face and no other.** `grouped` is the whole document's
+/// openings keyed by the exact [`FaceRef`], and a ring looks up the faces its own loop names — so a
+/// hole in a courtyard's wall can never be cut into the mass's own wall two edges away, which is what
+/// a filter on the mass alone would have allowed once a courtyard's faces became addressable. A hole
+/// on the *same* loop's far face is this ring's to name and refuse
+/// ([`Problem::OpeningOnAFarLoop`]), because the cut it would make is one it never takes.
 ///
 /// **The two lookups are read as a pair, and both come from the document.** `aperture` answers the
 /// rectangle a hole cuts and `None` for one that cannot be cut at all; `unresolved_openings` and
@@ -1621,6 +1709,20 @@ fn resolve_holes(
     // named refusal and a hole that was quietly never cut.
     for (face, indices) in grouped {
         if face.mass != ring.loop_of.mass() || face.void != ring.loop_of.void() {
+            continue;
+        }
+        // **A hole is cut through both of the ring's faces from the loop the walk reads**, so one
+        // authored on the far loop is a second document for one hole and this walk would never see it.
+        // It is named here rather than skipped, because a group every ring declines is the one shape
+        // of document that builds perfectly and is quietly not the document its author wrote.
+        if face.loop_side != LoopSide::Authored {
+            for index in indices {
+                problems.push(Problem::OpeningOnAFarLoop {
+                    loop_of: ring.loop_of,
+                    edge: face.edge,
+                    opening: *index,
+                });
+            }
             continue;
         }
         let Some(wall) = faces.get(face.edge) else {
@@ -1768,39 +1870,52 @@ fn resolve_one(
 /// of their own — see [`WallFace::offset_floor_at`] — which is a fact about the mitred corners and
 /// not about the plate.
 ///
-/// **The loops are named by the walk, not by which way they look.** `origin` is the authored loop and
-/// `offset_origin` the one a wall's thickness away, whichever of the two is the ring's outward-facing
+/// **The loops are named by the walk, not by which way they look.** `origin` is the loop this reading
+/// was asked for and `offset_origin` the other one, whichever of the two is the ring's outward-facing
 /// face; [`Ring::authored_is_outer`] is what says that, and nothing here assumes it.
 #[derive(Debug, Clone, Copy)]
 struct WallFace {
-    /// Where the authored edge starts, in plan.
+    /// Where this face's own edge starts, in plan.
     origin: Vec2,
-    /// The unit direction the authored edge runs.
+    /// The unit direction this face's own edge runs.
     along: Vec2,
-    /// Where the authored edge's line meets the offset edge's line: the authored edge shifted along
-    /// whichever way this ring's offset went by the wall's thickness.
+    /// Where this face's edge's line meets the other loop's edge's line: this edge shifted along
+    /// whichever way **towards the other loop** is, by the wall's thickness.
     offset_origin: Vec2,
-    /// How long the authored edge is.
+    /// How long this face's own edge is.
     length: f32,
-    /// Where the offset edge starts along its own line, which the miter moved off the authored edge's
+    /// Where the other edge starts along this face's own line, which the miter moved off this edge's
     /// start.
     offset_from: f32,
-    /// Where the offset edge ends along its own line, which the miter moved off the authored edge's
+    /// Where the other edge ends along this face's own line, which the miter moved off this edge's
     /// end.
     offset_to: f32,
-    /// The ground line's own two elevations, at the authored edge's two ends.
+    /// The ground line's own two elevations, at this face's two ends.
+    ///
+    /// **The two loops of a ring share one ground line**, because the ring's base annulus runs between
+    /// the offset corners *at the authored corners' own elevations*: `ring_walk` lifts `offset[i]` to
+    /// `walked[i].elevation`, so the offset face's floor is the same two numbers as the authored
+    /// face's, read over its own span. That is why `loop_extent` answers for either side of a ring.
     ground: [f32; 2],
     /// The wall top.
     top: f32,
 }
 
 impl WallFace {
-    /// Reads one edge of an authored loop as the strip its wall is built in.
+    /// Reads one edge of a ring as the strip its wall is built in, read from the loop `loop_side` names.
     ///
     /// **The side is the only difference between the two rings**: a mass's offset lies along the loop's
     /// inward normal and a courtyard's along the outward one, which is exactly
     /// [`OffsetSide::apply`] already computes for the offset walk, so the strip and the loop it is
     /// offset from cannot disagree about which way "into the wall" is.
+    ///
+    /// **Reading the far loop is the same two lines with the loops swapped, and nothing else.** Both
+    /// faces of a ring are parallel strips a wall's thickness apart, so `along` is the same direction
+    /// for either and the direction *towards the other loop* is the inward normal exactly when the
+    /// other loop was reached by offsetting outward — which is what [`OffsetSide::apply`] already says.
+    /// What genuinely differs is where the strip **starts and how long it is**: the offset edge's ends
+    /// are the mitre's, not the authored edge's, and for a courtyard they are further out at both ends,
+    /// which is the whole reason the far face needed a name of its own.
     fn of(
         loop_nodes: &[PlanNode],
         offset: &[Vec2],
@@ -1808,31 +1923,48 @@ impl WallFace {
         top: f32,
         edge: usize,
         side: OffsetSide,
+        loop_side: LoopSide,
     ) -> Self {
         let count = loop_nodes.len();
         let next = (edge + 1) % count;
-        let origin = loop_nodes[edge].position;
+        let from = loop_nodes[edge].position;
         let far = loop_nodes[next].position;
-        let along = normalized(difference(far, origin));
+        let along = normalized(difference(far, from));
+        let (origin, length, other) = match loop_side {
+            LoopSide::Authored => (from, distance(far, from), [offset[edge], offset[next]]),
+            LoopSide::Offset => (
+                offset[edge],
+                distance(offset[next], offset[edge]),
+                [from, far],
+            ),
+        };
+        // **From the authored loop the other one lies the way this ring was offset, and from the other
+        // one back again it lies the opposite way** — which is the same normal the offset walk already
+        // applied, reversed, rather than a second notion of "across the wall".
+        let across = side.apply(inward(along));
+        let towards_other = match loop_side {
+            LoopSide::Authored => across,
+            LoopSide::Offset => [-across[0], -across[1]],
+        };
         Self {
             origin,
             along,
-            offset_origin: step(origin, side.apply(inward(along)), wall),
-            length: distance(far, origin),
-            offset_from: dot(difference(offset[edge], origin), along),
-            offset_to: dot(difference(offset[next], origin), along),
+            offset_origin: step(origin, towards_other, wall),
+            length,
+            offset_from: dot(difference(other[0], origin), along),
+            offset_to: dot(difference(other[1], origin), along),
             ground: [loop_nodes[edge].elevation, loop_nodes[next].elevation],
             top,
         }
     }
 
-    /// Returns the ground line's elevation at an arc length along the **authored** edge.
+    /// Returns the ground line's elevation at an arc length along **this face's own** edge.
     ///
-    /// The line is straight between the edge's two nodes, which is what makes both ends the whole
+    /// The line is straight between the edge's two ends, which is what makes both ends the whole
     /// test: a linear function attains its extremes on an interval at the interval's ends.
     ///
     /// **This is one of the wall's own faces' floor at every station, the two corners included**,
-    /// because the ring's base is one elevation over the whole loop: `ring_walk` puts the authored
+    /// because the ring's base is one elevation over the whole loop: `ring_walk` puts both loops'
     /// corners on this line, and a station that read anything else would draw the base annulus across
     /// an opening as a band from one level to another.
     fn ground_at(&self, along: f32) -> f32 {
@@ -1855,12 +1987,12 @@ impl WallFace {
         self.ground[0] + (self.ground[1] - self.ground[0]) * ((inside - self.offset_from) / span)
     }
 
-    /// Returns the plan position of an arc length along the authored edge.
+    /// Returns the plan position of an arc length along this face's own edge.
     fn outer_at(&self, along: f32) -> Vec2 {
         step(self.origin, self.along, along)
     }
 
-    /// Returns the plan position of an arc length along the authored edge, on the offset edge.
+    /// Returns the plan position of an arc length along this face's own edge, on the other loop's.
     ///
     /// This is the **projection of the authored rim's corner onto the offset edge**, and it is the
     /// whole of what the offset face needs: one dot product, and exact because the two lines are
@@ -1904,9 +2036,7 @@ struct Hole {
     outer: Extents,
 }
 
-/// Which of a ring's two loops a face is drawn on.
-///
-/// # Invariants
+/// The expander's half of [`LoopSide`]: the loop a band is drawn on, and the winding it therefore takes.
 ///
 /// **The loop is the fact the walk winds by, and it is not the same as which way the face looks.** A
 /// mass's authored loop *is* its outward-facing wall; a courtyard's authored loop is the face that
@@ -1914,14 +2044,10 @@ struct Hole {
 /// loops is what lets one set of windings serve both: [`gap`] and [`corner_band`] ask for the loop and
 /// derive the winding, and [`Ring::authored_is_outer`] is the one place the swap is decided — by
 /// [`RingSurfaces::of_loop`], which turns a loop into the name the mesh carries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LoopSide {
-    /// The loop the author drew.
-    Authored,
-    /// The loop a wall's thickness away from it.
-    Offset,
-}
-
+///
+/// The type itself is [`crate::grid::LoopSide`] and not one declared here, because a document names a
+/// face's loop and the walk winds by a face's loop, and two spellings of one question is how those
+/// two halves come to disagree about which wall a part is standing on.
 impl LoopSide {
     /// Returns the elevation this loop's own floor stands at an arc length along the authored edge.
     ///

@@ -30,7 +30,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::expand::Problem;
-use crate::grid::{FaceRef, GRID_TOLERANCE, increasing};
+use crate::grid::{FaceRef, GRID_TOLERANCE, LoopSide, increasing};
 use crate::mass::{Mass, MassId, PlanNode};
 use crate::math::{Vec2, Vec3, distance, dot3, subtract};
 use crate::mesh::{BuildingMesh, Element, RoofSurface, SolidId};
@@ -458,6 +458,26 @@ pub enum Violation {
         opening: usize,
         /// The later of the two.
         other: usize,
+    },
+    /// An opening names the **far loop** of a wall: the face a wall's thickness away from the one the
+    /// cut is made from.
+    ///
+    /// # Invariants
+    ///
+    /// **A hole is cut through both of a ring's faces at once**, which is the whole of why this loop was
+    /// unnameable until the far side itself became addressable. A window in a courtyard's wall is one
+    /// rectangle on the void loop and it goes through the ring; naming the offset loop as well would be
+    /// a second rectangle for one hole, with no second wall to put it in, and the walk would decline to
+    /// see it — a filter with no companion, which is the one thing this crate refuses to ship.
+    ///
+    /// A **rhythm and a part may name the far loop** and are seated on it: a bay is a slot on a face
+    /// and a part stands on the face its bay names. Where a hole is cut *from* is a different question
+    /// from where a part stands, and this is the answer to the first of them.
+    OpeningOnAFarLoop {
+        /// The opening.
+        opening: usize,
+        /// The wall face it names.
+        face: FaceRef,
     },
     /// A placement names a template the document does not hold.
     ///
@@ -1300,6 +1320,12 @@ fn check_solid(
 /// reads when it cuts, from the same place: a document's openings are one list, and a fault that was
 /// reported twice under two ring identities would be a fault an author has to triage twice.
 ///
+/// **Only the loop the walk cuts from counts, and that is the same one sentence as
+/// [`OpeningOnAFarLoop`](Violation::OpeningOnAFarLoop).** A hole named on a ring's far loop is not
+/// counted here because no cut is made from it, and counting one that the expander refused would put
+/// a handle on a solid that has none — the false `SolidNotASphere` a document gets for reporting a
+/// fault it was never built from.
+///
 /// `O(openings)` over the one group that names this ring, and each hole's own resolution is
 /// `O(log faces)` through [`BuildingSkeleton::aperture`].
 fn handles(skeleton: &BuildingSkeleton, mass: MassId, void: Option<usize>) -> usize {
@@ -1307,7 +1333,9 @@ fn handles(skeleton: &BuildingSkeleton, mass: MassId, void: Option<usize>) -> us
         .openings
         .by_face()
         .iter()
-        .filter(|(face, _)| face.mass == mass && face.void == void)
+        .filter(|(face, _)| {
+            face.mass == mass && face.void == void && face.loop_side == LoopSide::Authored
+        })
         .flat_map(|(_, indices)| indices.iter())
         .filter(|index| match skeleton.aperture(**index) {
             None => false,
@@ -1516,6 +1544,18 @@ fn check_openings(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) 
     // scan report the lower index first without comparing anything.
     let mut cut: Vec<(usize, Extents)> = Vec::new();
     for (index, opening) in skeleton.openings.iter().enumerate() {
+        // **Staged first, and before the bay is asked for.** A hole on a wall's far loop is not a hole
+        // in a thinner wall, it is not a hole this crate can cut: the ring's walk reads the loop the
+        // author drew and cuts through both faces at once, so this rectangle has nowhere to be measured
+        // *and* nothing would be cut if it were. Reporting it as anything else would send an author
+        // looking for a dimension that is not the fault.
+        if opening.face.loop_side != LoopSide::Authored {
+            violations.push(Violation::OpeningOnAFarLoop {
+                opening: index,
+                face: opening.face,
+            });
+            continue;
+        }
         let Some(bay) = skeleton.bay(opening.face, opening.row, opening.column) else {
             violations.push(Violation::OpeningBayMissing {
                 opening: index,
@@ -2411,6 +2451,19 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         // the key unique within this rank, and the role is in the payload for the reader rather than for
         // the order — the order's job is to make two runs diff, not to restate the variant.
         Violation::SlabHostMissing { slab, host, .. } => (42, slab.0 as u64, host.0 as u64, 0, 0),
+        // **Rank `43`, and it is the opening's rank beside the four above it for the reason they took
+        // `24`–`27`.** Those four are the ways a hole fails against the wall it names, and this is the
+        // fifth way: it fails against the *loop* it names, before a bay is asked for. It sits beside
+        // them rather than at the end with the slab faults because a reader who has been told "a hole
+        // names a bay" reads `24` first and this is the same sentence with one more word in it — but
+        // the ranks cannot be renumbered for tidiness, so it takes the next free one and says so.
+        Violation::OpeningOnAFarLoop { opening, face } => (
+            43,
+            *opening as u64,
+            face.mass.0 as u64,
+            face.edge as u64,
+            void_rank(*face),
+        ),
         // The four opening faults in the order an author meets them: the slot is not there, the bay
         // cannot hold the hole, the hole leaves the wall, and two holes in one wall fight.
         Violation::OpeningBayMissing { opening, face } => (
@@ -2428,7 +2481,8 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
     }
 }
 
-/// Returns a number that sorts a face the way [`FaceRef`]'s own order does, a mass's own walls first.
+/// Returns a number that sorts a face the way [`FaceRef`]'s own order does, a mass's own walls first
+/// and the loop each wall is read from innermost to outermost.
 ///
 /// # Invariants
 ///
@@ -2436,11 +2490,18 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
 /// order the key would be incomplete without: two faces on the same mass and the same edge are two
 /// different pieces of masonry once one of them is a courtyard's, and an order that could not tell them
 /// apart would not be total.
+///
+/// **The loop side is the low bit and the void the rest, so the order every existing face already had
+/// is the order it keeps.** A mass's own faces were `0` and courtyard `v` was `v + 1`; shifting those
+/// up by one bit keeps every comparison between them and puts the far face immediately after its own
+/// near one, which is the reading a report wants — the two faces of one piece of masonry, adjacent —
+/// rather than all of a courtyard's near faces before all of its far ones.
 fn void_rank(face: FaceRef) -> u64 {
-    match face.void {
+    let loop_of = match face.void {
         Some(void) => void as u64 + 1,
         None => 0,
-    }
+    };
+    (loop_of << 1) | face.loop_side.rank()
 }
 
 /// Returns a number that sorts a solid the way the enum's own order does, masses first.
