@@ -77,9 +77,13 @@ is its consequences.
 | module | contents | why it is here rather than in a consumer |
 | --- | --- | --- |
 | `math` | the plan/space arithmetic `mountain::math` already is — `Vec2`/`Vec3`, `plan`, `lift`, `difference`, `lerp`, `cross`, `dot`, `span`, `normalized`, `signed_area`, `face_normal`, `clamp` | it is the one definition of which axis is up, and three crates authoring into one scene must not each have one. `building`'s P1 found that this — not `FacetMesh` — was what it actually needed |
-| `curve` | `Curve` (cubic Hermite control points), `Jet { position, tangent }`, `frame`, `curvature`, `insert`, `split`, `sub`, `closest`, `segments` (Bezier) | the subject of this proposal |
-| `sweep` | `Sweep { spine, section }`, `Section` (circle, ellipse, flat, authored outline), `Loft` (a sampled grid of quads as triangles) | the ring loft, the leaf, and the envelope are one primitive at three sections |
-| `mesh` | `boundary_loops`, `is_manifold`, `euler_characteristic`, `signed_volume`, `winding_is_consistent`, and the edge-keyed count they share | `building` wrote them because `mountain`'s are inherent to `FacetMesh`; `vegetation` would write them a third time |
+| `hermite` (private) | the four basis weights, their first and second derivatives | one polynomial, two callers: `curve` and `scalar` are the same cubic in different spaces |
+| `curve` | `Curve`, `Jet { position, tangent }`, `Frame`, `Station`, `at`, `tangent`, `frame`, `curvature`, `stations`, `knot_parameters`, `insert`, `split`, `sub`, `segments` (Bezier), `jets`, `set_initial_normal` | the subject of this proposal |
+| `scalar` | `Scalar` — `new` (slopes chosen and limited), `with_slopes`, `constant`, `at`, `slope` | a branch's taper, a blade's width and a crown's reach are one number along a spine. Revision 1 put a `Curve` inside each section for it; the law is the sweep's and the type is one-dimensional |
+| `section` | `Section` — an ellipse at any aspect ratio or an authored `Outline` — `at(v)` and `ring(around)` at equal arc length, `Outline::new` refusing what the table cannot divide by | a circle and a blade are one shape at different aspects, so two arms carry the four names revision 1 listed |
+| `sweep` | `Sweep { spine, section, scale, twist, capped }` and `sample(stations, around)` | the ring loft, the leaf blade and the envelope are one call, and refining an envelope is a change of section |
+| `loft` | `Loft` — positions, `(u, v)`, triangles, `rings`, `around`, `vertex`, `vertices`, `view` | the one definition of the parameter a consumer packs, so no consumer writes a second table |
+| `mesh` | `boundary_loops`, `is_manifold`, `euler_characteristic`, `signed_volume`, `winding_is_consistent`, `same_direction_edges`, and the edge-keyed survey they share | `building` wrote them because `mountain`'s are inherent to `FacetMesh`; `vegetation` would write them a third time |
 
 **Not in the crate, and the first row is the load-bearing one.**
 

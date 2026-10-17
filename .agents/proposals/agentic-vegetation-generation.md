@@ -823,9 +823,18 @@ geometry. `validate()` is therefore also the cheapest known guard against an LLM
 
 ### The crate (new)
 
-`crates/vegetation`, publish `whiting-vegetation`, with `document`, `spine`, `expand`, `leaf`, `field`,
-`decorator`, `edit`, `selector`, `derive`, `report`, `identity`, `mesh` — small files for sparse exploring,
-on the workspace's own rule.
+`crates/vegetation`, publish `whiting-vegetation`, with `handle`, `rng`, `node`, `plant`, `expand` and `leaf`
+landed in P1, and `decorator`, `edit`, `selector`, `derive`, `report` and `mesh` owed by P2 — small files for
+sparse exploring, on the workspace's own rule.
+
+**The design's names moved when the code arrived, and the mapping is worth one line each.** Its `document` is
+`plant` (the root and the walk) plus `node` (a spine, its taper, its section, and the three numbers that
+attach it); its `spine` is `node`'s spine field. **`handle` and `rng` are two modules the design did not
+name**: a node's address and a node's numbers each turned out to be a type other modules need on its own —
+`node`, `plant`, `expand` and `leaf` all ask for one or the other, and neither is a thing a document *is*. The
+design's `field` stays P2's name for the placement fields (gravity, ancestor, light, obstacle); this crate's
+leaf distribution field is `leaf::LeafField`, and the type names are what keep two different things that share
+one word apart.
 
 **Its only dependency is `shape`**, and that is the superior's verdict made structural: the curve, the
 frame, the sweep, the `(u, v)` definition and the mesh predicates are all `shape`'s

@@ -1,15 +1,16 @@
 # Handoff: the `shape` crate — P1 landed, and what a consumer can now ask it
 
-Started 2026-10-17. Branch `feature/shape-sweep`, worktree `.worktrees/shape`, from `main` at `7a76d62`.
-The design is [proposals/shape-primitives.md](../proposals/shape-primitives.md); this file is only the state
-a next session needs, and it is deleted when the crate is finished.
+Started 2026-10-17. **Landed**: the branch `feature/shape-sweep` was merged to `main` as `81358f0`, its
+worktree is removed, and the branch is deleted. The design is
+[proposals/shape-primitives.md](../proposals/shape-primitives.md); this file is only the state a next session
+needs, and it is deleted when the crate is finished — which is when the one item still owed, a gallery picture
+of a tube, a blade and an envelope drawn from one call, is merged.
 
 ## Where the tree stands
 
-**P0 is on `main`** (`57b1184`, with `mesh` merged as `7a76d62`): `math`, `curve` and `mesh` with their two
-probes. **P1 lands in this checkpoint**: `hermite`, `scalar`, `section`, `sweep`, `loft` and
-`sweep_probe`; `curve_probe` gained a *closed ends* row; `building` now names `shape` for `math` instead of
-`mountain`.
+All of P0 and P1 are on `main`: `math`, `curve`, `hermite`, `scalar`, `section`, `sweep`, `loft` and `mesh`,
+with five probes gated on 38 readings; `building` names `shape` for `math` instead of `mountain`; and
+`curve_probe` gained a *closed ends* row that made `curve`'s two ends exact.
 
 Five probes run as examples, each gated on its own readings:
 
@@ -33,10 +34,11 @@ mesh::boundary_loops(surface);                          // and is_manifold, eule
 mesh::signed_volume(surface);                           // winding_is_consistent, same_direction_edges
 ```
 
-- **`Section`** — `circle()`, `flat(half_width, thickness)`, `ellipse(x, y)`, `outline(&[Vec2])`, and
-  `ring(around)`. `Outline::new` refuses fewer than three points, a non-finite point, and two consecutive
-  points that are equal *including the closing pair*; it normalises the winding to counter-clockwise
-  keeping `points[0]` first.
+- **`Section`** — `circle()`, `flat(half_width, thickness)`, `ellipse(x, y)`, `outline(&[Vec2])`, `at(v)` for
+  any fraction around the loop (it **wraps**, so `v = 1` is `v = 0` bit for bit and `v = -0.1` is `0.9`), and
+  `ring(around)`, which is `at(v)` at uniform fractions rather than a second sampling rule. `Outline::new`
+  refuses fewer than three points, a non-finite point, and two consecutive points that are equal *including
+  the closing pair*; it normalises the winding to counter-clockwise keeping `points[0]` first.
 - **`Scalar`** — `constant(v)`, `new(&[(t, v)])` with limited slopes, `with_slopes(&[(t, v, slope)])`,
   `at(t)`, `slope(t)`. Knots must start at `0`, end at `1` and increase.
 - **`Loft`** — `positions()`, `uvs()`, `triangles()`, `rings()`, `around()`, `vertex(ring, slot)`,
@@ -47,7 +49,8 @@ mesh::signed_volume(surface);                           // winding_is_consistent
 ## What is owed, and is not this file's to do
 
 - **The gallery picture** — the P1 exit's last item: draw a tube, a blade and an envelope from one call.
-  `shape` has no scene; the gallery has.
+  In flight on `feature/sweep-picture` (worktree `.worktrees/sweep-picture`), which adds a gallery example and
+  a PNG. `shape` has no scene; the gallery has.
 - **`building`'s predicates** could read `shape::mesh` now. Its probes still read their own copies and pass,
   so nothing forces the switch; do it when one of its own checks is the same check.
 - **`vegetation` P1** starts on this API, and is the reason `scale`, `twist` and `(u, v)` are shaped as they
