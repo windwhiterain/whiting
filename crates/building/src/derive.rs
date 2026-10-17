@@ -145,32 +145,39 @@ pub const RIDGE_INSETS: [f32; 3] = [0.4, 0.5, 0.6];
 ///   stream either way, and the value used is the first of the published list at or after the drawn
 ///   one that the eave admits ([`Eave::admits`]) — so the document still names one of the three,
 ///   and a square, which admits only the first two, never stands its hip feet on the wrong corners.
+/// - **The plate is the mass's inner loop, and its top is the ground.** The floor is seated on the
+///   same loop the walls are built on — the way [`floor_slab`] seats a first floor — rather than
+///   under the whole footprint. A footprint-wide plate puts its four edges in exactly the wall ring's
+///   outer-face planes, so the floor is a depth tie with the wall it carries; the inner loop leaves the
+///   wall ring's base annulus standing outside the plate, which is the ring's own floor and not the
+///   plate's. The cost of the seating is that the plate is **buried**: on level ground nothing outside
+///   the building can see it, and a frame that has to show a floor shows it through an opening.
 /// - Everything it returns is written out in full. The caller gets masses and roofs, not a recipe.
 pub fn starter(starter: &Starter) -> Building {
     let mass = Mass::new(rectangle(starter.width, starter.depth), starter.height)
         .with_wall(starter.wall)
         .with_slab(starter.slab);
-    // **The plate the mass stands on, now its own solid.** It spans the whole footprint from one plate thickness
-    // below the outline's elevation up to it, so the wall ring overlaps it through the wall's own footprint — the
-    // property that makes a volume model work: two closed solids may intersect, and no shared edge is created where
-    // the floor meets the wall. `derive::floor_slab` is not the tool here: it is for an **upper** floor, seated on the
-    // inner loop with its top above the outline's elevation, and this plate's top is the elevation itself.
+    // The body is the first mass, which is the whole of what makes `MassId(0)` the honest host for
+    // the roof below and for the plate.
+    let host = MassId(0);
+    // **The plate the mass stands on, seated on the mass's own inner loop** — `derive::floor_slab`'s
+    // seating, at the ground rather than above it, and for the same reason it is right there. A plate
+    // spanning the whole footprint puts its four edges in exactly the planes of the wall ring's outer
+    // faces, so the floor is a depth tie with the wall it carries and takes only the texels the tie
+    // happens to give it. Inset by the wall, the plate's own sides stand clear of every wall face, the
+    // wall ring's base annulus stands outside the plate as the ring's own floor, and the plate is the
+    // room's inside.
     let plate = {
         let lowest = mass
             .outline
             .iter()
             .map(|node| node.elevation)
             .fold(f32::INFINITY, f32::min);
-        Slab::new(
-            mass.outline.iter().map(|node| node.position).collect(),
-            lowest - starter.slab,
-            lowest,
-        )
-        .with_host(MassId(0))
+        // A wall the miter cannot offset answers `None`, and a mass whose plate cannot be seated is a
+        // building with no floor rather than a plate standing somewhere else.
+        inner_loop(&mass, host)
+            .map(|inside| Slab::new(inside, lowest - starter.slab, lowest).with_host(host))
     };
-    // The body is the first mass, which is the whole of what makes `MassId(0)` the honest host for
-    // the roof below.
-    let host = MassId(0);
     let Some(eave) = Eave::read(&mass, starter.overhang, starter.sink) else {
         // Unreachable for the rectangle this function just built: four nodes is a quadrilateral.
         // Returning the mass on its own is the honest answer if that ever stops being true — but it
@@ -179,9 +186,7 @@ pub fn starter(starter: &Starter) -> Building {
         // `UnattachedOverlap`, `MassHostMissing`, `RoofHostMissing`, `RoofEaveTooShort`,
         // `RoofPlaneTooShort`, `RoofCrestMissing`, and the four solid faults with
         // `FaceNotPlanar`), so a mass without a roof would be silent rather than reported.
-        let mut skeleton = BuildingSkeleton::new(vec![mass], Vec::new());
-        skeleton.slabs.push(plate);
-        return Building::new(skeleton);
+        return with_plate(vec![mass], Vec::new(), plate);
     };
     let roof = match starter.roof {
         RoofStyle::Hip => {
@@ -208,8 +213,21 @@ pub fn starter(starter: &Starter) -> Building {
             return Building::new(skeleton);
         }
     };
-    let mut skeleton = BuildingSkeleton::new(vec![mass], vec![roof]);
-    skeleton.slabs.push(plate);
+    with_plate(vec![mass], vec![roof], plate)
+}
+
+/// Returns a starter's building: the mass, whatever roof it asked for, and the plate the mass's inner
+/// loop could carry.
+///
+/// # Invariants
+///
+/// **A refused plate is a building with no floor rather than a plate standing somewhere else.** The
+/// walk [`inner_loop`] refuses is the wall ring's own, so a plate placed anywhere but on it would be a
+/// second opinion about where the inside of the building is — which is the one thing this module's
+/// floors exist to say once.
+fn with_plate(masses: Vec<Mass>, roofs: Vec<Roof>, plate: Option<Slab>) -> Building {
+    let mut skeleton = BuildingSkeleton::new(masses, roofs);
+    skeleton.slabs.extend(plate);
     Building::new(skeleton)
 }
 
@@ -711,15 +729,19 @@ fn rectangle(width: f32, depth: f32) -> Vec<PlanNode> {
 ///
 /// # Invariants
 ///
-/// - **The plate is the mass's inner loop**, which is what `expand::offset_loop` computes for the walls: the
-///   floor meets its walls rather than overlapping them or leaving a gap, and it is the same inset the walls
-///   themselves are built on, so the two cannot disagree about where the inside is.
+/// - **The plate is the mass's inner loop**, which is what `expand::offset_loop` computes for the walls:
+///   the floor meets its walls rather than overlapping them or leaving a gap, and it is the same inset
+///   the walls themselves are built on, so the two cannot disagree about where the inside is.
 /// - **It is hosted by the mass**, so seating moves it with the building.
 /// - **The elevation must be strictly inside the mass's own height.** A floor at or below the ground is under
 ///   the building and one at or above the wall top is the roof's business; both answer `None` rather than a
 ///   plate that would be invisible or sticking out.
 /// - A wall the miter cannot offset answers `None`: the mass's own expansion reports that fault, and a floor
 ///   derived from a wall that has no inside has no inside either.
+///
+/// **The guard above is about where a floor is, not about what it is made of**, which is why
+/// [`starter`] cannot call this function and does not try: its plate is the same inner loop at the
+/// ground rather than above it. What the two share is [`inner_loop`].
 ///
 /// `O(nodes)` to offset, once.
 pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Option<Slab> {
@@ -731,6 +753,25 @@ pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Op
     if !(elevation > lowest && elevation < mass.top && thickness > 0.0) {
         return None;
     }
+    Some(Slab::new(inner_loop(mass, id)?, elevation - thickness, elevation).with_host(id))
+}
+
+/// Returns the loop a mass's walls stand on: its outline offset inward by the wall's own thickness.
+///
+/// # Invariants
+///
+/// **One walk for both floors.** An intermediate floor ([`floor_slab`]) and the ground plate
+/// [`starter`] gives a mass are both seated on it, so the two cannot disagree about where the inside
+/// of a building is — and they are the same loop by construction rather than by two offsets that
+/// happen to agree.
+///
+/// `None` when the wall ring's own walk refuses: a mass whose wall cannot be mitred has no inside to
+/// put a plate in, and the refusal is the mass expander's to report.
+///
+/// [`validate`](crate::validate) holds a ground plate to this same loop, because it is the floor the
+/// wall ring leaves — so the loop that seats a floor and the one a plate is measured against are one
+/// walk rather than two offsets that happen to agree.
+pub(crate) fn inner_loop(mass: &Mass, id: MassId) -> Option<Vec<Vec2>> {
     let mut problems = Vec::new();
     let inside = crate::expand::offset_loop(
         &mass.outline,
@@ -743,7 +784,7 @@ pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Op
     if !problems.is_empty() {
         return None;
     }
-    Some(Slab::new(inside, elevation - thickness, elevation).with_host(id))
+    Some(inside)
 }
 
 /// A style: the **relations** a building's numbers obey, rather than the numbers themselves.

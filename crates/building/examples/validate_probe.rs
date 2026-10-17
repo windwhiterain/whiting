@@ -1037,7 +1037,7 @@ fn main() {
     );
 
     println!(
-        "\n# the plate's coverage: a mass's own plate against the outline it stands under, and the two\n\
+        "\n# the plate's coverage: a mass's own plate against the floor it stands on, and the two\n\
          # hosted slabs that are not plates"
     );
     report_building(
@@ -1050,10 +1050,11 @@ fn main() {
         &shrunk,
     );
     println!(
-        "  the plate reads 6.0000 x 10.0000 = 60.0000 against an outline of 7.0000 x 11.0000 = 77.0000, and the\n  \
-         outline's perimeter of 36.0000 m allows only {:.4} m2 of it to be missing, so 17.0000 m2 is a fault by four\n  \
-         decades of area rather than by a rounding error",
-        0.001 * 36.0
+        "  the plate reads 5.4000 x 9.4000 = 50.7600 against a floor of 6.4000 x 10.4000 = 66.5600 — the mass's\n  \
+         inner loop, which is what its wall ring leaves it — and that loop's own perimeter of 33.6000 m allows\n  \
+         only {:.4} m2 of it to be missing, so 15.8000 m2 is a fault by three decades of area rather than by a\n  \
+         rounding error",
+        0.001 * 33.6
     );
     report_building(
         "the same starter with an intermediate floor on the inner loop",

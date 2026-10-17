@@ -630,7 +630,7 @@ pub enum Violation {
     /// this one starts from the slabs a document holds rather than from the masses it wants to see
     /// them under.
     ///
-    /// **The tolerance is a width times the outline's own perimeter** ([`COVERAGE_TOLERANCE`]), the
+    /// **The tolerance is a width times the loop's own perimeter** ([`COVERAGE_TOLERANCE`]), the
     /// conversion [`RoofDoesNotCover`](Self::RoofDoesNotCover) already makes, so a plate is held to
     /// the same millimetre of edge whether its mass is a shed or a hall.
     PlateCoverage {
@@ -640,9 +640,11 @@ pub enum Violation {
         slab: crate::slab::SlabId,
         /// The plan area the plate covers.
         plate: f32,
-        /// The plan area of the mass's own outline it has to reach.
+        /// The plan area the plate has to reach: **the host's inner loop**, which is the floor its
+        /// wall ring leaves it. A wall the miter refuses has no inner loop, and such a mass is held to
+        /// its outline instead.
         outline: f32,
-        /// How much of the outline the plate misses, which is `outline - plate`. It is carried so a
+        /// How much of the floor the plate misses, which is `outline - plate`. It is carried so a
         /// reader can see the size of the fault without doing the subtraction, and it is the same
         /// number twice rather than a reading of its own.
         short: f32,
@@ -1799,7 +1801,12 @@ fn check_slabs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 /// - **A host with fewer than three outline nodes has no plan area to compare**, and
 ///   [`Violation::OutlineTooShort`] has already said so.
 /// - **A slab whose top stands above the host's ground line is not a plate**: it is an intermediate
-///   floor or a flat roof, both of which cover less than the outline *by design*.
+///   floor or a flat roof, both of which cover less than the floor *by design*.
+///
+/// **The floor a ground plate has to reach is the host's inner loop**, because the wall ring owns the
+/// annulus outside it and stands on the ground line across that annulus — the same loop
+/// [`derive::floor_slab`](crate::derive::floor_slab) seats a first floor on, read through the one walk
+/// [`derive::inner_loop`](crate::derive::inner_loop) both of them use.
 ///
 /// **The areas are compared as magnitudes**, for the reason [`Violation::RoofDoesNotCover`] says it
 /// compares a skin's area that way: coverage asks how much of the loop is covered, and the sign that
@@ -1828,15 +1835,26 @@ fn check_plate_coverage(
     if slab.top > mass.lowest() + TOUCH_TOLERANCE {
         return;
     }
-    let outline = mass.plan_area().abs();
+    // **A ground plate is the mass's floor, and a mass's floor is its inner loop** — the wall ring owns
+    // the annulus between the outline and that loop and stands on the ground line across it, so the
+    // room is what the plate has to reach and nothing beyond. A wall the miter refuses has no inside to
+    // measure against, and its expander is already reporting that, so the outline is what such a mass
+    // is held to.
+    let (required, perimeter) = match crate::derive::inner_loop(mass, host) {
+        Some(inside) => (
+            crate::expand::loop_area(&inside).abs(),
+            plan_length(&inside),
+        ),
+        None => (mass.plan_area().abs(), outline_length(mass)),
+    };
     let plate = slab.plan_area().abs();
-    let short = outline - plate;
-    if short > COVERAGE_TOLERANCE * outline_length(mass) {
+    let short = required - plate;
+    if short > COVERAGE_TOLERANCE * perimeter {
         violations.push(Violation::PlateCoverage {
             mass: host,
             slab: id,
             plate,
-            outline,
+            outline: required,
             short,
         });
     }
@@ -1852,14 +1870,23 @@ fn check_plate_coverage(
 /// an L-shaped outline into an allowance several times the area the slip costs. `O(nodes)`, once per
 /// plate that reaches the check.
 fn outline_length(mass: &Mass) -> f32 {
-    let count = mass.outline.len();
+    plan_length(
+        &mass
+            .outline
+            .iter()
+            .map(|node| node.position)
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Returns the length of a closed plan loop, which is the one thing both the outline and the inner
+/// loop a plate is measured over are asked for.
+///
+/// `O(nodes)`, and the same walk either loop's tolerance is.
+fn plan_length(loop_points: &[Vec2]) -> f32 {
+    let count = loop_points.len();
     (0..count)
-        .map(|index| {
-            distance(
-                mass.outline[index].position,
-                mass.outline[(index + 1) % count].position,
-            )
-        })
+        .map(|index| distance(loop_points[index], loop_points[(index + 1) % count]))
         .sum()
 }
 

@@ -97,12 +97,66 @@ pub fn hall() -> Value {
 /// **Nothing but the footprint and the storey count is passed in**, and the frame follows the building: the
 /// camera's distance, its height and the sun's shadow page are all derived from the size the style answers
 /// with, so two sizes draw as two pictures of one building rather than one picture with a bigger box in it.
+///
+/// **The camera is this scene's own**, which is the one thing it does not take from
+/// [`three_quarter`]. At 14 × 20 the shared view stands `ridge * 0.75` above and 29 units out, and the
+/// frame it draws shows the roof and the two near facades and nothing of the floor — the plate the
+/// building stands on covers no pixel of it at all. A camera has to be chosen for the subject rather than
+/// scaled onto it, and this scene's subject is a room.
 pub fn hall_large() -> Value {
-    hall_at(14.0, 20.0, 1)
+    hall_framed(14.0, 20.0, 1, close_and_low)
 }
 
 /// Builds the hall scene for a footprint and a storey count.
 pub fn hall_at(width: f32, depth: f32, storeys: usize) -> Value {
+    hall_framed(width, depth, storeys, three_quarter)
+}
+
+/// The three-quarter view [`hall_at`] draws from, kept whole so the other scenes keep their pictures.
+///
+/// # Invariants
+///
+/// **It is a function of the size, not a number**, so a scene that calls [`hall_at`] for a third size gets
+/// a camera that fits that building rather than one that happened to fit the first.
+fn three_quarter(width: f32, depth: f32, ridge: f64) -> [f64; 3] {
+    [
+        f64::from(width) * 1.25,
+        ridge * 0.75,
+        f64::from(depth) * 0.95 + f64::from(width) * 0.3,
+    ]
+}
+
+/// The eye [`hall_large`] draws from: lower and closer than [`three_quarter`].
+///
+/// # Invariants
+///
+/// **Lower and closer, and that is the whole of it.** The shared view stands `ridge * 0.75` above and
+/// 29 units out at this size, which draws the roof and the two near facades and leaves the building small
+/// in the frame; `ridge * 0.55` and a plan distance of 23 fill the frame with the hall instead.
+///
+/// **A reading, not a derivation, and the number under it is a tie.** This scene's plate is at the ground
+/// and its ground is at the ground, so the two are coplanar and every pixel of the plate is a depth tie the
+/// shading pass settles by rasterisation rather than by depth: `--where "slab 0, its top"` reads `0` at
+/// [`three_quarter`] and `1,656` here, and at `ridge * 0.7` it reads `30`. **None of those three is a
+/// statement about how much floor a reader can see, because there is none to see** — a buried plate cannot
+/// be brought into a frame by moving the eye. What the eye can do is put the building in the frame at a
+/// size worth looking at, and that is what this one does; the count is recorded because the record is
+/// where a later reader looks, not because it is the thing that was chosen.
+fn close_and_low(width: f32, depth: f32, ridge: f64) -> [f64; 3] {
+    [
+        f64::from(width) * 0.95,
+        ridge * 0.55,
+        f64::from(depth) * 0.75 + f64::from(width) * 0.25,
+    ]
+}
+
+/// Builds the hall scene for a footprint, a storey count and a camera of its own.
+fn hall_framed(
+    width: f32,
+    depth: f32,
+    storeys: usize,
+    eye: fn(f32, f32, f64) -> [f64; 3],
+) -> Value {
     let building = document_at(width, depth, storeys);
     // The ridge is the number the frame has to fit: the wall top plus the style's own rise.
     let plan = HALL.starter(width, depth, storeys);
@@ -203,11 +257,7 @@ pub fn hall_at(width: f32, depth: f32, storeys: usize) -> Value {
             // volume rather than as a silhouette: the eave line and the ridge are both visible,
             // which is what says the roof has a soffit and a thickness.
             Value::List(vec![camera(
-                [
-                    f64::from(width) * 1.25,
-                    ridge * 0.75,
-                    f64::from(depth) * 0.95 + f64::from(width) * 0.3,
-                ],
+                eye(width, depth, ridge),
                 [0.0, ridge * 0.42, 0.0],
                 std::f64::consts::FRAC_PI_3 * 0.92,
             )]),
