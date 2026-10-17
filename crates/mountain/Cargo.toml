@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 description = "Author a mountain massif as a ridge and valley polyline skeleton, and expand it into a planar-facet triangle mesh."
 
-# Nothing. The expansion walks a correspondence the author wrote down rather than searching for
-# one, so there is no triangulation to depend on — see .agents/SPEC/mountain.md R4.1.
+# The plan/space arithmetic, which lives in `shape` because it has four callers and one definition.
+# `mountain` re-exports it as `mountain::math`, so nothing above this crate moves. The expansion itself
+# walks a correspondence the author wrote down rather than searching for one, so there is no
+# triangulation to depend on — see .agents/SPEC/mountain.md R4.1.
 [dependencies]
+shape = { workspace = true }

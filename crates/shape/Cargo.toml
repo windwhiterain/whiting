@@ -1,0 +1,12 @@
+[package]
+name = "whiting-shape"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The curve, the sweep and the mesh predicates every geometry crate shares."
+
+# Nothing outside the standard library, and nothing may be added: this is the bottom of the
+# dependency graph, so every crate above it can depend on it without a cycle. See
+# .agents/proposals/shape-primitives.md.
+[dependencies]

@@ -1857,6 +1857,9 @@ dependencies = [
 [[package]]
 name = "whiting-mountain"
 version = "0.1.0"
+dependencies = [
+ "whiting-shape",
+]
 
 [[package]]
 name = "whiting-patch"
@@ -1877,6 +1880,10 @@ dependencies = [
  "whiting-gallery",
  "whiting-graphics",
 ]
+
+[[package]]
+name = "whiting-shape"
+version = "0.1.0"
 
 [[package]]
 name = "whiting-terrain"

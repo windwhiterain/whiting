@@ -8,6 +8,7 @@ members = [
     "crates/device",
     "crates/device-rasterize",
     "crates/device-cycles",
+    "crates/shape",
     "crates/mountain",
     "crates/building",
     "crates/patch",
@@ -29,6 +30,7 @@ gallery = { path = "crates/gallery", package = "whiting-gallery" }
 device = { path = "crates/device", package = "whiting-device" }
 device-rasterize = { path = "crates/device-rasterize", package = "whiting-device-rasterize" }
 device-cycles = { path = "crates/device-cycles", package = "whiting-device-cycles" }
+shape = { path = "crates/shape", package = "whiting-shape" }
 mountain = { path = "crates/mountain", package = "whiting-mountain" }
 building = { path = "crates/building", package = "whiting-building" }
 patch = { path = "crates/patch", package = "whiting-patch" }

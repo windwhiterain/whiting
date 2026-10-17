@@ -1,8 +1,9 @@
 # The `shape` crate: one curve, one sweep, one set of mesh predicates
 
-Status: **DRAFT, revision 1 — design only.** No implementation exists. Every claim about existing code
-is read from a source file at the commit named, and every number quoted from another document says
-which. Date: 2026-10-17.
+Status: **DRAFT, revision 1 — P0 landed.** `math` and `curve` are built and measured (see *What P0
+measured*); `sweep` and the mesh predicates are not, and no implementation exists for them. Every claim
+about existing code is read from a source file at the commit named, and every number quoted from another
+document says which. Date: 2026-10-17.
 
 The superior's verdict that opened this work, recorded verbatim so the reason survives:
 
@@ -172,10 +173,17 @@ Arc length changes only with the shape itself, and it changes *smoothly*.
 
 **`insert(t)` is therefore meaningful and is specified as shape-preserving at the parameter, not in the
 geometry:** inserting a jet does not change the curve's shape only if the inserted jet's tangent is the
-curve's own derivative there — which is what `insert` computes. Splitting a Hermite segment at `u` is
-exact (de Casteljau's Hermite form), so `split` and `insert` are the same arithmetic and `insert` must be
-`split` followed by keeping both halves. **A test that inserting a point leaves the sampled positions
-bit-identical is the invariant**, not an aspiration.
+curve's own derivative there — which is what `insert` computes. Splitting a Hermite segment at `u` is exact
+(de Casteljau's Hermite form), so `split` and `insert` are the same arithmetic and `insert` must be `split`
+followed by keeping both halves.
+
+**The invariant is a tolerance, not bit-identity, and the reason is worth stating rather than discovering:**
+a split *re-parameterises* the curve, so a sample is evaluated through the sub-segment's own local `u`
+instead of the parent's global one, and the two round differently. And because `t` is an arc-length
+fraction (D2), the arc table's quadrature over two halves does not sum to the identical float the whole
+segment's did, so `at(t)` shifts by the quadrature difference. The probe therefore asserts what is true:
+**after `insert`, every sampled position agrees with the un-split curve to within `1e-5` of the curve's
+length**, and the total length agrees to `1e-6` relative. Both numbers are to be measured, not assumed.
 
 The arc-length table is `n` prefix sums, built once (O(n)), and `at(t)` is a binary search plus one
 segment evaluation (O(log n)). That is the workspace's rule — *"always choose O(1), at least O(log n),
@@ -317,10 +325,10 @@ being written, and again while this file was).
 
 - **P0 — the curve, alone.** `Jet`, `Curve`, arc length, `at`/`tangent`/`frame`/`stations`, `split`/
   `insert`/`sub`, `segments`, and a probe that measures the four invariants: C1 across knots (the
-  derivative from both sides agrees to rounding), shape-preserving insertion (bit-identical samples),
-  a straight curve's constant frame, and a closed planar curve's zero holonomy. **Exit: those four
-  numbers, printed, with a positive control for each** — an insert that is *not* shape-preserving must be
-  able to fail the second one.
+  derivative from both sides agrees to rounding), shape-preserving insertion (every sample within `1e-5`
+  of the curve's length, and the length within `1e-6` relative), a straight curve's constant frame, and a
+  closed planar curve's zero holonomy. **Exit: those numbers printed, with a positive control for each** —
+  an insert whose tangent is *not* the curve's derivative must be able to fail the second one.
 - **P1 — the sweep, and `math` moving.** `Section`, `Sweep`, `Loft`, the `(u, v)` definition, and the
   `(position, u, v)` return that the consumers pack. `mountain::math` becomes `shape::math` behind a
   re-export; `building`'s dependency switches. **Exit: a gallery probe that draws a tube, a blade and an
@@ -331,6 +339,45 @@ being written, and again while this file was).
 Phases P0 and P1 are the ones the superior's verdict asks for; P2 rides with the first consumer that needs
 a predicate, because a predicate with no caller is the shape this repository has already learned to
 distrust.
+
+## What P0 measured (2026-10-17)
+
+P0 is **landed**: `crates/shape` holds `math` (moved, with `mountain` re-exporting it) and `curve`, and
+`cargo run -p whiting-shape --example curve_probe` prints seven readings, each with the control that could
+have failed it, and exits non-zero if any reading leaves its threshold. Every number below is the probe's
+output, not a claim this document makes:
+
+| invariant | reading | threshold |
+| --- | --- | --- |
+| arc length: the table against a 4000-segment polyline of the same curve | relative difference **0.000e0** | `< 1e-5` |
+| 65 stations are evenly spaced by arc length | ratio **1.000015** (the chord ratio, 1.000950, is curvature) | `< 1.0001` |
+| inserting a knot at `t = 0.37` does not move the shape | worst sample **7.311e-8** of the length; length 4.390321 → 4.390321 | `< 1e-5` |
+| …and the control: one knot moved by 1e-3 of the length | reads **1.022e-3** | `> 1e-4` |
+| a straight curve's transported frame is constant | worst turn **0.000e0** rad over 33 stations | `< 1e-6` |
+| an inflection does not flip the frame's normal | transported **1.416e-2** rad against a Frenet control's **3.127e0** rad (179.2°) | `< 0.05`, control `> 1.0` |
+| a closed planar loop has no holonomy | twist after one loop **0.000e0** rad | `< 1e-4` |
+| …and its length against the analytic circle | **5.2e-4** short — the Hermite representation, not the quadrature | `< 1e-3` |
+| the Bezier form is the same curve | corner gap **0.000e0**, handle error **9.664e-8** | `< 1e-6` |
+
+Four things P0 decided that this design did not say, recorded because each is a boundary a consumer will
+meet:
+
+1. **`Curve::knot_parameters()` had to exist.** A knot's *arc-length* fraction is what every authored band
+   and station is written in, and without the accessor a probe can only find a knot by scanning for the
+   nearest sample — which is how a C1 check becomes a guess. It is `cumulative[i] / total`, and it is public.
+2. **A split rescales the parameter, so `jets()` is not a round trip.** Each half of a split carries its own
+   interval, so the derivative entering the new knot and the derivative leaving it differ in magnitude while
+   a [`Jet`] holds one number. `Curve::new(curve.jets())` after a split therefore replaces the left-hand
+   magnitude with the right-hand one and changes the previous segment's shape. Documented at `jets()`: a
+   *segmented* curve is its segments, and a caller that wants the shape back clones the curve.
+3. **The frame table is eight samples per segment** and `frame(t)` transports from the nearest one. The
+   straight reading is exactly zero and the inflection reading is 0.8° — the tangent genuinely turning across
+   the inflection, not the table's resolution.
+4. **A Hermite arc is not a circle**: eight segments reproduce a circle's length to **5.2e-4**. A caller that
+   needs an arc to close — a ring, a radius — has to know that before it measures its own gap.
+
+**Deliberately not in P0:** `closest(point)`. Nothing consumes it until the envelope's trimming law (P1), and
+a query with no caller is the shape this repository has already learned to distrust.
 
 ## Open questions
 

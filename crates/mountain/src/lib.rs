@@ -46,13 +46,18 @@ pub mod derive;
 pub mod expand;
 pub mod facet;
 pub mod line;
-pub mod math;
 pub mod ops;
 pub mod sampling;
 pub mod skeleton;
 pub mod tessellation;
 pub mod validate;
 pub mod zip;
+
+/// The plan and space arithmetic, which is `shape`'s since it has four callers and one definition.
+///
+/// Re-exported rather than rewritten so that every `mountain::math::…` path in this crate, in
+/// `terrain` and in `gallery` resolves unchanged. See `.agents/proposals/shape-primitives.md`.
+pub use shape::math;
 
 pub use derive::{Starter, derive_valleys, starter};
 pub use expand::{Belt, BuildError, Problem, build, enumerate};
