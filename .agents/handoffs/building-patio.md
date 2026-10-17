@@ -146,3 +146,5 @@ never the problem.
 
 - **2026-10-27** — `Mass::voids`, `Problem::VoidNotDrawn` and the three `validate` faults landed (`8e83ea8`, `0ac2b49`);
   `expand_mass`'s structure is mapped above, so the drawing is the only thing left.
+- **2026-10-27** — the floor simplification is struck: the courtyard wall meets the plate along a three-surface
+  edge unless the plate top is split into a rooms floor ring and the courtyard paving.
