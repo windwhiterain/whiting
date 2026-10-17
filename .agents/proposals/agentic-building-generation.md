@@ -1752,6 +1752,28 @@ ear-clip each** (the bridge duplicated consistently, which is what the first att
 decomposition** of the bridged ring. Either way the probe's acceptance does not change, and neither attempt's code
 survives: both are reverted, so the tree carries the requirement and the number, not a half-right fill.
 
+### The third rule, written down but not yet measured (2026-10-27)
+
+The two-pointer walk was right about the *shape* of the answer and wrong about the *rule*. The classic form of it
+does not choose the smaller ear; it chooses the ear whose triangle **holds no other vertex of either ring**:
+
+```text
+candidate A = (outer[i], outer[i + 1], inner[j])      // advances the outer loop
+candidate B = (inner[j], inner[j + 1], outer[i])      // advances the inner loop
+take A when only A is clean, B when only B is clean, and the smaller when both are
+```
+
+That is a different question from the one the failed attempt asked — *which ear is smaller* is a heuristic for
+monotone pieces, while *which ear is empty* is the ear-definition itself — and two convex loops are precisely the
+case where at least one of the two candidates is always clean. The helper it needs is a **strict** point-in-triangle
+(the boundary-inclusive test in `clip.rs` would veto every ear whose leg runs along another loop's edge, which is the
+same trap that broke the first attempt's duplicate exclusion).
+
+**This is the design to implement next**, and the way to implement it is what the last two rounds taught: write the
+fill, **print every triangle's three vertices and its area for the centred rectangle case**, check by eye that each
+lies in the annulus before trusting any total, and only then compare the sum with `84.0000`. A correct triangle count
+has already lied once.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
