@@ -213,6 +213,11 @@ pub struct LeafField {
     pub jitter: f32,
     /// Which template the group instances.
     pub template: usize,
+    /// How many generations **up** the frame is read from, `0` meaning the parent.
+    ///
+    /// It is SpeedTree's five anchor levels as one number: `0` is its *Local*, `1` its *Intermediate*, and a
+    /// plant's own depth its *Global* — one degree of freedom with one home rather than five cases.
+    pub reference: u32,
 }
 
 impl LeafField {
@@ -229,7 +234,32 @@ impl LeafField {
             size: Scalar::constant(0.1),
             jitter: 0.0,
             template,
+            reference: 0,
         }
+    }
+
+    /// The frame this field's leaves are read in: the ancestor `reference` generations up, or `None` for the
+    /// parent's own surface frame.
+    ///
+    /// # Invariants
+    ///
+    /// - **`reference = 0` is the identity**, returning `None` so the caller composes exactly what it composed
+    ///   before the field existed: a default field cannot move a leaf.
+    /// - **A reference deeper than the ancestors a leaf has reads the root.** A field is one law over a whole
+    ///   generation and a plant's nodes stand at a range of depths, so the number cannot be a per-leaf report;
+    ///   the clamp is the only rule that keeps one generation-wide number one law.
+    fn reference_frame(&self, plant: &Plant, handle: &Handle) -> Option<Placement> {
+        if self.reference == 0 {
+            return None;
+        }
+        let mut at = handle.clone();
+        for _ in 0..self.reference {
+            match at.parent() {
+                Some(parent) => at = parent,
+                None => break,
+            }
+        }
+        plant.placement(&at).ok()
     }
 
     /// One [`LeafGroup`] per node of this generation that carries a leaf, in [`Plant::walk`] order.
@@ -254,6 +284,10 @@ impl LeafField {
             let Ok(node_placement) = plant.placement(&handle) else {
                 continue;
             };
+            // **The frame the leaves are read in is an ancestor's**, `reference` generations up; the point they
+            // stand on is always the parent's own surface, so a reference turns a leaf's orientation and never
+            // moves it off the bark.
+            let reference = self.reference_frame(plant, &handle);
             let spread = Density::of(node.spine().length(), &self.density, self.band);
             if spread.count == 0 {
                 continue;
@@ -272,7 +306,15 @@ impl LeafField {
                 let Ok(surface) = plant.surface(&handle, Attachment::new(station, slot)) else {
                     break;
                 };
-                let anchor = node_placement.then(&surface);
+                let anchor = match &reference {
+                    Some(up) => Placement {
+                        origin: node_placement.then(&surface).origin,
+                        x: up.x,
+                        y: up.y,
+                        z: up.z,
+                    },
+                    None => node_placement.then(&surface),
+                };
                 leaves.push(LeafInstance {
                     index: rank as u32,
                     station,

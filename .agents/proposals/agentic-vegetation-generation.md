@@ -1413,6 +1413,31 @@ zero is the neutral element an offset's zero already was.
    the solid turned inside out; `thinnest` names the worst value and refuses, and it closed a hole the offset had
    since the edit table landed.
 
+**The reference: five anchor levels as one integer.** The design's leaf-placement contract closes with `reference: u32`
+— *"how many generations up the frame is read from, `0` meaning the parent"* — so SpeedTree's Local / Intermediate /
+Global is one number with one home rather than five cases, and the composition it names is the composition the code
+runs: **the anchor point from the parent's surface, the axes from the ancestor's frame**, then pitch, twist, aim.
+
+| invariant | reading |
+| --- | --- |
+| a reference changes the frame | with no pitch and no twist, `reference: 2` puts a bamboo branch's leaves in the trunk's own frame to **0.000e0**, where `reference: 0` differs from it by **1.075458** |
+| it does not move the leaf | the anchor point of the same leaf moves **0.000e0** between the two |
+| a reference past the root reads it | `reference: 99` over **54** leaves reads the root's frame to **0.000e0** and loses no leaf |
+| the default is the identity | all seven scenes are **bit-identical** (`1D533E76…`, `884C7C85…`, `4213A47B…`, `0A7AFD1B…`, `2937B7B6…`, `9DD7522D…`, `DB0BA9F0…`), because `0` returns `None` and the caller composes exactly what it composed before |
+
+**Two decisions the reference forced:**
+
+1. **The clamp, not a refusal, when the ancestors run out.** A field is one law over a whole generation and a
+   plant's nodes stand at a range of depths, so "two generations up" cannot be a per-leaf report; reading the root is
+   the only rule that keeps one generation-wide number one law.
+2. **The point stays on the bark.** Only the axes are borrowed, so a reference is a statement about *orientation* —
+   which is what SpeedTree's anchor levels are for — and a leaf can never be carried off the surface it grew from.
+
+**A measured correction**: the first version of the reference row compared a plant whose every frame was the same
+frame — a straight trunk with straight twigs — and read `0.000e0` twice, calling a comparison with itself a pass. The
+fixture is the bamboo now, whose boughs and branches genuinely differ, and the row asserts both halves (agreement and
+disagreement) rather than the flattering one.
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before

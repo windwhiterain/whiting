@@ -84,13 +84,14 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 
 ## What P2 still owes
 
-- **`reference` on a leaf field** — the one item left: a leaf field whose anchor or orientation law consults another
-  node through `shape::Curve::closest` (landed in round 3, and already used by the envelope and the crown report).
+Nothing. `reference` on a leaf field landed in round 16 (`LeafField::reference`, SpeedTree's five anchor levels as one
+integer), and the list this section used to carry was closed item by item: `Change::Graft` became `species::graft` (2),
+`Change::Curve` (15), decorators and their sockets (5), the gravity/light/obstacle fields (4 and 6), the envelope as a
+trimming law (4), the collision report and `derive::thin` (6), `--region` (12), the segmentation scene (13),
+`report()` (4), seating (10), and the promotion of the five gallery generators (14).
 
-Landed since this list was written, with the round: `Change::Graft` became `species::graft` (2), `Change::Curve` (15),
-decorators and their sockets (5), the gravity/light/obstacle fields (4 and 6), the envelope as a trimming law (4),
-the collision report and `derive::thin` (6), `--region` (12), the segmentation scene (13), `report()` (4), seating
-(10), and the promotion of the five gallery generators (14).
+**The implementation is finished.** P1, P2 and P3 are all landed; the next step is the overall review — every probe,
+every scene, the SPEC's alignment — and then this handoff is deleted, as it should be.
 
 ## Traps
 

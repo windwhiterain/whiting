@@ -35,6 +35,14 @@ fn main() {
     checks.push(("frames are orthonormal", every_frame_is_orthonormal()));
     checks.push(("the scale and the jitter", the_scale_and_the_jitter()));
     checks.push(("a blade is a closed solid", a_blade_is_a_closed_solid()));
+    checks.push((
+        "a reference reads an ancestor",
+        a_reference_reads_an_ancestor(),
+    ));
+    checks.push((
+        "a reference past the root reads it",
+        a_reference_past_the_root_reads_it(),
+    ));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -516,4 +524,102 @@ fn a_blade_is_a_closed_solid() -> bool {
         && base_x < 1.0e-6
         && tip_spread < 1.0e-6
         && widest_side > 10.0 * thickest_face
+}
+
+/// The field the reference rows read: the bamboo's own leaf field, with no pitch and no twist, so a leaf's
+/// own axes are the frame's and the two can be compared without undoing a rotation.
+fn reference_field(reference: u32) -> LeafField {
+    let mut field = whiting_vegetation::derive::bamboo(7).fields[0].clone();
+    field.pitch = Scalar::constant(0.0);
+    field.twist = Scalar::constant(0.0);
+    field.reference = reference;
+    field
+}
+
+/// How far two frames' axes are from agreeing: zero when every axis points the way its twin does.
+fn disagreement(one: &Placement, other: &Placement) -> f32 {
+    let apart =
+        |a: [f32; 3], b: [f32; 3]| -> f32 { 1.0 - (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) };
+    let mut worst = 0.0f32;
+    for (a, b) in [(one.x, other.x), (one.y, other.y), (one.z, other.z)] {
+        worst = worst.max(apart(a, b));
+    }
+    worst
+}
+
+/// A reference of two reads the leaves' frame from the trunk, and of zero from the branch's own skin.
+///
+/// # Invariants
+///
+/// With no pitch and no twist a leaf's `x` **is** its anchor frame's `x`, so a reference of one must agree with
+/// the ancestor's frame exactly and a reference of zero must disagree with it — the two are one comparison and
+/// its control. The anchor point is the same in both, because a reference turns a leaf and does not take it
+/// off the bark.
+///
+/// The fixture is the bamboo and not a straight trunk with straight twigs: there every frame is the same frame,
+/// and the first version of this row compared a thing with itself and called it a pass.
+fn a_reference_reads_an_ancestor() -> bool {
+    let plant = whiting_vegetation::derive::bamboo(7).plant;
+    let local = reference_field(0);
+    let deep = reference_field(2);
+    let local_leaf = local
+        .groups(&plant)
+        .into_iter()
+        .flat_map(|group| group.leaves)
+        .next()
+        .expect("the bamboo carries leaves");
+    let deep_leaf = deep
+        .groups(&plant)
+        .into_iter()
+        .flat_map(|group| group.leaves)
+        .next()
+        .expect("the bamboo carries leaves");
+    let trunk = plant.placement(&Handle::root()).expect("the trunk places");
+    let toward_trunk = disagreement(&deep_leaf.placement, &trunk);
+    let away_from_trunk = disagreement(&local_leaf.placement, &trunk);
+    let moved = {
+        let d = [
+            local_leaf.placement.origin[0] - deep_leaf.placement.origin[0],
+            local_leaf.placement.origin[1] - deep_leaf.placement.origin[1],
+            local_leaf.placement.origin[2] - deep_leaf.placement.origin[2],
+        ];
+        (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+    };
+    println!("\n# a reference");
+    println!(
+        "  reference 2's first leaf agrees with the trunk's frame to {toward_trunk:.3e}; reference 0's disagrees with it by {away_from_trunk:.6}"
+    );
+    println!(
+        "  the anchor point moved {moved:.3e}: a reference turns the leaf and does not take it off the bark"
+    );
+    println!(
+        "  the control is the pair: a reference that changed nothing would read the same disagreement twice"
+    );
+    toward_trunk < 1e-6 && away_from_trunk > 1e-3 && moved < 1e-6
+}
+/// A reference deeper than the plant climbs to the root and stays there.
+fn a_reference_past_the_root_reads_it() -> bool {
+    let plant = whiting_vegetation::derive::bamboo(7).plant;
+    let deep = reference_field(99);
+    let groups = deep.groups(&plant);
+    let root = plant.placement(&Handle::root()).expect("the trunk places");
+    let mut worst = 0.0f32;
+    let mut count = 0;
+    for group in &groups {
+        for leaf in &group.leaves {
+            count += 1;
+            for (one, two) in [(leaf.placement.x, root.x), (leaf.placement.y, root.y)] {
+                let dot = (one[0] * two[0] + one[1] * two[1] + one[2] * two[2]).abs();
+                worst = worst.max(1.0 - dot);
+            }
+        }
+    }
+    println!("\n# a reference past the root");
+    println!(
+        "  a reference of 99 over {count} leaves reads the root's frame to {worst:.3e}, and no leaf is lost"
+    );
+    println!(
+        "  the control is the clamp: a field is one generation-wide number, and a per-leaf report is the one thing it cannot be"
+    );
+    count > 0 && worst < 1e-6
 }
