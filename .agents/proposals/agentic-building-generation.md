@@ -1475,6 +1475,37 @@ Three slices closed it, each one keeping the record honest about what it had:
 The method is worth more than the fix: **the slice's first artifact was a probe about the domain, not a scene**, and
 when the domain answered wrongly it was the probe — not the picture — that said so.
 
+## What the courtyard asked: a hole is unexpressible, and a U is refused (2026-10-27)
+
+A courtyard is a room whose plan is a ring, and a `Mass` is authored as **one simple polygon** — a ring is not
+simple, so **a closed courtyard is not expressible by construction**. That is a vocabulary answer, not a
+measurement.
+
+What *is* expressible is a courtyard **open on one side**: a U-shaped outline with two reflex corners. And that is
+where the measurement found something:
+
+```text
+# a U-shaped mass: 10 x 10 outside, a 4 x 6 courtyard open to the north
+  the outline is 8 nodes, two of them reflex
+  the document reports 1 violation(s)
+    DidNotExpand { problems: [OffsetSelfIntersecting { mass: MassId(0), left: 2, right: 6 }] }
+```
+
+**A concave mass is refused**, and the two corners that refuse it are the courtyard's mouth. The inner wall loop is
+derived by offsetting the outline inward, and at a 4 m notch with a 0.3 m wall the offset self-intersects — which
+should not happen arithmetically, so either the offset's reflex-corner handling is wrong (the miter at a reflex
+corner must move **into** the notch, not across it) or the refusal is too eager.
+
+Both readings are recorded here and neither is decided in this slice:
+
+- if the offset is **wrong**, the crate cannot draw any concave building — porches, wings, L-shapes, courtyards — and
+  that is a substantial capability limit nobody wrote down;
+- if the offset is **right**, then the domain genuinely stops at convex plans, and the refusal is the crate doing
+  what it promises, with the limit now stated.
+
+**The next slice decides which**, by reading the offset at a reflex corner against a hand-computed answer: a U of
+10 × 10 with a 4 m notch and a 0.3 m wall should offset to a loop that clears the notch by 0.3 on both sides.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
