@@ -743,7 +743,6 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::OpeningOnAFarLoop { .. } => "OpeningOnAFarLoop",
         Violation::FaceNotPlanar { .. } => "FaceNotPlanar",
         Violation::VoidNotInside { .. } => "VoidNotInside",
-        Violation::VoidNotConvex { .. } => "VoidNotConvex",
         Violation::VoidOverlaps { .. } => "VoidOverlaps",
         Violation::VoidReachesTheWall { .. } => "VoidReachesTheWall",
         Violation::FaceDegenerate { .. } => "FaceDegenerate",

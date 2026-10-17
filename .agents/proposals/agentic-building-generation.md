@@ -2571,8 +2571,11 @@ session should take it, each with the measurement that decides it:
    **0 violations** — its own `0.0600` m of depth inside the ring's `−2.3000 .. −2.0000`, which is the seating the
    part-in-a-court slice measured as unavailable. The one document the new name makes writable that the crate will
    not honour is a **hole** on that loop, refused by name from both halves.
-4. **A non-convex courtyard** is refused (`VoidNotConvex`) because the outward walk across a reflex corner has never
-   been measured. `offset_loop` is the walk to measure; two inward measurements of the same family are recorded above.
+4. ~~**A non-convex courtyard** is refused (`VoidNotConvex`) because the outward walk across a reflex corner has never
+   been measured. `offset_loop` is the walk to measure; two inward measurements of the same family are recorded above.~~
+   **DONE (2026-10-27, `feature/building-court-notch`).** The walk was measured, it is **right**, and
+   `Problem::VoidNotConvex` and `Violation::VoidNotConvex` are both deleted — see
+   *What the notch slice found* below for the numbers and for the one shape that is still refused.
 5. **`house` and `yard` cannot answer a floor question**: `house` has no opening on the camera side, and `yard`'s
    plates sit inside foundation solids on terraces above a sloped ground. Camera facts, not cut facts.
 6. **`terrace` shows one plate of three** (the other two are behind the row) and **`hall_large` is not registered in
@@ -2690,3 +2693,125 @@ Four subagent reports in a row hit the same step, and the fault is in the briefs
    caught it was `--locate` on a floor pixel with an untouched channel as the control; the orphan check was proved by
    a canary that panicked on the new variant (0 hits across nine scenes and 29 examples, then shown to fire on its own
    fixture). **Build the instrument so it can disagree with you, then prove it can fire.**
+
+## What the notch slice found: the outward walk is right, and the refusal was a guess about shapes (2026-10-27, branch `feature/building-court-notch`)
+
+Punch list item 4 is closed, and the answer was the one the recorded reason pointed at: **`expand::offset_loop`
+with `OffsetSide::Outward` is the walk, it behaves across a reflex corner, and the restriction was not a property
+of the walk at all.** `Problem::VoidNotConvex` and `Violation::VoidNotConvex` are deleted, and a void loop with a
+reflex corner draws.
+
+**The instrument asked the geometry and not the walk.** A probe that recomputed the offset would have agreed with
+the expander by construction, so `courtyard_probe` reads the offset loop back **out of the drawn mesh**: the ring's
+base annulus is one quad per void-loop edge wound from the offset corner across to the authored one, so the corner
+that is *not* an authored node is `offset[edge]`, and every edge answers — the loop comes back in node order with no
+nearest-neighbour guess anywhere in it. Its simplicity test is **stricter than the crate's** on purpose:
+`segments_cross_properly` answers false for a touch, which is right for "did these edges cross" and wrong for "is this
+loop simple", and the probe asks the strict question so it can catch a shape the walk let through. The answer it is
+compared against is **plan geometry's own**, `area + wall · perimeter + wall² · Σ tan(turn / 2)`, which is arithmetic
+on the authored loop and shares no code with the walk — and the `tan` term is the whole content of the reflex case,
+positive where a corner turns the loop's own way and **negative** where it turns back.
+
+### The measurement, on a 10 × 10 mass with a 0.3 m wall and a 3.2 m ring
+
+| void loop | reflex corners | offset loop | simple | worst mitre miss | offset area against plan geometry | ring volume against `(outer − inner) × height` |
+| --- | --- | --- | --- | --- | --- | --- |
+| **L**, `(-3,-3)(3,-3)(3,0)(0,0)(0,3)(-3,3)` | 1 | `(-3.3,-3.3)(3.3,-3.3)(3.3,0.3)(0.3,0.3)(0.3,3.3)(-3.3,3.3)` | true | `0.0000002` | `34.5600` vs `34.5600`, off `0.000000` | `24.1920` vs `24.1920`, off `0.000010` |
+| **T**, `(-4,-3)(4,-3)(4,0)(1,0)(1,3)(-1,3)(-1,0)(-4,0)` | 2 | `(-4.3,-3.3)(4.3,-3.3)(4.3,0.3)(1.3,0.3)(1.3,3.3)(-1.3,3.3)(-1.3,0.3)(-4.3,0.3)` | true | `0.0000002` | `38.7600` vs `38.7600`, off `0.000004` | `28.0320` vs `28.0320`, off `0.000011` |
+| **a rectangle with a bite**, `(-3,-3)(3,-3)(3,3)(1.5,3)(1.5,1.5)(-3,1.5)` | 1 | `(-3.3,-3.3)(3.3,-3.3)(3.3,3.3)(1.2,3.3)(1.2,1.8)(-3.3,1.8)` | true | `0.0000002` | `36.8100` vs `36.8100`, off `0.000000` | `24.1920` vs `24.1920`, off `0.000004` |
+| **U, open on the north**, `(-3,-3)(3,-3)(3,3)(1.5,3)(1.5,-1)(-1.5,-1)(-1.5,3)(-3,3)` | 2 | `(-3.3,-3.3)(3.3,-3.3)(3.3,3.3)(1.2,3.3)(1.2,-0.7)(-1.2,-0.7)(-1.2,3.3)(-3.3,3.3)` | true | `0.0000002` | `33.9600` vs `33.9600`, off `0.000000` | `31.8720` vs `31.8720`, off `0.000004` |
+
+Every one of the four reports **0 violations**, `manifold true`, `loops 0`, **euler 0** — the ring is a torus and `0`
+is what a torus is — and **every flat face stands on its own loop**: each `VoidWall` face spans the authored edge,
+each `VoidInner` the offset edge, each `VoidTop` the pair. **Every mitre reads `−0.3000` against both of its edges**,
+which is the outward side and the wall's own thickness; a mitre that crossed a corner would read `+0.3000`. The
+`2 × 10⁻⁵` worst case is the same `f32` noise the convex courtyard's `16.5120` reading already carries, and the
+largest single discrepancy anywhere is **`0.000011 m³`**, on the T.
+
+**A triangle count would have said none of this.** Each of these rings is `4 × nodes` faces exactly as a convex
+one is; what says the geometry is right is the area and the volume, and they match to `f32` noise.
+
+### What is still refused, and by what name
+
+The remaining restriction is arithmetic rather than taste: **a ring stands `wall` out of the loop, so it stands
+`wall` into each side of a bite, and a bite of `b` has `b − 2 × wall` left for the courtyard to show.** Sweeping a
+**closed** bite — a 6 × 6 loop with a bite cut out of the middle of its north edge, the case a mouth that runs off
+the plan cannot reach — puts the boundary exactly where that says:
+
+| bite at a 0.3 m wall | 1.00 | 0.90 | 0.80 | **0.70** | **0.60** | 0.50 | 0.40 | 0.30 | 0.20 | 0.10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| the walk | builds | builds | builds | **builds** | **refused** | refused | refused | refused | refused | refused |
+
+and sweeping the **wall** at a fixed 0.6 m bite says the boundary is the same `2 × wall` everywhere:
+
+| 0.6 m bite at wall | 0.10 | 0.20 | **0.30** | 0.40 |
+| --- | --- | --- | --- | --- |
+| the walk | builds | builds | **refused** | refused |
+
+**That is monotone in the right variable, which is what makes it a limit and not a defect** — and it is the exact
+opposite of the pattern the *inward* walk showed before `segments_cross_properly` was made strict, where a 0.05 m
+wall refused and a 0.10 m wall built. Each refusal names itself and names the loop: `bite 0.60` at a 0.3 m wall reports
+**`OffsetEdgeVanished`** (the bite's floor offset has no length left) beside three `OffsetSelfIntersecting`, and
+everything below that reports **`OffsetEdgeFolded`** beside one `OffsetSelfIntersecting`. `validate` reports
+**`DidNotExpand`** carrying the same problems, so an author is not left with a build refusal and no name.
+
+### What changed, and what did not
+
+`Problem::VoidNotConvex` and `Violation::VoidNotConvex` are deleted and nothing carries those names. The slot
+`VoidNotConvex` held inside the shared rank `6` is **retired and left retired**, for the reason rank `14` was: the
+ranks are private to `order_key`, so a hole costs nothing and closing it would put every arm above it in the diff of
+a one-variant deletion. `fill::ring_fill` was **not** widened and is not on this path at all — the courtyard's ring
+is one quad per loop edge between two loops of the same length, which is the mass's own construction.
+
+`loops_of`, `courtyard`, `Mass::voids` and `check_voids` now say what is known rather than what was feared: the
+outward walk is measured, a void loop may have any reflex corner, and the one thing it may not have is a bite
+narrower than `2 × wall`.
+
+**Nothing that was clean is not.** All **29** building examples exit 0, `scene_identity_probe` is two-way across
+**806** rows (77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101) with all four pinned readings unchanged,
+`cargo build --workspace --all-targets` exits 0 with the four pre-existing warnings only, and
+`cargo fmt --all -- --check` is clean.
+
+**The nine scene hashes did not move, and the baseline was measured on this machine rather than read off the table
+above** — which is worth saying, because the table's hashes do not reproduce here. `crates/gallery`'s `house` renders
+to `4F343949D83B2064`, not to the `B13154AD7D29F938` the table carries, and the same is true of all nine; the
+newest render set already in `out/` (`a3-*`, 2026-10-17 21:33) reads the same nine values, so the table is stale
+for this machine's adapter rather than describing a picture that changed. So the comparison was made properly: the
+branch point's `crates/building` was restored with `git checkout f36c102 -- crates/building`, all nine were rendered
+again, and the tree was restored. **Every frame hash and every document hash is identical before and after.**
+
+| scene | frame hash, before and after | document hash, identical |
+| --- | --- | --- |
+| `house` | `4F343949D83B2064` **same** | yes |
+| `hall` | `D3861AB9A49E11DF` **same** | yes |
+| `hall_large` | `AC283053024091EF` **same** | yes |
+| `shed` | `929A983D1B57D8C3` **same** | yes |
+| `terrace` | `D6478E6600918037` **same** | yes |
+| `wing` | `E92705C66973AD53` **same** | yes |
+| `workshop` | `D9617C18C39B0FDB` **same** | yes |
+| `yard` | `2AB63DE3B0A4F727` **same** | yes |
+| `identity` | `0F3026193CE73439` **same** | yes |
+
+**No scene authors a courtyard, and that was measured three ways rather than assumed.** `Mass::with_voids` has one
+definition and **every caller is an example**: `courtyard_probe`, `patio_probe`, `validate_probe`, and nothing
+else in the workspace. `derive.rs` writes `voids` **zero** times, so no derived starter or hall can carry one.
+`crates/gallery` — which builds all nine scenes — matches **none** of `with_voids`, `.voids`, `VoidWall` or
+`SolidId::Void`. And the **canary** the proposal asks for was run rather than skipped: a `panic!` at the top of
+`courtyard::ring` was added, all nine scenes were rendered under it with **0 hits**, and it was then shown to fire
+on `courtyard_probe`'s own notched courtyard (`CANARY: a document reached the courtyard ring walk with mass
+MassId(0) void 0`, exit 101) before being removed. Without that, nine silent renders would only say the render loop
+agreed with itself.
+
+### What this slice's brief got wrong
+
+**It predicted the wrong set of shapes three times, and every time it guessed against the arithmetic.** It named
+"an L, a T, a rectangle with a bite" as the cases — all three of which build, so the set was right by luck rather
+than by argument. It said *"the refusal can be lifted for the shapes you measured"*, which reads as though the
+refusal would survive as a named shape class; it does not: the walk refuses a **bite narrower than `2 × wall`**,
+which is not a shape class at all and is better named by `offset_loop` than by any `Violation`. And it predicted
+that a shape the walk *cannot* take would be caught by the walk's existing checks — which is true for the closed
+bite, where `OffsetEdgeVanished` and `OffsetEdgeFolded` fire exactly as designed, and **not** obvious for a loop that
+merely *touches* itself, because `segments_cross_properly` answers false for a touch. The sweep did not find one:
+at `bite = 2 × wall` the floor offset edge vanishes before the two side offsets can meet, so the pinch is caught by
+`OffsetEdgeVanished` rather than slipping through as a self-touching loop. That is a measurement and not a proof —
+a shape that closes a corridor from two directions at once would have to be swept separately.

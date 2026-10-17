@@ -154,9 +154,12 @@ pub struct Mass {
     /// **A void is drawn as a ring of wall of its own**, standing on the plate: the loop is the courtyard's inner
     /// face and the same loop offset outward by [`wall`](Self::wall) is the face the rooms see, closed at the top
     /// and at the base exactly as the mass's own ring is closed. The plate is not cut by it — the courtyard's floor
-    /// **is** the plate's own top — so nothing has to be split and the two rings never share an edge. The loop must
-    /// also be convex, which [`validate`](crate::validate) reports as [`VoidNotConvex`](crate::validate::Violation::VoidNotConvex)
-    /// and expansion refuses by the same name.
+    /// **is** the plate's own top — so nothing has to be split and the two rings never share an edge. The loop may
+    /// have reflex corners: what it may not have is a **bite narrower than `2 × wall`**, because the ring stands
+    /// [`wall`](Self::wall) out of the loop and so that far into each side of a bite. Expansion refuses the rest
+    /// through [`expand::offset_loop`](crate::expand::offset_loop)'s own faults, and
+    /// [`validate`](crate::validate) reports it as
+    /// [`DidNotExpand`](crate::validate::Violation::DidNotExpand).
     pub voids: Vec<Vec<PlanNode>>,
 }
 

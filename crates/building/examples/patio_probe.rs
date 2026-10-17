@@ -468,8 +468,15 @@ fn main() {
     );
 
     // **Four courtyards that break the contract, each reported rather than repaired.** A void outside
-    // the outline, a void with a notch, two voids that overlap, and — the fault the three above would
-    // have missed — a void inside the outline with no room for its own wall.
+    // the outline, a void whose bite is narrower than the wall standing in it, two voids that
+    // overlap, and — the fault the three above would have missed — a void inside the outline with no
+    // room for its own wall.
+    //
+    // **The second of the four is what a void with a reflex corner became.** It used to be "a void
+    // with a notch", which the whole shape class was refused for; the walk was measured instead and
+    // is right across a reflex corner, so the case that still breaks is the one that is arithmetic —
+    // a 0.4 m bite under a 0.3 m wall leaves the ring nowhere to stand, and the walk says so by name
+    // rather than by shape.
     let outline = rectangle(-5.0, -5.0, 5.0, 5.0);
     let cases = [
         (
@@ -477,12 +484,15 @@ fn main() {
             vec![rectangle(3.0, -2.0, 7.0, 2.0)],
         ),
         (
-            "a void with a notch (not convex)",
+            "a bite narrower than twice the wall (0.4 m under 0.3 m)",
             vec![vec![
                 PlanNode::new([-2.0, -2.0], 0.0),
                 PlanNode::new([2.0, -2.0], 0.0),
                 PlanNode::new([2.0, 2.0], 0.0),
-                PlanNode::new([0.0, 0.0], 0.0),
+                PlanNode::new([0.2, 2.0], 0.0),
+                PlanNode::new([0.2, 1.0], 0.0),
+                PlanNode::new([-0.2, 1.0], 0.0),
+                PlanNode::new([-0.2, 2.0], 0.0),
                 PlanNode::new([-2.0, 2.0], 0.0),
             ]],
         ),
@@ -1055,10 +1065,14 @@ fn main() {
         }
     }
 
-    // **A part in a notched courtyard's bay, which is the courtyard's own restriction reached through a
-    // part rather than through a hole.** `VoidNotConvex` is the expander's refusal and the document's
-    // own `Violation::VoidNotConvex` is the same statement in the other half of the crate; a notched
-    // void has no ring, so a part pinned in one of its bays has no strip to be framed on either.
+    // **A part in a notched courtyard's bay, which used to be where the courtyard's convexity
+    // restriction was reached.** `VoidNotConvex` was the expander's refusal and the document's own
+    // `Violation::VoidNotConvex` the same statement in the other half of the crate; both are gone,
+    // because the outward walk was measured across a reflex corner rather than refused across one —
+    // `courtyard_probe` is that measurement, and what it found is that the walk is right and the one
+    // shape it cannot take is a bite narrower than `2 × wall`, which it refuses by its own name. So
+    // this document now has to say what it *does*: the notched courtyard's own ring, and the part
+    // standing in one of its bays.
     let mut notched = BuildingSkeleton::default();
     notched.masses = vec![
         Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
@@ -1073,7 +1087,7 @@ fn main() {
             ]]),
     ];
     // **The rhythm is laid on the loop as the author wrote it**, which is what `split_face` measures
-    // against, so the bay exists and only the offset walk refuses.
+    // against, so the bay exists and the offset walk is the only thing that could refuse.
     let _ = ops::split_face(
         &mut notched,
         FaceRef::court(MassId(0), 0, 0),
@@ -1100,11 +1114,25 @@ fn main() {
         println!("    {fault:?}");
     }
     match notched_document.build() {
-        Ok(_) => println!("    and it builds, which would be the fault"),
+        Ok(built) => {
+            let ring = courtyard_ring();
+            let part = SolidId::Part(0);
+            println!(
+                "    and it builds: the notched courtyard's ring reads manifold {}, loops {}, euler {}",
+                built.solid_is_manifold(ring),
+                built.solid_boundary_loops(ring),
+                built.solid_euler_characteristic(ring)
+            );
+            println!(
+                "    and the part stands in it: {} faces, loops {}, euler {}, manifold {}, volume {:.6}",
+                built.faces_of(part).len(),
+                built.solid_boundary_loops(part),
+                built.solid_euler_characteristic(part),
+                built.solid_is_manifold(part),
+                built.solid_signed_volume(part)
+            );
+        }
         Err(error) => {
-            // **The same void is named once by the ring walk and once by the frame**, which is the
-            // shape a mass's part already has when its own miter refuses: every reader of a ring
-            // reports the ring's faults, and the document lists them all rather than collapsing them.
             for problem in &error.problems {
                 println!("    and it does not build: {problem:?}");
             }

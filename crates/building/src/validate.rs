@@ -781,23 +781,6 @@ pub enum Violation {
         /// Which of its voids, in the order it authored them.
         void: usize,
     },
-    /// A mass's void is not convex, and the ring built from it is refused rather than walked.
-    ///
-    /// # Invariants
-    ///
-    /// **The restriction is the ring's, stated rather than discovered.** The courtyard's wall is one
-    /// quad per loop edge between two loops of the same length — the mass's own construction — and a
-    /// loop with a notch is the one input this crate has no measurement for on the *outward* side.
-    /// [`fill::ring_fill`] is no longer on this path: in the volume model nothing is filled, because
-    /// the plate is not cut and the courtyard's floor is the plate's own top. So the reason is the
-    /// ring, and a later slice may widen it to any loop whose offset builds — this variant is where
-    /// that change will show.
-    VoidNotConvex {
-        /// The mass.
-        mass: MassId,
-        /// Which of its voids.
-        void: usize,
-    },
     /// Two of a mass's voids share plan area, so the hole they make is one hole with two descriptions.
     VoidOverlaps {
         /// The mass.
@@ -961,14 +944,19 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 ///
 /// # Invariants
 ///
-/// **Four faults, and each is a statement about the document rather than about the drawing:**
+/// **Three faults, and each is a statement about the document rather than about the drawing:**
 ///
 /// - a void that is not strictly inside its mass's outline (the hole would open through the wall);
-/// - a void that is not convex (the ring is refused by name rather than walked across a reflex corner);
 /// - two voids that share plan area (one hole described twice); and
 /// - a void whose **wall** has no room inside the mass's own wall
-///   ([`VoidReachesTheWall`](Self::VoidReachesTheWall)), which is the only one of the four that is
+///   ([`VoidReachesTheWall`](Self::VoidReachesTheWall)), which is the only one of the three that is
 ///   about the ring rather than about the loop.
+///
+/// **A void loop that is not convex is no longer one of them**, and what replaced it is narrower and
+/// is stated by the walk that refuses it rather than by a shape class: a ring stands `wall` out of the
+/// loop, so **a bite in the loop has to be wider than `2 × wall`** and every other reflex corner is
+/// walked. [`expand::offset_loop`](crate::expand::offset_loop) is what says so, by name, and a loop it
+/// refuses reaches the author through [`DidNotExpand`](Self::DidNotExpand).
 ///
 /// **"Inside" is measured, not eyeballed**: the area two plans share must equal the void's own area,
 /// which is a computation `crate::clip` already makes exact. A void that crosses the outline shares
@@ -990,9 +978,6 @@ fn check_voids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             .map(|loop_nodes| plan_of(loop_nodes))
             .collect();
         for (void, held) in voids.iter().enumerate() {
-            if !crate::fill::convex(held) {
-                violations.push(Violation::VoidNotConvex { mass: id, void });
-            }
             let enclosed = crate::clip::shared_area(&outline, held).abs();
             let own = crate::clip::shared_area(held, held).abs();
             if (enclosed - own).abs() > VOID_AREA_TOLERANCE {
@@ -2318,9 +2303,13 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         }
         Violation::UnattachedOverlap { mass, other } => (3, mass.0 as u64, other.0 as u64, 0, 0),
         // The void faults share a rank: each is a statement about one mass's own courtyards, and a document has
-        // whichever of them it has. The fourth is the ring's own, so it sorts after the three that are about the loop.
+        // whichever of them it has. The last is the ring's own, so it sorts after the ones that are about the loop.
         Violation::VoidNotInside { mass, void } => (6, mass.0 as u64, *void as u64, 0, 0),
-        Violation::VoidNotConvex { mass, void } => (6, mass.0 as u64, *void as u64, 1, 0),
+        // **The fourth slot's `1` is retired and is not to be reused.** It was `VoidNotConvex`, the refusal of a
+        // void loop with a reflex corner, which was lifted once the outward walk was measured across one; what the
+        // walk still cannot do is refused by `offset_loop`'s own names and reaches the author through `DidNotExpand`.
+        // The ranks are private to this function, so a hole costs nothing, and closing it would put every arm above
+        // it in the diff of a one-variant deletion.
         Violation::VoidOverlaps {
             mass,
             first,

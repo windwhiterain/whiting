@@ -105,28 +105,6 @@ const MITER_LIMIT: f32 = 4.0;
 /// One reason a skeleton does not expand.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Problem {
-    /// A mass's void loop is not convex, so the ring built from it and its offset is not built at all.
-    ///
-    /// # Invariants
-    ///
-    /// **A refusal rather than a guess, and the restriction is stated rather than discovered.**
-    /// A courtyard's ring is one quad per loop edge between two loops of the same length, which is
-    /// the mass's own ring construction and holds for any loop whose offset builds — the one case
-    /// the crate has no measurement for is the void loop with a reflex corner, because a mass
-    /// whose *outline* has one is offset **inward** and a void is offset **outward**: the corner
-    /// that fails in one is not the corner that fails in the other, and this crate has measured
-    /// both wrong in the past (a ring fill twice wrong by area, and the inward offset closing a
-    /// courtyard's mouth). Rather than ship an unmeasured ring, the loop is refused by name here and
-    /// reported in the document by
-    /// [`Violation::VoidNotConvex`](crate::validate::Violation::VoidNotConvex). What would lift
-    /// this is a measurement of the outward walk across a reflex corner, which is
-    /// [`offset_loop`](offset_loop) — the same walk, asked the other question.
-    VoidNotConvex {
-        /// The mass.
-        mass: MassId,
-        /// Which of its voids, in the order it authored them.
-        void: usize,
-    },
     /// A mass's outline has fewer than three nodes, so it has no plan area to stand on.
     OutlineTooShort {
         /// The mass.
@@ -1342,10 +1320,19 @@ pub(crate) fn face_length(skeleton: &BuildingSkeleton, face: FaceRef) -> Option<
 ///   caller.** A mass's outline is offset **inward** and a void's loop **outward**, so the flag that
 ///   decides every winding downstream is decided here, once, from which loop was asked for — the same
 ///   rule [`Ring`] states and the ring walk reads.
-/// - **Convexity is checked before the outward offset and only for a void**, because it is the one
-///   restriction [`offset_loop`] cannot state for itself: a mass whose *outline* has a reflex corner
-///   is offset inward and is drawn, while a *void* with one is offset outward and the outward walk
-///   has never been measured across a reflex corner in this crate. See [`Problem::VoidNotConvex`].
+/// - **Nothing is asked of the loop here but the winding, and what the outward walk cannot do is
+///   [`offset_loop`]'s own answer.** A void loop with a reflex corner was refused by name for want of
+///   a measurement, and the measurement is in: on an L, a T, a rectangle with a bite and a
+///   courtyard open on one side the outward walk mitred every corner `wall` out along both of its
+///   edges, produced a simple loop enclosing exactly
+///   `area + wall · perimeter + wall² · Σ tan(turn / 2)`, and closed into a ring whose volume was
+///   `(outer − inner) × height` to better than `2 × 10⁻⁵ m²` — the same `f32` noise the convex case
+///   already carries. What the outward walk genuinely cannot do is narrower than "not convex" and is
+///   stated by shape: a **bite** in the loop has to be **wider than `2 × wall`**, because the ring
+///   stands `wall` out of the loop and therefore `wall` into each side of the bite. Every way of
+///   failing that is one of [`offset_loop`]'s own faults — [`Problem::OffsetEdgeVanished`],
+///   [`Problem::OffsetEdgeFolded`], [`Problem::OffsetSelfIntersecting`],
+///   [`Problem::MiterTooLong`], [`Problem::OffsetInverted`] — and each names the loop it is about.
 /// - **`None` with an empty `problems` is "the document does not hold that loop",** which is a
 ///   different statement from a fault: a caller that is building reports `None` and no problem, and
 ///   a caller that is resolving one placement answers "it does not resolve" rather than reporting a
@@ -1363,14 +1350,7 @@ pub(crate) fn loops_of<'a>(
             Cow::Borrowed(skeleton.mass(mass)?.outline.as_slice()),
             OffsetSide::Inward,
         ),
-        AuthoredLoop::Void { mass, void } => {
-            let walked = skeleton.void_loop(mass, void)?;
-            if !crate::fill::convex(&plan_positions(&walked)) {
-                problems.push(Problem::VoidNotConvex { mass, void });
-                return None;
-            }
-            (walked, OffsetSide::Outward)
-        }
+        AuthoredLoop::Void { mass, void } => (skeleton.void_loop(mass, void)?, OffsetSide::Outward),
     };
     let offset = offset_loop(
         &walked,

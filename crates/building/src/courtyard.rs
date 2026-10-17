@@ -24,12 +24,11 @@
 //! **solid of its own** ([`SolidId::Void`]) rather than a second ring inside the mass's one.
 //!
 //! **The ring itself is the mass's own walk.** What this module owns is the part that is a
-//! courtyard's and nobody else's — taking the offset **outward** rather than inward, and refusing a
-//! reflex corner before the walk that has no measurement for one is asked — and then it hands the two
-//! loops to [`expand::loops_of`], which is the one derivation of "a loop and the loop a wall's
-//! thickness away from it", and to [`expand::ring_walk`], which is the same walk that builds a mass's
-//! own wall. A hole cut in a courtyard's wall therefore arrives by exactly the path a window in a
-//! mass's wall does: one [`Opening`], one bay, one set of reveals, and no second implementation to
+//! courtyard's and nobody else's — taking the offset **outward** rather than inward — and then it
+//! hands the two loops to [`expand::loops_of`], which is the one derivation of "a loop and the loop a
+//! wall's thickness away from it", and to [`expand::ring_walk`], which is the same walk that builds a
+//! mass's own wall. A hole cut in a courtyard's wall therefore arrives by exactly the path a window in
+//! a mass's wall does: one [`Opening`], one bay, one set of reveals, and no second implementation to
 //! agree with the first about what a jamb is.
 //!
 //! **A part's frame is read off the same two loops, and that is why this module has no second ring
@@ -40,21 +39,22 @@
 //!
 //! # What is refused, and why
 //!
-//! **A void loop that is not convex is refused by name.** The ring is one quad per loop edge between
-//! two loops of the same length — the mass's own construction, which draws an L or a U outline
-//! without trouble. The one case this crate has no measurement for is a *void* with a reflex corner,
-//! because a mass's outline is offset **inward** and a void is offset **outward**, and the corner
-//! that fails in one is not the corner that fails in the other. This crate has shipped a ring fill
-//! wrong by area twice and the inward offset has closed a courtyard's mouth, so the restriction is
-//! kept rather than lifted on an argument. [`Problem::VoidNotConvex`] is where it says so, and
-//! [`Violation::VoidNotConvex`](crate::validate::Violation::VoidNotConvex) reports it in the document
-//! where an author meets it first.
+//! **A void loop with a reflex corner is walked, and the one shape that cannot be is refused by
+//! number rather than by name.** The ring is one quad per loop edge between two loops of the same
+//! length — the mass's own construction, which draws an L or a U outline without trouble — and the
+//! outward walk was measured across a reflex corner rather than argued about: on an L, a T, a
+//! rectangle with a bite and a courtyard open on one side it mitred every corner `wall` out along both
+//! of its edges, produced a simple loop enclosing exactly `area + wall · perimeter +
+//! wall² · Σ tan(turn / 2)`, and closed into a ring whose volume was `(outer − inner) × height` to
+//! better than `2 × 10⁻⁵ m²` — the same `f32` noise the convex case already carries. What is left is
+//! narrower and is arithmetic rather than taste: **a bite in the loop has to be wider than
+//! `2 × wall`**, because the ring stands `wall` out of the loop and so `wall` into each side of the
+//! bite. Every way of failing that is one of [`expand::offset_loop`]'s own faults and each names the
+//! **loop** it is about, so a courtyard's fault and a mass's fault are never the same fault.
 //!
-//! The offset walk itself refuses everything else by name — a degenerate edge, a corner with no
-//! miter, a join past the join limit, an offset that stops enclosing the loop it came from — and
-//! every one of those names the **loop** it is about, because a courtyard's fault and a mass's fault
-//! are not the same fault. So does every fault about a hole cut into this ring, by the same rule:
-//! "opening 0 is outside edge 1" is two different pieces of masonry unless it says which.
+//! [`Violation::VoidReachesTheWall`](crate::validate::Violation::VoidReachesTheWall) is the fourth
+//! courtyard fault in the document half, and it is the only one about the ring rather than the loop:
+//! a void loop inside the outline is not a courtyard that *fits*, because its wall stands outside it.
 
 use std::collections::BTreeMap;
 
