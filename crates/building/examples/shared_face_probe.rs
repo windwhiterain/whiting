@@ -42,12 +42,9 @@ fn main() {
         &mut skeleton,
         host,
         0.2,
-        Mass::new(
-            rectangle(3.0 - plan.wall, -2.0, 9.0, 2.0),
-            plan.height,
-        )
-        .with_wall(plan.wall)
-        .with_slab(plan.slab),
+        Mass::new(rectangle(3.0 - plan.wall, -2.0, 9.0, 2.0), plan.height)
+            .with_wall(plan.wall)
+            .with_slab(plan.slab),
     )
     .expect("the host takes a station off its corners");
 
@@ -85,7 +82,10 @@ fn main() {
                 );
             }
         }
-        Err(error) => println!("  the document does not build: {:?}", error.problems.first()),
+        Err(error) => println!(
+            "  the document does not build: {:?}",
+            error.problems.first()
+        ),
     }
     println!(
         "\n# the reading: {}",
