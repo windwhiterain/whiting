@@ -83,3 +83,29 @@ a mistake rather than a new normal.
 **The shape of the change, then:** `SolidId::Mass(MassId)` stays as **the wall ring** (the name keeps its meaning:
 the mass's walls), a **`MassPlate(MassId)`** is added for the plate, and the emitter produces both. The 36 probe
 sites need no edit at all, and the plate gets its own probes.
+
+## Two corrections before any code (2026-10-27)
+
+**1. The recorded volumes do NOT all survive, and the last note was wrong about it.** The shell's enclosed region is
+the wall material *plus* the plate material, so `solid_signed_volume(SolidId::Mass(_))` reads the **sum** today. Once
+`Mass` is the wall ring alone, that call reads **only the walls**, and the plate's volume moves to `MassPlate`. The
+arithmetic is unchanged and the *sum* must still match every recorded number — but each probe has to say which solid
+it is measuring. Checking the sum is the acceptance; checking `Mass` alone is not.
+
+**2. The crux of the volume model: volumes may overlap; shells may not.** The reason a volume model makes the
+courtyard trivial is not that volumes are nicer — it is that **two closed solids are allowed to intersect** and no
+shared edges are created. A shell has to partition space exactly; anything that stands on it, or in the middle of it,
+turns one of its edges into a three-surface edge.
+
+That gives the wall its base: **the wall ring sinks into the plate.** Its bottom ring sits at the plate's own bottom
+plane (`elevation − slab`), the plate box spans the whole footprint under it, and the two volumes overlap through the
+wall's footprint. The floor seen from inside is the plate's top face, which is why nothing has to be split at the
+wall — and the same trick is what lets a courtyard's wall ring be its own volume later instead of a face of the
+same shell.
+
+**The slice, then:** `SolidId::MassPlate(MassId)` for the plate box; `expand_mass` keeps the outer walls and the wall
+top, runs the inner walls down to the plate's bottom plane, closes the ring with a **bottom ring** (`ring_fill`
+between the outline and the inner loop), drops the floor disc and the soffit, and emits the plate as its own box.
+**The pictures may move slightly** — a plate box adds its own side faces and the ring's inner faces now begin a slab
+lower — so the nine hashes are re-recorded with that reason rather than held as unchanged: a volume change is a
+geometry change, and pretending otherwise would make the baseline a lie.
