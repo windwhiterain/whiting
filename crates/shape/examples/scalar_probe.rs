@@ -20,6 +20,7 @@ fn main() {
     checks.push(("limiter", a_limited_span_stays_inside_its_values()));
     checks.push(("C1 at a knot", a_knot_is_continuous_in_slope()));
     checks.push(("quadratic", the_basis_reproduces_a_quadratic()));
+    checks.push(("offset", an_offset_moves_the_number_and_not_the_shape()));
     checks.push(("clamped ends", the_ends_are_clamped()));
     checks.push(("errors", the_errors_are_the_reported_ones()));
 
@@ -192,6 +193,40 @@ fn the_errors_are_the_reported_ones() -> bool {
         );
     }
     passed
+}
+
+/// An offset law is the law plus the number, everywhere, with its shape untouched.
+///
+/// # Invariants
+///
+/// The values differ by exactly `by` at every sample and the slopes are equal, so a nudge cannot change what
+/// the law *does* — and the control is that the two laws are not the same law: a tolerance that passed on an
+/// unshifted copy would call a real offset a success.
+fn an_offset_moves_the_number_and_not_the_shape() -> bool {
+    let law = quadratic();
+    let by = -0.25f32;
+    let shifted = law.offset(by);
+    let mut worst_value = 0.0f32;
+    let mut worst_slope = 0.0f32;
+    let mut biggest = 0.0f32;
+    for step in 0..=200 {
+        let t = step as f32 / 200.0;
+        let difference = (law.at(t) + by) - shifted.at(t);
+        worst_value = worst_value.max(difference.abs());
+        worst_slope = worst_slope.max((law.slope(t) - shifted.slope(t)).abs());
+        biggest = biggest.max((law.at(t) - shifted.at(t)).abs());
+    }
+    println!("\n# an offset law");
+    println!(
+        "  worst value difference from the law less {by} {worst_value:.3e} · worst slope difference {worst_slope:.3e}"
+    );
+    println!(
+        "  the slopes agree to a rounding rather than exactly, because the slope is evaluated from the shifted knots"
+    );
+    println!(
+        "  the two laws differ by {biggest:.6} where they are compared, so the row is not blind"
+    );
+    worst_value < 1e-6 && worst_slope < 1e-6 && biggest > 0.2
 }
 
 /// A quadratic as four `(t, value, slope)` knots: `v = t²`, `dv/dt = 2t`.

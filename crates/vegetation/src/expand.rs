@@ -70,13 +70,13 @@ pub struct Wood {
 /// not data a caller has to handle.
 pub fn wood(plant: &Plant, detail: Detail) -> Vec<Wood> {
     plant
-        .walk()
+        .live()
         .map(|(handle, node)| {
             let spine = plant
                 .spine(&handle)
                 .expect("a handle the walk yielded resolves");
             let mut sweep = Sweep::new(spine, node.section().clone());
-            sweep.scale = node.taper().clone();
+            sweep.scale = node.taper_now();
             Wood {
                 handle,
                 loft: sweep.sample(detail.stations, detail.around),

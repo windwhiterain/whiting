@@ -139,6 +139,28 @@ impl Scalar {
         (span.v0 * d00 + span.s0 * width * d10 + span.v1 * d01 + span.s1 * width * d11) / width
     }
 
+    /// The same law with a constant added: a nudge on the number rather than on its shape.
+    ///
+    /// # Invariants
+    ///
+    /// Every knot's value moves by `by` and every slope stays, so the span guarantee [`Scalar::new`] makes
+    /// survives the shift — an offset cannot make a monotone law overshoot — and the law's own shape is
+    /// untouched. That is the point: a branch is 4 mm too thin *everywhere*, and an author says so with one
+    /// number instead of re-authoring six knots.
+    pub fn offset(&self, by: f32) -> Self {
+        Self {
+            spans: self
+                .spans
+                .iter()
+                .map(|span| Span {
+                    v0: span.v0 + by,
+                    v1: span.v1 + by,
+                    ..*span
+                })
+                .collect(),
+        }
+    }
+
     /// The span holding `t` and the local parameter inside it.
     ///
     /// # Invariants

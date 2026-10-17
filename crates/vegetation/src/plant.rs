@@ -141,10 +141,46 @@ impl Plant {
         Ok(node)
     }
 
+    /// The node a handle names, mutably: how the hand writes an edit.
+    pub fn get_mut(&mut self, handle: &Handle) -> Result<&mut Node, HandleOrphaned> {
+        let mut node = &mut self.root;
+        let mut reached = Handle::root();
+        for index in handle.path() {
+            match node.children_mut().get_mut(*index as usize) {
+                Some(child) => {
+                    node = child;
+                    reached = reached.child(*index);
+                }
+                None => {
+                    return Err(HandleOrphaned {
+                        from: reached,
+                        index: *index,
+                    });
+                }
+            }
+        }
+        Ok(node)
+    }
+
     /// Every node in the plant, depth first, each with the handle that names it.
+    ///
+    /// # Invariants
+    ///
+    /// **This walk includes tombstones**, because a handle has to go on naming what it named: a prune is
+    /// reported at [`crate::node::Node::pruned`] rather than by renumbering its siblings. Use
+    /// [`Plant::live`] for what a plant draws.
     pub fn walk(&self) -> Walk<'_> {
         Walk {
             stack: vec![(Handle::root(), &self.root)],
+            skip_pruned: false,
+        }
+    }
+
+    /// Every node a plant **draws**, depth first: the walk above, without the tombstones or their subtrees.
+    pub fn live(&self) -> Walk<'_> {
+        Walk {
+            stack: vec![(Handle::root(), &self.root)],
+            skip_pruned: true,
         }
     }
 
@@ -162,15 +198,21 @@ impl Plant {
     /// is what makes a joint a smaller joint rather than a moved one. Where the parent's taper is zero the
     /// point has no direction from the spine, and `x` falls back to the section's own `+x` rather than to a
     /// zero vector that would collapse every child.
+    ///
+    /// **The skin is the drawn one**: the frame is read from [`crate::node::Node::spine_now`] and
+    /// [`crate::node::Node::taper_now`], so a node whose length or radius an author nudged carries its
+    /// children on the surface they actually see. A joint placed on the authored data would float a child off
+    /// a branch that was made thinner, which is the defect this reads through instead.
     pub fn surface(
         &self,
         handle: &Handle,
         attachment: Attachment,
     ) -> Result<Placement, HandleOrphaned> {
         let node = self.get(handle)?;
+        let spine = node.spine_now();
         let station = clamp(attachment.station, 0.0, 1.0);
-        let frame = node.spine().frame(station);
-        let scale = node.taper().at(station);
+        let frame = spine.frame(station);
+        let scale = node.taper_now().at(station);
         let point = node.section().at(attachment.slot);
         let mut radial = [0.0; 3];
         for axis in 0..3 {
@@ -182,7 +224,7 @@ impl Plant {
         } else {
             frame.normal
         };
-        let along = node.spine().at(station);
+        let along = spine.at(station);
         let mut origin = [0.0; 3];
         for axis in 0..3 {
             origin[axis] = along[axis] + radial[axis] - outward[axis] * attachment.sink;
@@ -200,58 +242,77 @@ impl Plant {
     /// # Invariants
     ///
     /// Every step is the parent's placement composed with the parent's [`Plant::surface`] frame at the
-    /// child's attachment, so the answer is a walk and not a search. The cost is `O(depth²)` in the number
-    /// of nodes passed on the way, which for a plant is a handful of `Vec` indexes.
+    /// child's **effective** attachment — the authored one plus its station and slot nudges — so an edit that
+    /// slides a bough along the trunk moves the bough and everything it carries, and nothing has to renumber.
+    /// A node's own `shift` is added last, in the node's frame, so it moves that node's origin and every
+    /// placement below it. The cost is `O(depth²)` in the number of nodes passed on the way, which for a plant
+    /// is a handful of `Vec` indexes.
     pub fn placement(&self, handle: &Handle) -> Result<Placement, HandleOrphaned> {
         let mut placement = Placement::IDENTITY;
         let mut prefix = Handle::root();
         for index in handle.path() {
             let child = prefix.child(*index);
             let node = self.get(&child)?;
-            placement = placement.then(&self.surface(&prefix, node.attachment())?);
+            placement = placement.then(&self.surface(&prefix, node.effective_attachment())?);
+            let shift = node.shift();
+            if shift != [0.0; 3] {
+                let moved = placement.rotate(shift);
+                for axis in 0..3 {
+                    placement.origin[axis] += moved[axis];
+                }
+            }
             prefix = child;
         }
         Ok(placement)
     }
 
-    /// The node's spine in the world: its authored jets moved by its placement.
+    /// The node's spine in the world: its drawn jets moved by its placement.
     ///
     /// # Invariants
     ///
-    /// The jets are the node's own stored ones, so a rigid transform cannot change the shape: every
-    /// segment's parameter and every derivative's magnitude survive, and `Curve::new` reproduces the same
-    /// curve. The **initial normal is the node's first frame normal carried into the world**, which is the
-    /// one rule that keeps a twig's section oriented continuously with the surface it hangs from
-    /// (`shape`'s open question 2, applied by the plant rather than by each sweep).
+    /// The jets are [`crate::node::Node::spine_now`]'s, so a length nudge is in the geometry and a rigid
+    /// transform cannot change the shape: every segment's parameter and every derivative's magnitude survive,
+    /// and `Curve::new` reproduces the same curve. The **initial normal is the node's first frame normal
+    /// carried into the world**, which is the one rule that keeps a twig's section oriented continuously with
+    /// the surface it hangs from (`shape`'s open question 2, applied by the plant rather than by each sweep).
     pub fn spine(&self, handle: &Handle) -> Result<Curve, HandleOrphaned> {
         let node = self.get(handle)?;
         let placement = self.placement(handle)?;
-        let jets: Vec<Jet> = node
-            .spine()
+        let drawn = node.spine_now();
+        let jets: Vec<Jet> = drawn
             .jets()
             .into_iter()
             .map(|jet| Jet::new(placement.place(jet.position), placement.rotate(jet.tangent)))
             .collect();
         let mut curve =
             Curve::new(jets).expect("a rigid transform of a valid curve is a valid curve");
-        curve.set_initial_normal(placement.rotate(node.spine().frame(0.0).normal));
+        curve.set_initial_normal(placement.rotate(drawn.frame(0.0).normal));
         Ok(curve)
     }
 }
 
 /// Every node of a plant, depth first, with the handle that names it.
+///
+/// It yields tombstones unless `skip_pruned` is set, and in that case it does not descend into them either:
+/// a pruned node's children are as dead as it is, and a caller that wants them asks [`Plant::walk`].
 pub struct Walk<'a> {
     stack: Vec<(Handle, &'a Node)>,
+    skip_pruned: bool,
 }
 
 impl<'a> Iterator for Walk<'a> {
     type Item = (Handle, &'a Node);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (handle, node) = self.stack.pop()?;
-        for (index, child) in node.children().iter().enumerate().rev() {
-            self.stack.push((handle.child(index as u32), child));
+        loop {
+            let (handle, node) = self.stack.pop()?;
+            if self.skip_pruned && node.pruned().is_some() {
+                continue;
+            }
+            for (index, child) in node.children().iter().enumerate().rev() {
+                self.stack.push((handle.child(index as u32), child));
+            }
+            return Some((handle, node));
         }
-        Some((handle, node))
     }
 }

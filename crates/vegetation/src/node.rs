@@ -15,7 +15,7 @@
 //! random numbers and no derived positions: its randomness is [`crate::rng::Rng::for_path`]'s, and its
 //! placement is [`crate::plant::Plant::placement`]'s, so neither can drift out of step with the tree.
 
-use shape::{Curve, Scalar, Section};
+use shape::{Curve, Jet, Scalar, Section};
 
 /// Where a node hangs from its parent: three numbers, and the parent supplies the frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -58,6 +58,37 @@ impl Attachment {
     }
 }
 
+/// What an author has changed about a computed node: the middle tier of the design's three.
+///
+/// # Invariants
+///
+/// An offset says *"the law is nearly right here"*, so it is added at every use and never written into the
+/// authored data: the taper stays the taper, and the number an author nudged is recoverable. Each field is
+/// added to its own computed number — the node's length, its radius at every station, and the two fractions
+/// that place it on its parent — so two edits on one node add up and no edit can reinterpret another.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Nudges {
+    /// Added to the node's own length, in the plant's units.
+    pub length: f32,
+    /// Added to the node's taper at every station.
+    pub radius: f32,
+    /// Added to where the node hangs along its parent, as the parent's arc-length fraction.
+    pub station: f32,
+    /// Added to where it hangs around the parent's section, as a fraction of the loop.
+    pub slot: f32,
+}
+
+/// Why a node is a tombstone: a prune records its reason rather than deleting the row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Prune {
+    /// An author deleted it.
+    ByAuthor,
+    /// A thinning pass removed it to let its neighbours grow.
+    Thinned,
+    /// It died: a collision, a disease, a broken limb.
+    Dead,
+}
+
 /// A spine, the law that thickens it, the section it sweeps, and where it hangs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
@@ -65,6 +96,9 @@ pub struct Node {
     taper: Scalar,
     section: Section,
     attachment: Attachment,
+    nudges: Nudges,
+    shift: [f32; 3],
+    pruned: Option<Prune>,
     children: Vec<Node>,
 }
 
@@ -76,6 +110,9 @@ impl Node {
             taper,
             section: Section::circle(),
             attachment: Attachment::root(),
+            nudges: Nudges::default(),
+            shift: [0.0; 3],
+            pruned: None,
             children: Vec::new(),
         }
     }
@@ -87,6 +124,9 @@ impl Node {
             taper,
             section: Section::circle(),
             attachment,
+            nudges: Nudges::default(),
+            shift: [0.0; 3],
+            pruned: None,
             children: Vec::new(),
         }
     }
@@ -102,9 +142,54 @@ impl Node {
         &self.spine
     }
 
+    /// The node's spine **as it is drawn**: the authored one, as long as a length nudge says.
+    ///
+    /// # Invariants
+    ///
+    /// The whole curve is scaled by one factor, positions and derivatives alike, so every station keeps its
+    /// arc-length fraction and a length nudge cannot rotate or bend anything. A node with no nudge returns
+    /// its own spine rather than a copy of it, which is the case every node of an untouched plant is in.
+    pub fn spine_now(&self) -> Curve {
+        if self.nudges.length == 0.0 {
+            return self.spine.clone();
+        }
+        let length = self.spine.length();
+        if length <= 0.0 {
+            return self.spine.clone();
+        }
+        let scale = ((length + self.nudges.length) / length).max(1.0e-6);
+        let jets: Vec<Jet> = self
+            .spine
+            .jets()
+            .into_iter()
+            .map(|jet| {
+                Jet::new(
+                    [
+                        jet.position[0] * scale,
+                        jet.position[1] * scale,
+                        jet.position[2] * scale,
+                    ],
+                    [
+                        jet.tangent[0] * scale,
+                        jet.tangent[1] * scale,
+                        jet.tangent[2] * scale,
+                    ],
+                )
+            })
+            .collect();
+        let mut curve = Curve::new(jets).expect("a scaled valid curve is a valid curve");
+        curve.set_initial_normal(self.spine.frame(0.0).normal);
+        curve
+    }
+
     /// The law that thickens the node along its own arc length.
     pub fn taper(&self) -> &Scalar {
         &self.taper
+    }
+
+    /// The node's taper **as it is drawn**: the authored law with the radius nudge added.
+    pub fn taper_now(&self) -> Scalar {
+        self.taper.offset(self.nudges.radius)
     }
 
     /// The section the node sweeps.
@@ -112,14 +197,59 @@ impl Node {
         &self.section
     }
 
-    /// Where the node hangs from its parent.
+    /// Where the node hangs from its parent: the numbers the author wrote.
     pub fn attachment(&self) -> Attachment {
         self.attachment
+    }
+
+    /// Where the node hangs **as it is drawn**: the authored attachment with its two nudges added.
+    ///
+    /// # Invariants
+    ///
+    /// The sum is not clamped. An edit that would leave `[0, 1]` is refused by
+    /// [`crate::ops::apply`] and reported, so a nudge that reached here is in range by construction.
+    pub fn effective_attachment(&self) -> Attachment {
+        Attachment {
+            station: self.attachment.station + self.nudges.station,
+            slot: self.attachment.slot + self.nudges.slot,
+            sink: self.attachment.sink,
+        }
+    }
+
+    /// What an author has nudged on this node.
+    pub fn nudges(&self) -> Nudges {
+        self.nudges
+    }
+
+    /// Where the node's origin is moved to, **in the node's own frame**.
+    pub fn shift(&self) -> [f32; 3] {
+        self.shift
+    }
+
+    /// Why this node is a tombstone, or `None` while it is alive.
+    pub fn pruned(&self) -> Option<Prune> {
+        self.pruned
     }
 
     /// The node's children, in the order they were added.
     pub fn children(&self) -> &[Node] {
         &self.children
+    }
+
+    pub(crate) fn nudges_mut(&mut self) -> &mut Nudges {
+        &mut self.nudges
+    }
+
+    pub(crate) fn children_mut(&mut self) -> &mut [Node] {
+        &mut self.children
+    }
+
+    pub(crate) fn shift_mut(&mut self) -> &mut [f32; 3] {
+        &mut self.shift
+    }
+
+    pub(crate) fn prune(&mut self, reason: Prune) {
+        self.pruned = Some(reason);
     }
 
     /// Adds a child and returns its index, which is its last step in a [`crate::handle::Handle`].
