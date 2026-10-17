@@ -757,3 +757,23 @@ been measured against it and left the numbers bit-identical.
 
 Also still true and independent: a door's below-band is emitted with zero area (13 `FaceDegenerate` on the shed) and
 must be skipped when its two elevations coincide.
+
+## The contradiction resolves: those corners are a *part*, and a part sits at its own thickness (2026-10-27)
+
+`0.02` is not a sill and not a slab: it is **the parts' own wall thickness**, which is also the elevation their
+outline sits at (`shed.rs` builds each part's outline with `.with_wall(0.02)` and its nodes carry `thickness`). So the
+quads printed with `y = 0.02` are the **parts'** strips, and a part's base legitimately sits at its own height — it is
+a lintel or a sill, not a building on the ground. **The first mass's quads are the ones at `y = 0`** and those were
+always fine.
+
+**That turns the last defect into one sentence:** a part's outline sits at `0.02` and its `inner_floor_at` answers
+`0`, so the strip spans the part's thickness and is warped by exactly that. The fix is that the strip's corners must
+follow **the outline's own elevation at that station** on both faces — which is what `wall.ground` carries — and the
+reason the round-134 attempt failed is now clear too: it moved the **cut-station** corners, while these corners are
+the **authored** ones (`node.outer_base` / `node.inner_floor`), which come from the outline and are already at the
+part's height. The asymmetry is between the authored corners and the **station** corners, and only the station side
+needs the ground.
+
+**So the edit is the round-134 one after all, and it failed only because a door's below-band then went degenerate:**
+station index 0 at `wall.ground`, *and* skip a band whose two elevations coincide. Both halves are now explained and
+measured; neither is a guess.
