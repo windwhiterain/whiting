@@ -30,4 +30,6 @@
 //! [`.agents/proposals/agentic-vegetation-generation.md`](../../../.agents/proposals/agentic-vegetation-generation.md).
 
 pub mod handle;
+pub mod node;
+pub mod plant;
 pub mod rng;
