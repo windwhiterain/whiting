@@ -1446,6 +1446,41 @@ mountain-side extension that D2 defers (footprint edges as belt sources) is like
 conversation, recorded there so it is not lost. If adopted, a `SPEC/building.md` sibling to
 `SPEC/mountain.md` is the natural home, and this file becomes the record of why.
 
+## What the terrace found, and the overlap defect it uncovered (2026-10-27, five slices in one record)
+
+**The terrace came first as a question, not a picture.** A party wall could be *one wall claimed by two masses* or
+*two leaves whose outer faces meet*, and the second costs nothing if the crate accepts solids that touch.
+`examples/terrace_probe.rs` measured it: two 6 × 8 masses flush at `x = 0`, a 0.15 m wall each — **0 violations**, each
+solid manifold with **0 boundary loops** and volume `32.3520`. So a terrace is **three buildings that touch**, and
+`terrace` (the eighth scene) draws it: three units of `COTTAGE`'s proportions, each with its own gable along the row,
+`locate terrace (500, 600)` answering `mass 2, outer wall over edge 2` and the units' walls covering 15,847 and
+35,505 pixels as **separate elements**.
+
+**The other reading found a defect.** Overlapping the two houses by the leaf (the right one starting at `x = -0.15`,
+so both own the same 0.15 m strip) reported **0 violations** too — a strip whose pixels have two owners, accepted
+silently. `plans_share_area` was `strictly_contains || strictly_contains || edges_cross`, and that pair falls between
+the predicates: no strict containment, and collinear shared edges plus a corner touching an edge are not a proper
+crossing. **A test for "shares area" made of containment and crossing misses overlap whose boundary is collinear** —
+which is exactly the shape two rectangles sharing a wall have.
+
+Three slices closed it, each one keeping the record honest about what it had:
+
+1. **A detector**: a fourth predicate asking whether any **edge's midpoint** of one polygon stands strictly inside the
+   other. It caught the shared leaf, left the flush pair alone (a shared edge's midpoint is *on* the boundary, which
+   `TOUCH_TOLERANCE` excludes), and its own docs said it was a detector rather than a proof — a sliver crossing a
+   corner would still slip.
+2. **The proof**: `crate::clip` computes the **shared area** — ear-clip both outlines into triangles, clip each pair of
+   triangles against each other, sum the areas — and `plans_share_area` asks whether the sum exceeds
+   `TOUCH_TOLERANCE²`. A flush pair answers **exactly zero**. The four predicates and their helpers are **deleted**
+   rather than kept beside the computation, because two answers to one question is the shape of every drift this
+   project has had to fix.
+3. **The regression**: the two leaves still report 0 violations, the shared leaf still reports `UnattachedOverlap`,
+   and all twenty-two building probes and the gallery suite pass unchanged — the evidence that a computed area found
+   no false positive in any document the crate already draws.
+
+The method is worth more than the fix: **the slice's first artifact was a probe about the domain, not a scene**, and
+when the domain answered wrongly it was the probe — not the picture — that said so.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton
