@@ -166,7 +166,8 @@ fn the_cube_with_one_triangle_missing() -> bool {
     loops == 1 && characteristic == 1
 }
 
-/// The twelve side quads of a prism, with neither end closed.
+/// A prism with neither end closed: two boundary rings, a χ of zero, and a volume that is printed
+/// rather than graded.
 fn the_open_prism() -> bool {
     let sides = 12;
     let (positions, corners) = prism_shell(sides, 1.0, 1.0);
