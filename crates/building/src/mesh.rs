@@ -41,8 +41,17 @@ pub enum MassSurface {
         /// Index of the outline edge.
         edge: usize,
     },
-    /// The floor's upper surface: the inner loop's polygon at the outline's own elevations, facing
-    /// up.
+    /// A mass's floor top: the inner loop's polygon at the outline's own elevations, facing up.
+    ///
+    /// # Invariants
+    ///
+    /// **Nothing in the expander produces this face.** A mass is two solids — its wall ring and its
+    /// plate — and the floor a person walks on is the plate's own top, an
+    /// [`Element::Slab`](crate::mesh::Element::Slab) face carrying
+    /// [`SlabSurface::Top`](crate::slab::SlabSurface::Top), not a mass's. `expand_probe` prints this
+    /// variant's facet count beside every mass it reports and it is `0` on all three, measured. The
+    /// variant is therefore vocabulary a hand-built mesh may name and no shipped document does, and
+    /// the wording above is kept because the name is the one the shell's own model used.
     FloorTop,
     /// A surface of the wall's own thickness inside an opening: a jamb, a head or a sill.
     ///
@@ -83,6 +92,19 @@ pub enum MassSurface {
     /// shading group: one group spanning both would be reported as a non-planar surface by
     /// [`validate`](crate::validate) — measured at `departure = slab/2` on the first merged tip —
     /// and would smooth a shading normal across the two.
+    ///
+    /// **The expander does not produce this face, and neither does any shipped document.** What a
+    /// mass really carries is its ring: the three per-edge faces, the reveals cut through them, and
+    /// the base — and a mass's underside is the plate's own bottom, a
+    /// [`SlabSurface::Bottom`](crate::slab::SlabSurface::Bottom) face of an
+    /// [`Element::Slab`](crate::mesh::Element::Slab) solid. `expand_probe` prints this variant's facet
+    /// count beside every mass it reports and it is `0` on all three, measured.
+    ///
+    /// **It survives because one hand-built mesh still names it.** `validate_probe`'s reference cube
+    /// is closed by this face, and naming it here is what keeps that cube a single
+    /// [`SolidId::Mass`] solid — the Euler characteristic, boundary loop count, manifold flag and
+    /// volume every closure control in that probe is read against are readings of one closed box, and
+    /// a cube whose floor belonged to the plate would be two solids and would say something else.
     SlabSoffit,
     /// The wall ring's **base**: the annulus between the outline and the inner loop, at the plate's bottom plane.
     ///

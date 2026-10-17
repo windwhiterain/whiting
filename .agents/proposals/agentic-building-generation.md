@@ -556,7 +556,7 @@ field.sample(plan)`. That keeps the dependency decision true and, just as import
 
 Three invariants, each paid for:
 
-- **One level per mass, at the highest ground under it.** The shell's floor top is a polygon at its
+- **One level per mass, at the highest ground under it.** The plate's top is a polygon at its
   nodes' elevations, so a quad with four different elevations is a **ruled surface and not a plane**, and
   the planarity contract would report it — correctly. A building therefore sits on a **terrace**: the
   highest sampled ground under its outline plus the offset. Measured against the analytic plane `z = 0.3
@@ -574,7 +574,7 @@ Three invariants, each paid for:
 
 The previous handoff guessed that the most-reusing answer was "a wall is a `Mass` with a thin outline and
 its gate is an opening". **Both halves are wrong**, and the reason is the same one that bit the shed's
-canopy: `Mass` is the crate's **room** model — a shell with a floor disc and a slab — so a thin mass
+canopy: `Mass` is the crate's **room** model — a wall ring and the plate it stands on — so a thin mass
 either leaves a cavity (a gate would look into the wall's inside rather than through it) or degenerates
 its floor onto its top (eight facets of no area, measured). A freestanding wall has no inside.
 
@@ -662,7 +662,7 @@ became one point and two zero-area facets, which the degenerate-face check then 
 distinguish from structure). A flat roof expressed as a zero-rise roof would be a vocabulary fighting its
 own geometry.
 
-**It is not a mass either.** A mass is a **room** — a shell with a floor disc and a slab under it — and a
+**It is not a mass either.** A mass is a **room** — its wall ring and its plate, two solids — and a
 plate with a coincident floor is degenerate (measured on the shed's canopy: eight facets of no area).
 
 **So it is the crate's third primitive: `Slab`, a level prism over a plan polygon.** With it the
@@ -1821,11 +1821,11 @@ must measure an Euler characteristic of **0**.
 ### The slice that remains, and the simplification that shrinks it (2026-10-27)
 
 `expand_mass` builds a mass's faces as **three per outline edge** — `OuterWall { edge }`, `WallTop { edge }`,
-`InnerWall { edge }` — plus the two plate surfaces, `FloorTop` and `SlabSoffit`. A void needs the same three around
+`InnerWall { edge }` — plus the two plate surfaces it then called `FloorTop` and `SlabSoffit`, which the volume decision below replaced with a `Slab` solid carrying the plate. A void needs the same three around
 *its* loop, which reads as a second, smaller outline inside the first.
 
 **The simplification: the plate does not need a hole.** A courtyard has a floor — it is paved, and it is the same
-slab the rooms stand on — so `FloorTop` and `SlabSoffit` stay exactly as they are, and `ring_fill` is not needed for
+slab the rooms stand on — so those two stayed exactly as they were, and `ring_fill` was not needed for
 them at all. What a void actually adds is:
 
 - **the wall ring around it**, three faces per void edge: the courtyard-facing wall, the room-facing wall, and the

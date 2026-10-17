@@ -264,12 +264,21 @@ pub enum Violation {
     ///
     /// # Invariants
     ///
-    /// **This is the only coverage a mass can honestly be asked for, and saying why is the
-    /// variant's contract.** A mass is built inward from its outline: the walls, the wall top and
-    /// the floor are one walk, and the one face that must span the whole outline is
-    /// [`MassSurface::SlabSoffit`], whose plan projection is the outline itself whatever the ground
-    /// under it does. So its area against [`Mass::plan_area`](crate::mass::Mass::plan_area) is a
-    /// reading across the two halves of the crate — the author's loop against the expander's disc.
+    /// **It is raised only for a mesh carrying a [`MassSurface::SlabSoffit`] face, and the expander
+    /// emits none.** A mass is two solids now — its wall ring and its plate — so nothing in a shipped
+    /// document reaches this check: `expand_probe` counts `0` such facets on every mass it reports,
+    /// measured, and this name appears in none of the twenty-nine examples' output. The one mesh that
+    /// still carries the face is `validate_probe`'s reference cube, and that probe measures it against
+    /// an empty skeleton, where the `mass(id)` lookup in `check_coverage` stages the check out before
+    /// it can compare anything. Deleting this variant would remove a check whose input no expander
+    /// can build; keeping it costs one match arm and is the reason the staging below has a subject.
+    ///
+    /// The contract it was written under is still why the question is well posed. A mass used to be
+    /// built inward from its outline — the walls, the wall top and the floor one walk — and the one
+    /// face that had to span the whole outline was the soffit, whose plan projection is the outline
+    /// itself whatever the ground under it does. So its area against
+    /// [`Mass::plan_area`](crate::mass::Mass::plan_area) is a reading across the two halves of the
+    /// crate — the author's loop against the expander's disc.
     ///
     /// Two readings that look like coverage checks are not, and neither is this one:
     ///
@@ -1267,13 +1276,19 @@ fn is_doorway(skeleton: &BuildingSkeleton, face: FaceRef, extents: &Extents) -> 
 /// Which of a solid's surfaces a coverage reading is taken over.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Coverage {
-    /// A mass's slab soffit, measured against the mass's outline.
+    /// A mass's slab soffit, measured against the mass's outline. Only a hand-built mesh reaches
+    /// this bucket: no expander emits a [`MassSurface::SlabSoffit`] face, so this arm is empty for
+    /// every document the crate builds.
     Slab(MassId),
     /// A roof's skin, measured against the roof's eave loop.
     Skin(RoofId),
 }
 
-/// Checks that a roof's skin tiles its eave loop and a mass's slab covers its outline.
+/// Checks that a roof's skin tiles its eave loop, and that a mass's slab soffit covers its outline.
+///
+/// The roof half is the one a shipped document reaches; the mass half is staged behind a face no
+/// expander emits — see [`Coverage::Slab`] and [`Violation::MassDoesNotCover`], which carry the
+/// measurement.
 ///
 /// # Invariants
 ///

@@ -22,7 +22,7 @@
 //!
 //! **A solid's faces are wound to point out of it, and the surfaces that have an outside say which
 //! way theirs is.** Each face is laid out from the authored order and then oriented by one uniform
-//! rule — *a mass's floor and a roof plane's skin are wound so that the up component of their normal
+//! rule — *a plate's top and a roof plane's skin are wound so that the up component of their normal
 //! is not negative* — rather than by a rule per surface. Two faces that meet along an authored row
 //! are built from the same points, so they meet; the orientation rule is what makes them meet **head
 //! to head**, and it is why the rows of a roof plane may be written in either direction without the
@@ -44,20 +44,20 @@
 //!
 //! # The two discs
 //!
-//! The floor the mass stands on is the inner loop's polygon at the outline's own elevations, and the
-//! slab's soffit is the whole outline one slab below. They are one slab apart, so they are two
-//! authored planes and two elements — [`MassSurface::FloorTop`] and [`MassSurface::SlabSoffit`].
+//! The plate a mass stands on is a [`Slab`](crate::slab::Slab) solid of its own, and a mass's own faces are its
+//! ring's. Its top is the whole outline at the plate's own top elevation and its bottom the same outline one
+//! plate thickness below, so they are two elements — [`SlabSurface::Top`] and [`SlabSurface::Bottom`].
 //! Naming both `Floor` put them in one planarity group, and the merged validator reported that group
 //! as a non-planar surface at `departure = slab/2`; measured on the first tip where the expander and
 //! the validator ran together.
 //!
 //! # What the underside is not
 //!
-//! **The slab's soffit is a disc over the whole outline, not a ring reaching in to the inner loop.**
+//! **The plate's underside is a disc over the whole outline, not a ring reaching in to the inner loop.**
 //! A ring reaching the inner loop at the floor level puts three faces on the edge where the inner
 //! wall stops, the floor ends and the ring's inner edge runs, and a solid cannot be closed and
 //! outward with three faces on an edge — the rectangle this probe measures came out at loops 1 and
-//! Euler 1 that way, while every one of its faces still met a neighbour. The soffit reaches the
+//! Euler 1 that way, while every one of its faces still met a neighbour. The plate's bottom reaches the
 //! inner loop nowhere: the slab is a slab, `slab` below the outline's own elevations, which is what
 //! [`Mass::slab`](crate::mass::Mass::slab) says it is.
 
@@ -2807,7 +2807,7 @@ fn inside_triangle(point: Vec2, a: Vec2, b: Vec2, c: Vec2) -> bool {
 /// **The loop is clipped in the order it was authored**, so the triangles come out consistent with
 /// one another and with the wall they meet, and a concave outline gets a surface that lies inside it:
 /// an ear is a corner that turns the same way as the loop and whose triangle holds no other corner. A
-/// fan from one node would be shorter, and would leave a concave mass's floor folded over itself —
+/// fan from one node would be shorter, and would leave a concave plate folded over itself —
 /// which no closure check reports.
 ///
 /// **Every ear a clip chooses emits a facet, one with no area included.** Each step consumes exactly
@@ -2831,12 +2831,12 @@ fn inside_triangle(point: Vec2, a: Vec2, b: Vec2, c: Vec2) -> bool {
 ///
 /// A facet with no area carries no normal of its own, so a corner of one that no other facet of
 /// the same element touches is answered by [`normalized3`](crate::math::normalized3)'s fallback of
-/// up: right on the floor, inverted on the soffit, at one vertex of a disc nobody looks at from
+/// up: right on a plate's top, inverted on its bottom, at one vertex of a disc nobody looks at from
 /// below. Nothing measures it, and nothing else about the facet is unusual — it is in its element's
 /// plane like every other, so the planarity check reads it as part of the plane it belongs to.
 ///
-/// `up` is which way the surface faces, and the mass uses it twice over the same loop: the floor
-/// looks up out of the room, the roof's soffit looks down out of the slab.
+/// `up` is which way the surface faces, and the plate uses it twice over the same loop: its top
+/// looks up out of the building, its bottom looks down out of it.
 ///
 /// `O(n^3)` in the loop's nodes over the whole clip, which is what ear clipping costs; a wall ring is
 /// tens of nodes and this is one surface of one mass.
