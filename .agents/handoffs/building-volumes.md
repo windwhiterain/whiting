@@ -712,3 +712,26 @@ at `y = 0.02` and `y = 0.05`. The strip itself was never the defect; it inherite
 bands), and the ground pair alone reopened it too (the bands kept their sill corners). The bands and the strip are the
 same two readers of one station, and the points must be created once, where the station is read — which is
 `StationPoints`, not `CutStation`. That is the correction this round's reading earns.
+
+## Index 0 at the ground: closure kept, warps untouched, degenerate bands appeared (2026-10-27)
+
+The two-line change (a cut station's index 0 at `wall.ground` instead of the hole's sill) was written and measured:
+
+| reading | before | after |
+| --- | --- | --- |
+| `SolidOpen` / `SolidNonManifold` | absent | **still absent** |
+| `SolidNotASphere` | absent | **still absent** |
+| the three warps | 0.2606509, 0.01, 0.025 | **the same three numbers, unchanged** |
+| `FaceDegenerate` | none | **13**, all `area: 0.0` |
+
+**Two new facts, both useful:**
+
+1. **The warps do not come from index 0.** Their departures are bit-identical after the change, so the warped `WallBase`
+   quad is built from corners that this edit does not touch — the authored branch (`outer_base`/`inner_floor`) or the
+   top index, not the cut-station floor. The next measurement is to print the four **ids** of a warped `WallBase` quad
+   beside the ids the bands used at those stations, and see which construction made them.
+2. **A door's below-band is degenerate** when the sill is the ground: its two elevations coincide, and the code emits a
+   zero-area quad instead of skipping it. Whatever lands next must skip `low == high` in the band loop, or every door
+   gains 13 degenerate faces. That is a real defect the change exposed rather than caused.
+
+**The change is reverted** because with the warps untouched it bought nothing and cost 13 degenerate faces.
