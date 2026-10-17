@@ -15,6 +15,7 @@
 //!   geometry is the single most common way a lit scene stops reading as lit.
 
 use definition::{FieldMap, PackedBuilder, PackedLayout, PackedList, Value};
+use shape::loft::Loft;
 
 /// Field a shaded point's normal is written under.
 const NORMAL: &str = "normal";
@@ -81,6 +82,108 @@ impl Shaded {
             .finish()
             .expect("every generator writes whole elements of its own layout")
     }
+}
+
+/// How long an accumulated normal below which it is thrown away.
+///
+/// A vertex whose every incident triangle has no area — the ring at a station the scale law has
+/// collapsed to a point — accumulates nothing, and a normal of zero length is a normal the shader
+/// would read as `NaN` on the one vertex where it is asked about. The floor is far above the
+/// rounding of a sum of a few thousand face normals and far below any real one, so it catches the
+/// genuinely degenerate case and nothing else.
+const NORMAL_FLOOR: f64 = 1.0e-12;
+
+/// One triangle's corner: where it stands, which way it faces, and where on the surface it is.
+///
+/// # Invariants
+///
+/// It is the whole of a shaded point with nothing packed, so a scene that adds a field to its own
+/// point schema — [`crate::building_identity`]'s `authored_id` is the one that exists — reads a
+/// loft through this and packs the corners itself rather than unpacking them again.
+pub struct Corner {
+    /// Where the corner stands, in the space the loft was sampled in.
+    pub position: [f64; 3],
+    /// The face normal of this corner's own solid, accumulated per vertex.
+    pub normal: [f64; 3],
+    /// The `(u, v)` the loft gave this vertex.
+    pub texture: [f64; 2],
+}
+
+/// Returns every triangle of a loft as three corners, in the order the loft wound them.
+///
+/// # Invariants
+///
+/// - **Every triangle is emitted in the order the loft wound it, and every corner carries the
+///   `(u, v)` the loft gave that vertex.** Nothing here reorders, re-winds or re-samples: a scene
+///   is the evidence of what `Sweep::sample` wrote, and a normal computed from the same triangles
+///   is the only normal it can be right about.
+/// - **A normal is accumulated per loft vertex and normalised once**, not per triangle, so a tube
+///   shades as a tube however many rings it is given. A facet normal per corner would make a
+///   thirty two sided cylinder read as a prism, which is the one thing the section's own
+///   arc-length sampling exists to avoid.
+/// - **A vertex that accumulated nothing falls back to the direction away from the shape's own
+///   centre.** That is the ring at a station the scale law collapsed to nothing, where every
+///   incident triangle has no area; it is outward for every solid drawn here and it is better than
+///   the zero-length vector a shader would read as `NaN`.
+pub fn loft_corners(loft: &Loft) -> Vec<Corner> {
+    let positions = loft.positions();
+    let mut accumulated = vec![[0.0f64; 3]; positions.len()];
+    for triangle in loft.triangles() {
+        let [a, b, c] = *triangle;
+        let [first, second, third] = [a, b, c].map(|index| {
+            let point = positions[index as usize];
+            [
+                f64::from(point[0]),
+                f64::from(point[1]),
+                f64::from(point[2]),
+            ]
+        });
+        let face = cross(subtract(second, first), subtract(third, first));
+        for index in [a, b, c] {
+            let slot = &mut accumulated[index as usize];
+            for axis in 0..3 {
+                slot[axis] += face[axis];
+            }
+        }
+    }
+    let centre = {
+        let mut sum = [0.0f64; 3];
+        for point in positions {
+            for axis in 0..3 {
+                sum[axis] += f64::from(point[axis]);
+            }
+        }
+        let count = positions.len().max(1) as f64;
+        [sum[0] / count, sum[1] / count, sum[2] / count]
+    };
+
+    let mut corners = Vec::with_capacity(loft.triangles().len() * 3);
+    for triangle in loft.triangles() {
+        for &index in triangle {
+            let position = positions[index as usize];
+            let parameter = loft.uvs()[index as usize];
+            let mut normal = accumulated[index as usize];
+            let outward = [
+                f64::from(position[0]) - centre[0],
+                f64::from(position[1]) - centre[1],
+                f64::from(position[2]) - centre[2],
+            ];
+            let squared = dot(normal, normal);
+            if squared <= NORMAL_FLOOR * NORMAL_FLOOR {
+                normal = outward;
+            }
+            corners.push(Corner {
+                position: [
+                    f64::from(position[0]),
+                    f64::from(position[1]),
+                    f64::from(position[2]),
+                ],
+                normal: normalized(normal),
+                texture: [f64::from(parameter[0]), f64::from(parameter[1])],
+            });
+        }
+    }
+    corners
 }
 
 /// Builds one shaded point from a position, a normal and a texture coordinate.

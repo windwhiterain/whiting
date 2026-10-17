@@ -47,7 +47,8 @@
 //! # What is not built here
 //!
 //! No normals: [`shape::loft::Loft`] carries none, because a consumer's shading chooses its own, so
-//! the ones in [`points_of`] are accumulated from the triangles the loft wrote. No windings of their
+//! the ones in [`points_of`] are accumulated from the triangles the loft wrote, by
+//! [`crate::geometry::loft_corners`]. No windings of their
 //! own either: every triangle comes out of the loft in the order it was wound, and the frame is
 //! evidence of that order rather than a correction to it.
 //!
@@ -64,7 +65,7 @@ use shape::section::Section;
 use shape::sweep::Sweep;
 
 use crate::attributes::gallery_vertex_inputs;
-use crate::geometry::{Shaded, cross, normalized, plane_facing, subtract};
+use crate::geometry::{Shaded, plane_facing};
 use crate::kit::{
     IMAGE_FIELD, camera_placed, flux_for_irradiance, gallery_custom_schema_with_image,
     gallery_instance_schema, image, instance, instances, light, light_with_radius, mesh,
@@ -80,15 +81,6 @@ use crate::shaders::{
 /// resolution**: they are one call each with one set of numbers, and only the section differs.
 const STATIONS: usize = 28;
 const AROUND: usize = 32;
-
-/// The length of an accumulated normal below which it is thrown away.
-///
-/// A vertex whose every incident triangle has no area — the ring at a station the scale law has
-/// collapsed to a point — accumulates nothing, and a normal of zero length is a normal the shader
-/// would read as `NaN` on the one vertex where it is asked about. The floor is far above the
-/// rounding of a sum of a few thousand face normals and far below any real one, so it catches the
-/// genuinely degenerate case and nothing else.
-const NORMAL_FLOOR: f64 = 1.0e-12;
 
 /// The checker the tube is painted with, in texels a side.
 ///
@@ -578,77 +570,13 @@ fn lobes() -> Vec<Vec2> {
 
 /// The loft written as the triangle list a scene document draws: one shaded point per corner.
 ///
-/// # Invariants
-///
-/// - **Every triangle is emitted in the order the loft wound it**, and every corner carries the
-///   `(u, v)` the loft gave that vertex. Nothing here reorders, re-winds or re-samples: the frame
-///   is the evidence of what `Sweep::sample` wrote, and a normal computed from the same triangles
-///   is the only normal this scene knows how to be right about.
-/// - **A normal is accumulated per loft vertex and normalised once**, not per triangle, so a tube
-///   shades as a tube however many rings it is given. A facet normal per corner would make a
-///   thirty two sided cylinder read as a prism, which is the one thing the section's own arc-length
-///   sampling exists to avoid.
-/// - **A vertex that accumulated nothing falls back to the direction away from the shape's own
-///   centre.** That is the ring at a station the scale law collapsed to nothing, where every
-///   incident triangle has no area; it is outward for every solid here and it is better than the
-///   zero-length vector a shader would read as `NaN`.
+/// The corners themselves are [`crate::geometry::loft_corners`]'s, so the winding, the `(u, v)`
+/// and the per vertex normals are that function's rules and not a second copy of them.
 fn points_of(loft: &Loft) -> PackedList {
-    let positions = loft.positions();
-    let mut accumulated = vec![[0.0f64; 3]; positions.len()];
-    for triangle in loft.triangles() {
-        let [a, b, c] = *triangle;
-        let [first, second, third] = [a, b, c].map(|index| {
-            let point = positions[index as usize];
-            [
-                f64::from(point[0]),
-                f64::from(point[1]),
-                f64::from(point[2]),
-            ]
-        });
-        let face = cross(subtract(second, first), subtract(third, first));
-        for index in [a, b, c] {
-            let slot = &mut accumulated[index as usize];
-            for axis in 0..3 {
-                slot[axis] += face[axis];
-            }
-        }
-    }
-    let centre = {
-        let mut sum = [0.0f64; 3];
-        for point in positions {
-            for axis in 0..3 {
-                sum[axis] += f64::from(point[axis]);
-            }
-        }
-        let count = positions.len().max(1) as f64;
-        [sum[0] / count, sum[1] / count, sum[2] / count]
-    };
-
-    let mut points = Shaded::with_capacity(loft.triangles().len() * 3);
-    for triangle in loft.triangles() {
-        for &index in triangle {
-            let position = positions[index as usize];
-            let parameter = loft.uvs()[index as usize];
-            let mut normal = accumulated[index as usize];
-            let outward = [
-                f64::from(position[0]) - centre[0],
-                f64::from(position[1]) - centre[1],
-                f64::from(position[2]) - centre[2],
-            ];
-            let squared = normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2];
-            if squared <= NORMAL_FLOOR * NORMAL_FLOOR {
-                normal = outward;
-            }
-            points.push(
-                [
-                    f64::from(position[0]),
-                    f64::from(position[1]),
-                    f64::from(position[2]),
-                ],
-                normalized(normal),
-                [f64::from(parameter[0]), f64::from(parameter[1])],
-            );
-        }
+    let corners = crate::geometry::loft_corners(loft);
+    let mut points = Shaded::with_capacity(corners.len());
+    for corner in corners {
+        points.push(corner.position, corner.normal, corner.texture);
     }
     points.finish()
 }
