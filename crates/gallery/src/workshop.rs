@@ -23,15 +23,18 @@ use building::derive::{self, RoofStyle, Starter, floor_slab};
 use building::grid::{FaceRef, Rhythm};
 use building::openings::{Inset, Opening};
 use building::ops;
-use building::{Building, MassId};
+use building::parts::{Pin, Placement, Template};
+use building::{Building, Mass, MassId, PlanNode};
 
 use crate::building_mesh::points_where;
 use crate::geometry::heightfield;
+use crate::instancing::{standing, template_points};
 use crate::kit::{
     camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
     post_processes, screen_material, shaded_point_schema, surface,
 };
 use crate::shaders::{mesh_shaders, post_shader};
+use building::expand::part_frame;
 
 /// The workshop: two storeys, a shallow gable, and enough wall for three bays a storey.
 const STARTER: Starter = Starter {
@@ -57,8 +60,11 @@ const FLOOR_THICK: f32 = 0.22;
 /// The wall the openings are cut into: the gable end, which the camera looks at.
 const FRONT_EDGE: usize = 2;
 
-/// How many bays across and how many storeys, which is what makes the openings bay-mounted per storey.
+/// How tall a shutter is, and so how tall the windows it fills are.\nconst SHUTTER_HEIGHT: f32 = 0.85;\n\n/// How many bays across and how many storeys, which is what makes the openings bay-mounted per storey.
 const BAYS: usize = 3;
+
+/// How tall a shutter is, and so how tall every window it fills.
+const SHUTTER_HEIGHT: f32 = 0.85;
 const STOREYS: usize = 2;
 
 /// Where the sun stands: front-left and high, so the gable end is the lit face and the openings read as
@@ -68,13 +74,40 @@ const SUN: [f64; 3] = [-15.0, 30.0, 22.0];
 /// How much irradiance the ground receives from that sun, in the scene's own units.
 const SUN_IRRADIANCE: f64 = 3.2;
 
-/// Builds the workshop's document: the derived shell, the first-floor plate, the rhythm, and the openings.
+/// Returns a shutter: a panel `width` across, `height` tall, `thickness` through, standing at its own
+/// origin.
 ///
 /// # Invariants
 ///
-/// **The doorway is the only opening without a leaf**, and that is the scene's argument: an open doorway is
-/// the one place a viewer can see into the building, and what is inside it is the plate this slice derived.
-fn workshop_document() -> Building {
+/// **It is the one template the scene instances**, so its plan starts at the origin and runs `+x` along the
+/// wall and `+z` through it: a placement's frame puts that origin on the wall's outer face at the hole's sill,
+/// and the panel then stands in the hole itself.
+fn shutter(width: f32, height: f32, thickness: f32) -> Template {
+    let slab = 0.02;
+    let outline = [
+        [0.0, 0.0],
+        [width, 0.0],
+        [width, thickness],
+        [0.0, thickness],
+    ]
+    .into_iter()
+    .map(|corner| PlanNode::new(corner, slab))
+    .collect();
+    Template::new(
+        "shutter",
+        vec![Mass::new(outline, height).with_wall(0.01).with_slab(slab)],
+        Vec::new(),
+    )
+}
+
+/// Builds the workshop's document, and returns it with the template its shutters are drawn from.
+///
+/// # Invariants
+///
+/// **The doorway is the only opening without a shutter**, and that is the scene's argument: an open doorway
+/// is the one place a viewer can see into the building, and what is inside it is the plate the floor slice
+/// derived.
+fn workshop_document() -> (Building, usize) {
     let mut skeleton = derive::starter(&STARTER).skeleton;
     let mass = MassId(0);
     let front = FaceRef::new(mass, FRONT_EDGE);
@@ -104,7 +137,12 @@ fn workshop_document() -> Building {
     for column in [0, 2] {
         ops::add_opening(
             &mut skeleton,
-            Opening::new(front, 0, column, Inset::new(0.34, 0.34, 1.15, 0.6)),
+            Opening::new(
+                front,
+                0,
+                column,
+                Inset::new(0.34, 0.34, 1.15, SHUTTER_HEIGHT),
+            ),
         )
         .expect("the side bays of the ground storey are in the grid");
     }
@@ -112,17 +150,40 @@ fn workshop_document() -> Building {
     for column in 0..BAYS {
         ops::add_opening(
             &mut skeleton,
-            Opening::new(front, 1, column, Inset::new(0.34, 0.34, 0.95, 0.85)),
+            Opening::new(
+                front,
+                1,
+                column,
+                Inset::new(0.34, 0.34, 0.95, SHUTTER_HEIGHT),
+            ),
         )
         .expect("every bay of the first storey is in the grid");
     }
 
-    Building::new(skeleton)
+    // One shutter per window, and **one template behind all five**: the scene draws it once and stands it
+    // five times, which is what this slice exists to show. Each placement's pin is the window's own inset and
+    // sill, so a shutter fills the hole it is hung in.
+    let template = ops::add_template(&mut skeleton, shutter(1.0, SHUTTER_HEIGHT, 0.05));
+    for (row, column, sill) in [
+        (0usize, 0usize, 1.15f32),
+        (0, 2, 1.15),
+        (1, 0, 0.95),
+        (1, 1, 0.95),
+        (1, 2, 0.95),
+    ] {
+        ops::place_part(
+            &mut skeleton,
+            Placement::new(template, front, row, column, Pin::new(0.34, sill)),
+        )
+        .expect("every window's bay is in the grid");
+    }
+
+    (Building::new(skeleton), template)
 }
 
 /// Builds the workshop scene.
 pub fn workshop() -> Value {
-    let building = workshop_document();
+    let (building, shutters) = workshop_document();
     let built = building
         .build()
         .expect("the workshop expands: its outline is a quad, its grid tiles every face, and its plate is closed");
@@ -143,6 +204,27 @@ pub fn workshop() -> Value {
     let floors = points_where(&built, |element| {
         matches!(element, building::Element::Slab(_, _))
     });
+    // **The shutters are not read off the baked mesh.** One template, five placements: the panel is expanded
+    // once in its own frame and stood five times by an instance transform, so the frame a baked part would
+    // have cost five times over costs one mesh and five rows.
+    let skeleton = &building.skeleton;
+    let panel = template_points(
+        skeleton
+            .parts
+            .template(shutters)
+            .expect("the shutter template is in the document"),
+    )
+    .expect("the shutter expands on its own");
+    let mut hung: Vec<([f64; 3], [f64; 3], [f64; 3])> = Vec::new();
+    for (index, placement) in skeleton.parts.placements().iter().enumerate() {
+        if placement.template != shutters {
+            continue;
+        }
+        let frame = part_frame(skeleton, index)
+            .expect("the wall offsets")
+            .expect("every shutter's slot is in the grid");
+        hung.push(standing(&frame));
+    }
 
     // Rendered wall, sheet metal, a boarded first floor and dry earth. The floor is its own material because
     // it is the building's one interior surface a viewer can see.
@@ -164,7 +246,7 @@ pub fn workshop() -> Value {
     }
 
     let placed = |stage: &str| {
-        [
+        let mut rows = [
             ("shells", "plaster"),
             ("roofs", "metal"),
             ("floors", "board"),
@@ -181,7 +263,24 @@ pub fn workshop() -> Value {
                 &format!("{material}-{stage}"),
             )
         })
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+        // **Five rows for five shutters, over one mesh.** Each row is the transform that stands the panel
+        // where a placement puts it, which is the whole of what an instance is.
+        rows.extend(
+            hung.iter()
+                .enumerate()
+                .map(|(index, (translation, rotation, scale))| {
+                    instance(
+                        &format!("shutter-{index}-{stage}"),
+                        "shutters",
+                        *translation,
+                        *rotation,
+                        *scale,
+                        &format!("board-{stage}"),
+                    )
+                }),
+        );
+        rows
     };
 
     Value::structure([
@@ -222,6 +321,7 @@ pub fn workshop() -> Value {
                 mesh("shells", "Triangles", shaded_point_schema(), shells),
                 mesh("roofs", "Triangles", shaded_point_schema(), roofs),
                 mesh("floors", "Triangles", shaded_point_schema(), floors),
+                mesh("shutters", "Triangles", shaded_point_schema(), panel),
                 mesh(
                     "ground",
                     "Triangles",

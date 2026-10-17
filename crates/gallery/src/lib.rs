@@ -67,6 +67,8 @@ pub mod building_mesh;
 pub mod built;
 pub mod geometry;
 pub mod identity;
+/// Standing one template's mesh in many places.
+pub mod instancing;
 pub mod kit;
 pub mod land;
 pub mod locate;
