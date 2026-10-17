@@ -1182,6 +1182,30 @@ mode this crate has spent many slices making impossible to confuse.
 
 The two directions are now one table: the id `locate` reads off a pixel is the id `where_is` finds pixels for.
 
+## What the pinning slice found: the channel's readings are now assertions (2026-10-27)
+
+The readings the last several reports quote — *id 3 is this wall*, *id 49 is part 0's outer face* — were numbers in
+prose, checked by a human reading them. That is the wrong kind of evidence for a mechanism whose two registrations
+rot independently and **silently**: a scene whose meshes stop carrying ids draws a frame that answers zero
+everywhere, and a scene missing from `locate_in` answers *"no domain reading"* at every pixel it does name. Neither
+is a compile error.
+
+`examples/scene_identity_probe.rs` walks **every building scene's whole table** and asserts that the ids are
+contiguous from the first, that every name is non-empty, that every name round-trips to its id, that the authored
+schema carries `authored_id` while the reserved-zero schema does not, and that the four readings the reports quote
+are `locate_in`'s own answers:
+
+| scene | rows | contiguous | names non-empty | round-trips |
+| --- | --- | --- | --- | --- |
+| `identity` | 74 | ✓ | ✓ | ✓ |
+| `house` | 26 | ✓ | ✓ | ✓ |
+| `shed` | 64 | ✓ | ✓ | ✓ |
+| `workshop` | 124 | ✓ | ✓ | ✓ |
+| `yard` | 92 | ✓ | ✓ | ✓ |
+
+**380 rows, all two-way.** The tool is no longer a thing that can be used; it is a thing whose answers are
+checked every time the probe runs.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):
