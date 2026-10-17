@@ -166,6 +166,84 @@ pub fn sculpted(seed: u64) -> Sculpted {
     }
 }
 
+/// A tuft of grass: a two-centimetre crown and five to eight blades that leave it and turn up and out.
+///
+/// # Invariants
+///
+/// **A tuft has no leaves and no fields**: a grass blade is two millimetres wide and a hundred and fifty long, which
+/// a tapered solid of that radius already is, so a leaf field would be one leaf per stem saying what the stem says.
+/// The blades are the wood.
+pub fn tuft(seed: u64) -> Species {
+    Species {
+        plant: grow(&tuft_rule(), seed),
+        templates: Vec::new(),
+        fields: Vec::new(),
+    }
+}
+
+/// The tuft's rule: one generation of blades from a crown, and no field.
+pub fn tuft_rule() -> Rule {
+    Rule {
+        trunk: crown,
+        generations: vec![Generation {
+            count: (5, 8),
+            station: (0.0, 0.10),
+            slot: (0.0, 0.9),
+            jitter: (0.02, 0.10),
+            sink: 0.0004,
+            shape: grass_blade,
+        }],
+        fields: Vec::new(),
+    }
+}
+
+/// The crown a tuft's blades leave: two centimetres of stem, thicker than anything above it.
+fn crown() -> (Curve, Scalar) {
+    (
+        spine(&[
+            ([0.0, 0.0, 0.0], [0.0, 0.02, 0.0]),
+            ([0.0, 0.02, 0.0], [0.0, 0.01, 0.0]),
+        ]),
+        taper(&[(0.0, 0.0035), (1.0, 0.0030)]),
+    )
+}
+
+/// One grass blade: a long thin arc that leaves the crown outward, turns, and droops.
+///
+/// # Invariants
+///
+/// The blade's length is `parent_radius × 45` (about **0.16 m** for the crown's 3.5 mm) times a factor between 0.75
+/// and 1.25, its departure leaves the crown's tangent by 0.15 to 0.75 of a radian, and its taper is a fraction of
+/// the crown's radius — so every blade of a tuft is sized by the crown and not by its own length. The seed draws the
+/// departure, then the length, then the droop, in that order.
+fn grass_blade(rng: &mut Rng, joint: &Joint) -> (Curve, Scalar) {
+    let departure = 0.15 + 0.60 * rng.unit();
+    let length = joint.parent_radius.max(1.0e-4) * 45.0 * (0.75 + 0.50 * rng.unit());
+    let droop = 0.90 + 0.50 * rng.unit();
+    let middle = departure + droop * 0.4;
+    let end = departure + droop;
+    let half = length * 0.5;
+    let first = [half * departure.sin(), half * departure.cos(), 0.0];
+    let second = [
+        first[0] + half * middle.sin(),
+        first[1] + half * middle.cos(),
+        0.0,
+    ];
+    let tangent = |angle: f32| [angle.sin() * length * 0.6, angle.cos() * length * 0.6, 0.0];
+    let radius = joint.parent_radius.max(1.0e-4);
+    (
+        spine(&[
+            ([0.0, 0.0, 0.0], tangent(departure)),
+            (first, tangent(middle)),
+            (second, tangent(end)),
+        ]),
+        taper(&[
+            (0.0, radius * 0.50),
+            (0.5, radius * 0.28),
+            (1.0, radius * 0.08),
+        ]),
+    )
+}
 /// The bamboo's rule: fixed counts and bands, shapes that draw nothing, so its seed cannot change the tree.
 pub fn bamboo_rule() -> Rule {
     Rule {

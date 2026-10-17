@@ -96,6 +96,10 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 
 ## Traps
 
+- **The wood is one mesh per scene, not per planting.** A mesh per plant is a pass per plant (the emitter groups by
+  mesh) and the ids live in the corners, so merging the geometry does not merge the names. A planting with **no**
+  template is legal — a tuft's blades are its wood — and the builder's lade_of is an Option because of it.
+
 - **A picture's hash is a pixel-scale instrument.** Rewriting the field's normalisation from *rotate then normalise*
   to *normalise then rotate* — the same law to a rounding — changed the windy frame's hash (`1A3ACC93…` →
   `D7488DF2…`) while every probe stayed green. Use a probe for meaning and a hash for *"did anything move at all"*.
@@ -193,7 +197,7 @@ cargo run -p whiting-vegetation --example plant_probe      # 8
 cargo run -p whiting-vegetation --example leaf_probe       # 8
 cargo run -p whiting-vegetation --example edit_probe       # 8, the hand
 cargo run -p whiting-vegetation --example select_probe     # 8, the brush
-cargo run -p whiting-vegetation --example species_probe    # 8, the generator
+cargo run -p whiting-vegetation --example species_probe    # 10, the generator and the tuft
 cargo run -p whiting-vegetation --example field_probe      # 8, the fields
 cargo run -p whiting-vegetation --example envelope_probe   # 6, the envelope, the trim and the report
 cargo run -p whiting-vegetation --example decorator_probe  # 6, the decorators

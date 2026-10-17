@@ -1220,7 +1220,7 @@ species, a `Placement` and its seats; a `Framing` is the camera, the frame and t
 | invariant | reading |
 | --- | --- |
 | one builder, five scenes | `plant_scene(plantings, framing, name)`; the four single-plant scenes pass one planting and `STILL`, and their documents are byte-identical (three hashes unchanged: `84510A4D…`, `708EF240…`, `A56BBE62…`) |
-| a plant is not instanced, its leaves are | six plantings, **two** blade meshes (one per distinct template) and **33** passes: the leaves of all six draw in two instanced passes per stage, not six |
+| a plant is not instanced, its leaves are | six plantings and **one** blade mesh — the culms and the shrubs share one template, which the builder dedupes by equality — so the leaves of all six draw in **one** instanced pass per stage, not six. **Corrected in the ground-cover round**: the first version of this row said *two* blade meshes, which was a guess about the templates rather than a reading |
 | a pixel names the planting and the node | the id is `base + node` with `PLANTING_STRIDE` = **4096**: `--locate 752,300` answers *id 4097 → planting 1, trunk*, and `--locate 505,700` answers *id 1 → planting 0, trunk* |
 | a planting is a frame | a plant stands where its `Placement` puts it and turns about the world's `y`; its wood is baked in the world with its ids carried, so *which plant* and *which node* are one number |
 
@@ -1267,6 +1267,29 @@ it. That is the composition claim of the three tiers, measured end to end instea
    plant's own walk. A scene whose tree differs from the reference tree by even one node needs its own table, which is
    the real reason `handle_of` is a function per scene rather than one function with a name argument.
 
+
+**The ground cover.** P3's second item is a meadow under the grove: `derive::tuft(seed)` is a crown with five to
+eight blades and **no leaves at all**, because a grass blade is two millimetres wide and a hundred and fifty long,
+which a tapered solid of that radius already is. Planting a hundred and forty of them exposed the builder's own limit
+and fixed it: the wood had been **one mesh per planting**, and is now **one mesh per scene**.
+
+| invariant | reading |
+| --- | --- |
+| one wood mesh, however many plants | the grove's document goes from **6** wood meshes to **1**, its passes from **33** to **13**, and **its pixels do not move** (`678CB0EB…` both ways) |
+| a tuft is a plant | `tuft(7)` is **6** nodes — a crown and **5** blades — **6** solids all closed at χ = 2, the tallest point **0.134772 m**, and **0** leaf groups |
+| a tuft's blades are its rule's | over twelve seeds the blade counts span **5..=8** and the longest blade per tuft ranges **0.168757..0.200764 m** |
+| the meadow costs nothing | **146** plantings, **3** meshes, **461** placements per stage and **13** passes — the same pass count as the grove without grass |
+| the picture | `grove` now draws the culms and shrubs standing in a field of fine tufts, `534A4835…` |
+
+**Two decisions the ground cover forced:**
+
+1. **The wood is one mesh per scene, not per planting.** A mesh per plant is a pass per plant, because the emitter
+   groups by shader, mesh and images; and the ids are in the corners, so merging the geometry does not merge the
+   names — a pixel still answers *which planting and which node*. The proof is the hash that did not move while the
+   passes fell by twenty.
+2. **A planting may have no template.** A tuft draws nothing from a blade mesh because its blades are its wood; the
+   builder's `blade_of` is therefore an `Option`, and the one place that unwraps it is the leaves loop, which is empty
+   for a tuft by construction.
 
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs

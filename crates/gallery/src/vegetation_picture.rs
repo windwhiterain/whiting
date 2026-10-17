@@ -55,9 +55,7 @@ use crate::kit::{
     mesh_material, offset_by, post_processes, screen_material, surface,
 };
 use crate::shaders::post_shader;
-use crate::vegetation_mesh::{
-    LEAF_BASE_ID, node_ids, node_ids_from, template_points, wood_points_at,
-};
+use crate::vegetation_mesh::{LEAF_BASE_ID, node_ids, node_ids_from, template_points};
 
 /// The name the still scene is built and rendered under.
 pub const SCENE: &str = "bamboo";
@@ -365,6 +363,38 @@ fn planted_at(position: [f32; 3], turn: f32) -> Placement {
     }
 }
 
+/// The ground cover's grid: how many tufts across, and how many deep.
+const GROVE_TUFTS: (usize, usize) = (14, 10);
+
+/// How far the ground cover reaches, in metres, across and deep: wider than the plantings and inside the floor.
+const GROVE_TUFT_SPAN: (f32, f32) = (3.4, 2.4);
+
+/// The ground cover: a jittered grid of tufts, each from its own seed, so no two cells are the same plant.
+///
+/// # Invariants
+///
+/// **The scatter is drawn from the cell's own index**, so the meadow is the same meadow every time it is built and a
+/// picture of it can be compared with the next one: a hash of the index seeds the jitter, the tuft's own seed and the
+/// turn, in that order.
+fn grove_tufts() -> Vec<Planting> {
+    let mut plantings = Vec::new();
+    for column in 0..GROVE_TUFTS.0 {
+        for row in 0..GROVE_TUFTS.1 {
+            let index = column * GROVE_TUFTS.1 + row;
+            let mut rng = vegetation::rng::Rng::new(7_000 + index as u64);
+            let across = GROVE_TUFT_SPAN.0 / GROVE_TUFTS.0 as f32;
+            let deep = GROVE_TUFT_SPAN.1 / GROVE_TUFTS.1 as f32;
+            let x = -0.5 * GROVE_TUFT_SPAN.0 + across * (column as f32 + 0.2 + 0.6 * rng.unit());
+            let z = -0.5 * GROVE_TUFT_SPAN.1 + deep * (row as f32 + 0.2 + 0.6 * rng.unit());
+            let turn = std::f32::consts::TAU * rng.unit();
+            plantings.push(
+                Planting::new(vegetation::derive::tuft(9_000 + index as u64))
+                    .at(planted_at([x, 0.0, z], turn)),
+            );
+        }
+    }
+    plantings
+}
 /// The six plantings a grove is, in the order their ids are numbered: the culms first, then the undergrowth.
 fn grove_plantings() -> Vec<Planting> {
     let mut plantings = Vec::new();
@@ -375,6 +405,8 @@ fn grove_plantings() -> Vec<Planting> {
         plantings
             .push(Planting::new(vegetation::derive::shrub(*seed)).at(planted_at(*position, *turn)));
     }
+    // The ground cover last, so the ids an author names stay the small ones.
+    plantings.extend(grove_tufts());
     plantings
 }
 
@@ -483,9 +515,14 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
 
     // The blade meshes: one per distinct template, so two plantings of one species share one mesh.
     let mut blades: Vec<&LeafTemplate> = Vec::new();
-    let mut blade_of: Vec<usize> = Vec::new();
+    let mut blade_of: Vec<Option<usize>> = Vec::new();
     for planting in plantings {
-        let template = &planting.species.templates[0];
+        // **A planting may have no template at all**: a tuft of grass has no leaves, because its blades are its
+        // wood. It draws nothing from a blade mesh, and the leaf loops below are empty for it.
+        let Some(template) = planting.species.templates.first() else {
+            blade_of.push(None);
+            continue;
+        };
         let index = match blades.iter().position(|held| *held == template) {
             Some(index) => index,
             None => {
@@ -493,7 +530,7 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
                 blades.len() - 1
             }
         };
-        blade_of.push(index);
+        blade_of.push(Some(index));
     }
     let one_planting = plantings.len() == 1;
     let tagged = |index: usize, label: &str| -> String {
@@ -504,10 +541,11 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
         }
     };
     let blade_label = |index: usize| -> String {
+        let which = blade_of[index].expect("a planting with leaves has a template");
         if blades.len() == 1 {
             "leaf".to_owned()
         } else {
-            format!("leaf-{}", blade_of[index])
+            format!("leaf-{which}")
         }
     };
 
@@ -637,11 +675,10 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
         // The wood is baked in world coordinates and the floor is a plane, so neither needs a transform of its
         // own. The blade has none — every leaf places it, and a placement at the origin would be a leaf growing
         // out of the ground.
-        let mut placements = Vec::new();
-        for (index, _) in drawn.iter().enumerate() {
-            placements.push(fixed(&tagged(index, "culm"), format!("culm-{stage}")));
-        }
-        placements.push(fixed("floor", format!("floor-{stage}")));
+        let mut placements = vec![
+            fixed("culm", format!("culm-{stage}")),
+            fixed("floor", format!("floor-{stage}")),
+        ];
         for (index, planting) in drawn.iter().enumerate() {
             for (group, leaves) in planting.expansion.leaves.iter().enumerate() {
                 let material = if stage == "shade" {
@@ -739,15 +776,21 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
         // The one image this scene writes beside the frame: which node each pixel shows.
         ("outputs".to_owned(), outputs_field()),
         ("meshes".to_owned(), {
-            let mut meshes = Vec::new();
-            for (index, planting) in drawn.iter().enumerate() {
-                meshes.push(mesh(
-                    &tagged(index, "culm"),
-                    "Triangles",
-                    point.clone(),
-                    wood_points_at(&planting.expansion.wood, &planting.ids, &planting.placement),
-                ));
-            }
+            // **One wood mesh for the whole scene.** A mesh per plant would be a pass per plant, because the emitter
+            // groups by mesh; the ids are in the corners, so merging the geometry does not merge the names — a pixel
+            // still answers which planting and which node.
+            let mut meshes = vec![mesh(
+                "culm",
+                "Triangles",
+                point.clone(),
+                crate::vegetation_mesh::wood_points_of(drawn.iter().map(|planting| {
+                    (
+                        planting.expansion.wood.as_slice(),
+                        &planting.ids,
+                        &planting.placement,
+                    )
+                })),
+            )];
             for (index, template) in blades.iter().enumerate() {
                 let label = if blades.len() == 1 {
                     "leaf".to_owned()

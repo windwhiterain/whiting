@@ -112,17 +112,37 @@ pub fn wood_points_at(
     ids: &BTreeMap<Handle, u32>,
     placement: &Placement,
 ) -> PackedList {
-    packed(
-        wood.iter().flat_map(|solid| {
+    wood_points_of(std::iter::once((wood, ids, placement)))
+}
+
+/// Returns every planting's wood as **one** mesh, each corner still carrying the id its own planting numbered.
+///
+/// # Invariants
+///
+/// - **One mesh for a whole scene, however many plants it holds.** A grove of six plants is six woods and a meadow is
+///   hundreds; a mesh per plant would be a pass per plant, because the emitter groups by shader, mesh and images. The
+///   ids are in the corners, so merging the geometry does not merge the names: a pixel still answers *which plant and
+///   which node*.
+/// - **The order of the plantings is the order of the corners**, so a mesh is reproducible from its plantings.
+pub fn wood_points_of<'a>(
+    plantings: impl IntoIterator<Item = (&'a [Wood], &'a BTreeMap<Handle, u32>, &'a Placement)>,
+) -> PackedList {
+    let mut corners = Vec::new();
+    let mut triangles = 0;
+    for (wood, ids, placement) in plantings {
+        for solid in wood {
             let id = *ids
                 .get(&solid.handle)
                 .expect("every solid's handle is one the plant's own walk yielded");
-            loft_corners_at(&solid.loft, placement)
-                .into_iter()
-                .map(move |corner| (corner, id))
-        }),
-        wood.iter().map(|solid| solid.loft.triangles().len()).sum(),
-    )
+            corners.extend(
+                loft_corners_at(&solid.loft, placement)
+                    .into_iter()
+                    .map(|corner| (corner, id)),
+            );
+            triangles += solid.loft.triangles().len();
+        }
+    }
+    packed(corners.into_iter(), triangles)
 }
 
 /// Returns a blade's own mesh, in the blade's own frame: what every leaf of a field instances.

@@ -11,7 +11,7 @@
 //! ```
 
 use shape::mesh::{boundary_loops, euler_characteristic, signed_volume};
-use whiting_vegetation::derive::{Species, bamboo, bamboo_rule, shrub};
+use whiting_vegetation::derive::{Species, bamboo, bamboo_rule, shrub, tuft};
 use whiting_vegetation::expand::{Detail, expand};
 use whiting_vegetation::handle::Handle;
 use whiting_vegetation::ops::{Change, Edit, Property, apply};
@@ -48,6 +48,8 @@ fn main() {
         "a graft off the rule is refused",
         a_graft_off_the_rule_is_refused(),
     ));
+    checks.push(("a tuft is a plant", a_tuft_is_a_plant()));
+    checks.push(("a tuft grows its own blades", a_tuft_grows_its_own_blades()));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -421,4 +423,71 @@ fn a_graft_off_the_rule_is_refused() -> bool {
         "  the control is the count: a refusal that had added a node would pass a check that only read the error"
     );
     deep_refused && range_refused && after == before
+}
+
+/// A tuft of grass is a plant like any other: a crown, its blades, and no leaves at all.
+///
+/// # Invariants
+///
+/// **A tuft's nodes are its blades**, so its node count is one more than its blade count, every solid it draws is a
+/// closed solid, and it carries no leaf group: a leaf field on a grass blade would be one leaf per stem saying what
+/// the stem already says.
+fn a_tuft_is_a_plant() -> bool {
+    let tuft = tuft(7);
+    let nodes = tuft.plant.live().count();
+    let blades = nodes.saturating_sub(1);
+    let expansion = expand(&tuft.plant, Detail::DEFAULT, &tuft.fields);
+    let mut closed = 0;
+    let mut tallest = 0.0f32;
+    for solid in &expansion.wood {
+        let surface = solid.loft.view();
+        if boundary_loops(surface) == 0
+            && shape::mesh::is_manifold(surface)
+            && euler_characteristic(surface) == 2
+            && signed_volume(surface) > 0.0
+        {
+            closed += 1;
+        }
+        for point in solid.loft.positions() {
+            tallest = tallest.max(point[1]);
+        }
+    }
+    println!("\n# a tuft");
+    println!(
+        "  {nodes} nodes: a crown and {blades} blades · {} solids, {closed} closed · the tallest point {tallest:.6} m · {} leaf groups",
+        expansion.wood.len(),
+        expansion.leaves.len()
+    );
+    println!(
+        "  the control is the leaf count: a tuft has no leaves because its blades are its wood"
+    );
+    blades >= 5 && blades <= 8 && closed == nodes && expansion.leaves.is_empty() && tallest > 0.05
+}
+
+/// A tuft's blade count and lengths are its rule's, and the seed is what moves them.
+fn a_tuft_grows_its_own_blades() -> bool {
+    let mut counts = Vec::new();
+    let mut lengths = Vec::new();
+    for seed in 0..12u64 {
+        let tuft = tuft(seed);
+        let blades = tuft.plant.live().count().saturating_sub(1);
+        counts.push(blades);
+        let longest = (1..=blades as u32)
+            .filter_map(|index| tuft.plant.spine(&Handle::root().child(index)).ok())
+            .map(|spine| spine.length())
+            .fold(0.0f32, f32::max);
+        lengths.push(longest);
+    }
+    let lowest = counts.iter().copied().min().unwrap_or(0);
+    let highest = counts.iter().copied().max().unwrap_or(0);
+    let shortest = lengths.iter().copied().fold(f32::MAX, f32::min);
+    let longest = lengths.iter().copied().fold(0.0f32, f32::max);
+    println!("\n# twelve tufts");
+    println!(
+        "  blade counts {lowest}..={highest} · the longest blade of each tuft {shortest:.6}..{longest:.6} m"
+    );
+    println!(
+        "  the control is the rule's band: a count outside 5..=8 would be a seed overruling the rule"
+    );
+    lowest >= 5 && highest <= 8 && highest > lowest && longest > shortest
 }
