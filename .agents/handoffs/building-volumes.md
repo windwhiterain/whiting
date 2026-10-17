@@ -585,3 +585,23 @@ elevations (0.02 and 0.05 against 0) are three statements about the same two lin
 **The next session's whole job is those four lines plus the strip's two lines:** build the strip from points at the
 base, make the walls' bottom bands read the same points, and the three scenes stop being warped. Nothing else in the
 volume model is open.
+
+## Proved by experiment: the station needs two points, not one (2026-10-27)
+
+The four-line attempt — creating the station's `soffit`/`floor` at the **ground** elevation instead of the band's first
+corner — was written, built and measured:
+
+```text
+SolidOpen { Mass, loops: 2 }   SolidNonManifold { Mass }   euler: -8   (and the warps got worse: 0.26)
+```
+
+**The mass reopened.** So the sill points those two fields hold are *read by the reveals*, and moving them to the
+ground takes the reveals with them. That is the "one station, two readers" conclusion, now demonstrated rather than
+argued: **one point cannot serve both**, and the four-line change is therefore not enough.
+
+**The fix needs two point pairs on `CutStation`:** the sill points it already holds (the reveals' own) and ground
+points (the base strip's), with `split_loop`'s `station_of` for the strip reading the ground pair. That is the
+experiment this round bought, and it is worth more than the change would have been: a four-line fix would have
+silently reopened the mass, and the closure check is what caught it.
+
+The branch is back to its committed state: closed, topology clean, six of nine scenes rendering, three warped.
