@@ -977,7 +977,7 @@ crate landed `handle`, `rng`, `node`, `plant` and `expand`, with `tree_probe` (5
 | the size law and its jitter | with jitter 0, every scale is the law exactly; with jitter 0.2 the widest departure is **0.194** of it and 11 of 12 differ; the same field twice is identical | exact / `≤ 0.2` |
 | a blade is a closed solid | χ = 2, volume **0.006387** over 9 × 12; slot 0 at the midrib's first point **0.000e0**; base ring's `\|x\|` **0.000e0**; tip spread **0.000e0** | closed |
 
-**Six decisions P1 made that this design did not say**, each of which a consumer meets:
+**Seven decisions P1 made that this design did not say**, each of which a consumer meets:
 
 1. **The parent is the tree, not a field of the attachment.** The design wrote
    `Attachment { parent, station, slot, sink }`; a node's parent is the path that reaches it, so the type is
@@ -1005,6 +1005,13 @@ crate landed `handle`, `rng`, `node`, `plant` and `expand`, with `tree_probe` (5
    once and carry **24** transforms, where baking them would be **2592** triangles and **1344** vertices. What
    it costs: a leaf cannot bend differently from its neighbours, and the design says so rather than leaving a
    reader to find out.
+7. **A leaf's scale is applied in the template's own frame, not to the anchored point.** The world point is
+   `placement.place(point · scale)`; the other order, `placement.place(point) · scale`, differs by
+   `(scale − 1) · origin` and therefore drags a leaf toward the **root** in proportion to how small it is drawn —
+   measured at **1.362 m** on this plant's topmost leaf, which is the kind of defect a picture cannot show
+   because the blade stays the right size while sitting in the wrong place. `LeafInstance::scale` states the
+   order and `plant_probe` measures both sides: the base ring lands on its anchor at **0.000e0**, and the wrong
+   order moves it by the metre above.
 
 ## What SPEC would say if this is adopted
 

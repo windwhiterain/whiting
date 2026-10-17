@@ -110,7 +110,7 @@ fn bough(lean: f32, attachment: Attachment) -> Node {
             ([0.62, 0.26, 0.06 * lean], [0.28, 0.42, 0.02]),
             ([0.86, 0.52, 0.08 * lean], [0.18, 0.30, 0.0]),
         ]),
-        Scalar::new(&[(0.0, 0.011), (0.5, 0.007), (1.0, 0.002)])
+        Scalar::new(&[(0.0, 0.014), (0.5, 0.008), (1.0, 0.003)])
             .expect("the bough's taper is a law"),
         attachment,
     )
@@ -124,7 +124,7 @@ fn twig(attachment: Attachment) -> Node {
             ([0.16, 0.13, 0.02], [0.10, 0.26, 0.02]),
             ([0.26, 0.38, 0.03], [0.04, 0.20, 0.0]),
         ]),
-        Scalar::new(&[(0.0, 0.0035), (1.0, 0.0008)]).expect("the twig's taper is a law"),
+        Scalar::new(&[(0.0, 0.005), (1.0, 0.0015)]).expect("the twig's taper is a law"),
         attachment,
     )
 }
@@ -145,13 +145,21 @@ fn blade() -> LeafTemplate {
 }
 
 /// The leaves hang from the twigs, which are the third generation: depth 2 below the trunk.
+///
+/// # Invariants
+///
+/// **`size` multiplies a template that is 0.31 m long in its own coordinates**, so `0.35` here draws a
+/// 11 cm blade and a real bamboo's leaf. The first version of this species asked for `0.05`, which is a
+/// 1.5 cm leaf: correct arithmetic on a number chosen as if the template were one unit long, and a plant
+/// that reads as a bare broom. The density says four blades per centimetre of twig, which is what makes a
+/// crown out of two twigs rather than a row of flecks.
 fn leaves() -> LeafField {
     let mut field = LeafField::new(2, 0);
     field.band = (0.25, 0.9);
-    field.density = Scalar::constant(12.0);
+    field.density = Scalar::constant(30.0);
     field.phyllotaxy = crate::leaf::GOLDEN_ANGLE;
     field.pitch = Scalar::constant(std::f32::consts::FRAC_PI_4);
-    field.size = Scalar::new(&[(0.0, 0.05), (1.0, 0.08)]).expect("the leaf's size is a law");
+    field.size = Scalar::new(&[(0.0, 0.35), (1.0, 0.50)]).expect("the leaf's size is a law");
     field.jitter = 0.15;
     field
 }

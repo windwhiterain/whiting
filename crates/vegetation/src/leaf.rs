@@ -150,7 +150,15 @@ pub struct LeafInstance {
     pub slot: f32,
     /// Forward `x`, side `y`, face `z`, in the world; `origin` is the anchor point on the parent's skin.
     pub placement: Placement,
-    /// One uniform number: the template's own size is in its coordinates.
+    /// One uniform number, applied **in the template's own frame**: the world point is
+    /// `placement.place(point * scale)`, never `placement.place(point) * scale`.
+    ///
+    /// # Invariants
+    ///
+    /// The two orders differ by `(scale − 1) · origin`, which is up to two metres at the top of a plant —
+    /// the second one drags a leaf toward the **root** in proportion to how small it is drawn, so a small
+    /// leaf would not sit on its twig at all. Scaling in the template's frame keeps the blade's own size
+    /// the only thing the number changes, and it is what leaves the anchor at the anchor for every scale.
     pub scale: f32,
 }
 

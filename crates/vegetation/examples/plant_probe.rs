@@ -24,6 +24,10 @@ fn main() {
     checks.push(("one resolution dial", the_dial_is_the_only_resolution()));
     checks.push(("leaves are groups", the_leaves_are_groups_of_placements()));
     checks.push(("a leaf is one transform", a_leaf_costs_one_transform()));
+    checks.push((
+        "a leaf's scale is local",
+        a_leafs_scale_is_in_its_own_frame(),
+    ));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -244,7 +248,9 @@ fn the_leaves_are_groups_of_placements() -> bool {
         .all(|pair| pair[0].node < pair[1].node);
     let counts_match_the_law = expansion.leaves.iter().all(|group| {
         let node = plant.get(&group.node).expect("the group's node resolves");
-        let expected = (12.0f32 * (0.9 - 0.25) * node.spine().length()).round() as usize;
+        let field = &species.fields[0];
+        let band = (field.band.1 - field.band.0).abs();
+        let expected = (field.density.at(0.5) * band * node.spine().length()).round() as usize;
         group.leaves.len() == expected
     });
     println!("\n# the leaves");
@@ -300,4 +306,51 @@ fn a_leaf_costs_one_transform() -> bool {
         leaves * loft.positions().len()
     );
     closed && leaves > 0
+}
+
+/// A leaf's scale is applied in the template's own frame, so the anchor stays on its twig.
+///
+/// # Invariants
+///
+/// The base ring is the template's own origin — the blade's width law is zero there — so every leaf's base
+/// lands exactly on its anchor at any scale. Scaling the *placed* point instead would move it by
+/// `(1 − scale) · |origin|`, which grows with how far up the plant the leaf hangs; that is the control, and
+/// it is the defect a picture cannot see because the leaf stays the right size while sitting in the wrong
+/// place.
+fn a_leafs_scale_is_in_its_own_frame() -> bool {
+    let species = species();
+    let template = &species.templates[0];
+    let loft = template.loft();
+    let base: Vec<[f32; 3]> = (0..loft.around())
+        .map(|slot| loft.vertex(0, slot).0)
+        .collect();
+    let expansion = expand(&species.plant, Detail::DEFAULT, &species.fields);
+    let mut worst_base = 0.0f32;
+    let mut worst_wrong = 0.0f32;
+    let mut leaves = 0;
+    for group in &expansion.leaves {
+        for leaf in &group.leaves {
+            let scale = leaf.scale;
+            for point in &base {
+                let local = [point[0] * scale, point[1] * scale, point[2] * scale];
+                worst_base =
+                    worst_base.max(span(leaf.placement.place(local), leaf.placement.origin));
+                let placed = leaf.placement.place(*point);
+                let wrong = [placed[0] * scale, placed[1] * scale, placed[2] * scale];
+                worst_wrong = worst_wrong.max(span(wrong, leaf.placement.origin));
+            }
+            leaves += 1;
+        }
+    }
+    println!("\n# a leaf's scale, and where the anchor goes");
+    println!(
+        "  {leaves} leaves · the base ring against its anchor {worst_base:.3e} (it is the template's own origin)"
+    );
+    println!(
+        "  the control — scaling the placed point instead — moves the same corner by up to {worst_wrong:.3e} m"
+    );
+    println!(
+        "  so the order is measured rather than assumed, and a blade keeps its twig however small it is drawn"
+    );
+    worst_base < 1.0e-6 && worst_wrong > 1.0e-3 && leaves > 0
 }
