@@ -4520,3 +4520,32 @@ never sees the call.
 - **The authored pinch is still the one courtyard whose areas nothing can check**, unchanged: for a void it builds a sound ring and the
   areas go unchecked on purpose, and for a mass outline the offset walk refuses the loop outright.
 
+
+## A control beside a fault can be silent for the right reason (2026-10-27)
+
+The thread "a reader that could not measure must not report nothing" closed with a control that had been in the record
+three times without ever being put where it would fail:
+
+**two `3 × 3` squares sharing an authored corner — `18.0000 m²` a person can check — standing inside an `8 × 8`
+neighbour.** `self_meeting` is deliberately silent about that pinch, so the gate did not skip the pair; the ear walk
+cannot cut past the pinched node, reads `9.0000` against the loop's own `18.0000`, fails `covers`, and answers `None`.
+Before the slice, `validate` reported **0 violations — "no overlap"** about two masses standing in one another. After,
+`OverlapNotMeasured { mass, other }`.
+
+**Every earlier row paired that pinch with a neighbour it did not touch**, where `false` is correct and the silence is
+right. So the control was present, correct, and silent — **and the fault it should have caught was never measured**.
+That is the sharpest form of the rule this arc keeps earning: **a control is not a control because it is correct; it is
+a control because it is placed where it can fail.** The pinch was described three times in this record and never once
+put beside the thing it could go wrong with.
+
+**What the shape of the fix says, and why it is not a widened variant:** `plans_share_area` answers `Option<bool>`, not
+`Option<f32>` — the quantity is not a number, because `AREA_TOLERANCE` is compared inside that one function and a
+returned float would hand the caller a decision it makes nowhere else. `Some(false)` is **not** widened: fewer than
+three nodes encloses no area whatever it stands beside, and boxes that miss cannot make polygons that meet — those are
+facts about the plans, not about the module's ability to measure them. The refusal is its own name, ranked beside the
+reading it answers.
+
+**And the whole thread, for the record:** `clip` answers `None` for a loop it cannot cover; its four callers decline;
+a mass outline that meets itself is named `OutlineNotSimple` **and** gated out of the plan subtraction; and a pair that
+cannot be compared is `OverlapNotMeasured`. A measurement that could not be taken is never reported as an absence — and
+**every one of those changes was caught by an instrument that had first been shown to fire.**
