@@ -2057,7 +2057,7 @@ pub(crate) fn offset_loop(
             if left == 0 && right == count - 1 {
                 continue;
             }
-            if segments_cross(
+            if segments_cross_properly(
                 inner[left],
                 inner[(left + 1) % count],
                 inner[right],
@@ -2095,18 +2095,23 @@ fn loop_area(loop_points: &[Vec2]) -> f32 {
     total * 0.5
 }
 
-/// Returns whether two edges of one loop meet or cross.
+
+/// Returns whether two segments cross **properly**: each has the other's endpoints strictly on opposite sides.
 ///
-/// The test is inclusive because two edges of a simple loop that are not neighbours never touch, so
-/// a touch is as much a defect as a crossing.
-fn segments_cross(from_a: Vec2, to_a: Vec2, from_b: Vec2, to_b: Vec2) -> bool {
+/// # Invariants
+///
+/// **A touch is not a crossing and neither is a shared line.** The non-strict test above answers true for two
+/// collinear segments — `0 <= 0` on both products — so the two halves of one face read as a crossing, and a
+/// concave outline's offset loop, which is exactly right, was refused for some wall thicknesses and accepted for
+/// others. This is the strict form the offset check asks for.
+fn segments_cross_properly(from_a: Vec2, to_a: Vec2, from_b: Vec2, to_b: Vec2) -> bool {
     let along = difference(to_a, from_a);
     let first = cross(along, difference(from_b, from_a));
     let second = cross(along, difference(to_b, from_a));
     let other = difference(to_b, from_b);
     let third = cross(other, difference(from_a, from_b));
     let fourth = cross(other, difference(to_a, from_b));
-    first * second <= 0.0 && third * fourth <= 0.0
+    (first > 0.0) != (second > 0.0) && (third > 0.0) != (fourth > 0.0)
 }
 
 /// Returns whether a point is inside or on a triangle wound with its interior on the left.

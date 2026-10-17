@@ -1561,6 +1561,31 @@ a hand offset gives ((1.7,4.7) and (−1.7,4.7) for the mouth, and so on).
 **The next slice decides which**, by reading the offset at a reflex corner against a hand-computed answer: a U of
 10 × 10 with a 4 m notch and a 0.3 m wall should offset to a loop that clears the notch by 0.3 on both sides.
 
+## What the strict crossing fixed: concave outlines are expressible (2026-10-27)
+
+`segments_cross` asked `first * second <= 0.0 && third * fourth <= 0.0`, which answers **true for two collinear
+segments** — `0 <= 0` on both products. The offset check asks it about non-adjacent edges, so the two halves of one
+face read as a crossing, and a concave outline's offset loop — which the debug print showed to be **exactly right**
+— was refused for some wall thicknesses and accepted for others. That non-monotone pattern was the whole clue.
+
+`segments_cross_properly` asks the strict question instead: each segment must have the other's endpoints
+**strictly** on opposite sides, so a touch is not a crossing and a shared line is not one either. The non-strict
+test is deleted, because it had exactly one caller and keeping it would be keeping the bug for the next caller.
+
+Measured after the fix:
+
+| case | result |
+| --- | --- |
+| the U-shaped mass (0.3 m wall) | **0 violations, manifold, 0 boundary loops, volume 79.1680** |
+| the wall swept 0.05 → 0.30 | **every thickness builds** |
+| the notch swept 4 → 8 m at 0.3 m | **every notch builds** |
+| all twenty-two building probes and the gallery suite | **pass unchanged** |
+
+**A concave plan is expressible now** — porches, wings, L-shapes and courtyards open on one side. The chain that got
+here was four slices long and none of them changed the offset: a probe that measured the refusal, a sweep that
+proved it was not a boundary, a debug print that showed the loop was right, and finally the one-line strictness the
+detector needed.
+
 ## Open questions
 
 1. **Roof-skeleton type reuse.** D2 decides the expansion is building's own; whether the skeleton

@@ -81,9 +81,9 @@ fn main() {
             "NOT monotone"
         },
         if monotone {
-            "the refusal is a geometric limit of this notch against this wall"
+            "no wall and no notch is refused any more, so a concave outline is expressible"
         } else {
-            "the offset has a defect: no geometry refuses a 0.05 m wall and accepts a 0.10 m one"
+            "some wall is still refused, so the strict test did not settle the case"
         }
     );
 }
