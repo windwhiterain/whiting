@@ -76,6 +76,41 @@ pub enum MassSurface {
     /// [`validate`](crate::validate) — measured at `departure = slab/2` on the first merged tip —
     /// and would smooth a shading normal across the two.
     SlabSoffit,
+    /// The face of a courtyard wall seen from **inside the courtyard**, one per void edge.
+    VoidWall {
+        /// Which of the mass's voids, in the order it authored them.
+        void: usize,
+        /// Index of the void loop's edge.
+        edge: usize,
+    },
+    /// The face of a courtyard wall seen from **the rooms**, one per void edge.
+    VoidInner {
+        /// Which of the mass's voids.
+        void: usize,
+        /// Index of the void loop's edge.
+        edge: usize,
+    },
+    /// The strip of wall top between a courtyard's two loops, one per void edge.
+    VoidTop {
+        /// Which of the mass's voids.
+        void: usize,
+        /// Index of the void loop's edge.
+        edge: usize,
+    },
+    /// A courtyard's paving: the plate's own top surface **inside** the courtyard wall.
+    ///
+    /// # Invariants
+    ///
+    /// **It is its own element and not part of [`FloorTop`](Self::FloorTop), for the reason this file already
+    /// records for the soffit:** the plate's top cannot be one disc across a courtyard, because the courtyard wall
+    /// meets it along an edge, and a disc continuing on both sides of that edge would put a third face on the wall's
+    /// bottom edge — a non-manifold junction. So the plate's top is **a ring from the room-side loop out to the
+    /// courtyard's outer loop** ([`FloorTop`](Self::FloorTop)) **plus the paving inside the courtyard's own loop**
+    /// (this variant), two regions of one plane told apart by the wall between them.
+    VoidFloor {
+        /// Which of the mass's voids.
+        void: usize,
+    },
 }
 
 /// Which surface of a roof a face belongs to.

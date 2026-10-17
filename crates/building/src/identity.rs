@@ -220,6 +220,16 @@ fn mass_surface(surface: MassSurface) -> String {
         MassSurface::WallTop { edge } => format!("wall top over edge {edge}"),
         MassSurface::FloorTop => "its floor".to_owned(),
         MassSurface::SlabSoffit => "its slab's soffit".to_owned(),
+        // A courtyard's faces are named by the courtyard first, so a person asking about "void 0" gets every face of
+        // one courtyard rather than a wall here and a paving there.
+        MassSurface::VoidWall { void, edge } => format!("void {void}, its wall over edge {edge}"),
+        MassSurface::VoidInner { void, edge } => {
+            format!("void {void}, the rooms' wall over edge {edge}")
+        }
+        MassSurface::VoidTop { void, edge } => {
+            format!("void {void}, its wall top over edge {edge}")
+        }
+        MassSurface::VoidFloor { void } => format!("void {void}, its paving"),
         MassSurface::Reveal {
             edge,
             opening,
