@@ -27,14 +27,17 @@ use building::site::seat;
 use building::wall::{Wall, WallId};
 use building::{Building, BuildingSkeleton, Element, Mass, MassId, PlanNode};
 
-use crate::building_mesh::points_where;
+use crate::building_identity::{
+    building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
+};
 use crate::geometry::heightfield;
-use crate::instancing::{standing, template_points};
+use crate::instancing::standing;
 use crate::kit::{
     camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
-    post_processes, screen_material, shaded_point_schema, surface,
+    offset_by, post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{mesh_shaders, post_shader};
+use crate::shaders::post_shader;
+use building::identity::Identity;
 
 /// The ground the site stands on, in metres: it falls one unit in eleven as `x` rises.
 ///
@@ -192,9 +195,19 @@ pub fn yard() -> Value {
         .build()
         .expect("the seated site expands");
 
-    let shells = points_where(&built, |element| matches!(element, Element::Mass(_, _)));
-    let roofs = points_where(&built, |element| matches!(element, Element::Roof(_, _)));
-    let stone = points_where(&built, |element| matches!(element, Element::Wall(_, _)));
+    // **Every mesh the frame draws carries its elements' ids** — the shells, the roofs, the walls and the gate —
+    // so a pixel of this yard can be asked what it is. The gate is one template drawn once, so its mesh carries
+    // the **template's** local ids and its material offsets them onto the row a bake would have written.
+    let table = Identity::of(&built, 1);
+    let shells = packed_where(&built, &table, |element| {
+        matches!(element, Element::Mass(_, _))
+    });
+    let roofs = packed_where(&built, &table, |element| {
+        matches!(element, Element::Roof(_, _))
+    });
+    let stone = packed_where(&built, &table, |element| {
+        matches!(element, Element::Wall(_, _))
+    });
     // **The gate is drawn from its template, once, and stood by an instance.** A scene that filtered the
     // baked mesh for parts would draw every leaf the document holds; this one draws the one shape and the
     // one transform that puts it in the opening.
@@ -202,7 +215,8 @@ pub fn yard() -> Value {
         .parts
         .template(0)
         .expect("the gate's template is in the document");
-    let gate_panel = template_points(gate).expect("the gate expands on its own");
+    // **The gate's offset, read from the baked table**: the least id the table gives an element of the gate's
+    // placement, less one, so the template's local ids land on exactly the rows a bake would have written.
     let gate_at = (0..skeleton.parts.placements().len())
         .find(|index| {
             skeleton
@@ -211,6 +225,23 @@ pub fn yard() -> Value {
                 .is_some_and(|placement| placement.target == Target::Wall { wall: WallId(2) })
         })
         .expect("the gate is placed on the run that stops at the opening");
+    let gate_offset = i64::from(
+        table
+            .rows()
+            .iter()
+            .filter(
+                |row| matches!(row.element, Element::Part { placement: at, .. } if at == gate_at),
+            )
+            .map(|row| row.id)
+            .min()
+            .expect("the gate draws at least one surface"),
+    ) - 1;
+    let gate_local = Identity::of(&gate.mesh().expect("the gate expands on its own"), 1);
+    let gate_panel = packed_where(
+        &gate.mesh().expect("the gate expands on its own"),
+        &gate_local,
+        |_| true,
+    );
     let gate_standing = standing(
         &building::expand::part_frame(&skeleton, gate_at)
             .expect("the wall offsets")
@@ -229,11 +260,41 @@ pub fn yard() -> Value {
         ("board", board as fn() -> Value),
         ("metal", metal),
         ("rubble", rubble),
-        ("earth", earth),
     ] {
-        materials.push(mesh_material(&format!("{name}-cast"), "shadowing", body()));
-        materials.push(mesh_material(&format!("{name}-depth"), "depthing", body()));
-        materials.push(mesh_material(&format!("{name}-shade"), "lighting", body()));
+        materials.push(mesh_material(
+            &format!("{name}-cast"),
+            "authored_shadowing",
+            body(),
+        ));
+        materials.push(mesh_material(
+            &format!("{name}-depth"),
+            "authored_depthing",
+            body(),
+        ));
+        materials.push(mesh_material(
+            &format!("{name}-shade"),
+            "authored_lighting",
+            body(),
+        ));
+    }
+    for (stage, shader) in [
+        ("cast", "authored_shadowing"),
+        ("depth", "authored_depthing"),
+        ("shade", "authored_lighting"),
+    ] {
+        materials.push(mesh_material(
+            &format!("gate-{stage}"),
+            shader,
+            offset_by(board(), gate_offset as f64),
+        ));
+    }
+    // The ground is not an element of the site, and it still writes the output — with the reserved zero.
+    for (stage, shader) in [
+        ("cast", "plain_shadowing"),
+        ("depth", "plain_depthing"),
+        ("shade", "plain_lighting"),
+    ] {
+        materials.push(mesh_material(&format!("ground-{stage}"), shader, earth()));
     }
 
     let placed = |stage: &str| {
@@ -241,7 +302,7 @@ pub fn yard() -> Value {
             ("shells", "board"),
             ("roofs", "metal"),
             ("stone", "rubble"),
-            ("ground", "earth"),
+            ("ground", "ground"),
         ]
         .into_iter()
         .map(|(label, material)| {
@@ -265,6 +326,12 @@ pub fn yard() -> Value {
         ));
         rows
     };
+
+    // **Two point schemas**: every authored mesh carries uthored_id; the ground carries none and writes
+    // the reserved zero from a constant.
+    let extras = building_extras();
+    let point = extras.point_schema();
+    let plain = not_authored_extras();
 
     Value::structure([
         ("name".to_owned(), Value::String("yard".to_owned())),
@@ -291,20 +358,22 @@ pub fn yard() -> Value {
         ),
         (
             "shaders".to_owned(),
-            Value::List(
-                mesh_shaders("", "")
-                    .into_iter()
-                    .chain(std::iter::once(post_shader(GRADE, SKY, None)))
-                    .collect(),
-            ),
+            Value::List({
+                let mut shaders = stage_set("authored", "", "", &point, &extras);
+                shaders.extend(stage_set("plain", "", "", &plain.point_schema(), &plain));
+                shaders.push(post_shader(GRADE, SKY, None));
+                shaders
+            }),
         ),
+        // The one image this scene writes beside the frame: which element each pixel shows.
+        ("outputs".to_owned(), outputs_field()),
         (
             "meshes".to_owned(),
             Value::List(vec![
-                mesh("shells", "Triangles", shaded_point_schema(), shells),
-                mesh("roofs", "Triangles", shaded_point_schema(), roofs),
-                mesh("stone", "Triangles", shaded_point_schema(), stone),
-                mesh("gate", "Triangles", shaded_point_schema(), gate_panel),
+                mesh("shells", "Triangles", point.clone(), shells),
+                mesh("roofs", "Triangles", point.clone(), roofs),
+                mesh("stone", "Triangles", point.clone(), stone),
+                mesh("gate", "Triangles", point, gate_panel),
                 mesh(
                     "ground",
                     "Triangles",
