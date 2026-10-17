@@ -605,3 +605,21 @@ experiment this round bought, and it is worth more than the change would have be
 silently reopened the mass, and the closure check is what caught it.
 
 The branch is back to its committed state: closed, topology clean, six of nine scenes rendering, three warped.
+
+## Branch state, re-verified (2026-10-27)
+
+**`feature/building-vol2`, head `
+fe8c5bd Format the open-edge dump
+`, worktree clean.**
+
+- **thirteen of thirteen building probes pass** (re-run this round, not carried over);
+- six of nine scenes render — `house`, `hall`, `hall_large`, `terrace`, `wing`, `yard` — with the hashes recorded two
+  sections up;
+- `shed`, `workshop`, `identity` are rejected by `FaceNotPlanar` alone, every instance of which is the `WallBase`
+  strip;
+- **the two experiments that narrowed the fix are on the record:** moving the station's points to the ground reopened
+  the mass (so the reveals read them), and taking the band's first corner is what put them at the sill. The fix is
+  **two point pairs on `CutStation`** — the sill pair the reveals use and a ground pair the base strip reads.
+
+**Nothing else in the volume model is open.** The plate is a `Slab`, the wall ring closes, the Euler check counts the
+ring's own handle, and the remaining defect is one field pair.
