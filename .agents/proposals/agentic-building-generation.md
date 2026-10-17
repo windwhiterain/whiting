@@ -1503,6 +1503,27 @@ Both readings are recorded here and neither is decided in this slice:
 - if the offset is **right**, then the domain genuinely stops at convex plans, and the refusal is the crate doing
   what it promises, with the limit now stated.
 
+### The sweep that settled it: the refusal is not monotone, so it is a defect
+
+Rather than print the offset loop, sweep the **wall thickness** — the one variable that separates a systematic
+error from a geometric limit. A limit refuses thin walls and accepts thick ones; a bug can do anything.
+
+| wall (4 m notch) | result |
+| --- | --- |
+| 0.05 m | **refused** — `OffsetSelfIntersecting { left: 2, right: 6 }` |
+| 0.10 m | **builds** |
+| 0.15 m | **builds** |
+| 0.20 m | refused |
+| 0.30 m | refused |
+
+and sweeping the **notch** at a 0.3 m wall refuses 4, 6 and 8 m alike.
+
+**No geometry refuses a 0.05 m wall and accepts a 0.10 m one.** The pattern is not monotone in the variable a limit
+would be monotone in, so the refusal is a **defect in the offset**, not a boundary of the domain: `offset_loop`'s
+miter produces a loop that `segments_cross` reads as self-intersecting for some wall values and not others. The
+first attempt's own summary line — *"a thinner wall builds, so it is a limit"* — was wrong, and the probe now tests
+**monotonicity** rather than "did anything thin build", because that is the property a limit actually has.
+
 **The next slice decided neither, and narrowed the place to look.** `offset_loop`'s miter is already general: for
 each node it takes `turn = cross(directions[before], directions[node])`, and computes
 `reach = cross(far − near, directions[node]) / turn` with `mitred = near + direction[before] * reach` — a negative
