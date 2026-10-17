@@ -23,12 +23,13 @@ use definition::{Schema, SchemaKind};
 use whiting_gallery::building_identity::{building_extras, id_in, locate_in, not_authored_extras};
 
 /// The scenes that declare the channel, in the order the gallery lists them.
-const SCENES: [&str; 7] = [
+const SCENES: [&str; 8] = [
     "hall",
     "hall_large",
     "identity",
     "house",
     "shed",
+    "terrace",
     "workshop",
     "yard",
 ];
