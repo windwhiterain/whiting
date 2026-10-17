@@ -17,15 +17,18 @@ use building::grid::{FaceRef, Rhythm};
 use building::openings::{Inset, Opening};
 use building::ops;
 use building::parts::{Anchor, Joint, Pin, Placement, Socket, Template};
-use building::{Building, Mass, MassId, PlanNode, RoofId, SolidId};
+use building::{Building, Mass, MassId, PlanNode};
 
-use crate::building_mesh::points_of;
+use crate::building_identity::{
+    building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
+};
 use crate::geometry::heightfield;
 use crate::kit::{
     camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
     post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{mesh_shaders, post_shader};
+use crate::shaders::post_shader;
+use building::identity::Identity;
 
 /// What the shed is: a small utilitarian box with a gabled sheet-metal roof.
 const STARTER: Starter = Starter {
@@ -174,10 +177,21 @@ pub fn shed() -> Value {
         .build()
         .expect("the shed expands: its outline is a quad, its grid tiles every face, and its parts are closed");
 
-    let walls = points_of(&built, SolidId::Mass(MassId(0)));
-    let roof = points_of(&built, SolidId::Roof(RoofId(0)));
-    let door = points_of(&built, SolidId::Part(0));
-    let canopy = points_of(&built, SolidId::Part(1));
+    // **Every mesh the frame draws carries its elements' ids**, so a pixel of this shed can be asked what it
+    // is: the walls, the roof's skins and fascia, the door leaf and the canopy all name themselves.
+    let table = Identity::of(&built, 1);
+    let walls = packed_where(&built, &table, |element| {
+        matches!(element, building::Element::Mass(_, _))
+    });
+    let roof = packed_where(&built, &table, |element| {
+        matches!(element, building::Element::Roof(_, _))
+    });
+    let door = packed_where(&built, &table, |element| {
+        matches!(element, building::Element::Part { placement: 0, .. })
+    });
+    let canopy = packed_where(&built, &table, |element| {
+        matches!(element, building::Element::Part { placement: 1, .. })
+    });
     // The scene is the phase's own acceptance in a picture, so it refuses to draw a document the
     // crate's validator would not: an unreported fault is worse than a blank scene.
     let violations = building.validate();
@@ -198,11 +212,30 @@ pub fn shed() -> Value {
         ("board", board as fn() -> Value),
         ("metal", metal),
         ("timber", timber),
-        ("earth", earth),
     ] {
-        materials.push(mesh_material(&format!("{name}-cast"), "shadowing", body()));
-        materials.push(mesh_material(&format!("{name}-depth"), "depthing", body()));
-        materials.push(mesh_material(&format!("{name}-shade"), "lighting", body()));
+        materials.push(mesh_material(
+            &format!("{name}-cast"),
+            "authored_shadowing",
+            body(),
+        ));
+        materials.push(mesh_material(
+            &format!("{name}-depth"),
+            "authored_depthing",
+            body(),
+        ));
+        materials.push(mesh_material(
+            &format!("{name}-shade"),
+            "authored_lighting",
+            body(),
+        ));
+    }
+    // The ground is not an element of the shed, and it still writes the output — with the reserved zero.
+    for (stage, shader) in [
+        ("cast", "plain_shadowing"),
+        ("depth", "plain_depthing"),
+        ("shade", "plain_lighting"),
+    ] {
+        materials.push(mesh_material(&format!("ground-{stage}"), shader, earth()));
     }
 
     // Every mesh is authored in world coordinates, so its instances carry no transform: the parts
@@ -213,7 +246,7 @@ pub fn shed() -> Value {
             ("roof", "metal"),
             ("door", "timber"),
             ("canopy", "timber"),
-            ("ground", "earth"),
+            ("ground", "ground"),
         ]
         .into_iter()
         .map(|(label, material)| {
@@ -228,6 +261,12 @@ pub fn shed() -> Value {
         })
         .collect::<Vec<_>>()
     };
+
+    // **Two point schemas**: every authored mesh carries uthored_id, the ground carries none and writes
+    // the reserved zero from a constant.
+    let extras = building_extras();
+    let point = extras.point_schema();
+    let plain = not_authored_extras();
 
     Value::structure([
         ("name".to_owned(), Value::String("shed".to_owned())),
@@ -254,24 +293,26 @@ pub fn shed() -> Value {
         ),
         (
             "shaders".to_owned(),
-            Value::List(
-                mesh_shaders("", "")
-                    .into_iter()
-                    .chain(std::iter::once(post_shader(GRADE, SKY, None)))
-                    .collect(),
-            ),
+            Value::List({
+                let mut shaders = stage_set("authored", "", "", &point, &extras);
+                shaders.extend(stage_set("plain", "", "", &plain.point_schema(), &plain));
+                shaders.push(post_shader(GRADE, SKY, None));
+                shaders
+            }),
         ),
+        // The one image this scene writes beside the frame: which element each pixel shows.
+        ("outputs".to_owned(), outputs_field()),
         (
             "meshes".to_owned(),
             Value::List(vec![
-                mesh("walls", "Triangles", shaded_point_schema(), walls),
-                mesh("roof", "Triangles", shaded_point_schema(), roof),
-                mesh("door", "Triangles", shaded_point_schema(), door),
-                mesh("canopy", "Triangles", shaded_point_schema(), canopy),
+                mesh("walls", "Triangles", point.clone(), walls),
+                mesh("roof", "Triangles", point.clone(), roof),
+                mesh("door", "Triangles", point.clone(), door),
+                mesh("canopy", "Triangles", point, canopy),
                 mesh(
                     "ground",
                     "Triangles",
-                    shaded_point_schema(),
+                    plain.point_schema(),
                     heightfield(120, 360.0, |_, _| 0.0),
                 ),
             ]),

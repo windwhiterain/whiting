@@ -26,16 +26,18 @@ use building::ops;
 use building::parts::{Pin, Placement, Template};
 use building::{Building, Mass, MassId, PlanNode};
 
-use building::identity::Identity;
-use crate::building_identity::{building_extras, not_authored_extras, outputs_field, packed_where, stage_set};
+use crate::building_identity::{
+    building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
+};
 use crate::geometry::heightfield;
 use crate::instancing::standing;
 use crate::kit::{
-    camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material, offset_by,
-    post_processes, screen_material, shaded_point_schema, surface,
+    camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
+    offset_by, post_processes, screen_material, shaded_point_schema, surface,
 };
 use crate::shaders::post_shader;
 use building::expand::part_frame;
+use building::identity::Identity;
 
 /// The workshop: two storeys, a shallow gable, and enough wall for three bays a storey.
 const STARTER: Starter = Starter {
@@ -293,38 +295,33 @@ pub fn workshop() -> Value {
         ("depth", "plain_depthing"),
         ("shade", "plain_lighting"),
     ] {
-        materials.push(mesh_material(
-            &format!("ground-{stage}"),
-            shader,
-            earth(),
-        ));
+        materials.push(mesh_material(&format!("ground-{stage}"), shader, earth()));
     }
 
-    let placed = |stage: &str| {
-        let mut rows = [
-            ("shells", "plaster"),
-            ("roofs", "metal"),
-            ("floors", "board"),
-            ("ground", "ground"),
-        ]
-        .into_iter()
-        .map(|(label, material)| {
-            instance(
-                &format!("{label}-{stage}"),
-                label,
-                [0.0; 3],
-                [0.0; 3],
-                [1.0; 3],
-                &format!("{material}-{stage}"),
-            )
-        })
-        .collect::<Vec<_>>();
-        // **Five rows for five shutters, over one mesh**, and each names **its own** material so the offset that
-        // separates the five lives on the row rather than on the geometry.
-        rows.extend(
-            hung.iter()
-                .enumerate()
-                .map(|(index, ((translation, rotation, scale), _))| {
+    let placed =
+        |stage: &str| {
+            let mut rows = [
+                ("shells", "plaster"),
+                ("roofs", "metal"),
+                ("floors", "board"),
+                ("ground", "ground"),
+            ]
+            .into_iter()
+            .map(|(label, material)| {
+                instance(
+                    &format!("{label}-{stage}"),
+                    label,
+                    [0.0; 3],
+                    [0.0; 3],
+                    [1.0; 3],
+                    &format!("{material}-{stage}"),
+                )
+            })
+            .collect::<Vec<_>>();
+            // **Five rows for five shutters, over one mesh**, and each names **its own** material so the offset that
+            // separates the five lives on the row rather than on the geometry.
+            rows.extend(hung.iter().enumerate().map(
+                |(index, ((translation, rotation, scale), _))| {
                     instance(
                         &format!("shutter-{index}-{stage}"),
                         "shutters",
@@ -333,10 +330,10 @@ pub fn workshop() -> Value {
                         *scale,
                         &format!("shutter-{index}-{stage}"),
                     )
-                }),
-        );
-        rows
-    };
+                },
+            ));
+            rows
+        };
 
     // **Two point schemas, because there are two kinds of surface.** Every authored mesh — the shell, the
     // roofs, the plate and the shutters — carries `authored_id`; the ground carries no id at all and writes the
