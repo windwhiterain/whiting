@@ -531,6 +531,88 @@ pub fn knots_picture() -> Value {
     plant_scene(&[Planting::new(species).with_seats(seats)], &STILL, KNOTTED)
 }
 
+/// The name the segmentation view is built and rendered under.
+pub const SEGMENTATION: &str = "segmentation";
+
+/// The one function a segmentation view needs: a colour per element id.
+///
+/// # Invariants
+///
+/// **The colour is a function of the id and of nothing else**, so two elements that share an id share a colour — a
+/// leaf and the twig it grew from are one element — and neighbouring ids are a golden angle apart, which is what
+/// makes them distinguishable without a table that would be a second place the ids are numbered.
+const SEGMENTATION_HELPERS: &str = r#"
+fn element_colour(id: f32) -> vec3<f32> {
+    if id < 0.5 {
+        return vec3<f32>(0.10);
+    }
+    let hue = fract(id * 0.6180339887) * 6.0;
+    let sector = i32(floor(hue)) % 6;
+    let fraction = hue - floor(hue);
+    let low = 0.22;
+    let rising = mix(low, 1.0, fraction);
+    let falling = mix(1.0, low, fraction);
+    var colour = vec3<f32>(1.0, rising, low);
+    if sector == 1 {
+        colour = vec3<f32>(falling, 1.0, low);
+    } else if sector == 2 {
+        colour = vec3<f32>(low, 1.0, rising);
+    } else if sector == 3 {
+        colour = vec3<f32>(low, falling, 1.0);
+    } else if sector == 4 {
+        colour = vec3<f32>(rising, low, 1.0);
+    } else if sector == 5 {
+        colour = vec3<f32>(1.0, low, falling);
+    }
+    return colour;
+}
+"#;
+
+/// What a segmentation view's plant surface writes: the element's colour, whatever the light did.
+const SEGMENTATION_BODY: &str = r#"
+    color = element_colour(in.authored_id);
+"#;
+
+/// What a segmentation view's ground writes: the reserved zero's own grey, unlit, so the subject is the subject.
+const SEGMENTATION_GROUND: &str = r#"
+    color = vec3<f32>(0.10);
+"#;
+
+/// Builds the segmentation view: the same plant, every element in a colour of its own.
+///
+/// # What this frame is for
+///
+/// Every other plant scene answers *"what does it look like"*; this one answers *"what is this"*. Its surface body
+/// throws the lighting away and writes a colour derived from the point's own `authored_id`, so one node is one
+/// colour, a leaf wears the colour of the twig it grew from, and [`crate::locate`]'s two answers can be checked
+/// against what the frame shows rather than imagined from a number.
+pub fn segmentation_picture() -> Value {
+    plant_scene_with(
+        &[Planting::new(bamboo(SEED))],
+        &STILL,
+        SEGMENTATION,
+        &View {
+            plant: SEGMENTATION_BODY,
+            ground: SEGMENTATION_GROUND,
+            helpers: SEGMENTATION_HELPERS,
+            grade: SEGMENTATION_GRADE,
+        },
+    )
+}
+
+/// What a segmentation view's post stage does: an encode and nothing else.
+///
+/// # Invariants
+///
+/// **A segmentation frame is not tone-mapped**, because its colours are ids: a Reinhard curve and an S-curve would
+/// make two neighbouring elements look alike, and the one thing the frame exists to answer is which element a pixel
+/// is. The sky is still the scene's own map, so the frame shows where the plant meets its ground.
+const SEGMENTATION_GRADE: &str = r#"
+    if depth >= 1.0 {
+        color = environment_sky(ray_through(in.uv));
+    }
+    color = pow(color, vec3<f32>(0.4545));
+"#;
 /// The name the hand's work is drawn under: one plant, six edits, and nothing authored twice.
 pub const SCULPTED: &str = "sculpted";
 
@@ -571,6 +653,48 @@ pub fn sculpted_handle_of(id: u32) -> Option<String> {
 ///   corners carry the ids its own planting numbered ([`node_ids_from`]), so two plantings never write one id.
 /// - **A second planting's labels carry its index**, because a label names one instance in the whole scene.
 fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
+    plant_scene_with(plantings, framing, name, &View::PHOTOGRAPH)
+}
+
+/// The bodies a view writes for itself: where a frame that is not a photograph departs from one.
+///
+/// # Invariants
+///
+/// **Every body is spliced, not composed**: an empty body is a splice that declares nothing, so the photograph and a
+/// view that writes all four run the same builder and differ only in four strings — a view cannot change the
+/// geometry, the lights or the ids, which is what makes two views of one plant comparable.
+#[derive(Debug, Clone, Copy)]
+struct View {
+    /// The plant's surface body, spliced after the lighting has been added and before the fragment writes.
+    plant: &'static str,
+    /// The ground's surface body, in the same place.
+    ground: &'static str,
+    /// Helpers both bodies may call, appended to the shader's own helpers.
+    helpers: &'static str,
+    /// The post stage's body; empty means the scene's own grade.
+    grade: &'static str,
+}
+
+impl View {
+    /// The photograph: the default lighting, and the grade the plant scenes have always had.
+    const PHOTOGRAPH: View = View {
+        plant: "",
+        ground: "",
+        helpers: "",
+        grade: "",
+    };
+}
+
+/// The same builder with the bodies of a view open, which is what a frame other than a photograph needs.
+///
+/// # Invariants
+///
+/// **Every body is spliced where the shader puts it, and an empty body declares nothing**, so the photograph and a
+/// view that writes all of them run one builder and differ in four strings — a view cannot change the geometry, the
+/// lights or the ids, which is what makes two views of one plant comparable. `plant` and `ground` are spliced after
+/// the lighting has been added and before the fragment writes its outputs, where `color` is the accumulation and
+/// `in` is the varying struct; `helpers` is appended to the shader's own; `grade` replaces the post stage's body.
+fn plant_scene_with(plantings: &[Planting], framing: &Framing, name: &str, view: &View) -> Value {
     // **Two point schemas, and they are the two identities**: every authored mesh carries `authored_id`,
     // the ground carries none and writes the reserved zero from a constant.
     let extras = building_extras();
@@ -641,8 +765,13 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
         .collect();
 
     // **One copy of the air**: the shader's helpers and the environment map are the same struct's numbers, so the
-    // rasterised sky and the traced one cannot drift apart.
-    let helpers = atmosphere().wgsl();
+    // rasterised sky and the traced one cannot drift apart. A view with a body of its own appends its helpers here,
+    // so the lighting stage and the post stage still read one string.
+    let helpers = if view.helpers.is_empty() {
+        atmosphere().wgsl()
+    } else {
+        format!("{}\n{}", atmosphere().wgsl(), view.helpers)
+    };
 
     let mut materials = vec![
         mesh_material(
@@ -852,9 +981,20 @@ fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
         (
             "shaders".to_owned(),
             Value::List({
-                let mut shaders = stage_set("plant", "", "", &point, &extras);
-                shaders.extend(stage_set("ground", "", "", &ground.point_schema(), &ground));
-                shaders.push(post_shader(GRADE, &helpers, Some(Projection::Latlong)));
+                let mut shaders = stage_set("plant", view.plant, &helpers, &point, &extras);
+                shaders.extend(stage_set(
+                    "ground",
+                    view.ground,
+                    &helpers,
+                    &ground.point_schema(),
+                    &ground,
+                ));
+                let grade = if view.grade.is_empty() {
+                    GRADE
+                } else {
+                    view.grade
+                };
+                shaders.push(post_shader(grade, &helpers, Some(Projection::Latlong)));
                 shaders
             }),
         ),

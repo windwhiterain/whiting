@@ -222,6 +222,8 @@ cargo run -p whiting-device-rasterize --example render -- sculpted out/sculpted
 # Which node a pixel is, and which nodes a rectangle covers: both ask `gallery::locate::NAMINGS`.
 cargo run -p whiting-device-rasterize --example render -- bamboo out/located --locate 600,300
 cargo run -p whiting-device-rasterize --example render -- grove out/selected --region 400,200,1000,900
+# The segmentation view: one colour per element, and --region names what you see.
+cargo run -p whiting-device-rasterize --example render -- segmentation out/segmentation --region 300,200,900,1200
 # The same document through the path tracer: the sky comes from the environment map, not a shader.
 cargo run -p whiting-device-cycles --example render_cycles -- bamboo out/cycles-bamboo.png 64
 cargo run -p whiting-device-rasterize --example render -- sweep out/sweep

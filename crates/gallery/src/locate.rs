@@ -87,6 +87,11 @@ pub const NAMINGS: &[Naming] = &[
         note: "this pixel is that node of the sculpted plant, and a leaf drawn by the blade mesh carries its twig's",
     },
     Naming {
+        scene: crate::vegetation_picture::SEGMENTATION,
+        resolve: crate::vegetation_picture::handle_of,
+        note: "one colour per element: this pixel is that node of the plant, and a leaf wears the colour of the twig it grew from",
+    },
+    Naming {
         scene: crate::vegetation_picture::GROVE,
         resolve: crate::vegetation_picture::grove_handle_of,
         note: "the planting is the id's quotient by the stride and the node is its remainder",

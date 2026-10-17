@@ -1364,6 +1364,26 @@ and the harness asks it for a pixel (`--locate`) and for a rectangle (`--region`
 2. **A rectangle answers pixel counts, not a set.** The ids come back with how many pixels each owns, deepest first,
    because the caller's question is *"what am I pointing at?"* and the order is the answer to it.
 
+**The segmentation view.** The design's own sentence made literal — *"a scene whose surface body writes a colour
+derived from `authored_id` … one colour per element with no new channel and no new plumbing"* — cost one `View` struct
+(the four bodies a frame that is not a photograph splices into the shared builder) and one scene.
+
+| invariant | reading |
+| --- | --- |
+| one colour per element | the culm is one blue, every bough and branch its own hue, and a leaf wears its twig's colour, because the id channel is flat and the leaf's corners carry its twig's id |
+| no new plumbing | the same builder, the same meshes and the same **13** passes: the difference is four strings |
+| the photograph did not move | all six photograph scenes are **bit-identical** (`1D533E76…`, `884C7C85…`, `4213A47B…`, `0A7AFD1B…`, `2937B7B6…`, `8D287A4A…`) |
+| the rectangle and the frame agree | `--region 300,200,900,1200` answers **11** ids over **601601** px with the trunk at **14941** px — the same counts the `bamboo` frame gives, because it is one plant |
+| the grade belongs to the view | the first version kept the photograph's grade and its colours came out **washed out**: a segmentation frame is encoded and not tone-mapped |
+
+**Two decisions the view forced:**
+
+1. **A view is four strings, not a builder.** `View { plant, ground, helpers, grade }` with `PHOTOGRAPH` empty in all
+   four: a view cannot change the geometry, the lights or the ids, which is what makes two views of one plant
+   comparable — and the photograph's six hashes prove the empty body is a splice that declares nothing.
+2. **A segmentation frame is not tone-mapped.** Its colours *are* ids, so a Reinhard curve and an S-curve would
+   collapse neighbouring elements into each other — the one thing the frame exists to keep apart.
+
 **The order is enforced, not documented.** `ops::apply` walks three stages in V5's order — **prunes, then
 spine bakes, then the nudges** — and one function, `stage_of`, is the only place the order exists. A prune runs
 first so that an edit aimed at a node the same batch prunes is reported as `Problem::Pruned`; a bake runs before
