@@ -269,7 +269,7 @@ for its use here.
   **Rejected as the representation** for the reason the architecture survey gives for graph grammars:
   rule applicability is a search, and the derivation is re-run globally. The **phyllotaxis patterns** it
   catalogues (decussate, distichous, spiral with the golden angle) are the placement modes' vocabulary,
-  and the gallery already hard-codes one of them — `2.3999632` in `geometry::leaf_spray`'s golden-angle
+  and the gallery already hard-codes one of them — `vegetation::leaf::GOLDEN_ANGLE`, the leaf field's default phyllotaxy (it was `geometry::leaf_spray`'s, since retired)
   turn.
 - **Oppenheimer, "Real time design and animation of fractal plants and trees", SIGGRAPH 1986** [S17].
   **Rejected**: a fractal is a finished artefact with no edit handle, and its self-similarity is the

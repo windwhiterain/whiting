@@ -67,6 +67,12 @@ The demand-side evidence is measured, not aesthetic:
    [agent-scene-iteration-loop.md](agent-scene-iteration-loop.md) item 7, whose own sentence is *"a bug
    any future foliage hits"*. A `vegetation` crate is therefore partly a **promotion**, not a
    greenfield write — the same relation `building` had to `built.rs`.
+
+   **The promotion is finished and the five are retired.** Their shapes now live in `derive` as a spine and a taper
+   law, a leaf template, a rule and a leaf field; the mesh-level drafts are gone, **281 lines** with them, and all
+   seven scenes are bit-identical without them. The two authors had already diverged — the gallery's culm swells a
+   joint by **5.5%** of the radius and `derive::bamboo`'s by **27%** — and nothing compared them, because nothing
+   called the gallery's.
 2. **Trees in the gallery are two primitives with a scatter.** `terraces.rs` targets 110 China firs
    (`while firs.len() < 110 && index < 6000`), each drawn as
    **two cones** (`cone(9, 1.75, 2.6)` with `cone(9, 1.15, 2.3)` standing on it), and its broadleaf crowns are
@@ -738,7 +744,7 @@ thin closed solid**: two faces and a rim. Then:
 The thickness is a species relation and it can be as small as the frame tolerates (a 0.2 mm blade at a
 nine-metre crown, which is nothing in a picture and everything in a normal).
 
-**Rejected, and both are now unnecessary rather than merely worse:** `geometry::double_blade`'s doubled
+**Rejected, and both are now unnecessary rather than merely worse:** `geometry::double_blade`'s doubled (retired with the other four, this round)
 ribbon (the same taper run twice with opposed normals *and* the winding reversed — its own doc records the
 version that reversed only the normals and produced *"a leaf lit as though it were edge on"*) costs the
 same triangles as a closed blade with no rim and no volume; and a `@builtin(front_facing)` flip in the
@@ -923,8 +929,8 @@ withdrawn (D17) nothing here waits on it.
   building this crate first would mean writing the curve twice.
 - **P1 — one plant.** The document and the handle; spines and skins as `shape::Sweep`s with base and tip
   discs; the `LeafField` and its instance operator, with `derive::blade_taper` as the default section (the
-  taper `geometry::blade` already computes as a formula, promoted to a starting point an agent then edits);
-  `derive::Species` for `PINE`, `OAK` and `BAMBOO`; the edit table's six changes and their stated order;
+  taper `geometry::blade` computed as a formula, promoted to a starting point an agent then edits and retired
+  once `derive` owned the shape);
   `report()` — the crown against the envelope's own radius curve, the counts, the instance count; identity
   for the wood (points) and for leaf groups (materials); and the checks a probe asks for on the way.
   **Exit: one rendered plant whose leaves are instances of one template drawn in one pass** — branch closed
@@ -937,8 +943,8 @@ withdrawn (D17) nothing here waits on it.
   sockets; the fields (gravity, ancestor, light, obstacle) and the envelope as a trimming law; the
   collision report and `derive::thin`; the leaf normal laws (puffiness toward an anchor, world-up for
   grass); `--region`; the segmentation scene; and the promotion of
-  `geometry::{culm, blade, double_blade, leaf_spray, tuft}` into `derive`, which retires five uncalled
-  generators from the gallery.
+  `geometry::{culm, blade, double_blade, leaf_spray, tuft}` into `derive`, which retired five uncalled
+  generators and **281 lines** from the gallery.
 - **P3 — the site.** A grove (instancing at plant level, with D7's identity granularity stated in the
   scene's own doc); ground cover (one tuft template and a field, which is the same mechanism as leaves);
   seating on a `terrain::HeightField` by the `site::seat` precedent; the offline backend's view of a plant

@@ -92,7 +92,7 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 - **`--region`** in the render harness, and the segmentation scene.
 - **`report()`** — the crown against the envelope's own radius curve, the counts, the instance count.
 - **`reference` on a leaf field** — needs a closest-point query (`shape`'s open question 4).
-- The promotion of `gallery::geometry::{culm, blade, double_blade, leaf_spray, tuft}` into `derive`.
+- ~~The promotion of `gallery::geometry::{culm, blade, double_blade, leaf_spray, tuft}` into `derive`.~~ Landed in round 14: the five generators are deleted and every scene is bit-identical without them.
 
 ## Traps
 
@@ -199,7 +199,8 @@ let edits = ops::paint(&plant, &Selector::Generation(2), Change::Offset { proper
 
 ```text
 cargo run -p whiting-shape --example curve_probe           # 12 invariants, closest included
-cargo run -p whiting-shape --example section_probe         # 8 invariants, each included
+cargo run -p whiting-shape --example section_probe         # 8 invariants, 
+each included
 cargo run -p whiting-shape --example scalar_probe          # 8 invariants, the offset row included
 cargo run -p whiting-vegetation --example tree_probe       # 5
 cargo run -p whiting-vegetation --example plant_probe      # 8
