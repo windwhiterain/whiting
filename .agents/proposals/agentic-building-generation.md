@@ -1446,22 +1446,16 @@ mountain-side extension that D2 defers (footprint edges as belt sources) is like
 conversation, recorded there so it is not lost. If adopted, a `SPEC/building.md` sibling to
 `SPEC/mountain.md` is the natural home, and this file becomes the record of why.
 
-## What the terrace found, and the overlap defect it uncovered (2026-10-27, five slices in one record)
+## What the terrace's second reading uncovered: a defect, then a detector, then a proof (2026-10-27)
 
-**The terrace came first as a question, not a picture.** A party wall could be *one wall claimed by two masses* or
-*two leaves whose outer faces meet*, and the second costs nothing if the crate accepts solids that touch.
-`examples/terrace_probe.rs` measured it: two 6 × 8 masses flush at `x = 0`, a 0.15 m wall each — **0 violations**, each
-solid manifold with **0 boundary loops** and volume `32.3520`. So a terrace is **three buildings that touch**, and
-`terrace` (the eighth scene) draws it: three units of `COTTAGE`'s proportions, each with its own gable along the row,
-`locate terrace (500, 600)` answering `mass 2, outer wall over edge 2` and the units' walls covering 15,847 and
-35,505 pixels as **separate elements**.
+The terrace itself is the section above. What follows is what the *other* reading of a party wall found.
 
-**The other reading found a defect.** Overlapping the two houses by the leaf (the right one starting at `x = -0.15`,
-so both own the same 0.15 m strip) reported **0 violations** too — a strip whose pixels have two owners, accepted
-silently. `plans_share_area` was `strictly_contains || strictly_contains || edges_cross`, and that pair falls between
-the predicates: no strict containment, and collinear shared edges plus a corner touching an edge are not a proper
-crossing. **A test for "shares area" made of containment and crossing misses overlap whose boundary is collinear** —
-which is exactly the shape two rectangles sharing a wall have.
+**Overlapping the two houses by the leaf** (the right one starting at `x = -0.15`, so both own the same 0.15 m
+strip) reported **0 violations** — a strip whose pixels have two owners, accepted silently. `plans_share_area` was
+`strictly_contains || strictly_contains || edges_cross`, and that pair falls between the predicates: no strict
+containment, and collinear shared edges plus a corner touching an edge are not a proper crossing. **A test for
+"shares area" made of containment and crossing misses overlap whose boundary is collinear** — which is exactly the
+shape two rectangles sharing a wall have.
 
 Three slices closed it, each one keeping the record honest about what it had:
 
