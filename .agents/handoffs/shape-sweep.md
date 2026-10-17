@@ -1,74 +1,88 @@
-# Handoff: the `shape` crate — P0 landed, P1 (the sweep) is next
+# Handoff: the `shape` crate — P1 landed, and what a consumer can now ask it
 
-Started 2026-10-17. Branch `feature/shape-primitives`, worktree `.worktrees/shape`, from `main` at
-`8a80b20`. The design is [proposals/shape-primitives.md](../proposals/shape-primitives.md); this file is
-only the state a next session needs, and it is deleted when the crate is finished.
+Started 2026-10-17. Branch `feature/shape-sweep`, worktree `.worktrees/shape`, from `main` at `7a76d62`.
+The design is [proposals/shape-primitives.md](../proposals/shape-primitives.md); this file is only the state
+a next session needs, and it is deleted when the crate is finished.
 
 ## Where the tree stands
 
-**P0 is landed and green.** `crates/shape` exists with `math` and `curve`:
+**P0 is on `main`** (`57b1184`, with `mesh` merged as `7a76d62`): `math`, `curve` and `mesh` with their two
+probes. **P1 lands in this checkpoint**: `hermite`, `scalar`, `section`, `sweep`, `loft` and
+`sweep_probe`; `curve_probe` gained a *closed ends* row; `building` now names `shape` for `math` instead of
+`mountain`.
 
-- `math` is `mountain::math` **moved**, not copied: `crates/mountain/src/math.rs` was `git mv`-ed to
-  `crates/shape/src/math.rs`, `mountain` re-exports it (`pub use shape::math;`), and every
-  `mountain::math::…` path in `mountain`, `terrain` and `gallery` resolves unchanged. `building`'s
-  `src/math.rs` re-export still points at `mountain`, which still works and can be switched later.
-- `curve` is a cubic Hermite polyline: `Jet`, `Curve`, `with_result`-style validation (`CurveError`),
-  arc-length `t`, `at`/`tangent`/`frame`/`curvature`/`stations`, `segments` (Bezier), `jets`,
-  `knot_parameters`, `split`/`insert`/`sub`, and a transported frame by double reflection.
-- `crates/shape/examples/curve_probe.rs` measures seven invariants with a control each and **exits
-  non-zero if any leaves its threshold**. `cargo check` is green for `whiting-shape`,
-  `whiting-mountain`, `whiting-terrain`, `whiting-building` and `whiting-gallery --all-targets`.
+Five probes run as examples, each gated on its own readings:
 
-The measured numbers are in the proposal's *What P0 measured*, including the two boundaries a consumer
-will meet: `Curve::new(curve.jets())` is **not** a round trip after a split (a split rescales the
-parameter, so the two sides' tangent magnitudes differ and a `Jet` holds one number), and a Hermite arc is
-5.2e-4 short of a circle's length.
+```text
+cargo run -p whiting-shape --example curve_probe      # 8 invariants: arc length, stations, insert, frame, inflection, holonomy, closed ends, Bezier
+cargo run -p whiting-shape --example scalar_probe     # 7: constant, two knots, limiter, C1, quadratic, clamps, refusals
+cargo run -p whiting-shape --example mesh_probe       # 8: cube, reversed winding, open cube, open prism, closed prism, three-way edge, repeated corner, unused position
+cargo run -p whiting-shape --example section_probe    # the ring's arc-length spacing, the outline's winding, and the refusals
+cargo run -p whiting-shape --example sweep_probe      # 8: frustum volume, solid vs tube, u and v, ring plane, twist, section frame, blade tip, envelope refine
+```
 
-## What P1 is
+## What a consumer can ask for now
 
-`sweep`, and then the first consumer:
+```rust
+let mut sweep = Sweep::new(spine, Section::circle());
+sweep.scale = Scalar::new(&[(0.0, 1.0), (1.0, 0.4)])?;  // the taper, in the spine's own `t`
+sweep.twist = Scalar::constant(0.0);                    // radians in the section's plane
+let loft = sweep.sample(stations, around);
+let surface = loft.view();                              // mesh::Triangles
+mesh::boundary_loops(surface);                          // and is_manifold, euler_characteristic,
+mesh::signed_volume(surface);                           // winding_is_consistent, same_direction_edges
+```
 
-1. **`Section`** — `Circle { radius: Curve }`, `Ellipse { radius, squash, roll }`,
-   `Outline { outline: Vec<Vec2>, scale: Curve }`, `Flat { half_width, thickness }` — and **`Sweep {
-   spine, section, closed }`**, whose `sample(stations, around)` walks the spine's `stations`, asks each
-   for its frame, evaluates the section in that plane, and zips consecutive rings into a `Loft`.
-2. **`Loft` owns the `(u, v)` definition**: `u` is the station's arc-length fraction and `v` the fraction
-   around the section, returned **with** the position so no consumer writes a second table. Triangles
-   only: the scene layer's `Topology` has no quads.
-3. **Three sections, one primitive**: a branch is `Circle` with a radius curve (the taper), a leaf is
-   `Flat`/`Outline` with `closed: false`… **or `closed: true` for a thin solid**, which is
-   [agentic-vegetation-generation.md](../proposals/agentic-vegetation-generation.md) D18's answer to
-   two-sided leaves — and the envelope is `Circle` refined to `Outline`. If any of those three needs a
-   different code path, the unification is wrong and that is worth re-measuring before writing it.
-4. **The `mesh` predicates** (`boundary_loops`, `is_manifold`, `euler_characteristic`,
-   `signed_volume`, `winding_is_consistent`) land with the first consumer that calls them, not before.
+- **`Section`** — `circle()`, `flat(half_width, thickness)`, `ellipse(x, y)`, `outline(&[Vec2])`, and
+  `ring(around)`. `Outline::new` refuses fewer than three points, a non-finite point, and two consecutive
+  points that are equal *including the closing pair*; it normalises the winding to counter-clockwise
+  keeping `points[0]` first.
+- **`Scalar`** — `constant(v)`, `new(&[(t, v)])` with limited slopes, `with_slopes(&[(t, v, slope)])`,
+  `at(t)`, `slope(t)`. Knots must start at `0`, end at `1` and increase.
+- **`Loft`** — `positions()`, `uvs()`, `triangles()`, `rings()`, `around()`, `vertex(ring, slot)`,
+  `vertices()`, `view()`.
+- **`mesh`** — six predicates over `Triangles { positions, corners }`, each one pass and one table.
+  `signed_volume` is positive for an outward winding and only meaningful for a closed surface.
+
+## What is owed, and is not this file's to do
+
+- **The gallery picture** — the P1 exit's last item: draw a tube, a blade and an envelope from one call.
+  `shape` has no scene; the gallery has.
+- **`building`'s predicates** could read `shape::mesh` now. Its probes still read their own copies and pass,
+  so nothing forces the switch; do it when one of its own checks is the same check.
+- **`vegetation` P1** starts on this API, and is the reason `scale`, `twist` and `(u, v)` are shaped as they
+  are.
 
 ## Traps a next session should not re-learn
 
-- **`t` is an arc-length fraction**, so a station is a fraction of length and an edit that changes a
-  segment's length moves the physical point. That is deliberate (`shape` D2) and it is why a knot's own
-  fraction is `knot_parameters()`, not an index.
-- **The frame's initial normal is state.** `set_initial_normal` exists because a sweep of two curves that
-  met at a point must agree about which way their sections face. `split` already carries the parent's
-  normal into the right half; a `Sweep` over a `sub`-curve that loses it is the defect this is for.
-- **A `Section::Outline` needs a stated `x`**: the transported frame's normal is an arbitrary but
-  continuous choice, so two sections on one plant that start at different angles rotate against each
-  other. That is the proposal's open question 2 and P1 is where it gets answered.
-- **`frame(t)` interpolates from a table of eight samples per segment**; `stations(k)` transports across
-  the `k` stations themselves, which is exact at those stations. A sweep should use `stations`, not
-  `frame(t)`, for its rings.
-- **Do not create `closest(point)` yet.** The envelope's trimming law is its first caller and nothing
-  before that needs it.
+- **`t` is an arc-length fraction**, so a `Scalar`'s knots are fractions of the spine's *length* — the same
+  convention as `Curve::at`. A knot's own fraction is `knot_parameters()`, not its index.
+- **The frame's initial normal is the orientation statement.** A section's `x` is `frame.normal` and its `y`
+  is `frame.binormal`, so two spines given different initial normals face their sections differently. Say it
+  once, on each spine, with `Curve::set_initial_normal`.
+- **`scale` must stay positive.** A negative one folds the section through the spine. A *zero* one is a
+  point: the caps are still built, so the surface stays closed and `boundary_loops` stays `0` — the leaf's
+  tip is exactly that case, and it needs no special handling anywhere.
+- **The cap fans reuse the end rings' own vertices**, so `Loft::positions().len() == rings * around` always.
+  A consumer that assumes an extra centre vertex per cap will read the wrong index.
+- **`boundary_loops` counts connected components of the once-used edges.** A collapsed ring is closed
+  because the fan shares its edges, not because it collapsed; with `capped: false` the same ring *is* two
+  boundary loops, which is right.
+- **A Hermite circle is `5.2e-4` short of a true one**, while a closed loop's *ends* are exact. So "the seam
+  closes" and "the loop is a circle" are separate claims with separate readings.
+- **Do not add `closest(point)` yet**, and do not raise the ellipse's arc-length table resolution without
+  measuring: `section_probe` prints the inversion's error and the table's step count is a stated cost.
 
-## How to verify, and what to run
+## How to verify
 
 ```text
-cargo run -p whiting-shape --example curve_probe          # 7 invariants, exit 0 required
-cargo check -p whiting-mountain -p whiting-terrain -p whiting-building --all-targets
-cargo check -p whiting-gallery --all-targets
+cargo run -p whiting-shape --example curve_probe
+cargo run -p whiting-shape --example scalar_probe
+cargo run -p whiting-shape --example mesh_probe
+cargo run -p whiting-shape --example section_probe
+cargo run -p whiting-shape --example sweep_probe
+cargo check -p whiting-mountain -p whiting-terrain -p whiting-building -p whiting-gallery --all-targets
 ```
 
-A sweep probe should print, for a tube, a blade and an envelope built from **one** call: the ring count,
-the two vertices that disagree about `u` (**zero**), the signed volume of a closed sweep against the
-analytic frustum sum, and the `(u, v)` of a known corner. A picture is the gallery's job and not this
-crate's: `shape` has no scene and no renderer.
+Every probe prints one row per invariant with the threshold it is compared against and exits non-zero if any
+row leaves it, so a green run is a reading and not a claim.
