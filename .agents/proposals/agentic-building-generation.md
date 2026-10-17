@@ -2369,9 +2369,33 @@ The volume model is in: a mass is a wall ring plus a plate, a courtyard is a thi
 ground is cut out from under them so a floor is genuinely the surface a pixel carries. What is left, in the order a
 session should take it, each with the measurement that decides it:
 
-1. **A `role` on `Slab`** (plate / floor / roof). The plate-coverage check currently stages a hosted slab by elevation
+1. ~~**A `role` on `Slab`** (plate / floor / roof). The plate-coverage check currently stages a hosted slab by elevation
    ("its top stands at its host ground line") and has a 1 mm window where a floor seated at `lowest + 0.0005` reads as
-   a plate. A role removes both, and it is vocabulary, not geometry.
+   a plate. A role removes both, and it is vocabulary, not geometry.~~ **DONE (2026-10-17, `feature/building-slab-role`).**
+   `Slab` carries `SlabRole` — `Plate`, `Floor`, `Roof` — set where the slab is built through `Slab::plate`,
+   `Slab::floor` and `Slab::roof`, and nothing infers it from geometry; `PlateCoverage` selects the plate by that role
+   and reads no level at all. **The window is gone rather than narrowed**: on a 7 × 11 starter a floor walked down onto
+   `lowest + 0.0005` — *which reported `PlateCoverage { plate: 50.759995, outline: 66.56, short: 15.800003 }` before
+   the change* — reports **0 violations** after it, while the plate control beside it, the same loop pulled in half a
+   metre on all four sides, fires the same three numbers on the same geometry. Two readings that differ in nothing but
+   the name the document gives the slab are the evidence.
+
+   | where a slab is built | role | what the scene or derivation means |
+   | --- | --- | --- |
+   | `derive::starter`'s plate, on the mass's inner loop | `Plate` | the floor the mass stands on; its top is the ground |
+   | `derive::starter`'s `RoofStyle::Flat` arm, through `flat_over` | `Roof` | seated on the wall top over the eave |
+   | `derive::floor_slab` | `Floor` | a storey between two others, inside the walls it meets |
+   | `terrace.rs`, one per unit over its whole footprint | `Plate` | each unit's foundation, written by hand rather than derived |
+   | `wing.rs`, one per arm over its own footprint | `Plate` | the same, for the host and for the attached wing |
+   | `yard.rs`, the store's plate re-hosted on `MassId(1)` | `Plate`, unchanged | `derive::starter` wrote it; the scene only moves it |
+   | `authored.rs`, `workshop.rs` | `Floor`, unchanged | both take `derive::floor_slab`'s mezzanine |
+   | `slab_probe`'s unhoused slabs | `Plate` | a step or a canopy standing on its own, which never moves |
+
+   **`gallery::ground` was making the same guess by elevation and now reads the role too** — the cut under a plate
+   tested that the slab's two levels span its host's lowest node, so a floor whose underside reached the ground line
+   would have had the ground cut away from under the storey above it. All nine frames render byte-identical
+   (`house B13154AD7D29F938` … `identity 974FB5B24E1E7A35`), `scene_identity_probe` still reads **806** rows, and the
+   role is not in the identity channel: an id is an element of the document, and what a slab *is* names no new one.
 2. **A hosted slab naming a mass the document does not hold is silent** — it is staged out and no violation names it.
 3. **A part on the rooms-facing side of a courtyard wall** is unaddressable: `FaceRef` names one loop, and the offset
    edge is longer at both ends. Vocabulary gap; `validate` cannot see such a document.

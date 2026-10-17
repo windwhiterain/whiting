@@ -87,7 +87,7 @@ pub fn document_at(width: f32, depth: f32, wing_depth: f32) -> Building {
         ),
     ] {
         skeleton.slabs.push(
-            building::slab::Slab::new(
+            building::slab::Slab::plate(
                 rectangle(x0, z0, x1, z1)
                     .into_iter()
                     .map(|node| node.position)

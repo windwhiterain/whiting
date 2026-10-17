@@ -120,7 +120,7 @@ fn main() {
 
     println!("\n# a plate with no host stays where its author put it");
     let mut loose = BuildingSkeleton::default();
-    loose.slabs.push(Slab::new(
+    loose.slabs.push(Slab::plate(
         vec![[0.0, 0.0], [2.0, 0.0], [2.0, 1.0], [0.0, 1.0]],
         5.0,
         5.4,
@@ -136,14 +136,14 @@ fn main() {
 
     println!("\n# the two ways a slab cannot be a prism");
     let mut broken = BuildingSkeleton::default();
-    broken.slabs.push(Slab::new(
+    broken.slabs.push(Slab::plate(
         vec![[0.0, 0.0], [2.0, 0.0], [2.0, 1.0]],
         1.0,
         1.0,
     ));
     broken
         .slabs
-        .push(Slab::new(vec![[0.0, 0.0], [1.0, 1.0]], 0.0, 1.0));
+        .push(Slab::plate(vec![[0.0, 0.0], [1.0, 1.0]], 0.0, 1.0));
     let violations = Building::new(broken.clone()).validate();
     for violation in &violations {
         println!("  {violation:?}");

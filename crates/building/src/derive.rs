@@ -176,7 +176,7 @@ pub fn starter(starter: &Starter) -> Building {
         // A wall the miter cannot offset answers `None`, and a mass whose plate cannot be seated is a
         // building with no floor rather than a plate standing somewhere else.
         inner_loop(&mass, host)
-            .map(|inside| Slab::new(inside, lowest - starter.slab, lowest).with_host(host))
+            .map(|inside| Slab::plate(inside, lowest - starter.slab, lowest).with_host(host))
     };
     let Some(eave) = Eave::read(&mass, starter.overhang, starter.sink) else {
         // Unreachable for the rectangle this function just built: four nodes is a quadrilateral.
@@ -245,7 +245,7 @@ fn flat_over(eave: &Eave, host: MassId, thickness: f32) -> Slab {
         .iter()
         .map(|node| node.position)
         .collect::<Vec<_>>();
-    Slab::new(outline, bottom, bottom + thickness).with_host(host)
+    Slab::roof(outline, bottom, bottom + thickness).with_host(host)
 }
 
 /// Builds a hip roof over a mass's outline, standing `overhang` outside it.
@@ -753,7 +753,7 @@ pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Op
     if !(elevation > lowest && elevation < mass.top && thickness > 0.0) {
         return None;
     }
-    Some(Slab::new(inner_loop(mass, id)?, elevation - thickness, elevation).with_host(id))
+    Some(Slab::floor(inner_loop(mass, id)?, elevation - thickness, elevation).with_host(id))
 }
 
 /// Returns the loop a mass's walls stand on: its outline offset inward by the wall's own thickness.

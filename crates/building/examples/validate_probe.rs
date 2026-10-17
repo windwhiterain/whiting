@@ -21,6 +21,7 @@ use whiting_building::BuildingSkeleton as Skeleton;
 use whiting_building::derive::{RoofStyle, Starter, floor_slab, starter};
 use whiting_building::grid::{FaceRef, GRID_TOLERANCE, Rhythm};
 use whiting_building::mass::{Attachment, Mass, MassId, PlanNode};
+use whiting_building::math::Vec2;
 use whiting_building::mesh::{
     BuildingFace, BuildingMesh, Element, MassSurface, RoofSurface, SolidId,
 };
@@ -359,24 +360,32 @@ fn hip_starter_base_short() -> (BuildingSkeleton, BuildingMesh) {
 /// check reports is the plate's alone against the outline it has to meet.
 fn hip_starter_plate_too_small(inset: f32) -> BuildingSkeleton {
     let mut skeleton = hip_starter();
-    let plate = &mut skeleton.slabs[0];
-    // **The centre of the plate's own bounding box**, which is the middle of a rectangle's four
-    // corners, so the loop goes in by `inset` on all four sides whatever size the starter is.
+    shrink_loop(&mut skeleton.slabs[0].outline, inset);
+    skeleton
+}
+
+/// Walks a plan loop in by `inset` metres on every side, which is the one change that makes a slab
+/// measurably short of the floor it stands over.
+///
+/// **It is the centre of the loop's own bounding box**, which is the middle of a rectangle's four
+/// corners, so the loop goes in by `inset` on all four sides whatever size the starter is, and the
+/// area it loses is `inset` times the loop's perimeter — the same conversion
+/// [`COVERAGE_TOLERANCE`] makes, so a reader can see the shortfall without expanding it. `O(nodes)`.
+fn shrink_loop(outline: &mut [Vec2], inset: f32) {
     let mut low = [f32::INFINITY; 2];
     let mut high = [f32::NEG_INFINITY; 2];
-    for point in &plate.outline {
+    for point in outline.iter() {
         for axis in 0..2 {
             low[axis] = low[axis].min(point[axis]);
             high[axis] = high[axis].max(point[axis]);
         }
     }
     let middle = [(low[0] + high[0]) * 0.5, (low[1] + high[1]) * 0.5];
-    for point in plate.outline.iter_mut() {
+    for point in outline.iter_mut() {
         for axis in 0..2 {
             point[axis] += inset * (middle[axis] - point[axis]).signum();
         }
     }
-    skeleton
 }
 
 /// Returns the hip starter with an intermediate floor on its own inner loop: a second hosted slab on
@@ -392,6 +401,33 @@ fn hip_starter_with_a_floor() -> BuildingSkeleton {
     let mut skeleton = hip_starter();
     let mass = skeleton.masses[0].clone();
     let floor = floor_slab(&mass, MassId(0), 2.2, 0.22).expect("2.2 m is inside a 3.2 m wall");
+    skeleton.slabs.push(floor);
+    skeleton
+}
+
+/// Returns the hip starter with a floor **half a millimetre above its mass's ground line**: the one
+/// placement a rule that picks the plate out of the elevations cannot tell.
+///
+/// [`floor_slab`] refuses it — its guard is `elevation > lowest`, so a floor is never *at* the ground
+/// — so the floor is derived at `2.2` and walked down onto `lowest + 0.0005`, which is inside the
+/// millimetre of margin a rule reading elevations has to admit. Its loop is then pulled in half a
+/// metre on every side, because a floor seated on the mass's own inner loop covers that loop exactly
+/// and a coverage check would then have nothing to report: **the pair with
+/// [`hip_starter_plate_too_small`] is what makes the reading mean something**, since the two slabs
+/// differ in nothing but what the document calls them and how high they stand.
+fn hip_starter_with_a_floor_at_the_ground_line() -> BuildingSkeleton {
+    let mut skeleton = hip_starter();
+    let mass = skeleton.masses[0].clone();
+    let mut floor = floor_slab(&mass, MassId(0), 2.2, 0.22).expect("2.2 m is inside a 3.2 m wall");
+    let thickness = floor.thickness();
+    let lowest = mass
+        .outline
+        .iter()
+        .map(|node| node.elevation)
+        .fold(f32::INFINITY, f32::min);
+    floor.top = lowest + 0.0005;
+    floor.bottom = floor.top - thickness;
+    shrink_loop(&mut floor.outline, 0.5);
     skeleton.slabs.push(floor);
     skeleton
 }
@@ -1059,6 +1095,17 @@ fn main() {
     report_building(
         "the same starter with an intermediate floor on the inner loop",
         &hip_starter_with_a_floor(),
+    );
+    report_building(
+        "the same starter with that floor walked down to 0.5 mm above the ground line",
+        &hip_starter_with_a_floor_at_the_ground_line(),
+    );
+    println!(
+        "  the two differ in nothing but the name the document gives the slab and the half-millimetre it \
+         stands above the ground: same loop pulled in half a metre on all four sides, same 15.8000 m2 \
+         short of the same floor. A rule that reads what a slab IS answers nothing here; a rule that \
+         reads where it sits has to draw the line somewhere, and it drew it a millimetre above the \
+         ground rather than on it"
     );
     report_building(
         "the same starter with no plate at all, which is not a fault",

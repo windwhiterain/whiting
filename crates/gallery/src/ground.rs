@@ -81,19 +81,27 @@ fn ground_plates(building: &Building) -> Vec<Plate> {
 }
 
 /// Returns whether a slab is its host mass's plate on the ground, rather than a floor above it.
+///
+/// # Invariants
+///
+/// **It reads the slab's own [`SlabRole`](building::slab::SlabRole), and never its elevations.** The
+/// rule this replaced — the slab's two levels span its host's lowest node — is the same guess the
+/// building crate's own coverage check used to make, and it had the same millimetre window: a floor
+/// whose underside reaches the ground line is a floor and not a plate, yet it satisfied the test and
+/// would have had the ground cut away from under the storey above it. A mezzanine 2.2 m up never
+/// reached the test at all, which is why no scene saw the window.
+///
+/// The two remaining stages are the same two the crate's own check keeps: a plate with no host, and a
+/// plate whose host the document does not hold, are both slabs standing on their own, and cutting the
+/// ground under either is cutting the site out from under something that is not a room. `O(1)`.
 fn stands_on_its_mass(slab: &building::slab::Slab, skeleton: &building::BuildingSkeleton) -> bool {
+    if slab.role != building::slab::SlabRole::Plate {
+        return false;
+    }
     let Some(host) = slab.host else {
         return false;
     };
-    let Some(mass) = skeleton.masses.get(host.0) else {
-        return false;
-    };
-    let lowest = mass
-        .outline
-        .iter()
-        .map(|node| node.elevation)
-        .fold(f32::INFINITY, f32::min);
-    slab.bottom <= lowest && lowest <= slab.top
+    skeleton.masses.get(host.0).is_some()
 }
 
 /// One building's ground plate, as the plan loop the ground is cut away from.

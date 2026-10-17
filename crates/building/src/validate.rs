@@ -606,14 +606,19 @@ pub enum Violation {
     /// [`mesh`]'s. A plate too small for its mass is an authoring fault, and an author hears about it
     /// for a skeleton that cannot be expanded at all.
     ///
-    /// **A plate is the hosted slab whose top stands at its host's own ground line, and the
-    /// elevations are what select it.** `host` alone cannot: [`derive::floor_slab`](crate::derive::floor_slab)
+    /// **A plate is the hosted slab whose [`SlabRole`](crate::slab::SlabRole) is `Plate`, and the
+    /// role is what selects it.** `host` alone cannot: [`derive::floor_slab`](crate::derive::floor_slab)
     /// builds an **intermediate** floor on the mass's inner loop — smaller than the outline on
     /// purpose, so that the floor meets its walls rather than running under them — and
     /// [`derive::starter`](crate::derive::starter) builds a **flat roof** on the same host at the
-    /// wall top. Both name the mass, both cover less than its outline, and neither is a plate. A
-    /// role field would be the other answer; it would also be a second thing every author has to
-    /// fill in for the crate to stop guessing, and the elevations already tell the three apart.
+    /// wall top. All three name the mass and all three cover less than its outline, and only one of
+    /// them is a plate. This check once told them apart by elevation — *the hosted slab whose top
+    /// stands at its host's ground line* — which asked a reader of the document to know where each
+    /// slab sits before knowing what it was and needed a millimetre of margin to admit the levels a
+    /// plate is really authored at; **a floor `0.0005` above the ground line came through that margin
+    /// and was reported as a plate `15.800003` m² short of its floor**, by a rule whose own tolerance
+    /// was the defect. The role is on the slab, authored where the slab is built, and the check reads
+    /// nothing else.
     ///
     /// **It is a shortfall only, never an overshoot**, which is where it differs in kind from
     /// [`RoofDoesNotCover`](Self::RoofDoesNotCover). That one compares magnitudes because a skin
@@ -1792,6 +1797,10 @@ fn check_slabs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 /// **It is staged four times and each stage has a reading of its own already made elsewhere**,
 /// which is what keeps the fault this names about the plate an author drew:
 ///
+/// - **A slab that is not a plate is not this fault.** Its [`SlabRole`](crate::slab::SlabRole) is
+///   `Floor` or `Roof`, and it covers less than the mass's floor on purpose: a storey is inset by the
+///   walls it meets and a roof hangs over the eave. The role is read first because it is the only one
+///   of the four stages that needs no other value to answer.
 /// - **No host is not this fault.** An unhoused plate is a step or a canopy standing on its own,
 ///   which is what [`Slab::host`](crate::slab::Slab::host) documents it to be.
 /// - **A host the document does not hold is not this fault either.** There is no outline to measure
@@ -1800,8 +1809,6 @@ fn check_slabs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
 ///   question this check leaves alone.
 /// - **A host with fewer than three outline nodes has no plan area to compare**, and
 ///   [`Violation::OutlineTooShort`] has already said so.
-/// - **A slab whose top stands above the host's ground line is not a plate**: it is an intermediate
-///   floor or a flat roof, both of which cover less than the floor *by design*.
 ///
 /// **The floor a ground plate has to reach is the host's inner loop**, because the wall ring owns the
 /// annulus outside it and stands on the ground line across that annulus — the same loop
@@ -1826,13 +1833,12 @@ fn check_plate_coverage(
     if mass.outline.len() < 3 {
         return;
     }
-    // **A plate's top is its host's own ground line.** The comparison is against `lowest` rather than
-    // against `0.0` because a mass stands on a terrace: `site::seat` gives every node of a mass the
-    // same delta and gives a hosted slab the same one, so a plate's top and its mass's lowest node
-    // stay together under a seat as they were under an author. `TOUCH_TOLERANCE` is the margin for
-    // the reason it is the margin everywhere else — the two numbers mean one place and only `f32`
-    // rounding separates them.
-    if slab.top > mass.lowest() + TOUCH_TOLERANCE {
+    // **A role selects the plate, and a role is authored.** A floor and a flat roof are hosted slabs
+    // that cover less than the floor by design — the one is inset by the walls it meets and the other
+    // sits over the eave — so the elevation rule this replaced had to carry a tolerance wide enough to
+    // admit the elevations a plate really is authored at, and a floor a millimetre above the ground
+    // came through it. Nothing here reads a level: what a slab *is* is on the slab.
+    if slab.role != crate::slab::SlabRole::Plate {
         return;
     }
     // **A ground plate is the mass's floor, and a mass's floor is its inner loop** — the wall ring owns

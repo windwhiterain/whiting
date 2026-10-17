@@ -87,7 +87,7 @@ pub fn document() -> Building {
         // **Each unit's plate is its own solid**, spanning the unit's footprint from one plate thickness below the
         // floor level up to it, so the wall ring overlaps it and no floor is split at a wall.
         skeleton.slabs.push(
-            building::slab::Slab::new(
+            building::slab::Slab::plate(
                 rectangle(
                     centre - UNIT_WIDTH * 0.5,
                     -UNIT_DEPTH * 0.5,
