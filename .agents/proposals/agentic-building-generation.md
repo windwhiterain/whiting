@@ -2362,3 +2362,33 @@ in the courtyard's own reveal rather than 0.06 m inside it.
    **Answered (2026-10-27, the style slice): `derive`.** A style is a rule for computing numbers, not a
    fact about a building, so the skeleton holds the numbers and the rule stays in `derive` — see *What the
    style slice found*.
+
+## Punch list after the volume arc (2026-10-27)
+
+The volume model is in: a mass is a wall ring plus a plate, a courtyard is a third ring, plates are drawn, and the
+ground is cut out from under them so a floor is genuinely the surface a pixel carries. What is left, in the order a
+session should take it, each with the measurement that decides it:
+
+1. **A `role` on `Slab`** (plate / floor / roof). The plate-coverage check currently stages a hosted slab by elevation
+   ("its top stands at its host ground line") and has a 1 mm window where a floor seated at `lowest + 0.0005` reads as
+   a plate. A role removes both, and it is vocabulary, not geometry.
+2. **A hosted slab naming a mass the document does not hold is silent** — it is staged out and no violation names it.
+3. **A part on the rooms-facing side of a courtyard wall** is unaddressable: `FaceRef` names one loop, and the offset
+   edge is longer at both ends. Vocabulary gap; `validate` cannot see such a document.
+4. **A non-convex courtyard** is refused (`VoidNotConvex`) because the outward walk across a reflex corner has never
+   been measured. `offset_loop` is the walk to measure; two inward measurements of the same family are recorded above.
+5. **`house` and `yard` cannot answer a floor question**: `house` has no opening on the camera side, and `yard`'s
+   plates sit inside foundation solids on terraces above a sloped ground. Camera facts, not cut facts.
+6. **`terrace` shows one plate of three** (the other two are behind the row) and **`hall_large` is not registered in
+   `locate_in`**, so `--locate` answers "no domain reading" there while `--where` works. Pre-existing.
+7. **`workshop`'s `--where` count changed name** between slices (1,987 under one element spelling, 1,844 under
+   another). Recorded rather than reconciled; a session that reads it should settle the name first.
+8. **Three gallery probes carry pre-existing warnings** (`seam_shading_probe`, `alpine_probe`, `step_fit_probe`) and
+   `roof_planarity_probe` is not run-to-run deterministic (it prints a plane grouping in hash order), so it cannot be
+   a regression gate.
+
+**And the rule these slices earned, worth keeping above the list:** a pixel count is not evidence of visibility. The
+ground-hole slice's first cut emitted one triangle per four-corner piece, which shifted every following triangle by
+one; the frame showed sky through the ground while `--where` still reported plausible floor counts. What caught it was
+`--locate` on a floor pixel with an untouched channel (`monoliths`) as the control. **Measure with an instrument that
+can disagree with you.**
