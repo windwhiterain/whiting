@@ -77,7 +77,39 @@ So the acceptance is **not** "Euler characteristic 0" alone. It is:
 Any diagnostic that treats `euler 0` as a defect — and there is at least one in `expand.rs`'s comments — must learn
 to ask whether the document authored a hole before it calls the number wrong. That is the difference between a
 courtyard and the same number from a topology defect, and it is the one thing this slice has to get right that the
-design did not anticipate.## Status log
+design did not anticipate.## The map of `expand_mass`, read before writing any of it
+
+`expand_mass` (in `crates/building/src/expand.rs`, `fn expand_mass`) builds one mass in this order:
+
+1. **the floor loop** — `offset_loop(&mass.outline, id, mass.wall, mass.plan_area(), &mut problems)` answers `inner`,
+   the room-side loop. **The void needs its own call**: reverse the void loop and offset it by the same `wall`, which
+   puts the loop on the courtyard's outer side (the room-facing face of the courtyard wall).
+2. **four corners per node**, pushed as `Solid::point`s:
+   `outside_base` = outline at `elevation − slab`, `outside_top` = outline at `top`,
+   `inside_floor` = `inner` at `elevation`, `inside_top` = `inner` at `top`.
+3. **one `WallFace::of(mass, edge, &inner)` per edge**, then `EdgeNode { outer_base, outer_top, inner_floor,
+   inner_top }` per node, then **`resolve_holes`** turns authored openings into stations on those loops.
+4. emission, which reads the per-edge faces and the per-node stations.
+
+**So a void is a second, smaller copy of steps 1–4** — with two differences:
+
+- its `inside_floor` sits at the **outline's own elevation** (the courtyard's floor is the plate, and the plate is
+  already there), and its base corner (`outside_base`) sits at the *same* elevation, because the courtyard wall
+  stands **on** the plate rather than hanging below it;
+- its **wall top** is the ring between the two loops, which is `fill::ring_fill`'s job — the one place in this slice
+  that needs it.
+
+**The two loops wind oppositely**, and the ring filler wants them the same way; it normalises that itself, so pass
+the loops as authored.
+
+**Names**: the mass already distinguishes `OuterWall { edge }` (from outside) from `InnerWall { edge }` (from the
+rooms). A courtyard mirrors that with a void index: the courtyard-facing face, the room-facing face, and the wall top
+between them. `gallery`'s `building_identity` matches on `MassSurface`, so **every new arm is compiler-enforced** —
+which is the reason to add them in one commit with the emission, not after it.
+
+**Acceptance, restated for this slice**: a mass with one rectangular void has **0 violations**, builds, measures
+**Euler 0**, and the nine scene hashes do not move. `Problem::VoidNotDrawn` is deleted **in the same commit** — its
+own documentation promises that.## Status log
 
 - **2026-10-27** — handoff written. Nothing implemented yet: `main` carries `ring_fill` and this plan.
 - **2026-10-27** — claims verified in the tree; the acceptance corrected: `euler 0` alone is a fault in the
