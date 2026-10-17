@@ -293,3 +293,26 @@ fail separately. Two defects, not one.
 a multi-line scripted replace does nothing on these files), because 72 edges under six openings is consistent with
 either the strip's quads being emitted with the wrong winding at each station pair, or the reveals' sills landing on
 the strip's corners. The element will say which.
+
+## The open edges are the walls' own bottoms (2026-10-27)
+
+With the owning element printed, the answer is not the base strip's own shape: **all 72 open edges are owned by
+`InnerWall` and `OuterWall` faces.** The walls' bottom edges are unpaired, so the base strip is not meeting them at
+all — it is a separate ring floating in the same plane.
+
+```text
+OPEN mass 0 owner Some(Mass(MassId(0), InnerWall { edge: 0 })) [0.01, 0.0, 0.010000002] -> [1.09, 0.0, 0.01]
+OPEN mass 0 owner Some(Mass(MassId(0), OuterWall { edge: 3 })) [0.0, 0.0, 0.0]        -> [0.0, 0.0, 0.05]
+```
+
+**Why it cannot meet them as written.** The walls are emitted from the raw corner arrays (`outside_base`,
+`inside_floor`) — one quad an edge, subdivided only at the stations a hole adds — while the strip is emitted from the
+**cut loops** (`soffit_points`, `floor_points`). Those two descriptions agree in *order* but not necessarily in *ids*:
+`split_loop` rebuilds the loop's point list, and `Solid::point` interns nothing, so a corner can exist twice under two
+ids and the edge never pairs. The floor disc used to hide this because it was the *last* face in the solid and its
+boundary was compared against nothing.
+
+**The next measurement is two ids, not a fix:** print `outside_base[0]`, `soffit_points[0]`, `inside_floor[0]`,
+`floor_points[0]`. If the pairs differ, the strip must be built from the **same arrays the walls use**, subdivided at
+the same stations — i.e. the wall emission and the base strip have to share one description of the loop, which is the
+single change this whole slice has been circling.
