@@ -37,6 +37,7 @@
 //! parameter. Nothing a caller can observe through this API depends on the parameterisation's speed —
 //! every query is by arc length — so the difference is recorded here rather than reconciled.
 
+use crate::hermite;
 use crate::math::{Vec3, clamp, cross3, dot3, length3, normalized3, subtract};
 
 /// One knot: where the curve is, and its derivative with respect to the knot parameter.
@@ -135,12 +136,7 @@ struct Segment {
 
 impl Segment {
     fn at(&self, u: f32) -> Vec3 {
-        let u2 = u * u;
-        let u3 = u2 * u;
-        let h00 = 2.0 * u3 - 3.0 * u2 + 1.0;
-        let h10 = u3 - 2.0 * u2 + u;
-        let h01 = -2.0 * u3 + 3.0 * u2;
-        let h11 = u3 - u2;
+        let [h00, h10, h01, h11] = hermite::value(u);
         add(
             add(scale(self.p0, h00), scale(self.m0, h10)),
             add(scale(self.p1, h01), scale(self.m1, h11)),
@@ -148,11 +144,7 @@ impl Segment {
     }
 
     fn derivative(&self, u: f32) -> Vec3 {
-        let u2 = u * u;
-        let d00 = 6.0 * u2 - 6.0 * u;
-        let d10 = 3.0 * u2 - 4.0 * u + 1.0;
-        let d01 = -6.0 * u2 + 6.0 * u;
-        let d11 = 3.0 * u2 - 2.0 * u;
+        let [d00, d10, d01, d11] = hermite::slope(u);
         add(
             add(scale(self.p0, d00), scale(self.m0, d10)),
             add(scale(self.p1, d01), scale(self.m1, d11)),
@@ -160,10 +152,7 @@ impl Segment {
     }
 
     fn second(&self, u: f32) -> Vec3 {
-        let dd00 = 12.0 * u - 6.0;
-        let dd10 = 6.0 * u - 4.0;
-        let dd01 = -12.0 * u + 6.0;
-        let dd11 = 6.0 * u - 2.0;
+        let [dd00, dd10, dd01, dd11] = hermite::second(u);
         add(
             add(scale(self.p0, dd00), scale(self.m0, dd10)),
             add(scale(self.p1, dd01), scale(self.m1, dd11)),
