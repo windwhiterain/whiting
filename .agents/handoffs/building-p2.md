@@ -299,6 +299,50 @@ the same one P1 measured and attributed to the shadow subsystem, whose three pro
 
 Still owed in P2: the identity **sibling** mechanism (D6).
 
+## Slice 5: identity, and the name a pixel answers with
+
+`crates/building/src/identity.rs`: `Identity::of(&BuildingMesh, first_id)` numbers every element the
+mesh's faces name — one walk producing both the numbers and the table, `Row { id, element, path }`,
+`id_of`/`row`/`of_face` — plus `NOT_AUTHORED`, the reserved zero.
+
+Its four invariants are its sibling's, and one of them is a **deliberate divergence**:
+
+- one walk produces both the numbers and the table, so a face cannot resolve to an id no row names;
+- the ids are a contiguous run from `first_id` (a caller drawing two numbers the second from where the
+  first ended), measured: `1..=42` and then `43..=84`;
+- zero is reserved and unallocated, so "is this pixel the building at all" is answerable from one
+  image;
+- **the numbering is a function of the document *and the mesh*, not of the document alone** — because a
+  building's roof **fascia is numbered by its position in the skin's own boundary edge list**, and that
+  count is a fact the expansion proves rather than a number the document holds. Re-deriving it here
+  would be a second derivation of the skin's boundary, which is the failure this crate has paid for
+  twice; so this module asks the mesh instead, and the doc says so with its reason. What survives is
+  the property the sibling's invariant is *for*: measured, adding a second shutter on another face
+  left **0 of the 42 existing rows' ids changed**.
+
+Measured by `examples/identity_probe.rs` on a 5×8 gable shed with a doorway, a placed shutter and a
+rhythm: **108 faces naming 42 elements**, 0 faces without an id, 0 rows without a face, 0 rows whose
+id does not come back, two builds giving an identical table, and names that read as sentences —
+`mass 0, outer wall over edge 0`, `mass 0, the left reveal of opening 0 in edge 2`, `roof 0, the
+fascia over the skin's boundary edge 0`, `part 0, template mass 0, outer wall over edge 0`.
+
+The render half is **not** this crate's: an `id` channel the mesh shader writes is the device layer's
+business, exactly as it is for the mountains (`gallery::identity` owns the mountain side, and its
+`faceted` packs the attribute). Nothing here bakes a number into an image.
+
+## What P2 still owes, stated so the next session does not have to rediscover it
+
+**Sockets.** The phase's own scope says "the parts vocabulary with **authored sockets**", and what
+exists is templates and placements with a `Pin` — two numbers from a bay's corner. That places a part
+but does not *connect* it: the shed's canopy is pinned 0.11 m along and `hole.high + 0.12` up, which
+means the canopy does not know it belongs over the door and will not follow if the door's head moves.
+A socket is the missing half: a named frame on a template (and on a bay's boundary) that a placement
+names instead of a pin, so "the canopy hangs over the door's head" is a fact the document holds.
+
+Everything else P2 listed is in: levels and bays, openings, parts and their solids, identity, and the
+second demonstration scene. The "one coherent style set" is each scene's own materials, and the
+enclosure is a scene rather than a mechanism.
+
 **The acceptance probe is the chief designer's** (`examples/opening_probe.rs`), and its strongest
 number is the one no predicate can fake: a wall with a hole holds less material by exactly
 `hole area × wall thickness`. Measured on the document half before the cut landed — three holes (a

@@ -24,7 +24,7 @@ use crate::math::{Vec3, cross3, dot3, subtract};
 use crate::roof::RoofId;
 
 /// Which surface of a mass a face belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MassSurface {
     /// The face seen from outside, one per outline edge.
     OuterWall {
@@ -79,7 +79,7 @@ pub enum MassSurface {
 }
 
 /// Which surface of a roof a face belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RoofSurface {
     /// The upper face of a plane.
     Skin {
@@ -108,7 +108,7 @@ pub enum RoofSurface {
 }
 
 /// The authored element a face came from: its provenance, and its shading group.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Element {
     /// A face of a mass.
     Mass(MassId, MassSurface),
@@ -137,7 +137,7 @@ pub enum Element {
 /// It is [`Element`] without the part, which is what keeps the recursion out of the type: a template
 /// is a skeleton of masses and roofs, and a template holding a part is not a thing this crate builds,
 /// so one level is the whole of it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PartSurface {
     /// A face of one of the template's masses.
     Mass(MassId, MassSurface),

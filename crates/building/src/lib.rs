@@ -55,6 +55,7 @@
 pub mod derive;
 pub mod expand;
 pub mod grid;
+pub mod identity;
 pub mod mass;
 pub mod math;
 pub mod mesh;
