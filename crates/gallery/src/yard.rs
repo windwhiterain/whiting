@@ -221,6 +221,12 @@ pub fn yard() -> Value {
     let roofs = packed_where(&built, &table, |element| {
         matches!(element, Element::Roof(_, _))
     });
+    // **The two 1.20 m foundations the slope needs**, the shed's and the store's carried across with its
+    // mass: the shed's edge stands the relief above the ground, and a slab carries it down. The yard has
+    // authored both since the store's plate crossed, and drew neither.
+    let floors = packed_where(&built, &table, |element| {
+        matches!(element, Element::Slab(_, _))
+    });
     let stone = packed_where(&built, &table, |element| {
         matches!(element, Element::Wall(_, _))
     });
@@ -270,12 +276,16 @@ pub fn yard() -> Value {
     let metal = || surface([0.34, 0.37, 0.40], 0.0, 0.38, [0.0; 3]);
     let rubble = || surface([0.66, 0.65, 0.60], 0.0, 0.92, [0.0; 3]);
     let earth = || surface([0.24, 0.25, 0.16], 0.0, 0.95, [0.0; 3]);
+    // Rubble rather than board: a foundation this deep is masonry on a slope, and it is the one surface of the
+    // two a viewer can see standing free of the ground.
+    let plinth = || surface([0.50, 0.49, 0.45], 0.0, 0.93, [0.0; 3]);
 
     let mut materials = Vec::new();
     for (name, body) in [
         ("board", board as fn() -> Value),
         ("metal", metal),
         ("rubble", rubble),
+        ("plinth", plinth),
     ] {
         materials.push(mesh_material(
             &format!("{name}-cast"),
@@ -318,6 +328,7 @@ pub fn yard() -> Value {
             ("shells", "board"),
             ("roofs", "metal"),
             ("stone", "rubble"),
+            ("floors", "plinth"),
             ("ground", "ground"),
         ]
         .into_iter()
@@ -392,6 +403,7 @@ pub fn yard() -> Value {
                 mesh("shells", "Triangles", point.clone(), shells),
                 mesh("roofs", "Triangles", point.clone(), roofs),
                 mesh("stone", "Triangles", point.clone(), stone),
+                mesh("floors", "Triangles", point.clone(), floors),
                 mesh("gate", "Triangles", point, gate_panel),
                 mesh(
                     "ground",

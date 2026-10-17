@@ -183,6 +183,11 @@ pub fn shed() -> Value {
     let walls = packed_where(&built, &table, |element| {
         matches!(element, building::Element::Mass(_, _))
     });
+    // The starter's own 0.30 m foundation plate: the shed has always authored one, and nothing but the
+    // document and the table could see it.
+    let floors = packed_where(&built, &table, |element| {
+        matches!(element, building::Element::Slab(_, _))
+    });
     let roof = packed_where(&built, &table, |element| {
         matches!(element, building::Element::Roof(_, _))
     });
@@ -206,12 +211,16 @@ pub fn shed() -> Value {
     let metal = || surface([0.34, 0.37, 0.40], 0.0, 0.38, [0.0; 3]);
     let timber = || surface([0.21, 0.14, 0.09], 0.0, 0.70, [0.0; 3]);
     let earth = || surface([0.30, 0.26, 0.19], 0.0, 0.95, [0.0; 3]);
+    // **The plate is darker and rougher than the board the shed is clad in**, so a frame that draws both
+    // can say which is which: the walls are weather, and a plate is what is under it.
+    let floor = || surface([0.30, 0.22, 0.15], 0.0, 0.80, [0.0; 3]);
 
     let mut materials = Vec::new();
     for (name, body) in [
         ("board", board as fn() -> Value),
         ("metal", metal),
         ("timber", timber),
+        ("floor", floor),
     ] {
         materials.push(mesh_material(
             &format!("{name}-cast"),
@@ -244,6 +253,7 @@ pub fn shed() -> Value {
         [
             ("walls", "board"),
             ("roof", "metal"),
+            ("floors", "floor"),
             ("door", "timber"),
             ("canopy", "timber"),
             ("ground", "ground"),
@@ -307,6 +317,7 @@ pub fn shed() -> Value {
             Value::List(vec![
                 mesh("walls", "Triangles", point.clone(), walls),
                 mesh("roof", "Triangles", point.clone(), roof),
+                mesh("floors", "Triangles", point.clone(), floors),
                 mesh("door", "Triangles", point.clone(), door),
                 mesh("canopy", "Triangles", point, canopy),
                 mesh(

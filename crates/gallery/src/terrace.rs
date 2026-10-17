@@ -151,6 +151,11 @@ pub fn terrace() -> Value {
     let walls = packed_where(&built, &table, |element| {
         matches!(element, building::Element::Mass(_, _))
     });
+    // One plate a unit, over the unit's own footprint: three solids `document` authors, drawn here rather
+    // than left in the table where nothing can see them.
+    let floors = packed_where(&built, &table, |element| {
+        matches!(element, building::Element::Slab(_, _))
+    });
     let roof = packed_where(&built, &table, |element| {
         matches!(element, building::Element::Roof(_, _))
     });
@@ -159,9 +164,14 @@ pub fn terrace() -> Value {
     let brick = || surface([0.56, 0.34, 0.26], 0.0, 0.88, [0.0; 3]);
     let tile = || surface([0.30, 0.20, 0.16], 0.0, 0.70, [0.0; 3]);
     let ground = || surface([0.26, 0.24, 0.17], 0.0, 0.95, [0.0; 3]);
+    let floor = || surface([0.32, 0.24, 0.17], 0.0, 0.82, [0.0; 3]);
 
     let mut materials = Vec::new();
-    for (name, body) in [("brick", brick as fn() -> Value), ("tile", tile)] {
+    for (name, body) in [
+        ("brick", brick as fn() -> Value),
+        ("tile", tile),
+        ("floor", floor),
+    ] {
         materials.push(mesh_material(
             &format!("{name}-cast"),
             "authored_shadowing",
@@ -187,19 +197,24 @@ pub fn terrace() -> Value {
     }
 
     let placed = |stage: &str| {
-        [("walls", "brick"), ("roofs", "tile"), ("ground", "ground")]
-            .into_iter()
-            .map(|(label, material)| {
-                instance(
-                    &format!("{label}-{stage}"),
-                    label,
-                    [0.0; 3],
-                    [0.0; 3],
-                    [1.0; 3],
-                    &format!("{material}-{stage}"),
-                )
-            })
-            .collect::<Vec<_>>()
+        [
+            ("walls", "brick"),
+            ("roofs", "tile"),
+            ("floors", "floor"),
+            ("ground", "ground"),
+        ]
+        .into_iter()
+        .map(|(label, material)| {
+            instance(
+                &format!("{label}-{stage}"),
+                label,
+                [0.0; 3],
+                [0.0; 3],
+                [1.0; 3],
+                &format!("{material}-{stage}"),
+            )
+        })
+        .collect::<Vec<_>>()
     };
 
     let extras = building_extras();
@@ -249,7 +264,8 @@ pub fn terrace() -> Value {
             "meshes".to_owned(),
             Value::List(vec![
                 mesh("walls", "Triangles", point.clone(), walls),
-                mesh("roofs", "Triangles", point, roof),
+                mesh("roofs", "Triangles", point.clone(), roof),
+                mesh("floors", "Triangles", point, floors),
                 mesh(
                     "ground",
                     "Triangles",

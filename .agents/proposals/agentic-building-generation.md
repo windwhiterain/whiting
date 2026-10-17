@@ -1262,7 +1262,7 @@ That is the difference between a style and a preset: **a preset is the numbers, 
 them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
 chosen twice.
 
-## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor)
+## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor and again on 2026-10-29 when the plates were drawn)
 
 Nine building scenes render, and each one's picture has a hash. They are recorded here because the question a
 refactor has to answer is *"did the picture change?"*, and a hash answers it in a way that looking at two images
@@ -1271,15 +1271,15 @@ does not. The hash is the first sixteen hex of the `sha256` of the scene's own `
 
 | scene | frame hash (first 16) | notes |
 | --- | --- | --- |
-| `house` | `D9B4204502FC41E0` | the hip, the plate, three walls |
-| `hall` | `8172E3DD3F032294` | `HALL` at 10 × 16, three bays |
-| `hall_large` | `11579A16F341F49F` | `HALL` at 14 × 20, five bays |
-| `shed` | `9F7ADE4E843AA760` | a doorway, two windows, a door leaf and a canopy |
-| `terrace` | `CCBA7FF2FAD71A57` | three units that touch, nine windows |
-| `wing` | `73A68D3C3BDAF97D` | host plus attached wing, windows on the weather faces |
-| `workshop` | `CB975B31D8E936C7` | two storeys, a plate, five instanced shutters |
-| `yard` | `7F1D25D497EF50B0` | the courtyard and its gate; the store's plate is `STORE`'s, carried across by hand, and the frame is unmoved by it |
-| `identity` | `D0C45EF53EE51909` | the identity picture, and every pixel still names itself |
+| `house` | `C8FC89887A8BA1AF` | the hip, the plate, three walls; the starter's foundation plate, **5 plate pixels** |
+| `hall` | `0D196DA8035448CB` | `HALL` at 10 × 16, three bays; the plate seen through the glazing, **128** |
+| `hall_large` | `8D144A5CAFEB71E7` | `HALL` at 14 × 20, five bays; **the plate is in its mesh and in no pixel of its frame** |
+| `shed` | `BB809590F4934059` | a doorway, two windows, a door leaf and a canopy; the 0.30 m plate, **1,483** |
+| `terrace` | `2326C57243C9B30A` | three units that touch, nine windows; **only `slab 2`'s plate is in frame, 2,528** |
+| `wing` | `965DEDC907148149` | host plus attached wing, windows on the weather faces; **4** |
+| `workshop` | `CB975B31D8E936C7` | two storeys, a plate, five instanced shutters — **unchanged, and it has to be** |
+| `yard` | `D49D235C366B99F4` | the courtyard and its gate; **both 1.20 m foundations, 20,313 pixels** |
+| `identity` | `D0C45EF53EE51909` | the identity picture, and every pixel still names itself — **unchanged: it already drew its plate** |
 
 **Every one of the nine moved, and for one reason: a mass is two solids.** The wall ring's inner base stands on the
 ground line where the shell's floor disc stood a plate thickness lower, the plate is a solid of its own and brings
@@ -1287,6 +1287,71 @@ its own sides and top, and a doorway notches that base instead of being floored 
 no opening moved for the first two reasons alone and `shed`, `workshop` and `identity` for all three. A baseline that
 held these nine still would have been the shell's, and a baseline predicting the new ones before the branch merged
 would have been a guess; these are the numbers the merged tip renders.
+
+### The plates are drawn: seven of the nine moved, and two of the nine never needed to (2026-10-29)
+
+Seven scenes gained a `floors` mesh — `house`, `hall`, `hall_large`, `shed`, `terrace`, `wing`, `yard` — written as
+`workshop.rs` writes its own: a `packed_where` whose predicate names **exactly** `Element::Slab(_, _)`, its own
+material, and instances under all three stages. `workshop` and `identity` did not move, and **neither of them is a
+regression**:
+
+- **`identity` already drew its plate, and the brief that asked for it here was wrong.** `authored.rs` packs through
+  `packed()`, which is `packed_where(.., |_| true)` — a catch-all that keeps every element, `Element::Slab` among
+  them. Measured on the frame **before any edit**: `slab 0, its top` is id 66 and covers **40 pixels**, and the hash
+  was already `D0C45EF53EE51909`. Giving that scene a second, narrower plate mesh would draw the same faces twice
+  over and move nothing; **the correct count for this change is seven, not eight.** The row counts below are the
+  proof that no document changed: 806 rows, the same total as the table above.
+- **`hall_large` needed no second edit either.** `hall_large()` calls `hall_at()`, and the `floors` mesh is inside
+  `hall_at`, so one edit serves both scenes — the six source files cover seven scenes.
+
+**How each frame was checked, and what it found.** `render --where "<element name>"` counts the pixels carrying an
+element's id and reports its box, which is the picture's own answer rather than an inference from the source:
+
+| scene | plate pixels | what is actually in the frame |
+| --- | --- | --- |
+| `house` | **5** | a 0.45 m plate under a wall with no opening: 1 pixel of top, 4 of edge |
+| `hall` | **128** | the plate's top, seen through the glazing |
+| `hall_large` | **0** | **nothing** — see below |
+| `shed` | **1,483** | the 0.30 m plate's top through both windows |
+| `terrace` | **2,528** | **`slab 2` only**; `slab 0` and `slab 1` are behind the row |
+| `wing` | **4** | the far arm's plate, 3 pixels of top and 1 of edge |
+| `yard` | **20,313** | both 1.20 m foundations, standing free of the slope |
+| `workshop` | 3,318 | unchanged |
+| `identity` | 41 | unchanged; `slab 0`'s 40 pixels plus one edge |
+
+**Three of these are numbers about a limitation, not about a fault, and they are the honest result.**
+
+**`house` and `wing` are 4–5 pixels, because a foundation plate is coplanar with the wall it carries.** `derive::starter`
+spans its plate over the **whole** footprint, from one plate thickness below the outline's elevation up to it, so the
+plate's four edges lie in exactly the planes of the wall ring's outer faces over that thickness. Two outward-facing
+surfaces in one plane is a depth tie, and a tie is won by whichever instance is drawn last: the plate takes a handful
+of texels and loses the rest. The scenes that show a plate properly are the ones that show its **top** through an
+opening — `shed` at 1,483 and `hall` at 128 — and the one whose foundation genuinely stands clear of the ground,
+which is `yard`. `derive::floor_slab`, which `workshop` and `identity` use, is not exposed to this: it is seated on the
+mass's **inner loop**, so a first floor is inset by the wall's own thickness on all four sides and never shares a
+plane with a wall. That is why `workshop`'s `floors` mesh has always been safe and a starter's foundation plate is not.
+
+**`hall_large` moved its hash with zero plate pixels in the frame, and the reason is measurable rather than
+mysterious.** Its document carries four meshes and the plate is one of them (`render --census` reports `meshes: 4`),
+but all six of its plate surfaces cover **0 pixels**: the camera stands at `ridge * 0.75` from 26 units out, the plate
+is a buried foundation flush with the walls, and there is nothing of it to see. The picture still changed, by
+**54,040 pixels of a 1024 × 1024 frame — 5.2%** — while its `-authored_id` image is **byte-identical, 0 pixels**.
+No pixel changed which element it shows; every one of them changed *colour*. The plate is a new shadow caster, its top
+is coplanar with the ground at `y = 0` and its edges with the wall rings, so the shadow pass's depth ties resolve
+differently once the instance list is one row longer, and the ground's own shading follows. Measured by checking out
+main's `hall.rs` on this branch, rebuilding and rendering beside the branch's: main reproduces its own recorded
+`11579A16F341F49F` exactly and this branch reproduces `8D144A5CAFEB71E7` exactly, so the pair compared is
+main-against-branch and not two runs of one tree.
+
+**`terrace` shows one plate of three.** `slab 0` and `slab 1` are the two units furthest from the camera, behind a
+row of party walls; `slab 2`, the near unit, covers 2,528 pixels. All three are authored and all three are in the
+mesh — this is the frame, not the document.
+
+**The shed's foundation is 0.30 m, and the 1.20 m plinth belongs to the yard.** `shed.rs`'s `STARTER` carries
+`slab: 0.30`; the deep foundation that stands a relief clear of a slope is `yard.rs`'s `SHED` and `STORE`, both at
+`slab: 1.20`, and it is the yard's that the frame shows at 20,313 pixels. The shed's own plate is in the frame and is
+not floating or buried in any way the picture can show: 1,479 of its pixels are its **top** seen through the two
+windows, and the 4 more are one coplanar edge winning a tie.
 
 And the probes behind them: `scene_identity_probe` reads **nine** tables two-way — 77 + 109 + 77 + 31 + 66 + 123 +
 123 + 99 + 101 = **806 rows** in the gallery's own scene order, every id contiguous from the first and every name

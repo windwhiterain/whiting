@@ -181,6 +181,11 @@ pub fn wing_at(width: f32, depth: f32, wing_depth: f32) -> Value {
     let walls = packed_where(&built, &table, |element| {
         matches!(element, building::Element::Mass(_, _))
     });
+    // One plate an arm, over that arm's own footprint: two solids the document carries at `document_at`,
+    // drawn here rather than left in the table where nothing can see them.
+    let floors = packed_where(&built, &table, |element| {
+        matches!(element, building::Element::Slab(_, _))
+    });
     let roof = packed_where(&built, &table, |element| {
         matches!(element, building::Element::Roof(_, _))
     });
@@ -191,11 +196,13 @@ pub fn wing_at(width: f32, depth: f32, wing_depth: f32) -> Value {
     let plaster = || surface([0.74, 0.70, 0.61], 0.0, 0.85, [0.0; 3]);
     let tiles = || surface([0.33, 0.14, 0.10], 0.0, 0.62, [0.0; 3]);
     let ground = || surface([0.23, 0.21, 0.15], 0.0, 0.95, [0.0; 3]);
+    let floor = || surface([0.34, 0.26, 0.18], 0.0, 0.80, [0.0; 3]);
 
     let mut materials = Vec::new();
     for (name, body) in [
         ("wall", plaster as fn() -> Value),
         ("roof", tiles as fn() -> Value),
+        ("floor", floor as fn() -> Value),
     ] {
         materials.push(mesh_material(
             &format!("{name}-cast"),
@@ -225,19 +232,24 @@ pub fn wing_at(width: f32, depth: f32, wing_depth: f32) -> Value {
     // Every mesh is authored in world coordinates, so its three instances carry no transform: a
     // house placed by a translation here would be a second copy of where the house already is.
     let placed = |stage: &str| {
-        [("walls", "wall"), ("roof", "roof"), ("ground", "ground")]
-            .into_iter()
-            .map(|(label, material)| {
-                instance(
-                    &format!("{label}-{stage}"),
-                    label,
-                    [0.0; 3],
-                    [0.0; 3],
-                    [1.0; 3],
-                    &format!("{material}-{stage}"),
-                )
-            })
-            .collect::<Vec<_>>()
+        [
+            ("walls", "wall"),
+            ("roof", "roof"),
+            ("floors", "floor"),
+            ("ground", "ground"),
+        ]
+        .into_iter()
+        .map(|(label, material)| {
+            instance(
+                &format!("{label}-{stage}"),
+                label,
+                [0.0; 3],
+                [0.0; 3],
+                [1.0; 3],
+                &format!("{material}-{stage}"),
+            )
+        })
+        .collect::<Vec<_>>()
     };
 
     // **Two point schemas**: the walls and the hip carry `authored_id`; the ground carries none and writes
@@ -291,7 +303,8 @@ pub fn wing_at(width: f32, depth: f32, wing_depth: f32) -> Value {
             "meshes".to_owned(),
             Value::List(vec![
                 mesh("walls", "Triangles", point.clone(), walls),
-                mesh("roof", "Triangles", point, roof),
+                mesh("roof", "Triangles", point.clone(), roof),
+                mesh("floors", "Triangles", point, floors),
                 mesh(
                     "ground",
                     "Triangles",
