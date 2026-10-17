@@ -919,6 +919,64 @@ Measured by `examples/building_instancing_probe.rs` on six placements of one shu
 The scene renders at 16 passes (three more than before: the shutter mesh adds its stages), its own document
 assert is clean, and the gallery suite passes.
 
+## What the wall-placement slice found: a gate is not a hole, it is a part hung on a wall (2026-10-27)
+
+`yard` has had a courtyard with a **gate gap** since the site slice and **no gate in it**, and the reason was
+not an omission: every part the crate could place stood in a **bay of a wall of a mass**, and a leaf is not
+something a bay holds. It hangs from the post at the end of one run and closes the opening beyond it. That is
+a different kind of place, and the vocabulary to say it was the last target a building's parts needed.
+
+`building::parts::Target` is that vocabulary:
+
+```rust
+pub enum Target {
+    Bay { face: FaceRef, row: usize, column: usize },
+    Wall { wall: WallId },
+}
+```
+
+**One position field, two domains.** `Placement` still has a single `at: Pin`, measured in the target's own
+frame — across a bay (from its start) and up from its sill, or along a run (from its start) and up from the
+ground **under the pin**. `Placement::new` kept its signature and `Placement::on_wall` is new, which is why no
+scene, probe or verb changed shape when the target was added.
+
+Three consequences, each of them forced:
+
+- **A wall run is its own frame.** `part_frame` reads the run's direction as `along`, its normal as `inward`,
+  and interpolates the ground **along the run** for the base a pin's `up` is measured from. That last clause
+  is a defect the probe found: the first implementation read the base at the run's `from` node, and a gate on
+  a `0.25 x` slope hung **1.5 m under its own doorway**. The run's bottom follows the ground, so a part's base
+  has to follow it the same way.
+- **Only the pin is measured.** A bay placement is checked against its bay's rectangle; a wall placement is
+  checked against the run's line and **not** against the part's box, because a gate leaf is hung at the end of
+  a run and *must* reach past it. `PlacementOffItsWall` reports a pin off the run; the leaf's reach is the
+  author's business.
+- **A joint on a wall is refused, twice.** Every anchor names a feature of a bay — a sill, a head, an
+  opening's head — and a wall run has none of them, so `place_part` answers `None` and a document that holds
+  one anyway reports `PlacementMountOnAWall` rather than resolving the anchor against the run's ends by
+  guesswork.
+
+Measured by `examples/wall_part_probe.rs` on an 8 m run, a 3.2 m gate gap and a 2.4 m leaf hung at the run's
+end:
+
+| measurement | value |
+| --- | --- |
+| the frame | origin **`(2.0000, 0.0000, -5.0000)`** — the run's end on its centre line; `along (1, 0)`, `inward (0, 1)` |
+| the leaf | spans **`x 2.0000 .. 4.4000`** — it closes **`2.4000 m`** of the gap; **watertight**, 28 faces |
+| the document | **0 violations** |
+| a pin `0.5 m` beyond the run | `PlacementOffItsWall { past: 0.5 }` |
+| a wall the document does not hold | `place_part` answers **`None`** |
+| a joint on a wall | `place_part` answers `None`; a document holding one reports `PlacementMountOnAWall` |
+| seating on a `0.25 x` slope | the leaf's foot moves to **`y 0.5000`** — the ground under the pin |
+
+And the **yard** now draws its gate: the leaf is one template placed on the run that stops at the opening,
+drawn through the instancing path exactly as the workshop's shutters are (one mesh, one transform), so the gap
+scene has had since the site slice is a **gate** rather than an absence. The scene renders at 16 passes and the
+gallery suite passes.
+
+The crate's eighteen probes are green and the **`shed` frame is byte-identical** (`0AF51AEC…`), which is the
+evidence that adding a target disturbed no part that stands in a bay.
+
 ## `validate()`: reports, never repairs
 
 The R4.1 contract, in `mountain`'s measured shape (`validate.rs:160-202`, `expand.rs:36-92`):

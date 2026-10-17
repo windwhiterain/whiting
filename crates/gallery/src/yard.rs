@@ -21,12 +21,15 @@ use definition::Value;
 use scene::standard::Stage;
 
 use building::derive::{self, RoofStyle, Starter};
+use building::ops;
+use building::parts::{Pin, Placement, Target, Template};
 use building::site::seat;
-use building::wall::Wall;
-use building::{Building, BuildingSkeleton, Element, MassId, PlanNode};
+use building::wall::{Wall, WallId};
+use building::{Building, BuildingSkeleton, Element, Mass, MassId, PlanNode};
 
 use crate::building_mesh::points_where;
 use crate::geometry::heightfield;
+use crate::instancing::{standing, template_points};
 use crate::kit::{
     camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
     post_processes, screen_material, shaded_point_schema, surface,
@@ -87,6 +90,10 @@ const SUN_IRRADIANCE: f64 = 3.2;
 /// The site's own outline: a courtyard round the shed, open at one gate.
 const YARD: f32 = 6.5;
 
+/// The gate's own width and height: the 3.2 m opening, and a leaf a little lower than the 1.9 m wall.
+const GATE_WIDTH: f32 = 3.2;
+const GATE_HEIGHT: f32 = 1.7;
+
 fn node(x: f32, z: f32) -> PlanNode {
     PlanNode::new([x, z], 0.0)
 }
@@ -125,7 +132,43 @@ fn site() -> BuildingSkeleton {
         Wall::new(node(-1.6, YARD), node(-YARD, YARD), 0.35, 1.9),
         Wall::new(node(-YARD, YARD), node(-YARD, -YARD), 0.35, 1.9),
     ];
+    // **The gate is a part hung on a wall, not the gap itself.** The leaf is one template placed at the end
+    // of the run that stops at the opening, and it closes the 3.2 m beyond it — the one shape a bay cannot
+    // hold, which is why the placement target had to learn to be a wall run.
+    let stops_at_the_gate = skeleton.walls[2].length();
+    let leaf = ops::add_template(&mut skeleton, gate_leaf(GATE_WIDTH, GATE_HEIGHT, 0.08));
+    ops::place_part(
+        &mut skeleton,
+        Placement::on_wall(leaf, WallId(2), Pin::new(stops_at_the_gate, 0.0)),
+    )
+    .expect("the run that stops at the gate is in the document");
     skeleton
+}
+
+/// Returns a gate leaf: a panel `width` across, `height` tall, `thickness` through, standing at its own
+/// origin and running `+x`.
+///
+/// # Invariants
+///
+/// Its plan starts at the origin so the placement's frame — the run's end, on the wall's centre line — puts
+/// its hinge there and the panel swings across the opening beyond. The panel is **centred on the wall's
+/// thickness** by the frame's `inward`, so a gate in a 0.35 m wall does not stand proud of either face.
+fn gate_leaf(width: f32, height: f32, thickness: f32) -> Template {
+    let slab = 0.03;
+    let outline = [
+        [0.0, -thickness * 0.5],
+        [width, -thickness * 0.5],
+        [width, thickness * 0.5],
+        [0.0, thickness * 0.5],
+    ]
+    .into_iter()
+    .map(|corner| PlanNode::new(corner, slab))
+    .collect();
+    Template::new(
+        "gate",
+        vec![Mass::new(outline, height).with_wall(0.02).with_slab(slab)],
+        Vec::new(),
+    )
 }
 
 /// Builds the yard scene.
@@ -145,13 +188,34 @@ pub fn yard() -> Value {
         seated.len(),
         seated.walls
     );
-    let built = Building::new(skeleton)
+    let built = Building::new(skeleton.clone())
         .build()
         .expect("the seated site expands");
 
     let shells = points_where(&built, |element| matches!(element, Element::Mass(_, _)));
     let roofs = points_where(&built, |element| matches!(element, Element::Roof(_, _)));
     let stone = points_where(&built, |element| matches!(element, Element::Wall(_, _)));
+    // **The gate is drawn from its template, once, and stood by an instance.** A scene that filtered the
+    // baked mesh for parts would draw every leaf the document holds; this one draws the one shape and the
+    // one transform that puts it in the opening.
+    let gate = skeleton
+        .parts
+        .template(0)
+        .expect("the gate's template is in the document");
+    let gate_panel = template_points(gate).expect("the gate expands on its own");
+    let gate_at = (0..skeleton.parts.placements().len())
+        .find(|index| {
+            skeleton
+                .parts
+                .placement(*index)
+                .is_some_and(|placement| placement.target == Target::Wall { wall: WallId(2) })
+        })
+        .expect("the gate is placed on the run that stops at the opening");
+    let gate_standing = standing(
+        &building::expand::part_frame(&skeleton, gate_at)
+            .expect("the wall offsets")
+            .expect("the gate's slot is in the domain"),
+    );
 
     // Weatherboard, sheet metal, dry-stone and earth. Four materials for four things the frame has to tell
     // apart: what a surface *is* stays the shader's business.
@@ -173,7 +237,7 @@ pub fn yard() -> Value {
     }
 
     let placed = |stage: &str| {
-        [
+        let mut rows = [
             ("shells", "board"),
             ("roofs", "metal"),
             ("stone", "rubble"),
@@ -190,7 +254,16 @@ pub fn yard() -> Value {
                 &format!("{material}-{stage}"),
             )
         })
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+        rows.push(instance(
+            &format!("gate-{stage}"),
+            "gate",
+            gate_standing.0,
+            gate_standing.1,
+            gate_standing.2,
+            &format!("board-{stage}"),
+        ));
+        rows
     };
 
     Value::structure([
@@ -231,6 +304,7 @@ pub fn yard() -> Value {
                 mesh("shells", "Triangles", shaded_point_schema(), shells),
                 mesh("roofs", "Triangles", shaded_point_schema(), roofs),
                 mesh("stone", "Triangles", shaded_point_schema(), stone),
+                mesh("gate", "Triangles", shaded_point_schema(), gate_panel),
                 mesh(
                     "ground",
                     "Triangles",
