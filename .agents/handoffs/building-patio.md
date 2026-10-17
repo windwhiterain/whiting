@@ -190,3 +190,12 @@ first one's triangles. The helper that turns triangles into faces has to be writ
   strip), the paving edge (`base`, closed by the courtyard-facing strip), or the paving own facing. Locate the loop
   before flipping anything else: print the boundary loop vertices (`BuildingMesh` has `boundary_loops_of`; a
   temporary debug print of the loop indices is the cheapest next instrument).
+- **2026-10-27** — the instrument that found it: `expand_mass` now dumps every unmatched edge to stderr when
+  `PATIO_DEBUG=1` is set (`eprintln!("OPEN {:?} -> {:?}", point, point)`), which is cheap and needs no mesh accessor.
+  **The reading is unambiguous: every open edge lies at `y = 0`** — the plate plane. The 4.7 square (the room-side
+  loop), the 2.3 square (the wall outer loop) and the 2.0 square (the void loop) are each open all the way round, plus
+  the underside ring's diagonals. So the plate's three faces — the floor ring, the paving and the underside — do not
+  agree with the walls in **winding**, not in position: their vertices are shared (so `loops` fell from 4 to 1 when the
+  corners were shared), and their edges are unmatched because a face and its neighbour run opposite ways round the
+  shared edge. **The next attempt flips the three plate faces as a group**, not one at a time: the ring flags in the
+  floor `ring(...)` call, the paving's `polygon(..., true)`, and the underside's `false`.
