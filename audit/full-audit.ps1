@@ -58,6 +58,7 @@ if ($here -cne $root) { "FATAL: wrong working directory, refusing to run"; exit 
 $env:CARGO_TARGET_DIR = Join-Path $root "target"
 $out = Join-Path (Join-Path $root "audit") "out"
 $log = Join-Path (Join-Path $root "audit") "audit-run.log"
+$history = Join-Path (Join-Path $root "audit") "verdicts.log"
 
 $script:fail = @()
 function Gate([string]$name, [int]$code, [string]$expected) {
@@ -305,5 +306,6 @@ $verdict += "full output: $log"
 $verdict += "===================================================================="
 $verdict
 Add-Content -Path $log -Value $verdict -Encoding utf8
+Add-Content -Path $history -Value ((($verdict -join " ") -replace "=+","") + "  [" + (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + "]") -Encoding utf8
 if ($script:fail.Count -ne 0) { exit 1 }
 exit 0
