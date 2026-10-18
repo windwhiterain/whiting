@@ -153,7 +153,24 @@ pub use tiles::tiles;
 pub struct Gallery;
 
 impl Gallery {
-    /// Returns the names of every scene the gallery holds.
+    /// Returns the names of every scene the tree's suites hold themselves to.
+    ///
+    /// # Why this is not [`Self::build`]
+    ///
+    /// [`Self::build`] answers more names than this lists — the vegetation scenes and `sweep` are
+    /// built by name on request and no suite walks them on every run — so the two lists are
+    /// different lists and this one is a **contract rather than an index**. Every name here is
+    /// covered by each suite that reads this list: `scene`'s `clustered_lights` pins its passes by
+    /// stage, `scene`'s `wgsl_validation` validates its shaders, and `device-rasterize`'s
+    /// `gallery_render` renders it. **A scene added here without its row is a suite that fails on
+    /// length rather than on a number**, and `workshop` and `yard` were exactly that for a whole arc
+    /// because `build` enumerated them and this did not.
+    ///
+    /// # Invariants
+    ///
+    /// A name in this list is buildable by [`Self::build`], and every scene in this crate's own
+    /// picture set — the nine building scenes — is in it. A scene absent from it is one this crate
+    /// still builds and no suite covers.
     pub fn names() -> &'static [&'static str] {
         &[
             "dunes",
@@ -170,6 +187,8 @@ impl Gallery {
             "shed",
             "terrace",
             "wing",
+            "workshop",
+            "yard",
             "spotlight",
             "stilllife",
             "studio",

@@ -141,18 +141,27 @@ fn an_all_point_scene_emits_one_pass_per_stage_and_a_post_stage() {
 /// **The lighting count is not the depthing count**, and the difference is real rather than
 /// rounding: a mesh may be drawn in the depthing stage and not in the lighting one, as an
 /// occluder is. `tidewater` is the case in the gallery — four groups in the depth prepass and
-/// three lit — so a claim that the two are equal is true of nineteen of the twenty-one scenes
-/// the table below holds and wrong about the other two.
+/// three lit — so a claim that the two are equal is true of twenty-one of the twenty-three
+/// scenes the table below holds and wrong about the other two: `hermite_massif`, whose backdrop
+/// is shaded and never drawn into the depth prepass, and `tidewater`.
 ///
 /// # What the count is a count of
 ///
-/// **A mesh, not an element and not a building.** Every one of the seven scenes the building arc
-/// added draws the same four meshes — `walls`, `roof`, `floors`, `ground` — and their depthing and
-/// lighting counts are that number; `shed` draws two more because its `door` and `canopy` are
-/// parts standing as their own meshes, and `terrace` is four and not six because its three units'
-/// roofs are one mesh named `roofs`. So a mass with five openings in it is still one pass, a wing
-/// attached to a host is still one pass, and a slab packed into the mesh that was already there
-/// is still one pass.
+/// **A mesh, not an element and not a building — and a placement, not only a mesh.** Every one of
+/// the seven scenes the building arc added draws the same four meshes — `walls`, `roof`, `floors`,
+/// `ground` — and their depthing and lighting counts are that number; `shed` draws two more because
+/// its `door` and `canopy` are parts standing as their own meshes, and `terrace` is four and not
+/// six because its three units' roofs are one mesh named `roofs`. So a mass with five openings in
+/// it is still one pass, a wing attached to a host is still one pass, and a slab packed into the
+/// mesh that was already there is still one pass.
+///
+/// **The two scenes that joined this table last are the other half of that rule, and they are a
+/// control for each other.** `workshop` and `yard` each draw **six** meshes and emit six groups per
+/// mesh stage: `shells`, `roofs`, `floors` and `ground` as everywhere, plus one mesh per part
+/// template — `shutters` and `bench` for the workshop, `gate` for the yard. The workshop's five
+/// shutters are five placements of **one** mesh and are one pass, while the yard's `stone` — its
+/// masonry, packed from `Element::Wall` — is the only reason it is six rather than five, because it
+/// is the only scene in this group that draws its walls apart from the masses they enclose.
 ///
 /// **Which is why three changes in that arc are invisible here and were measured not to be
 /// defects.** `882c0d8` gave seven scenes a `floors` mesh and the count rose by exactly one, once
@@ -229,6 +238,13 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
     // guard proved it works by staying red for every one of those scenes until this table caught
     // up. Every row that was here before measures exactly as it was written, which is the other
     // half of the finding and the reason nothing in it had to be rewritten.
+    //
+    // **The two rows for `workshop` and `yard` are the same finding one arc later, and it is why
+    // they are here rather than somewhere else.** They were the last two scenes of the nine that
+    // `Gallery::build` enumerated and `Gallery::names` did not, so no pass-count change in either
+    // was visible here at all — the gate was red for a whole arc over seven scenes and then green
+    // over a table that still could not see the last two. The two lists are the same list twice
+    // over, so a scene added to one without the other is a scene no suite walks.
     let counted: Vec<(String, Stages)> = Gallery::names()
         .iter()
         .map(|name| ((*name).to_owned(), Stages::of(&Gallery::build(name))))
@@ -468,6 +484,76 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
                 shadowing: 4,
                 depthing: 4,
                 lighting: 4,
+                other: 1,
+            },
+        ),
+        (
+            // **Six groups, and the two beyond the common four are parts.** `shells`, `roofs`,
+            // `floors` and `ground` are the set every building scene in this table draws, and this
+            // scene adds **one mesh per part template**: `shutters` and `bench`.
+            //
+            // **The five shutters are one pass and not five, and that is the whole of this row.**
+            // Each of the facade phase's five window bays holds a placement, and each placement
+            // names its own material, because the offset that makes one shutter's pixels answer
+            // its own elements lives on the row the instance names — but the emitter groups by
+            // shader, mesh and images, and all five name the same three shaders over the same
+            // `shutters` mesh, so they land in **one pass over one instance buffer**. `shed` is
+            // the control and reads the other way: its `door` and `canopy` are two placements of
+            // two *different* meshes, which is why it is six as well. **A pass counts a
+            // shader-and-mesh pair, not a placement and not an element** — the rule `terrace` shows
+            // from the other side, where three roofs are one mesh.
+            //
+            // The bench is the inner-face scene's part and costs exactly the one mesh it is: one
+            // placement of one template, standing on `FaceRef::inner`, drawn in the same three
+            // stages as the shutters it stands beside and inside.
+            //
+            // The shadowing count is the same six, and **the pool is the bound that holds it
+            // there**: the scene declares exactly one `light_with_radius` named `sun`, which buys
+            // **one page rather than a grid**, so the rule this file's header states gives one
+            // shadowing pass per caster group — and all six cast, the bench standing inside the
+            // building included. `spotlight` is that rule against eighty five pages and one caster
+            // group, and it is the only row in this table where the light rather than the
+            // geometry sets the number.
+            //
+            // Nothing else about the scene shows here: the six openings cut into its front are
+            // holes in the one `shells` mesh, so `scene_identity_probe` moved when they landed and
+            // this row did not.
+            "workshop",
+            Stages {
+                shadowing: 6,
+                depthing: 6,
+                lighting: 6,
+                other: 1,
+            },
+        ),
+        (
+            // **Six groups, and two of the six are this scene's own.** `shells`, `roofs`, `floors`
+            // and `ground` are the common four; the yard adds **`stone`**, the site's masonry
+            // packed from `Element::Wall`, and one `gate`.
+            //
+            // `stone` is why the yard is six and no building scene beside it is. It is the only
+            // scene in this table that draws its walls as a mesh of their own: the site's five
+            // seated wall runs are a separate element from the two masses they enclose, so they
+            // pack separately, where `shed`'s doorway wall is part of the one `walls` mesh and
+            // costs nothing. **A pass counts a mesh and not a role**, and the yard is the row that
+            // says a wall is a role too. `workshop` reaches the same six a different way — a
+            // second part mesh rather than a second kind of surface.
+            //
+            // The gate is the facade phase's part, hung on the run that stops at the opening, and
+            // it costs **one group for one placement of one mesh** — `shed`'s rule again. The
+            // shadowing count is the same six because the scene declares one
+            // `light_with_radius` named `sun` and it buys one page: one shadowing pass per caster
+            // group, and all six cast, the masonry and the gate included.
+            //
+            // **And the row is a control for `ed8c83f`**, which cut this scene's doorway: the
+            // opening is a hole in a mesh that was already being drawn, so the identity table went
+            // 104 to 108 and this row stayed at six. `house` records the same pair of moves on its
+            // own window, and these two scenes are the only rows in this table that had one.
+            "yard",
+            Stages {
+                shadowing: 6,
+                depthing: 6,
+                lighting: 6,
                 other: 1,
             },
         ),
