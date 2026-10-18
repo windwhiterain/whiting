@@ -141,8 +141,27 @@ fn an_all_point_scene_emits_one_pass_per_stage_and_a_post_stage() {
 /// **The lighting count is not the depthing count**, and the difference is real rather than
 /// rounding: a mesh may be drawn in the depthing stage and not in the lighting one, as an
 /// occluder is. `tidewater` is the case in the gallery — four groups in the depth prepass and
-/// three lit — so a claim that the two are equal would be true of five of the seven scenes and
-/// wrong about the other two.
+/// three lit — so a claim that the two are equal is true of nineteen of the twenty-one scenes
+/// the table below holds and wrong about the other two.
+///
+/// # What the count is a count of
+///
+/// **A mesh, not an element and not a building.** Every one of the seven scenes the building arc
+/// added draws the same four meshes — `walls`, `roof`, `floors`, `ground` — and their depthing and
+/// lighting counts are that number; `shed` draws two more because its `door` and `canopy` are
+/// parts standing as their own meshes, and `terrace` is four and not six because its three units'
+/// roofs are one mesh named `roofs`. So a mass with five openings in it is still one pass, a wing
+/// attached to a host is still one pass, and a slab packed into the mesh that was already there
+/// is still one pass.
+///
+/// **Which is why three changes in that arc are invisible here and were measured not to be
+/// defects.** `882c0d8` gave seven scenes a `floors` mesh and the count rose by exactly one, once
+/// per stage; `2011be5` cut the ground out from under every plate and changed *which triangles*
+/// the one `ground` mesh holds rather than how many meshes there are, so nothing moved; `ed8c83f`
+/// cut a window into `house` and a doorway into `yard`, and an opening is a hole in the `walls`
+/// mesh rather than a mesh of its own, so again nothing moved. `identity` is the control for the
+/// first of those: it gained no `floors` mesh, because `packed()` is a catch-all that already
+/// carried `Element::Slab`, and its row is two meshes rather than three.
 #[derive(Debug, PartialEq, Eq)]
 struct Stages {
     shadowing: usize,
@@ -202,6 +221,14 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
     // written out here is a list that goes stale: `tidewater` landed in the gallery and this
     // test carried on covering the six scenes it was written for. A scene added to the
     // gallery now has to be added to the table and cannot be forgotten.
+    //
+    // **That is what happened, and it took the arc the building crate ran to notice.** The seven
+    // rows for `hall`, `hall_large`, `house`, `identity`, `shed`, `terrace` and `wing` are the
+    // first record this test has ever held for those scenes, so the name above promises a "before"
+    // that for them is today: what these rows buy is the *next* change being visible, and the
+    // guard proved it works by staying red for every one of those scenes until this table caught
+    // up. Every row that was here before measures exactly as it was written, which is the other
+    // half of the finding and the reason nothing in it had to be rewritten.
     let counted: Vec<(String, Stages)> = Gallery::names()
         .iter()
         .map(|name| ((*name).to_owned(), Stages::of(&Gallery::build(name))))
@@ -280,6 +307,82 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // **Four groups and one light, and the four are the same four every building scene in
+            // this table draws**: the walls, the roof, the plate and the ground. The shadowing
+            // count is the same four because the scene declares exactly one `light_with_radius`
+            // named `sun` and one page draws every caster once — the rule this file's header
+            // states — so a second lamp would multiply all three mesh counts by the caster set and
+            // not by one.
+            //
+            // The plate is the one change in this scene's history that a pass count could see:
+            // `882c0d8` gave it a `floors` mesh and the row went from three groups to four, because
+            // before that the plate was packed into a mesh that was already there and nothing drew
+            // it. Everything else the building arc did to this scene was invisible here — see
+            // `house`, which had all three of them.
+            "hall",
+            Stages {
+                shadowing: 4,
+                depthing: 4,
+                lighting: 4,
+                other: 1,
+            },
+        ),
+        (
+            // The same four meshes at a larger footprint, from the same style and the same code.
+            //
+            // **It is measured rather than copied.** `document_at` is handed only the footprint and
+            // the storey count, so the count follows the mesh set rather than the size — which is
+            // the claim this pair exists to make, and a copy of the row above would not have made
+            // it.
+            "hall_large",
+            Stages {
+                shadowing: 4,
+                depthing: 4,
+                lighting: 4,
+                other: 1,
+            },
+        ),
+        (
+            // The same four meshes and the same one sun, and **this is the row the building arc's
+            // invisible changes are measured against**, because `house` is the one scene that drew
+            // the plate (`882c0d8`, three groups to four), had the ground cut out from under it
+            // (`2011be5`, no move) and grew a window (`ed8c83f`, no move).
+            //
+            // The window is an opening cut **into** the `walls` mesh, so it is rows in the id table
+            // — `scene_identity_probe` went 845 to 852 when it landed — and not a pass. The ground
+            // cut changed which triangles the one `ground` mesh holds rather than how many meshes
+            // there are. Neither is a stale number and neither is a defect in the stage: a mesh is
+            // what a pass is counted in, and both changes were made inside a mesh that was already
+            // being drawn.
+            "house",
+            Stages {
+                shadowing: 4,
+                depthing: 4,
+                lighting: 4,
+                other: 1,
+            },
+        ),
+        (
+            // **Two meshes and no plate mesh**, and this is the row that says a pass counts a mesh
+            // and not an element. The scene draws its whole building — two storeys, a plate, a
+            // doorway, five windows, a shutter and a courtyard wall — as **one** mesh named
+            // `building`, beside one `ground`.
+            //
+            // It is the control for `882c0d8`. The other scenes were each given a `floors` mesh
+            // because they pack through `packed_where`, whose predicate names one element kind at a
+            // time, while `identity` packs through `packed()`, a catch-all that **already carried
+            // `Element::Slab`** before that commit asked for one. Its plate was drawn all along and
+            // this row never moved by one, because the plate was never a mesh of its own — the same
+            // reason the ground cut and the openings moved nothing anywhere.
+            "identity",
+            Stages {
+                shadowing: 2,
+                depthing: 2,
+                lighting: 2,
+                other: 1,
+            },
+        ),
+        (
             // One sun, one point light and three groups: the plain and the **two ranges** it runs
             // between, each drawn in two stages. Three shadowing passes rather than one per light:
             // the plain is a flat sheet that cannot occlude itself, so it is left out of the cast
@@ -312,6 +415,59 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
                 shadowing: 2,
                 depthing: 2,
                 lighting: 2,
+                other: 1,
+            },
+        ),
+        (
+            // **Six groups, and the two beyond the common four are parts.** `walls`, `roof`,
+            // `floors` and `ground` are the set every building scene in this table draws; `door` and
+            // `canopy` are this scene's own — a leaf and a plate hung on the head of the doorway's
+            // bay. Each is authored as its own mesh, so each is one pass in every stage.
+            //
+            // The plate took this row from five to six in `882c0d8`. The door and the canopy were
+            // here before that commit, from the facade phase, and they are the reason the row is six
+            // rather than four. The canopy is hung on the doorway's **socket** rather than pinned
+            // to numbers, so moving the head moves it by exactly the same amount — and neither
+            // move changes what the frame contains, which is why the count is a plain six.
+            "shed",
+            Stages {
+                shadowing: 6,
+                depthing: 6,
+                lighting: 6,
+                other: 1,
+            },
+        ),
+        (
+            // Four groups and three buildings, and **the plural in `roofs` is the whole of it**:
+            // the terrace is three units that touch, and their roofs are packed into one mesh, so
+            // the count is four and not six. Packing two things into one mesh is a saving this
+            // count can see, while cutting a hole in a mesh is not — the two halves of the rule
+            // this file's table is built to hold still.
+            //
+            // The plate took the row from three to four in `882c0d8`. This scene and `wing` are the
+            // two that author their plate over the footprint rather than over the inner loop, which
+            // is what lets `2011be5`'s ground cut reach the outer face exactly here.
+            "terrace",
+            Stages {
+                shadowing: 4,
+                depthing: 4,
+                lighting: 4,
+                other: 1,
+            },
+        ),
+        (
+            // Four groups and an L, and **the wing costs nothing**: it is attached to the host mass
+            // rather than stood beside it, so `walls` holds the host and its wing and `roof` holds
+            // both roofs. The scene's own naming of the two arms is in the id table rather than in
+            // the pass list — the mesh-not-element rule `identity` records.
+            //
+            // The plate took the row from three to four in `882c0d8`, on the same terms as every
+            // other scene in this group and for the same single reason.
+            "wing",
+            Stages {
+                shadowing: 4,
+                depthing: 4,
+                lighting: 4,
                 other: 1,
             },
         ),
