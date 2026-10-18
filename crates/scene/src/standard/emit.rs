@@ -2397,7 +2397,6 @@ fn read_instances(
             let found = read_instance(
                 instance,
                 &bucket_path.index(index),
-                meshes,
                 &mesh_index,
                 materials,
                 &material_index,
@@ -2427,7 +2426,6 @@ fn read_instances(
 fn read_instance(
     instance: &Value,
     path: &Path,
-    meshes: &[MeshRead],
     mesh_index: &std::collections::HashMap<&str, usize>,
     materials: &[MeshMaterialRead],
     material_index: &std::collections::HashMap<&str, usize>,
