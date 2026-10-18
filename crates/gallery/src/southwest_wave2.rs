@@ -40,48 +40,64 @@
 //!
 //! | plate | one pixel | the finest organ | the blade drawn |
 //! | --- | --- | --- | --- |
-//! | [`SOUTHWEST_BIRCH`] | 11.6 mm at 31.8 m | a 6 mm serration tooth = 0.5 px | the **plain** leaf, [`BirchFoliage::Leaf`] |
-//! | [`SOUTHWEST_BIRCH_BOUGH`] | 1.24 mm at 1.70 m | a 6 mm serration tooth = 4.8 px | the **toothed** leaf, [`BirchFoliage::Toothed`] |
-//! | [`SOUTHWEST_BIRCH_BASE`] | 1.93 mm at 3.20 m | a 5 mm catkin = 2.6 px | the bole is the subject; the plain leaf, which is 46 px long |
-//! | [`EVELYN_KETELEERIA`] | 17.6 mm at 48.5 m | a 200 mm cone = 11.4 px | the **plume**, [`KeteleeriaFoliage::Plume`] |
-//! | [`EVELYN_KETELEERIA_BOUGH`] | 1.02 mm at 1.30 m | a 2.5 mm needle = 2.4 px | the **true needle**, [`KeteleeriaFoliage::Needle`] |
-//! | [`EVELYN_KETELEERIA_BASE`] | 3.09 mm at 5.50 m | a 0.20 m fissure = 65 px | the bole is the subject; the plume, which is 104 px long |
+//! | [`SOUTHWEST_BIRCH`] | 9.84 mm at 27.0 m | a 9 mm serration tooth = 0.9 px | the **plain** leaf, [`BirchFoliage::Leaf`] |
+//! | [`SOUTHWEST_BIRCH_BOUGH`] | 1.73 mm at 2.37 m | a 9 mm serration tooth = 5.2 px | the **toothed** leaf, [`BirchFoliage::Toothed`] |
+//! | [`SOUTHWEST_BIRCH_BASE`] | 1.25 mm at 2.39 m | a 5 mm catkin = 4.0 px | the bole is the subject; the plain leaf, which is 88 px long |
+//! | [`EVELYN_KETELEERIA`] | 17.9 mm at 49.2 m | a 200 mm cone = 11.2 px | the **plume**, [`KeteleeriaFoliage::Plume`] |
+//! | [`EVELYN_KETELEERIA_BOUGH`] | 0.99 mm at 1.26 m | a 2.5 mm needle = 2.5 px | the **true needle**, [`KeteleeriaFoliage::Needle`] |
+//! | [`EVELYN_KETELEERIA_BASE`] | 3.07 mm at 5.47 m | a 0.23 m fissure = 75 px | the bole is the subject; the plume, which is 91 px long |
 //!
 //! **The birch is the species of this wave that needs no card at all**, and the reason is one measurement:
-//! a birch leaf is **40–120 mm** and the whole-tree plate's pixel is **11.6 mm**, so a leaf is **3.5 to
-//! ten pixels** across and is drawn as itself at both distances. The pine's needle is 1.1 mm and is a
-//! tenth of a pixel, which is the whole of the pine's [`southwest::Foliage::Spray`]; the Keteleeria's
-//! needle is 2.5 mm and is 0.14 of a pixel, which is the whole of its plume. **A birch's crown is the
-//! one in this proposal whose geometry is honest at twenty-five metres without a level of detail at
-//! all**, and that is a fact about leaf size and not about merit.
+//! a birch leaf is **40–120 mm** and the whole-tree plate's pixel is **9.8 mm**, so a leaf is **4 to twelve
+//! pixels** across and is drawn as itself at both distances. The pine's needle is 1.1 mm and is a tenth of
+//! a pixel, which is the whole of the pine's [`southwest::Foliage::Spray`]; the Keteleeria's needle is
+//! 2.5 mm and is 0.14 of a pixel, which is the whole of its plume. **A birch's crown is the one in this
+//! proposal whose geometry is honest at thirty metres without a level of detail at all**, and that is a
+//! fact about leaf size and not about merit.
 //!
 //! **A conifer's card is a card and the birch's is a margin.** [`BirchFoliage::Toothed`] differs from
-//! [`BirchFoliage::Leaf`] in one width law and nothing else, exactly as the fern's combed pinnule
-//! differs from its plain one: the note's *"不规则重锯齿，内弯的刺毛状"* — irregular double serration with
-//! inward-curving bristle teeth — is **thirteen teeth in the width law**, and at the tree plate those
-//! teeth are half a pixel each and show nothing for four times the rings.
+//! [`BirchFoliage::Leaf`] in one width law and nothing else, exactly as the fern's combed pinnule differs
+//! from its plain one: the note's *"不规则重锯齿，内弯的刺毛状"* — irregular double serration with
+//! inward-curving bristle teeth — is **thirteen teeth in the width law**, and at the tree plate those teeth
+//! are under a pixel each and show nothing for four times the rings.
+//!
+//! # What these six scenes cost, and what they measured
+//!
+//! The scene document pays **per instance row**, and every count below was read off the same expansion the
+//! picture builds, before the plate was rendered rather than discovered by it. Every plate is far inside the
+//! ninety-thousand-row ceiling the proposal's §4.13 sets, and every one renders in well under two minutes:
+//!
+//! | scene | nodes | leaf rows | seats | rows | compile | render |
+//! | --- | --- | --- | --- | --- | --- | --- |
+//! | [`SOUTHWEST_BIRCH`] · [`SOUTHWEST_BIRCH_BASE`] | **866** | **13 603** | **940** | **14 543** | 5.9 s | 2.5 s |
+//! | [`SOUTHWEST_BIRCH_BOUGH`] | 17 | 269 | 18 | **287** | 0.4 s | 0.8 s |
+//! | [`EVELYN_KETELEERIA`] · [`EVELYN_KETELEERIA_BASE`] | **2 989** | **58 094** | **3 353** | **61 447** | 48.2 s | 7.7 s |
+//! | [`EVELYN_KETELEERIA_BOUGH`] | 15 | 1 591 | 7 | **1 598** | 0.6 s | 0.8 s |
+//!
+//! **The two whole-tree crowns, measured by `audit/frame_stats.py --crown`:**
+//!
+//! | scene | coverage | interior share (bar 0.25) | interior over lit p90 (bar 0.80) |
+//! | --- | --- | --- | --- |
+//! | [`SOUTHWEST_BIRCH`] | 0.335 | **0.521** | **0.724** |
+//! | [`EVELYN_KETELEERIA`] | 0.466 | **0.757** | **0.677** |
 //!
 //! # The droop, and why it is a law and not a field
 //!
 //! The birch's whole silhouette is its droop, and [`birch_bough`] and [`birch_branchlet`] draw it in
 //! their own four knots: a heading that **turns past a quarter turn** by the third knot, so the outer
-//! half of every limb runs below horizontal and its tip hangs a fifth of a turn under it.
+//! half of every limb runs below horizontal and its tip hangs a third of a turn under it.
 //!
 //! # Invariants
 //!
 //! - **`Field::gravity` is not used on either species, and the reason is a number rather than a taste.**
 //!   A [`vegetation::field::Field`] applies to **every** node of a plant, and its `amount` is a fraction
-//!   of each spine's own length. The amount that hangs a birch branchlet of 0.7 m — say `0.8` — would push
+//!   of each spine's own length. The amount that hangs a birch branchlet of 1.05 m — say `0.8` — would push
 //!   the tip of the 14 m bole **eleven metres** along gravity, because the bole is in the same list. The
 //!   droop is therefore a law over [`vegetation::species::Joint::station`] inside the two shape functions
 //!   that grow limbs, and the bole's own four knots stay plumb to within 260 mm over fourteen metres.
-//!
-//! # What these two scenes cost
-//!
-//! The scene document pays **per instance row**, and the counts are measured before the first render by
-//! `examples/sw_wave2_probe.rs` rather than discovered by one. Both whole-tree plates sit far inside the
-//! ninety-thousand-row ceiling the proposal's §4.13 sets; the table is in [`birch_picture`] and
-//! [`evelyn_keteleeria_picture`].
+//! - **`Decorators::sprig` is used once, and it is the cone.** §4.15's *"a decorator template may be a
+//!   sprig"* is the machinery a *Keteleeria* exists to exercise, because its seed scales **recurve outward
+//!   at their tips** and one sweep cannot say a recurved plate.
 
 use definition::Value;
 use vegetation::decorator::{Seat, Template, scatter_in};
@@ -136,21 +152,34 @@ const OPPOSITE: f32 = 0.5;
 // 西南桦 Betula alnoides
 // ---------------------------------------------------------------------------
 
-/// The birch's leaf, at half its drawn length: the note's `2.5–5.5 cm` across, read at its upper middle.
-const BIRCH_LEAF_HALF_WIDTH: f32 = 0.021;
+/// The birch's leaf, at half its drawn width: the note's `2.5–5.5 cm` across, read at its upper middle.
+const BIRCH_LEAF_HALF_WIDTH: f32 = 0.028;
 
-/// The birch's leaf at its drawn length, `90 mm`: the note's `4–12 cm`, read near the top of its range
-/// because a crown's only area is its leaves' and this builder's cost in instances is superlinear.
-const BIRCH_LEAF_LENGTH: f32 = 0.090;
+/// The birch's leaf at its drawn length, `110 mm`: the note's `4–12 cm`, read near the top of its range.
+///
+/// # Invariants
+///
+/// **The top of the range, and the reason is the sampling tax read the other way.** A crown's only area is
+/// its leaves' area, so a crown is drawn with as few rows as will cover it and each row as large as the note
+/// allows. At the whole-tree plate's 11.6 mm a pixel a 110 mm leaf is **9.5 px long and 4.3 px wide**, and a
+/// leaf at the note's 40 mm floor would be **3.4 px** — a third of a plate pixel a leaf-row, and a crown
+/// with no mass. **The leaf is drawn large because the note says leaves are large, not because the
+/// rasteriser is hard to please.**
+const BIRCH_LEAF_LENGTH: f32 = 0.110;
 
-/// The petiole at `24 mm`: the note's `1.5–3(–4) cm` at its middle, and the reason a birch leaf is a
+/// The petiole at `30 mm`: the note's `1.5–3(–4) cm` at its upper end, and the reason a birch leaf is a
 /// **sprig of two blades** rather than one — the stalk is a blade here because a template is made of
 /// blades and not of rods, and it costs one row inside the same instanced mesh as the leaf it carries.
-const BIRCH_PETIOLE_LENGTH: f32 = 0.024;
+const BIRCH_PETIOLE_LENGTH: f32 = 0.030;
 
-/// Where the birch's crown begins on its own bole: `5.0 m` of a `14 m` tree, the note's `4–7 m` to first
+/// Where the birch's crown begins on its own bole: `5.6 m` of a `14 m` tree, the note's `4–7 m` to first
 /// branch, and the number every crown law in this species is measured inside.
-const BIRCH_CROWN_BASE: f32 = 0.355;
+///
+/// **It is 0.40 and not the 0.355 of the first plate, and the branchlets' length is why.** A branchlet of
+/// 1.1 m hanging off a bough at `t = 0.40` reaches `4.5 m`, which is the note's own *"the crown occupies the
+/// upper two-thirds"* read on a fourteen-metre tree — `14 − 9.3 = 4.7 m`. The first plate's band put the
+/// lowest foliage near three metres and the crown hung into the lower third, which is a different tree.
+const BIRCH_CROWN_BASE: f32 = 0.40;
 
 /// Which birch leaf a plate draws.
 ///
@@ -212,20 +241,26 @@ fn birch_rule() -> Rule {
         trunk: birch_bole,
         generations: vec![
             Generation {
-                count: (22, 26),
+                count: (28, 32),
                 station: (BIRCH_CROWN_BASE, 1.0),
                 slot: (0.0, GOLDEN),
-                jitter: (0.06, 0.22),
+                // **A tenth of the band is the jitter, and it is what breaks the tiers.** Thirty boughs over
+                // the crown's 8.4 m of leader is 0.28 m between them, and `±0.06` of station is `±0.5 m` of
+                // leader either side of that — so the stations overlap and the crown is an irregular mass.
+                // The first plate stood at `0.06`, which is `±0.3 m` on the same band and drew **six visible
+                // whorls**: the *cauliflower* defect, and the reason a conifer-looking birch is a birch that
+                // has lost its signature.
+                jitter: (0.10, 0.26),
                 // A bough's foot is inside the bole, and the sink is a little over its own base radius.
                 sink: 0.035,
                 cluster: 1,
                 shape: birch_bough,
             },
             Generation {
-                count: (18, 22),
-                station: (0.20, 1.0),
+                count: (26, 32),
+                station: (0.18, 1.0),
                 slot: (0.0, GOLDEN),
-                jitter: (0.14, 0.26),
+                jitter: (0.12, 0.26),
                 sink: 0.010,
                 cluster: 1,
                 shape: birch_branchlet,
@@ -278,8 +313,12 @@ fn birch_bole() -> (shape::Curve, shape::Scalar) {
 /// **A birch's bole is lobed, not fluted and not round.** `01-habit.jpg` shows two trunks whose outlines
 /// fold in and out over their whole height, and `02-bark-peeling.jpg` shows the same column from a metre
 /// away with the papery sheets lifting off it in horizontal strips and curling away at the edges — which is
-/// what leaves a lobed outline behind. **Seven lobes of eight per cent and five of four** is that at a
-/// size the section can carry.
+/// what leaves a lobed outline behind. **Five broad swells of ten and a half per cent and three of four and
+/// a half** is that at a size the section can carry, and the two earlier plates bracket the answer: **eight
+/// per cent was invisible** (a thirty-two-millimetre swell on a 400 mm trunk, which the eye reads as a pole)
+/// and **thirteen per cent of seven lobes read as vertical flutes** (a fifty-two-millimetre swell with a
+/// hard terminator on each, which is a column of pipes and not a birch). Ten and a half per cent over five
+/// lobes is a seventy-two-degree period, and that shades as a fold.
 ///
 /// **Sixteen sides is above the crease threshold's floor and no lower is worth having.** The wood's normals
 /// crease above `0.61 rad` and sixteen points round a loop is `0.39 rad` a step, so the lobes shade as
@@ -293,7 +332,7 @@ fn birch_bark() -> shape::Section {
     let points: Vec<[f32; 2]> = (0..sides)
         .map(|index| {
             let theta = index as f32 / sides as f32 * std::f32::consts::TAU;
-            let lobe = 1.0 + 0.080 * (theta * 7.0 + 0.3).sin() + 0.040 * (theta * 5.0 + 1.9).sin();
+            let lobe = 1.0 + 0.105 * (theta * 5.0 + 0.3).sin() + 0.045 * (theta * 3.0 + 1.9).sin();
             [theta.cos() * lobe, theta.sin() * lobe]
         })
         .collect();
@@ -355,7 +394,12 @@ fn birch_bough(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
 /// `0.50`–`0.90 m` is the note's `0.3–0.8 m` twig at the top of its range plus a fifth, and the module says
 /// so rather than hiding it: the node here is a **branchlet**, and the note's twig is a shoot of it.
 fn birch_branchlet(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    let length = 0.70 * (0.72 + 0.56 * rng.unit());
+    // **1.05 m at its middle, and it is an extension of the note's `0.3–0.8 m` twig that the module
+    // declares.** The note's twig is a shoot; the node drawn here is the **branchlet** that shoot hangs
+    // from, and a branchlet is the unit the *weeping* is drawn in — thirty of them a bough is a fringe
+    // hanging a metre below the limb, and a bough with eight 40 cm twigs is a fir's bough. The first plate
+    // drew 0.50–0.90 m and the crown read as a conifer; this is the change that makes it a birch.
+    let length = 1.05 * (0.75 + 0.55 * rng.unit());
     let departure = 0.85 + 0.45 * rng.unit();
     let radius = joint.parent_radius.max(1.0e-5);
     (
@@ -455,13 +499,18 @@ fn leaf_blade(teeth: usize) -> LeafTemplate {
             .collect();
             shape::Scalar::new(&knots).expect("a birch leaf's width is a law")
         }
-        // **Double serration, and it is two numbers.** The note's *"不规则重锯齿"* — irregular **double**
-        // serration — read as a margin with a **major** tooth every fourth knot and a **minor** tooth
-        // between: the majors at full envelope reach, the knot between two majors at three quarters of it,
-        // and the knots either side of a major at just over half. The note adds that the minor teeth are
-        // *"内弯的刺毛状"*, inward-curving and bristle-like, and **a width law cannot make a tooth curve**:
-        // it can make it deep or shallow, and shallowness is the honest half of that sentence. The module
-        // says so rather than claiming the margin.
+        // **Double serration, and it is two numbers — and the notch is *shallow*, which is the whole
+        // correction.** The note's *"不规则重锯齿"* — irregular **double** serration with inward-curving
+        // bristle-like teeth — is a **major** tooth every fourth knot and a **minor** tooth between: the
+        // majors at full envelope reach, the knot between two majors at 95.5% of it, and the knots either
+        // side at 90%. **Three millimetres of notch on a fifty-six-millimetre blade** is what
+        // `03-branch-with-catkins.jpg` shows. The first plate's `0.76` and `0.54` put nine millimetres in
+        // every notch and the bough plate came out **a fern**: green pinnae on a rod, which is another
+        // species' organ at another scale, and the *plastic crown* defect with serrations on it.
+        //
+        // The note adds that the minor teeth are *"内弯的刺毛状"*, inward-curving and bristle-like, and **a
+        // width law cannot make a tooth curve**: it can make a tooth deep or shallow, and shallowness is
+        // the honest half of that sentence. The module says so rather than claiming the margin.
         //
         // The envelope is the blade's own outline, so the teeth thin toward the caudate point and thicken
         // below the middle, which is what makes the serration read as a leaf's and not as a saw.
@@ -472,9 +521,9 @@ fn leaf_blade(teeth: usize) -> LeafTemplate {
                     let envelope =
                         (std::f32::consts::PI * at).sin().max(0.0).powf(0.55) * (1.0 - 0.20 * at);
                     let tooth = match step % 4 {
-                        0 => 1.00,
-                        2 => 0.76,
-                        _ => 0.54,
+                        0 => 1.000,
+                        2 => 0.955,
+                        _ => 0.900,
                     };
                     (at, BIRCH_LEAF_HALF_WIDTH * envelope * tooth)
                 })
@@ -552,13 +601,16 @@ fn birch_catkin() -> Template {
 ///
 /// # The density, and the number it is not
 ///
-/// **Seventy-two leaves to the metre of branchlet** is one leaf every fourteen millimetres over a blade
-/// forty to ninety millimetres long, which is the spacing `05-leaf-and-male-catkins.jpg` shows — three
-/// overlapping leaves between any two points of a shoot. **The note's own `6–14 leaves per twig` is not the
-/// count drawn here and the module says which number it is**: the note's twig is `0.3–0.8 m` and the
-/// branchlet drawn is its parent, so a branchlet of `0.7 m` at the note's *spacing* carries forty-five
-/// leaves and at the note's *count* would carry ten and leave a shoot bare over four fifths of its length.
-/// A bare broom is the defect the bar names, and the note's count is its ESTIMATE.
+/// **Fifteen leaves to the metre of branchlet** is one leaf every sixty-six millimetres under a blade a
+/// hundred and ten millimetres long, which is the *spacing* `05-leaf-and-male-catkins.jpg` shows — a leaf's
+/// own length to the next leaf's stalk, and sky between every second one. **The note's own `6–14 leaves
+/// per twig` is not the count drawn here and the module says which number it is**: the note's twig is
+/// `0.3–0.8 m` and the branchlet drawn is its parent, so a 1.05 m branchlet at the note's *count* would carry
+/// ten and eleven at the note's *spacing*. The first plate of this species read the count and drew **seventy
+/// two a metre** — a leaf every fourteen millimetres, six deep — and the branchlet came out as a **fern
+/// pinna**: a green feather on a rod, which is the *bare broom* and a *plastic crown* both. A birch's
+/// branchlet is a rod with big leaves on it, and the difference is the number of leaves an arm's length
+/// shows.
 ///
 /// **The band on every field stops short of both ends**, which is the *dead give* the bar also names: no
 /// real shoot is foliated evenly from the wood it grows on to its own tip.
@@ -570,14 +622,14 @@ fn birch_catkin() -> Template {
 /// signature is written, after [`birch_bough`] and [`birch_branchlet`].
 fn birch_leaves(branchlet_depth: usize) -> Vec<LeafField> {
     let mut leader = LeafField::new(0, 0);
-    leader.band = (0.42, 0.985);
-    leader.density = shape::Scalar::constant(26.0);
+    leader.band = (0.45, 0.985);
+    leader.density = shape::Scalar::constant(22.0);
     leader.cluster = 1;
     leader.fan = shape::Scalar::constant(0.0);
     leader.phyllotaxy = GOLDEN;
-    leader.pitch = shape::Scalar::new(&[(0.00, 1.20), (0.50, 1.50), (1.00, 1.80)])
+    leader.pitch = shape::Scalar::new(&[(0.00, 1.05), (0.50, 1.34), (1.00, 1.72)])
         .expect("a leaf's pitch is a law");
-    leader.twist = shape::Scalar::new(&[(0.00, -0.30), (0.50, 0.10), (1.00, 0.44)])
+    leader.twist = shape::Scalar::new(&[(0.00, -0.22), (0.50, 0.05), (1.00, 0.34)])
         .expect("a leaf's twist is a law");
     leader.size = shape::Scalar::new(&[(0.00, 0.70), (0.40, 1.00), (1.00, 0.82)])
         .expect("a leaf's size is a law");
@@ -587,29 +639,29 @@ fn birch_leaves(branchlet_depth: usize) -> Vec<LeafField> {
     // The bough's own outer length, which is where a birch carries its long shoots and where the crown's
     // interior foliage is: H3's interior has to come from leaves that are not on the branchlets.
     bough.band = (0.26, 0.94);
-    bough.density = shape::Scalar::constant(30.0);
+    bough.density = shape::Scalar::constant(22.0);
     bough.cluster = 1;
     bough.fan = shape::Scalar::constant(0.0);
     bough.phyllotaxy = GOLDEN;
-    bough.pitch = shape::Scalar::new(&[(0.00, 1.10), (0.50, 1.44), (1.00, 1.90)])
+    bough.pitch = shape::Scalar::new(&[(0.00, 1.00), (0.50, 1.28), (1.00, 1.78)])
         .expect("a leaf's pitch is a law");
-    bough.twist = shape::Scalar::new(&[(0.00, -0.26), (0.50, 0.08), (1.00, 0.40)])
+    bough.twist = shape::Scalar::new(&[(0.00, -0.20), (0.50, 0.04), (1.00, 0.30)])
         .expect("a leaf's twist is a law");
     bough.size = shape::Scalar::new(&[(0.00, 0.78), (0.45, 1.00), (1.00, 0.86)])
         .expect("a leaf's size is a law");
     bough.jitter = 0.28;
 
     let mut branchlet = LeafField::new(branchlet_depth, 0);
-    branchlet.band = (0.08, 0.98);
-    branchlet.density = shape::Scalar::constant(72.0);
+    branchlet.band = (0.06, 0.98);
+    branchlet.density = shape::Scalar::constant(15.0);
     branchlet.cluster = 1;
     branchlet.fan = shape::Scalar::constant(0.0);
     // **The golden angle and one leaf to a station**, which is the note's *"alternate and spirally
     // arranged"* read as two numbers. A rank would be a *Keteleeria*; a cluster would be a pine.
     branchlet.phyllotaxy = GOLDEN;
-    branchlet.pitch = shape::Scalar::new(&[(0.00, 1.15), (0.50, 1.55), (1.00, 2.05)])
+    branchlet.pitch = shape::Scalar::new(&[(0.00, 1.02), (0.50, 1.32), (1.00, 1.74)])
         .expect("a leaf's pitch is a law");
-    branchlet.twist = shape::Scalar::new(&[(0.00, -0.50), (0.50, 0.10), (1.00, 0.70)])
+    branchlet.twist = shape::Scalar::new(&[(0.00, -0.34), (0.50, 0.06), (1.00, 0.44)])
         .expect("a leaf's twist is a law");
     branchlet.size = shape::Scalar::new(&[(0.00, 0.72), (0.35, 1.00), (1.00, 0.86)])
         .expect("a leaf's size is a law");
@@ -713,7 +765,7 @@ fn birch_catkins(species: &Species, branchlet_depth: usize) -> Vec<Seat> {
 fn birch_palette() -> Palette {
     Palette {
         wood: Skin::new([0.118, 0.070, 0.048], 0.90),
-        leaves: vec![Skin::new([0.086, 0.150, 0.052], 0.68)],
+        leaves: vec![Skin::new([0.108, 0.178, 0.064], 0.68)],
         seats: vec![Skin::new([0.190, 0.148, 0.070], 0.84)],
     }
 }
@@ -732,28 +784,38 @@ fn birch_palette() -> Palette {
 ///   fifteen hundred metres is the honest hour for a plate whose subject is a curtain of hanging leaves.
 fn birch_lighting() -> Lighting {
     Lighting {
-        key_position: [24.0, 15.0, -12.0],
-        key_colour: [1.0, 0.90, 0.74],
-        key_irradiance: 3.4,
-        key_distance: 30.5,
+        // **The key stands on the camera's side and to its left, not behind the tree.** The first plate put
+        // it at `[24, 15, −12]` against a camera at `[22, 6.5, 23]`, which is *behind the tree from the
+        // lens*: every frame it produced was a silhouette of a crown against its own sky. **A raking key
+        // means a key with a direction across the subject, not a key behind it** — a morning sun at
+        // forty-five degrees to the lens's left is what rakes, and it is what the second plate uses.
+        key_position: [-19.0, 17.0, 20.0],
+        key_colour: [1.0, 0.91, 0.76],
+        key_irradiance: 4.6,
+        key_distance: 32.3,
         key_reach: 1200.0,
         // **The page is sized to the tree and not to the floor.** A fourteen-metre birch with a crown
         // five and a half metres across wants an eight-metre page: one texel of a 1024 page over a sixteen
         // metre plane is sixteen millimetres, and a leaf's casters are centimetres away, so the leaf
         // materials' own bias scale takes it the rest of the way down.
         key_extent: 8.0,
-        fill_position: [-13.0, 7.0, -11.0],
-        fill_colour: [0.44, 0.56, 0.70],
-        fill_irradiance: 0.55,
-        fill_distance: 18.2,
-        floor: Skin::new([0.195, 0.170, 0.120], 0.95),
+        fill_position: [16.0, 8.0, -14.0],
+        fill_colour: [0.46, 0.58, 0.72],
+        fill_irradiance: 0.45,
+        fill_distance: 23.0,
+        // **The floor is a warm mid brown and not a near-black**, because the first plate's `0.195` under a
+        // key of 3.4 read as a black field under a black tree and the frame had no ground to stand on.
+        floor: Skin::new([0.255, 0.215, 0.150], 0.95),
         sky: Atmosphere::new()
             .zenith([0.08, 0.18, 0.42])
             .horizon([0.56, 0.60, 0.64])
-            .ground([0.26, 0.24, 0.19])
+            .ground([0.30, 0.28, 0.22])
             .density(0.0012)
             .scale_height(1800.0),
-        sky_radiance: 0.46,
+        // **The sky is a third of the key, and that ratio is H3's number.** A crown lit mostly by a sky has
+        // an interior exactly as bright as its rim; a crown lit by a key with a dim sky above it has a dark
+        // inside, and the interior share is what the probe measures.
+        sky_radiance: 0.32,
         // Warm humid air on a hillslope at fifteen hundred metres: about half a garden's.
         haze: 0.007,
     }
@@ -770,24 +832,25 @@ fn birch_lighting() -> Lighting {
 /// still holds a 40 cm bole with its flare, which is what this plate is a picture of.
 fn birch_base_lighting() -> Lighting {
     Lighting {
-        key_position: [6.5, 4.5, 7.0],
+        // **On the lens's side and beyond the bole, so the flare's near face is the lit one.**
+        key_position: [3.4, 2.6, 3.8],
         key_colour: [1.0, 0.93, 0.82],
-        key_irradiance: 2.6,
-        key_distance: 10.6,
+        key_irradiance: 3.4,
+        key_distance: 5.7,
         key_reach: 40.0,
-        key_extent: 4.0,
-        fill_position: [-5.0, 2.0, -4.0],
+        key_extent: 2.5,
+        fill_position: [-3.0, 1.6, -2.4],
         fill_colour: [0.46, 0.54, 0.68],
-        fill_irradiance: 0.45,
-        fill_distance: 6.7,
-        floor: Skin::new([0.195, 0.170, 0.120], 0.95),
+        fill_irradiance: 0.35,
+        fill_distance: 4.1,
+        floor: Skin::new([0.255, 0.215, 0.150], 0.95),
         sky: Atmosphere::new()
             .zenith([0.10, 0.20, 0.44])
             .horizon([0.52, 0.58, 0.66])
-            .ground([0.28, 0.26, 0.22])
+            .ground([0.30, 0.28, 0.23])
             .density(0.0012)
             .scale_height(1800.0),
-        sky_radiance: 0.46,
+        sky_radiance: 0.32,
         haze: 0.007,
     }
 }
@@ -796,19 +859,20 @@ fn birch_base_lighting() -> Lighting {
 ///
 /// # Invariants
 ///
-/// **`2 · 31.8 · tan(0.30) / 1700` is 11.6 mm**, and that number is the one this plate's blade was chosen
-/// on: the note's leaf is `40–120 mm` and so is **3.5 to ten pixels** here — above the sampling tax, which
-/// is why this species needs no card at all and draws the plain blade.
+/// **`2 · 27.0 · tan(0.30) / 1700` is 9.8 mm**, and that number is the one this plate's blade was chosen
+/// on: the note's leaf is `40–120 mm` and so is **4 to twelve pixels** here — above the sampling tax,
+/// which is why this species needs no card at all and draws the plain blade.
 ///
-/// **The eye is at half the tree's height and not above the crown.** The whole of H1 here is that the shape
-/// is read as a curtain of hanging branchlets on a clean stem, and a plan seen from a roof is not that
-/// shape. Twenty metres of vertical coverage on a fourteen-metre tree is seventy-one per cent of the
-/// frame's height, and the `5.5 m` crown is **475 pixels** of it.
+/// **The eye is at a third of the tree's height and not above the crown.** The whole of H1 here is that the
+/// shape is read as a curtain of hanging branchlets on a clean stem, and a plan seen from a roof is not
+/// that shape. **Seventeen metres of vertical coverage on a fourteen-metre tree is eighty-two per cent of
+/// the frame's height** — the first plate's twenty metres left a fifth of the frame empty ground below the
+/// bole — and the `5.5 m` crown is **560 pixels** wide and **800** tall.
 const BIRCH_FRAME: Framing = Framing {
     width: 1400,
     height: 1700,
-    eye: [22.0, 6.5, 23.0],
-    target: [0.0, 7.5, 0.0],
+    eye: [18.5, 5.0, 19.5],
+    target: [0.0, 8.0, 0.0],
     field_of_view: 0.60,
     near: 0.2,
     far: 900.0,
@@ -821,45 +885,52 @@ const BIRCH_FRAME: Framing = Framing {
 ///
 /// # Invariants
 ///
-/// **`2 · 1.70 · tan(0.35) / 1000` is 1.24 mm**, and this is the plate the comb exists for: a six-millimetre
-/// serration tooth is **4.8 pixels** here and was **half a pixel** at the whole-tree plate. The frame is
+/// **`2 · 2.16 · tan(0.35) / 1000` is 1.58 mm**, and this is the plate the comb exists for: a nine-millimetre
+/// serration tooth is **5.7 pixels** here and was **0.4 pixels** at the whole-tree plate. The frame is
 /// **wider than it is tall** because the subject is a bough hanging down and the frame is a portrait of a
 /// curtain otherwise.
 ///
+/// **The camera looks twenty degrees UP at the hanging branchlets, against the sky**, and that is the whole
+/// of the framing's correction: the first plate aimed *down* at `y = 7.35` from `y = 7.95` and put the
+/// forest floor across the lower half of the frame, which is a picture of a branch lying in a field. A
+/// weeping crown is read from below.
+///
 /// **The bough stands at seven and a half metres**, a crown's own height and not on the ground: a branch
 /// plate whose branch lies in the dirt reads as a fallen limb, and a birch's branchlets do hang to within
-/// three metres of the ground. **The eye carries the planting's own height**, because a `Framing` is in
-/// world coordinates and a `Placement` moves the plant in the world.
+/// four and a half metres of the ground. **The eye carries the planting's own height**, because a
+/// `Framing` is in world coordinates and a `Placement` moves the plant in the world.
 const BIRCH_BOUGH_FRAME: Framing = Framing {
     width: 1400,
     height: 1000,
-    eye: [2.35, 7.95, 1.60],
-    target: [1.05, 7.35, 0.0],
+    eye: [2.55, 7.05, 1.70],
+    target: [1.10, 7.85, 0.0],
     field_of_view: 0.70,
     near: 0.03,
-    far: 60.0,
-    floor: 30.0,
+    far: 900.0,
+    floor: 400.0,
     ground: Ground::Plane,
 };
 
-/// The base plate's frame: **3.20 m** from the bole at a person's reach, aimed at **1.1 m**, which is the
+/// The base plate's frame: **2.0 m** from the bole at a person's reach, aimed at **0.95 m**, which is the
 /// frame H4 reads the flare and the lobed outline in.
 ///
 /// # Invariants
 ///
-/// **Aimed low and close.** H4 asks for the flare and the bark's form, both of which live in the first two
-/// metres, and a bark plate with the flare out of the bottom of its own frame is a texture swatch.
-/// `2 · 3.20 · tan(0.40) / 1400` is **1.93 mm**, so the section's eight-per-cent lobes on a 410 mm bole are
-/// **sixteen pixels** and a catkin hanging past the frame is five pixels across.
+/// **Close, and aimed low.** H4 asks for the flare and the bark's form, both of which live in the first
+/// two metres, and a bark plate with the flare out of the bottom of its own frame is a texture swatch.
+/// **`2 · 2.39 · tan(0.35) / 1400` is 1.25 mm**, so the section's thirteen-per-cent lobes on a 410 mm bole
+/// are **twenty-one pixels** of swell and the bole is **328 pixels** of a 1200-pixel frame. **The first plate
+/// stood at 3.2 m and a 0.80 lens**, which made the bole 226 pixels and the lobes eight, and the frame came
+/// out a dark brown pole with a chamfer at the bottom of it.
 const BIRCH_BASE_FRAME: Framing = Framing {
     width: 1200,
     height: 1400,
-    eye: [2.30, 1.65, 2.10],
-    target: [0.0, 1.10, 0.0],
-    field_of_view: 0.80,
+    eye: [1.72, 1.15, 1.62],
+    target: [0.0, 0.78, 0.0],
+    field_of_view: 0.70,
     near: 0.05,
-    far: 60.0,
-    floor: 30.0,
+    far: 900.0,
+    floor: 400.0,
     ground: Ground::Plane,
 };
 
@@ -875,20 +946,28 @@ const BIRCH_DETAIL: Detail = Detail {
 ///
 /// # Invariants
 ///
-/// **`spacing = 80 mm`, and it is the bole's lobes' own size that asks for it.** The crate's half-metre
-/// default puts thirty rings on a fourteen-metre bole, and a lobe of eight per cent on a 400 mm trunk is a
-/// thirty-two-millimetre swell — one sample per four of them, so the column comes out as a smooth pipe and
-/// the species' H4 surface is gone. Eighty millimetres is three rings to a lobe. **The cost is stated**: the
-/// bole takes 175 rings and each branchlet twelve, which is **145 000 wood triangles** against 45 000 at the
-/// default, and the module pays it on one plate rather than on the two whole-tree plates where the bole is
-/// nine pixels wide.
+/// **`spacing = 80 mm` and `around = 24`, and both are the bole's own surface.** The crate's half-metre
+/// default puts thirty rings on a fourteen-metre bole, and a lobe of ten and a half per cent on a 400 mm
+/// trunk is a
+/// a fifty-two-millimetre swell — one sample per two of them, so the column comes out as a smooth pipe.
+/// Eighty millimetres is three rings to a lobe. **Twenty-four slots is the crease threshold's other side:
+/// at fourteen the ring sampled the sixteen-point section at fourteen places and the bole's terminator came
+/// out as a hard vertical line across three hundred pixels of bark** — the *polygonal silhouette* defect,
+/// drawn by the plate that exists to show the wood. **The cost is stated**: the bole takes 175 rings and
+/// each branchlet twelve, which is **200 000 wood triangles** against 45 000 at the default, and the module
+/// pays it on one plate rather than on the two whole-tree plates where the bole is nine pixels wide.
 const BIRCH_BASE_DETAIL: Detail = Detail {
     stations: 8,
-    around: 14,
+    around: 24,
     spacing: 0.08,
 };
 
 /// Builds the birch's whole-tree plate: one tree, its own light and ground, the plain leaf, and its catkins.
+///
+/// **Rows.** Thirty boughs over the crown's 8.4 m of leader and twenty-nine branchlets a bough is **866
+/// nodes** inside the planting's stride of 65 536; the three fields carry **13 603 leaf rows** and the catkin
+/// scatter **940**, so the plate is at **14 543 rows**, a sixth of the ninety-thousand ceiling of §4.13, and
+/// it compiles in six seconds and rasterises in three.
 pub fn southwest_birch_picture() -> Value {
     let species = southwest_birch(BIRCH_SEED, BirchFoliage::Leaf);
     let planting = Planting::new(species.clone())
@@ -977,13 +1056,19 @@ const KETELEERIA_NEEDLE_HALF_WIDTH: f32 = 0.00125;
 /// that is what the plume is for.
 const KETELEERIA_NEEDLE_LENGTH: f32 = 0.045;
 
-/// The Keteleeria's plume: **32 cm long and 23 cm across**, the widest of the comb-toothed cards in this
+/// The Keteleeria's plume: **28 cm long and 15 cm across**, the widest of the comb-toothed cards in this
 /// gallery and the reason a 26 m crown can be drawn at 43 000 rows.
-const KETELEERIA_PLUME_LENGTH: f32 = 0.32;
+///
+/// **The plume is a lateral shoot's own plume and no longer.** A 24 cm spur with 45 mm needles two ranks
+/// deep is a plume about 28 cm long and fifteen across, and that is the number here. **The first plate drew
+/// it 32 cm long and 23 cm wide** — a card half again as broad as its own shoot — and the crown came out as
+/// a solid mass with every cone buried inside it, which is the opposite of the note's *"coarse, knobbly,
+/// corn-cob texture"* from `01-habit.jpg`.
+const KETELEERIA_PLUME_LENGTH: f32 = 0.28;
 
 /// Half the plume's width, and the note's own **two ranks** read as a plume's width: a shoot's needles lie
 /// in one plane and cover a band twice the shoot's own length, not a rod.
-const KETELEERIA_PLUME_HALF_WIDTH: f32 = 0.115;
+const KETELEERIA_PLUME_HALF_WIDTH: f32 = 0.075;
 
 /// The Keteleeria's cone at its drawn length, **`200 mm` — the top of the note's `9–20 cm` range**.
 ///
@@ -1144,26 +1229,29 @@ fn keteleeria_bole() -> (shape::Curve, shape::Scalar) {
     )
 }
 
-/// The Keteleeria's section: **twenty sides with a deep longitudinal fissure in them**.
+/// The Keteleeria's section: **twenty-four sides with a deep longitudinal fissure in them**.
 ///
 /// # Invariants
 ///
 /// **Fissures, and deeper than the pine's, because the note says so twice.** FOC gives *"暗灰褐色，有不规则
 /// 的深纵沟槽，成块状脱落"* — dark grey-brown, with irregular **deep** longitudinal fissures, shedding in
-/// blocks. A fissure runs **with** the grain, so the relief is vertical: five lobes of eighteen per cent and
-/// seven of six, which is *deep* against the pine's thirteen.
+/// blocks. A fissure runs **with** the grain, so the relief is vertical: seven lobes of eleven and a half per
+/// cent and eleven of four, which is *deep* against the pine's thirteen-per-cent shallow flutes and shallow
+/// against the **eighteen per cent of five lobes the first plate drew** — a fissure a fifth of the radius is
+/// 200 mm of groove on a metre of bole, and the base plate came out a **five-pointed starfish lying on the
+/// sand**, which is the kapok's *flames* and not this species' bark.
 ///
-/// **Twenty sides, and the crease threshold is why.** The wood's normals crease above `0.61 rad` and
-/// twenty points round a loop is `0.31 rad` a step, so the fissures shade as deep smooth grooves rather
+/// **Twenty-four sides, and the crease threshold is why.** The wood's normals crease above `0.61 rad` and
+/// twenty-four points round a loop is `0.26 rad` a step, so the fissures shade as deep smooth grooves rather
 /// than as hard corners — and a hard corner on a two-metre bole at the base plate's three millimetres a
 /// pixel is the *polygonal silhouette* the bar names.
 fn keteleeria_bark() -> shape::Section {
-    let sides = 20;
+    let sides = 24;
     let points: Vec<[f32; 2]> = (0..sides)
         .map(|index| {
             let theta = index as f32 / sides as f32 * std::f32::consts::TAU;
             let fissure =
-                1.0 - 0.180 * (theta * 5.0 + 0.7).sin().powi(2) + 0.060 * (theta * 7.0).sin();
+                1.0 - 0.115 * (theta * 7.0 + 0.7).sin().powi(2) + 0.038 * (theta * 11.0).sin();
             [theta.cos() * fissure, theta.sin() * fissure]
         })
         .collect();
@@ -1245,7 +1333,12 @@ fn keteleeria_second(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scal
 /// lie along it — which would be the spruce's whole arrangement and would make this species a different
 /// tree.
 fn keteleeria_shoot(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    let length = 0.34 * (0.78 + 0.44 * rng.unit());
+    // **Nineteen to twenty-nine centimetres.** The note gives no shoot length, and this one is chosen so
+    // that the note's own `20–60 needles per lateral shoot` at the shoot's own spacing gives
+    // `03-branch-and-bark.jpg`'s overlap: sixty needles on a 24 cm spur is one every four millimetres, and
+    // a 45 mm needle is **eleven deep**. The first plate drew a 34 cm shoot and got one every 5.7 mm — a
+    // bottlebrush of black bristles, which is a *Picea* shoot and not this species' flat comb.
+    let length = 0.24 * (0.78 + 0.44 * rng.unit());
     let departure = 0.86 + 0.30 * rng.unit();
     let radius = joint.parent_radius.max(1.0e-5);
     (
@@ -1490,7 +1583,7 @@ fn keteleeria_needles(shoot_depth: usize, foliage: KeteleeriaFoliage) -> Vec<Lea
     let factor = foliage.density_factor();
     let mut candle = LeafField::new(0, 0);
     candle.band = (0.40, 0.975);
-    candle.density = shape::Scalar::constant(60.0 * factor);
+    candle.density = shape::Scalar::constant(120.0 * factor);
     candle.cluster = 1;
     candle.fan = shape::Scalar::constant(0.0);
     candle.phyllotaxy = GOLDEN;
@@ -1504,7 +1597,7 @@ fn keteleeria_needles(shoot_depth: usize, foliage: KeteleeriaFoliage) -> Vec<Lea
     // branch is itself a needled shoot, and at forty-eight metres it is the bough's plume and not eight
     // separate tufts on a bare rod. A bough whose foliage is only on its secondaries is the *bare broom*.
     bough.band = (0.05, 0.99);
-    bough.density = shape::Scalar::constant(110.0 * factor);
+    bough.density = shape::Scalar::constant(190.0 * factor);
     bough.cluster = 1;
     bough.fan = shape::Scalar::constant(0.0);
     bough.phyllotaxy = GOLDEN;
@@ -1515,7 +1608,7 @@ fn keteleeria_needles(shoot_depth: usize, foliage: KeteleeriaFoliage) -> Vec<Lea
 
     let mut second = LeafField::new(shoot_depth.saturating_sub(1), 0);
     second.band = (0.05, 0.97);
-    second.density = shape::Scalar::constant(130.0 * factor);
+    second.density = shape::Scalar::constant(220.0 * factor);
     second.cluster = 1;
     second.fan = shape::Scalar::constant(0.0);
     second.phyllotaxy = OPPOSITE;
@@ -1525,13 +1618,18 @@ fn keteleeria_needles(shoot_depth: usize, foliage: KeteleeriaFoliage) -> Vec<Lea
     second.jitter = 0.20;
 
     let mut spray = LeafField::new(shoot_depth, 0);
-    // The band stops at the shoot's own foot, which is the *dead give* defect.
-    spray.band = (0.06, 0.97);
-    // **A hundred and fifty to the metre is the note's `20–60 needles per lateral shoot` read as a linear
-    // density**: a 34 cm shoot carries fifty, which is the note's own count at its middle, and one needle
-    // every seven millimetres on a blade four and a half centimetres long is the three-deep overlap
-    // `03-branch-and-bark.jpg` shows.
-    spray.density = shape::Scalar::constant(150.0 * factor);
+    // **The band stops at three quarters of the shoot, and that is the cone's clearance.** A plume is 280 mm
+    // long and radiates from its anchor in every direction, so a plume seated at `0.94` of a shoot buries
+    // a 200 mm cone whole — and the first plate drew every cone in the crown inside the foliage, which is
+    // the note's first recognition fact invisible. **The last quarter of every shoot is bare wood, and the
+    // cone stands on it.**
+    spray.band = (0.06, 0.74);
+    // **Three hundred to the metre is the note's `20–60 needles per lateral shoot` read as a linear
+    // density**: a 24 cm shoot over its foliated two thirds carries forty-nine, which is the note's count at
+    // its upper end, and one needle every 3.3 mm on a blade four and a half centimetres long is the
+    // **thirteen-deep overlap** `03-branch-and-bark.jpg` shows. The first plate stood at 150 and drew a
+    // bottlebrush of black bristles — a *Picea* shoot and not this species' flat comb.
+    spray.density = shape::Scalar::constant(300.0 * factor);
     spray.cluster = 1;
     spray.fan = shape::Scalar::constant(0.0);
     spray.phyllotaxy = OPPOSITE;
@@ -1542,9 +1640,10 @@ fn keteleeria_needles(shoot_depth: usize, foliage: KeteleeriaFoliage) -> Vec<Lea
 
     let mut brush = LeafField::new(shoot_depth, 0);
     // **The pale new growth at the shoot tips**, which is a size law and not a second template because the
-    // blade is the same blade.
-    brush.band = (0.74, 1.0);
-    brush.density = shape::Scalar::constant(170.0 * factor);
+    // blade is the same blade — and it stops with [`spray`], at `0.78`, which is the densest foliage on the
+    // shoot and the last foliage before the cone's own bare quarter.
+    brush.band = (0.52, 0.78);
+    brush.density = shape::Scalar::constant(420.0 * factor);
     brush.cluster = 1;
     brush.fan = shape::Scalar::constant(0.0);
     brush.phyllotaxy = OPPOSITE;
@@ -1592,7 +1691,7 @@ pub fn evelyn_keteleeria_bough(seed: u64) -> Species {
             )
         },
         generations: vec![Generation {
-            count: (9, 13),
+            count: (14, 18),
             station: (0.12, 1.0),
             slot: (0.0, GOLDEN),
             jitter: (0.16, 0.22),
@@ -1658,9 +1757,11 @@ fn keteleeria_leader_cones() -> Vec<Seat> {
 /// # Invariants
 ///
 /// **The crown is the species' third recognition fact — *"noticeably darker and more lustrous than the
-/// Pinus yunnanensis around it"* — and dark green is a tint and not a count.** `0.052, 0.090, 0.044` is a
-/// dark, slightly cold green against the pine's grey-green `0.10, 0.17, 0.08`, and the roughness is **0.55**,
-/// which is FOC's *"光绿色"* — a glossy upper surface — and is the second half of the same word.
+/// Pinus yunnanensis around it"* — and dark green is a tint and not a count.** `0.092, 0.135, 0.066` is a
+/// deep green against the pine's grey-green `0.10, 0.17, 0.08`, and the roughness is **0.50**, which is
+/// FOC's *"光绿色"* — a glossy upper surface — and is the second half of the same word. **The first plate
+/// stood the needle at `0.052, 0.090, 0.044` and a roughness of 0.55**, and the crown plate came out a
+/// black silhouette with three visible plumes.
 ///
 /// **The cones are yellow-green, not brown.** `05-cone-erect.jpg` is an unripe cone photographed in spring
 /// and it is a saturated chartreuse, which under a warm key is `0.300, 0.268, 0.072`; the module states it
@@ -1668,9 +1769,9 @@ fn keteleeria_leader_cones() -> Vec<Seat> {
 /// it against the pine is its cones.
 fn keteleeria_palette() -> Palette {
     Palette {
-        wood: Skin::new([0.074, 0.066, 0.056], 0.97),
-        leaves: vec![Skin::new([0.052, 0.090, 0.044], 0.55)],
-        seats: vec![Skin::new([0.300, 0.268, 0.072], 0.72)],
+        wood: Skin::new([0.064, 0.057, 0.047], 0.97),
+        leaves: vec![Skin::new([0.092, 0.135, 0.066], 0.50)],
+        seats: vec![Skin::new([0.320, 0.285, 0.080], 0.72)],
     }
 }
 
@@ -1689,26 +1790,34 @@ fn keteleeria_palette() -> Palette {
 ///   the pale grey-green one beside it, and it is the same number that moves H3.
 fn keteleeria_lighting() -> Lighting {
     Lighting {
-        key_position: [34.0, 30.0, -20.0],
+        // **The key is on the camera's side and to its left, and the first plate put it behind the tree.**
+        // The camera stands at `[33, 5.5, 35]`; a key at `[34, 30, −20]` is *behind the crown from the
+        // lens*, and every frame it drew was a dark mass with a pale pole in front of it. A key at
+        // `[−26, 31, 27]` rakes the crown across the lens's axis, which is what raking means.
+        key_position: [-26.0, 31.0, 27.0],
         key_colour: [1.0, 0.93, 0.80],
-        key_irradiance: 4.2,
-        key_distance: 49.7,
+        key_irradiance: 4.8,
+        key_distance: 48.7,
         key_reach: 1200.0,
         // **Nine metres is the crown's own half-width** (an 11 m crown), and a smaller page would put the
         // ground beyond it outside the key's shadow, which is what a page fitted to the subject means.
         key_extent: 9.0,
-        fill_position: [-22.0, 13.0, -18.0],
-        fill_colour: [0.44, 0.54, 0.76],
-        fill_irradiance: 0.30,
+        fill_position: [22.0, 13.0, -18.0],
+        fill_colour: [0.46, 0.56, 0.76],
+        fill_irradiance: 0.34,
         fill_distance: 31.1,
-        floor: Skin::new([0.270, 0.205, 0.140], 0.96),
+        floor: Skin::new([0.290, 0.220, 0.150], 0.96),
         sky: Atmosphere::new()
             .zenith([0.06, 0.15, 0.40])
             .horizon([0.50, 0.57, 0.66])
-            .ground([0.30, 0.27, 0.22])
+            .ground([0.32, 0.29, 0.23])
             .density(0.0006)
             .scale_height(3000.0),
-        sky_radiance: 0.34,
+        // **A dim sky under a strong key, and the ratio between them is H3's number.** The Keteleeria grows
+        // in the same belt as the Yunnan pine and the note calls it *"the darker, glossier, more massive
+        // tree among the pines"*, which is a statement about **contrast**: a strong key on a dim sky is what
+        // separates a dark glossy crown from the pale grey-green one beside it.
+        sky_radiance: 0.30,
         // A dry belt at eighteen hundred metres: thin air, and a far ridge is all it touches.
         haze: 0.004,
     }
@@ -1726,34 +1835,46 @@ fn keteleeria_lighting() -> Lighting {
 /// kapok's base plate already records.
 fn keteleeria_base_lighting() -> Lighting {
     Lighting {
-        key_position: [9.0, 7.5, 9.5],
+        key_position: [5.0, 4.2, 5.2],
         key_colour: [1.0, 0.94, 0.84],
-        key_irradiance: 2.8,
-        key_distance: 15.0,
+        key_irradiance: 4.8,
+        key_distance: 8.3,
         key_reach: 40.0,
         key_extent: 9.0,
-        fill_position: [-6.0, 3.0, -6.0],
+        fill_position: [-4.5, 2.4, -4.5],
         fill_colour: [0.46, 0.54, 0.70],
-        fill_irradiance: 0.40,
-        fill_distance: 9.0,
-        floor: Skin::new([0.270, 0.205, 0.140], 0.96),
+        fill_irradiance: 0.34,
+        fill_distance: 6.8,
+        floor: Skin::new([0.185, 0.145, 0.100], 0.96),
         sky: Atmosphere::new()
             .zenith([0.08, 0.18, 0.42])
             .horizon([0.52, 0.58, 0.66])
-            .ground([0.30, 0.28, 0.24])
+            .ground([0.32, 0.29, 0.24])
             .density(0.0006)
             .scale_height(3000.0),
-        sky_radiance: 0.34,
+        sky_radiance: 0.30,
         haze: 0.004,
     }
 }
 
-/// The whole-tree frame: **48.5 m** off a twenty-six-metre tree, the camera at a fifth of its height.
+/// The whole-tree frame: **48.5 m** off a twenty-six-metre tree, the camera at a fifth of its height and
+/// pitched twelve degrees **up**.
+///
+/// # Invariants
+///
+/// - **The pitch is what keeps the ground out of the picture.** `tan(12.3°) / tan(17.2°) = 0.70`, so the
+///   horizon sits at seventy per cent of the way down the frame and the ground is the bottom sixth. The
+///   first plate aimed at `13.5 m` from `5.5 m` — a pitch of 9.5° — and put **39% of the frame on a lit
+///   floor** with the key's shadow page's boundary drawn across it as a straight line, which is the one
+///   artefact a tree plate must not carry.
+/// - **`2 · 48.5 · tan(0.30) / 1700` is 17.6 mm**, so a 200 mm cone is **11.4 px** and a plume's teeth are
+///   one to two: the whole of the card's argument, and the reason the cone template is at the top of the
+///   note's range.
 const KETELEERIA_FRAME: Framing = Framing {
     width: 1400,
     height: 1700,
     eye: [33.0, 5.5, 35.0],
-    target: [0.0, 13.5, 0.0],
+    target: [0.0, 16.0, 0.0],
     field_of_view: 0.60,
     near: 0.5,
     far: 900.0,
@@ -1761,17 +1882,33 @@ const KETELEERIA_FRAME: Framing = Framing {
     ground: Ground::Plane,
 };
 
-/// The bough plate's frame: **1.30 m** off a lateral shoot, a stop wider than the tree's own, looking a few
-/// degrees up so the shoot and its erect cone are against the sky.
+/// The bough plate's frame: **1.26 m** square to the second-order branch's own middle, looking
+/// twenty-two degrees **up** at its shoots and their erect cones.
+///
+/// # Invariants
+///
+/// **`2 · 1.26 · tan(0.375) / 1000` is 0.99 mm**, and that is the plate's whole number: a 45 mm needle is
+/// **45 px long and 2.5 px wide** — the note's two ranks countable, which is H2 — and a 200 mm cone is
+/// **202 px**, a fifth of the frame's height, so the corn-cob of recurved scales is the subject rather than
+/// a texture.
+///
+/// **The camera looks UP, and the first two plates' did not.** A plate of a branch sixteen metres above a
+/// forest floor that looks *down* fills two thirds of its frame with unlit ground: the first two renders of
+/// this plate were a black bar across a black field, and then a cluster of cones in the top-left corner.
+///
+/// **The eye is placed from the branch's own arithmetic**, not by eye: `bend(2.15, [0.86, 1.08, 0.96, 1.36])`
+/// puts the branch's foot at the origin and its tip at `x = 1.76`, `y = +1.22` in its own frame, so its
+/// middle is at `(0.88, +0.61)` and a camera at `z = 1.15` and `y = −0.35` stands 1.26 m square to the
+/// shoots that hang over it.
 const KETELEERIA_BOUGH_FRAME: Framing = Framing {
     width: 1200,
     height: 1000,
-    eye: [0.86, 16.15, 0.30],
-    target: [0.10, 16.05, 0.0],
+    eye: [1.05, 16.20, 1.15],
+    target: [0.88, 16.68, 0.0],
     field_of_view: 0.75,
     near: 0.02,
-    far: 40.0,
-    floor: 6.0,
+    far: 900.0,
+    floor: 400.0,
     ground: Ground::Plane,
 };
 
@@ -1790,9 +1927,16 @@ const KETELEERIA_BASE_FRAME: Framing = Framing {
 };
 
 /// The Keteleeria's expansion dial for the two crown plates.
+///
+/// # Invariants
+///
+/// **`around = 16`, and the fissures are what ask for it.** The section carries twenty authored points with
+/// five deep lobes in them, and twelve slots round the loop round those lobes off between samples — so the
+/// first plate's bole was a smooth pale pole at the one distance where the note's fifth recognition fact,
+/// *"dark grey-brown, with irregular deep longitudinal fissures"*, is read. Sixteen keeps them.
 const KETELEERIA_DETAIL: Detail = Detail {
     stations: 6,
-    around: 12,
+    around: 16,
     spacing: 0.5,
 };
 
@@ -1800,16 +1944,16 @@ const KETELEERIA_DETAIL: Detail = Detail {
 ///
 /// # Invariants
 ///
-/// **`spacing = 220 mm` and `around = 16`, and both are the fissures.** The crate's half-metre default puts
+/// **`spacing = 220 mm` and `around = 20`, and both are the fissures.** The crate's half-metre default puts
 /// fifty-two rings on a twenty-six-metre bole and a half-metre facet on a two-metre trunk is the
-/// *polygonal silhouette* the bar names; and twelve slots round a twenty-point section rounds the fissures
-/// off between samples, which is a fluted tree rather than a blocky one. **The cost is stated**: the
-/// lateral shoots take the dial's floor of six rings whatever the spacing says — a 34 cm shoot at 220 mm
-/// asks for two — so the fine spacing is paid for by the bole and the branches and not by the three
-/// thousand shoots, which is the one place the crate's per-planting `Detail` is cheap.
+/// *polygonal silhouette* the bar names; and sixteen slots round a twenty-four-point section rounds the
+/// fissures off between samples, which is a fluted tree rather than a blocky one. **The cost is stated**: the
+/// lateral shoots take the dial's floor of six rings whatever the spacing says — a 24 cm shoot at 220 mm
+/// asks for two — so the fine spacing is paid for by the bole and the branches and not by the two thousand
+/// four hundred shoots, which is the one place the crate's per-planting `Detail` is cheap.
 const KETELEERIA_BASE_DETAIL: Detail = Detail {
     stations: 6,
-    around: 16,
+    around: 20,
     spacing: 0.22,
 };
 
@@ -1817,9 +1961,10 @@ const KETELEERIA_BASE_DETAIL: Detail = Detail {
 /// cones on the upper crown band.
 ///
 /// **Rows.** Sixty-four boughs at four to a whorl is sixteen whorls; 480 second-order branches at seven and a
-/// half to a bough; 2 400 lateral shoots at five to a second-order branch, which is **2 945 nodes** inside
-/// the planting's stride of 65 536. The five fields carry about **43 000 leaf rows** and the cone scatters
-/// about **3 700**, so the plate is inside the ninety-thousand-row ceiling of §4.13 with room to spare.
+/// half to a bough; 2 400 lateral shoots at five to a second-order branch, which is **2 989 nodes** inside
+/// the planting's stride of 65 536. The five fields carry **58 094 leaf rows** and the cone scatters
+/// **3 353**, so the plate is inside the ninety-thousand-row ceiling of §4.13 with room to spare, and it
+/// compiles in 48 seconds and rasterises in 8.
 pub fn evelyn_keteleeria_picture() -> Value {
     let species = evelyn_keteleeria(KETELEERIA_SEED, KeteleeriaFoliage::Plume);
     let mut seats = keteleeria_cones(&species, 3, (1, 2));
@@ -1841,9 +1986,9 @@ pub fn evelyn_keteleeria_picture() -> Value {
 /// needle, with its erect cones against the sky.
 pub fn evelyn_keteleeria_bough_picture() -> Value {
     let species = evelyn_keteleeria_bough(KETELEERIA_SEED);
-    // **One cone to a shoot here against one or two on the tree**, because at 1.3 m a 200 mm cone is a
-    // fifth of the frame's width and five of them are a wall.
-    let seats = scatter_in(&species.plant, 1, 0, 0.94, (0, 1), (0.12, 1.0));
+    // **Two or three cones to a shoot here against one or two on the tree**, because at 0.99 mm a pixel a
+    // 200 mm cone is 202 px and this plate is a picture of the cone.
+    let seats = scatter_in(&species.plant, 1, 0, 0.94, (2, 3), (0.12, 1.0));
     let planting = Planting::new(species.clone())
         .at(Placement {
             origin: [0.0, 16.0, 0.0],
