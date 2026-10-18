@@ -244,8 +244,14 @@ impl Gallery {
             "terraces" => terraces(),
             "tidewater" => tidewater(),
             "tiles" => tiles(),
+            // The list below is the covered set, not everything this match builds: `names` is a
+            // contract about what the suite sweeps, and scenes build without being swept. Saying
+            // "the gallery holds" it would claim the narrower set is the whole, which is the same
+            // conflation `names`' own doc warns against.
             other => unimplemented!(
-                "the gallery holds {}, and `{other}` is not one of them",
+                "`{other}` is not one of the {} scenes the suite covers: {}. The gallery builds \
+                 more than this; `Gallery::names` is the contract, not an index.",
+                Self::names().len(),
                 Self::names().join(", ")
             ),
         }
