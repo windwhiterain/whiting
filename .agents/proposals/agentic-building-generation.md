@@ -6759,8 +6759,11 @@ differed in **length**. `git log -S` confirms no row for `shed`, `hall` or `hous
 
 1. **"All gates green" must name the gates.** The examples, the nine renders, the two identity probes and `fmt` were run
    every slice; **the crate test binaries were not**. A gate list that omits them is a claim, not an audit — and
-   `workshop` and `yard` are **still outside this gate** because `Gallery::build` enumerates them and `Gallery::names()`
-   does not, so no pass-count change in either is visible here.
+   `workshop` and `yard` **were** outside this gate — this paragraph said "still outside" until `9a8d960` — because
+   `Gallery::build` enumerated them and `Gallery::names()` did not, so no pass-count change in either was visible here.
+   **Both are enumerated now**, `names()` has four readers and all four wanted the wider list, and the table carries
+   their rows (`workshop` 6/6/6/1, `yard` 6/6/6/1). The sentence is kept rather than deleted because the gap is the
+   point: this gate was red for an arc and nobody ran it.
 2. **A filter written to find failures finds the word "failed" in "0 failed".** This record's own rule — *print the
    value you compared, not the verdict* — caught two false alarms in the very round that repaired this gate: a
    case-insensitive `-match 'FAILED|panicked'` over a test log reports fifteen failures on a fully green suite, and a

@@ -90,8 +90,9 @@ mod dunes;
 mod foldyard;
 /// The shell phase's proof scene: one authored building, derived and expanded, standing in a frame.
 ///
-/// Public before it is listed in [`Gallery::names`] because the scene is the phase's acceptance
-/// picture and a session that is iterating on it should be able to call it directly.
+/// Public so a session iterating on the phase's acceptance picture can call it directly, and
+/// listed in [`Gallery::names`] so the suite sweeps it: the two are independent, and this scene
+/// is both.
 pub mod hall;
 pub mod house;
 /// The mountain scene, and the massif it stands on.
