@@ -44,6 +44,12 @@ pub struct Joint {
     /// The child's rank among its siblings, and how many there are.
     pub index: u32,
     pub siblings: u32,
+    /// Where along the parent the child hangs, nought at its base and one at its tip.
+    ///
+    /// A crown is a law over this number and not over the child's rank: a conifer's lower bough is twice
+    /// the length of its upper one and an oak's is the other way about, and neither can be drawn by a
+    /// shape function that cannot see where on the trunk it is.
+    pub station: f32,
 }
 
 /// How a species makes one generation below its parent.
@@ -137,6 +143,7 @@ pub fn grow(rule: &Rule, seed: u64) -> Plant {
                     depth: depth + 1,
                     index,
                     siblings: count,
+                    station,
                 };
                 let (spine, taper) = (generation.shape)(&mut rng, &joint);
                 let attachment = Attachment::new(station, slot).sunk(generation.sink);
@@ -246,6 +253,7 @@ pub fn graft(
         depth: depth + 1,
         index,
         siblings: index + 1,
+        station,
     };
     let (spine, taper) = (generation.shape)(&mut rng, &joint);
     let attachment = Attachment::new(station, slot).sunk(generation.sink);

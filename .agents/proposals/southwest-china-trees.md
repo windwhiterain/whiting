@@ -291,6 +291,64 @@ struct that holds both stops being either.
 
 **Size:** about fifty lines, and it moves the existing scenes' constants into a default.
 
+### 4.8 A whorl of branches — `Generation::cluster`
+
+**Pulls it:** 1, 2, 3, 4, 9. Every conifer in the list branches in whorls: a season's leader bears one
+ring of boughs at its top, and the rings stack into the tiers a pine or a fir is recognised by. A
+`Generation` spread `count` children evenly over a station band, which is a spiral, and a band of one
+point, which is one whorl — but a trunk is one node, so one generation could make one whorl and a
+crown of five tiers was five generations of one child each, which is not a rule.
+
+**Change:** `Generation` gains `cluster: u32`, the branch-side twin of §4.1's leaf `cluster` and the
+same word for the same fact — how many siblings share one station. `count` children gather at
+`count / cluster` stations spread over the band; the children of one station stand `1 / cluster` of a
+turn apart and each next station advances by the slot step. `cluster = 1` is the spread the rule has
+always made, exactly.
+
+**Rejected:** a second generation list that repeats along a leader chain (a rule that recurses is a
+generator, which is the thing this crate refuses); and quantising stations with an edit pass after
+`grow` (a tier is a fact about the crown, but writing it as forty hand edits per tree makes the crown
+uneditable as a crown).
+
+**Size:** one field and four lines in `grow`.
+
+### 4.9 A shape function sees where its child hangs — `Joint::station`
+
+**Pulls it:** 1, 3, 4, 5. A conifer's lower bough is twice the length of its upper one and an oak's
+profile is the other way about; both are laws over the station the child hangs at. `Joint` carried the
+parent's radius, the depth and the sibling rank, so a shape function could not tell a bough at the
+crown's base from one at its top and every crown came out a cylinder.
+
+**Change:** `Joint` gains `station: f32`, the child's own station on its parent, which `grow` already
+computes. A shape function that ignores it is unchanged.
+
+**Size:** one field, two construction sites.
+
+### 4.10 A crown is a count, and the count is large — recorded, not yet closed
+
+**Found by:** the first render of 云南松 (2026-10-18). The frame drew a skeleton: five correct whorls,
+correct bough angles, and a crown with no mass. The arithmetic is the whole lesson. A sixteen-metre
+pine's crown presents about fifty square metres to a camera; a needle of the note's 22 cm × 1.1 mm
+covers 1.2e-4 m² of it, so a crown that reads as foliage wants on the order of **two hundred thousand
+needles**, against the five thousand the first rule made. No amount of art direction closes a factor
+of forty; only the counts do, and the counts run into two limits this crate currently states:
+
+- [`PLANTING_STRIDE`](../../crates/gallery/src/vegetation_picture.rs) is 4096, so a planting may have
+  four thousand nodes — and a pine that reads wants on the order of ten thousand twigs. The stride is
+  one constant and the ids are `f32`, so 65536 is exactly representable; raising it is a one-line
+  change with a stated reason, deferred until a species actually needs it.
+- The rasteriser samples a pixel at one point, so a blade narrower than a pixel is dropped rather than
+  faded: at twenty-five metres a 1.1 mm needle is a tenth of a pixel. Supersampling the frame and
+  box-filtering it down is the contained fix and would serve every scene in the gallery, not only the
+  trees; it is deferred to arc 7, where the epic frames want it anyway, and until then a whole-tree
+  frame is read for its silhouette and the foliage is judged at the bough plate's distance, where a
+  needle is a pixel and a half wide and honest.
+
+The first pine therefore lands at the largest count the current stride and the current render time
+allow, and the note's per-twig fascicle density is honoured while the twig count is not. That gap is
+written into the species' verdict rather than hidden: **arc 2's pine is a pine at the density the
+system allows, and closing the density is arc 7's first job.**
+
 ### 4.7 Already expressible — verified, and not to be rebuilt
 
 Recording these matters as much as the gaps, because each is a capability a species brief could waste
