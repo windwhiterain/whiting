@@ -109,6 +109,8 @@ pub mod shed;
 pub mod southwest;
 /// Arc 5's two flagships: 珙桐's white bracts and 大树杜鹃's terminal leaf rosettes.
 pub mod southwest_flag;
+/// 川滇高山栎, the evergreen oak of the subalpine belt: the dense rounded crown on a short gnarled bole.
+pub mod southwest_oak;
 mod spotlight;
 mod stilllife;
 /// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
@@ -236,6 +238,8 @@ impl Gallery {
             "giant_rhododendron" => southwest_flag::giant_rhododendron_picture(),
             "giant_rhododendron_bough" => southwest_flag::giant_rhododendron_bough_picture(),
             "giant_rhododendron_base" => southwest_flag::giant_rhododendron_base_picture(),
+            "alpine_oak" => southwest_oak::alpine_oak_picture(),
+            "alpine_oak_bough" => southwest_oak::alpine_oak_bough_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
