@@ -6994,3 +6994,26 @@ verdict is now on disk.**
 This is the fifth time in this arc that the thing needing repair was **the instrument rather than the tree**: a count that
 was not a measurement, a `Compiling` line printed but not gated, a case-insensitive match for `FAILED` finding `0 failed`,
 a `^{tree}` compared as two empty strings, and now a verdict that only existed on a screen.
+
+## The transient, six runs later (2026-10-27)
+
+Tally since the release gate was added: **one failing run, then five green**, the last five at **199 s** each, with
+**0 `[FAIL]` lines** and 0 of 9 hashes moved. The failing run has not recurred, so the honest verdict stands:
+**unknown with a majority** — not green. Nothing in this record claims otherwise.
+
+**And repairing the instrument found a second defect in the repair.** The verdict was being written into
+`audit/audit-run.log`, which the script **truncates at the start of every run** — so a verdict survived exactly until the
+next run, which is the same failure one level down: a record that exists but that nobody can consult after the fact.
+It now also appends a one-line summary to **`audit/verdicts.log`**, which is never truncated, is covered by the existing
+`/audit/*.log` ignore rule, and carries the date of every run. Verified by writing one:
+
+> `AUDIT RESULT: every gate green. finished: 2026-10-18 18:54:27 full output: …audit-run.log   [2026-10-18 18:54:27]`
+
+**So the instrument lessons in this record are now six, and the last two happened while fixing the fifth.** A count that
+was not a measurement; a `Compiling` line printed but not gated; a case-insensitive `FAILED` finding `0 failed`; a
+`^{tree}` compared as two empty strings; a verdict that only existed on a screen; and now **a verdict written to a file
+that is emptied before anyone reads it.** Every one of them was found by *using* the thing rather than by reading it.
+
+**The lesson that generalizes, and that this arc keeps paying for:** an instrument is finished when someone has watched
+it succeed **and** fail, and then read its record of the failure **after** the next run. Three of the six were caught by
+that last step alone.
