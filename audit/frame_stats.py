@@ -50,10 +50,15 @@ def report(lum: np.ndarray, mask: np.ndarray | None, label: str) -> None:
 
 def crown_depth(lum: np.ndarray, mask: np.ndarray) -> None:
     """H3, measured: a deep crown has plant pixels wholly surrounded by plant, and they are in the
-    shadow of the foliage above them, while the crown's rim is lit. A bag of separated leaves has
-    almost no interior at all, so the interior's share of the plant is the first number and the
-    interior's darkness against the rim is the second. The bar (proposal section 2.1, H3) is an
-    interior share of at least 0.25 and an interior-over-rim mean of at most 0.75."""
+    shadow of the foliage above them, while the crown's lit outside is bright. A bag of separated
+    leaves has almost no interior at all, so the interior's share of the plant is the first number.
+
+    The second number compares the interior's mean against the plant's own p90 — the lit rim's
+    brightness — and NOT against a rim mask: the pixels at a silhouette edge face away from the key as
+    often as toward it, so a rim mask averages lit and unlit edges together and lands at the interior's
+    own value, which measured 0.99 on a crown that was plainly not self-shadowing and would measure the
+    same on one that was. The bar (proposal section 2.1, H3) is an interior share of at least 0.25 and
+    an interior-over-p90 mean of at most 0.75."""
     plant = np.pad(mask, 1)
     neighbours = sum(
         plant[dy : dy + mask.shape[0], dx : dx + mask.shape[1]]
@@ -62,16 +67,16 @@ def crown_depth(lum: np.ndarray, mask: np.ndarray) -> None:
         if (dy, dx) != (1, 1)
     )
     interior = mask & (neighbours == 8)
-    rim = mask & (neighbours <= 4)
     share = interior.mean() / max(mask.mean(), 1e-9)
     print(f"  H3 interior share of the plant = {share:.3f}"
           f"  (bar: at least 0.25)")
-    if interior.any() and rim.any():
-        ratio = lum[interior].mean() / max(lum[rim].mean(), 1e-6)
-        print(f"  H3 interior over rim luminance = {ratio:.3f}"
+    if interior.any():
+        lit = np.percentile(lum[mask], 90)
+        ratio = lum[interior].mean() / max(lit, 1e-6)
+        print(f"  H3 interior over lit p90 = {ratio:.3f}"
               f"  (bar: at most 0.75)")
     else:
-        print("  H3 interior over rim luminance = n/a (no interior or no rim)")
+        print("  H3 interior over lit p90 = n/a (no interior)")
 
 
 def main(argv: list[str]) -> int:

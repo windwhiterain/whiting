@@ -227,6 +227,7 @@ impl Gallery {
             "bands" => vegetation_laws::bands(),
             "yunnan_pine" => southwest::yunnan_pine_picture(),
             "yunnan_pine_bough" => southwest::yunnan_pine_bough_picture(),
+            "yunnan_pine_base" => southwest::yunnan_pine_base_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),

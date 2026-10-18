@@ -36,6 +36,10 @@ use crate::vegetation_picture::{
     Framing, Ground, Lighting, Palette, Planting, Skin, plant_scene_lit,
 };
 
+/// The name the pine's base plate is built and rendered under: the foot of the bole at two metres,
+/// which is the frame H4's flare and bark are read in.
+pub const YUNNAN_PINE_BASE: &str = "yunnan_pine_base";
+
 /// The name the Yunnan pine's whole-tree plate is built and rendered under.
 pub const YUNNAN_PINE: &str = "yunnan_pine";
 
@@ -212,7 +216,7 @@ fn bough(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
     // only falls with height draws a spire.
     let top = ((joint.station - 0.78) / 0.22).clamp(0.0, 1.0);
     let length =
-        5.6 * (1.0 - 0.35 * joint.station) * (1.0 - 0.9 * top) * (0.70 + 0.60 * rng.unit());
+        5.6 * (1.0 - 0.35 * joint.station) * (1.0 - 0.9 * top) * (0.75 + 0.50 * rng.unit());
     let departure = 1.45 - 0.55 * joint.station + 0.10 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-3);
     (
@@ -439,7 +443,7 @@ fn pine_cones(species: &Species, twig_depth: usize) -> Vec<Seat> {
 fn pine_palette() -> Palette {
     Palette {
         wood: Skin::new([0.14, 0.11, 0.085], 0.95),
-        leaves: vec![Skin::new([0.11, 0.18, 0.09], 0.80)],
+        leaves: vec![Skin::new([0.10, 0.17, 0.08], 0.80)],
         seats: vec![Skin::new([0.36, 0.25, 0.16], 0.85)],
     }
 }
@@ -509,6 +513,20 @@ const BOUGH_FRAME: Framing = Framing {
     ground: Ground::Plane,
 };
 
+/// The base plate's frame: two and a half metres from the bole at a person's eye height, so the flare
+/// and the fissures are the subject and the trunk runs out of the top of the frame.
+const BASE_FRAME: Framing = Framing {
+    width: 1200,
+    height: 1400,
+    eye: [2.2, 1.6, 2.6],
+    target: [0.0, 1.5, 0.0],
+    field_of_view: 0.90,
+    near: 0.05,
+    far: 30.0,
+    floor: 10.0,
+    ground: Ground::Plane,
+};
+
 /// Builds the Yunnan pine's whole-tree plate: one tree in the card foliage, its own light and ground.
 pub fn yunnan_pine_picture() -> Value {
     let species = yunnan_pine(SEED, Foliage::Spray);
@@ -534,6 +552,24 @@ pub fn yunnan_pine_bough_picture() -> Value {
         &[planting],
         &BOUGH_FRAME,
         YUNNAN_PINE_BOUGH,
+        &pine_lighting(),
+        &[],
+    )
+}
+
+/// Builds the pine's base plate: the foot of the bole at two metres, which is the frame H4 reads the
+/// flare and the fissured bark in. The foliage is the spray, because the subject is the bark and a
+/// quarter of a million true needles around a trunk plate is a quarter of an hour of fill for pixels
+/// the frame crops away.
+pub fn yunnan_pine_base_picture() -> Value {
+    let species = yunnan_pine(SEED, Foliage::Spray);
+    let planting = Planting::new(species.clone())
+        .with_seats(pine_cones(&species, 2))
+        .with_palette(pine_palette());
+    plant_scene_lit(
+        &[planting],
+        &BASE_FRAME,
+        YUNNAN_PINE_BASE,
         &pine_lighting(),
         &[],
     )

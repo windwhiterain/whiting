@@ -145,6 +145,11 @@ pub const NAMINGS: &[Naming] = &[
         note: "one bough at arm's length: this pixel is that node of the bough, and a needle carries its twig's",
     },
     Naming {
+        scene: crate::southwest::YUNNAN_PINE_BASE,
+        resolve: crate::southwest::yunnan_pine_handle_of,
+        note: "the foot of the bole: this pixel is that node of the pine, whose flare and fissures are the subject",
+    },
+    Naming {
         scene: crate::vegetation_picture::GROVE,
         resolve: crate::vegetation_picture::grove_handle_of,
         note: "the planting is the id's quotient by the stride and the node is its remainder",
