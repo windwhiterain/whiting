@@ -30,12 +30,12 @@
 //!
 //! [`scatter`] seats on every live node of one generation at one station *of that node*, so a species can say
 //! "a cone at every twig tip" and nothing more. But a fir's cones are **erect and stand on the upper crown
-//! only** (`../../../../.agents/investigate/trees/abies_delavayi.md`: *"ERECT and upright, standing on the
-//! upper crown"*), and a kapok flowers **at every tip of a bare crown**
-//! (`../../../../.agents/investigate/trees/bombax_ceiba.md`: *"solitary, terminal or in the leaf axils of branch
-//! tips"*) — two demands that are about *where on the parent a node hangs*, which is the one number a seat's
-//! own station is not. [`scatter_in`] is that number: a band of the parent's arc length, and the same rule with
-//! the band `(0.0, 1.0)` is [`scatter`] itself.
+//! only** — [`abies_delavayi.md`](../../../../.agents/investigate/trees/abies_delavayi.md): *"ERECT and
+//! upright, standing on the upper crown"* — and a kapok flowers **at every tip of a bare crown** —
+//! [`bombax_ceiba.md`](../../../../.agents/investigate/trees/bombax_ceiba.md): *"solitary, terminal or in the
+//! leaf axils of branch tips"*. Both are statements about **where on its parent a node hangs**, which is the
+//! one number a seat's own station is not. [`scatter_in`] is that number: a band of the parent's arc length,
+//! and the same rule with the band `(0.0, 1.0)` is [`scatter`] itself.
 //!
 //! # What is not a decorator
 //!
