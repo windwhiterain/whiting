@@ -1047,7 +1047,7 @@ fn fir_cone() -> Template {
 fn fir_needles(shoot_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     let factor = foliage.density_factor();
     let mut candle = LeafField::new(0, 0);
-    candle.band = (0.90, 1.0);
+    candle.band = (0.80, 0.945);
     candle.density = shape::Scalar::constant(90.0 * factor);
     candle.phyllotaxy = GOLDEN;
     candle.pitch = shape::Scalar::constant(1.10);
@@ -1153,6 +1153,30 @@ fn fir_cones(species: &Species, shoot_depth: usize, count: (u32, u32)) -> Vec<Se
     scatter(&species.plant, shoot_depth, 0, 0.96, count)
 }
 
+/// Four cones on the topmost metre and a half of the fir's own leader, and **that is the
+/// only cone in either species that is written out by hand**.
+///
+/// # Invariants
+///
+/// - **They are here because they are the only cones that stand above the crown line**, which is the
+///   fir's second silhouette fact: `07-cone-erect-crown.jpg` shows them *"like dark candlesticks"* above
+///   the foliage, and a cone on a tier's tip stands *inside* the crown however upright its template is.
+/// - **The leader's candle stops at 0.945 of the height, not at 1.0**, so the last metre and a half
+///   of bole stands bare and the cones on it have something to stand against. A candle carried to the
+///   tip buries its own cones — a plume is 300 mm long and radiates from its anchor, so a candle that
+///   reaches 1.0 has its foliage a third of a metre above the apex — which is what the first two
+///   renders of these four did.
+/// - The leader's own frame has its `y` along the leader's tangent — straight up — so a template drawn
+///   along `+y` stands erect here with no rotation of its own. [`scatter`] cannot place them because it
+///   takes **one station for a whole generation** and the leader is a single node: `scatter(plant, 0, …)`
+///   would put one cone at one station, not four along a leader.
+fn fir_leader_cones() -> Vec<Seat> {
+    [(0.952, 0.12), (0.972, 0.63), (0.990, 0.35), (1.0, 0.87)]
+        .into_iter()
+        .map(|(station, slot)| Seat::new(Handle::root(), 0, station, slot))
+        .collect()
+}
+
 /// The fir's surfaces: a rough grey-brown furrowed bole, a **darker and less glaucous** leaf than the
 /// spruce's — the note's *"bright dark green"* against the spruce's *"blue-green to glaucous grey-green"*,
 /// which is the other half of the two species' colour difference — and a cone of its own, **black and
@@ -1232,8 +1256,10 @@ const FIR_BOUGH_FRAME: Framing = Framing {
 /// Builds the Cangshan fir's whole-tree plate: one tree in the card foliage, its own light and ground.
 pub fn cangshan_fir_picture() -> Value {
     let species = cangshan_fir(SEED, Foliage::Plume);
+    let mut seats = fir_cones(&species, 2, (0, 1));
+    seats.extend(fir_leader_cones());
     let planting = Planting::new(species.clone())
-        .with_seats(fir_cones(&species, 2, (0, 1)))
+        .with_seats(seats)
         .with_palette(fir_palette());
     plant_scene_lit(&[planting], &FIR_FRAME, CANGSHAN_FIR, &fir_lighting(), &[])
 }
