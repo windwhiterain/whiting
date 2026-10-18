@@ -690,7 +690,7 @@ the pass counts, which is the cheap half of the same list.
    eave. The straight tent becomes a Chinese roof, and the bargeboard arrives with it.
 3. **Arc 3 — the crown (D2).** *Done, 2026-10-18 — see below.* Gable walls that reach the roof (硬山) and one party wall that passes
    through the eave (封火墙). This is the arc after which the house reads from the side.
-4. **Arc 4 — the frame (D3).** Columns under every purlin, ties threading them, cantilevers carrying the
+4. **Arc 4 — the frame (D3).** *Done, 2026-10-18 — see below.* Columns under every purlin, ties threading them, cantilevers carrying the
    front gallery, brackets under the cantilevers — anchored, so moving a column moves its tie.
 5. **Arc 5 — the covering (D9).** Fifty 瓦垄 a slope, hosted by the roof, with the eave end decided.
 6. **Arc 6 — the interior (D7).** The hearth bay with no ceiling over it, and the stair through the floor.
