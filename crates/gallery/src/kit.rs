@@ -378,6 +378,58 @@ pub fn gallery_custom_schema_with_image() -> Schema {
     Schema::new(SchemaKind::structure(fields))
 }
 
+/// The custom field a material names how far its own shadow's two biases are scaled.
+///
+/// # Why a multiplier and not the two numbers
+///
+/// The receiver push and the depth bias are stated in the **light's own page**, one in that page's
+/// texels and one in its normalised depth, and both are sized for a surface whose casters are
+/// metres away. A leaf's casters are centimetres away, so both have to come down by two orders of
+/// magnitude — and a document that could state only the pair itself would have to restate a fact
+/// about a page it does not know the size of.
+pub const SHADOW_BIAS_SCALE: &str = "shadow_bias_scale";
+
+/// The number a material that names no shadow-bias scale is drawn with.
+///
+/// **One, and it is exact.** Every scene whose materials carry no such field multiplies both of
+/// the shadow test's numbers by this, and a multiplication by exactly one is the identity on an
+/// `f32`, so those shaders shade to the bit they shaded to before the field existed.
+pub const DEFAULT_SHADOW_BIAS_SCALE: f64 = 1.0;
+
+/// Builds the schema of a shadow-bias scale.
+///
+/// # Invariants
+///
+/// **A required field of a scene's own schema**, so that a material drawn by a shader declaring it
+/// always carries one: the number is read at a vertex attribute whose location the field's presence
+/// fixes, and an absent optional field would leave that attribute reading past the end of a row.
+pub fn shadow_bias_scale_field() -> Schema {
+    Schema::new(SchemaKind::Float).with_documentation(
+        "What the shadow test's receiver push and depth bias are scaled by for this material. \
+         One leaves both as the light's own page states them; a leaf in a crown, whose casters \
+         are centimetres away rather than metres, wants a small fraction of that.",
+    )
+}
+
+/// Builds the custom schema a plant material carries.
+///
+/// # Why this is a plant's own and not the gallery's
+///
+/// **Every building scene and every building row would move.** The gallery's custom schema is what
+/// `crates/scene/tests/clustered_lights.rs` and `crates/gallery/tests/shader_provenance.rs` pin
+/// their row sizes against, and it is the schema every gallery surface — wall, slab, floor and
+/// plant alike — is packed with. A field here is four bytes on every row of every scene in the
+/// gallery, for the sake of the one kind of surface that wants it.
+pub fn plant_custom_schema() -> Schema {
+    let base = gallery_custom_schema();
+    let SchemaKind::Struct { fields } = base.kind else {
+        return base;
+    };
+    let mut fields = fields;
+    fields.insert(SHADOW_BIAS_SCALE.to_owned(), shadow_bias_scale_field());
+    Schema::new(SchemaKind::structure(fields))
+}
+
 /// Builds a screen material, which a post process names by label.
 ///
 /// A screen material is a grade over the frame rather than a drawing of geometry, so it has
@@ -755,6 +807,21 @@ pub fn surface_reflecting(
         // changes every existing scene by nothing at all.
         (AUTHORED_OFFSET.to_owned(), Value::Float(0.0)),
     ])
+}
+
+/// Returns a surface's custom data with its shadow-bias scale set.
+///
+/// # Invariants
+///
+/// **A field of the row and not of the material around it**, for the same reason
+/// [`offset_by`]'s offset is: the material's own three fields are a label, a shader and a row, and
+/// the row is what a shader's `custom_schema` is checked against.
+pub fn shadow_bias_scale(custom_data: Value, scale: f64) -> Value {
+    let Value::Struct(mut fields) = custom_data else {
+        return custom_data;
+    };
+    fields.insert(SHADOW_BIAS_SCALE.to_owned(), Value::Float(scale));
+    Value::Struct(fields)
 }
 
 /// Returns a surface's custom data with its authored-id offset set.

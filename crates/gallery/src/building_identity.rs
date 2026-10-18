@@ -194,12 +194,42 @@ pub fn not_authored_extras() -> Extras {
 /// The point schema handed in must be the **extras' own** ([`building_extras().point_schema`]) when the
 /// mesh carries ids, because a varying numbered by one schema and a fragment output by another is a
 /// picture of somebody else's numbers.
+///
+/// The custom schema is the gallery's own, so every building row is the row it was before
+/// [`stage_set_over_schema`] existed; a scene that needs a row of its own calls that instead.
 pub fn stage_set<'text>(
     prefix: &str,
     body: impl Into<Block<'text>>,
     helpers: impl Into<Block<'text>>,
     point: &Schema,
     extras: &Extras,
+) -> Vec<Value> {
+    stage_set_over_schema(
+        prefix,
+        body,
+        helpers,
+        point,
+        extras,
+        &crate::kit::gallery_custom_schema(),
+    )
+}
+
+/// [`stage_set`] over a custom schema of the scene's own.
+///
+/// # Why the casters keep the gallery's
+///
+/// **Only the lighting stage's schema moves.** The shadowing and depthing stages come from
+/// [`mesh_shaders_over`](crate::shaders::mesh_shaders_over), which declares the gallery's schema for
+/// every scene, and their materials are the scene's own `{label}-cast` and `{label}-depth` rows
+/// packed against it. A scene that gave its casters the lighting stage's schema instead would be
+/// asking for four bytes of a number no shadowing stage reads.
+pub fn stage_set_over_schema<'text>(
+    prefix: &str,
+    body: impl Into<Block<'text>>,
+    helpers: impl Into<Block<'text>>,
+    point: &Schema,
+    extras: &Extras,
+    custom: &Schema,
 ) -> Vec<Value> {
     let body = body.into();
     let helpers = helpers.into();
@@ -212,7 +242,7 @@ pub fn stage_set<'text>(
         "",
         body,
         helpers,
-        crate::kit::gallery_custom_schema(),
+        custom.clone(),
         extras,
         Projection::default(),
     ));

@@ -466,7 +466,15 @@ fn pine_lighting() -> Lighting {
         // The cutoff must hold the floor's own diagonal, or the light is culled per cluster box and the
         // box boundary draws itself across the ground as a straight edge.
         key_reach: 1200.0,
-        key_extent: 40.0,
+        // **The page is sized to the tree, not to the floor.** Forty put a 176 m plane over a 16 m
+        // pine, and one texel of a 1024 page across that plane is 172 mm — seventeen times the gap
+        // between two neighbouring needles, so the shadow test's receiver push swallowed every
+        // caster in the crown before the test could see it. Eight is the largest half width that
+        // still holds the whole crown with room to spare, and it buys a 34 mm texel; the leaf
+        // materials' own bias scale takes it the rest of the way down to a couple of millimetres.
+        // The floor beyond eight metres of the tree now falls outside the key's shadow, which is
+        // what a page fitted to the subject means.
+        key_extent: 8.0,
         fill_position: [-14.0, 8.0, -12.0],
         fill_colour: [0.42, 0.52, 0.72],
         fill_irradiance: 0.90,

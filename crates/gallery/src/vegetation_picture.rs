@@ -49,12 +49,16 @@ use vegetation::leaf::LeafTemplate;
 use vegetation::plant::Placement;
 
 use crate::air::Atmosphere;
-use crate::building_identity::{building_extras, not_authored_extras, outputs_field, stage_set};
+use crate::building_identity::{
+    building_extras, not_authored_extras, outputs_field, stage_set, stage_set_over_schema,
+};
 use crate::geometry::plane_facing;
 use crate::kit::{
     camera_placed, environment_light, flux_for_irradiance, image, instance, instances, light,
-    light_with_radius, mesh, mesh_material, offset_by, post_processes, screen_material, surface,
+    light_with_radius, mesh, mesh_material, offset_by, plant_custom_schema, post_processes,
+    screen_material, shadow_bias_scale, surface,
 };
+
 use crate::shaders::{Projection, post_shader};
 use crate::vegetation_mesh::{LEAF_BASE_ID, node_ids, node_ids_from, template_points};
 
@@ -332,6 +336,42 @@ impl Skin {
     /// The surface row this skin is drawn by.
     fn value(self) -> Value {
         surface(self.tint, 0.0, self.roughness, [0.0; 3])
+    }
+}
+
+/// What a plant's own shadow test's receiver push and depth bias are scaled by.
+///
+/// # Invariants
+///
+/// **A leaf and not a plant.** The two numbers the shadow test biases by are sized for a surface
+/// whose casters stand metres away: on a page fitted to a whole tree one texel is a sixth of a
+/// metre, and the receiver is pushed a whole texel off itself before the test even runs. A leaf's
+/// casters are centimetres away, so a caster a millimetre in front of a blade is *inside* that push
+/// and the test cannot fire — which is why a crown's interior came out exactly as bright as its
+/// rim.
+///
+/// **The bole keeps the default, and the reason is the same fact read the other way round.** A
+/// trunk's casters are metres away, which is the case the numbers were written for; scaled to a
+/// fiftieth they no longer cover a trunk's own rasterisation error, and the bole comes back
+/// striped with acne. The scale is a statement about how close this surface's casters are, so it
+/// belongs on the surfaces whose casters are close.
+///
+/// See `.agents/investigate/leaf-self-shadowing.md`.
+pub const PLANT_SHADOW_BIAS_SCALE: f64 = 0.05;
+
+/// Returns one plant material's row, with that row's own shadow-bias scale.
+///
+/// # Invariants
+///
+/// **`None` leaves the row exactly as it was, and it is the caster and depther rows that pass it.**
+/// The plant's shading stage declares [`crate::kit::plant_custom_schema`]; its shadowing and
+/// depthing stages come from [`crate::shaders::mesh_shaders_over`] and declare the gallery's own. A
+/// caster row naming a field its shader does not declare is a row the compiler refuses by name, so
+/// the field goes on the shaded rows and on nothing else.
+fn plant_row(row: Value, scale: Option<f64>) -> Value {
+    match scale {
+        Some(scale) => shadow_bias_scale(row, scale),
+        None => row,
     }
 }
 
@@ -1117,7 +1157,12 @@ fn plant_scene_with(
             materials.push(mesh_material(
                 &format!("{label}-{stage}"),
                 shader,
-                skin.value(),
+                // **The bole keeps the gallery's default**, because its casters are metres away and
+                // the numbers the shadow test biases by are written for exactly that distance.
+                plant_row(
+                    skin.value(),
+                    (stage == "shade").then_some(crate::kit::DEFAULT_SHADOW_BIAS_SCALE),
+                ),
             ));
         }
     }
@@ -1144,9 +1189,12 @@ fn plant_scene_with(
             materials.push(mesh_material(
                 &tagged(index, &format!("leaf-shade-{group}")),
                 "plant_lighting",
-                offset_by(
-                    plantings[index].palette.leaf(leaves.template).value(),
-                    f64::from(node - LEAF_BASE_ID),
+                plant_row(
+                    offset_by(
+                        plantings[index].palette.leaf(leaves.template).value(),
+                        f64::from(node - LEAF_BASE_ID),
+                    ),
+                    Some(PLANT_SHADOW_BIAS_SCALE),
                 ),
             ));
         }
@@ -1172,9 +1220,12 @@ fn plant_scene_with(
             materials.push(mesh_material(
                 &tagged(index, &format!("knot-shade-{seat}")),
                 "plant_lighting",
-                offset_by(
-                    plantings[index].palette.seat(instance.template).value(),
-                    f64::from(node - LEAF_BASE_ID),
+                plant_row(
+                    offset_by(
+                        plantings[index].palette.seat(instance.template).value(),
+                        f64::from(node - LEAF_BASE_ID),
+                    ),
+                    Some(PLANT_SHADOW_BIAS_SCALE),
                 ),
             ));
         }
@@ -1346,7 +1397,14 @@ fn plant_scene_with(
         (
             "shaders".to_owned(),
             Value::List({
-                let mut shaders = stage_set("plant", view.plant, &helpers, &point, &extras);
+                let mut shaders = stage_set_over_schema(
+                    "plant",
+                    view.plant,
+                    &helpers,
+                    &point,
+                    &extras,
+                    &plant_custom_schema(),
+                );
                 shaders.extend(stage_set(
                     "ground",
                     view.ground,
