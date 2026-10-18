@@ -1,8 +1,9 @@
 //! The parts a gallery scene is assembled from.
 //!
-//! A standard scene document has seven fields, and each one is written here once. A scene
-//! that builds itself says `light("key", [4.0, 6.0, 2.0], ...)`, which reads as the scene
-//! it is, rather than repeating the shape of a light at every call site.
+//! A standard scene document has a field for every thing a scene decides — the frame it is
+//! drawn into, its lights, its geometry, its shaders — and each one is written here once. A
+//! scene that builds itself says `light("key", [4.0, 6.0, 2.0], ...)`, which reads as the
+//! scene it is, rather than repeating the shape of a light at every call site.
 //!
 //! # Invariants
 //!
@@ -491,6 +492,34 @@ pub fn instances(buckets: Vec<(scene::standard::Stage, Vec<Value>)>) -> Value {
         .map(|(pass, instances)| (pass.suffix().to_owned(), Value::List(instances)))
         .collect();
     Value::dictionary(buckets)
+}
+
+/// Builds the size of the image a scene is drawn into, in pixels.
+///
+/// # Why a builder and not a number each scene spells
+///
+/// The frame is **the scene's** rather than the harness's, and it was a scene field before it
+/// was a builder: `scene::standard::frame::Frame::read` takes it out of the document, and a
+/// document that names none is drawn into `DEFAULT_WIDTH` by `DEFAULT_HEIGHT` — the square the
+/// pipeline has always drawn into. So a scene that says nothing here is drawn exactly as it was
+/// before this builder existed, which is what lets every scene but one keep its own frame.
+///
+/// The two numbers are written rather than an aspect, because the aspect is what they are for
+/// and the pair is what the document is read for: a scene that wants a row four times as wide as
+/// it is tall names a frame that shape and lets the lens be worked out against it, and a scene
+/// that wants a square names nothing at all.
+///
+/// # Invariants
+///
+/// Only the two sizes are written. The frame field also carries the shadow page pool and the two
+/// atlas ceilings, and a scene that has an opinion about those — `foldyard` pages its shadow map
+/// at 4096 square — writes them beside this rather than through it, because a pool is a
+/// question about how far a light reaches and only that scene asks it.
+pub fn frame(width: i64, height: i64) -> Value {
+    Value::structure([
+        ("width".to_owned(), Value::Int(width)),
+        ("height".to_owned(), Value::Int(height)),
+    ])
 }
 
 /// Builds a camera that is drawn from the eye it writes, rather than fitted to the scene.

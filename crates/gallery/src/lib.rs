@@ -13,7 +13,7 @@
 //! # What is here
 //!
 //! - [`kit`] — one builder per field a scene document has: a light, a mesh, a material, a shader,
-//!   an image, a camera, an instance.
+//!   an image, a camera, an instance, and the frame the scene is drawn into.
 //! - [`air`] — the air a scene is drawn through, written once and handed to every stage, so
 //!   the sky and the haze a distant surface fades into are the same number.
 //! - [`ridges`] — far ranges painted into the sky behind whatever the air has already closed

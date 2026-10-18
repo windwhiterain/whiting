@@ -19,8 +19,11 @@
 //!   and a fragment shader that derived its view vector from the eye the author wrote
 //!   would be looking from somewhere the camera is not.
 //! - The horizontal field of view follows the aspect of the frame being drawn into, so a
-//!   wide frame is wider rather than cropped. A scene cannot set the aspect itself, because
-//!   the frame is not the document's to choose.
+//!   wide frame is wider rather than cropped. **The frame is the document's own**, so the
+//!   aspect is a scene's decision and not a constant of the pipeline:
+//!   [`Frame::read`](crate::standard::frame::Frame::read) takes it out of the `frame` field and
+//!   falls back to the square when a document names none, and every camera this module builds is
+//!   built against whichever of the two that document asked for.
 //! - A field of view is a full angle in radians, because a half angle is a number an
 //!   author has to halve in their head and get wrong.
 //!
