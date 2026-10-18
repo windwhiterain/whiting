@@ -7017,3 +7017,37 @@ that is emptied before anyone reads it.** Every one of them was found by *using*
 **The lesson that generalizes, and that this arc keeps paying for:** an instrument is finished when someone has watched
 it succeed **and** fail, and then read its record of the failure **after** the next run. Three of the six were caught by
 that last step alone.
+
+## The arc is closed, by the owner's decision (2026-10-27)
+
+The owner has decided to **stop here**. Nothing was left half-done: the volume arc's last engineering item was the
+audit's own release gate and verdict history, both merged and measured before this note.
+
+**The state it stops in, every number from a run rather than from memory:**
+
+- **8-step audit green**, `AUDIT RESULT: every gate green`, exit 0, ~199 s: debug **and release** workspace builds with
+  **0 warning lines** and **0 `Compiling whiting-*` naming another checkout**; `clippy` **0** and `doc` **0** on the
+  three building crates; **six test suites, 210 tests, 0 failed** (scene 111, gallery 10, cycles 3, rasterize 49,
+  definition 22, graphics 15); **29 building + 16 gallery examples** exit 0; **nine `.png` hashes, 0 of 9 moved**;
+  `scene_identity_probe` **856 rows, two-way**; `cargo fmt --all -- --check` **0 output lines**.
+- **Nine scenes, nine frames, nine aspects** (1.207–3.000), no building cut by an edge that was not cut before.
+- **Every scene answers the floor question**: a pixel on each plate names that plate — `house` (729,514), `hall`
+  (364,538), `shed` (884,527), `terrace` (442,312), `wing` (415,497), `workshop` (787,773), `identity` (788,625),
+  `yard` store (1025,213) and `yard` shed (578,380).
+- **A mass is two volumes** (wall ring + plate with a `SlabRole`), **a courtyard is a third** (non-convex, takes
+  openings, holds parts on both faces), and **every reader that could not measure says so in a name** —
+  `VoidNotSimple`, `OutlineNotSimple`, `OverlapNotMeasured`, `OutlineNotMeasured`, `SlabHostMissing`,
+  `OpeningOnAFarLoop`, `MiterUnresolved`.
+
+**What is deliberately not done, each measured and each named rather than left as a puzzle:** `house`'s floor is
+**in shadow** (the sun travels `+x`, its window faces east — the id channel names the plate, a reader of the png
+cannot see it by eye); an **authored pinch** is the one courtyard whose areas nothing can check; a **mass's interior**
+is not a documentable concept; `covers` remains necessary and not a proof; the nine frames are no longer mutually
+comparable, which was the accepted price of giving each scene its own; and **one audit run failed once and has not
+recurred** — unknown with a majority, and now recorded in `audit/verdicts.log` so the next occurrence is readable.
+
+**And the six instrument lessons, which are the part of this arc most likely to be needed again:** a count that was
+not a measurement; a `Compiling` line printed but not gated; a case-insensitive `FAILED` finding `0 failed`; a
+`^{tree}` compared as two empty strings; a verdict that only existed on a screen; and a verdict written to a file
+that is emptied before anyone reads it. **Every one was found by using the instrument, and three by reading its
+record after the next run.**
