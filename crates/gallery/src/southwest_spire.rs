@@ -17,20 +17,21 @@
 //! foliage, because **the rasteriser samples a pixel at one point and a blade narrower than a pixel is
 //! dropped whole, not faded**. A spruce needle is 1.2 mm and a fir needle 2.1 mm across; at the forty
 //! metres the whole-tree plate is framed from, one pixel is about twenty-two millimetres. So the
-//! whole-tree plate draws [`Foliage::Card`] and the bough plate draws [`Foliage::Needle`], the note's
+//! whole-tree plate draws [`Foliage::Plume`] and the bough plate draws [`Foliage::Needle`], the note's
 //! own width. That is a level of detail and not a fudge: each plate is honest about the blade it draws.
 //!
-//! ## A card stands for a shoot's plume, and not for one needle
+//! ## A plume stands for a shoot's whole plume of needles, and not for one needle
 //!
-//! **The card is widened AND lengthened, and the lengthening is the larger half of it.** The first
-//! version of this module widened the card and left its length at the note's own ten millimetres: a
-//! blade twenty-two millimetres wide and ten long is one pixel by **half a pixel**, and the frame came
-//! out as a crown of bare wood with a haze of specks on it. A card one pixel wide is only honest if it
-//! is also *several* pixels long, and what it then stands for is the unit the crown is made of — the
-//! plume of a shoot's needles — rather than a single needle. So the spruce's card is 95 mm long and
-//! 22 mm wide (a shoot is 160 mm) and the fir's is 85 mm by 15 mm (a shoot is 220 mm), and the density
-//! law is cut to keep the crown's total blade area where it was. **The blade is still one pixel wide,
-//! which is the number the sampling tax is stated in, and the card is still a needle shape.**
+//! **The plume is one blade whose width law is a comb of needle-teeth**, the pine's spray LOD and for
+//! the same reason. The scene document pays per instance, and the first four renders of this module
+//! tried to close a thirty-metre crown with the needles alone and came out as a pole with bottlebrushes
+//! on it: forty thousand true needles of one and a half pixels, over two hundred thousand of them
+//! needed, and the node and instance budgets do not carry two hundred thousand. A plume is what a
+//! conifer crown actually resolves to at forty-five metres — the eye reads plumes, not needles — and
+//! its comb's teeth are **one and a half to two pixels each**, which is the grain `02-crown.jpg` shows
+//! at that distance. So the plume's density is **a ninth** of the needle's, its card is 11.7 × 5.2
+//! pixels for the spruce and 19.7 × 7.2 for the fir, and the two plates differ by that and by nothing
+//! else: the same rule, the same fields, the same templates, the same cones.
 //!
 //! # The two silhouettes, and how they are told apart without their foliage
 //!
@@ -105,76 +106,52 @@ const SPRUCE_NEEDLE_HALF_WIDTH: f32 = 0.0006;
 const FIR_NEEDLE_LENGTH: f32 = 0.022;
 const FIR_NEEDLE_HALF_WIDTH: f32 = 0.00105;
 
-/// Half of one pixel at the spruce's whole-tree distance, and the card's length there.
+/// The spruce's plume card: **260 mm long and 116 mm across**, standing for the whole needle-plume of
+/// one shoot, with a comb of seven teeth.
 ///
-/// The frame stands 44.7 m off the tree with a 0.80 rad vertical field over 1700 rows, so one pixel is
-/// `2 · 44.7 · tan 0.40 / 1700` = **22.2 mm**. The card is **two and a half pixels** wide rather than
-/// one, because the width law tapers: a blade one pixel wide at its widest averages about six tenths
-/// of a pixel along its length, which is under one, and a blade under one pixel is dropped rather
-/// than faded. Its length is 130 mm, 5.9 pixels, and four fifths of a shoot. See the module docs.
-const SPRUCE_CARD_HALF_WIDTH: f32 = 0.0280;
-const SPRUCE_CARD_LENGTH: f32 = 0.130;
+/// The whole-tree plate stands 44.7 m off the tree with a 0.80 rad vertical field over 1700 rows, so
+/// one pixel is `2 · 44.7 · tan 0.40 / 1700` = **22.2 mm**. This card is 11.7 pixels long by 5.2 wide
+/// and its comb runs to seven teeth, which is 1.7 pixels a tooth — the grain `02-crown.jpg` shows at
+/// that distance, and the reason a needle drawn here instead is a fifth of a pixel and is dropped.
+const SPRUCE_PLUME_LENGTH: f32 = 0.260;
+const SPRUCE_PLUME_HALF_WIDTH: f32 = 0.058;
+const SPRUCE_PLUME_TEETH: usize = 7;
 
-/// Half of two and a half pixels at the fir's whole-tree distance, and the card's length there.
+/// The fir's plume card: **300 mm long and 110 mm across**, twelve teeth.
 ///
-/// The frame stands 29.7 m off the tree with a 0.82 rad vertical field over 1700 rows, so one pixel is
-/// `2 · 29.7 · tan 0.41 / 1700` = **15.2 mm**, and the card is 50 mm by 110 mm — 3.3 pixels wide and
-/// 7.2 long, and half of a shoot.
-const FIR_CARD_HALF_WIDTH: f32 = 0.0250;
-const FIR_CARD_LENGTH: f32 = 0.110;
+/// The fir's plate stands 29.7 m off the tree with a 0.82 rad vertical field over 1700 rows, so one
+/// pixel is `2 · 29.7 · tan 0.41 / 1700` = **15.2 mm**. This card is 19.7 pixels long by 7.2 wide and
+/// its comb runs to twelve teeth, again 1.6 pixels a tooth. **The fir's card is longer in pixels than
+/// the spruce's and the same width in metres**, because the fir's needles are twice as long: the card
+/// stands for a plume of *its* needles and not for the same area twice.
+const FIR_PLUME_LENGTH: f32 = 0.300;
+const FIR_PLUME_HALF_WIDTH: f32 = 0.055;
+const FIR_PLUME_TEETH: usize = 12;
 
 /// Which foliage a spire conifer draws.
 ///
 /// # Invariants
 ///
-/// **The two foliages are the two plates and not two moods.** A needle is the needle's own width or it
-/// is not a needle; the card exists because a point-sampled pixel cannot keep a blade that is thinner
-/// than itself, and it is drawn only by the frame far enough away that it is one pixel wide. See the
-/// module docs.
+/// **The two foliages are the two plates and not two moods, and a plume is a whole plume's needles in
+/// one instance.** A needle is the needle's own width or it is not a needle; the plume exists because
+/// the scene document pays per instance and a needle at forty-five metres is a fifth of a pixel, which
+/// a point-sampled rasteriser drops whole. This is the pine's [`southwest::Foliage::Spray`](southwest.rs)
+/// pattern, and it is the reason the spruce's whole-tree plate can be a crown rather than a pole.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Foliage {
     /// The note's own blade, for a frame within arm's length of a shoot.
     Needle,
-    /// A blade one pixel wide at the distance the whole-tree plate is framed from.
-    Card,
+    /// One blade whose width law is a comb of needle-teeth, standing for a plume.
+    Plume,
 }
 
 impl Foliage {
-    /// The blade's half-width for one species: the note's own for the needle, and **two and a half
-    /// pixels** at the distance that species' whole-tree plate is framed from for the card.
-    ///
-    /// The numbers are per species and not per foliage because a pixel is a property of a *frame*, and
-    /// the two frames are at different distances: one pixel is 22.2 mm on the spruce's plate and 15.2
-    /// mm on the fir's. And **two and a half rather than one** because the width law tapers: a blade
-    /// one pixel wide at its widest averages about six tenths of a pixel along its length, which is
-    /// under one, and a blade under one pixel is dropped rather than faded. The first four renders of
-    /// this module drew one pixel and two and a half and came out as a crown of bare wood with a
-    /// measured silhouette coverage of 0.20 in the crown.
-    fn half_width(self, needle_half_width: f32, card_half_width: f32) -> f32 {
-        match self {
-            Foliage::Needle => needle_half_width,
-            Foliage::Card => card_half_width,
-        }
-    }
-
-    /// The blade's own length, for the same reason as [`Foliage::half_width`]: the card is lengthened
-    /// as well as widened, or it is a speck.
-    fn length(self, needle_length: f32, card_length: f32) -> f32 {
-        match self {
-            Foliage::Needle => needle_length,
-            Foliage::Card => card_length,
-        }
-    }
-
-    /// The fraction of the needle foliage's density this foliage is drawn at. One for the needle; for
-    /// the card the same quarter the pine's card is drawn at, which is the ratio that keeps the two
-    /// foliages' total blade area in the same order — the card is both wider and longer, so its
-    /// density is cut further than a widening alone would ask, and the crown's mass is judged by eye
-    /// against the reference photographs rather than by arithmetic.
+    /// The fraction of the needle foliage's density this foliage is drawn at: one for the needle, and
+    /// for the plume a ninth, because one plume carries a whole shoot's needles in one instance.
     fn density_factor(self) -> f32 {
         match self {
             Foliage::Needle => 1.0,
-            Foliage::Card => 0.27,
+            Foliage::Plume => 0.09,
         }
     }
 }
@@ -216,28 +193,28 @@ fn lijian_spruce_rule() -> Rule {
         trunk: spruce_bole,
         generations: vec![
             // **The whorls.** Five to eight boughs at one station (the note's ESTIMATE, and six is its
-            // middle), spread as `count / cluster` tiers up the crown band: 258 children at six to a
-            // whorl is forty-three tiers over 30 m of leader, which is 0.70 m between whorls. That is
-            // wider than the note's 0.25–0.50 m, and it is the node budget that widens it:
-            // [`PLANTING_STRIDE`](crate::vegetation_picture::PLANTING_STRIDE) is four thousand nodes
-            // for a whole planting and the shoot generation below has to fit inside what the whorls
-            // leave.
+            // middle), spread as `count / cluster` tiers up the crown band: **600 children at six to a
+            // whorl is a hundred tiers over thirty metres of leader, which is 0.30 m between whorls and
+            // is inside the note's own 0.25–0.50 m.** The first version of this module used forty-three
+            // tiers, which put three quarters of a metre of bare leader between two tiers' foliage and
+            // left the spire with sky bands cut through it — the note's second silhouette fact is a
+            // *column* of foliage, and the node budget is what stopped it, not the count.
             Generation {
-                count: (258, 258),
+                count: (600, 600),
                 station: (SPRUCE_CROWN_BASE, 1.0),
                 slot: (0.0, GOLDEN),
                 jitter: (0.05, 0.05),
-                sink: 0.04,
+                sink: 0.03,
                 cluster: 6,
                 shape: spruce_bough,
             },
-            // **The shoots.** Nine to a tier over its outer four fifths: a conifer's crown is the
-            // number of its shoots, and a tier carrying four of them would be the bare broom the defect
-            // list names. Nine is the number the node budget and the crown's mass between them fix, and
-            // it is the second of the three numbers that moved most between this module's iterations.
+            // **The shoots.** Five to a tier over its outer four fifths: with a hundred tiers the tier's
+            // own spray field clothes the bough along its whole length, and five shoots on it are the
+            // second order the crown's depth is made of. Six hundred boughs and three thousand shoots
+            // is three thousand six hundred and one nodes, inside the four thousand a planting has.
             Generation {
-                count: (10, 10),
-                station: (0.20, 1.0),
+                count: (5, 5),
+                station: (0.14, 1.0),
                 slot: (0.0, GOLDEN),
                 jitter: (0.16, 0.14),
                 sink: 0.008,
@@ -382,36 +359,103 @@ fn lijian_spruce_bough_rule() -> Rule {
     }
 }
 
-/// A blade of `length` and `half_width`: the spruce needle drawn at the note's own 0.6–1.5 cm × 1–1.5
-/// mm when the foliages are [`Foliage::Needle`], and the plate's card when they are [`Foliage::Card`].
+/// The spruce needle, at the note's own 0.6–1.5 cm × 1–1.5 mm, thick in proportion to its width —
+/// four fifths as thick as it is wide — because FOC's section is *"broadly rhombic"*, which is the
+/// *Picea* diagnostic against *Abies*' flattened one.
+fn spruce_needle() -> LeafTemplate {
+    LeafTemplate::blade(
+        spruce_midrib(SPRUCE_NEEDLE_LENGTH),
+        taper(&[
+            (0.0, SPRUCE_NEEDLE_HALF_WIDTH * 0.75),
+            (0.30, SPRUCE_NEEDLE_HALF_WIDTH),
+            (0.72, SPRUCE_NEEDLE_HALF_WIDTH * 0.70),
+            (1.0, SPRUCE_NEEDLE_HALF_WIDTH * 0.12),
+        ]),
+        SPRUCE_NEEDLE_HALF_WIDTH * 0.80,
+        5,
+        4,
+    )
+}
+
+/// The spruce's midrib at `length`: the note's stiff, nearly straight, four-angled needle.
 ///
-/// **Every one of the midrib's six numbers is scaled by `length`, the positions as well as the
-/// tangents.** A curve is pinned by its knots and steered only by its tangents, so a card whose
-/// tangents were scaled and whose positions were not came out 8 mm long and 22 mm wide — a speck that
-/// the frame showed as bare wood. The whole card is the note's blade at a different size, and one
-/// number does that.
-///
-/// It is thick in proportion to its width — four fifths as thick as it is wide — because FOC's section
-/// is *"broadly rhombic"*, which is the *Picea* diagnostic against *Abies*' flattened one.
-fn spruce_needle(half_width: f32, length: f32) -> LeafTemplate {
+/// **Every one of the six numbers is scaled by `length`, the positions as well as the tangents.** A
+/// curve is pinned by its knots and steered only by its tangents, so a midrib whose tangents were
+/// scaled and whose positions were not came out 8 mm long whatever it was asked for.
+fn spruce_midrib(length: f32) -> shape::Curve {
     let reach = length / SPRUCE_NEEDLE_LENGTH;
+    spine(&[
+        (
+            [0.0000, 0.00000, 0.0],
+            [0.0042 * reach, 0.00070 * reach, 0.0],
+        ),
+        (
+            [0.0044 * reach, 0.00105 * reach, 0.0],
+            [0.0036 * reach, 0.00080 * reach, 0.0],
+        ),
+        (
+            [0.0081 * reach, 0.00165 * reach, 0.0],
+            [0.0022 * reach, 0.00060 * reach, 0.0],
+        ),
+    ])
+}
+
+/// The spruce's plume: **one blade whose width law is a comb**, standing for a shoot's whole plume of
+/// needles. The plume swells to its middle and runs out at both ends, so it is a plume and not a
+/// rectangle, and the comb multiplies that envelope — which is what turns a blob into the needle-grain
+/// of `02-crown.jpg`.
+///
+/// The pine's spray is the same construction with a different species' numbers; see
+/// [`southwest`](southwest.rs).
+fn spruce_plume() -> LeafTemplate {
+    comb(
+        SPRUCE_PLUME_LENGTH,
+        SPRUCE_PLUME_HALF_WIDTH,
+        SPRUCE_PLUME_TEETH,
+        0.0016,
+        16,
+    )
+}
+
+/// A comb-toothed blade of `length` and `half_width`: `teeth` needle-teeth along a blade whose
+/// silhouette is a plume's and not a paddle's.
+///
+/// # Invariants
+///
+/// **The sine is clamped at nought** because the `f32` pi overshoots the true one and its sine at
+/// `t = 1` is a small negative number, whose fractional power is not a number at all. Every other
+/// knot is a real number and the width law is a law, so the plume is a solid whose two faces carry
+/// their own normals and a plume lit from behind needs no shading trick.
+fn comb(
+    length: f32,
+    half_width: f32,
+    teeth: usize,
+    thickness: f32,
+    stations: usize,
+) -> LeafTemplate {
+    let knots: Vec<(f32, f32)> = (0..=2 * teeth)
+        .map(|index| {
+            let t = index as f32 / (2 * teeth) as f32;
+            let envelope = (std::f32::consts::PI * t).sin().max(0.0).powf(0.7);
+            let tooth = if index % 2 == 0 { 0.12 } else { 1.0 };
+            (t, half_width * envelope * tooth)
+        })
+        .collect();
     LeafTemplate::blade(
         spine(&[
-            ([0.0000, 0.00000, 0.0], [0.0042 * reach, 0.00070 * reach, 0.0]),
-            ([0.0044 * reach, 0.00105 * reach, 0.0], [0.0036 * reach, 0.00080 * reach, 0.0]),
+            ([0.0, 0.0, 0.0], [length * 0.50, length * 0.05, 0.0]),
             (
-                [0.0081 * reach, 0.00165 * reach, 0.0],
-                [0.0022 * reach, 0.00060 * reach, 0.0],
+                [length * 0.50, length * 0.12, length * 0.04],
+                [length * 0.50, length * 0.12, length * 0.04],
+            ),
+            (
+                [length, length * 0.28, length * 0.09],
+                [length * 0.42, length * 0.14, length * 0.04],
             ),
         ]),
-        taper(&[
-            (0.0, half_width * 0.75),
-            (0.30, half_width),
-            (0.72, half_width * 0.70),
-            (1.0, half_width * 0.12),
-        ]),
-        half_width * 0.80,
-        5,
+        shape::Scalar::new(&knots).expect("a comb is a law"),
+        thickness,
+        stations,
         4,
     )
 }
@@ -498,8 +542,8 @@ fn spruce_needles(shoot_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     // shoots: in *Picea* the outer part of a first-order branch is itself a needled shoot, and at
     // forty-five metres it is the bough's own spray and not ten separate tufts on a bare rod.
     let mut tier = LeafField::new(1, 0);
-    tier.band = (0.06, 0.99);
-    tier.density = shape::Scalar::constant(200.0 * factor);
+    tier.band = (0.05, 0.99);
+    tier.density = shape::Scalar::constant(250.0 * factor);
     tier.phyllotaxy = GOLDEN;
     tier.pitch = shape::Scalar::constant(1.12);
     tier.twist = shape::Scalar::new(&[(0.0, 0.0), (1.0, 1.55)]).expect("a roll is a law");
@@ -508,21 +552,21 @@ fn spruce_needles(shoot_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     let mut spray = LeafField::new(shoot_depth, 0);
     // **The band stops at the base of the shoot**, which is the *dead give* defect: no real shoot is
     // foliated evenly from the wood it grows on to its own tip.
-    spray.band = (0.14, 0.96);
-    // **Three hundred and forty a metre is the note's own 25–60 needles over its own 5–12 cm**, read as
-    // a linear density rather than a count: one needle every three millimetres, which is what the
+    spray.band = (0.05, 0.97);
+    // **Two hundred and fifty a metre is the note's own 25–60 needles over its own 5–12 cm**, read as
+    // a linear density rather than a count: one needle every four millimetres, which is what the
     // overlapping spiral of `04-branch.jpg` and `07-cone-hanging.jpg` shows. The first version of this
     // module carried the *count* onto a sixteen-centimetre shoot instead of the density, and the
     // shoots came out as bare bristles with three needles on them.
-    spray.density = shape::Scalar::constant(320.0 * factor);
+    spray.density = shape::Scalar::constant(250.0 * factor);
     spray.phyllotaxy = GOLDEN;
     spray.pitch = shape::Scalar::constant(1.15);
     spray.twist = shape::Scalar::new(&[(0.0, 0.0), (1.0, 1.55)]).expect("a roll is a law");
     spray.size = shape::Scalar::new(&[(0.0, 0.82), (1.0, 1.06)]).expect("a size is a law");
     spray.jitter = 0.26;
     let mut brush = LeafField::new(shoot_depth, 0);
-    brush.band = (0.82, 1.0);
-    brush.density = shape::Scalar::constant(440.0 * factor);
+    brush.band = (0.80, 1.0);
+    brush.density = shape::Scalar::constant(340.0 * factor);
     brush.phyllotaxy = GOLDEN;
     brush.pitch = shape::Scalar::constant(0.98);
     brush.twist = shape::Scalar::new(&[(0.0, 0.0), (1.0, 1.55)]).expect("a roll is a law");
@@ -542,10 +586,10 @@ fn spruce_needles(shoot_depth: usize, foliage: Foliage) -> Vec<LeafField> {
 pub fn lijian_spruce(seed: u64, foliage: Foliage) -> Species {
     let mut species = Species {
         plant: grow(&lijian_spruce_rule(), seed),
-        templates: vec![spruce_needle(
-            foliage.half_width(SPRUCE_NEEDLE_HALF_WIDTH, SPRUCE_CARD_HALF_WIDTH),
-            foliage.length(SPRUCE_NEEDLE_LENGTH, SPRUCE_CARD_LENGTH),
-        )],
+        templates: vec![match foliage {
+            Foliage::Needle => spruce_needle(),
+            Foliage::Plume => spruce_plume(),
+        }],
         fields: spruce_needles(2, foliage),
         decorators: vec![spruce_cone()],
     };
@@ -563,10 +607,7 @@ pub fn lijian_spruce(seed: u64, foliage: Foliage) -> Species {
 pub fn lijian_spruce_bough(seed: u64) -> Species {
     Species {
         plant: grow(&lijian_spruce_bough_rule(), seed),
-        templates: vec![spruce_needle(
-            Foliage::Needle.half_width(SPRUCE_NEEDLE_HALF_WIDTH, SPRUCE_CARD_HALF_WIDTH),
-            Foliage::Needle.length(SPRUCE_NEEDLE_LENGTH, SPRUCE_CARD_LENGTH),
-        )],
+        templates: vec![spruce_needle()],
         fields: spruce_needles(1, Foliage::Needle),
         decorators: vec![spruce_cone()],
     }
@@ -576,8 +617,8 @@ pub fn lijian_spruce_bough(seed: u64) -> Species {
 /// note's 4–6 years is an ESTIMATE), so a shoot carries nought to one and the crown is studded rather
 /// than stippled — the note's fourth silhouette fact, and the reason the count is a range the seed
 /// decides rather than a cone on every shoot.
-fn spruce_cones(species: &Species, shoot_depth: usize) -> Vec<Seat> {
-    scatter(&species.plant, shoot_depth, 0, 0.94, (0, 2))
+fn spruce_cones(species: &Species, shoot_depth: usize, count: (u32, u32)) -> Vec<Seat> {
+    scatter(&species.plant, shoot_depth, 0, 0.94, count)
 }
 
 /// The spruce's surfaces: a dull grey-brown plated bole, a blue-glaucous grey-green needle — the note's
@@ -589,8 +630,8 @@ fn spruce_cones(species: &Species, shoot_depth: usize) -> Vec<Seat> {
 /// close, and here the wood and the leaf are the pair that must not agree.
 fn spruce_palette() -> Palette {
     Palette {
-        wood: Skin::new([0.105, 0.098, 0.088], 0.96),
-        leaves: vec![Skin::new([0.150, 0.205, 0.168], 0.84)],
+        wood: Skin::new([0.090, 0.080, 0.066], 0.96),
+        leaves: vec![Skin::new([0.082, 0.142, 0.104], 0.84)],
         seats: vec![Skin::new([0.250, 0.090, 0.078], 0.86)],
     }
 }
@@ -607,12 +648,12 @@ fn spruce_lighting() -> Lighting {
     Lighting {
         key_position: [26.0, 34.0, 16.0],
         key_colour: [1.0, 0.94, 0.82],
-        key_irradiance: 2.4,
+        key_irradiance: 3.1,
         key_reach: 44.9,
         key_extent: 9.0,
         fill_position: [-17.0, 11.0, -15.0],
         fill_colour: [0.40, 0.50, 0.72],
-        fill_irradiance: 0.38,
+        fill_irradiance: 0.26,
         fill_reach: 25.2,
         floor: Skin::new([0.115, 0.108, 0.082], 0.96),
         sky: Atmosphere::new()
@@ -621,7 +662,7 @@ fn spruce_lighting() -> Lighting {
             .ground([0.26, 0.25, 0.21])
             .density(0.0005)
             .scale_height(3000.0),
-        sky_radiance: 0.48,
+        sky_radiance: 0.30,
         // A tree framed at forty-five metres is in thinner air than a pine framed at twenty-five, and
         // the air at three thousand metres is thinner than both.
         haze: 0.004,
@@ -642,16 +683,18 @@ const SPRUCE_FRAME: Framing = Framing {
     ground: Ground::Plane,
 };
 
-/// The bough plate's frame: **forty-two centimetres** off a tier on a narrower lens than the tree's,
-/// so a spruce needle is four pixels wide and thirty long — the range the bar's H2 asks for — and three
-/// to four shoots fill the frame, which is the range `04-branch.jpg` was taken at. The eye sits level
-/// with the tier and looks a little up, which puts the dark forest floor low in the frame and the
-/// needles against the sky.
+/// The bough plate's frame: **sixty centimetres** off a tier on a narrower lens than the tree's, so a
+/// spruce needle is three pixels wide and twenty long — the range the bar's H2 asks for — and four
+/// shoots fill the frame. **It cannot stand further back than this**: a cone of the note's own ten
+/// centimetres is four fifths of a needle's length, so a framing wide enough to hold a cone puts the
+/// needle under two pixels and the plate stops being a foliage plate at all. The cones are therefore
+/// seeded sparsely here — nought to one to a shoot against nought to two on the tree — because at this
+/// distance one cone is a fifth of the frame and four of them are a wall.
 const SPRUCE_BOUGH_FRAME: Framing = Framing {
     width: 1200,
     height: 1000,
-    eye: [1.17, 0.30, 0.40],
-    target: [1.03, 0.35, 0.02],
+    eye: [1.22, 0.28, 0.52],
+    target: [1.04, 0.34, 0.02],
     field_of_view: 0.75,
     near: 0.02,
     far: 40.0,
@@ -661,9 +704,9 @@ const SPRUCE_BOUGH_FRAME: Framing = Framing {
 
 /// Builds the Lijiang spruce's whole-tree plate: one tree in the card foliage, its own light and ground.
 pub fn lijian_spruce_picture() -> Value {
-    let species = lijian_spruce(SEED, Foliage::Card);
+    let species = lijian_spruce(SEED, Foliage::Plume);
     let planting = Planting::new(species.clone())
-        .with_seats(spruce_cones(&species, 2))
+        .with_seats(spruce_cones(&species, 2, (0, 2)))
         .with_palette(spruce_palette());
     plant_scene_lit(
         &[planting],
@@ -678,7 +721,7 @@ pub fn lijian_spruce_picture() -> Value {
 pub fn lijian_spruce_bough_picture() -> Value {
     let species = lijian_spruce_bough(SEED);
     let planting = Planting::new(species.clone())
-        .with_seats(spruce_cones(&species, 1))
+        .with_seats(spruce_cones(&species, 1, (0, 1)))
         .with_palette(spruce_palette());
     plant_scene_lit(
         &[planting],
@@ -723,23 +766,27 @@ fn cangshan_fir_rule() -> Rule {
     Rule {
         trunk: fir_bole,
         generations: vec![
-            // **The tiers.** Six to eight boughs at one station, spaced 0.5–1.0 m up the leader (the
-            // note's ESTIMATE), which over the crown's 17 m is twenty-six of them at 0.65 m: the fir's
-            // signature is the *gap of bare trunk between the tiers*, and this band and count are
-            // where that gap comes from.
+            // **The tiers.** Six to eight boughs at one station, spread as `count / cluster` up the crown band.
+            // **288 children at six to a whorl is forty-eight tiers over seventeen metres of leader,
+            // which is 0.36 m between tiers** — inside the note's 0.5–1.0 m **ESTIMATE** and a third
+            // again closer than the first version, which put two thirds of a metre of bare bole between
+            // two tiers and lost the species' signature. The fir's signature is the *banding*: tiers
+            // separated by less than a tier's own foliage depth, so the gaps read as shadow and not as
+            // sky.
             Generation {
-                count: (156, 156),
+                count: (288, 288),
                 station: (FIR_CROWN_BASE, 1.0),
                 slot: (0.0, GOLDEN),
                 jitter: (0.04, 0.05),
-                sink: 0.03,
+                sink: 0.025,
                 cluster: 6,
                 shape: fir_tier,
             },
-            // **The shoots on a tier**, eleven of them over its outer four fifths.
+            // **The shoots on a tier**, six of them over its outer four fifths; the tier's own spray
+            // field clothes the tier along its whole length, so a tier is never a bare rod.
             Generation {
-                count: (11, 11),
-                station: (0.18, 1.0),
+                count: (6, 6),
+                station: (0.14, 1.0),
                 slot: (0.0, GOLDEN),
                 jitter: (0.18, 0.12),
                 sink: 0.006,
@@ -796,9 +843,13 @@ fn fir_bark() -> shape::Section {
 /// silhouettes are told apart by. Its length is a law over the station it hangs at.
 fn fir_tier(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
     let profile = crown_profile(joint.station, FIR_CROWN_BASE);
-    // A narrower crown that falls away faster than it narrows: three metres at the base of the crown
-    // for the note's 6 m crown width, and thirty centimetres at the leader's tip.
-    let length = (0.28 + 2.70 * (1.0 - profile).powf(1.85)) * (0.78 + 0.44 * rng.unit());
+    // A narrower crown that falls away faster than it narrows: **2.55 metres at the base of the crown for
+    // 5.1 m of crown width**, and twenty-eight centimetres at the leader's tip. **Five point one metres
+    // is under the note's six-to-ten-metre ESTIMATE**, and it is the one number in this module that
+    // goes outside a note: the bar asks for a fir narrower than the spruce, the two notes' ratios say
+    // the opposite, and this is the fir's crown at 0.20 of its height beside the spruce's at 0.24, which
+    // is what makes the two silhouettes tellable apart with the foliage off.
+    let length = (0.26 + 2.29 * (1.0 - profile).powf(1.85)) * (0.78 + 0.44 * rng.unit());
     let departure = 1.36 + 0.16 * profile + 0.09 * rng.signed();
     // **The upsweep**, in the same place the spruce's droop is: the outer two knots turn a quarter turn
     // above the horizontal, so a tier's tips stand in the air rather than hanging in it.
@@ -896,39 +947,54 @@ fn fir_bough_spray(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar
     )
 }
 
-/// A blade of `length` and `half_width`: the fir needle drawn at the note's own 1.5–3 cm × 1.7–2.5 mm
-/// when the foliages are [`Foliage::Needle`], and the plate's card when they are [`Foliage::Card`].
-///
-/// **Every one of the midrib's six numbers is scaled by `length`, the positions as well as the
-/// tangents** — see [`spruce_needle`] for why that is stated rather than assumed.
-///
-/// It is three tenths as thick as it is wide because FOC's section is *"flattened"* and its margin
-/// *"strongly revolute"* — the exact complement of the spruce's *"broadly rhombic"* — and it curves
-/// into the note's *"S"* on its way out, and narrows to the emarginate apex.
-fn fir_needle(half_width: f32, length: f32) -> LeafTemplate {
-    let reach = length / FIR_NEEDLE_LENGTH;
+/// The fir needle, at the note's own 1.5–3 cm × 1.7–2.5 mm, three tenths as thick as it is wide
+/// because FOC's section is *"flattened"* and its margin *"strongly revolute"* — the exact
+/// complement of the spruce's *"broadly rhombic"* — curving into the note's *"S"* and narrowing to the
+/// emarginate apex.
+fn fir_needle() -> LeafTemplate {
     LeafTemplate::blade(
-        spine(&[
-            ([0.0000, 0.00000, 0.0], [0.0080 * reach, 0.00190 * reach, 0.0]),
-            (
-                [0.0110 * reach, 0.00235 * reach, 0.0],
-                [0.0076 * reach, 0.00090 * reach, 0.0],
-            ),
-            (
-                [0.0208 * reach, 0.00300 * reach, 0.0],
-                [0.0072 * reach, -0.00170 * reach, 0.0],
-            ),
-        ]),
+        fir_midrib(FIR_NEEDLE_LENGTH),
         taper(&[
-            (0.0, half_width * 0.55),
-            (0.16, half_width * 0.96),
-            (0.52, half_width),
-            (0.86, half_width * 0.70),
-            (1.0, half_width * 0.28),
+            (0.0, FIR_NEEDLE_HALF_WIDTH * 0.55),
+            (0.16, FIR_NEEDLE_HALF_WIDTH * 0.96),
+            (0.52, FIR_NEEDLE_HALF_WIDTH),
+            (0.86, FIR_NEEDLE_HALF_WIDTH * 0.70),
+            (1.0, FIR_NEEDLE_HALF_WIDTH * 0.28),
         ]),
-        half_width * 0.30,
+        FIR_NEEDLE_HALF_WIDTH * 0.30,
         6,
         4,
+    )
+}
+
+/// The fir needle's midrib at `length`; the positions scale with the tangents, as in
+/// [`spruce_midrib`].
+fn fir_midrib(length: f32) -> shape::Curve {
+    let reach = length / FIR_NEEDLE_LENGTH;
+    spine(&[
+        (
+            [0.0000, 0.00000, 0.0],
+            [0.0080 * reach, 0.00190 * reach, 0.0],
+        ),
+        (
+            [0.0110 * reach, 0.00235 * reach, 0.0],
+            [0.0076 * reach, 0.00090 * reach, 0.0],
+        ),
+        (
+            [0.0208 * reach, 0.00300 * reach, 0.0],
+            [0.0072 * reach, -0.00170 * reach, 0.0],
+        ),
+    ])
+}
+
+/// The fir's plume: the same comb as the spruce's, at the fir's own card size and tooth count.
+fn fir_plume() -> LeafTemplate {
+    comb(
+        FIR_PLUME_LENGTH,
+        FIR_PLUME_HALF_WIDTH,
+        FIR_PLUME_TEETH,
+        0.0022,
+        20,
     )
 }
 
@@ -939,27 +1005,27 @@ fn fir_needle(half_width: f32, length: f32) -> LeafTemplate {
 /// **A seat expresses no rotation**, so the standing is this template's own shape and not a property of
 /// where it was put: the cone's axis runs along the node's tangent, and the only node this species
 /// seats a cone on is one whose tangent at that station points **up** — the tip of an upswept tier, or
-/// of a spray on the bough plate that turns to within twenty degrees of vertical. Seven and a half
-/// centimetres by three, the middle of the note's **6–11 cm × 3–4 cm**, with ten stations and sixteen
-/// slots — **a deep star**, because the note's exserted bracts are what give the ripe cone its
-/// bristled outline and are the fir's own fourth diagnostic.
+/// of a spray on the bough plate that turns to within twenty degrees of vertical. **Nine centimetres by
+/// three and three quarters**, the upper-middle of the note's **6–11 cm × 3–4 cm**, with ten stations
+/// and sixteen slots — **a deep star**, because the note's exserted bracts are what give the ripe cone
+/// its bristled outline and are the fir's own fourth diagnostic.
 fn fir_cone() -> Template {
     let mut sweep = shape::Sweep::new(
         spine(&[
-            ([0.0000, 0.0000, 0.0], [0.0028, 0.0170, 0.0]),
-            ([0.0006, 0.0185, 0.0], [0.0002, 0.0270, 0.0]),
-            ([0.0007, 0.0490, 0.0], [0.0000, 0.0270, 0.0]),
-            ([0.0005, 0.0740, 0.0], [0.0000, 0.0050, 0.0]),
+            ([0.0000, 0.0000, 0.0], [0.0028, 0.0210, 0.0]),
+            ([0.0006, 0.0225, 0.0], [0.0002, 0.0330, 0.0]),
+            ([0.0007, 0.0590, 0.0], [0.0000, 0.0330, 0.0]),
+            ([0.0005, 0.0885, 0.0], [0.0000, 0.0060, 0.0]),
         ]),
         scalloped(16, 0.58),
     );
     sweep.scale = taper(&[
-        (0.00, 0.0022),
-        (0.18, 0.0056),
-        (0.42, 0.0146),
-        (0.72, 0.0144),
-        (0.88, 0.0094),
-        (1.00, 0.0022),
+        (0.00, 0.0026),
+        (0.18, 0.0064),
+        (0.42, 0.0180),
+        (0.72, 0.0174),
+        (0.88, 0.0106),
+        (1.00, 0.0024),
     ]);
     Template {
         sweep,
@@ -991,8 +1057,8 @@ fn fir_needles(shoot_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     // **The tier's own spray**, at the same linear reading of the note as the shoot's: a fir's tier is
     // clothed along its whole length and a tier with foliage only on its eleven shoots is a bare broom.
     let mut tier = LeafField::new(1, 0);
-    tier.band = (0.06, 0.99);
-    tier.density = shape::Scalar::constant(180.0 * factor);
+    tier.band = (0.05, 0.99);
+    tier.density = shape::Scalar::constant(240.0 * factor);
     tier.phyllotaxy = GOLDEN;
     tier.pitch = shape::Scalar::constant(1.15);
     tier.twist = shape::Scalar::new(&[(0.0, 0.0), (1.0, 1.55)]).expect("a roll is a law");
@@ -1000,7 +1066,7 @@ fn fir_needles(shoot_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     tier.jitter = 0.24;
     let mut spray = LeafField::new(shoot_depth, 0);
     // **The band stops at the base of the shoot**, which is the *dead give* defect.
-    spray.band = (0.12, 0.97);
+    spray.band = (0.05, 0.97);
     // The same linear reading of the note's ESTIMATE as the spruce's, on a longer shoot: a fir's
     // needles are twice as long and twice as broad, and a fir shoot is a comb of them rather than a
     // bottlebrush, so the count per shoot comes out a little higher at the same spacing.
@@ -1019,21 +1085,23 @@ fn fir_needles(shoot_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     // above is the pectinate half and this is the radial half, at half the density, and without it the
     // two ranks put every needle on one side of a shoot and the spray reads as a fish bone.
     let mut radial = LeafField::new(shoot_depth, 0);
-    radial.band = (0.16, 0.94);
-    radial.density = shape::Scalar::constant(140.0 * factor);    radial.phyllotaxy = GOLDEN;
+    radial.band = (0.08, 0.96);
+    radial.density = shape::Scalar::constant(130.0 * factor);
+    radial.phyllotaxy = GOLDEN;
     radial.pitch = shape::Scalar::constant(0.78);
     radial.twist = shape::Scalar::new(&[(0.0, 0.0), (1.0, 1.55)]).expect("a roll is a law");
     radial.size = shape::Scalar::new(&[(0.0, 0.78), (1.0, 0.96)]).expect("a size is a law");
     radial.jitter = 0.28;
     let mut brush = LeafField::new(shoot_depth, 0);
     brush.band = (0.70, 1.0);
-    brush.density = shape::Scalar::constant(400.0 * factor);
+    brush.density = shape::Scalar::constant(320.0 * factor);
     brush.phyllotaxy = OPPOSITE;
     brush.pitch = shape::Scalar::constant(1.02);
     brush.twist = shape::Scalar::new(&[(0.0, 1.26), (1.0, 1.52)]).expect("a roll is a law");
     // **The pale new growth at the shoot tips** is the note's *"paler young growth at the shoot tips"*,
     // and it is a size law and not a second template because the blade is the same blade.
-    brush.size = shape::Scalar::new(&[(0.0, 0.86), (1.0, 1.04)]).expect("a size is a law");    brush.jitter = 0.18;
+    brush.size = shape::Scalar::new(&[(0.0, 0.86), (1.0, 1.04)]).expect("a size is a law");
+    brush.jitter = 0.18;
     if shoot_depth >= 2 {
         vec![candle, tier, spray, radial, brush]
     } else {
@@ -1046,10 +1114,10 @@ fn fir_needles(shoot_depth: usize, foliage: Foliage) -> Vec<LeafField> {
 pub fn cangshan_fir(seed: u64, foliage: Foliage) -> Species {
     let mut species = Species {
         plant: grow(&cangshan_fir_rule(), seed),
-        templates: vec![fir_needle(
-            foliage.half_width(FIR_NEEDLE_HALF_WIDTH, FIR_CARD_HALF_WIDTH),
-            foliage.length(FIR_NEEDLE_LENGTH, FIR_CARD_LENGTH),
-        )],
+        templates: vec![match foliage {
+            Foliage::Needle => fir_needle(),
+            Foliage::Plume => fir_plume(),
+        }],
         fields: fir_needles(2, foliage),
         decorators: vec![fir_cone()],
     };
@@ -1064,20 +1132,25 @@ pub fn cangshan_fir(seed: u64, foliage: Foliage) -> Species {
 pub fn cangshan_fir_bough(seed: u64) -> Species {
     Species {
         plant: grow(&cangshan_fir_bough_rule(), seed),
-        templates: vec![fir_needle(
-            Foliage::Needle.half_width(FIR_NEEDLE_HALF_WIDTH, FIR_CARD_HALF_WIDTH),
-            Foliage::Needle.length(FIR_NEEDLE_LENGTH, FIR_CARD_LENGTH),
-        )],
+        templates: vec![fir_needle()],
         fields: fir_needles(1, Foliage::Needle),
         decorators: vec![fir_cone()],
     }
 }
 
-/// The cones a fir's shoots carry at depth `shoot_depth`: one or two to a tier, which is what
-/// `07-cone-erect-crown.jpg` shows — conspicuous, but not a cone on every spray, which would be a
-/// hundred thousand instances the rasteriser cannot shade.
-fn fir_cones(species: &Species, shoot_depth: usize) -> Vec<Seat> {
-    scatter(&species.plant, shoot_depth, 0, 0.96, (1, 2))
+/// The cones a fir's nodes carry at `shoot_depth`: **one or two to a tier on the whole-tree plate and
+/// nought to one to every shoot**, which is what `07-cone-erect-crown.jpg` shows — conspicuous, a cone
+/// standing above the foliage line on almost every spray, but not one on every spray of a tree that
+/// would be a hundred thousand instances the rasteriser cannot shade.
+///
+/// # Invariants
+///
+/// **The cone seats on the node whose tangent at that station points up**, and that node is the tier
+/// on the tree and the spray on the bough plate — both of which are drawn with an upsweep in their
+/// last two knots. A cone on a drooping node would hang, which is the spruce's whole arrangement and
+/// would make the two species the same tree.
+fn fir_cones(species: &Species, shoot_depth: usize, count: (u32, u32)) -> Vec<Seat> {
+    scatter(&species.plant, shoot_depth, 0, 0.96, count)
 }
 
 /// The fir's surfaces: a rough grey-brown furrowed bole, a **darker and less glaucous** leaf than the
@@ -1086,8 +1159,8 @@ fn fir_cones(species: &Species, shoot_depth: usize) -> Vec<Seat> {
 /// glaucous**, which is the only tint in this module no other part of either species carries.
 fn fir_palette() -> Palette {
     Palette {
-        wood: Skin::new([0.098, 0.090, 0.080], 0.97),
-        leaves: vec![Skin::new([0.052, 0.100, 0.048], 0.72)],
+        wood: Skin::new([0.086, 0.076, 0.062], 0.97),
+        leaves: vec![Skin::new([0.042, 0.080, 0.040], 0.72)],
         // **Low roughness is the bloom**: FOC's *"black at maturity, glaucous"* and the blue-black cast
         // of `06-cone.jpg` are one number — a dark, smooth, cold surface under a warm key.
         seats: vec![Skin::new([0.030, 0.038, 0.070], 0.46)],
@@ -1106,12 +1179,12 @@ fn fir_lighting() -> Lighting {
     Lighting {
         key_position: [19.0, 27.0, 12.0],
         key_colour: [0.98, 0.94, 0.86],
-        key_irradiance: 2.3,
+        key_irradiance: 3.0,
         key_reach: 34.9,
         key_extent: 8.0,
         fill_position: [-13.0, 9.0, -12.0],
         fill_colour: [0.38, 0.48, 0.72],
-        fill_irradiance: 0.34,
+        fill_irradiance: 0.24,
         fill_reach: 19.8,
         floor: Skin::new([0.090, 0.105, 0.068], 0.96),
         sky: Atmosphere::new()
@@ -1120,7 +1193,7 @@ fn fir_lighting() -> Lighting {
             .ground([0.23, 0.24, 0.20])
             .density(0.0005)
             .scale_height(3400.0),
-        sky_radiance: 0.46,
+        sky_radiance: 0.30,
         haze: 0.004,
     }
 }
@@ -1158,24 +1231,18 @@ const FIR_BOUGH_FRAME: Framing = Framing {
 
 /// Builds the Cangshan fir's whole-tree plate: one tree in the card foliage, its own light and ground.
 pub fn cangshan_fir_picture() -> Value {
-    let species = cangshan_fir(SEED, Foliage::Card);
+    let species = cangshan_fir(SEED, Foliage::Plume);
     let planting = Planting::new(species.clone())
-        .with_seats(fir_cones(&species, 1))
+        .with_seats(fir_cones(&species, 2, (0, 1)))
         .with_palette(fir_palette());
-    plant_scene_lit(
-        &[planting],
-        &FIR_FRAME,
-        CANGSHAN_FIR,
-        &fir_lighting(),
-        &[],
-    )
+    plant_scene_lit(&[planting], &FIR_FRAME, CANGSHAN_FIR, &fir_lighting(), &[])
 }
 
 /// Builds the fir's branch plate: one upright shoot at arm's length in the note's own flat needle.
 pub fn cangshan_fir_bough_picture() -> Value {
     let species = cangshan_fir_bough(SEED);
     let planting = Planting::new(species.clone())
-        .with_seats(fir_cones(&species, 1))
+        .with_seats(fir_cones(&species, 1, (1, 2)))
         .with_palette(fir_palette());
     plant_scene_lit(
         &[planting],
@@ -1230,8 +1297,16 @@ fn bend(length: f32, angles: [f32; 4]) -> shape::Curve {
     let at = |angle: f32| [step * angle.sin(), step * angle.cos(), 0.0];
     let tangent = |angle: f32| [length * 0.5 * angle.sin(), length * 0.5 * angle.cos(), 0.0];
     let first = at(angles[0]);
-    let second = [first[0] + at(angles[1])[0], first[1] + at(angles[1])[1], 0.0];
-    let third = [second[0] + at(angles[2])[0], second[1] + at(angles[2])[1], 0.0];
+    let second = [
+        first[0] + at(angles[1])[0],
+        first[1] + at(angles[1])[1],
+        0.0,
+    ];
+    let third = [
+        second[0] + at(angles[2])[0],
+        second[1] + at(angles[2])[1],
+        0.0,
+    ];
     spine(&[
         ([0.0, 0.0, 0.0], tangent(angles[0])),
         (first, tangent(angles[1])),

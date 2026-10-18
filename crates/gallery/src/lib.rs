@@ -105,12 +105,12 @@ mod lanterns;
 mod monoliths;
 /// The shed scene: the facade — a rhythm, holes cut in it, and parts standing in the bays.
 pub mod shed;
-mod spotlight;
-mod stilllife;
 /// The trees of the Hengduan: one species at a time, each drawn to the bar the proposal sets.
 pub mod southwest;
 /// The spire conifers: 丽江云杉 and 苍山冷杉, one rule with different numbers.
 pub mod southwest_spire;
+mod spotlight;
+mod stilllife;
 /// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
 pub mod stilt;
 mod sunlight;
