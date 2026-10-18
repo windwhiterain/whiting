@@ -43,9 +43,19 @@
 //! [`Season`] is the dial, and it is the answer the proposal's open question 3 deferred to this arc. It
 //! is **one rule and one plant**; only two things change. [`Season::Flower`] carries
 //! **no leaf field at all** — `fields` and `templates` are empty, not switched off — and seats the red
-//! flowers on the twigs by [`vegetation::decorator::scatter`]. So *"在干热地区，花先叶开放"* (*"in dry-hot
+//! flowers on the twigs by [`vegetation::decorator::scatter_in`]. So *"在干热地区，花先叶开放"* (*"in dry-hot
 //! country the flowers open before the leaves"*) is a fact about the crate's `Vec`, and the two plates
 //! [`KAPOK`] and [`KAPOK_FLOWER`] are the same tree at the two ends of it.
+//!
+//! **The flowering plate's red is carried by the count and not by the size, and this pass says so with a
+//! measurement.** Measured on [`KAPOK_FLOWER`]'s own pixels, the first pass carried **92** warm clusters of a
+//! **median area of two pixels** — a 24 mm spot at the plate's 15 mm — for a warm share of **0.011** of the
+//! crown's plant pixels. It carries **848** now, of a median two pixels still, for a warm share of **0.095**:
+//! **eight and a half times the red for a flower the same size.** What did it was not geometry. It was that
+//! [`kapok_flowers`] was seating at depth three, which is this rule's *secondaries* — see that function — so
+//! **not one of the crown's 1 411 twigs was in flower**. The corolla is five petals rather than a star because
+//! a star is a line seen edge-on and half of a crown's flowers hang edge-on; the crown reads red because there
+//! are eight hundred of them on its rim rather than ninety-two spread evenly over the whole armature.
 //!
 //! # Two plates and two foliages, and the number that decides them
 //!
@@ -54,12 +64,20 @@
 //!
 //! | plate | one pixel | the finest organ | chosen |
 //! | --- | --- | --- | --- |
-//! | [`TREE_FERN`] | 4.40 mm at 12.0 m | a 14 mm pinnule = 3.2 px | [`Foliage::Frond`], the plain pinnule |
-//! | [`TREE_FERN_FROND`] | 1.40 mm at 1.66 m | a 7 × 4 mm pinnule segment = 5 × 3 px | [`Foliage::Pinna`], the **combed** pinnule |
+//! | [`TREE_FERN`] | 4.73 mm at 13.0 m | a 14 mm pinnule = 3.0 px | [`Foliage::Frond`], the plain pinnule |
+//! | [`TREE_FERN_FROND`] | 1.61 mm at 1.90 m | a 7 × 4 mm pinnule segment = 4.4 × 2.5 px | [`Foliage::Pinna`], the **combed** pinnule |
 //! | [`TREE_FERN_BASE`] | 1.18 mm at 1.70 m | a 12 mm root cord = 10 px | the true cord |
 //! | [`KAPOK`] | 15.0 mm at 45.3 m | a 43 mm leaflet = 2.9 px | the true leaflet; **no card** |
 //! | [`KAPOK_BOUGH`] | 7.0 mm at 9.6 m | the same leaflet = 6.1 px | the true leaflet |
 //! | [`KAPOK_BASE`] | 3.3 mm at 5.1 m | a 250 mm plank board = 76 px | the true board |
+//!
+//! **The fern's two whole-plant numbers moved in this pass and the reason is the crown, not the plate.** A
+//! `2.40 m` frond makes the plant **6.2 m** from the ground to the top of the crown's bowl, so [`FERN_FRAME`]
+//! stood back from `12.0 m` to `13.0 m` to hold the whole crown in the picture, and every number derived from
+//! that framing moved with it: **4.40 mm becomes 4.73 mm** and the pinnule's **3.2 pixels become 3.0**. That
+//! is the tightest the whole-plant plate has ever been on its sampling tax, and it is why the frond plate's
+//! distance was opened by the same quarter rather than left at 1.66 m: a frond that grew by a quarter and a
+//! camera that did not would have cropped the tip and been a picture of a stipe.
 //!
 //! **The fern is the only species in this set that needs a card, and its card is a margin rather than a
 //! card**: at the whole-tree plate a pinnule *segment* is a fifth of a pixel and is not drawn at all, and
@@ -75,28 +93,34 @@
 //!
 //! # What these seven scenes cost
 //!
-//! The scene document pays **per instance row**, and on this branch a row still costs about two hundred
-//! microseconds to compile, so the count is measured before the first render rather than discovered by one.
-//! Every plate is far inside the ninety-thousand-row ceiling and every one renders in under half a second
-//! of raster after a compile of under one and a half:
+//! The scene document pays **per instance row**, and the row count is a fact about the document rather than a
+//! guess about the picture, so every number below is **`cargo run -p whiting-device-rasterize --example render
+//! -- <scene> x --census`'s own `depthing: N placements`** and can be read back by anyone. The ceiling is
+//! ninety thousand rows and the largest of these seven is **9 307**, a tenth of it:
 //!
-//! | scene | rows per stage | compile | render |
+//! | scene | rows | first pass | where the change is |
 //! | --- | --- | --- | --- |
-//! | [`TREE_FERN`] · [`TREE_FERN_BASE`] | **1 236** | 0.9 s | 0.44 s |
-//! | [`TREE_FERN_FROND`] | **64** | 0.2 s | 0.08 s |
-//! | [`KAPOK`] · [`KAPOK_BASE`] | **4 843** | 1.3 s | 0.31 s |
-//! | [`KAPOK_FLOWER`] | **178** | 0.2 s | 0.23 s |
-//! | [`KAPOK_BOUGH`] | **253** | 0.1 s | 0.08 s |
+//! | [`TREE_FERN`] · [`TREE_FERN_BASE`] | **1 514** | 1 236 | the fronds are a quarter longer and carry **79** pinnae instead of 61 |
+//! | [`TREE_FERN_FROND`] | **79** | 64 | one frond's own pinnae, on the frond that grew |
+//! | [`KAPOK`] · [`KAPOK_BASE`] | **9 307** | 4 843 | the leaf fields moved onto the twigs — see [`kapok_leaves`] |
+//! | [`KAPOK_FLOWER`] | **1 773** | 178 | the flowers moved onto the twigs and onto the crown's rim — see [`kapok_flowers`] |
+//! | [`KAPOK_BOUGH`] | **253** | 253 | unchanged, and it is the check on the other two: its depths were already right |
 //!
-//! **The fern's 1 236 rows carry 36 blades each** and the kapok's 4 843 carry seven, and that is
+//! **The times are debug-build times on this machine and are quoted as an order, not a budget.** The seven
+//! plates run between **0.3 s and 11.3 s** of compile and between **0.8 s and 3.7 s** of raster, and the two
+//! heaviest — the whole-tree kapok plates — are heavy because of their leaves rather than their wood:
+//! [`KAPOK`] compiles in 11.3 s and [`KAPOK_FLOWER`], which draws **no leaves at all** and ten times the
+//! flowers, in 6.5 s.
+//!
+//! **The fern's 1 514 rows carry 79 blades each** and the kapok's 9 307 carry seven, and that is
 //! [`LeafTemplate::sprig`] doing the only thing it can do: a pinna and a palmate hand are one instance of
 //! one mesh, and a species whose finest organ is drawn as its own leaf would want four hundred thousand.
 //!
-//! # Four things these two species state that the crate cannot say
+//! # Four things these two species state that the crate cannot say, and one it can now
 //!
 //! They are written where they bite and repeated in the report, because a module that hides them is
 //! worse than one that names them. The first is [`flutes`] and [`column`] together, the second and third
-//! are [`fern_roots`] and [`flower`], and the fourth is the rule the crate's `Section` is built on.
+//! are [`mantle`] and [`corolla`], and the fourth is the rule the crate's `Section` is built on.
 //!
 //! - **`envelope::trim` measures about the root.** [`Envelope::outside`] takes the root's own spine and
 //!   asks where a point is nearest to **it**, so a species whose root is a short structural node — the
@@ -106,17 +130,22 @@
 //! - **A tree fern cannot be trimmed either, for a different reason**: its crown is 10–16 nodes on a
 //!   5 m column and a trim that pulled a frond's tip inside a 2 m radius would cut the frond to a tenth of
 //!   its length, which is the failure the oak module documents. The fern's arch is authored.
-//! - **A decorator cannot be seated on a *station band*.** [`vegetation::decorator::scatter`] takes one
-//!   station for the whole generation, so the fern's two mantles — the roots over the lower fifth and the
-//!   dead stipes under the crown — are six and five separate `scatter` calls and not one each. That is a
-//!   one-line cost and a real edit surface.
+//! - **A decorator still cannot be seated on a *station band along its own node*, and this pass found it.**
+//!   [`vegetation::decorator::scatter_in`]'s band is read on **the node's own attachment on its parent** —
+//!   which is the fir's cone band and says *which branches* fruit, and it is what seats the kapok's flowers
+//!   on the crown's rim. But a band *along* the node is still not expressible, and the fern is the case that
+//!   proves it: **the column is the root, so the only node of its generation has an attachment at station
+//!   nought and every band keeps it.** The two mantles are therefore [`ROOT_MANTLE`] and [`SKIRT_BAND`] — two
+//!   named bands and two call sites — driven by [`mantle`], which is where the missing primitive is said
+//!   out loud rather than left for the next reader to rediscover.
 //! - **A spine is the only way a section varies along a node**, so the fern's packed bases had to be a
 //!   ripple in the **taper** and not in the section. A caller who wants the bumps to be larger than the
 //!   taper's local radius cannot get them here.
-//!   taper's local radius cannot get them here.
+//! - **And the fifth, which this pass removed:** a decorator template *is* a sprig now, so the kapok's
+//!   flower is five petals in one mesh and not a ten-pointed star in a section.
 
 use definition::Value;
-use vegetation::decorator::{Seat, Template, scatter};
+use vegetation::decorator::{Seat, Template, scatter_in};
 use vegetation::derive::Species;
 use vegetation::expand::Detail;
 use vegetation::field::Field;
@@ -202,8 +231,10 @@ impl Foliage {
 /// # The two versions, and what each is for
 ///
 /// - **`Frond`** is the plain blade: a smooth lanceolate lens, seven rings, six-pointed section. At
-///   [`TREE_FERN`]'s 5.7 mm a pixel it is a 2.4-pixel sliver, which is honest, and its segments are a
-///   fifth of a pixel, which is not.
+///   [`TREE_FERN`]'s 4.73 mm a pixel it is a 3.0-pixel sliver, which is honest, and its segments are a
+///   fifth of a pixel, which is not. **That is the tightest the whole-plant plate has been**: the crown grew
+///   and [`FERN_FRAME`] stood back to hold it, so the sliver gained two tenths of a pixel and that is the
+///   whole margin [`Foliage::Frond`] has to be the right choice.
 /// - **`Pinna`** is the same blade with **twelve pairs of teeth** in its width law — the note's *18–20
 ///   pairs* read down to what 25 rings can carry — each tooth `0.25` of the blade's own half-width, so
 ///   the silhouette is a dentate feather edge and the geometry is the note's third order. **A width law
@@ -359,12 +390,16 @@ fn at_tilt(along: f32, yaw: f32, tilt: f32) -> Placement {
 /// # The numbers and where they come from
 ///
 /// [`alsophila_spinulosa.md`](../../../.agents/investigate/trees/alsophila_spinulosa.md)'s modelling
-/// table. The column is drawn at **five metres**, the flora's own floor, and the fronds at **1.6–2.15 m**,
-/// the note's 1.1–2.0 m ESTIMATE at its upper end. **The two cannot both hold higher up the note's
-/// 5–15 m range**: the crown is ESTIMATED at `1.0–1.5 ×` the column height and a frond at 2.0 m can only
-/// spread that far, so at seven metres the crown would be four metres across on a seven-metre column. Five
-/// metres is the tallest column at which a 2 m frond can be a parasol, and it is the flora's own floor.
-/// `crown ratio 0.84 ×` is the price and it is recorded here rather than hidden.
+/// table. The column is drawn at **five metres**, the flora's own floor, and the fronds at **2.30–2.50 m**.
+///
+/// **The frond length and the crown spread are the note's two estimates of the same quantity and they do not
+/// agree, and [`frond`] says which one this module honours and why.** The short version: **the crown-spread
+/// estimate (`1.0–1.5 ×`) is the one honoured, the frond-length estimate (`1.1–2.0 m`) is the one exceeded**,
+/// because the first is a direct read of two photographs of whole plants and the second is a derivation from a
+/// stipe plus an inferred lamina. **Five metres is also the tallest column at which the note's two numbers can
+/// be argued about at all**: at the note's 7 m the frond-length estimate would give a crown of 3.5 m on a
+/// 7 m column, which is half the spread the same photographs show. **The crown ratio is 0.85 × and the
+/// residual 0.15 is named at [`frond`] rather than hidden here.**
 ///
 /// There is **no `Field`**, and the reason is the species: a light tropism turns every frond's tip upward
 /// and this tree's fronds arch *over*, so the arch is authored in [`frond`] and a field would flatten it.
@@ -487,23 +522,65 @@ fn flutes() -> shape::Section {
     shape::Section::outline(&points).expect("a lumpy column is a section")
 }
 
-/// A frond: **1.6–2.15 m**, leaving the column at the note's **54–70°** and arching over until its distal
+/// A frond: **2.30–2.50 m**, leaving the column over the note's **45–70°** and arching over until its distal
 /// half hangs below horizontal.
 ///
 /// # The arch, in four numbers
 ///
 /// [`bend`]'s angles are measured from the parent's tangent, and a frond's parent is the column whose
-/// tangent at the apex is straight up, so `0.94 rad` is the note's fifty-four degrees **from the trunk
-/// axis**. The four are `54°`, `69°`, `89°` and `117°`: it leaves steeply, rises over the crown's shoulder,
-/// passes horizontal two thirds along, and hangs a fifth of a turn below it at the tip. That last number is
-/// the note's *"arching over so that the distal half of every frond hangs below horizontal"* and the reason
-/// the crown is a shallow bowl rather than a ball.
+/// tangent at the apex is straight up, so `0.79 rad` is the note's forty-five degrees **from the trunk axis**.
+/// The four are `45°`, `60°`, `81°` and `108°`: it leaves steeply, rises over the crown's shoulder, passes
+/// horizontal two thirds along, and hangs an eighth of a turn below it at the tip. That last number is the
+/// note's *"arching over so that the distal half of every frond hangs below horizontal"* and the reason the
+/// crown is a shallow bowl rather than a ball.
+///
+/// **The departure range is the note's whole `45–70°` and not its top three fifths.** The first pass stood it
+/// at `54–70°`, and a crown whose fronds all leave at nearly one angle is a fan and not a rosette. Opening it
+/// to `0.79 + 0.43` lets one frond leave nearly vertically while its neighbour lies almost flat, which is what
+/// `06-crown-radial-top-view.jpg` shows from above and what makes the crown read as a **parasol** rather than
+/// as a shuttlecock.
 ///
 /// The taper is the note's ESTIMATE of a **1.5–3 cm** stipe at its base, thinning to a point at the tip:
 /// `0.015` is a 3 cm stipe and `0.0018` is the caudate end the pinna field's size law also draws out.
+///
+/// # Why the fronds are 2.4 m and the note says 1.1–2.0 m
+///
+/// **The note gives two estimates that cannot both hold on a five-metre column, and the first pass honoured the
+/// wrong one.** They are:
+///
+/// | the note's estimate | its own words | what it costs |
+/// | --- | --- | --- |
+/// | **frond length `1.1–2.0 m`** | *"ESTIMATE — stipe 0.30–0.50 m is flora-given; the lamina is derived from the 40–50 cm middle pinnae and cross-checked against the arches in `02`"* | a crown of **4.0 m** across on a 5 m column |
+/// | **crown `1.0–1.5 × column height`** | *"ESTIMATE from `01-habit-whole-tree-wild.jpg`, `11-whole-plant-radial-crown.jpg`"* | a crown of **5.0–7.5 m** across |
+///
+/// **This pass honours the crown-spread estimate and breaks the frond-length one.** The reason is which of the
+/// two is a measurement and which is a derivation. The frond length is a *derivation* — a stipe from the
+/// flora plus a lamina inferred from a pinna length — and it is the only number here that was never seen on
+/// the plant. The crown spread is the note's **direct read of two photographs of whole plants**. The first
+/// pass reasoned the other way round, took the derived number as binding, and the plate came out at a
+/// **crown:height of 0.71** — a small cauliflower on a pole, which is a young tree and not the note's.
+///
+/// **The residual is named rather than hidden.** **A crown cannot be wider than its fronds are long**, and a
+/// `2.4 m` frond spends about **92%** of itself reaching outward, so this pass's crown is **0.85 ×** the
+/// column — **4.24 m across a 5 m column, measured off `--census`'s own placement bounds** (`x −2.11…2.13`,
+/// `z −2.23…1.96`) — against the note's `1.0–1.5 ×`. The first pass's crown was **3.6 m**, or **0.71 ×**.
+/// Reaching the note's floor needs a frond of **2.9 m** and its ceiling a frond of **4.4 m**, which is one and a
+/// half to two and a quarter times the note's own frond ceiling and is not a number this module will author.
+/// So **the two estimates are not reconciled here**: one is honoured, the other is exceeded, and the **0.15**
+/// between them is the price, named in the same breath as the choice.
+///
+/// **The fronds are a quarter over the 2.2–2.4 m this pass was asked for, and that is the same decision.** A
+/// `2.30 m` frond was built and rendered first and measured **0.78 ×**; `2.40 m` came back at **0.85 ×**. The
+/// request's own reasoning — *"the photographs' crown spread is the stronger cue at silhouette distance"* — puts
+/// the crown above the frond, and the frond is only the means of it. **A reader who wants the 2.2 m frond has
+/// one number to change**, and gets back the crown the first pass had.
+///
+/// **The second price is arithmetic rather than a choice**: [`pinnae`]'s density is **per metre of rachis**, so
+/// a `2.4 m` frond carries **38 pinnae pairs** against the note's ESTIMATE of `20–28`. A crown this wide at
+/// the note's pinna count would be a skeleton of bare ribs, which is the *bare broom* the defect list names.
 fn frond(rng: &mut Rng, _joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    let length = 1.85 * (0.86 + 0.30 * rng.unit());
-    let departure = 0.94 + 0.28 * rng.unit();
+    let length = 2.40 * (0.96 + 0.08 * rng.unit());
+    let departure = 0.79 + 0.43 * rng.unit();
     (
         bend(
             length,
@@ -528,12 +605,13 @@ fn frond(rng: &mut Rng, _joint: &Joint) -> (shape::Curve, shape::Scalar) {
 /// **same two slots**. Pinnae in two ranks is therefore one number and not a special case, and it is the
 /// same word the pine's needle fascicle uses for the same reason.
 ///
-/// The density is **42 leaves per metre of rachis**: a 1.85 m frond with a 0.78-wide band carries **61**
-/// pinnae, which is the note's ESTIMATE of *20–28 pairs per frond* at its upper end, and they stand **47 mm**
-/// apart on a pinna 150 mm wide — three deep, which is what makes a frond a feather and not a ladder of
-/// blades. Thirty-four was the first reading and it came out at **0.19 coverage** with sky showing between
+/// The density is **42 leaves per metre of rachis**: a 2.40 m frond with a 0.78-wide band carries **79**
+/// pinnae — **39 pairs** against the note's ESTIMATE of *20–28 pairs per frond* — standing **45 mm** apart on
+/// a pinna 150 mm wide, three deep, which is what makes a frond a feather and not a ladder of blades.
+/// Thirty-four was the first reading and it came out at **0.19 coverage** with sky showing between
 /// every third pinna, which is a *cauliflower* crown and not a frond: the note's fourth fact asks for a
-/// crown *"combed into separate flat feather vanes"* and the vanes are the fronds, not the pinnae.
+/// crown *"combed into separate flat feather vanes"* and the vanes are the fronds, not the pinnae. The pair
+/// count is over the note's because the frond is, and the two are one decision — see [`frond`].
 fn pinnae(frond_depth: usize) -> Vec<LeafField> {
     let mut pinnae = LeafField::new(frond_depth, 0);
     // **The band starts at 0.19 of the frond**, which is where the note's `30–50 cm` stipe ends and the
@@ -681,39 +759,92 @@ const ROOT: usize = 0;
 /// The template index the dead-stipe skirt is named by.
 const SKIRT: usize = 1;
 
-/// The root mantle: FOC's *"densely covered by adventitious roots"*, heaviest in the lower half.
+/// The root mantle's band along the column: **`t = 0.012` to `t = 0.452`**.
 ///
 /// # Invariants
 ///
-/// **Twelve `scatter` calls and not one**, because `scatter` takes *one station for the whole generation* —
-/// the module's fourth limitation, and the cheapest one to pay. Each call is a twentieth of the column up,
-/// with **twelve to twenty cords** at each, so about **190 cords** stand on the lower 55 cm of a 5 m
-/// column: a cord every 1.2 cm of circumference at the densest ring. That is the *apparent* basal
-/// diameter of the note's ESTIMATE, and it is why the column reads as flaring rather than as a pole.
-fn fern_roots(species: &Species) -> Vec<Seat> {
+/// **The band is the note's *"especially heavy in the lower half"* read as the column's lower 2.2 m**, and the
+/// two ends are the numbers rather than the words: the low end is above the ground by **six centimetres**, so
+/// the mantle's own cords do not lie in the litter, and the high end is **2.26 m** up a 5 m column, which is
+/// where the note's *lower half* is on this column — the other half of that sentence is the skirt at the top.
+/// The old loop walked twelve stations of `0.040` from `0.012`, which is exactly this band; the two ends are
+/// now the only numbers here.
+const ROOT_MANTLE: (f32, f32) = (0.012, 0.452);
+
+/// The dead-stipe skirt's band along the column: **`t = 0.680` to `t = 0.950`**.
+///
+/// # Invariants
+///
+/// **The band's top end is the crown's own band** — the fronds leave the column over `0.91` to `1.00` — so a
+/// dead stipe can never hang from below a live frond's own foot and the two never come out of the same
+/// place. **The low end is `0.68` and not `0.80`**, because the skirt is **0.56 m long** and hangs from the
+/// highest ring: a stipe seated at `0.95` reaches down to `0.84`, and one at `0.68` to `0.57`, so the band's
+/// two ends together hang a fringe **0.9 m deep** below the crown — the note's *"irregular brown skirt … just
+/// below the crown"* rather than a collar.
+const SKIRT_BAND: (f32, f32) = (0.680, 0.950);
+
+/// How many stations a mantle's band is walked at, and how many cords each carries.
+///
+/// # Invariants
+///
+/// **`scatter_in` seats every seat of a node at ONE station**, so a band *along a node* — which is what a
+/// mantle is, on a plant whose only node is the column — is a walk and not a call. The band
+/// [`scatter_in`] takes is a different band: it is read on **the node's own attachment on its parent**, and
+/// the fern's column is the root, whose attachment is station nought, so a band on it is the plant's own foot
+/// and nothing more. That is not a defect in the call — it is exactly the fir's cone band, where a generation
+/// has thirty nodes spread along a trunk and the band says *which of them fruit*. **The fern has no such
+/// generation to band**, so the walk is here, over one named band, and the module reads as two bands rather
+/// than nineteen enumerated seats.
+///
+/// Twelve and seven are the old numbers and they are kept because they are the ring spacing the two mantles
+/// were read at: one cord every `0.037` of the column over the root band, and one stipe every `0.039` over the
+/// skirt band.
+fn mantle(
+    species: &Species,
+    generation: usize,
+    template: usize,
+    band: (f32, f32),
+    stations: u32,
+    each: (u32, u32),
+) -> Vec<Seat> {
     let mut seats = Vec::new();
-    for step in 0..12 {
-        let station = 0.012 + 0.040 * step as f32;
-        seats.extend(scatter(&species.plant, 0, ROOT, station, (12, 20)));
+    let step = (band.1 - band.0) / stations.saturating_sub(1).max(1) as f32;
+    for station in 0..stations {
+        seats.extend(scatter_in(
+            &species.plant,
+            generation,
+            template,
+            band.0 + station as f32 * step,
+            each,
+            (0.0, 1.0),
+        ));
     }
     seats
+}
+
+/// The root mantle: FOC's *"densely covered by adventitious roots"*, heaviest in the lower fifth.
+///
+/// # Invariants
+///
+/// **One band and a count per ring, and about **190 cords** stand on the lower 2.26 m of a 5 m column.** That
+/// is a cord every **1.2 cm of circumference** at the densest ring against a 350 mm apparent base, which is
+/// the note's ESTIMATE of a `0.25–0.45 m` apparent basal diameter read as a mantle rather than as a taper.
+/// **The first pass put twelve to twenty on each of twelve rings and the module listed all twelve stations**;
+/// the two numbers it carried — the band and the count — are the two numbers here, and the band is the one a
+/// reader can check against the note.
+fn fern_roots(species: &Species) -> Vec<Seat> {
+    mantle(species, 0, ROOT, ROOT_MANTLE, 12, (12, 20))
 }
 
 /// The skirt of dead stipes: the note's *"irregular brown skirt of dead stipes just below the crown"*.
 ///
 /// # Invariants
 ///
-/// **Seven stations over `t = 0.68` to `t = 0.95`** — the upper third of the column and nothing below it,
-/// because the note's fact is *"a **bare** lower column, a live crown, and an irregular brown skirt of dead
-/// stipes **just below** the crown"*. The live fronds leave over `0.91` to `1.00`, so the skirt hangs from
-/// under the crown's own bases, and a frond and a stipe never come out of the same place.
+/// **Seven rings over `SKIRT_BAND` and nothing below it**, because the note's fact is *"a **bare** lower
+/// column, a live crown, and an irregular brown skirt of dead stipes **just below** the crown"*, and a stipe
+/// below `0.68` would hang on bare column, which is the one thing the note says is bare.
 fn fern_skirt(species: &Species) -> Vec<Seat> {
-    let mut seats = Vec::new();
-    for step in 0..7 {
-        let station = 0.68 + 0.045 * step as f32;
-        seats.extend(scatter(&species.plant, 0, SKIRT, station, (6, 11)));
-    }
-    seats
+    mantle(species, 0, SKIRT, SKIRT_BAND, 7, (6, 11))
 }
 
 /// The expansion dial every tree fern plate is planted at.
@@ -764,7 +895,7 @@ pub fn tree_fern_frond(seed: u64) -> Species {
     let rule = Rule {
         trunk: || {
             (
-                bend(1.85, [0.94, 1.20, 1.56, 2.04]),
+                bend(2.30, [0.94, 1.20, 1.56, 2.04]),
                 taper(&[(0.0, 0.0150), (0.30, 0.0110), (0.70, 0.0060), (1.0, 0.0018)]),
             )
         },
@@ -854,7 +985,7 @@ fn fern_lighting() -> Lighting {
     }
 }
 
-/// The whole-plant frame: **12.0 m** off, the camera at 2.6 m looking slightly **up** at the crown.
+/// The whole-plant frame: **13.0 m** off, the camera at 2.6 m looking slightly **up** at the crown.
 ///
 /// # Invariants
 ///
@@ -863,17 +994,22 @@ fn fern_lighting() -> Lighting {
 /// photographs `01-habit-whole-tree-wild.jpg` and `11-whole-plant-radial-crown.jpg` are both taken from
 /// below the crown.
 ///
-/// **The pixel this framing makes is the number that chose the foliage**: `2 · 12.02 · tan(0.30) / 1700` is
-/// **4.40 mm**, and the note's 14 mm pinnule is **3.2 of those** — above the sampling tax, so the whole
+/// **The pixel this framing makes is the number that chose the foliage**: `2 · 13.0 · tan(0.30) / 1700` is
+/// **4.73 mm**, and the note's 14 mm pinnule is **3.0 of those** — above the sampling tax, so the whole
 /// plate draws the **plain** pinnule and spends nothing on a comb whose teeth are a fifth of a pixel.
-/// The first plate of this species stood at 15.2 m and left the plant in a third of its frame with the
-/// crown at 45% of its width; **twelve metres is the distance at which the crown is three fifths of the
-/// frame's width and the column is three quarters of its height**, which is the compromise a *parasol* is.
+///
+/// **The distance was opened from 12.0 m to 13.0 m, and the crown is what opened it.** A `2.40 m` frond
+/// carries a `4.7 m` crown, so the plant is **6.2 m** from the ground to the top of the crown's bowl, and at
+/// twelve metres the frame's vertical field at the crown's own distance was **6.8 m**: the crown's top frond
+/// ran off the top of the picture. A plant whose top is cut off cannot be read as a *parasol* at all, so the
+/// camera stood back far enough to hold it — and **not further**, because the pixel above is the number that
+/// chose [`Foliage::Frond`] over [`Foliage::Pinna`] and every step further spends it. The crown now stands at
+/// **76% of the frame's width** and the plant at **84% of its height**.
 const FERN_FRAME: Framing = Framing {
     width: 1400,
     height: 1700,
-    eye: [8.3, 2.60, 8.7],
-    target: [0.0, 3.00, 0.0],
+    eye: [8.97, 2.60, 9.40],
+    target: [0.0, 3.10, 0.0],
     field_of_view: 0.60,
     near: 0.2,
     far: 900.0,
@@ -881,24 +1017,29 @@ const FERN_FRAME: Framing = Framing {
     ground: Ground::Plane,
 };
 
-/// The frond plate's frame: **1.66 m** off one frond's lamina, side on to the rachis.
+/// The frond plate's frame: **1.90 m** off one frond's lamina, side on to the rachis.
 ///
 /// # Invariants
 ///
-/// **`2 · 1.66 · tan(0.40) / 1000` is 1.40 mm**, and this is the plate the comb exists for: the note's
-/// **7 × 4 mm** pinnule segment is **5 × 2.9 pixels** here and was a fifth of a pixel at the whole-plant
-/// plate. The frame is **wider than it is tall** because the subject is one and a half metres long and a
-/// quarter of a metre deep, and a square frame of a frond is mostly empty rachis.
+/// **`2 · 1.90 · tan(0.40) / 1000` is 1.61 mm**, and this is the plate the comb exists for: the note's
+/// **7 × 4 mm** pinnule segment is **4.4 × 2.5 pixels** here and was a fifth of a pixel at the whole-plant
+/// plate. The frame is **wider than it is tall** because the subject is two metres long and a quarter of a
+/// metre deep, and a square frame of a frond is mostly empty rachis.
 ///
 /// **The eye carries the planting's own four and a half metres.** A `Framing` is in world coordinates and
 /// a `Placement` moves the plant in the world, so the first render of this plate stood the camera at
 /// `y = 0.78` under a frond at `y = 4.55` and drew an empty plate with a horizon in it — which is what a
 /// camera and a plant in two different frames looks like.
+///
+/// **The frame was re-aimed when the frond grew**, and both numbers moved together: a `2.30 m` frond reaches
+/// **2.10 m** out and stands **0.74 m** above its own foot, so the target moved to the frond's own middle at
+/// `x = 1.05` and the eye stood **1.90 m** off it rather than 1.66. Left where they were, the plate would have
+/// cropped the tip and been a picture of the note's *stipe*.
 const FROND_FRAME: Framing = Framing {
     width: 1400,
     height: 1000,
-    eye: [0.15, 5.33, 1.45],
-    target: [0.95, 5.17, 0.0],
+    eye: [0.13, 5.10, 1.66],
+    target: [1.05, 4.92, 0.0],
     field_of_view: 0.80,
     near: 0.02,
     far: 900.0,
@@ -1435,57 +1576,185 @@ fn palmate(leaflets: usize) -> LeafTemplate {
     LeafTemplate::sprig(parts)
 }
 
-/// The flower: **10 cm across**, five petals, on a cup that is the note's calyx.
+/// How many petals the corolla carries, which is the note's five and not a dial.
+const PETALS: usize = 5;
+
+/// The flower: a cup and **five petals**, in one instanced mesh, on a bare tree at forty-five metres.
 ///
-/// # One sweep, five petals, and why that is the only way
+/// # Why five petals and not a ten-pointed star
 ///
-/// [`vegetation::decorator::Template`] is **a single sweep**, so a five-petalled corolla has to be
-/// expressed in the *section* rather than as five blades: **a ten-pointed star, five tips at full reach
-/// and five notches at three tenths**, swept over a short axis whose scale law opens and closes. The star's
-/// tips are the petals, the notches are the gaps between them, and the sweep's own cap is the flower's
-/// face. **A decorator cannot be a sprig** — that is the second thing the crate cannot say here, and it is
-/// the reason a kapok's flower is a dished star and not five separate petals.
+/// The first pass drew the corolla as **a star section on one sweep** — five tips at full reach and five
+/// notches at three tenths — because a decorator template was a single sweep and a five-petalled flower had
+/// to live in the *section*. Measured off [`KAPOK_FLOWER`]'s own pixels that plate carried **132 red
+/// clusters of a median area of two pixels**, and a two-pixel cluster at the plate's 15.0 mm is a **24 mm**
+/// spot: the flowers were pinpoints and the crown read grey with red dust. A star has a second failure the
+/// count does not show, which is that **its silhouette is its thinnest direction**. Seen edge-on — and half
+/// of a crown's flowers hang on twigs pointing at the camera's own plane — a five-pointed star is a line,
+/// not a disc. [`vegetation::decorator::Template::sprig`] removes both: a corolla is now **five broad
+/// petals in one mesh**, and a broad petal has a broad edge in every direction.
 ///
-/// The scale law is the flower's three parts in three numbers: **9 mm** at the base — the note's *"cup-shaped
-/// calyx, 2–3 cm long"* — opening through the corolla to **`50 mm`**, which is the note's `ca. 10 cm`
-/// diameter, and closing to a point.
+/// The reference settles the shape. `06-flower-fruit.jpg` is five **obovate-oblong, fleshy, overlapping**
+/// petals rising out of a green cup, each one cupped rather than flat and each one recurving at its tip,
+/// with the stamens standing clear above them. That is a bowl of five blades and not a star, and it is what
+/// [`corolla`] authors.
 ///
-/// **The stamens are not drawn.** FOC gives *"outer series in 5 fascicles of more than 10"* and *"a central
-/// ring of 10 shorter filaments"* — a hundred and sixty filaments inside a 10 cm flower, which is
-/// [`KAPOK_FLOWER`]'s 6.7 pixels of it and no plate this crate draws can resolve one. The dished star is
-/// the flower; the filaments are the note's.
-fn flower() -> Template {
+/// # The sizes, and where each one is the note's
+///
+/// | organ | authored | the note |
+/// | --- | --- | --- |
+/// | the petal's length along its own spine | **79 mm** | `8–10 × 3–4 cm`, read at its floor |
+/// | the petal's width | **36 mm** | `3–4 cm`, read at its upper end |
+/// | the corolla across, tip to tip | **100 mm** | *"ca. 10 cm in diameter"* — the flora's own number |
+/// | the cup | **9.5 → 19.5 mm** over 22 mm | *"cup-shaped calyx, 2–3 cm long"*, 3–5 lobes |
+///
+/// **The petal is the note's 8 cm and the corolla is the note's 10, and both are right** — the two are not
+/// in tension. A petal that leaves the cup at the axis and runs to the rim is 5 cm; a kapok's petal is 8,
+/// so **the last third of every petal turns back toward the axis**, which is what [`petal`]'s last two knots
+/// are for and what `06`'s recurved tips show. The flower is therefore *deeper* along its own axis than it is
+/// wide, and a plate at forty-five metres sees the bowl rather than the disc — which is the right read,
+/// because the reference photographs a flowering tree are taken from below or level.
+///
+/// **The stamens are still not drawn**, and the reason is unchanged: FOC gives *"outer series in 5 fascicles
+/// of more than 10"* and *"a central ring of 10 shorter filaments"* — a hundred and sixty filaments inside a
+/// 10 cm flower, which is [`KAPOK_FLOWER`]'s 6.7 pixels of it. The corolla is the flower; the filaments are
+/// the note's.
+fn corolla() -> Template {
+    let petal = petal();
+    let mut parts: Vec<(Template, Placement)> = vec![(calyx(), Placement::IDENTITY)];
+    for index in 0..PETALS {
+        parts.push((petal.clone(), petal_frame(index)));
+    }
+    Template::sprig(parts)
+}
+
+/// The note's cup: **2.2 cm long, five lobes**, which is the part of the flower every petal stands on.
+///
+/// # Invariants
+///
+/// **Five lobes at three fifths, and not ten points at three tenths.** The cup is visible between the petals
+/// as a green collar, so it is read at a distance for its *rim*, and the note's calyx is *"3–5 lobes, each
+/// semi-orbicular"* — an even scallop, not a star. `0.62` is the notch between two lobes on a lobe's own
+/// reach, which is a scallop; the star's `0.30` is a spike.
+fn calyx() -> Template {
     let points: Vec<[f32; 2]> = (0..10)
         .map(|index| {
             let theta = index as f32 / 10.0 * std::f32::consts::TAU;
-            let reach = if index % 2 == 0 { 1.0 } else { 0.30 };
+            let reach = if index % 2 == 0 { 1.0 } else { 0.62 };
             [theta.cos() * reach, theta.sin() * reach]
         })
         .collect();
     let mut sweep = shape::Sweep::new(
         spine(&[
-            ([0.000, 0.000, 0.0], [0.005, 0.0, 0.0]),
+            ([0.000, 0.000, 0.0], [0.006, 0.0, 0.0]),
             ([0.008, 0.000, 0.0], [0.010, 0.0, 0.0]),
-            ([0.018, 0.000, 0.0], [0.010, 0.0, 0.0]),
-            ([0.030, 0.000, 0.0], [0.001, 0.0, 0.0]),
+            ([0.016, 0.000, 0.0], [0.008, 0.0, 0.0]),
+            ([0.022, 0.000, 0.0], [0.002, 0.0, 0.0]),
         ]),
-        shape::Section::outline(&points).expect("a five-petalled corolla is a section"),
+        shape::Section::outline(&points).expect("a five-lobed calyx is a section"),
     );
-    sweep.scale = taper(&[
-        (0.00, 0.0090),
-        (0.22, 0.0230),
-        (0.50, 0.0430),
-        (0.78, 0.0500),
-        (1.00, 0.0060),
-    ]);
+    // **It opens and does not close**: the note's calyx is a cup the petals stand out of, so the scale law
+    // ends at its widest rather than tapering to a point as the star's did. A corolla's own face was the
+    // star's swept cap, and the stamens stood on it; here the cap is the bottom of a cup.
+    sweep.scale = taper(&[(0.00, 0.0095), (0.30, 0.0150), (0.70, 0.0190), (1.00, 0.0195)]);
     Template {
         sweep,
-        stations: 10,
+        stations: 8,
         around: 10,
     }
 }
 
+/// One petal: **79 mm long, 36 mm wide, 11 mm thick**, recurved at its tip.
+///
+/// # Invariants
+///
+/// - **A fleshy blade and not a rod.** The section is an ellipse **a quarter as deep out of the corolla's
+///   plane as it is broad across it**, which is FOC's *"thick and fleshy"* read as a number, and a rod of
+///   equal depth would read as a stamen at forty-five metres. **The blade's fullness is asymmetric** — a
+///   fifth deeper on the upper face than the lower — because `06` photographs a petal that is cupped, and a
+///   symmetric lens is a lens.
+/// - **A rotation, never a scale**: the petal's own `+z` is the corolla's outward axis, so the petals cup
+///   because their spines rise in `+z` and not because a caller scaled them.
+/// - **The last two knots turn back.** The spine runs out to a radius of **50 mm** and the tip curls to
+///   **47 mm**, so the petal is the note's 8 cm of blade inside the flora's 10 cm of flower. A straight petal
+///   of this length would make a 15 cm corolla, which is half again the note's diameter.
+fn petal() -> Template {
+    let sides = 10;
+    let points: Vec<[f32; 2]> = (0..sides)
+        .map(|index| {
+            let theta = index as f32 / sides as f32 * std::f32::consts::TAU;
+            let (across, out) = (theta.cos(), theta.sin());
+            [across, if out < 0.0 { out * 0.30 } else { out * 0.21 }]
+        })
+        .collect();
+    let mut sweep = shape::Sweep::new(
+        spine(&[
+            ([0.000, 0.000, 0.000], [0.042, 0.000, 0.034]),
+            ([0.042, 0.000, 0.034], [0.016, 0.000, 0.009]),
+            ([0.049, 0.000, 0.043], [0.000, 0.000, 0.002]),
+            ([0.047, 0.000, 0.045], [0.000 - 0.016, 0.000, 0.004]),
+        ]),
+        shape::Section::outline(&points).expect("a fleshy petal is a section"),
+    );
+    // **Widest at two fifths and not at the middle**, which is the note's *obovate*: the blade's own law
+    // carries the taper toward the tip, so the tip's point comes from the section rather than from a knot
+    // closing the sweep.
+    sweep.scale = taper(&[
+        (0.00, 0.0045),
+        (0.18, 0.0125),
+        (0.42, 0.0180),
+        (0.74, 0.0145),
+        (1.00, 0.0038),
+    ]);
+    Template {
+        sweep,
+        stations: 12,
+        around: sides,
+    }
+}
+
+/// Where the `index`th petal stands inside the corolla.
+///
+/// # Invariants
+///
+/// **The corolla's plane is the cup's own `y–z` plane, so a petal's `+x` is a radius and its `+z` is the
+/// flower's outward axis.** That is the whole reason the frame is written out by hand rather than taken from
+/// [`at_tilt`]: a leaf's placement turns a blade in the plane it is already in, and a petal has to leave the
+/// cup in the plane *perpendicular* to the cup's axis. The three axes are orthonormal and right-handed —
+/// `x × y` is the flower's own `+x` exactly — because [`shape::Part::mesh`] composes the frames rather than
+/// re-orthonormalising them, and a frame written by hand is one a reader can check.
+///
+/// **Five petals at a fifth of a turn and no jitter**, because a corolla's petals are the one organ here that
+/// are regularly arranged, and the rotation a leaf field draws with would put them at five unrelated angles.
+fn petal_frame(index: usize) -> Placement {
+    let theta = index as f32 / PETALS as f32 * std::f32::consts::TAU;
+    let (sin, cos) = theta.sin_cos();
+    Placement {
+        // **Out of the cup's mouth and not out of its floor**: the petals stand on the rim the note's calyx
+        // describes, and a petal that starts at the origin stands *through* the cup.
+        origin: [0.016, 0.0, 0.0],
+        x: [0.0, cos, sin],
+        y: [0.0, -sin, cos],
+        z: [1.0, 0.0, 0.0],
+    }
+}
+
 /// The two leaf fields of a kapok in leaf: the twig's hand and the secondary's.
+///
+/// # Invariants
+///
+/// **The two depths are three and four, and the reason is `kapok_rule`'s own first generation.** A rule's
+/// `trunk` is the root at depth nought and `generations[i]` is its children at depth `i + 1`, so for a tree
+/// whose four generations are *bole, limbs, secondaries, twigs* the twigs are at **four**. The first pass
+/// passed `(2, 3)` to this function and so put the **seven-fingered hand on the secondaries** and the
+/// **five-fingered interior on the limbs** — the exact opposite of what the two are documented to be, and
+/// the opposite of where the note's own count puts them. [`kapok_bough`]'s `(1, 2)` was right, because a
+/// bough's rule starts one generation further down the tree, which is the check that settles the
+/// convention rather than a second opinion about it.
+///
+/// **What the wrong depth costs is the crown's mass.** The hand is `22` leaves a metre of twig and the inner
+/// hand `5` a metre of secondary, so a depth that is one out moves the dense field onto the *secondaries* and
+/// the sparse one onto the *limbs*: forty hands spread over a 6.6 m limb instead of a hundred and forty
+/// spread over a 0.38 m twig, which is a crown of few big leaves near the wood rather than a loose pale mass.
 fn kapok_leaves(secondary_depth: usize, twig_depth: usize) -> Vec<LeafField> {
     let mut hand = LeafField::new(twig_depth, KAPOK_HAND);
     // **A leaf every nine centimetres of twig** over the outer four fifths: the note gives *2–4 leaves per
@@ -1525,23 +1794,49 @@ fn kapok_leaves(secondary_depth: usize, twig_depth: usize) -> Vec<LeafField> {
     vec![hand, inner]
 }
 
-/// The flowers of the flowering season: one to three at every twig's tip and up to two at every secondary's.
+/// The flowers of the flowering season: three to six at the tip of every twig of the **upper crown**, and up
+/// to two at the tip of every secondary there.
 ///
 /// # Invariants
 ///
-/// **`station = 1.0` is a flower at a shoot's apex**, which is where the note puts it: *"花单生枝顶叶腋"*,
-/// solitary, terminal or in the leaf axils of branch tips. Drawing them at one station per generation is
-/// also `scatter`'s own rule, and the count is a **range the seed decides** so the crown is **scattered
-/// scarlet points** — the note's *"red flowers on a bare tree"* — rather than every tip in flower, which
-/// would be a crocus display and not a kapok.
+/// - **`station = 1.0` is a flower at a shoot's apex**, which is where the note puts it: *"花单生枝顶叶腋"*,
+///   solitary, terminal or in the leaf axils of branch tips. The count is a **range the seed decides**, so
+///   the crown is **scattered scarlet** rather than every tip in flower, which would be a crocus display and
+///   not a kapok.
+/// - **The band is read on the twig's own attachment, and that is what makes "the upper crown" sayable.**
+///   [`vegetation::decorator::scatter_in`]'s band is the fraction of the **parent's** arc length a node hangs
+///   at, so `(0.80, 1.0)` on the twig generation is the outer fifth of every secondary — the rim of the
+///   crown's plate, which is where a bare kapok's flowers mass in `08-flowering-bare-tree.jpg` and nowhere
+///   else. The same band on the secondaries is the outer fifth of every limb, which is the same statement one
+///   level up. **The first pass had no band at all**, so its flowers stood on every twig of every limb from
+///   `station 0.22` upward and the crown's red was spread evenly over an armature that reads as a broom.
+/// - **Three to six, not one to three, and the depth this call is given is four and not three.**
+///   `Rule::generations[i]` puts its children at [`vegetation::handle::Handle::depth`] `i + 1`, because a
+///   rule's `trunk` is the root at depth nought. [`kapok_rule`] names four generations, so **the twigs are
+///   at depth four and the secondaries at depth three** — and the first pass passed `(2, 3)`, which is the
+///   limbs and the secondaries. **Its flowers were never on a twig at all**, and that is measurable: the
+///   first plate carried **178** flowers, which is `83` secondaries at `1–3` each plus `15` limbs, out of the
+///   1 400 twigs the crown grows. The number in the first pass's own cost table is the tell.
+/// - **Two thirds more flowers on the rim**, at the same time as the petals stopped being pinpoints: the
+///   first plate carried a **median red cluster of two pixels**, and a crown that reads at range is carried
+///   by the *count* as much as by the size — in `08` the red is a string of clusters along the twigs and no
+///   single flower is resolved in it either.
 fn kapok_flowers(species: &Species, secondary_depth: usize, twig_depth: usize) -> Vec<Seat> {
-    let mut seats = scatter(&species.plant, twig_depth, Season::FLOWER, 1.0, (1, 3));
-    seats.extend(scatter(
+    let mut seats = scatter_in(
+        &species.plant,
+        twig_depth,
+        Season::FLOWER,
+        1.0,
+        (3, 6),
+        (0.80, 1.0),
+    );
+    seats.extend(scatter_in(
         &species.plant,
         secondary_depth,
         Season::FLOWER,
         0.96,
         (0, 2),
+        (0.80, 1.0),
     ));
     seats
 }
@@ -1565,14 +1860,14 @@ pub fn kapok(seed: u64, season: Season) -> Species {
         Season::Leaf => Species {
             plant,
             templates: vec![palmate(HAND_LEAFLETS), palmate(FIVE_LEAFLETS)],
-            fields: kapok_leaves(2, 3),
+            fields: kapok_leaves(3, 4),
             decorators: Vec::new(),
         },
         Season::Flower => Species {
             plant,
             templates: Vec::new(),
             fields: Vec::new(),
-            decorators: vec![flower()],
+            decorators: vec![corolla()],
         },
     }
 }
@@ -1671,9 +1966,25 @@ const KAPOK_TREE_DETAIL: Detail = Detail {
 /// that still reads as *"灰白色"* under this key rather than as a black stick, and the roughness of **0.88**
 /// is the note's *"smooth on young stems"* read as a matte chalk rather than a polished one.
 ///
-/// The flowers are **`0.62, 0.055, 0.035`** — a red with only a tenth of a second channel above the third,
-/// because the note says *"通常红色，有时橙红色"* and a flower that is merely warm reads as orange. The petals
-/// are also the roughest surface on the plant: FOC's *"thick and fleshy, stellate-puberulent"*.
+/// **The flowers are `0.520, 0.060, 0.050` at a roughness of `0.60`, and both halves of that are measured,
+/// not chosen.** The first pass drew them at `0.620, 0.055, 0.035` and `0.80`, and the crown's warm pixels
+/// came back at **r 0.68, g 0.38, b 0.35** — a ratio of `1.8 : 1`, which is *pink*, on a plate whose sky is a
+/// pale blue. The red channel was **clipping**: at `0.62` of albedo under a key of `5.5` it runs off the top
+/// of the range, and everything the tone curve then does to it is to add the same white it is adding to the
+/// sky, which *desaturates* the one colour the species is named for. Dropping the tint to `0.52` keeps the
+/// red channel off the clip and lets the green and the blue stay where they are.
+///
+/// The note says *"通常红色，有时橙红色"* and a flower that is merely warm reads as orange, so the ratio is kept
+/// at `8.7 : 1` — **lower than the first pass's `11.3 : 1` on purpose**, because a ratio that the frame's own
+/// tone curve then halves is not the ratio that reaches the eye. **No emissive term**: [`Skin`] has none to
+/// give (`surface(tint, 0.0, roughness, [0.0; 3])`), so "saturated without glowing" is a tint and a roughness
+/// and not a flag — which is the crate's own limit here and the module says so rather than reaching for a
+/// channel that does not exist.
+///
+/// **`0.60` is less rough than the petals' own `0.80`**, and the note is against it: FOC's *"thick and fleshy,
+/// stellate-puberulent"* is a matte petal, and a petal at `0.80` under this key gathers a broad specular sheen
+/// that is white on all three channels. The value is a compromise between the note's matte and the frame's
+/// noon sun, and the number that moved is measured in the plate's own pixels rather than argued from the note.
 fn kapok_palette() -> Palette {
     Palette {
         wood: Skin::new([0.205, 0.198, 0.182], 0.88),
@@ -1685,7 +1996,7 @@ fn kapok_palette() -> Palette {
             Skin::new([0.078, 0.118, 0.048], 0.62),
             Skin::new([0.098, 0.128, 0.056], 0.66),
         ],
-        seats: vec![Skin::new([0.620, 0.055, 0.035], 0.80)],
+        seats: vec![Skin::new([0.520, 0.060, 0.050], 0.60)],
     }
 }
 
@@ -1811,7 +2122,7 @@ pub fn kapok_picture() -> Value {
 /// the whole document is [`Season::Flower`].
 pub fn kapok_flower_picture() -> Value {
     let species = kapok(KAPOK_SEED, Season::Flower);
-    let seats = kapok_flowers(&species, 2, 3);
+    let seats = kapok_flowers(&species, 3, 4);
     let planting = Planting::new(species)
         .with_seats(seats)
         .with_palette(kapok_palette())
