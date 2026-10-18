@@ -145,6 +145,26 @@ pub const NAMINGS: &[Naming] = &[
         note: "one bough at arm's length: this pixel is that node of the bough, and a needle carries its twig's",
     },
     Naming {
+        scene: crate::southwest_spire::LIJIAN_SPRUCE,
+        resolve: crate::southwest_spire::lijian_spruce_handle_of,
+        note: "this pixel is that node of the spruce, and a needle drawn by the blade mesh carries its shoot's",
+    },
+    Naming {
+        scene: crate::southwest_spire::LIJIAN_SPRUCE_BOUGH,
+        resolve: crate::southwest_spire::lijian_spruce_bough_handle_of,
+        note: "one tier at arm's length: this pixel is that node of the bough, and a needle carries its shoot's",
+    },
+    Naming {
+        scene: crate::southwest_spire::CANGSHAN_FIR,
+        resolve: crate::southwest_spire::cangshan_fir_handle_of,
+        note: "this pixel is that node of the fir, and a flat needle drawn by the blade mesh carries its shoot's",
+    },
+    Naming {
+        scene: crate::southwest_spire::CANGSHAN_FIR_BOUGH,
+        resolve: crate::southwest_spire::cangshan_fir_bough_handle_of,
+        note: "one upright shoot at arm's length: this pixel is that node, and a flat needle carries its spray's",
+    },
+    Naming {
         scene: crate::vegetation_picture::GROVE,
         resolve: crate::vegetation_picture::grove_handle_of,
         note: "the planting is the id's quotient by the stride and the node is its remainder",
