@@ -1268,7 +1268,7 @@ That is the difference between a style and a preset: **a preset is the numbers, 
 them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
 chosen twice.
 
-## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, again on 2026-10-31 when the ground was cut away from under every plate, again on 2026-10-17 when `RoofStyle::Flat` kept the plate every other style already carried, again on 2026-11-02 when `terrace` moved its camera, and again on 2026-11-03 when `terrace` lengthened its lens — **that one moved as well, and the eight beside it are byte-identical again**, see *The terrace's camera, and what a floor costs to see* and *The terrace's lens, and the ceiling a square frame puts on a row* further down)
+## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, again on 2026-10-31 when the ground was cut away from under every plate, again on 2026-10-17 when `RoofStyle::Flat` kept the plate every other style already carried, again on 2026-11-02 when `terrace` moved its camera, again on 2026-11-03 when `terrace` lengthened its lens, and again on 2026-11-05 when the `workshop` grew a workbench on its own inner wall — **that one moved as well, and the eight beside it are byte-identical again**, see *The terrace's camera, and what a floor costs to see* and *The terrace's lens, and the ceiling a square frame puts on a row* further down, and *The inner-face scene slice found* at the end of this file)
 
 Nine building scenes render, and each one's picture has a hash. They are recorded here because the question a
 refactor has to answer is *"did the picture change?"*, and a hash answers it in a way that looking at two images
@@ -1283,7 +1283,7 @@ does not. The hash is the first sixteen hex of the `sha256` of the scene's own `
 | `shed` | `882B8F9A7C671B0D` | a doorway, two windows, a door leaf and a canopy; the 0.30 m plate **2,246 → 2,255** |
 | `terrace` | `0EBC78ABD314A90D` | three units that touch, nine windows; **all three plates are in frame — `slab 0` 1,527, `slab 1` 2,619, `slab 2` 2,961** — because the lens is 1.4x longer over an eye that did not move, which took the row's own pixels from 13.49 % of a 1024x1024 frame to **25.36 %**, and the eight scenes beside it are byte-identical |
 | `wing` | `14E3E27F9F9E1A83` | host plus attached wing, windows on the weather faces; `slab 0`'s top went **0 → 380** and `slab 1`'s is 3 — unchanged |
-| `workshop` | `7DD5D40894181EA7` | two storeys, a plate, five instanced shutters; the ground plate's top **1,844 → 3,082** and the mezzanine's is still 0 |
+| `workshop` | `3ABB4A12DE90CDC4` | two storeys, a plate, five instanced shutters, **and one workbench on the mass's own inner wall face — the fourth face of a ring, and the first time a scene has used `FaceRef::inner`**; the ground plate's top **1,844 → 3,082 → 2,974**, the mezzanine's is still 0, and the mass's **inner wall over edge 1** went **13,822 → 12,060** because the bench stands in front of it. Re-recorded 2026-11-05; the eight beside it are byte-identical |
 | `yard` | `FDC446B24E98CE04` | the courtyard and its gate; the two 1.20 m foundations still stand clear of the slope, **15,458 → 15,460** pixels of their own sides |
 | `identity` | `974FB5B24E1E7A35` | the identity picture, and every pixel still names itself; the plate's top went **0 → 1,261** through the one opening |
 
@@ -3405,8 +3405,10 @@ string**, asked rather than written, and `--region` names a landscape element by
 walk `--locate` uses. Where a sentence was false — 53–92 % of every frame, in the `--where 0` case — the cause was
 fixed rather than the sentence.
 
-**What is left, in order of what would teach the most:** a part on a **mass's inner wall** is now addressable and
-measured by no scene (the frame is proper: the part stands into the mass's own rooms); `terrace`'s third plate is a camera question for the owner.
+**What is left, in order of what would teach the most:** ~~a part on a **mass's inner wall** is now addressable and
+measured by no scene (the frame is proper: the part stands into the mass's own rooms)~~ — **closed 2026-11-05 by
+*The inner-face scene slice found* at the end of this file, which stands a workbench on `FaceRef::inner(mass, 1)` in the
+`workshop` and measures it out of the drawn frame**; `terrace`'s third plate is a camera question for the owner.
 **`--region` printed at most 24 rows, so no whole-frame sweep was a census — closed by *What the region census slice
 found* below.**
 
@@ -4826,6 +4828,8 @@ document.
   independent instrument agrees: every `FaceRef` the gallery names is built by `FaceRef::new`, which is
   `Authored`, and every `ops::place_part` either names one of those `front` faces or hangs on a
   `WallId` run (`yard.rs`'s gate leaf) — so no gallery scene reaches `Offset` by either route.
+  **This claim held until 2026-11-05 and is closed by *The inner-face scene slice found* below**, which
+  puts a workbench on `FaceRef::inner(mass, 1)` in the `workshop` and reads it back out of the frame.
 - **`scene_identity_probe` reads 806 rows two-way** (`77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101`),
   contiguous, every name non-empty, every name round-tripping, the channel two-way — and byte-identical
   to the before set (`2642` bytes, SHA-256 `0EDE05200017123D…`).
@@ -5426,7 +5430,243 @@ compares** — the count of compiling lines, and the count of examples — and n
 - **`covers` is still a necessary condition and not a proof**, unchanged: a loop that meets itself whose triangles happened
   to sum to its shoelace with positive-area overlap would pass it. What such a loop gets from the mass side is
   `OutlineNotSimple`, which names it rather than measuring it, and from the pair side `OverlapNotMeasured`.
-- **`terrace` still shows one plate of three** in the frame census, and a part on a mass's inner wall is still measured by
-  no scene. Neither opened here.
+- **`terrace` still shows one plate of three** in the frame census. **A part on a mass's inner wall was measured by no
+  scene at this point in the file and is closed below**, by *The inner-face scene slice found*, which puts one in the
+  `workshop` and reads it back out of the drawn frame.
+
+## The inner-face scene slice found: the fourth face of a ring, in a picture (2026-11-05, branch `feature/building-scene-inner`)
+
+**The open item is closed, and it is closed by a picture rather than by a probe.** `FaceRef::inner(mass, edge)` has been
+addressable since the spelling slice measured it in `part_probe`, and the section above proved with a fired canary that
+**no gallery scene reached it**: the pattern `\bloop[_-]?side\b` returned no match at all in `crates/gallery`, and every
+`ops::place_part` there named either a `FaceRef::new` face or a `WallId` run. **A capability exercised by a probe and by
+no picture is a capability with one reader**, and this slice gave it a second one.
+
+### The scene, and why this one, chosen from the code and not from taste
+
+**`workshop`.** Its mass is 6.0 × 9.0 m with a 0.32 m wall, and `derive::rectangle` centres the plan on the origin and
+winds it so the solid lies on the walker's right, which fixes what each edge *is*:
+
+| edge | the line it runs | which face of it the camera sees |
+| --- | --- | --- |
+| 0 | `+x` at `z = -4.5`, the **south** wall | neither — nine metres behind the open doorway |
+| 1 | `+z` at `x = +3.0`, the **east** wall | **its inner face, through the doorway** |
+| 2 | `-x` at `z = +4.5`, the **north** wall (`FRONT_EDGE`) | its outer face |
+| 3 | `-z` at `x = -3.0`, the **west** wall | its outer face |
+
+**The camera stands at `[-10.5, 3.2, 13.5]`, which is off the north-west corner, so the two walls whose outer faces are
+in the frame are the north and the west and the south wall is behind the building.** The sight lines that get through the
+open doorway are the only ones left, and they run **east**: through the hole at `z = 4.18` they arrive at `edge 1`'s inner
+face and at nothing else. `edge 3` is the face that would have been **in the document and in no frame at all**, because the
+camera looks away from it. So the part is on `FaceRef::inner(mass, 1)`, and **that choice was made by the sight line and
+not by taste** — the arithmetic is in `BENCH_ALONG`'s own doc comment and was confirmed by the render rather than trusted.
+
+### The part: a workbench, and why a workshop wants one against that wall
+
+**A workbench: `BENCH_LENGTH` 1.10 m along the wall, `BENCH_DEPTH` 0.60 m into the room, `BENCH_TOP` 0.94 m tall — a top
+board on two end panels, three masses in one template.** The scene's own argument is written in its module doc: *the open
+doorway is the one place a viewer can see into the building*. A workshop is the one building in this gallery whose frame is
+about the inside, so the fitting that shows the inside is the thing the scene is for; and a bench is the object a workshop
+is named after.
+
+**Its plan runs `+x` along the wall and `+z` away from it, which is the shutter's own plan, and that is the finding.** The
+shutter is authored that way and hung on `FaceRef::new`, where its `+z` runs **into** the masonry. **The same spelling on
+`FaceRef::inner` puts its `+z` into the room**, because `inward` is the walker's left on every face of a ring and only which
+way it points differs. One template shape serves both faces of a ring; the face alone decides where the depth goes.
+
+### The readings, and every one of them is measured rather than derived
+
+**The frame is origin `(2.68, 0.00, 1.20)`, along `(0.0, 0.0, 1.0)`, up `(0.0, 1.0, 0.0)`, inward `(-1.0, 0.0, 0.0)`, and
+`(along × up) · inward = +1`.** The origin's three numbers are read out of the frame two ways each:
+
+| the number | measured by | reads |
+| --- | --- | --- |
+| origin **x** = 2.68 | `--census`'s `Gallery::bounds`, the maximum x over all **ten** placements | **2.68** |
+| origin **x** = 2.68 again | `--debug position` on a pixel of `mass 0, inner wall over edge 1` | **2.6777** |
+| origin **y** = 0.00 | `--census`, the minimum y over the ten placements | **0.00** |
+| the room's floor, the same line | `--debug position` on a pixel of `slab 0, its top` | **y = 0.00014** |
+| origin **z** = 1.20 | `bay.from` (0) + `BENCH_ALONG` (5.38) on the inner loop, which runs `z ∈ [-4.18, 4.18]` | **1.20** |
+
+**And the bounds against the room, which is the claim the brief asked to be proved with numbers and not by eye.** Every one
+of these is the `position` channel read back at a named pixel of the frame the `workshop` actually drew:
+
+| what | the frame reads | the number it must be |
+| --- | --- | --- |
+| the bench's **room-facing** plane | `x = 2.0781` | `2.68 - 0.60 = 2.08`, so 0.59 m into the room |
+| the bench's **wall-facing** plane | `x = 2.6777` | `2.68`, the inner loop itself |
+| the mass's own inner wall, for comparison | `x = 2.6777` | `2.68 = 3.00 - 0.32`, one wall thickness in |
+| the bench's top board, in y | up to `y = 0.9380` | `0.94` |
+| a bench panel at its foot | `y = 0.0332` | `0.02`, the panel's own base |
+| the room's floor | `y = 0.00014` | `0` |
+| the bench, along the wall, as drawn | `z` from `1.3877` to `2.2988` | `1.20` to `2.30` authored; the near end is behind the reveal |
+
+**So the part stands between `x = 2.0781` and `x = 2.6777`, in a room whose inner wall is at `2.6777` and whose floor is
+at `y = 0.00014`**, which is the whole of what `FaceRef::inner` claims: the part's origin is **on** the inner loop and its
+depth runs **away** from the masonry rather than into it.
+
+**The determinant is `+1`, and the evidence is not the arithmetic — it is that this slice watched the reading that catches
+an improper frame fire, twice, on its own part.** See the section below.
+
+**And the honest gap: this tree has no instrument that prints a gallery scene's part topology.** `faces` / `loops` /
+`euler` / `volume` against the template is what `part_probe`'s `mass_inner_face_part` prints, and the building crate cannot
+see the gallery — `gallery` appears **0 times** across `crates/building/examples`, so no probe there can reach the
+`workshop`'s document and the brief's *no new probe files* is the reason that number is not in this section. **What stands
+in its place is stronger for this particular question and is not the same number**: the `position` channel is where the
+pixels are, not where a probe says the mesh is.
+
+### The picture names it, and the interior test holds
+
+```
+where workshop part 5, template mass 1, outer wall over edge 1: id 126 covers 1018 pixel(s) in x 727..=745, y 632..=689
+where workshop part 5, template mass 2, outer wall over edge 1: id 139 covers 152 pixel(s) in x 723..=750, y 625..=632
+where workshop part 5, template mass 2, inner wall over edge 0: id 142 covers 185 pixel(s) in x 704..=748, y 619..=626
+where workshop part 5, template mass 2, outer wall over edge 2: id 140 covers 104 pixel(s) in x 704..=722, y 625..=632
+locate workshop (735, 660)  ->  part 5, template mass 1, outer wall over edge 1
+locate workshop (735, 628)  ->  part 5, template mass 2, outer wall over edge 1
+```
+
+**`part 5` draws 1,871 pixels over 14 visible rows**, and it reads in the frame as a bench: a thin top across
+`y 619..=632` px and a panel standing under it at `y 632..=689` px.
+
+**The interior rule holds on the strict version.** `--region 733,658,737,662` is the 25 texels two pixels off `(735, 660)`
+on all four sides and it carries **1 distinct id over 25 px — `part 5`**. A second rectangle on the top board's own edge,
+`733,626,737,630`, carries **three ids and 25 of 25 texels, all three of them `part 5`** (its near face, its wall top and
+its far face), so the reading is not an edge pixel wearing a name.
+
+### The whole of the picture's change is the bench, and the rhythm moved no pixel
+
+**This is the check that says the change is a part and not a tessellation.** The before frame was re-rendered from
+`17c6d2d` on this machine and censused over the whole frame, and the two tables compared row by row:
+
+| row | before | after | what the difference is |
+| --- | --- | --- | --- |
+| `mass 0, inner wall over edge 1` (id 6) | **13,822** px | **12,060** px | −1,762: the bench stands in front of it |
+| `slab 0, its top` (id 112 → 151) | **3,082** px | **2,974** px | −108: the bench's foot covers the floor |
+| the reserved zero (id 0) | **686,410** px | **686,409** px | −1 |
+| everything else, by name | — | — | **unchanged** |
+
+**1,762 + 108 + 1 = 1,871**, which is the bench's own pixel count, so the accounting closes exactly. **And the inner loop's
+new one-bay rhythm moved nothing at all**: `mass 0, inner wall over edge 1` was **id 6 under the same name** with 13,822 px
+**before** the split, so a rhythm on a face that had no grid tessellates a surface that was already there and already
+visible. **A rhythm alone emits no geometry, and this is the first measurement in this file that shows it on a face that
+had no rhythm before** — every earlier claim of it was on a face the document already gridded.
+
+### The document is clean, and the assert is what caught the fault twice
+
+`building.validate()` inside the scene returns **empty**, and the scene refuses to draw otherwise.
+
+**It fired twice on this part, and both readings are worth more than the pass:**
+
+1. **`SolidInsideOut { solid: Part(5), volume: -0.009936079 }`.** The bench came back **inside out**. The cause was not the
+   frame: **`Mass::new`'s second argument is the elevation of the wall top and not a height above it** — the field is
+   documented *"The elevation of the wall top"* — and the top board's outline stands at 0.84, so passing `0.08` walked its
+   ring **downwards**. **Measured rather than argued: the same document with the same template placed on the
+   `FaceRef::new` face read the identical `-0.009936079`,** so the frame was never the cause — and the sign is explained by
+   the shape, since two upright panels and one inverted ring is a small positive under a larger negative.
+2. **`PlacementOutsideBay { placement: 5, past: 0.02 }`.** **A board's bounds reach one slab thickness *below* its outline**,
+   because `slab` is documented as *"measured down from the outline's elevations"* and `reach` measures the template — so a
+   part that is to sit flush on a bay's sill has its outline stand **at** its own slab thickness. **That is the shutter's
+   convention, and the convention exists for this reason**; the brief wrote "no geometry change" and this is the one place
+   it cost something to find out.
+
+### The hashes: one moved, and it was the right one
+
+**Which hash is which, because the three are not the same measurement.** `png` is the **SHA-256 of the written `.png` file**
+— the column every baseline table in this file carries; the manifest's `document` is a hash over the two definitions the
+compile emitted, and its `image` is a hash over the **raw pixel buffer the gpu returned**. They are two artefacts of one
+frame and are named apart, because an earlier slice read such a pair as two adapters.
+
+| scene | `.png` before | `.png` after | byte-for-byte | manifest `document` | manifest `image` |
+| --- | --- | --- | --- | --- | --- |
+| `house` | `B13154AD7D29F938` | `B13154AD7D29F938` | **yes** | same | same |
+| `hall` | `C4339E6310EA1C37` | `C4339E6310EA1C37` | **yes** | same | same |
+| `hall_large` | `43D3780A15E3D08E` | `43D3780A15E3D08E` | **yes** | same | same |
+| `shed` | `882B8F9A7C671B0D` | `882B8F9A7C671B0D` | **yes** | same | same |
+| `terrace` | `0EBC78ABD314A90D` | `0EBC78ABD314A90D` | **yes** | same | same |
+| `wing` | `14E3E27F9F9E1A83` | `14E3E27F9F9E1A83` | **yes** | same | same |
+| **`workshop`** | `7DD5D40894181EA7` | **`3ABB4A12DE90CDC4`** | **no** (299,327 → 299,509 bytes) | `32c95c8aade51358` → `fba1a06b1a9b5656` | `d9617c18c39b0fdb` → `4898bc5fa4964004` |
+| `yard` | `FDC446B24E98CE04` | `FDC446B24E98CE04` | **yes** | same | same |
+| `identity` | `974FB5B24E1E7A35` | `974FB5B24E1E7A35` | **yes** | same | same |
+
+**Eight of eight byte-identical, compared byte by byte and not only by `sha256`.** The reason is one sentence: **the
+`workshop` is the only scene that reads `workshop.rs`,** so a part placed in it moves its hash and nothing else.
+
+**The nine before-hashes were reproduced by fresh render before the first edit**, value for value against the baseline
+table, which is the canary that says the pair is *this* tree and *this* machine.
+
+### The identity table gained rows, and where they went is worth writing down
+
+`scene_identity_probe` reads **845 rows two-way** after, against 806 before: `hall 77`, `hall_large 109`, `identity 77`,
+`house 31`, `shed 66`, `terrace 123`, **`workshop 162`**, `wing 99`, `yard 101` — every one contiguous from 1, every name
+non-empty, every name round-tripping, and `the channel is two-way for every scene: true`.
+
+**`workshop` went 123 → 162, which is +39 rows, and the mechanism is that the new rows are *inserted* and not appended.**
+`part 5` took **ids 112..=150**, straight after `part 4`'s last row; **ids 1..=111 did not move**, and everything the
+document emits after that point shifted by exactly 39 — `slab 0, its top` went **112 → 151** and `slab 1, the edge from
+node 2` went **122 → 161**, both confirmed in the frame census. **So a pinned reading above the insertion point is safe
+without being re-read and one below it is not**, and which is which is a fact about where the expander puts a part's faces.
+The probe's own pinned reading is `workshop id 49 → part 0, template mass 0, outer wall over edge 2`, it still reads exactly
+that, and it did so **because 49 is below 112** — which is the reason to write the number down rather than to celebrate it.
+
+### The gate, measured on the branch
+
+- **29/29 building examples and 16/16 gallery examples exit 0**, under the canary `thread '.*'.*panicked`, which was
+  **proved to fire on its own control first**: a real `rustc` panic (`render no_such_scene`) gave **1 hit**, and the bare
+  `thread '...' panicked` this toolchain never writes gave **0** — the false negative this arc has paid for before.
+  **Zero hits across all 45 runs and zero warning lines.**
+- `cargo build --workspace --all-targets` exits 0 and warns **only** of the pre-existing `census.exe` / `census.pdb`
+  filename collision — the set every earlier section quotes, and no new warning. `cargo fmt --all -- --check` is clean.
+- **Every `Compiling` line in every build log names this worktree, and none names the parent checkout.** The cold
+  build is **166 `Compiling` lines, of which 13 are workspace crates and every one of the 13 is under
+  `C:\resource\whiting\.worktrees\building-scene-inner\crates`**, and **0 name the parent**; the incremental build
+  after the edit is **6 lines, 6 naming this worktree, 0 naming the parent**. (The other 153 are registry crates, which
+  print no path at all — **that is why the count is printed rather than the verdict**: a filter asserting "every line
+  names the worktree" returns 155 false hits on them, and a filter asserting "every line names a path" returns 0.)
+
+### What this slice's brief got wrong, and what the instruments got wrong first
+
+**The brief's example of what `workshop` already does is a misreading of the name it quotes.** It offered
+`part 1, template mass 0, outer wall over edge 0` as "a part on an outer face in its own region table" — and **`over edge N`
+in a part's name is the *template's* own edge, not the face the placement hangs on.** Every shutter is authored as its own
+one-mass template and hung on `FaceRef::new(mass, 2)`; the string names the shutter panel's own wall. The brief's
+conclusion is right and its evidence does not say it: **the correct statement is that the scene's own pinned reading,
+`workshop id 49 → part 0, template mass 0, outer wall over edge 2`, names `edge 2`, the placement's face, and no part in any
+gallery scene names `FaceRef::inner`.**
+
+**The brief's constraint "no geometry, camera, material or validator change; the only new thing is a part on an inner face"
+is self-contradicting as written, and the contradiction is real rather than pedantic.** Placing a part on an inner face
+*requires* a rhythm on that inner loop, because a part needs a bay and the inner loop carried no grid; and drawing it
+requires its own mesh and its own per-placement material rows, because the offset that puts a placement's pixels on its own
+identity rows lives on the material and not on the geometry. **No pixel follows from the rhythm — measured, above — and no
+existing material row changed, but "no geometry change" cannot be read as "no mesh row".**
+
+**The brief asked for a reading the tree cannot produce and forbade the only thing that could produce it.** "faces / loops /
+euler / volume against its template" is `part_probe`'s measurement, and reaching the `workshop`'s document requires a probe
+in the gallery crate, which *no new probe files* forbids. **The brief's own premise — that the capability should be
+exercised by a picture and not only by a probe — is the premise that makes the missing number uninteresting**: what a
+picture can say about where a part stands, it said exactly, from the frame's own `position` channel.
+
+**And the instrument was wrong first, in the same class this record keeps finding.** The byte-for-byte comparison of the
+nine pairs was written with `Get-Content -Encoding Byte`, which **is not a supported encoding name in this shell**: it
+emitted nine errors, returned nothing, and the comparison reported **"0 of 8 byte-identical" beside eight matching
+SHA-256s**. **It was caught by printing the number the gate compares** — 0, which cannot be true beside eight equal
+hashes — and rewritten over `[System.IO.File]::ReadAllBytes`, which then reported **8 of 8**. This is the same fault as
+the `Get-ChildItem -Filter … -Exclude …` that returned 0 files and let a loop report success.
+
+### What remains open
+
+- **The inner face still will not take a hole**, `OpeningOnAFarLoop`, unchanged and still measured only by
+  `part_probe`'s control. **No scene has measured it.**
+- **A mass's interior is still not a documentable concept.** The bench stands in the rooms because `inward` is the
+  walker's left and not because a document can name the room; nothing here opened it.
+- **The bench's own near end is in the document and not in the picture.** Its authored span is `z ∈ [1.20, 2.30]` and the
+  frame shows `z` from `1.3877`, so about 0.19 m of it stands behind the door's reveal. That was a deliberate hand's
+  width of margin rather than a clipping, and it is the one number in this section that is a placement choice rather than a
+  measurement.
+- **One scene is not a census.** `workshop` is now the only gallery scene that reaches `FaceRef::inner`; `yard`, `wing`,
+  `shed` and the rest still stand on outer faces, which is why their eight hashes hold and is also why nothing here says
+  anything about an inner face in a courtyard or a gable end.
+- **Unchanged by this slice:** an authored pinch is the one courtyard whose areas nothing can check; `terrace`'s framing
+  questions; and `covers` remains a necessary condition and not a proof.
 
 

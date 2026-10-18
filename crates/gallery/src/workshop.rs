@@ -14,9 +14,19 @@
 //! is closed, and is inset by the wall's own thickness on all four sides is measured by
 //! loor_probe, not argued by the picture.
 //!
+//! # The one part that stands inside the building
+//!
+//! A part can stand on **both** faces of a wall ring, and this scene now carries one of each: the five
+//! shutters on the **outer** face the camera looks at, and one **workbench** on the **inner** face of the
+//! east wall, named by [`FaceRef::inner`]. **The bench is in the picture, and the doorway is the reason**:
+//! the camera stands off the building's north-west corner, so the west and north walls show their outer
+//! faces and the south wall is nine metres behind the door, while every sight line through the open
+//! doorway runs east across the room and arrives at the east wall. A fitting on any other wall's inner
+//! face would be in the document and in no frame at all.
+//!
 //! Run it with `cargo run -p whiting-device-rasterize --example render -- workshop out/workshop`.
 
-use definition::Value;
+use definition::{PackedList, Value};
 use scene::standard::Stage;
 
 use building::derive::{self, RoofStyle, Starter, floor_slab};
@@ -29,7 +39,7 @@ use building::{Building, Mass, MassId, PlanNode};
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
-use crate::instancing::standing;
+use crate::instancing::{Standing, standing};
 use crate::kit::{
     camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
     offset_by, post_processes, screen_material, shaded_point_schema, surface,
@@ -61,6 +71,50 @@ const FLOOR_THICK: f32 = 0.22;
 
 /// The wall the openings are cut into: the gable end, which the camera looks at.
 const FRONT_EDGE: usize = 2;
+
+/// The wall the bench stands against, as **the rooms** see it rather than as the street does.
+///
+/// # Invariants
+///
+/// **It is the one wall the open doorway looks across, and that is the whole of why it was chosen.**
+/// `rectangle` winds the plan with the solid on the walker's right, so `edge 0` runs along `+x` at
+/// `z = -4.5`, `edge 1` along `+z` at `x = 3.0`, `edge 2` back along `-x` at `z = 4.5` and `edge 3`
+/// along `-z` at `x = -3.0`. The camera stands at `[-10.5, 3.2, 13.5]`, off the **north-west**
+/// corner, so `edge 3` and `edge 2` are the two walls whose outer faces are in the frame and `edge 0`
+/// is nine metres behind the door. The sight lines that get through the door are the remaining
+/// direction, and they run **east**: through the hole at `z = 4.18` they reach the inner face of
+/// `edge 1` and nothing else. **`Edge 3` is the one face that would be in the document and in no
+/// frame at all**, because the camera is looking away from it.
+const BENCH_EDGE: usize = 1;
+
+/// How far along its bay the bench stands, in metres, and how far up it.
+///
+/// # Invariants
+///
+/// **Both are measured against the room.** The bay is the whole inner loop of `edge 1` — one column
+/// and one row, so the bay's own sill is the room's floor and its own start is the inner loop's
+/// first node at `z = -4.18` — and `BENCH_ALONG` is read along it. The number in the report is
+/// therefore `bay.from + 5.38 = 5.38`, and the bench stands from `z = 1.20` to `z = 2.30`.
+///
+/// **It sits in the band the doorway can see.** A ray from the eye through the hole's near edge
+/// (`x = -0.72`, `z = 4.18`) reaches the inner face at `z = 0.94` and one through the hole's far edge
+/// (`x = 0.72`) reaches it at `z = 2.55`, so the wall's inner face is visible between those two and
+/// up to `y = 1.65` at the near end. **A 1.10 m bench inside a 1.61 m band** is the fitting's own
+/// length the numbers chose, and it leaves a hand's width at each end rather than sitting on an edge
+/// of the reveal.
+const BENCH_ALONG: f32 = 5.38;
+
+/// The bench's own dimensions, in metres: how long it is along the wall, how deep it stands into the
+/// room, and how tall it is.
+///
+/// **Its boards are built the way a shutter's are** — a mass whose outline stands at the elevation of
+/// its own 0.02 m slab, so the template's local origin is its floor and a pin at `up = 0` lands it on
+/// the room's — and it is that shared origin which makes one template shape serve both faces of a
+/// ring.
+const BENCH_LENGTH: f32 = 1.10;
+const BENCH_DEPTH: f32 = 0.60;
+/// How tall the bench stands, which is the top of its topmost board.
+const BENCH_TOP: f32 = 0.94;
 
 /// How tall a shutter is, and so how tall the windows it fills are.\nconst SHUTTER_HEIGHT: f32 = 0.85;\n\n/// How many bays across and how many storeys, which is what makes the openings bay-mounted per storey.
 const BAYS: usize = 3;
@@ -102,15 +156,92 @@ fn shutter(width: f32, height: f32, thickness: f32) -> Template {
     )
 }
 
-/// Builds the workshop's document, and returns it with the template its shutters are drawn from.
+/// Returns a board: a mass whose outline runs `x0..x1` by `z0..z1`, standing at elevation `floor` and
+/// walled up to `top`.
+///
+/// # Invariants
+///
+/// - **`top` is the elevation of the wall's top and not a height above it.** `Mass::new`'s second
+///   argument is documented *"The elevation of the wall top"*, so a board whose outline stands above
+///   its own `top` is a ring walked **downwards** and every one of its faces comes back wound the other
+///   way round — which is not a shape the author sees but a signed volume that reads negative, and the
+///   scene's own `validate` assert is what named it.
+/// - **A board's bounds reach one slab thickness below its outline**, because `slab` is documented as
+///   *"measured down from the outline's elevations"* and `reach` measures the template. A part that is
+///   to sit flush on a bay's sill therefore has its outline stand **at** its own slab thickness, which
+///   is the shutter's own convention and the reason that convention exists.
+fn board(x0: f32, x1: f32, z0: f32, z1: f32, floor: f32, top: f32) -> Mass {
+    let outline = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]
+        .into_iter()
+        .map(|corner| PlanNode::new(corner, floor))
+        .collect();
+    Mass::new(outline, top).with_wall(0.01).with_slab(0.02)
+}
+
+/// Returns a workbench: a top on two end panels, standing `BENCH_LENGTH` along the wall and
+/// `BENCH_DEPTH` into the room.
+///
+/// # Invariants
+///
+/// - **Its plan runs `+x` along the wall and `+z` away from it, which is what [`FaceRef::inner`]
+///   asks of a template.** The shutter's plan runs the same way and [`FaceRef::new`] puts its `+z`
+///   **into** the masonry; **the same spelling on a mass's own inner face puts its `+z` into the
+///   room**, because `inward` is the walker's left on every face of a ring and only which way it
+///   points differs. One template shape therefore serves both faces, and the face alone decides
+///   where the depth goes.
+/// - **The two panels stop where the top board's own slab begins**, at `0.84`, so the three solids
+///   touch along a plane and none of them overlaps another — a bench built out of volumes that
+///   overlapped would be reported for it rather than read as a bench.
+/// - **Its own bounds are `x [0, 1.10]`, `z [0, 0.60]`, `y [0, 0.94]`**, and the `0.0` is the point:
+///   the template's origin is its floor, which is the room's floor, because the ground plate's top
+///   stands at `y = 0` and a pin at `up = 0` lands it there.
+fn workbench() -> Template {
+    const PANEL: f32 = 0.12;
+    const REACH: f32 = 0.10;
+    /// The elevation the top board's own outline stands at. Its slab is the 0.02 m below this, and
+    /// that slab's underside is where the two panels stop.
+    const UNDER_TOP: f32 = 0.86;
+    Template::new(
+        "workbench",
+        vec![
+            board(
+                0.0,
+                PANEL,
+                REACH,
+                BENCH_DEPTH - REACH,
+                0.02,
+                UNDER_TOP - 0.02,
+            ),
+            board(
+                BENCH_LENGTH - PANEL,
+                BENCH_LENGTH,
+                REACH,
+                BENCH_DEPTH - REACH,
+                0.02,
+                UNDER_TOP - 0.02,
+            ),
+            board(0.0, BENCH_LENGTH, 0.0, BENCH_DEPTH, UNDER_TOP, BENCH_TOP),
+        ],
+        Vec::new(),
+    )
+}
+
+/// Builds the workshop's document, and returns it with the templates its parts are drawn from.
 ///
 /// # Invariants
 ///
 /// **The doorway is the only opening without a shutter**, and that is the scene's argument: an open doorway
 /// is the one place a viewer can see into the building, and what is inside it is the plate the floor slice
-/// derived.
-/// Returns the workshop's document and the template its shutters come from.
-pub fn workshop_document() -> (Building, usize) {
+/// derived — and, since this slice, the bench standing on that plate against the wall the doorway looks
+/// across.
+///
+/// **The two faces of the ring get their parts from the two constructors that name them.** The five
+/// shutters hang on [`FaceRef::new`] and the bench stands on [`FaceRef::inner`], so every part in this
+/// document is on a face the crate can name and the one that is inside is named rather than reached
+/// through a struct literal.
+/// Returns the workshop's document, the template its shutters come from, and the template its bench
+/// comes from.
+pub fn workshop_document() -> (Building, usize, usize) {
     let mut skeleton = derive::starter(&STARTER).skeleton;
     let mass = MassId(0);
     let front = FaceRef::new(mass, FRONT_EDGE);
@@ -181,12 +312,31 @@ pub fn workshop_document() -> (Building, usize) {
         .expect("every window's bay is in the grid");
     }
 
-    (Building::new(skeleton), template)
+    // **The bench, and the fourth face of a ring.** The grid above covers the outline and nothing
+    // else, so the inner loop has no bay to pin into and one is laid on it here — a single column
+    // and a single row, which makes the bay the whole inner loop and puts its sill on the room's
+    // floor. **A rhythm emits no geometry**, so this half of the document changes what can be
+    // pinned and nothing about what is drawn until the part below is placed.
+    let inside = FaceRef::inner(mass, BENCH_EDGE);
+    ops::split_face(
+        &mut skeleton,
+        inside,
+        &Rhythm::Even { count: 1 },
+        &Rhythm::Even { count: 1 },
+    );
+    let bench = ops::add_template(&mut skeleton, workbench());
+    ops::place_part(
+        &mut skeleton,
+        Placement::new(bench, inside, 0, 0, Pin::new(BENCH_ALONG, 0.0)),
+    )
+    .expect("the inner loop's own bay is in the grid the split laid on it");
+
+    (Building::new(skeleton), template, bench)
 }
 
 /// Builds the workshop scene.
 pub fn workshop() -> Value {
-    let (building, shutters) = workshop_document();
+    let (building, shutters, bench) = workshop_document();
     let built = building
         .build()
         .expect("the workshop expands: its outline is a quad, its grid tiles every face, and its plate is closed");
@@ -212,25 +362,43 @@ pub fn workshop() -> Value {
         matches!(element, building::Element::Slab(_, _))
     });
     let skeleton = &building.skeleton;
-    let held = skeleton
-        .parts
-        .template(shutters)
-        .expect("the shutter template is in the document")
-        .mesh()
-        .expect("the shutter expands on its own");
-    let local = Identity::of(&held, 1);
-    let panel = packed_where(&held, &local, |_| true);
+    // **Every part template in the frame is one mesh, drawn once and stood by one instance per
+    // placement.** The shutters and the bench differ in how many placements they have and not in
+    // what a placement needs, so they go through one list: five rows for the shutters and one for
+    // the bench, each carrying its template's local ids and each offset onto the rows a bake wrote.
+    let mut parts: Vec<(usize, &str, &str, PackedList, Vec<(Standing, i64)>)> =
+        [("shutters", "shutter", shutters), ("bench", "bench", bench)]
+            .into_iter()
+            .map(|(mesh, label, template)| {
+                let held = skeleton
+                    .parts
+                    .template(template)
+                    .expect("every template this scene instances is in its own document")
+                    .mesh()
+                    .expect("the template expands on its own");
+                let local = Identity::of(&held, 1);
+                (
+                    template,
+                    mesh,
+                    label,
+                    packed_where(&held, &local, |_| true),
+                    Vec::new(),
+                )
+            })
+            .collect();
     // **The bases are read from the baked table**, not copied from a probe's printout: a placement's offset is
     // the least id the table gives an element of that placement, so the template's local ids land on exactly
     // the rows a bake would have written.
-    let mut hung: Vec<(([f64; 3], [f64; 3], [f64; 3]), i64)> = Vec::new();
     for (index, placement) in skeleton.parts.placements().iter().enumerate() {
-        if placement.template != shutters {
+        let Some((_, _, _, _, hung)) = parts
+            .iter_mut()
+            .find(|(template, ..)| *template == placement.template)
+        else {
             continue;
-        }
+        };
         let frame = part_frame(skeleton, index)
             .expect("the wall offsets")
-            .expect("every shutter's slot is in the grid");
+            .expect("every placement's slot is in the grid");
         let base = table
             .rows()
             .iter()
@@ -240,6 +408,18 @@ pub fn workshop() -> Value {
             .expect("the placement draws at least one surface");
         hung.push((standing(&frame), i64::from(base) - 1));
     }
+    // The rows the materials and the instances are both written from: one per placement, carrying the
+    // mesh it draws, the prefix its label carries, how many of its template's placements it is, and
+    // the offset its own material carries.
+    let hung: Vec<(&str, &str, usize, Standing, i64)> = parts
+        .iter()
+        .flat_map(|(_, mesh, label, _, placed)| {
+            placed
+                .iter()
+                .enumerate()
+                .map(move |(index, (at, offset))| (*mesh, *label, index, *at, *offset))
+        })
+        .collect();
 
     // Rendered wall, sheet metal, a boarded first floor and dry earth. The floor is its own material because
     // it is the building's one interior surface a viewer can see.
@@ -272,9 +452,11 @@ pub fn workshop() -> Value {
         ));
     }
     // **One material set per placement**, because a scene's instance carries no custom values: the offset that
-    // makes five shutter pixels answer five different elements lives on the row the instance names, and five
-    // rows name five materials that all draw with one shader.
-    for (index, (_, offset)) in hung.iter().enumerate() {
+    // makes a placement's pixels answer that placement's own elements lives on the row the instance names, and
+    // two placements of one mesh name two rows that all draw with one shader. The bench's row is here for the
+    // same reason as the shutters' five and not because the bench is a different kind of part — it is one
+    // placement of one template, which is all a row is.
+    for (_, label, index, _, offset) in &hung {
         let offset = *offset as f64;
         for (stage, shader) in [
             ("cast", "authored_shadowing"),
@@ -282,7 +464,7 @@ pub fn workshop() -> Value {
             ("shade", "authored_lighting"),
         ] {
             materials.push(mesh_material(
-                &format!("shutter-{index}-{stage}"),
+                &format!("{label}-{index}-{stage}"),
                 shader,
                 offset_by(board(), offset),
             ));
@@ -297,42 +479,43 @@ pub fn workshop() -> Value {
         materials.push(mesh_material(&format!("ground-{stage}"), shader, earth()));
     }
 
-    let placed =
-        |stage: &str| {
-            let mut rows = [
-                ("shells", "plaster"),
-                ("roofs", "metal"),
-                ("floors", "board"),
-                ("ground", "ground"),
-            ]
-            .into_iter()
-            .map(|(label, material)| {
-                instance(
-                    &format!("{label}-{stage}"),
-                    label,
-                    [0.0; 3],
-                    [0.0; 3],
-                    [1.0; 3],
-                    &format!("{material}-{stage}"),
-                )
-            })
-            .collect::<Vec<_>>();
-            // **Five rows for five shutters, over one mesh**, and each names **its own** material so the offset that
-            // separates the five lives on the row rather than on the geometry.
-            rows.extend(hung.iter().enumerate().map(
-                |(index, ((translation, rotation, scale), _))| {
+    let placed = |stage: &str| {
+        let mut rows = [
+            ("shells", "plaster"),
+            ("roofs", "metal"),
+            ("floors", "board"),
+            ("ground", "ground"),
+        ]
+        .into_iter()
+        .map(|(label, material)| {
+            instance(
+                &format!("{label}-{stage}"),
+                label,
+                [0.0; 3],
+                [0.0; 3],
+                [1.0; 3],
+                &format!("{material}-{stage}"),
+            )
+        })
+        .collect::<Vec<_>>();
+        // **One row per placement, over the mesh its own template draws**, and each names **its own**
+        // material so the offset that separates five shutters from one another lives on the row rather
+        // than on the geometry.
+        rows.extend(
+            hung.iter()
+                .map(|(mesh, label, index, (translation, rotation, scale), _)| {
                     instance(
-                        &format!("shutter-{index}-{stage}"),
-                        "shutters",
+                        &format!("{label}-{index}-{stage}"),
+                        mesh,
                         *translation,
                         *rotation,
                         *scale,
-                        &format!("shutter-{index}-{stage}"),
+                        &format!("{label}-{index}-{stage}"),
                     )
-                },
-            ));
-            rows
-        };
+                }),
+        );
+        rows
+    };
 
     // **Two point schemas, because there are two kinds of surface.** Every authored mesh — the shell, the
     // roofs, the plate and the shutters — carries `authored_id`; the ground carries no id at all and writes the
@@ -377,18 +560,28 @@ pub fn workshop() -> Value {
         ("outputs".to_owned(), outputs_field()),
         (
             "meshes".to_owned(),
-            Value::List(vec![
-                mesh("shells", "Triangles", point.clone(), shells),
-                mesh("roofs", "Triangles", point.clone(), roofs),
-                mesh("floors", "Triangles", point.clone(), floors),
-                mesh("shutters", "Triangles", point, panel),
-                mesh(
+            // **One mesh per part template**, drawn once and stood by an instance per placement, so the
+            // template's own geometry is uploaded a single time however many of them there are. The order
+            // is the one this scene has always written: the building's own surfaces, then the parts, then
+            // the ground that is not an element of anything.
+            Value::List(
+                [
+                    mesh("shells", "Triangles", point.clone(), shells),
+                    mesh("roofs", "Triangles", point.clone(), roofs),
+                    mesh("floors", "Triangles", point.clone(), floors),
+                ]
+                .into_iter()
+                .chain(parts.iter().map(|(_, name, _, points, _)| {
+                    mesh(name, "Triangles", point.clone(), points.clone())
+                }))
+                .chain([mesh(
                     "ground",
                     "Triangles",
                     shaded_point_schema(),
                     crate::ground::mesh(&building, 160, 200.0, |_, _| 0.0),
-                ),
-            ]),
+                )])
+                .collect(),
+            ),
         ),
         (
             "screen_materials".to_owned(),
