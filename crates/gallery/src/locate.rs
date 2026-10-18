@@ -214,6 +214,41 @@ pub const NAMINGS: &[Naming] = &[
         resolve: crate::vegetation_picture::grove_handle_of,
         note: "the planting is the id's quotient by the stride and the node is its remainder",
     },
+    Naming {
+        scene: crate::southwest_valley::TREE_FERN,
+        resolve: crate::southwest_valley::tree_fern_handle_of,
+        note: "there is no branch graph here: this pixel is the column or one of the crown's fronds, and a pinna drawn by the blade mesh carries its frond's",
+    },
+    Naming {
+        scene: crate::southwest_valley::TREE_FERN_FROND,
+        resolve: crate::southwest_valley::tree_fern_frond_handle_of,
+        note: "one frond at arm's length: this pixel is that frond's rachis, and a pinna carries its own",
+    },
+    Naming {
+        scene: crate::southwest_valley::TREE_FERN_BASE,
+        resolve: crate::southwest_valley::tree_fern_base_handle_of,
+        note: "the foot of the same column: this pixel is that node, whose root mantle and packed bases are the subject",
+    },
+    Naming {
+        scene: crate::southwest_valley::KAPOK,
+        resolve: crate::southwest_valley::kapok_handle_of,
+        note: "in leaf: this pixel is that node of the kapok, and a palmate hand drawn by a blade mesh carries its twig's",
+    },
+    Naming {
+        scene: crate::southwest_valley::KAPOK_FLOWER,
+        resolve: crate::southwest_valley::kapok_flower_handle_of,
+        note: "the same tree leafless in red flower: this pixel is that node, and a flower drawn by the decorator mesh carries its shoot's",
+    },
+    Naming {
+        scene: crate::southwest_valley::KAPOK_BOUGH,
+        resolve: crate::southwest_valley::kapok_bough_handle_of,
+        note: "one first-order limb in leaf at eight and a half metres: this pixel is that node of the limb",
+    },
+    Naming {
+        scene: crate::southwest_valley::KAPOK_BASE,
+        resolve: crate::southwest_valley::kapok_base_handle_of,
+        note: "the plank buttresses of the same tree: this pixel is that node, and the foot's own section is this node's",
+    },
 ];
 
 /// The row a scene registered, or `None` when it names nothing.
