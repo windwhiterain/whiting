@@ -29,13 +29,22 @@
 //! arithmetic, so *"fewer, and smaller, above six metres"* is a curve edit rather than four thousand
 //! edits, and a node's numbers come from its own [`crate::rng`] stream so inserting a bough elsewhere
 //! leaves this crown where it was.
+//!
+//! # What a field's walk derives once
+//!
+//! **A leaf's anchor is resolved on its node's swept surface, and that surface does not change between two
+//! leaves of the same twig.** So [`LeafField::groups`] builds one [`crate::plant::Derived`] table for its
+//! whole walk: the node's placement, its ancestors' placements and its drawn spine are each derived once,
+//! and each leaf then costs one frame evaluation at its own station. The table is that call's own local,
+//! dropped when it returns — **it cannot outlive the immutable borrow of the plant it was derived from**, so
+//! a stale placed spine is not a state this crate can be in.
 
 use shape::math::{Vec3, clamp};
 use shape::{Curve, Loft, Scalar, Section, Sweep};
 
 use crate::handle::Handle;
 use crate::node::Attachment;
-use crate::plant::{Placement, Plant};
+use crate::plant::{Derived, Placement, Plant};
 
 /// The blade's width axis in the template's own coordinates: the section's `x` half axis, which
 /// [`shape::Curve::set_initial_normal`] places on `+y`.
@@ -352,7 +361,12 @@ impl LeafField {
     /// - **A reference deeper than the ancestors a leaf has reads the root.** A field is one law over a whole
     ///   generation and a plant's nodes stand at a range of depths, so the number cannot be a per-leaf report;
     ///   the clamp is the only rule that keeps one generation-wide number one law.
-    fn reference_frame(&self, plant: &Plant, handle: &Handle) -> Option<Placement> {
+    fn reference_frame(
+        &self,
+        plant: &Plant,
+        handle: &Handle,
+        derived: &mut Derived,
+    ) -> Option<Placement> {
         if self.reference == 0 {
             return None;
         }
@@ -363,7 +377,7 @@ impl LeafField {
                 None => break,
             }
         }
-        plant.placement(&at).ok()
+        plant.placement_in(&at, derived).ok()
     }
 
     /// One [`LeafGroup`] per node of this generation that carries a leaf, in [`Plant::walk`] order.
@@ -379,19 +393,37 @@ impl LeafField {
     /// jitter number per leaf in rank order. The phase is drawn first so two nodes of one field do not
     /// align their spirals; the jitter number is drawn whether `jitter` is zero or not, so editing the
     /// jitter leaves every slot where it was and every other node's stream untouched.
+    ///
+    /// **One derived table for the whole walk.** A leaf's anchor is resolved on its node's swept surface,
+    /// and that surface is a function of the node, its ancestors' placements and the plant's fields — so a
+    /// hundred leaves of one twig read one drawn spine rather than a hundred, and a node's placement is
+    /// composed once rather than once per leaf. The table is this call's own local and is dropped when it
+    /// returns, so it cannot outlive the immutable borrow of the plant it was derived from and there is
+    /// nothing a mutation could leave stale. Nothing is sampled and interpolated: each attachment is still
+    /// resolved **exactly**, by evaluating the frame at its own station.
     pub fn groups(&self, plant: &Plant) -> Vec<LeafGroup> {
+        self.groups_in(plant, &mut Derived::default())
+    }
+
+    /// [`LeafField::groups`] with a derived table the caller already holds, so an expansion shares one
+    /// walk's placements and drawn spines across its wood and all of its fields.
+    pub(crate) fn groups_in(
+        &self,
+        plant: &Plant,
+        derived: &mut Derived,
+    ) -> Vec<LeafGroup> {
         let mut groups = Vec::new();
         for (handle, node) in plant.walk() {
             if handle.depth() != self.generation {
                 continue;
             }
-            let Ok(node_placement) = plant.placement(&handle) else {
+            let Ok(node_placement) = plant.placement_in(&handle, derived) else {
                 continue;
             };
             // **The frame the leaves are read in is an ancestor's**, `reference` generations up; the point they
             // stand on is always the parent's own surface, so a reference turns a leaf's orientation and never
             // moves it off the bark.
-            let reference = self.reference_frame(plant, &handle);
+            let reference = self.reference_frame(plant, &handle, derived);
             let spread = Density::of(node.spine().length(), &self.density, self.band);
             if spread.count == 0 {
                 continue;
@@ -432,7 +464,9 @@ impl LeafField {
                     .max(0.0);
                     // A handle from the walk resolves, so this arm is the staleness case the API allows
                     // for; the group ends there rather than carrying a leaf with no anchor.
-                    let Ok(surface) = plant.surface(&handle, Attachment::new(station, slot)) else {
+                    let Ok(surface) =
+                        plant.surface_in(&handle, Attachment::new(station, slot), derived)
+                    else {
                         break 'station;
                     };
                     let anchor = match &reference {

@@ -13,6 +13,25 @@
 //! the path resolved and which child was missing. It never returns the node nearest to the path: a prune
 //! leaves its descendants' handles stale, and a stale handle has to be a named fact rather than a silent
 //! re-binding to whatever branch took the place.
+//!
+//! # What a walk derives once: [`Derived`]
+//!
+//! **A node's placement, its drawn spine and its placed spine are functions of the plant alone** — of the
+//! node, of its ancestors' placements, and of the plant's fields — so re-deriving one for a second leaf of
+//! the same twig returns the same numbers and costs a rebuilt [`shape::Curve`]. [`Derived`] is the table
+//! that keeps them: an entry point that loops over nodes ([`crate::expand::wood`], [`crate::leaf::LeafField`]
+//! `groups`, [`crate::decorator::placed`], [`crate::report::report`]) builds one table, threads it through
+//! its own walk, and drops it when the walk returns. A leaf field's per-leaf `surface` read — the binding
+//! cost of every dense crown — is then one frame evaluation on a curve that was already built.
+//!
+//! **The table is valid for exactly one immutable borrow of one plant, and that is the whole invariant.**
+//! It is a local in the walk that reads it, never a field inside [`Plant`], so it cannot outlive the plant
+//! it was derived from and there is no invalidation to miss. The alternative — a cache inside the plant
+//! behind interior mutability — would have to be cleared by [`Plant::get_mut`], [`crate::ops::apply`],
+//! [`crate::node::Node::push`] and [`crate::envelope::trim`] all at once, and one missed call would be a
+//! **wrong picture with no error**: the worst failure this crate has.
+
+use std::collections::HashMap;
 
 use shape::math::{Vec3, clamp, cross3, dot3, length3, normalized3, subtract};
 use shape::{Curve, Jet};
@@ -124,6 +143,32 @@ pub struct Plant {
     root: Node,
     seed: u64,
     fields: Vec<Field>,
+}
+
+/// What one walk of a plant derives once per node, and keeps for the rest of that walk.
+///
+/// # Invariants
+///
+/// - **Every entry is a function of the plant alone**, so deriving it twice returns the same numbers:
+///   a [`Placement`] is the ancestor chain's placements composed, a drawn spine is [`Plant::shape`]'s, and a
+///   placed spine is the drawn one moved by that placement. Nothing about any of them depends on *which*
+///   caller is asking, so one entry can answer for a whole node's leaves.
+/// - **The table is valid for exactly one immutable borrow of one plant.** It is created by the walk that
+///   reads it and dropped when that walk returns, so a mutation cannot be observed through it and there is
+///   no entry to invalidate. A caller that edits the plant between two reads — [`crate::ops::apply`], for
+///   instance — starts a new table, which is why [`crate::envelope::trim`] takes two.
+/// - **Only a successful derivation is kept.** A handle the plant cannot resolve is answered again, which
+///   costs a path walk rather than a curve; a stale handle is [`HandleOrphaned`]'s named fact and no cache
+///   may hide it.
+///
+/// It is keyed by [`Handle`] because a handle names a node and survives an edit that renumbers nothing, and
+/// because a tombstone is still a row: the walk that includes them and the walk that does not ask for the
+/// same key the same way.
+#[derive(Debug, Default)]
+pub(crate) struct Derived {
+    placements: HashMap<Handle, Placement>,
+    drawn: HashMap<Handle, Curve>,
+    placed: HashMap<Handle, Curve>,
 }
 
 impl Plant {
@@ -247,6 +292,35 @@ impl Plant {
             .fold(drawn, |curve, field| field.shape(&curve, placement))
     }
 
+    /// The node's spine **as it is drawn**, held in `derived` for the rest of the walk.
+    ///
+    /// # Invariants
+    ///
+    /// **It is [`Plant::shape`]'s answer, once.** The drawn spine is a function of the node and of the
+    /// placement it is drawn in, and every attachment on that node reads the same curve — so a leaf field's
+    /// hundred leaves of one twig rebuild it once instead of a hundred times. The frame is then read off the
+    /// curve analytically, at the attachment's own station, which is what keeps a cached answer and a fresh
+    /// one **the same numbers**: nothing is sampled and interpolated between rings here.
+    fn drawn_in<'a>(
+        &self,
+        handle: &Handle,
+        node: &Node,
+        placement: &Placement,
+        derived: &'a mut Derived,
+    ) -> &'a Curve {
+        if derived.drawn.contains_key(handle) {
+            return derived
+                .drawn
+                .get(handle)
+                .expect("the drawn spine is under this handle");
+        }
+        derived.drawn.insert(handle.clone(), self.shape(node, placement));
+        derived
+            .drawn
+            .get(handle)
+            .expect("the drawn spine was just placed under this handle")
+    }
+
     /// The frame on `handle`'s surface at an attachment: the joint a child hangs from.
     ///
     /// # Invariants
@@ -265,15 +339,34 @@ impl Plant {
         handle: &Handle,
         attachment: Attachment,
     ) -> Result<Placement, HandleOrphaned> {
-        let node = self.get(handle)?;
-        let placement = self.placement(handle)?;
-        Ok(self.surface_at(node, &placement, attachment))
+        self.surface_in(handle, attachment, &mut Derived::default())
     }
 
-    /// The surface frame of a node whose placement is already known: one step of the walk [`Plant::placement`]
-    /// makes, kept as a function so the walk and a caller cannot disagree about where a joint is.
-    fn surface_at(&self, node: &Node, placement: &Placement, attachment: Attachment) -> Placement {
-        let spine = self.shape(node, placement);
+    /// [`Plant::surface`] with the walk's table, so a caller placing many attachments on one node derives
+    /// its drawn spine once.
+    pub(crate) fn surface_in(
+        &self,
+        handle: &Handle,
+        attachment: Attachment,
+        derived: &mut Derived,
+    ) -> Result<Placement, HandleOrphaned> {
+        let node = self.get(handle)?;
+        let placement = self.placement_in(handle, derived)?;
+        Ok(self.surface_at_in(handle, node, &placement, attachment, derived))
+    }
+
+    /// The surface frame of a node whose placement is already known: one step of the walk
+    /// [`Plant::placement`] makes, kept as a function so the walk and a caller cannot disagree about where a
+    /// joint is. The only thing the table buys here is the drawn spine the frame is read from.
+    fn surface_at_in(
+        &self,
+        handle: &Handle,
+        node: &Node,
+        placement: &Placement,
+        attachment: Attachment,
+        derived: &mut Derived,
+    ) -> Placement {
+        let spine = self.drawn_in(handle, node, placement, derived);
         let station = clamp(attachment.station, 0.0, 1.0);
         let frame = spine.frame(station);
         let scale = node.taper_now().at(station);
@@ -308,29 +401,53 @@ impl Plant {
     /// child's **effective** attachment — the authored one plus its station and slot nudges — so an edit that
     /// slides a bough along the trunk moves the bough and everything it carries, and nothing has to renumber.
     /// A node's own `shift` is added last, in the node's frame, so it moves that node's origin and every
-    /// placement below it. The cost is `O(depth²)` in the number of nodes passed on the way, which for a plant
-    /// is a handful of `Vec` indexes.
+    /// placement below it. The cost is `O(depth)` in the number of nodes passed on the way **with a table**
+    /// and `O(depth²)` without one, because every ancestor's placement is already derived.
     pub fn placement(&self, handle: &Handle) -> Result<Placement, HandleOrphaned> {
-        let mut placement = Placement::IDENTITY;
-        let mut prefix = Handle::root();
-        for index in handle.path() {
-            let child = prefix.child(*index);
-            let node = self.get(&child)?;
-            let attachment = node.effective_attachment();
-            let surface = {
-                let parent = self.get(&prefix)?;
-                self.surface_at(parent, &placement, attachment)
-            };
-            placement = placement.then(&surface);
-            let shift = node.shift();
-            if shift != [0.0; 3] {
-                let moved = placement.rotate(shift);
-                for (axis, out) in placement.origin.iter_mut().enumerate() {
-                    *out += moved[axis];
-                }
-            }
-            prefix = child;
+        self.placement_in(handle, &mut Derived::default())
+    }
+
+    /// [`Plant::placement`] with the walk's table, so a walk that places many nodes pays for each ancestor
+    /// chain once rather than once per node that passes through it.
+    ///
+    /// # Invariants
+    ///
+    /// **The composition is the walk's own, step for step**: the parent's placement, then the parent's
+    /// surface frame at the child's effective attachment, then the child's own shift in the frame that
+    /// results. Only the *reuse* is new — a cached ancestor's placement is the number the walk would have
+    /// composed again — so a node's placement does not depend on whether an ancestor was asked before it.
+    /// The root is the base case and is never asked for a surface: it hangs from nothing.
+    pub(crate) fn placement_in(
+        &self,
+        handle: &Handle,
+        derived: &mut Derived,
+    ) -> Result<Placement, HandleOrphaned> {
+        if let Some(held) = derived.placements.get(handle) {
+            return Ok(*held);
         }
+        if handle.is_root() {
+            derived
+                .placements
+                .insert(Handle::root(), Placement::IDENTITY);
+            return Ok(Placement::IDENTITY);
+        }
+        let parent = handle
+            .parent()
+            .expect("a handle that is not the root has a parent");
+        let held = self.placement_in(&parent, derived)?;
+        let node = self.get(handle)?;
+        let attachment = node.effective_attachment();
+        let ancestor = self.get(&parent)?;
+        let surface = self.surface_at_in(&parent, ancestor, &held, attachment, derived);
+        let mut placement = held.then(&surface);
+        let shift = node.shift();
+        if shift != [0.0; 3] {
+            let moved = placement.rotate(shift);
+            for (axis, out) in placement.origin.iter_mut().enumerate() {
+                *out += moved[axis];
+            }
+        }
+        derived.placements.insert(handle.clone(), placement);
         Ok(placement)
     }
 
@@ -344,9 +461,44 @@ impl Plant {
     /// carried into the world**, which is the one rule that keeps a twig's section oriented continuously with
     /// the surface it hangs from (`shape`'s open question 2, applied by the plant rather than by each sweep).
     pub fn spine(&self, handle: &Handle) -> Result<Curve, HandleOrphaned> {
+        self.spine_in(handle, &mut Derived::default())
+    }
+
+    /// [`Plant::spine`] with the walk's table, so a walk that places many nodes derives each placed spine
+    /// once — a [`shape::Curve`] rebuild is the single most expensive thing this crate does per node.
+    ///
+    /// # Invariants
+    ///
+    /// **The placed spine is a function of the node and its placement**, both of which the table already
+    /// holds, so a cached answer is the curve the walk would have built again. The construction below is
+    /// [`Plant::spine`]'s own arithmetic, unchanged: a rigid transform of the drawn jets, then
+    /// `Curve::new`, then the initial normal carried into the world. Nothing here is re-parameterised or
+    /// approximated, because a placed spine is **geometry** and moving one vertex is the failure this crate
+    /// cannot report.
+    pub(crate) fn spine_in(
+        &self,
+        handle: &Handle,
+        derived: &mut Derived,
+    ) -> Result<Curve, HandleOrphaned> {
+        if let Some(held) = derived.placed.get(handle) {
+            return Ok(held.clone());
+        }
         let node = self.get(handle)?;
-        let placement = self.placement(handle)?;
-        let drawn = self.shape(node, &placement);
+        let placement = self.placement_in(handle, derived)?;
+        let curve = self.place_spine(handle, node, &placement, derived);
+        derived.placed.insert(handle.clone(), curve.clone());
+        Ok(curve)
+    }
+
+    /// The world curve of a node whose placement is already known, read off the table's drawn spine.
+    fn place_spine(
+        &self,
+        handle: &Handle,
+        node: &Node,
+        placement: &Placement,
+        derived: &mut Derived,
+    ) -> Curve {
+        let drawn = self.drawn_in(handle, node, placement, derived);
         let jets: Vec<Jet> = drawn
             .jets()
             .into_iter()
@@ -355,7 +507,7 @@ impl Plant {
         let mut curve =
             Curve::new(jets).expect("a rigid transform of a valid curve is a valid curve");
         curve.set_initial_normal(placement.rotate(drawn.frame(0.0).normal));
-        Ok(curve)
+        curve
     }
 }
 

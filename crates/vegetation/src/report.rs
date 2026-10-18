@@ -17,10 +17,10 @@ use shape::Section;
 use shape::math::{length3, subtract};
 
 use crate::envelope::Envelope;
-use crate::expand::{Detail, expand};
+use crate::expand::{Detail, expand_in};
 use crate::handle::Handle;
 use crate::leaf::LeafField;
-use crate::plant::Plant;
+use crate::plant::{Derived, Plant};
 
 /// How many bands of the trunk's arc the crown is measured in.
 pub const BANDS: usize = 8;
@@ -64,13 +64,18 @@ impl Report {
 }
 
 /// Measures a plant: its counts, and its crown against `envelope` when one is given.
+///
+/// **One derived table for the expansion and the crown walk**: the tips are measured on the same placed spines
+/// the expansion swept, so they are derived once and the table — a local of this call, dropped when it
+/// returns — cannot outlive the immutable borrow of the plant it was derived from.
 pub fn report(
     plant: &Plant,
     detail: Detail,
     fields: &[LeafField],
     envelope: Option<&Envelope>,
 ) -> Report {
-    let expansion = expand(plant, detail, fields);
+    let mut derived = Derived::default();
+    let expansion = expand_in(plant, detail, fields, &mut derived);
     let triangles: usize = expansion
         .wood
         .iter()
@@ -82,10 +87,10 @@ pub fn report(
         .map(|group| group.leaves.len())
         .sum();
     let mut reached = [0.0f32; BANDS];
-    if let Ok(trunk) = plant.spine(&Handle::root()) {
+    if let Ok(trunk) = plant.spine_in(&Handle::root(), &mut derived) {
         if trunk.length() > 0.0 {
             for (handle, _) in plant.live() {
-                let Ok(spine) = plant.spine(&handle) else {
+                let Ok(spine) = plant.spine_in(&handle, &mut derived) else {
                     continue;
                 };
                 let tip = spine.at(1.0);

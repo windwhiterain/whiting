@@ -47,7 +47,7 @@ use shape::{Loft, Part, Sweep};
 
 use crate::handle::Handle;
 use crate::node::Attachment;
-use crate::plant::{Placement, Plant};
+use crate::plant::{Derived, Placement, Plant};
 use crate::rng::Rng;
 
 /// A decorator's template: a small sweep in its own frame, and the dial it is drawn at.
@@ -252,7 +252,18 @@ pub struct Placed {
 /// - **A seat whose template a caller did not supply is still placed**: the template number is the caller's to
 ///   resolve, and this function does not know how many they have. Resolving it is the scene's job, and a number
 ///   that names nothing is a scene that will not draw.
+///
+/// **One derived table for the whole seat list.** A node's placement and its swept surface are functions of
+/// the node, its ancestors' placements and the plant's fields, so a cone at every twig tip derives each twig
+/// once rather than once per seat. The table is this call's own local and is dropped when it returns, so it
+/// cannot outlive the immutable borrow of the plant it was derived from.
 pub fn placed(plant: &Plant, seats: &[Seat]) -> Vec<Placed> {
+    placed_in(plant, seats, &mut Derived::default())
+}
+
+/// [`placed`] with a derived table the caller already holds, so a scene that places decorations after
+/// expanding reads one set of placements.
+pub(crate) fn placed_in(plant: &Plant, seats: &[Seat], derived: &mut Derived) -> Vec<Placed> {
     let mut placed = Vec::new();
     for seat in seats {
         let Ok(node) = plant.get(&seat.node) else {
@@ -261,10 +272,10 @@ pub fn placed(plant: &Plant, seats: &[Seat]) -> Vec<Placed> {
         if node.pruned().is_some() {
             continue;
         }
-        let Ok(frame) = plant.surface(&seat.node, seat.attachment()) else {
+        let Ok(frame) = plant.surface_in(&seat.node, seat.attachment(), derived) else {
             continue;
         };
-        let Ok(placement) = plant.placement(&seat.node) else {
+        let Ok(placement) = plant.placement_in(&seat.node, derived) else {
             continue;
         };
         placed.push(Placed {
