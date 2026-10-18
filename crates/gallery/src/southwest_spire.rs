@@ -39,11 +39,18 @@
 //!
 //! | | 丽江云杉 *Picea likiangensis* | 苍山冷杉 *Abies delavayi* |
 //! | --- | --- | --- |
-//! | crown width ÷ height | **0.20**, the top of the note's 0.15–0.20 | **0.24**, the bottom of the note's 0.24–0.40 |
+//! | crown width ÷ height, authored | **0.20**, the top of the note's 0.15–0.20 | **0.24**, the bottom of the note's 0.24–0.40 |
+//! | crown width ÷ height, **measured** on the second pass's `authored_id` mask | **0.158** | **0.254** |
 //! | crown width in metres | **6.8 m** | **6.0 m** |
 //! | bough tips | **drooping** — the outer two knots turn below the horizontal | **upswept** — the outer knots turn a quarter turn above it |
-//! | cones | **pendant**, purple-red, hung under the foliage | **erect**, blue-black, standing above the crown line |
+//! | cones | **pendant**, purple-red, hung under the foliage | **erect**, glaucous blue-purple, standing on a bare leader tip |
 //! | crown base | broad, and the branches run down near the ground | narrow, and the crown starts at 0.32 of the height |
+//!
+//! **The measured row is lower on the spruce and higher on the fir than the authored one, and the two
+//! are 1.6 times apart either way.** The measurement is the widest *row* of the identity mask inside
+//! the crown, and on a crown whose maximum width falls on two or three discrete tiers with gaps
+//! between them it under-reads the tiers' tips — the spruce's authored 6.8 m of crown measures 4.8 m
+//! that way. The number that decides H1 is the ratio *between* the two, and that is not in doubt.
 //!
 //! # One place the two notes disagree, and how it is resolved
 //!
@@ -216,6 +223,17 @@ const SPRUCE_CROWN_BASE: f32 = 0.11;
 /// its bottom at 0.32.
 const FIR_CROWN_BASE: f32 = 0.32;
 
+/// The station on the fir's leader where its crown **stops**: **0.93**, leaving the top metre and
+/// three-quarters of a twenty-five-metre bole bare.
+///
+/// This is the one number in this module that exists for the cones. FOC's fir carries its cones
+/// *"on the upper crown … near the tips of the current shoots"* and `07-cone-erect-crown.jpg` shows them
+/// **above** the foliage like *"dark candlesticks"* — and a cone cannot be above a crown that reaches
+/// the apex. At [`FIR_CROWN_BASE`]–1.0 the top tier's own three-hundred-millimetre plume card covers the
+/// leader's last metre and a half, which is where the eight hand-seated leader cones stand, and the
+/// second-pass render showed them buried.
+const FIR_CROWN_TOP: f32 = 0.93;
+
 /// The spruce's rule: whorled tiers that shorten with height, shoots on the tiers, and a single
 /// four-angled needle on every shoot.
 ///
@@ -298,12 +316,21 @@ fn spruce_bole() -> (shape::Curve, shape::Scalar) {
 /// breaking into thick, irregular plates"* is in geometry. **Plates, not fissures** — the spruce's bark
 /// is the opposite of the pine's small scaly plates: thick, and irregular in plan as well as along the
 /// trunk, so the outline is lumpy rather than fluted.
+///
+/// **The relief is 0.13 and not 0.085, and that is the base plate's finding.** At eight and a half per
+/// cent the three-lobe and five-lobe sum is a fourteen-centimetre bulge on a 1.1 m radius seen from two
+/// and a half metres, which is a soft vertical gradient and not a plate; the first base render showed a
+/// smooth brown column with facet edges and nothing between them. Thirteen per cent puts a plate's
+/// shoulder and its neighbour's hollow a quarter of a metre apart, which is what the eye needs to read
+/// *thick irregular plating* rather than *a fluted column*. The two frequencies are kept because a
+/// conifer's plates are not a regular fluting: the three is the trunk's own rhythm and the five breaks
+/// it.
 fn spruce_bark() -> shape::Section {
     let sides = 20;
     let points: Vec<[f32; 2]> = (0..sides)
         .map(|index| {
             let theta = index as f32 / sides as f32 * std::f32::consts::TAU;
-            let plate = 1.0 + 0.085 * (theta * 3.0).sin() + 0.045 * (theta * 5.0 + 1.3).sin();
+            let plate = 1.0 + 0.130 * (theta * 3.0).sin() + 0.062 * (theta * 5.0 + 1.3).sin();
             [theta.cos() * plate, theta.sin() * plate]
         })
         .collect();
@@ -315,7 +342,7 @@ fn spruce_bark() -> shape::Section {
 /// the crown. Its length is a law over the station it hangs at, which is the crown's own profile, and
 /// [`Joint::station`] exists for exactly that law.
 fn spruce_bough(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    let profile = crown_profile(joint.station, SPRUCE_CROWN_BASE);
+    let profile = crown_profile(joint.station, SPRUCE_CROWN_BASE, 1.0);
     // Three and a third metres at the base of the crown and a quarter of a metre at the leader's tip:
     // 6.8 m of crown is this number doubled, and the crown falls away faster than it narrows, which is
     // what a spire is.
@@ -499,12 +526,7 @@ fn spruce_sprig() -> LeafTemplate {
 ///   world's up onto the plane across the needle's own axis, so a needle lying nearly along the shoot
 ///   still shows its flat side upward rather than its edge. That is FOC's *"strongly revolute"* for
 ///   the fir and the *"pale, almost silvery cast"* on the adaxial face for the spruce.
-fn sprig(
-    needle: LeafTemplate,
-    count: usize,
-    span: f32,
-    pitch: f32,
-) -> LeafTemplate {
+fn sprig(needle: LeafTemplate, count: usize, span: f32, pitch: f32) -> LeafTemplate {
     LeafTemplate::sprig(
         (0..count)
             .map(|index| {
@@ -512,11 +534,7 @@ fn sprig(
                 let slot = index as f32 * GOLDEN;
                 let angle = pitch * (0.70 + 0.13 * index as f32);
                 let azimuth = slot * std::f32::consts::TAU;
-                let forward = [
-                    angle.cos(),
-                    angle.cos() * azimuth.sin(),
-                    angle.sin(),
-                ];
+                let forward = [angle.cos(), angle.cos() * azimuth.sin(), angle.sin()];
                 (needle.clone(), on_a_peg(forward, station))
             })
             .collect(),
@@ -550,7 +568,8 @@ fn on_a_peg(forward: [f32; 3], station: f32) -> Placement {
     };
     let y = (0..3)
         .map(|axis| {
-            z[(axis + 1) % 3] * forward[(axis + 2) % 3] - z[(axis + 2) % 3] * forward[(axis + 1) % 3]
+            z[(axis + 1) % 3] * forward[(axis + 2) % 3]
+                - z[(axis + 2) % 3] * forward[(axis + 1) % 3]
         })
         .collect::<Vec<f32>>()
         .try_into()
@@ -837,8 +856,8 @@ fn spruce_palette() -> Palette {
 /// # Invariants
 ///
 /// - **A light's reach is the distance its irradiance is stated at**, so each reach is the length of
-///   the position it belongs to: the key at `[36.13, 22.50, -14.60]` is 45.0 m from the origin, and its
-///   reach is 45.0 m, so the number the subject is lit at is the number the author wrote.
+///   the position it belongs to: the key at `[60.22, 37.50, -24.33]` is 75.0 m from the origin, and its
+///   reach is 75.0 m, so the number the subject is lit at is the number the author wrote.
 /// - **The key is off the camera axis and that is the whole change.** The first pass put it at
 ///   `[26.0, 34.0, 16.0]` against an eye at `[26.0, 6.0, 35.0]` — twenty-two degrees apart in azimuth
 ///   and both high, so the key was a frontal light and a spire lit frontally has no lit flank and no
@@ -847,17 +866,31 @@ fn spruce_palette() -> Palette {
 ///   spire is lit, the left is not, and that asymmetry is what makes the crown a solid rather than a
 ///   silhouette with a stripe on it. Thirty degrees is also what subalpine light actually does on a
 ///   north-east slope at the hour these trees are photographed.
+/// - **Seventy-five metres, and the distance is its own finding.** Thirty degrees of elevation is a
+///   fixed number and a thirty-four-metre tree is not: at forty-five metres out the sun sits at 22.5 m,
+///   which is *below* the middle of the crown, so it came from underneath the foliage and the whole
+///   upper half of the tree went dark — a raked key that underexposes the subject is not a raked key.
+///   Seventy-five metres puts it at 37.5 m, just above the apex, at the same thirty degrees, so a flank
+///   sees it at `sin 30°` and the crown's own top at `cos 30°`: a lit flank and a dark flank at full
+///   exposure.
+/// - **The fill and the sky are at 0.16 and 0.22, and that is the crown's own finding.** The first
+///   raked attempt left them at 0.26 and 0.30 and the crown's interior-over-lit-p90 **rose** to 0.734 —
+///   worse than the frontal key it replaced — because **note item 3 works against H3**: a tier that is
+///   bare for its inner quarter admits light, and every admitted ray is ambient rather than key. The
+///   two numbers are not independent, and the second pass's answer is to pay for the plume with the
+///   ambient rather than with the plume's density: a third of the fill and a third less sky, against
+///   twenty per cent more key, so the rim holds its brightness and the interior loses its floor.
 fn spruce_lighting() -> Lighting {
     Lighting {
-        key_position: [36.13, 22.50, -14.60],
+        key_position: [60.22, 37.50, -24.33],
         key_colour: [1.0, 0.94, 0.82],
-        key_irradiance: 3.1,
-        key_reach: 45.0,
-        key_distance: 45.0,
+        key_irradiance: 6.4,
+        key_reach: 75.0,
+        key_distance: 75.0,
         key_extent: 9.0,
         fill_position: [-17.0, 11.0, -15.0],
         fill_colour: [0.40, 0.50, 0.72],
-        fill_irradiance: 0.26,
+        fill_irradiance: 0.16,
         fill_distance: 25.2,
         floor: Skin::new([0.115, 0.108, 0.082], 0.96),
         sky: Atmosphere::new()
@@ -866,7 +899,7 @@ fn spruce_lighting() -> Lighting {
             .ground([0.26, 0.25, 0.21])
             .density(0.0005)
             .scale_height(3000.0),
-        sky_radiance: 0.30,
+        sky_radiance: 0.22,
         // A tree framed at forty-five metres is in thinner air than a pine framed at twenty-five, and
         // the air at three thousand metres is thinner than both.
         haze: 0.004,
@@ -892,7 +925,7 @@ fn spruce_base_lighting() -> Lighting {
     Lighting {
         key_position: [14.55, 3.87, -5.41],
         key_colour: [1.0, 0.93, 0.79],
-        key_irradiance: 2.6,
+        key_irradiance: 3.4,
         key_reach: 16.0,
         key_distance: 16.0,
         key_extent: 2.6,
@@ -907,7 +940,7 @@ fn spruce_base_lighting() -> Lighting {
             .ground([0.26, 0.25, 0.21])
             .density(0.0005)
             .scale_height(3000.0),
-        sky_radiance: 0.30,
+        sky_radiance: 0.42,
         // The ground is a metre away rather than forty, so the air between the lens and the bark is
         // twenty times thinner and the coefficient is a twentieth.
         haze: 0.0002,
@@ -953,39 +986,42 @@ const SPRUCE_BOUGH_FRAME: Framing = Framing {
     ground: Ground::Plane,
 };
 
-/// The base plate's frame: **2.9 metres** off the foot of the spruce's bole at a person's eye height on
+/// The base plate's frame: **2.9 metres** off the foot of the spruce's bole, at a person's eye height on
 /// a lens wide enough to hold the flare whole.
 ///
 /// # Why this distance and this lens
 ///
 /// The tree's bole is **2.2 metres across at the ground** — the note's 2.5 m d.b.h. kept in proportion
-/// on a thirty-four-metre trunk, with a root flare on top — so a frame narrower than 2.8 m crops the
-/// subject and the bar's H4, which is read on the flare and the plating, has nothing to read. At 2.9 m
-/// on a 1.10 rad lens the frame is 3.6 m tall and 2.8 m wide, the bole fills four fifths of the width,
-/// and the ground, the first boughs and eight metres of bark are all in shot. The eye is at 1.55 m and
-/// the target at 1.35 m, so the frame looks very slightly up a bole that is still widening.
+/// on a thirty-four-metre trunk, with a root flare on top — so **the camera's distance is measured to
+/// the bole's axis and the frame has to be measured to its nearest skin**, which is 1.9 m away. At
+/// 1.9 m a half-width of 1.32 m is 0.70 of a `tan`, and `tan 0.725 / 1.273 = 0.697` — so **1.45 rad**
+/// is the narrowest lens that holds a two-metre trunk, and a narrower one crops the subject and the
+/// bar's H4, which is read on the flare and the plating, has nothing to read. The first attempt used
+/// 1.10 rad at 2.9 m, filled the frame with a third of the bole's width, and drew the frame from
+/// inside the bole's own bounding box.
 const SPRUCE_BASE_FRAME: Framing = Framing {
     width: 1100,
     height: 1400,
-    eye: [1.90, 1.55, 2.20],
-    target: [0.0, 1.35, 0.0],
-    field_of_view: 1.10,
+    eye: [1.90, 1.80, 2.20],
+    target: [0.0, 1.60, 0.0],
+    field_of_view: 1.45,
     near: 0.05,
     far: 30.0,
     floor: 10.0,
     ground: Ground::Plane,
 };
 
-/// The fir's base plate's frame: **2.7 metres** off a bole half the spruce's, on the same lens and the
-/// same eye height, so the two base plates are the same picture of two different feet — and the fir's
-/// bole fills **half** the frame's width where the spruce's fills four fifths, which is itself one of
-/// the two numbers that tell the species apart.
+/// The fir's base plate's frame: **2.7 metres** off a bole half the spruce's, on the same eye height and
+/// a lens a stop and a half narrower, so the two base plates are the same picture of two different feet
+/// — and the fir's bole fills **two fifths** of the frame's width where the spruce's fills four fifths,
+/// which is itself one of the two numbers that tell the species apart. The fir's frame tops out at
+/// 3.8 m and its crown begins at eight, so the plate is **entirely bare bole**: that is the species.
 const FIR_BASE_FRAME: Framing = Framing {
     width: 1100,
     height: 1400,
-    eye: [1.75, 1.50, 2.05],
-    target: [0.0, 1.25, 0.0],
-    field_of_view: 1.10,
+    eye: [1.75, 1.70, 2.05],
+    target: [0.0, 1.45, 0.0],
+    field_of_view: 1.30,
     near: 0.05,
     far: 30.0,
     floor: 10.0,
@@ -1116,9 +1152,19 @@ fn cangshan_fir_rule() -> Rule {
             // two tiers and lost the species' signature. The fir's signature is the *banding*: tiers
             // separated by less than a tier's own foliage depth, so the gaps read as shadow and not as
             // sky.
+            //
+            // **The band stops at 0.93 and not at 1.0**, and that is the second pass's finding rather
+            // than its intention. A tier's last plume is a three-hundred-millimetre card standing on the
+            // tier's own tip, so a tier that reaches the leader's apex carries foliage through the last
+            // metre and a half of the tree — and the eight hand-written leader cones, seated at
+            // 0.949 to 1.0 for exactly this purpose, were drawn **inside** the top tier's plume: the
+            // second-pass render showed them as eight faint lavender marks buried in the apex foliage and
+            // the note's *"cones standing upright above the foliage like dark candlesticks"* was not in
+            // the frame at all. Ending the band at 0.93 puts the top tier at 23.25 m and leaves the
+            // leader's top metre and three-quarters bare, which is where a cone can be seen.
             Generation {
                 count: (288, 288),
-                station: (FIR_CROWN_BASE, 1.0),
+                station: (FIR_CROWN_BASE, FIR_CROWN_TOP),
                 slot: (0.0, GOLDEN),
                 jitter: (0.04, 0.05),
                 sink: 0.025,
@@ -1197,7 +1243,7 @@ fn fir_bark() -> shape::Section {
 /// silhouettes were asked to keep tellable apart. The numbers here subtract instead, and the same
 /// correction is made to [`fir_shoot`] and [`fir_bough_spray`].
 fn fir_tier(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    let profile = crown_profile(joint.station, FIR_CROWN_BASE);
+    let profile = crown_profile(joint.station, FIR_CROWN_BASE, FIR_CROWN_TOP);
     // A narrower crown that falls away faster than it narrows: **2.55 metres at the base of the crown for
     // 5.1 m of crown width**, and twenty-eight centimetres at the leader's tip. **Five point one metres
     // is under the note's six-to-ten-metre ESTIMATE**, and it is the one number in this module that
@@ -1437,7 +1483,10 @@ fn fir_cone() -> Template {
 fn fir_needles(shoot_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     let factor = foliage.density_factor();
     let mut candle = LeafField::new(shoot_depth.saturating_sub(2), 0);
-    candle.band = (0.80, 0.945);
+    // **The candle stops just under the top tier**, at 0.925 rather than at 1.0, for the same reason
+    // [`FIR_CROWN_TOP`] exists: the leader's tip is where the cones are, and a candle carried to the
+    // apex buries its own cones.
+    candle.band = (0.80, 0.925);
     candle.density = shape::Scalar::constant(90.0 * factor);
     candle.phyllotaxy = GOLDEN;
     candle.pitch = shape::Scalar::constant(1.10);
@@ -1539,12 +1588,7 @@ pub fn cangshan_fir_bough(seed: u64) -> Species {
 /// last two knots. A cone on a drooping node would hang, which is the spruce's whole arrangement and
 /// would make the two species the same tree. `station` is therefore **past `0.9` on every call**: the
 /// standing is the tangent's, and the tangent only turns up in its last tenth.
-fn fir_cones(
-    species: &Species,
-    generation: usize,
-    station: f32,
-    count: (u32, u32),
-) -> Vec<Seat> {
+fn fir_cones(species: &Species, generation: usize, station: f32, count: (u32, u32)) -> Vec<Seat> {
     scatter(&species.plant, generation, 0, station, count)
 }
 
@@ -1609,8 +1653,11 @@ fn fir_palette() -> Palette {
         // **Low roughness is the bloom**: FOC's *"black at maturity, glaucous"* and the blue-black cast
         // of `06-cone.jpg` are one number — a dark, smooth, cold surface under a warm key — and the
         // glaucous bloom is the one that reads at thirty metres, so the albedo rises and the bloom
-        // stays.
-        seats: vec![Skin::new([0.115, 0.128, 0.180], 0.38)],
+        // stays. **0.140 against the leaf's 0.042** is the third value this pass tried: at 0.115 the cones
+        // were *present* in the crown crop but not *legible*, and at 0.030 they were not present at all.
+        // The photographed cone in `07-cone-erect-crown.jpg` is a bloomed blue-grey lighter than the
+        // needles it stands among, and this is that.
+        seats: vec![Skin::new([0.140, 0.152, 0.210], 0.38)],
     }
 }
 
@@ -1621,23 +1668,25 @@ fn fir_palette() -> Palette {
 /// # Invariants
 ///
 /// - **A light's reach is the distance its irradiance is stated at**, so each reach is the length of
-///   the position it belongs to: the key at `[28.10, 17.50, -11.36]` is 35.0 m from the origin, and its
-///   reach is 35.0 m.
+///   the position it belongs to: the key at `[48.18, 30.00, -19.46]` is 60.0 m from the origin, and its
+///   reach is 60.0 m.
 /// - **Both plates are raked from the same azimuth and the same elevation**, −22 degrees and thirty, so
 ///   the two trees are lit by one sun and a reader comparing the plates is comparing the species and not
 ///   the hour. The fir's eye is at azimuth 53.5 degrees and the spruce's at 53.4, which is why one
-///   azimuth serves both.
+///   azimuth serves both. **Sixty metres and not the spruce's seventy-five** for the same reason the
+///   spruce's is seventy-five and not forty-five: thirty degrees above a twenty-five-metre tree wants
+///   the sun at thirty metres, and this is where that puts it.
 fn fir_lighting() -> Lighting {
     Lighting {
-        key_position: [28.10, 17.50, -11.36],
+        key_position: [48.18, 30.00, -19.46],
         key_colour: [0.98, 0.94, 0.86],
-        key_irradiance: 3.0,
-        key_reach: 35.0,
-        key_distance: 35.0,
+        key_irradiance: 6.2,
+        key_reach: 60.0,
+        key_distance: 60.0,
         key_extent: 8.0,
         fill_position: [-13.0, 9.0, -12.0],
         fill_colour: [0.38, 0.48, 0.72],
-        fill_irradiance: 0.24,
+        fill_irradiance: 0.15,
         fill_distance: 19.8,
         floor: Skin::new([0.090, 0.105, 0.068], 0.96),
         sky: Atmosphere::new()
@@ -1646,7 +1695,7 @@ fn fir_lighting() -> Lighting {
             .ground([0.23, 0.24, 0.20])
             .density(0.0005)
             .scale_height(3400.0),
-        sky_radiance: 0.30,
+        sky_radiance: 0.22,
         haze: 0.004,
     }
 }
@@ -1660,7 +1709,7 @@ fn fir_base_lighting() -> Lighting {
     Lighting {
         key_position: [13.62, 3.88, -4.96],
         key_colour: [0.98, 0.94, 0.86],
-        key_irradiance: 2.5,
+        key_irradiance: 3.3,
         key_reach: 15.0,
         key_distance: 15.0,
         key_extent: 2.4,
@@ -1675,7 +1724,7 @@ fn fir_base_lighting() -> Lighting {
             .ground([0.23, 0.24, 0.20])
             .density(0.0005)
             .scale_height(3400.0),
-        sky_radiance: 0.30,
+        sky_radiance: 0.42,
         haze: 0.0002,
     }
 }
@@ -1730,7 +1779,7 @@ const FIR_BOUGH_FRAME: Framing = Framing {
 pub fn cangshan_fir_picture() -> Value {
     let species = cangshan_fir(SEED, Foliage::Plume);
     let mut seats = fir_cones(&species, 2, 0.96, (0, 2));
-    seats.extend(fir_cones(&species, 1, 0.97, (0, 1)));
+    seats.extend(fir_cones(&species, 1, 0.99, (0, 2)));
     seats.extend(fir_leader_cones());
     let planting = Planting::new(species.clone())
         .with_seats(seats)
@@ -1764,7 +1813,7 @@ pub fn cangshan_fir_bough_picture() -> Value {
 pub fn cangshan_fir_base_picture() -> Value {
     let species = cangshan_fir(SEED, Foliage::Plume);
     let mut seats = fir_cones(&species, 2, 0.96, (0, 2));
-    seats.extend(fir_cones(&species, 1, 0.97, (0, 1)));
+    seats.extend(fir_cones(&species, 1, 0.99, (0, 2)));
     seats.extend(fir_leader_cones());
     let planting = Planting::new(species.clone())
         .with_seats(seats)
@@ -1806,18 +1855,19 @@ pub fn cangshan_fir_base_handle_of(id: u32) -> Option<String> {
 // The drawing tools both species share
 // ---------------------------------------------------------------------------------------------
 
-/// Where a bough sits in its own crown, nought at the base of the crown and one at the leader's tip.
+/// Where a bough sits in its own crown, nought at the base of the crown and one at the top of the band
+/// its species draws.
 ///
 /// # Invariants
 ///
 /// **This is the crown profile every law in the module is over**, and it is `station`-based rather
 /// than rank-based on purpose: a conifer's lower bough is many times the length of its upper one, and
-/// the band a generation spreads over begins at a number that is not zero (the spruce's crown starts at
-/// 0.11 of the tree, the fir's at 0.32), so the profile is the child's own station measured **inside
-/// that band** rather than the raw one. A profile read raw would make both species' lowest boughs the
-/// same length as the middle of the trunk.
-fn crown_profile(station: f32, base: f32) -> f32 {
-    ((station - base) / (1.0 - base)).clamp(0.0, 1.0)
+/// the band a generation spreads over begins and ends at numbers that are not zero and one (the spruce's
+/// crown starts at 0.11 of the tree and runs to its apex, the fir's at 0.32 and stops at 0.93), so the
+/// profile is the child's own station measured **inside that band** rather than the raw one. A profile
+/// read raw would make both species' lowest boughs the same length as the middle of the trunk.
+fn crown_profile(station: f32, base: f32, top: f32) -> f32 {
+    ((station - base) / (top - base)).clamp(0.0, 1.0)
 }
 
 /// Four knots along a heading that turns through `angles`, measured from the parent's own tangent:
