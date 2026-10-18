@@ -6812,3 +6812,138 @@ not `render`; its size claim is pinned by `export_size.rs`'s three green tests r
 non-convex and takes openings and parts on both faces; every plate is visible in its scene and the ground is cut out
 from under it; every scene has a frame of its own shape and a camera composed for it; every reader that could not
 measure now says so in a name; and every gate in the list above has been run, including the ones that were red.
+
+## The audit is one command, and three of its numbers were only printed (2026-10-27, branch `feature/building-audit`)
+
+**The brief this answers asked for a script to be written, and the script already existed.** `audit/full-audit.ps1`
+came in with `0791a76`, and it ran the whole list in *The full audit, run as one list*. What was missing was not the
+command; it was three of the numbers that command printed and never compared. So this slice did not add a second
+instrument beside the first, which would have been the duplication this arc's own record warns against, and did not
+put it in `tools/`, which would have been a one-file home for a thing `audit/` already holds. **It closed the three
+gaps in the file that was already there.**
+
+### What it is: where, in what language, on what platform
+
+| | |
+| --- | --- |
+| **where** | `audit/full-audit.ps1`, where `audit/` already is and where `.gitignore` already carries `/audit/out` and `/audit/*.log` |
+| **language** | PowerShell 7 (`pwsh`), **7.6.7 here** |
+| **platform** | **none of its own** -- every path is `Join-Path`ed from `$PSScriptRoot` and no path in the file is spelled with a separator, so the same file runs on Linux and macOS as well as Windows. **What is machine-specific is the nine pinned hashes**, and that is the record's own rule rather than this script's: they are a before/after pair *on one machine* (*Correction: the difference was the hash's domain*), so on another gpu all nine are expected to move and a red hash there is a fact about the machine, not a broken tree. The header says this in the file, so a reader does not have to find it here. |
+
+**Why not a Rust example in one of the crates**, which is this repository's own idiom and would have been the
+comfortable answer: an example is one of the `--all-targets` `cargo build` compiles, **and one of the 29 and 16
+examples the audit counts**. Writing the instrument as an example would have moved a number the instrument gates on,
+and would have had to be re-baselined by its own addition. The second reason is that the thing being measured is
+`cargo` -- its exit codes, its `test result:` lines, its stderr -- and the only thing that measures cargo from
+outside cargo is another process.
+
+**Exit policy: collect every failure, exit non-zero once at the end.** A full run here is dominated by the 45
+examples and the nine renders rather than by the build, so stopping at the first red gate would make the reader pay
+a whole run to learn about one gate; knowing every red gate at once is worth that. Nothing is lost by not stopping:
+a step that could not run at all is still recorded, and the run after it still happens.
+
+### The three gates that were printed and not compared
+
+1. **`whiting-definition` (22) and `whiting-graphics` (15)** were run in a step titled *"the extra sweep"*, and its
+   only branch was `failed -ne 0`. A suite that **gained** a test would have gone 22 -> 23, or 15 -> 16, and the
+   audit would have said nothing at all. This is the debt sweep's own find -- two suites the audit list never ran --
+   reproduced in the file the debt sweep wrote to carry them. They are now in the same table as the other four,
+   with their counts compared, and the sweep that printed them is deleted rather than left behind printing.
+2. **`cargo fmt --all -- --check` was gated on its exit code alone.** Both readings are now taken and both compared:
+   exit 0, **and 0 output lines**. They are two claims -- "rustfmt is satisfied" and "it printed no diff" -- and a
+   tool that exits 0 while saying something is a different instrument from one that exits 0 silently.
+3. **Each suite now counts `test result: FAILED` with `-cmatch`**, the exact case-sensitive form, and compares that
+   count as well as the number already summed out of the `test result:` line. Two readings of one log, so that
+   neither can quietly stop reading: *a case-insensitive `-match 'FAILED'` reports fifteen failures on a fully green
+   suite, because it also reads `0 failed`.* The brief's phrasing of this is right and the rule was already in this
+   record; what was missing was a second reading that could not be fooled the same way.
+
+The nine scenes also render into a directory this run **empties first**, after checking the resolved path against
+the one the script computed, because a stale `house.png` left by a run whose render died is the one input that could
+make a hash pass against a picture this run never drew.
+
+### The green run, measured in the worktree
+
+`pwsh -NoProfile -File audit/full-audit.ps1`, exit **0**. Every value below is one the script compared, not one it
+printed:
+
+| gate | compared | result |
+| --- | --- | --- |
+| `cargo build --workspace --all-targets -j 3` | exit code, and the count of `warning`/`error` lines | **exit 0, 0** |
+| `Compiling whiting-*` naming another checkout | count | **0** (2 `Compiling` lines, both naming this worktree) |
+| `whiting-scene` | passed, failed, `test result: FAILED`, expected | **111 / 0 / 0 / 111** |
+| `whiting-gallery` | as above | **10 / 0 / 0 / 10** (1 ignored doctest) |
+| `whiting-device-cycles` | as above | **3 / 0 / 0 / 3** |
+| `whiting-device-rasterize` | as above | **49 / 0 / 0 / 49** |
+| `whiting-definition` | as above | **22 / 0 / 0 / 22** |
+| `whiting-graphics` | as above | **15 / 0 / 0 / 15** |
+| building examples | ran, expected, failures | **29 / 29 / 0** |
+| gallery examples | ran, expected, failures | **16 / 16 / 0** |
+| nine `.png` hashes | rendered, moved | **9 of 9 rendered, 0 of 9 moved** |
+| `scene_identity_probe` | rows, two-way | **856, true** |
+| `cargo fmt --all -- --check` | exit code, output lines | **0 / 0** |
+
+The nine, each `got` against each `pinned`, are unchanged: `house 2F60685F737F7ED7` · `hall 96F61FA5E9F18E60` ·
+`hall_large 478E692C6CBE2D3B` · `shed 48909F693ACBA634` · `terrace E32C1CA08D9F3016` · `wing 2EF5C4FB206167F4` ·
+`workshop EB8E05CD755B9B4B` · `yard D33D5F3372A4F0B0` · `identity 48F13F7D84A24480`.
+
+### What the failure run cost, and the switch it deleted
+
+The file first carried a `-Canary` switch: arm it and `house`'s pinned value moves one hex digit up, so the run has
+to catch it or the switch reports that it did not. **The first full run of it proved the switch was broken**, and it
+is worth writing down how, because it is this record's own lesson arriving through the back door:
+
+```
+MetadataError: Cannot convert value "System.String" to type "System.Management.Automation.SwitchParameter".
+  canary: False
+```
+
+**PowerShell variable names are case-insensitive**, so `$canary` (the message) and `$Canary` (the `[switch]`) were
+one variable: `$canary = if ($Canary) { ... } else { "not armed" }` wrote a string back into a typed parameter, and
+`$ErrorActionPreference = "Continue"` turned that into a line of output instead of a stop, so the run carried on and
+printed `canary: False` from the very switch it had just been asked about. No gate moved -- without the flag the step
+is a no-op -- but **a self-test whose own bookkeeping is broken is a gate nobody has watched work**, which is the one
+thing this record says a self-test is for. It is therefore deleted rather than repaired, and the honest way to watch
+this instrument fire is to change a pinned value by hand, run it, and change it back. Which is what was done:
+
+- `house` pinned one hex digit high: `2F60685F737F7ED7` -> `2F60685F737F7ED8`;
+- the run printed `house       got 2F60685F737F7ED7  pinned 2F60685F737F7ED8  same=False`, counted it into
+  `scenes rendered: 9 of 9   hashes moved: 1 of 9`, listed
+  `AUDIT RESULT: 1 failure(s):` / `  - house hash: got 2F60685F737F7ED7, pinned 2F60685F737F7ED8`, and
+  **returned exit code 1** (read as `$LASTEXITCODE` on the statement after the process);
+- **every other gate in that same run stayed green** -- the five other suites, 29/29 and 16/16, the other eight
+  hashes, 856 rows, fmt over 0 lines -- which is the collect-and-exit policy doing what the header says it does
+  rather than a run that gave up at the first red gate;
+- reverted with `git checkout -- audit/full-audit.ps1`, and the next run was green with exit 0 and every row of the
+  table above.
+
+### What did not move
+
+**No scene, no document, no expected value.** The nine hashes, the 856 identity rows and the build's 0 warnings are
+the numbers this file exists to compare, and this slice changed none of them: it changed only *which* of the numbers
+are compared. `cargo fmt --all -- --check` on the worktree is exit 0 over 0 output lines, so the file changed under
+`audit/` is in the shape the repository's own formatter and merge gate require.
+
+### What this slice's brief got wrong, and what is still open
+
+**The brief asked for a script that had already been written, in the commit immediately before it** -- `0791a76` is
+the debt sweep, and it carried `audit/full-audit.ps1` and the `.gitignore` lines beside it. A brief written from the
+audit *table* rather than from the tree would have added a second gate beside the first. The table was the right
+specification; the tree was already half-built against it.
+
+**The brief's "assert that no `Compiling whiting-*` line names a different checkout" was already implemented in that
+file**, and is worth keeping rather than re-inventing: it is the gate that catches a run which built the parent
+checkout while every number still looked right. On a warm target that assertion has only two lines to read, so the
+first run of this slice -- which started from a cold target -- was the one that exercised it at size: **166
+`Compiling` lines, 13 of them `whiting-*`, 0 of them naming a checkout other than this worktree.**
+
+**The brief's exit-policy choice (first failure, or collect and exit at the end) is answered in the file's header,
+not only here**, because a reader who hits a red gate in step 2 and watches steps 3 to 6 run anyway has to be able to
+find out whether that is a bug.
+
+**Still open.** The nine hashes are one machine's; a machine that is not this one will move all nine, and the script
+says so in its header rather than trying to decide it. Nothing gates `cargo clippy`, `cargo doc`, or a
+`cargo build --workspace --release`, and this arc has no decision about whether it should. And the audit's own cost
+is still what it is: three suites, forty-five examples and nine renders for one question, which is the strongest
+argument anyone has yet produced for splitting it into a fast gate and a slow one -- and the strongest argument
+against, because the slow half is exactly the half that was red for a whole arc.
