@@ -4847,3 +4847,39 @@ what the second constructor *is for*, and it is the one kept.
 one hole with no second wall to put it in. A **mass's interior is still not a documented concept**, and
 the fact that a part on the inner face lands in the rooms stays a consequence of `inward` being the
 walker's left rather than a place a document can name. Nothing here opened either.
+
+## Where the system stands, second reading (2026-10-27, after the measure-or-decline arc)
+
+**All gates green on the merged tip:** workspace builds with no errors and no new warnings; **29/29** building
+examples; **16/16** gallery examples; **9/9** scenes render; `scene_identity_probe` **806 rows two-way**;
+`cargo fmt --all -- --check` clean. Nine hash **triples** (written `.png`, emitted documents, raw pixel buffer) all
+unchanged by every slice of this arc — the four slices that followed the plate work moved no pixel.
+
+**What the arc added to the model.** A part can stand on **both** faces of any wall ring, and both are named:
+`FaceRef::court_rooms` / `room_faces_of` for a courtyard, `FaceRef::inner` / `inner_faces_of` for a mass's own rooms,
+the exact counterparts of each other. A mass's offset loop is **shorter** than its outline and a courtyard's
+rooms-facing loop is **longer**, by one wall thickness at each end — the same mitre, two directions. A part on a
+mass's inner face is framed properly (determinant `+1`, volume `1e-6` from its template, standing in the plate's own
+extent), and what it will **not** take is a hole: `OpeningOnAFarLoop`.
+
+**What the arc removed: every way a measurement could be reported as an absence.** In order: `clip` answers `None` for
+a loop it cannot cover; its four callers decline; a mass outline that meets itself is named `OutlineNotSimple` **and**
+gated out of the plan subtraction, which `UnattachedOverlap` never had; a pair of plans that cannot be compared is
+`OverlapNotMeasured` rather than "no overlap"; and `VoidNotInside` asks only about loops that do not meet themselves,
+with a control built **first** — two simple voids that do reach outside — because no document in the tree could have
+caught that narrowing going too far.
+
+**Two silent correctness bugs came out of it, both invisible to counts:** a node written down twice halved a plan's
+area (`8.0000` against a true `16.0000`), which let **two masses standing `50.0000 m²` inside one another read as clean**;
+and a **needle** outline read `32.0000` against `64.0000`, with the error growing as the **square** of the leak, so every
+leak under 4 cm went unreported and every report above it was eight times too small. Both were caught by measuring the
+**difference** and comparing it to geometry a person can do by hand — never by a count.
+
+**What is left is small and mostly not a defect:** `--region` prints at most **24 rows**, so no whole-frame sweep is a
+census (sweep by name); `terrace` shows **one plate of three** (the other two stand behind the row — a camera question
+for the owner); an **authored pinch** is the one courtyard whose areas nothing can check, silent by design on both
+sides; and `validate::document` alone reports a mass with no triangulation only through `DidNotExpand`, the name arriving
+through `Building::validate()`.
+
+**The arc's own summary, in one sentence:** every reader in this crate that could not measure something now says so in
+a name, and every one of those names was proved reachable by an instrument that had first been shown to fire.
