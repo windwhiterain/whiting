@@ -27,27 +27,49 @@ use crate::leaf::{LeafField, LeafGroup};
 use crate::plant::Plant;
 
 /// How finely a plant is expanded: rings along each spine, and vertices around each section.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// # Invariants
+///
+/// **`stations` is a floor and `spacing` is the law**: a spine gets the rings its own length asks for and
+/// never fewer than `stations`. A count alone makes a 2 cm grass blade and a 25 m trunk the same six
+/// facets, and a 4 m facet on a trunk against a sky is a hexagon; a spacing alone makes a probe's grass
+/// blade two rings. The two are one dial because they answer one question — how far apart may two rings
+/// be — and the finer of the two answers it.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Detail {
-    /// Rings along every spine.
+    /// Rings along every spine, however short it is.
     pub stations: usize,
     /// Vertices around every section.
     pub around: usize,
+    /// The longest distance two rings may be apart, in the plant's units.
+    pub spacing: f32,
 }
 
 impl Detail {
-    /// Six rings and twelve vertices: enough for a branch to read as round and a probe to be fast.
+    /// Six rings and twelve vertices, half a metre between rings: enough for a branch to read as round
+    /// and a probe to be fast, and coarse enough that no spine this crate's own species make is longer
+    /// than six half-metres, so the floor is what every existing plant is drawn at.
     pub const DEFAULT: Detail = Detail {
         stations: 6,
         around: 12,
+        spacing: 0.5,
     };
 
-    /// The same dial, `factor` times finer along and around, at least at the minimum a sweep accepts.
+    /// The same dial, `factor` times finer along, around and between, at least at the minimum a sweep
+    /// accepts.
     pub fn scaled(self, factor: usize) -> Self {
         Self {
             stations: (self.stations * factor).max(2),
             around: (self.around * factor).max(3),
+            spacing: self.spacing / factor as f32,
         }
+    }
+
+    /// The rings one spine of `length` gets: the dial's floor, or what its length asks for, whichever is
+    /// finer, and never fewer than the two a sweep accepts.
+    pub fn rings(self, length: f32) -> usize {
+        let asked = (length / self.spacing).ceil() as usize;
+        self.stations.max(asked).max(2)
     }
 }
 
@@ -75,11 +97,12 @@ pub fn wood(plant: &Plant, detail: Detail) -> Vec<Wood> {
             let spine = plant
                 .spine(&handle)
                 .expect("a handle the walk yielded resolves");
+            let rings = detail.rings(spine.length());
             let mut sweep = Sweep::new(spine, node.section().clone());
             sweep.scale = node.taper_now();
             Wood {
                 handle,
-                loft: sweep.sample(detail.stations, detail.around),
+                loft: sweep.sample(rings, detail.around),
             }
         })
         .collect()

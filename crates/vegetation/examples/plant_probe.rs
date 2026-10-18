@@ -119,6 +119,8 @@ fn the_taper_is_the_law_not_a_cone() -> bool {
         Detail {
             stations: 33,
             around: 24,
+            // An infinite spacing makes the floor the whole law: this probe wants exactly 33 rings.
+            spacing: f32::INFINITY,
         },
     );
     let culm = &solids[0];

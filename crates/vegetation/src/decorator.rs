@@ -26,6 +26,7 @@ use shape::{Loft, Sweep};
 use crate::handle::Handle;
 use crate::node::Attachment;
 use crate::plant::{Placement, Plant};
+use crate::rng::Rng;
 
 /// A decorator's template: a small sweep in its own frame, and the dial it is drawn at.
 #[derive(Debug, Clone, PartialEq)]
@@ -152,4 +153,58 @@ pub fn placed(plant: &Plant, seats: &[Seat]) -> Vec<Placed> {
         });
     }
     placed
+}
+
+/// The index a scatter's stream hangs off a node's path, so that a seat's numbers are a sibling of the
+/// node's leaves' and never a draw in their stream.
+///
+/// # Invariants
+///
+/// No node's child ever carries this index: a child's index is its rank among its siblings, which is a
+/// small number, and [`crate::rng::Rng::for_path`] folds the path into the seed one index at a time — so
+/// appending it gives a stream that is the node's own stream's *sibling*, derived from the same seed and
+/// path, and drawing from it moves no leaf and no branch.
+const SCATTER_INDEX: u32 = u32::MAX;
+
+/// A seat for every live node of one generation, at one station along it.
+///
+/// This is the rule that makes a cone a cone on *every* branch tip rather than a cone written out forty
+/// times: a species names the generation that fruits, the template the fruit is, and where along the
+/// branch it hangs, and the seed decides which branches fruit and where around them.
+///
+/// # Invariants
+///
+/// - **The station is one number for the whole generation**, because a cone is not a law over a branch's
+///   length: `1.0` is a cone at a branch's tip and a truss at a shoot's apex, which is where both actually
+///   hang, and `0.0` is a knot where a limb leaves its parent.
+/// - **The count and the slot are drawn from the node's own scatter stream, in that order**, one pair per
+///   node, so two plants of one rule differ in which branches fruit and a change to one node's seed moves
+///   no other node's seats and none of its leaves.
+/// - **A count of `(0, 0)` fruits nowhere**, which is how a species says its cones are rare without saying
+///   which branches are lucky, and a fixed count `(n, n)` draws nothing from the stream at all — the same
+///   rule [`crate::species::grow`] states for a generation's children.
+pub fn scatter(
+    plant: &Plant,
+    generation: usize,
+    template: usize,
+    station: f32,
+    count: (u32, u32),
+) -> Vec<Seat> {
+    let mut seats = Vec::new();
+    for (handle, _) in plant.live().filter(|(handle, _)| handle.depth() == generation) {
+        let mut path = handle.path().to_vec();
+        path.push(SCATTER_INDEX);
+        let mut rng = Rng::for_path(plant.seed(), &path);
+        let drawn = if count.0 == count.1 {
+            count.0
+        } else {
+            let drawn = rng.range(count.0 as f32, (count.1 + 1) as f32);
+            (drawn as u32).min(count.1)
+        };
+        for _ in 0..drawn {
+            let slot = rng.unit();
+            seats.push(Seat::new(handle.clone(), template, station, slot));
+        }
+    }
+    seats
 }

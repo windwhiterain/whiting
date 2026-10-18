@@ -24,7 +24,7 @@
 
 use shape::{Curve, Jet, Scalar};
 
-use crate::decorator::Seat;
+use crate::decorator::{Seat, Template};
 use crate::field::Field;
 use crate::handle::Handle;
 use crate::leaf::{LeafField, LeafTemplate};
@@ -43,6 +43,9 @@ pub struct Species {
     pub templates: Vec<LeafTemplate>,
     /// Where each field puts its leaves.
     pub fields: Vec<LeafField>,
+    /// The small solids a seat instances — a cone, a knot, a thorn, a fruit — in the order a seat's
+    /// `template` index names them.
+    pub decorators: Vec<Template>,
 }
 
 impl Species {
@@ -66,6 +69,7 @@ pub fn bamboo(seed: u64) -> Species {
         plant: grow(&bamboo_rule(), seed),
         templates: vec![blade()],
         fields: vec![leaves()],
+        decorators: Vec::new(),
     }
 }
 
@@ -75,6 +79,7 @@ pub fn shrub(seed: u64) -> Species {
         plant: grow(&shrub_rule(), seed),
         templates: vec![blade()],
         fields: vec![shrub_leaves()],
+        decorators: Vec::new(),
     }
 }
 
@@ -187,6 +192,7 @@ pub fn tuft(seed: u64) -> Species {
         plant: grow(&tuft_rule(), seed),
         templates: Vec::new(),
         fields: Vec::new(),
+        decorators: Vec::new(),
     }
 }
 
@@ -266,6 +272,7 @@ pub fn clump(seed: u64) -> Species {
         plant: grow(&clump_rule(), seed),
         templates: vec![blade()],
         fields: vec![shrub_leaves()],
+        decorators: Vec::new(),
     }
 }
 

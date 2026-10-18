@@ -24,10 +24,11 @@
 //!
 //! [`LeafField`] is the edit surface: a band of the parent's length, a density law that counts the
 //! leaves and places them within it, a phyllotaxy that advances each leaf's slot around the parent's
-//! loop, and the pitch, twist, size and jitter laws that orient and scale them. Every leaf of the
-//! field is one row in that arithmetic, so *"fewer, and smaller, above six metres"* is a curve edit
-//! rather than four thousand edits, and a node's numbers come from its own [`crate::rng`] stream so
-//! inserting a bough elsewhere leaves this crown where it was.
+//! loop, a cluster that puts several leaves at one station and a fan that spreads them, and the pitch,
+//! twist, size and jitter laws that orient and scale them. Every leaf of the field is one row in that
+//! arithmetic, so *"fewer, and smaller, above six metres"* is a curve edit rather than four thousand
+//! edits, and a node's numbers come from its own [`crate::rng`] stream so inserting a bough elsewhere
+//! leaves this crown where it was.
 
 use shape::math::{Vec3, clamp};
 use shape::{Curve, Loft, Scalar, Section, Sweep};
@@ -203,6 +204,20 @@ pub struct LeafField {
     pub density: Scalar,
     /// How far around the parent's loop each leaf advances from the last, as a fraction of the loop.
     pub phyllotaxy: f32,
+    /// How many leaves share one station, `1` for one leaf to a station.
+    ///
+    /// A cluster is the fascicle a pine's needles come in, the leaflets a kapok's palmate leaf spreads
+    /// from one point, the two bracts under a dove tree's flower head, and the florets of a rhododendron's
+    /// truss: **`n` leaves at one station, `1/n` of a turn apart**. It is a count on this field and not a
+    /// node of its own, because a sheaf is not wood and a plant whose every fascicle were a node would
+    /// spend its whole node budget on placements.
+    pub cluster: u32,
+    /// Radians of extra pitch the members of one cluster fan through, centred on the pitch the field
+    /// already gives them, `0` for a cluster whose leaves all leave the same way.
+    ///
+    /// A fan of nought is the identity whatever the cluster is, and a cluster of one leaves every member
+    /// at the centre of the fan — so the two dials are independent and neither can move a leaf alone.
+    pub fan: Scalar,
     /// Radians from the parent's outward direction toward the parent's tip.
     pub pitch: Scalar,
     /// Radians about the leaf's own forward.
@@ -230,13 +245,16 @@ pub struct LeafField {
 
 impl LeafField {
     /// A field on `generation` of template `template`, with the defaults: the parent's whole length,
-    /// eight leaves per unit, a quarter-turn of pitch, no twist, no jitter, and a leaf of a tenth.
+    /// eight leaves per unit, a quarter-turn of pitch, one leaf to a station and no fan, no twist, no
+    /// jitter, and a leaf of a tenth.
     pub fn new(generation: usize, template: usize) -> Self {
         Self {
             generation,
             band: (0.0, 1.0),
             density: Scalar::constant(8.0),
             phyllotaxy: GOLDEN_ANGLE,
+            cluster: 1,
+            fan: Scalar::constant(0.0),
             pitch: Scalar::constant(std::f32::consts::FRAC_PI_4),
             twist: Scalar::constant(0.0),
             aim_axis: [0.0, 1.0, 0.0],
@@ -302,40 +320,61 @@ impl LeafField {
             if spread.count == 0 {
                 continue;
             }
+            // **A cluster is a whole number of leaves, so the last station may stand short of one.** The
+            // density law counts leaves and every leaf it counted is drawn; how many stations they stand
+            // on follows from the cluster. At a cluster of one the stations are the leaves and the
+            // member loop runs once, which is exactly the walk this was before the cluster existed.
+            let cluster = self.cluster.max(1) as usize;
+            let stations = spread.count.div_ceil(cluster);
             let mut rng = plant.rng(&handle);
             let phase = rng.unit();
             let mut leaves = Vec::with_capacity(spread.count);
-            for rank in 0..spread.count {
-                let station = spread.station(rank);
-                let slot = (phase + rank as f32 * self.phyllotaxy).rem_euclid(1.0);
-                // A negative scale is not a leaf: it would stand the template's winding inside out, and
-                // the template's volume is the check that would see it.
-                let scale = (self.size.at(station) * (1.0 + self.jitter * rng.signed())).max(0.0);
-                // A handle from the walk resolves, so this arm is the staleness case the API allows
-                // for; the group ends there rather than carrying a leaf with no anchor.
-                let Ok(surface) = plant.surface(&handle, Attachment::new(station, slot)) else {
-                    break;
-                };
-                let anchor = match &reference {
-                    Some(up) => Placement {
-                        origin: node_placement.then(&surface).origin,
-                        x: up.x,
-                        y: up.y,
-                        z: up.z,
-                    },
-                    None => node_placement.then(&surface),
-                };
-                leaves.push(LeafInstance {
-                    index: rank as u32,
-                    station,
-                    slot,
-                    placement: aim(
-                        frame(&anchor, self.pitch.at(station), self.twist.at(station)),
-                        self.aim_axis,
-                        self.aim.at(station),
-                    ),
-                    scale,
-                });
+            'station: for place in 0..stations {
+                let members = (spread.count - place * cluster).min(cluster);
+                // The station of the cluster's own middle leaf, so a cluster stands where the leaves it
+                // replaces stood rather than where its first one would have.
+                let station = spread.station(place * cluster + (members - 1) / 2);
+                for member in 0..members {
+                    let rank = place * cluster + member;
+                    // The cluster's members stand `1 / cluster` of a turn apart, so a fascicle spreads
+                    // around the parent's loop and a cluster of one advances by the phyllotaxy alone.
+                    let slot = (phase
+                        + place as f32 * self.phyllotaxy
+                        + member as f32 / cluster as f32)
+                        .rem_euclid(1.0);
+                    // A negative scale is not a leaf: it would stand the template's winding inside out, and
+                    // the template's volume is the check that would see it.
+                    let scale = (self.size.at(station) * (1.0 + self.jitter * rng.signed())).max(0.0);
+                    // A handle from the walk resolves, so this arm is the staleness case the API allows
+                    // for; the group ends there rather than carrying a leaf with no anchor.
+                    let Ok(surface) = plant.surface(&handle, Attachment::new(station, slot)) else {
+                        break 'station;
+                    };
+                    let anchor = match &reference {
+                        Some(up) => Placement {
+                            origin: node_placement.then(&surface).origin,
+                            x: up.x,
+                            y: up.y,
+                            z: up.z,
+                        },
+                        None => node_placement.then(&surface),
+                    };
+                    leaves.push(LeafInstance {
+                        index: rank as u32,
+                        station,
+                        slot,
+                        placement: aim(
+                            frame(
+                                &anchor,
+                                self.pitch.at(station) + fan(member, members, &self.fan, station),
+                                self.twist.at(station),
+                            ),
+                            self.aim_axis,
+                            self.aim.at(station),
+                        ),
+                        scale,
+                    });
+                }
             }
             groups.push(LeafGroup {
                 node: handle,
@@ -387,6 +426,22 @@ fn aim(frame: Placement, axis: Vec3, weight: f32) -> Placement {
         z: swing(frame.z),
     }
 }
+/// The extra pitch the member `index` of `count` gets from a field's fan law, at the station the cluster
+/// stands on.
+///
+/// # Invariants
+///
+/// **Centred, so a fan turns a cluster and does not move it**: the members spread evenly across the law's
+/// own value at the station, the first by minus half of it and the last by plus half of it. One member
+/// stands at the centre whatever the law says, which is what makes a fan of any size the identity on a
+/// field whose cluster is one, and a law of nought the identity on any cluster.
+fn fan(index: usize, count: usize, law: &Scalar, station: f32) -> f32 {
+    if count <= 1 {
+        return 0.0;
+    }
+    (index as f32 / (count - 1) as f32 - 0.5) * law.at(station)
+}
+
 /// The instance's own frame at `anchor`: forward `x`, side `y`, face `z`, at the anchor's origin.
 ///
 /// # Invariants
