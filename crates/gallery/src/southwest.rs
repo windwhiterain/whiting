@@ -444,7 +444,7 @@ fn pine_palette() -> Palette {
     Palette {
         wood: Skin::new([0.14, 0.11, 0.085], 0.95),
         leaves: vec![Skin::new([0.10, 0.17, 0.08], 0.80)],
-        seats: vec![Skin::new([0.36, 0.25, 0.16], 0.85)],
+        seats: vec![Skin::new([0.45, 0.32, 0.20], 0.85)],
     }
 }
 
@@ -459,10 +459,13 @@ fn pine_palette() -> Palette {
 /// white.
 fn pine_lighting() -> Lighting {
     Lighting {
-        key_position: [18.0, 26.0, 10.0],
-        key_colour: [1.0, 0.95, 0.84],
-        key_irradiance: 2.6,
-        key_distance: 33.2,
+        // A raking key, low and well off the camera axis: a frontal key lights exactly what the lens
+        // sees and a crown then has no dark interior to measure, while a low sun from one side is how
+        // light falls on a dry slope at nine in the morning anyway.
+        key_position: [26.0, 14.0, -10.0],
+        key_colour: [1.0, 0.92, 0.78],
+        key_irradiance: 3.0,
+        key_distance: 31.3,
         // The cutoff must hold the floor's own diagonal, or the light is culled per cluster box and the
         // box boundary draws itself across the ground as a straight edge.
         key_reach: 1200.0,
@@ -477,7 +480,7 @@ fn pine_lighting() -> Lighting {
         key_extent: 8.0,
         fill_position: [-14.0, 8.0, -12.0],
         fill_colour: [0.42, 0.52, 0.72],
-        fill_irradiance: 0.90,
+        fill_irradiance: 0.70,
         fill_distance: 20.1,
         floor: Skin::new([0.30, 0.26, 0.20], 0.95),
         sky: Atmosphere::new()
@@ -521,19 +524,46 @@ const BOUGH_FRAME: Framing = Framing {
     ground: Ground::Plane,
 };
 
-/// The base plate's frame: two and a half metres from the bole at a person's eye height, so the flare
-/// and the fissures are the subject and the trunk runs out of the top of the frame.
+/// The base plate's frame: three and a half metres from the bole at a person's eye height, so the flare
+/// and two metres of fissured bark are the subject and the trunk runs out of the top of the frame.
 const BASE_FRAME: Framing = Framing {
     width: 1200,
     height: 1400,
-    eye: [2.2, 1.6, 2.6],
-    target: [0.0, 1.5, 0.0],
-    field_of_view: 0.90,
+    eye: [3.0, 1.3, 3.4],
+    target: [0.0, 1.1, 0.0],
+    field_of_view: 0.80,
     near: 0.05,
     far: 30.0,
     floor: 10.0,
     ground: Ground::Plane,
 };
+
+/// The base plate's own light: a low key on the lens's side, because the tree plate's raking key stands
+/// behind the bole from here and a bark plate lit from behind is a silhouette. A tree's crown shadows
+/// its own foot under its own light, so a base plate always wants a light of its own.
+fn base_lighting() -> Lighting {
+    Lighting {
+        key_position: [6.0, 3.0, 7.0],
+        key_colour: [1.0, 0.94, 0.84],
+        key_irradiance: 2.4,
+        key_distance: 9.8,
+        key_reach: 40.0,
+        key_extent: 4.0,
+        fill_position: [-5.0, 2.0, -4.0],
+        fill_colour: [0.45, 0.52, 0.68],
+        fill_irradiance: 0.5,
+        fill_distance: 8.1,
+        floor: Skin::new([0.30, 0.26, 0.20], 0.95),
+        sky: Atmosphere::new()
+            .zenith([0.10, 0.20, 0.44])
+            .horizon([0.50, 0.58, 0.66])
+            .ground([0.32, 0.30, 0.26])
+            .density(0.0010)
+            .scale_height(2500.0),
+        sky_radiance: 0.6,
+        haze: 0.006,
+    }
+}
 
 /// Builds the Yunnan pine's whole-tree plate: one tree in the card foliage, its own light and ground.
 pub fn yunnan_pine_picture() -> Value {
@@ -578,7 +608,7 @@ pub fn yunnan_pine_base_picture() -> Value {
         &[planting],
         &BASE_FRAME,
         YUNNAN_PINE_BASE,
-        &pine_lighting(),
+        &base_lighting(),
         &[],
     )
 }
