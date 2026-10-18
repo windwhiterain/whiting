@@ -16,7 +16,10 @@
 //! # What the frame shows
 //!
 //! The row, the party walls between the units, three bays of windows a front, and the roofs' independent ridges —
-//! which is what a terrace looks like from the street.
+//! which is what a terrace looks like from the street — and **all three units' floors**, seen through their own
+//! windows. The camera stands square in front of the row rather than off its near corner for that reason alone: a
+//! row seen down its length puts two of its three floors behind the third, and a floor is only in frame from in
+//! front of the wall that holds it.
 
 use definition::Value;
 use scene::standard::Stage;
@@ -226,12 +229,15 @@ pub fn terrace() -> Value {
         ("name".to_owned(), Value::String("terrace".to_owned())),
         (
             "cameras".to_owned(),
-            // Down the row from its near corner: the party walls read as the gaps between three roofs.
+            // Square on to the row and above the eaves, a third of a unit in from its middle: a terrace's floors
+            // are only in frame from in front of them and high enough for the sight line over a sill to reach the
+            // back of a room, and from here every unit is seen through its own windows rather than past its neighbour.
+            // Standing off the near corner instead puts two of the three plates behind the row.
             Value::List(vec![camera(
                 [
-                    f64::from(UNIT_WIDTH) * 2.0,
-                    ridge * 0.62,
-                    f64::from(UNIT_DEPTH) * 1.5,
+                    f64::from(UNIT_WIDTH) * 0.6,
+                    ridge * 1.15,
+                    f64::from(UNIT_DEPTH) * 3.0,
                 ],
                 [0.0, ridge * 0.35, 0.0],
                 std::f64::consts::FRAC_PI_3 * 0.95,

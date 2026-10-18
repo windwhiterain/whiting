@@ -1268,7 +1268,7 @@ That is the difference between a style and a preset: **a preset is the numbers, 
 them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
 chosen twice.
 
-## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, again on 2026-10-31 when the ground was cut away from under every plate, and again on 2026-10-17 when `RoofStyle::Flat` kept the plate every other style already carried — **all nine unmoved**, see *What the flat arm kept* below)
+## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, again on 2026-10-31 when the ground was cut away from under every plate, again on 2026-10-17 when `RoofStyle::Flat` kept the plate every other style already carried, and again on 2026-11-02 when `terrace` moved its camera — **that one moved, and the eight beside it are byte-identical**, see *The terrace's camera, and what a floor costs to see* further down)
 
 Nine building scenes render, and each one's picture has a hash. They are recorded here because the question a
 refactor has to answer is *"did the picture change?"*, and a hash answers it in a way that looking at two images
@@ -1281,7 +1281,7 @@ does not. The hash is the first sixteen hex of the `sha256` of the scene's own `
 | `hall` | `C4339E6310EA1C37` | `HALL` at 10 × 16, three bays; the camera is untouched and the plate's top went **665 → 3,166** now that the ground is not tied with it |
 | `hall_large` | `43D3780A15E3D08E` | `HALL` at 14 × 20, five bays, its own lower and closer camera; the plate reads **2,483**, and `--locate` inside it now answers the slab where it answered a wall |
 | `shed` | `882B8F9A7C671B0D` | a doorway, two windows, a door leaf and a canopy; the 0.30 m plate **2,246 → 2,255** |
-| `terrace` | `EDF3F4B3CF2A9686` | three units that touch, nine windows; **only `slab 2`'s plate is in frame, 2,525 — unchanged** |
+| `terrace` | `E7F76E4D030A202E` | three units that touch, nine windows; **all three plates are in frame — `slab 0` 715, `slab 1` 1,229, `slab 2` 1,384** — because the camera moved off the row's near corner and into front of it, and nothing else in the scene did |
 | `wing` | `14E3E27F9F9E1A83` | host plus attached wing, windows on the weather faces; `slab 0`'s top went **0 → 380** and `slab 1`'s is 3 — unchanged |
 | `workshop` | `7DD5D40894181EA7` | two storeys, a plate, five instanced shutters; the ground plate's top **1,844 → 3,082** and the mezzanine's is still 0 |
 | `yard` | `FDC446B24E98CE04` | the courtyard and its gate; the two 1.20 m foundations still stand clear of the slope, **15,458 → 15,460** pixels of their own sides |
@@ -4883,3 +4883,113 @@ through `Building::validate()`.
 
 **The arc's own summary, in one sentence:** every reader in this crate that could not measure something now says so in
 a name, and every one of those names was proved reachable by an instrument that had first been shown to fire.
+
+## The terrace's camera, and what a floor costs to see (2026-11-02, branch `feature/building-terrace-cam`)
+
+**The decision is the owner's and is recorded here as taken.** The second reading above left `terrace` as a question for
+the owner: *one plate of three, the other two standing behind the row*. **The owner's answer was to move the camera so
+all three plates are visible**, and the composition change that costs was accepted in the same breath. Nothing else moved:
+no geometry, no material, no document, and one camera — three numbers on the eye, with the target and the lens left as
+they were.
+
+### Before: one plate, one pixel and one absence
+
+`--where` over each plate's own element name, on the frame at `bf4e160`:
+
+| unit | plate | pixels | box |
+| --- | --- | --- | --- |
+| 0 | `slab 0, its top` | **1** | x 168, y 586 |
+| 1 | `slab 1, its top` | **not visible in this frame** | — |
+| 2 | `slab 2, its top` | **2,525** | x 793..=863, y 592..=635 |
+
+And what a pixel says, which is the reading the counts cannot give. `locate terrace (168, 586)` answers **`slab 0, its
+top`** — one texel, the whole of unit 0's floor. `locate terrace (828, 613)` answers **`slab 2, its top`**. There is no
+pixel of unit 1's plate to ask about, so what is asked instead is a pixel on **unit 1's own front facade**, where its
+floor would be if the frame carried it: `locate terrace (300, 613)`, `(350, 613)`, `(400, 613)` and `(450, 613)` all
+answer **`mass 1, outer wall over edge 2`**. **So the three before answers are: a plate, a wall, and nothing at all** —
+and the nothing is the one that matters, because it is the reading `--where` cannot tell from "this frame has no such
+element".
+
+### After: three pixels, three plates, by name
+
+Same instrument, same three claims, all three answered:
+
+| unit | plate | pixels | box | `--locate` pixel | answer |
+| --- | --- | --- | --- | --- | --- |
+| 0 | `slab 0, its top` | **715** | x 197..=338, y 537..=598 | **(298, 539)** | `slab 0, its top` |
+| 1 | `slab 1, its top` | **1,229** | x 469..=593, y 542..=606 | **(471, 544)** | `slab 1, its top` |
+| 2 | `slab 2, its top` | **1,384** | x 652..=855, y 546..=570 | **(654, 549)** | `slab 2, its top` |
+
+**Each pixel was chosen to be inside its plate rather than on its edge**, by the rule the ground-holes section used: each
+of the three carries its own id on **25 of the 25 texels two pixels off on all four sides**. Reading the box centre
+instead would have been a false negative — the plate pixels are the floor patches seen through window openings and are
+scattered inside their own bounding box, so `(267, 567)`, `(531, 574)` and `(700, 560)` all answer
+`mass 0/1/2, outer wall over edge 2`. **A bounding box is not a pixel**, which is the third time in this record that a
+convenient summary has been wrong where the instrument was right.
+
+### The camera, and why there
+
+```text
+before  eye [ UNIT_WIDTH * 2.0,  ridge * 0.62,  UNIT_DEPTH * 1.5 ] = [12.0, 2.635, 12.0]
+after   eye [ UNIT_WIDTH * 0.6,  ridge * 1.15,  UNIT_DEPTH * 3.0 ] = [ 3.6, 4.8875, 24.0]
+        target [0.0, ridge * 0.35, 0.0] and field_of_view PI/3 * 0.95, both unchanged
+```
+
+**One sentence: the camera stands square in front of the row and above the eaves, a third of a unit off its middle,
+because a terrace's floors are only in frame from in front of the wall that holds them and high enough for the sight
+line over a window sill to reach the back of a room — and from there each unit is seen through its own windows rather
+than past its neighbour.**
+
+`ridge` is `COTTAGE`'s `height + rise` = 2.6 + 1.65 = **4.25 m**, so the eye stands **0.64 m above the ridge** and
+**20 m in front of the facade** at `z = 24` against a facade at `z = 4`. The row still reads as a row: three ridges,
+nine windows in a line, the party walls as the valleys between the roofs, and the right-hand gable end giving the
+view its obliqueness.
+
+**The arithmetic behind the placement, and the frame agrees with it.** A floor point `d` metres behind the facade,
+seen from an eye `S` metres in front of it and `h` up, crosses the wall plane at height `h·d/(S+d)`, so a sill at
+0.95 m cuts the floor at `d = 0.95·S/(h − 0.95)` and a room 8 m deep is visible from there to the back wall. The
+**before** camera gives `d = 4.51 m` against a floor seen between 4.51 and 8 m — a band that exists — and still shows
+nothing of units 0 and 1, because the second half of the formula is what fails: the same ray crosses the wall plane at
+`x = ex + (px − ex)·S/(S+d)`, and the ray aimed at the middle of unit 1's floor reaches `z = 4` at **x = 4.62**, which is
+unit **2**'s facade and solid wall between its windows. **Unit 2 was not behind unit 1 in the frame; it was in front of
+the sight line.** Moving the eye to `x = 3.6` compresses each unit's floor against its own windows instead, and raising
+it to 4.89 m pushes the sill's cut from 4.51 m to **4.83 m**, leaving 4.83–8 m of floor in frame in each of the three
+units.
+
+### The gate, measured on the branch
+
+- **One hash of nine moved, and it was the right one**: `terrace` `EDF3F4B3CF2A9686` → **`E7F76E4D030A202E`**. The eight
+  beside it are **byte-identical**, compared byte for byte and not only by `sha256`: `house B13154AD7D29F938`,
+  `hall C4339E6310EA1C37`, `hall_large 43D3780A15E3D08E`, `shed 882B8F9A7C671B0D`, `wing 14E3E27F9F9E1A83`,
+  `workshop 7DD5D40894181EA7`, `yard FDC446B24E98CE04`, `identity 974FB5B24E1E7A35`.
+- **The nine before-hashes were reproduced by fresh render before the edit**, so the eight are a before-against-after
+  pair on one machine and not two runs of one tree.
+- **`scene_identity_probe` reads 806 rows two-way and `terrace` still holds 123 of them** (77 + 109 + 77 + 31 + 66 + 123
+  + 123 + 99 + 101). That number is the proof the document did not change, which is what the brief forbade changing.
+- **29/29 building examples and 16/16 gallery examples exit 0**, under the canary `thread '.*'.*panicked`, which was
+  **proved to fire on its own control first** (a real `rustc` panic: 1 hit; and the bare `thread '...' panicked` this
+  toolchain never writes, because it writes `thread 'main' (7012) panicked at …` — **0 hits**, the false negative this
+  arc has paid for before). `cargo fmt --all -- --check` clean. The two build warnings are pre-existing and belong to
+  another pair: `census.exe` collides between `crates/building/examples` and `crates/mountain/examples`, so both were
+  run by crate and both exit 0.
+
+### What this slice's brief got wrong, and what remains open
+
+**The brief put `terrace_probe` in `crates/gallery/examples` and asked whether it measures the camera. It is in
+`crates/building/examples`, it builds a two-mass document and asks `validate` whether touching solids are allowed, and
+it says nothing whatever about a camera or a pixel — so there was nothing to keep honest.** Its reading is unchanged by
+this slice and still exits 0.
+
+**The brief asked for "a pixel of each unit's plate" in the before state as though every unit had one. Unit 1's plate
+had none, and unit 0's had exactly one pixel**, which is what makes the before column a plate, a wall and an absence
+rather than three numbers.
+
+**And one thing the brief did not ask, which is the more useful half: the composition is now dominated by roof and
+sky.** The eye is above the ridge and the lens is unchanged and wide, so the row occupies a little under half the
+frame's height and there is a large empty foreground. That is a consequence of the placement rather than a fault in it —
+the floor is only reachable from high and back — but it is the next thing a session with the frame open would want to
+ask, and the lens is the free variable: a longer one from a little closer would fill the frame without losing a plate.
+
+**Still open, unchanged by this slice:** `--region` prints at most 24 rows; an authored pinch is the one courtyard whose
+areas nothing can check; and `validate::document` alone reports a mass with no triangulation only through
+`DidNotExpand`.
