@@ -89,7 +89,7 @@ impl Foliage {
         match self {
             Foliage::Needle => 1.0,
             Foliage::Spray => 0.14,
-            Foliage::Stand => 0.05,
+            Foliage::Stand => 0.03,
         }
     }
 }

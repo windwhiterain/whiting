@@ -171,6 +171,10 @@ fn montane_plantings() -> Vec<Planting> {
 /// The standing stone: a lumpy sweep packed as a prop, because E2 wants a known size in frame and a
 /// cuboid of one reads as a box someone left there. Its height is 1.2 m and the sidecar's prose says
 /// so; a stone of it is waist to shoulder high, which is the comparison a reader makes.
+///
+/// A prop draws on the ground's stages and therefore carries the ground's point schema, which has no
+/// `authored_id`: packing it with the authored layout is a compile error, and a stone is not an
+/// authored element of any plant, which is exactly what the reserved zero says.
 fn montane_stone() -> Prop {
     let mut sweep = shape::Sweep::new(
         vegetation::species::spine(&[
@@ -191,10 +195,26 @@ fn montane_stone() -> Prop {
         stations: 8,
         around: 9,
     };
+    let loft = template.loft();
+    let schema = crate::building_identity::not_authored_extras().point_schema();
+    let layout = graphics::layout::packed_layout(&schema)
+        .expect("the ground's own point schema is a struct of components");
+    let corners = crate::geometry::loft_corners(&loft);
+    let mut points = definition::PackedBuilder::new(layout);
+    points.reserve(corners.len());
+    for corner in &corners {
+        let written = points
+            .field("normal", &corner.normal)
+            .and_then(|points| points.field("position", &corner.position))
+            .and_then(|points| points.field("texture", &corner.texture));
+        written.expect("a generator writes whole elements of its own layout");
+    }
     let at = [5.0, slope_height(5.0, -4.0), -4.0];
     Prop {
         name: "stone".to_owned(),
-        points: crate::vegetation_mesh::decorator_points(&template),
+        points: points
+            .finish()
+            .expect("every generator writes whole elements of its own layout"),
         tint: [0.28, 0.27, 0.26],
         roughness: 0.95,
         at: [at[0], at[1] - 0.1, at[2]],
