@@ -3287,6 +3287,10 @@ narrowing a rectangle lifts the cap only by covering fewer ids: the landscape's 
 deepest 24 and reports 31 more. The number is printed on the row precisely so that a reader who wants the inventory
 knows the table is not it.
 
+**Closed by *What the region census slice found*: the cap is gone and the table is the inventory.** What follows is
+left as it was written, because the table below is what the cap hid and a fresh render of the same rectangle is the
+comparison that decides the fix.
+
 ### The gate
 
 - **All 29 building examples exit 0**, `census` included (run as `cargo run -p whiting-building --example census`,
@@ -3402,8 +3406,9 @@ walk `--locate` uses. Where a sentence was false — 53–92 % of every frame, i
 fixed rather than the sentence.
 
 **What is left, in order of what would teach the most:** a part on a **mass's inner wall** is now addressable and
-measured by no scene (the frame is proper: the part stands into the mass's own rooms); `--region` prints
-**at most 24 rows**, so no whole-frame sweep is a census; `terrace`'s third plate is a camera question for the owner.
+measured by no scene (the frame is proper: the part stands into the mass's own rooms); `terrace`'s third plate is a camera question for the owner.
+**`--region` printed at most 24 rows, so no whole-frame sweep was a census — closed by *What the region census slice
+found* below.**
 
 **The self-intersecting void loop is no longer on that list, because it was measured and the walk already refused
 it** — see *What the bowtie slice found* below for the five shapes and the numbers. The sentence it replaces said
@@ -4875,11 +4880,11 @@ and a **needle** outline read `32.0000` against `64.0000`, with the error growin
 leak under 4 cm went unreported and every report above it was eight times too small. Both were caught by measuring the
 **difference** and comparing it to geometry a person can do by hand — never by a count.
 
-**What is left is small and mostly not a defect:** `--region` prints at most **24 rows**, so no whole-frame sweep is a
-census (sweep by name); `terrace` shows **one plate of three** (the other two stand behind the row — a camera question
+**What is left is small and mostly not a defect:** `terrace` shows **one plate of three** (the other two stand behind the row — a camera question
 for the owner); an **authored pinch** is the one courtyard whose areas nothing can check, silent by design on both
 sides; and `validate::document` alone reports a mass with no triangulation only through `DidNotExpand`, the name arriving
-through `Building::validate()`.
+through `Building::validate()`. **The `--region` row above is closed** by *What the region census slice found*: the cap
+hid more than half of a frame's elements and a whole-frame sweep is a census again.
 
 **The arc's own summary, in one sentence:** every reader in this crate that could not measure something now says so in
 a name, and every one of those names was proved reachable by an instrument that had first been shown to fire.
@@ -4990,9 +4995,9 @@ frame's height and there is a large empty foreground. That is a consequence of t
 the floor is only reachable from high and back — but it is the next thing a session with the frame open would want to
 ask, and the lens is the free variable: a longer one from a little closer would fill the frame without losing a plate.
 
-**Still open, unchanged by this slice:** `--region` prints at most 24 rows; an authored pinch is the one courtyard whose
-areas nothing can check; and `validate::document` alone reports a mass with no triangulation only through
-`DidNotExpand`.
+**Still open, unchanged by this slice:** an authored pinch is the one courtyard whose areas nothing can check; and
+`validate::document` alone reports a mass with no triangulation only through `DidNotExpand`. The `--region` cap beside
+them is closed two sections below.
 
 ## The terrace's lens, and the ceiling a square frame puts on a row (2026-11-03, branch `feature/building-terrace-lens`)
 
@@ -5127,6 +5132,145 @@ shape, not the lens.** Four numbers for a session that wants more than a quarter
 by 4.4 m, the frame is 1:1, the whole outline fits at 1.21x, and `slab 2`'s plate runs out of frame at about 1.5x.
 Past both of those the next lever is not a longer lens but a different frame, and every scene's hash moves with it.
 
-**Still open, unchanged by this slice:** `--region` prints at most 24 rows, which is why the fill is measured as the
-frame minus one row rather than as a census; an authored pinch is the one courtyard whose areas nothing can check; and
-`validate::document` alone reports a mass with no triangulation only through `DidNotExpand`.
+**Still open, unchanged by this slice:** an authored pinch is the one courtyard whose areas nothing can check; and
+`validate::document` alone reports a mass with no triangulation only through `DidNotExpand`. **`--region` printed at most
+24 rows, which is why the fill above is measured as the frame minus one row rather than as a census — closed by
+*What the region census slice found*, where the whole-frame sweep is a census again.**
+
+## What the region census slice found: a rectangle's table says whether it is the whole answer (2026-11-04, branch `feature/building-region-census`)
+
+**The limitation, in the record's own words:** *`--region` prints at most 24 rows, so a whole-frame sweep on
+`terrace`/`workshop`/`yard` reports 26/25/27 more ids and one whole-frame run **is not a census**. Sweeping by name
+is.* The fault was never that a cap existed. **It was that a footer is not a statement**: `…27 more ids` sat under a
+table of numbers, in the position where a detail goes, and a reader who takes the table for the frame is wrong about
+the majority of it — which is the class this arc has spent many slices removing, in the one shape it had not met
+before, **a reading that was not taken wearing the table of one that was.**
+
+### The cap was never buying anything, and that was readable off the code before a frame was drawn
+
+`region` already collects every id into a map and sorts the whole thing **before** it prints anything: the cap was
+`.take(24)` on a `Vec` that already held the answer. **Printing all of it costs one `println!` per id that is already
+counted and already sorted**, against a scan that has just read 1,048,576 texels. The largest id count any frame in
+this workspace holds is **140**. So the choice was never between accuracy and cost; it was between a whole answer and
+a short one, and the short one was labelled in a place nobody reads.
+
+### Every rectangle, before and after, and the arithmetic
+
+Each row is the same rectangle rendered on this machine before and after, and the *omitted* columns are the shortfall
+the before table would not admit to: `omitted px` is the rectangle's own pixels minus the sum of the counts it printed.
+
+| scene | rectangle | rows before | ids omitted before | **px omitted before** | counts printed before | rows after | omitted after | **counts after** | rectangle px |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `terrace` | `0,0..1023,1023` | 24 | **27** | **4,098** | 1,044,478 | **51** | **0** | **1,048,576** | 1,048,576 |
+| `workshop` | `0,0..1023,1023` | 24 | **25** | **1,242** | 1,047,334 | **49** | **0** | **1,048,576** | 1,048,576 |
+| `yard` | `0,0..1023,1023` | 24 | **27** | **10,709** | 1,037,867 | **51** | **0** | **1,048,576** | 1,048,576 |
+| `landscape` | `0,0..1023,1023` | 24 | **116** | **81,962** | 966,614 | **140** | **0** | **1,048,576** | 1,048,576 |
+| `landscape` | `400,600..900,900` | 24 | **31** | **17,988** | 132,813 | **55** | **0** | **150,801** | 150,801 |
+| `hall_large` | `0,0..1023,1023` | 24 | **14** | **1,703** | 1,046,873 | **38** | **0** | **1,048,576** | 1,048,576 |
+| `house` | `0,0..1023,1023` | 11 | 0 | 0 | 1,048,576 | 11 | 0 | 1,048,576 | 1,048,576 |
+
+**The check is arithmetic and it is now a reader's to run**: every after table's counts add up to the rectangle's own
+pixels, because every texel the scan read was counted into exactly one id. **Six of the seven rectangles were short
+before** — `house` was the one that was not, and it is on the list because the reading has to be able to say *nothing
+was hidden* as well as *this much was*. **`hall_large` is new to the record's table: 14 ids and 1,703 pixels**, and it
+is the cheapest half of the lesson, since 24 of 38 is not a number a reader can notice.
+
+### The order, which had to be said rather than left implicit
+
+The order is **deepest first, ties by id ascending**, and it is now printed on the last line rather than left to be
+inferred. **The tie-break is not decoration, and the frames say so:**
+
+| table | ids that cover the same number of pixels |
+| --- | --- |
+| `terrace`, whole frame | `33` and `89`, **1,918 px each** |
+| `landscape`, whole frame | `87 216 345 369 407` at **1 px**; `95 357 420` at **3 px**; `132 135` at **1,391 px**; `101 146` at **1,773 px** |
+| `hall_large`, whole frame | `12` and `54`, **613 px each** |
+| `workshop`, `400,600..900,900` | `16 20` at **5 px**; `14 36` at **2 px** |
+| `house`, whole frame | `13 15 17`, **1 px each** |
+
+Two rows that tie can swap without either being wrong, and a table whose order is only half determined is a table two
+runs of one frame may read differently. **The order is checked by walking the table for the one row that breaks the
+rule**, over all 140 landscape rows, and there is none.
+
+### The rows that used to print did not move
+
+The before table is compared against the after table row by row, on id, count **and** name, at the same position —
+**twelve tables, 0 rows moved.** The first 24 rows of `landscape`'s whole frame are the same 24 rows,
+including the two at `1,773 px` that decide the tie; `house`'s 11 rows are untouched because the cap never reached
+them. **Every `--locate` and `--where` line of all six scenes is byte-identical**, compared as whole lines: 11, 11,
+12, 19, 11 and 11 lines and no difference.
+
+### The last line, before and after
+
+```text
+  …27 more ids
+  51 distinct id(s) over 1048576 px
+```
+
+```text
+  51 distinct id(s) over 1048576 px: every id the rectangle holds is above, deepest first and ties by id ascending, and the counts add up to those 1048576 px
+```
+
+### The nine did not move a byte
+
+Both hash domains, on one machine, before and after the same tree with one function changed — **the SHA-256 of the
+written `.png`**, which is what the baseline table carries, and **the manifest's `image` field**, which is a SHA-256
+over the **raw pixel buffer the gpu returned**. They are two artefacts of one frame and are named apart, because an
+earlier slice read the pair as two adapters.
+
+| scene | `.png` before | `.png` after | raw pixels before | raw pixels after |
+| --- | --- | --- | --- | --- |
+| `house` | `B13154AD7D29F938` | `B13154AD7D29F938` | `4f343949d83b2064` | `4f343949d83b2064` |
+| `hall` | `C4339E6310EA1C37` | `C4339E6310EA1C37` | `d3861ab9a49e11df` | `d3861ab9a49e11df` |
+| `hall_large` | `43D3780A15E3D08E` | `43D3780A15E3D08E` | `ac283053024091ef` | `ac283053024091ef` |
+| `shed` | `882B8F9A7C671B0D` | `882B8F9A7C671B0D` | `929a983d1b57d8c3` | `929a983d1b57d8c3` |
+| `terrace` | `0EBC78ABD314A90D` | `0EBC78ABD314A90D` | `596c573c95c47525` | `596c573c95c47525` |
+| `wing` | `14E3E27F9F9E1A83` | `14E3E27F9F9E1A83` | `e92705c66973ad53` | `e92705c66973ad53` |
+| `workshop` | `7DD5D40894181EA7` | `7DD5D40894181EA7` | `d9617c18c39b0fdb` | `d9617c18c39b0fdb` |
+| `yard` | `FDC446B24E98CE04` | `FDC446B24E98CE04` | `2ab63de3b0a4f727` | `2ab63de3b0a4f727` |
+| `identity` | `974FB5B24E1E7A35` | `974FB5B24E1E7A35` | `0f3026193ce73439` | `0f3026193ce73439` |
+
+`landscape` reads `E3472400DEA7F017` on both sides as well, and every document hash is unchanged.
+
+### The gate, measured on the branch
+
+- **29/29 building examples and 16/16 gallery examples exit 0**, under the canary `thread '.*'.*panicked`, which was
+  **proved to fire on its own control first**: a real rustc panic gave **1 hit**, and the bare `thread '...' panicked`
+  this toolchain never writes gave **0**, which is the false negative this arc has paid for before. **Zero hits
+  across all 45 runs.**
+- `cargo build --workspace --all-targets` exits 0 and warns **only** of the `census.exe` / `census.pdb` filename
+  collision — the set every earlier section quotes, and no new warning. `cargo fmt --all -- --check` is clean.
+- `scene_identity_probe` reads **806** rows two-way (77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101), contiguous, every
+  name non-empty, every name round-tripping, the four pinned readings unchanged.
+- **One file changed** — `crates/device-rasterize/examples/render.rs` — and the change is confined to `region`'s print
+  loop and its two lines of `# Invariants`. **No geometry, camera, material, validator or document moved**, which the
+  two hash tables above are the evidence for rather than an assertion.
+
+### What this slice's brief got wrong, and what the instruments got wrong first
+
+**The brief quoted `terrace` as 26 omitted ids. Measured at this branch point it is 27, and the whole table with
+it: 51 distinct ids, not 50.** The brief's numbers are the section above's, and that section was measured before
+`56ed1ad` lengthened the lens — which pulled another element's pixels into the frame. **`workshop`'s 25, `yard`'s 27
+and the landscape's 116/140 reproduce exactly.** A brief that quotes a number out of a note should say which tree the
+note measured, and this one did not; the arithmetic above is from a fresh render of the same rectangles.
+
+**The brief asked "print every id, if the cost is acceptable", which was a question about arithmetic dressed as a
+question about performance.** The cost was bounded by work the function had already done before it printed a row, and
+the largest table in the workspace is 140 lines.
+
+**And the instrument was wrong before the code ever was, twice, in the way this record keeps finding.** The first
+order-check sorted a copy with `Sort-Object -Property @{Expression = 'count'}` over the ordered dictionaries it had
+built, and **`count` resolved to the dictionary's own `Count` property — the number of keys, 4 for every row** — so the
+check silently compared ids and reported the landscape's 140 correctly ordered rows as *broken*. It reported `False`
+on one table and `True` on eleven, which is the worst possible failure: a verdict, half of it noise. **Replaced by a
+walk for the one row that breaks the rule, with a control built first** — two ids tied at 40 px, printed 8 before 3 —
+which reports the break and is silent on the same two rows in the right order. **The same instrument run over the
+*before* tables reports all six shortfalls above, which is the other half of the proof: a check that cannot fire on
+the fault it was built for is not evidence that the fault is gone.**
+
+**What is still open, unchanged by this slice:** an authored pinch is the one courtyard whose areas nothing can
+check; and `validate::document` alone reports a mass with no triangulation only through `DidNotExpand`. **A part on a
+mass's inner wall is addressable and measured by no scene**, and `--where`'s inventory sweep remains the right tool for
+*the frame's list of elements* — but it is no longer the only one.
+
+

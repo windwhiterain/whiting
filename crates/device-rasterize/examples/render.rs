@@ -193,6 +193,15 @@ fn parse_region(written: &str) -> Result<[u32; 4], String> {
 /// - **The answer is the id channel's, counted**, so a rectangle becomes the set of authored elements whose pixels
 ///   it covers: the distinct ids, each with how many pixels it owns, deepest first. That set is exactly what an
 ///   edit's selector is fed by — a box in world space cannot answer it, which is why the picture has to.
+/// - **Every id the rectangle covers is printed, and the last line says so.** A table that stops where the cap
+///   stood reads as a complete answer, because a reader cannot see an absent row: this arc has spent many slices
+///   removing a reading that could not be taken from everything that looked like a whole one, and a rectangle whose
+///   rows simply stop is that fault wearing a table. The cost is bounded by what the scan already did — the counts
+///   are already collected and sorted before anything is printed, and the largest id count any frame in this
+///   workspace holds is 140 — so nothing is truncated and nothing is claimed that a reader cannot check.
+/// - **The order is a total one, and it is printed with the answer**: deepest first, ties by id ascending. Frames
+///   carry ids covering equal numbers of pixels (`terrace`'s ids 33 and 89 each cover 1,918), so the count alone
+///   leaves rows free to swap, and two runs of the same frame must not disagree about which came first.
 /// - **The naming is the content's**, asked of the tables `--locate` and `--where` ask and in that order: a
 ///   building's own elements from `gallery::building_identity`, the reserved zero from `gallery::locate`, and
 ///   the vegetation naming registry only after both have declined. What an id *means* lives with the content,
@@ -225,16 +234,16 @@ fn region(scene: &str, rendered: &RenderedFrame, region: [u32; 4]) {
         }
     }
     let mut rows: Vec<(u32, u64)> = counts.into_iter().collect();
+    // **One order, and it is total.** The count decides and the id breaks a tie, because a frame
+    // holds ids that cover the same number of pixels -- `terrace`'s ids 33 and 89 each carry 1,918
+    // -- and an order that leaves those two free to swap is an order two runs can disagree about.
     rows.sort_by(|one, other| other.1.cmp(&one.1).then(one.0.cmp(&other.0)));
     let naming = gallery::locate::naming(scene);
-    for (id, count) in rows.iter().take(24) {
+    for (id, count) in rows.iter() {
         println!(
             "  {count:>7} px  id {id:<6} {}",
             name_for_row(scene, naming, *id)
         );
-    }
-    if rows.len() > 24 {
-        println!("  …{} more ids", rows.len() - 24);
     }
     // **The counted zero is a rectangle, while the sentence on it is a pixel's.** A region counts the
     // reserved zero like any other id -- that is what the scan above did before anything here named it,
@@ -249,7 +258,15 @@ fn region(scene: &str, rendered: &RenderedFrame, region: [u32; 4]) {
              pixels and not one pixel's reading; the sentence on it is the one `--where 0` answers"
         );
     }
-    println!("  {} distinct id(s) over {covered} px", rows.len());
+    // **The last line says the table is the whole of them, because a reader cannot see an absent
+    // row.** The count is the number of rows above it, so the two cannot disagree, and the pixels
+    // are the rectangle's own: every texel the scan read was counted into exactly one id, so the
+    // column adds up to the number on the line and the arithmetic is a reader's to check.
+    println!(
+        "  {} distinct id(s) over {covered} px: every id the rectangle holds is above, deepest \
+         first and ties by id ascending, and the counts add up to those {covered} px",
+        rows.len()
+    );
 }
 
 /// Returns what one counted id is called in a row of `--region`'s table.
