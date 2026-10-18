@@ -109,14 +109,16 @@ pub mod shed;
 pub mod southwest;
 /// Arc 5's two flagships: 珙桐's white bracts and 大树杜鹃's terminal leaf rosettes.
 pub mod southwest_flag;
-/// The site: one Hengduan slope drawn at the height of each belt.
-pub mod southwest_site;
 /// 川滇高山栎, the evergreen oak of the subalpine belt: the dense rounded crown on a short gnarled bole.
 pub mod southwest_oak;
+/// The site: one Hengduan slope drawn at the height of each belt.
+pub mod southwest_site;
 /// The spire conifers: 丽江云杉 and 苍山冷杉, one rule with different numbers.
 pub mod southwest_spire;
 /// The valley pair: 桫椤, a tree with no branch graph at all, and 木棉, one rule at two seasons.
 pub mod southwest_valley;
+/// The second wave: 西南桦, a wholly pendulous crown, and 滇油杉, erect cones all over the crown.
+pub mod southwest_wave2;
 mod spotlight;
 mod stilllife;
 /// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
@@ -258,6 +260,12 @@ impl Gallery {
             "kapok_flower" => southwest_valley::kapok_flower_picture(),
             "kapok_bough" => southwest_valley::kapok_bough_picture(),
             "kapok_base" => southwest_valley::kapok_base_picture(),
+            "southwest_birch" => southwest_wave2::southwest_birch_picture(),
+            "southwest_birch_bough" => southwest_wave2::southwest_birch_bough_picture(),
+            "southwest_birch_base" => southwest_wave2::southwest_birch_base_picture(),
+            "evelyn_keteleeria" => southwest_wave2::evelyn_keteleeria_picture(),
+            "evelyn_keteleeria_bough" => southwest_wave2::evelyn_keteleeria_bough_picture(),
+            "evelyn_keteleeria_base" => southwest_wave2::evelyn_keteleeria_base_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),

@@ -254,6 +254,36 @@ pub const NAMINGS: &[Naming] = &[
         resolve: crate::southwest_valley::kapok_base_handle_of,
         note: "the plank buttresses of the same tree: this pixel is that node, and the foot's own section is this node's",
     },
+    Naming {
+        scene: crate::southwest_wave2::SOUTHWEST_BIRCH,
+        resolve: crate::southwest_wave2::southwest_birch_handle_of,
+        note: "this pixel is that node of the birch, and a leaf or a catkin drawn by a blade mesh carries its branchlet's",
+    },
+    Naming {
+        scene: crate::southwest_wave2::SOUTHWEST_BIRCH_BOUGH,
+        resolve: crate::southwest_wave2::southwest_birch_bough_handle_of,
+        note: "one bough at arm's length: this pixel is that node of the bough, and a leaf or a catkin carries its branchlet's",
+    },
+    Naming {
+        scene: crate::southwest_wave2::SOUTHWEST_BIRCH_BASE,
+        resolve: crate::southwest_wave2::southwest_birch_base_handle_of,
+        note: "the foot of the same bole: this pixel is that node, whose flare and lobed outline are the subject",
+    },
+    Naming {
+        scene: crate::southwest_wave2::EVELYN_KETELEERIA,
+        resolve: crate::southwest_wave2::evelyn_keteleeria_handle_of,
+        note: "this pixel is that node of the Keteleeria; a plume drawn by a blade mesh carries its shoot's, and a cone its own",
+    },
+    Naming {
+        scene: crate::southwest_wave2::EVELYN_KETELEERIA_BOUGH,
+        resolve: crate::southwest_wave2::evelyn_keteleeria_bough_handle_of,
+        note: "one second-order branch at arm's length: this pixel is that node, and a needle or a cone carries its shoot's",
+    },
+    Naming {
+        scene: crate::southwest_wave2::EVELYN_KETELEERIA_BASE,
+        resolve: crate::southwest_wave2::evelyn_keteleeria_base_handle_of,
+        note: "the foot of the same bole: this pixel is that node, whose flare and blocky fissures are the subject",
+    },
 ];
 
 /// The row a scene registered, or `None` when it names nothing.
