@@ -26,6 +26,7 @@ use vegetation::derive::Species;
 use vegetation::field::Field;
 use vegetation::handle::Handle;
 use vegetation::leaf::{LeafField, LeafTemplate};
+use vegetation::plant::Placement;
 use vegetation::rng::Rng;
 use vegetation::species::{Generation, Joint, Rule, grow, spine, taper};
 
@@ -52,7 +53,7 @@ const NEEDLE_HALF_WIDTH: f32 = 0.00055;
 
 /// The card the whole-tree plate draws: half a pixel at the distance that plate is framed from, which
 /// is the narrowest blade a point-sampled pixel keeps. See the module docs.
-const CARD_HALF_WIDTH: f32 = 0.005;
+const CARD_HALF_WIDTH: f32 = 0.007;
 
 /// Which foliage a pine draws.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,7 +78,7 @@ impl Foliage {
     fn density_factor(self) -> f32 {
         match self {
             Foliage::Needle => 1.0,
-            Foliage::Card => 0.27,
+            Foliage::Card => 0.15,
         }
     }
 }
@@ -113,7 +114,7 @@ fn yunnan_pine_rule() -> Rule {
         ],
         // A pine's bough is a flat plume, not a cylinder of twigs: the light from above turns every
         // twig's tip up, which is what stacks a bough's foliage into the plate the crown is made of.
-        fields: vec![Field::light([0.0, 1.0, 0.0], 0.30)],
+        fields: vec![Field::light([0.0, 1.0, 0.0], 0.12)],
     }
 }
 
@@ -121,7 +122,7 @@ fn yunnan_pine_rule() -> Rule {
 /// bough carries two to three dozen of them because a crown's mass is the number of its twigs.
 fn twig_generation(from: f32) -> Generation {
     Generation {
-        count: (30, 36),
+        count: (22, 26),
         station: (from, 1.0),
         slot: (0.0, GOLDEN),
         jitter: (0.12, 0.12),
@@ -174,11 +175,23 @@ fn bark() -> shape::Section {
 /// up at the tip, which is the upsweep the mature crown is made of. Its length is a law over the station
 /// it hangs at — the crown's own profile — which is what [`Joint::station`] exists for.
 fn bough(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    let length = 5.6 * (1.0 - 0.55 * joint.station) * (0.70 + 0.60 * rng.unit());
+    // The top quarter of the crown shortens again: a mature crown is flat-topped, and a bough law that
+    // only falls with height draws a spire.
+    let top = ((joint.station - 0.78) / 0.22).clamp(0.0, 1.0);
+    let length =
+        5.6 * (1.0 - 0.35 * joint.station) * (1.0 - 0.8 * top) * (0.70 + 0.60 * rng.unit());
     let departure = 1.35 - 0.45 * joint.station + 0.10 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-3);
     (
-        bend(length, [departure, departure + 0.16, departure + 0.06, departure - 0.34]),
+        bend(
+            length,
+            [
+                departure,
+                departure + 0.16,
+                departure + 0.06,
+                departure - 0.22,
+            ],
+        ),
         taper(&[(0.0, radius * 0.34), (0.5, radius * 0.18), (1.0, 0.012)]),
     )
 }
@@ -186,11 +199,19 @@ fn bough(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
 /// A twig: the short shoot a fascicle sits on, ten to twenty centimetres in the note and thirty here,
 /// leaving the bough at about a right angle and drooping a little under its own needles.
 fn twig(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    let length = 0.30 * (0.80 + 0.40 * rng.unit());
+    let length = 0.55 * (0.80 + 0.40 * rng.unit());
     let departure = 1.05 + 0.25 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-4);
     (
-        bend(length, [departure, departure + 0.18, departure + 0.30, departure + 0.38]),
+        bend(
+            length,
+            [
+                departure,
+                departure + 0.18,
+                departure + 0.30,
+                departure + 0.38,
+            ],
+        ),
         taper(&[(0.0, radius * 0.45), (1.0, 0.0035)]),
     )
 }
@@ -203,8 +224,16 @@ fn bend(length: f32, angles: [f32; 4]) -> shape::Curve {
     let at = |angle: f32| [step * angle.sin(), step * angle.cos(), 0.0];
     let tangent = |angle: f32| [length * 0.5 * angle.sin(), length * 0.5 * angle.cos(), 0.0];
     let first = at(angles[0]);
-    let second = [first[0] + at(angles[1])[0], first[1] + at(angles[1])[1], 0.0];
-    let third = [second[0] + at(angles[2])[0], second[1] + at(angles[2])[1], 0.0];
+    let second = [
+        first[0] + at(angles[1])[0],
+        first[1] + at(angles[1])[1],
+        0.0,
+    ];
+    let third = [
+        second[0] + at(angles[2])[0],
+        second[1] + at(angles[2])[1],
+        0.0,
+    ];
     spine(&[
         ([0.0, 0.0, 0.0], tangent(angles[0])),
         (first, tangent(angles[1])),
@@ -240,19 +269,19 @@ fn needle(half_width: f32) -> LeafTemplate {
 fn cone() -> Template {
     let mut sweep = shape::Sweep::new(
         spine(&[
-            ([0.0, 0.0, 0.0], [0.020, 0.0, 0.0]),
-            ([0.020, -0.008, 0.0], [0.004, -0.030, 0.0]),
-            ([0.022, -0.055, 0.0], [0.0, -0.050, 0.0]),
-            ([0.022, -0.105, 0.0], [0.0, -0.030, 0.0]),
+            ([0.0, 0.0, 0.0], [0.014, 0.0, 0.0]),
+            ([0.014, -0.006, 0.0], [0.003, -0.020, 0.0]),
+            ([0.016, -0.036, 0.0], [0.0, -0.032, 0.0]),
+            ([0.016, -0.068, 0.0], [0.0, -0.020, 0.0]),
         ]),
         shape::Section::circle(),
     );
     sweep.scale = taper(&[
-        (0.0, 0.006),
-        (0.25, 0.020),
-        (0.55, 0.030),
-        (0.85, 0.024),
-        (1.0, 0.004),
+        (0.0, 0.004),
+        (0.25, 0.013),
+        (0.55, 0.019),
+        (0.85, 0.015),
+        (1.0, 0.003),
     ]);
     Template {
         sweep,
@@ -294,7 +323,7 @@ fn needles(twig_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     fuzz.jitter = 0.15;
     let mut spray = LeafField::new(twig_depth, 0);
     spray.band = (0.25, 1.0);
-    spray.density = shape::Scalar::constant(450.0 * factor);
+    spray.density = shape::Scalar::constant(900.0 * factor);
     spray.cluster = 3;
     spray.fan = shape::Scalar::constant(1.15);
     spray.phyllotaxy = GOLDEN;
@@ -303,7 +332,7 @@ fn needles(twig_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     spray.jitter = 0.18;
     let mut brush = LeafField::new(twig_depth, 0);
     brush.band = (0.86, 1.0);
-    brush.density = shape::Scalar::constant(320.0 * factor);
+    brush.density = shape::Scalar::constant(600.0 * factor);
     brush.cluster = 3;
     brush.fan = shape::Scalar::constant(0.45);
     brush.phyllotaxy = GOLDEN;
@@ -372,7 +401,7 @@ fn pine_cones(species: &Species, twig_depth: usize) -> Vec<Seat> {
 fn pine_palette() -> Palette {
     Palette {
         wood: Skin::new([0.14, 0.11, 0.085], 0.95),
-        leaves: vec![Skin::new([0.16, 0.24, 0.13], 0.80)],
+        leaves: vec![Skin::new([0.11, 0.18, 0.09], 0.80)],
         seats: vec![Skin::new([0.36, 0.25, 0.16], 0.85)],
     }
 }
@@ -391,12 +420,15 @@ fn pine_lighting() -> Lighting {
         key_position: [18.0, 26.0, 10.0],
         key_colour: [1.0, 0.95, 0.84],
         key_irradiance: 2.6,
-        key_reach: 33.2,
-        key_extent: 6.0,
+        key_distance: 33.2,
+        // The cutoff must hold the floor's own diagonal, or the light is culled per cluster box and the
+        // box boundary draws itself across the ground as a straight edge.
+        key_reach: 1200.0,
+        key_extent: 40.0,
         fill_position: [-14.0, 8.0, -12.0],
         fill_colour: [0.42, 0.52, 0.72],
-        fill_irradiance: 0.40,
-        fill_reach: 20.1,
+        fill_irradiance: 0.60,
+        fill_distance: 20.1,
         floor: Skin::new([0.30, 0.26, 0.20], 0.95),
         sky: Atmosphere::new()
             .zenith([0.06, 0.14, 0.38])
@@ -404,7 +436,7 @@ fn pine_lighting() -> Lighting {
             .ground([0.30, 0.28, 0.24])
             .density(0.0006)
             .scale_height(2500.0),
-        sky_radiance: 0.45,
+        sky_radiance: 0.85,
         // A clear day at two thousand metres: the air is thin and the far ridge is the only thing it
         // touches, so the coefficient is a fifth of a garden's.
         haze: 0.004,
@@ -430,12 +462,12 @@ const PINE_FRAME: Framing = Framing {
 const BOUGH_FRAME: Framing = Framing {
     width: 1400,
     height: 1000,
-    eye: [3.6, 1.9, 2.2],
-    target: [1.6, 0.8, 0.0],
-    field_of_view: 0.80,
-    near: 0.05,
-    far: 30.0,
-    floor: 12.0,
+    eye: [2.4, 2.3, 1.4],
+    target: [1.4, 1.8, 0.2],
+    field_of_view: 0.70,
+    near: 0.03,
+    far: 20.0,
+    floor: 8.0,
     ground: Ground::Plane,
 };
 
@@ -445,19 +477,19 @@ pub fn yunnan_pine_picture() -> Value {
     let planting = Planting::new(species.clone())
         .with_seats(pine_cones(&species, 2))
         .with_palette(pine_palette());
-    plant_scene_lit(
-        &[planting],
-        &PINE_FRAME,
-        YUNNAN_PINE,
-        &pine_lighting(),
-        &[],
-    )
+    plant_scene_lit(&[planting], &PINE_FRAME, YUNNAN_PINE, &pine_lighting(), &[])
 }
 
 /// Builds the pine's branch plate: one bough in the true needle, at arm's length.
 pub fn yunnan_pine_bough_picture() -> Value {
     let species = yunnan_pine_bough(SEED);
+    // The bough stands at a crown's height and not on the ground: a branch plate whose bough lies in
+    // the dirt reads as a fallen limb.
     let planting = Planting::new(species.clone())
+        .at(Placement {
+            origin: [0.0, 1.3, 0.0],
+            ..Placement::IDENTITY
+        })
         .with_seats(pine_cones(&species, 1))
         .with_palette(pine_palette());
     plant_scene_lit(

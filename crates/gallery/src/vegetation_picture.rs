@@ -119,7 +119,9 @@ const KEY_EXTENT: f64 = 3.0;
 const FILL_POSITION: [f64; 3] = [-2.6, 1.5, -1.8];
 const FILL_COLOUR: [f64; 3] = [0.44, 0.54, 0.76];
 const FILL_IRRADIANCE: f64 = 0.7;
-const FILL_REACH: f64 = 3.0;
+/// The distance the fill's irradiance was stated at before lightings existed, kept as the default so
+/// that every scene drawn before this type is the scene it was.
+const FILL_DISTANCE: f64 = 3.0;
 
 /// The two greens of a bamboo, which are not the same green.
 ///
@@ -399,6 +401,14 @@ pub struct Lighting {
     pub key_colour: [f64; 3],
     /// The key's irradiance at the subject.
     pub key_irradiance: f64,
+    /// The distance from the key at which `key_irradiance` is stated, which is normally the length of
+    /// `key_position`.
+    ///
+    /// It is a separate number from the reach because the two answer different questions: the distance
+    /// says where the stated irradiance holds, and the reach says where the light stops. A tree framed at
+    /// thirty metres wants its cutoff far past the floor's edge and its irradiance stated at the tree,
+    /// and one number cannot be both.
+    pub key_distance: f64,
     /// How far the key's shadow reach extends.
     pub key_reach: f64,
     /// The key's own extent, which is its softness.
@@ -409,8 +419,8 @@ pub struct Lighting {
     pub fill_colour: [f64; 3],
     /// The fill's irradiance.
     pub fill_irradiance: f64,
-    /// The fill's reach.
-    pub fill_reach: f64,
+    /// The distance from the fill at which `fill_irradiance` is stated.
+    pub fill_distance: f64,
     /// The ground's skin.
     pub floor: Skin,
     /// The day: the sky the frame's background is drawn from and the haze on the far wood.
@@ -432,12 +442,13 @@ impl Default for Lighting {
             key_position: KEY_POSITION,
             key_colour: KEY_COLOUR,
             key_irradiance: KEY_IRRADIANCE,
+            key_distance: KEY_REACH,
             key_reach: KEY_REACH,
             key_extent: KEY_EXTENT,
             fill_position: FILL_POSITION,
             fill_colour: FILL_COLOUR,
             fill_irradiance: FILL_IRRADIANCE,
-            fill_reach: FILL_REACH,
+            fill_distance: FILL_DISTANCE,
             floor: Skin::new(FLOOR_TINT, 0.94),
             sky: atmosphere(),
             sky_radiance: SKY_RADIANCE,
@@ -1299,7 +1310,7 @@ fn plant_scene_with(
                     "key",
                     lighting.key_position,
                     lighting.key_colour,
-                    flux_for_irradiance(lighting.key_irradiance, lighting.key_reach),
+                    flux_for_irradiance(lighting.key_irradiance, lighting.key_distance),
                     lighting.key_extent,
                     lighting.key_reach,
                 ),
@@ -1307,7 +1318,7 @@ fn plant_scene_with(
                     "fill",
                     lighting.fill_position,
                     lighting.fill_colour,
-                    flux_for_irradiance(lighting.fill_irradiance, lighting.fill_reach),
+                    flux_for_irradiance(lighting.fill_irradiance, lighting.fill_distance),
                     lighting.key_extent,
                 ),
                 // The day itself: the ambient every shadowed leaf is lit by *and* the sky the frame's
