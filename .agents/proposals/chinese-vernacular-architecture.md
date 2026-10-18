@@ -135,10 +135,13 @@ are the building, and the ring is the panel hung on it.
   courtyard's faces derived from the same two loops (`courtyard.rs`). 天井, 院落 and 厢房 are this.
 - **Deep eaves are free.** The eave loop is authored apart from the mass outline (`roof.rs:135`), so
   an 出檐 is a number, and 腰檐 / 披檐 / 重檐 are further roofs hosted on the same mass.
-- **An intermediate floor exists and nothing draws it.** `derive::floor_slab` (`derive.rs:787`)
-  builds a hosted plate on the mass's inner loop at an elevation strictly inside the mass, refusing
-  one at or below its ground and one at or above its top. It has one call site, in `derive`, and no
-  gallery scene uses it. 楼板 is a completion, not a new concept.
+- **A second storey is already a building.** `derive::floor_slab` (`derive.rs:787`) builds a hosted
+  plate on the mass's inner loop at an elevation strictly inside the mass, refusing one at or below
+  its ground and one at or above its top; `authored` calls it at **2.7 m** (`authored.rs:153`) and
+  `workshop` at its own level (`workshop.rs:301`), and both push the plate into `slabs`. So a
+  two-storey house is a grid with two levels and a floor between them, and it is drawn today. **This
+  proposal first recorded this as a missing capability, and that was false** — the constructor has one
+  call site because the *derivation* is what a scene calls, which is exactly what the two scenes do.
 - **The freestanding wall is drawn.** `yard` authors five runs as a yard enclosure and `authored`
   authors one; `Wall` is the second building element that is not a room (`wall.rs`), and it is what a
   照壁, a 院墙 and a 封火墙 already are.
@@ -153,7 +156,7 @@ are the building, and the ring is the panel hung on it.
 | 硬山 gable, 马头墙, 照壁 top | `top: f32` | a crown (a top profile) on `Mass` and `Wall` |
 | 穿枋, 挑枋, 撑弓, 檩, 椽 | nothing with a sloped axis | `Member`: a prism over a 3D segment |
 | 吊脚 posts, open underside | terrace seating | a stilt seating mode, plus `Member` posts |
-| 楼板, a second storey | `derive::floor_slab`, unused | use it, at a grid level |
+| 楼板, a second storey | **already drawn** (`authored.rs:153`, `workshop.rs:301`) | nothing — a grid level and a floor |
 | 楼板开洞 (火塘通高, 楼梯井) | `Slab` has one plan polygon | `Slab::voids`, filled by `fill` |
 | 屋面覆盖 (小青瓦, 石板瓦, 杉皮) | a surface has a colour | a `Covering` enum on `Roof` — the ridge and the pitch minimum differ |
 | 使用开间 = 2 × 结构开间 | one grid per face | a ratio in the starter, not a construct |
@@ -164,8 +167,8 @@ are the building, and the ring is the panel hung on it.
 ## What the buildings ask for
 
 Two of the four notes were complete when this section was written — the frame and the roof, and
-Guizhou–Xiangxi. The Chongqing and Yunnan notes follow, and what they change is not the six moves but
-their numbers.
+Guizhou–Xiangxi. The Chongqing and Yunnan notes follow, and what they change is not the design but its
+numbers.
 
 **A caution about the notes' own language, because this proposal caused it.** All four were briefed
 with "every roof is a flat slab", and each opens by naming that as the assumption that breaks. The
@@ -228,8 +231,9 @@ is why the profile above is `measured` and not derived from an ethnic-style coef
 
 ## The design
 
-Six moves. Four are new constructs and two are completions; each names what it buys, the invariant it
-must keep, and the sentence it refuses to build.
+Seven headings: **five new constructs** (D1, D2, D3, D4, D7), **one derivation** (D6) — and **one
+correction** (D5), a capability this proposal first recorded as missing which the crate already had.
+Each names what it buys, the invariant it must keep, and the sentence it refuses to build.
 
 ### D1. A roof holds a section, and the section is a fraction **and** a rise
 
@@ -371,12 +375,17 @@ stands on it and hangs over the water.
 Refusal: `StiltPostTooLong` when a post passes a stated limit (a post that long is a different
 building), and `StiltGroundBelowSea` when sampling finds no ground under a post.
 
-### D5. The intermediate floor is a completion, not a construct
+### D5. The intermediate floor is not missing, and this proposal said it was
 
-`derive::floor_slab` already builds a hosted plate on the mass's inner loop at an elevation strictly
-inside the mass. What is missing is the *place*: a floor at the grid's second level, carried by the
-face's own storey lines. Nothing new is authored — a scene calls it at `levels[1]` and the two-storey
-house becomes a two-storey *building* rather than a two-storey facade.
+`derive::floor_slab` is called by `authored` at 2.7 m (`authored.rs:153`) and by `workshop`
+(`workshop.rs:301`), so the two-storey building the vernacular needs is **already a document**. An
+earlier draft of this section recorded it as "exists and nothing draws it", inferred from the fact
+that `Slab::floor` has one call site — and the inference was wrong for the reason this repository
+keeps re-learning: **the constructor is called inside the derivation, and the derivation is what the
+scenes call.** A count of one site was a count of one construction, not of no users.
+
+What stays true: a storey is a grid level plus a floor, and the *non-uniform* storey — the hearth bay
+with no ceiling over it — is D7, which is a hole rather than a height.
 
 ### D6. A starting point, in `derive`
 
@@ -420,7 +429,7 @@ of ten.
 | D2 crowns | `Mass::tops`, `Wall::crown` | `expand` (ring top strips, wall faces), `validate` | a probe that a crowned ring is closed and planar |
 | D3 members | `Member` with `Anchor`, a list in the document, a `SolidId` | `expand` (anchors resolved in dependency order), `mesh` (element), `identity`, `validate` | a probe that a member is closed and outward, that two members overlapping without a host are reported, and that moving a column moves the tie anchored on it |
 | D4 stilts | a seating mode | `site` | a probe on an analytic slope: posts land on the ground, the floor stays level |
-| D5 floors | none | a scene | the floor's own faces appear in the identity table |
+| D5 floors | none — already there | nothing | already gated: two scenes draw one |
 | D6 starter | none | `derive` | the starter builds and its roof's profile measures the profile |
 | D7 slab holes | `Slab::voids` | `expand` (caps, inner bands), `validate` | a probe that a holed slab is closed and its annulus area is the difference |
 
@@ -493,7 +502,7 @@ picture; tiles, 瓦当 and 滴水 are the shader's. Above about 8 cm a member is
 frames this gallery draws; below it, it is noise that costs faces and shadow rays.
 
 **F5. Which building first.** The 吊脚楼 is the owner's first-named type and the one that tests D4;
-三坊一照壁 is the richest and tests D1, D2 and D5 at once; a 古镇 street tests the settlement scale.
+三坊一照壁 is the richest and tests D1, D2 and D7 at once; a 古镇 street tests the settlement scale.
 The road below assumes the order, but it is the owner's to change.
 
 **F6. Scope of the old town.** A street of houses is not a building: it needs a *settlement* layer —
@@ -516,7 +525,7 @@ alone. The gate cost per scene is real and known: a `.png` hash pin in `[6/8]`, 
    Proves 穿斗 and the bracket.
 4. **Arc 4 — the stilts (D4).** The 吊脚楼 on a slope: floor on the uphill grade, posts and braces
    downhill, a lower storey half-open. Proves the site.
-5. **Arc 5 — the compound (D5, D2).** 三坊一照壁 or 四合五天井: wings, galleries, a 照壁, 天井.
+5. **Arc 5 — the compound (D1, D2, D7).** 三坊一照壁 or 四合五天井: wings, galleries, a 照壁, 天井.
 6. **Arc 6 — the variations.** 竹楼 (steep short ridge, deep eaves), 石板房 (stone slate pitch),
    屯堡 (stone court), 一颗印 (high blank walls, parapet) — the same constructs, different numbers,
    and each one is the proof that the parameters are the type.
