@@ -115,6 +115,8 @@ pub mod southwest_site;
 pub mod southwest_oak;
 /// The spire conifers: 丽江云杉 and 苍山冷杉, one rule with different numbers.
 pub mod southwest_spire;
+/// The valley pair: 桫椤, a tree with no branch graph at all, and 木棉, one rule at two seasons.
+pub mod southwest_valley;
 mod spotlight;
 mod stilllife;
 /// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
@@ -249,6 +251,13 @@ impl Gallery {
             "lijian_spruce_bough" => southwest_spire::lijian_spruce_bough_picture(),
             "cangshan_fir" => southwest_spire::cangshan_fir_picture(),
             "cangshan_fir_bough" => southwest_spire::cangshan_fir_bough_picture(),
+            "tree_fern" => southwest_valley::tree_fern_picture(),
+            "tree_fern_frond" => southwest_valley::tree_fern_frond_picture(),
+            "tree_fern_base" => southwest_valley::tree_fern_base_picture(),
+            "kapok" => southwest_valley::kapok_picture(),
+            "kapok_flower" => southwest_valley::kapok_flower_picture(),
+            "kapok_bough" => southwest_valley::kapok_bough_picture(),
+            "kapok_base" => southwest_valley::kapok_base_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
