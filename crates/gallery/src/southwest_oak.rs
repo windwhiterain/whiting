@@ -313,11 +313,7 @@ fn secondary(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
         // **Less than half the parent's radius.** A secondary thicker than that is a limb with leaves on it, and a
         // crown of limbs with leaves on them is the *bare broom* the defect list names — the second plate of this
         // species had secondaries a sixth of a metre through and its crown read as grey wire with confetti on it.
-        taper(&[
-            (0.00, radius * 0.45),
-            (0.45, radius * 0.28),
-            (1.00, 0.0028),
-        ]),
+        taper(&[(0.00, radius * 0.45), (0.45, radius * 0.28), (1.00, 0.0028)]),
     )
 }
 
@@ -356,8 +352,16 @@ fn bend(length: f32, angles: [f32; 4]) -> shape::Curve {
     let at = |angle: f32| [step * angle.sin(), step * angle.cos(), 0.0];
     let tangent = |angle: f32| [length * 0.5 * angle.sin(), length * 0.5 * angle.cos(), 0.0];
     let first = at(angles[0]);
-    let second = [first[0] + at(angles[1])[0], first[1] + at(angles[1])[1], 0.0];
-    let third = [second[0] + at(angles[2])[0], second[1] + at(angles[2])[1], 0.0];
+    let second = [
+        first[0] + at(angles[1])[0],
+        first[1] + at(angles[1])[1],
+        0.0,
+    ];
+    let third = [
+        second[0] + at(angles[2])[0],
+        second[1] + at(angles[2])[1],
+        0.0,
+    ];
     spine(&[
         ([0.0, 0.0, 0.0], tangent(angles[0])),
         (first, tangent(angles[1])),
@@ -661,11 +665,7 @@ pub fn alpine_oak_bough(seed: u64) -> Species {
                 bend(1.7, [0.42, 0.62, 0.40, 0.22]),
                 // A limb of the whole tree at this station is a fifth of the bole's radius, and this plate's limb
                 // has to be as thick as that or the wood reads as wire and the leaves read as confetti on it.
-                taper(&[
-                    (0.00, 0.075),
-                    (0.50, 0.045),
-                    (1.00, 0.013),
-                ]),
+                taper(&[(0.00, 0.075), (0.50, 0.045), (1.00, 0.013)]),
             )
         },
         generations: vec![

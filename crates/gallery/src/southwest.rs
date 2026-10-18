@@ -178,7 +178,15 @@ fn bough(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
     let departure = 1.35 - 0.45 * joint.station + 0.10 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-3);
     (
-        bend(length, [departure, departure + 0.16, departure + 0.06, departure - 0.34]),
+        bend(
+            length,
+            [
+                departure,
+                departure + 0.16,
+                departure + 0.06,
+                departure - 0.34,
+            ],
+        ),
         taper(&[(0.0, radius * 0.34), (0.5, radius * 0.18), (1.0, 0.012)]),
     )
 }
@@ -190,7 +198,15 @@ fn twig(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
     let departure = 1.05 + 0.25 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-4);
     (
-        bend(length, [departure, departure + 0.18, departure + 0.30, departure + 0.38]),
+        bend(
+            length,
+            [
+                departure,
+                departure + 0.18,
+                departure + 0.30,
+                departure + 0.38,
+            ],
+        ),
         taper(&[(0.0, radius * 0.45), (1.0, 0.0035)]),
     )
 }
@@ -203,8 +219,16 @@ fn bend(length: f32, angles: [f32; 4]) -> shape::Curve {
     let at = |angle: f32| [step * angle.sin(), step * angle.cos(), 0.0];
     let tangent = |angle: f32| [length * 0.5 * angle.sin(), length * 0.5 * angle.cos(), 0.0];
     let first = at(angles[0]);
-    let second = [first[0] + at(angles[1])[0], first[1] + at(angles[1])[1], 0.0];
-    let third = [second[0] + at(angles[2])[0], second[1] + at(angles[2])[1], 0.0];
+    let second = [
+        first[0] + at(angles[1])[0],
+        first[1] + at(angles[1])[1],
+        0.0,
+    ];
+    let third = [
+        second[0] + at(angles[2])[0],
+        second[1] + at(angles[2])[1],
+        0.0,
+    ];
     spine(&[
         ([0.0, 0.0, 0.0], tangent(angles[0])),
         (first, tangent(angles[1])),
@@ -445,13 +469,7 @@ pub fn yunnan_pine_picture() -> Value {
     let planting = Planting::new(species.clone())
         .with_seats(pine_cones(&species, 2))
         .with_palette(pine_palette());
-    plant_scene_lit(
-        &[planting],
-        &PINE_FRAME,
-        YUNNAN_PINE,
-        &pine_lighting(),
-        &[],
-    )
+    plant_scene_lit(&[planting], &PINE_FRAME, YUNNAN_PINE, &pine_lighting(), &[])
 }
 
 /// Builds the pine's branch plate: one bough in the true needle, at arm's length.
