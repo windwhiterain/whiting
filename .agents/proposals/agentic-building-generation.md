@@ -6968,3 +6968,29 @@ tree that carries warnings**, so an exit-code gate would have been decoration. W
 one broken `[`NoSuchThingCanary`]` link in the tree, each step counted **1 against 0** and named the failure — on runs
 whose exit code was still 0. That is the difference between a gate and a printout, and it is the fourth time this arc has
 had to draw it.
+
+## The audit grew a release gate and learned to keep its own verdicts (2026-10-27)
+
+**Release build, gated.** The audit's `[1/8]` now also runs `cargo build --workspace --all-targets --release` and
+gates it the same way as the debug build: exit 0, **0 warning/error lines**, and **0 `Compiling whiting-*` lines naming
+another checkout**. It was added for the narrow reason it can justify — a `cfg(debug_assertions)` switch can make code
+compile in one profile and not the other — and it explicitly **does not** gate any rendered number: the nine hashes are
+debug builds, and a release render is a question nobody has asked, because fma contraction may move a pixel. First
+release build: **13 `Compiling whiting-*` lines, all naming this checkout, 0 warnings.**
+
+**Verdicts are now written to the log, and that change was forced by an observation this record must keep.** The first
+run carrying the release gate ended `AUDIT RESULT: 2 failure(s)` with **exit 1**, and the two failures were printed only
+to the console — the log held the steps' own output and nothing that said which gate had failed. **Two further runs were
+green, twice, exit 0.** So a gate failed once and the tree could not say which one: a transient failure that a console-only
+verdict turns into a rumour. `Gate` and the final block now `Add-Content` every `[ok]`/`[FAIL]` line and the
+`AUDIT RESULT` block into `audit/audit-run.log`.
+
+**The transient is unexplained, and that is the honest state.** Ruled out: disk space (256 GB free on a 464 GB volume,
+`target` at 19 GB), the profile switch itself (the release build passed), and a stale output directory (the script
+empties it under a path check). Not ruled out: anything the two green re-runs did not reproduce. **A gate that fails once
+and passes twice is not "green" — it is unknown with a majority, and the next occurrence will be readable because the
+verdict is now on disk.**
+
+This is the fifth time in this arc that the thing needing repair was **the instrument rather than the tree**: a count that
+was not a measurement, a `Compiling` line printed but not gated, a case-insensitive match for `FAILED` finding `0 failed`,
+a `^{tree}` compared as two empty strings, and now a verdict that only existed on a screen.
