@@ -111,6 +111,8 @@ pub mod southwest;
 pub mod southwest_flag;
 /// 川滇高山栎, the evergreen oak of the subalpine belt: the dense rounded crown on a short gnarled bole.
 pub mod southwest_oak;
+/// The spire conifers: 丽江云杉 and 苍山冷杉, one rule with different numbers.
+pub mod southwest_spire;
 mod spotlight;
 mod stilllife;
 /// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
@@ -240,6 +242,10 @@ impl Gallery {
             "giant_rhododendron_base" => southwest_flag::giant_rhododendron_base_picture(),
             "alpine_oak" => southwest_oak::alpine_oak_picture(),
             "alpine_oak_bough" => southwest_oak::alpine_oak_bough_picture(),
+            "lijian_spruce" => southwest_spire::lijian_spruce_picture(),
+            "lijian_spruce_bough" => southwest_spire::lijian_spruce_bough_picture(),
+            "cangshan_fir" => southwest_spire::cangshan_fir_picture(),
+            "cangshan_fir_bough" => southwest_spire::cangshan_fir_bough_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
