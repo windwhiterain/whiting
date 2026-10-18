@@ -686,7 +686,7 @@ the pass counts, which is the cheap half of the same list.
    slope, a plinth on the uphill side, a lower storey that is half open. The roof is the crate's existing
    hip and the body is a box, because *this arc is the site*: the 吊脚 silhouette exists before any
    Chinese detail does, and the scene exists to be improved.
-2. **Arc 2 — the profile (D1).** The hip becomes a 悬山 whose two planes carry a 举架 section, with a deep
+2. **Arc 2 — the profile (D1).** *Done, 2026-10-18 — see below.* The hip becomes a 悬山 whose two planes carry a 举架 section, with a deep
    eave. The straight tent becomes a Chinese roof, and the bargeboard arrives with it.
 3. **Arc 3 — the crown (D2).** Gable walls that reach the roof (硬山) and one party wall that passes
    through the eave (封火墙). This is the arc after which the house reads from the side.
@@ -719,6 +719,37 @@ Two findings the picture produced, both worth carrying into later arcs:
 2. **A member whose top meets another solid's face must be embedded in it.** A post butted exactly
    against the plate's underside put two faces at one depth and the first render combed along the edge;
    `0.02 m` of tenon is what fixed it, and it is a parameter rather than a constant.
+
+### Arc 2 is closed, and the nine pinned pictures did not move
+
+`RoofPlane` has a `profile: Vec<Step>` — a fraction of the slope's plan run and a rise above the
+row's own eave — and expansion cuts each authored band into `profile.len() + 1` strips. Each strip is
+its own `RoofSurface::Skin { plane, step }`, because the surface **bends** at every purlin and a
+shading group that spanned the bend would draw the curve the architecture does not have.
+`Roof::profile_fault` is one reading with three names: `expand`'s problem, `validate`'s
+`ProfileOutOfOrder` and `ProfileReachesTheCrest`, and the probe's.
+
+Measured on `roof_profile_probe`, a 10 × 6 gable with four 步架 of 0.9 m and the coefficients the Qing
+worked example attests:
+
+| number | value |
+| --- | --- |
+| the ladder | **五举 0.500 (26.57°), 六举 0.600 (30.96°), 七五举 0.750 (36.87°), 八举 0.800 (38.66°)** — steepening to the ridge, which is the whole of 举架 |
+| the ridge's height | **2.385 m** above the eave = `0.9 × (0.5 + 0.6 + 0.75 + 0.8)`, so the profile places the ridge and not the other way round |
+| the strips | **8** over two planes, **16 skin triangles** against 4 for one straight slope |
+| planarity | the largest departure from a plane is **2.35e-8 m** |
+| the tiling | the skin's plan area equals the eave loop's, gap **0.00e0** |
+| the purlins | **12** mesh points stand exactly at an eave plus a step's rise |
+| the solid | **68 faces, euler 2, manifold, 17.740812 m³, 0 violations** |
+| the refusals | `ProfileOutOfOrder { step: 1 }` and `ProfileReachesTheCrest { step: 0 }`, each also reaching `expand` as `ProfileFault` |
+
+**The finding worth carrying: the nine pinned pictures did not move.** The audit's other nine hashes
+are byte-identical with the profile in the crate, because a plane without a profile emits exactly the
+quads it emitted before — the construct is a strict extension, and the only picture that changed is the
+one scene that asked for a 举架 roof (`stilt`, `F8630F6784B70585`). Getting there cost one correction:
+the first version walked each strip's corners from the eave up, which put the quad's diagonal on the
+other pair of corners and moved **all ten** hashes for a difference no viewer can see. The corners run
+crest-to-eave in the authored rows' order, and the nine came back.
 
 ## What would make this proposal wrong
 

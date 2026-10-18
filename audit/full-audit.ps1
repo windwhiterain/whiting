@@ -237,7 +237,7 @@ $pinned = [ordered]@{
     house      = "2F60685F737F7ED7"; hall       = "96F61FA5E9F18E60"; hall_large = "478E692C6CBE2D3B"
     shed       = "48909F693ACBA634"; terrace    = "E32C1CA08D9F3016"; wing       = "2EF5C4FB206167F4"
     workshop   = "EB8E05CD755B9B4B"; yard       = "D33D5F3372A4F0B0"; identity   = "48F13F7D84A24480"
-    stilt      = "964EBCEDAECB546D"
+    stilt      = "F8630F6784B70585"
 }
 # How it is proved to fail: change one pinned value above, run it, watch the two numbers
 # disagree and the exit code come back 1, then change it back. That is the whole test, and it
@@ -274,9 +274,9 @@ $rows = 0
 foreach ($line in $p) { if ($line -match '^\s+\S+\s+(\d+) row\(s\), ids 1\.\.=(\d+)') { $rows += [int]$Matches[1] } }
 $twoWay = @($p | Where-Object { $_ -match 'the channel is two-way for every scene: (\w+)' })
 $twoWayValue = if ($twoWay.Count -gt 0) { ($twoWay[0] -split ': ')[-1] } else { "(line absent)" }
-"  rows summed over scenes : $rows   (audit says 975)"
+"  rows summed over scenes : $rows   (audit says 999)"
 "  two-way line reads      : $twoWayValue"
-if ($rows -ne 975) { $script:fail += "identity rows ($rows, expected 975)" }
+if ($rows -ne 999) { $script:fail += "identity rows ($rows, expected 999)" }
 if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
 Gate "scene_identity_probe" $code 0
 

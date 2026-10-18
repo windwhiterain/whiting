@@ -1,7 +1,8 @@
 //! A stilt house: the floor levelled to the uphill grade, the downhill side standing on posts.
 //!
-//! This is the first scene of the Chinese vernacular level, and it draws exactly one thing the crate
-//! could not draw before: **a building whose floor is not on the ground.** `site::seat` puts every
+//! This is the first scene of the Chinese vernacular level, and it draws two things the crate could
+//! not draw before: **a building whose floor is not on the ground** (`site::posts` under a seated
+//! mass) and **a roof whose slope bends at every purlin** (a 举架 profile). `site::seat` puts every
 //! node of the mass on one level — the highest ground under its outline — and `site::posts` stands it
 //! on columns down to the ground it hangs over. Everything else is the crate's existing hip: a mass
 //! with a gable roof, a plate under it, and a wall ring.
