@@ -24,6 +24,10 @@ moves into [handoffs](../handoffs/).
 | [nurbs-izing-arbitrary-polygons.md](nurbs-izing-arbitrary-polygons.md) | How do you turn an arbitrary polygon mesh into editable NURBS, and what do kernels support afterwards? **Superseded** — that is fitting, and this project does not fit. | 2026-10-07 |
 | [sparse-nurbs-representations.md](sparse-nurbs-representations.md) | Where do NURBS-based and learned representations win and lose at sparse, locally editable geometry? **Largely superseded** by the same finding. | 2026-10-07 |
 | [nurbs-libraries.md](nurbs-libraries.md) | Which Rust/C++/Python libraries can implement this, and what do the licences cost? Current, including the multi-patch continuity gap. | 2026-10-07 |
+| [chinese-timber-frame-and-roof.md](chinese-timber-frame-and-roof.md) | What are the structural systems, module and roof geometries of Chinese traditional timber building, and what does each require of a procedural model? **The roof profile is a list of purlin stations, not a pitch: 举架 is implementable from three attested coefficients, 举折's closing rule and 提栈 are not.** | 2026-10-18 |
+| [chongqing-stilt-houses.md](chongqing-stilt-houses.md) | What structural and geometric rules define the Chongqing–Sichuan stilt house (吊脚楼) and the riverside market town (场镇)? **A 穿斗 column grid on independent stone pads at individually chosen heights: 4.5 m bays over 1.0–1.3 m purlin spacing, 22°–27° roofs; the stilt itself has no printed dimension in any source read.** | 2026-10-18 |
+| [yunnan-dwellings.md](yunnan-dwellings.md) | What rules define Yunnan's four main vernacular types (白族 三坊一照壁, 丽江纳西, 傣族 竹楼, 一颗印)? **One 穿斗 frame carries three of them; the module is a whole 坊 wing, so a courtyard is an arrangement of wings; the Dai 干栏 is the outlier at 45°–60°.** | 2026-10-18 |
+| [guizhou-dwellings.md](guizhou-dwellings.md) | What rules define the Guizhou–Xiangxi minority dwellings (苗族吊脚楼, 侗族木楼/鼓楼, 布依族石板房, 屯堡)? **A post-and-beam frame on ground of unequal height: the used bay is twice the structural bay, walls are infill at 0.03 m or 0.40 m, and slate is a roof covering with no channels and no ridge tile.** | 2026-10-18 |
 
 ## Conventions
 
