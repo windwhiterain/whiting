@@ -454,6 +454,22 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // **Five groups, and the fifth is the one this scene exists for.** The four every
+            // building scene draws are the walls, the roof, the plate and the ground; `stilt` adds
+            // **the posts**, which are the only class of solid in the gallery that stands under a
+            // floor and outside a wall ring. Measured, not predicted: the row reads the count a
+            // scene with five meshes and one light emits, five in every mesh stage, and the shadowing
+            // count is five rather than five times a caster set because one page draws every caster
+            // once.
+            "stilt",
+            Stages {
+                shadowing: 5,
+                depthing: 5,
+                lighting: 5,
+                other: 1,
+            },
+        ),
+        (
             // Four groups and three buildings, and **the plural in `roofs` is the whole of it**:
             // the terrace is three units that touch, and their roofs are packed into one mesh, so
             // the count is four and not six. Packing two things into one mesh is a saving this

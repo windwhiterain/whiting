@@ -172,7 +172,7 @@ impl Gallery {
     /// # Invariants
     ///
     /// A name in this list is buildable by [`Self::build`], and every scene in this crate's own
-    /// picture set — the nine building scenes — is in it. A scene absent from it is one this crate
+    /// picture set — the ten building scenes — is in it. A scene absent from it is one this crate
     /// still builds and no suite covers.
     pub fn names() -> &'static [&'static str] {
         &[
@@ -188,6 +188,7 @@ impl Gallery {
             "lanterns",
             "monoliths",
             "shed",
+            "stilt",
             "terrace",
             "wing",
             "workshop",

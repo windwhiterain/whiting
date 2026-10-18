@@ -14,7 +14,7 @@
 //! **It is in [`crate::Gallery::build`] and not in [`crate::Gallery::names`].** Those are two lists
 //! and the second is not a shorter way of writing the first: `names` is the set the tree's suites
 //! hold themselves to, and `scene`'s `clustered_lights` carries a table of expected pass counts per
-//! scene. The nine building scenes are listed and this one is not, and it is rendered by name on
+//! scene. The ten building scenes are listed and this one is not, and it is rendered by name on
 //! request rather than by every suite on every run.
 //!
 //! ```text

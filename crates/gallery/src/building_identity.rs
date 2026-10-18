@@ -30,6 +30,7 @@
 //!   Writing the field order here would be a second copy of the rule that a field's position is its name's
 //!   position, and the two would agree until a field was added whose name sorted somewhere else.
 
+use building::Building;
 use building::BuildingMesh;
 use building::identity::Identity;
 use definition::{PackedBuilder, PackedList, Value};
@@ -230,9 +231,30 @@ pub fn stage_set<'text>(
 ///   element off screen"* are different answers and a caller that conflated them would read the second as the
 ///   first.
 pub fn id_in(scene: &str, name: &str) -> Option<u32> {
-    let building = match scene {
+    let building = document_of(scene)?;
+    let built = building.build().ok()?;
+    let numbering = Identity::of(&built, 1);
+    numbering
+        .rows()
+        .iter()
+        .find(|row| row.path == name)
+        .map(|row| row.id)
+}
+
+/// Returns the document a building scene draws, by the scene's name, or `None` for a name this crate
+/// does not draw a building for.
+///
+/// # Invariants
+///
+/// **One table, and it was two.** [`id_in`] and [`locate_in`] each carried this match out in full —
+/// nine arms, twice — which is a table that can be extended on one side and not the other: a scene
+/// added to `id_in` alone answers a name and not an id, and the identity probe's own circle is what
+/// finds that. It is one function now, and `stilt` is the scene that added the tenth arm.
+fn document_of(scene: &str) -> Option<Building> {
+    Some(match scene {
         "identity" => crate::authored::document(),
         "shed" => crate::shed::document(),
+        "stilt" => crate::stilt::document(),
         "terrace" => crate::terrace::document(),
         "wing" => crate::wing::document(),
         "workshop" => crate::workshop::document(),
@@ -241,14 +263,7 @@ pub fn id_in(scene: &str, name: &str) -> Option<u32> {
         "hall" => crate::hall::document(),
         "hall_large" => crate::hall::document_at(14.0, 20.0, 1),
         _ => return None,
-    };
-    let built = building.build().ok()?;
-    let numbering = Identity::of(&built, 1);
-    numbering
-        .rows()
-        .iter()
-        .find(|row| row.path == name)
-        .map(|row| row.id)
+    })
 }
 
 /// Resolves an `authored_id` written by **any building scene this crate knows** into the name of the element
@@ -266,18 +281,7 @@ pub fn id_in(scene: &str, name: &str) -> Option<u32> {
 ///   nowhere else, because a caller that chained them itself would be wrong in the middle where the answer
 ///   looks like an answer.
 pub fn locate_in(scene: &str, id: u32) -> Option<String> {
-    let building = match scene {
-        "identity" => crate::authored::document(),
-        "shed" => crate::shed::document(),
-        "terrace" => crate::terrace::document(),
-        "wing" => crate::wing::document(),
-        "workshop" => crate::workshop::document(),
-        "yard" => crate::yard::document(),
-        "house" => crate::house::document(),
-        "hall" => crate::hall::document(),
-        "hall_large" => crate::hall::document_at(14.0, 20.0, 1),
-        _ => return None,
-    };
+    let building = document_of(scene)?;
     let built = building.build().ok()?;
     let numbering = Identity::of(&built, 1);
     numbering.row(id).map(|row| row.path.clone())
