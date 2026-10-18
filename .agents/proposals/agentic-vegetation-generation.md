@@ -1579,7 +1579,7 @@ is a **pair or a triptych**: the plant without the law beside the same plant wit
 | **`thin` and `Prune::Thinned`** | `thinned` |
 | **`Selector` and `paint` — the brush** | `brushed` |
 | **the trunk is a curve** (`Change::Spine` on the root, every consumer deriving from it) | `arching` |
-| **the envelope is a surface** — a law of outlines keyed along the trunk (`Outline`), reached by `Section::reach` | `panelled` |
+| **the envelope is a surface** — a law of polygons keyed along the trunk (`Outline`), reached by the first ray crossing | `panelled` |
 | **the leaf field's dials** — band, density law, phyllotaxy, size law | `bands` |
 | the offline backend | any scene, by name: `render_cycles <scene> <out.png>` |
 
@@ -1628,12 +1628,26 @@ The four scenes the demonstration round added, with their readings:
    | --- | --- |
    | a shape law varies along the trunk | a family from `ellipse(1, 1)` to `ellipse(1, 0.25)` reaches **1.000000 / 0.625000 / 0.250000** in its narrow direction at the base, half way and the top, and its widest direction at the top is still **1.000000** |
    | the blend is a blend and not a step | the middle reading is the mean of the two ends, exactly |
-   | the coarse form is the circle | the empty family and a circle section **differ in their data** — nothing against two keys — and agree in every reading to **0.000e0** |
+   | the coarse form is the circle | the empty family answers **1.0** exactly; a key is a 128-gon of that circle and its readings differ by **3.007e-4**, which is `1 − cos(π/128)` — the polygon's own error and the price of no analytic solve |
+   | **any outline, including a concave one** | an L-shaped section met by the ray `(1, 1.6)`: the notch's edge answers **0.377359** where the shape's far side along the same ray stands at **1.650947**, so the near edge wins and a radius-per-direction would lose the notch. Under the law the same ray reads **0.377359** at the base and **0.566039** half way — the mean of the two keys — so the blend keeps the notch as it deepens |
 
-   `panelled` draws the three forms side by side: one radius law, three shapes — the coarse circle, one section at every
-   station, and a family that is round at the base and pinched at the top. The first attempt at this frame showed three
-   nearly identical crowns, because the section's narrow axis is the trunk frame's *second* axis, which the camera looks
-   straight down; a family whose shape changes has to change where a frame can see it.
+   **No analytic solution is wanted**, on the superior's verdict *"不许要解析解，支持任意outline"*. Every key is a polygon of
+   `RING_AROUND` = **128** points sampled along the loop's perimeter, and a reach is the **first place a ray from the
+   origin crosses that loop**, walked in order — so an authored outline keeps its concavity, an ellipse is sampled like
+   everything else, and the accuracy is the polygon's. Two consequences worth their own lines:
+
+   - **A reach is a distance and not a parameter.** `hit` normalises its direction before solving, so a reach can be
+     compared with a radius; the first version did not, and a 0.16-wide section trimmed as though it were 30 times
+     gentler — one frame of a difference where there should have been a flat crown.
+   - **The blend is of polygons, vertex by vertex**, which is why every key must be sampled at the same count: blending
+     the two *reaches* would be cheaper arithmetic and the wrong surface, because a reach-per-direction is not any
+     concave polygon's boundary.
+
+   `panelled` draws the three forms side by side, on three clumps: one radius law, three shapes — the coarse circle, one
+   flat section at every station, and a family that is round at the base and a sixteenth of the radius across at the top.
+   Two earlier framings failed and their reasons are worth keeping: the first showed three nearly identical crowns
+   because the section's narrow axis was the trunk frame's *second* axis, which the camera looks straight down; the second
+   put the crowns at a culm's distance, where a clump is an inch tall.
 3. *Are the leaves instanced from a field?* Yes: `LeafField` is the distribution field (band, density law, phyllotaxy,
    pitch, twist, size law, jitter, `reference`, `aim`) and `LeafField::groups` turns it into one placement per leaf; the
    scene kit draws **one blade mesh and one instance matrix per leaf**, so the grove's 146 plantings are one blade mesh

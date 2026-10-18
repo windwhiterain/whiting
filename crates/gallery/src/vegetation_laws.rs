@@ -338,20 +338,20 @@ pub const PANELLED: &str = "panelled";
 /// Where the panelled scene's three crowns stand: the pair's two places and one more to the right.
 const PANEL_PLACES: [[f32; 3]; 3] = [[-0.95, 0.0, 0.0], [0.0, 0.0, 0.0], [0.95, 0.0, 0.0]];
 
-/// The framing the panelled triptych is drawn in: three crowns need a wider frame than two.
+/// The framing the panelled triptych is drawn in: three clumps, close enough that which limbs survived is the subject.
 const PANEL_FRAME: Framing = Framing {
     width: 1400,
     height: 1000,
-    eye: [0.0, 1.55, 3.95],
-    target: [0.0, 0.95, 0.0],
-    field_of_view: 0.80,
+    eye: [0.0, 0.95, 2.05],
+    target: [0.0, 0.42, 0.0],
+    field_of_view: 0.78,
     near: 0.05,
     far: 32.0,
     floor: 7.0,
     ground: Ground::Plane,
 };
 /// The radius law both crowns of the panelled scene are trimmed to.
-const CROWN_RADIUS: [(f32, f32); 3] = [(0.0, 0.52), (0.5, 0.40), (1.0, 0.28)];
+const CROWN_RADIUS: [(f32, f32); 3] = [(0.0, 0.34), (0.5, 0.26), (1.0, 0.18)];
 
 /// Builds the panelled scene: the same radius law, drawn as a circle on the left and as a section on the right.
 ///
@@ -374,22 +374,21 @@ fn panelled_plantings() -> Vec<Planting> {
     // **Three crowns, one radius law**: the coarse circle, one section at every station, and a family of outlines —
     // round where the trunk is free and flattened where a soffit would be. The third is the surface the design asked
     // for, and the other two are the forms it refines.
-    let mut round = bamboo(11);
+    let mut round = clump(31);
     trim(&mut round.plant, &Envelope::radial(&CROWN_RADIUS));
-    let mut sectioned = bamboo(11);
+    let mut sectioned = clump(31);
     trim(
         &mut sectioned.plant,
-        &Envelope::radial(&CROWN_RADIUS).with_section(shape::Section::ellipse(0.30, 1.0)),
+        &Envelope::radial(&CROWN_RADIUS).with_section(shape::Section::ellipse(1.0, 0.16)),
     );
-    let mut lawed = bamboo(11);
+    let mut lawed = clump(31);
     let mut envelope = Envelope::radial(&CROWN_RADIUS);
     envelope.shape = Outline::of(&[
-        // One axis narrows and the other hardly moves, so whichever of the trunk frame's two axes the camera sees
-        // across, the crown is visibly pinched toward the top — a family whose shape changes along the trunk has to
-        // change where a frame can see it, or the picture is three identical crowns.
-        (0.0, shape::Section::ellipse(0.95, 0.95)),
-        (0.55, shape::Section::ellipse(0.60, 0.90)),
-        (1.0, shape::Section::ellipse(0.24, 0.86)),
+        // The same radius law, with the shape opening from a circle at the base to a sixteenth of it across at the
+        // top: a clump trained flat at the top by the space it grows in, and round where the space is free.
+        (0.0, shape::Section::ellipse(1.0, 0.95)),
+        (0.55, shape::Section::ellipse(1.0, 0.55)),
+        (1.0, shape::Section::ellipse(1.0, 0.16)),
     ]);
     trim(&mut lawed.plant, &envelope);
     vec![

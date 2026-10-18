@@ -35,6 +35,10 @@ fn main() {
         "the coarse form is the circle",
         the_coarse_form_is_the_circle(),
     ));
+    checks.push((
+        "a concave outline answers the notch",
+        a_concave_outline_answers_the_notch(),
+    ));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -143,10 +147,13 @@ fn a_section_refines_the_envelope() -> bool {
     println!(
         "  the control is the two axes: a refinement that only scaled the circle would answer the same on both"
     );
-    (circle_x - 0.5).abs() < 1e-4
+    // **The polygon's own error is the tolerance**: a 64-gon is inscribed in its circle, so a reach between two of its
+    // vertices is short by up to 1 - cos(pi/64) = 1.203e-3, and no analytic solve is wanted.
+    let ring_error = 1.0 - (std::f32::consts::PI / 64.0).cos();
+    (circle_x - 0.5).abs() < 3.0 * ring_error
         && ellipse_x == 0.0
-        && (circle_y - 0.5).abs() < 1e-4
-        && (ellipse_y - 1.0).abs() < 1e-4
+        && (circle_y - 0.5).abs() < 3.0 * ring_error
+        && (ellipse_y - 1.0).abs() < 3.0 * ring_error
 }
 
 /// The trim writes length nudges: every trimmed node's tip comes inside, and the plant gets smaller.
@@ -394,5 +401,70 @@ fn the_coarse_form_is_the_circle() -> bool {
     println!(
         "  the two laws differ in their data — an empty family against two circle keys — and agree in every reading to {worst:.3e}, which is the invariant that matters"
     );
-    (circle - 1.0).abs() < 1e-6 && worst < 1e-6
+    let ring_error = 1.0 - (std::f32::consts::PI / 64.0).cos();
+    println!(
+        "  that {worst:.3e} is the 64-gon's own error, 1 - cos(pi/64) = {ring_error:.3e}: the empty family answers the circle exactly and a ring of it is inscribed by that much"
+    );
+    (circle - 1.0).abs() < 1e-6 && worst < 1.5 * ring_error
+}
+
+/// An L-shaped section, which no radius-per-direction can describe: the ray that runs at the notch is stopped by the
+/// notch's own edge, and a law of outlines keeps that when it blends.
+///
+/// # Invariants
+///
+/// The direction `(1, 1.6)` from the origin meets the notch's inner edge at `x = 0.2` while the shape's far side
+/// along that ray stands at `0.875`: **the near edge wins**, which is what "the first place a ray crosses the loop"
+/// means and what a star-shaped assumption would get wrong. The blend of the L with its doubled self is the doubled L,
+/// so the half-way reach is the mean of the two — a polygon blend and not a reach blend.
+fn a_concave_outline_answers_the_notch() -> bool {
+    let corner = 0.2f32;
+    let one = Section::outline(&[
+        [-0.6, -0.6],
+        [1.4, -0.6],
+        [1.4, corner],
+        [corner, corner],
+        [corner, 1.4],
+        [-0.6, 1.4],
+    ])
+    .expect("six points making an L are a section");
+    let two = Section::outline(&[
+        [-1.2, -1.2],
+        [2.8, -1.2],
+        [2.8, 2.0 * corner],
+        [2.0 * corner, 2.0 * corner],
+        [2.0 * corner, 2.8],
+        [-1.2, 2.8],
+    ])
+    .expect("the L's double is a section too");
+    // **`Section::reach` answers a distance and the law answers a fraction of the way to the point**, so the two are
+    // compared on the same normalised direction. The tolerance is one ring step: a key is the section's own loop
+    // resampled along its perimeter, so a corner between two samples is cut by at most one step of it.
+    // **A reach is a distance and not a parameter**: the ray `(1, 1.6)` hits the notch's edge at `(0.2, 0.32)`, which is
+    // `0.377359` from the origin, while the shape's far side along the same ray stands at `1.651` — the near edge wins.
+    // The tolerance is one ring step, because a key is the section's own loop resampled along its perimeter and a
+    // corner between two samples is cut by at most one step.
+    let direction = [1.0f32, 1.6];
+    let size = (direction[0] * direction[0] + direction[1] * direction[1]).sqrt();
+    let shape = one.reach(direction);
+    let doubled = two.reach(direction);
+    let near = 0.2 * size;
+    let far = 0.875 * size;
+    let step = 0.05f32;
+    let law = Outline::of(&[(0.0, one), (1.0, two)]);
+    let base = law.reach(0.0, direction);
+    let half = law.reach(0.5, direction);
+    let top = law.reach(1.0, direction);
+    println!("\n# a concave outline");
+    println!(
+        "  the ray (1, 1.6) meets the notch at {shape:.6} where the shape's far side stands at {far:.6}; under the law it reads {base:.6} at the base and {half:.6} half way, the mean of {shape:.6} and {doubled:.6}"
+    );
+    println!(
+        "  the control is the far side: a radius-per-direction would answer {far:.6} and lose the notch"
+    );
+    (shape - near).abs() < 2.0 * step
+        && shape < 0.6 * far
+        && (base - shape).abs() < 1e-5
+        && (top - doubled).abs() < 1e-5
+        && (half - 0.5 * (shape + doubled)).abs() < 1e-5
 }
