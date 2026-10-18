@@ -37,12 +37,14 @@ fn u_shape(notch: f32) -> Vec<PlanNode> {
 
 /// Answers whether a U of this notch and this wall expands, and what it says if not.
 fn try_u(notch: f32, wall: f32) -> (bool, usize, String) {
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![
-        Mass::new(u_shape(notch), 3.2)
-            .with_wall(wall)
-            .with_slab(0.4),
-    ];
+    let skeleton = BuildingSkeleton::new(
+        vec![
+            Mass::new(u_shape(notch), 3.2)
+                .with_wall(wall)
+                .with_slab(0.4),
+        ],
+        Vec::new(),
+    );
     let building = Building::new(skeleton);
     let violations = building.validate();
     let detail = match building.build() {

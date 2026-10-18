@@ -90,6 +90,12 @@ enum SlotKey {
     Index(usize),
 }
 
+/// **A struct's slots and the references among them.** The two travel together because the second
+/// is derived from the first while it is being read — every `RawSlot::Internal` found is also a
+/// `SlotKey` — and a reader that returned only the slots would have to walk the whole map a second
+/// time to find the references it had already seen.
+type Fields = (BTreeMap<String, RawSlot>, Vec<(SlotKey, Reference)>);
+
 /// Reads a document into a raw arena and then resolves the references in it.
 struct Builder<'context> {
     raw: Vec<RawNode>,
@@ -203,7 +209,7 @@ impl Builder<'_> {
         &mut self,
         fields: &BTreeMap<String, Value>,
         schema: &Schema,
-    ) -> Result<(BTreeMap<String, RawSlot>, Vec<(SlotKey, Reference)>), LoadError> {
+    ) -> Result<Fields, LoadError> {
         let mut read = BTreeMap::new();
         let mut pending = Vec::new();
         for (name, value) in fields {

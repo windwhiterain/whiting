@@ -347,7 +347,7 @@ fn uncovered_rock(facet: &FacetMesh, surface: &patch::HermiteSurface, mesh: &[Po
     }
     let reach = span * 0.01;
 
-    let mut triangles: Vec<[Point3; 3]> = Vec::with_capacity(surface.face_count() as usize * 2);
+    let mut triangles: Vec<[Point3; 3]> = Vec::with_capacity(surface.face_count() * 2);
     for face in 0..surface.face_count() as u32 {
         let quad = surface.quads()[face as usize].map(|id| mesh[id as usize]);
         triangles.push([quad[0], quad[1], quad[2]]);

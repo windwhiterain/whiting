@@ -157,7 +157,7 @@ pub struct Mass {
     /// **is** the plate's own top — so nothing has to be split and the two rings never share an edge. The loop may
     /// have reflex corners: what it may not have is a **bite narrower than `2 × wall`**, because the ring stands
     /// [`wall`](Self::wall) out of the loop and so that far into each side of a bite. Expansion refuses the rest
-    /// through [`expand::offset_loop`](crate::expand::offset_loop)'s own faults, and
+    /// through `crate::expand::offset_loop`'s own faults, and
     /// [`validate`](crate::validate) reports it as
     /// [`DidNotExpand`](crate::validate::Violation::DidNotExpand).
     pub voids: Vec<Vec<PlanNode>>,

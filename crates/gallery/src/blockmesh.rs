@@ -326,13 +326,11 @@ fn grid_points(
     // that rectangle, and a uniform grid over the box lands corners where no triangle is. Every
     // one of those corners is answered by [`sample_block`] projecting onto the nearest covered
     // point, and the nudge below keeps the projected coincidences drawable.
-    let Some((columns, rows)) = covered_quantiles(faces, side - 1) else {
-        return None;
-    };
+    let (columns, rows) = covered_quantiles(faces, side - 1)?;
 
     let mut grid = Vec::with_capacity(side * side);
-    for row in 0..side {
-        for column in 0..side {
+    for (row, row_at) in rows.iter().enumerate() {
+        for (column, column_at) in columns.iter().enumerate() {
             if row == side - 1 {
                 // **The valley row is duplicated per belt rather than shared by vertex id**
                 // (2026-10-08; it used to be one vertex keyed by the run and the place along it).
@@ -353,8 +351,8 @@ fn grid_points(
                 grid.push(id);
                 continue;
             }
-            let v = rows[row];
-            let u = columns[column];
+            let v = *row_at;
+            let u = *column_at;
             let id = positions.len() as VertexId;
             positions.push(sample_block(facet, faces, u, v)?);
             grid.push(id);
@@ -533,7 +531,7 @@ fn push_quads(
 ) {
     for row in 0..side - 1 {
         for column in 0..side - 1 {
-            let near = (row * side + column) as usize;
+            let near = row * side + column;
             let corners = [
                 grid[near],
                 grid[near + 1],
@@ -574,9 +572,7 @@ fn block_surface(
     let faces: Vec<&Face> = facet.faces[block.faces.start as usize..block.faces.end as usize]
         .iter()
         .collect();
-    let Some((low_u, high_u, low_v, high_v)) = covered_domain(&faces) else {
-        return None;
-    };
+    let (low_u, high_u, low_v, high_v) = covered_domain(&faces)?;
     let mut positions = Vec::with_capacity(side * side);
     // A block has no partner to share a seam with, so every point of its grid is sampled.
     for row in 0..side {

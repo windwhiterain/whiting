@@ -2,11 +2,11 @@
 //!
 //! # What this is for
 //!
-//! The same job [`gallery::identity`] does for a massif, for a building: an agent looking at a picture
-//! has nothing to look at but the picture, and *"the third window's reveal is too deep"* is a sentence
-//! about a frame. This module hands the frame a number per authored element and hands the agent the
-//! table that turns the number back into a name — so a report can say **"part 1, its left reveal"**
-//! instead of *"one of the 3 400 faces"*.
+//! The same job `whiting_gallery::identity` does for a massif, for a building: an agent looking at a
+//! picture has nothing to look at but the picture, and *"the third window's reveal is too deep"* is a
+//! sentence about a frame. This module hands the frame a number per authored element and hands the
+//! agent the table that turns the number back into a name — so a report can say **"part 1, its left
+//! reveal"** instead of *"one of the 3 400 faces"*.
 //!
 //! The four hops are the sibling's, and so is who owns each: a pixel is read off the rendered image by
 //! the frame, an id becomes a name here, a face becomes an element through

@@ -556,7 +556,7 @@ pub fn yard() -> Value {
         .into_iter()
         .map(|(label, material)| {
             instance(
-                &format!("{label}-{stage}"),
+                format!("{label}-{stage}"),
                 label,
                 [0.0; 3],
                 [0.0; 3],
@@ -566,7 +566,7 @@ pub fn yard() -> Value {
         })
         .collect::<Vec<_>>();
         rows.push(instance(
-            &format!("gate-{stage}"),
+            format!("gate-{stage}"),
             "gate",
             gate_standing.0,
             gate_standing.1,
@@ -633,7 +633,7 @@ pub fn yard() -> Value {
                     "ground",
                     "Triangles",
                     shaded_point_schema(),
-                    crate::ground::mesh(&document, 160, 42.0, |x, z| ground(x, z)),
+                    crate::ground::mesh(&document, 160, 42.0, ground),
                 ),
             ]),
         ),

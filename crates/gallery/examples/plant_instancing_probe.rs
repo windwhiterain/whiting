@@ -409,8 +409,8 @@ fn main() {
 
     println!("\n# the conversion, leaf by leaf, as point sets");
     println!(
-        "  {:<74} {:>9} {:>17} {:>12}  {}",
-        "row", "tolerance", "differing / points", "furthest", "expected"
+        "  {:<74} {:>9} {:>17} {:>12}  expected",
+        "row", "tolerance", "differing / points", "furthest"
     );
     let mut held = true;
     for row in &rows {
@@ -535,7 +535,7 @@ fn passes(leaves: usize) -> bool {
     let passes = graphics::passes(&compiled.graphics.value).expect("the emitted passes read");
 
     println!("\n# every pass the scene compiled to, and the instance buffer it binds");
-    println!("  {:<44} {:>12}  {}", "pass", "bytes", "instance buffer");
+    println!("  {:<44} {:>12}  instance buffer", "pass", "bytes");
     let mut single = 0i64;
     // Every pass over the blade, with the stage it is in and the size of the buffer it binds.
     let mut blades: Vec<(&str, i64)> = Vec::new();

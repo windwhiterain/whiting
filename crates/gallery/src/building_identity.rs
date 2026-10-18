@@ -131,8 +131,7 @@ pub fn packed_where(
             continue;
         }
         let triangle = built.triangle(face);
-        for corner in 0..3 {
-            let position = triangle[corner];
+        for (corner, position) in triangle.iter().enumerate() {
             let normal = normals.at(index, corner);
             points
                 .field(ID_OUTPUT, &[id])

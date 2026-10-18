@@ -151,6 +151,7 @@ pub struct Corner {
 ///   centre.** That is the ring at a station the scale law collapsed to nothing, where every
 ///   incident triangle has no area; it is outward for every solid drawn here and it is better than
 ///   the zero-length vector a shader would read as `NaN`.
+///
 /// Returns a loft's corners with their positions and normals moved by a plant's placement.
 ///
 /// # Invariants
@@ -371,12 +372,11 @@ pub fn fractal_noise(point: [f64; 2], octaves: usize, seed: i64) -> f64 {
     let mut frequency = 1.0;
     let mut total = 0.0;
     for octave in 0..octaves {
-        value = value
-            + amplitude
-                * value_noise(
-                    [point[0] * frequency, point[1] * frequency],
-                    seed + octave as i64,
-                );
+        value += amplitude
+            * value_noise(
+                [point[0] * frequency, point[1] * frequency],
+                seed + octave as i64,
+            );
         total += amplitude;
         amplitude /= 3.0;
         frequency *= 2.0;

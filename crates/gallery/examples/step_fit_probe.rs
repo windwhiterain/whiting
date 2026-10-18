@@ -239,7 +239,7 @@ fn main() {
                 faces: Vec::new(),
                 blocks: Vec::new(),
             };
-            only.faces = faces.iter().map(|face| (**face).clone()).collect();
+            only.faces = faces.iter().map(|face| **face).collect();
             for face in &mut only.faces {
                 face.block = 0;
             }

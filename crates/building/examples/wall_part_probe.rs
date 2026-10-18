@@ -182,8 +182,7 @@ fn main() {
 
     println!("\n# and a socket on the leaf still resolves in a bay, which is the old path");
     println!(
-        "  (a wall mount has no bay; a bay mount is unchanged: {} probe(s) still measure it)",
-        "part/socket/instance"
+        "  (a wall mount has no bay; a bay mount is unchanged: part/socket/instance probe(s) still measure it)"
     );
     let _ = Socket::new("hinge", (0.0, 0.0));
     let _ = floor_slab;

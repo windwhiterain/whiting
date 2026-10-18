@@ -204,13 +204,13 @@ fn sky_base(ray: vec3<f32>) -> vec3<f32> {{
         };
 
         let to_sun = (ray[0] * self.sun[0] + ray[1] * self.sun[1] + ray[2] * self.sun[2]).max(0.0);
-        for channel in 0..3 {
+        for (channel, value) in sky.iter_mut().enumerate() {
             let mut glow = 0.0;
             for lobe in 0..self.glow_reach.len() {
                 glow += to_sun.powf(self.glow_reach[lobe]) * self.glow_strength[lobe];
             }
-            sky[channel] += self.glow[channel] * glow;
-            sky[channel] += self.disc[channel]
+            *value += self.glow[channel] * glow;
+            *value += self.disc[channel]
                 * smoothstep(self.disc_edge[0], self.disc_edge[1], to_sun)
                 * self.disc_gain;
         }

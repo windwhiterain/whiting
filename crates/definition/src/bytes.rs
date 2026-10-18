@@ -201,11 +201,9 @@ impl BytesText {
 
 /// Spells the bytes of a value that holds them as a run, which is what a `proxy` conversion is
 /// asked for and cannot fail.
-impl TryFrom<&Vec<u8>> for BytesText {
-    type Error = std::convert::Infallible;
-
-    fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
-        Ok(Self::of(bytes))
+impl From<&Vec<u8>> for BytesText {
+    fn from(bytes: &Vec<u8>) -> Self {
+        Self::of(bytes)
     }
 }
 

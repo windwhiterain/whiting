@@ -558,7 +558,7 @@ fn ground_at(valley: &Valley, massif: &Ridge, level: f64, x: f64, z: f64) -> (f6
         );
 
     let cut = if band * farmed > 0.002 {
-        let steepness = land::slope(&land_at, [x, z], CELL);
+        let steepness = land::slope(land_at, [x, z], CELL);
         band * farmed * (1.0 - smoothstep(TERRACE_FLAT_SLOPE[0], TERRACE_FLAT_SLOPE[1], steepness))
     } else {
         0.0

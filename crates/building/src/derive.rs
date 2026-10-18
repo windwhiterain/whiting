@@ -139,11 +139,11 @@ pub const RIDGE_INSETS: [f32; 3] = [0.4, 0.5, 0.6];
 ///   outer face looking inward, so the winding is part of what a starter decides rather than
 ///   something left to the checker to report.
 /// - **The one seeded choice is the hip's ridge inset**, drawn from [`RIDGE_INSETS`] through a
-///   stream forked at [`NodeKey::ROOT`]. A gable starter draws nothing: the stream belongs to the
+///   stream forked at [`ROOT_KEY`]. A gable starter draws nothing: the stream belongs to the
 ///   node that has a choice, so a building with nothing to choose does not advance one.
 /// - **A shape that cannot carry the drawn inset does not get it.** The draw is one step of the same
 ///   stream either way, and the value used is the first of the published list at or after the drawn
-///   one that the eave admits ([`Eave::admits`]) — so the document still names one of the three,
+///   one that the eave admits (`Eave::admits`) — so the document still names one of the three,
 ///   and a square, which admits only the first two, never stands its hip feet on the wrong corners.
 /// - **The plate is the mass's inner loop, its top is the ground, and every roof style carries it.** A
 ///   style decides what stands on the wall top; nothing it can be takes the floor away, which is the
@@ -305,7 +305,7 @@ fn flat_over(eave: &Eave, host: MassId, thickness: f32) -> Slab {
 ///   the middle line between the long sides: two spans of two parallel edges, so the quad between
 ///   them is one plane. An end plane names one crest point twice against the two corners of an end
 ///   edge, and three points are one plane. The eave run is never a diagonal of the loop, which is
-///   the one way these quads could twist — see [`long_plane`] and [`end_plane`].
+///   the one way these quads could twist — see `long_plane` and `end_plane`.
 /// - **A ridge with no length is one crest point.** A hip whose inset reaches half the long run —
 ///   which is every hip over a square — has both crest ends standing on the same spot, and two
 ///   points at one spot are two welded vertices and a quad between them with no area. The four
@@ -314,7 +314,7 @@ fn flat_over(eave: &Eave, host: MassId, thickness: f32) -> Slab {
 ///   station, written twice from one value. No test compares coordinates anywhere in this file.
 ///
 /// Returns `None` when the outline is not a quadrilateral with parallel long sides: see
-/// [`read_eave`], which is where the domain is stated.
+/// `Eave::read`, which is where the domain is stated.
 ///
 /// `host` is the mass the roof sits on, taken as an argument rather than assumed: a `Roof` names its
 /// host, a mis-named host silently authorizes an intersection the author did not make, and a mass
@@ -781,7 +781,7 @@ fn rectangle(width: f32, depth: f32) -> Vec<PlanNode> {
 ///
 /// **The guard above is about where a floor is, not about what it is made of**, which is why
 /// [`starter`] cannot call this function and does not try: its plate is the same inner loop at the
-/// ground rather than above it. What the two share is [`inner_loop`].
+/// ground rather than above it. What the two share is `inner_loop`.
 ///
 /// `O(nodes)` to offset, once.
 pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Option<Slab> {

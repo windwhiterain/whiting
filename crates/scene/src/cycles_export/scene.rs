@@ -185,7 +185,7 @@ fn read_instances(fields: &FieldMap) -> EmitResult<Vec<Instance>> {
         vec![entries]
     } else if let Some(bucketed) = value.as_dict() {
         let mut collected: Vec<&[Value]> = Vec::with_capacity(bucketed.len());
-        for (_, bucket) in bucketed {
+        for bucket in bucketed.values() {
             let entries = bucket.as_list().ok_or_else(|| EmitError::Malformed {
                 detail: "an instance bucket is not a list".to_owned(),
             })?;

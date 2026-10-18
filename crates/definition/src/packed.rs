@@ -270,14 +270,12 @@ pub struct PackedListProxy {
 }
 
 /// Spells a run as the base64 a document carries, which cannot fail.
-impl TryFrom<&PackedList> for PackedListProxy {
-    type Error = std::convert::Infallible;
-
-    fn try_from(list: &PackedList) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<&PackedList> for PackedListProxy {
+    fn from(list: &PackedList) -> Self {
+        Self {
             layout: list.layout.clone(),
             bytes: BytesText::of(list.bytes()),
-        })
+        }
     }
 }
 

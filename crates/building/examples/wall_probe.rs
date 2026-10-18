@@ -24,19 +24,20 @@ fn node(x: f32, z: f32) -> PlanNode {
 /// The south side is therefore two runs and the gap between them; every other side is one. Nothing here
 /// knows what a gate is — a gate is the space where no wall was authored.
 fn courtyard() -> BuildingSkeleton {
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.walls = vec![
-        // the north side, one run
-        Wall::new(node(-5.0, -3.0), node(5.0, -3.0), THICKNESS, TOP),
-        // the east side
-        Wall::new(node(5.0, -3.0), node(5.0, 3.0), THICKNESS, TOP),
-        // the south side, split around the gate
-        Wall::new(node(5.0, 3.0), node(1.2, 3.0), THICKNESS, TOP),
-        Wall::new(node(-1.2, 3.0), node(-5.0, 3.0), THICKNESS, TOP),
-        // the west side
-        Wall::new(node(-5.0, 3.0), node(-5.0, -3.0), THICKNESS, TOP),
-    ];
-    skeleton
+    BuildingSkeleton {
+        walls: vec![
+            // the north side, one run
+            Wall::new(node(-5.0, -3.0), node(5.0, -3.0), THICKNESS, TOP),
+            // the east side
+            Wall::new(node(5.0, -3.0), node(5.0, 3.0), THICKNESS, TOP),
+            // the south side, split around the gate
+            Wall::new(node(5.0, 3.0), node(1.2, 3.0), THICKNESS, TOP),
+            Wall::new(node(-1.2, 3.0), node(-5.0, 3.0), THICKNESS, TOP),
+            // the west side
+            Wall::new(node(-5.0, 3.0), node(-5.0, -3.0), THICKNESS, TOP),
+        ],
+        ..Default::default()
+    }
 }
 
 fn main() {

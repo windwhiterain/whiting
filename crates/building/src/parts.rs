@@ -146,7 +146,7 @@ impl Joint {
 ///
 /// The directions are `along` the wall's edge, `up`, and `inward` across the face the bay names, in
 /// the order the template authored `x`, `y` and `z` — which is what
-/// [`Template`](crate::parts::Template)'s documentation means by "authored in the placement's frame".
+/// [`Template`]'s documentation means by "authored in the placement's frame".
 ///
 /// **`inward` is always the walker's right, so `along × up` is `inward` on every face this crate
 /// has**, a mass's outer wall and a courtyard's inner one alike. That is what makes the frame a
@@ -241,8 +241,8 @@ pub struct Bounds {
 ///
 /// - The masses and roofs are **ordinary** ones, in local coordinates, with no attachment to anything
 ///   outside the template. A template that names a host it does not hold is the same fault as a mass
-///   that does (and [`BuildingSkeleton::validate`] on [`Template::skeleton`] says so), which is why a
-///   template is authored as a building rather than as a special case.
+///   that does (and [`Building::validate`](crate::Building::validate) on [`Template::skeleton`]
+///   says so), which is why a template is authored as a building rather than as a special case.
 /// - Its name is its identity in a report and in a scene, and nothing keys off it: two templates may
 ///   share a name and are still two templates, so an author who renames one does not silently move
 ///   every placement of it. Placements name a template **by index** for that reason.

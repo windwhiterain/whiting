@@ -489,7 +489,7 @@ impl Loaded {
     /// // Both references are written back as the references they were.
     /// assert_eq!(scene.to_value(), document);
     /// ```
-
+    ///
     /// Returns the node this definition starts at.
     pub const fn root(&self) -> NodeId {
         self.root

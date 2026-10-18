@@ -61,7 +61,7 @@ pub fn read_transform(value: Option<&Value>, context: &str) -> EmitResult<Transf
 
 fn triple_or(fields: &definition::FieldMap, name: &str, default: [f64; 3]) -> EmitResult<[f64; 3]> {
     match read::field(fields, name) {
-        Some(value) => read::triple(value, &format!("{name}")),
+        Some(value) => read::triple(value, name),
         None => Ok(default),
     }
 }

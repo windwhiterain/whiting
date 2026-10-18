@@ -314,7 +314,7 @@ fn main() {
         "  every block's interior seams   split {worst_split:.3e}   normal {worst_normal:.3e} rad"
     );
 
-    if blocks.len() == 0 {
+    if blocks.is_empty() {
         failures.push("1  at least one block became a surface");
     }
     if worst_split > 1.0e-12 {

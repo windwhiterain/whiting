@@ -14,27 +14,31 @@
 //!
 //! Two loops and four surfaces, exactly as the mass's own ring is closed:
 //!
-//! - **the void loop**, whose faces look *into* the courtyard ([`MassSurface::VoidWall`]);
-//! - **the same loop offset outward by `mass.wall`** ([`expand::offset_loop`] with
-//!   [`OffsetSide::Outward`]), whose faces look out into the rooms ([`MassSurface::VoidInner`]);
-//! - the strip of wall top between them ([`MassSurface::VoidTop`]) and the annulus at the loop's own
-//!   elevations ([`MassSurface::VoidBase`]).
+//! - **the void loop**, whose faces look *into* the courtyard
+//!   ([`MassSurface::VoidWall`](crate::mesh::MassSurface::VoidWall));
+//! - **the same loop offset outward by `mass.wall`** (`expand::offset_loop` with
+//!   `OffsetSide::Outward`), whose faces look out into the rooms
+//!   ([`MassSurface::VoidInner`](crate::mesh::MassSurface::VoidInner));
+//! - the strip of wall top between them ([`MassSurface::VoidTop`](crate::mesh::MassSurface::VoidTop))
+//!   and the annulus at the loop's own elevations
+//!   ([`MassSurface::VoidBase`](crate::mesh::MassSurface::VoidBase)).
 //!
 //! The result is a torus, so its Euler characteristic is `0` where a plain box is `2`, and it is a
-//! **solid of its own** ([`SolidId::Void`]) rather than a second ring inside the mass's one.
+//! **solid of its own** ([`SolidId::Void`](crate::mesh::SolidId::Void)) rather than a second ring
+//! inside the mass's one.
 //!
 //! **The ring itself is the mass's own walk.** What this module owns is the part that is a
 //! courtyard's and nobody else's — taking the offset **outward** rather than inward — and then it
-//! hands the two loops to [`expand::loops_of`], which is the one derivation of "a loop and the loop a
-//! wall's thickness away from it", and to [`expand::ring_walk`], which is the same walk that builds a
+//! hands the two loops to `expand::loops_of`, which is the one derivation of "a loop and the loop a
+//! wall's thickness away from it", and to `expand::ring_walk`, which is the same walk that builds a
 //! mass's own wall. A hole cut in a courtyard's wall therefore arrives by exactly the path a window in
-//! a mass's wall does: one [`Opening`], one bay, one set of reveals, and no second implementation to
-//! agree with the first about what a jamb is.
+//! a mass's wall does: one [`Opening`](crate::openings::Opening), one bay, one set of reveals, and no
+//! second implementation to agree with the first about what a jamb is.
 //!
 //! **A part's frame is read off the same two loops, and that is why this module has no second ring
 //! for it.** A part pinned in a courtyard bay needs the strip of wall the bay was measured on, which
-//! is the void loop and its outward offset; [`expand::part_frame`] asks [`expand::loops_of`] for
-//! exactly what [`ring`] asks for and reads one edge of the result, so "which way does a courtyard's
+//! is the void loop and its outward offset; [`expand::part_frame`] asks `expand::loops_of` for
+//! exactly what `ring` asks for and reads one edge of the result, so "which way does a courtyard's
 //! wall go" has one answer in the crate rather than one per reader of it.
 //!
 //! # What is refused, and why
@@ -49,7 +53,7 @@
 //! better than `2 × 10⁻⁵ m²` — the same `f32` noise the convex case already carries. What is left is
 //! narrower and is arithmetic rather than taste: **a bite in the loop has to be wider than
 //! `2 × wall`**, because the ring stands `wall` out of the loop and so `wall` into each side of the
-//! bite. Every way of failing that is one of [`expand::offset_loop`]'s own faults and each names the
+//! bite. Every way of failing that is one of `expand::offset_loop`'s own faults and each names the
 //! **loop** it is about, so a courtyard's fault and a mass's fault are never the same fault.
 //!
 //! [`Violation::VoidNotSimple`](crate::validate::Violation::VoidNotSimple) and

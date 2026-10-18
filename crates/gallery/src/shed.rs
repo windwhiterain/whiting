@@ -306,7 +306,7 @@ pub fn shed() -> Value {
         .into_iter()
         .map(|(label, material)| {
             instance(
-                &format!("{label}-{stage}"),
+                format!("{label}-{stage}"),
                 label,
                 [0.0; 3],
                 [0.0; 3],

@@ -164,6 +164,18 @@ pub fn light_with_radius(
     Value::Enum { tag, fields }
 }
 
+/// **The two angles of a spot light's cone**, both half angles in radians, the inner at full strength
+/// and the outer at nothing. They are named together because the pair is the cone: two `f64`s in
+/// sequence at a call site read as two numbers, and transposing them draws the same cone with its
+/// falloff the wrong way round.
+#[derive(Debug, Clone, Copy)]
+pub struct Cone {
+    /// The half angle at full strength.
+    pub inner: f64,
+    /// The half angle at nothing.
+    pub outer: f64,
+}
+
 /// Builds one spot light of a scene: a point light with a cone.
 ///
 /// # Invariants
@@ -186,8 +198,7 @@ pub fn spot(
     direction: [f64; 3],
     color: [f64; 3],
     power: f64,
-    inner_angle: f64,
-    outer_angle: f64,
+    cone: Cone,
     shadow_extent: f64,
 ) -> Value {
     Value::variant(
@@ -198,8 +209,8 @@ pub fn spot(
             ("direction".to_owned(), triple(direction)),
             ("color".to_owned(), triple(color)),
             ("power".to_owned(), Value::Float(power)),
-            ("inner_angle".to_owned(), Value::Float(inner_angle)),
-            ("outer_angle".to_owned(), Value::Float(outer_angle)),
+            ("inner_angle".to_owned(), Value::Float(cone.inner)),
+            ("outer_angle".to_owned(), Value::Float(cone.outer)),
             ("shadow_extent".to_owned(), Value::Float(shadow_extent)),
         ],
     )

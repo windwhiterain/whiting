@@ -290,10 +290,7 @@ fn attributes_from_value(value: &Value, path: &Path) -> Result<Attributes, Schem
             });
         }
     };
-    let default = match fields.get(DEFAULT) {
-        Some(value) => Some(value.clone()),
-        None => None,
-    };
+    let default = fields.get(DEFAULT).cloned();
     Ok(Attributes {
         optional,
         reference,

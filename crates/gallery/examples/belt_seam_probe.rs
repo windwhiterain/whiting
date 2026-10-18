@@ -56,7 +56,7 @@ fn valley_seams(facet: &FacetMesh) -> Vec<(BeltRef, BeltRef)> {
     for face in &facet.faces {
         let belt = face.attributes.belt;
         by_valley
-            .entry((belt.valley.0 as usize, belt.segment))
+            .entry((belt.valley.0, belt.segment))
             .or_default()
             .push(belt);
     }

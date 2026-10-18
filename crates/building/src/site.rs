@@ -390,7 +390,7 @@ impl Bounds2 {
     }
 
     fn grow(&mut self, at: Vec2) {
-        for axis in 0..2 {
+        for axis in [0, 1] {
             self.low[axis] = self.low[axis].min(at[axis]);
             self.high[axis] = self.high[axis].max(at[axis]);
         }

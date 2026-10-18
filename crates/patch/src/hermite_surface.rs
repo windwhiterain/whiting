@@ -651,14 +651,14 @@ fn seed_derivatives(
         let along = (positions[end1 as usize] - positions[end0 as usize]) * 0.5;
         if slot.varies_along_u() {
             let along = along * (1.0 / step_u);
-            du[end0 as usize] = du[end0 as usize] + along;
-            du[end1 as usize] = du[end1 as usize] + along;
+            du[end0 as usize] += along;
+            du[end1 as usize] += along;
             du_edges[end0 as usize] += 1;
             du_edges[end1 as usize] += 1;
         } else {
             let along = along * (1.0 / step_v);
-            dv[end0 as usize] = dv[end0 as usize] + along;
-            dv[end1 as usize] = dv[end1 as usize] + along;
+            dv[end0 as usize] += along;
+            dv[end1 as usize] += along;
             dv_edges[end0 as usize] += 1;
             dv_edges[end1 as usize] += 1;
         }

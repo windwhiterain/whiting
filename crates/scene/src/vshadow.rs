@@ -1028,9 +1028,7 @@ fn write_sparsity(
         if sparsity_words(pages_per_side, level) == 0 {
             continue;
         }
-        let base = (grid.table_offset
-            + sparsity_section(pages_per_side, level, grid.faces) as usize)
-            as usize;
+        let base = grid.table_offset + sparsity_section(pages_per_side, level, grid.faces) as usize;
         let across = pages_at_level(pages_per_side, level + 1);
         for page_y in 0..across {
             for page_x in 0..across {

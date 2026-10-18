@@ -35,11 +35,13 @@ fn rectangle(x0: f32, z0: f32, x1: f32, z1: f32, elevation: f32) -> Vec<PlanNode
 fn main() {
     // Two houses, 6 x 8 each, flush at x = 0: the left one occupies -6..0 and the right one 0..6, and each has
     // a 0.15 m wall, so the party wall is the two leaves together.
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![
-        Mass::new(rectangle(-6.0, -4.0, 0.0, 4.0, 0.0), 3.2).with_wall(0.15),
-        Mass::new(rectangle(0.0, -4.0, 6.0, 4.0, 0.0), 3.2).with_wall(0.15),
-    ];
+    let skeleton = BuildingSkeleton::new(
+        vec![
+            Mass::new(rectangle(-6.0, -4.0, 0.0, 4.0, 0.0), 3.2).with_wall(0.15),
+            Mass::new(rectangle(0.0, -4.0, 6.0, 4.0, 0.0), 3.2).with_wall(0.15),
+        ],
+        Vec::new(),
+    );
 
     let building = Building::new(skeleton);
     let violations = building.validate();
@@ -79,11 +81,13 @@ fn main() {
     // thickness, so the strip `-0.15 .. 0` is wall to *both* of them. Two closed solids then share a volume, which
     // is the case a terrace's two leaves exist to avoid — and the case the crate should refuse rather than draw,
     // because a pixel of that strip belongs to two buildings and no id can say which.
-    let mut shared = BuildingSkeleton::default();
-    shared.masses = vec![
-        Mass::new(rectangle(-6.0, -4.0, 0.0, 4.0, 0.0), 3.2).with_wall(0.15),
-        Mass::new(rectangle(-0.15, -4.0, 6.0, 4.0, 0.0), 3.2).with_wall(0.15),
-    ];
+    let shared = BuildingSkeleton::new(
+        vec![
+            Mass::new(rectangle(-6.0, -4.0, 0.0, 4.0, 0.0), 3.2).with_wall(0.15),
+            Mass::new(rectangle(-0.15, -4.0, 6.0, 4.0, 0.0), 3.2).with_wall(0.15),
+        ],
+        Vec::new(),
+    );
     let shared_building = Building::new(shared);
     let shared_violations = shared_building.validate();
     println!("\n# the other reading: one leaf, shared by both houses");

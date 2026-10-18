@@ -933,26 +933,28 @@ fn two_windows_in_one_bay(first: Inset, second: Inset) -> BuildingSkeleton {
 /// cuts from the loop the author drew. The near loop of the same ring carries the same window in
 /// [`far_loop_hole_on_the_near_loop`] and is cut.
 fn far_loop_hole() -> BuildingSkeleton {
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![
-        Mass::new(
-            vec![
-                PlanNode::new([-5.0, -5.0], 0.0),
-                PlanNode::new([5.0, -5.0], 0.0),
-                PlanNode::new([5.0, 5.0], 0.0),
-                PlanNode::new([-5.0, 5.0], 0.0),
-            ],
-            3.2,
-        )
-        .with_wall(0.3)
-        .with_slab(0.4)
-        .with_voids(vec![vec![
-            PlanNode::new([-2.0, -2.0], 0.0),
-            PlanNode::new([2.0, -2.0], 0.0),
-            PlanNode::new([2.0, 2.0], 0.0),
-            PlanNode::new([-2.0, 2.0], 0.0),
-        ]]),
-    ];
+    let mut skeleton = BuildingSkeleton::new(
+        vec![
+            Mass::new(
+                vec![
+                    PlanNode::new([-5.0, -5.0], 0.0),
+                    PlanNode::new([5.0, -5.0], 0.0),
+                    PlanNode::new([5.0, 5.0], 0.0),
+                    PlanNode::new([-5.0, 5.0], 0.0),
+                ],
+                3.2,
+            )
+            .with_wall(0.3)
+            .with_slab(0.4)
+            .with_voids(vec![vec![
+                PlanNode::new([-2.0, -2.0], 0.0),
+                PlanNode::new([2.0, -2.0], 0.0),
+                PlanNode::new([2.0, 2.0], 0.0),
+                PlanNode::new([-2.0, 2.0], 0.0),
+            ]]),
+        ],
+        Vec::new(),
+    );
     for face in skeleton.court_faces_of(MassId(0), 0) {
         split_face(
             &mut skeleton,
@@ -1478,13 +1480,15 @@ fn a_mass_outline_that_meets_itself() {
             square((0.0, 0.0), (10.0, 10.0), 0.0),
         ),
     ] {
-        let mut skeleton = BuildingSkeleton::default();
-        skeleton.masses = vec![
-            Mass::new(plan.clone(), 3.2).with_wall(0.3).with_slab(0.4),
-            Mass::new(square((5.0, 0.0), (15.0, 10.0), 0.0), 3.2)
-                .with_wall(0.3)
-                .with_slab(0.4),
-        ];
+        let skeleton = BuildingSkeleton::new(
+            vec![
+                Mass::new(plan.clone(), 3.2).with_wall(0.3).with_slab(0.4),
+                Mass::new(square((5.0, 0.0), (15.0, 10.0), 0.0), 3.2)
+                    .with_wall(0.3)
+                    .with_slab(0.4),
+            ],
+            Vec::new(),
+        );
         let plan_of =
             |mass: &Mass| -> Vec<Vec2> { mass.outline.iter().map(|n| n.position).collect() };
         let shared = whiting_building::clip::shared_area(
@@ -1551,11 +1555,13 @@ fn plans_the_clipper_cannot_compare() {
             "16.0000",
         ),
     ] {
-        let mut skeleton = BuildingSkeleton::default();
-        skeleton.masses = vec![
-            Mass::new(plan, 3.2).with_wall(0.3).with_slab(0.4),
-            Mass::new(neighbour, 3.2).with_wall(0.3).with_slab(0.4),
-        ];
+        let skeleton = BuildingSkeleton::new(
+            vec![
+                Mass::new(plan, 3.2).with_wall(0.3).with_slab(0.4),
+                Mass::new(neighbour, 3.2).with_wall(0.3).with_slab(0.4),
+            ],
+            Vec::new(),
+        );
         let plan_of =
             |mass: &Mass| -> Vec<Vec2> { mass.outline.iter().map(|n| n.position).collect() };
         let shared = whiting_building::clip::shared_area(
@@ -1687,8 +1693,10 @@ fn a_mass_outline_with_no_triangulation() {
             "100.0000",
         ),
     ] {
-        let mut skeleton = BuildingSkeleton::default();
-        skeleton.masses = vec![Mass::new(plan.clone(), 3.2).with_wall(0.3).with_slab(0.4)];
+        let skeleton = BuildingSkeleton::new(
+            vec![Mass::new(plan.clone(), 3.2).with_wall(0.3).with_slab(0.4)],
+            Vec::new(),
+        );
         let held: Vec<Vec2> = plan.iter().map(|node| node.position).collect();
         println!(
             "\n{name}: the loop encloses {truth} m2, and asked about itself `clip` reads {}",

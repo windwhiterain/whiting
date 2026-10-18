@@ -38,8 +38,10 @@ fn ring() -> Vec<PlanNode> {
 }
 
 fn main() {
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![Mass::new(ring(), 3.2).with_wall(0.3).with_slab(0.4)];
+    let skeleton = BuildingSkeleton::new(
+        vec![Mass::new(ring(), 3.2).with_wall(0.3).with_slab(0.4)],
+        Vec::new(),
+    );
     println!("# a 10 x 10 ring with a 4 x 4 hole, written as one loop with a neck");
     println!(
         "  the outline is {} nodes and crosses itself at the neck",

@@ -32,8 +32,7 @@ pub fn points_where(built: &BuildingMesh, keep: impl Fn(&Element) -> bool) -> Pa
             continue;
         }
         let triangle = built.triangle(face);
-        for corner in 0..3 {
-            let position = triangle[corner];
+        for (corner, position) in triangle.iter().enumerate() {
             let normal = normals.at(index, corner);
             points.push(
                 [position[0] as f64, position[1] as f64, position[2] as f64],

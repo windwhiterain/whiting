@@ -44,6 +44,13 @@ use whiting_building::{
     ops,
 };
 
+/// **One refusal this probe reaches, and how to reach it.** The label says what the refusal is and
+/// the closure makes it happen against the document, answering the index the edit was given — or
+/// `None` for a refusal that produces no index at all, which is a different statement rather than a
+/// missing one. Named because two arrays of these are spelled out below and the spelling is a wall
+/// of punctuation around the reading.
+type Refusal = (&'static str, fn(&mut BuildingSkeleton) -> Option<usize>);
+
 /// Returns a rectangular outline.
 fn rectangle(x0: f32, z0: f32, x1: f32, z1: f32) -> Vec<PlanNode> {
     [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]
@@ -54,13 +61,15 @@ fn rectangle(x0: f32, z0: f32, x1: f32, z1: f32) -> Vec<PlanNode> {
 
 /// Returns a mass with one courtyard, and the solid that courtyard is.
 fn courtyard(loop_nodes: Vec<PlanNode>) -> Building {
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![
-        Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
-            .with_wall(0.3)
-            .with_slab(0.4)
-            .with_voids(vec![loop_nodes]),
-    ];
+    let skeleton = BuildingSkeleton::new(
+        vec![
+            Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
+                .with_wall(0.3)
+                .with_slab(0.4)
+                .with_voids(vec![loop_nodes]),
+        ],
+        Vec::new(),
+    );
     Building::new(skeleton)
 }
 
@@ -358,12 +367,14 @@ fn rooms_side(columns: &Rhythm, rows: &Rhythm) {
 
 fn main() {
     // 1. The control: no void, and the mass is what it always was.
-    let mut plain = BuildingSkeleton::default();
-    plain.masses = vec![
-        Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
-            .with_wall(0.3)
-            .with_slab(0.4),
-    ];
+    let plain = BuildingSkeleton::new(
+        vec![
+            Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
+                .with_wall(0.3)
+                .with_slab(0.4),
+        ],
+        Vec::new(),
+    );
     let control = Building::new(plain);
     let control_violations = control.validate();
     let control_volume = match control.build() {
@@ -377,13 +388,15 @@ fn main() {
     );
 
     // 2. The same mass with a courtyard authored: drawn, as a ring of its own.
-    let mut patio = BuildingSkeleton::default();
-    patio.masses = vec![
-        Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
-            .with_wall(0.3)
-            .with_slab(0.4)
-            .with_voids(vec![rectangle(-2.0, -2.0, 2.0, 2.0)]),
-    ];
+    let patio = BuildingSkeleton::new(
+        vec![
+            Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
+                .with_wall(0.3)
+                .with_slab(0.4)
+                .with_voids(vec![rectangle(-2.0, -2.0, 2.0, 2.0)]),
+        ],
+        Vec::new(),
+    );
     let with_patio = Building::new(patio);
     let violations = with_patio.validate();
     println!("\n# the same mass with a 4 x 4 courtyard authored");
@@ -510,13 +523,15 @@ fn main() {
     ];
     println!("\n# four courtyards that break the contract");
     for (label, voids) in cases {
-        let mut skeleton = BuildingSkeleton::default();
-        skeleton.masses = vec![
-            Mass::new(outline.clone(), 3.2)
-                .with_wall(0.3)
-                .with_slab(0.4)
-                .with_voids(voids),
-        ];
+        let skeleton = BuildingSkeleton::new(
+            vec![
+                Mass::new(outline.clone(), 3.2)
+                    .with_wall(0.3)
+                    .with_slab(0.4)
+                    .with_voids(voids),
+            ],
+            Vec::new(),
+        );
         let building = Building::new(skeleton);
         let faults = building.validate();
         println!("  {label}: {} fault(s)", faults.len());
@@ -533,13 +548,15 @@ fn main() {
     // by nothing and reads `0`. Were both one solid — were a courtyard folded into the mass's face set —
     // the two would sum to `-2` and the check would ask for `-2` and be told `-2`, so a solid that is
     // not a solid would read as exactly the shape it should have.
-    let mut opened = BuildingSkeleton::default();
-    opened.masses = vec![
-        Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
-            .with_wall(0.3)
-            .with_slab(0.4)
-            .with_voids(vec![rectangle(-2.0, -2.0, 2.0, 2.0)]),
-    ];
+    let mut opened = BuildingSkeleton::new(
+        vec![
+            Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
+                .with_wall(0.3)
+                .with_slab(0.4)
+                .with_voids(vec![rectangle(-2.0, -2.0, 2.0, 2.0)]),
+        ],
+        Vec::new(),
+    );
     let rhythm = Rhythm::Even { count: 3 };
     for face in opened.faces_of(MassId(0)) {
         ops::split_face(&mut opened, face, &rhythm, &rhythm);
@@ -584,8 +601,7 @@ fn main() {
     // the void loop's own edge, so the grid, the bay and the insets are laid out and read exactly as
     // they are on a mass's facade: nothing about the cut knows it is in a courtyard except which loop
     // the face names, which is what makes this a capability rather than a second implementation.
-    let mut opened_court = BuildingSkeleton::default();
-    opened_court.masses = vec![housed_patio()];
+    let mut opened_court = BuildingSkeleton::new(vec![housed_patio()], Vec::new());
     let face = court_face();
     let columns = Rhythm::Even { count: 3 };
     let rows = Rhythm::Even { count: 2 };
@@ -918,7 +934,7 @@ fn main() {
     // them names the **loop**, because a mass's wall and a courtyard's are both "edge 1" and reporting
     // one as the other would send an author to the wrong piece of masonry.
     println!("\n# every way a hole cannot be cut into a courtyard's wall");
-    let refusals: [(&str, fn(&mut BuildingSkeleton) -> Option<usize>); 5] = [
+    let refusals: [Refusal; 5] = [
         ("a slot the courtyard's grid no longer holds", |skeleton| {
             let index = skeleton.openings.push(Opening::new(
                 court_face(),
@@ -1010,7 +1026,7 @@ fn main() {
     // no longer declines, so nothing carries that name. What is left are the three faults a part can
     // genuinely have on either kind of wall, and each is reachable here rather than asserted.
     println!("\n# every way a part cannot stand in a courtyard's bay");
-    let part_refusals: [(&str, fn(&mut BuildingSkeleton) -> Option<usize>); 2] = [
+    let part_refusals: [Refusal; 2] = [
         // **A part that does not fit is placed and reported, exactly as on a mass's wall.** The leaf is
         // 1.8 m tall and the bay is 1.6 m, so the reading is a fault an author can act on rather than a
         // refusal — and it is the fault the old court-wall check was shadowing, which is why this case
@@ -1073,19 +1089,21 @@ fn main() {
     // shape it cannot take is a bite narrower than `2 × wall`, which it refuses by its own name. So
     // this document now has to say what it *does*: the notched courtyard's own ring, and the part
     // standing in one of its bays.
-    let mut notched = BuildingSkeleton::default();
-    notched.masses = vec![
-        Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
-            .with_wall(0.3)
-            .with_slab(0.4)
-            .with_voids(vec![vec![
-                PlanNode::new([-2.0, -2.0], 0.0),
-                PlanNode::new([2.0, -2.0], 0.0),
-                PlanNode::new([2.0, 2.0], 0.0),
-                PlanNode::new([0.0, 0.0], 0.0),
-                PlanNode::new([-2.0, 2.0], 0.0),
-            ]]),
-    ];
+    let mut notched = BuildingSkeleton::new(
+        vec![
+            Mass::new(rectangle(-5.0, -5.0, 5.0, 5.0), 3.2)
+                .with_wall(0.3)
+                .with_slab(0.4)
+                .with_voids(vec![vec![
+                    PlanNode::new([-2.0, -2.0], 0.0),
+                    PlanNode::new([2.0, -2.0], 0.0),
+                    PlanNode::new([2.0, 2.0], 0.0),
+                    PlanNode::new([0.0, 0.0], 0.0),
+                    PlanNode::new([-2.0, 2.0], 0.0),
+                ]]),
+        ],
+        Vec::new(),
+    );
     // **The rhythm is laid on the loop as the author wrote it**, which is what `split_face` measures
     // against, so the bay exists and the offset walk is the only thing that could refuse.
     let _ = ops::split_face(

@@ -174,7 +174,7 @@ impl BuildingSkeleton {
         self.parts
             .of_face(face)
             .into_iter()
-            .filter_map(|index| self.placed(index).is_none().then_some(index))
+            .filter(|index| self.placed(*index).is_none())
             .collect()
     }
 
@@ -250,7 +250,7 @@ impl BuildingSkeleton {
     /// loop of a courtyard's ring is **longer** than the void's own at both ends, because the outward
     /// mitre keeps the corner's angle past it, so the two faces of one wall are two different lengths
     /// and a rhythm laid out over one of them does not span the other. `O(1)` on the authored side,
-    /// `O(nodes)` on the offset side — see [`crate::expand::face_length`].
+    /// `O(nodes)` on the offset side — see `crate::expand::face_length`.
     pub fn face_length(&self, face: FaceRef) -> Option<f32> {
         crate::expand::face_length(self, face)
     }

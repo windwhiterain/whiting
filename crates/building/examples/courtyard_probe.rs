@@ -74,12 +74,14 @@ fn outline(corners: &[[f32; 2]]) -> Vec<PlanNode> {
 
 /// Answers whether one concave plan expands into one watertight solid.
 fn measure(label: &str, corners: &[[f32; 2]], wall: f32) {
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![
-        Mass::new(outline(corners), 3.2)
-            .with_wall(wall)
-            .with_slab(0.4),
-    ];
+    let skeleton = BuildingSkeleton::new(
+        vec![
+            Mass::new(outline(corners), 3.2)
+                .with_wall(wall)
+                .with_slab(0.4),
+        ],
+        Vec::new(),
+    );
     let building = Building::new(skeleton);
     let violations = building.validate();
     match building.build() {
@@ -419,12 +421,14 @@ fn measure_void_in(half: f32, label: &str, corners: &[[f32; 2]], wall: f32) {
     let walked = wound_positive(corners);
     let authored: Vec<Vec2> = corners.to_vec();
     let enclosing = square_plan(half);
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![
-        housing_sized(half)
-            .with_wall(wall)
-            .with_voids(vec![outline(corners)]),
-    ];
+    let skeleton = BuildingSkeleton::new(
+        vec![
+            housing_sized(half)
+                .with_wall(wall)
+                .with_voids(vec![outline(corners)]),
+        ],
+        Vec::new(),
+    );
     let document = Building::new(skeleton);
     let violations = document.validate();
     let faults = names_of(&violations);
@@ -630,24 +634,26 @@ fn main() {
     // mass must name itself, and the two sides of the mouth must be two different elements. (The word
     // "courtyard" is not used for this shape anywhere in the crate: it names a void, which is a hole in
     // a mass's plan rather than a notch in its outline.)
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![
-        Mass::new(
-            outline(&[
-                [-5.0, -5.0],
-                [5.0, -5.0],
-                [5.0, 5.0],
-                [2.0, 5.0],
-                [2.0, -1.0],
-                [-2.0, -1.0],
-                [-2.0, 5.0],
-                [-5.0, 5.0],
-            ]),
-            3.2,
-        )
-        .with_wall(0.3)
-        .with_slab(0.4),
-    ];
+    let skeleton = BuildingSkeleton::new(
+        vec![
+            Mass::new(
+                outline(&[
+                    [-5.0, -5.0],
+                    [5.0, -5.0],
+                    [5.0, 5.0],
+                    [2.0, 5.0],
+                    [2.0, -1.0],
+                    [-2.0, -1.0],
+                    [-2.0, 5.0],
+                    [-5.0, 5.0],
+                ]),
+                3.2,
+            )
+            .with_wall(0.3)
+            .with_slab(0.4),
+        ],
+        Vec::new(),
+    );
     let built = Building::new(skeleton).build().expect("the U expands");
     let table = whiting_building::identity::Identity::of(&built, 1);
     println!();
@@ -939,7 +945,7 @@ fn a_loop_the_clipper_cannot_close() {
          leaves a residue fires the first, so one placement answers neither question."
     );
     for (label, corners) in shapes {
-        let authored: Vec<Vec2> = corners.iter().map(|node| *node).collect();
+        let authored: Vec<Vec2> = corners.to_vec();
         let signed = shoelace(&authored);
         let clipped = whiting_building::clip::shared_area(&authored, &authored);
         println!(
@@ -1037,16 +1043,17 @@ fn the_loop_no_fault_names() {
     ];
     let other: [[f32; 2]; 4] = [[5.0, 0.0], [15.0, 0.0], [15.0, 10.0], [5.0, 10.0]];
     let two_masses = |first: &[[f32; 2]]| {
-        let mut skeleton = BuildingSkeleton::default();
-        skeleton.masses = vec![
-            Mass::new(outline(first), 3.2)
-                .with_wall(wall)
-                .with_slab(0.4),
-            Mass::new(outline(&other), 3.2)
-                .with_wall(wall)
-                .with_slab(0.4),
-        ];
-        skeleton
+        BuildingSkeleton::new(
+            vec![
+                Mass::new(outline(first), 3.2)
+                    .with_wall(wall)
+                    .with_slab(0.4),
+                Mass::new(outline(&other), 3.2)
+                    .with_wall(wall)
+                    .with_slab(0.4),
+            ],
+            Vec::new(),
+        )
     };
     for (label, first) in [
         ("without the needle", &plain[..]),
@@ -1104,15 +1111,17 @@ fn clip_reads(loop_points: &[Vec2]) -> String {
 /// fault in the same line and make the column unreadable.
 fn report_the_subtraction(label: &str, half: f32, corners: &[[f32; 2]], wall: f32) {
     let enclosing = square_plan(half);
-    let authored: Vec<Vec2> = corners.iter().map(|node| *node).collect();
+    let authored: Vec<Vec2> = corners.to_vec();
     let enclosed = whiting_building::clip::shared_area(&enclosing, &authored);
     let own = whiting_building::clip::shared_area(&authored, &authored);
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![
-        housing_sized(half)
-            .with_wall(wall)
-            .with_voids(vec![outline(corners)]),
-    ];
+    let skeleton = BuildingSkeleton::new(
+        vec![
+            housing_sized(half)
+                .with_wall(wall)
+                .with_voids(vec![outline(corners)]),
+        ],
+        Vec::new(),
+    );
     let faults = names_of(&Building::new(skeleton).validate());
     let terms = match (enclosed, own) {
         (Some(enclosed), Some(own)) => format!(
@@ -1184,8 +1193,7 @@ fn the_degenerate_edge_is_the_crates_own() {
             host.outline[at - 1].position
         ))
     );
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![host];
+    let skeleton = BuildingSkeleton::new(vec![host], Vec::new());
     let faults = names_of(&Building::new(skeleton).validate());
     println!(
         "    validate says: {} — the walk names that edge by name, so it is never this check's to report",
@@ -1238,10 +1246,9 @@ fn the_degenerate_edge_is_the_crates_own() {
         for at_second in none {
             print!(
                 "{:>11}",
-                if at_second.is_none() {
-                    "none".to_owned()
-                } else {
-                    format!("at {}", at_second.unwrap())
+                match at_second {
+                    Some(at) => format!("at {at}"),
+                    None => "none".to_owned(),
                 }
             );
         }
@@ -1250,19 +1257,20 @@ fn the_degenerate_edge_is_the_crates_own() {
             let one = with_degenerate_edge(&first, at_first);
             print!(
                 "    first {:>6}:",
-                if at_first.is_none() {
-                    "none".to_owned()
-                } else {
-                    format!("at {}", at_first.unwrap())
+                match at_first {
+                    Some(at) => format!("at {at}"),
+                    None => "none".to_owned(),
                 }
             );
             for at_second in none {
                 let two = with_degenerate_edge(&second, at_second);
-                let mut skeleton = BuildingSkeleton::default();
-                skeleton.masses = vec![
-                    Mass::new(outline(&one), 3.2).with_wall(wall).with_slab(0.4),
-                    Mass::new(outline(&two), 3.2).with_wall(wall).with_slab(0.4),
-                ];
+                let skeleton = BuildingSkeleton::new(
+                    vec![
+                        Mass::new(outline(&one), 3.2).with_wall(wall).with_slab(0.4),
+                        Mass::new(outline(&two), 3.2).with_wall(wall).with_slab(0.4),
+                    ],
+                    Vec::new(),
+                );
                 if reading {
                     let shared = whiting_building::clip::shared_area(
                         &plan_nodes_of(&skeleton.masses[0]),
@@ -1568,12 +1576,14 @@ fn sweep_pinch(half: f32) {
 ///   need a mesh to read and a missing mesh is the answer rather than a gap in it.
 fn report_loop(label: &str, corners: &[[f32; 2]], wall: f32, half: f32) {
     let walked = wound_positive(corners);
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![
-        housing_sized(half)
-            .with_wall(wall)
-            .with_voids(vec![outline(corners)]),
-    ];
+    let skeleton = BuildingSkeleton::new(
+        vec![
+            housing_sized(half)
+                .with_wall(wall)
+                .with_voids(vec![outline(corners)]),
+        ],
+        Vec::new(),
+    );
     let document = Building::new(skeleton);
     let faults = names_of(&document.validate());
     let said = if faults.is_empty() {
@@ -1665,8 +1675,10 @@ fn bitten(bite: f32) -> Vec<PlanNode> {
 fn report_bite(bite: f32, wall: f32) {
     let corners = bitten(bite);
     let walked: Vec<Vec2> = corners.iter().map(|node| node.position).collect();
-    let mut skeleton = BuildingSkeleton::default();
-    skeleton.masses = vec![housing().with_wall(wall).with_voids(vec![corners])];
+    let skeleton = BuildingSkeleton::new(
+        vec![housing().with_wall(wall).with_voids(vec![corners])],
+        Vec::new(),
+    );
     let document = Building::new(skeleton);
     let reported = document.validate();
     let faults = names_of(&reported);

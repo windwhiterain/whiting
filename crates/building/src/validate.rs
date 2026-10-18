@@ -16,17 +16,18 @@
 //!
 //! # The order the answer comes back in
 //!
-//! [`order_key`] sorts by the variant first and by what the variant is **about** second, and it is
-//! a total order: a `f32` or `i64` field is folded to the `u64` [`total_cmp`] would have ordered it
-//! by, so two runs over one input give byte-identical lists rather than two orders of a hash map.
+//! `order_key` sorts by the variant first and by what the variant is **about** second, and it is
+//! a total order: a `f32` or `i64` field is folded to the `u64` `f32::total_cmp` would have ordered
+//! it by, so two runs over one input give byte-identical lists rather than two orders of a hash map.
 //!
 //! # The three numbers here
 //!
-//! [`PLANARITY_TOLERANCE`], [`TOUCH_TOLERANCE`] and [`COVERAGE_TOLERANCE`], each justified where it
+//! `PLANARITY_TOLERANCE`, `TOUCH_TOLERANCE` and `COVERAGE_TOLERANCE`, each justified where it
 //! is declared. None is imported from `mountain`: this crate depends on `shape` for `math` alone
 //! (the handoff for `building-p1` says so), and a weld tolerance from `mountain::sampling` would be
 //! a second dependency on a crate this crate does not otherwise read.
 
+use std::array;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::expand::Problem;
@@ -161,7 +162,7 @@ const COINCIDENT_TOLERANCE: f32 = 1.0e-5;
 ///
 /// **The touch is read first, and the reason is that a touch and a crossing are the same contact read
 /// two ways.** A segment that runs *through* another's endpoint answers true to
-/// [`expand::segments_cross_properly`](crate::expand::segments_cross_properly) whenever the angle is
+/// `crate::expand::segments_cross_properly` whenever the angle is
 /// not degenerate, because one side of the product is exactly zero; naming two edges for it would ask
 /// the reader to go and find which of the pair's four ends is the point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,14 +224,14 @@ pub enum Violation {
     /// every reader of the first kind pays for the second.
     ///
     /// **`meeting` is the same [`SelfMeeting`] the void reading carries, and it is read by the same
-    /// [`self_meeting`]**, so the two cannot come apart: a loop that meets itself is named, and the
+    /// `self_meeting`**, so the two cannot come apart: a loop that meets itself is named, and the
     /// subtraction that needs a triangulation is not asked of it. A point two of the outline's own
     /// nodes stand at is **not** this violation and that is measured rather than assumed — see
-    /// [`self_meeting`]'s own argument, which is about a wall and not about an area.
+    /// `self_meeting`'s own argument, which is about a wall and not about an area.
     ///
     /// **Nothing is lost by naming it here, because [`DidNotExpand`](Self::DidNotExpand) still
     /// reaches the same loop** carrying the walk's own refusal. What changes is that the name no
-    /// longer depends on which entry point ran: [`document`](Self::document) says the shape, and
+    /// longer depends on which entry point ran: [`document`] says the shape, and
     /// [`Building::validate`](crate::Building::validate) says it too, instead of the shape arriving
     /// only as a mitre past a join limit.
     OutlineNotSimple {
@@ -268,8 +269,8 @@ pub enum Violation {
     ///
     /// **It is not a second name for [`OutlineNotSimple`](Self::OutlineNotSimple), and the gate is
     /// what keeps the two apart.** An outline that meets itself never reaches this comparison at all:
-    /// [`check_overlap`] skips the pair and [`check_masses`] has already named the loop, which is the
-    /// same argument [`check_voids`] makes about [`VoidNotInside`](Self::VoidNotInside) against
+    /// `check_overlap` skips the pair and `check_masses` has already named the loop, which is the
+    /// same argument `check_voids` makes about [`VoidNotInside`](Self::VoidNotInside) against
     /// [`VoidNotSimple`](Self::VoidNotSimple). **What arrives here is the one shape that gate is
     /// silent about by design** — a point two of the loop's own nodes stand at, where two `3 × 3`
     /// squares sharing a corner build a sound courtyard for a void loop and a mass the expander's
@@ -299,10 +300,10 @@ pub enum Violation {
     /// # Invariants
     ///
     /// **It is the name the document half owes a loop the expander already refuses.** A mass whose
-    /// outline [`self_meeting`] cannot name reaches [`clip`](crate::clip) with nothing standing in
+    /// outline `self_meeting` cannot name reaches [`clip`](crate::clip) with nothing standing in
     /// front of it, and [`clip`](crate::clip) answers `None` for it: [`Building::validate`](crate::Building::validate)
     /// then reports the expander's own [`DidNotExpand`](Self::DidNotExpand) carrying the walk's name,
-    /// and [`document`](Self::document) reported **nothing at all**. **The name must not depend on
+    /// and [`document`] reported **nothing at all**. **The name must not depend on
     /// which entry point ran**, which is the rule the mass-outline gate was built on, and a loop with
     /// no triangulation is what was left over from it.
     ///
@@ -318,7 +319,7 @@ pub enum Violation {
     /// [`clip`](crate::clip)'s own coverage test — are the triangles the loop? — and **that is not the ear
     /// walk stopping**: measured, a `1 m` slit stops the walk and the triangles it stopped with read `12.0000`
     /// against a loop of `12.0000`, so there is no corner the triangulation "stuck on" to name. The corner the
-    /// walk *did* stop at is [`Problem::MiterUnresolved`](crate::expand::Problem::MiterUnresolved)'s, and it
+    /// walk *did* stop at is [`Problem::MiterUnresolved`]'s, and it
     /// arrives through [`DidNotExpand`](Self::DidNotExpand) beside this name — so an author who wants the node
     /// reads it from the entry point that expands, and an author who only wants to know the plan is
     /// unmeasurable is served here. **A second reading of where the walk stopped would be a second test that can
@@ -470,7 +471,7 @@ pub enum Violation {
     /// a covering; the **boundary** can, because a covering skin's boundary *is* the eave loop, and
     /// every vertex of a notch or a skirt stands off it.
     ///
-    /// It is measured in plan, against the eave loop's own polyline, with [`COVERAGE_TOLERANCE`] as
+    /// It is measured in plan, against the eave loop's own polyline, with `COVERAGE_TOLERANCE` as
     /// the distance a boundary vertex may stand off it. A roof that expanded no skin never reaches
     /// this check: the expansion has already named the reason.
     RoofSkinLeavesTheEave {
@@ -588,7 +589,7 @@ pub enum Violation {
     /// **A door is not this fault, and on level ground nothing reaches the ground line at all.** The
     /// wall face stands on the slab's underside, one slab below the elevation the mass is authored at,
     /// and a grid's bottom row already starts at that elevation
-    /// ([`crate::grid::face_extent`](crate::grid::face_extent)), so the wall under a bottom-row sill is
+    /// ([`crate::grid::face_extent`]), so the wall under a bottom-row sill is
     /// the slab's own thickness and a hole there is an interior hole like any other. An inset only ever
     /// moves a hole **inward** — the sill up, never down — so a bottom-row hole cannot be driven onto
     /// the ground line by its own insets; the line is reached where the ground **rises across the
@@ -864,7 +865,7 @@ pub enum Violation {
     /// this one starts from the slabs a document holds rather than from the masses it wants to see
     /// them under.
     ///
-    /// **The tolerance is a width times the loop's own perimeter** ([`COVERAGE_TOLERANCE`]), the
+    /// **The tolerance is a width times the loop's own perimeter** (`COVERAGE_TOLERANCE`), the
     /// conversion [`RoofDoesNotCover`](Self::RoofDoesNotCover) already makes, so a plate is held to
     /// the same millimetre of edge whether its mass is a shed or a hall.
     PlateCoverage {
@@ -944,7 +945,7 @@ pub enum Violation {
     /// inside a mass **twice as wide as the loop**, so neither is outside its outline. What the numbers
     /// were is whatever [`crate::clip`]'s ear clipper made of a polygon that has no triangulation, so
     /// this violation reported that the clipper disagreed with itself **and reported it for one of two
-    /// identical shapes**. The gate is [`self_meeting`]'s own answer: a loop it names is
+    /// identical shapes**. The gate is `self_meeting`'s own answer: a loop it names is
     /// [`VoidNotSimple`](Self::VoidNotSimple)'s to report, and the subtraction is not asked of it.
     ///
     /// **"Simple" is the gate and it is not the whole of what the clipper can measure.** A loop carrying
@@ -2780,8 +2781,8 @@ fn axis_mean(vertices: &BTreeSet<u32>, built: &BuildingMesh, axis: usize) -> f32
 fn smallest_direction(matrix: &[[f32; 3]; 3]) -> (Vec3, [f32; 3]) {
     let mut value = *matrix;
     let mut vectors = [[0.0f32; 3]; 3];
-    for index in 0..3 {
-        vectors[index][index] = 1.0;
+    for (index, column) in vectors.iter_mut().enumerate() {
+        column[index] = 1.0;
     }
     let scale = value
         .iter()
@@ -2850,11 +2851,11 @@ fn rotation_of(value: &[[f32; 3]; 3], row: usize, column: usize) -> (f32, f32) {
 /// `O(n)` in the matrix's side and no more: one pass over the two columns being mixed, each entry
 /// read once and written once.
 fn turn_columns(value: &mut [[f32; 3]; 3], row: usize, column: usize, cosine: f32, sine: f32) {
-    for index in 0..3 {
-        let along_row = value[index][row];
-        let along_column = value[index][column];
-        value[index][row] = cosine * along_row - sine * along_column;
-        value[index][column] = sine * along_row + cosine * along_column;
+    for entry in value.iter_mut() {
+        let along_row = entry[row];
+        let along_column = entry[column];
+        entry[row] = cosine * along_row - sine * along_column;
+        entry[column] = sine * along_row + cosine * along_column;
     }
 }
 
@@ -2872,22 +2873,23 @@ fn turn_columns(value: &mut [[f32; 3]; 3], row: usize, column: usize, cosine: f3
 /// accumulator was given the columns half alone.
 fn turn(value: &mut [[f32; 3]; 3], row: usize, column: usize, cosine: f32, sine: f32) {
     turn_columns(value, row, column, cosine, sine);
-    for index in 0..3 {
-        let along_row = value[row][index];
-        let along_column = value[column][index];
-        value[row][index] = cosine * along_row - sine * along_column;
-        value[column][index] = sine * along_row + cosine * along_column;
-    }
+    // Both rows being turned are read before either is written, which is the same arithmetic the
+    // per-index walk produced and is only equal to it because the two rows are never the same one:
+    // the caller reads its row and column from `largest_off_diagonal`, which returns row < column.
+    let along_row = value[row];
+    let along_column = value[column];
+    value[row] = array::from_fn(|index| cosine * along_row[index] - sine * along_column[index]);
+    value[column] = array::from_fn(|index| sine * along_row[index] + cosine * along_column[index]);
 }
 
 /// Returns the position of the largest off-diagonal entry of a symmetric matrix.
 fn largest_off_diagonal(value: &[[f32; 3]; 3]) -> (usize, usize) {
     let mut found = (0usize, 1usize);
     let mut largest: f32 = 0.0;
-    for row in 0..3 {
-        for column in (row + 1)..3 {
-            if value[row][column].abs() > largest {
-                largest = value[row][column].abs();
+    for (row, entries) in value.iter().enumerate() {
+        for (column, entry) in entries.iter().enumerate().skip(row + 1) {
+            if entry.abs() > largest {
+                largest = entry.abs();
                 found = (row, column);
             }
         }

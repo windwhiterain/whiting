@@ -381,6 +381,17 @@ pub fn workshop_document() -> (Building, usize, usize) {
     (Building::new(skeleton), template, bench)
 }
 
+/// **One template the scene instances, and where it stands.** The mesh name and the label are what a
+/// report reads back, `template` is the index `Placement::new` names, `local` is the template's own
+/// identity table, and `hung` are the placements that will be stood by instance rows.
+type TemplateRow = (
+    usize,
+    &'static str,
+    &'static str,
+    PackedList,
+    Vec<(Standing, i64)>,
+);
+
 /// Builds the workshop scene.
 pub fn workshop() -> Value {
     let (building, shutters, bench) = workshop_document();
@@ -413,7 +424,7 @@ pub fn workshop() -> Value {
     // placement.** The shutters and the bench differ in how many placements they have and not in
     // what a placement needs, so they go through one list: five rows for the shutters and one for
     // the bench, each carrying its template's local ids and each offset onto the rows a bake wrote.
-    let mut parts: Vec<(usize, &str, &str, PackedList, Vec<(Standing, i64)>)> =
+    let mut parts: Vec<TemplateRow> =
         [("shutters", "shutter", shutters), ("bench", "bench", bench)]
             .into_iter()
             .map(|(mesh, label, template)| {
@@ -536,7 +547,7 @@ pub fn workshop() -> Value {
         .into_iter()
         .map(|(label, material)| {
             instance(
-                &format!("{label}-{stage}"),
+                format!("{label}-{stage}"),
                 label,
                 [0.0; 3],
                 [0.0; 3],
@@ -552,7 +563,7 @@ pub fn workshop() -> Value {
             hung.iter()
                 .map(|(mesh, label, index, (translation, rotation, scale), _)| {
                     instance(
-                        &format!("{label}-{index}-{stage}"),
+                        format!("{label}-{index}-{stage}"),
                         mesh,
                         *translation,
                         *rotation,

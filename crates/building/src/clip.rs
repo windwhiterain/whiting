@@ -31,14 +31,14 @@
 //!
 //!   **An assumption is not a proof, so the walk now proves it of itself rather than relying on it**:
 //!   [`shared_area`] answers `None` for a loop it could not cover, and every caller declines rather
-//!   than measure a number it cannot stand behind. See [`triangles`].
+//!   than measure a number it cannot stand behind. See `triangles`.
 //! - **The result is a sum of exact triangle intersections**, so it is exact for every loop this
 //!   module answers for. **Measured rather than assumed:** a polygon with **collinear** corners is
 //!   covered exactly — a `4 × 4` rectangle with one node inserted on an edge reads `16.0000` against
 //!   its own `16.0000`, one with a node on every edge likewise, and a `0.0001 m` sliver four metres
 //!   long reads `15.9996` against `15.9996`. **The one input measured that lost real area was an
 //!   edge of no length**, and it is taken out of the loop before the walk rather than measured around.
-//! - **An edge of no length is removed first**, by [`without_edges_of_no_length`]. Such an edge bounds no
+//! - **An edge of no length is removed first**, by `without_edges_of_no_length`. Such an edge bounds no
 //!   area and no part of the interior, so the loop it hands the clipper is the same region and the clipper
 //!   is free to triangulate it. **This is not a nicety: [`ops::split_outline`](crate::ops::split_outline)
 //!   writes one on purpose** — "a station that lands exactly on an existing node still inserts one" — and
@@ -51,7 +51,7 @@
 //!   nothing — it gives the other checks an exact number to subtract.
 //! - **A loop this module cannot cover is `None` and never a number.** Ear clipping **stops rather than
 //!   loops** when no corner is an ear, and the triangles it has already cut are not then the loop, so
-//!   their sum would be a measurement of the clipper. **`None` is decided by one test, [`covers`],
+//!   their sum would be a measurement of the clipper. **`None` is decided by one test, `covers`,
 //!   and not by the walk stopping** — a stopped walk can still have cut triangles that add up to the
 //!   loop, and measured one does: a `1 m` slit four metres long reads `12.0000` against a loop of
 //!   `12.0000`. **The failures it does catch, measured:** a bowtie reads `16.0000` against a loop of
@@ -96,7 +96,7 @@ const COVER_SLACK: f32 = 1.0e-3;
 /// nodes reads `38.3333` against a loop of `10.0000` and a needle that doubles back along its own
 /// line over the very node it repeats reads `32.0000` against a loop of `64.0000`. **A caller that
 /// received either number would subtract it and report the difference as a fault**, so the number is
-/// withheld until [`triangles`] has said the loop was covered. What a caller does with "cannot
+/// withheld until `triangles` has said the loop was covered. What a caller does with "cannot
 /// measure" is its own decision, and every one of them in this crate declines rather than guess.
 pub fn shared_area(first: &[Vec2], second: &[Vec2]) -> Option<f32> {
     let first = triangles(first)?;

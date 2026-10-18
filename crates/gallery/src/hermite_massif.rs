@@ -351,7 +351,7 @@ fn aim_at(built: &FacetMesh, _radius: f64, summit: f64) -> [f64; 3] {
     let floor = f64::from(low[1]);
     [
         (f64::from(low[0]) + f64::from(high[0])) * 0.5,
-        floor + (f64::from(summit) - floor) * 0.35,
+        floor + (summit - floor) * 0.35,
         (f64::from(low[2]) + f64::from(high[2])) * 0.5,
     ]
 }

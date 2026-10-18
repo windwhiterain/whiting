@@ -84,7 +84,7 @@ impl Compiler for StandardScene {
         let _name = scene_text(scene, "name")?;
 
         let emitted = emit::emit(scene, context.camera, context.device_limits(), &self.debug)?;
-        let output = assemble(
+        assemble(
             &self.graphics_identifier,
             &self.instance_identifier,
             Definition::new(
@@ -102,8 +102,7 @@ impl Compiler for StandardScene {
             // console and a dropped light is a fact the author of the scene has to have.
             emitted.notes,
             context,
-        );
-        output
+        )
     }
 }
 

@@ -120,7 +120,7 @@ impl<'registry> RegistryStore<'registry> {
             return Ok(definition.value.clone());
         }
         let loaded = self.load(&definition.definition_identifier, &definition.value, schema)?;
-        Ok(loaded.expanded()?)
+        loaded.expanded()
     }
 
     /// Loads one definition against the schema it is registered with.

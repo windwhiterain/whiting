@@ -109,6 +109,12 @@ pub fn read_meshes(
     Ok(out)
 }
 
+/// **One mesh's points, split by which attribute the loader will read**: the positions every mesh
+/// carries, the normals when the document declared them, and the uvs likewise. The three are named
+/// together because the loader indexes all three by the same vertex number and the invariant below
+/// is about exactly that; a tuple of two `Option<Vec<f64>>` says neither.
+type PointArrays = (Vec<f64>, Option<Vec<f64>>, Option<Vec<f64>>);
+
 /// Reads a mesh's points, splitting them by which attribute the loader will read.
 ///
 /// # Invariant
@@ -136,7 +142,7 @@ fn read_points(
     schema: Option<&Value>,
     mode: LossyMode,
     report: &mut LossyReport,
-) -> EmitResult<(Vec<f64>, Option<Vec<f64>>, Option<Vec<f64>>)> {
+) -> EmitResult<PointArrays> {
     let points = read::require(fields, "points", &format!("mesh '{label}'"))?;
 
     // The declared field names decide which arrays to read.
@@ -256,7 +262,7 @@ fn read_point_schema_fields(label: &str, value: &Value) -> EmitResult<Vec<String
             ),
         });
     };
-    Ok(fields.iter().map(|(name, _)| name.clone()).collect())
+    Ok(fields.keys().cloned().collect())
 }
 
 /// Reads the same three arrays out of a packed run.
@@ -268,11 +274,7 @@ fn read_point_schema_fields(label: &str, value: &Value) -> EmitResult<Vec<String
 /// the same thing. A field the layout does not have is reported by name: it means the mesh's
 /// declared schema and its packed layout disagree, which is a defect in the document rather
 /// than something to paper over with a default.
-fn read_packed_points(
-    label: &str,
-    points: &Value,
-    declared: &[String],
-) -> EmitResult<(Vec<f64>, Option<Vec<f64>>, Option<Vec<f64>>)> {
+fn read_packed_points(label: &str, points: &Value, declared: &[String]) -> EmitResult<PointArrays> {
     let packed = points.as_packed().ok_or_else(|| EmitError::Malformed {
         detail: format!("mesh '{label}' has no packed run to read"),
     })?;

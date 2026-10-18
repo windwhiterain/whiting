@@ -448,7 +448,7 @@ fn build_instances() -> (Vec<Value>, Value) {
         scene.draw(
             pass,
             instance(
-                &format!("terrain-{label}"),
+                format!("terrain-{label}"),
                 "terrain",
                 [0.0; 3],
                 [0.0; 3],
@@ -551,7 +551,7 @@ fn place_house(scene: &mut Scene, index: usize, house: &House) {
         scene.draw(
             pass,
             instance(
-                &format!("wall-{index}-{label}"),
+                format!("wall-{index}-{label}"),
                 "wall",
                 [placed.x, base, placed.z],
                 [0.0, placed.turn, 0.0],
@@ -568,7 +568,7 @@ fn place_house(scene: &mut Scene, index: usize, house: &House) {
         scene.draw(
             pass,
             instance(
-                &format!("roof-{index}-{label}"),
+                format!("roof-{index}-{label}"),
                 "roof",
                 [placed.x, base + house.walls[1] - 0.10, placed.z],
                 [0.0, placed.turn, 0.0],
@@ -677,7 +677,7 @@ fn place_crown(scene: &mut Scene, index: usize, crown: &Placement) {
         scene.draw(
             pass,
             instance(
-                &format!("crown-{index}-{label}"),
+                format!("crown-{index}-{label}"),
                 "crown",
                 [crown.x, crown.ground + 1.4 * crown.scale, crown.z],
                 [0.0, 0.0, 0.0],
@@ -711,7 +711,7 @@ fn place_fir(scene: &mut Scene, index: usize, fir: &Placement) {
         scene.draw(
             pass,
             instance(
-                &format!("fir-low-{index}-{label}"),
+                format!("fir-low-{index}-{label}"),
                 "fir_low",
                 [fir.x, base, fir.z],
                 [0.0, fir.turn, 0.0],
@@ -722,7 +722,7 @@ fn place_fir(scene: &mut Scene, index: usize, fir: &Placement) {
         scene.draw(
             pass,
             instance(
-                &format!("fir-high-{index}-{label}"),
+                format!("fir-high-{index}-{label}"),
                 "fir_high",
                 [fir.x, base + 1.85 * fir.scale, fir.z],
                 [0.0, fir.turn + 0.4, 0.0],

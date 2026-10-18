@@ -72,7 +72,7 @@ pub fn monoliths() -> Value {
         // pass. A material names one shader and a shader belongs to one pass, so the passes
         // cannot share one entry however identical the placement is.
         shadowing.push(instance(
-            &format!("shadowing-{index}"),
+            format!("shadowing-{index}"),
             "monolith",
             [x, -0.5, z],
             [0.0, turn, 0.0],
@@ -80,7 +80,7 @@ pub fn monoliths() -> Value {
             "monolith-cast",
         ));
         depthing.push(instance(
-            &format!("depthing-{index}"),
+            format!("depthing-{index}"),
             "monolith",
             [x, -0.5, z],
             [0.0, turn, 0.0],
@@ -88,7 +88,7 @@ pub fn monoliths() -> Value {
             "monolith-depth",
         ));
         lighting.push(instance(
-            &format!("lighting-{index}"),
+            format!("lighting-{index}"),
             "monolith",
             [x, -0.5, z],
             [0.0, turn, 0.0],

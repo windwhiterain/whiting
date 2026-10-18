@@ -29,6 +29,14 @@
 # them at once is worth that. Nothing is lost by not stopping -- a step that cannot run at
 # all (a render that died) is still recorded, and the run after it still happens.
 
+# THE TWO LINT GATES ARE COUNTED, NOT EXIT-CODED. `cargo clippy` and `cargo doc` both exit 0
+# on a tree that carries warnings -- that was MEASURED here, by putting one `unused_variables`
+# binding and one broken `[`NoSuchThingCanary`]` link into the tree: both runs answered exit 0
+# and one warning line each. A gate on the exit code alone would therefore have been a gate
+# nobody could watch fire, which is the exact thing this file exists to prevent. Both steps
+# print the warning count they counted and compare it against 0, and both were proved to fail
+# by putting those two faults in and reading the numbers back: 1 against 0, on runs whose exit
+# code was 0.
 $ErrorActionPreference = "Continue"
 # The worktree root is this script's own parent, so the same script verifies a branch in its
 # worktree and a merge on the tip it was merged into. Hard-coding one checkout's path would
@@ -82,7 +90,7 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 "===================================================================="
 
 "--------------------------------------------------------------------"
-"[1/6] build --workspace --all-targets, and the worktree discipline"
+"[1/8] build --workspace --all-targets, and the worktree discipline"
 "--------------------------------------------------------------------"
 $build = cargo build --workspace --all-targets -j 3 2>&1
 $code = $LASTEXITCODE
@@ -104,7 +112,43 @@ if ($warn.Count -ne 0) { $script:fail += "the build printed $($warn.Count) warni
 Gate "cargo build --workspace --all-targets" $code 0
 
 "--------------------------------------------------------------------"
-"[2/6] the six test suites"
+"[2/8] cargo clippy over the three building crates: warning count against 0"
+"--------------------------------------------------------------------"
+# The exit code is printed beside the count and is NOT the gate. Both readings are taken because
+# they are two claims -- "clippy ran" and "clippy had nothing to say" -- and the first is true of a
+# tree full of warnings. The count is the one that decides.
+$clippy = cargo clippy -q -p whiting-building -p whiting-gallery -p whiting-scene --all-targets -j 3 2>&1
+$code = $LASTEXITCODE
+$clippy | Out-File -FilePath $log -Append -Encoding utf8
+# Anchored at column 0 and case-sensitive, with the `:` or `[` the compiler always writes after the
+# kind: a code span, a note and a `help:` line cannot match it, and the run prints no
+# "N warnings emitted" summary of its own. The same form counted 137 on the tree this gate was
+# added to and 1 on a tree carrying a single `unused_variables` binding.
+$lintLines = @($clippy | Where-Object { "$_" -cmatch '^(warning|error)(\[|:)' })
+"  exit code                       : $code"
+"  warning/error lines counted     : $($lintLines.Count)   (the gate compares this against 0)"
+$lintLines | Select-Object -First 10 | ForEach-Object { "      $_" }
+if ($lintLines.Count -ne 0) { $script:fail += "clippy printed $($lintLines.Count) warning/error line(s) over the three crates" }
+Gate "cargo clippy -p building -p gallery -p scene" $code 0
+
+"--------------------------------------------------------------------"
+"[3/8] cargo doc -p whiting-building --no-deps: warning count against 0"
+"--------------------------------------------------------------------"
+# The same two readings and the same reason. `--no-deps` because this is this crate's own
+# documentation and the count a reader of docs.rs would see; rustdoc checks only public
+# documentation by default, so the number is the count of the links a reader cannot follow.
+$doc = cargo doc -q -p whiting-building --no-deps 2>&1
+$code = $LASTEXITCODE
+$doc | Out-File -FilePath $log -Append -Encoding utf8
+$docLines = @($doc | Where-Object { "$_" -cmatch '^(warning|error)(\[|:)' })
+"  exit code                       : $code"
+"  warning/error lines counted     : $($docLines.Count)   (the gate compares this against 0)"
+$docLines | Select-Object -First 10 | ForEach-Object { "      $_" }
+if ($docLines.Count -ne 0) { $script:fail += "cargo doc printed $($docLines.Count) warning/error line(s) for whiting-building" }
+Gate "cargo doc -p whiting-building --no-deps" $code 0
+
+"--------------------------------------------------------------------"
+"[4/8] the six test suites"
 "--------------------------------------------------------------------"
 # The two the audit list never ran -- definition and graphics -- are in this table with their
 # counts, because the debt sweep found them compiled by the build and executed by nobody:
@@ -142,7 +186,7 @@ foreach ($pkg in $expect.Keys) {
 }
 
 "--------------------------------------------------------------------"
-"[3/6] every example in building and gallery"
+"[5/8] every example in building and gallery"
 "--------------------------------------------------------------------"
 foreach ($pair in @(@("whiting-building", "building", 29), @("whiting-gallery", "gallery", 16))) {
     $pkg = $pair[0]; $dir = $pair[1]; $want = $pair[2]
@@ -163,7 +207,7 @@ foreach ($pair in @(@("whiting-building", "building", 29), @("whiting-gallery", 
 }
 
 "--------------------------------------------------------------------"
-"[4/6] the nine written .png hashes  (sha256 of the file, first 16 hex upper)"
+"[6/8] the nine written .png hashes  (sha256 of the file, first 16 hex upper)"
 "--------------------------------------------------------------------"
 $pinned = [ordered]@{
     house      = "2F60685F737F7ED7"; hall       = "96F61FA5E9F18E60"; hall_large = "478E692C6CBE2D3B"
@@ -196,7 +240,7 @@ foreach ($scene in $pinned.Keys) {
 "  scenes rendered: $rendered of $($pinned.Count)   hashes moved: $moved of $($pinned.Count)"
 
 "--------------------------------------------------------------------"
-"[5/6] scene_identity_probe: rows and two-way"
+"[7/8] scene_identity_probe: rows and two-way"
 "--------------------------------------------------------------------"
 $p = cargo run -q -p whiting-gallery --example scene_identity_probe 2>&1
 $code = $LASTEXITCODE
@@ -212,7 +256,7 @@ if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
 Gate "scene_identity_probe" $code 0
 
 "--------------------------------------------------------------------"
-"[6/6] cargo fmt --all -- --check"
+"[8/8] cargo fmt --all -- --check"
 "--------------------------------------------------------------------"
 # Both readings, because they are two claims: exit 0 says "rustfmt is satisfied", and an
 # empty output says "it printed no diff". A rustfmt that exits 0 while saying something is a

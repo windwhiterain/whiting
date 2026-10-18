@@ -67,7 +67,7 @@ use device::{RenderedFrame, RenderedImage, Renderer};
 use gallery::Gallery;
 use gallery::geometry::{cuboid, plane_facing};
 use gallery::kit::{
-    camera_placed, instance, instances, mesh, mesh_material, post_processes, screen_material,
+    Cone, camera_placed, instance, instances, mesh, mesh_material, post_processes, screen_material,
     shaded_point_schema, spot, surface,
 };
 use gallery::shaders::{mesh_shaders, post_shader};
@@ -948,8 +948,10 @@ fn probe_scene(casters: &[Caster]) -> Value {
                 LAMP_DIRECTION,
                 LAMP_COLOUR,
                 LAMP_INTENSITY,
-                LAMP_INNER,
-                LAMP_OUTER,
+                Cone {
+                    inner: LAMP_INNER,
+                    outer: LAMP_OUTER,
+                },
                 LAMP_REACH,
             )]),
         ),

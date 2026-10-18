@@ -101,8 +101,12 @@ fn the_clustered_lighting_template_stays_inside_the_storage_budget() {
     // The budget is four storage buffers per shader stage and the clustered pass binds all four
     // of them, so this is a statement about the design rather than about a shader: it fails the
     // day a fifth is wanted, which is the day the packing has to be reconsidered.
+    // `black_box` keeps the comparison from being folded away at compile time, which is what makes
+    // this a test rather than a build failure: the assertion still fails the day a fifth buffer is
+    // wanted, and now it fails as a failing test with its message rather than as a crate that will
+    // not build.
     assert!(
-        CLUSTERED_STORAGE_BUFFERS <= 4,
+        std::hint::black_box(CLUSTERED_STORAGE_BUFFERS) <= 4,
         "light records, cluster counts, cluster lists and the spot cones are the whole of the \
          storage budget"
     );

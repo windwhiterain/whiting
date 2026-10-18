@@ -20,6 +20,7 @@
 //! cargo run -p whiting-building --example roof_planarity_probe
 //! ```
 
+use std::array;
 use std::collections::{BTreeSet, HashMap};
 
 use whiting_building::derive::{self, RIDGE_INSETS, RoofStyle, Starter};
@@ -431,8 +432,8 @@ fn controls() {
 /// The printed identity and the printed departure are both measurements, not readings of the source.
 fn validator_step() {
     let mut identity = [[0.0f32; 3]; 3];
-    for index in 0..3 {
-        identity[index][index] = 1.0;
+    for (index, entry) in identity.iter_mut().enumerate() {
+        entry[index] = 1.0;
     }
     let value = [[16.0f32, -6.4, 0.0], [-6.4, 2.56, 0.0], [0.0, 0.0, 80.0]];
     let (cosine, sine) = axis_rotation_of(value, 0, 1);
@@ -538,18 +539,19 @@ fn axis_rotation_of(value: [[f32; 3]; 3], row: usize, column: usize) -> (f32, f3
 /// Rotates the columns `row` and `column` of a matrix together, which is what `validate::turn`
 /// computes: `J X Jᵀ`. Copied because that module is not this crate's to change.
 fn axis_turn(value: &mut [[f32; 3]; 3], row: usize, column: usize, cosine: f32, sine: f32) {
-    for index in 0..3 {
-        let along_row = value[index][row];
-        let along_column = value[index][column];
-        value[index][row] = cosine * along_row - sine * along_column;
-        value[index][column] = sine * along_row + cosine * along_column;
+    for entry in value.iter_mut() {
+        let along_row = entry[row];
+        let along_column = entry[column];
+        entry[row] = cosine * along_row - sine * along_column;
+        entry[column] = sine * along_row + cosine * along_column;
     }
-    for index in 0..3 {
-        let along_row = value[row][index];
-        let along_column = value[column][index];
-        value[row][index] = cosine * along_row - sine * along_column;
-        value[column][index] = sine * along_row + cosine * along_column;
-    }
+    // The row half reads both rows before it writes either, which is the same value the per-index
+    // walk produced and is only equal to it because the two rows are never the same one — the caller
+    // reads its row and column from `largest_off_diagonal`, which returns row < column.
+    let along_row = value[row];
+    let along_column = value[column];
+    value[row] = array::from_fn(|index| cosine * along_row[index] - sine * along_column[index]);
+    value[column] = array::from_fn(|index| sine * along_row[index] + cosine * along_column[index]);
 }
 
 /// Returns the quad a plane makes when its eave run joins two corners that are not neighbours: the
@@ -672,8 +674,8 @@ fn distinct_points(points: &[Vec3]) -> Vec<Vec3> {
 fn smallest_direction(matrix: [[f32; 3]; 3]) -> ([f32; 3], [f32; 3]) {
     let mut value = matrix;
     let mut vectors = [[0.0f32; 3]; 3];
-    for index in 0..3 {
-        vectors[index][index] = 1.0;
+    for (index, column) in vectors.iter_mut().enumerate() {
+        column[index] = 1.0;
     }
     for _ in 0..32 {
         let (row, column) = largest_off_diagonal(value);
@@ -703,22 +705,22 @@ fn smallest_direction(matrix: [[f32; 3]; 3]) -> ([f32; 3], [f32; 3]) {
 
 /// Rotates the columns `row` and `column` of a matrix towards each other.
 fn turn_columns(value: &mut [[f32; 3]; 3], row: usize, column: usize, cosine: f32, sine: f32) {
-    for index in 0..3 {
-        let along_row = value[index][row];
-        let along_column = value[index][column];
-        value[index][row] = cosine * along_row - sine * along_column;
-        value[index][column] = sine * along_row + cosine * along_column;
+    for entry in value.iter_mut() {
+        let along_row = entry[row];
+        let along_column = entry[column];
+        entry[row] = cosine * along_row - sine * along_column;
+        entry[column] = sine * along_row + cosine * along_column;
     }
 }
 
 /// Rotates the rows `row` and `column` of a matrix towards each other.
 fn turn_rows(value: &mut [[f32; 3]; 3], row: usize, column: usize, cosine: f32, sine: f32) {
-    for index in 0..3 {
-        let along_row = value[row][index];
-        let along_column = value[column][index];
-        value[row][index] = cosine * along_row - sine * along_column;
-        value[column][index] = sine * along_row + cosine * along_column;
-    }
+    // Both rows are read before either is written, which is the same arithmetic the per-index walk
+    // produced, and equal to it because the two rows are never the same one.
+    let along_row = value[row];
+    let along_column = value[column];
+    value[row] = array::from_fn(|index| cosine * along_row[index] - sine * along_column[index]);
+    value[column] = array::from_fn(|index| sine * along_row[index] + cosine * along_column[index]);
 }
 
 /// Returns the Jacobi rotation that zeroes one off-diagonal entry, as its cosine and sine.
@@ -736,10 +738,10 @@ fn rotation_of(value: [[f32; 3]; 3], row: usize, column: usize) -> (f32, f32) {
 fn largest_off_diagonal(value: [[f32; 3]; 3]) -> (usize, usize) {
     let mut found = (0usize, 1usize);
     let mut largest = 0.0f32;
-    for row in 0..3 {
-        for column in (row + 1)..3 {
-            if value[row][column].abs() > largest {
-                largest = value[row][column].abs();
+    for (row, entries) in value.iter().enumerate() {
+        for (column, entry) in entries.iter().enumerate().skip(row + 1) {
+            if entry.abs() > largest {
+                largest = entry.abs();
                 found = (row, column);
             }
         }

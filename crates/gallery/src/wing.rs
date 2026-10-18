@@ -272,7 +272,7 @@ pub fn wing_at(width: f32, depth: f32, wing_depth: f32) -> Value {
         .into_iter()
         .map(|(label, material)| {
             instance(
-                &format!("{label}-{stage}"),
+                format!("{label}-{stage}"),
                 label,
                 [0.0; 3],
                 [0.0; 3],

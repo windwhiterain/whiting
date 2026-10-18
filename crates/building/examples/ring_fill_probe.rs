@@ -112,14 +112,14 @@ fn main() {
     measure(
         "triangular void",
         &outer,
-        &vec![[-2.0, -2.0], [2.0, -2.0], [0.0, 2.0]],
+        &[[-2.0, -2.0], [2.0, -2.0], [0.0, 2.0]],
         false,
     );
     // A void that is not convex is refused rather than guessed.
     measure(
         "a notched void (refused)",
         &outer,
-        &vec![
+        &[
             [-2.0, -2.0],
             [2.0, -2.0],
             [2.0, 2.0],

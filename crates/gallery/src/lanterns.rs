@@ -147,7 +147,7 @@ fn build() -> (Vec<Value>, Value) {
         (&mut lighting, "water-shade"),
     ] {
         bucket.push(instance(
-            &format!("water-{label}"),
+            format!("water-{label}"),
             "water",
             [0.0; 3],
             [0.0; 3],
@@ -210,7 +210,7 @@ fn build() -> (Vec<Value>, Value) {
 
             let pole = format!("pole-{row}-{column}");
             shadowing.push(instance(
-                &format!("{pole}-cast"),
+                format!("{pole}-cast"),
                 "pole",
                 [x, 0.0, z],
                 [0.0; 3],
@@ -218,7 +218,7 @@ fn build() -> (Vec<Value>, Value) {
                 "pole-cast",
             ));
             depthing.push(instance(
-                &format!("{pole}-depth"),
+                format!("{pole}-depth"),
                 "pole",
                 [x, 0.0, z],
                 [0.0; 3],
@@ -226,7 +226,7 @@ fn build() -> (Vec<Value>, Value) {
                 "pole-depth",
             ));
             lighting.push(instance(
-                &format!("{pole}-shade"),
+                format!("{pole}-shade"),
                 "pole",
                 [x, 0.0, z],
                 [0.0; 3],
@@ -242,7 +242,7 @@ fn build() -> (Vec<Value>, Value) {
                 (&mut emission, "glow", "lantern-glow"),
             ] {
                 bucket.push(instance(
-                    &format!("{lantern}-{suffix}"),
+                    format!("{lantern}-{suffix}"),
                     "lantern",
                     [x, hang, z],
                     [0.0, hash01(index, 13, 29) * std::f64::consts::TAU, 0.0],

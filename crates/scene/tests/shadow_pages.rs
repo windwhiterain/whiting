@@ -102,8 +102,13 @@ fn a_light_that_reaches_nothing_is_not_reported_as_dropped_by_a_full_pool() {
         virtual_shadow: false,
         virtual_page: [NO_PAGE; 4],
     };
-    let clusters =
-        assign(&grid(), &[behind.clone()], &parallel(), &pool_of(1)).expect("the assignment runs");
+    let clusters = assign(
+        &grid(),
+        std::slice::from_ref(&behind),
+        &parallel(),
+        &pool_of(1),
+    )
+    .expect("the assignment runs");
 
     assert_eq!(clusters.page_of(0), None, "nothing it lights has a page");
     assert!(
@@ -128,8 +133,13 @@ fn a_light_that_takes_no_cluster_slot_and_casts_no_shadow_is_given_no_page() {
         virtual_shadow: false,
         virtual_page: [NO_PAGE; 4],
     };
-    let clusters =
-        assign(&grid(), &[sky.clone()], &parallel(), &pool_of(4)).expect("the assignment runs");
+    let clusters = assign(
+        &grid(),
+        std::slice::from_ref(&sky),
+        &parallel(),
+        &pool_of(4),
+    )
+    .expect("the assignment runs");
 
     assert_eq!(clusters.page_of(0), None);
     assert!(
@@ -157,8 +167,13 @@ fn a_light_that_takes_no_cluster_slot_but_casts_a_shadow_is_still_given_a_page()
         virtual_shadow: false,
         virtual_page: [NO_PAGE; 4],
     };
-    let clusters =
-        assign(&grid(), &[sun.clone()], &parallel(), &pool_of(4)).expect("the assignment runs");
+    let clusters = assign(
+        &grid(),
+        std::slice::from_ref(&sun),
+        &parallel(),
+        &pool_of(4),
+    )
+    .expect("the assignment runs");
 
     assert_eq!(
         clusters.page_of(0),
@@ -237,7 +252,7 @@ fn a_record_says_no_page_with_a_value_no_real_page_can_carry() {
         "and a light with no page is not page zero"
     );
     assert!(
-        NO_PAGE < 0.0,
+        std::hint::black_box(NO_PAGE) < 0.0,
         "the sentinel is below every legal page index"
     );
 }

@@ -144,15 +144,13 @@ impl Schema {
         // one, and anything else is checked against the declared kind below. Recognising a
         // reference by its tag rather than by failing to be a value keeps a malformed
         // reference reported as a reference instead of as a kind mismatch.
-        if self.attributes.reference {
-            if value.variant_tag().is_some_and(Reference::is_tag) {
-                return Reference::from_value(value).map(|_| ()).map_err(|error| {
-                    ValidationError::MalformedReference {
-                        path: path.clone(),
-                        reason: error.to_string(),
-                    }
-                });
-            }
+        if self.attributes.reference && value.variant_tag().is_some_and(Reference::is_tag) {
+            return Reference::from_value(value).map(|_| ()).map_err(|error| {
+                ValidationError::MalformedReference {
+                    path: path.clone(),
+                    reason: error.to_string(),
+                }
+            });
         }
         // `Int` and `Float` stay distinct, so this match is on the pair of kinds.
         match (&self.kind, value) {

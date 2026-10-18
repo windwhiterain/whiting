@@ -1014,17 +1014,20 @@ pub fn emit(
             Stage::Shadowing,
             Some(&light.label),
         ) {
-            let images = declare_images(&mut instance, &group, &images)?;
+            let declared = declare_images(&mut instance, &group, &images)?;
             insert_entry(&mut instance, group.entry(), group.payload())?;
             passes.push(shadowing_pass(
                 &group,
                 light,
-                &bounds,
-                &light_pool,
-                atlas,
                 page,
-                time,
-                &images,
+                &ShadowScene {
+                    atlas,
+                    pool: &light_pool,
+                    time,
+                    bounds: &bounds,
+                    images: &images,
+                },
+                &declared,
             ));
         }
     }
@@ -1039,11 +1042,13 @@ pub fn emit(
             &virtual_shadow.allocation,
             &shadowing_groups,
             &mut instance,
-            atlas,
-            &light_pool,
-            &bounds,
-            &images,
-            time,
+            &ShadowScene {
+                atlas,
+                pool: &light_pool,
+                time,
+                bounds: &bounds,
+                images: &images,
+            },
             &mut passes,
         )?;
     }
@@ -3130,9 +3135,7 @@ fn insert_entry(
 /// two different things, [`insert_entry`] still refuses, and that is where a real collision is
 /// reported.
 fn insert_entry_once(instance: &mut BTreeMap<String, Value>, entry: String, value: Value) {
-    if !instance.contains_key(&entry) {
-        instance.insert(entry, value);
-    }
+    instance.entry(entry).or_insert(value);
 }
 
 /// Reads the `instance_schema` the emitted declarations imply.
@@ -3644,14 +3647,44 @@ fn debug_outputs(frame_target: &str, channels: &[DebugChannel], declared: &[Scen
 /// and a page pass, and the remap that turns a light's clip output into a slot is the identity
 /// when the slot is the whole of it. The atlas is bound with no layer and read by nothing, for
 /// the reason [`SPOT_CONES_ENTRY`] is bound by a lighting pass whose scene names no spot light.
+/// **What every shadow pass reads from the scene rather than from the light it draws**: the atlas it
+/// draws into, the light pool it binds so the binding numbers after it do not move, the frame time
+/// its shaders carry, the world bounds a light's shadow volume is fitted to, and the scene's own
+/// image list its group's images are declared against.
+///
+/// These five travel unchanged from the emitter into all three pass builders, and beside four
+/// numbers of the same two types a call site had to keep in order by eye — a `time` written into
+/// the atlas' side, or a `bounds` handed to a light that belongs to another page.
+struct ShadowScene<'a> {
+    /// The shadow atlas every shadow pass draws into.
+    atlas: vshadow::Atlas,
+    /// The light pool every shadow pass binds.
+    pool: &'a LightPool,
+    /// The frame time the shadow shaders carry.
+    time: f64,
+    /// The scene's world bounds.
+    bounds: &'a Bounds,
+    /// The scene's own images, which a group's are declared against.
+    images: &'a [ImageRead],
+}
+
+/// **A light's own view of the scene**, as the projection and the eye it was computed from. They are
+/// one value because they are one matrix read two ways: `shadow_volume` returns them together
+/// because a projection fitted to one eye beside another eye's position is not a projection of
+/// anything.
+#[derive(Debug, Clone, Copy)]
+struct LightView {
+    /// The light's projection over the volume it shadows.
+    matrix: Matrix,
+    /// The eye that projection was built from.
+    eye: [f64; 3],
+}
+
 fn shadowing_pass(
     group: &Group<'_>,
     light: &LightRead,
-    bounds: &Bounds,
-    pool: &LightPool,
-    atlas: vshadow::Atlas,
     page: usize,
-    time: f64,
+    scene: &ShadowScene<'_>,
     images: &[(String, Value)],
 ) -> Value {
     // A shadowing pass is only emitted for a light that was given a page, and a light that
@@ -3659,8 +3692,11 @@ fn shadowing_pass(
     // light with no volume is a page the pool was never going to hand it, so the two facts
     // cannot come apart here.
     let (light_matrix, light_eye) = light
-        .shadow_volume(bounds)
+        .shadow_volume(scene.bounds)
         .expect("a shadowing pass is only emitted for a light with a shadow volume");
+    let ShadowScene {
+        pool, atlas, time, ..
+    } = *scene;
     rasterize(
         &group.label(),
         group.shader,
@@ -3927,7 +3963,7 @@ fn lighting_pass(
 /// dropped, so what a shader writes at `location(1)` is the second name here and no other. It is
 /// therefore a fact about every shader rather than about one pass, which is why the frame is first
 /// and the scene's declarations follow in the order they were read.
-fn target_list<'declared>(declared: &'declared [SceneOutput]) -> Vec<&'declared str> {
+fn target_list(declared: &[SceneOutput]) -> Vec<&str> {
     let mut targets = Vec::with_capacity(declared.len() + 2);
     targets.push(COLOR_TARGET);
     targets.extend(declared.iter().map(|output| output.point.as_str()));
@@ -4502,11 +4538,7 @@ fn virtual_shadow_passes<'read>(
     allocation: &vshadow::Allocation,
     groups: &[ShadowGroup<'read>],
     instance: &mut BTreeMap<String, Value>,
-    atlas: vshadow::Atlas,
-    pool: &LightPool,
-    bounds: &Bounds,
-    images: &[ImageRead],
-    time: f64,
+    scene: &ShadowScene<'_>,
     passes: &mut Vec<Value>,
 ) -> Result<(), CompileError> {
     let map = allocation
@@ -4514,8 +4546,12 @@ fn virtual_shadow_passes<'read>(
         .get(plan)
         .expect("a light an allocation was built for has a map");
     let (light_matrix, light_eye) = light
-        .shadow_volume(bounds)
+        .shadow_volume(scene.bounds)
         .expect("a light with a virtual grid has a shadow volume");
+    let view = LightView {
+        matrix: light_matrix,
+        eye: light_eye,
+    };
     for page in allocation.pages.iter().filter(|page| page.light == plan) {
         // The slot's own corner of the layer, in texels. A slot is counted across every level of
         // the light and laid out in a grid `atlas_side` pages wide, which is the same arithmetic
@@ -4539,18 +4575,15 @@ fn virtual_shadow_passes<'read>(
                 continue;
             }
             let page_group = group.for_page(members, &owner);
-            let declared = declare_images(instance, &page_group, images)?;
+            let declared = declare_images(instance, &page_group, scene.images)?;
             insert_entry(instance, page_group.entry(), page_group.payload())?;
             passes.push(page_pass(
                 &page_group,
                 &page.window,
-                light_matrix,
-                light_eye,
+                view,
                 plan,
                 origin,
-                atlas,
-                pool,
-                time,
+                scene,
                 &declared,
             ));
         }
@@ -4580,15 +4613,19 @@ fn virtual_shadow_passes<'read>(
 fn page_pass(
     group: &Group<'_>,
     window: &[f64; 4],
-    light_matrix: Matrix,
-    light_eye: [f64; 3],
+    view: LightView,
     plan: usize,
     origin: [i64; 2],
-    atlas: vshadow::Atlas,
-    pool: &LightPool,
-    time: f64,
+    scene: &ShadowScene<'_>,
     images: &[(String, Value)],
 ) -> Value {
+    let LightView {
+        matrix: light_matrix,
+        eye: light_eye,
+    } = view;
+    let ShadowScene {
+        pool, atlas, time, ..
+    } = *scene;
     let side = vshadow::PAGE_SIZE as i64;
     rasterize(
         &group.label(),
@@ -4806,7 +4843,7 @@ fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> Insta
         };
         for point in 0..mesh.points.len() {
             let world = apply(&instance.model, packed_point_position(mesh, point));
-            for axis in 0..3 {
+            for axis in [0, 1, 2] {
                 covered.minimum[axis] = covered.minimum[axis].min(world[axis]);
                 covered.maximum[axis] = covered.maximum[axis].max(world[axis]);
             }

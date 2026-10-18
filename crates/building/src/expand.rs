@@ -44,7 +44,7 @@
 //!
 //! # The two discs
 //!
-//! The plate a mass stands on is a [`Slab`](crate::slab::Slab) solid of its own, and a mass's own faces are its
+//! The plate a mass stands on is a [`Slab`] solid of its own, and a mass's own faces are its
 //! ring's. Its top is the whole outline at the plate's own top elevation and its bottom the same outline one
 //! plate thickness below, so they are two elements — [`SlabSurface::Top`] and [`SlabSurface::Bottom`].
 //! Naming both `Floor` put them in one planarity group, and the merged validator reported that group
@@ -252,7 +252,7 @@ pub enum Problem {
     /// **The wall is named by its loop and not by a mass and an edge**, because a mass holds two
     /// kinds of wall: its own outline and a courtyard's ring, and "edge 1" is two different pieces of
     /// masonry with two different answers. Every fault below carries the loop for the reason
-    /// [`offset_loop`] carries it, and none of them widens into a catch-all: each names one way the
+    /// `offset_loop` carries it, and none of them widens into a catch-all: each names one way the
     /// cut cannot be made.
     OpeningUnresolved {
         /// The authored loop the opening names: a mass's outline, or one of its courtyards.
@@ -466,7 +466,8 @@ pub fn build(skeleton: &BuildingSkeleton) -> Result<BuildingMesh, BuildError> {
 /// # Invariants
 ///
 /// - **A template's expansion is a function of the template alone**, which is what makes the cache sound:
-///   the mesh it hands back is exactly what [`Template::mesh`] would compute, computed once.
+///   the mesh it hands back is exactly what [`Template::mesh`](crate::parts::Template::mesh) would
+///   compute, computed once.
 /// - **`build` is this function with a cache it builds itself**, so there is one path and no way for a caller
 ///   to get a different geometry by choosing the other one.
 /// - **A cache entry that failed is reported, not skipped**: a template that cannot expand is a fault of
@@ -672,7 +673,7 @@ fn expand_wall(mesh: &mut BuildingMesh, id: WallId, wall: &Wall) -> Result<(), V
 /// edge, its `y` up, and its `z` **into the wall**, with `x × y = z`. The origin is the point on the
 /// wall's **outer face** at the pin's arc length and elevation, so a part authored from its own outer
 /// face lies in the wall's thickness rather than hanging outside it. The wall's frame comes from
-/// [`WallFace::of`] — the same reading the wall itself is built from — so there is no second
+/// `WallFace::of` — the same reading the wall itself is built from — so there is no second
 /// derivation of what "along" or "inward" means for an edge.
 ///
 /// A placement whose template holds no mass answers `None` from
@@ -690,7 +691,7 @@ fn expand_wall(mesh: &mut BuildingMesh, id: WallId, wall: &Wall) -> Result<(), V
 ///
 /// **A courtyard's bay is read through the same three lines, and the one fact that differs is which
 /// loop the face names.** A mass's bay is measured along its own outline, and a courtyard's along its
-/// void loop; [`loops_of`] answers both from one walk and carries the offset side, so the strip this
+/// void loop; `loops_of` answers both from one walk and carries the offset side, so the strip this
 /// frame is read from is the strip the ring itself was built from — a courtyard's is the void loop and
 /// its outward offset, which is what the last slice made a single flag. There is no second frame and
 /// no second opinion about which way a courtyard's wall went.
@@ -813,6 +814,11 @@ pub fn part_frame(
     }
 }
 
+/// **The two pieces and nothing else**: the points a placement's template came to in the document's
+/// space, and the faces over them. Named because the return type is otherwise a nested tuple that
+/// reads as an accident at every call site.
+type PlacedMesh = (Vec<Vec3>, Vec<BuildingFace>);
+
 /// Builds one placement's template in the frame its bay gives it, or `None` when it does not resolve.
 ///
 /// # Invariants
@@ -824,7 +830,7 @@ fn expand_placement(
     skeleton: &BuildingSkeleton,
     index: usize,
     cache: &TemplateCache,
-) -> Result<Option<(Vec<Vec3>, Vec<BuildingFace>)>, Vec<Problem>> {
+) -> Result<Option<PlacedMesh>, Vec<Problem>> {
     // The placement must resolve — its bay or its wall, its pin, its reach — before a frame can be read for
     // it, and the frame is what carries the template into the document's space.
     if skeleton.placed(index).is_none() {
@@ -1337,6 +1343,7 @@ pub(crate) fn face_length(skeleton: &BuildingSkeleton, face: FaceRef) -> Option<
 ///   different statement from a fault: a caller that is building reports `None` and no problem, and
 ///   a caller that is resolving one placement answers "it does not resolve" rather than reporting a
 ///   build failure with nothing in it.
+///
 /// `O(nodes)` for the normalising copy a reversed void loop needs; a loop already wound positively is
 /// borrowed.
 pub(crate) fn loops_of<'a>(
@@ -1516,14 +1523,16 @@ pub(crate) fn ring_walk(
         }
         match cut_edge(
             solid,
-            &surfaces,
-            ring,
-            authored_is_outer,
-            edge,
-            &faces[edge],
-            holes,
-            nodes[edge],
-            nodes[next],
+            &CutEdge {
+                surfaces: &surfaces,
+                ring,
+                authored_is_outer,
+                edge,
+                wall: &faces[edge],
+                holes,
+                near: nodes[edge],
+                far: nodes[next],
+            },
             problems,
         ) {
             Ok((stations, bands)) => {
@@ -1601,10 +1610,11 @@ fn report_unclosed(solid: &Solid, loop_of: AuthoredLoop, nodes: usize) {
     let bases = solid
         .faces
         .iter()
-        .filter(|face| match face.element {
-            Element::Mass(_, MassSurface::WallBase)
-            | Element::Mass(_, MassSurface::VoidBase { .. }) => true,
-            _ => false,
+        .filter(|face| {
+            matches!(
+                face.element,
+                Element::Mass(_, MassSurface::WallBase | MassSurface::VoidBase { .. })
+            )
         })
         .count();
     eprintln!("BASES {bases} emitted for a loop of {nodes} walls");
@@ -1738,15 +1748,11 @@ fn resolve_holes(
     // not a set of bands at all. Touching is not sharing — `Extents::overlaps` says so and the
     // expander reads it rather than re-deriving it — so a divided facade opened bay by bay cuts.
     // Each unordered pair once, in the document's own order.
-    for edge in 0..by_edge.len() {
-        for left in 0..by_edge[edge].len() {
-            for right in left + 1..by_edge[edge].len() {
-                if by_edge[edge][left]
-                    .outer
-                    .overlaps(&by_edge[edge][right].outer)
-                {
-                    let (first, second) =
-                        ordered(by_edge[edge][left].opening, by_edge[edge][right].opening);
+    for (edge, holes) in by_edge.iter().enumerate() {
+        for left in 0..holes.len() {
+            for right in left + 1..holes.len() {
+                if holes[left].outer.overlaps(&holes[right].outer) {
+                    let (first, second) = ordered(holes[left].opening, holes[right].opening);
                     problems.push(Problem::OpeningsOverlap {
                         loop_of: ring.loop_of,
                         edge,
@@ -2162,6 +2168,32 @@ struct EdgeNode {
     offset_top: u32,
 }
 
+/// **One edge of a ring and everything the cut of that edge reads, held as one value.** `cut_edge`
+/// took ten arguments, of which these eight are fixed by the edge before the walk begins and cannot
+/// be told apart at the call site: `surfaces` and `authored_is_outer` are the ring's, `ring` is the
+/// ring, `edge`, `wall` and `holes` are the edge's, and `near`/`far` are its two ends' point
+/// tables. Two of them are the same type — a `bool` and a `usize` — so a transposition compiled.
+/// Grouping them leaves the cut with the two things it writes into and nothing else.
+#[derive(Debug, Clone, Copy)]
+struct CutEdge<'a> {
+    /// The element ids the ring's own edge resolves to.
+    surfaces: &'a RingSurfaces,
+    /// The ring this edge belongs to.
+    ring: &'a Ring<'a>,
+    /// Whether the authored loop is the ring's outer one, which is what winds the faces.
+    authored_is_outer: bool,
+    /// This edge's index in the ring.
+    edge: usize,
+    /// The wall face this edge stands on.
+    wall: &'a WallFace,
+    /// The openings grouped onto this edge, resolved and ordered.
+    holes: &'a [Hole],
+    /// The point table at this edge's own node.
+    near: EdgeNode,
+    /// The point table at the next node round, which is this edge's far end.
+    far: EdgeNode,
+}
+
 /// Cuts one wall into the complement of its holes, and returns the stations it split.
 ///
 /// # Invariants
@@ -2194,16 +2226,19 @@ struct EdgeNode {
 /// by band over the same stations. That is what the stations returned here are for.
 fn cut_edge(
     solid: &mut Solid,
-    surfaces: &RingSurfaces,
-    ring: &Ring<'_>,
-    authored_is_outer: bool,
-    edge: usize,
-    wall: &WallFace,
-    holes: &[Hole],
-    near: EdgeNode,
-    far: EdgeNode,
+    cut: &CutEdge<'_>,
     problems: &mut Vec<Problem>,
 ) -> Result<(Vec<CutStation>, Vec<bool>), Vec<Problem>> {
+    let CutEdge {
+        surfaces,
+        ring,
+        authored_is_outer,
+        edge,
+        wall,
+        holes,
+        near,
+        far,
+    } = *cut;
     let mass = ring.loop_of.mass();
     let mut stations = vec![0.0, wall.length];
     let mut cuts = Vec::with_capacity(2 * holes.len());
@@ -2348,10 +2383,12 @@ fn cut_edge(
                         solid,
                         loop_side,
                         authored_is_outer,
-                        near,
-                        far,
-                        *low,
-                        *high,
+                        Gap {
+                            near,
+                            far,
+                            low: *low,
+                            high: *high,
+                        },
                         element,
                     );
                 }
@@ -2661,6 +2698,22 @@ fn corner_band(
     corners
 }
 
+/// **One gap between two levels of one band, named as a group.** `near` and `far` are the band's two
+/// ends and `low`/`high` the two rows the gap spans on each, so the four are one piece of geometry
+/// rather than four independent arguments: passing the `low`/`high` pair against the wrong band's
+/// ends compiled and drew the wrong face.
+#[derive(Debug, Clone, Copy)]
+struct Gap<'a> {
+    /// The point table at the band's near end.
+    near: &'a [u32],
+    /// The point table at the band's far end.
+    far: &'a [u32],
+    /// The lower of the two level indices the gap spans.
+    low: usize,
+    /// The upper of the two level indices the gap spans.
+    high: usize,
+}
+
 /// Emits one gap of one band, as a quad or as the triangle it becomes where it stands on the floor.
 ///
 /// # Invariants
@@ -2678,12 +2731,15 @@ fn gap(
     solid: &mut Solid,
     loop_side: LoopSide,
     authored_is_outer: bool,
-    near: &[u32],
-    far: &[u32],
-    low: usize,
-    high: usize,
+    gap: Gap<'_>,
     element: Element,
 ) {
+    let Gap {
+        near,
+        far,
+        low,
+        high,
+    } = gap;
     let corners = loop_side.corners(authored_is_outer, near, far, low, high);
     match (near[high] == near[low], far[high] == far[low]) {
         (true, true) => {}
@@ -2952,7 +3008,6 @@ fn inside_triangle(point: Vec2, a: Vec2, b: Vec2, c: Vec2) -> bool {
 ///
 /// `O(n^3)` in the loop's nodes over the whole clip, which is what ear clipping costs; a wall ring is
 /// tens of nodes and this is one surface of one mass.
-
 fn polygon(
     solid: &mut Solid,
     loop_points: &[Vec2],

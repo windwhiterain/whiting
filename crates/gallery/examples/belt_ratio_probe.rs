@@ -134,7 +134,7 @@ fn main() {
         let mut per_valley: BTreeMap<usize, std::collections::BTreeSet<usize>> = BTreeMap::new();
         for face in &massif.faces {
             per_valley
-                .entry(face.attributes.belt.valley.0 as usize)
+                .entry(face.attributes.belt.valley.0)
                 .or_default()
                 .insert(face.attributes.belt.segment);
         }

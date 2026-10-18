@@ -22,8 +22,8 @@
 //! # What it is not
 //!
 //! No editor, no runtime service, no serialization, no renderer. An agent authors by writing rust
-//! against this api — [`ops`] for the edits, [`derive`] for a starting point, [`validate`] for what
-//! is wrong, and [`Building::build`] for the mesh.
+//! against this api — [`ops`] for the edits, [`derive`](mod@derive) for a starting point,
+//! [`validate`] for what is wrong, and [`Building::build`] for the mesh.
 //!
 //! ```no_run
 //! use whiting_building::Building;

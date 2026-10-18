@@ -31,8 +31,8 @@ use definition::Value;
 
 use crate::geometry::{cuboid, plane_facing};
 use crate::kit::{
-    camera_placed, gallery_custom_schema, gallery_instance_schema, instance, mesh, mesh_material,
-    post_processes, screen_material, shaded_point_schema, shader, spot, surface,
+    Cone, camera_placed, gallery_custom_schema, gallery_instance_schema, instance, mesh,
+    mesh_material, post_processes, screen_material, shaded_point_schema, shader, spot, surface,
 };
 use crate::shaders::{depthing, lighting, post_shader, shadowing};
 use scene::standard::Stage;
@@ -236,8 +236,10 @@ pub fn spotlight() -> Value {
                 4_066.3,
                 // A wide gap between the two angles, so the falloff is a ring rather than an
                 // edge: about nine degrees at full strength and thirty two at nothing.
-                0.16,
-                0.56,
+                Cone {
+                    inner: 0.16,
+                    outer: 0.56,
+                },
                 // Wide enough that the cone, and not this number, is what bounds the page. The
                 // page reaches the far end of the drawn scene, so the extent only has to be at
                 // least as wide as the cone is there; a smaller one would narrow the page to the

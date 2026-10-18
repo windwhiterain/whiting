@@ -143,7 +143,7 @@ fn stage_of(shader: &Value) -> Option<Stage> {
 /// however good its silhouette is. Sixty units puts a facet at about a quarter of a rib, which is
 /// a face with a shape rather than a splinter, and it leaves the crests sampled finely enough
 /// for their own bends to survive.
-
+///
 /// How many cells the plain is divided into along each axis.
 ///
 /// It is flat where the massif is, so the cells only have to be fine enough for the far ground's

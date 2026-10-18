@@ -53,9 +53,8 @@ impl Placement {
     /// A point in this frame's coordinates, expressed in its parent's.
     pub fn place(&self, point: Vec3) -> Vec3 {
         let mut placed = self.origin;
-        for axis in 0..3 {
-            placed[axis] +=
-                self.x[axis] * point[0] + self.y[axis] * point[1] + self.z[axis] * point[2];
+        for (axis, out) in placed.iter_mut().enumerate() {
+            *out += self.x[axis] * point[0] + self.y[axis] * point[1] + self.z[axis] * point[2];
         }
         placed
     }
@@ -64,8 +63,8 @@ impl Placement {
     /// [`Placement::place`] without the origin.
     pub fn rotate(&self, direction: Vec3) -> Vec3 {
         let mut rotated = [0.0; 3];
-        for axis in 0..3 {
-            rotated[axis] = self.x[axis] * direction[0]
+        for (axis, out) in rotated.iter_mut().enumerate() {
+            *out = self.x[axis] * direction[0]
                 + self.y[axis] * direction[1]
                 + self.z[axis] * direction[2];
         }
@@ -280,9 +279,8 @@ impl Plant {
         let scale = node.taper_now().at(station);
         let point = node.section().at(attachment.slot);
         let mut radial = [0.0; 3];
-        for axis in 0..3 {
-            radial[axis] =
-                frame.normal[axis] * point[0] * scale + frame.binormal[axis] * point[1] * scale;
+        for (axis, out) in radial.iter_mut().enumerate() {
+            *out = frame.normal[axis] * point[0] * scale + frame.binormal[axis] * point[1] * scale;
         }
         let outward = if length3(radial) > 1.0e-6 {
             normalized3(radial)
@@ -327,8 +325,8 @@ impl Plant {
             let shift = node.shift();
             if shift != [0.0; 3] {
                 let moved = placement.rotate(shift);
-                for axis in 0..3 {
-                    placement.origin[axis] += moved[axis];
+                for (axis, out) in placement.origin.iter_mut().enumerate() {
+                    *out += moved[axis];
                 }
             }
             prefix = child;

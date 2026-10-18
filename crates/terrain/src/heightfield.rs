@@ -453,7 +453,7 @@ impl HeightField {
                         || next.1 < 0
                         || self
                             .index(next.0 as usize, next.1 as usize)
-                            .map_or(true, |next| !self.inside[next])
+                            .is_none_or(|next| !self.inside[next])
                 });
                 if open {
                     level[at] = self.heights[at];
