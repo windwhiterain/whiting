@@ -34,7 +34,7 @@
 //! - A vertex buffer belongs to a mesh and is shared by every instance that draws it; an
 //!   instance buffer belongs to an instance and holds that instance's row alone.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
 use definition::{FieldMap, PackedList, Path, Schema, SchemaKind, Value};
@@ -2341,6 +2341,30 @@ fn finish_mesh(
     (found, entry)
 }
 
+/// Indexes a table of labelled reads by label, so a name is resolved once rather than by walking
+/// the table for every row that names it.
+///
+/// # Why the first entry wins
+///
+/// This answers what a scan for the first matching label answered, which matters because the
+/// tables are read in document order and a scene that declares the same label twice resolves to
+/// the one it declared first. A later declaration does not displace it.
+///
+/// # Why this is a table and not a scan
+///
+/// A scan is linear in the size of the table and the row loop is linear in the number of rows, so
+/// resolving a label by walking costs the product of the two. A vegetation scene has a few
+/// thousand meshes and materials and tens of thousands of rows, and the product of those is where
+/// the compile time of such a scene went: not in packing a transform, but in finding the name it
+/// had to pack.
+fn index_by_label<'read, T>(table: &'read [T], label_of: impl Fn(&T) -> &str) -> HashMap<&'read str, usize> {
+    let mut index = HashMap::with_capacity(table.len());
+    for (position, entry) in table.iter().enumerate() {
+        index.entry(label_of(entry)).or_insert(position);
+    }
+    index
+}
+
 /// Reads the instances of the scene, which are listed in buckets, one per pass.
 ///
 /// # Invariants
@@ -2372,6 +2396,15 @@ fn read_instances(
     // failed with.
     let mut bundles: Vec<Option<MaterialBundle>> =
         (0..materials.len()).map(|_| None).collect();
+    let mesh_index = index_by_label(meshes, |mesh| mesh.label.as_str());
+    let material_index = index_by_label(materials, |material| material.label.as_str());
+    // A label is refused the second time it is read, so the labels read so far are what answers
+    // "has this one been read already". Every row contributed to this: a scene listing tens of
+    // thousands of instances asked, for each of them, whether every earlier one had its name,
+    // which is a quadratic walk that measured as the single largest cost in compiling a
+    // vegetation scene. A row is refused on the same row as before, because the set and the walk
+    // agree on which row repeats a label and on the label it repeats.
+    let mut labels: HashSet<String> = HashSet::new();
 
     let mut read: Vec<InstanceRead> = Vec::new();
     for (name, bucket) in buckets {
@@ -2389,14 +2422,15 @@ fn read_instances(
             let found = read_instance(
                 instance,
                 &bucket_path.index(index),
-                meshes,
+                &mesh_index,
                 materials,
+                &material_index,
                 shaders,
                 images,
                 &mut bundles,
                 stage,
             )?;
-            if read.iter().any(|other| other.label == found.label) {
+            if !labels.insert(found.label.clone()) {
                 return Err(CompileError::DuplicateLabel {
                     kind: "instance",
                     label: found.label,
@@ -2486,8 +2520,9 @@ fn material_bundle(
 fn read_instance(
     instance: &Value,
     path: &Path,
-    meshes: &[MeshRead],
+    mesh_index: &HashMap<&str, usize>,
     materials: &[MeshMaterialRead],
+    material_index: &HashMap<&str, usize>,
     shaders: &[ShaderRead],
     images: &[ImageRead],
     bundles: &mut [Option<MaterialBundle>],
@@ -2495,11 +2530,7 @@ fn read_instance(
 ) -> Result<InstanceRead, CompileError> {
     let label = text(instance, path, scene_schema::LABEL)?.to_owned();
     let mesh_label = text(instance, path, scene_schema::MESH)?;
-    let Some((mesh, _found)) = meshes
-        .iter()
-        .enumerate()
-        .find(|(_, mesh)| mesh.label == mesh_label)
-    else {
+    let Some(mesh) = mesh_index.get(mesh_label).copied() else {
         return Err(CompileError::UnknownMesh {
             path: path.key(scene_schema::MESH),
             mesh: mesh_label.to_owned(),
@@ -2509,16 +2540,13 @@ fn read_instance(
     let transform = read_transform(instance, path)?;
     let material_path = path.key(scene_schema::MATERIAL);
     let material_label = text(instance, path, scene_schema::MATERIAL)?;
-    let Some(material_index) = materials
-        .iter()
-        .position(|material| material.label == material_label)
-    else {
+    let Some(material_at) = material_index.get(material_label).copied() else {
         return Err(CompileError::UnknownMaterial {
             path: material_path,
             material: material_label.to_owned(),
         });
     };
-    let material = &materials[material_index];
+    let material = &materials[material_at];
     let shader_read = &shaders[material.shader];
     // The bucket is the pass and the material says how the instance is drawn in it, so the two
     // have to agree. A material whose shader belongs to another stage would be drawn by this
@@ -2544,10 +2572,10 @@ fn read_instance(
     // verified, the images it names, that data with the image fields left out, and the merged row
     // schema. All four are read into the material's slot the first time an instance names it and
     // borrowed by every row after, which is what keeps the cost of a row a function of the row.
-    if bundles[material_index].is_none() {
-        bundles[material_index] = Some(material_bundle(material, shaders, images)?);
+    if bundles[material_at].is_none() {
+        bundles[material_at] = Some(material_bundle(material, shaders, images)?);
     }
-    let bundle = bundles[material_index]
+    let bundle = bundles[material_at]
         .as_ref()
         .expect("the material's bundle was just read");
 
