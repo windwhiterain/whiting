@@ -3290,12 +3290,16 @@ fn expand_roof(mesh: &mut BuildingMesh, id: RoofId, roof: &Roof) -> Result<(), V
             ) else {
                 continue;
             };
-            // One face per strip. The strip's corners are walked in the order the two polylines
-            // name them, and consecutive duplicates are dropped: a strip at a ridge or a hip end has
-            // three corners there and not four, which is a triangle rather than a zero-area quad.
+            // One face per strip. The corners run from the crest end of the strip down to its eave
+            // end, **in the order the authored rows name them** — the order the one-slope roof has
+            // always used, so that a plane with no profile triangulates exactly as it did before the
+            // profile existed. Reversing them would put the quad's diagonal on the other pair of
+            // corners: the same area, a different set of triangles, and every pinned hash in the
+            // gallery moves for a change no viewer can see. Consecutive duplicates are dropped, which
+            // is how a strip at a ridge or a hip end becomes a triangle rather than a zero-area quad.
             for step in 0..profile.len() + 1 {
                 let mut corners = Vec::with_capacity(4);
-                for corner in [front[step], back[step], back[step + 1], front[step + 1]] {
+                for corner in [front[step + 1], back[step + 1], back[step], front[step]] {
                     if corners.last() != Some(&corner) {
                         corners.push(corner);
                     }
