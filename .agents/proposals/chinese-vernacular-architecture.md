@@ -7,6 +7,21 @@ Status: design proposal, 2026-10-18. It rests on four research notes in
 separate questions and are, per the repository's rule, not a basis for implementation on their own.
 No code has been written against this document.
 
+## The owner's decisions, 2026-10-18
+
+Four answers, taken before any code, and they decide the shape of this document rather than its taste:
+
+| fork | the owner chose | what it commits this proposal to |
+| --- | --- | --- |
+| the roof's profile (F1) | **a section per slope, folded into planar steps** | D1 as written; planarity is kept and the roof stays a chain of planes |
+| how much structure is geometry (F2, F3) | **members with anchored joints *and* crowned walls** | D2 and D3, both; the frame is a solid and a gable wall can meet a roof |
+| the first building (F5) | **the 吊脚楼** | the road is one scene in stages, starting at the site |
+| the covering (F4) | **geometric tile** — not a texture | a new construct, D9; and the face budget to go with it |
+
+The fourth is the one that went against my recommendation, and the numbers in D9 are why it is
+defensible rather than merely brave: a tile course is the same size on screen as the members D2 and D3
+already draw, so a covering that is built is a covering that reads.
+
 ## Scope: the vernacular, not the official tradition
 
 The owner's direction of 2026-10-18: take the framework to **Chinese traditional architecture**, and
@@ -163,7 +178,7 @@ are the building, and the ring is the panel hung on it.
 | 封火墙 passing through the roof | `Wall` has no host | `Wall::host` |
 | two slopes pitched differently (傣楼, 一颗印 second tier) | one slope per plane | `RoofPlane::profile`, per plane |
 | 楼板开洞 (火塘通高, 楼梯井) | `Slab` has one plan polygon | `Slab::voids`, filled by `fill` |
-| 屋面覆盖 (小青瓦, 石板瓦, 杉皮) | a surface has a colour | a `Covering` enum on `Roof` — the ridge and the pitch minimum differ |
+| 屋面覆盖 (小青瓦, 石板瓦, 杉皮) | a surface has a colour | **D9** — owner's decision, 2026-10-18 |
 | 使用开间 = 2 × 结构开间 | one grid per face | a ratio in the starter, not a construct |
 | 天井, 院落, 厢房, 走马廊 | void ring, deep eaves, hosted slabs | nothing — authoring |
 | 瓦垄, 瓦当, 滴水 | nothing | a shader question, not geometry — see the forks |
@@ -284,9 +299,9 @@ The bay range (**3.3 m** in Dali to **4.5 m** on the Jialing) and the depth rang
 
 ## The design
 
-Eight headings: **six new constructs** (D1, D2, D3, D4, D7, D8), **one derivation** (D6) — and **one
-correction** (D5), a capability this proposal first recorded as missing which the crate already had.
-Each names what it buys, the invariant it must keep, and the sentence it refuses to build.
+Nine headings: **seven new constructs** (D1, D2, D3, D4, D7, D8, D9), **one derivation** (D6) — and
+**one correction** (D5), a capability this proposal first recorded as missing which the crate already
+had. Each names what it buys, the invariant it must keep, and the sentence it refuses to build.
 
 ### D1. A roof plane holds a section, and the section is a fraction **and** a rise
 
@@ -347,12 +362,10 @@ Two things it buys without a line of new code, both measured from the crate's ow
   its step index lands in exactly the same map and the same rule. The steps are watertight because
   the roof's three keys are, not because two constructions agree.
 
-One companion parameter, because the covering changes the roof and not only its colour:
-`Roof::covering` is an enum of 小青瓦 / 石板瓦 / 杉皮. Slate has **no drainage channels and no ridge
-tile** — its slabs lap into the curve themselves (Guizhou note §Verdict, [S21]) — so a slate roof's
-ridge is a bare joint where a tiled one carries a roll, and slate is heavier, so the purlin spacing
-follows the covering (§5.1, [S9]). Two of those three facts are shape, and a shader cannot state
-either.
+The covering used to sit here as a companion parameter — a `Covering` enum with a ridge roll or without.
+The owner's decision of 2026-10-18 made it geometry instead, so it is D9, and what stays here is only the
+fact the profile needs: **the covering sets a minimum pitch and a purlin spacing** (slate is heavier than
+tile), so a roof's steps and its covering are chosen together.
 
 Refusals: `ProfileOutOfOrder` (a fraction not strictly increasing inside `(0, 1)`, or a rise not
 strictly increasing above the eave), `ProfileReachesTheCrest` (a step at or above the crest's own
@@ -511,6 +524,42 @@ without writing the same wing's document three times.
 
 Refusals: none new — a yaw is a number, and a template with no masses is already a `Template` fault.
 
+### D9. The covering is geometry — one construct, periodic in one of two directions
+
+The owner chose geometric tile over a texture. The construct that makes that affordable is **one prism
+per period, not one per tile**, and it covers both materials this arc needs because **they are periodic
+in opposite directions**:
+
+```
+Covering { direction: Across | Down, period: f32, section: Vec<Vec2>, lap: f32 }
+```
+
+- 小青瓦 is periodic **across** the slope: a field of ridges (瓦垄) running from ridge to eave, with a
+  concave channel between them. `Across` at 0.20 m over a 10 m plane is **50 ridges**.
+- 石板瓦 is periodic **down** the slope: courses laid across the slope and lapped, with **no channels and
+  no ridge roll** (Guizhou note §Verdict, [S21]). `Down` at a 0.30 m course is **10 courses**, each a
+  thin plate with a lap.
+
+Either way each period is laid **one prism per step**, because the skin bends at every purlin (D1): a
+three-step plane is `periods × 4` prisms, each an ordinary closed prism with six planar faces. Fifty
+ridges on a three-step slope is 200 solids and about 1 200 faces — two orders of magnitude below one
+solid per tile, and the same order as the members the frame already draws, which is exactly the size at
+which the choice pays for itself.
+
+Three things follow, and the first two are invariants rather than conveniences:
+
+- **The covering is hosted by the roof.** A ridge sits *on* the skin and overlaps it, so the overlap is
+  authored the way a member's is (`host`), and `validate` does not read 200 prisms standing in a plane.
+- **The eave end is the picture.** 瓦当 and 滴水 are about 12 px at these frames, which is the size that
+  reads. The first covering arc decides whether the ridge's own end face is enough or a cap part is
+  worth its solids; the slate covering has no cap at all, and that difference is the covering's, not the
+  roof's.
+- **Tiles are their own element class**, so they are their own material: the skin under them can be a
+  dark mortar colour beneath a lighter tile field, which is how a real eave reads.
+
+Refusals: `CoveringOutOfPhase` (a period that does not divide the plane's width or its run, so the field
+would end in half a ridge), and `CoveringThinnerThanItsLap` (a lap longer than the course).
+
 ### Table: what each move costs
 
 | Move | New fields | Code that changes | The gate it must pass |
@@ -523,6 +572,7 @@ Refusals: none new — a yaw is a number, and a template with no masses is alrea
 | D6 starter | none | `derive` | the starter builds and its roof's profile measures the profile |
 | D7 slab holes | `Slab::voids` | `expand` (caps, inner bands), `validate` | a probe that a holed slab is closed and its annulus area is the difference |
 | D8 free placement | `Placement::Free` | `parts`, `skeleton` (resolution), `expand` | a probe that two free-placed wings land where their yaw says and neither moves when a face is re-split |
+| D9 covering | `Covering`, a list in the document, a `SolidId` | `expand`, `mesh` (element, and a material class of its own), `identity` | a probe that a 50-ridge field is 50 closed prisms per step and that a half-period field is refused |
 
 ### What this design does not add, and why
 
@@ -543,9 +593,10 @@ and then cannot ship:
 3. **A corbel as a construct.** 程阳桥's multi-layer cantilever bracket is a stack of members with
    anchors, one per layer, each reaching further out; it needs the `Member` construct and nothing else.
    A `derive::corbel` is a convenience for a later arc, not a capability.
-4. **The covering's laying law.** Tile courses, corbelling, slate laps and their curvature are the
-   shader's (F4). The `Covering` enum carries only the two facts that are *shape*: whether the ridge
-   carries a roll, and the minimum pitch the covering needs.
+4. **The covering's laying law** — *crossed off on 2026-10-18*. The owner chose geometric tile, so the
+   laying law is D9: one prism per period, `Across` for 小青瓦, `Down` for 石板瓦. What is still not
+   modelled is the *corrugation's* curvature — a ridge is a section given as a polygon, so a round tile
+   is a polygon approximation, which is what a planar-facet mesh is.
 5. **A frame graph that validates the load path.** D3's anchors make pairwise joints; nothing checks
    that every purlin is carried by a post or that a cantilever is balanced. That is a structurally
    different instrument — a graph with a carried/carrier relation — and it is the natural *next*
@@ -563,15 +614,16 @@ and then cannot ship:
    member that another passes *through*, and "notched" against "butted" is a distinction the Yunnan
    note asks for ([Y9]). A joint type is a later vocabulary, for when a drawing must say which.
 
-## The forks, for the owner
+## The forks, and what the owner chose
 
-Each is a real choice with a cost somewhere; none is "obviously right".
+Each is a real choice with a cost somewhere; none is "obviously right". Five were answered on
+2026-10-18 — F1 **(a)**, F2 **(a)**, F3 **(a)**, F4 **geometric**, F5 **the 吊脚楼** — and the reasoning
+stays because the rejected option is the record of what this design is not. F6 is still open.
 
-**F1. The roof's profile — three ways, one recommendation.**
-- (a) *A section of fraction and rise, cut into planar steps* (D1). Keeps planarity, keeps
+**F1. The roof's profile — three ways.**
+- **(a) A section of fraction and rise, cut into planar steps** (D1). *Chosen.* Keeps planarity, keeps
   watertightness, and matches how the roof is built (a 举架 roof is a chain of planes, not a curve).
-  Costs: every row becomes a polyline, a fan plane cannot take a profile, and a 起翘 corner is a
-  separate piece.
+  Costs: every row becomes a polyline, and a 起翘 corner is a separate piece.
 - (b) *A curved, tessellated roof surface.* Truer to a tile surface, and it breaks the crate's
   one-face-one-plane contract, its shading groups, and the fascia derivation — three invariants for
   one silhouette.
@@ -579,9 +631,9 @@ Each is a real choice with a cost somewhere; none is "obviously right".
   would name a plane that is not there, and the picture would disagree with the document.
 
 **F2. The crowned wall top — three ways.**
-- (a) *Per-node tops on `Mass` and a profile on `Wall`* (D2). One rule, no new solid, and every gable
-  form is authored. Costs: the ring walk's top strip stops being level, which touches the most
-  exercised code in the crate.
+- **(a) Per-node tops on `Mass` and a profile on `Wall`** (D2). *Chosen.* One rule, no new solid, and
+  every gable form is authored. Costs: the ring walk's top strip stops being level, which touches the
+  most exercised code in the crate.
 - (b) *Crown walls as separate `Wall` solids stacked on the mass*, with an authored joint. Smaller
   change; every gable becomes two solids, every joint needs authorizing, and a wall that overlaps the
   mass is the overlap the validator reports.
@@ -589,60 +641,61 @@ Each is a real choice with a cost somewhere; none is "obviously right".
   the gallery is 悬山 with a wall that stops short — which is a real Chinese roof, and only one.
 
 **F3. The timber frame — three ways.**
-- (a) *`Member` as a first-class solid, with anchored joints* (D3). The frame is built, cast, shadowed
-  and named; moving a column moves the tie that meets it, because the joint is a station rather than a
-  coincidence. And it is a new element class, so it is a new material — the palette follows for free.
-  Costs: anchor resolution in dependency order, and three refusals to write and gate.
+- **(a) `Member` as a first-class solid, with anchored joints** (D3). *Chosen.* The frame is built, cast,
+  shadowed and named; moving a column moves the tie that meets it, because the joint is a station rather
+  than a coincidence. And it is a new element class, so it is a new material — the palette follows for
+  free. Costs: anchor resolution in dependency order, and three refusals to write and gate.
 - (b) *Members as templates of masses.* The existing `Part` mechanism can place a column, because a
   column is a small mass. A **diagonal** is impossible — a mass is a prismatic shell standing on its
   outline — so 撑弓, 斜撑 and 椽 are out, and so is every rafter.
 - (c) *Texture only.* No geometry; the frame is a colour. The id channel cannot name a column, so
   "move the third column" is not a sentence this system can answer.
 
-**F4. How deep the detail goes — and the tile is not a detail.** Recommended line: columns, ties,
+**F4. How deep the detail goes — and the tile was not a detail.** *Decided: geometric.* Columns, ties,
 cantilevers, brackets and purlins are geometry; rafters are geometry **only under the eave**, where a
-Chinese roof's underside is the picture; tiles, 瓦当 and 滴水 are a *surface*.
+Chinese roof's underside is the picture; and the covering is D9.
 
-The Yunnan note makes this fork sharper than a detail question: "every one of these roofs is read as a
-texture of discrete units; that is most of what a camera sees" (§"constructs", item 6), and the
-Guizhou note's slate roof has **no channels and no ridge tile** — a different picture from the same
-geometry. At 1024 px a tile course is 8–12 px, so it is either a texture or it is nothing. The crate's
-materials are flat colours today (`surface([r, g, b], …)`), and a sampled texture channel **is**
-landed in the device layer ([texture-channel.md](texture-channel.md), "landed, both halves"); whether a
-gallery material can carry one today is a question that arc answers and this one does not assume. What
-makes it a fork rather than a wall: geometry would cost tens of thousands of faces per roof, and a flat
-grey plane would cost the building its face. Above about 8 cm a member is a couple of pixels at the
-frames this gallery draws; below it, it is noise that costs faces and shadow rays.
+The reasoning that made it a fork is worth keeping, because it is the argument the arc will be measured
+against: the Yunnan note says "every one of these roofs is read as a texture of discrete units; that is
+most of what a camera sees" (§"constructs", item 6), and the Guizhou note's slate roof has **no channels
+and no ridge tile** — a different picture from the same geometry. At 1024 px a tile course is 8–12 px.
+I recommended a texture and the owner chose the geometry; D9's per-period prism is what makes the choice
+affordable, and the probe that will say whether it was right is the face count and the frame time of the
+first covering arc.
 
-**F5. Which building first.** The 吊脚楼 is the owner's first-named type and the one that tests D4;
-三坊一照壁 is the richest and tests D1, D2 and D7 at once; a 古镇 street tests the settlement scale.
-The road below assumes the order, but it is the owner's to change.
+**F5. Which building first.** *Decided: the 吊脚楼.* The owner's first-named type and the one that tests
+D4; 三坊一照壁 is the richest and waits for Arc 7.
 
-**F6. Scope of the old town.** A street of houses is not a building: it needs a *settlement* layer —
-frontage, blind walls on party lines, the arcade, the slope of the street, water. That layer does not
-exist in this workspace (the gallery draws one building per scene). This proposal stops at the
+**F6. Scope of the old town — still open.** A street of houses is not a building: it needs a *settlement*
+layer — frontage, blind walls on party lines, the arcade, the slope of the street, water. That layer does
+not exist in this workspace (the gallery draws one building per scene). This proposal stops at the
 building; the settlement is a separate question and should be named before an arc promises it.
 
 ## The road
 
-Each arc ends green through the audit, with one new scene and its pinned hash, and each is shippable
-alone. The gate cost per scene is real and known: a `.png` hash pin in `[6/8]`, a pass-count row in
-`crates/scene/tests/clustered_lights.rs`, and — when the scene's id channel changes — rows in
-`scene_identity_probe`'s table that `[7/8]` checks two ways.
+The owner chose the **吊脚楼** first, and chose the frame, the crowns and the tiles as real geometry. So
+the road is **one scene built in stages**, not seven scenes in sequence: every arc adds one construct to
+the *same* building, re-pins its hash, and by the sixth arc the scene is the type.
 
-1. **Arc 1 — the profile (D1).** A single three-bay house with a purlin-profiled 悬山 roof and a deep
-   eave. Scene: `stilt`'s predecessor, a `timber_house`. Proves the silhouette.
-2. **Arc 2 — the crown (D2).** A 硬山 gable and a stepped gable on the same house. Proves that a wall
-   can meet a roof.
-3. **Arc 3 — the members (D3).** The gable frame exposed: columns, ties, cantilevers under a gallery.
-   Proves 穿斗 and the bracket.
-4. **Arc 4 — the stilts (D4).** The 吊脚楼 on a slope: floor on the uphill grade, posts and braces
-   downhill, a lower storey half-open. Proves the site.
-5. **Arc 5 — the compound (D1, D2, D7).** 三坊一照壁 or 四合五天井: wings, galleries, a 照壁, 天井.
-6. **Arc 6 — the variations.** 竹楼 (steep short ridge, deep eaves), 石板房 (stone slate pitch),
-   屯堡 (stone court), 一颗印 (high blank walls, parapet) — the same constructs, different numbers,
-   and each one is the proof that the parameters are the type.
-7. **Arc 7 — the settlement.** Only if F6 says yes: a street of three or four houses on a slope.
+The gate cost is real and known: creating the scene costs a `.png` hash pin in `[6/8]`, a pass-count row
+in `crates/scene/tests/clustered_lights.rs`, and — when its id channel first exists — rows in
+`scene_identity_probe`'s table that `[7/8]` checks two ways. Every later arc re-pins the hash and updates
+the pass counts, which is the cheap half of the same list.
+
+1. **Arc 1 — the ground is a query (D4).** A three-bay body at the uphill grade, posts down to a sampled
+   slope, a plinth on the uphill side, a lower storey that is half open. The roof is the crate's existing
+   hip and the body is a box, because *this arc is the site*: the 吊脚 silhouette exists before any
+   Chinese detail does, and the scene exists to be improved.
+2. **Arc 2 — the profile (D1).** The hip becomes a 悬山 whose two planes carry a 举架 section, with a deep
+   eave. The straight tent becomes a Chinese roof, and the bargeboard arrives with it.
+3. **Arc 3 — the crown (D2).** Gable walls that reach the roof (硬山) and one party wall that passes
+   through the eave (封火墙). This is the arc after which the house reads from the side.
+4. **Arc 4 — the frame (D3).** Columns under every purlin, ties threading them, cantilevers carrying the
+   front gallery, brackets under the cantilevers — anchored, so moving a column moves its tie.
+5. **Arc 5 — the covering (D9).** Fifty 瓦垄 a slope, hosted by the roof, with the eave end decided.
+6. **Arc 6 — the interior (D7).** The hearth bay with no ceiling over it, and the stair through the floor.
+7. **Arc 7 — the compound (D8).** A second scene: 三坊一照壁, the arc that proves D8 was needed at all.
+8. **Arc 8 — the town.** Only if F6 is answered yes; the settlement layer does not exist yet.
 
 ## What would make this proposal wrong
 
@@ -653,6 +706,10 @@ alone. The gate cost per scene is real and known: a `.png` hash pin in `[6/8]`, 
 - If a crowned mass's miter at a corner cannot be given one elevation per node without folding a top
   strip, D2 is wrong and (b) is the answer. Not measured; the algebra above says it is fine, and
   algebra is not a probe.
+- If a covering's face count or its shadow cost makes a frame unaffordable — 200 prisms a slope, every
+  one of them a caster — then D9 is too heavy at the size the owner asked for, and the fallback is the
+  texture the device layer already has. Not measured: the numbers the first covering arc prints are the
+  ones to judge it by, and that arc should print them whether or not they are bad news.
 - If the vernacular turns out to need a wall that is not a prism (a battered 土墙 that leans, a
   竹编 wall that curves), no move here expresses it and the design stops at the prism.
 
