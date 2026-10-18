@@ -327,9 +327,7 @@ pub fn report(skeleton: &BuildingSkeleton) -> SiteReport {
     let mut highest = f32::NEG_INFINITY;
     for (index, mass) in skeleton.masses.iter().enumerate() {
         let id = MassId(index);
-        let mut own_lowest = f32::INFINITY;
         for node in &mass.outline {
-            own_lowest = own_lowest.min(node.elevation);
             lowest = lowest.min(node.elevation);
             highest = highest.max(node.elevation);
         }
@@ -349,7 +347,7 @@ pub fn report(skeleton: &BuildingSkeleton) -> SiteReport {
             name: mass.name.clone(),
             footprint: mass.plan_area().abs(),
             top: mass.top,
-            lowest: own_lowest,
+            lowest: mass.lowest(),
             roofs,
             openings,
             parts,

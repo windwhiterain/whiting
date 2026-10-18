@@ -235,7 +235,29 @@ impl Mass {
         total * 0.5
     }
 
-    /// Returns the lowest elevation the outline stands at.
+    /// Returns the lowest elevation the outline stands at: **the mass's own ground line**.
+    ///
+    /// # What this is for
+    ///
+    /// An outline carries an elevation per node because a mass may stand on a slope, and the
+    /// minimum over those nodes is the one number the crate's readings are keyed to. Three of them
+    /// ask for it: [`crate::derive::starter`] seats the ground plate's top on it, so the plate is at
+    /// the ground rather than above it; [`crate::derive::floor_slab`] refuses any floor **at or
+    /// under** it, which is what keeps a floor out of the ground; and [`crate::site::report`] prints
+    /// it as a building's own lowest ground, beside the ground the whole site was seated on.
+    ///
+    /// # Invariants
+    ///
+    /// **One spelling of the ground line, on the type that owns it.** Those three callers each wrote
+    /// this fold out in full while the accessor stood unused beside them, which is the shape a
+    /// leftover usually has — except here the accessor was the survivor and the three spellings were
+    /// the duplication. A fourth place for the mass's ground to be read differently is a fourth
+    /// place a plate could be seated off the wall it stands on.
+    ///
+    /// An outline with no nodes answers [`f32::INFINITY`], which is what the fold it replaced
+    /// answered and what every guard above then refuses.
+    ///
+    /// `O(nodes)` in the outline, one walk of nodes the mass already holds.
     pub fn lowest(&self) -> f32 {
         self.outline
             .iter()

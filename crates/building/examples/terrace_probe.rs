@@ -1,5 +1,11 @@
 //! The terrace's first question: does the vocabulary accept two masses that **touch**?
 //!
+//! **This measures no camera, and it is not a measurement of the `terrace` scene.** The name is the
+//! terrace *idea*, not `gallery`'s `terrace`; nothing here draws a frame and there is no camera in
+//! this file. What it reads is `Building::validate` and the built solid's manifoldness, boundary
+//! loops and signed volume. A reader who came for the scene's picture is in the wrong file, and
+//! that is a fact about the name worth one line rather than four files of reading.
+//!
 //! # What a party wall has to be
 //!
 //! A terrace is houses side by side sharing one wall. The crate's cheapest honest reading is **two leaves**:

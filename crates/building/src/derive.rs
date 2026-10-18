@@ -170,11 +170,7 @@ pub fn starter(starter: &Starter) -> Building {
     // wall ring's base annulus stands outside the plate as the ring's own floor, and the plate is the
     // room's inside.
     let plate = {
-        let lowest = mass
-            .outline
-            .iter()
-            .map(|node| node.elevation)
-            .fold(f32::INFINITY, f32::min);
+        let lowest = mass.lowest();
         // A wall the miter cannot offset answers `None`, and a mass whose plate cannot be seated is a
         // building with no floor rather than a plate standing somewhere else.
         inner_loop(&mass, host)
@@ -789,11 +785,7 @@ fn rectangle(width: f32, depth: f32) -> Vec<PlanNode> {
 ///
 /// `O(nodes)` to offset, once.
 pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Option<Slab> {
-    let lowest = mass
-        .outline
-        .iter()
-        .map(|node| node.elevation)
-        .fold(f32::INFINITY, f32::min);
+    let lowest = mass.lowest();
     if !(elevation > lowest && elevation < mass.top && thickness > 0.0) {
         return None;
     }

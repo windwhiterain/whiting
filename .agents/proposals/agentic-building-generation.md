@@ -6297,6 +6297,20 @@ the command-line check — and the third test stays green under the first regres
 `width`/`height` the camera schema does not have and `read_camera` ignores — the exact misconception this slice
 corrected, sitting in an example that is in neither gate.
 
+### Correction: the example that warning names no longer exists (2026-10-18, measured on `main` @ `6315801`)
+
+The paragraph above was true when it was written and **is not true now**, so it is left in place with this
+correction under it rather than rewritten — a dated record is not edited, it is answered. Measured on the tree
+that day: a grep for `emit_cycles` across every `.rs` file returns **no matches**, and `crates/scene` has
+**no `examples` directory at all**.
+
+**Why it is recorded rather than simply dropped:** a warning that names a file nobody can find is worse than no
+warning, because the likelier wrong conclusion is not "this was tidied up" but "the misconception it describes is
+still live somewhere I have not found". The caution the paragraph was carrying — that a hand-written
+`width`/`height` is a field `read_camera` ignores — is unaffected by the example's absence and still stands; only
+its referent is gone. **A stale sentence is a hypothesis**, and this one had become one by referring to a file that
+had stopped existing.
+
 ## Two scenes grew the opening their floors needed (2026-11-07, branch `feature/building-two-windows`)
 
 The record left two scenes out of the answer to *"can a reader see a floor in this picture?"*, and named them:

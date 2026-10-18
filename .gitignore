@@ -1,6 +1,11 @@
 /target
 /out
 
+# The debt sweep's own run: rendered scenes and the audit log are regenerable output,
+# and the two scripts beside them are the part worth keeping.
+/audit/out
+/audit/*.log
+
 # Worktrees made by .worktrees, which are each a checkout of their own branch.
 /.worktrees/
 
