@@ -1,9 +1,26 @@
 # Arc 1 of the Chinese vernacular level: the ground is a query
 
-Status: in progress, 2026-10-18. Design record:
+Status: **step 1 landed and green; step 2 (the scene) not started**, 2026-10-18. Design record:
 [chinese-vernacular-architecture.md](../proposals/chinese-vernacular-architecture.md), §D4 and §"The road"
 (Arc 1). Research: [chongqing-stilt-houses.md](../investigate/chongqing-stilt-houses.md),
 [guizhou-dwellings.md](../investigate/guizhou-dwellings.md).
+
+## Step 2, which is the rest of this arc: the scene
+
+`site::posts` exists and is measured; nothing draws it yet. The scene is a new gallery scene
+(`crates/gallery/src/stilt.rs`) built the way `authored` and `workshop` are: a document from `starter`,
+`seat`, `posts`, a camera, the materials, and the frame. It costs the gates this repository charges for
+a scene, and they are known:
+
+- `audit/full-audit.ps1` **[6/8]**: a tenth pinned `.png` hash, computed on this machine.
+- `crates/scene/tests/clustered_lights.rs`: a pass-count row for the new scene, measured.
+- `audit/full-audit.ps1` **[7/8]**: `scene_identity_probe`'s row count, which moves when a scene joins.
+- `Gallery::names` and `Gallery::build`'s counts, which are documented in three places.
+- `audit/full-audit.ps1` **[5/8]**: the gallery example count, if the scene brings one.
+
+The scene should draw the *whole* type it can afford at this point: the body on posts on the bank, the
+crate's existing hip roof, a gallery (挑廊) as a plate standing on the front posts, and one open lower
+storey. The Chinese details — profile, crown, frame, tiles — belong to Arcs 2–5 and must not be faked.
 
 ## What this arc is for
 
