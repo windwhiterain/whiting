@@ -693,8 +693,8 @@ the pass counts, which is the cheap half of the same list.
 4. **Arc 4 — the frame (D3).** *Done, 2026-10-18 — see below.* Columns under every purlin, ties threading them, cantilevers carrying the
    front gallery, brackets under the cantilevers — anchored, so moving a column moves its tie.
 5. **Arc 5 — the covering (D9).** *Done, 2026-10-18 — see below.* Fifty 瓦垄 a slope, hosted by the roof, with the eave end decided.
-6. **Arc 6 — the interior (D7).** The hearth bay with no ceiling over it, and the stair through the floor.
-7. **Arc 7 — the compound (D8).** A second scene: 三坊一照壁, the arc that proves D8 was needed at all.
+6. **Arc 6 — the interior (D7).** *Deferred to last: it needs the compound's second storey, which now exists.* The hearth bay with no ceiling over it, and the stair through the floor.
+7. **Arc 7 — the compound (D8).** *Done, 2026-10-18 — see below.* A second scene: 三坊一照壁, the arc that proves D8 was needed at all.
 8. **Arc 8 — the town.** Only if F6 is answered yes; the settlement layer does not exist yet.
 
 ### Arc 1 is closed, with its numbers
@@ -856,6 +856,34 @@ above it.
 `stilt`'s hash is `4833AA82E627DD0E`, and the identity probe's rows go **1111 → 2591**: 296 rolls at five
 surfaces each is 1 480 of them, which is the price of drawing tiles as solids rather than as a texture —
 stated here rather than discovered later.
+
+### Arc 7 is closed: the compound is three buildings and a wall
+
+The order of the last two arcs changed, and the reason is the third one's: **the interior needs a
+second storey**, and the compound is where a second storey lives. So the compound came first.
+
+`crates/gallery/src/compound.rs` is a 三坊一照壁: a main hall 18 × 6 at the back, two wings 6 × 15 down
+the sides, a screen wall across the front, three gable roofs with the 举架 ladder and its tiles, and an
+intermediate floor in every range. **Sixteen single-storey constructs compose into a compound, and not
+one of them was added for it.**
+
+The finding is the **order of the courts**: a 四合院 with four ranges is one mass with a courtyard void,
+which the crate has had since it had courtyards — and this type is not that, because its fourth side is
+a **single-storey screen** and a mass's walls are all one height. So the court is a *gap* between three
+masses that touch at two corners, and the fourth side is a `Wall`. Two ways to one square of ground, and
+the second is the one that lets a wall be lower than the ranges.
+
+| number | value |
+| --- | --- |
+| the frame | **1280 × 800**, hash `19CA92920AB35238` |
+| the passes | **5 meshes × 3 stages + 1 post = 16** — the covering's 652 roll segments ride in the roofs' own mesh, so sixty metres of tiles cost no pass |
+| the identity rows | **6 685** for the compound alone, and **9 276** over the eleven scenes |
+| the violations | **0**, on three masses that touch, three roofs, six plates and a wall |
+
+**What it does not draw, and what that costs the type**: no openings (every range is a closed ring,
+where the doors and windows are), no stair between the storeys, and no 厦子 — the Yunnan front porch.
+The first two are the interior arc's work now that the second storey exists; the third is a plate on
+two rows of posts, which is the frame arc again.
 
 ## What would make this proposal wrong
 

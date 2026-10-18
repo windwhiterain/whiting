@@ -84,15 +84,17 @@ pub mod patchmesh;
 pub mod ridges;
 pub mod shaders;
 
-/// The dawn over the rice terraces, held as numbers so a tracer can be handed it as a world.
-mod dawn;
-mod dunes;
-mod foldyard;
 /// The shell phase's proof scene: one authored building, derived and expanded, standing in a frame.
 ///
 /// Public so a session iterating on the phase's acceptance picture can call it directly, and
 /// listed in [`Gallery::names`] so the suite sweeps it: the two are independent, and this scene
 /// is both.
+/// The compound scene: three ranges round a court, and the screen wall across its fourth side.
+pub mod compound;
+/// The dawn over the rice terraces, held as numbers so a tracer can be handed it as a world.
+mod dawn;
+mod dunes;
+mod foldyard;
 pub mod hall;
 pub mod house;
 /// The mountain scene, and the massif it stands on.
@@ -182,6 +184,7 @@ impl Gallery {
             "hermite_massif",
             "hall",
             "hall_large",
+            "compound",
             "house",
             "identity",
             "landscape",
@@ -227,6 +230,7 @@ impl Gallery {
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
             "hermite_massif" => hermite_massif::hermite_massif(),
+            "compound" => compound::compound(),
             "hall" => hall::hall(),
             "hall_large" => hall::hall_large(),
             "house" => house::house(),
