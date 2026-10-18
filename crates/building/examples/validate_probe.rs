@@ -711,6 +711,8 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::RoofHostMissing { .. } => "RoofHostMissing",
         Violation::RoofEaveTooShort { .. } => "RoofEaveTooShort",
         Violation::RoofPlaneTooShort { .. } => "RoofPlaneTooShort",
+        Violation::ProfileOutOfOrder { .. } => "ProfileOutOfOrder",
+        Violation::ProfileReachesTheCrest { .. } => "ProfileReachesTheCrest",
         Violation::RoofCrestMissing { .. } => "RoofCrestMissing",
         Violation::DidNotExpand { .. } => "DidNotExpand",
         Violation::SolidOpen { .. } => "SolidOpen",

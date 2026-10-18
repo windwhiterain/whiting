@@ -160,15 +160,27 @@ impl MassSurface {
 /// Which surface of a roof a face belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RoofSurface {
-    /// The upper face of a plane.
+    /// The upper face of one strip of a plane, between two purlins.
+    ///
+    /// # Invariants
+    ///
+    /// **The strip is the shading group, not the plane.** A plane with a
+    /// [`profile`](crate::roof::RoofPlane::profile) bends at every purlin, so its strips are not
+    /// coplanar and smoothing across them would draw a curve where the building has a crease. `step`
+    /// is the strip's index counting from the eave, so `step = 0` is the strip between the eave and
+    /// the first purlin, and a plane with no profile has exactly one strip, `step = 0`.
     Skin {
         /// Index of the plane.
         plane: usize,
+        /// Index of the strip along the slope, counting from the eave.
+        step: usize,
     },
-    /// The underside of a plane, one thickness below the skin.
+    /// The underside of one strip of a plane, one thickness below the skin.
     Soffit {
         /// Index of the plane.
         plane: usize,
+        /// Index of the strip along the slope, counting from the eave.
+        step: usize,
     },
     /// The band around the skin's boundary: one quad per boundary edge of the skin, extruded down
     /// by the roof's thickness.

@@ -68,12 +68,12 @@ use crate::courtyard;
 use crate::grid::{FaceRef, GRID_TOLERANCE, LoopSide};
 use crate::mass::{AuthoredLoop, Mass, MassId, PlanNode};
 use crate::math::{
-    Vec2, Vec3, cross, cross3, difference, distance, dot, length, lift, normalized, subtract,
+    Vec2, Vec3, cross, cross3, difference, distance, dot, length, lerp, lift, normalized, subtract,
 };
 use crate::mesh::{BuildingFace, BuildingMesh, Element, MassSurface, PartSurface, RoofSurface};
 use crate::openings::{Extents, RevealSide};
 use crate::parts::{PartFrame, Target};
-use crate::roof::{EaveStation, Roof, RoofId, RoofRow};
+use crate::roof::{EaveStation, Roof, RoofId, RoofRow, Step};
 use crate::skeleton::BuildingSkeleton;
 use crate::slab::{Slab, SlabId, SlabSurface};
 use crate::wall::{Wall, WallId, WallSurface};
@@ -236,6 +236,22 @@ pub enum Problem {
         row: usize,
         /// The station it named.
         station: f32,
+    },
+    /// A roof plane's purlin profile is not a profile: a step whose fraction or rise does not
+    /// increase, or one that stands at or above the crest of a row that carries it.
+    ///
+    /// # Invariants
+    ///
+    /// The fault is [`ProfileFault`](crate::roof::ProfileFault)'s own value, resolved by
+    /// [`Roof::profile_fault`](crate::roof::Roof::profile_fault), so this problem and the same fault
+    /// in [`validate`](crate::validate) are one reading with two names.
+    ProfileFault {
+        /// The roof.
+        roof: RoofId,
+        /// The plane.
+        plane: usize,
+        /// What is wrong with it.
+        fault: crate::roof::ProfileFault,
     },
     /// An opening names a slot the wall's rhythm does not hold, or insets that leave no rectangle
     /// inside its bay, so there is no hole of its own to cut.
@@ -3112,6 +3128,9 @@ struct RoofWalk<'a> {
     crests: HashMap<usize, u32>,
     /// Eave station to point, so a station named by two planes is one point.
     eaves: HashMap<u32, u32>,
+    /// One row's step to point, so a step named by two planes is one point: the key is the row's own
+    /// identity — its crest index and its normalised station — and the step's index.
+    steps: HashMap<(usize, u32, usize), u32>,
     /// The solid, whose points are the skin's first and their lowered copies after.
     solid: Solid,
 }
@@ -3149,71 +3168,68 @@ impl RoofWalk<'_> {
         Some(point)
     }
 
-    /// Returns the corners of the skin facet between two rows, in the order the rows name them.
+    /// Returns the corners of one row, from its eave end to its crest end: the eave, one vertex per
+    /// profile step, and the crest.
     ///
-    /// A quad whose two rows name one crest point is a triangle, and one whose two rows name one
-    /// eave station is a triangle the other way round; two rows naming both leave a facet with no
-    /// area, which is reported rather than emitted as the zero-area triangle no closure check sees.
-    /// Comparing the welded point indices rather than the crest indices is the same test: a point is
-    /// welded by authored identity, so equal points are equal authors.
-    fn skin_corners(
+    /// # Invariants
+    ///
+    /// **The polyline is the row's own, and that is what makes a stepped roof closed.** A step's
+    /// vertex is welded by *(the row's crest index, the row's normalised station, the step index)*, so
+    /// two planes that name the same row share every vertex of it — including the ones the steps add —
+    /// by the same rule that already welds the eave and the crest, and not by a coordinate test.
+    ///
+    /// A row whose crest or eave cannot be resolved is reported and answers `None`.
+    fn row_polyline(
         &mut self,
         plane: usize,
         row: usize,
-        from: &RoofRow,
-        to: &RoofRow,
+        authored: &RoofRow,
+        profile: &[Step],
     ) -> Option<Vec<u32>> {
-        let Some(crest) = self.crest_point(from.crest) else {
-            self.problems.push(Problem::CrestMissing {
-                roof: self.id,
-                plane,
-                row,
-                crest: from.crest,
-            });
-            return None;
-        };
-        let Some(high) = self.crest_point(to.crest) else {
-            self.problems.push(Problem::CrestMissing {
-                roof: self.id,
-                plane,
-                row: row + 1,
-                crest: to.crest,
-            });
-            return None;
-        };
-        let Some(front) = self.eave_point(from.eave) else {
+        let Some(eave) = self.eave_point(authored.eave) else {
             self.problems.push(Problem::EaveUnresolved {
                 roof: self.id,
                 plane,
                 row,
-                station: from.eave.t,
+                station: authored.eave.t,
             });
             return None;
         };
-        let Some(back) = self.eave_point(to.eave) else {
-            self.problems.push(Problem::EaveUnresolved {
+        let Some(crest) = self.crest_point(authored.crest) else {
+            self.problems.push(Problem::CrestMissing {
                 roof: self.id,
                 plane,
-                row: row + 1,
-                station: to.eave.t,
+                row,
+                crest: authored.crest,
             });
             return None;
         };
-        if crest == high {
-            if front == back {
-                self.problems.push(Problem::RowPairDegenerate {
-                    roof: self.id,
-                    plane,
-                    row,
-                });
-                return None;
-            }
-            return Some(vec![crest, back, front]);
+        let mut corners = Vec::with_capacity(profile.len() + 2);
+        corners.push(eave);
+        for (index, step) in profile.iter().enumerate() {
+            corners.push(self.step_point(authored, index, *step)?);
         }
-        if front == back {
-            return Some(vec![crest, high, front]);
+        corners.push(crest);
+        Some(corners)
+    }
+
+    /// Returns the point one step stands at on a row, welded by the row's identity and the step.
+    ///
+    /// The position is **a fraction of the row's plan run measured from the eave**, and the elevation
+    /// is the eave's own plus the step's rise: the fraction is what keeps the cut parallel to the
+    /// rows, and the eave-relative rise is what lets a roof follow an eave that descends with a bank.
+    fn step_point(&mut self, authored: &RoofRow, index: usize, step: Step) -> Option<u32> {
+        let station = authored.eave.t.rem_euclid(1.0).to_bits();
+        let key = (authored.crest, station, index);
+        if let Some(point) = self.steps.get(&key) {
+            return Some(*point);
         }
-        Some(vec![crest, high, back, front])
+        let eave = self.roof.eave_point(authored.eave)?;
+        let crest = self.roof.crest_point(authored.crest)?;
+        let along = lerp([eave[0], eave[2]], [crest[0], crest[2]], step.fraction);
+        let point = self.solid.point([along[0], eave[1] + step.rise, along[1]]);
+        self.steps.insert(key, point);
+        Some(point)
     }
 }
 
@@ -3231,6 +3247,7 @@ fn expand_roof(mesh: &mut BuildingMesh, id: RoofId, roof: &Roof) -> Result<(), V
         problems: Vec::new(),
         crests: HashMap::new(),
         eaves: HashMap::new(),
+        steps: HashMap::new(),
         solid: Solid::default(),
     };
     if roof.thickness <= 0.0 {
@@ -3239,31 +3256,65 @@ fn expand_roof(mesh: &mut BuildingMesh, id: RoofId, roof: &Roof) -> Result<(), V
             thickness: roof.thickness,
         });
     }
-    for (plane, rows) in roof.planes.iter().enumerate() {
-        if rows.rows.len() < 2 {
+    for (plane, authored) in roof.planes.iter().enumerate() {
+        if authored.rows.len() < 2 {
             walk.problems
                 .push(Problem::PlaneTooShort { roof: id, plane });
             continue;
         }
-        for row in 0..rows.rows.len() - 1 {
-            let element = Element::Roof(id, RoofSurface::Skin { plane });
-            match walk
-                .skin_corners(plane, row, &rows.rows[row], &rows.rows[row + 1])
-                .map(|corners| (corners, element))
+        if let Some(fault) = roof.profile_fault(plane) {
+            walk.problems.push(Problem::ProfileFault {
+                roof: id,
+                plane,
+                fault,
+            });
+            continue;
+        }
+        for row in 0..authored.rows.len() - 1 {
+            let (from, to) = (authored.rows[row], authored.rows[row + 1]);
+            // Two rows that name one crest at one station span nothing, whatever steps cut them.
+            if from.crest == to.crest
+                && from.eave.t.rem_euclid(1.0).to_bits() == to.eave.t.rem_euclid(1.0).to_bits()
             {
-                Some((corners, element)) if corners.len() == 4 => {
-                    walk.solid
-                        .up_quad([corners[0], corners[1], corners[2], corners[3]], element);
+                walk.problems.push(Problem::RowPairDegenerate {
+                    roof: id,
+                    plane,
+                    row,
+                });
+                continue;
+            }
+            let profile = &authored.profile;
+            let (Some(front), Some(back)) = (
+                walk.row_polyline(plane, row, &from, profile),
+                walk.row_polyline(plane, row + 1, &to, profile),
+            ) else {
+                continue;
+            };
+            // One face per strip. The strip's corners are walked in the order the two polylines
+            // name them, and consecutive duplicates are dropped: a strip at a ridge or a hip end has
+            // three corners there and not four, which is a triangle rather than a zero-area quad.
+            for step in 0..profile.len() + 1 {
+                let mut corners = Vec::with_capacity(4);
+                for corner in [front[step], back[step], back[step + 1], front[step + 1]] {
+                    if corners.last() != Some(&corner) {
+                        corners.push(corner);
+                    }
                 }
-                Some((corners, element)) if corners.len() == 3 => {
-                    walk.solid.oriented_triangle(
+                while corners.len() > 1 && corners.first() == corners.last() {
+                    corners.pop();
+                }
+                let element = Element::Roof(id, RoofSurface::Skin { plane, step });
+                match corners.len() {
+                    4 => walk
+                        .solid
+                        .up_quad([corners[0], corners[1], corners[2], corners[3]], element),
+                    3 => walk.solid.oriented_triangle(
                         [corners[0], corners[1], corners[2]],
                         element,
                         true,
-                    );
+                    ),
+                    _ => {}
                 }
-                Some(_) => {}
-                None => continue,
             }
         }
     }
@@ -3281,14 +3332,14 @@ fn expand_roof(mesh: &mut BuildingMesh, id: RoofId, roof: &Roof) -> Result<(), V
         })
         .collect();
     for face in &skin {
-        if let Element::Roof(_, RoofSurface::Skin { plane }) = face.element {
+        if let Element::Roof(_, RoofSurface::Skin { plane, step }) = face.element {
             walk.solid.triangle(
                 [
                     lowered[face.indices[2] as usize],
                     lowered[face.indices[1] as usize],
                     lowered[face.indices[0] as usize],
                 ],
-                Element::Roof(id, RoofSurface::Soffit { plane }),
+                Element::Roof(id, RoofSurface::Soffit { plane, step }),
             );
         }
     }

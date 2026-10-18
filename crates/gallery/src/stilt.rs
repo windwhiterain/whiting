@@ -8,7 +8,6 @@
 //!
 //! What this scene deliberately does not draw, because the constructs do not exist yet:
 //!
-//! - **no 举架 profile** — the roof is one straight slope per plane (Arc 2, D1);
 //! - **no crowned wall top** — the gable is closed by the roof's fascia (Arc 3, D2);
 //! - **no timber frame** — the posts are short `Wall` runs, not members with joints (Arc 4, D3);
 //! - **no gallery** — a 挑廊 is a plate standing on cantilevers, and a cantilever is a member (Arc 4);
@@ -24,6 +23,7 @@ use building::Building;
 use building::derive::{self, RoofStyle, Starter};
 use building::identity::Identity;
 use building::math::Vec2;
+use building::roof::Step;
 use building::site;
 
 use crate::building_identity::{
@@ -51,7 +51,7 @@ const STARTER: Starter = Starter {
     slab: 0.30,
     overhang: 0.60,
     sink: 0.10,
-    rise: 2.0,
+    rise: 2.385,
     roof_thickness: 0.22,
     roof: RoofStyle::Gable,
     seed: 5,
@@ -73,6 +73,27 @@ const POST_SECTION: f32 = 0.2;
 /// against it, and two coincident faces are two surfaces at one depth — the first render of this scene
 /// carried a comb of stripes along the plate's edge until this number existed.
 const POST_EMBED: f32 = 0.02;
+
+/// The 步架 ladder: four strips of `0.9 m` of plan each, at **五举 0.50, 六举 0.60, 七五举 0.75 and
+/// 八举 0.80** — the coefficients the Qing worked example attests arithmetically (see
+/// `.agents/investigate/chinese-timber-frame-and-roof.md` §"举架"). The three entries here are the
+/// purlins *below* the ridge; the ridge itself takes the fourth step, which is why the starter's
+/// `rise` is `0.9 × (0.50 + 0.60 + 0.75 + 0.80) = 2.385 m` and not a round number.
+const BEAM: f32 = 0.9;
+const PROFILE: [Step; 3] = [
+    Step {
+        fraction: 0.25,
+        rise: BEAM * 0.50,
+    },
+    Step {
+        fraction: 0.50,
+        rise: BEAM * 0.50 + BEAM * 0.60,
+    },
+    Step {
+        fraction: 0.75,
+        rise: BEAM * 0.50 + BEAM * 0.60 + BEAM * 0.75,
+    },
+];
 
 /// The ground, as one law in two signatures: the site wants plan points in `f32`, the ground mesh wants
 /// `f64` plan coordinates, and a scene that wrote the slope twice would be a scene whose picture and
@@ -332,6 +353,11 @@ pub fn stilt() -> Value {
 /// are two calls and why the scene says which order they go in.
 pub fn document() -> Building {
     let mut skeleton = derive::starter(&STARTER).skeleton;
+    // The 举架 section, on every plane: a gable's two slopes are one 步架 ladder read twice, and the
+    // ridge's own step is the starter's `rise` less the three purlins' rises.
+    for plane in &mut skeleton.roofs[0].planes {
+        plane.profile = PROFILE.to_vec();
+    }
     let seated = site::seat(&mut skeleton, ground, 0.0);
     debug_assert_eq!(seated.len(), 1, "the house is one mass");
     let report = site::posts(

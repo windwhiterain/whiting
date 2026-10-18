@@ -367,6 +367,32 @@ pub enum Violation {
         /// The plane.
         plane: usize,
     },
+    /// A roof plane's purlin profile is not a profile: a step whose fraction or rise does not
+    /// increase, or whose fraction is outside `(0, 1)`.
+    ///
+    /// # Invariants
+    ///
+    /// **This and [`Violation::ProfileReachesTheCrest`] are**
+    /// [`Roof::profile_fault`](crate::roof::Roof::profile_fault)'s own two answers, and
+    /// [`expand`](crate::expand) reads the same function as a problem. One derivation, three names:
+    /// a check written twice would be two opinions about what a step is.
+    ProfileOutOfOrder {
+        /// The roof.
+        roof: RoofId,
+        /// The plane.
+        plane: usize,
+        /// Which step, counting from the eave.
+        step: usize,
+    },
+    /// A profile step stands at or above the crest of a row that carries it, which makes it a ridge.
+    ProfileReachesTheCrest {
+        /// The roof.
+        roof: RoofId,
+        /// The plane.
+        plane: usize,
+        /// Which step, counting from the eave.
+        step: usize,
+    },
     /// A roof row names a crest point that does not exist.
     RoofCrestMissing {
         /// The roof.
@@ -1817,6 +1843,23 @@ fn check_roofs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
                     plane: plane_index,
                 });
             }
+            match roof.profile_fault(plane_index) {
+                Some(crate::roof::ProfileFault::OutOfOrder { step }) => {
+                    violations.push(Violation::ProfileOutOfOrder {
+                        roof: id,
+                        plane: plane_index,
+                        step,
+                    });
+                }
+                Some(crate::roof::ProfileFault::AboveTheCrest { step }) => {
+                    violations.push(Violation::ProfileReachesTheCrest {
+                        roof: id,
+                        plane: plane_index,
+                        step,
+                    });
+                }
+                None => {}
+            }
             for (row_index, row) in plane.rows.iter().enumerate() {
                 if row.crest >= roof.crest.len() {
                     violations.push(Violation::RoofCrestMissing {
@@ -2977,6 +3020,16 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         Violation::RoofHostMissing { roof, host } => (5, roof.0 as u64, host.0 as u64, 0, 0),
         Violation::RoofEaveTooShort { roof, nodes } => (6, roof.0 as u64, *nodes as u64, 0, 0),
         Violation::RoofPlaneTooShort { roof, plane } => (7, roof.0 as u64, *plane as u64, 0, 0),
+        // Rank `44` and `45`, taken at the end because the profile arrived after the roof's own block
+        // was closed. They sort after every roof fault because a profile is a statement about a
+        // plane that already exists: a plane with no rows and a profile is two faults, and the one
+        // about the rows is the one to fix first.
+        Violation::ProfileOutOfOrder { roof, plane, step } => {
+            (44, roof.0 as u64, *plane as u64, *step as u64, 0)
+        }
+        Violation::ProfileReachesTheCrest { roof, plane, step } => {
+            (45, roof.0 as u64, *plane as u64, *step as u64, 0)
+        }
         Violation::RoofCrestMissing {
             roof,
             plane,

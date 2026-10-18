@@ -83,25 +83,85 @@ impl RoofRow {
     }
 }
 
+/// One step of a roof plane's profile: where a purlin stands, and how high it is.
+///
+/// # Invariants
+///
+/// - **The fraction is measured along the slope's own plan run from the eave**, in `(0, 1)`, and it
+///   is what makes the cut *parallel* to the plane's rows: a cut at a fraction of the run lands at the
+///   same place on every row, so the strip between two steps is a trapezoid and stays planar. A cut at
+///   an *elevation* would not — two rows need not span the same heights, and then the same elevation
+///   is reached at two different fractions.
+/// - **The rise is measured above the row's own eave elevation**, not above a datum: a roof whose
+///   eave descends with a bank carries its purlins with it, and a rise written against the eaves is
+///   what a carpenter's 举架 rule states.
+/// - `fraction` and `rise` both strictly increase along the list, and every rise stays **below the
+///   crest's own rise**; a step at or above it is not a step in the slope, it is the ridge.
+///
+/// See `.agents/proposals/chinese-vernacular-architecture.md` D1, and the research note
+/// `.agents/investigate/chinese-timber-frame-and-roof.md` for the three rules that generate one.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Step {
+    /// Where the purlin stands, as a fraction of the slope's plan run from the eave.
+    pub fraction: f32,
+    /// How far above the row's own eave the purlin stands.
+    pub rise: f32,
+}
+
+impl Step {
+    /// Builds a step.
+    pub fn new(fraction: f32, rise: f32) -> Self {
+        Self { fraction, rise }
+    }
+}
+
 /// One planar face of a roof, as the rows it is spanned between.
 ///
 /// # Invariants
 ///
 /// The rows are in order along the plane's own run, from one of its edges to the other, and a
 /// plane with fewer than two rows has no span and is reported rather than expanded. Consecutive
-/// rows make one quad of the skin; the rows at the two ends are the plane's boundary with whatever
-/// plane or fascia is next, and they are also the **shading group**: one plane is one planar
-/// surface, so its facets are smooth across and hard at its edges.
+/// rows make one band of the skin; the rows at the two ends are the plane's boundary with whatever
+/// plane or fascia is next, and they are also the **shading group**: one band of one plane is one
+/// planar surface, so its facets are smooth across and hard at its edges.
+///
+/// **The band is cut into strips by [`RoofPlane::profile`]**, one per 步架, and each strip is its own
+/// face and its own shading group — see [`RoofPlane::profile`]'s own invariant for why a strip and
+/// not a strip list.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RoofPlane {
     /// The rows, in order.
     pub rows: Vec<RoofRow>,
+    /// The purlin stations between the eave and the crest, in order. Empty is one straight slope.
+    ///
+    /// # Invariants
+    ///
+    /// **A step is a bend and not a mark.** The skin between the eave and the crest turns at every
+    /// purlin — that is what 举架 builds — so the steps of one plane are *not* coplanar, and each
+    /// is therefore its own face and its own shading group. A renderer that smoothed across them
+    /// would draw the curve the architecture does not have: the roof is a chain of planes, and the
+    /// **crease at each purlin** is the thing a Chinese roof is read by.
+    ///
+    /// **Two planes that share a row share every vertex of it.** A step's vertex is welded by
+    /// *(the row's own identity, the step index)*, so a roof whose planes meet along a ridge or a hip
+    /// stays closed without a coordinate test — the rule [`EaveStation`] already follows for the eave
+    /// end, applied to the middle.
+    pub profile: Vec<Step>,
 }
 
 impl RoofPlane {
-    /// Builds a plane from its rows.
+    /// Builds a plane from its rows, with one straight slope.
     pub fn new(rows: Vec<RoofRow>) -> Self {
-        Self { rows }
+        Self {
+            rows,
+            profile: Vec::new(),
+        }
+    }
+
+    /// Sets the purlin stations this plane bends at.
+    pub fn with_profile(mut self, profile: Vec<Step>) -> Self {
+        self.profile = profile;
+        self
     }
 
     /// Returns the two rows a plane shares with its neighbours, if it has them.
@@ -110,6 +170,21 @@ impl RoofPlane {
         let last = *self.rows.last()?;
         Some((first, last))
     }
+}
+
+/// What is wrong with one plane's [`profile`](RoofPlane::profile).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileFault {
+    /// A step whose fraction or rise does not increase, or whose fraction is outside `(0, 1)`.
+    OutOfOrder {
+        /// Which step, counting from the eave.
+        step: usize,
+    },
+    /// A step at or above the crest of a row that carries it, which is a ridge and not a step.
+    AboveTheCrest {
+        /// Which step, counting from the eave.
+        step: usize,
+    },
 }
 
 /// A roof: the eave loop, the crest network, the planes between them, and the slab's thickness.
@@ -165,6 +240,57 @@ impl Roof {
     pub fn with_planes(mut self, planes: Vec<RoofPlane>) -> Self {
         self.planes = planes;
         self
+    }
+
+    /// Sets the same purlin profile on every plane.
+    ///
+    /// A gable's two slopes are one 步架 read twice and a shed has one slope; a roof whose slopes are
+    /// pitched differently (a Dai house's two sides) sets each plane's profile itself.
+    pub fn with_profile(mut self, profile: Vec<Step>) -> Self {
+        for plane in &mut self.planes {
+            plane.profile.clone_from(&profile);
+        }
+        self
+    }
+
+    /// Returns what is wrong with one plane's profile, if anything.
+    ///
+    /// # Invariants
+    ///
+    /// **One reading, two callers.** [`validate`](crate::validate) reports this as a violation and
+    /// [`expand`](crate::expand) as a problem, and both ask *this* rather than each checking the list
+    /// out in full: two checks would be two opinions about what a step is, and the crate has paid for
+    /// that shape before.
+    ///
+    /// The crest test is the one that needs the loops and not only the list: a step stands below the
+    /// crest of **every row that carries it**, and a row whose ends cannot be resolved is the
+    /// expansion's fault to name, so it is skipped here rather than reported twice.
+    pub fn profile_fault(&self, plane: usize) -> Option<ProfileFault> {
+        let plane = self.planes.get(plane)?;
+        let mut last_fraction = 0.0;
+        let mut last_rise = 0.0;
+        for (index, step) in plane.profile.iter().enumerate() {
+            if !(step.fraction.is_finite() && step.rise.is_finite())
+                || step.fraction <= last_fraction
+                || step.fraction >= 1.0
+                || step.rise <= last_rise
+            {
+                return Some(ProfileFault::OutOfOrder { step: index });
+            }
+            last_fraction = step.fraction;
+            last_rise = step.rise;
+            for row in &plane.rows {
+                let (Some(eave), Some(crest)) =
+                    (self.eave_point(row.eave), self.crest_point(row.crest))
+                else {
+                    continue;
+                };
+                if eave[1] + step.rise >= crest[1] {
+                    return Some(ProfileFault::AboveTheCrest { step: index });
+                }
+            }
+        }
+        None
     }
 
     /// Returns the total plan length of the closed eave loop.

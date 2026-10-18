@@ -259,9 +259,17 @@ fn mass_surface(surface: MassSurface) -> String {
 
 /// Returns the sentence for one of a roof's surfaces.
 fn roof_surface(surface: RoofSurface) -> String {
+    // **The step is named only where it is one of several.** A plane with no profile has one strip and
+    // its name is the name it has always had, so every recorded reading of a roof's skin — the `house`
+    // plane, the `hall` soffit — still names the same element it named before the profile existed.
+    // A profiled plane names the strip when it is not the eave's.
     match surface {
-        RoofSurface::Skin { plane } => format!("the skin of plane {plane}"),
-        RoofSurface::Soffit { plane } => format!("the soffit under plane {plane}"),
+        RoofSurface::Skin { plane, step: 0 } => format!("the skin of plane {plane}"),
+        RoofSurface::Skin { plane, step } => format!("the skin of plane {plane}, step {step}"),
+        RoofSurface::Soffit { plane, step: 0 } => format!("the soffit under plane {plane}"),
+        RoofSurface::Soffit { plane, step } => {
+            format!("the soffit under plane {plane}, step {step}")
+        }
         RoofSurface::Fascia { edge } => {
             format!("the fascia over the skin's boundary edge {edge}")
         }

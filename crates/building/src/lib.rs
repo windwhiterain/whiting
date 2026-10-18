@@ -80,7 +80,7 @@ pub use mesh::{
 };
 pub use openings::{Extents, Inset, Opening, Openings, RevealSide};
 pub use parts::{Bounds, Parts, Pin, Placement, Template};
-pub use roof::{CrestPoint, EaveStation, Roof, RoofId, RoofPlane, RoofRow};
+pub use roof::{CrestPoint, EaveStation, ProfileFault, Roof, RoofId, RoofPlane, RoofRow, Step};
 pub use skeleton::{Building, BuildingSkeleton};
 pub use slab::{Slab, SlabId, SlabRole, SlabSurface};
 pub use validate::Violation;
