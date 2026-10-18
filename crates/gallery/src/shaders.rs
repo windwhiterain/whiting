@@ -693,7 +693,6 @@ pub fn lighting<'text>(
 ) -> String {
     lighting_with_normal(vertex_inputs, "", surface, helpers, projection)
 }
-
 /// The lighting stage of a scene that displaces the normal it is lit by.
 ///
 /// # Why the normal is displaced before the shading and not after
@@ -722,6 +721,7 @@ pub fn lighting_with_normal<'text>(
         lighting_bindings(false, &Extras::NONE.binding_points()),
         &Extras::NONE,
         projection,
+        &kit::gallery_custom_schema(),
     )
 }
 
@@ -741,6 +741,7 @@ pub fn lighting_declaring<'text>(
     helpers: impl Into<Block<'text>>,
     extras: &Extras,
     projection: Projection,
+    custom: &Schema,
 ) -> String {
     lighting_stage(
         vertex_inputs,
@@ -750,6 +751,7 @@ pub fn lighting_declaring<'text>(
         lighting_bindings(false, &extras.binding_points()),
         extras,
         projection,
+        custom,
     )
 }
 
@@ -1014,6 +1016,12 @@ impl Extras {
             ));
         }
         lines
+    }
+
+    /// Returns how many locations the varyings above take, so that a varying the shader
+    /// carries for a reason of its own can be numbered after them rather than beside them.
+    fn varying_count(&self) -> usize {
+        self.read_from_points().len()
     }
 
     /// Returns the assignments that carry each output's point field to its varying.
@@ -1284,6 +1292,89 @@ impl Projection {
 /// is not bounded that way, so the lights move into one and the pass reads the ones its own
 /// fragment needs — which is a handful, because the cluster lists are what the culling was
 /// for.
+/// Whether a lighting stage's materials carry a shadow-bias scale, and the three declarations
+/// that follow from the answer.
+///
+/// # Why this is one type and not three strings
+///
+/// A varying nobody assigned, an assignment of a varying nobody declared, and a local read at
+/// one fragment are three facts about **one** thing: whether the stage's materials have such a
+/// number. Held apart they are three chances to build a shader whose vertex stage writes a field
+/// its `Vertex` does not declare — which `naga` rejects, so it is at least loud — or, worse, one
+/// that reads a row's bytes at a location the packed layout gave to something else.
+///
+/// # Invariants
+///
+/// **A stage whose schema lacks the field emits a constant of exactly one**, so every existing
+/// scene multiplies the shadow test's two numbers by the identity and shades to the bit it shaded
+/// to before this type existed. The constant is written as a digit and the multiplications are
+/// left in the template rather than folded away, so the two are the same multiplication whichever
+/// stage is built.
+struct ShadowBias {
+    /// Whether the stage's materials carry the field at all.
+    carried: bool,
+}
+
+impl ShadowBias {
+    /// The declaration the `Vertex` struct carries, at `location`, or nothing at all.
+    fn varying(&self, location: u32) -> String {
+        if !self.carried {
+            return String::new();
+        }
+        format!(
+            "    @location({location}) @interpolate(flat) {field}: f32,\n",
+            field = kit::SHADOW_BIAS_SCALE
+        )
+    }
+
+    /// The assignment that carries the row's own number to that varying, or nothing at all.
+    fn assign(&self) -> String {
+        if !self.carried {
+            return String::new();
+        }
+        format!(
+            "    out.{field} = {field};\n",
+            field = kit::SHADOW_BIAS_SCALE
+        )
+    }
+
+    /// The local the fragment stage reads at every shadow lookup, or a constant of one.
+    ///
+    /// **Flat, and interpolated nowhere.** The number is a property of the material and a whole
+    /// instance row shares it, so reading it interpolated would sample between one leaf's row and
+    /// its neighbour's across a triangle that no leaf spans.
+    fn binding(&self) -> String {
+        if self.carried {
+            return format!(
+                "    let shadow_bias_scale = in.{field};\n",
+                field = kit::SHADOW_BIAS_SCALE
+            );
+        }
+        // **Formatted with `Debug`, not `Display`.** `Display` writes the value `1` — and a WGSL
+        // literal of `1` is an abstract integer, which unifies with nothing here and leaves the
+        // call it is passed to ill-typed. `Debug` keeps the decimal point, which is what makes it
+        // a float.
+        format!(
+            "    let shadow_bias_scale = {value:?};\n",
+            value = kit::DEFAULT_SHADOW_BIAS_SCALE
+        )
+    }
+}
+
+/// Returns whether a scene's materials carry a shadow-bias scale.
+///
+/// The field is looked for by its own name in the schema the shader declares, which is the same
+/// schema every one of its materials' rows were packed against — so this is the one question, and
+/// asking it anywhere else would be a second answer that could disagree.
+fn shadow_bias_of(custom: &Schema) -> ShadowBias {
+    let SchemaKind::Struct { fields } = &custom.kind else {
+        return ShadowBias { carried: false };
+    };
+    ShadowBias {
+        carried: fields.contains_key(kit::SHADOW_BIAS_SCALE),
+    }
+}
+
 fn lighting_stage<'text>(
     vertex_inputs: &str,
     displace: Block<'text>,
@@ -1292,12 +1383,26 @@ fn lighting_stage<'text>(
     bindings: String,
     extras: &Extras,
     projection: Projection,
+    custom: &Schema,
 ) -> String {
     let displace = displace.spliced("displace");
     let surface = surface.spliced("surface");
     let helpers = helpers.spliced("helpers");
-    let vertex_varyings = extras.varyings();
     let vertex_assigns = extras.assigns();
+    // **The shadow-bias scale is read from the schema, and only from the schema.** A shader whose
+    // materials declare the field carries it in a varying and shades by the row's own number; a
+    // shader whose materials declare nothing of the name shades by one and declares nothing,
+    // because the two questions — does this surface's material have a scale, and if not what does
+    // it use — are one question with the schema's answer, and a flag beside it would be a second
+    // thing that could disagree with the schema the row was packed against.
+    let shadow_bias = shadow_bias_of(custom);
+    let vertex_varyings = format!(
+        "{}{}",
+        extras.varyings(),
+        shadow_bias.varying(FIRST_EXTRA_LOCATION + extras.varying_count() as u32)
+    );
+    let shadow_bias_assign = shadow_bias.assign();
+    let shadow_bias_scale = shadow_bias.binding();
     let (fragment_returns, fragment_type) = extras.returns();
     let fragment_writes = extras.writes();
     let fragment_return = extras.return_value();
@@ -1433,6 +1538,7 @@ fn shadowed(
     to_light: vec3<f32>,
     world_position: vec3<f32>,
     normal: vec3<f32>,
+    shadow_bias_scale: f32,
 ) -> f32 {{
     let page = i32(page_index);
     if page < 0 {{
@@ -1480,8 +1586,15 @@ fn shadowed(
     let span = shadow_projection * vec4<f32>(across_world, 0.0);
     let per_unit = length((span.xy - measured_ndc.xy * span.w) / measured.w);
     let texel_world = 2.0 / (max(size.x, size.y) * max(per_unit, 1e-6));
+    // **One texel is the right answer for a wall and a hundred times too much for a leaf**, and
+    // the difference is not the surface but what stands between it and the light: a wall's
+    // casters are metres away and a leaf's are centimetres away, so on a page fitted to a whole
+    // tree a caster a millimetre in front of a blade is still inside the push and the test
+    // answers "lit". The scale is the **material's own**, read out of its row, because the fact
+    // that decides it — how close this surface's casters are — is a fact about the surface and
+    // not about the light. One leaves the push at the texel the page measured.
     let from_light = shadow_projection
-        * vec4<f32>(world_position + normal * (texel_world * PUSH_TEXELS), 1.0);
+        * vec4<f32>(world_position + normal * (texel_world * PUSH_TEXELS * shadow_bias_scale), 1.0);
     if from_light.w <= 0.0 {{
         return 1.0;
     }}
@@ -1503,7 +1616,11 @@ fn shadowed(
     // what both kinds supply: the loop negates the light's direction, and the directional
     // light negates the one it travels along.
     let slope = 1.0 - abs(dot(normal, to_light));
-    let z = ndc.z - (0.0006 + 0.003 * slope);
+    // **The push above and this are the same error**, measured in two different units, so they
+    // are scaled by the same material's own number: a leaf that needs its push down by twenty
+    // needs its bias down by twenty, because both are the distance a caster must clear before
+    // the test can fire, and leaving one of them behind leaves the pair at the larger of the two.
+    let z = ndc.z - (0.0006 + 0.003 * slope) * shadow_bias_scale;
     var lit = 0.0;
     for (var row = -1; row <= 1; row = row + 1) {{
         for (var column = -1; column <= 1; column = column + 1) {{
@@ -1633,6 +1750,7 @@ fn shadowed_pages(
     to_light: vec3<f32>,
     world_position: vec3<f32>,
     normal: vec3<f32>,
+    shadow_bias_scale: f32,
 ) -> f32 {{
     let from_light = shadow_projection * vec4<f32>(world_position, 1.0);
     if from_light.w <= 0.0 {{
@@ -1677,7 +1795,7 @@ fn shadowed_pages(
     // from another would wrap its own page arithmetic at every boundary and read a texel up to
     // a page away from the one it chose.
     let pushed = shadow_projection
-        * vec4<f32>(world_position + normal * (texel_world * PUSH_TEXELS), 1.0);
+        * vec4<f32>(world_position + normal * (texel_world * PUSH_TEXELS * shadow_bias_scale), 1.0);
     if pushed.w <= 0.0 {{
         return 1.0;
     }}
@@ -1739,7 +1857,7 @@ fn shadowed_pages(
         let within = vec2<u32>((texel.x % shift) >> level, (texel.y % shift) >> level);
         let centre = origin + vec2<i32>(i32(within.x), i32(within.y));
         let slope = 1.0 - abs(dot(normal, to_light));
-        let bias = (0.0006 + 0.003 * slope) * f32(1u << level);
+        let bias = (0.0006 + 0.003 * slope) * f32(1u << level) * shadow_bias_scale;
         let layer = i32(address.y);
         var lit = 0.0;
         for (var r = -1; r <= 1; r = r + 1) {{
@@ -1787,6 +1905,7 @@ fn shadow_term(
     to_light: vec3<f32>,
     world_position: vec3<f32>,
     normal: vec3<f32>,
+    shadow_bias_scale: f32,
 ) -> f32 {{
     if address.x < 0.0 {{
         return shadowed(
@@ -1795,6 +1914,7 @@ fn shadow_term(
             to_light,
             world_position,
             normal,
+            shadow_bias_scale,
         );
     }}
     return shadowed_pages(
@@ -1803,6 +1923,7 @@ fn shadow_term(
         to_light,
         world_position,
         normal,
+        shadow_bias_scale,
     );
 }}
 
@@ -1901,6 +2022,7 @@ fn directional_radiance(
     diffuse: vec3<f32>,
     fresnel: vec3<f32>,
     roughness: f32,
+    shadow_bias_scale: f32,
 ) -> vec3<f32> {{
     if uniforms.directional.colour.w < 0.5 {{
         return vec3<f32>(0.0);
@@ -1917,6 +2039,7 @@ fn directional_radiance(
         to_light,
         world_position,
         normal,
+        shadow_bias_scale,
     );
     // The uniform carries an **irradiance**, not a radiance, and this is the only place in the
     // stage that knows it: the clustered loop's own `1 / (4 pi^2)` has already turned its light's
@@ -2022,6 +2145,7 @@ fn record_contribution(
     diffuse: vec3<f32>,
     fresnel: vec3<f32>,
     roughness: f32,
+    shadow_bias_scale: f32,
 ) -> vec3<f32> {{
     let light = light_record(index);
     let cone = spot_cones[index];
@@ -2041,6 +2165,7 @@ fn record_contribution(
         direction,
         world_position,
         normal,
+        shadow_bias_scale,
     ) * cone_attenuation(cone, -direction);
 
     // A point light falls off with the square of its distance, which is the inverse square
@@ -2187,7 +2312,7 @@ fn vertex_main(
     out.emissive = emissive;
     out.tint = tint;
     out.material = vec3<f32>(metallic, roughness, reflect);
-{vertex_assigns}    return out;
+{vertex_assigns}{shadow_bias_assign}    return out;
 }}
 
 {fragment_returns}@fragment
@@ -2202,6 +2327,7 @@ fn fragment_main(in: Vertex) -> {fragment_type} {{
     let metallic = in.material.x;
     let roughness = clamp(in.material.y, 0.04, 1.0);
     let diffuse_color = in.tint * (1.0 - metallic);
+{shadow_bias_scale}
 
     // Everything below that does not name a light is hoisted out of the loop, because it is
     // the same for every one of them: the view vector, the Fresnel term, and the roughness
@@ -2250,6 +2376,7 @@ fn fragment_main(in: Vertex) -> {fragment_type} {{
             diffuse_color,
             fresnel,
             roughness,
+            shadow_bias_scale,
         );
     }}
 
@@ -2272,6 +2399,7 @@ fn fragment_main(in: Vertex) -> {fragment_type} {{
             diffuse_color,
             fresnel,
             roughness,
+            shadow_bias_scale,
         );
     }}
 
@@ -2287,6 +2415,7 @@ fn fragment_main(in: Vertex) -> {fragment_type} {{
         diffuse_color,
         fresnel,
         roughness,
+        shadow_bias_scale,
     );
 
     // **The ambient term, and what feeds it.** It is added **once**, whatever the cluster
@@ -2344,6 +2473,12 @@ pub fn textured<'text>(vertex_inputs: &str, helpers: impl Into<Block<'text>>) ->
         lighting_bindings(true, &Extras::NONE.binding_points()),
         &Extras::NONE,
         Projection::Latlong,
+        // **The gallery's schema, which is the one `vertex_inputs` was written against.** This is
+        // the same split [`sweep_picture::lighting_shader`] documents: the field that names an
+        // image is a binder and not an attribute, so a shader that declares it reads its row
+        // through the gallery's own attribute list. The schema below is that list's own, which is
+        // also why this stage declares no shadow-bias scale.
+        &kit::gallery_custom_schema(),
     )
 }
 
@@ -3063,7 +3198,15 @@ pub fn lighting_shader_declaring<'text>(
     kit::shader(
         Stage::Lighting,
         label,
-        &lighting_declaring(&inputs, displace, surface, helpers, extras, projection),
+        &lighting_declaring(
+            &inputs,
+            displace,
+            surface,
+            helpers,
+            extras,
+            projection,
+            &custom_schema,
+        ),
         light_pass_schema_over(&extras.binding_points()),
         point,
         kit::gallery_instance_schema(),
