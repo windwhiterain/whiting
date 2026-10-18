@@ -161,7 +161,7 @@ const BIRCH_LEAF_HALF_WIDTH: f32 = 0.028;
 ///
 /// **The top of the range, and the reason is the sampling tax read the other way.** A crown's only area is
 /// its leaves' area, so a crown is drawn with as few rows as will cover it and each row as large as the note
-/// allows. At the whole-tree plate's 11.6 mm a pixel a 110 mm leaf is **9.5 px long and 4.3 px wide**, and a
+/// allows. At the whole-tree plate's 9.8 mm a pixel a 110 mm leaf is **11 px long and 5.7 px wide**, and a
 /// leaf at the note's 40 mm floor would be **3.4 px** — a third of a plate pixel a leaf-row, and a crown
 /// with no mass. **The leaf is drawn large because the note says leaves are large, not because the
 /// rasteriser is hard to please.**
@@ -185,7 +185,7 @@ const BIRCH_CROWN_BASE: f32 = 0.40;
 ///
 /// # Invariants
 ///
-/// **The two differ in one width law and in nothing else.** At [`SOUTHWEST_BIRCH`]'s 11.6 mm a pixel the
+/// **The two differ in one width law and in nothing else.** At [`SOUTHWEST_BIRCH`]'s 9.8 mm a pixel the
 /// note's six-millimetre serration tooth is **half a pixel**, so drawing thirteen of them buys four times
 /// the rings and shows nothing; at [`SOUTHWEST_BIRCH_BOUGH`]'s 1.24 mm a pixel the same tooth is **five
 /// pixels** and the doubly serrate margin of `03-branch-with-catkins.jpg` is the first thing a reader of
@@ -218,8 +218,8 @@ impl BirchFoliage {
 /// | level | count | where | what |
 /// | --- | --- | --- | --- |
 /// | **0** | **1** | — | the **bole**, clean to 5 m |
-/// | **1** | **22–26** | `0.355`–`1.0` of the bole | the **boughs**, `2.6 m` at the crown's foot falling to `1.2 m` at the leader's tip |
-/// | **2** | **18–22** | `0.20`–`1.0` of a bough | the **branchlets**, `0.50`–`0.90 m`, the pendulous shoots |
+/// | **1** | **28–32** | `0.40`–`1.0` of the bole | the **boughs**, `2.6 m` at the crown's foot falling to `1.2 m` at the leader's tip |
+/// | **2** | **26–32** | `0.18`–`1.0` of a bough | the **branchlets**, `0.8`–`1.4 m`, the pendulous shoots |
 ///
 /// **`cluster = 1` on both generations is the species' first number and it is a contrast.** A conifer's
 /// tier is a whorl and a kapok's limb is a pseudo-whorl, both `cluster > 1`; the note's *Betula* branches
@@ -227,7 +227,7 @@ impl BirchFoliage {
 /// Betula"*), and a whorl of three would draw a different tree. The golden angle between stations is the
 /// whole of the arrangement.
 ///
-/// **The boughs' band starts at `0.355`**, which is the note's `4–7 m` to first branch on a fourteen-metre
+/// **The boughs' band starts at `0.40`**, which is the note's `4–7 m` to first branch on a fourteen-metre
 /// tree, and it is the "crown raised clear of the ground" of proposal §4.7 done with a band rather than a
 /// prune: a birch's lower branches **persist** (*"Estimate: the reference habit photograph shows branches
 /// beginning low on a 16 m stem"*), so pruning them would be a different species, and this one does not.
@@ -559,7 +559,7 @@ fn leaf_blade(teeth: usize) -> LeafTemplate {
 /// **It is drawn at the widest of the note's range, `4–6 mm` across, and it is a lobed ring rather than a
 /// circle.** A catkin is a close spiral of scales, and a plain circle reads as a wire; ten slots with every
 /// other one drawn in at four fifths is the cheapest honest reading of a lobed outline, and it is the same
-/// argument the fir's cone makes. **At [`SOUTHWEST_BIRCH`]'s 11.6 mm a pixel this organ is 2.6 mm across
+/// argument the fir's cone makes. **At [`SOUTHWEST_BIRCH`]'s 9.8 mm a pixel this organ is 5.1 mm across
 /// and is *dropped by the rasteriser whole*** — the module says so rather than enlarging it, because a
 /// catkin drawn at twice its size is a different animal; it is drawn for the branchlet plate, where it is
 /// sixty pixels long and five across.
@@ -1074,8 +1074,8 @@ const KETELEERIA_PLUME_HALF_WIDTH: f32 = 0.075;
 ///
 /// # Invariants
 ///
-/// **The top of the range, and the reason is the sampling tax.** At [`EVELYN_KETELEERIA`]'s 17.6 mm a
-/// pixel a 200 mm cone is **11.4 px long and 3.7 px across**, and it is the *only* part of this species
+/// **The top of the range, and the reason is the sampling tax.** At [`EVELYN_KETELEERIA`]'s 17.9 mm a
+/// pixel a 200 mm cone is **11.2 px long and 3.6 px across**, and it is the *only* part of this species
 /// above the tax: the plume's teeth are 0.6 pixels and the true needle is 0.14. The note's first
 /// recognition fact — *"against the sky the crown reads as a coarse, knobbly, corn-cob texture"* — is a
 /// claim about a texture **at distance**, so the whole-tree plate's cone is the longest cone this species
@@ -1857,7 +1857,7 @@ fn keteleeria_base_lighting() -> Lighting {
     }
 }
 
-/// The whole-tree frame: **48.5 m** off a twenty-six-metre tree, the camera at a fifth of its height and
+/// The whole-tree frame: **49.2 m** off a twenty-six-metre tree, the camera at a fifth of its height and
 /// pitched twelve degrees **up**.
 ///
 /// # Invariants
@@ -1867,7 +1867,7 @@ fn keteleeria_base_lighting() -> Lighting {
 ///   first plate aimed at `13.5 m` from `5.5 m` — a pitch of 9.5° — and put **39% of the frame on a lit
 ///   floor** with the key's shadow page's boundary drawn across it as a straight line, which is the one
 ///   artefact a tree plate must not carry.
-/// - **`2 · 48.5 · tan(0.30) / 1700` is 17.6 mm**, so a 200 mm cone is **11.4 px** and a plume's teeth are
+/// - **`2 · 49.2 · tan(0.30) / 1700` is 17.9 mm**, so a 200 mm cone is **11.2 px** and a plume's teeth are
 ///   one to two: the whole of the card's argument, and the reason the cone template is at the top of the
 ///   note's range.
 const KETELEERIA_FRAME: Framing = Framing {
@@ -2057,7 +2057,7 @@ pub fn evelyn_keteleeria_bough_handle_of(id: u32) -> Option<String> {
 ///
 /// **This is the crown profile every length law in the module is over**, and it is `station`-based rather
 /// than rank-based on purpose: a conifer's lower bough is many times the length of its upper one, and the
-/// band a generation spreads over begins at a number that is not zero — the birch's crown starts at 0.355 of
+/// band a generation spreads over begins at a number that is not zero — the birch's crown starts at 0.40 of
 /// its tree and the Keteleeria's at 0.345 — so the profile is the child's own station measured **inside that
 /// band** rather than the raw one. A profile read raw would make both species' lowest boughs the same length
 /// as the middle of their trunks.
