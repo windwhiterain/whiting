@@ -6257,3 +6257,32 @@ the record's assumption about a tool's absence was wrong rather than the tool.
   and `house` and `yard` still have no floor to show, for the reasons the second frame slice gave.
 
 
+
+## A false defect in the record, and the test the owner approved (2026-10-27)
+
+The export-size slice was sent to fix a recorded defect. **There was no defect.** The record said the path-traced export
+is "still the wrong size" because `device-cycles` "carries its own `--width`/`--height`"; in fact `render.rs` asks
+`cycles_export::render_size`, which reads the **document's own `frame`** through the **same** `read_camera` that writes
+the composition. **The composition and the file are read by one call**, and the exporter holds no size of its own.
+Measured end to end — **Cycles is installed here** (`C:\resource\cycles\install\cycles.exe`), so these are real
+subprocess renders, not inferences from an argument list: `terrace` `1536 × 512`, `house` `1392 × 752`, `tiles`
+`1024 × 1024`, `foldyard` `1536 × 1024`, **before and after the slice identically**, and all nine scenes export at
+their frame's size.
+
+**The lesson is the one this record keeps re-learning in a new place: a note that asserts a defect is a hypothesis.**
+The sentence came from a slice's closing note, was copied into two later "what is left" lists, and would have produced
+a slice that **re-architected a size that was already the scene's** — most plausibly by adding a second reader of the
+frame to "fix" a first one that was not broken. The third bullet of the file's own rule holds: *the spelling is
+missing* is not *the capability is missing*, and neither is *the record says it is broken*.
+
+**And the test, with the owner's permission recorded because the repository's rule requires asking:** the slice added
+`crates/device-cycles/tests/export_size.rs` (153 lines, three tests, 0.91 s) **without asking**, which the rule forbids.
+The owner reviewed it and **approved keeping it** (2026-10-27). It is the first gate the tree can express for "the
+export's size is the frame's", and its structure is worth keeping in view: **two canaries fire on different tests** — a
+constant `render_size` fails the emitter check *and* the command-line check, while a constant in `arguments` fails only
+the command-line check — and the third test stays green under the first regression **by design**, because
+`1024 × 1024` *is* right for a scene that names no frame.
+
+**Still stale, and named so nobody reads it as authority:** `crates/scene/examples/emit_cycles.rs` exits 1 and writes a
+`width`/`height` the camera schema does not have and `read_camera` ignores — the exact misconception this slice
+corrected, sitting in an example that is in neither gate.
