@@ -189,6 +189,17 @@ What it buys: the silhouette. A Chinese roof is read from its profile — shallo
 the ridge, with a distinct break at every purlin — and that profile is the one thing a straight tent
 cannot fake.
 
+Two things it buys without a line of new code, both measured from the crate's own structure:
+
+- **The bargeboard.** The fascia band is derived from the **skin's own boundary** and not from the
+  eave loop (`mesh.rs:162`), so a bent gable edge — a row that is now a polyline — makes the band bend
+  with it: that band *is* the 博风板 a 悬山 hangs on its gable. The same derivation is why a gable's
+  end is already closed today, and it keeps closing it.
+- **The weld.** `expand_roof` already welds a crest by its index and an eave station by its normalised
+  bits **across planes** (`expand.rs:3111-3150`), so a step vertex keyed by its row's own identity and
+  its step index lands in exactly the same map and the same rule. The strips are watertight because
+  the roof's three keys are, not because two constructions agree.
+
 Refusals: `ProfileOutOfOrder` (a fraction not strictly increasing inside `(0, 1)`, or a rise not
 strictly increasing above the eave), `ProfileReachesTheCrest` (a step at or above the crest's own
 rise), `ProfileOnAFan` (a plane whose rows are not parallel, which a level purlin cannot cross
