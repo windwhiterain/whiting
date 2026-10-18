@@ -92,6 +92,7 @@ def main(argv: list[str]) -> int:
         region_ids = mask_all[box[1] : box[3], box[0] : box[2]]
         print(f"frame {argv[0]} {width}x{height} crown box {box}")
         print(f"  coverage = {region_ids.mean():.3f}")
+        crown_depth(luminance(region), region_ids)
         report(luminance(region), region_ids, "crown plant pixels")
         report(luminance(region), None, "crown all pixels")
         return 0

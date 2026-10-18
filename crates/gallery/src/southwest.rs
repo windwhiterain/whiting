@@ -15,7 +15,7 @@
 //! for the silhouette, and one bough at arm's length, for the foliage. They cannot share one foliage:
 //! the rasteriser samples a pixel at one point, so a blade narrower than a pixel is dropped rather than
 //! faded, and the note's 1.1 mm needle is a tenth of a pixel at the distance a whole tree is framed. The
-//! whole-tree plate therefore draws [`Foliage::Card`] — a blade half a pixel wide at that distance, the
+//! whole-tree plate therefore draws [`Foliage::Spray`] — a plume-card whose comb of teeth is one to two
 //! narrowest that survives — and the bough plate draws [`Foliage::Needle`], the true one. That is a
 //! level of detail, not a fudge: each plate is honest about the blade it draws, and the module says which
 //! is which.
@@ -51,36 +51,69 @@ const GOLDEN: f32 = 0.381_966_01;
 /// The note's needle, half of its 1–1.2 mm across: the blade the bough plate draws.
 const NEEDLE_HALF_WIDTH: f32 = 0.00055;
 
-/// The card the whole-tree plate draws: half a pixel at the distance that plate is framed from, which
-/// is the narrowest blade a point-sampled pixel keeps. See the module docs.
-const CARD_HALF_WIDTH: f32 = 0.007;
-
 /// Which foliage a pine draws.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Foliage {
     /// The note's own needle, for frames within arm's length of a shoot.
     Needle,
-    /// A blade [`CARD_HALF_WIDTH`] wide, for the whole-tree plate.
-    Card,
+    /// A spray: one blade whose width law is a comb of needle-teeth, standing for a fascicle-plume.
+    ///
+    /// The whole-tree plate cannot draw two hundred thousand true needles — the scene document pays per
+    /// instance, not per triangle — and a true needle at that distance is a tenth of a pixel, which a
+    /// point-sampled rasteriser drops whole. A spray is the level of detail a conifer crown actually
+    /// has at twenty-five metres: the eye resolves plumes, not needles, and the comb's teeth are one to
+    /// two pixels each, which is exactly the grain the reference photographs show at that distance.
+    Spray,
 }
 
 impl Foliage {
-    /// The blade's half-width.
-    fn half_width(self) -> f32 {
+    /// The blade this foliage instances.
+    fn template(self) -> LeafTemplate {
         match self {
-            Foliage::Needle => NEEDLE_HALF_WIDTH,
-            Foliage::Card => CARD_HALF_WIDTH,
+            Foliage::Needle => needle(NEEDLE_HALF_WIDTH),
+            Foliage::Spray => spray(),
         }
     }
 
-    /// The fraction of the needle foliage's density this foliage is drawn at: one for the needle, and
-    /// for the card the ratio that makes the two foliages' total blade area the same crown.
+    /// The fraction of the needle foliage's density this foliage is drawn at: a spray carries a whole
+    /// plume's needles in one instance, so it needs a plume's-worth fewer of them.
     fn density_factor(self) -> f32 {
         match self {
             Foliage::Needle => 1.0,
-            Foliage::Card => 0.15,
+            Foliage::Spray => 0.09,
         }
     }
+}
+
+/// The spray card: a forty-five centimetre blade whose width law is a comb, so its silhouette is a
+/// needle-plume's and not a paddle's. The teeth are three centimetres deep on a two-centimetre pitch,
+/// which at the whole-tree plate's seven and a half millimetres a pixel is one to two pixels a tooth —
+/// the grain `01-habit.jpg` shows at the same distance.
+fn spray() -> LeafTemplate {
+    let teeth = 34;
+    let knots: Vec<(f32, f32)> = (0..=2 * teeth)
+        .map(|i| {
+            let t = i as f32 / (2 * teeth) as f32;
+            // The plume swells to its middle and runs out at both ends, so a spray is a plume and not a
+            // rectangle; the comb multiplies that envelope. The sine is clamped at nought because the
+            // f32 pi overshoots the true one and its sine at t = 1 is a small NEGATIVE number, whose
+            // fractional power is not a number at all.
+            let envelope = (std::f32::consts::PI * t).sin().max(0.0).powf(0.7);
+            let tooth = if i % 2 == 0 { 0.10 } else { 1.0 };
+            (t, 0.028 * envelope * tooth)
+        })
+        .collect();
+    LeafTemplate::blade(
+        spine(&[
+            ([0.0, 0.0, 0.0], [0.22, 0.01, 0.0]),
+            ([0.22, 0.02, 0.005], [0.22, 0.02, 0.005]),
+            ([0.45, 0.06, 0.015], [0.20, 0.03, 0.005]),
+        ]),
+        shape::Scalar::new(&knots).expect("a comb is a law"),
+        0.0006,
+        24,
+        4,
+    )
 }
 
 /// The pine's rule: a clean bole, whorled boughs that shorten with height, and twigs that carry the
@@ -122,7 +155,7 @@ fn yunnan_pine_rule() -> Rule {
 /// bough carries two to three dozen of them because a crown's mass is the number of its twigs.
 fn twig_generation(from: f32) -> Generation {
     Generation {
-        count: (22, 26),
+        count: (26, 30),
         station: (from, 1.0),
         slot: (0.0, GOLDEN),
         jitter: (0.12, 0.12),
@@ -179,8 +212,8 @@ fn bough(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
     // only falls with height draws a spire.
     let top = ((joint.station - 0.78) / 0.22).clamp(0.0, 1.0);
     let length =
-        5.6 * (1.0 - 0.35 * joint.station) * (1.0 - 0.8 * top) * (0.70 + 0.60 * rng.unit());
-    let departure = 1.35 - 0.45 * joint.station + 0.10 * rng.signed();
+        5.6 * (1.0 - 0.35 * joint.station) * (1.0 - 0.9 * top) * (0.70 + 0.60 * rng.unit());
+    let departure = 1.45 - 0.55 * joint.station + 0.10 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-3);
     (
         bend(
@@ -199,7 +232,7 @@ fn bough(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
 /// A twig: the short shoot a fascicle sits on, ten to twenty centimetres in the note and thirty here,
 /// leaving the bough at about a right angle and drooping a little under its own needles.
 fn twig(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    let length = 0.55 * (0.80 + 0.40 * rng.unit());
+    let length = 0.70 * (0.80 + 0.40 * rng.unit());
     let departure = 1.05 + 0.25 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-4);
     (
@@ -303,10 +336,16 @@ fn cone() -> Template {
 /// after the sampling tax, sparse enough to render — and the card's width is what pays that tax.
 fn needles(twig_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     let factor = foliage.density_factor();
+    // A needle foliage carries its needles in fascicles of three, because that is what a pine's sheath
+    // holds; a spray is already a plume, and a cluster of plumes is a pom-pom.
+    let per_station = match foliage {
+        Foliage::Needle => 3,
+        Foliage::Spray => 1,
+    };
     let mut candle = LeafField::new(0, 0);
     candle.band = (0.86, 1.0);
     candle.density = shape::Scalar::constant(60.0 * factor);
-    candle.cluster = 3;
+    candle.cluster = per_station;
     candle.fan = shape::Scalar::constant(0.50);
     candle.phyllotaxy = GOLDEN;
     candle.pitch = shape::Scalar::constant(0.35);
@@ -315,7 +354,7 @@ fn needles(twig_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     let mut fuzz = LeafField::new(twig_depth - 1, 0);
     fuzz.band = (0.70, 1.0);
     fuzz.density = shape::Scalar::constant(25.0 * factor);
-    fuzz.cluster = 3;
+    fuzz.cluster = per_station;
     fuzz.fan = shape::Scalar::constant(0.90);
     fuzz.phyllotaxy = GOLDEN;
     fuzz.pitch = shape::Scalar::constant(0.90);
@@ -324,16 +363,16 @@ fn needles(twig_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     let mut spray = LeafField::new(twig_depth, 0);
     spray.band = (0.25, 1.0);
     spray.density = shape::Scalar::constant(900.0 * factor);
-    spray.cluster = 3;
+    spray.cluster = per_station;
     spray.fan = shape::Scalar::constant(1.15);
     spray.phyllotaxy = GOLDEN;
     spray.pitch = shape::Scalar::constant(1.00);
-    spray.size = shape::Scalar::new(&[(0.0, 0.80), (1.0, 1.15)]).expect("a needle's size is a law");
+    spray.size = shape::Scalar::new(&[(0.0, 0.50), (1.0, 0.75)]).expect("a needle's size is a law");
     spray.jitter = 0.18;
     let mut brush = LeafField::new(twig_depth, 0);
     brush.band = (0.86, 1.0);
     brush.density = shape::Scalar::constant(600.0 * factor);
-    brush.cluster = 3;
+    brush.cluster = per_station;
     brush.fan = shape::Scalar::constant(0.45);
     brush.phyllotaxy = GOLDEN;
     brush.pitch = shape::Scalar::constant(0.30);
@@ -352,10 +391,9 @@ fn needles(twig_depth: usize, foliage: Foliage) -> Vec<LeafField> {
 /// The pine: its tree, its foliage at the asked scale, its four fields and the cone template its twigs
 /// carry.
 pub fn yunnan_pine(seed: u64, foliage: Foliage) -> Species {
-    let half_width = foliage.half_width();
     let mut species = Species {
         plant: grow(&yunnan_pine_rule(), seed),
-        templates: vec![needle(half_width)],
+        templates: vec![foliage.template()],
         fields: needles(2, foliage),
         decorators: vec![cone()],
     };
@@ -427,7 +465,7 @@ fn pine_lighting() -> Lighting {
         key_extent: 40.0,
         fill_position: [-14.0, 8.0, -12.0],
         fill_colour: [0.42, 0.52, 0.72],
-        fill_irradiance: 0.60,
+        fill_irradiance: 0.90,
         fill_distance: 20.1,
         floor: Skin::new([0.30, 0.26, 0.20], 0.95),
         sky: Atmosphere::new()
@@ -436,7 +474,7 @@ fn pine_lighting() -> Lighting {
             .ground([0.30, 0.28, 0.24])
             .density(0.0006)
             .scale_height(2500.0),
-        sky_radiance: 0.85,
+        sky_radiance: 0.55,
         // A clear day at two thousand metres: the air is thin and the far ridge is the only thing it
         // touches, so the coefficient is a fifth of a garden's.
         haze: 0.004,
@@ -473,7 +511,7 @@ const BOUGH_FRAME: Framing = Framing {
 
 /// Builds the Yunnan pine's whole-tree plate: one tree in the card foliage, its own light and ground.
 pub fn yunnan_pine_picture() -> Value {
-    let species = yunnan_pine(SEED, Foliage::Card);
+    let species = yunnan_pine(SEED, Foliage::Spray);
     let planting = Planting::new(species.clone())
         .with_seats(pine_cones(&species, 2))
         .with_palette(pine_palette());
