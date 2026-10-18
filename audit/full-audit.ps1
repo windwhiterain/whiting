@@ -62,11 +62,15 @@ $log = Join-Path (Join-Path $root "audit") "audit-run.log"
 $script:fail = @()
 function Gate([string]$name, [int]$code, [string]$expected) {
     if ("$code" -ceq "$expected") {
-        "  [ok]   {0,-46} exit={1}" -f $name, $code
+        $line = "  [ok]   {0,-46} exit={1}" -f $name, $code
     } else {
-        "  [FAIL] {0,-46} exit={1} (expected {2})" -f $name, $code, $expected
+        $line = "  [FAIL] {0,-46} exit={1} (expected {2})" -f $name, $code, $expected
         $script:fail += $name
     }
+    $line
+    # A verdict kept only on the console cannot be read after the fact: a run that failed once and
+    # not again leaves nothing to post-mortem, which is how a transient gate survives unnoticed.
+    Add-Content -Path $log -Value $line -Encoding utf8
 }
 
 Remove-Item $log -ErrorAction SilentlyContinue
@@ -110,6 +114,25 @@ $warn | Select-Object -First 5 | ForEach-Object { "      $_" }
 if ($notMine.Count -ne 0) { $script:fail += "a Compiling line names a checkout other than this worktree" }
 if ($warn.Count -ne 0) { $script:fail += "the build printed $($warn.Count) warning/error line(s)" }
 Gate "cargo build --workspace --all-targets" $code 0
+
+# The same build in release, because a `cfg(debug_assertions)` switch can make code compile in one
+# profile and not the other. What this does NOT gate is any rendered number: the nine hashes are
+# debug builds, and a release render is a different question -- fma contraction may move a pixel --
+# that nobody has asked, so it is not silently assumed to agree.
+$release = cargo build --workspace --all-targets --release -j 3 2>&1
+$code = $LASTEXITCODE
+$release | Out-File -FilePath $log -Append -Encoding utf8
+$relCompiling = @($release | Where-Object { $_ -match '^\s*Compiling ' })
+$relMine = @($relCompiling | Where-Object { $_ -match 'Compiling whiting-' })
+$relNotMine = @($relMine | Where-Object { $_ -notmatch [regex]::Escape($root) })
+$relWarn = @($release | Where-Object { $_ -match '^(warning|error)' })
+"  release Compiling whiting-*    : $($relMine.Count)"
+"  release NOT naming worktree    : $($relNotMine.Count)"
+"  release warning/error lines    : $($relWarn.Count)   (the gate compares this against 0)"
+$relWarn | Select-Object -First 5 | ForEach-Object { "      $_" }
+if ($relNotMine.Count -ne 0) { $script:fail += "a release Compiling line names a checkout other than this worktree" }
+if ($relWarn.Count -ne 0) { $script:fail += "the release build printed $($relWarn.Count) warning/error line(s)" }
+Gate "cargo build --workspace --all-targets --release" $code 0
 
 "--------------------------------------------------------------------"
 "[2/8] cargo clippy over the three building crates: warning count against 0"
@@ -270,14 +293,17 @@ Gate "cargo fmt --all -- --check" $code 0
 if ($fmt.Count -ne 0) { $script:fail += "cargo fmt --check printed $($fmt.Count) line(s)" }
 
 "===================================================================="
+$verdict = @()
 if ($script:fail.Count -eq 0) {
-    "AUDIT RESULT: every gate green."
+    $verdict += "AUDIT RESULT: every gate green."
 } else {
-    "AUDIT RESULT: $($script:fail.Count) failure(s):"
-    $script:fail | ForEach-Object { "  - $_" }
+    $verdict += "AUDIT RESULT: $($script:fail.Count) failure(s):"
+    $verdict += $script:fail | ForEach-Object { "  - $_" }
 }
-"finished: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-"full output: $log"
-"===================================================================="
+$verdict += "finished: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+$verdict += "full output: $log"
+$verdict += "===================================================================="
+$verdict
+Add-Content -Path $log -Value $verdict -Encoding utf8
 if ($script:fail.Count -ne 0) { exit 1 }
 exit 0
