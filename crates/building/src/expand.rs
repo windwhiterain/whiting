@@ -375,6 +375,37 @@ pub enum Problem {
         /// The thickness that was given.
         thickness: f32,
     },
+    /// A member's axis has no length, or its `across` is parallel to it, so there is no section to
+    /// sweep.
+    MemberDegenerate {
+        /// The member.
+        member: crate::member::MemberId,
+        /// The length its two ends give it.
+        length: f32,
+    },
+    /// A member's section has no area.
+    MemberNotThick {
+        /// The member.
+        member: crate::member::MemberId,
+        /// The width that was given.
+        width: f32,
+        /// The depth that was given.
+        depth: f32,
+    },
+    /// A member's end cannot be resolved to a point: it names a member the document does not hold, or
+    /// carries a coordinate that is not a number.
+    MemberAnchorUnresolved {
+        /// The member.
+        member: crate::member::MemberId,
+        /// Which end: `0` is `from`, `1` is `to`.
+        end: usize,
+    },
+    /// A member's anchors close on themselves, so no pass of the resolution can give any of them a
+    /// point.
+    MemberAnchorCycle {
+        /// One member of the cycle.
+        member: crate::member::MemberId,
+    },
     /// A wall's top is at or below the ground it stands on, so it is not a wall.
     WallTooLow {
         /// The wall.
@@ -518,6 +549,20 @@ pub fn build_with(
     }
     for (index, slab) in skeleton.slabs.iter().enumerate() {
         if let Err(found) = expand_slab(&mut mesh, SlabId(index), slab) {
+            problems.extend(found);
+        }
+    }
+    // **The members are resolved before any of them is drawn**, so a joint is one point: an anchor
+    // names a fraction of another member's segment, and a frame that resolved each joint as it drew
+    // would put two brackets on one post at two points that agree only to the last bit.
+    let anchors = resolve_members(skeleton, &mut problems);
+    for (index, member) in skeleton.members.iter().enumerate() {
+        let Some((from, to)) = anchors[index] else {
+            continue;
+        };
+        if let Err(found) =
+            expand_member(&mut mesh, crate::member::MemberId(index), member, from, to)
+        {
             problems.extend(found);
         }
     }
@@ -891,6 +936,9 @@ fn expand_placement(
                     Element::Part { surface, .. } => surface,
                     Element::Wall(id, surface) => PartSurface::Wall(id, surface),
                     Element::Slab(id, surface) => PartSurface::Slab(id, surface),
+                    // A member inside a template is the same statement one kind further out: the map
+                    // is total, and a template that held a frame piece would name it here.
+                    Element::Member(id, surface) => PartSurface::Member(id, surface),
                 },
             },
         })
@@ -1662,6 +1710,158 @@ fn halves_of(surface: MassSurface) -> (MassSurface, MassSurface) {
         ),
         other => (other, other),
     }
+}
+
+/// Expands one member into one closed solid of four sides and two ends.
+///
+/// # Invariants
+///
+/// **The two ends are resolved before this is called**, by [`resolve_members`], and the segment it is
+/// handed is the one every anchor that named this member has already read: a joint lands at one point
+/// rather than at two that nearly agree.
+///
+/// The winding is outward per face, derived from the frame rather than guessed: the frame is right
+/// handed in `(axis, width, depth)`, so the `+width` side's outward normal is `+width` and the corner
+/// order below is what makes its normal point that way.
+fn expand_member(
+    mesh: &mut BuildingMesh,
+    id: crate::member::MemberId,
+    member: &crate::member::Member,
+    from: Vec3,
+    to: Vec3,
+) -> Result<(), Vec<Problem>> {
+    if !(member.width > 0.0 && member.depth > 0.0) {
+        return Err(vec![Problem::MemberNotThick {
+            member: id,
+            width: member.width,
+            depth: member.depth,
+        }]);
+    }
+    let Some((_axis, width, depth)) = member.frame(from, to) else {
+        return Err(vec![Problem::MemberDegenerate {
+            member: id,
+            length: member.length(from, to),
+        }]);
+    };
+    let half_width = member.width * 0.5;
+    let half_depth = member.depth * 0.5;
+    let mut corner = |base: Vec3, out: f32, up: f32| {
+        let at = [
+            base[0] + width[0] * half_width * out + depth[0] * half_depth * up,
+            base[1] + width[1] * half_width * out + depth[1] * half_depth * up,
+            base[2] + width[2] * half_width * out + depth[2] * half_depth * up,
+        ];
+        mesh.points.push(at);
+        (mesh.points.len() - 1) as u32
+    };
+    // Start end, counter-clockwise in the frame's own `(width, depth)` plane, then the same at the finish.
+    let start: [u32; 4] = [
+        corner(from, -1.0, -1.0),
+        corner(from, 1.0, -1.0),
+        corner(from, 1.0, 1.0),
+        corner(from, -1.0, 1.0),
+    ];
+    let finish: [u32; 4] = [
+        corner(to, -1.0, -1.0),
+        corner(to, 1.0, -1.0),
+        corner(to, 1.0, 1.0),
+        corner(to, -1.0, 1.0),
+    ];
+    let element = |surface: crate::member::MemberSurface| Element::Member(id, surface);
+    let mut push = |corners: [u32; 4], surface: crate::member::MemberSurface| {
+        mesh.faces.push(BuildingFace {
+            indices: [corners[0], corners[1], corners[2]],
+            element: element(surface),
+        });
+        mesh.faces.push(BuildingFace {
+            indices: [corners[0], corners[2], corners[3]],
+            element: element(surface),
+        });
+    };
+    // The two ends. The start's outward normal is `-axis`, so it is wound the other way round.
+    push(
+        [start[0], start[3], start[2], start[1]],
+        crate::member::MemberSurface::End { start: true },
+    );
+    push(finish, crate::member::MemberSurface::End { start: false });
+    let side = |index: usize| crate::member::MemberSurface::Side { index };
+    push([start[1], start[2], finish[2], finish[1]], side(0));
+    push([start[3], finish[3], finish[2], start[2]], side(1));
+    push([start[0], finish[0], finish[3], start[3]], side(2));
+    push([start[0], start[1], finish[1], finish[0]], side(3));
+    Ok(())
+}
+
+/// Resolves every member's two ends, reporting what cannot be resolved.
+///
+/// # Invariants
+///
+/// **An anchor is a fraction of another member's own segment**, so the answer is a point and not a
+/// coordinate test: two brackets on one post are on one line, whatever the arithmetic of their `t`
+/// values. The resolution is a fixed point rather than a recursion so that a document of `n` members
+/// costs `O(n²)` passes in the worst case and **no stack**: a chain of anchors resolves in one pass per
+/// link, and a chain that closes on itself stops making progress, which is what a cycle is.
+///
+/// A name the document does not hold, a non-finite coordinate, and a fraction that is not a number are
+/// all **the same fault with the same fix**: this end is not a point. That is
+/// [`MemberAnchorUnresolved`].
+fn resolve_members(
+    skeleton: &BuildingSkeleton,
+    problems: &mut Vec<Problem>,
+) -> Vec<Option<(Vec3, Vec3)>> {
+    use crate::member::Anchor;
+    let count = skeleton.members.len();
+    let mut ends: Vec<Option<(Vec3, Vec3)>> = vec![None; count];
+    let mut broken = vec![false; count];
+    let resolvable = |anchor: &Anchor| match anchor {
+        Anchor::Free { at } => at.iter().all(|value| value.is_finite()),
+        Anchor::OnMember { member, t } => member.0 < count && t.is_finite(),
+    };
+    for (index, member) in skeleton.members.iter().enumerate() {
+        for (end, anchor) in [(0_usize, member.from), (1, member.to)] {
+            if !resolvable(&anchor) {
+                problems.push(Problem::MemberAnchorUnresolved {
+                    member: crate::member::MemberId(index),
+                    end,
+                });
+                broken[index] = true;
+            }
+        }
+    }
+    for _ in 0..=count {
+        let mut progress = false;
+        for index in 0..count {
+            if ends[index].is_some() || broken[index] {
+                continue;
+            }
+            let member = &skeleton.members[index];
+            let point = |anchor: Anchor| match anchor {
+                Anchor::Free { at } => Some(at),
+                Anchor::OnMember { member: named, t } => ends[named.0].map(|(from, to)| {
+                    [
+                        from[0] + (to[0] - from[0]) * t,
+                        from[1] + (to[1] - from[1]) * t,
+                        from[2] + (to[2] - from[2]) * t,
+                    ]
+                }),
+            };
+            if let (Some(from), Some(to)) = (point(member.from), point(member.to)) {
+                ends[index] = Some((from, to));
+                progress = true;
+            }
+        }
+        if !progress {
+            break;
+        }
+    }
+    for index in 0..count {
+        if ends[index].is_none() && !broken[index] {
+            problems.push(Problem::MemberAnchorCycle {
+                member: crate::member::MemberId(index),
+            });
+        }
+    }
+    ends
 }
 
 /// Prints every edge of a ring that has no opposite, naming the face that drew it.

@@ -61,6 +61,7 @@ pub mod grid;
 pub mod identity;
 pub mod mass;
 pub mod math;
+pub mod member;
 pub mod mesh;
 pub mod openings;
 pub mod ops;
@@ -75,6 +76,7 @@ pub mod wall;
 pub use expand::{BuildError, Problem, build};
 pub use grid::{Bay, FaceGrid, FaceRef, GRID_TOLERANCE, Grids, Rhythm};
 pub use mass::{Attachment, AuthoredLoop, Mass, MassId, PlanNode};
+pub use member::{Anchor, Member, MemberId, MemberSurface};
 pub use mesh::{
     BuildingFace, BuildingMesh, CornerNormals, Element, MassSurface, RoofSurface, SolidId,
 };

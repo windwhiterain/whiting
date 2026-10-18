@@ -45,7 +45,6 @@ use crate::grid::GRID_TOLERANCE;
 use crate::mass::{MassId, PlanNode};
 use crate::math::{Vec2, distance, lerp};
 use crate::skeleton::BuildingSkeleton;
-use crate::wall::Wall;
 
 /// What seating one mass did.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -303,9 +302,10 @@ impl Stilt {
 ///   to the ground under it and the top by the change in its mean — which would leave a post standing on
 ///   the ground with its top no longer at the underside. Order is the caller's, and it is stated here
 ///   rather than enforced because the document has no way to mark a wall as a post.
-/// - **A post is a short [`Wall`] run**, because that is what a square post is: a run of `section`
-///   metres with a `section`-metre thickness, a level top and a bottom that follows the ground at its
-///   two ends. D3's member replaces this when it lands; nothing here depends on it not existing.
+/// - **A post is a [`Member`](crate::member::Member) now**, standing on one point of ground with its
+///   head `embed` into the plate. It was a short `Wall` run — a section's length across the ground and
+///   a level top — and that foot tilted with the hill it stood on, which is what a wall does and not
+///   what a post on a stone does.
 /// - **The post's top is `embed` above the underside**, so its top face stands *inside* the plate
 ///   rather than coplanar with the plate's own bottom. Two solids may touch, but two **coincident
 ///   faces** are two surfaces at one depth and a rasteriser draws them fighting: the stilt scene's first
@@ -329,7 +329,7 @@ pub fn posts(
         return report;
     }
     let half = section * 0.5;
-    let mut appended: Vec<Wall> = Vec::new();
+    let mut appended: Vec<crate::member::Member> = Vec::new();
     for (index, mass) in skeleton.masses.iter().enumerate() {
         let underside = mass.lowest() - mass.slab;
         if !underside.is_finite() {
@@ -339,23 +339,33 @@ pub fn posts(
         let mut highest = f32::NEG_INFINITY;
         let mut lowest = f32::INFINITY;
         for at in post_positions(&mass.outline, spacing) {
-            let from_at = [at[0] - half, at[1]];
-            let to_at = [at[0] + half, at[1]];
-            let (from_ground, to_ground) = (ground(from_at), ground(to_at));
-            if !(from_ground.is_finite() && to_ground.is_finite()) {
+            // **A post is a member now, and a member's foot is one point.** The wall it used to be was
+            // a run of its own section across the ground, so its foot tilted with the hill it stood on;
+            // a real post stands on a stone, and the stone is level. The head is the same point it
+            // always was, `embed` into the plate.
+            let foot = ground(at);
+            if !foot.is_finite() {
                 report.refused += 1;
                 continue;
             }
-            if from_ground.max(to_ground) >= underside {
+            if foot >= underside {
                 continue;
             }
-            highest = highest.max(from_ground.max(to_ground));
-            lowest = lowest.min(from_ground.min(to_ground));
-            appended.push(Wall::new(
-                PlanNode::new(from_at, from_ground),
-                PlanNode::new(to_at, to_ground),
+            let _ = half;
+            highest = highest.max(foot);
+            lowest = lowest.min(foot);
+            appended.push(crate::member::Member::new(
+                crate::member::Anchor::Free {
+                    at: [at[0], foot, at[1]],
+                },
+                crate::member::Anchor::Free {
+                    at: [at[0], underside + embed, at[1]],
+                },
+                // A square post's faces run with the walls it stands under, and a plan normal is the
+                // one direction a member's `across` can be read without knowing the axis.
+                [1.0, 0.0],
                 section,
-                underside + embed,
+                section,
             ));
             placed += 1;
         }
@@ -370,7 +380,7 @@ pub fn posts(
         }
     }
     report.posts = appended.len();
-    skeleton.walls.extend(appended);
+    skeleton.members.extend(appended);
     report
 }
 

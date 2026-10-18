@@ -55,6 +55,8 @@ pub struct BuildingSkeleton {
     pub walls: Vec<Wall>,
     /// The slabs: level prisms over plan polygons, which is what a flat roof is.
     pub slabs: Vec<Slab>,
+    /// The members: one straight piece of frame each, from one anchor to another.
+    pub members: Vec<crate::member::Member>,
 }
 
 impl BuildingSkeleton {
@@ -69,6 +71,7 @@ impl BuildingSkeleton {
             parts: Parts::new(),
             walls: Vec::new(),
             slabs: Vec::new(),
+            members: Vec::new(),
         }
     }
 

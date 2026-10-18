@@ -145,6 +145,7 @@ fn main() {
                 PartSurface::Roof(id, held_surface) => Element::Roof(*id, *held_surface),
                 PartSurface::Wall(id, held_surface) => Element::Wall(*id, *held_surface),
                 PartSurface::Slab(id, held_surface) => Element::Slab(*id, *held_surface),
+                PartSurface::Member(id, held_surface) => Element::Member(*id, *held_surface),
             };
             let Some(local_id) = local.id_of(local_element) else {
                 in_step = false;

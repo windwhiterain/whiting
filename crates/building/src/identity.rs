@@ -159,6 +159,7 @@ fn describe(element: Element) -> String {
         Element::Roof(id, surface) => format!("{}, {}", roof_title(id), roof_surface(surface)),
         Element::Wall(id, surface) => format!("wall {}, {}", id.0, wall_surface(surface)),
         Element::Slab(id, surface) => format!("slab {}, {}", id.0, slab_surface(surface)),
+        Element::Member(id, surface) => format!("member {}, {}", id.0, member_surface(surface)),
         Element::Part { placement, surface } => match surface {
             PartSurface::Mass(id, surface) => format!(
                 "part {placement}, template mass {}, {}",
@@ -179,6 +180,11 @@ fn describe(element: Element) -> String {
                 "part {placement}, template slab {}, {}",
                 id.0,
                 slab_surface(surface)
+            ),
+            PartSurface::Member(id, surface) => format!(
+                "part {placement}, template member {}, {}",
+                id.0,
+                member_surface(surface)
             ),
         },
     }
@@ -204,6 +210,20 @@ fn wall_surface(surface: crate::wall::WallSurface) -> String {
         crate::wall::WallSurface::End { start: false } => "its far end".to_owned(),
         crate::wall::WallSurface::Bottom => "its underside".to_owned(),
         crate::wall::WallSurface::Top => "its top".to_owned(),
+    }
+}
+
+/// Returns the sentence for one of a member's surfaces.
+///
+/// The four sides are numbered around the axis, and the name says which way each faces rather than
+/// which index it is: "the side facing across 0" is a number an author can act on.
+fn member_surface(surface: crate::member::MemberSurface) -> String {
+    match surface {
+        crate::member::MemberSurface::Side { index: 0 } => "the side facing its across".to_owned(),
+        crate::member::MemberSurface::Side { index: 2 } => "the side facing away".to_owned(),
+        crate::member::MemberSurface::Side { index } => format!("its side {index}"),
+        crate::member::MemberSurface::End { start: true } => "its start end".to_owned(),
+        crate::member::MemberSurface::End { start: false } => "its far end".to_owned(),
     }
 }
 

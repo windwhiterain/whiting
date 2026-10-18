@@ -2000,9 +2000,14 @@ fn check_solid(
         // it — and a door in its wall is a handle through the ring's own thickness exactly as a
         // window in the mass's wall is a handle through the mass's.
         SolidId::Void { mass, void } => handles(skeleton, mass, Some(void)),
-        // A part, a wall and a roof are cut by nothing: a hole is authored against a mass's own wall,
-        // a template's masses are its own private document, and a wall's own box is solid.
-        SolidId::Roof(_) | SolidId::Part(_) | SolidId::Wall(_) | SolidId::Slab(_) => 0,
+        // A part, a wall, a roof, a slab and a member are cut by nothing: a hole is authored against
+        // a mass's own wall, a template's masses are its own private document, and a member's own box
+        // is solid.
+        SolidId::Roof(_)
+        | SolidId::Part(_)
+        | SolidId::Wall(_)
+        | SolidId::Slab(_)
+        | SolidId::Member(_) => 0,
     };
     // **A ring is one handle before any opening is cut.** The volume model makes a mass a closed tube: its
     // inner and outer surfaces meet at the wall top and again at the base ring, so the solid is a torus and a torus is
@@ -3354,6 +3359,7 @@ fn solid_rank(solid: &SolidId) -> u64 {
         SolidId::Wall(wall) => (3 << 32) | wall.0 as u64,
         SolidId::Slab(slab) => (4 << 32) | slab.0 as u64,
         SolidId::Void { mass, void } => (5 << 32) | ((mass.0 as u64) << 16) | *void as u64,
+        SolidId::Member(member) => (6 << 32) | member.0 as u64,
     }
 }
 

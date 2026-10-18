@@ -14,8 +14,8 @@
 
 use whiting_building::derive::{RoofStyle, Starter, starter};
 use whiting_building::math::Vec2;
+use whiting_building::member::{Anchor, MemberId};
 use whiting_building::site::{posts, seat};
-use whiting_building::wall::WallId;
 use whiting_building::{Building, SolidId};
 
 /// The house: three bays across a 10 m front, 6 m deep, one storey under a gable.
@@ -73,11 +73,11 @@ fn main() {
         seated.masses[0].fall()
     );
     println!(
-        "  {} post(s) under mass {}, {} refused, {} wall(s) in the document",
+        "  {} post(s) under mass {}, {} refused, {} member(s) in the document",
         stilt.posts,
         one.mass.0,
         stilt.refused,
-        building.skeleton.walls.len()
+        building.skeleton.members.len()
     );
     println!(
         "  the posts reach the underside at {:.4} m and stand between {:.4} and {:.4} m of ground: \
@@ -93,12 +93,15 @@ fn main() {
     let mut worst_foot = 0.0_f32;
     let mut shortest = f32::INFINITY;
     let mut longest = f32::NEG_INFINITY;
-    for wall in &building.skeleton.walls {
-        for end in [&wall.from, &wall.to] {
-            worst_foot = worst_foot.max((end.elevation - ground(end.position)).abs());
-        }
-        let foot = wall.from.elevation.min(wall.to.elevation);
-        let length = wall.top - foot;
+    for member in &building.skeleton.members {
+        let Anchor::Free { at: foot } = member.from else {
+            panic!("a post is a free member: its foot is a point, not an anchor");
+        };
+        let Anchor::Free { at: head } = member.to else {
+            panic!("a post's head is a point too");
+        };
+        worst_foot = worst_foot.max((foot[1] - ground([foot[0], foot[2]])).abs());
+        let length = head[1] - foot[1];
         shortest = shortest.min(length);
         longest = longest.max(length);
     }
@@ -113,8 +116,8 @@ fn main() {
     );
     assert!(stilt.posts > 0, "a banked house must stand on posts");
     assert!(
-        stilt.posts == building.skeleton.walls.len(),
-        "nothing else in this document is a wall"
+        stilt.posts == building.skeleton.members.len(),
+        "nothing else in this document is a member"
     );
 
     // The floor stays level, which is what seating bought and posts must not spend.
@@ -134,15 +137,15 @@ fn main() {
     println!("\n# the uphill side stands on the hill, not on posts");
     let uphill = building
         .skeleton
-        .walls
+        .members
         .iter()
-        .filter(|wall| wall.from.position[0] > one.underside / SLOPE)
+        .filter(|member| foot_of(member)[0] > one.underside / SLOPE)
         .count();
     let reach = building
         .skeleton
-        .walls
+        .members
         .iter()
-        .map(|wall| wall.from.position[0])
+        .map(|member| foot_of(member)[0])
         .fold(f32::NEG_INFINITY, f32::max);
     println!(
         "  {uphill} post(s) stand uphill of x = {:.4} (where the ground reaches the underside), and \
@@ -158,10 +161,10 @@ fn main() {
     let _ = seat(&mut level.skeleton, |_| 0.0, 0.0);
     let none = posts(&mut level.skeleton, |_| 0.0, SPACING, SECTION, EMBED);
     println!(
-        "  ground at 0 everywhere: {} post(s), {} mass(es) given any, {} wall(s)",
+        "  ground at 0 everywhere: {} post(s), {} mass(es) given any, {} member(s)",
         none.posts,
         none.len(),
-        level.skeleton.walls.len()
+        level.skeleton.members.len()
     );
     assert_eq!(none.posts, 0, "a house on its ground is not a stilt house");
 
@@ -196,7 +199,7 @@ fn main() {
         flat.faces.len(),
         flat.points.len()
     );
-    let post = SolidId::Wall(WallId(0));
+    let post = SolidId::Member(MemberId(0));
     println!(
         "  post 0: {} faces, loops {}, euler {}, manifold {}, volume {:.6} m³",
         built.faces_of(post).len(),
@@ -207,4 +210,12 @@ fn main() {
     );
     assert_eq!(violations, 0, "a stilt house is a document like any other");
     assert!(built.faces.len() > flat.faces.len(), "the posts are drawn");
+}
+
+/// Returns the plan point a member''s foot stands at, which for a post is its `from` anchor.
+fn foot_of(member: &whiting_building::Member) -> [f32; 2] {
+    match member.from {
+        Anchor::Free { at } => [at[0], at[2]],
+        Anchor::OnMember { .. } => [f32::NAN, f32::NAN],
+    }
 }

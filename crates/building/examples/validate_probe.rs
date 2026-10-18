@@ -673,7 +673,11 @@ fn authored_loop_area(skeleton: &BuildingSkeleton, solid: SolidId) -> Option<f32
         // A mass's ring is an annulus, a part has no loop of its own in this document — its geometry
         // lives in its template — a wall is a box rather than a loop, and a courtyard's ring is the
         // annulus between two loops of its own.
-        SolidId::Mass(_) | SolidId::Part(_) | SolidId::Wall(_) | SolidId::Void { .. } => None,
+        SolidId::Mass(_)
+        | SolidId::Part(_)
+        | SolidId::Wall(_)
+        | SolidId::Member(_)
+        | SolidId::Void { .. } => None,
     }
 }
 

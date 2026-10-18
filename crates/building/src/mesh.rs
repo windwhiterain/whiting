@@ -238,6 +238,16 @@ pub enum Element {
     Wall(crate::wall::WallId, crate::wall::WallSurface),
     /// A face of a slab.
     Slab(crate::slab::SlabId, crate::slab::SlabSurface),
+    /// A face of a member: one straight piece of frame, which is the crate's sixth kind of solid.
+    ///
+    /// # Invariants
+    ///
+    /// **It is not a wall with a different elevation.** A wall is masonry: it stands on the ground its
+    /// two ends carry and its top is level, so its geometry is the site's. A member is placed in the
+    /// air between two [`Anchor`](crate::member::Anchor)s and its axis is any direction, so its two
+    /// ends answer to what it joins rather than to the ground — and a post, a bracket and a purlin are
+    /// one kind because that is the whole of what they are.
+    Member(crate::member::MemberId, crate::member::MemberSurface),
 }
 
 /// What a part's face was inside the template it was copied from.
@@ -263,6 +273,9 @@ pub enum PartSurface {
     /// same reason as the wall variant above — the map from an element to a template's own element has to
     /// be total, and a `panic!` there would be a crash for a type the document can express.
     Slab(crate::slab::SlabId, crate::slab::SlabSurface),
+    /// A face of one of the template's members, which no template holds today for the reason the wall
+    /// and slab variants give: the map has to be total.
+    Member(crate::member::MemberId, crate::member::MemberSurface),
 }
 
 impl Element {
@@ -274,6 +287,7 @@ impl Element {
             Self::Part { placement, .. } => SolidId::Part(*placement),
             Self::Wall(id, _) => SolidId::Wall(*id),
             Self::Slab(id, _) => SolidId::Slab(*id),
+            Self::Member(id, _) => SolidId::Member(*id),
         }
     }
 }
@@ -322,6 +336,9 @@ pub enum SolidId {
     Wall(crate::wall::WallId),
     /// A slab, by its index in the document's slabs.
     Slab(crate::slab::SlabId),
+    /// A member, by its index in the document's members: one straight piece of frame, closed and
+    /// oriented outward like every other solid.
+    Member(crate::member::MemberId),
 }
 
 /// One triangle, and the element that produced it.

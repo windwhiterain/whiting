@@ -212,7 +212,7 @@ foreach ($pkg in $expect.Keys) {
 "--------------------------------------------------------------------"
 "[5/8] every example in building and gallery"
 "--------------------------------------------------------------------"
-foreach ($pair in @(@("whiting-building", "building", 32), @("whiting-gallery", "gallery", 16))) {
+foreach ($pair in @(@("whiting-building", "building", 33), @("whiting-gallery", "gallery", 16))) {
     $pkg = $pair[0]; $dir = $pair[1]; $want = $pair[2]
     $examples = Get-ChildItem (Join-Path (Join-Path (Join-Path $root "crates") $dir) "examples") -Filter *.rs | Sort-Object Name
     $ran = 0; $bad = @()
@@ -237,7 +237,7 @@ $pinned = [ordered]@{
     house      = "2F60685F737F7ED7"; hall       = "96F61FA5E9F18E60"; hall_large = "478E692C6CBE2D3B"
     shed       = "48909F693ACBA634"; terrace    = "E32C1CA08D9F3016"; wing       = "2EF5C4FB206167F4"
     workshop   = "EB8E05CD755B9B4B"; yard       = "D33D5F3372A4F0B0"; identity   = "48F13F7D84A24480"
-    stilt      = "2DB5EE0D9E0E1297"
+    stilt      = "F90C153B1605E750"
 }
 # How it is proved to fail: change one pinned value above, run it, watch the two numbers
 # disagree and the exit code come back 1, then change it back. That is the whole test, and it

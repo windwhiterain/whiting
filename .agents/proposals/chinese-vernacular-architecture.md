@@ -793,6 +793,33 @@ ring grows the parameter, and `cut_edge` interpolates the top along its stations
 probe's rows went **999 → 1009** — the four warped strips' second halves and the strips the split
 added.
 
+### Arc 4 is half closed: the frame exists, the 挑廊 does not yet
+
+`Member` is the crate's **sixth kind of solid**: one straight piece of frame from one
+[`Anchor`](crate::member::Anchor) to another, with a rectangular section swept along its own axis.
+`Anchor::Free` is the point as authored; `Anchor::OnMember` is a **fraction of another member's axis**,
+which is what a joint is. The anchors are resolved to a fixed point **before anything is expanded**, so
+a bracket on a beam lands on the beam's own line rather than at a point that nearly agrees.
+
+`site::posts` emits members now, and that changed the model rather than the picture: a post used to be
+a short `Wall` run whose foot followed the ground across its own section, and a real post stands on a
+**stone**, which is level. The scene's picture moved by one hash (`F90C153B1605E750`) and the identity
+probe's rows did not move at all — a post had six surfaces as a wall and has six as a member.
+
+Measured on `member_probe` — two posts, a beam across their heads, a bracket on the beam:
+
+| number | value |
+| --- | --- |
+| each member | **12 faces, loops 0, euler 2, manifold** |
+| the volume | **0.120000005** against `0.2 × 0.2 × 3` = 0.12; the beam **0.037500013** against 0.0375 — the largest error over four members is **7e-8 m³** |
+| the joint | the beam's axis is the post heads' elevation, off by **0.00e0 m** |
+| the refusals | `MemberDegenerate` (an axis with no length *and* an `across` along the axis), `MemberNotThick`, `MemberAnchorUnresolved`, `MemberAnchorCycle` (reported once per member of the cycle) |
+
+**What this arc deliberately does not do yet**, and it is the visible half: the **挑廊** is a plate
+outside the mass's outline standing on brackets, so it needs `Anchor::OnMember` in a scene and a plate
+that `site::posts` did not place. `Anchor::OnFace` (a bracket pinned to a wall) is not a variant yet
+either — a variant is added when a scene draws it, not before.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

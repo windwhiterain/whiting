@@ -10,7 +10,6 @@
 //! What this scene deliberately does not draw, because the constructs do not exist yet:
 //!
 //! - **no crowned wall top** — the gable is closed by the roof's fascia (Arc 3, D2);
-//! - **no timber frame** — the posts are short `Wall` runs, not members with joints (Arc 4, D3);
 //! - **no gallery** — a 挑廊 is a plate standing on cantilevers, and a cantilever is a member (Arc 4);
 //! - **no tiles** — the covering is geometry in the design and not in the crate yet (Arc 5, D9).
 //!
@@ -202,7 +201,7 @@ pub fn stilt() -> Value {
         )
     });
     let posts = packed_where(&built, &table, |element| {
-        matches!(element, building::Element::Wall(_, _))
+        matches!(element, building::Element::Member(_, _))
     });
 
     // A whitewashed wall, a grey tile roof, a dark floor, a darker post and dry earth. The five differ
