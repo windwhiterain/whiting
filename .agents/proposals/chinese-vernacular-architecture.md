@@ -134,7 +134,7 @@ the site model refuses.
 
 | What the type needs | In the model today | The smallest construct that closes it |
 | --- | --- | --- |
-| 举架 / 举折 roof profile | one slope per plane | a profile of *k* steps on `RoofPlane` |
+| 举架 / 举折 roof profile | one slope per plane | a section of *k* steps on `Roof` |
 | 硬山 gable, 马头墙, 照壁 top | `top: f32` | a crown (a top profile) on `Mass` and `Wall` |
 | 穿枋, 挑枋, 撑弓, 檩, 椽 | nothing with a sloped axis | `Member`: a prism over a 3D segment |
 | 吊脚 posts, open underside | terrace seating | a stilt seating mode, plus `Member` posts |
@@ -154,37 +154,50 @@ the pitch minima each covering needs.
 Six moves. Four are new constructs and two are completions; each names what it buys, the invariant it
 must keep, and the sentence it refuses to build.
 
-### D1. A roof holds a purlin profile, and the profile is elevations
+### D1. A roof holds a section, and the section is a fraction **and** a rise
 
-`Roof` gains one field: `purlins: Vec<f32>` — the **absolute elevations of the purlins**, strictly
-between the eave's lower bound and the crest, in ascending order. Expansion cuts every plane into
-`purlins.len() + 1` strips at those elevations. The strips are the 步架, and the steepening towards the
-ridge is what the elevations do when the 步架 have equal plan widths.
+`Roof` gains one field: `profile: Vec<Step>`, each `Step { fraction, rise }` — the fraction of the
+slope's plan run from the eave, and the rise above that row's own eave elevation. The list is strictly
+increasing in both, every step strictly inside `(0, 1)` in fraction and strictly below the crest in
+rise. Expansion turns each authored row into a **polyline** through those steps, and each plane into
+`profile.len() + 1` strips of quads. The strips are the 步架.
 
-Why elevations and not fractions, and why that single choice is the whole design:
+Why a section and not one of its two halves — each spelling fails in a different corner, and the two
+failures are why this is one datum and not two:
 
-- **A horizontal cut of a plane is a straight line parallel to the plane's two rows.** The plane is a
-  ruled strip between a crest row and an eave row, both horizontal, so a cut at elevation `e` is a
-  horizontal segment between them, every strip is a planar trapezoid, and the planarity contract is
-  kept with no tessellation and no curve.
-- **Two planes that share a line break it at the same points.** The shared line (a ridge or a hip) is
-  a straight 3D line; its point at elevation `e` is one point, on both planes. Cut at *fractions* of
-  each plane's own run instead and the two planes would break the shared line at different places, the
-  shared edge would be subdivided differently on each side, and the expansion's boundary-edge
-  cancellation would read the roof as open. A fraction-based profile is the obvious design and it is
-  the one that fails; elevations are the one that holds.
-- **The eave stays level per edge**, which is what a 悬山's eave is. A corner that turns up (起翘) is
-  **not** a raised eave node: a raised node makes the eave row non-horizontal, the crest and eave rows
-  non-parallel, and the strip non-planar — refused, correctly. The corner upturn is its own small
-  plane or its own member, which is also how it is built.
+- **Rises alone fail on a sloping eave.** A cut "at elevation e" lands at a different fraction on two
+  rows whose spans differ, so the cut line stops being parallel to the rows and the sub-quad stops
+  being planar — and a level ridge with a level eave hides this completely, because then the two
+  profiles are the same up to a change of parameter.
+- **Fractions alone have no heights.** A fraction says where the purlin stands along the run; the
+  rise says how high. 举架 is the pair — each 步架 has a width and a rise, and the roof's concavity is
+  the ratio changing between them.
+- **The pair is also what keeps the strips planar.** Rows of one plane are parallel in the ordinary
+  case — a gable's two slopes, a shed's single slope — so a step's two segments are parallel, and the
+  quad between them is a planar trapezoid. A **fan** (a hip's triangular end, rows meeting at one
+  crest point) has no such pair of parallel segments, and a level purlin cannot cross a fan as a
+  straight line: that plane is refused by name rather than given a second rule.
+- **Watertightness owes the profile nothing.** The vertices a step adds are identified by *(the row's
+  own identity, the step index)*, so two planes sharing a row share every vertex of it by the crate's
+  existing welding rule, not by a coordinate test.
+
+And what the row's polyline means physically: the roof surface bends at every purlin. It is not one
+slope with marks on it — it is a chain of planes, which is what a 举架 roof *is*, and why the profile
+belongs on the roof rather than being derived per plane.
 
 What it buys: the silhouette. A Chinese roof is read from its profile — shallow at the eave, steep at
 the ridge, with a distinct break at every purlin — and that profile is the one thing a straight tent
 cannot fake.
 
-Refusals: `PurlinsOutOfOrder` (not strictly ascending, or outside the eave/crest range),
-`PurlinAboveCrest` (a purlin at or above the crest of a plane that carries it), and the existing
-`SolidOpen` if two planes still disagree.
+Refusals: `ProfileOutOfOrder` (a fraction not strictly increasing inside `(0, 1)`, or a rise not
+strictly increasing above the eave), `ProfileReachesTheCrest` (a step at or above the crest's own
+rise), `ProfileOnAFan` (a plane whose rows are not parallel, which a level purlin cannot cross
+straight), and the existing `SolidOpen` if two planes still disagree.
+
+The way a 起翘 corner stays legal is worth one sentence: a raised eave node tilts its row, which is
+the sloping-eave case, and the *same fraction* then lands at a different elevation along the eave —
+a rising eave, correctly. A corner built as its own 翘角 piece is its own small plane or its own
+member.
 
 ### D2. A wall top is a profile
 
@@ -266,7 +279,7 @@ gets a scene whose document is 60 lines instead of 600.
 
 | Move | New fields | Code that changes | The gate it must pass |
 | --- | --- | --- | --- |
-| D1 purlins | `Roof::purlins` | `expand` (roof strips), `roof` (accessors), `validate` (two refusals) | a probe that every strip is planar and the strips tile the loop |
+| D1 profile | `Roof::profile` | `expand` (row polylines, strips), `roof` (accessors), `validate` (three refusals) | a probe that every strip is planar and the strips tile the loop |
 | D2 crowns | `Mass::tops`, `Wall::crown` | `expand` (ring top strips, wall faces), `validate` | a probe that a crowned ring is closed and planar |
 | D3 members | `Member`, a list in the document, a `SolidId` | `expand`, `mesh` (element), `identity`, `validate` | a probe that a member is closed and outward, and that two members overlapping without a host are reported |
 | D4 stilts | a seating mode | `site` | a probe on an analytic slope: posts land on the ground, the floor stays level |
@@ -278,9 +291,10 @@ gets a scene whose document is 60 lines instead of 600.
 Each is a real choice with a cost somewhere; none is "obviously right".
 
 **F1. The roof's profile — three ways, one recommendation.**
-- (a) *Purlin elevations, planar strips* (D1). Keeps planarity, keeps watertightness, matches how the
-  roof is built (a purlin polyline is not a smooth curve; the curve is what you see through it).
-  Costs: a roof's planes gain intermediate rows, and a 起翘 corner is a separate piece.
+- (a) *A section of fraction and rise, cut into planar strips* (D1). Keeps planarity, keeps
+  watertightness, and matches how the roof is built (a 举架 roof is a chain of planes, not a curve).
+  Costs: every row becomes a polyline, a fan plane cannot take a profile, and a 起翘 corner is a
+  separate piece.
 - (b) *A curved, tessellated roof surface.* Truer to a tile surface, and it breaks the crate's
   one-face-one-plane contract, its shading groups, and the fascia derivation — three invariants for
   one silhouette.
@@ -343,9 +357,9 @@ alone. The gate cost per scene is real and known: a `.png` hash pin in `[6/8]`, 
 
 ## What would make this proposal wrong
 
-- If the purlin profile cannot be cut at shared elevations without a strip degenerating on a short
-  hip end (a plane whose run is shorter than the plan width of the top step), D1 needs a rule for
-  vanishing strips. Not measured.
+- If a roof needs a **hip** (庑殿, 歇山) *and* a profile, D1 refuses the fan plane and the roof has to
+  be built as two roofs or with a different section rule. The vernacular south-west is overwhelmingly
+  悬山/硬山, so this is a boundary rather than a hole — but it is a boundary, and it is not measured.
 - If a crowned mass's miter at a corner cannot be given one elevation per node without folding a top
   strip, D2 is wrong and (b) is the answer. Not measured; the algebra above says it is fine, and
   algebra is not a probe.
