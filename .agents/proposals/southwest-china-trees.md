@@ -349,6 +349,51 @@ allow, and the note's per-twig fascicle density is honoured while the twig count
 written into the species' verdict rather than hidden: **arc 2's pine is a pine at the density the
 system allows, and closing the density is arc 7's first job.**
 
+### 4.11 Foliage must shadow foliage — the shadow bias is a crown-killer
+
+**Pulls it:** H3 for every species, and the proposal's own D18 sentence (*"a close crown's
+self-shadowing is most of what makes a canopy read as deep"*).
+
+**Found, measured, 2026-10-19** ([investigate/leaf-self-shadowing.md](../investigate/leaf-self-shadowing.md)):
+the leaf rows are in the shadowing bucket and are rasterised into the shadow page, but a `Point`
+light's pool test displaces the receiver one page texel along its normal — 172 mm at the pine's
+`key_extent` of 40 — and the depth bias adds 48–288 mm on top. The dead zone is 17–29 cm against a
+blade a millimetre thick and a centimetre from its neighbour, so a caster in front of a leaf can
+never occlude it; and the sky term is added with no shadow lookup at all. The crown's interior is
+therefore exactly as bright as its rim, which is the number H3 catches (0.99 against a bar of 0.75).
+
+**Change:** a plant-only custom-schema `shadow_bias_scale`, defaulting to one so that every existing
+material is untouched, multiplying both the push and the bias, set to about 0.05 on plant materials;
+and the pine's `key_extent` down to about eight so a page texel is millimetres. No decision record
+forbids it and one requires it; `clustered_lights` walks `Gallery::names()`, which holds no vegetation
+scene, so no pinned pass count moves.
+
+**Size:** a shader uniform read, one schema field kept out of the shared building schema, and one
+number in the pine scene.
+
+### 4.12 A spray: the conifer crown's level of detail
+
+**Pulls it:** 1, 2, 3, 4 — every conifer — and the emitter's per-instance cost.
+
+The whole-tree plate cannot draw two hundred thousand true needles: the scene document pays per
+instance, and 86 000 instances already cost forty seconds of scene compile against three of
+raster. And a true needle at twenty-five metres is a tenth of a pixel, which a point-sampled
+rasteriser drops whole. Widening the needle into a card buys coverage but reads as a strap at arm's
+length.
+
+**Change, content rather than crate:** `Foliage::Spray` — one blade whose width law is a **comb of
+needle-teeth** on a plume envelope, forty-five centimetres long, instanced where a fascicle-plume
+sits. Its teeth are one to two pixels at the whole-tree plate's distance, which is the grain the
+reference photographs show at the same distance, and its area per instance lets eighteen thousand of
+them cover a crown that two hundred thousand needles could not afford. The bough plate keeps
+`Foliage::Needle`, the true 1.1 mm blade. Measured: crown coverage 0.29 → 0.42 and the H3 interior
+share 0.33 → 0.48 between the needle crown and the spray crown at the same frame.
+
+**Rejected:** supersampling the frame (helps edges, not coverage, and multiplies the fill rate that
+is already the wall); alpha-textured billboards (no texture pipeline in this renderer, and a
+billboard has no normal for the two-sided shading D18 bought); and accepting a sparse crown (H3
+exists precisely to refuse it).
+
 ### 4.7 Already expressible — verified, and not to be rebuilt
 
 Recording these matters as much as the gaps, because each is a capability a species brief could waste
@@ -426,6 +471,45 @@ A species is a hero; a scene is an epic. Conflating them would mean a species ca
 before its site exists, and the ten sites are one arc (§5's arc 7) precisely so that the ten
 specimens are done first.
 
+### D7: a whorl is a cluster of branches, and a joint sees its station
+
+§4.8 and §4.9. Recorded together because the pine pulled both in one reading of one photograph: the
+tiers are a count of siblings per station and the crown profile is a law over the station, and
+neither was expressible. The rejected alternative for the tiers — a leader chain of one-child
+generations — is recorded in §4.8 because it is the design an L-system background reaches for first,
+and it turns a rule into a generator.
+
+### D8: a species has two foliages, and each plate says which one it drew
+
+The rasteriser samples a pixel at one point, so a blade narrower than a pixel is dropped, not faded
+(§4.10). The note's 1.1 mm needle is a tenth of a pixel in a whole-tree frame. The alternative —
+widening the one blade until the whole-tree frame is dense — makes the bough plate a lie, and the
+alternative of supersampling the frame is a renderer change that belongs to arc 7's epic frames, not
+to a species. So a species carries a true blade and a card whose half-width is half a pixel at the
+distance its whole-tree plate is framed from, **at the same density as the true blade**: the card's
+extra area is what pays the sampling tax, and a card made sparser by the width ratio — the first
+reading, which the first card frame refuted — leaves the crown exactly as bald as the needle's,
+because the tax is on width and the count was never the whole debt.
+**Each plate is judged at its own distance and neither is asked to
+serve the other's**, which is what a level of detail is.
+
+### D9: the bough plate draws a bough, not the tree
+
+A camera inside the whole tree's needles shades every one of them: the first bough plate, framed
+inside a quarter of a million instances, ran ten minutes and was killed. The plate therefore grows a
+species whose trunk *is* a bough — one bough, its twigs, the true needle — which draws in seconds and
+shows exactly what the foliage test asks. The cost is that the bough plate's ids are the bough's own
+walk, so it carries its own resolver; that is stated in its `Naming` row rather than hidden.
+
+### D10: the conifer crown's mass is a comb-toothed spray, and it is content, not a crate change
+
+§4.12. Recorded because the tempting crate-level answers — a spray as a first-class leaf kind, a
+compound template, an impostor system — would each have added a type for what a width law with
+teeth already is. The spray is authored in the species, measured against the reference at the plate's
+own distance, and the module doc says which plate draws which blade. If a later species needs a
+spray of a different grain, it authors a different comb; that is the crate's own answer to every
+such question.
+
 ## 7. Verification
 
 - **Every arc renders.** A species that has not been drawn has not been built, and the frame goes in
@@ -443,10 +527,7 @@ specimens are done first.
 
 ## 8. Open questions
 
-1. **Does H3's ratio need to be a stated number before arc 2, or can arc 2 set it?** The first
-   reading is that arc 2 sets it and every later species is held to the same one, which is a bar set
-   by the first candidate. The alternative is measuring a known-good reference frame — but there is
-   no known-good tree in this repository, which is the whole problem.
+1. **Does H3's ratio need to be a stated number before arc 2, or can arc 2 set it?** — **Closed, 2026-10-19: arc 2 set it, and the first reading of the pine set the bar's shape.** The p90/p10 luminance ratio the first draft proposed does not separate a deep crown from a sparse lit one (a bamboo's separated leaves scored 1.82 against the pine's 1.70). The bar is therefore two numbers over the plant's own pixels inside the crown's identity-mask box, measured by `audit/frame_stats.py --crown`: the **interior share** — plant pixels wholly surrounded by plant, as a fraction of the plant — at least **0.25**, and the **interior-over-rim mean luminance** at most **0.75**. The pine's first massed crown reads 0.48 and 0.99: the first passes and the second cannot pass until foliage shadows foliage, which is §4.11.
 2. **Bark as texture.** §4.7 says plates and flutes are a `Section`. That is form, not colour
    variation, and a hero frame at three metres may want a mottled bark that no geometry gives. Whether
    a per-vertex tint along a trunk is worth a change is deferred to arc 4, when the oak's bark is the
