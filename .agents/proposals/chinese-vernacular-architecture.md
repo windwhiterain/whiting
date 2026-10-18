@@ -159,18 +159,23 @@ are the building, and the ring is the panel hung on it.
 | 穿枋, 挑枋, 撑弓, 檩, 椽 | nothing with a sloped axis | `Member`: a prism over a 3D segment |
 | 吊脚 posts, open underside | terrace seating | a stilt seating mode, plus `Member` posts |
 | 楼板, a second storey | **already drawn** (`authored.rs:153`, `workshop.rs:301`) | nothing — a grid level and a floor |
+| 坊 as an instance placed in the plan | `Placement` targets a face bay | `Placement::Free` (a position and a yaw) |
+| 封火墙 passing through the roof | `Wall` has no host | `Wall::host` |
+| two slopes pitched differently (傣楼, 一颗印 second tier) | one slope per plane | `RoofPlane::profile`, per plane |
 | 楼板开洞 (火塘通高, 楼梯井) | `Slab` has one plan polygon | `Slab::voids`, filled by `fill` |
 | 屋面覆盖 (小青瓦, 石板瓦, 杉皮) | a surface has a colour | a `Covering` enum on `Roof` — the ridge and the pitch minimum differ |
 | 使用开间 = 2 × 结构开间 | one grid per face | a ratio in the starter, not a construct |
 | 天井, 院落, 厢房, 走马廊 | void ring, deep eaves, hosted slabs | nothing — authoring |
 | 瓦垄, 瓦当, 滴水 | nothing | a shader question, not geometry — see the forks |
 | 台基, 踏步, 柱础, 石砌勒脚 | `Slab`, `Part`, `Wall` | nothing — authoring |
+| 夯土收分 (a battered wall) | one thickness per wall | **named non-goal** — see below |
+| a different infill material per bay | a material belongs to a solid | **named non-goal** — see below |
 
 ## What the buildings ask for
 
-Two of the four notes were complete when this section was written — the frame and the roof, and
-Guizhou–Xiangxi. The Chongqing and Yunnan notes follow, and what they change is not the design but its
-numbers.
+All four notes are in. What they change is not the design — the six constructs and the two completions
+below were already the right shape — but three of the numbers, and two of the constructs (D8, and the
+per-plane profile in D1) came out of them.
 
 **A caution about the notes' own language, because this proposal caused it.** All four were briefed
 with "every roof is a flat slab", and each opens by naming that as the assumption that breaks. The
@@ -231,19 +236,72 @@ five four-tier towers, and a **multi-layer corbelled cantilever bracket** carryi
 Roof pitch for the Guizhou types is **`not established`** — the single largest gap in that note — which
 is why the profile above is `measured` and not derived from an ethnic-style coefficient.
 
+### The Chongqing house: a 4.5 m bay over a purlin every 1.0–1.3 m
+
+| quantity | value | source |
+| --- | --- | --- |
+| bay 开间 | ≈ **4.5 m** ordinary, **5.5 m** in an ancestral hall, minimum ≈ 3 m | [S1], academic |
+| depth-direction column spacing | **0.9–1.3 m** — the purlin spacing, and so the 步架 width | [S1] |
+| 落地柱 / 吊脚柱 diameter | **20–25 cm** / ≈ **20 cm**, slenderness over **1:30** against the official **1:11** | [S1] |
+| roof pitch | **四分水 0.4:1 (≈22°)** to **五分水 0.5:1 (≈27°)** | [S1] |
+| eave projection 出檐 | front and gallery ≈ **3 m**, sides **> 1 m**, gable sides **> 1.5 m** | [S1] |
+| 椽 | 10 × 3 cm; spacing given as 1:1.5, and the same source elsewhere as 250 cm — **it contradicts itself** | [S1] |
+
+Two things this note records as negatives that matter to the road: the house is a **穿斗 column grid on
+independent stone pads at individually chosen heights**, so "the ground is fitted to the building"
+rather than the other way round; and **no source gives a stilt's count, height or spacing** — the type
+is named for its stilts and the one number the literature does not print is the stilt.
+
+Its town-scale figures are the only statutory ones obtained: the 磁器口 2020 flood peaked at
+**192.65 m** and ran **150 m up 正街**, and new work in the 洪安 protected zone is bounded at **9 m**.
+
+### The Yunnan house: the module is a wing, not a bay
+
+| quantity | value | source |
+| --- | --- | --- |
+| the module | **the 坊** — a three-bay, two-storey wing; 三坊一照壁 is three of them plus a 照壁, 四合五天井 is four around four corner skywells | [Y2], [Y6] |
+| 厦子 (front gallery) depth | **1.8–2.0 m**, measured centre to centre from the front eave column to the 金柱 — the only framework-internal module found | [Y1] |
+| Bai bays / 堂屋 / depth | **3.3–3.6 m** / **3.6–3.8 m** / **5–6 m** | [Y1] |
+| 一颗印 | **12 × 15 m** site, **3 m** square 天井 — **≈5 %** of the site — and it grows by adding 耳房 while the rectangle stays fixed | [Y3] |
+| Dai roof | **45°–60°**, the two slopes pitched **unequally**, 歇山 ends | [Y6] |
+| a second tier | 一颗印 and Dai both carry one (腰檐 / 重檐) at a **deliberately different pitch** from the main roof | [Y6] |
+| rafter / tile | ⌀60–80 mm at 220–240 mm; the tile module is **两椽支一**, lap **¼–⅓** | [Y6] |
+
+And the sentence that makes the hierarchy in the assumptions section: 建筑物重量全部由构架承担，墙壁只起围护作用
+— the whole weight is carried by the frame and the walls are only enclosure ([Y1]).
+
+Negative results worth carrying: **no Naxi number at all** was obtained, 蛮楼 appears in no source read,
+and 一颗印's measured dimensions are behind a 1938 monograph the session could not reach.
+
+### What the four together say about the numbers
+
+The pitch range across the four regions is **22° to 60°**, and the same *type* changes pitch between its
+first and second tier. That is the strongest argument for D1's `measured` variant: there is no global
+coefficient to derive a vernacular roof from, and any single "Chinese pitch" would be wrong somewhere.
+The bay range (**3.3 m** in Dali to **4.5 m** on the Jialing) and the depth range (**5–6 m** to
+**11.55 m**) say the same thing about plan dimensions, and the one thing every source agrees on is the
+*rule* — column spacing sets the purlin spacing, and the used bay is twice the structural bay.
+
 ## The design
 
-Seven headings: **five new constructs** (D1, D2, D3, D4, D7), **one derivation** (D6) — and **one
+Eight headings: **six new constructs** (D1, D2, D3, D4, D7, D8), **one derivation** (D6) — and **one
 correction** (D5), a capability this proposal first recorded as missing which the crate already had.
 Each names what it buys, the invariant it must keep, and the sentence it refuses to build.
 
-### D1. A roof holds a section, and the section is a fraction **and** a rise
+### D1. A roof plane holds a section, and the section is a fraction **and** a rise
 
-`Roof` gains one field: `profile: Vec<Step>`, each `Step { fraction, rise }` — the fraction of the
+`RoofPlane` gains one field: `profile: Vec<Step>`, each `Step { fraction, rise }` — the fraction of the
 slope's plan run from the eave, and the rise above that row's own eave elevation. The list is strictly
 increasing in both, every step strictly inside `(0, 1)` in fraction and strictly below the crest in
 rise. Expansion turns each authored row into a **polyline** through those steps, and each authored
 plane into `profile.len() + 1` **faces**, one per 步架.
+
+**On the plane and not on the roof**, because a slope's 步架 count and its rises belong to that slope:
+the two sides of a Dai house are pitched differently and the 一颗印's second tier deliberately takes a
+different pitch from the first. Two planes of one gable share the crest *vertices* and no row at all —
+a row is (crest index, eave station) and the two slopes name different stations — so independent
+profiles cannot disagree about a shared row, and the watertightness below is the crate's existing weld
+rather than a new agreement.
 
 Faces and not strips, and the difference is the whole point: **the surface bends at every purlin**, so
 the steps of one authored plane are *not* coplanar. Each step is therefore its own planar surface and
@@ -255,24 +313,24 @@ Why a section and not one of its two halves — each spelling fails in a differe
 failures are why this is one datum and not two:
 
 - **Rises alone fail on a sloping eave.** A cut "at elevation e" lands at a different fraction on two
-  rows whose spans differ, so the cut line stops being parallel to the rows and the sub-quad stops
-  being planar — and a level ridge with a level eave hides this completely, because then the two
-  profiles are the same up to a change of parameter.
+  rows whose spans differ, so the cut line stops being parallel to the rows and the step stops being
+  planar — and a level ridge with a level eave hides this completely, because then the two profiles
+  are the same up to a change of parameter.
 - **Fractions alone have no heights.** A fraction says where the purlin stands along the run; the
   rise says how high. 举架 is the pair — each 步架 has a width and a rise, and the roof's concavity is
   the ratio changing between them.
-- **The pair is also what keeps every step planar.** Rows of one plane are parallel in the ordinary
-  case — a gable's two slopes, a shed's single slope — so a step's two segments are parallel, and the
-  quad between them is a planar trapezoid. A **fan** (a hip's triangular end, rows meeting at one
-  crest point) has no such pair of parallel segments, and a level purlin cannot cross a fan as a
-  straight line: that plane is refused by name rather than given a second rule.
+- **The pair keeps every step planar, on both shapes a plane comes in.** A trapezoid strip (a gable's
+  side, a shed) has parallel rows, so a step's two segments are parallel and the quad between them is
+  planar; a **fan** (a hip's triangular end, rows meeting at one crest point) has four points that all
+  lie in the plane the fan itself spans. Neither needs a tolerance. An earlier draft of this section
+  refused a profile on a fan; that was wrong — a fan with a level eave gives level purlins, and it
+  takes a profile without a second rule.
 - **Watertightness owes the profile nothing.** The vertices a step adds are identified by *(the row's
-  own identity, the step index)*, so two planes sharing a row share every vertex of it by the crate's
-  existing welding rule, not by a coordinate test.
+  own identity, the step index)*, so a row named by two planes carries every step vertex once, by the
+  crate's existing welding rule, not by a coordinate test.
 
 And what the row's polyline means physically: the roof surface bends at every purlin. It is not one
-slope with marks on it — it is a chain of planes, which is what a 举架 roof *is*, and why the profile
-belongs on the roof rather than being derived per plane.
+slope with marks on it — it is a chain of planes, which is what a 举架 roof *is*.
 
 What it buys: the silhouette. A Chinese roof is read from its profile — shallow at the eave, steep at
 the ridge, with a distinct break at every purlin — and that profile is the one thing a straight tent
@@ -298,8 +356,7 @@ either.
 
 Refusals: `ProfileOutOfOrder` (a fraction not strictly increasing inside `(0, 1)`, or a rise not
 strictly increasing above the eave), `ProfileReachesTheCrest` (a step at or above the crest's own
-rise), `ProfileOnAFan` (a plane whose rows are not parallel, which a level purlin cannot cross
-straight), and the existing `SolidOpen` if two planes still disagree.
+rise), and the existing `SolidOpen` if two planes still disagree.
 
 The way a 起翘 corner stays legal is worth one sentence: a raised eave node tilts its row, which is
 the sloping-eave case, and the *same fraction* then lands at a different elevation along the eave —
@@ -325,6 +382,11 @@ triangulating and no tolerance is spent.
 What it buys: 硬山 (the wall flush to the roof), 悬山 (the roof oversailing a wall that stops below
 it), the stepped gable, the parapet, and a 照壁 whose top is not straight. It also gives the **gable
 under a pitched roof** the wall it actually stands on, which today is a 0.2 m roof fascia.
+
+A party wall does more than stand taller. A 封火墙 rises above its own ridge and **passes through the
+roof's eave** on its way there, so `Wall` needs the same authorization a roof already has —
+`Wall::host: Option<SolidId>` — or that overlap is reported, correctly, as two solids standing in one
+another. One field, and without it the party wall is the one wall a market town cannot have.
 
 Refusals: `CrownCountMismatch` (one top per node, and a count that disagrees is a wall in the wrong
 place), `CrownBelowBase` (a top at or under the wall's own base), `CrownNotASequence` (a `Wall` crown
@@ -429,17 +491,38 @@ tall; and a stair that arrives through the floor rather than beside it. It is al
 possible answer to "the storeys are not uniform", which is the last thing in the Guizhou note's list
 of ten.
 
+### D8. A wing is placed in the plan, not in a bay
+
+A `Placement` names a template, a face, a bay `(row, column)` and a pin (`parts.rs:250`), so a part is
+**attached to a wall**. A courtyard house is the other way round: its module is the **坊** — a whole
+three-bay, two-storey wing — and 三坊一照壁 is three of them plus a screen wall, while a 一颗印 grows by
+adding or removing a 耳房 with its site rectangle unchanged (Yunnan note §Verdict, [Y2]). A wing has no
+host wall to hang on; it stands beside the court.
+
+So `Placement` gains a second target: `Placement::Free { template, at: Vec2, elevation: f32, yaw: f32 }`.
+The yaw, and only the yaw, keeps the invariant that a part's frame is a rotation; two wings around a
+court do not overlap, so nothing needs authorizing, and the court between them is simply plan space
+that no mass occupies.
+
+What it buys: the courtyard as an **arrangement** rather than as a subtraction — which is what both the
+Yunnan and the Chongqing notes say the type actually is. The void ring stays, because a 一颗印's 天井 *is*
+a hole cut into one mass; but a 三坊一照壁 is four objects around a gap, and today it is not authorable
+without writing the same wing's document three times.
+
+Refusals: none new — a yaw is a number, and a template with no masses is already a `Template` fault.
+
 ### Table: what each move costs
 
 | Move | New fields | Code that changes | The gate it must pass |
 | --- | --- | --- | --- |
-| D1 profile | `Roof::profile` | `expand` (row polylines, one face per step), `roof` (accessors), `mesh` (`RoofSurface` gains a step), `validate` (three refusals) | a probe that every step is planar and the steps tile the loop |
+| D1 profile | `RoofPlane::profile` | `expand` (row polylines, one face per step), `roof` (accessors), `mesh` (`RoofSurface` gains a step), `validate` (two refusals) | a probe that every step is planar and the steps tile the loop |
 | D2 crowns | `Mass::tops`, `Wall::crown` | `expand` (ring top strips, wall faces), `validate` | a probe that a crowned ring is closed and planar |
 | D3 members | `Member` with `Anchor`, a list in the document, a `SolidId` | `expand` (anchors resolved in dependency order), `mesh` (element), `identity`, `validate` | a probe that a member is closed and outward, that two members overlapping without a host are reported, and that moving a column moves the tie anchored on it |
 | D4 stilts | a seating mode | `site` | a probe on an analytic slope: posts land on the ground, the floor stays level |
 | D5 floors | none — already there | nothing | already gated: two scenes draw one |
 | D6 starter | none | `derive` | the starter builds and its roof's profile measures the profile |
 | D7 slab holes | `Slab::voids` | `expand` (caps, inner bands), `validate` | a probe that a holed slab is closed and its annulus area is the difference |
+| D8 free placement | `Placement::Free` | `parts`, `skeleton` (resolution), `expand` | a probe that two free-placed wings land where their yaw says and neither moves when a face is re-split |
 
 ### What this design does not add, and why
 
@@ -467,6 +550,18 @@ and then cannot ship:
    that every purlin is carried by a post or that a cantilever is balanced. That is a structurally
    different instrument — a graph with a carried/carrier relation — and it is the natural *next*
    proposal if the frame turns out to need validation rather than only drawing.
+6. **A battered wall.** 夯土 thickness goes from **0.6–0.7 m at the base to 0.4–0.5 m** at the top
+   (Yunnan note, [Y6] measured), and `Mass::wall` is one number. A per-node *outer* outline could
+   express it by leaning the outline in — the wall is offset inward from the outline, so a leaning
+   outline leans the outer face. That is a cheap trick and it changes what the outline means, so it is
+   named here and not proposed: the stone and timber houses this arc starts with are vertical.
+7. **A different material per bay.** A material belongs to an instance and not to a face
+   (`gallery::house`), so a wall that is board in one bay and rubble in the next needs one solid per
+   bay. Two wings of one house are already two solids; one *wall* with two materials is not. Named,
+   not proposed: split the wall into masses if a scene needs it.
+8. **Joints beyond a pair.** D3's anchors join two members at a station; a mortise is a notch in one
+   member that another passes *through*, and "notched" against "butted" is a distinction the Yunnan
+   note asks for ([Y9]). A joint type is a later vocabulary, for when a drawing must say which.
 
 ## The forks, for the owner
 
@@ -504,9 +599,19 @@ Each is a real choice with a cost somewhere; none is "obviously right".
 - (c) *Texture only.* No geometry; the frame is a colour. The id channel cannot name a column, so
   "move the third column" is not a sentence this system can answer.
 
-**F4. How deep the detail goes.** Recommended line: columns, ties, cantilevers, brackets and purlins
-are geometry; rafters are geometry **only under the eave**, where a Chinese roof's underside is the
-picture; tiles, 瓦当 and 滴水 are the shader's. Above about 8 cm a member is a couple of pixels at the
+**F4. How deep the detail goes — and the tile is not a detail.** Recommended line: columns, ties,
+cantilevers, brackets and purlins are geometry; rafters are geometry **only under the eave**, where a
+Chinese roof's underside is the picture; tiles, 瓦当 and 滴水 are a *surface*.
+
+The Yunnan note makes this fork sharper than a detail question: "every one of these roofs is read as a
+texture of discrete units; that is most of what a camera sees" (§"constructs", item 6), and the
+Guizhou note's slate roof has **no channels and no ridge tile** — a different picture from the same
+geometry. At 1024 px a tile course is 8–12 px, so it is either a texture or it is nothing. The crate's
+materials are flat colours today (`surface([r, g, b], …)`), and a sampled texture channel **is**
+landed in the device layer ([texture-channel.md](texture-channel.md), "landed, both halves"); whether a
+gallery material can carry one today is a question that arc answers and this one does not assume. What
+makes it a fork rather than a wall: geometry would cost tens of thousands of faces per roof, and a flat
+grey plane would cost the building its face. Above about 8 cm a member is a couple of pixels at the
 frames this gallery draws; below it, it is noise that costs faces and shadow rays.
 
 **F5. Which building first.** The 吊脚楼 is the owner's first-named type and the one that tests D4;
@@ -541,8 +646,9 @@ alone. The gate cost per scene is real and known: a `.png` hash pin in `[6/8]`, 
 
 ## What would make this proposal wrong
 
-- If a roof needs a **hip** (庑殿, 歇山) *and* a profile, D1 refuses the fan plane and the roof has to
-  be built as two roofs or with a different section rule. The vernacular south-west is overwhelmingly
+- If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not
+  the simple fan this crate derives — D1 is not the problem and the crate's hip is: its end plane is a
+  fan from the ridge's end point, which is a pyramidal hip. The vernacular south-west is overwhelmingly
   悬山/硬山, so this is a boundary rather than a hole — but it is a boundary, and it is not measured.
 - If a crowned mass's miter at a corner cannot be given one elevation per node without folding a top
   strip, D2 is wrong and (b) is the answer. Not measured; the algebra above says it is fine, and
