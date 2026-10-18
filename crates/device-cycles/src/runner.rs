@@ -24,6 +24,7 @@
 //! wrong one here: the whole point of this crate is to *read* stderr, and a child whose output is
 //! inherited cannot be read. Progress is still reported, by [`RunOutcome::seconds`].
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Instant;
@@ -111,6 +112,15 @@ pub struct RunOutcome {
 /// **no resolution socket at all** — unlike older Cycles, where the render layer carried it. So
 /// a document that cannot be rendered at the size it asks for is a document that has to be
 /// corrected from outside, and the size is carried out here.
+///
+/// # Who fills it in
+///
+/// **The scene's own frame, and nothing else.** The one producer is [`crate::render_scene`],
+/// which reads [`scene::cycles_export::render_size`] — the emitter's own reader of the document's
+/// `frame` — and nothing in this crate holds a size of its own: this struct has no `Default` and
+/// no constant beside it. A scene that names no frame gets the schema's `DEFAULT_WIDTH` by
+/// `DEFAULT_HEIGHT`, which is a property of the scene rather than of this backend. [`arguments`]
+/// is where the two numbers become the process's `--width` and `--height`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Resolution {
     pub width: u32,
@@ -121,6 +131,49 @@ impl std::fmt::Display for Resolution {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "{}x{}", self.width, self.height)
     }
+}
+
+/// The arguments one render is started with, in order, after the binary's own name.
+///
+/// # Why this is a function and not the inside of [`run`]
+///
+/// **`--width` and `--height` are the only thing that decides how large the written file is**,
+/// because `NODE_DEFINE(Film)` declares no resolution socket, so this list is the whole of the
+/// size's route out of the document. Written inline it cannot be read without starting a
+/// process, and a check that cannot run the thing it is about is a check that agrees because
+/// it cannot differ: a runner that passed a constant here would render every scene square and
+/// every test in the tree would still be green.
+///
+/// So the list is built by itself and compared against what the scene said, and the resolution
+/// it carries is the one [`crate::render_scene`] read out of the document rather than a number
+/// typed here.
+///
+/// # Invariants
+///
+/// The scene document is **last**, because it is the only positional argument and the loader
+/// takes the flags before it. Moving it earlier makes a different process rather than a
+/// differently-shaped render.
+pub fn arguments(
+    device: &str,
+    samples: u32,
+    resolution: Resolution,
+    image: &Path,
+    scene: &Path,
+) -> Vec<OsString> {
+    vec![
+        OsString::from("--device"),
+        OsString::from(device),
+        OsString::from("--samples"),
+        OsString::from(samples.to_string()),
+        OsString::from("--width"),
+        OsString::from(resolution.width.to_string()),
+        OsString::from("--height"),
+        OsString::from(resolution.height.to_string()),
+        OsString::from("--background"),
+        OsString::from("--output"),
+        image.as_os_str().to_owned(),
+        scene.as_os_str().to_owned(),
+    ]
 }
 
 /// Runs one render and says what came back.
@@ -143,18 +196,7 @@ pub fn run(
 ) -> Result<RunOutcome, CyclesError> {
     let started = Instant::now();
     let output = Command::new(binary)
-        .arg("--device")
-        .arg(device)
-        .arg("--samples")
-        .arg(samples.to_string())
-        .arg("--width")
-        .arg(resolution.width.to_string())
-        .arg("--height")
-        .arg(resolution.height.to_string())
-        .arg("--background")
-        .arg("--output")
-        .arg(image)
-        .arg(scene)
+        .args(arguments(device, samples, resolution, image, scene))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

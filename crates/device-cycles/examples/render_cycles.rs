@@ -70,8 +70,21 @@ fn run() -> Result<(), String> {
         );
     }
 
+    // Read back out of the written file rather than off the request, so the number on this line is
+    // the size of the png on disk and not the size something intended. A scene's frame is the only
+    // source of that size — `Film` has no resolution socket — so a caller comparing a path-traced
+    // frame with a rasterised one needs it stated rather than assumed.
+    let written = rendered
+        .frame
+        .images
+        .first()
+        .map(|image| format!("{}x{}", image.width, image.height))
+        .unwrap_or_else(|| "no image".to_owned());
+
     println!(
-        "{name}: {samples} samples on {device}, {} s in the process, {} s in total, {} dropped",
+        "{name}: {samples} samples on {device}, {} written, {} s in the process, {} s in total, \
+         {} dropped",
+        written,
         rendered.seconds,
         total,
         rendered.report.len(),

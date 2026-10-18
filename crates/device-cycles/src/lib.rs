@@ -39,4 +39,4 @@ mod render;
 mod runner;
 
 pub use render::{CyclesFrame, CyclesOptions, render_scene};
-pub use runner::{CyclesError, Resolution, RunOutcome, locate_binary};
+pub use runner::{CyclesError, Resolution, RunOutcome, arguments, locate_binary};

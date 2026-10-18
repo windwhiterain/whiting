@@ -5706,6 +5706,15 @@ for the composition while the file's resolution comes from the command line. **S
 in this record and the rasterized `.png` hashes with them, and a path-traced export of the same document is a different
 frame until `Film` grows a socket.**
 
+> **Correction, 2026-11-06 — the last sentence of that paragraph was false, and it is what an open item was later built
+> on.** "The file's resolution comes from the command line" is true and stops one step short: the numbers on that command
+> line are **read out of the same document** by `render_scene`, through `cycles_export::render_size`, which takes them from
+> the scene's `frame` — since `7aa752c`, which is older than this paragraph. A path-traced export of the same document is
+> therefore the same frame, and *What the export size slice found* at the end of this file measures all nine end to end
+> through a real Cycles subprocess. The conclusion survives in a weaker form and only that: **nothing in the document can
+> carry a resolution at all**, so the size has to leave through the process's arguments and the argument list is the whole
+> of that route. That is a fact about where the size lives, not a statement that it is wrong.
+
 ### `terrace`: the frame, the lens, and the one number that moved
 
 ```text
@@ -5870,9 +5879,11 @@ it**, so the sentence has been replaced with the truth and with the name of the 
 - **`terrace` is no longer comparable at frame level with anything beside it.** Nine scenes at nine aspects is the owner's
   decision and this record states its cost rather than its benefit: a fill share, a plate count and a pixel coordinate
   quoted from one of them means nothing about another.
-- **A path-traced export of any of these frames is still the wrong size**, and not this slice's doing: `device-cycles`
+- ~~**A path-traced export of any of these frames is still the wrong size**, and not this slice's doing: `device-cycles`
   carries its own `--width`/`--height` because Cycles' `Film` node has no resolution socket. **`cycles_export` reads the
-  aspect, so the composition is right and the file is not.**
+  aspect, so the composition is right and the file is not.**~~ **Closed 2026-11-06 by *What the export size slice found*:
+  the last clause is false. The composition and the file read the same `frame`, and all nine exports were measured at the
+  size their scene names.**
 - **Unchanged by this slice:** an authored pinch is the one courtyard whose areas nothing can check; a mass's interior is
   still not a documentable concept; a part on an inner face still will not take a hole, `OpeningOnAFarLoop`; and `covers`
   remains a necessary condition and not a proof.
@@ -6090,8 +6101,8 @@ them, which is the point of writing that it was measured.**
 
 **What remains open:**
 
-- **A path-traced export of any of these nine frames is still the wrong size**, unchanged by this slice and not its
-  doing: `device-cycles` carries its own `--width`/`--height` because Cycles' `Film` node has no resolution socket.
+- **A path-traced export of any of these nine frames is the right size, and this was closed 2026-11-06 by *What the
+  export size slice found* at the end of this file** — the open item was false on the tree it was written about.
 - **The nine are no longer comparable at frame level with each other**, which is the cost the owner's decision accepted
   and which this slice has now paid in full: a fill share, a plate count and a pixel coordinate quoted from one of them
   means nothing about another, and the nine frames above are nine different aspects between 1.207 and 3.000.
@@ -6101,5 +6112,148 @@ them, which is the point of writing that it was measured.**
 - **Unchanged by this slice:** an authored pinch is the one courtyard whose areas nothing can check; a mass's interior is
   still not a documentable concept; a part on an inner face still will not take a hole, `OpeningOnAFarLoop`; and `covers`
   remains a necessary condition and not a proof.
+
+## What the export size slice found: the export was already the right size, and the open item was false (2026-11-06, branch `feature/building-cycles-size`)
+
+**There is no defect.** A path-traced export of any of the nine scenes is written at the size that scene names, and it was
+before this slice touched anything. The open item two slices had carried — *"a path-traced export of any of these frames is
+still the wrong size … `device-cycles` carries its own `--width`/`--height` because Cycles' `Film` node has no resolution
+socket"* — **was false on the tree it was written about**, and the work is that it was false *and nothing in the tree could
+have said so*.
+
+### The control, and it says the export was never wrong
+
+The brief asked for `terrace` (3:1) and `house` (1.851) before and after. **The two readings are the same number, on both
+sides, and the mechanism that decides it was already in the tree.** Cycles *is* installed here
+(`C:\resource\cycles\install\cycles.exe`), so these are **real subprocess renders at one sample**, read back out of the png
+Cycles wrote, not a reading of the argument list:
+
+| scene | export size **before** the edit | export size **after** | the rasterised `.png` of the same scene |
+| --- | --- | --- | --- |
+| `terrace` | **1536 × 512** | **1536 × 512** | 1536 × 512 |
+| `house` | **1392 × 752** | **1392 × 752** | 1392 × 752 |
+| `tiles` (names no frame) | **1024 × 1024** | **1024 × 1024** | 1024 × 1024 |
+| `foldyard` | **1536 × 1024** | **1536 × 1024** | 1536 × 1024 |
+
+**The mechanism, named.** `render_scene` asks `scene::cycles_export::render_size` for the size, `render_size` reads the
+**document's own `frame`** through the same `read_camera` that writes it (`Frame::read_declared`, `DeviceLimits::unbounded`,
+so nothing clamps it), and the result is handed to `runner::run` as a `Resolution`. `run` puts those two numbers on the
+process's `--width` and `--height`, **and that argument list is the whole of the size's route**, because `NODE_DEFINE(Film)`
+declares no resolution socket — so there is nowhere else for it to be. **`Resolution` has no `Default` and no constant
+beside it, and nothing in the crate holds a size of its own**: the exporter's size is the scene's size, by construction.
+
+**Two commits already in the tree, which is why the open item was false.** `d36b4cb` wrote `render_size` and the plumbing
+from it to `--width` in the same commit that created the runner; `7aa752c` — *"Take the camera's size from the frame and its
+angle from the lens"* — is what made `render_size` read the scene's `frame` rather than falling through to `1920 × 1080`.
+**Both predate the sentence that called the export wrong**, which was written from the runner's `--width`/`--height` without
+following them backwards. That is *Correction: the difference was the hash's domain* with a different subject: **when two
+readings disagree, the first question is which one is stale, and here the stale one was the record.**
+
+### All nine, frame beside export, and every row matches
+
+Both columns measured, not inferred: the left out of the `.png` the rasterising harness wrote on the real gpu, the right out
+of the `.png` a Cycles subprocess wrote.
+
+| scene | aspect | the rasterised frame | the path-traced export | matches |
+| --- | --- | --- | --- | --- |
+| `house` | 1.851 | 1392 × 752 | 1392 × 752 | **yes** |
+| `hall` | 1.629 | 1328 × 816 | 1328 × 816 | **yes** |
+| `hall_large` | 1.549 | 1264 × 816 | 1264 × 816 | **yes** |
+| `shed` | 1.750 | 1344 × 768 | 1344 × 768 | **yes** |
+| `terrace` | 3.000 | 1536 × 512 | 1536 × 512 | **yes** |
+| `wing` | 1.935 | 1424 × 736 | 1424 × 736 | **yes** |
+| `workshop` | 1.207 | 1120 × 928 | 1120 × 928 | **yes** |
+| `yard` | 1.549 | 1264 × 816 | 1264 × 816 | **yes** |
+| `identity` | 1.569 | 1280 × 816 | 1280 × 816 | **yes** |
+
+**Nine of nine, and no two aspects are the same**, which is what makes the table a measurement: a reader that agreed with a
+constant square would have failed eight rows and passed `identity` alone.
+
+### An export with no frame on the scene, and the default is then
+
+There is **no path that exports "without a scene"** — `render_scene` takes the document by reference and reads it, so the
+size has no second source to fall back to and no flag that overrides it. What the brief's sentence is really asking is what
+a document that **names no frame** gets, and the answer is **the scene schema's `DEFAULT_WIDTH` by `DEFAULT_HEIGHT`,
+`1024 × 1024`** — measured on `tiles`, which names none. That number is `scene::standard::frame`'s, **not this backend's**,
+so the rasterised path and the path tracer agree on a scene that says nothing, which is the invariant the frame field was
+written with.
+
+### What was wrong was the tree's ability to notice
+
+**The real finding is that every gate in the workspace would have stayed green if the exporter were broken tomorrow.**
+`render_size` was exercised by no test, and `run` built its command line inline, so nothing could be read without starting a
+process — and a runner passing a hard-coded square would have rendered every scene square and reported success. That is
+*an instrument that agrees because it cannot differ*, so this slice:
+
+- **made the argument list a function.** `runner::arguments(device, samples, resolution, image, scene) -> Vec<OsString>`
+  builds the whole command line and nothing runs it, so `--width`/`--height` can be read and compared without Cycles.
+- **wrote the control the tree could not express**, `crates/device-cycles/tests/export_size.rs`, over **all nine scenes
+  plus the unframed one**: the scene's own `Frame::read`, the emitter's `render_size`, and the exact argument list, three
+  readings in one loop so a reader is not choosing between them.
+- **proved both canaries fire, and that they fire on different tests** — which is what says they are two instruments rather
+  than one:
+
+  | the regression introduced | `an_export_is_the_size_the_scene_names` | `the_size_reaches_the_command_line` | `a_scene_that_names_no_frame…` |
+  | --- | --- | --- | --- |
+  | **`render_size` returns a constant `1024 × 1024`** | **FAILED** — `left: (1024, 1024) right: (1392, 752)` | **FAILED** | ok |
+  | **`arguments` writes a constant `1024 × 1024`** | ok | **FAILED** — `left: [… "--width", "1024" …] right: [… "--width", "1392" …]` | ok |
+
+  **The third column staying green in the first row is the design, not an oversight:** `1024 × 1024` *is* the right answer
+  for a scene that names no frame, so only the two frames can detect that regression. A control that could not fail there
+  was built on purpose.
+- **printed the size the example wrote**, read back out of the png rather than off the request, so `render_cycles` states
+  the one number a caller comparing a path-traced frame with a rasterised one has been assuming.
+
+### The gate, measured on the branch
+
+- **The nine rasterised `.png` files are unchanged, byte for byte**: **9 pairs compared** over `[System.IO.File]::ReadAllBytes`
+  and not only by `sha256`, **9 byte-identical**, and every hash reproduces the second frame slice's table value for value —
+  `house 3321BFDE5C64C81A`, `hall 96F61FA5E9F18E60`, `hall_large 478E692C6CBE2D3B`, `shed 48909F693ACBA634`,
+  `terrace E32C1CA08D9F3016`, `wing 2EF5C4FB206167F4`, `workshop EB8E05CD755B9B4B`, `yard DCFC79EFB0F78DD4`,
+  `identity 48F13F7D84A24480`. **The count is printed rather than asserted**, because a filter that silently yields
+  nothing is a gate that reports success while comparing nothing.
+- **`scene_identity_probe` reads 845 rows two-way** (77 + 109 + 77 + 31 + 66 + 123 + 162 + 99 + 101), every id contiguous
+  from 1, every name non-empty and round-tripping, all four pinned readings unchanged, **and the probe's whole output is
+  identical to the one taken before the first edit.**
+- **29/29 building examples and 16/16 gallery examples exit 0 — 45 runs, 0 canary hits, 0 warning lines**, under
+  `thread '.*'.*panicked`, which was **proved on its own control first**: a `rustc`-compiled binary indexing an empty `Vec`
+  printed `thread 'main' (8972) panicked at …` for **1 hit**, and the bare `thread '...' panicked` this toolchain never
+  writes gave **0** on the same binary.
+- `cargo build --workspace --all-targets` exits 0 and warns **only** of the pre-existing `census.exe` / `census.pdb`
+  filename collision; **every `Compiling` line naming a workspace crate names this worktree (13 of 13 on the baseline build,
+  6 of 6 after the edit) and 0 name the parent.** `cargo fmt --all -- --check` is clean.
+
+### What this slice's brief got wrong, plainly
+
+**The brief asserted a defect that does not exist**, and it inherited the assertion from the record rather than checking it:
+*"Today the exporter writes its own dimensions, so a 3:1 `terrace` exports at whatever shape the exporter was given — the
+composition correct, the file wrong."* **The composition and the file are read by the same `Frame::read_declared` call.** A
+brief built on that sentence would have budgeted for re-architecting a size that was already the scene's, and the likeliest
+thing it would have produced is a second reader of the frame to "fix" a first one that was not broken.
+
+**The brief's second question has no referent, and that is worth saying rather than answering anyway.** *"What happens when
+an export is requested without a scene"* — there is no such request: `render_scene` is handed the document, and the size is
+read out of it. The nearest real thing is a scene naming no frame, and that answer is the schema's `1024 × 1024`.
+
+**And the brief's constraint was right for a reason the record had not reached.** "If a Cycles render cannot be run here, say
+so and prove the fix at the document/argument boundary" was written expecting no Cycles. **Cycles is installed** at
+`C:\resource\cycles\install\cycles.exe` and every number in the nine-scene table is a real render's output file, so the
+end-to-end claim is **proven and not argued**. The argument boundary is worth having anyway, and this is the second time
+the record's assumption about a tool's absence was wrong rather than the tool.
+
+### What remains open
+
+- **The size leaves the document through the process's arguments, and that is now pinned rather than repaired.** If a future
+  Cycles grows a `Film` resolution socket, `arguments` is the one place that has to change, and the test that pins it will
+  say so.
+- **`crates/scene/examples/emit_cycles.rs` is rotted and was left alone**: it exits 1 (`field 'normal' is not a schema
+  document field`), and its camera writes a `width` and a `height` that **the camera schema does not have and `read_camera`
+  ignores** — which is the exact misconception this slice's record correction is about. It is not in either acceptance gate,
+  it is documented as *"a throwaway … to be run once and deleted"*, and repairing it is a different slice's work. **Named
+  here so the next reader does not read it as the exporter carrying its own size.**
+- **Unchanged by this slice:** an authored pinch is the one courtyard whose areas nothing can check; a mass's interior is
+  still not a documentable concept; a part on an inner face still will not take a hole, `OpeningOnAFarLoop`; `covers`
+  remains a necessary condition and not a proof; the nine frames are still not comparable at frame level with each other;
+  and `house` and `yard` still have no floor to show, for the reasons the second frame slice gave.
 
 
