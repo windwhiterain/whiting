@@ -140,6 +140,12 @@ impl Node {
         self
     }
 
+    /// The in-place form of [`Node::with_section`], for a node a plant already owns: a species that grows
+    /// first and dresses its bole after is the same species as one that authored the section up front.
+    pub fn set_section(&mut self, section: Section) {
+        self.section = section;
+    }
+
     /// The node's spine, in its parent's attachment frame.
     pub fn spine(&self) -> &Curve {
         &self.spine

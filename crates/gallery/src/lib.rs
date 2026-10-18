@@ -107,6 +107,8 @@ mod monoliths;
 pub mod shed;
 mod spotlight;
 mod stilllife;
+/// The trees of the Hengduan: one species at a time, each drawn to the bar the proposal sets.
+pub mod southwest;
 /// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
 pub mod stilt;
 mod sunlight;
@@ -223,6 +225,8 @@ impl Gallery {
             "arching" => vegetation_laws::arching(),
             "panelled" => vegetation_laws::panelled(),
             "bands" => vegetation_laws::bands(),
+            "yunnan_pine" => southwest::yunnan_pine_picture(),
+            "yunnan_pine_bough" => southwest::yunnan_pine_bough_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),

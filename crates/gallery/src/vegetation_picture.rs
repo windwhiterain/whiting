@@ -156,6 +156,9 @@ const SKY_RADIANCE: f64 = 1.0;
 ///
 /// The air is an exponential over the geometry only, for the reason the shed's grade gives: the sky is
 /// already the far field, and a haze that reached it as well would put two different greys on one horizon.
+/// **The haze's own coefficient is [`Lighting::haze`]**, spliced in where the builder formats this: a plant
+/// five metres from the lens and a tree thirty metres from it are not in the same air, and one coefficient
+/// for both made every distant tree a ghost.
 const GRADE: &str = r#"
     // **The sky is the scene's own environment map**, which is what a path tracer draws its world
     // from: writing a sky law here instead gave the two backends two different skies over one
@@ -166,7 +169,7 @@ const GRADE: &str = r#"
     }
     if depth < 1.0 {
         let along_ray = length(world_position(in.uv, depth) - uniforms.camera.position);
-        let air = clamp(1.0 - exp(-along_ray * 0.012), 0.0, 0.45);
+        let air = clamp(1.0 - exp(-along_ray * {HAZE}), 0.0, 0.45);
         color = mix(color, environment_sky(vec3<f32>(ray_through(in.uv).x, 0.02, ray_through(in.uv).z)), air);
     }
     color = color / (color + vec3<f32>(1.0));
@@ -414,6 +417,13 @@ pub struct Lighting {
     pub sky: Atmosphere,
     /// How bright the sky is, the one number both backends read.
     pub sky_radiance: f64,
+    /// The post stage's aerial-perspective coefficient, per metre of ray.
+    ///
+    /// It is the grade's own exponential and not the atmosphere's density: the atmosphere is what a path
+    /// tracer scatters through and this is what the rasteriser's post stage fakes over the geometry, and
+    /// the two agree by sharing a sky rather than by sharing a number. A garden's five metres and a
+    /// ridge's thirty are not in the same air.
+    pub haze: f64,
 }
 
 impl Default for Lighting {
@@ -431,6 +441,7 @@ impl Default for Lighting {
             floor: Skin::new(FLOOR_TINT, 0.94),
             sky: atmosphere(),
             sky_radiance: SKY_RADIANCE,
+            haze: 0.012,
         }
     }
 }
@@ -1315,8 +1326,9 @@ fn plant_scene_with(
                     &ground.point_schema(),
                     &ground,
                 ));
+                let built = GRADE.replace("{HAZE}", &format!("{:.6}", lighting.haze));
                 let grade = if view.grade.is_empty() {
-                    GRADE
+                    built.as_str()
                 } else {
                     view.grade
                 };

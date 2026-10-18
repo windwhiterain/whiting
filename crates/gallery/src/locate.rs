@@ -135,6 +135,16 @@ pub const NAMINGS: &[Naming] = &[
         note: "the left planting is unedited and the right one carries two brush strokes, one by station band and one by generation",
     },
     Naming {
+        scene: crate::southwest::YUNNAN_PINE,
+        resolve: crate::southwest::yunnan_pine_handle_of,
+        note: "this pixel is that node of the pine, and a needle drawn by the blade mesh carries its twig's",
+    },
+    Naming {
+        scene: crate::southwest::YUNNAN_PINE_BOUGH,
+        resolve: crate::southwest::yunnan_pine_bough_handle_of,
+        note: "one bough at arm's length: this pixel is that node of the bough, and a needle carries its twig's",
+    },
+    Naming {
         scene: crate::vegetation_picture::GROVE,
         resolve: crate::vegetation_picture::grove_handle_of,
         note: "the planting is the id's quotient by the stride and the node is its remainder",
