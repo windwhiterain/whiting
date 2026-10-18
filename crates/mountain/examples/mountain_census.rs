@@ -6,8 +6,8 @@
 //! are the two failures a picture of a mountain cannot show you.
 //!
 //! ```text
-//! cargo run -p whiting-mountain --example census           the default seed
-//! cargo run -p whiting-mountain --example census 23        another mountain
+//! cargo run -p whiting-mountain --example mountain_census           the default seed
+//! cargo run -p whiting-mountain --example mountain_census 23        another mountain
 //! ```
 
 use whiting_mountain::derive::Starter;
