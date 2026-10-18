@@ -2363,6 +2363,16 @@ fn read_instances(
         return Err(malformed(&path, "the instances as a map of pass to list"));
     };
 
+    // What an instance row takes from its material is a property of the material and the shader
+    // rather than of the row, and a scene draws far more rows than it declares materials, so it is
+    // read once per material here and borrowed by every row that names it. The slot is filled by
+    // the first row that names the material rather than before this loop, which keeps two things
+    // true that would otherwise be traded for the speed: a material no instance draws is never
+    // read, and the first row naming a material that fails still fails with the message it always
+    // failed with.
+    let mut bundles: Vec<Option<MaterialBundle>> =
+        (0..materials.len()).map(|_| None).collect();
+
     let mut read: Vec<InstanceRead> = Vec::new();
     for (name, bucket) in buckets {
         let bucket_path = path.key(name);
@@ -2383,6 +2393,7 @@ fn read_instances(
                 materials,
                 shaders,
                 images,
+                &mut bundles,
                 stage,
             )?;
             if read.iter().any(|other| other.label == found.label) {
@@ -2395,6 +2406,74 @@ fn read_instances(
         }
     }
     Ok(read)
+}
+
+/// Everything one material contributes to every instance row drawn with it.
+///
+/// # Why this is read once per material
+///
+/// Four of the things an instance row is built from are answers about the material and the shader
+/// rather than about the row: the custom data verified against the shader's custom schema, the
+/// images that data names, that data with the image fields left out, and the schema the row is
+/// read and packed with. Every one of them costs a clone of the custom data, a scan of the
+/// schema's fields, or a schema built and thrown away — none of which is a function of the row.
+///
+/// A scene draws many rows from few materials: a vegetation scene declares a few thousand
+/// materials and lists tens of thousands of rows, so reading these per row did each of them
+/// dozens of times more often than there was a reason to. They are read into one of these per
+/// material, and each row borrows it.
+struct MaterialBundle {
+    /// The material's custom data without the fields that name an image, which is what the row
+    /// carries: an image is a name the compiler resolves into a texture, and everything else is a
+    /// number the row packs.
+    numbers: Value,
+    /// The images this material's custom data names, and the fields it names them in.
+    images: Vec<ImageBinding>,
+    /// The schema one instance row of this material is read with and packed against.
+    row_schema: Rc<Schema>,
+}
+
+/// Reads what one material contributes to every instance row drawn with it.
+///
+/// # Invariants
+///
+/// The checks are made in the order and with the arguments they were made in before this was
+/// hoisted out of the row loop, and this is reached only from the first row naming the material,
+/// so a document that is refused is refused with the same [`CompileError`], at the same row.
+///
+/// A custom data that is not a struct is refused here rather than where the row is built, which
+/// is the same refusal at the same row: nothing between the two can fail, and the path named is
+/// the material's own rather than the row's.
+fn material_bundle(
+    material: &MeshMaterialRead,
+    shaders: &[ShaderRead],
+    images: &[ImageRead],
+) -> Result<MaterialBundle, CompileError> {
+    let shader = &shaders[material.shader];
+    let custom_data = &material.custom_data;
+    let custom_path = material.path.key(scene_schema::CUSTOM_DATA);
+
+    verify(
+        custom_data,
+        &custom_path,
+        shader.custom_schema.as_ref(),
+        "the custom data",
+        "the shader custom schema",
+    )?;
+    let images = material_images(custom_data, shader, &material.label, &material.path, images)?;
+    let numbers = numbers_only(custom_data, &image_fields(&shader.custom_schema));
+    let Some(_) = numbers.as_field_map() else {
+        return Err(malformed(&custom_path, "the custom data as a struct"));
+    };
+    let row_schema = merged_row_schema(
+        shader.instance_schema.as_ref(),
+        shader.custom_schema.as_ref(),
+    )?;
+    Ok(MaterialBundle {
+        numbers,
+        images,
+        row_schema,
+    })
 }
 
 /// Reads one instance and every schema it is verified against.
@@ -2411,6 +2490,7 @@ fn read_instance(
     materials: &[MeshMaterialRead],
     shaders: &[ShaderRead],
     images: &[ImageRead],
+    bundles: &mut [Option<MaterialBundle>],
     stage: Stage,
 ) -> Result<InstanceRead, CompileError> {
     let label = text(instance, path, scene_schema::LABEL)?.to_owned();
@@ -2429,15 +2509,16 @@ fn read_instance(
     let transform = read_transform(instance, path)?;
     let material_path = path.key(scene_schema::MATERIAL);
     let material_label = text(instance, path, scene_schema::MATERIAL)?;
-    let Some(material) = materials
+    let Some(material_index) = materials
         .iter()
-        .find(|material| material.label == material_label)
+        .position(|material| material.label == material_label)
     else {
         return Err(CompileError::UnknownMaterial {
             path: material_path,
             material: material_label.to_owned(),
         });
     };
+    let material = &materials[material_index];
     let shader_read = &shaders[material.shader];
     // The bucket is the pass and the material says how the instance is drawn in it, so the two
     // have to agree. A material whose shader belongs to another stage would be drawn by this
@@ -2458,15 +2539,17 @@ fn read_instance(
     // schema when the mesh was read, once for the whole scene rather than once per
     // instance. The check's answer depends only on the points and the schema, so doing it
     // again here would be the same answer the same number of times as there are instances.
-    let custom_data = &material.custom_data;
-    let custom_path = material.path.key(scene_schema::CUSTOM_DATA);
-    verify(
-        custom_data,
-        &custom_path,
-        shader_read.custom_schema.as_ref(),
-        "the custom data",
-        "the shader custom schema",
-    )?;
+    //
+    // The same is true of everything else this row takes from its material: the custom data
+    // verified, the images it names, that data with the image fields left out, and the merged row
+    // schema. All four are read into the material's slot the first time an instance names it and
+    // borrowed by every row after, which is what keeps the cost of a row a function of the row.
+    if bundles[material_index].is_none() {
+        bundles[material_index] = Some(material_bundle(material, shaders, images)?);
+    }
+    let bundle = bundles[material_index]
+        .as_ref()
+        .expect("the material's bundle was just read");
 
     // The instance row is where the instance is, plus the material's custom data. Both are per
     // instance, and once one pass draws several instances at once a per instance attribute is the
@@ -2478,18 +2561,9 @@ fn read_instance(
     // A field that names an image is left out of both. It is a name the compiler resolves into a
     // texture rather than a number the row can carry, so the row is built from the custom data
     // without it and the image is bound beside the row instead of packed into it.
-    let images = material_images(
-        custom_data,
-        shader_read,
-        &material.label,
-        &material.path,
-        images,
-    )?;
-    let custom_data = &numbers_only(custom_data, &image_fields(&shader_read.custom_schema));
-    let row_schema = merged_row_schema(
-        shader_read.instance_schema.as_ref(),
-        shader_read.custom_schema.as_ref(),
-    )?;
+    let custom_data = &bundle.numbers;
+    let row_schema = bundle.row_schema.clone();
+    let images = bundle.images.clone();
     let model = transform.matrix();
     let mut fields = vec![(
         MODEL.to_owned(),
@@ -2512,9 +2586,10 @@ fn read_instance(
             ),
         ));
     }
-    let Some(custom_fields) = custom_data.as_field_map() else {
-        return Err(malformed(&custom_path, "the custom data as a struct"));
-    };
+    // The bundle was refused unless this is a struct, so there is nothing left to decide here.
+    let custom_fields = custom_data
+        .as_field_map()
+        .expect("a bundle is only read from a custom data that is a struct");
     fields.extend(
         custom_fields
             .iter()
