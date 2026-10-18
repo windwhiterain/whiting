@@ -20,8 +20,10 @@
 use definition::Value;
 
 use vegetation::derive::{Species, bamboo, clump};
+use vegetation::envelope::{Envelope, trim};
 use vegetation::field::Field;
-use vegetation::ops::{Change, Frame, Property, apply, paint};
+use vegetation::handle::Handle;
+use vegetation::ops::{Change, Edit, Frame, Property, apply, paint};
 use vegetation::selector::Selector;
 use vegetation::thin::thin;
 
@@ -267,5 +269,139 @@ fn brushed_plantings() -> Vec<Planting> {
     vec![
         Planting::new(bamboo(11)).at(planted_at(PAIR_PLACES[0].0, PAIR_PLACES[0].1)),
         Planting::new(brushed).at(planted_at(PAIR_PLACES[1].0, PAIR_PLACES[1].1)),
+    ]
+}
+
+/// The name of the scene whose trunk is a strongly curved spine.
+pub const ARCHING: &str = "arching";
+
+/// Builds the arching scene: **the trunk itself is a curve**, and every bough, branch and leaf derives from it.
+///
+/// # Invariants
+///
+/// The trunk is re-authored with [`Change::Spine`], which is the edit table's bake — the same tier a hand writes — so
+/// nothing here is a new species and nothing is special-cased: the boughs keep their stations, the leaves keep their
+/// `t`, and the whole plant follows because **a shape is its control points and every consumer derives from one
+/// parameterisation**. The curve is an arch and not a lean because a lean is what the rule already draws (the culm's
+/// own spine moves 0.19 m over 2.2 m); this one moves 1.35 m and comes back down, which no rule of the crate makes.
+pub fn arching() -> Value {
+    let mut species = bamboo(11);
+    let arch = shape::Curve::new(vec![
+        shape::Jet::new([0.0, 0.0, 0.0], [0.34, 0.52, 0.0]),
+        shape::Jet::new([0.22, 0.72, 0.03], [0.40, 0.30, 0.06]),
+        shape::Jet::new([0.76, 1.28, 0.12], [0.34, -0.10, 0.06]),
+        shape::Jet::new([1.34, 1.20, 0.22], [0.22, -0.26, 0.04]),
+    ])
+    .expect("the arch's knots are distinct");
+    apply(
+        &mut species.plant,
+        &[Edit::new(
+            Handle::root(),
+            Change::Spine { jets: arch.jets() },
+        )],
+    );
+    plant_scene(
+        &[Planting::new(species).at(planted_at([-0.62, 0.0, 0.0], 0.0))],
+        &PAIR,
+        ARCHING,
+        &[],
+    )
+}
+
+/// Resolves an arching scene's id.
+pub fn arching_handle_of(id: u32) -> Option<String> {
+    planting_handle(&arching_plantings(), id)
+}
+
+fn arching_plantings() -> Vec<Planting> {
+    let mut species = bamboo(11);
+    let arch = shape::Curve::new(vec![
+        shape::Jet::new([0.0, 0.0, 0.0], [0.34, 0.52, 0.0]),
+        shape::Jet::new([0.22, 0.72, 0.03], [0.40, 0.30, 0.06]),
+        shape::Jet::new([0.76, 1.28, 0.12], [0.34, -0.10, 0.06]),
+        shape::Jet::new([1.34, 1.20, 0.22], [0.22, -0.26, 0.04]),
+    ])
+    .expect("the arch's knots are distinct");
+    apply(
+        &mut species.plant,
+        &[Edit::new(
+            Handle::root(),
+            Change::Spine { jets: arch.jets() },
+        )],
+    );
+    vec![Planting::new(species).at(planted_at([-0.62, 0.0, 0.0], 0.0))]
+}
+
+/// The name of the scene whose crown is trimmed to a section rather than to a circle.
+pub const PANELLED: &str = "panelled";
+
+/// The radius law both crowns of the panelled scene are trimmed to.
+const CROWN_RADIUS: [(f32, f32); 3] = [(0.0, 0.52), (0.5, 0.40), (1.0, 0.28)];
+
+/// Builds the panelled scene: the same radius law, drawn as a circle on the left and as a section on the right.
+///
+/// # Invariants
+///
+/// The two envelopes differ in **the section and in nothing else**, so the difference in the two plants is the section:
+/// a crown the space allows to be wide one way and narrow the other — between two walls, under a soffit — and the trim
+/// law reads it through one `reach` query per station.
+pub fn panelled() -> Value {
+    let plantings = panelled_plantings();
+    plant_scene(&plantings, &PAIR, PANELLED, &[])
+}
+
+/// Resolves a panelled scene's id.
+pub fn panelled_handle_of(id: u32) -> Option<String> {
+    planting_handle(&panelled_plantings(), id)
+}
+
+fn panelled_plantings() -> Vec<Planting> {
+    let mut round = bamboo(11);
+    trim(&mut round.plant, &Envelope::radial(&CROWN_RADIUS));
+    let mut sectioned = bamboo(11);
+    trim(
+        &mut sectioned.plant,
+        &Envelope::radial(&CROWN_RADIUS).with_section(shape::Section::ellipse(1.0, 0.30)),
+    );
+    vec![
+        Planting::new(round).at(planted_at(PAIR_PLACES[0].0, PAIR_PLACES[0].1)),
+        Planting::new(sectioned).at(planted_at(PAIR_PLACES[1].0, PAIR_PLACES[1].1)),
+    ]
+}
+
+/// The name of the scene whose leaves are placed by two different fields.
+pub const BANDS: &str = "bands";
+
+/// Builds the bands scene: **the leaf field itself is the subject**, so the two plants differ only in its dials.
+///
+/// # Invariants
+///
+/// The right-hand field changes three dials and no geometry: its band is the top half of the bough instead of most of
+/// it, its density **rises toward the tip** instead of being even, and its phyllotaxy is a quarter turn instead of the
+/// golden angle — so the leaves gather at the ends and stand in four ranks. Nothing about the twigs moves, which is
+/// what makes the picture a statement about the field.
+pub fn bands() -> Value {
+    let plantings = bands_plantings();
+    plant_scene(&plantings, &PAIR, BANDS, &[])
+}
+
+/// Resolves a bands scene's id.
+pub fn bands_handle_of(id: u32) -> Option<String> {
+    planting_handle(&bands_plantings(), id)
+}
+
+fn bands_plantings() -> Vec<Planting> {
+    let rule = bamboo(11);
+    let mut riser = bamboo(11);
+    let mut field = riser.fields[0].clone();
+    field.band = (0.55, 0.98);
+    field.density =
+        shape::Scalar::new(&[(0.0, 4.0), (1.0, 70.0)]).expect("a rising density is a law");
+    field.phyllotaxy = 0.25;
+    field.size = shape::Scalar::new(&[(0.0, 0.20), (1.0, 0.55)]).expect("a growing leaf is a law");
+    riser.fields[0] = field;
+    vec![
+        Planting::new(rule).at(planted_at(PAIR_PLACES[0].0, PAIR_PLACES[0].1)),
+        Planting::new(riser).at(planted_at(PAIR_PLACES[1].0, PAIR_PLACES[1].1)),
     ]
 }

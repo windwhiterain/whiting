@@ -100,6 +100,21 @@ pub const NAMINGS: &[Naming] = &[
         note: "one colour per element: this pixel is that node of the plant, and a leaf wears the colour of the twig it grew from",
     },
     Naming {
+        scene: crate::vegetation_laws::ARCHING,
+        resolve: crate::vegetation_laws::arching_handle_of,
+        note: "the trunk is a baked S-curve and every bough, branch and leaf hangs off its stations",
+    },
+    Naming {
+        scene: crate::vegetation_laws::PANELLED,
+        resolve: crate::vegetation_laws::panelled_handle_of,
+        note: "the left crown is trimmed to a circle and the right one to the same radius law drawn with an elliptic section",
+    },
+    Naming {
+        scene: crate::vegetation_laws::BANDS,
+        resolve: crate::vegetation_laws::bands_handle_of,
+        note: "the left planting has the rule's leaf field and the right one a narrower band, a rising density and a quarter-turn phyllotaxy",
+    },
+    Naming {
         scene: crate::vegetation_laws::GARDEN_WALL,
         resolve: crate::vegetation_laws::garden_wall_handle_of,
         note: "the left planting has no field and the right one is the plant that knows the wall is there",

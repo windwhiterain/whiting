@@ -1578,6 +1578,9 @@ is a **pair or a triptych**: the plant without the law beside the same plant wit
 | **`Field::Ancestor`, `LeafField::reference`, `LeafField::aim`** | `aspiring` |
 | **`thin` and `Prune::Thinned`** | `thinned` |
 | **`Selector` and `paint` — the brush** | `brushed` |
+| **the trunk is a curve** (`Change::Spine` on the root, every consumer deriving from it) | `arching` |
+| **the envelope is a surface** — a curve in the plane across the trunk, reached by `Section::reach` | `panelled` |
+| **the leaf field's dials** — band, density law, phyllotaxy, size law | `bands` |
 | the offline backend | any scene, by name: `render_cycles <scene> <out.png>` |
 
 The four scenes the demonstration round added, with their readings:
@@ -1607,6 +1610,25 @@ The four scenes the demonstration round added, with their readings:
 
 **The scan is the harness's**: `--region` over each demo answers ids like `planting 1, trunk` and
 `planting 1, trunk/bough 1/branch 0`, because the four scenes register the same split the grove does.
+
+**Three questions, asked of the pictures, and their answers.**
+
+1. *Is the trunk a curve?* Yes, and it always was: every spine in the crate is a cubic Hermite `shape::Curve` and every
+   solid is one `Sweep` along it, so a bough, a branch and a leaf midrib are the same curve type as the trunk. What the
+   scenes did not show was a trunk whose curvature is **visible** — the culm's own spine moves 0.19 m over 2.2 m, which
+   reads as straight because a bamboo is. `arching` bakes an S into the root with `Change::Spine` and the whole plant
+   follows its stations.
+2. *Is the envelope a surface?* Yes, in the design's own terms: the coarse form is `radius(t)` and the refined form is
+   **a closed curve in the plane across the trunk at each station** — `Section::reach(direction)` answers it, and the
+   trim law reads that one query per station. What is **not** implemented is a section whose *shape* changes with `t`:
+   the family of curves is one outline scaled by a radius law, so the surface is a swept prism and not a general one.
+   The general case needs a law of outlines rather than a law and an outline, and no demo asked for it. `panelled` shows
+   the refined form: the same radius law drawn as a circle and as an ellipse.
+3. *Are the leaves instanced from a field?* Yes: `LeafField` is the distribution field (band, density law, phyllotaxy,
+   pitch, twist, size law, jitter, `reference`, `aim`) and `LeafField::groups` turns it into one placement per leaf; the
+   scene kit draws **one blade mesh and one instance matrix per leaf**, so the grove's 146 plantings are one blade mesh
+   and 461 placements. `bands` shows the dials: the same twigs, a different field.
+
 ## What is not done, and why
 
 Recorded so a later session reopens these by argument rather than by forgetting them:
