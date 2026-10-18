@@ -76,7 +76,7 @@ pub fn node_ids(plant: &Plant) -> BTreeMap<Handle, u32> {
 /// **A planting numbers its plants apart by its base**, so two plants of one scene never write the same id and a
 /// frame can answer *which plant and which node* with one number. The stride between two bases must exceed every
 /// plant's node count, and [`crate::vegetation_picture::PLANTING_STRIDE`] is the number the grove scene uses: a
-/// plant of more than four thousand nodes is not one a picture draws.
+/// plant of more than sixty-five thousand nodes is not one a picture draws.
 pub fn node_ids_from(plant: &Plant, base: u32) -> BTreeMap<Handle, u32> {
     plant
         .walk()

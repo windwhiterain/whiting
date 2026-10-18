@@ -178,12 +178,13 @@ const GRADE: &str = r#"
     color = pow(color, vec3<f32>(0.4545));
 "#;
 
-/// The plant this scene draws, expanded at the crate's own default dial.
+/// The plant this scene draws, expanded at the dial its planting carries.
 ///
-/// The dial is [`Detail::DEFAULT`] and not a number written here, because the point of the picture is the
-/// plant and not a resolution: a scene that picked its own dial would be a second author of the geometry.
-fn expansion(species: &Species) -> Expansion {
-    expand(&species.plant, Detail::DEFAULT, &species.fields)
+/// The dial is the planting's and not the scene's, because a hero in the foreground and a companion on
+/// the far ridge are the same species at two resolutions: a scene that picked one dial for every
+/// planting would draw the ridge at the hero's cost.
+fn expansion(species: &Species, detail: Detail) -> Expansion {
+    expand(&species.plant, detail, &species.fields)
 }
 
 /// A knot: a short tube that bulges, seated on a bough's base so the culm shows where a limb leaves it.
@@ -473,16 +474,20 @@ pub struct Planting {
     pub seats: Vec<Seat>,
     /// The surfaces it is drawn in.
     pub palette: Palette,
+    /// How finely its wood is expanded: a hero in the foreground and a companion on the far ridge are
+    /// the same species at two dials, which is the level of detail a grove needs and a still does not.
+    pub detail: Detail,
 }
 
 impl Planting {
-    /// A planting standing where it grew, in the default palette.
+    /// A planting standing where it grew, in the default palette and at the crate's own dial.
     pub fn new(species: Species) -> Self {
         Self {
             species,
             placement: Placement::IDENTITY,
             seats: Vec::new(),
             palette: Palette::default(),
+            detail: Detail::DEFAULT,
         }
     }
 
@@ -503,10 +508,22 @@ impl Planting {
         self.palette = palette;
         self
     }
+
+    /// The same planting expanded at its own dial.
+    pub fn with_detail(mut self, detail: Detail) -> Self {
+        self.detail = detail;
+        self
+    }
 }
 
-/// How far apart two plantings' id bases are: a plant of more than four thousand nodes is not one a picture draws.
-pub const PLANTING_STRIDE: u32 = 4096;
+/// How far apart two plantings' id bases are: a plant of more than sixty-five thousand nodes is not one
+/// a picture draws.
+///
+/// The stride was four thousand while the gallery's plants were culms and shrubs; a broadleaf crown
+/// dense enough to be a crown is tens of thousands of nodes, and four thousand capped the dove tree's
+/// crown at nine metres against its note's eleven to fifteen. The ids are `f32` in the point schema and
+/// every id below 2^24 is exact in one, so the wider stride costs nothing.
+pub const PLANTING_STRIDE: u32 = 65_536;
 
 /// The framing of the four scenes that draw one plant.
 const STILL: Framing = Framing {
@@ -1062,7 +1079,7 @@ fn plant_scene_with(
         .iter()
         .enumerate()
         .map(|(index, planting)| Drawn {
-            expansion: expansion(&planting.species),
+            expansion: expansion(&planting.species, planting.detail),
             ids: node_ids_from(
                 &planting.species.plant,
                 LEAF_BASE_ID + index as u32 * PLANTING_STRIDE,

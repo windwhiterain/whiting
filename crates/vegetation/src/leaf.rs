@@ -218,6 +218,14 @@ pub struct LeafField {
     /// A fan of nought is the identity whatever the cluster is, and a cluster of one leaves every member
     /// at the centre of the fan — so the two dials are independent and neither can move a leaf alone.
     pub fan: Scalar,
+    /// How a cluster's members differ in size: a law over the member's rank as a fraction of the
+    /// cluster, multiplying [`LeafField::size`], constant one for members of one size.
+    ///
+    /// A dove tree's bract pair is one bract of sixteen centimetres and one of eight, and a cluster with
+    /// one size law can only draw the pair at the larger one; this is the law that says the second
+    /// member is half the first. It is evaluated at `member / (cluster - 1)`, so a cluster of one reads
+    /// it at nought and a constant law of one leaves every leaf exactly where the size law put it.
+    pub cluster_size: Scalar,
     /// Radians from the parent's outward direction toward the parent's tip.
     pub pitch: Scalar,
     /// Radians about the leaf's own forward.
@@ -255,6 +263,7 @@ impl LeafField {
             phyllotaxy: GOLDEN_ANGLE,
             cluster: 1,
             fan: Scalar::constant(0.0),
+            cluster_size: Scalar::constant(1.0),
             pitch: Scalar::constant(std::f32::consts::FRAC_PI_4),
             twist: Scalar::constant(0.0),
             aim_axis: [0.0, 1.0, 0.0],
@@ -342,9 +351,18 @@ impl LeafField {
                         (phase + place as f32 * self.phyllotaxy + member as f32 / cluster as f32)
                             .rem_euclid(1.0);
                     // A negative scale is not a leaf: it would stand the template's winding inside out, and
-                    // the template's volume is the check that would see it.
-                    let scale =
-                        (self.size.at(station) * (1.0 + self.jitter * rng.signed())).max(0.0);
+                    // the template's volume is the check that would see it. The cluster's own size law is
+                    // read at the member's rank and draws nothing, so a field whose cluster_size is a
+                    // constant one is the field it was before the law existed.
+                    let rank_fraction = if cluster > 1 {
+                        member as f32 / (cluster - 1) as f32
+                    } else {
+                        0.0
+                    };
+                    let scale = (self.size.at(station)
+                        * self.cluster_size.at(rank_fraction)
+                        * (1.0 + self.jitter * rng.signed()))
+                    .max(0.0);
                     // A handle from the walk resolves, so this arm is the staleness case the API allows
                     // for; the group ends there rather than carrying a leaf with no anchor.
                     let Ok(surface) = plant.surface(&handle, Attachment::new(station, slot)) else {
