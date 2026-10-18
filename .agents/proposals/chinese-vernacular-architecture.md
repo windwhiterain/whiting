@@ -72,8 +72,10 @@ tradition, 举折 in the Song, 提栈 in 江南 — and the profile through thos
 building's silhouette. A straight tent is not a Chinese roof at any scale.
 
 The planarity contract is **not** the obstacle, and this is the observation the design turns on: a
-purlin profile is a chain of **planar strips**, one per 步架, which is exactly what the roof already
-builds for one step. What is missing is a plane that holds *k* strips — not a surface that curves.
+purlin profile is a chain of **planar steps**, one per 步架, which is exactly the shape the roof
+already builds for one step. What is missing is a *row* that can break before it reaches the eave —
+and a surface that bends at the purlins is a chain of planes, not a curve, so nothing here asks the
+crate to give up planarity.
 
 ### 2. A wall top is one elevation
 
@@ -240,8 +242,14 @@ Each names what it buys, the invariant it must keep, and the sentence it refuses
 `Roof` gains one field: `profile: Vec<Step>`, each `Step { fraction, rise }` — the fraction of the
 slope's plan run from the eave, and the rise above that row's own eave elevation. The list is strictly
 increasing in both, every step strictly inside `(0, 1)` in fraction and strictly below the crest in
-rise. Expansion turns each authored row into a **polyline** through those steps, and each plane into
-`profile.len() + 1` strips of quads. The strips are the 步架.
+rise. Expansion turns each authored row into a **polyline** through those steps, and each authored
+plane into `profile.len() + 1` **faces**, one per 步架.
+
+Faces and not strips, and the difference is the whole point: **the surface bends at every purlin**, so
+the steps of one authored plane are *not* coplanar. Each step is therefore its own planar surface and
+its own shading group — a strip list would smooth the normals across the bend and draw a curve where
+the building has a crease. `RoofSurface::{Skin, Soffit}` gain a **step** index for that reason, and the
+planarity check measures each step rather than the authored plane.
 
 Why a section and not one of its two halves — each spelling fails in a different corner, and the two
 failures are why this is one datum and not two:
@@ -253,7 +261,7 @@ failures are why this is one datum and not two:
 - **Fractions alone have no heights.** A fraction says where the purlin stands along the run; the
   rise says how high. 举架 is the pair — each 步架 has a width and a rise, and the roof's concavity is
   the ratio changing between them.
-- **The pair is also what keeps the strips planar.** Rows of one plane are parallel in the ordinary
+- **The pair is also what keeps every step planar.** Rows of one plane are parallel in the ordinary
   case — a gable's two slopes, a shed's single slope — so a step's two segments are parallel, and the
   quad between them is a planar trapezoid. A **fan** (a hip's triangular end, rows meeting at one
   crest point) has no such pair of parallel segments, and a level purlin cannot cross a fan as a
@@ -278,7 +286,7 @@ Two things it buys without a line of new code, both measured from the crate's ow
   end is already closed today, and it keeps closing it.
 - **The weld.** `expand_roof` already welds a crest by its index and an eave station by its normalised
   bits **across planes** (`expand.rs:3111-3150`), so a step vertex keyed by its row's own identity and
-  its step index lands in exactly the same map and the same rule. The strips are watertight because
+  its step index lands in exactly the same map and the same rule. The steps are watertight because
   the roof's three keys are, not because two constructions agree.
 
 One companion parameter, because the covering changes the roof and not only its colour:
@@ -425,7 +433,7 @@ of ten.
 
 | Move | New fields | Code that changes | The gate it must pass |
 | --- | --- | --- | --- |
-| D1 profile | `Roof::profile` | `expand` (row polylines, strips), `roof` (accessors), `validate` (three refusals) | a probe that every strip is planar and the strips tile the loop |
+| D1 profile | `Roof::profile` | `expand` (row polylines, one face per step), `roof` (accessors), `mesh` (`RoofSurface` gains a step), `validate` (three refusals) | a probe that every step is planar and the steps tile the loop |
 | D2 crowns | `Mass::tops`, `Wall::crown` | `expand` (ring top strips, wall faces), `validate` | a probe that a crowned ring is closed and planar |
 | D3 members | `Member` with `Anchor`, a list in the document, a `SolidId` | `expand` (anchors resolved in dependency order), `mesh` (element), `identity`, `validate` | a probe that a member is closed and outward, that two members overlapping without a host are reported, and that moving a column moves the tie anchored on it |
 | D4 stilts | a seating mode | `site` | a probe on an analytic slope: posts land on the ground, the floor stays level |
@@ -465,7 +473,7 @@ and then cannot ship:
 Each is a real choice with a cost somewhere; none is "obviously right".
 
 **F1. The roof's profile — three ways, one recommendation.**
-- (a) *A section of fraction and rise, cut into planar strips* (D1). Keeps planarity, keeps
+- (a) *A section of fraction and rise, cut into planar steps* (D1). Keeps planarity, keeps
   watertightness, and matches how the roof is built (a 举架 roof is a chain of planes, not a curve).
   Costs: every row becomes a polyline, a fan plane cannot take a profile, and a 起翘 corner is a
   separate piece.
