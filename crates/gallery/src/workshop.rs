@@ -12,7 +12,7 @@
 //! does **not** show the plate: the mezzanine sits at 2.2 m, so its underside is the doorway's own ceiling
 //! and about seven centimetres of it are visible through the opening at this angle. That the plate exists,
 //! is closed, and is inset by the wall's own thickness on all four sides is measured by
-//! loor_probe, not argued by the picture.
+//! floor_probe, not argued by the picture.
 //!
 //! # The one part that stands inside the building
 //!
@@ -116,7 +116,6 @@ const BENCH_DEPTH: f32 = 0.60;
 /// How tall the bench stands, which is the top of its topmost board.
 const BENCH_TOP: f32 = 0.94;
 
-/// How tall a shutter is, and so how tall the windows it fills are.\nconst SHUTTER_HEIGHT: f32 = 0.85;\n\n/// How many bays across and how many storeys, which is what makes the openings bay-mounted per storey.
 const BAYS: usize = 3;
 
 /// How tall a shutter is, and so how tall every window it fills.
