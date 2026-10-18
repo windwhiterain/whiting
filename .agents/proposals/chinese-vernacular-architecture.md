@@ -113,6 +113,21 @@ with the lower storey half-hanging. Today a stilt house can only be authored by 
 are a plinth: a solid box where the architecture has air. The type the owner named first is the one
 the site model refuses.
 
+### The fifth difference is a hierarchy, not an assumption
+
+The four above are sentences the code says. This one is a sentence the code does not say and these
+buildings do: **the frame is the building and the wall is infill.** The Bouyei stone house states it
+outright — "房屋的承重结构是穿斗式木构房架，石料只作围护结构和屋面防水材料", the load-bearing structure is the
+穿斗 timber frame and the stone is only enclosure and roofing (Guizhou note §Verdict, [S21]) — and the
+Dong long house says it in numbers: the same frame carries walls of **0.03 m** slab infill or
+**0.40 m** rubble, a factor of thirteen that no single wall-thickness parameter can hold, and that is
+only possible because the wall carries nothing.
+
+In this crate a `Mass` **is** the wall ring: the walls are the solid and the frame does not exist. That
+is not wrong — the ring is what a viewer sees — but it fixes what D3 is for. The members must be
+solids *in front of* the ring, and for this architecture they are not decoration on a building: they
+are the building, and the ring is the panel hung on it.
+
 ## What the crate already gives us
 
 - **The courtyard is solved**, including the hard part: a void is a ring of wall built *outward* from
@@ -139,15 +154,77 @@ the site model refuses.
 | 穿枋, 挑枋, 撑弓, 檩, 椽 | nothing with a sloped axis | `Member`: a prism over a 3D segment |
 | 吊脚 posts, open underside | terrace seating | a stilt seating mode, plus `Member` posts |
 | 楼板, a second storey | `derive::floor_slab`, unused | use it, at a grid level |
+| 楼板开洞 (火塘通高, 楼梯井) | `Slab` has one plan polygon | `Slab::voids`, filled by `fill` |
+| 屋面覆盖 (小青瓦, 石板瓦, 杉皮) | a surface has a colour | a `Covering` enum on `Roof` — the ridge and the pitch minimum differ |
+| 使用开间 = 2 × 结构开间 | one grid per face | a ratio in the starter, not a construct |
 | 天井, 院落, 厢房, 走马廊 | void ring, deep eaves, hosted slabs | nothing — authoring |
-| 瓦垄, 瓦当, 滴水, 小青瓦 | nothing (a surface has a colour) | a shader question, not geometry — see the forks |
+| 瓦垄, 瓦当, 滴水 | nothing | a shader question, not geometry — see the forks |
 | 台基, 踏步, 柱础, 石砌勒脚 | `Slab`, `Part`, `Wall` | nothing — authoring |
 
 ## What the buildings ask for
 
-Numbers to come from the four research notes: bay and depth ranges, purlin steps and their rises,
-eave depths, the 吊脚 drop as a function of slope, courtyard dimensions, tile and slate sizes, and
-the pitch minima each covering needs.
+Two of the four notes were complete when this section was written — the frame and the roof, and
+Guizhou–Xiangxi. The Chongqing and Yunnan notes follow, and what they change is not the six moves but
+their numbers.
+
+**A caution about the notes' own language, because this proposal caused it.** All four were briefed
+with "every roof is a flat slab", and each opens by naming that as the assumption that breaks. The
+crate's roofs are **not** flat: a plane is a strip between a crest row and an eave station
+(`roof.rs:12`), which is already one straight slope. Read every "flat plate" in the notes as **"a
+single straight slope"**, and every "a roof is not a plate" as "a roof is not one slope". The
+conclusions survive the correction; the words do not.
+
+### The roof profile: a list of purlin stations, and only one of the three rules is implementable
+
+The primary text settles the shape of D1: **the profile is not a pitch, it is the sequence of purlin
+elevations** (frame note §"The profile"). Three named algorithms generate it, and they are three
+different algorithms rather than three numbers:
+
+| rule | period | how it generates the curve | can this crate implement it today? |
+| --- | --- | --- | --- |
+| 举折 jǔzhé | Song, 《营造法式》1103 | one total rise `H`, then a **halving fold series** `0.1H · 2^−(i−1)` from the ridge | **no.** The series sums to at most `0.2H`, so it cannot produce the whole rise, and the rule that closes it is not in the primary text. The note refuses to implement it, and so does this proposal. |
+| 举架 jǔjià | Qing, 《工程做法则例》1734 | **one coefficient per step**, `rise = step × X/10`, increasing toward the ridge | **yes**, for the coefficients the worked example attests arithmetically: 五举 `0.5`, 六举 `0.6`, 八举 `0.8` (26.6°, 31.0°, 38.7°) |
+| 提栈 tízhàn | Jiangnan, 《营造法原》 | one coefficient per step, steeper than Qing | **no.** The text was not obtained; its range is not established. |
+
+What is safe to implement is narrower than the literature suggests and it is enough: **the 举屋 table**
+(official coefficients, 1/3 to 0.2575 of the eave-to-eave span, as a contrast) and **举架's three
+attested coefficients**, applied as `Step { fraction, rise }`. Everything else is `measured` — the
+modeller types the purlin heights — and that is the variant a vernacular roof will actually use, which
+is the honest shape for the field and the honest shape for the code.
+
+So the authoring helper is `Step::from_widths_and_coefficients(widths, coefficients)`: the widths are
+the 步架 (what a 掌墨 sets on a 丈杆) and the coefficients are the 举 (what the craft names), and the
+fractions D1 stores are their normalised cumulative sums.
+
+### The frame's proportions: official ratios are contrast, and there is one vernacular dataset
+
+The official ratios are self-consistent — 柱高 = 0.8 × 面阔, 柱径 = 0.07 × 面阔, 出檐 = 0.3 × column
+height (Qing, [S2]) — and they are **not** the vernacular's: a south-western 深出檐 is *larger* than the
+official 0.3, because the eave is the rain screen. What this session obtained for the vernacular itself
+is one measured dataset (桥梁民居, 黔江, 1916, 穿斗 + 悬山 + 青瓦): **进深 8.11–11.55 m**. Everything else —
+开间, 柱径, 椽档, 出檐, tile — is `not established` beyond two sites.
+
+That asymmetry is itself a finding and it constrains the road: **the first scene's dimensions will be
+authored, not surveyed**, and the proposal must say so on the scene rather than pretending to a
+precision the sources do not have.
+
+### The south-west dwelling's own numbers (Guizhou–Xiangxi)
+
+Four rules, each directly programmable, and each one a sentence rather than a range:
+
+| rule | value | source |
+| --- | --- | --- |
+| **used bay = 2 × structural bay** (Dong) | the 7间屋 at 平流寨 is **14 structural bays** | [S1], academic survey |
+| bedroom clear height vs hearth room | **2–2.5 m** vs **> 3.5 m with no ceiling** | [S4] |
+| the dimensions a 掌墨 sets | **column height, bay width, depth, eave projection** — and nothing else | [S4] |
+| the drum tower's plan and frame | even-sided polygon (4/6/8), **4 inner + 12 outer posts**, odd eave count, section contracting inward per eave | [S1] |
+
+And the best-measured structure in the slice, which is a *settlement* piece rather than a dwelling:
+程阳风雨桥, deck **77 × 3.8 m**, four spans of **14.8 m** at **17.3 m** pier spacing, piers **3 % battered**,
+five four-tier towers, and a **multi-layer corbelled cantilever bracket** carrying the span.
+
+Roof pitch for the Guizhou types is **`not established`** — the single largest gap in that note — which
+is why the profile above is `measured` and not derived from an ethnic-style coefficient.
 
 ## The design
 
@@ -200,6 +277,13 @@ Two things it buys without a line of new code, both measured from the crate's ow
   its step index lands in exactly the same map and the same rule. The strips are watertight because
   the roof's three keys are, not because two constructions agree.
 
+One companion parameter, because the covering changes the roof and not only its colour:
+`Roof::covering` is an enum of 小青瓦 / 石板瓦 / 杉皮. Slate has **no drainage channels and no ridge
+tile** — its slabs lap into the curve themselves (Guizhou note §Verdict, [S21]) — so a slate roof's
+ridge is a bare joint where a tiled one carries a roll, and slate is heavier, so the purlin spacing
+follows the covering (§5.1, [S9]). Two of those three facts are shape, and a shader cannot state
+either.
+
 Refusals: `ProfileOutOfOrder` (a fraction not strictly increasing inside `(0, 1)`, or a rise not
 strictly increasing above the eave), `ProfileReachesTheCrest` (a step at or above the crest's own
 rise), `ProfileOnAFan` (a plane whose rows are not parallel, which a level purlin cannot cross
@@ -234,24 +318,43 @@ Refusals: `CrownCountMismatch` (one top per node, and a count that disagrees is 
 place), `CrownBelowBase` (a top at or under the wall's own base), `CrownNotASequence` (a `Wall` crown
 whose stations are not strictly increasing within the run).
 
-### D3. A member is a prism over a 3D segment
+### D3. A member is a prism between two anchored points
 
-`Member { from: Vec3, to: Vec3, across: Vec2, width: f32, depth: f32, host: Option<SolidId> }`.
+`Member { from: Anchor, to: Anchor, across: Vec2, width: f32, depth: f32, host: Option<SolidId> }`,
+where
+
+```
+Anchor = Free { at: Vec3 }
+       | OnMember { member: MemberId, t: f32 }          // a station along that member's axis
+       | OnFace   { face: FaceRef, station: f32, elevation: f32 }
+```
+
 Six faces, all planar by the same argument as a slab's: four sides are rectangles and the two ends are
 the section. `across` is the horizontal direction the section's `width` runs, which is what makes a
 vertical column's orientation authored rather than undefined (`up × axis` is zero for a vertical
 member, and a silent default there is a section that spins with the wind).
 
-`host` is the authorization the crate already demands of a roof: a member embedded in a wall overlaps
-it, and two solids may overlap only when the overlap is authored.
+**The anchors are the crate's own correspondence rule, applied to members.** A 檩 does not rest near a
+柱 — it passes through a mortise at a named place, and a 穿枋 threads a row of columns at one
+elevation. A member built from two `Free` points and eyeballed to touch a column is exactly the
+"two independent constructions that have to agree by luck" this crate exists to refuse: the first edit
+that moves the column separates the tie, and the picture keeps drawing two solids that no longer meet.
+With anchors, moving the column **moves** the tie, because the tie's end *is* a station on the column.
+
+`host` is the authorization a roof already needs: a member embedded in a wall overlaps it, and two
+solids may overlap only when the overlap is authored. An anchor `OnMember` is itself that
+authorization for the pair it joins — the joint is the statement.
 
 What it buys: 柱, 穿枋, 挑枋, 撑弓, 檩, 椽, a railing, a stair's stringers, and the 吊脚柱 of D4 — one
 construct, because every one of them is a prism over a segment. It also buys the **palette**: a material
 belongs to an instance and not to a face (`gallery::house`'s own comment), so dark timber against a
 whitewashed wall is not a colour on a face — it is a member and a wall being two solids.
 
-Refusal: `MemberAxisDegenerate` (a segment of no length, or an `across` parallel to the member's plan
-direction, which collapses the section).
+Refusals: `MemberAxisDegenerate` (an axis of no length, or an `across` parallel to it, which collapses
+the section), `MemberAnchorUnresolved` (an anchor naming a member that is not there, or a `t` outside
+`[0, 1]`, or a face whose loop cannot answer the station), and `MemberAnchorCycle` (two members whose
+anchors need each other: the expansion resolves anchors in dependency order, so a cycle is a name
+rather than a stack overflow).
 
 ### D4. A floor need not stand on the ground: stilt seating
 
@@ -282,9 +385,32 @@ a **three-bay, one-or-two-storey timber house** with a purlin-profiled 悬山 ro
 frames that carry their columns and ties, and a plinth — every element an ordinary one, as the
 module's contract demands.
 
+It carries two rules that are rules and not numbers: the **used bay is two structural bays**
+(Guizhou note §Verdict, [S1]), so the frame is laid out on one grid and the rooms on twice it; and the
+frame is **translated vertically** as one object, which is what makes each post's length a terrain
+query rather than a design decision (§Verdict, [S1]).
+
 The point is not convenience. A derived element that carries no guarantee and is immediately editable
 is how this crate makes a new architecture *authorable* by an agent in one call, and how the gallery
 gets a scene whose document is 60 lines instead of 600.
+
+### D7. A slab can have a hole
+
+The double-height hearth bay — clear height **over 3.5 m with no ceiling** while the bedrooms beside
+it are **2–2.5 m** (Guizhou note §Verdict, [S4]) — is a floor with a slot in it, and so is a
+stairwell. `Slab` is a level prism over *one* plan polygon (`slab.rs:88`), so a floor with a hole
+cannot be authored.
+
+The hole is small to add because the crate already builds an annulus: `fill::triangles` fills two
+convex loops, and it is what makes a courtyard's ring closed. A `Slab::voids` list gives the top and
+bottom caps an inner loop each, and two inner side bands — the same four surfaces a courtyard ring
+has, without the wall. The one constraint `fill` already states is convexity, which a hearth slot and
+a stairwell satisfy.
+
+What it buys: a hall that is tall because the floor above it has a hole, which is how a 火塘 room is
+tall; and a stair that arrives through the floor rather than beside it. It is also the cheapest
+possible answer to "the storeys are not uniform", which is the last thing in the Guizhou note's list
+of ten.
 
 ### Table: what each move costs
 
@@ -292,10 +418,11 @@ gets a scene whose document is 60 lines instead of 600.
 | --- | --- | --- | --- |
 | D1 profile | `Roof::profile` | `expand` (row polylines, strips), `roof` (accessors), `validate` (three refusals) | a probe that every strip is planar and the strips tile the loop |
 | D2 crowns | `Mass::tops`, `Wall::crown` | `expand` (ring top strips, wall faces), `validate` | a probe that a crowned ring is closed and planar |
-| D3 members | `Member`, a list in the document, a `SolidId` | `expand`, `mesh` (element), `identity`, `validate` | a probe that a member is closed and outward, and that two members overlapping without a host are reported |
+| D3 members | `Member` with `Anchor`, a list in the document, a `SolidId` | `expand` (anchors resolved in dependency order), `mesh` (element), `identity`, `validate` | a probe that a member is closed and outward, that two members overlapping without a host are reported, and that moving a column moves the tie anchored on it |
 | D4 stilts | a seating mode | `site` | a probe on an analytic slope: posts land on the ground, the floor stays level |
 | D5 floors | none | a scene | the floor's own faces appear in the identity table |
 | D6 starter | none | `derive` | the starter builds and its roof's profile measures the profile |
+| D7 slab holes | `Slab::voids` | `expand` (caps, inner bands), `validate` | a probe that a holed slab is closed and its annulus area is the difference |
 
 ## The forks, for the owner
 
@@ -323,8 +450,10 @@ Each is a real choice with a cost somewhere; none is "obviously right".
   the gallery is 悬山 with a wall that stops short — which is a real Chinese roof, and only one.
 
 **F3. The timber frame — three ways.**
-- (a) *`Member` as a first-class solid* (D3). The frame is built, cast, shadowed and named; and it is
-  a new element class, so it is a new material — the palette follows for free.
+- (a) *`Member` as a first-class solid, with anchored joints* (D3). The frame is built, cast, shadowed
+  and named; moving a column moves the tie that meets it, because the joint is a station rather than a
+  coincidence. And it is a new element class, so it is a new material — the palette follows for free.
+  Costs: anchor resolution in dependency order, and three refusals to write and gate.
 - (b) *Members as templates of masses.* The existing `Part` mechanism can place a column, because a
   column is a small mass. A **diagonal** is impossible — a mass is a prismatic shell standing on its
   outline — so 撑弓, 斜撑 and 椽 are out, and so is every rafter.
