@@ -138,7 +138,9 @@ const EDGE_FLOOR: f64 = 1.0e-12;
 pub struct Corner {
     /// Where the corner stands, in the space the loft was sampled in.
     pub position: [f64; 3],
-    /// The face normal of this corner's own solid, accumulated per vertex.
+    /// The normal this corner is shaded with: its vertex's accumulated face normal, or — at a section
+    /// corner sharp enough to crease, in [`loft_corners_creased_at`] — the face normal of the triangle
+    /// this corner is one of.
     pub normal: [f64; 3],
     /// The `(u, v)` the loft gave this vertex.
     pub texture: [f64; 2],
@@ -161,11 +163,10 @@ pub struct Corner {
 ///   incident triangle has no area; it is outward for every solid drawn here and it is better than
 ///   the zero-length vector a shader would read as `NaN`.
 ///
-/// That third bullet is what a smooth average cannot do and [`loft_corners_creased_at`] is about:
-/// a smooth normal is the right reading of a rounded tube and the wrong one of a fluted bole,
-/// because the two faces meeting at a fluted bole's corner are then lit as one. This function is
-/// the smooth reading and stays the whole of it, so that a scene which wants the flat one asks for
-/// the flat one.
+/// A smooth average is the right reading of a rounded tube and the wrong one of a fluted bole,
+/// where the two faces meeting at a corner are then lit as one. This function stays the whole of the
+/// smooth reading, and [`loft_corners_creased_at`] is the sibling that reads a sharp section corner
+/// flat, so a scene that wants the flat one asks for the flat one.
 pub fn loft_corners(loft: &Loft) -> Vec<Corner> {
     corners_within(loft, None)
 }
