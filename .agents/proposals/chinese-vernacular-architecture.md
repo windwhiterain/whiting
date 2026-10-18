@@ -424,6 +424,33 @@ of ten.
 | D6 starter | none | `derive` | the starter builds and its roof's profile measures the profile |
 | D7 slab holes | `Slab::voids` | `expand` (caps, inner bands), `validate` | a probe that a holed slab is closed and its annulus area is the difference |
 
+### What this design does not add, and why
+
+Naming these matters more than adding them, because each is the kind of thing an arc quietly promises
+and then cannot ship:
+
+1. **A semantic space layer** — 堂屋, 火塘, 廊, 美人靠, 吞口, 阁楼. These are *named places* that are not
+   solids, and the Guizhou note lists them as a construct (§5.2 item 9) because several cannot be
+   derived from the geometry: the veranda is the largest space in a Dong plan, and the grain storey is
+   staggered against the rooms below it. This crate's named place is the **bay**, and a room is a set
+   of bays. So the smallest honest form is a *named set of bays*, not a new kind of solid — and it
+   should be added when a scene needs to hang something on "the hearth bay" rather than on bay
+   `(1, 2)`. Until then, a scene names its bays by comment.
+2. **A settlement generator.** 鼓楼, 风雨桥, 粮仓, 禾晾 and a street's frontage are placed by village
+   rules, and the Guizhou note's own §5.1 lists them under a separate heading. A 鼓楼 is *authorable*
+   from what this design adds — an octagonal mass stack, one roof per eave, posts as members — but
+   *placing* it is a different layer, and F6 keeps it out of this proposal.
+3. **A corbel as a construct.** 程阳桥's multi-layer cantilever bracket is a stack of members with
+   anchors, one per layer, each reaching further out; it needs the `Member` construct and nothing else.
+   A `derive::corbel` is a convenience for a later arc, not a capability.
+4. **The covering's laying law.** Tile courses, corbelling, slate laps and their curvature are the
+   shader's (F4). The `Covering` enum carries only the two facts that are *shape*: whether the ridge
+   carries a roll, and the minimum pitch the covering needs.
+5. **A frame graph that validates the load path.** D3's anchors make pairwise joints; nothing checks
+   that every purlin is carried by a post or that a cantilever is balanced. That is a structurally
+   different instrument — a graph with a carried/carrier relation — and it is the natural *next*
+   proposal if the frame turns out to need validation rather than only drawing.
+
 ## The forks, for the owner
 
 Each is a real choice with a cost somewhere; none is "obviously right".
@@ -508,9 +535,37 @@ alone. The gate cost per scene is real and known: a `.png` hash pin in `[6/8]`, 
 
 ## Not established
 
+About the model:
+
 - Whether the crate's planarity tolerance holds a *crowned* mass's top strip at a corner. The
   geometry says a sloped top strip over a straight run is planar (four points on one tilted plane);
   the miter at a corner, where two crowned edges meet at different slopes, has not been computed.
 - Whether a 举架 profile is the same for every plane of a hip roof. A gable's two slopes have the
-  same 步架 count and the same profile; a hip's short ends have fewer, and the design must say
-  whether the profile is per plane or per roof.
+  same 步架 count and the same profile; a hip's short ends have fewer, and D1 answers by refusing the
+  fan rather than by having measured it.
+
+About the rules, inherited from the notes and not to be invented later:
+
+- **举折's closing rule.** The halving series `0.1H·2^−(i−1)` sums to at most `0.2H` and cannot
+  produce the total rise; the rule that does is not in the primary text, and the commentaries that
+  would settle it were not obtained. **Do not implement 举折 as a profile rule** until they are.
+- **提栈.** The 《营造法原》 text was not obtained at all: no coefficients, no range. The south-west
+  descends from it, which makes this the most consequential single gap in the four notes.
+- **The full Qing ladder.** 五举, 六举 and 八举 are attested and arithmetically verified; the complete
+  five-step ladder is repeated in the general literature and has no primary source in this session.
+- **营造尺 and 鲁班尺 in metres.** The one document giving both a 尺 and a millimetre figure is
+  self-inconsistent (314 mm against 309 mm). Every official dimension above is therefore in units of
+  the 尺, not in metres.
+- **Whether a south-western 穿斗 roof has a 望板 layer** under the tile, which decides whether a
+  rafter is visible from below and so whether F4's "rafters under the eave" is the right line.
+- **Vernacular dimensions.** The session obtained exactly one measured dataset for a vernacular
+  dwelling (桥梁民居, 黔江, 1916: 进深 8.11–11.55 m). 开间, 柱径, 椽档, 出檐 and tile sizes are not
+  established beyond two sites, and the Guizhou note records roof pitch as not established for
+  **every** type in its slice. The first scene's dimensions will be authored, and the scene must say
+  so rather than borrow the official ratios quietly.
+
+About the research itself:
+
+- All four notes were briefed with a premise this proposal has since corrected ("every roof is a flat
+  slab"). Their sections on what breaks are sound; their *vocabulary* for the roof is one step behind
+  the code, and a reader of the notes alone would think the crate has no pitched roof at all.
