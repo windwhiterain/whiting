@@ -2357,7 +2357,10 @@ fn finish_mesh(
 /// thousand meshes and materials and tens of thousands of rows, and the product of those is where
 /// the compile time of such a scene went: not in packing a transform, but in finding the name it
 /// had to pack.
-fn index_by_label<'read, T>(table: &'read [T], label_of: impl Fn(&T) -> &str) -> HashMap<&'read str, usize> {
+fn index_by_label<'read, T>(
+    table: &'read [T],
+    label_of: impl Fn(&T) -> &str,
+) -> HashMap<&'read str, usize> {
     let mut index = HashMap::with_capacity(table.len());
     for (position, entry) in table.iter().enumerate() {
         index.entry(label_of(entry)).or_insert(position);
@@ -2394,8 +2397,7 @@ fn read_instances(
     // true that would otherwise be traded for the speed: a material no instance draws is never
     // read, and the first row naming a material that fails still fails with the message it always
     // failed with.
-    let mut bundles: Vec<Option<MaterialBundle>> =
-        (0..materials.len()).map(|_| None).collect();
+    let mut bundles: Vec<Option<MaterialBundle>> = (0..materials.len()).map(|_| None).collect();
     let mesh_index = index_by_label(meshes, |mesh| mesh.label.as_str());
     let material_index = index_by_label(materials, |material| material.label.as_str());
     // A label is refused the second time it is read, so the labels read so far are what answers
@@ -4934,18 +4936,30 @@ struct InstanceBounds {
 /// when the points were packed.
 ///
 /// The positions are read a component at a time out of the packed run, so the whole loop is a
-/// strided walk of bytes with no map lookup and no per point allocation.
+/// strided walk of bytes with no map lookup and no per point allocation. **Where those bytes
+/// are** is resolved once per mesh by [`PointPositions`] rather than per point, which is what
+/// makes the walk a walk: the run of a mesh has one position layout, and asking the layout for
+/// it once per point was asking it thousands of times for one answer.
 fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> InstanceBounds {
     let mut scene: Option<Bounds> = None;
     let mut each = Vec::with_capacity(instances.len());
+    // Where each mesh's positions sit in its run is a property of the mesh, resolved the first
+    // time an instance draws it and kept for the instances after. See `PointPositions`.
+    let mut positions: Vec<Option<PointPositions<'_>>> = (0..meshes.len()).map(|_| None).collect();
     for instance in instances {
         let mesh = &meshes[instance.mesh];
+        if positions[instance.mesh].is_none() {
+            positions[instance.mesh] = Some(PointPositions::of(mesh));
+        }
+        let positions = positions[instance.mesh]
+            .as_ref()
+            .expect("the mesh's positions were just resolved");
         let mut covered = Bounds {
             minimum: [f64::INFINITY; 3],
             maximum: [f64::NEG_INFINITY; 3],
         };
         for point in 0..mesh.points.len() {
-            let world = apply(&instance.model, packed_point_position(mesh, point));
+            let world = apply(&instance.model, positions.at(point));
             for axis in [0, 1, 2] {
                 covered.minimum[axis] = covered.minimum[axis].min(world[axis]);
                 covered.maximum[axis] = covered.maximum[axis].max(world[axis]);
@@ -5129,7 +5143,7 @@ fn quoted(labels: &[&str]) -> String {
     }
 }
 
-/// Returns the position one packed point carries.
+/// Where a mesh's packed points carry their positions, resolved once for the whole mesh.
 ///
 /// # Invariants
 ///
@@ -5141,35 +5155,93 @@ fn quoted(labels: &[&str]) -> String {
 ///
 /// A schema naming no `position` falls back to the first three components, which is the only
 /// reasonable guess; the fallback is over the run's own field order, which is the schema's.
-fn packed_point_position(mesh: &MeshRead, index: usize) -> [f64; 3] {
-    if let Some(declared) = mesh.point_schema.struct_field(POSITION_FIELD) {
-        let width = components(POSITION_FIELD, declared).unwrap_or(3).min(3);
-        let mut position = [0.0f64; 3];
-        for (axis, slot) in position.iter_mut().enumerate().take(width) {
-            *slot = mesh
-                .points
-                .component(index, POSITION_FIELD, axis)
-                .unwrap_or(0.0);
-        }
-        return position;
-    }
-    first_packed_components(mesh, index)
+///
+/// A component the point does not carry reads as zero rather than as a failure, which is what a
+/// position field narrower than three components has always answered.
+///
+/// # Why this is resolved once
+///
+/// Which byte a position is at, and how many of them there are, are properties of the mesh's
+/// layout and of nothing else. Answering them per point meant a schema field lookup and an
+/// extension lookup per point, and then three scans of the layout's field names per point on top:
+/// four name comparisons for every point of every instance, to arrive at an offset that is the
+/// same for the whole run. It measured, on the southwest pine scene, as 49 s of a 53 s compile —
+/// the walk was already single-pass and strided, and was spending almost all of its time
+/// deciding where to read rather than reading.
+struct PointPositions<'read> {
+    /// The whole run the offsets index into.
+    bytes: &'read [u8],
+    /// The number of bytes one point occupies.
+    stride: usize,
+    /// The byte offset within one point of each of the three position components, or `None` for
+    /// a component this mesh does not carry.
+    at: [Option<usize>; 3],
 }
 
-/// Returns the first three numbers a packed point carries, in layout order.
-fn first_packed_components(mesh: &MeshRead, index: usize) -> [f64; 3] {
-    let mut position = [0.0f64; 3];
-    let mut at = 0;
-    'fields: for (name, components) in mesh.points.layout().fields() {
-        for component in 0..*components {
-            if at == 3 {
-                break 'fields;
+impl<'read> PointPositions<'read> {
+    /// Resolves where the positions of one mesh's points are.
+    fn of(mesh: &'read MeshRead) -> Self {
+        let layout = mesh.points.layout();
+        let mut at = [None; 3];
+        match mesh.point_schema.struct_field(POSITION_FIELD) {
+            // The width is the narrower of what the schema declares and what the run lays out,
+            // because the run is what is read: a component the run does not carry read as zero.
+            Some(declared) => {
+                let declared = components(POSITION_FIELD, declared).unwrap_or(3);
+                if let Some((offset, laid_out)) = layout.field(POSITION_FIELD) {
+                    for (axis, slot) in at
+                        .iter_mut()
+                        .enumerate()
+                        .take(declared.min(laid_out).min(3))
+                    {
+                        *slot = Some(offset + axis * 4);
+                    }
+                }
             }
-            position[at] = mesh.points.component(index, name, component).unwrap_or(0.0);
-            at += 1;
+            None => {
+                let mut filled = 0;
+                for (name, count) in layout.fields() {
+                    let Some((offset, _)) = layout.field(name) else {
+                        continue;
+                    };
+                    for component in 0..*count {
+                        if filled == 3 {
+                            break;
+                        }
+                        at[filled] = Some(offset + component * 4);
+                        filled += 1;
+                    }
+                    if filled == 3 {
+                        break;
+                    }
+                }
+            }
+        }
+        Self {
+            bytes: mesh.points.bytes(),
+            stride: layout.stride_bytes(),
+            at,
         }
     }
-    position
+
+    /// Returns the position one point of the run carries.
+    fn at(&self, index: usize) -> [f64; 3] {
+        let start = index * self.stride;
+        let mut position = [0.0f64; 3];
+        for (axis, offset) in self.at.iter().enumerate() {
+            let Some(offset) = offset else {
+                continue;
+            };
+            let at = start + offset;
+            position[axis] = self
+                .bytes
+                .get(at..at + 4)
+                .and_then(|slice| slice.try_into().ok())
+                .map(f32::from_le_bytes)
+                .unwrap_or(0.0) as f64;
+        }
+        position
+    }
 }
 
 /// Returns the two binding points every pass of a group carries.
