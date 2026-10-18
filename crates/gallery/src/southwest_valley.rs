@@ -283,7 +283,8 @@ fn pinna(foliage: Foliage) -> LeafTemplate {
             // blades of eighteen different lengths rather than one blade thirty-six times. The floor is a
             // fifth and not nought: the note says the basal pinnules are **shorter**, and a zero at either
             // end would collapse a blade's four knots onto one place, which `Curve::new` refuses.
-            let profile = ((std::f32::consts::PI * at).sin().max(0.0).powf(0.55) * (1.0 - 0.26 * at))
+            let profile = ((std::f32::consts::PI * at).sin().max(0.0).powf(0.55)
+                * (1.0 - 0.26 * at))
                 .max(0.20);
             let blade = pinnule(half_width, teeth, reach * profile);
             let along = rachis * at;
@@ -1035,17 +1036,30 @@ impl Season {
 /// | **0** | **1** | the foot's own base | **the bole**, born out of the buttress: one child, sunk to the axis |
 /// | **1** | **11–14** in **tiers of three** | `0.52`–`0.985` of the bole | the **whorled horizontal limbs** |
 /// | **2** | **4–7** | `0.30`–`0.98` of a limb | the secondaries, 2.8–3.6 m |
-/// | **3** | **8–12** | `0.22`–`1.0` of a secondary | the twigs, 0.25–0.5 m |
+/// | **3** | **14–20** | `0.22`–`1.0` of a secondary | the twigs, 0.25–0.5 m |
 ///
 /// **`cluster = 3` on generation 1 is the whole of the whorl**, and it is the same word [`pinnae`] uses on
 /// the fern's opposite pinnae and the pine's needle fascicles use on their needles: how many siblings
-/// share one station. Four tiers of three over the bole's top half is the note's *"pseudo-whorls of 3–5
-/// near the top of the bole"*, and it is why the crown is **layered** — the note's ESTIMATE of *"a shallow
-/// upper plate over a lower, sparser, more horizontal tier"* rather than a conifer's tiers of shrinking
-/// boughs.
+/// share one station. Five to six whorls of three over the bole's top forty-four per cent is the note's
+/// *"pseudo-whorls of 3–5 near the top of the bole"*, and it is why the crown is **layered** — the note's
+/// ESTIMATE of *"a shallow upper plate over a lower, sparser, more horizontal tier"* rather than a
+/// conifer's tiers of shrinking boughs.
 ///
-/// **The band starts at 0.52**, which is the note's *"a mature tree has no branches over much of its
+/// **The twig count is the crown's mass and it is above the note's count on purpose.** Two thousand twigs
+/// is what an eighteen-metre crown of `0.285 m` hands needs to cover a fifth of its own frontal area; the
+/// first two plates of this species stood at six hundred and eight hundred and came out at **0.139** and
+/// **0.177 coverage**, which is the *bare broom* the defect list names. The note's own `2–4 leaves per
+/// twig` is honoured; the number of shoots is the one the crown pays for.
+///
+/// **The band starts at 0.56**, which is the note's *"a mature tree has no branches over much of its
 /// trunk"*, its own *11–15 m* to first branch, and the `long clean bole` half of the parasol silhouette.
+/// **It ends at 1.0**, so the topmost whorl leaves from the bole's own tip and there is no leader above it.
+///
+/// **Six whorls over the bole's top forty-four per cent**, which is the note's `8–14` first-order branches
+/// read at its upper end and the number that closes the gaps: **twelve limbs in four tiers left a bare grey
+/// pole standing between every tier**, three metres of it, and the first plate of this species came out with
+/// a Christmas tree inside a lamp standard. A whorl every **1.4 m** is the difference between a bole and a
+/// trunk with wires on it.
 ///
 /// **No `Field` but a weak light tropism.** `01-habit.jpg` shows the outer branchlets turned up at their
 /// tips and the inner ones hanging, and a tropism of 0.14 is enough to lift the outer twigs without
@@ -1070,8 +1084,8 @@ fn kapok_rule() -> Rule {
             // **The whorled limbs.** Thirteen in tiers of three is four tiers; the slot step is the golden
             // angle between tiers and a third of a turn inside one, which is what a whorl is.
             Generation {
-                count: (11, 14),
-                station: (0.52, 0.985),
+                count: (14, 17),
+                station: (0.56, 1.0),
                 slot: (0.0, GOLDEN),
                 jitter: (0.04, 0.10),
                 sink: 0.10,
@@ -1088,7 +1102,7 @@ fn kapok_rule() -> Rule {
                 shape: secondary,
             },
             Generation {
-                count: (8, 12),
+                count: (14, 20),
                 station: (0.22, 1.0),
                 slot: (0.0, GOLDEN),
                 jitter: (0.10, 0.20),
@@ -1101,38 +1115,36 @@ fn kapok_rule() -> Rule {
     }
 }
 
-/// The foot: **1.7 metres** of plank buttress, five boards round a bole, and nothing else above ground.
+/// The foot: **2.6 metres** of plank buttress, five boards round a bole, and nothing else above ground.
 ///
 /// # The taper, and the two metres it takes to disappear
 ///
 /// FOC gives *"trunk buttressed"* and the note ESTIMATES a projection of **`0.9–1.6 m` radius, to
-/// `2.0–3.0 m` up**. So the foot's own taper is `1.32 m` at the ground — a **2.64 m** apparent base — and
-/// falls to `0.49` in **204 mm** and to `0.44` by **310 mm**, then creeps down the rest of its 1.7 m. The
-/// visible flare is therefore the first **600 mm**, which is the note's *"vertical boards"* seen from a
-/// man's height, and above that the foot is inside the bole it carries.
+/// `2.0–3.0 m` up**. So the foot's own taper is `1.32 m` at the ground — a **2.64 m** apparent base — falls
+/// to `0.71` at **830 mm**, to `0.60` at **1.3 m** and to `0.44` at its own 2.6 m tip. The bole it carries is
+/// `0.45 m` at 830 mm and `0.42 m` at 2.6 m, so **the boards stand a quarter of a metre proud for two
+/// metres** and then vanish — which is the note's *板状根*, and the reason the foot is **2.6 m long**.
 ///
-/// The foot's spine is **dead plumb**: the buttresses are a buttress's own geometry and not a trunk's
-/// stance, and a `06`-metre wander here would read as a leaning tree.
+/// The first two plates of this species dropped the radius from 1.32 to 0.49 in 34 mm and drew a **flat
+/// triangular skirt at the foot of a twenty-metre tree**, then a five-pointed starfish lying on the sand.
+/// A buttress is a curve and not a cliff: its steepest part is where a plank leaves the bole, and it is
+/// proud of the bole for two metres after that.
 fn buttress() -> (shape::Curve, shape::Scalar) {
     (
         spine(&[
             ([0.00, 0.00, 0.00], [0.00, 1.00, 0.00]),
-            ([0.02, 0.60, 0.01], [0.00, 1.00, 0.00]),
-            ([0.00, 1.20, -0.01], [0.00, 1.00, 0.00]),
-            ([0.01, 1.70, 0.00], [0.00, 1.00, 0.00]),
+            ([0.02, 0.90, 0.01], [0.00, 1.00, 0.00]),
+            ([0.00, 1.80, -0.01], [0.00, 1.00, 0.00]),
+            ([0.01, 2.60, 0.00], [0.00, 1.00, 0.00]),
         ]),
         taper(&[
             (0.000, 1.320),
-            (0.020, 0.900),
-            (0.045, 0.680),
-            (0.075, 0.560),
-            (0.120, 0.492),
-            (0.180, 0.462),
-            (0.280, 0.448),
-            (0.420, 0.440),
-            (0.600, 0.434),
-            (0.800, 0.428),
-            (1.000, 0.420),
+            (0.080, 1.060),
+            (0.180, 0.860),
+            (0.320, 0.710),
+            (0.500, 0.600),
+            (0.700, 0.520),
+            (1.000, 0.440),
         ]),
     )
 }
@@ -1152,8 +1164,8 @@ fn buttress() -> (shape::Curve, shape::Scalar) {
 /// sampled at twelve points over ten authored vertices, the notches are rounded off between samples and the
 /// boards come out as soft lobes, which is a flared tree and not a buttressed one.
 ///
-/// The section is scaled by the taper, so the boards stand **1.32 m** out at the ground and are **0.13 m**
-/// deep at 1.7 m — already inside the bole, so the flare ends where the note says it does.
+/// The section is scaled by the taper, so the boards stand **1.32 m** out at the ground and are **2 mm**
+/// proud at 2.6 m — already inside the bole, so the flare ends where the note says it does.
 fn planks() -> shape::Section {
     let points: Vec<[f32; 2]> = (0..10)
         .map(|index| {
@@ -1179,6 +1191,13 @@ fn planks() -> shape::Section {
 /// pole, and the *floating tree* defect's sibling. The law has a shoulder at 1.2 m, a long shallow middle
 /// and a knee at 60% of the height, which is the three-knot shape [`column`] also uses and for the same
 /// reason.
+///
+/// **The bole ends inside the crown and not above it.** It stops at **19.8 m** and the topmost whorl leaves
+/// at `station 1.0` — the bole's own tip — with limbs that reach `5.3 m`, so the crown's plate is at the top
+/// of the tree and there is no leader above it. The first plate of this species ran the bole to 20.6 m with
+/// the top whorl `3.8 m` long and stood a **metre of bare grey pole** above the crown, and its second plate
+/// stood **three metres between every pair of tiers**: a leader, and the note says a mature kapok has lost
+/// its leader.
 fn bole(_rng: &mut Rng, _joint: &Joint) -> (shape::Curve, shape::Scalar) {
     (
         spine(&[
@@ -1186,7 +1205,7 @@ fn bole(_rng: &mut Rng, _joint: &Joint) -> (shape::Curve, shape::Scalar) {
             ([0.16, 5.20, -0.10], [0.05, 1.00, -0.02]),
             ([0.26, 11.00, 0.06], [0.02, 1.00, 0.02]),
             ([0.22, 16.00, -0.04], [0.00, 1.00, 0.00]),
-            ([0.20, 20.60, 0.00], [0.00, 1.00, 0.00]),
+            ([0.20, 19.80, 0.00], [0.00, 1.00, 0.00]),
         ]),
         taper(&[
             (0.000, 0.560),
@@ -1208,21 +1227,23 @@ fn bole(_rng: &mut Rng, _joint: &Joint) -> (shape::Curve, shape::Scalar) {
     )
 }
 
-/// A first-order limb: **4.4–6.9 m**, leaving the bole six to twelve degrees above horizontal.
+/// A first-order limb: **4.5–8.0 m**, leaving the bole six to twelve degrees above horizontal.
 ///
 /// # The law over the station, which is the crown's profile
 ///
 /// The note gives *"分枝平展"* and *"branches spreading"* and an ESTIMATE of **60–80° from vertical**. So
-/// the lowest whorl leaves at `84°` and the topmost at `78°`, and both reach far out: `5.9 m` at
-/// `station 0.52` and `3.8 m` at `0.985`. **The top quarter shortens again**, which is what makes the crown
-/// **flat-topped**: a limb law that only falls with height draws a cone, and the note's first silhouette
-/// fact is *"a parasol … not a cone and not a ball"*.
+/// the lowest whorl leaves at `84°` and the topmost at `78°`, and **both reach nearly as far out**: `6.2 m`
+/// at `station 0.52` and `5.3 m` at `0.985`. **A ratio of 1.17, and not of 1.5**, and the reason is the
+/// note's *"as it matures the leader is lost, the crown lifts and flattens"* — a limb law that falls steeply
+/// with height draws a **cone**, and the first plate of this species came out as a Christmas tree with a
+/// spike of bare bole standing above it. **The flat top is the topmost whorl reaching as far as the
+/// lowest**, and the crown's `18 m` across is `8 m` of limb plus `3 m` of secondary.
 ///
-/// The last two bends turn it back **twenty-three degrees** below its own heading, because `04-branch.jpg`
+/// The last two bends turn it back **twenty-four degrees** below its own heading, because `04-branch.jpg`
 /// shows the crown's branchlets dipping at their ends and a limb that stayed level would read as a wire.
 fn limb(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    let length = 7.2 * (1.16 - 0.62 * joint.station) * (0.80 + 0.38 * rng.unit());
-    let departure = 1.58 - 0.22 * joint.station + 0.10 * rng.signed();
+    let length = 6.6 * (1.10 - 0.30 * joint.station) * (0.82 + 0.36 * rng.unit());
+    let departure = 1.52 - 0.14 * joint.station + 0.10 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-3);
     (
         bend(
@@ -1235,25 +1256,26 @@ fn limb(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
             ],
         ),
         taper(&[
-            (0.00, radius * 0.40),
-            (0.35, radius * 0.30),
-            (0.72, radius * 0.15),
-            (1.00, 0.022),
+            (0.00, radius * 0.50),
+            (0.35, radius * 0.36),
+            (0.72, radius * 0.17),
+            (1.00, 0.024),
         ]),
     )
 }
 
-/// A secondary: **2.8–3.6 m**, and the departure is a law over the station on the limb.
+/// A secondary: **2.4–4.1 m**, and the departure is a law over the station on the limb.
 ///
 /// # Invariants
 ///
-/// **At a limb's foot a secondary rises steeply into the crown's interior and is the longest member in it;
-/// at a limb's tip it leaves sideways and is short.** That single law is what turns four tiers of whorls
-/// into one **broad, layered plate**: with every secondary leaving at one angle the crown is twelve flat
-/// plumes with the sky between them, which is the *cauliflower* defect the bar names.
+/// **At a limb's foot a secondary leaves at seventeen degrees above the limb and at its tip at fifty-two.**
+/// That single law is what turns four tiers of whorls into one **broad, layered plate**. The first plate of
+/// this species opened the fan from `23°` to `77°` and the crown came out as a **spire**, because a
+/// secondary that climbs steeply off a limb's foot makes the crown's height and a flat top is the one shape
+/// that has none.
 fn secondary(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
     let length = 3.5 * (1.14 - 0.36 * joint.station) * (0.72 + 0.55 * rng.unit());
-    let departure = 0.40 + 0.94 * joint.station + 0.20 * rng.signed();
+    let departure = 0.30 + 0.62 * joint.station + 0.20 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-4);
     (
         bend(
@@ -1346,7 +1368,12 @@ fn petiole() -> LeafTemplate {
             ([0.104, 0.0040, 0.0], [0.050, 0.0016, 0.0]),
             ([0.155, 0.0072, 0.0], [0.040, 0.0010, 0.0]),
         ]),
-        taper(&[(0.00, 0.0014), (0.35, 0.0016), (0.80, 0.0014), (1.00, 0.0010)]),
+        taper(&[
+            (0.00, 0.0014),
+            (0.35, 0.0016),
+            (0.80, 0.0014),
+            (1.00, 0.0010),
+        ]),
         0.55,
         7,
         4,
@@ -1442,10 +1469,13 @@ fn flower() -> Template {
 fn kapok_leaves(secondary_depth: usize, twig_depth: usize) -> Vec<LeafField> {
     let mut hand = LeafField::new(twig_depth, KAPOK_HAND);
     // **A leaf every nine centimetres of twig** over the outer four fifths: the note gives *2–4 leaves per
-    // twig* and a twig of 0.38 m, so eleven to the metre is four and a half — one over the note's count, and
-    // the band stops short of both ends so the twig's bare foot and tip are the *dead give* the bar names.
+    // twig* and a twig of 0.38 m, so twenty-two to the metre is six — over the note's count, and it is
+    // **the twig count** that carries the rest of what the note asks for. The first plate of this species
+    // stood the crown at **0.139 coverage** with the sky between every fourth leaf, which is a *bare
+    // broom*: the defect the bar names. The band stops short of both ends so the twig's bare foot and tip
+    // are the *dead give* the bar also names.
     hand.band = (0.18, 0.97);
-    hand.density = shape::Scalar::constant(11.0);
+    hand.density = shape::Scalar::constant(22.0);
     hand.phyllotaxy = GOLDEN;
     hand.cluster = 1;
     hand.fan = shape::Scalar::constant(0.0);
@@ -1458,11 +1488,12 @@ fn kapok_leaves(secondary_depth: usize, twig_depth: usize) -> Vec<LeafField> {
     hand.jitter = 0.16;
 
     let mut inner = LeafField::new(secondary_depth, KAPOK_FIVE);
-    // **The interior hand, on the outer two fifths of a secondary**: two and a quarter leaves to the metre
-    // over three metres is seven, and they are the shaded inside of the crown, which is where H3's interior
-    // has to come from.
+    // **The interior hand, on the outer two fifths of a secondary**: five to the metre over three metres is
+    // six a secondary, and they are the shaded inside of the crown, which is where H3's interior has to
+    // come from. Two and a quarter was the first reading and the crown's interior-over-lit-p90 came out at
+    // **0.819** — a crown with sky through it has no interior to be dark.
     inner.band = (0.58, 1.0);
-    inner.density = shape::Scalar::constant(2.2);
+    inner.density = shape::Scalar::constant(5.0);
     inner.phyllotaxy = GOLDEN;
     inner.cluster = 1;
     inner.fan = shape::Scalar::constant(0.0);
@@ -1484,13 +1515,7 @@ fn kapok_leaves(secondary_depth: usize, twig_depth: usize) -> Vec<LeafField> {
 /// scarlet points** — the note's *"red flowers on a bare tree"* — rather than every tip in flower, which
 /// would be a crocus display and not a kapok.
 fn kapok_flowers(species: &Species, secondary_depth: usize, twig_depth: usize) -> Vec<Seat> {
-    let mut seats = scatter(
-        &species.plant,
-        twig_depth,
-        Season::FLOWER,
-        1.0,
-        (1, 3),
-    );
+    let mut seats = scatter(&species.plant, twig_depth, Season::FLOWER, 1.0, (1, 3));
     seats.extend(scatter(
         &species.plant,
         secondary_depth,
@@ -1544,10 +1569,7 @@ pub fn kapok_bough(seed: u64) -> Species {
     let rule = Rule {
         trunk: || {
             (
-                bend(
-                    6.6,
-                    [1.46, 1.58, 1.40, 1.16],
-                ),
+                bend(6.6, [1.46, 1.58, 1.40, 1.16]),
                 taper(&[(0.00, 0.240), (0.35, 0.180), (0.72, 0.090), (1.00, 0.022)]),
             )
         },
@@ -1581,23 +1603,40 @@ pub fn kapok_bough(seed: u64) -> Species {
     }
 }
 
-/// The kapok's expansion dial, and the one number in this module that is not about a species.
+/// The kapok's expansion dial where the **wood is the subject**, and the one number in this module that is
+/// not about a species.
 ///
 /// # Invariants
 ///
-/// **`around = 10` for the whole plant**, and it is [`planks`]' invariant that asks for it: ten authored
-/// points round the foot's section is `0.63 rad` a step, and the wood's creasing threshold is `0.61 rad`, so
-/// ten is the **smallest** ring that keeps the buttress boards as hard-edged facets. Twelve rounds them
-/// off and the foot reads as a flared tree.
+/// **`around = 10`**, and it is [`planks`]' invariant that asks for it: ten authored points round the
+/// foot's section is `0.63 rad` a step, and the wood's creasing threshold is `0.61 rad`, so ten is the
+/// **smallest** ring that keeps the buttress boards as hard-edged facets. Twelve rounds them off and the
+/// foot reads as a flared tree.
 ///
-/// The cost of ten sides on a smooth grey bole is that it is a decagon, which at [`KAPOK`]'s 15 mm a pixel is
-/// a 57-pixel-wide trunk with 18-pixel facets: too coarse to read as a polygon, and the creasing actually
-/// helps a *"lightly fissured"* old bole. `stations = 6` and `spacing = 0.5` are the crate's own default and
-/// the bole is twenty metres long, so it takes **forty rings**: a 500 mm facet on a bole that is
-/// `0.062 m` at the crown, where the *polygonal silhouette* defect would show.
+/// The cost of ten sides on a smooth grey bole is that it is a decagon, and the first plate of this
+/// species drew a **dark vertical stripe** down it — one facet turned fully away, which at forty-five metres
+/// is the *polygonal silhouette* defect the bar names. [`KAPOK_TREE_DETAIL`] is the answer for the plates
+/// where the bole is not the subject.
 const KAPOK_DETAIL: Detail = Detail {
     stations: 6,
     around: 10,
+    spacing: 0.5,
+};
+
+/// The kapok's expansion dial for the two whole-tree plates: **fourteen** sides, for the bole's sake.
+///
+/// # Invariants
+///
+/// **The buttress's boards are worth ten sides and the bole is worth fourteen**, and one `Detail` cannot
+/// say both. [`KAPOK_DETAIL`] is the base plate's, where the foot is the subject and ten sides make five
+/// creased boards; this is the tree's, where the foot is **176 pixels** at forty-five metres and the bole is
+/// **fifty-seven pixels wide with a facet every twenty**, and a facet every twenty pixels of a pale grey
+/// trunk is a stripe. Fourteen takes the step to `0.45 rad`, under the `0.61 rad` crease threshold, so the
+/// bole shades round and the boards soften — and the boards soften **on a plate where they are 176 pixels
+/// of a 20 000-pixel frame**, which is the trade the module takes and states.
+const KAPOK_TREE_DETAIL: Detail = Detail {
+    stations: 6,
+    around: 14,
     spacing: 0.5,
 };
 
@@ -1619,8 +1658,12 @@ fn kapok_palette() -> Palette {
     Palette {
         wood: Skin::new([0.205, 0.198, 0.182], 0.88),
         leaves: vec![
-            Skin::new([0.048, 0.085, 0.032], 0.62),
-            Skin::new([0.070, 0.104, 0.040], 0.66),
+            // **The note's *"mid-green above … reddening before leaf-fall"*, read pale.** The first plate of
+            // this species stood the crown at `0.048` albedo and the leaflets came out as dark specks on grey
+            // sticks: the note's crown is *"a loose, **pale**, open mass"*, and pale is a tint and not a
+            // count. `0.078` is what a kapok leaflet looks like at three o'clock in a dry valley.
+            Skin::new([0.078, 0.118, 0.048], 0.62),
+            Skin::new([0.098, 0.128, 0.056], 0.66),
         ],
         seats: vec![Skin::new([0.620, 0.055, 0.035], 0.80)],
     }
@@ -1643,13 +1686,19 @@ fn kapok_lighting() -> Lighting {
     Lighting {
         key_position: [24.0, 34.0, 16.0],
         key_colour: [1.0, 0.97, 0.88],
-        key_irradiance: 3.0,
+        // **A hard noon sun on a pale sky**, and the ratio between them is the number H3 asks for. The
+        // first two plates of this species stood the crown's interior-over-lit-p90 at **0.788** and
+        // **0.828** with a key of 3.0 against a sky of 0.60, which is a ratio of five to one and a crown
+        // lit mostly by the sky — and a crown lit mostly by the sky has an interior exactly as bright as
+        // its rim. A dry-hot valley at noon is the strongest key in this whole set and the sky above it is
+        // washed out; **eleven to one** is what that looks like in a number.
+        key_irradiance: 5.5,
         key_distance: 44.3,
         key_reach: 1400.0,
         key_extent: 9.0,
         fill_position: [-22.0, 11.0, -19.0],
         fill_colour: [0.56, 0.62, 0.74],
-        fill_irradiance: 0.50,
+        fill_irradiance: 0.32,
         fill_distance: 31.0,
         floor: Skin::new([0.330, 0.262, 0.172], 0.95),
         sky: Atmosphere::new()
@@ -1658,7 +1707,7 @@ fn kapok_lighting() -> Lighting {
             .ground([0.38, 0.33, 0.25])
             .density(0.0009)
             .scale_height(3000.0),
-        sky_radiance: 0.60,
+        sky_radiance: 0.42,
         haze: 0.006,
     }
 }
@@ -1680,36 +1729,51 @@ const KAPOK_FRAME: Framing = Framing {
 ///
 /// # Invariants
 ///
-/// **`2 · 8.83 · tan(0.35) / 1000` is 6.4 mm**, and this is H2's own number: the note's `43 mm` leaflet is
-/// **6.7 pixels** and the whole `285 mm` hand is **44**, so the palmate arrangement — the thing H2 asks a
+/// **`2 · 8.66 · tan(0.35) / 1000` is 6.3 mm**, and this is H2's own number: the note's `43 mm` leaflet is
+/// **6.8 pixels** and the whole `285 mm` hand is **45**, so the palmate arrangement — the thing H2 asks a
 /// broadleaf plate to show — is countable at this distance and is not at the whole-tree plate's fifteen
 /// millimetres, where it is 2.9. The plate is therefore **further off than an arm's length**, which is the
 /// opposite of the fern's and for the opposite reason: a fern's finest organ is four millimetres and a
 /// kapok's is forty-five, so the two plates that answer H2 stand at distances that differ by a factor of
-/// six and neither can serve the other.
+/// five and neither can serve the other.
+///
+/// **The limb stands at nine metres**, a crown's own height, and not on the ground: a branch plate whose
+/// branch lies in the dirt reads as a fallen limb, and this species' photo `04-branch.jpg` is a crown read
+/// against sky. The first render of this plate put the limb on the ground and the frame was half sand.
+///
+/// **The eye is square to the limb's middle**, `x = 3.3` at the limb's own half length, because the limb is
+/// **6.6 m** in a frame **9.9 m** wide and an eye off to one side puts half of it outside the frame: the
+/// second render cut the limb's own foot off at the left edge and filled the lower left with sand.
 const KAPOK_BOUGH_FRAME: Framing = Framing {
     width: 1400,
     height: 1000,
-    eye: [3.2, 3.6, 9.0],
-    target: [3.4, 2.9, 0.2],
+    eye: [3.3, 10.40, 9.6],
+    target: [3.3, 9.90, 0.0],
     field_of_view: 0.70,
     near: 0.10,
-    far: 90.0,
-    floor: 40.0,
+    far: 900.0,
+    floor: 400.0,
     ground: Ground::Plane,
 };
 
-/// The base plate's frame: **4.4 m** off the foot at chest height, which is the frame H4 reads the plank
-/// buttresses in.
+/// The base plate's frame: **5.0 m** off the foot at chest height, aimed at **1.2 m**, which is the frame
+/// H4 reads the plank buttresses in.
+///
+/// # Invariants
+///
+/// **Five metres and a low target**, because a buttress is **2.64 m across and 1.7 m tall** and the first
+/// plate of this species stood four and a half metres off at a `1.7 m` target and cropped the flare's
+/// widest point off the bottom of the frame — a buttress plate with no buttress in it is a trunk plate.
+/// `2 · 5.0 · tan(0.425) / 1400` is **3.3 mm** and the whole flare is three quarters of the frame's width.
 const KAPOK_BASE_FRAME: Framing = Framing {
     width: 1200,
     height: 1400,
-    eye: [3.2, 2.0, 3.0],
-    target: [0.0, 1.7, 0.0],
+    eye: [3.6, 2.2, 3.4],
+    target: [0.0, 1.2, 0.0],
     field_of_view: 0.85,
     near: 0.05,
-    far: 90.0,
-    floor: 40.0,
+    far: 900.0,
+    floor: 400.0,
     ground: Ground::Plane,
 };
 
@@ -1718,7 +1782,7 @@ pub fn kapok_picture() -> Value {
     let species = kapok(KAPOK_SEED, Season::Leaf);
     let planting = Planting::new(species)
         .with_palette(kapok_palette())
-        .with_detail(KAPOK_DETAIL);
+        .with_detail(KAPOK_TREE_DETAIL);
     plant_scene_lit(&[planting], &KAPOK_FRAME, KAPOK, &kapok_lighting(), &[])
 }
 
@@ -1731,7 +1795,7 @@ pub fn kapok_flower_picture() -> Value {
     let planting = Planting::new(species)
         .with_seats(seats)
         .with_palette(kapok_palette())
-        .with_detail(KAPOK_DETAIL);
+        .with_detail(KAPOK_TREE_DETAIL);
     plant_scene_lit(
         &[planting],
         &KAPOK_FRAME,
@@ -1745,8 +1809,12 @@ pub fn kapok_flower_picture() -> Value {
 pub fn kapok_bough_picture() -> Value {
     let species = kapok_bough(KAPOK_SEED);
     let planting = Planting::new(species)
+        .at(Placement {
+            origin: [0.0, 9.0, 0.0],
+            ..Placement::IDENTITY
+        })
         .with_palette(kapok_palette())
-        .with_detail(KAPOK_DETAIL);
+        .with_detail(KAPOK_TREE_DETAIL);
     plant_scene_lit(
         &[planting],
         &KAPOK_BOUGH_FRAME,
@@ -1756,7 +1824,7 @@ pub fn kapok_bough_picture() -> Value {
     )
 }
 
-/// Builds the kapok's base plate: the plank buttresses at four metres, which is the frame H4 reads the
+/// Builds the kapok's base plate: the plank buttresses at five metres, which is the frame H4 reads the
 /// flare's form in.
 ///
 /// **The spines are not drawn, and the reason is the note's.** FRPS has *"幼树的树干通常有圆锥状的粗刺"*
@@ -1765,6 +1833,11 @@ pub fn kapok_bough_picture() -> Value {
 /// smooth"* — so seating conical spines on it would draw a juvenile's diagnostic feature on a mature
 /// specimen and every reader who knows the species would see it as wrong. The omission is deliberate and
 /// stated here rather than left for a reader to find.
+///
+/// **Its own lighting, and the reason is the shadow page.** The key's extent sizes the page, and nine is
+/// right for a nineteen-metre crown; four was tried for this plate's 17.6 mm texel and the ground beyond
+/// the smaller page then read as one dark band from the horizon to the tree's own shadow. **The key's
+/// extent is the subject's and not the plate's**, so the plate pays the dither and says so.
 pub fn kapok_base_picture() -> Value {
     let species = kapok(KAPOK_SEED, Season::Leaf);
     let planting = Planting::new(species)
