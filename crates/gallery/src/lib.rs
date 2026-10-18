@@ -107,6 +107,8 @@ mod monoliths;
 pub mod shed;
 /// The trees of the Hengduan: one species at a time, each drawn to the bar the proposal sets.
 pub mod southwest;
+/// Arc 5's two flagships: 珙桐's white bracts and 大树杜鹃's terminal leaf rosettes.
+pub mod southwest_flag;
 mod spotlight;
 mod stilllife;
 /// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
@@ -228,6 +230,12 @@ impl Gallery {
             "yunnan_pine" => southwest::yunnan_pine_picture(),
             "yunnan_pine_bough" => southwest::yunnan_pine_bough_picture(),
             "yunnan_pine_base" => southwest::yunnan_pine_base_picture(),
+            "dove_tree" => southwest_flag::dove_tree_picture(),
+            "dove_tree_bough" => southwest_flag::dove_tree_bough_picture(),
+            "dove_tree_base" => southwest_flag::dove_tree_base_picture(),
+            "giant_rhododendron" => southwest_flag::giant_rhododendron_picture(),
+            "giant_rhododendron_bough" => southwest_flag::giant_rhododendron_bough_picture(),
+            "giant_rhododendron_base" => southwest_flag::giant_rhododendron_base_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
