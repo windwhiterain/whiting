@@ -682,7 +682,7 @@ in `crates/scene/tests/clustered_lights.rs`, and — when its id channel first e
 `scene_identity_probe`'s table that `[7/8]` checks two ways. Every later arc re-pins the hash and updates
 the pass counts, which is the cheap half of the same list.
 
-1. **Arc 1 — the ground is a query (D4).** A three-bay body at the uphill grade, posts down to a sampled
+1. **Arc 1 — the ground is a query (D4).** *Done, 2026-10-18.* A three-bay body at the uphill grade, posts down to a sampled
    slope, a plinth on the uphill side, a lower storey that is half open. The roof is the crate's existing
    hip and the body is a box, because *this arc is the site*: the 吊脚 silhouette exists before any
    Chinese detail does, and the scene exists to be improved.
@@ -696,6 +696,29 @@ the pass counts, which is the cheap half of the same list.
 6. **Arc 6 — the interior (D7).** The hearth bay with no ceiling over it, and the stair through the floor.
 7. **Arc 7 — the compound (D8).** A second scene: 三坊一照壁, the arc that proves D8 was needed at all.
 8. **Arc 8 — the town.** Only if F6 is answered yes; the settlement layer does not exist yet.
+
+### Arc 1 is closed, with its numbers
+
+`site::posts(skeleton, ground, spacing, section, embed)` appends one `Wall` run per post under a seated
+mass and moves nothing, and `crates/gallery/src/stilt.rs` draws it. Measured:
+
+- **the site**: 17 posts on a 35 % bank, lengths **0.2550 .. 3.2550 m**, feet **0.00e0 m** from the
+  analytic ground, **0** posts uphill of where the ground reaches the floor, **0** on a flat site, and
+  11 of 22 refused on a ground that answers on one side only;
+- **the picture**: **1152 × 768**, silhouette **693 × 589 px (1.177)**, hash `64685171182193EC`;
+- **the suite**: the gallery's hash pins are **ten**, `scene_identity_probe` holds **975** rows and the
+  channel is two-way for every scene, and the pass counts are five in each mesh stage — one for each of
+  the four classes a building scene draws plus the posts.
+
+Two findings the picture produced, both worth carrying into later arcs:
+
+1. **A plate's rim is coplanar with the wall's inner face.** The starter seats the plate on the inner
+   loop on purpose; a camera below the floor therefore sees two coincident planes fighting. The scene
+   draws the plate's two caps and lets the wall be the rim. The crate-level fix — a plate inset by a
+   millimetre — moves every pinned hash and waits for an arc that can re-pin them.
+2. **A member whose top meets another solid's face must be embedded in it.** A post butted exactly
+   against the plate's underside put two faces at one depth and the first render combed along the edge;
+   `0.02 m` of tenon is what fixed it, and it is a parameter rather than a constant.
 
 ## What would make this proposal wrong
 
