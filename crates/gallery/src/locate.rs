@@ -145,6 +145,16 @@ pub const NAMINGS: &[Naming] = &[
         note: "one bough at arm's length: this pixel is that node of the bough, and a needle carries its twig's",
     },
     Naming {
+        scene: crate::southwest_oak::ALPINE_OAK,
+        resolve: crate::southwest_oak::alpine_oak_handle_of,
+        note: "this pixel is that node of the oak, and a leaf drawn by the blade mesh carries its shoot's",
+    },
+    Naming {
+        scene: crate::southwest_oak::ALPINE_OAK_BOUGH,
+        resolve: crate::southwest_oak::alpine_oak_bough_handle_of,
+        note: "one limb at arm's length: this pixel is that node of the limb, and a leaf carries its shoot's",
+    },
+    Naming {
         scene: crate::vegetation_picture::GROVE,
         resolve: crate::vegetation_picture::grove_handle_of,
         note: "the planting is the id's quotient by the stride and the node is its remainder",
