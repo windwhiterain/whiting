@@ -25,13 +25,13 @@ use vegetation::plant::Placement;
 use vegetation::rng::Rng;
 
 use crate::air::Atmosphere;
-use crate::southwest::{yunnan_pine, Foliage, pine_palette};
+use crate::southwest::{Foliage, pine_palette, yunnan_pine};
 use crate::southwest_flag::{dove_palette, dove_tree};
 use crate::southwest_oak::{alpine_oak, oak_palette};
-use vegetation::derive::tuft;
 use crate::vegetation_picture::{
     Framing, Ground, Lighting, Palette, Planting, Prop, Skin, plant_scene_lit, planting_handle,
 };
+use vegetation::derive::tuft;
 
 /// The name the montane site frame is built and rendered under.
 pub const SITE_MONTANE: &str = "site_montane";
@@ -48,8 +48,7 @@ pub const SITE_MONTANE: &str = "site_montane";
 /// `f32`, and the two are the same function, so a tree cannot stand where the floor is not — the same
 /// rule [`vegetation::ground`] states for a plant and its base.
 pub fn slope_height(x: f64, z: f64) -> f64 {
-    -0.20 * x
-        + 0.8 * (x * 0.045).sin() * (z * 0.038).cos()
+    -0.20 * x + 0.8 * (x * 0.045).sin() * (z * 0.038).cos()
         - 1.6 * (-((z - 11.0) / 5.0).powi(2)).exp()
         + 6.0 * (-((x + 55.0) / 25.0).powi(2)).exp()
         - 14.0 / (1.0 + (-(x - 70.0) / 12.0).exp())
@@ -184,12 +183,8 @@ fn montane_stone() -> Prop {
         ]),
         shape::Section::circle(),
     );
-    sweep.scale = vegetation::species::taper(&[
-        (0.0, 0.42),
-        (0.35, 0.34),
-        (0.8, 0.22),
-        (1.0, 0.06),
-    ]);
+    sweep.scale =
+        vegetation::species::taper(&[(0.0, 0.42), (0.35, 0.34), (0.8, 0.22), (1.0, 0.06)]);
     let template = vegetation::decorator::Template {
         sweep,
         stations: 8,

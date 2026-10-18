@@ -117,6 +117,8 @@ pub mod southwest_site;
 pub mod southwest_spire;
 /// The valley pair: 桫椤, a tree with no branch graph at all, and 木棉, one rule at two seasons.
 pub mod southwest_valley;
+/// The second wave: 西南桦, a wholly pendulous crown, and 滇油杉, erect cones all over the crown.
+pub mod southwest_wave2;
 mod spotlight;
 mod stilllife;
 /// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
@@ -261,6 +263,12 @@ impl Gallery {
             "kapok_bough" => southwest_valley::kapok_bough_picture(),
             "kapok_base" => southwest_valley::kapok_base_picture(),
             "cangshan_fir_base" => southwest_spire::cangshan_fir_base_picture(),
+            "southwest_birch" => southwest_wave2::southwest_birch_picture(),
+            "southwest_birch_bough" => southwest_wave2::southwest_birch_bough_picture(),
+            "southwest_birch_base" => southwest_wave2::southwest_birch_base_picture(),
+            "evelyn_keteleeria" => southwest_wave2::evelyn_keteleeria_picture(),
+            "evelyn_keteleeria_bough" => southwest_wave2::evelyn_keteleeria_bough_picture(),
+            "evelyn_keteleeria_base" => southwest_wave2::evelyn_keteleeria_base_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
