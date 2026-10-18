@@ -165,6 +165,16 @@ pub const NAMINGS: &[Naming] = &[
         note: "one crown branch at arm's length: this pixel is that node of the branch",
     },
     Naming {
+        scene: crate::southwest_flag::DOVE_TREE_BASE,
+        resolve: crate::southwest_flag::dove_tree_handle_of,
+        note: "the same tree two metres from its own foot: this pixel is that node, and the bole carries its own id",
+    },
+    Naming {
+        scene: crate::southwest_flag::GIANT_RHODODENDRON_BASE,
+        resolve: crate::southwest_flag::giant_rhododendron_handle_of,
+        note: "the same tree at its own foot: this pixel is that node, and the bole's flare is this node's taper",
+    },
+    Naming {
         scene: crate::vegetation_picture::GROVE,
         resolve: crate::vegetation_picture::grove_handle_of,
         note: "the planting is the id's quotient by the stride and the node is its remainder",

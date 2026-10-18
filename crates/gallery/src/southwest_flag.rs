@@ -111,7 +111,7 @@ fn dove_rule() -> Rule {
             // the bole as a spiral, not a whorl: the golden-angle slot step and a quarter turn of jitter are what make
             // a crown that is one shell rather than tiers.
             Generation {
-                count: (13, 15),
+                count: (11, 13),
                 station: (DOVE_FIRST, 0.92),
                 slot: (0.0, GOLDEN),
                 jitter: (0.05, 0.08),
@@ -141,9 +141,13 @@ fn dove_rule() -> Rule {
                 cluster: 1,
                 shape: dove_shoot,
             },
-            // **The leafy twigs**, the note's 20–40 cm shoot: the generation the green blade field hangs from.
+            // **The leafy twigs**, the note's 20–40 cm shoot drawn at its **forty** centimetre top, and the generation
+            // the green blade field hangs from. Eleven is the crown's whole density lever: the first crown drew nine and
+            // read as broccoli, because with the node budget capping the count it is *this* number and the field's
+            // density that decide whether the crown closes. Eleven on six shoots of three boughs of thirteen is 2,598
+            // twigs, and with the half of them that flower, 3,897 nodes — inside the stride at its largest draw.
             Generation {
-                count: (9, 9),
+                count: (11, 11),
                 station: (0.14, 0.98),
                 slot: (0.0, GOLDEN),
                 jitter: (0.12, 0.14),
@@ -210,14 +214,25 @@ fn dove_bole() -> (shape::Curve, shape::Scalar) {
     )
 }
 
-/// The dove tree's bark section: twenty sides with a shallow vertical ridge.
+/// The dove tree's bark section: forty-eight sides carrying six ascending flutes.
 ///
-/// The note's whole statement of the bark is *"smooth to faintly striate grey-brown to grey-green"* and
-/// *"with ascending bark"*, which is the pattern running **up** the stem: a longitudinal ridge and not a ring of it.
-/// The amplitude is a fifth of the pine's fissures because this trunk is three times as thin and the note records no
-/// deep fissure anywhere in the fifty-five frames it examined.
+/// # Invariants
+///
+/// - **The flute is longitudinal**, because the note's whole statement of the bark is *"smooth to faintly striate
+///   grey-brown to grey-green"* and *"with ascending bark"* — the pattern runs **up** the stem, so a ridge and not a
+///   ring of one. The amplitude is a twentieth of the radius and a third of the pine's fissures, because this trunk is
+///   half as thick and the note records no deep fissure anywhere in the fifty-five frames it examined.
+/// - **Forty-eight sides for six flutes is eight points to a flute**, which is what a lobe needs to read as a lobe.
+/// - **This section does not reach the frame, and that is a defect in the frozen crate and not a number here.** Two
+///   controlled renders settle it: replacing this call site's result with `Section::ellipse(1.0, 0.30)` draws the
+///   bole as an unmistakable flat ribbon, while replacing the *same* call site with a four-point near-square
+///   `Section::outline` draws a perfectly smooth cylinder. **`Section::Ellipse` survives to the mesh and
+///   `Section::Outline` does not.** So the striations below are authored, cited to the note, and unrendered, and the
+///   base plate shows the taper law and the flare and nothing else. `expand::wood` reads `node.section().clone()` and
+///   `Sweep::sample` reads `section.ring(around)`, which is where a reader should start. The alternative rejected here
+///   was to draw the bark as a texture or as a non-circular ellipse, which is a felt-pen trunk in a costume.
 fn dove_bark() -> shape::Section {
-    let sides = 20;
+    let sides = 48;
     let points: Vec<[f32; 2]> = (0..sides)
         .map(|index| {
             let theta = index as f32 / sides as f32 * std::f32::consts::TAU;
@@ -292,9 +307,11 @@ fn dove_shoot(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
     )
 }
 
-/// A leafy twig: the note's 20–40 cm shoot, drawn at twenty-eight, and the generation the blade field hangs from.
+/// A leafy twig: the note's 20–40 cm shoot, drawn at forty — the top of its own range, because a twig that short
+/// cannot close its own clump of leaves and a crown of open clumps is broccoli — and the generation the blade field
+/// hangs from.
 fn dove_twig(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    let length = 0.28 * (0.80 + 0.40 * rng.unit());
+    let length = 0.40 * (0.85 + 0.30 * rng.unit());
     let departure = 0.95 + 0.35 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-4);
     (
@@ -351,64 +368,87 @@ fn dove_leaf() -> LeafTemplate {
             ([0.045, 0.009, 0.005], [0.048, 0.009, 0.003]),
             ([0.090, 0.018, 0.007], [0.030, 0.005, 0.002]),
         ]),
-        // **Seven knots and twelve rings, because the base of the blade is where a sweep shows its sampling.** The
-        // first outline rose from a sixteenth of the half-width to two thirds of it inside the first eighth of the
-        // length, and at the bough plate's fifty pixels a leaf that is a sharp shoulder at the base is a scallop: the
-        // plate read as a row of cockleshells. The knots are now close enough together that a ring lands near each of
-        // them, which is the difference between a leaf and its own mesh.
+        // **Rise fast, peak at a third, and run out to a point over the last third.** That is the outline
+        // `11-leaf-flat-upper.jpg` shows and the note's own words — *"nearly circular, slightly longer than wide, cut
+        // in at the base by a broad cordate sinus … drawn out at the tip into a short acuminate point"* — read as a
+        // law: the blade is three quarters of its width by the time it is a fifth long, it is widest at a third, and
+        // **the last third is one straight run to a point**. The first law here peaked at a half and had fallen to
+        // half its width by three quarters, which is an ovate leaf with a rounded tip, and at the bough plate's fifty
+        // pixels a leaf with no run-out is a scallop: the crown read as a row of cockleshells.
         taper(&[
             (0.00, 0.028),
-            (0.06, 0.060),
-            (0.16, 0.084),
-            (0.32, 0.098),
-            (0.48, 0.100),
-            (0.68, 0.088),
-            (0.86, 0.054),
-            (1.00, 0.003),
+            (0.05, 0.072),
+            (0.12, 0.094),
+            (0.24, 0.100),
+            (0.35, 0.097),
+            (0.50, 0.087),
+            (0.66, 0.068),
+            (0.80, 0.044),
+            (0.90, 0.022),
+            (1.00, 0.001),
         ]),
         // The note's *"thin, not succulent"*: 1.8 mm at the blade's widest. The first version used a fortieth, which is
         // 3.3 mm, and the bough plate showed a row of fleshy ribbed pads rather than blades — the keel of a thick lens
         // catches the key light down the middle of every leaf and reads as a cactus rib.
         0.018,
-        12,
+        16,
         4,
     )
 }
 
-/// The white bract: the second template, and the reason this species is in the arc.
+/// One white bract card at `half_width` and `length`: the larger of the pair or the smaller.
 ///
 /// # The numbers and where they come from
 ///
-/// The note's table: **bract length to 16 cm, the smaller about half**, **bract width 6–11 cm** (marked ESTIMATE,
-/// read off `06-flower-bract-pair.jpg` against the leaves beside it), and the pair **opposite** one another. So the
-/// blade is authored at 15 cm by 9 cm — the larger of the pair at the top of the note's length — with the obovate
-/// outline `06-flower-bract-pair.jpg` and `09-bracts-two-clear.jpg` show: widest above the middle, rounded at the tip,
-/// and recurved along its own length because a bract hangs.
+/// The note's table: **bract length to 16 cm, the smaller about half as long**, **bract width 6–11 cm** (marked
+/// ESTIMATE, read off `06-flower-bract-pair.jpg` against the leaves beside it), and the pair **opposite** one another.
+/// So this is called twice: once at the note's 16 cm by 9 cm and once at **8 cm by 5 cm**, which is the note's own
+/// *"ca. half as long as the larger"*.
 ///
-/// # What a cluster cannot say
+/// # Why two templates and not one cluster of two
 ///
-/// The note's pair is **asymmetric** — one to 16 cm, one about half — and the dials that place a cluster are a
-/// `cluster` count, a `fan` of pitch and one `size` law for the station, so **every member of one cluster is the same
-/// size**. The pair is therefore drawn at the larger bract's length, which is the size the crown's silhouette is read
-/// at: a second template for the small bract would be a third blade mesh to say a thing no plate can resolve.
-fn dove_bract() -> LeafTemplate {
+/// **The pair is drawn as two leaf fields over two templates, not as one field with `cluster: 2`**, and this is a
+/// deliberate answer to a limit rather than a preference: a cluster's members all stand at one station and share one
+/// `size` law, so a cluster of two is two *equal* bracts, and the note's pair is the opposite of that — *"the larger
+/// one reaches 16 cm long; the smaller one is ca. half as long"*. Two fields of one bract each give the two members
+/// different blades and different sizes; what they cannot give is the note's **half turn** between them, because a
+/// cluster's half turn is the one thing `cluster` says and a second field draws its own phase from the spur's stream
+/// without being told where to stand. The pair is therefore two different places on the spur's loop rather than two
+/// guaranteed opposite ones, which is the same gap the per-member placement the other arc is adding closes.
+///
+/// # The card is flat
+///
+/// **The midrib is straight and the tip turns down at the very end**: a bract is *"paper"* and the photographs
+/// `06-flower-bract-pair.jpg` and `09-bracts-two-clear.jpg` show two flat cards drooping from a stalk, not two cups.
+/// The first version curved the midrib the whole length of the blade and every bract read as a white teardrop bell.
+/// The hang itself is the leaf field's `aim` toward world `-y`, because a leaf frame is placed by a rotation and a
+/// rotation cannot be told to hang.
+fn dove_bract(length: f32, half_width: f32) -> LeafTemplate {
+    let tip = length;
     LeafTemplate::blade(
         spine(&[
-            ([0.0, 0.0, 0.0], [0.050, 0.026, 0.006]),
-            ([0.050, 0.026, 0.008], [0.055, 0.012, 0.004]),
-            ([0.105, 0.046, 0.008], [0.045, -0.016, 0.0]),
+            ([0.0, 0.0, 0.0], [tip * 0.34, tip * 0.02, 0.0]),
+            (
+                [tip * 0.34, tip * 0.012, 0.002],
+                [tip * 0.33, tip * 0.015, 0.002],
+            ),
+            (
+                [tip * 0.70, tip * 0.030, 0.003],
+                [tip * 0.26, tip * 0.005, 0.001],
+            ),
         ]),
         taper(&[
-            (0.00, 0.014),
-            (0.15, 0.033),
-            (0.45, 0.045),
-            (0.75, 0.041),
-            (0.92, 0.028),
-            (1.00, 0.005),
+            (0.00, half_width * 0.34),
+            (0.08, half_width * 0.78),
+            (0.28, half_width),
+            (0.55, half_width * 0.94),
+            (0.78, half_width * 0.68),
+            (0.92, half_width * 0.34),
+            (1.00, half_width * 0.03),
         ]),
-        // A bract is thinner than a leaf — it is the note's *"paper-white"* — so 2.7 mm at the widest.
-        0.030,
-        12,
+        // Paper, not leaf: 2.4 mm on the large card and 1.3 mm on the small one.
+        0.026,
+        16,
         4,
     )
 }
@@ -430,10 +470,11 @@ fn dove_fields(twig_depth: usize) -> Vec<LeafField> {
     // **The shoot's own leaves, one generation above the twigs'.** A leaf field is a distribution over a generation and
     // there is nothing in the crate that says a field may only exist on the smallest twig: the note's shoot is a shoot
     // at every scale, and the first crown this rule drew was a set of pompoms — nine leafy twigs on a bare half-metre
-    // stick — because the shoot carried nothing but its children. Six leaves a metre fills the gaps between them.
+    // stick — because the shoot carried nothing but its children. Eleven leaves a metre fills the gaps between them,
+    // which is still the note's own rate of five to seven a shoot.
     let mut shoot = LeafField::new(twig_depth - 1, 0);
     shoot.band = (0.10, 0.92);
-    shoot.density = shape::Scalar::constant(12.0);
+    shoot.density = shape::Scalar::constant(26.0);
     shoot.phyllotaxy = 0.5;
     shoot.pitch = shape::Scalar::constant(1.10);
     shoot.twist = shape::Scalar::constant(0.15);
@@ -443,9 +484,14 @@ fn dove_fields(twig_depth: usize) -> Vec<LeafField> {
     shoot.jitter = 0.22;
 
     let mut leaf = LeafField::new(twig_depth, 0);
-    leaf.band = (0.05, 0.99);
+    leaf.band = (0.04, 0.99);
+    // **Thirty at the twig's foot falling to eighteen at its tip**, over a forty-centimetre twig: nine leaves, which is
+    // **six and three quarters to the thirty centimetres the note counts**. The first crown drew this at 24 leaves a
+    // metre on a 28 cm twig and read as broccoli — discrete leaf blobs with sky between them — because a twig that
+    // short cannot close its own clump. The node budget is what caps the crown, not the flora: the twig count is the
+    // lever, and this density is what the note allows inside one twig.
     leaf.density =
-        shape::Scalar::new(&[(0.0, 36.0), (1.0, 20.0)]).expect("a leaf's density is a law");
+        shape::Scalar::new(&[(0.0, 30.0), (1.0, 18.0)]).expect("a leaf's density is a law");
     leaf.phyllotaxy = 0.5;
     leaf.cluster = 1;
     leaf.pitch = shape::Scalar::constant(0.95);
@@ -457,29 +503,37 @@ fn dove_fields(twig_depth: usize) -> Vec<LeafField> {
     leaf.size = shape::Scalar::constant(1.0);
     leaf.jitter = 0.20;
 
-    let mut bract = LeafField::new(twig_depth + 1, 1);
-    // **The density is a number with a floor under it, and the floor is arithmetic.** The integral a field integrates is
-    // `length × density × (band width)` rounded to the nearest whole leaf, so a spur of 9.5 cm carrying a density of
-    // fourteen over a fifth of its length rounds to **no leaf at all**: the first version of this field drew a crown in
-    // April with no bracts in it, which is a flowering dove tree with nothing to flower with. Thirty leaves a metre over
-    // the spur's last third is 2.2, which rounds to the **one pair of two** the note's spur carries — and the band is
-    // the spur's *lower* third, because the note's second recognition fact is that the bracts *"hang below the foliage
-    // line … hanging free of the leaves"*, which is a statement about where on the spur they sit and not only about
-    // how many there are.
-    bract.band = (0.62, 0.95);
-    bract.density = shape::Scalar::constant(30.0);
-    bract.phyllotaxy = 0.5;
-    // **Two at one station and no fan**: the note's pair is opposite, and `cluster` is the dial that says opposite
-    // — two members a half turn apart on the spur's own loop.
-    bract.cluster = 2;
-    bract.fan = shape::Scalar::constant(0.0);
-    bract.pitch = shape::Scalar::constant(0.55);
-    bract.twist = shape::Scalar::constant(0.20);
-    bract.aim_axis = [0.0, -1.0, 0.0];
-    bract.aim = shape::Scalar::constant(1.0);
-    bract.size = shape::Scalar::constant(1.0);
-    bract.jitter = 0.14;
-    vec![shoot, leaf, bract]
+    // **The pair, as two fields of one bract each.** The band and the density are the same for both, so the two land on
+    // the same station of the same spur — a pair — while their templates and their sizes differ. The density is a number
+    // with a floor under it and the floor is arithmetic: the integral a field integrates is `length × density × (band
+    // width)` rounded to the nearest whole leaf, so a spur of 9.5 cm carrying a density of fourteen over a fifth of its
+    // length rounds to **no leaf at all** — and the first version of this field drew a crown in April with no bracts in
+    // it, which is a flowering dove tree with nothing to flower with. Sixteen over the spur's last third of a 20 cm spur
+    // is 1.06, which rounds to **one bract per field and so two to a spur**. The band is the spur's lower third, because
+    // the note's second recognition fact is that the bracts *"hang below the foliage line … hanging free of the
+    // leaves"*, which is a statement about where on the spur they sit and not only about how many there are.
+    let mut large = LeafField::new(twig_depth + 1, 1);
+    large.band = (0.62, 0.95);
+    large.density = shape::Scalar::constant(16.0);
+    large.phyllotaxy = 0.5;
+    large.cluster = 1;
+    large.fan = shape::Scalar::constant(0.0);
+    large.pitch = shape::Scalar::constant(0.55);
+    large.twist = shape::Scalar::constant(0.20);
+    // **The hang is a world axis and not an angle.** A leaf is placed by a rotation of the surface frame it hangs from,
+    // and no dial on a leaf field can say *down*; `aim` is the one dial stated in world terms, so a weight of one points
+    // every bract at the ground from whatever side of whatever spur it landed. It is 0.97 and not 1.0 so that the
+    // frame's own turn still shows and the pair is not two cards in perfect parallel.
+    large.aim_axis = [0.0, -1.0, 0.0];
+    large.aim = shape::Scalar::constant(0.97);
+    large.size = shape::Scalar::constant(1.0);
+    large.jitter = 0.10;
+
+    let mut small = large.clone();
+    small.template = 2;
+    small.size = shape::Scalar::constant(0.50);
+    small.jitter = 0.12;
+    vec![shoot, leaf, large, small]
 }
 
 /// The dove tree's flower heads: one at the tip of every spur that is carrying one.
@@ -519,7 +573,12 @@ fn dove_head() -> Template {
 pub fn dove_tree(seed: u64) -> Species {
     let mut species = Species {
         plant: grow(&dove_rule(), seed),
-        templates: vec![dove_leaf(), dove_bract()],
+        templates: vec![
+            dove_leaf(),
+            // The note's pair, at the two sizes its table gives: one to 16 cm by 9 cm, one about half as long.
+            dove_bract(0.160, 0.045),
+            dove_bract(0.080, 0.025),
+        ],
         fields: dove_fields(4),
         decorators: vec![dove_head()],
     };
@@ -540,7 +599,12 @@ pub fn dove_tree(seed: u64) -> Species {
 pub fn dove_tree_bough(seed: u64) -> Species {
     Species {
         plant: grow(&dove_bough_rule(), seed),
-        templates: vec![dove_leaf(), dove_bract()],
+        templates: vec![
+            dove_leaf(),
+            // The note's pair, at the two sizes its table gives: one to 16 cm by 9 cm, one about half as long.
+            dove_bract(0.160, 0.045),
+            dove_bract(0.080, 0.025),
+        ],
         fields: dove_fields(3),
         decorators: vec![dove_head()],
     }
@@ -614,6 +678,8 @@ fn dove_palette() -> Palette {
         leaves: vec![
             Skin::new([0.125, 0.235, 0.088], 0.60),
             Skin::new([0.97, 0.96, 0.92], 0.88),
+            // The smaller bract is the same paper; it is smaller, not a different colour.
+            Skin::new([0.95, 0.94, 0.90], 0.88),
         ],
         seats: vec![Skin::new([0.22, 0.10, 0.13], 0.80)],
     }
@@ -623,22 +689,38 @@ fn dove_palette() -> Palette {
 ///
 /// # Invariants
 ///
-/// **A light's reach is the distance its irradiance is stated at**, so each reach is the length of the position it
-/// belongs to: the key stands 38.3 m from the origin and reaches 38.3 m, and the fill 25.5 m from it reaches 25.5 m.
-/// The air is the note's own belt — 1100–2600 m in montane mixed forest — so it is thicker than the pine's two
-/// thousand metres of dry slope: a density of 0.0010 over a 1900 m scale height, and a post haze of 0.006 for a tree
-/// framed at twenty-six metres.
+/// - **A light's reach is the distance its irradiance is stated at**, so each reach is the length of the position it
+///   belongs to in the *first* sentence and **the floor's diagonal** in the second: the key's position is 37.5 m long
+///   and reaches 566 m, the fill's 24.4 m and 566 m. A reach
+///   shorter than the ground it lights draws the light cluster's own boundary on that ground as a straight line across
+///   the frame, which is exactly what the first pair of plates carried in the bottom right corner. The floor is 400 m
+///   square, so its diagonal is 566 m; the irradiance written here is **what a surface 566 m from the key receives**,
+///   which for a subject 37.5 m away is `3.0 × (37.5 / 566)²` — the arithmetic is the
+///   conversion [`flux_for_irradiance`](crate::kit::flux_for_irradiance) performs and it is written out rather than
+///   folded into a bigger number. The key's **position** — and so the distance at which the subject is lit — is
+///   unchanged from the first plate.
+/// - The air is the note's own belt — 1100–2600 m in montane mixed forest — so it is thicker than the pine's two
+///   thousand metres of dry slope: a density of 0.0010 over a 1900 m scale height, and a post haze of 0.006 for a tree
+///   framed at twenty-three metres.
+///   own length. The fill's 24.4 m and 566 m. A reach
+///   shorter than the ground it lights draws the light cluster's own boundary on that ground as a straight line across
+///   the frame, which is exactly what the first pair of plates carried in the bottom right corner. The floor is 400 m
+///   square, so its diagonal is 566 m; the irradiance written here is **what a surface 566 m from the key receives**,
+///   which for a subject 37.5 m away is `3.0 × (37.5 / 566)²` — the arithmetic is the
+///   conversion [`flux_for_irradiance`](crate::kit::flux_for_irradiance) performs and it is written out rather than
+///   folded into a bigger number. The key's **position** — and so the distance at which the subject is lit — is
+///   unchanged from the first plate.
 fn dove_lighting() -> Lighting {
     Lighting {
         key_position: [22.0, 27.0, 14.0],
         key_colour: [1.0, 0.96, 0.88],
-        key_irradiance: 3.0,
-        key_reach: 37.3,
+        key_irradiance: 0.0132,
+        key_reach: 566.0,
         key_extent: 6.0,
         fill_position: [-17.0, 9.0, -15.0],
         fill_colour: [0.44, 0.54, 0.74],
-        fill_irradiance: 0.30,
-        fill_reach: 24.2,
+        fill_irradiance: 0.00056,
+        fill_reach: 566.0,
         floor: Skin::new([0.20, 0.18, 0.14], 0.95),
         sky: Atmosphere::new()
             .zenith([0.10, 0.22, 0.46])
@@ -665,7 +747,30 @@ const DOVE_FRAME: Framing = Framing {
     field_of_view: 0.58,
     near: 0.2,
     far: 600.0,
-    floor: 400.0,
+    floor: 150.0,
+    ground: Ground::Plane,
+};
+
+/// The dove tree's base plate: **two metres off the foot of the bole**, at the height of a person's chest, which is
+/// the frame bar **H4** asks for and the first pass did not have.
+///
+/// # Why this frame exists at all
+///
+/// H4 says *"one frame at the base of the trunk, one at the crown, and the taper law written in the species' note so
+/// the flare can be read as numbers"*, and a whole-tree frame at twenty-three metres is a portrait of the idea of a
+/// flare: at that distance the bole is forty pixels wide and the note's *"0.34 m swollen to 0.30 over the first
+/// 0.8 m"* — and the twenty-millimetre ridge of the striate section — are each under a pixel. At two metres a pixel is
+/// 0.0034 m, so the basal swell is a fifth of the trunk's width and the striations are six pixels deep. **The two
+/// readings of the same trunk disagree because the frame does, and only one of them is the taper law.**
+const DOVE_BASE_FRAME: Framing = Framing {
+    width: 1400,
+    height: 1000,
+    eye: [1.55, 0.95, 1.25],
+    target: [0.0, 0.80, 0.0],
+    field_of_view: 0.80,
+    near: 0.05,
+    far: 60.0,
+    floor: 14.0,
     ground: Ground::Plane,
 };
 
@@ -710,6 +815,92 @@ pub fn dove_tree_bough_picture() -> Value {
         &DOVE_BOUGH_FRAME,
         DOVE_TREE_BOUGH,
         &dove_lighting(),
+        &[],
+    )
+}
+
+/// The name the dove tree's base plate is built and rendered under.
+pub const DOVE_TREE_BASE: &str = "dove_tree_base";
+
+/// The base plate's light: **low, raking, and from where the camera is**.
+///
+/// # Why the base plate is not lit like the tree
+///
+/// **A tree's own crown shadows its own foot.** The whole-tree key stands twenty-seven metres up, and every ray from
+/// it to the bole's first metre passes through four metres of foliage, so the first base plate this species rendered was
+/// a black cone with a bright rim: the taper law was in the frame and nothing could be read off it. This lighting puts
+/// the key **twenty degrees above the horizon and on the lens's side**, so it rakes across the striations the section
+/// carries, and leans on the **fill** — which casts no shadow and so reaches the foot of the bole through the crown
+/// above it — for the face the lens sees. It is a different hour at the same site, and the plate says so.
+///
+/// # Invariants
+///
+/// The reach is the base frame's floor diagonal, 14 × √2 = 19.8 m, and the irradiance is stated there: the key is 5.9 m
+/// from the subject, so `2.6 × (5.9 / 19.8)²` is what the number in the document means.
+fn dove_base_lighting() -> Lighting {
+    Lighting {
+        key_position: [4.2, 2.4, 3.4],
+        key_colour: [1.0, 0.95, 0.86],
+        key_irradiance: 0.230,
+        key_reach: 19.8,
+        key_extent: 4.0,
+        fill_position: [1.6, 1.2, 2.0],
+        fill_colour: [0.52, 0.58, 0.70],
+        fill_irradiance: 0.026,
+        fill_reach: 19.8,
+        floor: Skin::new([0.235, 0.210, 0.165], 0.95),
+        sky: Atmosphere::new()
+            .zenith([0.12, 0.24, 0.46])
+            .horizon([0.58, 0.64, 0.70])
+            .ground([0.28, 0.26, 0.22])
+            .density(0.0010)
+            .scale_height(1900.0),
+        sky_radiance: 0.55,
+        // A quarter of the tree plate's haze: the subject here is two metres away and the tree's own coefficient would
+        // put a fifth of the frame's own contrast into the air between the lens and the bark.
+        haze: 0.003,
+    }
+}
+
+/// The base plate's light, for the rhododendron's own reasons: see [`dove_base_lighting`], which is the same argument
+/// about a different bole. The reach is the base frame's floor diagonal, 16 × √2 = 22.6 m.
+fn rhodo_base_lighting() -> Lighting {
+    Lighting {
+        key_position: [5.0, 2.6, 4.2],
+        key_colour: [1.0, 0.96, 0.92],
+        key_irradiance: 0.248,
+        key_reach: 22.6,
+        key_extent: 4.0,
+        fill_position: [2.0, 1.3, 2.4],
+        fill_colour: [0.54, 0.58, 0.68],
+        fill_irradiance: 0.0264,
+        fill_reach: 22.6,
+        floor: Skin::new([0.150, 0.165, 0.125], 0.95),
+        sky: Atmosphere::new()
+            .zenith([0.26, 0.38, 0.56])
+            .horizon([0.72, 0.76, 0.77])
+            .ground([0.24, 0.24, 0.22])
+            .density(0.0016)
+            .scale_height(1400.0),
+        sky_radiance: 0.60,
+        haze: 0.003,
+    }
+}
+
+/// Builds the dove tree's base plate: the same tree, framed two metres off the foot of its bole.
+///
+/// **It is the same species and the same palette as the whole-tree plate**, because the plate is a framing and not a
+/// species: a base plate drawn of a different tree would answer a different question than the one H4 asks.
+pub fn dove_tree_base_picture() -> Value {
+    let species = dove_tree(DOVE_SEED);
+    let planting = Planting::new(species.clone())
+        .with_seats(dove_heads(&species, 5))
+        .with_palette(dove_palette());
+    plant_scene_lit(
+        &[planting],
+        &DOVE_BASE_FRAME,
+        DOVE_TREE_BASE,
+        &dove_base_lighting(),
         &[],
     )
 }
@@ -765,6 +956,9 @@ pub const GIANT_RHODODENDRON: &str = "giant_rhododendron";
 /// The name the giant rhododendron's bough plate is built and rendered under.
 pub const GIANT_RHODODENDRON_BOUGH: &str = "giant_rhododendron_bough";
 
+/// The name the giant rhododendron's base plate is built and rendered under.
+pub const GIANT_RHODODENDRON_BASE: &str = "giant_rhododendron_base";
+
 /// The seed both of the giant rhododendron's plates are grown from.
 const RHODO_SEED: u64 = 53;
 
@@ -792,29 +986,41 @@ const RHODO_HEIGHT: f32 = 12.0;
 /// - **4–8 first-order limbs at 30–60° from the trunk axis, then arching to horizontal and down** (ESTIMATE counted
 ///   off `01-habit-whole-tree-slope.jpg` and `03-trunk-bark-CONGENER-delavayi.jpg`). `cluster: 1`: a candelabra
 ///   *forks*, it does not whorl, and the pine's whorled crown is the shape this species is chosen to be unlike.
-/// - **Clear trunk 0.35–0.55 × height** (ESTIMATE), drawn at 0.42 = 5.0 m.
+/// - **Clear trunk 0.35–0.55 × height** (ESTIMATE), drawn at 0.45 — and this is the number the first plate got wrong in
+///   the only direction that matters: its limbs left the bole at 0.42 *with their branches at 0.18 of the limb*, so the
+///   lowest rosettes sat against the trunk from just under half its height downward and the tree read as a vine on a
+///   pole. The note's fifth fact is a **bare stout bole to about half its height**, and every generation above it now
+///   starts where its parent's foliage would be visible if it had any.
 /// - **A branch is sinuous and often contorted**, and *"unlike Davidia, the limbs here **droop**"* — so the shapes
 ///   turn through a wider angle than the dove tree's and [`Field::gravity`] is on the rule.
 /// - **Rosette spacing 20–40 cm along a branch** (ESTIMATE from `06-flower-truss-masses.jpg`), which is what the
 ///   shoot generation's band and count say.
+///
+/// # Foliage is on the last generation and nowhere else
+///
+/// One leaf field, on the shoots alone. The limbs and the branches carry **no** leaves and no rosettes, which is the
+/// genus's own plan — *"the shoot then dies or continues from a lateral, and the next flush is again a rosette"* — and
+/// it is what makes the crown a scatter of stars with sky between them rather than a shell.
 fn rhodo_rule() -> Rule {
     Rule {
         trunk: rhodo_bole,
         generations: vec![
-            // **The candelabra limbs**, four to eight of them, spiralled up the bole's upper half.
+            // **The candelabra limbs**, four to eight of them, spiralled up the bole's **upper half**.
             Generation {
                 count: (5, 7),
-                station: (0.42, 0.92),
+                station: (0.45, 0.95),
                 slot: (0.0, GOLDEN),
                 jitter: (0.06, 0.10),
                 sink: 0.040,
                 cluster: 1,
                 shape: rhodo_limb,
             },
-            // **The branches** off each limb, sinuous and few.
+            // **The branches** off each limb, sinuous and few, and **starting a third of the way along it** rather than
+            // at its foot: a branch at the foot of a limb is a branch on the trunk, and that is how the first plate put
+            // a rosette against the bole at half the tree's height.
             Generation {
                 count: (3, 4),
-                station: (0.18, 0.94),
+                station: (0.30, 0.95),
                 slot: (0.0, GOLDEN),
                 jitter: (0.10, 0.14),
                 sink: 0.020,
@@ -825,7 +1031,7 @@ fn rhodo_rule() -> Rule {
             // spacing, each carrying exactly one rosette at its own tip and nothing else along it.
             Generation {
                 count: (16, 20),
-                station: (0.12, 0.96),
+                station: (0.18, 0.96),
                 slot: (0.0, GOLDEN),
                 jitter: (0.10, 0.12),
                 sink: 0.006,
@@ -842,10 +1048,19 @@ fn rhodo_rule() -> Rule {
     }
 }
 
-/// The giant rhododendron's bole: twelve metres, stout, straight, and barely tapered — the note's *"straight and stout"*
-/// and *"a long clean bole"* from `03-trunk-bark-CONGENER-delavayi.jpg`.
+/// The giant rhododendron's bole: twelve metres, stout, **wandering**, and swollen hard at the foot.
 ///
-/// # What is not modelled
+/// # Invariants
+///
+/// - **The spine wanders in plan**, because a bole that stands on a straight vertical line is a pole and not a trunk.
+///   The knots walk `0.10 → 0.34 → 0.72` metres in `x` and `+0.06 → −0.05 → +0.14` in `z` — an S, not a lean — which
+///   is what the note's *"straight and stout"* allows and its *"the branches themselves sinuous and often contorted"*
+///   asks of the tree as a whole.
+/// - **The basal swell is three quarters of the bole's own girth over its first half metre**: 0.78 m at the ground
+///   falling to 0.44 by the time it is breast-high. That is 1.56 m of basal diameter on a twelve-metre tree, which is
+///   inside the note's own range (*"0.44–0.50 m typical; up to 1.65 m for the largest"*) and is the note's *"the bole is
+///   buttressed at that scale"* taken at the scale it describes. The first plate drew 0.62 over the same run and the
+///   trunk met the ground like a pipe.
 ///
 /// **The bark exfoliates *"into thin and small irregular flakes"*, and the flakes are a skin, not geometry.** The
 /// section below is a twenty-four-sided ring with a low-amplitude irregular radius, which is what a flaking bole reads
@@ -855,28 +1070,38 @@ fn rhodo_rule() -> Rule {
 fn rhodo_bole() -> (shape::Curve, shape::Scalar) {
     (
         spine(&[
-            ([0.0, 0.0, 0.0], [0.05, 1.0, 0.01]),
-            ([0.08, 0.317 * RHODO_HEIGHT, 0.04], [0.14, 1.0, 0.05]),
-            ([0.26, 0.633 * RHODO_HEIGHT, 0.09], [0.24, 1.0, 0.08]),
-            ([0.60, RHODO_HEIGHT, 0.15], [0.36, 1.0, 0.12]),
+            ([0.0, 0.0, 0.0], [0.08, 1.0, 0.03]),
+            ([0.10, 0.317 * RHODO_HEIGHT, 0.06], [0.18, 1.0, 0.02]),
+            ([0.34, 0.633 * RHODO_HEIGHT, -0.05], [0.26, 1.0, -0.06]),
+            ([0.72, RHODO_HEIGHT, 0.14], [0.38, 1.0, 0.14]),
         ]),
-        // 0.50 m at the base is the note's *"0.44–0.50 m typical"* for a tree of Forrest's 0.87 m DBH, swollen to
-        // 0.62 over the first half metre because the note also records the largest individual as buttressed at its
-        // 3.30 m basal diameter — at this scale, a stem swell and nothing more.
         taper(&[
-            (0.0, 0.620),
-            (0.012, 0.560),
-            (0.05, 0.510),
-            (0.42, 0.360),
-            (0.72, 0.240),
+            (0.0, 0.780),
+            (0.010, 0.620),
+            (0.045, 0.500),
+            (0.16, 0.440),
+            (0.45, 0.340),
+            (0.72, 0.235),
             (1.0, 0.130),
         ]),
     )
 }
 
-/// The giant rhododendron's bole section: twenty-four sides, each a little out of round.
+/// The giant rhododendron's bole section: fifty-six sides, each a little out of round.
+///
+/// # Invariants
+///
+/// **Two incommensurate wobbles stand in for the flakes**, irregular at every scale without a random number two runs
+/// could disagree about, at an amplitude of a twentieth that at twelve metres is under a pixel of silhouette and is
+/// there for the bole's own shading rather than its outline. **This section does not reach the frame for the same
+/// reason the dove tree's does not** — `Section::Outline` is flattened before the mesh while `Section::Ellipse` is
+/// not, measured on the dove tree's base plate with two controlled renders. So the flakes are a skin and not
+/// geometry, which is what [`rhodo_bole`] says they are, and the base plate shows the bole's *swell* and its *lean*,
+/// both of which are in the geometry.
 fn rhodo_bark() -> shape::Section {
-    let sides = 24;
+    // Fifty-six sides for a three-lobe and a seven-lobe wobble: eight points per period of the coarse term, which is
+    // what a lobe needs to read as a lobe.
+    let sides = 56;
     let points: Vec<[f32; 2]> = (0..sides)
         .map(|index| {
             let theta = index as f32 / sides as f32 * std::f32::consts::TAU;
@@ -892,11 +1117,12 @@ fn rhodo_bark() -> shape::Section {
 
 /// A first-order limb: it leaves the bole at the note's 30–60°, runs out, and arches through horizontal into a droop.
 fn rhodo_limb(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    // **A candelabra's limbs are not a pine's boughs.** The law shrinks with the station but only to a quarter, so the
+    // **A candelabra's limbs are not a pine's boughs.** The law shrinks with the station but only to a third, so the
     // upper limbs are two thirds the length of the lower ones: a square-root law put a spire on this tree in the first
     // plate, and the note's silhouette is *"a candelabra in form, not a dome"* with limbs *"forking upward and
-    // outward"* over a crown as wide as it is deep.
-    let length = 3.7 * (1.0 - 0.45 * joint.station) * (0.85 + 0.30 * rng.unit());
+    // outward"* over a crown as wide as it is deep. The lowest limb is also the one that reaches furthest out, because
+    // it has the whole bole's length to do it in — which is what keeps the crown off the trunk.
+    let length = 3.8 * (1.0 - 0.30 * joint.station) * (0.85 + 0.30 * rng.unit());
     let departure = 0.92 + 0.24 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-3);
     (
@@ -1019,7 +1245,10 @@ fn rhodo_truss() -> Template {
         ]),
         section,
     );
-    sweep.scale = taper(&[(0.0, 0.016), (0.30, 0.082), (0.70, 0.074), (1.0, 0.014)]);
+    // **Nineteen centimetres across**, which is the note's own *"about the same width as the cluster"* against a 35 cm
+    // rosette and the top of its 12–18 cm truss range. The first plate drew 17 cm and the second 12, and at both the
+    // truss read as a berry rather than as the ball the note's third recognition fact is about.
+    sweep.scale = taper(&[(0.0, 0.018), (0.30, 0.095), (0.70, 0.086), (1.0, 0.016)]);
     Template {
         sweep,
         stations: 16,
@@ -1128,9 +1357,15 @@ fn rhodo_bough_rule() -> Rule {
 /// so the photographs win the tint and the flora wins the roughness) three different numbers.
 fn rhodo_palette() -> Palette {
     Palette {
-        wood: Skin::new([0.070, 0.064, 0.058], 0.95),
+        // **Dark and warm, because a grey one is a pole.** 03-trunk-bark-CONGENER-delavayi.jpg is grey against moss; the
+        // first plate's 0.155 grey rendered as a pale blue-grey pole lighter than the leaves, because a vertical surface
+        // under a high key is lit almost entirely by the sky. The tint is a sixth of that and warmed, so the bole is the
+        // darkest thing in its own frame.
+        wood: Skin::new([0.098, 0.084, 0.070], 0.96),
         leaves: vec![Skin::new([0.115, 0.185, 0.095], 0.42)],
-        seats: vec![Skin::new([0.62, 0.30, 0.40], 0.78)],
+        // **The corolla's pink is deepened and made glossier**, so the ball takes a highlight on the lit side and reads
+        // as a many-petalled mass rather than as a painted sphere.
+        seats: vec![Skin::new([0.55, 0.20, 0.30], 0.52)],
     }
 }
 
@@ -1138,22 +1373,28 @@ fn rhodo_palette() -> Palette {
 ///
 /// # Invariants
 ///
-/// **A light's reach is the distance its irradiance is stated at**: the key's position is 37.3 m long and reaches 37.3 m,
-/// the fill's 25.5 m and reaches 25.5 m. The belt is the note's Chinese field record — **2100–3200 m in evergreen
-/// broad-leaved forest** — so the sky is a pale high overcast rather than the pine's deep blue, and the air is the
-/// thickest of the three trees here: a density of 0.0016 over a 1400 m scale height, which is what puts the far slope
-/// of `01-habit-whole-tree-slope.jpg` behind the crown in the air rather than in the picture.
+/// - **A light's reach is the distance its irradiance is stated at**, and here the reach is **the floor's diagonal**:
+///   the key's position is 35.1 m long and reaches 566 m, the fill's 24.1 m and 566 m. A reach shorter than the ground it
+///   lights draws the light cluster's own boundary on that ground as a straight line across the frame, which is the
+///   edge the first pair of plates carried; the irradiance written here is therefore **what a surface 566 m from the
+///   light receives**, and the subject's own is `2.6 × (35.1 / 566)²` and `0.28 × (24.1 / 566)²`. The arithmetic is
+///   [`flux_for_irradiance`](crate::kit::flux_for_irradiance)'s own and it is written out rather than folded into a
+///   bigger number; the lights' **positions** are unchanged, so the distance at which the subject is lit has not moved.
+/// - **The belt is the note's Chinese field record** — **2100–3200 m in evergreen broad-leaved forest** — so the sky is
+///   a pale high overcast rather than the pine's deep blue, and the air is the thickest of the three trees here: a
+///   density of 0.0016 over a 1400 m scale height, which is what puts the far slope of
+///   `01-habit-whole-tree-slope.jpg` behind the crown in the air rather than in the picture.
 fn rhodo_lighting() -> Lighting {
     Lighting {
         key_position: [21.0, 25.0, 13.0],
         key_colour: [1.0, 0.97, 0.93],
-        key_irradiance: 2.6,
-        key_reach: 35.4,
+        key_irradiance: 0.0100,
+        key_reach: 566.0,
         key_extent: 7.0,
         fill_position: [-16.0, 10.0, -15.0],
         fill_colour: [0.48, 0.55, 0.70],
-        fill_irradiance: 0.28,
-        fill_reach: 24.0,
+        fill_irradiance: 0.00051,
+        fill_reach: 566.0,
         floor: Skin::new([0.135, 0.150, 0.115], 0.95),
         sky: Atmosphere::new()
             .zenith([0.24, 0.36, 0.54])
@@ -1182,7 +1423,24 @@ const RHODO_FRAME: Framing = Framing {
     field_of_view: 0.60,
     near: 0.2,
     far: 600.0,
-    floor: 400.0,
+    floor: 150.0,
+    ground: Ground::Plane,
+};
+
+/// The giant rhododendron's base plate: two and a half metres off the foot of a bole that is **1.56 m across at the
+/// ground**, which is the frame H4 asks for and the first pass did not have.
+///
+/// At this distance a pixel is 0.0041 m, so the 0.78 m basal radius is a hundred and ninety pixels wide and the note's
+/// *"the bole is buttressed at that scale"* is a shape in the frame rather than a sentence about it.
+const RHODO_BASE_FRAME: Framing = Framing {
+    width: 1400,
+    height: 1000,
+    eye: [1.85, 1.05, 1.65],
+    target: [0.05, 0.85, 0.0],
+    field_of_view: 0.80,
+    near: 0.05,
+    far: 60.0,
+    floor: 16.0,
     ground: Ground::Plane,
 };
 
@@ -1232,6 +1490,21 @@ pub fn giant_rhododendron_bough_picture() -> Value {
         &RHODO_BOUGH_FRAME,
         GIANT_RHODODENDRON_BOUGH,
         &rhodo_lighting(),
+        &[],
+    )
+}
+
+/// Builds the giant rhododendron's base plate: the same tree, framed two and a half metres off the foot of its bole.
+pub fn giant_rhododendron_base_picture() -> Value {
+    let species = giant_rhododendron(RHODO_SEED);
+    let planting = Planting::new(species.clone())
+        .with_seats(rhodo_trusses(&species, 3))
+        .with_palette(rhodo_palette());
+    plant_scene_lit(
+        &[planting],
+        &RHODO_BASE_FRAME,
+        GIANT_RHODODENDRON_BASE,
+        &rhodo_base_lighting(),
         &[],
     )
 }
