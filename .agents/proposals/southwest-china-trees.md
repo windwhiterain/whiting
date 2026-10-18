@@ -525,6 +525,59 @@ such question.
   count, leaf count, triangle count and crown reach at the default detail, so that a later change to
   a shared law shows up as ten numbers moving.
 
+## 7. The site: how a species stands in its belt (arc 7's design)
+
+A hero specimen is a tree; an epic frame is a place. The ten species live in four belts of one
+mountain, and a frame that puts a kapok in mist or a fir in a dry valley is a frame that lies, so the
+site is authored per belt and the bar's E1 checks the frame's own sidecar against the species' note.
+
+**One slope, four frames.** A single heightfield law — a ridge descending south-west into a valley,
+authored as a plane plus three swells and given to `Ground::Fielded` — is the ground of every site
+frame, so the four frames are one mountain seen at four heights rather than four inventions. The
+belts, from the notes' altitude ranges:
+
+| frame | belt | altitude drawn | species in it | light |
+| --- | --- | --- | --- | --- |
+| `site_valley` | dry-hot valley | 800 m | 木棉 in flower and in leaf, 桫椤 in a damp gully, 筇竹 as a clump | hot noon, thin shade, haze 0.010 |
+| `site_montane` | subtropical montane | 2000 m | 云南松 in stands on the sunny slope, 川滇高山栎 in the draws, 珙桐 in a moist north gully | warm morning, raking, haze 0.005 |
+| `site_subalpine` | subalpine | 3200 m | 丽江云杉 and 苍山冷杉 in a stand, 大树杜鹃 under them, 川滇高山栎 as krummholz on the ridge | cold high sun, deep shadow, haze 0.002 |
+| `site_transect` | the whole slope | 800–3200 m compressed | all ten, each at its own belt's height on one compressed slope | one low sun along the valley |
+
+The transect states its compression in the sidecar and in its own doc: it is a diagram that is also a
+picture, and it is the frame the ten silhouettes are finally judged in together.
+
+**Companions are the same species at a coarser dial.** `Planting::with_detail` and the spray/plume
+foliages exist precisely so that a background tree is the same rule at a coarser resolution: a site
+frame holds one hero planting at full detail and eight to twenty companions at `Detail::scaled(1)`
+with the spray foliage, seated on the heightfield by `vegetation::ground::seat` at seeded positions.
+The companion count is what the scene compile allows, and the emit hoist of §4.13 is what raises it.
+
+**Scale is a stone, not a person.** E2 wants a known size in frame. A person would need authoring a
+person; a standing stone of 1.8 m is one `Prop` cuboid with a taper, and the sidecar states its
+height. A stone also belongs in every one of these belts, which a person in a kapok valley does not.
+
+**Mist is the haze dial and the sky together.** A valley frame carries `haze` 0.010 and a pale
+horizon; a subalpine frame carries 0.002 and a deep zenith. The two numbers are the whole of the
+difference between a humid gully and a clear ridge at 3200 m, and both are already dials (§4.6).
+
+**E4, the two backends, is deferred with a reason.** The exporter writes the scene's sky as a Cycles
+background and the document carries both, but no Cycles binary is installed on this machine, so the
+comparison cannot be run here. Arc 7 delivers the frames and the exported documents, and records E4
+as unverified-with-reason rather than passing it silently.
+
+### 4.13 The scene compile pays per instance row, and most of it is per material
+
+**Pulls it:** every site frame, and every dense crown.
+
+Measured on this branch: a pine of 87 000 instance rows compiles in 51 s and rasterises in 3 s; a
+bamboo of 5 000 rows compiles in 0.1 s. The cost is per row, and inside a row the compiler re-does
+five things that depend only on the row's material and shader — verifying the material's custom data
+against the shader's custom schema, resolving its images, stripping its image fields, and merging the
+row schema — so a scene with 3 000 materials and 260 000 rows computes them 260 000 times. The fix is
+to compute them once per material and borrow them per row; the emitted document does not change, so
+every pixel and every pinned hash stays where it is. Until it lands, a species' whole-tree plate is
+budgeted at 90 000 rows and the site frames at companions enough to read as a stand.
+
 ## 8. Open questions
 
 1. **Does H3's ratio need to be a stated number before arc 2, or can arc 2 set it?** — **Closed, 2026-10-19: arc 2 set it, from two measured regimes rather than from one candidate.** The p90/p10 luminance ratio the first draft proposed does not separate a deep crown from a sparse lit one (a bamboo's separated leaves scored 1.82 against the pine's 1.70), and a rim mask does not either, because silhouette-edge pixels face away from the key as often as toward it (interior over rim measured 0.99 on a crown that was plainly not self-shadowing *and* 0.97 on one that was). The bar is therefore the interior share at least **0.25** and the interior's mean over the plant's lit p90 at most **0.80**: the pine under a frontal key with foliage shadowing disabled measures **0.99**, and under a raking key with the foliage shadow bias of §4.11 measures **0.76**, so 0.80 sits between the two regimes with margin on both sides. A species that cannot reach it has either a see-through crown or a light that flattens it, and the number says which.
