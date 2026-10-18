@@ -253,6 +253,55 @@ fn grass_blade(rng: &mut Rng, joint: &Joint) -> (Curve, Scalar) {
         ]),
     )
 }
+/// A clump of many short limbs from a common base: the plant a thinning pass exists for.
+///
+/// # Invariants
+///
+/// It is the shrub's rule with **twice the limbs, in shorter generations, over a narrower slot band**, so its siblings
+/// stand inside one another's reach — which the shrub's do not, because its limbs are already clear. That is the
+/// property a thinning scene needs and the reason this is content rather than a scene's own rule: a spacing is a claim
+/// about crowding, and a plant that is not crowded cannot show one.
+pub fn clump(seed: u64) -> Species {
+    Species {
+        plant: grow(&clump_rule(), seed),
+        templates: vec![blade()],
+        fields: vec![shrub_leaves()],
+    }
+}
+
+/// The clump's rule: six limbs a node, each a third shorter than the shrub's, and gravity to droop them.
+pub fn clump_rule() -> Rule {
+    Rule {
+        trunk: stem,
+        generations: vec![
+            Generation {
+                count: (6, 6),
+                station: (0.20, 0.90),
+                slot: (0.0, 0.618),
+                jitter: (0.2, 0.1),
+                sink: 0.004,
+                shape: |rng, joint| limb(rng, joint, 0.30, 0.95, 0.45, 0.55, 0.18),
+            },
+            Generation {
+                count: (4, 4),
+                station: (0.25, 0.90),
+                slot: (0.0, 0.618),
+                jitter: (0.2, 0.1),
+                sink: 0.003,
+                shape: |rng, joint| limb(rng, joint, 0.20, 1.05, 0.40, 0.55, 0.20),
+            },
+            Generation {
+                count: (3, 3),
+                station: (0.30, 0.90),
+                slot: (0.1, 0.5),
+                jitter: (0.2, 0.1),
+                sink: 0.002,
+                shape: |rng, joint| limb(rng, joint, 0.13, 1.15, 0.35, 0.60, 0.22),
+            },
+        ],
+        fields: vec![Field::gravity(0.25)],
+    }
+}
 /// The bamboo's rule: fixed counts and bands, shapes that draw nothing, so its seed cannot change the tree.
 pub fn bamboo_rule() -> Rule {
     Rule {

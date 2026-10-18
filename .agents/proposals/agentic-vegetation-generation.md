@@ -1559,6 +1559,54 @@ so a later session reopens it by argument rather than by forgetting it.
    law needs it, the answer owes its sample budget, a measured worst-case error, and a stated answer at a
    knot. Nothing in P1 or P2 calls it.
 
+## Demo scenes: every capability has a frame
+
+A capability with no picture is a capability nobody can see, so the crate's vocabulary is mapped to scenes and every scene
+is a **pair or a triptych**: the plant without the law beside the same plant with it. A law is a claim about a
+*difference*, and one plant under a force is a plant.
+
+| capability | scene |
+| --- | --- |
+| a rule and a seed; wood as solids and leaves as one instanced blade | `bamboo` |
+| a tropism bending spines (`Field::Tropism`) | `bamboo_wind` |
+| the envelope as a trimming law (`Envelope`, `trim`) | `bamboo_crown` |
+| decorators, seats and their sockets (`Seat`, `Template`) | `bamboo_knots` |
+| many plantings, ground cover and seating on a ground (`Ground`, `ground::seat`) | `grove` |
+| the edit table — bake, thickness, **law**, prune, slide, graft, seat (`Change::*`, `species::graft`) | `sculpted` |
+| identity as a colour (`authored_id` in a surface body) | `segmentation` |
+| **`Field::Obstacle` against real world geometry** | `garden_wall` |
+| **`Field::Ancestor`, `LeafField::reference`, `LeafField::aim`** | `aspiring` |
+| **`thin` and `Prune::Thinned`** | `thinned` |
+| **`Selector` and `paint` — the brush** | `brushed` |
+| the offline backend | any scene, by name: `render_cycles <scene> <out.png>` |
+
+The four scenes the demonstration round added, with their readings:
+
+| scene | what the frame shows | reading |
+| --- | --- | --- |
+| `garden_wall` | a 3.60 × 1.55 × 1.00 m wall, the same culm twice: the left one's boughs pass through it, the right one's lie flat on its face | **17** passes, `3F64B78CD39B9FA4` |
+| `aspiring` | left the rule's own plant, right the same plant under `Field::Ancestor(0.7)` with its leaves read in the **trunk's** frame (`reference: 2`) and turned to the sky (`aim: 0.45`) | **13** passes, `3815AE81E58DC2EE` |
+| `thinned` | three clumps of `derive::clump` at spacings **0 / 0.22 / 0.40 m**, left to right | **13** passes, `3308CDED38C71C34` |
+| `brushed` | left unedited, right carrying two strokes — a station band that thickens every bough hanging high on the culm, and a generation shift that lifts every branch 14 cm | **13** passes, `284714F1498C214A` |
+
+**Four decisions the demonstration forced:**
+
+1. **A prop draws on the ground's stages and carries no identity.** A wall is the world a plant grows against, not an
+   element an author nudges, so its mesh is on the ground's point schema and `--region` calls its pixels the ground's.
+   A prop also cannot be turned or scaled: a wall that needs to be is a wall whose own generator should have been asked
+   for the other one.
+2. **The wall is a metre thick, and that is a measurement.** A bough that penetrates a thin panel is as close to its
+   back face as to its front one, so the occupancy's gradient pushes half of it out each way and the first picture was
+   a plant cut in two. A thick wall has one way out, and it is the way the camera is.
+3. **A thinning claim needs a crowded plant, so `derive::clump` is content.** `derive::shrub`'s limbs are already clear
+   of one another, so no spacing a person would pick had anything to remove; the clump is the shrub's rule with **twice
+   the limbs in shorter generations**, and it is in `derive` rather than in the scene because a species is content.
+4. **`aim` at a full weight stands a midrib on the axis**, which is what a grass blade wants and a broadleaf does not:
+   the aspiring scene shows it at **0.45**, where a leaf leans toward the sky and still reads as a leaf. The picture is
+   the record of that reading, and the probe (`leaf_probe`) is the number behind it.
+
+**The scan is the harness's**: `--region` over each demo answers ids like `planting 1, trunk` and
+`planting 1, trunk/bough 1/branch 0`, because the four scenes register the same split the grove does.
 ## What is not done, and why
 
 Recorded so a later session reopens these by argument rather than by forgetting them:

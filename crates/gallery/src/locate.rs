@@ -100,6 +100,26 @@ pub const NAMINGS: &[Naming] = &[
         note: "one colour per element: this pixel is that node of the plant, and a leaf wears the colour of the twig it grew from",
     },
     Naming {
+        scene: crate::vegetation_laws::GARDEN_WALL,
+        resolve: crate::vegetation_laws::garden_wall_handle_of,
+        note: "the left planting has no field and the right one is the plant that knows the wall is there",
+    },
+    Naming {
+        scene: crate::vegetation_laws::ASPIRING,
+        resolve: crate::vegetation_laws::aspiring_handle_of,
+        note: "the left planting is the rule's own and the right one is under the ancestor field, with its leaves read in the trunk's frame and turned toward the sky",
+    },
+    Naming {
+        scene: crate::vegetation_laws::THINNED,
+        resolve: crate::vegetation_laws::thinned_handle_of,
+        note: "three clumps left to right at no spacing, a quarter, and most of one; each planting's nodes are numbered from its own base",
+    },
+    Naming {
+        scene: crate::vegetation_laws::BRUSHED,
+        resolve: crate::vegetation_laws::brushed_handle_of,
+        note: "the left planting is unedited and the right one carries two brush strokes, one by station band and one by generation",
+    },
+    Naming {
         scene: crate::vegetation_picture::GROVE,
         resolve: crate::vegetation_picture::grove_handle_of,
         note: "the planting is the id's quotient by the stride and the node is its remainder",

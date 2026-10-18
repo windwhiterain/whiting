@@ -37,7 +37,7 @@
 //!
 //! [`render`]: ../../../device-rasterize/examples/render.rs
 
-use definition::Value;
+use definition::{PackedList, Value};
 use scene::standard::Stage;
 use vegetation::decorator::{Placed, Seat, Template, placed};
 use vegetation::derive::{Species, bamboo};
@@ -398,7 +398,7 @@ const GROVE_SHRUB_PLACES: [([f32; 3], f32); 3] = [
 /// A frame standing at a place and turned about the world's `y`: the only two numbers a planting needs to stand
 /// somewhere, and the reason a turn is a placement rather than a decorator's forbidden angle — a *plant* may be
 /// turned, a decorator may not, because a decorator has to sit on a surface that already has a frame.
-fn planted_at(position: [f32; 3], turn: f32) -> Placement {
+pub(crate) fn planted_at(position: [f32; 3], turn: f32) -> Placement {
     let (sin, cos) = turn.sin_cos();
     Placement {
         origin: position,
@@ -482,11 +482,22 @@ fn grove_plantings() -> Vec<Planting> {
 /// the node is its remainder, so a frame answers *which plant* and *which node* with one number and no table. An id
 /// whose planting or node does not exist answers `None` rather than a neighbouring plant's node.
 pub fn grove_handle_of(id: u32) -> Option<String> {
+    planting_handle(&grove_plantings(), id)
+}
+
+/// Resolves an id in a scene of plantings: the quotient names the planting and the remainder the node.
+///
+/// # Invariants
+///
+/// **One split for every scene of plantings**, which is what makes a pair comparable: the same division answers the
+/// grove's six plants and a demo's two, so a pixel's answer and a rectangle's agree across every scene that draws more
+/// than one plant. A planting with **no rows at all** still costs its stride, so removing a plant never renumbers the
+/// ones after it.
+pub(crate) fn planting_handle(plantings: &[Planting], id: u32) -> Option<String> {
     if id == crate::identity::NOT_AUTHORED {
         return None;
     }
     let index = (id / PLANTING_STRIDE) as usize;
-    let plantings = grove_plantings();
     let planting = plantings.get(index)?;
     let ids = node_ids_from(
         &planting.species.plant,
@@ -499,19 +510,19 @@ pub fn grove_handle_of(id: u32) -> Option<String> {
 
 /// Builds the grove scene: five shrubs from five seeds, each turned to its own place.
 pub fn grove_picture() -> Value {
-    plant_scene(&grove_plantings(), &GROVE_FRAMING, GROVE)
+    plant_scene(&grove_plantings(), &GROVE_FRAMING, GROVE, &[])
 }
 
 /// Builds the bamboo scene: one camera, a key and a fill, a floor, the plant's wood and its blade.
 pub fn bamboo_picture() -> Value {
-    plant_scene(&[Planting::new(bamboo(SEED))], &STILL, SCENE)
+    plant_scene(&[Planting::new(bamboo(SEED))], &STILL, SCENE, &[])
 }
 
 /// The same plant under a lateral wind, drawn beside it: a field bends spines, and a picture is the only place
 /// the bend is visible as a shape rather than as a number.
 pub fn windy_picture() -> Value {
     let species = bamboo(SEED).with_fields(vec![Field::light([1.0, 0.0, 0.0], 0.12)]);
-    plant_scene(&[Planting::new(species)], &STILL, WINDY)
+    plant_scene(&[Planting::new(species)], &STILL, WINDY, &[])
 }
 
 /// The same plant fitted to a crown: `trim` writes length nudges until each tip is on the envelope, so the frame
@@ -520,7 +531,7 @@ pub fn crowned_picture() -> Value {
     let mut species = bamboo(SEED);
     let crown = Envelope::radial(&[(0.0, 0.55), (0.5, 0.45), (1.0, 0.35)]);
     trim(&mut species.plant, &crown);
-    plant_scene(&[Planting::new(species)], &STILL, CROWNED)
+    plant_scene(&[Planting::new(species)], &STILL, CROWNED, &[])
 }
 
 /// The same plant with a knot at the base of every bough: a decorator is a template and three numbers, and the
@@ -528,7 +539,12 @@ pub fn crowned_picture() -> Value {
 pub fn knots_picture() -> Value {
     let species = bamboo(SEED);
     let seats = knots(&species);
-    plant_scene(&[Planting::new(species).with_seats(seats)], &STILL, KNOTTED)
+    plant_scene(
+        &[Planting::new(species).with_seats(seats)],
+        &STILL,
+        KNOTTED,
+        &[],
+    )
 }
 
 /// The name the segmentation view is built and rendered under.
@@ -597,6 +613,7 @@ pub fn segmentation_picture() -> Value {
             helpers: SEGMENTATION_HELPERS,
             grade: SEGMENTATION_GRADE,
         },
+        &[],
     )
 }
 
@@ -623,6 +640,7 @@ pub fn sculpted_picture() -> Value {
         &[Planting::new(sculpted.species).with_seats(sculpted.seats)],
         &STILL,
         SCULPTED,
+        &[],
     )
 }
 
@@ -652,10 +670,37 @@ pub fn sculpted_handle_of(id: u32) -> Option<String> {
 /// - **A planting's wood is one mesh, baked in the world**: a plant of five hundred solids is one draw, and its
 ///   corners carry the ids its own planting numbered ([`node_ids_from`]), so two plantings never write one id.
 /// - **A second planting's labels carry its index**, because a label names one instance in the whole scene.
-fn plant_scene(plantings: &[Planting], framing: &Framing, name: &str) -> Value {
-    plant_scene_with(plantings, framing, name, &View::PHOTOGRAPH)
+pub(crate) fn plant_scene(
+    plantings: &[Planting],
+    framing: &Framing,
+    name: &str,
+    props: &[Prop],
+) -> Value {
+    plant_scene_with(plantings, framing, name, &View::PHOTOGRAPH, props)
 }
 
+/// Something in a scene that is not a plant: a wall, a kerb, a bench.
+///
+/// # Invariants
+///
+/// A prop is **world geometry with no identity**: it carries no `authored_id`, so its pixels are the reserved zero and
+/// `--region` calls them the ground's own — which is what a wall is to a plant, the world it grows against rather than
+/// a thing whose node an author nudges. It draws on the ground's three stages, so a prop cannot be a plant by accident
+/// and a plant cannot be a prop.
+#[derive(Debug, Clone)]
+pub struct Prop {
+    /// Its name, which its three materials and its mesh are tagged with.
+    pub name: String,
+    /// Its points, in its own coordinates, on the shaded layout every gallery generator writes.
+    pub points: PackedList,
+    /// The colour it is drawn in.
+    pub tint: [f64; 3],
+    /// Its roughness.
+    pub roughness: f64,
+    /// Where it stands: a prop is not turned and not scaled, because a wall that needs to be is a wall whose own
+    /// generator should have been asked for the other one.
+    pub at: [f64; 3],
+}
 /// The bodies a view writes for itself: where a frame that is not a photograph departs from one.
 ///
 /// # Invariants
@@ -694,7 +739,13 @@ impl View {
 /// lights or the ids, which is what makes two views of one plant comparable. `plant` and `ground` are spliced after
 /// the lighting has been added and before the fragment writes its outputs, where `color` is the accumulation and
 /// `in` is the varying struct; `helpers` is appended to the shader's own; `grade` replaces the post stage's body.
-fn plant_scene_with(plantings: &[Planting], framing: &Framing, name: &str, view: &View) -> Value {
+fn plant_scene_with(
+    plantings: &[Planting],
+    framing: &Framing,
+    name: &str,
+    view: &View,
+    props: &[Prop],
+) -> Value {
     // **Two point schemas, and they are the two identities**: every authored mesh carries `authored_id`,
     // the ground carries none and writes the reserved zero from a constant.
     let extras = building_extras();
@@ -853,6 +904,14 @@ fn plant_scene_with(plantings: &[Planting], framing: &Framing, name: &str, view:
             shader,
             earth.clone(),
         ));
+        // **A prop draws on the ground's stages**, so it carries no identity and cannot be mistaken for a plant.
+        for prop in props {
+            materials.push(mesh_material(
+                &format!("{}-{stage}", prop.name),
+                shader,
+                surface(prop.tint, 0.0, prop.roughness, [0.0; 3]),
+            ));
+        }
     }
 
     // **One leaf placement per leaf instance, and the label says which group and which rank**: a label
@@ -876,6 +935,16 @@ fn plant_scene_with(plantings: &[Planting], framing: &Framing, name: &str, view:
             fixed("culm", format!("culm-{stage}")),
             fixed("floor", format!("floor-{stage}")),
         ];
+        for prop in props {
+            placements.push(instance(
+                format!("{}-{stage}", prop.name),
+                &prop.name,
+                prop.at,
+                [0.0; 3],
+                [1.0; 3],
+                &format!("{}-{stage}", prop.name),
+            ));
+        }
         for (index, planting) in drawn.iter().enumerate() {
             for (group, leaves) in planting.expansion.leaves.iter().enumerate() {
                 let material = if stage == "shade" {
@@ -1048,6 +1117,14 @@ fn plant_scene_with(plantings: &[Planting], framing: &Framing, name: &str, view:
                 }
             };
             meshes.push(mesh("floor", "Triangles", ground.point_schema(), floor));
+            for prop in props {
+                meshes.push(mesh(
+                    &prop.name,
+                    "Triangles",
+                    ground.point_schema(),
+                    prop.points.clone(),
+                ));
+            }
             Value::List(meshes)
         }),
         ("mesh_materials".to_owned(), Value::List(materials)),

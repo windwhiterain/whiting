@@ -115,6 +115,8 @@ mod tidewater;
 mod tiles;
 /// Standing a leaf's rigid frame as the scene instance that draws it.
 pub mod vegetation_instancing;
+/// The law demos: four scenes that draw one plant twice, without the law and with it.
+pub mod vegetation_laws;
 /// A plant's wood, and the blade every leaf instances, as a scene draws them.
 pub mod vegetation_mesh;
 /// The bamboo picture: one plant's wood as a mesh and its leaves as one instanced blade.
@@ -191,6 +193,10 @@ impl Gallery {
             "grove" => vegetation_picture::grove_picture(),
             "sculpted" => vegetation_picture::sculpted_picture(),
             "segmentation" => vegetation_picture::segmentation_picture(),
+            "garden_wall" => vegetation_laws::garden_wall(),
+            "aspiring" => vegetation_laws::aspiring(),
+            "thinned" => vegetation_laws::thinned(),
+            "brushed" => vegetation_laws::brushed(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
