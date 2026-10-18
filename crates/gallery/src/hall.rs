@@ -27,8 +27,8 @@ use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
 use crate::kit::{
-    camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
-    post_processes, screen_material, surface,
+    camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
+    mesh_material, post_processes, screen_material, surface,
 };
 use crate::shaders::post_shader;
 
@@ -103,12 +103,28 @@ pub fn hall() -> Value {
 /// building stands on covers no pixel of it at all. A camera has to be chosen for the subject rather than
 /// scaled onto it, and this scene's subject is a room.
 pub fn hall_large() -> Value {
-    hall_framed(14.0, 20.0, 1, close_and_low)
+    hall_framed(
+        14.0,
+        20.0,
+        1,
+        close_and_low,
+        HALL_LARGE_FRAME,
+        HALL_LARGE_FIELD_OF_VIEW,
+        HALL_LARGE_AIM,
+    )
 }
 
 /// Builds the hall scene for a footprint and a storey count.
 pub fn hall_at(width: f32, depth: f32, storeys: usize) -> Value {
-    hall_framed(width, depth, storeys, three_quarter)
+    hall_framed(
+        width,
+        depth,
+        storeys,
+        three_quarter,
+        HALL_FRAME,
+        HALL_FIELD_OF_VIEW,
+        HALL_AIM,
+    )
 }
 
 /// The three-quarter view [`hall_at`] draws from, kept whole so the other scenes keep their pictures.
@@ -149,12 +165,120 @@ fn close_and_low(width: f32, depth: f32, ridge: f64) -> [f64; 3] {
     ]
 }
 
-/// Builds the hall scene for a footprint, a storey count and a camera of its own.
+/// The aim `hall` looks from, and why it is not the building's own middle.
+///
+/// # Invariants
+///
+/// **A hall is sixteen metres deep and ten wide, and a camera that aims at its plan centre does not
+/// put it in the middle of the frame.** Measured at this scene's own lens the silhouette stands
+/// **148 px of a 1280 frame to the left of centre** — measured at 1280 by 784, which the frame above
+/// then grew to 1328 by 816 — which is what left `hall` clipped on its left edge while the rest of
+/// the frame fitted exactly. Only the yaw moves: the eye, the height and the distance are the ones
+/// the square was composed with.
+///
+/// **The shift was fitted from two renders, because the geometry under-predicted it by 2.5x.** The
+/// arithmetic says `0.2316 * 22.2183 * 0.314882` = 1.62 m along `[0.824289, 0, -0.566276]`, and
+/// applying it moved the silhouette **356 px the wrong way** — the projection's right axis is the
+/// negative of the one that was reasoned about. What is written here is the measured correction:
+/// `-1.5473 * 148 / 356` = **0.6457 m along the other side**, and a reader who recomputes the
+/// arithmetic will not arrive at it, which is the point of writing that it was measured.
+///
+/// **The height is 1.0643 m lower than the ridge puts it, for the same reason.** The silhouette sits
+/// 29 px below the middle of an 816-row frame — the hall's ground line is below its ridge and the
+/// aim is above both — and `57.8 / 408 * 22.2183 * 0.338055` brings it to the middle.
+const HALL_AIM: [f64; 3] = [-0.5323, 2.09578, 0.36565];
+
+/// The aim `hall_large` looks from, and why it is not the building's own middle.
+///
+/// # Invariants
+///
+/// **The same measurement on a longer building, and a longer correction.** At 14 by 20 the
+/// silhouette stands **163.5 px of a 1264 frame to the left of centre**, so the correction is
+/// `-2.5774 * 163.5 / 453` = **0.9303 m** along `[0.812045, 0, -0.583737]`, fitted the same way and
+/// for the same reason. The target keeps the height the ridge puts it at, so the eye, the height
+/// and the distance are untouched and only the yaw moves.
+const HALL_LARGE_AIM: [f64; 3] = [-0.75545, 3.85308, 0.54306];
+
+/// The image `hall` is drawn into, in pixels.
+///
+/// # Why this frame is this shape
+///
+/// A hall is the longest thing in this gallery, and the measured number says how long. Reading
+/// every id the frame carries, at `FRAC_PI_3 * 1.30` into the pipeline's square the silhouette
+/// stands `x 169..=750` by `y 361..=715`: **f_w 0.5679 by f_h 0.3460**, and the shape of the world
+/// those describe is the frame's own aspect times their ratio — **1.641 to one**.
+///
+/// So the frame takes those proportions — **1.63 to one**, at **1328 by 816**, and the lens is worked
+/// out against it. **The building is not drawn smaller in this frame: it is the same 0.89 of the
+/// height it was asked for, out of a picture 1,083,648 pixels rather than 1,048,576**.
+///
+/// **784 rows was a row short and the render said so.** At 1280 by 784 the silhouette's own bottom —
+/// the hall's wall base on the ground — carried **31 pixels on the frame's last row**, while the top
+/// had 56 of margin. Raising the frame to 816 rather than shortening the lens is the cheaper of the
+/// two corrections by a factor of eight in fill, and it is also the one that leaves the plate alone:
+/// a lens change moves the sight line over every window sill, and a taller frame does not.
+const HALL_FRAME: (i64, i64) = (1328, 816);
+
+/// The full **vertical** angle `hall` is drawn through, in radians.
+///
+/// # The arithmetic
+///
+/// ```text
+/// tan(new / 2) = tan(1.30 * PI/3 / 2) * 0.3460 / 0.89
+///              = 0.810651 * 0.388764 = 0.315181
+/// new = 2 * atan(0.315181) = 0.60998 rad = FRAC_PI_3 * 0.5825
+/// ```
+///
+/// **0.6222 and not 0.5825**, and it is the render that says so rather than the arithmetic. The sweep
+/// that fixed the target read the silhouette as 0.89 of the height; drawn at that lens the hall's own
+/// wall base carried **31 px of the last row at 784 and 33 px at 816**, so the sweep under-read it by
+/// about 3 % and a further turn of the lens closes the difference. `0.5825` scaled by `0.9314` puts
+/// the silhouette's 677 rows between 69 and 746 of 816.
+///
+/// **89 % and not 90 %**, because the roof's soffit and its four fascias stand outside the skin they
+/// belong to and a hall's own soffit ran off the **left edge** of the square this replaces — the
+/// square cut `roof 0, the soffit under plane 1` at x 0 and carried **47 pixels of building** on
+/// that edge. The eye did not move; only the yaw and the aim's height did, and the floor this frame
+/// is about is seen through the hall's own windows from in front of them either way.
+const HALL_FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.6222;
+
+/// The image `hall_large` is drawn into, in pixels.
+///
+/// # Why this frame is this shape
+///
+/// The larger hall is longer and taller, and its proportion is not the smaller one's. Read the same
+/// way at the same measurement lens it stands `x 59..=820` by `y 288..=778` — **f_w 0.7439 by
+/// f_h 0.4790**, a world aspect of **1.553 to one**. So this frame is **1.55 to one** at 1264 by
+/// 816, 1,031,424 pixels.
+///
+/// **The square it replaces was cutting it badly.** Its left column held **533 pixels of building**
+/// and `mass 0, outer wall over edge 2` ran from x 0, so this is the frame that stops the cut.
+const HALL_LARGE_FRAME: (i64, i64) = (1264, 816);
+
+/// The full **vertical** angle `hall_large` is drawn through, in radians.
+///
+/// # The arithmetic
+///
+/// ```text
+/// tan(new / 2) = tan(1.30 * PI/3 / 2) * 0.4790 / 0.89
+///              = 0.810651 * 0.538202 = 0.436331
+/// new = 2 * atan(0.436331) = 0.82201 rad = FRAC_PI_3 * 0.7850
+/// ```
+///
+/// **The eye and the target are this scene's own and did not move** — `close_and_low` stands lower
+/// and closer than the shared three-quarter view so that the building fills the frame rather than
+/// the roof, and that reasoning is a statement about the subject, not about the frame's shape.
+const HALL_LARGE_FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.7850;
+
+/// Builds the hall scene for a footprint, a storey count, a camera of its own, a frame and a lens.
 fn hall_framed(
     width: f32,
     depth: f32,
     storeys: usize,
     eye: fn(f32, f32, f64) -> [f64; 3],
+    image: (i64, i64),
+    field_of_view: f64,
+    aim: [f64; 3],
 ) -> Value {
     let building = document_at(width, depth, storeys);
     // The ridge is the number the frame has to fit: the wall top plus the style's own rise.
@@ -250,16 +374,18 @@ fn hall_framed(
 
     Value::structure([
         ("name".to_owned(), Value::String("hall".to_owned())),
+        // The one field here that is about the picture rather than what is in it: a hall is a long
+        // building, and a long building wants a long frame. A scene that names no frame is drawn
+        // into the pipeline's own square, so this is a decision rather than a default.
+        ("frame".to_owned(), frame(image.0, image.1)),
         (
             "cameras".to_owned(),
             // A three-quarter view from the near corner, high enough that the roof reads as a
             // volume rather than as a silhouette: the eave line and the ridge are both visible,
-            // which is what says the roof has a soffit and a thickness.
-            Value::List(vec![camera(
-                eye(width, depth, ridge),
-                [0.0, ridge * 0.42, 0.0],
-                std::f64::consts::FRAC_PI_3 * 0.92,
-            )]),
+            // which is what says the roof has a soffit and a thickness. **The eye and the target did
+            // not move**; the lens is the free variable, and it is free because the frame is now the
+            // silhouette's own shape rather than the pipeline's square.
+            Value::List(vec![camera(eye(width, depth, ridge), aim, field_of_view)]),
         ),
         (
             "lights".to_owned(),

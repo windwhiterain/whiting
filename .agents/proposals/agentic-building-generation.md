@@ -1268,7 +1268,7 @@ That is the difference between a style and a preset: **a preset is the numbers, 
 them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
 chosen twice.
 
-## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, again on 2026-10-31 when the ground was cut away from under every plate, again on 2026-10-17 when `RoofStyle::Flat` kept the plate every other style already carried, again on 2026-11-02 when `terrace` moved its camera, again on 2026-11-03 when `terrace` lengthened its lens, again on 2026-11-05 when the `workshop` grew a workbench on its own inner wall — **that one moved as well, and the eight beside it are byte-identical again** — and again on **2026-11-06 when `terrace` asked for a frame of its own shape, which is the first scene in this table that is not square**, see *The terrace's camera, and what a floor costs to see* and *The terrace's lens, and the ceiling a square frame puts on a row* and *What the frame aspect slice found* further down, and *The inner-face scene slice found* at the end of this file)
+## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, again on 2026-10-31 when the ground was cut away from under every plate, again on 2026-10-17 when `RoofStyle::Flat` kept the plate every other style already carried, again on 2026-11-02 when `terrace` moved its camera, again on 2026-11-03 when `terrace` lengthened its lens, again on 2026-11-05 when the `workshop` grew a workbench on its own inner wall — **that one moved as well, and the eight beside it are byte-identical again** — again on **2026-11-06 when `terrace` asked for a frame of its own shape, which is the first scene in this table that is not square**, and again on **2026-10-18 when the other eight were reframed and every hash but `terrace`'s moved**, see *The terrace's camera, and what a floor costs to see* and *The terrace's lens, and the ceiling a square frame puts on a row* and *What the frame aspect slice found* further down, and *What the second frame slice found* at the end of this file)
 
 Nine building scenes render, and each one's picture has a hash. They are recorded here because the question a
 refactor has to answer is *"did the picture change?"*, and a hash answers it in a way that looking at two images
@@ -1277,15 +1277,16 @@ does not. The hash is the first sixteen hex of the `sha256` of the scene's own `
 
 | scene | frame hash (first 16) | notes |
 | --- | --- | --- |
-| `house` | `B13154AD7D29F938` | the hip, the plate, three walls; the ground is cut away under the plate, and the plate stays **buried: 0 plate pixels** because the house has no opening |
-| `hall` | `C4339E6310EA1C37` | `HALL` at 10 × 16, three bays; the camera is untouched and the plate's top went **665 → 3,166** now that the ground is not tied with it |
-| `hall_large` | `43D3780A15E3D08E` | `HALL` at 14 × 20, five bays, its own lower and closer camera; the plate reads **2,483**, and `--locate` inside it now answers the slab where it answered a wall |
-| `shed` | `882B8F9A7C671B0D` | a doorway, two windows, a door leaf and a canopy; the 0.30 m plate **2,246 → 2,255** |
-| `terrace` | `E32C1CA08D9F3016` | three units that touch, nine windows; **the frame is the scene's own and this scene asks for three to one — 1536 x 512 against the pipeline's 1024 square — with a vertical angle 2.197x shorter over an eye, a target and a distance that did not move**, so all three plates are still in frame (`slab 0` 1,779, `slab 1` 3,022, `slab 2` 3,435) and the row's own pixels went from **25.36 %** of the square to **44.88 %** of the wide one. Re-recorded 2026-11-06; the eight beside it are byte-identical |
-| `wing` | `14E3E27F9F9E1A83` | host plus attached wing, windows on the weather faces; `slab 0`'s top went **0 → 380** and `slab 1`'s is 3 — unchanged |
-| `workshop` | `3ABB4A12DE90CDC4` | two storeys, a plate, five instanced shutters, **and one workbench on the mass's own inner wall face — the fourth face of a ring, and the first time a scene has used `FaceRef::inner`**; the ground plate's top **1,844 → 3,082 → 2,974**, the mezzanine's is still 0, and the mass's **inner wall over edge 1** went **13,822 → 12,060** because the bench stands in front of it. Re-recorded 2026-11-05; the eight beside it are byte-identical |
-| `yard` | `FDC446B24E98CE04` | the courtyard and its gate; the two 1.20 m foundations still stand clear of the slope, **15,458 → 15,460** pixels of their own sides |
-| `identity` | `974FB5B24E1E7A35` | the identity picture, and every pixel still names itself; the plate's top went **0 → 1,261** through the one opening |
+| `house` | **`3321BFDE5C64C81A`** | the hip, the plate, three walls; the ground is cut away under the plate, and the plate stays **buried: 0 plate pixels** because the house has **no opening at all**. **Re-recorded 2026-10-18: the frame is 1392 × 752 at 1.851, the silhouette's own aspect, with the lens worked out against it and the aim moved 0.43 m off the plan centre**; the building's own pixels went **27.30 % → 50.79 %** and nothing touches an edge |
+| `hall` | **`96F61FA5E9F18E60`** | `HALL` at 10 × 16, three bays; **re-recorded 2026-10-18: the frame is 1328 × 816 at 1.629 and the lens was shortened after the aim was fitted**. The square this replaced **cut `roof 0, the soffit under plane 1` at x 0 with 47 px of building on that edge**; this frame carries none, and the plate's top went **3,166 → 4,697** |
+| `hall_large` | **`478E692C6CBE2D3B`** | `HALL` at 14 × 20, five bays, its own lower and closer camera; **re-recorded 2026-10-18: the frame is 1264 × 816 at 1.549, and only the yaw moved**. The square **cut 533 px of building off its left edge** with `mass 0, outer wall over edge 2` running from x 0; this frame carries none, the plate reads **2,483 → 2,253**, and **14 of its plate's 51 pixels hold it on all 25 texels two pixels off** |
+| `shed` | **`48909F693ACBA634`** | a doorway, two windows, a door leaf and a canopy; **re-recorded 2026-10-18: the frame is 1344 × 768 at 1.750**, which is the silhouette's own aspect **including the roof's soffit and fascias** — a first frame cut to four bounding boxes' 1.633 clipped the fascia at x 1311. The plate went **2,255 → 5,012** and the building's own pixels **24.63 % → 55.65 %** |
+| `terrace` | `E32C1CA08D9F3016` | three units that touch, nine windows; **the frame is the scene's own and this scene asks for three to one — 1536 x 512 against the pipeline's 1024 square — with a vertical angle 2.197x shorter over an eye, a target and a distance that did not move**, so all three plates are still in frame (`slab 0` 1,779, `slab 1` 3,022, `slab 2` 3,435) and the row's own pixels went from **25.36 %** of the square to **44.88 %** of the wide one. **Re-recorded 2026-10-06; and on 2026-10-18 it was the control for the eight beside it — byte-identical, 152,125 bytes either way, with its manifest `document` hash identical too** |
+| `wing` | **`2EF5C4FB206167F4`** | host plus attached wing, windows on the weather faces; **re-recorded 2026-10-18: the frame is 1424 × 736 at 1.935 and the lens is the longest in the gallery**, because the square put an L at 8.25 % of the frame — the smallest of the nine and not too small, only lost. `slab 0`'s top went **380 → 2,738**; `slab 1`'s is **21**, too few for the neighbour rule; the building's own pixels went **8.25 % → 59.23 %** |
+| `workshop` | **`EB8E05CD755B9B4B`** | two storeys, a plate, five instanced shutters, and one workbench on the mass's own inner wall face; **re-recorded 2026-10-18: the frame is 1120 × 928 at 1.207 and only the aim moved**, because the silhouette already fitted at 0.888 by 0.870 and its centre was 52.5 px right and 60.5 px above the frame's. The ground plate's top went **2,974 → 4,803**, the mezzanine's is **still 0**, and the building's own pixels went **34.54 % → 55.41 %** |
+| `yard` | **`DCFC79EFB0F78DD4`** | the courtyard and its gate; **re-recorded 2026-10-18: the frame is 1264 × 816 at 1.549 and only the aim moved.** The square **cut 198 px of building off its left edge**; this frame carries none. **Neither plate can answer the floor question and the brief did not say so** — both are 1.20 m foundations on a slope with **no opening over either**, so their tops are not in frame while their edges are, at 9,717 and 3,815 px |
+| `identity` | **`48F13F7D84A24480`** | the identity picture, and every pixel still names itself; **re-recorded 2026-10-18: the frame is 1280 × 816 at 1.569 and only the aim moved**, 0.80 m of yaw and 0.71 m of pitch. The square **cut 121 px of building off its left edge**; this frame carries none. The plate's top went **1,261 → 1,579** through the one opening |
+
 
 **Every one of the nine moved, and for one reason: a mass is two solids.** The wall ring's inner base stands on the
 ground line where the shell's floor disc stood a plate thickness lower, the plate is a solid of its own and brings
@@ -5872,6 +5873,231 @@ it**, so the sentence has been replaced with the truth and with the name of the 
 - **A path-traced export of any of these frames is still the wrong size**, and not this slice's doing: `device-cycles`
   carries its own `--width`/`--height` because Cycles' `Film` node has no resolution socket. **`cycles_export` reads the
   aspect, so the composition is right and the file is not.**
+- **Unchanged by this slice:** an authored pinch is the one courtyard whose areas nothing can check; a mass's interior is
+  still not a documentable concept; a part on an inner face still will not take a hole, `OpeningOnAFarLoop`; and `covers`
+  remains a necessary condition and not a proof.
+
+## What the second frame slice found: a frame's aspect is its own, and the silhouette is not what `--where` says it is (2026-10-18, branch `feature/building-eight-frames`)
+
+**This is the second half of the decision the frame aspect slice took**: *every hash moves*, and this is where that is
+paid. `terrace` was the mechanism and one scene; **the other eight now have frames of their own shapes and cameras
+composed for them**, and the eight hashes have moved. `terrace` was not touched and is the control that says so.
+
+### The method, and the one number that has to be derived rather than guessed
+
+**A frame's shape is the subject's own, and its size is the subject's fill.** Each frame was measured, not chosen: the
+silhouette was read out of a render by asking `--where` for **every id the frame carries** — the whole-frame `--region`
+census names them all, so the ask is a sweep rather than a list someone remembered — and the aspect came from those
+pixels:
+
+```text
+A_world = (W_frame / H_frame) * (f_w / f_h)        f_w = silhouette px wide  / (W_frame - 1)
+                                               f_h = silhouette px tall  / (H_frame - 1)
+tan(theta_new / 2) = tan(theta_old / 2) * f_h_old / f_target
+```
+
+**The frame heights cancel in the second line, and that is the trap this slice paid twice.** Pixels per metre go as
+`height / tan(angle / 2)`, so the ratio — not the magnification — is what is held. `house` was first given
+`FRAC_PI_3 * 0.6356`, the factor that looks right if you forget the frame is 752 rows rather than 1024, and it magnified
+by **1.013 instead of 1.384** and moved the fill from 27.30 % to 28.09 %. The same sentence already stands on
+`house`'s own `FIELD_OF_VIEW` with the corrected number worked out beside it.
+
+**And the horizontal is not the vertical.** `perspective` divides the x row by the aspect, so the frame's **world**
+aspect is `a : 1` where `a` is `W / H` — but a fill *fraction* measured in a frame that is not square is not that
+aspect, and the correction is `A_world = a * f_w / f_h`. Reading a silhouette's pixel aspect off a 1.64 frame would have
+made `shed` 1.63 instead of its measured **1.744**.
+
+### Every scene, before and after, with the number that decides
+
+| scene | frame before | frame after | aspect after | fill before | **fill after** | ids before → after |
+| --- | --- | --- | --- | --- | --- | --- |
+| `house` | 1024 × 1024 | **1392 × 752** | 1.851 | 27.30 % | **50.79 %** | 11 → 12 |
+| `hall` | 1024 × 1024 | **1328 × 816** | 1.629 | 31.10 % | **45.55 %** | 33 → 37 |
+| `hall_large` | 1024 × 1024 | **1264 × 816** | 1.549 | 47.24 % | **47.60 %** | 38 → 41 |
+| `shed` | 1024 × 1024 | **1344 × 768** | 1.750 | 24.63 % | **55.65 %** | 38 → 44 |
+| `terrace` | 1536 × 512 | **1536 × 512** | 3.000 | 44.88 % | **44.88 %** | 59 → 59 |
+| `wing` | 1024 × 1024 | **1424 × 736** | 1.935 | 8.25 % | **59.23 %** | 42 → 49 |
+| `workshop` | 1024 × 1024 | **1120 × 928** | 1.207 | 34.54 % | **55.41 %** | 63 → 56 |
+| `yard` | 1024 × 1024 | **1264 × 816** | 1.549 | 32.95 % | **39.23 %** | 51 → 56 |
+| `identity` | 1024 × 1024 | **1280 × 816** | 1.569 | 35.68 % | **44.22 %** | 37 → 35 |
+
+**Fill is the building's own ids over the whole frame's area, id 0 excluded**, taken from one `--region` over the whole
+frame each time. **Seven of the eight are between 45 % and 60 %; the two that are not are the two the arithmetic could
+not help.** `wing` was at **8.25 %** — less than any scene here, and not too small: it was lost, and it is now **59.23 %**,
+the largest move in the table. `yard` is the smallest gain, **32.95 % → 39.23 %**, and the reason is its subject: a
+courtyard is a *hole* in the picture with walls around it, so a larger share of its bounding box is ground than any other
+scene here owns.
+
+**`house` and `yard` lost ids and `workshop` lost seven.** That is not a document changing and the probe says so —
+`scene_identity_probe` reads **845 rows** two-way with `terrace` still at **123** of them, every id contiguous from 1 and
+every name round-tripping. It is the camera moving: a narrower lens puts more of one element behind another.
+
+### No subject cut: a four-pixel-wide probe of each edge, and what it found
+
+**The test is `--region` over a one-pixel strip on each of the four edges**, and the number that counts is the strip's
+building pixels. The square was clipping **four of the nine**, and the sentence the record already carries about a
+square cutting `mass 0` at `x 0` is the rule in general: `hall` **47**, `hall_large` **533**, `yard` **198**,
+`identity` **121**. **`house`, `shed`, `wing`, `workshop` and `terrace` were whole in the square.**
+
+| scene | left | right | top | bottom | **before → after** |
+| --- | --- | --- | --- | --- | --- |
+| `house` | 0 | 0 | 0 | 0 | **whole → whole** |
+| `hall` | 47 | 0 | 0 | 0 | **cut → 0** |
+| `hall_large` | 533 | 0 | 0 | 0 | **cut → 0** |
+| `shed` | 0 | 0 | 0 | 0 | **whole → whole** |
+| `terrace` | 0 | 0 | 0 | 0 | **whole → whole** (untouched) |
+| `wing` | 0 | 0 | 0 | 0 | **whole → whole** |
+| `workshop` | 0 | 0 | 0 | 0 | **whole → whole** |
+| `yard` | 198 | 0 | 0 | 0 | **cut → 0** |
+| `identity` | 121 | 0 | 0 | 0 | **cut → 0** |
+
+**All four cut scenes are whole, and no scene that was whole before is cut now.** The last half of that sentence is the
+one worth having: a reframing that fixes four cuts and introduces a fifth has not fixed four.
+
+### The floors, and the two that cannot answer
+
+**The rule is the lens slice's and it is the strict one**: the chosen pixel must name the plate *and* carry it on **all
+twenty-five texels two pixels off**, asked as a `--region` over the 5 × 5 rather than as a judgement. Every pixel was
+**predicted inside its plate's own `--where` box and then asked**, and the box was wrong often enough to be worth the
+sentence — `hall`'s first grid of **twelve** probes inside `slab 0, its top`'s box returned **twelve walls and no floor**,
+and it took a grid of **1,710** pixels to find its **94**.
+
+| scene | plate | pixels | box | `--locate` pixel | answer | neighbours two off |
+| --- | --- | --- | --- | --- | --- | --- |
+| `house` | `slab 0, its top` | **0 — not in frame** | — | — | — | — |
+| `hall` | `slab 0, its top` | 4,697 | x 340..=973, y 465..=603 | **(364, 538)** | `slab 0, its top` | **25 of 25** |
+| `hall_large` | `slab 0, its top` | 2,253 | x 309..=952, y 538..=670 | **(326, 590)** | `slab 0, its top` | **25 of 25** |
+| `shed` | `slab 0, its top` | 5,012 | x 816..=985, y 486..=650 | **(884, 527)** | `slab 0, its top` | **25 of 25** |
+| `terrace` | `slab 0, its top` | 1,779 | x 150..=517, y 296..=393 | **(444, 320)** | `slab 0, its top` | **25 of 25** |
+| `terrace` | `slab 1, its top` | 3,022 | x 630..=896, y 303..=405 | **(703, 320)** | `slab 1, its top` | **25 of 25** |
+| `terrace` | `slab 2, its top` | 3,435 | x 989..=1310, y 310..=348 | **(1182, 329)** | `slab 2, its top` | **25 of 25** |
+| `wing` | `slab 0, its top` | 2,738 | x 125..=544, y 480..=640 | **(415, 497)** | `slab 0, its top` | **25 of 25** |
+| `workshop` | `slab 0, its top` | 4,803 | x 597..=834, y 706..=814 | **(787, 773)** | `slab 0, its top` | **25 of 25** |
+| `yard` | `slab 0, its top` | **0 — not in frame** | — | — | — | — |
+| `identity` | `slab 0, its top` | 1,579 | x 778..=947, y 615..=716 | **(788, 625)** | `slab 0, its top` | **25 of 25** |
+
+**The control is the frame's own corner**: `--locate <scene> (0, 0)` answers the reserved zero's own sentence on **every
+one of the nine**, so a `--locate` that always agreed would have to agree with that too.
+
+**`house` cannot answer, and the reason is a recorded fact**: `--where "slab 0, its top"` answers *id 26 is not visible in
+this frame*, because the house authors **no opening at all** and its plate is seated on the mass's own inner loop at the
+ground. **A plate with nothing cut above it is buried**, and no lens and no frame can bring it into a picture — which is
+the `hall_large` camera note from an earlier slice, arriving for a different reason.
+
+**`yard` cannot answer either, and the brief did not say so.** Its two plates are 1.20 m foundations seated on a slope
+**with no opening over either**, so `--where "slab 0, its top"` and `"slab 1, its top"` both answer *not visible in this
+frame* while the census still carries `slab 0`'s and `slab 1`'s **edges** at 9,717 and 3,815 px. **The foundations are
+in the picture and their tops are not**, and the difference is the gate: a site is a hole in the ground with walls round
+it and nothing is cut through the floor to look at.
+
+**`workshop`'s mezzanine answers nothing, and did not before either.** `slab 1, its top` reads *not visible in this
+frame*; `slab 0` — the ground plate — is in frame at 4,803 px, up from 2,974, through the same doorway.
+
+**`wing`'s second plate is 21 px** and no pixel of it can carry its own id on 25 texels. `slab 0` answers, `slab 1`
+cannot, and the census says both.
+
+### The rule has teeth, and the numbers that prove it
+
+**A rule that could not fail would have agreed with all of them.** Of the plate pixels swept and asked with their own 5 × 5:
+
+| plate | pixels swept | 25 of 25 | **not** 25 of 25 |
+| --- | --- | --- | --- |
+| `hall_large` `slab 0` | 51 | **14** | 32 at **2**, 5 at **3** |
+| `terrace` `slab 1` | 60 | **50** | 6 at 2, 3 at 3, 1 at **4** |
+
+**`hall_large`'s plate is a sliver broken by its own window reveals**, and 37 of its 51 pixels sit within two pixels of
+something else. The pixel chosen above is one of the 14 that are clean, and the first one tried, (319, 590), **fails** —
+which is the record's *a bounding box is not a pixel* one step further on: **a pixel that names the plate is not yet a
+pixel that answers the question.**
+
+### The hashes: eight of nine moved, and the one that did not is the control
+
+**Which hash is which, and it is the `png`.** The table's value is the **SHA-256 of the written `.png` file**. The
+manifest's `document` is a hash over the two definitions the compile emitted and its `image` is a hash over the **raw
+pixel buffer the gpu returned** — three different domains, and `house` is the record's own worked example, reproduced
+here: its `.png` was `B13154AD7D29F938` while its manifest `image` read `4f343949d83b2064`, which is *Correction: the
+difference was the hash's domain* standing in one table again.
+
+| scene | `.png` before | `.png` after | moved | manifest `document` | manifest `image` |
+| --- | --- | --- | --- | --- | --- |
+| `house` | `B13154AD7D29F938` | **`3321BFDE5C64C81A`** | yes, 214,575 → 162,880 B | `f285144d` → `794d91f0` | `4f343949` → `9879930a` |
+| `hall` | `C4339E6310EA1C37` | **`96F61FA5E9F18E60`** | yes, 284,166 → 271,257 B | `8ad46af4` → `ef71fe6c` | `d3861ab9` → `917162c7` |
+| `hall_large` | `43D3780A15E3D08E` | **`478E692C6CBE2D3B`** | yes, 292,180 → 273,830 B | `7930acde` → `aa1bbcbb` | `ac283053` → `2130d96e` |
+| `shed` | `882B8F9A7C671B0D` | **`48909F693ACBA634`** | yes, 252,058 → 237,251 B | `fab2859d` → `60d3557c` | `929a983d` → `21edc8e2` |
+| **`terrace`** | `E32C1CA08D9F3016` | **`E32C1CA08D9F3016`** | **no — 152,125 B either way** | `d12099d0` → `d12099d0` | `eab8d628` → `eab8d628` |
+| `wing` | `14E3E27F9F9E1A83` | **`2EF5C4FB206167F4`** | yes, 227,155 → 191,928 B | `0a890abc` → `6b3df418` | `e92705c6` → `3bada127` |
+| `workshop` | `3ABB4A12DE90CDC4` | **`EB8E05CD755B9B4B`** | yes, 299,509 → 309,709 B | `fba1a06b` → `3563d52f` | `4898bc5f` → `10c5071f` |
+| `yard` | `FDC446B24E98CE04` | **`DCFC79EFB0F78DD4`** | yes, 307,850 → 287,367 B | `ca2fb437` → `32759ad9` | `2ab63de3` → `3e8e65d3` |
+| `identity` | `974FB5B24E1E7A35` | **`48F13F7D84A24480`** | yes, 305,624 → 283,676 B | `e170170e` → `3dddd68d` | `0f302619` → `1a31107f` |
+
+**Nine pairs compared byte for byte over `[System.IO.File]::ReadAllBytes` and not only by `sha256`, and the count is
+printed rather than asserted: 9 compared, 1 byte-identical, and the 1 is `terrace`.** Its `document` hash is identical
+too, which is the stronger claim: **the emitted graphics and instance definitions are bit for bit the same documents**,
+which is what a frame and a camera are supposed to leave alone. **The nine before-hashes were reproduced by fresh render
+before the first edit, value for value against the table above** — that is the canary that says the pair is *this* tree
+on *this* machine.
+
+### The gate, measured on the branch
+
+- **29/29 building examples and 16/16 gallery examples exit 0 — 45 runs** — under the canary `thread '.*'.*panicked`,
+  which was **proved to fire on its own control first**: a `rustc`-compiled binary indexing an empty `Vec` printed
+  `thread 'main' (29960) panicked at …` for **1 hit**, and the bare `thread '...' panicked` this toolchain never writes
+  gave **0** — the false negative this arc has paid for before. **Zero canary hits across all 45 runs.**
+- `cargo build --workspace --all-targets` exits 0 and warns **only** of the pre-existing `census.exe` / `census.pdb`
+  filename collision. **13 of 13 `Compiling` lines naming a workspace crate name this worktree and 0 name the parent**;
+  the other lines are registry crates, which print no path at all, **which is why the count is printed rather than a
+  verdict**.
+- `cargo fmt --all -- --check` is clean, and the formatting it wanted changed **no picture**: `shed` and `house` re-render
+  to `48909F693ACBA634` and `3321BFDE5C64C81A` after it, the values recorded above.
+- **`scene_identity_probe` reads 845 rows two-way and `terrace` still holds 123 of them** (77 + 109 + 77 + 31 + 66 + 123 +
+  162 + 99 + 101), every id contiguous from 1, every name non-empty, every name round-tripping, all four pinned readings
+  unchanged. **That number is the proof the document did not change, which is what the brief forbade changing** — a frame
+  and a lens are a scene's picture, not a scene's building.
+
+### What this slice's brief got wrong, and what remains open
+
+**The brief said "each scene gets its own frame aspect", and the honest finding is that the aspect was never the thing
+that was wrong.** A square frame's real cost is not that it is square, it is that the lens fitted to a square wastes its
+resolution on sky and ground beside a building that is not square — and **on five of the nine scenes the lens alone, with
+the square left in place, would have recovered most of the fill.** `hall`, `hall_large`, `yard` and `identity` each
+gained **more from the aim than from the frame**, and two of them gained from the aim alone.
+
+**The brief listed what the camera may change as "the eye, the target, the field of view are all fair game" and the
+ordering that turned out to matter is the reverse of it.** For four of the eight the **eye never moved and the aim
+carried the correction**; for one, `hall`, the aim carried it *and* the lens had to be shortened after the sweep that
+set the target was found to under-read the silhouette by 3 %. **A lens correction is the expensive one and the aim is
+the cheap one, and the measurement only knows which is which after both have been tried.**
+
+**The brief's own instrument was too weak, and this is the finding worth carrying.** Asking `--where` about *the elements
+one expects* under-reads a silhouette every time, because the things that reach furthest are the ones nobody lists: the
+shed's **soffit and fascias** put its aspect at 1.744 where four bounding boxes said 1.633, and a frame cut to 1.633
+**clipped `roof 0, the fascia over the skin's boundary edge 1` at x 1311**. **A silhouette read from a list of elements is
+a lower bound, and the whole-frame `--region` census is the instrument that is not** — it names every id in the picture,
+so the sweep that uses it cannot be defeated by an element nobody remembered. Two scenes were measured twice for this
+reason.
+
+**One arithmetic error of my own, recorded because the frame's own field carries it.** The magnification factor and the
+half-angle's tangent ratio are not interchangeable when the frame changes its own height, and `house` was given the
+factor first and **moved its fill by 0.79 % instead of 23 %**. The corrected number and the shape of the mistake are on
+`house`'s `FIELD_OF_VIEW`; the rule is that **the ratio, not the factor, is what a frame holds constant**.
+
+**And a prediction that was wrong in sign, which is worth one sentence because it is the kind of thing a later session
+would otherwise repeat.** The yaw that centres a silhouette was derived from the camera's own basis and came out
+**2.5× too large and on the wrong side**: applying it moved `hall`'s silhouette **356 px the wrong way**. **The
+correction was then fitted from two renders** — `-1.5473 * 148 / 356` — and both scenes' `AIM` constants say in their own
+doc that they were measured rather than derived, because **a reader who recomputes the arithmetic will not arrive at
+them, which is the point of writing that it was measured.**
+
+**What remains open:**
+
+- **A path-traced export of any of these nine frames is still the wrong size**, unchanged by this slice and not its
+  doing: `device-cycles` carries its own `--width`/`--height` because Cycles' `Film` node has no resolution socket.
+- **The nine are no longer comparable at frame level with each other**, which is the cost the owner's decision accepted
+  and which this slice has now paid in full: a fill share, a plate count and a pixel coordinate quoted from one of them
+  means nothing about another, and the nine frames above are nine different aspects between 1.207 and 3.000.
+- **`house` and `yard` have no floor to show**, and neither is a camera that could be asked to show one: the first has
+  no opening, the second has none over its foundations. **A scene whose subject has no opening cannot answer the floor
+  question at any lens, and that is a property of the document rather than a fault of the frame.**
 - **Unchanged by this slice:** an authored pinch is the one courtyard whose areas nothing can check; a mass's interior is
   still not a documentable concept; a part on an inner face still will not take a hole, `OpeningOnAFarLoop`; and `covers`
   remains a necessary condition and not a proof.

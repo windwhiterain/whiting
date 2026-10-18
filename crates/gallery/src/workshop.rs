@@ -41,8 +41,8 @@ use crate::building_identity::{
 };
 use crate::instancing::{Standing, standing};
 use crate::kit::{
-    camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
-    offset_by, post_processes, screen_material, shaded_point_schema, surface,
+    camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
+    mesh_material, offset_by, post_processes, screen_material, shaded_point_schema, surface,
 };
 use crate::shaders::post_shader;
 use building::expand::part_frame;
@@ -129,8 +129,56 @@ const SUN: [f64; 3] = [-15.0, 30.0, 22.0];
 /// How much irradiance the ground receives from that sun, in the scene's own units.
 const SUN_IRRADIANCE: f64 = 3.2;
 
-/// Returns a shutter: a panel `width` across, `height` tall, `thickness` through, standing at its own
-/// origin.
+/// The image this scene is drawn into, in pixels.
+///
+/// # Why this frame is this shape
+///
+/// The workshop is **two storeys under a shallow gable**, six metres wide and nine deep with a
+/// mezzanine inside it, and the measured number says what that projects as. Reading every id the
+/// frame carries at `FRAC_PI_3 * 1.30`, the silhouette stands `x 318..=750` by `y 307..=666` of the
+/// pipeline's square — **f_w 0.4223 by f_h 0.3509**, a world aspect of **1.204 to one**.
+///
+/// So the frame takes those proportions, **1.21 to one** at 1120 by 928: 1,039,360 pixels against
+/// the square's 1,048,576.
+///
+/// **This is the only scene in the gallery whose frame is taller than a square's half**, and the
+/// reason is the building rather than the lens: two storeys and a gable read as a block from the
+/// ground plate to the ridge, and a block is not a row.
+const FRAME_WIDTH: i64 = 1120;
+const FRAME_HEIGHT: i64 = 928;
+
+/// The full **vertical** angle this workshop is drawn through, in radians.
+///
+/// # The arithmetic
+///
+/// ```text
+/// tan(new / 2) = tan(1.30 * PI/3 / 2) * 0.3509 / 0.89
+///              = 0.810651 * 0.394270 = 0.319609
+/// new = 2 * atan(0.319609) = 0.61809 rad = FRAC_PI_3 * 0.5902
+/// ```
+///
+/// **89 % and not 90 %**, because the workbench standing on the mass's own inner wall face and the
+/// roof's soffit both reach past the wall they belong to.
+const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.5902;
+
+/// The aim this workshop looks from, and why it is not the building's own middle.
+///
+/// # Invariants
+///
+/// **The eye did not move and the aim did, because the silhouette fits and is not in the middle.**
+/// At this frame and this lens the building measures `x 115..=1109` by `y 0..=806`: **0.8883 of the
+/// width and 0.8695 of the height**, with its centre **52.5 px right of and 60.5 px above** the
+/// frame's — which is why the roof's own fascia sat on row 0 while 121 rows of ground stood below.
+/// `52.5 / 559.5 * 17.1137 * 0.319062` = **0.5124 m** along `[0.789342, 0, 0.613966]` and
+/// `60.5 / 463.5 * 17.1137 * 0.319062` = **0.7126 m** of height put it in the middle with 60 rows of
+/// margin on every side, **and the lens did not move at all** — a lens correction would have cost a
+/// tenth of the fill to fix a fault that was never about the lens.
+///
+/// **That costs the pitch, and the pitch is what the plate is seen through.** This scene's plate is a
+/// mezzanine under a doorway whose head sits below its own underside; the render answers whether it
+/// survives.
+const AIM: [f64; 3] = [0.40446, 3.3126, 0.31462];
+
 ///
 /// # Invariants
 ///
@@ -525,15 +573,17 @@ pub fn workshop() -> Value {
 
     Value::structure([
         ("name".to_owned(), Value::String("workshop".to_owned())),
+        // The one field here that is about the picture rather than what is in it: two storeys and a
+        // gable, and a frame of that block. A scene that names no frame is drawn into the pipeline's
+        // own square, so this is a decision rather than a default.
+        ("frame".to_owned(), frame(FRAME_WIDTH, FRAME_HEIGHT)),
         (
             "cameras".to_owned(),
             // Close and low, square on to the gable end: both rows of openings have to be in frame, and a
-            // high camera would show the roof and lose the storey the frame is about.
-            Value::List(vec![camera(
-                [-10.5, 3.2, 13.5],
-                [0.0, 2.6, 0.0],
-                std::f64::consts::FRAC_PI_3 * 0.80,
-            )]),
+            // high camera would show the roof and lose the storey the frame is about. **The eye did not
+            // move and the lens did not either**; the aim is what this scene's own frame asked for, and
+            // the frame's shape is what let the building fill it.
+            Value::List(vec![camera([-10.5, 3.2, 13.5], AIM, FIELD_OF_VIEW)]),
         ),
         (
             "lights".to_owned(),

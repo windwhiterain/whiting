@@ -37,8 +37,8 @@ use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed, stage_set,
 };
 use crate::kit::{
-    camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
-    post_processes, screen_material, surface,
+    camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
+    mesh_material, post_processes, screen_material, surface,
 };
 use crate::shaders::post_shader;
 
@@ -71,6 +71,60 @@ const SUN: [f64; 3] = [-13.0, 28.0, 21.0];
 
 /// How much irradiance the ground receives from that sun, in the scene's own units.
 const SUN_IRRADIANCE: f64 = 3.2;
+
+/// The image this scene is drawn into, in pixels.
+///
+/// # Why this frame is this shape
+///
+/// This building is a **small two-storey shell with a wall across its yard**, and it is the tallest
+/// thing per metre of plan in the gallery: seven metres of ridge over eight of depth. The measured
+/// number says so. Reading every id the frame carries at `FRAC_PI_3 * 1.25`, the silhouette stands
+/// `x 132..=755` by `y 276..=674` of the pipeline's square — **f_w 0.6090 by f_h 0.3891**, a world
+/// aspect of **1.565 to one**.
+///
+/// So the frame takes those proportions, **1.57 to one** at 1280 by 816: 1,044,480 pixels against
+/// the square's 1,048,576.
+///
+/// **The square it replaces was cutting it.** Its left column carried **121 pixels of building**, and
+/// `wall 0, its right side` — the wall the frame is named for — ran from x 0. A yard wall seen from
+/// the near end is the longest thing in the picture and the first thing to leave it.
+const FRAME_WIDTH: i64 = 1280;
+const FRAME_HEIGHT: i64 = 816;
+
+/// The full **vertical** angle this scene is drawn through, in radians.
+///
+/// # The arithmetic
+///
+/// ```text
+/// tan(new / 2) = tan(1.25 * PI/3 / 2) * 0.3891 / 0.89
+///              = 0.767327 * 0.437191 = 0.335442
+/// new = 2 * atan(0.335442) = 0.64734 rad = FRAC_PI_3 * 0.6182
+/// ```
+///
+/// **89 % and not 90 %**, because the roof's soffit stands outside the skin over it and the yard wall
+/// runs past the building at one end.
+///
+/// **The eye did not move and the aim did, because the silhouette fits and is not in the middle.**
+/// At this frame and this lens the scene measures `x 0..=1085` by `y 0..=705`: **0.8483 of the width
+/// and 0.8650 of the height**, with its centre **97 px left of and 55 px above** the frame's — which
+/// is why the yard wall stood on x 0 and the roof on row 0 while the right side carried 194 px of
+/// margin. `97 / 639.5 * 15.7475 * 0.334840` = **0.8000 m** along `[0.796161, 0, 0.605078]` the other
+/// way and `55 / 407.5 * 15.7475 * 0.334840` = **0.7117 m** of height put it in the middle with 55 px
+/// of margin on every side, **and the lens did not move at all**. Shortening the lens until the wall
+/// fitted would have cost a quarter of the fill — and a quarter is what it cost the first time this
+/// was tried here.
+const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.6182;
+
+/// The aim this scene looks from, and why it is not the building's own middle.
+///
+/// # Invariants
+///
+/// **This scene's one opening is a doorway whose head sits below its own plate**, so the floor is in
+/// frame because of where the eye stands, how high it is and how far it is from the wall. **The eye
+/// did not move and the pitch did**, and that is the one thing in this scene a correction was allowed
+/// to spend: a narrower lens would have magnified the sight line over the same sill, and a shorter one
+/// would have lost it. The render answers whether 0.71 m of pitch cost the plate.
+const AIM: [f64; 3] = [-0.63693, 3.11174, -0.48432];
 
 /// Returns a shutter: a panel `width` across, `height` tall, `thickness` through.
 fn shutter(width: f32, height: f32, thickness: f32) -> Template {
@@ -199,16 +253,18 @@ pub fn identity() -> Value {
 
     Value::structure([
         ("name".to_owned(), Value::String("identity".to_owned())),
+        // The one field here that is about the picture rather than what is in it: a two-storey shell
+        // and a yard wall, and a frame of that breadth. A scene that names no frame is drawn into the
+        // pipeline's own square, so this is a decision rather than a default.
+        ("frame".to_owned(), frame(FRAME_WIDTH, FRAME_HEIGHT)),
         // The one image this scene writes beside the frame. The building reads the ids from its points and
         // the ground writes the reserved zero.
         ("outputs".to_owned(), outputs_field()),
         (
             "cameras".to_owned(),
-            Value::List(vec![camera(
-                [-9.5, 3.6, 12.5],
-                [0.0, 2.4, 0.0],
-                std::f64::consts::FRAC_PI_3 * 0.82,
-            )]),
+            // **The eye did not move and the lens did not either**; the aim is what this
+            // scene's own frame asked for, and the frame's shape is what let the shell and its wall fill it.
+            Value::List(vec![camera([-9.5, 3.6, 12.5], AIM, FIELD_OF_VIEW)]),
         ),
         (
             "lights".to_owned(),

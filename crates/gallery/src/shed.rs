@@ -23,8 +23,8 @@ use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
 use crate::kit::{
-    camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
-    post_processes, screen_material, surface,
+    camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
+    mesh_material, post_processes, screen_material, surface,
 };
 use crate::shaders::post_shader;
 use building::identity::Identity;
@@ -56,6 +56,52 @@ const STOREYS: usize = 1;
 /// Where the sun stands, high and to the front so the gable end that carries the door and the two
 /// windows is the lit face: the facade is what this scene exists to show.
 const SUN: [f64; 3] = [-9.0, 28.0, 24.0];
+
+/// The image this scene is drawn into, in pixels.
+///
+/// # Why this frame is this shape
+///
+/// The shed is a **long low box under a gable seen from its front corner**, and the measured number
+/// says how long. Reading every id the frame carries, the silhouette this camera draws stands
+/// `x 271..=1126` by `y 176..=666` of a 1312 by 800 frame, which is **f_w 0.6522 by f_h 0.6133** —
+/// and the shape of the world those two fractions describe is the frame's own aspect times their
+/// ratio: `1.64 * 0.6522 / 0.6133` = **1.744 to one**.
+///
+/// So the frame takes those proportions — **1.75 to one**, here 1344 by 768 — and the lens is worked
+/// out against it. The picture is 1,032,192 pixels against the square's 1,048,576, so the frame is
+/// also the cheaper of the two.
+///
+/// **1.744 and not the 1.63 a first reading gives, and the difference is what the first frame got
+/// wrong.** Asking `--where` about four elements — two walls and two roof planes — reads
+/// `x 153..=901` by `y 303..=761` of the old square, which looks like a shed 1.63 times as wide as
+/// it is tall. It is not: the shed's own **soffit and fascia** reach past the skin they belong to,
+/// and a frame cut to four bounding boxes puts them outside it. `1312 x 800` at the same lens
+/// **clipped `roof 0, the fascia over the skin's boundary edge 1` at x 1311**, and the shed's widest
+/// thing is a fascia.
+const FRAME_WIDTH: i64 = 1344;
+const FRAME_HEIGHT: i64 = 768;
+
+/// The full **vertical** angle this shed is drawn through, in radians.
+///
+/// # The arithmetic, so a later reader does not have to re-derive it
+///
+/// Measured at `FRAC_PI_3 * 0.60` into 1312 by 800, where the silhouette took `f_h = 0.6133` of the
+/// height. The building must now take **89 % of the height**, and pixels per metre go as
+/// `height / tan(angle / 2)` — the **ratio**, not the magnification, which is what a frame that
+/// changes its own height makes the difference between:
+///
+/// ```text
+/// tan(new / 2) = tan(0.60 * PI/3 / 2) * 0.6133 / 0.89
+///              = 0.324920 * 0.689101 = 0.223934
+/// new = 2 * atan(0.223934) = 0.44054 rad = FRAC_PI_3 * 0.4207
+/// ```
+///
+/// **89 % and not 90 %** because this scene's subject hangs off its walls: the door leaf and the
+/// canopy are parts standing in the facade, and a part is outside the wall it is hung on. The eye
+/// and the target are the ones the square was composed with and **did not move** — the floor this
+/// frame is about is seen through the door from in front of it, and nothing about the frame's shape
+/// needed that to change.
+const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.4207;
 
 /// How far the sun's shadow page has to cover. A shed is smaller than a house and its shadow shorter,
 /// so the page is tighter and its texels land where the frame is looking.
@@ -279,14 +325,20 @@ pub fn shed() -> Value {
 
     Value::structure([
         ("name".to_owned(), Value::String("shed".to_owned())),
+        // The one field here that is about the picture rather than what is in it: a long low box
+        // under a gable, and a frame of that shape. A scene that names no frame is drawn into the
+        // pipeline's own square, so this is a decision rather than a default.
+        ("frame".to_owned(), frame(FRAME_WIDTH, FRAME_HEIGHT)),
         (
             "cameras".to_owned(),
             // Low and close, so the door, both windows and the canopy are all in frame: the facade is
-            // what this scene exists to show, and a high camera would show the roof instead.
+            // what this scene exists to show, and a high camera would show the roof instead. **The
+            // eye and the target did not move**; the lens is the free variable, and it is free
+            // because the frame is now the silhouette's own shape rather than the pipeline's square.
             Value::List(vec![camera(
                 [-9.4, 4.4, 11.2],
                 [0.0, 1.4, 0.0],
-                std::f64::consts::FRAC_PI_3 * 0.80,
+                FIELD_OF_VIEW,
             )]),
         ),
         (

@@ -32,8 +32,8 @@ use crate::building_identity::{
 };
 use crate::instancing::standing;
 use crate::kit::{
-    camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
-    offset_by, post_processes, screen_material, shaded_point_schema, surface,
+    camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
+    mesh_material, offset_by, post_processes, screen_material, shaded_point_schema, surface,
 };
 use crate::shaders::post_shader;
 use building::identity::Identity;
@@ -88,6 +88,57 @@ const SUN: [f64; 3] = [-16.0, 30.0, 24.0];
 
 /// How much irradiance the ground receives from that sun, in the scene's own units.
 const SUN_IRRADIANCE: f64 = 3.2;
+
+/// The image this scene is drawn into, in pixels.
+///
+/// # Why this frame is this shape
+///
+/// A yard is the broadest thing in this gallery: a thirteen-metre courtyard with a shed inside it and
+/// a store fourteen metres further up the slope. The measured number says how broad. Reading every
+/// id the frame carries at `FRAC_PI_3 * 1.15`, the silhouette stands `x 130..=826` by `y 343..=795`
+/// of the pipeline's square — **f_w 0.6804 by f_h 0.4418**, a world aspect of **1.540 to one**.
+///
+/// So the frame takes those proportions, **1.55 to one** at 1264 by 816: 1,031,424 pixels against
+/// the square's 1,048,576.
+///
+/// **The square it replaces was cutting it.** Its left column carried **198 pixels of building**,
+/// and `wall 4, its left side, looking out` ran from x 0. A yard is seen from outside its own wall,
+/// and the wall nearest the eye is the one that leaves the frame.
+const FRAME_WIDTH: i64 = 1264;
+const FRAME_HEIGHT: i64 = 816;
+
+/// The full **vertical** angle this yard is drawn through, in radians.
+///
+/// # The arithmetic
+///
+/// ```text
+/// tan(new / 2) = tan(1.15 * PI/3 / 2) * 0.4418 / 0.89
+///              = 0.673576 * 0.496404 = 0.334405
+/// new = 2 * atan(0.334405) = 0.65757 rad = FRAC_PI_3 * 0.6279
+/// ```
+///
+/// **89 % and not 90 %**, because a site's walls and its gate leaf stand outside the buildings they
+/// enclose.
+///
+/// **The eye did not move and the aim did, because the silhouette fits and is not in the middle.**
+/// At this frame and this lens the site measures `x 18..=1137` by `y 137..=815`: **0.8860 of the width
+/// and 0.8319 of the height**, with its centre **54 px left of and 68.5 px below** the frame's — which
+/// is why the near yard wall sat on the last row while 137 rows of sky stood above it.
+/// `54 / 631.5 * 22.1876 * 0.340840` = **0.6466 m** along `[0.71867, 0, 0.69542]` the other way and
+/// `68.5 / 407.5 * 22.1876 * 0.340840` = **1.2711 m** of height put it in the middle with 69 rows of
+/// margin on every side, **and the lens did not move at all**. Shortening the lens until the wall
+/// fitted would have cost a twelfth of the fill to answer a question the measurement had answered.
+const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.6279;
+
+/// The aim this yard looks from, and why it is not the building's own middle.
+///
+/// # Invariants
+///
+/// **A yard is seen from outside its own wall, and the wall nearest the eye is the one that decides
+/// where the site sits in the frame.** The numbers under it are the ones measured above; what is worth
+/// writing down is that the correction is to the aim alone, because the site's silhouette is smaller
+/// than its frame in both directions and only its position was wrong.
+const AIM: [f64; 3] = [1.53534, -0.0711, -0.44964];
 
 /// The site's own outline: a courtyard round the shed, open at one gate.
 const YARD: f32 = 6.5;
@@ -363,15 +414,17 @@ pub fn yard() -> Value {
 
     Value::structure([
         ("name".to_owned(), Value::String("yard".to_owned())),
+        // The one field here that is about the picture rather than what is in it: a yard is a broad
+        // site and a broad site wants a broad frame. A scene that names no frame is drawn into the
+        // pipeline's own square, so this is a decision rather than a default.
+        ("frame".to_owned(), frame(FRAME_WIDTH, FRAME_HEIGHT)),
         (
             "cameras".to_owned(),
             // Up the slope and to one side, high enough to see over the yard wall into the courtyard and
-            // low enough that the gate gap reads as a way in rather than a step in the wall.
-            Value::List(vec![camera(
-                [-13.0, 6.4, 15.5],
-                [2.0, 1.2, 0.0],
-                std::f64::consts::FRAC_PI_3 * 0.82,
-            )]),
+            // low enough that the gate gap reads as a way in rather than a step in the wall. **The eye did
+            // not move and the lens did not either**; the aim is what this scene's own frame asked for,
+            // and the frame's shape is what let the site fill it.
+            Value::List(vec![camera([-13.0, 6.4, 15.5], AIM, FIELD_OF_VIEW)]),
         ),
         (
             "lights".to_owned(),

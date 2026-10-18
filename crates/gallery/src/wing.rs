@@ -27,8 +27,8 @@ use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
 use crate::kit::{
-    camera, flux_for_irradiance, instance, instances, light_with_radius, mesh, mesh_material,
-    post_processes, screen_material, surface,
+    camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
+    mesh_material, post_processes, screen_material, surface,
 };
 use crate::shaders::post_shader;
 
@@ -157,6 +157,38 @@ const SUN: [f64; 3] = [-26.0, 34.0, 24.0];
 /// How much irradiance the ground receives from that sun, in the scene's own units.
 const SUN_IRRADIANCE: f64 = 3.2;
 
+/// The image this scene is drawn into, in pixels.
+///
+/// # Why this frame is this shape
+///
+/// **A wing is an L, and an L seen along its length is the widest silhouette in the gallery.** The
+/// measured number says by how much: at the square's own lens the building took **8.25 %** of the
+/// frame, less than any other scene here, and it was not too small — it was lost. Read every id the
+/// frame carries at `FRAC_PI_3 * 1.60` and the silhouette stands `x 405..=628` by `y 455..=570` of
+/// the square — **f_w 0.2180 by f_h 0.1124**, a world aspect of **1.940 to one**.
+///
+/// So the frame takes those proportions, **1.93 to one** at 1424 by 736: 1,048,064 pixels, which is
+/// 512 under the square's.
+const FRAME_WIDTH: i64 = 1424;
+const FRAME_HEIGHT: i64 = 736;
+
+/// The full **vertical** angle this wing is drawn through, in radians.
+///
+/// # The arithmetic
+///
+/// ```text
+/// tan(new / 2) = tan(1.60 * PI/3 / 2) * 0.1124 / 0.89
+///              = 1.324696 * 0.126292 = 0.167301
+/// new = 2 * atan(0.167301) = 0.27871 rad = FRAC_PI_3 * 0.2661
+/// ```
+///
+/// **The longest lens in the gallery by a wide margin**, and it is the arithmetic that asks for it:
+/// the square lens put the L at 11 % of the frame's height, so making it 89 % is a factor of eight.
+/// **The eye and the target did not move** — the wing's own plate is seen through the host's windows,
+/// and a plate is in frame because of where the eye stands rather than because of how long the lens
+/// is, so the lens here magnifies what was already there and cannot lose it.
+const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.2661;
+
 /// Builds the hall scene.
 /// Builds the hall scene at the size the scene draws: 10 × 16, one tall storey.
 pub fn wing() -> Value {
@@ -259,11 +291,17 @@ pub fn wing_at(width: f32, depth: f32, wing_depth: f32) -> Value {
 
     Value::structure([
         ("name".to_owned(), Value::String("wing".to_owned())),
+        // The one field here that is about the picture rather than what is in it: an L is a long
+        // building and a long building wants a long frame. A scene that names no frame is drawn into
+        // the pipeline's own square, so this is a decision rather than a default.
+        ("frame".to_owned(), frame(FRAME_WIDTH, FRAME_HEIGHT)),
         (
             "cameras".to_owned(),
             // A three-quarter view from the near corner, high enough that the roof reads as a
             // volume rather than as a silhouette: the eave line and the ridge are both visible,
-            // which is what says the roof has a soffit and a thickness.
+            // which is what says the roof has a soffit and a thickness. **The eye and the target did
+            // not move**; the lens is the free variable, and it is free because the frame is now the
+            // silhouette's own shape rather than the pipeline's square.
             Value::List(vec![camera(
                 [
                     f64::from(width) * 2.2 + 4.0,
@@ -271,7 +309,7 @@ pub fn wing_at(width: f32, depth: f32, wing_depth: f32) -> Value {
                     f64::from(depth) * 2.4 + 10.0,
                 ],
                 [f64::from(width) * 0.5, ridge * 0.4, 0.0],
-                std::f64::consts::FRAC_PI_3 * 0.92,
+                FIELD_OF_VIEW,
             )]),
         ),
         (
