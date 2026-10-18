@@ -25,7 +25,6 @@ use vegetation::plant::Placement;
 use vegetation::rng::Rng;
 
 use crate::air::Atmosphere;
-use crate::geometry::cuboid;
 use crate::southwest::{yunnan_pine, Foliage, pine_palette};
 use crate::southwest_flag::{dove_palette, dove_tree};
 use crate::southwest_oak::{alpine_oak, oak_palette};
@@ -54,6 +53,7 @@ pub fn slope_height(x: f64, z: f64) -> f64 {
         - 1.6 * (-((z - 11.0) / 5.0).powi(2)).exp()
         + 6.0 * (-((x + 55.0) / 25.0).powi(2)).exp()
         - 14.0 / (1.0 + (-(x - 70.0) / 12.0).exp())
+        + 0.35 * (x * 0.11).sin() * (z * 0.09).sin()
 }
 
 /// The slope at `f32`, for seating.
@@ -141,11 +141,12 @@ fn montane_plantings() -> Vec<Planting> {
         ));
     }
     // The ground cover: a montane slope at two thousand metres is grass and litter, not sand, and a
-    // tuft is seven nodes and no leaves, so a hundred and twenty of them cost a hundred and twenty
-    // instance rows — the cheapest mass in the crate.
-    for index in 0..120 {
-        let across = -6.0 + 40.0 * rng.unit();
-        let deep = -18.0 + 34.0 * rng.unit();
+    // tuft is seven nodes and no leaves, so six hundred of them cost six hundred instance rows — the
+    // cheapest mass in the crate. They stand in the foreground band only, because a tuft twenty metres
+    // from the lens is two pixels and one at sixty is nothing.
+    for index in 0..600 {
+        let across = -4.0 + 34.0 * rng.unit();
+        let deep = -14.0 + 26.0 * rng.unit();
         plantings.push(
             Planting::new(tuft(9_000 + index as u64))
                 .at(seat(
@@ -167,17 +168,36 @@ fn montane_plantings() -> Vec<Planting> {
     plantings
 }
 
-/// The standing stone: 1.8 metres of it, which is the known size E2 asks the frame to carry. It is
-/// sunk a hand's depth and darkened, because a bright cuboid on a slope reads as a box and not as a
-/// stone.
+/// The standing stone: a lumpy sweep packed as a prop, because E2 wants a known size in frame and a
+/// cuboid of one reads as a box someone left there. Its height is 1.2 m and the sidecar's prose says
+/// so; a stone of it is waist to shoulder high, which is the comparison a reader makes.
 fn montane_stone() -> Prop {
+    let mut sweep = shape::Sweep::new(
+        vegetation::species::spine(&[
+            ([0.0, 0.0, 0.0], [0.05, 0.5, 0.02]),
+            ([0.06, 0.55, 0.03], [0.02, 0.5, -0.02]),
+            ([0.05, 1.05, 0.01], [0.0, 0.35, 0.0]),
+        ]),
+        shape::Section::circle(),
+    );
+    sweep.scale = vegetation::species::taper(&[
+        (0.0, 0.42),
+        (0.35, 0.34),
+        (0.8, 0.22),
+        (1.0, 0.06),
+    ]);
+    let template = vegetation::decorator::Template {
+        sweep,
+        stations: 8,
+        around: 9,
+    };
     let at = [5.0, slope_height(5.0, -4.0), -4.0];
     Prop {
         name: "stone".to_owned(),
-        points: cuboid(0.8, 1.2, 0.6),
+        points: crate::vegetation_mesh::decorator_points(&template),
         tint: [0.28, 0.27, 0.26],
         roughness: 0.95,
-        at: [at[0], at[1] + 0.35, at[2]],
+        at: [at[0], at[1] - 0.1, at[2]],
     }
 }
 
@@ -215,8 +235,8 @@ fn montane_frame() -> Framing {
     Framing {
         width: 1600,
         height: 1000,
-        eye: [34.0, slope_height(34.0, 30.0) + 1.7, 30.0],
-        target: [-2.0, 7.0, 2.0],
+        eye: [36.0, slope_height(36.0, 26.0) + 1.7, 26.0],
+        target: [4.0, 6.0, 0.0],
         field_of_view: 0.72,
         near: 0.3,
         far: 900.0,
