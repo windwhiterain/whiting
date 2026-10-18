@@ -30,6 +30,15 @@
 //! So a pin is re-read after a change that emits elements, never edited to make a run green without that reading
 //! being the one the reports quote.
 //!
+//! **The house window re-read the `house` id 15 pin, on 2026-11-07.** The house grew one opening on edge 1, which
+//! is four new rows — left reveal, right reveal, head, sill — inside `mass 0`'s own block and therefore ahead of
+//! every id the roof held. `house` id 15 read **`roof 0, the skin of plane 1`** and now reads
+//! **`mass 0, the head reveal of opening 0 in edge 1`**, which is the same fact one row-block earlier and is what
+//! the pin should have been holding since the window existed: the four quoted readings below name one surface of
+//! one element each, and after this one is a reveal rather than a skin. The yard's doorway, by the rule above, took
+//! three rows and not four — 101 to 104 against the house's 31 to 35 — which is the doorway claim measured a second
+//! time rather than asserted once.
+//!
 //! Run with `cargo run -p whiting-gallery --example scene_identity_probe`.
 
 use definition::{Schema, SchemaKind};
@@ -112,7 +121,11 @@ fn main() {
             16,
             "mass 0, the left reveal of opening 1 in edge 2",
         ),
-        ("house", 15, "roof 0, the skin of plane 1"),
+        (
+            "house",
+            15,
+            "mass 0, the head reveal of opening 0 in edge 1",
+        ),
         (
             "workshop",
             49,

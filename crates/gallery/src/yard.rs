@@ -21,6 +21,8 @@ use definition::Value;
 use scene::standard::Stage;
 
 use building::derive::{self, RoofStyle, Starter};
+use building::grid::{FaceRef, Rhythm};
+use building::openings::{Inset, Opening};
 use building::ops;
 use building::parts::{Pin, Placement, Target, Template};
 use building::site::seat;
@@ -147,6 +149,59 @@ const YARD: f32 = 6.5;
 const GATE_WIDTH: f32 = 3.2;
 const GATE_HEIGHT: f32 = 1.7;
 
+/// The store's own mass **in this skeleton**, which is not the mass it was the id of in its own.
+const STORE_MASS: MassId = MassId(1);
+
+/// The wall the doorway is cut into: **edge 3** of the store's outline, which after the shift up the
+/// slope reads `[(12,-2.5), (16,-2.5), (16,2.5), (12,2.5)]`, so edge 3 runs from `(12,2.5)` to
+/// `(12,-2.5)` — the **west** face, and the one the eye at `[-13.0, 6.4, 15.5]` stands most squarely
+/// outside of. `dot(normal, direction to the eye)` reads `0.871` here against `0.500` for the
+/// store's own north face, so this wall is seen at 29 degrees off its normal and that one at 60.
+///
+/// # Why the store's and not the shed's, and why this is a doorway rather than a window
+///
+/// **The store is reached first, because it is the only one of the two the camera's own eye can see
+/// through a hole in.** Its plate's top stands at `2.56` — the seat cuts a terrace to the highest
+/// ground under the footprint, and `0.16 * 16 = 2.56` is that highest — and the eye is at `6.4`, so
+/// the whole drop to the floor is **`3.84 m` at about `28 m` of horizontal run**: a depression of
+/// `7.8` degrees. Every sight line from the eye to a point of that plate therefore crosses the
+/// store's west wall between **`2.598` and `3.061`** — a band `0.46 m` tall standing `0.04` to `0.50`
+/// above the floor itself — and `4.2 * (3.5 - x) / (11.5 - x)`, the house's own arithmetic, has
+/// nothing to say here.
+///
+/// **A window cannot cover that band, because the band touches the wall's own base.** Its lower edge
+/// is `0.038 m` above the ring's base annulus, so the sill has to be the ground line itself: any
+/// sill inset at all puts the opening above every one of those crossings. Hence a doorway, `0.0`
+/// from the bay's sill — which is what [`shed`](crate::shed)'s own door does — and the hole is
+/// `2.0 m` tall on this wall's `2.4 m`. The shed by contrast answers a window, because its plate's
+/// top stands at `0.4` under an eye at `6.4` and the same lines cross its wall a metre and more
+/// above its floor.
+///
+/// **Nothing stands between that eye and that wall.** The courtyard's own north run is topped at
+/// `2.167` and the sight line crosses `z = 6.5` at `y = 4.17`; the ray passes east of the shed
+/// entirely. This is the measurement the constraint asks for — *place the opening so a pixel of the
+/// plate's top is visible from the camera* — and it is the store's plate that this one opening shows.
+const STORE_WEST_EDGE: usize = 3;
+
+/// How many bays the store's walls carry, and which one the doorway stands in.
+///
+/// **Two bays, and the first** — the nearer half of a wall the eye approaches from `+z`. The lines
+/// above reach the wall between `z = 0.37` and `z = 5.5` while bay 0 spans `z 0..=2.5`, so the whole
+/// northern half of the crossing is inside it and none of it is cut off at either jamb.
+const STORE_BAYS: usize = 2;
+const DOOR_BAY: usize = 0;
+
+/// The doorway's own insets: [`shed`](crate::shed)'s door, in metres — a jamb at each end, nothing
+/// at the sill, `0.45 m` down from the head.
+///
+/// **The jambs are this wall's own thickness plus the `50 mm` [`shed`](crate::shed) leaves over its
+/// own**: a wall's offset loop runs `wall ..= length - wall`, so a jamb narrower than the wall puts
+/// the reveal on a corner the neighbouring wall still claims, and `expand` calls that `past_offset`.
+fn store_door() -> Inset {
+    let jamb = STORE.wall + 0.05;
+    Inset::new(jamb, jamb, 0.0, 0.45)
+}
+
 fn node(x: f32, z: f32) -> PlanNode {
     PlanNode::new([x, z], 0.0)
 }
@@ -214,6 +269,37 @@ fn site() -> BuildingSkeleton {
     skeleton
 }
 
+/// Cuts the one opening this site carries, through the store's west wall.
+///
+/// # Invariants
+///
+/// **It is called after [`seat`] and never before it.** A rhythm's rows are laid over the face's own
+/// extent, and `face_extent` reads the **seated** elevations: the store's outline stands at `2.56`
+/// once the ground has been written into it and at `0.0` before. A bay laid on the authored extent
+/// would put the doorway `2.56 m` below the wall it is cut into — a hole in the ground outside the
+/// building rather than a hole in its wall — and `shed` and `house`, which are never seated, are
+/// the only reason the two call orders are not visibly different from the outside.
+///
+/// **One opening, one wall, one bay**, authored the way [`shed`](crate::shed) and [`house`](crate::house)
+/// author theirs: `Rhythm::Even` over every face and `Opening` on one slot of one of them.
+fn open_the_store(skeleton: &mut BuildingSkeleton) {
+    let columns = Rhythm::Even { count: STORE_BAYS };
+    let rows = Rhythm::Even { count: 1 };
+    for face in skeleton.faces_of(STORE_MASS) {
+        ops::split_face(skeleton, face, &columns, &rows);
+    }
+    ops::add_opening(
+        skeleton,
+        Opening::new(
+            FaceRef::new(STORE_MASS, STORE_WEST_EDGE),
+            0,
+            DOOR_BAY,
+            store_door(),
+        ),
+    )
+    .expect("the doorway names a bay of the grid");
+}
+
 /// Returns a gate leaf: a panel `width` across, `height` tall, `thickness` through, standing at its own
 /// origin and running `+x`.
 ///
@@ -257,8 +343,20 @@ pub fn yard() -> Value {
         seated.len(),
         seated.walls
     );
+    // **After the seat and before the document**, because the store's bays are laid over the
+    // elevations the ground wrote into it. See `open_the_store`.
+    open_the_store(&mut skeleton);
     let document = Building::new(skeleton.clone());
     let built = document.build().expect("the seated site expands");
+    // **The scene refuses to draw a site the crate's validator would not**, for the reason the seat's
+    // own check above gives: the frame is exactly where a fault in the document would hide. A yard
+    // that grows an opening grows the one thing most likely to fault, so the check is here rather
+    // than in a probe that reports it.
+    let violations = document.validate();
+    assert!(
+        violations.is_empty(),
+        "the yard's own document must be clean, and it is not: {violations:?}"
+    );
 
     // **Every mesh the frame draws carries its elements' ids** — the shells, the roofs, the walls and the gate —
     // so a pixel of this yard can be asked what it is. The gate is one template drawn once, so its mesh carries
@@ -534,5 +632,8 @@ pub fn document() -> Building {
         |plan| ground(plan[0] as f64, plan[1] as f64) as f32,
         0.0,
     );
+    // **The same opening the frame draws**, for the same reason and in the same place: a caller
+    // naming what this frame shows must name the seated document, not the document before it.
+    open_the_store(&mut skeleton);
     Building::new(skeleton)
 }

@@ -22,8 +22,12 @@ use definition::Value;
 use scene::standard::Stage;
 
 use building::Building;
+use building::MassId;
 use building::derive::{self, RoofStyle, Starter};
+use building::grid::{FaceRef, Rhythm};
 use building::identity::Identity;
+use building::openings::{Inset, Opening};
+use building::ops;
 
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
@@ -114,12 +118,86 @@ const SHADOW_EXTENT: f64 = 14.0;
 /// How much irradiance the ground receives from that sun, in the scene's own units.
 const SUN_IRRADIANCE: f64 = 3.2;
 
+/// The wall the window is cut into: **edge 1**, the mass's own outline read from
+/// `[(-3.5,-5.5), (3.5,-5.5), (3.5,5.5), (-3.5,5.5)]`, so edge 1 runs from `(3.5,-5.5)` to
+/// `(3.5,5.5)` — the **east** face, and the one the eye at `[11.5, 4.2, 13.0]` stands outside of.
+///
+/// # Why this wall and not the other one the camera looks at
+///
+/// A three-quarter view sees two walls, and this scene's own frame is composed about both. Only one
+/// of them can show the floor, and the difference is arithmetic rather than taste. The eye stands
+/// `8.0` metres outside this wall's plane at `y = 4.2`, so a sight line from the eye to a point of
+/// the plate's top crosses the plane at
+/// `4.2 * (3.5 - x) / (11.5 - x)`, which is **`1.278 m` above the floor at `x = 0`** and falls to
+/// `0.176 m` at the room's own east edge `x = 3.15`. Every one of those crossings is above a sill
+/// and inside a head, so a window on this wall reaches the plate.
+///
+/// The **north** face cannot: the same line crosses that plane at `11.5 * (5.5 - z) / (13 - z)`, and
+/// it lands inside the wall's own run — `x` between `-3.5` and `3.5` — only where the plate is
+/// within `0.15 m` of its own north edge, at heights under `0.70 m`. A window with any sill at all
+/// would sit above every one of them. That is why the opening is here and not there.
+const EAST_EDGE: usize = 1;
+
+/// How many bays that wall carries, and how many storeys the house has.
+///
+/// **Three and one, the numbers [`shed`](crate::shed) authors its facade with.** One storey on
+/// purpose: a second storey line would divide a window into part of a window.
+const BAYS: usize = 3;
+const STOREYS: usize = 1;
+
+/// Which bay across that wall the window stands in, counting from the edge's start.
+///
+/// **The third, which is the bay nearest the eye.** The sight lines above reach the wall between
+/// `z = 0.37` and `z = 5.5`, and bay 2 is the one that spans `z 1.833..=5.5` — the whole northern
+/// half of the crossing, with nothing of it cut off at either end.
+const WINDOW_BAY: usize = 2;
+
+/// The window's own insets: from each jamb, up from the sill, down from the head.
+///
+/// **The sill and the head are [`shed`](crate::shed)'s, unchanged and in metres** — a scene's
+/// openings are the scene's numbers, and this scene's sibling is the one that already authored a
+/// window: `1.05 m` up and `0.55 m` down, which on this wall's 3.6 m height reads a hole **`2.0 m`
+/// tall**.
+///
+/// **The jambs are this wall's own, and that is not a preference.** A wall's two loops differ: the
+/// offset loop's edge runs from `wall` to `length - wall`, because a right-angle mitre takes one
+/// thickness off each end, and a hole whose far jamb lands at or past that end puts its reveal on a
+/// corner the neighbouring wall still claims whole. `expand` calls that `past_offset` and refuses
+/// the cut. Copied straight across, `shed`'s `0.30 m` jambs put this hole's far jamb at
+/// `11.0 - 0.30 = 10.70` against an offset edge that ends at `10.65`, and the scene refused to
+/// build with **`OpeningOutsideWall { …, past: 0.051000595 }`**. The jambs are therefore the wall's
+/// own thickness plus the same `50 mm` `shed` leaves over its own `0.25 m`, which reads `0.40 m`
+/// here and a hole **`2.867 m` across**.
+///
+/// A function and not a constant because [`Inset`]'s constructor is not a `const fn`, and the
+/// scene's other builders here — [`shed`](crate::shed)'s leaf, [`yard`](crate::yard)'s gate — are
+/// functions for the same reason.
+fn window() -> Inset {
+    let jamb = STARTER.wall + JAMB_CLEARANCE;
+    Inset::new(jamb, jamb, 1.05, 0.55)
+}
+
+/// How far a jamb stands **past the wall's own thickness**, in metres.
+///
+/// The margin is `shed`'s, not this scene's: it leaves `0.05 m` over a `0.25 m` wall, and it is a
+/// margin rather than the thickness itself because the thickness alone puts the hole's edge on
+/// `GRID_TOLERANCE`, which the same check reads as reaching.
+const JAMB_CLEARANCE: f32 = 0.05;
+
 /// Builds the house scene.
 pub fn house() -> Value {
     let building = document();
     let built = building
         .build()
         .expect("the starter house expands: its outline is a quad and its roof's rows are paired");
+    // **The scene refuses to draw a document the crate's validator would not**, which is what `shed`
+    // and `workshop` already do. A house that grows an opening grows the one thing most likely to
+    // fault, so the check has to be in the scene that grows it and not in a probe that reports it.
+    let violations = building.validate();
+    assert!(
+        violations.is_empty(),
+        "the house's own document must be clean, and it is not: {violations:?}"
+    );
 
     // **Every mesh the frame draws carries its elements' ids**, so a pixel of this house can be asked what it
     // is: the walls name their edges, the hip names its skins and its fascia.
@@ -345,6 +423,30 @@ const GRADE: &str = r#"
 "#;
 
 /// Returns the house's document alone, for a caller that wants to name what a frame shows.
+///
+/// # Invariants
+///
+/// - **Every slot is named, never a coordinate**, so the facade moves if the grid does and nothing
+///   here has to be rewritten — the same rule [`shed`](crate::shed)'s document states.
+/// - **The rhythm is laid on every face and the window on one bay of one of them**, because an
+///   opening names a slot and a slot only exists where a rhythm is. A rhythm with no hole on it
+///   draws the same wall the starter drew, so the four bays this adds to the picture are the id
+///   table's and not the frame's.
+/// - **One opening, and it is a window rather than a door.** A door's sill is the ring's own base,
+///   which is a different thing to cut: `shed` carries one and this scene does not need to, and the
+///   arithmetic under [`EAST_EDGE`] is about a sill at `1.05 m`, not at the floor.
 pub fn document() -> Building {
-    derive::starter(&STARTER)
+    let mut skeleton = derive::starter(&STARTER).skeleton;
+    let mass = MassId(0);
+    let columns = Rhythm::Even { count: BAYS };
+    let rows = Rhythm::Even { count: STOREYS };
+    for face in skeleton.faces_of(mass) {
+        ops::split_face(&mut skeleton, face, &columns, &rows);
+    }
+    ops::add_opening(
+        &mut skeleton,
+        Opening::new(FaceRef::new(mass, EAST_EDGE), 0, WINDOW_BAY, window()),
+    )
+    .expect("the window names a bay of the grid");
+    Building::new(skeleton)
 }
