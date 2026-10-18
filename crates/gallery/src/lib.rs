@@ -242,6 +242,7 @@ impl Gallery {
             "giant_rhododendron_base" => southwest_flag::giant_rhododendron_base_picture(),
             "alpine_oak" => southwest_oak::alpine_oak_picture(),
             "alpine_oak_bough" => southwest_oak::alpine_oak_bough_picture(),
+            "alpine_oak_base" => southwest_oak::alpine_oak_base_picture(),
             "lijian_spruce" => southwest_spire::lijian_spruce_picture(),
             "lijian_spruce_bough" => southwest_spire::lijian_spruce_bough_picture(),
             "cangshan_fir" => southwest_spire::cangshan_fir_picture(),
