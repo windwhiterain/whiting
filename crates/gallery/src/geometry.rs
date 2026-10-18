@@ -16,6 +16,7 @@
 
 use definition::{FieldMap, PackedBuilder, PackedLayout, PackedList, Value};
 use shape::loft::Loft;
+use shape::math::Vec3;
 
 /// Field a shaded point's normal is written under.
 const NORMAL: &str = "normal";
@@ -119,6 +120,14 @@ pub fn between(from: Station, to: Station, amount: f64) -> Station {
 /// genuinely degenerate case and nothing else.
 const NORMAL_FLOOR: f64 = 1.0e-12;
 
+/// How long a section edge below which it carries no direction to measure a turn in.
+///
+/// A vertex whose two section edges both collapse is a ring the scale law has flattened to a point,
+/// and there is no angle at a point: the crease test reads it as smooth and the corner falls back to
+/// the accumulated average. The floor is the same floor [`NORMAL_FLOOR`] uses, for the same reason
+/// — far above the rounding of a subtraction and far below any edge a plant is drawn with.
+const EDGE_FLOOR: f64 = 1.0e-12;
+
 /// One triangle's corner: where it stands, which way it faces, and where on the surface it is.
 ///
 /// # Invariants
@@ -152,6 +161,51 @@ pub struct Corner {
 ///   incident triangle has no area; it is outward for every solid drawn here and it is better than
 ///   the zero-length vector a shader would read as `NaN`.
 ///
+/// That third bullet is what a smooth average cannot do and [`loft_corners_creased_at`] is about:
+/// a smooth normal is the right reading of a rounded tube and the wrong one of a fluted bole,
+/// because the two faces meeting at a fluted bole's corner are then lit as one. This function is
+/// the smooth reading and stays the whole of it, so that a scene which wants the flat one asks for
+/// the flat one.
+pub fn loft_corners(loft: &Loft) -> Vec<Corner> {
+    corners_within(loft, None)
+}
+
+/// Returns a loft's corners with a **hard** normal at every section corner sharper than `crease`,
+/// with their positions and normals moved by a plant's placement.
+///
+/// # Which of the two faces a creased corner takes
+///
+/// **Its own triangle's.** The two faces meeting at a sharp corner read as two faces only if they
+/// carry two different normals, so a corner that takes one face's normal *and hands it to the other
+/// face as well* has not creased anything — it has drawn the averaged normal again and renamed it.
+/// The normal is therefore taken per corner, from the triangle that corner is a corner of, and this
+/// is possible because the wood mesh is **unindexed**: a corner is free to disagree with the same
+/// vertex's other corners, which is exactly what a crease spends.
+///
+/// # Invariants
+///
+/// - **A section whose sharpest corner is below `crease` draws exactly the corners it drew before,
+///   bit for bit.** Every corner then takes the accumulated average down the same arithmetic
+///   [`loft_corners`] uses — `creased` is every `false` and the two paths are one path — so the
+///   change is an identity on every round-section plant rather than a small change to all of them.
+/// - **`crease` is an angle of turn, not an interior angle**, so a section is argued in the same
+///   numbers its tessellation is quoted in: a regular `n`-gon turns `360 / n` degrees at each of its
+///   corners, and it is the turn that says whether it creases. An `f32` because a section is
+///   authored in `f32` and a crease is a property of one.
+/// - **A creased corner whose own triangle has no area falls back exactly as a smooth one does**,
+///   to the direction away from the shape's centre, because there is no face there to take a normal
+///   from. The case is the same degenerate ring [`loft_corners`] names and is equally unreachable in
+///   practice; it is answered rather than asserted.
+/// - **Nothing else moves.** Positions, texture coordinates, corner order and corner count are
+///   [`loft_corners`]'s, so a normal is the only thing a scene can measure as changed.
+pub fn loft_corners_creased_at(
+    loft: &Loft,
+    placement: &vegetation::plant::Placement,
+    crease: f32,
+) -> Vec<Corner> {
+    placed(corners_within(loft, Some(crease.into())), placement)
+}
+
 /// Returns a loft's corners with their positions and normals moved by a plant's placement.
 ///
 /// # Invariants
@@ -159,8 +213,129 @@ pub struct Corner {
 /// **The normals are rotated and never translated**, because a placement moves a frame and not a direction; and the
 /// placement never scales, which is why a normal stays unit length and the texture coordinates are untouched. A wood
 /// mesh baked in the world and a wood mesh baked at the origin therefore shade alike.
+///
+/// This is [`loft_corners`] moved and nothing else — a crease is decided before a placement sees a
+/// corner, so the two builders share the one walk rather than each having a corner of their own.
 pub fn loft_corners_at(loft: &Loft, placement: &vegetation::plant::Placement) -> Vec<Corner> {
-    loft_corners(loft)
+    placed(loft_corners(loft), placement)
+}
+
+/// The one corner walk behind every builder above: [`loft_corners`] with no crease,
+/// [`loft_corners_creased_at`] with one.
+///
+/// # Invariants
+///
+/// **With `crease` of `None` this is [`loft_corners`] arithmetically, not merely in its result.** The
+/// accumulated normals, the centre and the floor are computed by the same statements and in the same
+/// order, and the emit loop takes its normal from `accumulated` down the same expressions, so the
+/// two builders cannot drift apart in a corner case that only one of them has. The face normal is
+/// computed for every triangle whether or not anything wants it, because a branch here would be a
+/// second rule to keep in step with the first.
+fn corners_within(loft: &Loft, crease: Option<f64>) -> Vec<Corner> {
+    let positions = loft.positions();
+    let mut accumulated = vec![[0.0f64; 3]; positions.len()];
+    for triangle in loft.triangles() {
+        let [first, second, third] = (*triangle).map(|index| at(positions, index));
+        let face = cross(subtract(second, first), subtract(third, first));
+        for index in *triangle {
+            let slot = &mut accumulated[index as usize];
+            for axis in 0..3 {
+                slot[axis] += face[axis];
+            }
+        }
+    }
+    let centre = {
+        let mut sum = [0.0f64; 3];
+        for point in positions {
+            for axis in 0..3 {
+                sum[axis] += f64::from(point[axis]);
+            }
+        }
+        let count = positions.len().max(1) as f64;
+        [sum[0] / count, sum[1] / count, sum[2] / count]
+    };
+    let creased: Vec<bool> = match crease {
+        None => vec![false; positions.len()],
+        Some(crease) => (0..positions.len() as u32)
+            .map(|index| is_creased(loft, index, crease))
+            .collect(),
+    };
+
+    let mut corners = Vec::with_capacity(loft.triangles().len() * 3);
+    for triangle in loft.triangles() {
+        let [first, second, third] = (*triangle).map(|index| at(positions, index));
+        let face = cross(subtract(second, first), subtract(third, first));
+        for &index in triangle {
+            let position = positions[index as usize];
+            let parameter = loft.uvs()[index as usize];
+            let mut normal = if creased[index as usize] {
+                face
+            } else {
+                accumulated[index as usize]
+            };
+            let outward = [
+                f64::from(position[0]) - centre[0],
+                f64::from(position[1]) - centre[1],
+                f64::from(position[2]) - centre[2],
+            ];
+            let squared = dot(normal, normal);
+            if squared <= NORMAL_FLOOR * NORMAL_FLOOR {
+                normal = outward;
+            }
+            corners.push(Corner {
+                position: [
+                    f64::from(position[0]),
+                    f64::from(position[1]),
+                    f64::from(position[2]),
+                ],
+                normal: normalized(normal),
+                texture: [f64::from(parameter[0]), f64::from(parameter[1])],
+            });
+        }
+    }
+    corners
+}
+
+/// Whether one of a loft's vertices is a section corner sharper than `crease` radians.
+///
+/// # Invariants
+///
+/// **The two edges measured are the two polygon edges of the vertex's own ring.** A sweep lays every
+/// ring out as `ring * around + slot` ([`shape::loft::Loft`]'s own layout), the wrap around is the
+/// loop's seam, and so a corner is measured from the two segments that meet there and nothing else —
+/// which is what makes the answer a property of the *section* rather than of one tessellated cell.
+///
+/// **A vertex either of whose two edges has no length creases nothing.** That is the ring the scale
+/// law collapsed to a point: there is no direction there to measure a turn in, so it falls back to
+/// the smooth average, which is the same reading [`NORMAL_FLOOR`] gives a vertex that accumulated
+/// nothing. A corner is not creased at one ring of a collapsed solid and creased at another.
+///
+/// **The angle compared is the turn — `pi` less the interior angle — so it reads as `360 / n` for a
+/// regular `n`-gon.** Quoting the interior angle instead would put a twelve-gon's corner at 150
+/// degrees, which is not the number its tessellation is counted in and not the number a crease is
+/// chosen by.
+fn is_creased(loft: &Loft, index: u32, crease: f64) -> bool {
+    let around = loft.around() as u32;
+    if around < 3 || index as usize >= loft.rings() * loft.around() {
+        return false;
+    }
+    let positions = loft.positions();
+    let base = index / around * around;
+    let slot = index - base;
+    let vertex = at(positions, index);
+    let incoming = subtract(at(positions, base + (slot + around - 1) % around), vertex);
+    let outgoing = subtract(at(positions, base + (slot + 1) % around), vertex);
+    let (incoming_length, outgoing_length) = (length(incoming), length(outgoing));
+    if incoming_length <= EDGE_FLOOR || outgoing_length <= EDGE_FLOOR {
+        return false;
+    }
+    let cosine = (dot(incoming, outgoing) / (incoming_length * outgoing_length)).clamp(-1.0, 1.0);
+    std::f64::consts::PI - cosine.acos() > crease
+}
+
+/// Moves corners by a plant's placement, in both their positions and their normals.
+fn placed(corners: Vec<Corner>, placement: &vegetation::plant::Placement) -> Vec<Corner> {
+    corners
         .into_iter()
         .map(|corner| {
             let position = placement.place([
@@ -189,65 +364,15 @@ pub fn loft_corners_at(loft: &Loft, placement: &vegetation::plant::Placement) ->
         })
         .collect()
 }
-pub fn loft_corners(loft: &Loft) -> Vec<Corner> {
-    let positions = loft.positions();
-    let mut accumulated = vec![[0.0f64; 3]; positions.len()];
-    for triangle in loft.triangles() {
-        let [a, b, c] = *triangle;
-        let [first, second, third] = [a, b, c].map(|index| {
-            let point = positions[index as usize];
-            [
-                f64::from(point[0]),
-                f64::from(point[1]),
-                f64::from(point[2]),
-            ]
-        });
-        let face = cross(subtract(second, first), subtract(third, first));
-        for index in [a, b, c] {
-            let slot = &mut accumulated[index as usize];
-            for axis in 0..3 {
-                slot[axis] += face[axis];
-            }
-        }
-    }
-    let centre = {
-        let mut sum = [0.0f64; 3];
-        for point in positions {
-            for axis in 0..3 {
-                sum[axis] += f64::from(point[axis]);
-            }
-        }
-        let count = positions.len().max(1) as f64;
-        [sum[0] / count, sum[1] / count, sum[2] / count]
-    };
 
-    let mut corners = Vec::with_capacity(loft.triangles().len() * 3);
-    for triangle in loft.triangles() {
-        for &index in triangle {
-            let position = positions[index as usize];
-            let parameter = loft.uvs()[index as usize];
-            let mut normal = accumulated[index as usize];
-            let outward = [
-                f64::from(position[0]) - centre[0],
-                f64::from(position[1]) - centre[1],
-                f64::from(position[2]) - centre[2],
-            ];
-            let squared = dot(normal, normal);
-            if squared <= NORMAL_FLOOR * NORMAL_FLOOR {
-                normal = outward;
-            }
-            corners.push(Corner {
-                position: [
-                    f64::from(position[0]),
-                    f64::from(position[1]),
-                    f64::from(position[2]),
-                ],
-                normal: normalized(normal),
-                texture: [f64::from(parameter[0]), f64::from(parameter[1])],
-            });
-        }
-    }
-    corners
+/// One of a loft's positions, read as the `f64` the corner arithmetic is done in.
+fn at(positions: &[Vec3], index: u32) -> [f64; 3] {
+    let point = positions[index as usize];
+    [
+        f64::from(point[0]),
+        f64::from(point[1]),
+        f64::from(point[2]),
+    ]
 }
 
 /// Builds one shaded point from a position, a normal and a texture coordinate.

@@ -34,6 +34,12 @@
 //!   pixel carries is [`LEAF_BASE_ID`] plus the `authored_offset` its row carries, which is what makes a
 //!   leaf resolve to its twig. It is a **sum** rather than a second baked copy of the geometry, which is
 //!   the whole reason `kit::AUTHORED_OFFSET` exists.
+//! - **Wood alone creases, and only above [`WOOD_CREASE`].** A section whose sharpest corner is under
+//!   the crease draws exactly the corners it drew before — positions, texture coordinates, order and
+//!   count alike — so the change is an *identity* on every round-section plant rather than a small
+//!   change to all of them, and a culm that shades round today shades round because nothing was
+//!   altered that could have stopped it. A blade and a decorator are smooth by nature and are left on
+//!   [`loft_corners`] outright.
 //!
 //! [`building_mesh`]: crate::building_mesh
 
@@ -46,7 +52,7 @@ use vegetation::leaf::LeafTemplate;
 use vegetation::plant::{Placement, Plant};
 
 use crate::building_identity::building_extras;
-use crate::geometry::{Corner, loft_corners, loft_corners_at};
+use crate::geometry::{Corner, loft_corners, loft_corners_creased_at};
 use crate::identity::ID_OUTPUT;
 
 /// The id every corner of a blade's own mesh carries.
@@ -56,6 +62,26 @@ use crate::identity::ID_OUTPUT;
 /// no offset writes this one. One for every leaf, so the blade's own geometry is genuinely one mesh and
 /// not one mesh per node that carries leaves.
 pub const LEAF_BASE_ID: u32 = 1;
+
+/// The angle of turn above which a wood section's corner is creased rather than smoothed.
+///
+/// # Why this number
+///
+/// **Thirty five degrees sits between the roundest section the wood is swept at and the next one
+/// down.** [`vegetation::expand::Detail::DEFAULT`] sweeps every solid at `around = 12`, and a
+/// regular twelve-gon turns `360 / 12 = 30` degrees at each of its corners — so a culm, a bough and a
+/// twig are all shaded by the smooth average at this crease, which is what they were shaded by before.
+/// A regular decagon turns 36 degrees and a flat ribboned plank far more, so a section drawn *to* be
+/// faceted still is.
+///
+/// **Thirty five and not thirty one.** The number has to clear the twelve-gon's 30 degrees by a
+/// margin wider than the rounding of a normalised dot product, or a culm would facet on a machine
+/// this one and not on the next; five degrees is that margin without coming near the 36 degrees at
+/// which a barely-coarser circle starts to read as a decagon's edges.
+///
+/// The alternative reading — an interior angle rather than a turn — would put the same threshold at
+/// 145 degrees, and is stated in [`crate::geometry::loft_corners_creased_at`] as the one it is not.
+pub const WOOD_CREASE: f32 = 0.61;
 
 /// The id of every node of a plant: its position in [`vegetation::plant::Plant::walk`]'s order, counted
 /// from one.
@@ -124,6 +150,11 @@ pub fn wood_points_at(
 ///   ids are in the corners, so merging the geometry does not merge the names: a pixel still answers *which plant and
 ///   which node*.
 /// - **The order of the plantings is the order of the corners**, so a mesh is reproducible from its plantings.
+/// - **Wood is the only path here that creases, and it is the only one that may.** A blade and a
+///   decorator are leaves and seats, both of them smooth by nature, and a building carries a pinned
+///   hash per mesh that a normal cannot move. Wood is what a fluted bole is made of, so wood is
+///   where [`crate::geometry::loft_corners_creased_at`] is asked for — at [`WOOD_CREASE`], which every
+///   round section is under, so a culm drawn today is the culm drawn yesterday.
 pub fn wood_points_of<'a>(
     plantings: impl IntoIterator<Item = (&'a [Wood], &'a BTreeMap<Handle, u32>, &'a Placement)>,
 ) -> PackedList {
@@ -135,7 +166,7 @@ pub fn wood_points_of<'a>(
                 .get(&solid.handle)
                 .expect("every solid's handle is one the plant's own walk yielded");
             corners.extend(
-                loft_corners_at(&solid.loft, placement)
+                loft_corners_creased_at(&solid.loft, placement, WOOD_CREASE)
                     .into_iter()
                     .map(|corner| (corner, id)),
             );
