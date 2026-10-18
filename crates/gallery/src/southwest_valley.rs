@@ -104,6 +104,34 @@
 //! **What is left on [`TREE_FERN_BASE`] is a stair-step on the shadow's own edge**, at the pixel the
 //! shadow page's texel works out to, and that is the price of a hard shadow rather than a fault in one.
 //!
+//! # What the bar reads on the seven plates
+//!
+//! `audit/frame_stats.py <png> <png>-authored_id.png --crown`, measured on this branch. **The interior bar
+//! is 0.80 here and was 0.75 when the first pass measured**, so two of these three rows moved under the bar
+//! without the plate changing:
+//!
+//! | plate | coverage | interior share (bar ≥ 0.25) | interior over lit p90 (bar ≤ 0.80) |
+//! | --- | --- | --- | --- |
+//! | [`TREE_FERN`] | 0.182 | **0.690** ✓ | **0.675** ✓ |
+//! | [`TREE_FERN_FROND`] | 0.306 | **0.343** ✓ | **0.650** ✓ |
+//! | [`TREE_FERN_BASE`] | 0.839 | **0.964** ✓ | **0.728** ✓ |
+//! | [`KAPOK`] | 0.326 | **0.561** ✓ | **0.747** ✓ |
+//! | [`KAPOK_FLOWER`] | 0.075 | **0.234** ✗ — **exempt, and the exemption is the finding** | **0.755** ✓ |
+//! | [`KAPOK_BOUGH`] | 0.095 | **0.726** ✓ | **0.709** ✓ |
+//! | [`KAPOK_BASE`] | 0.744 | **0.990** ✓ | **0.927** ✗ — **not an interior** |
+//!
+//! **The kapok's flowering plate is the one row that fails, and a leafless crown is why.** H3's second number
+//! asks whether a crown self-shadows, and its first asks whether a crown *has* an interior to shade: the
+//! `0.234` is the **twig armature** counted as interior, and `08-flowering-bare-tree.jpg` is a photograph of a
+//! crown with no foliage in it to have one. **A plate that measured 0.25 here would be measuring its twigs.**
+//! The exemption is kept rather than argued away.
+//!
+//! **The base plates fail the second number and neither failure is H3's subject.** [`KAPOK_BASE`]'s `0.927`
+//! is a plank buttress lit as one surface: the interior is the inside of a cone and there is nothing behind
+//! it. [`TREE_FERN_BASE`] passes only because the packed bases and the root mantle break the column into
+//! enough separate strands that a pixel can be wholly surrounded — which is the note's *"densely covered"*
+//! arriving as a number, and is worth reading as such.
+//!
 //! **The fern is the only species in this set that needs a card, and its card is a margin rather than a
 //! card**: at the whole-tree plate a pinnule *segment* is a fifth of a pixel and is not drawn at all, and
 //! at the frond plate the same segment is five pixels and **is** drawn — as the teeth of the pinnule's
@@ -1680,7 +1708,12 @@ fn calyx() -> Template {
     // **It opens and does not close**: the note's calyx is a cup the petals stand out of, so the scale law
     // ends at its widest rather than tapering to a point as the star's did. A corolla's own face was the
     // star's swept cap, and the stamens stood on it; here the cap is the bottom of a cup.
-    sweep.scale = taper(&[(0.00, 0.0095), (0.30, 0.0150), (0.70, 0.0190), (1.00, 0.0195)]);
+    sweep.scale = taper(&[
+        (0.00, 0.0095),
+        (0.30, 0.0150),
+        (0.70, 0.0190),
+        (1.00, 0.0195),
+    ]);
     Template {
         sweep,
         stations: 8,

@@ -26,7 +26,7 @@ use vegetation::rng::Rng;
 
 use crate::air::Atmosphere;
 use crate::geometry::cuboid;
-use crate::southwest::{yunnan_pine, Foliage, pine_palette};
+use crate::southwest::{Foliage, pine_palette, yunnan_pine};
 use crate::southwest_flag::{dove_palette, dove_tree};
 use crate::southwest_oak::{alpine_oak, oak_palette};
 use crate::vegetation_picture::{
@@ -46,8 +46,7 @@ pub const SITE_MONTANE: &str = "site_montane";
 /// `f32`, and the two are the same function, so a tree cannot stand where the floor is not — the same
 /// rule [`vegetation::ground`] states for a plant and its base.
 pub fn slope_height(x: f64, z: f64) -> f64 {
-    -0.20 * x
-        + 0.8 * (x * 0.045).sin() * (z * 0.038).cos()
+    -0.20 * x + 0.8 * (x * 0.045).sin() * (z * 0.038).cos()
         - 1.6 * (-((z - 11.0) / 5.0).powi(2)).exp()
 }
 
