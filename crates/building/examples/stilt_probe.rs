@@ -39,6 +39,8 @@ const SLOPE: f32 = 0.35;
 /// How far apart the posts stand, and how wide each one is.
 const SPACING: f32 = 1.5;
 const SECTION: f32 = 0.2;
+/// How far a post's top is sunk into the plate, so the two solids never present coincident faces.
+const EMBED: f32 = 0.02;
 
 fn ground(at: Vec2) -> f32 {
     SLOPE * at[0]
@@ -60,7 +62,7 @@ fn main() {
     );
 
     let seated = seat(&mut building.skeleton, ground, 0.0);
-    let stilt = posts(&mut building.skeleton, ground, SPACING, SECTION);
+    let stilt = posts(&mut building.skeleton, ground, SPACING, SECTION, EMBED);
     let one = stilt.masses.first().copied().expect("the house got posts");
 
     println!("\n# seating and posts");
@@ -154,7 +156,7 @@ fn main() {
     println!("\n# a flat site needs no posts");
     let mut level = starter(&PLAN);
     let _ = seat(&mut level.skeleton, |_| 0.0, 0.0);
-    let none = posts(&mut level.skeleton, |_| 0.0, SPACING, SECTION);
+    let none = posts(&mut level.skeleton, |_| 0.0, SPACING, SECTION, EMBED);
     println!(
         "  ground at 0 everywhere: {} post(s), {} mass(es) given any, {} wall(s)",
         none.posts,
@@ -171,6 +173,7 @@ fn main() {
         |at| if at[0] > 0.0 { f32::NAN } else { ground(at) },
         SPACING,
         SECTION,
+        EMBED,
     );
     println!(
         "  a NaN downhill of x = 0: {} post(s) placed, {} refused",

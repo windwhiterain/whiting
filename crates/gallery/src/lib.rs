@@ -107,6 +107,8 @@ mod monoliths;
 pub mod shed;
 mod spotlight;
 mod stilllife;
+/// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
+pub mod stilt;
 mod sunlight;
 /// The sweep picture: a tube, a blade and two envelopes, every one of them one `shape::sweep` call.
 pub mod sweep_picture;
@@ -232,6 +234,7 @@ impl Gallery {
             "lanterns" => lanterns(),
             "monoliths" => monoliths(),
             "shed" => shed::shed(),
+            "stilt" => stilt::stilt(),
             "terrace" => terrace::terrace(),
             "wing" => wing::wing(),
             "workshop" => workshop::workshop(),

@@ -248,7 +248,8 @@ impl StiltReport {
 pub struct Stilt {
     /// The mass the posts stand under.
     pub mass: MassId,
-    /// The elevation the posts reach: the mass's lowest node, one slab down.
+    /// The elevation of the building's own underside — the plate's bottom, one slab below the mass's
+    /// lowest node. The posts reach [`posts`]'s `embed` above it, into the plate.
     pub underside: f32,
     /// The highest ground any of its posts stands on.
     pub highest: f32,
@@ -302,6 +303,11 @@ impl Stilt {
 /// - **A post is a short [`Wall`] run**, because that is what a square post is: a run of `section`
 ///   metres with a `section`-metre thickness, a level top and a bottom that follows the ground at its
 ///   two ends. D3's member replaces this when it lands; nothing here depends on it not existing.
+/// - **The post's top is `embed` above the underside**, so its top face stands *inside* the plate
+///   rather than coplanar with the plate's own bottom. Two solids may touch, but two **coincident
+///   faces** are two surfaces at one depth and a rasteriser draws them fighting: the stilt scene's first
+///   render carried a comb of stripes along the plate's edge for exactly that reason, and a real post is
+///   tenoned into the floor rather than butted against it.
 ///
 /// `O(nodes + perimeter / spacing)` per mass.
 pub fn posts(
@@ -309,9 +315,14 @@ pub fn posts(
     ground: impl Fn(Vec2) -> f32,
     spacing: f32,
     section: f32,
+    embed: f32,
 ) -> StiltReport {
     let mut report = StiltReport::default();
-    if !(spacing.is_finite() && section.is_finite()) || spacing <= 0.0 || section <= 0.0 {
+    if !(spacing.is_finite() && section.is_finite() && embed.is_finite())
+        || spacing <= 0.0
+        || section <= 0.0
+        || embed < 0.0
+    {
         return report;
     }
     let half = section * 0.5;
@@ -341,7 +352,7 @@ pub fn posts(
                 PlanNode::new(from_at, from_ground),
                 PlanNode::new(to_at, to_ground),
                 section,
-                underside,
+                underside + embed,
             ));
             placed += 1;
         }
