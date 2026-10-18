@@ -2037,10 +2037,16 @@ fn check_solid(
     // same courtyard with one window cut through its wall, which is `2 - 2(1 + 1)` — the number this expectation has
     // to follow rather than assume, because a hole through a ring is what makes it not-a-ring. A roof, a wall and a
     // slab are boxes and are cut by nothing.
-    let ring = i64::from(matches!(
-        solid,
-        SolidId::Mass(_) | SolidId::Part(_) | SolidId::Void { .. }
-    ));
+    // **A slab with a hole through it is a ring too**, and it is the one slab that is: the prism over an
+    // annulus is a torus exactly as a mass's wall ring is, and a hole in a plate is the one place the
+    // word "ring" reaches a slab. Every other slab is a box and is cut by nothing.
+    let holed = matches!(solid, SolidId::Slab(id) if skeleton.slab(id).is_some_and(|slab| slab.void.is_some()));
+    let ring = i64::from(
+        matches!(
+            solid,
+            SolidId::Mass(_) | SolidId::Part(_) | SolidId::Void { .. }
+        ) || holed,
+    );
     let expected = 2 - 2 * (ring + holes as i64);
     let euler = built.euler_characteristic_of(&faces);
     if euler != expected {

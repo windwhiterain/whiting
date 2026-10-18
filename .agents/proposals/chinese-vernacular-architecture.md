@@ -693,7 +693,7 @@ the pass counts, which is the cheap half of the same list.
 4. **Arc 4 — the frame (D3).** *Done, 2026-10-18 — see below.* Columns under every purlin, ties threading them, cantilevers carrying the
    front gallery, brackets under the cantilevers — anchored, so moving a column moves its tie.
 5. **Arc 5 — the covering (D9).** *Done, 2026-10-18 — see below.* Fifty 瓦垄 a slope, hosted by the roof, with the eave end decided.
-6. **Arc 6 — the interior (D7).** *Deferred to last: it needs the compound's second storey, which now exists.* The hearth bay with no ceiling over it, and the stair through the floor.
+6. **Arc 6 — the interior (D7).** *Done, 2026-10-19 — see below.* The hearth bay with no ceiling over it, and the stair through the floor.
 7. **Arc 7 — the compound (D8).** *Done, 2026-10-18 — see below.* A second scene: 三坊一照壁, the arc that proves D8 was needed at all.
 8. **Arc 8 — the town.** Only if F6 is answered yes; the settlement layer does not exist yet.
 
@@ -884,6 +884,33 @@ the second is the one that lets a wall be lower than the ranges.
 where the doors and windows are), no stair between the storeys, and no 厦子 — the Yunnan front porch.
 The first two are the interior arc's work now that the second storey exists; the third is a plate on
 two rows of posts, which is the frame arc again.
+
+### Arc 6 is closed, and its evidence is a document rather than a picture
+
+`Slab::void` is **one hole through a plate**, and a slab with a hole is a **prism over a ring**: its two
+faces are annuli and the hole's wall is a surface of its own that looks *into* the hole. The annulus
+triangulation was already in the crate — `fill::ring_fill`, which a courtyard's own base stands on — so
+what this arc added is the third surface, the document check that knows a holed slab is a **torus**
+(euler `0`, not `2`), and one rule the whole arc turned on:
+
+**No winding is written by hand.** The first version decided each face's order from the body's own
+middle and left **48 boundary edges**; the second passed each face through
+`Solid::oriented_triangle`, which decides by the face's own up component, and left **0**. The lesson is
+the same one the roof's skin already carried, and this arc is where it became a rule to write down:
+*a planar face's winding is a fact about the surface and not about the code that emits it.*
+
+| number | value |
+| --- | --- |
+| the probe's ring | a 6 × 4 floor with a 1.2 × 1.2 stairwell, 0.3 m thick: **32 faces, loops 0, euler 0, manifold, volume 6.767998** against 6.768 |
+| the hole's wall | **8 of 8 sides look into the hole**, and none away |
+| the refusal | an L-shaped (non-convex) hole is `SlabVoidNotFilled`, because `ring_fill` bridges convex loops |
+| the compound | the main hall's floor carries a **1.5 × 1.4 stairwell**: the document's identity rows go **6 685 → 6 689**, and the picture's hash **does not move at all** |
+
+**That last row is the arc's real result.** The interior is invisible from outside the ranges, so an
+interior construct's evidence cannot be the frame — it is the document, the probe, and the four surfaces
+the identity table names. A scene that *showed* the hole would be a camera inside the hall, which is an
+interior view this gallery does not yet have; drawing one now would be a picture of a room whose walls
+the document closes.
 
 ## What would make this proposal wrong
 

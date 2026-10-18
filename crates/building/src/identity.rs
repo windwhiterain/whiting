@@ -204,6 +204,9 @@ fn slab_surface(surface: crate::slab::SlabSurface) -> String {
         crate::slab::SlabSurface::Edge { index } => {
             format!("the edge from node {index}")
         }
+        crate::slab::SlabSurface::VoidEdge { index } => {
+            format!("the side of the hole from node {index}")
+        }
     }
 }
 

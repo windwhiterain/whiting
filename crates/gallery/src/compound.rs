@@ -266,16 +266,21 @@ pub fn compound() -> Value {
 pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
     // **The main hall at the back, its two wings down the sides**, and the court between the three.
+    // **The main hall's floor has a stairwell through it**, which is the one place this scene draws the
+    // interior arc's construct: a slab with a hole is a prism over a ring, so the stair up through it is
+    // a hole in the plate and not a second storey's worth of new geometry.
+    let main_corners = [
+        [-SITE_HALF, SITE_BACK],
+        [SITE_HALF, SITE_BACK],
+        [SITE_HALF, COURT_BACK],
+        [-SITE_HALF, COURT_BACK],
+    ];
     let main = range(
         &mut skeleton,
-        [
-            [-SITE_HALF, SITE_BACK],
-            [SITE_HALF, SITE_BACK],
-            [SITE_HALF, COURT_BACK],
-            [-SITE_HALF, COURT_BACK],
-        ],
+        main_corners,
         MAIN_HEIGHT,
         MAIN_FLOOR,
+        Some(stairwell(&main_corners)),
     );
     let west = range(
         &mut skeleton,
@@ -287,6 +292,7 @@ pub fn document() -> Building {
         ],
         WING_HEIGHT,
         WING_FLOOR,
+        None,
     );
     let east = range(
         &mut skeleton,
@@ -298,6 +304,7 @@ pub fn document() -> Building {
         ],
         WING_HEIGHT,
         WING_FLOOR,
+        None,
     );
     let _ = (main, west, east);
     // The 照壁: one wall across the front, from the west wing's end to the east wing's.
@@ -322,6 +329,7 @@ fn range(
     corners: [[f32; 2]; 4],
     height: f32,
     floor: f32,
+    stairwell: Option<Vec<building::math::Vec2>>,
 ) -> building::MassId {
     let mut mass = Mass::new(
         corners
@@ -336,7 +344,10 @@ fn range(
     let mass_id = building::MassId(id);
     // The intermediate floor, seated on the mass's own inner loop so it meets its walls.
     if let Some(storey) = derive::floor_slab(&mass, mass_id, floor, PLATE * 0.75) {
-        skeleton.slabs.push(storey);
+        skeleton.slabs.push(match stairwell {
+            Some(void) => storey.with_void(void),
+            None => storey,
+        });
     }
     let mut roof = derive::gable_roof(mass_id, &mass, OVERHANG, RISE, SINK, ROOF_THICKNESS)
         .expect("a rectangle has an eave loop");
@@ -347,6 +358,33 @@ fn range(
     skeleton.masses.push(mass);
     skeleton.roofs.push(roof);
     mass_id
+}
+
+/// Returns the loop of the stairwell through one range's floor: a hole at its west end.
+///
+/// # Invariants
+///
+/// **The hole stays inside the walls**, `WALL` plus a hand's width clear of the outline, which is what
+/// keeps it strictly inside the plate and therefore a hole rather than a slit through the wall.
+fn stairwell(corners: &[[f32; 2]; 4]) -> Vec<building::math::Vec2> {
+    let xs: Vec<f32> = corners.iter().map(|at| at[0]).collect();
+    let zs: Vec<f32> = corners.iter().map(|at| at[1]).collect();
+    let (low_x, _high_x) = (
+        xs.iter().copied().fold(f32::INFINITY, f32::min),
+        xs.iter().copied().fold(f32::NEG_INFINITY, f32::max),
+    );
+    let (low_z, high_z) = (
+        zs.iter().copied().fold(f32::INFINITY, f32::min),
+        zs.iter().copied().fold(f32::NEG_INFINITY, f32::max),
+    );
+    let middle = (low_z + high_z) * 0.5;
+    let left = low_x + WALL + 0.35;
+    vec![
+        [left, middle - 0.7],
+        [left + 1.5, middle - 0.7],
+        [left + 1.5, middle + 0.7],
+        [left, middle + 0.7],
+    ]
 }
 
 /// Returns how far a light position stands from the scene's own middle.

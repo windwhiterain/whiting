@@ -212,7 +212,7 @@ foreach ($pkg in $expect.Keys) {
 "--------------------------------------------------------------------"
 "[5/8] every example in building and gallery"
 "--------------------------------------------------------------------"
-foreach ($pair in @(@("whiting-building", "building", 34), @("whiting-gallery", "gallery", 16))) {
+foreach ($pair in @(@("whiting-building", "building", 35), @("whiting-gallery", "gallery", 16))) {
     $pkg = $pair[0]; $dir = $pair[1]; $want = $pair[2]
     $examples = Get-ChildItem (Join-Path (Join-Path (Join-Path $root "crates") $dir) "examples") -Filter *.rs | Sort-Object Name
     $ran = 0; $bad = @()
@@ -274,9 +274,9 @@ $rows = 0
 foreach ($line in $p) { if ($line -match '^\s+\S+\s+(\d+) row\(s\), ids 1\.\.=(\d+)') { $rows += [int]$Matches[1] } }
 $twoWay = @($p | Where-Object { $_ -match 'the channel is two-way for every scene: (\w+)' })
 $twoWayValue = if ($twoWay.Count -gt 0) { ($twoWay[0] -split ': ')[-1] } else { "(line absent)" }
-"  rows summed over scenes : $rows   (audit says 9276)"
+"  rows summed over scenes : $rows   (audit says 9280)"
 "  two-way line reads      : $twoWayValue"
-if ($rows -ne 9276) { $script:fail += "identity rows ($rows, expected 9276)" }
+if ($rows -ne 9280) { $script:fail += "identity rows ($rows, expected 9280)" }
 if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
 Gate "scene_identity_probe" $code 0
 

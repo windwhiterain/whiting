@@ -390,6 +390,14 @@ pub enum Problem {
         /// The roof.
         roof: RoofId,
     },
+    /// A slab's hole cannot be filled: its loop is not convex, so the annulus triangulation would
+    /// overlap itself.
+    SlabVoidNotFilled {
+        /// The slab.
+        slab: SlabId,
+        /// How many nodes the hole's loop has.
+        nodes: usize,
+    },
     /// A member's axis has no length, or its `across` is parallel to it, so there is no section to
     /// sweep.
     MemberDegenerate {
@@ -620,20 +628,84 @@ fn expand_slab(mesh: &mut BuildingMesh, id: SlabId, slab: &Slab) -> Result<(), V
         .iter()
         .map(|at| solid.point(lift(*at, slab.top)))
         .collect();
-    polygon(
-        &mut solid,
-        &slab.outline,
-        &top,
-        Element::Slab(id, SlabSurface::Top),
-        true,
-    );
-    polygon(
-        &mut solid,
-        &slab.outline,
-        &bottom,
-        Element::Slab(id, SlabSurface::Bottom),
-        false,
-    );
+    // **A slab with a hole is a prism over a ring.** Its two faces are annuli and the hole's wall is a
+    // face of its own; the annulus is `fill::ring_fill`, the same triangulation a courtyard's base
+    // stands on, and the points stay welded to the outline's because they are *looked up* rather than
+    // re-created — the triangle corners are copies of the two loops' own coordinates.
+    //
+    // **No winding is written by hand here.** The two annuli are emitted through
+    // [`Solid::oriented_triangle`], which decides by the face's own up component, for the reason the
+    // roof's skin does: a planar face's winding is a fact about the surface and not about this code.
+    // The hole's wall is the mirror of the outer wall's order, because it faces the other way.
+    let void = slab.void.as_deref().filter(|void| void.len() >= 3);
+    if let Some(void) = void {
+        let filled = crate::fill::ring_fill(&slab.outline, void);
+        if filled.is_empty() {
+            return Err(vec![Problem::SlabVoidNotFilled {
+                slab: id,
+                nodes: void.len(),
+            }]);
+        }
+        let mut welded: Vec<(Vec2, u32, u32)> = Vec::with_capacity(top.len() * 2);
+        for (index, at) in slab.outline.iter().enumerate() {
+            welded.push((*at, top[index], bottom[index]));
+        }
+        let mut high: Vec<u32> = Vec::with_capacity(void.len());
+        let mut low: Vec<u32> = Vec::with_capacity(void.len());
+        for at in void {
+            high.push(solid.point(lift(*at, slab.top)));
+            low.push(solid.point(lift(*at, slab.bottom)));
+            welded.push((
+                *at,
+                *high.last().expect("just pushed"),
+                *low.last().expect("just pushed"),
+            ));
+        }
+        let lookup = |at: Vec2, up: bool| {
+            welded
+                .iter()
+                .find(|(corner, _, _)| *corner == at)
+                .map(|(_, top, bottom)| if up { *top } else { *bottom })
+        };
+        for triangle in &filled {
+            if let (Some(a), Some(b), Some(c)) = (
+                lookup(triangle[0], true),
+                lookup(triangle[1], true),
+                lookup(triangle[2], true),
+            ) {
+                solid.oriented_triangle([a, b, c], Element::Slab(id, SlabSurface::Top), true);
+            }
+            if let (Some(a), Some(b), Some(c)) = (
+                lookup(triangle[0], false),
+                lookup(triangle[1], false),
+                lookup(triangle[2], false),
+            ) {
+                solid.oriented_triangle([a, b, c], Element::Slab(id, SlabSurface::Bottom), false);
+            }
+        }
+        for index in 0..void.len() {
+            let next = (index + 1) % void.len();
+            let element = Element::Slab(id, SlabSurface::VoidEdge { index });
+            // The mirror of the outer wall's `[bottom, top, top, bottom]` order, because the hole's wall
+            // faces into the hole.
+            solid.quad([low[index], low[next], high[next], high[index]], element);
+        }
+    } else {
+        polygon(
+            &mut solid,
+            &slab.outline,
+            &top,
+            Element::Slab(id, SlabSurface::Top),
+            true,
+        );
+        polygon(
+            &mut solid,
+            &slab.outline,
+            &bottom,
+            Element::Slab(id, SlabSurface::Bottom),
+            false,
+        );
+    }
     for index in 0..slab.outline.len() {
         let next = (index + 1) % slab.outline.len();
         let element = Element::Slab(id, SlabSurface::Edge { index });
