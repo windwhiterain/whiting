@@ -151,15 +151,206 @@ the pitch minima each covering needs.
 
 ## The design
 
-To come, after the numbers.
+Six moves. Four are new constructs and two are completions; each names what it buys, the invariant it
+must keep, and the sentence it refuses to build.
+
+### D1. A roof holds a purlin profile, and the profile is elevations
+
+`Roof` gains one field: `purlins: Vec<f32>` — the **absolute elevations of the purlins**, strictly
+between the eave's lower bound and the crest, in ascending order. Expansion cuts every plane into
+`purlins.len() + 1` strips at those elevations. The strips are the 步架, and the steepening towards the
+ridge is what the elevations do when the 步架 have equal plan widths.
+
+Why elevations and not fractions, and why that single choice is the whole design:
+
+- **A horizontal cut of a plane is a straight line parallel to the plane's two rows.** The plane is a
+  ruled strip between a crest row and an eave row, both horizontal, so a cut at elevation `e` is a
+  horizontal segment between them, every strip is a planar trapezoid, and the planarity contract is
+  kept with no tessellation and no curve.
+- **Two planes that share a line break it at the same points.** The shared line (a ridge or a hip) is
+  a straight 3D line; its point at elevation `e` is one point, on both planes. Cut at *fractions* of
+  each plane's own run instead and the two planes would break the shared line at different places, the
+  shared edge would be subdivided differently on each side, and the expansion's boundary-edge
+  cancellation would read the roof as open. A fraction-based profile is the obvious design and it is
+  the one that fails; elevations are the one that holds.
+- **The eave stays level per edge**, which is what a 悬山's eave is. A corner that turns up (起翘) is
+  **not** a raised eave node: a raised node makes the eave row non-horizontal, the crest and eave rows
+  non-parallel, and the strip non-planar — refused, correctly. The corner upturn is its own small
+  plane or its own member, which is also how it is built.
+
+What it buys: the silhouette. A Chinese roof is read from its profile — shallow at the eave, steep at
+the ridge, with a distinct break at every purlin — and that profile is the one thing a straight tent
+cannot fake.
+
+Refusals: `PurlinsOutOfOrder` (not strictly ascending, or outside the eave/crest range),
+`PurlinAboveCrest` (a purlin at or above the crest of a plane that carries it), and the existing
+`SolidOpen` if two planes still disagree.
+
+### D2. A wall top is a profile
+
+`Mass::tops: Vec<f32>`, one elevation per outline node, and `Wall::crown: Vec<CrownPoint>` — a
+profile along the run. A level top is the degenerate case of both, so the common wall is written as a
+one-element crown rather than the special case.
+
+Why it stays planar, computed rather than assumed. Take one edge from `A` to `B`, its inner offset
+`A'`, `B'` a wall thickness `w` in, and tops `t_A`, `t_B`, with the inner nodes taking their outer
+node's elevation. In a frame along the edge the four points are `(0,0,t_A)`, `(L,0,t_B)`,
+`(L,w,t_B)`, `(0,w,t_A)` — all four satisfy `z = t_A + (t_B − t_A)·x/L`, which does not contain `y`:
+**one tilted plane holds the whole top strip.** At a corner the two strips share the horizontal
+segment `B–B'`, so they meet along an edge rather than a gap, and the crease between them is a hard
+edge because an authored corner is hard by contract. The outer and inner wall faces are vertical
+planes whose top edges follow the node elevations, so they are planar too. Nothing needs
+triangulating and no tolerance is spent.
+
+What it buys: 硬山 (the wall flush to the roof), 悬山 (the roof oversailing a wall that stops below
+it), the stepped gable, the parapet, and a 照壁 whose top is not straight. It also gives the **gable
+under a pitched roof** the wall it actually stands on, which today is a 0.2 m roof fascia.
+
+Refusals: `CrownCountMismatch` (one top per node, and a count that disagrees is a wall in the wrong
+place), `CrownBelowBase` (a top at or under the wall's own base), `CrownNotASequence` (a `Wall` crown
+whose stations are not strictly increasing within the run).
+
+### D3. A member is a prism over a 3D segment
+
+`Member { from: Vec3, to: Vec3, across: Vec2, width: f32, depth: f32, host: Option<SolidId> }`.
+Six faces, all planar by the same argument as a slab's: four sides are rectangles and the two ends are
+the section. `across` is the horizontal direction the section's `width` runs, which is what makes a
+vertical column's orientation authored rather than undefined (`up × axis` is zero for a vertical
+member, and a silent default there is a section that spins with the wind).
+
+`host` is the authorization the crate already demands of a roof: a member embedded in a wall overlaps
+it, and two solids may overlap only when the overlap is authored.
+
+What it buys: 柱, 穿枋, 挑枋, 撑弓, 檩, 椽, a railing, a stair's stringers, and the 吊脚柱 of D4 — one
+construct, because every one of them is a prism over a segment. It also buys the **palette**: a material
+belongs to an instance and not to a face (`gallery::house`'s own comment), so dark timber against a
+whitewashed wall is not a colour on a face — it is a member and a wall being two solids.
+
+Refusal: `MemberAxisDegenerate` (a segment of no length, or an `across` parallel to the member's plan
+direction, which collapses the section).
+
+### D4. A floor need not stand on the ground: stilt seating
+
+`site` gains a second seating mode beside the terrace. Where the terrace sets every node of a mass to
+the highest ground under it, the stilt mode keeps the mass's **authored** elevations (the floor) and
+emits posts from the floor's underside down to the sampled ground at a stated spacing, each post a
+`Member`, each seated on a 柱础 if the author asks for one. It reports the largest drop, because that
+number is the building's own proportion: a 吊脚楼's character is how far the downhill side hangs.
+
+This is the mode the current one refuses by construction. A terrace is the correct answer to a slope
+for masonry and the wrong one for a timber house on a river bank: the house does not cut the hill, it
+stands on it and hangs over the water.
+
+Refusal: `StiltPostTooLong` when a post passes a stated limit (a post that long is a different
+building), and `StiltGroundBelowSea` when sampling finds no ground under a post.
+
+### D5. The intermediate floor is a completion, not a construct
+
+`derive::floor_slab` already builds a hosted plate on the mass's inner loop at an elevation strictly
+inside the mass. What is missing is the *place*: a floor at the grid's second level, carried by the
+face's own storey lines. Nothing new is authored — a scene calls it at `levels[1]` and the two-storey
+house becomes a two-storey *building* rather than a two-storey facade.
+
+### D6. A starting point, in `derive`
+
+`derive::starter` offers `RoofStyle::{Hip, Gable, Flat}`. The vernacular level adds one derivation:
+a **three-bay, one-or-two-storey timber house** with a purlin-profiled 悬山 roof, deep eaves, gable
+frames that carry their columns and ties, and a plinth — every element an ordinary one, as the
+module's contract demands.
+
+The point is not convenience. A derived element that carries no guarantee and is immediately editable
+is how this crate makes a new architecture *authorable* by an agent in one call, and how the gallery
+gets a scene whose document is 60 lines instead of 600.
+
+### Table: what each move costs
+
+| Move | New fields | Code that changes | The gate it must pass |
+| --- | --- | --- | --- |
+| D1 purlins | `Roof::purlins` | `expand` (roof strips), `roof` (accessors), `validate` (two refusals) | a probe that every strip is planar and the strips tile the loop |
+| D2 crowns | `Mass::tops`, `Wall::crown` | `expand` (ring top strips, wall faces), `validate` | a probe that a crowned ring is closed and planar |
+| D3 members | `Member`, a list in the document, a `SolidId` | `expand`, `mesh` (element), `identity`, `validate` | a probe that a member is closed and outward, and that two members overlapping without a host are reported |
+| D4 stilts | a seating mode | `site` | a probe on an analytic slope: posts land on the ground, the floor stays level |
+| D5 floors | none | a scene | the floor's own faces appear in the identity table |
+| D6 starter | none | `derive` | the starter builds and its roof's profile measures the profile |
 
 ## The forks, for the owner
 
-To come.
+Each is a real choice with a cost somewhere; none is "obviously right".
+
+**F1. The roof's profile — three ways, one recommendation.**
+- (a) *Purlin elevations, planar strips* (D1). Keeps planarity, keeps watertightness, matches how the
+  roof is built (a purlin polyline is not a smooth curve; the curve is what you see through it).
+  Costs: a roof's planes gain intermediate rows, and a 起翘 corner is a separate piece.
+- (b) *A curved, tessellated roof surface.* Truer to a tile surface, and it breaks the crate's
+  one-face-one-plane contract, its shading groups, and the fascia derivation — three invariants for
+  one silhouette.
+- (c) *A silhouette in the shader.* Cheapest; the roof would cast the shadow of a tent, the id channel
+  would name a plane that is not there, and the picture would disagree with the document.
+
+**F2. The crowned wall top — three ways.**
+- (a) *Per-node tops on `Mass` and a profile on `Wall`* (D2). One rule, no new solid, and every gable
+  form is authored. Costs: the ring walk's top strip stops being level, which touches the most
+  exercised code in the crate.
+- (b) *Crown walls as separate `Wall` solids stacked on the mass*, with an authored joint. Smaller
+  change; every gable becomes two solids, every joint needs authorizing, and a wall that overlaps the
+  mass is the overlap the validator reports.
+- (c) *Deep eaves only.* No change at all; 硬山, 马头墙 and the parapet are refused, and every roof in
+  the gallery is 悬山 with a wall that stops short — which is a real Chinese roof, and only one.
+
+**F3. The timber frame — three ways.**
+- (a) *`Member` as a first-class solid* (D3). The frame is built, cast, shadowed and named; and it is
+  a new element class, so it is a new material — the palette follows for free.
+- (b) *Members as templates of masses.* The existing `Part` mechanism can place a column, because a
+  column is a small mass. A **diagonal** is impossible — a mass is a prismatic shell standing on its
+  outline — so 撑弓, 斜撑 and 椽 are out, and so is every rafter.
+- (c) *Texture only.* No geometry; the frame is a colour. The id channel cannot name a column, so
+  "move the third column" is not a sentence this system can answer.
+
+**F4. How deep the detail goes.** Recommended line: columns, ties, cantilevers, brackets and purlins
+are geometry; rafters are geometry **only under the eave**, where a Chinese roof's underside is the
+picture; tiles, 瓦当 and 滴水 are the shader's. Above about 8 cm a member is a couple of pixels at the
+frames this gallery draws; below it, it is noise that costs faces and shadow rays.
+
+**F5. Which building first.** The 吊脚楼 is the owner's first-named type and the one that tests D4;
+三坊一照壁 is the richest and tests D1, D2 and D5 at once; a 古镇 street tests the settlement scale.
+The road below assumes the order, but it is the owner's to change.
+
+**F6. Scope of the old town.** A street of houses is not a building: it needs a *settlement* layer —
+frontage, blind walls on party lines, the arcade, the slope of the street, water. That layer does not
+exist in this workspace (the gallery draws one building per scene). This proposal stops at the
+building; the settlement is a separate question and should be named before an arc promises it.
 
 ## The road
 
-To come.
+Each arc ends green through the audit, with one new scene and its pinned hash, and each is shippable
+alone. The gate cost per scene is real and known: a `.png` hash pin in `[6/8]`, a pass-count row in
+`crates/scene/tests/clustered_lights.rs`, and — when the scene's id channel changes — rows in
+`scene_identity_probe`'s table that `[7/8]` checks two ways.
+
+1. **Arc 1 — the profile (D1).** A single three-bay house with a purlin-profiled 悬山 roof and a deep
+   eave. Scene: `stilt`'s predecessor, a `timber_house`. Proves the silhouette.
+2. **Arc 2 — the crown (D2).** A 硬山 gable and a stepped gable on the same house. Proves that a wall
+   can meet a roof.
+3. **Arc 3 — the members (D3).** The gable frame exposed: columns, ties, cantilevers under a gallery.
+   Proves 穿斗 and the bracket.
+4. **Arc 4 — the stilts (D4).** The 吊脚楼 on a slope: floor on the uphill grade, posts and braces
+   downhill, a lower storey half-open. Proves the site.
+5. **Arc 5 — the compound (D5, D2).** 三坊一照壁 or 四合五天井: wings, galleries, a 照壁, 天井.
+6. **Arc 6 — the variations.** 竹楼 (steep short ridge, deep eaves), 石板房 (stone slate pitch),
+   屯堡 (stone court), 一颗印 (high blank walls, parapet) — the same constructs, different numbers,
+   and each one is the proof that the parameters are the type.
+7. **Arc 7 — the settlement.** Only if F6 says yes: a street of three or four houses on a slope.
+
+## What would make this proposal wrong
+
+- If the purlin profile cannot be cut at shared elevations without a strip degenerating on a short
+  hip end (a plane whose run is shorter than the plan width of the top step), D1 needs a rule for
+  vanishing strips. Not measured.
+- If a crowned mass's miter at a corner cannot be given one elevation per node without folding a top
+  strip, D2 is wrong and (b) is the answer. Not measured; the algebra above says it is fine, and
+  algebra is not a probe.
+- If the vernacular turns out to need a wall that is not a prism (a battered 土墙 that leans, a
+  竹编 wall that curves), no move here expresses it and the design stops at the prism.
 
 ## Not established
 
