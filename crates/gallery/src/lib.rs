@@ -247,6 +247,7 @@ impl Gallery {
             "site_montane" => southwest_site::site_montane(),
             "alpine_oak" => southwest_oak::alpine_oak_picture(),
             "alpine_oak_bough" => southwest_oak::alpine_oak_bough_picture(),
+            "alpine_oak_base" => southwest_oak::alpine_oak_base_picture(),
             "lijian_spruce" => southwest_spire::lijian_spruce_picture(),
             "lijian_spruce_bough" => southwest_spire::lijian_spruce_bough_picture(),
             "lijian_spruce_base" => southwest_spire::lijian_spruce_base_picture(),

@@ -16,18 +16,24 @@
 //! The pine's whole-tree plate draws [`southwest::Foliage::Card`](southwest::Foliage::Card), a blade half a pixel
 //! wide, because its 1.1 mm needle is a tenth of a pixel at twenty metres and a point-sampled rasteriser **drops**
 //! a blade narrower than a pixel rather than fading it. **This oak needs no card, and the number that says so is the
-//! frame's own pixel.** The whole-tree plate stands **22.8 m** off with a vertical field of view of **0.55 rad** over
-//! **1700** rows, so one pixel is `2 · 25.1 · tan(0.275) / 1700` = **8.3 mm**; the note's leaf at the large end of its
-//! range, **70 × 34 mm**, is therefore **8.4 × 4.1 pixels** — eight times the width the pine needs a card for. Both
-//! plates draw the **true** leaf, and [`ALPINE_OAK_LEAF_PIXEL_METRES`] states the measurement in the code that the
-//! framing depends on.
+//! frame's own pixel.** The whole-tree plate stands **25.0 m** off with a vertical field of view of **0.55 rad** over
+//! **1700** rows, so one pixel is `2 · 25.0 · tan(0.275) / 1700` = **8.3 mm**; the leaf, at the note's **48 mm**, is
+//! therefore **5.8 pixels** long. Both plates draw the **true** leaf, and [`ALPINE_OAK_LEAF_PIXEL_METRES`] states
+//! the measurement in the code that the framing depends on.
 //!
-//! A card would not have helped anyway, and the reason is arithmetic rather than taste: a crown's covered area is
-//! (leaf count × blade area), and widening a blade by three while thinning the count by three leaves that product
-//! exactly where it was. The pine's card pays a **sampling** tax; the oak has no such tax to pay, and the crown's
-//! mass is bought with **count and size** instead — about thirty thousand leaves of seventeen square centimetres,
-//! which covers a fifth of the crown's own box. That is short of opaque, and [`SHOOT_LEAVES_PER_METRE`] says so with
-//! the number rather than leaving it to be discovered.
+//! # What the second pass bought, and what it bought it with
+//!
+//! **The first plate of this species bought its crown's coverage with leaf *size*** — it drew the note's FOC
+//! maximum, **70 × 34 mm**, because this builder's cost in instances is superlinear and a bigger blade is a
+//! cheaper crown. It reached a crown coverage of **0.219** and a frame the eye reads as lacy: sky through it
+//! everywhere and a ragged edge. **[`LeafTemplate::sprig`] took that bargain away.** A shoot's leafing is a *fixed
+//! arrangement* — FOC's petiole is **2–5 mm**, *"sometimes nearly sessile"*, and a golden-angle step around the twig
+//! — so it is now **one instanced mesh of eight blades**, and the instance budget is spent on **shoots**. The leaf
+//! went back to [`LEAF_LENGTH`], the **middle** of the note's range, and the crown's area is bought with **fourteen
+//! thousand shoots** where the first pass had seventeen hundred.
+//!
+//! The number that says whether that worked is not in this file: `audit/frame_stats.py --crown` reads the whole-tree
+//! plate's crown box, and [`SHOOT_SPRIGS_PER_METRE`] is the dial that moves it.
 //!
 //! # Three facts the geometry cannot carry
 //!
@@ -53,23 +59,29 @@
 //!
 //! FOC gives **no bark description** for this species and no bark photograph of it exists in the material searched,
 //! so the note records the bark as **unverified** and asks that no bark description be invented. What the
-//! photographs do show is the upper limbs as **pale grey and smooth** (`02-crown.jpg`). [`ALPINE_OAK_WOOD`] is that
-//! pale grey, and [`fluted_bole`] is the fluting the brief asks for — vertical lobes, because a flute runs with the
-//! grain — drawn as form rather than claimed as a description.
+//! photographs do show is the upper limbs as **pale grey and smooth** (`02-crown.jpg`), and the brief for this
+//! second pass asks for *"a dark grey-brown with shallow fissures"*. [`oak_palette`] is not the note's pale
+//! grey: the note has nothing to say, and a trunk drawn for an unverified bark is drawn for the frame. [`fluted_bole`]
+//! is the fluting the brief asks for — vertical lobes, because a flute runs with the grain — drawn as form rather
+//! than claimed as a description, and [`OAK_DETAIL`] is what makes the twenty-four sides it carries survive the
+//! twelve-vertex sweep every wood loft would otherwise be drawn at.
 //!
-//! # Two plates and one foliage
+//! # Three plates and one foliage
 //!
-//! The whole tree for the silhouette (H1, H3, H4) and one bough at arm's length for the foliage (H2), as
-//! [`southwest`](southwest) does it. The rule is the same rule and the second plate is one limb of it, so a leaf
-//! that reads on the bough plate is the leaf the tree is made of.
+//! The whole tree for the silhouette (H1, H3, H4), one bough at arm's length for the foliage (H2), and the **foot
+//! of the bole** at two metres (H4's *"one frame at the base of the trunk, one at the crown"*). The rule is the same
+//! rule and the second plate is one limb of it and the third is the first metre of it, so a leaf that reads on the
+//! bough plate is the leaf the tree is made of and a flute that reads on the base plate is the flute the tree is
+//! made of.
 
 use definition::Value;
 use vegetation::decorator::{Seat, Template, scatter};
 use vegetation::derive::Species;
 use vegetation::envelope::{Envelope, trim};
-use vegetation::field::Field;
+use vegetation::expand::Detail;
 use vegetation::handle::Handle;
 use vegetation::leaf::{LeafField, LeafTemplate};
+use vegetation::plant::Placement;
 use vegetation::rng::Rng;
 use vegetation::species::{Generation, Joint, Rule, grow, spine, taper};
 
@@ -84,6 +96,9 @@ pub const ALPINE_OAK: &str = "alpine_oak";
 
 /// The name the oak's branch plate is built and rendered under.
 pub const ALPINE_OAK_BOUGH: &str = "alpine_oak_bough";
+
+/// The name the oak's base plate is built and rendered under.
+pub const ALPINE_OAK_BASE: &str = "alpine_oak_base";
 
 /// The seed both plates' leaf fields are derived from.
 const SEED: u64 = 34;
@@ -108,13 +123,13 @@ const BOUGH_SHOOTS: usize = 2;
 pub const ALPINE_OAK_GREEN: usize = 0;
 pub const ALPINE_OAK_BRONZE: usize = 1;
 
-/// The one pixel the whole-tree plate's framing makes, in metres: `2 · 25.1 · tan(0.55 / 2) / 1700`.
+/// The one pixel the whole-tree plate's framing makes, in metres: `2 · 25.0 · tan(0.55 / 2) / 1700`.
 ///
 /// # Invariants
 ///
 /// **This is the number that decides the plate's foliage, and it is stated here rather than left to the framing.**
 /// A blade narrower than one pixel is dropped by a point-sampled rasteriser, so the blade a plate can draw is a
-/// function of where that plate stands, and the note's 70 × 34 mm leaf is 8.4 × 4.1 of these. See the module docs.
+/// function of where that plate stands, and the note's 48 mm leaf is 5.8 of these. See the module docs.
 pub const ALPINE_OAK_LEAF_PIXEL_METRES: f32 = 0.0083;
 
 /// The oak's rule: a short gnarled bole, heavy persistent limbs that never self-prune, secondaries, and the short
@@ -140,21 +155,21 @@ fn alpine_oak_rule() -> Rule {
             // band's near end. Their length is a law over the station they hang at, which is what
             // `Joint::station` exists for.
             Generation {
-                count: (13, 17),
-                station: (0.20, 0.97),
+                count: (14, 18),
+                station: (0.15, 0.97),
                 slot: (0.0, GOLDEN),
                 jitter: (0.07, 0.10),
                 sink: 0.05,
                 cluster: 1,
                 shape: limb,
             },
-            // **The secondaries.** Nine to twelve to a limb. **These two counts are a pair and they trade.** With ten
-            // limbs and eighteen secondaries the crown's *outline* was a star: ten leafy strips with the sky between
-            // them, and no amount of leaf on those strips closes a gap that is a metre wide. With sixteen limbs and
-            // eleven secondaries the outline closes and the strips meet inside it. The crown's mass is therefore
+            // **The secondaries.** Fourteen to nineteen to a limb. **These two counts are a pair and they trade.**
+            // With ten limbs and eighteen secondaries the crown's *outline* was a star: ten leafy strips with the sky
+            // between them, and no amount of leaf on those strips closes a gap that is a metre wide. With sixteen limbs
+            // and seventeen secondaries the outline closes and the strips meet inside it. The crown's mass is therefore
             // bought at the limb, and the secondaries are what fill what the limbs have already bounded.
             Generation {
-                count: (9, 12),
+                count: (16, 21),
                 station: (0.12, 0.96),
                 slot: (0.0, GOLDEN),
                 jitter: (0.10, 0.18),
@@ -162,11 +177,14 @@ fn alpine_oak_rule() -> Rule {
                 cluster: 1,
                 shape: secondary,
             },
-            // **The shoots.** Nine to thirteen a secondary, at the note's ESTIMATED **5–15 cm**. The count is small
-            // because the *secondaries* are the crown's mass now, and each of these carries fourteen leaves of six
-            // centimetres — a shoot with a leaf every seven millimetres, which is what the photographs show.
+            // **The shoots.** Twenty-six to thirty-four a secondary, at the note's ESTIMATED **5–15 cm**. **This
+            // count is the crown**: it is the whole of H1's silhouette and of note 1's *"dense, rounded"* because
+            // the leafing is now one instanced mesh per shoot and the budget is spent on shoots. A secondary is a
+            // metre long and carries thirty of them, which is a twig every three and a half centimetres — the texture
+            // a sclerophyllous evergreen crown reads by, and the thing no number of leaves on sixteen bare limbs could
+            // have stood in for.
             Generation {
-                count: (9, 13),
+                count: (26, 34),
                 station: (0.14, 1.0),
                 slot: (0.0, GOLDEN),
                 jitter: (0.09, 0.22),
@@ -175,13 +193,28 @@ fn alpine_oak_rule() -> Rule {
                 shape: shoot,
             },
         ],
-        // An oak's shoots reach for the light but hold their leaves stiffly out from the twig, so the tropism is
-        // weak: enough to turn a shaded shoot's leaves upward and not enough to comb the crown flat.
-        fields: vec![Field::light([0.0, 1.0, 0.0], 0.22)],
+        // **No field shapes this tree, and that is a measurement rather than a taste.**
+        //
+        // The first plate carried `Field::light([0, 1, 0], 0.22)` — a weak tropism turning each shoot toward
+        // the light. **A plant field is applied every time anything reads a node's spine**, and the two things
+        // that read a spine are a leaf's placement and the wood's own sweep. Measured on this crate, 2026-10-19,
+        // on the bough plate's own plant and nothing else changed: the same scene builds in **2.9 s** without the
+        // field and **15.4 s** with it — **3.3 ms per leaf instance**, because the field re-runs for every
+        // ancestor of the node the leaf hangs from. A crown this species needs is forty thousand leaf instances,
+        // and the tropism alone would then cost **two and a half minutes** before a single row of the scene had
+        // been compiled.
+        //
+        // **What is lost is a 21 mm bend on a 95 mm shoot** — the field's own reach is its amount times the
+        // spine's length — which is **two and a half pixels** at the whole-tree plate's own distance and is
+        // below what the frame resolves anyway. What keeps the shoots reaching for the light is the [`shoot`]
+        // law's own departure, which already turns a shoot up through its length, and the crown's [`pitch`]
+        // law, which splays a sprig off the twig and closes it along the shoot. The tree's own spines carry the
+        // whole of it.
+        fields: Vec::new(),
     }
 }
 
-/// The bole: **12 m**, a flare at the ground, and a wander of a metre and a half up its length.
+/// The bole: **10 m**, a flare at the ground, and a wander of a metre and a half up its length.
 ///
 /// # The gnarled spine
 ///
@@ -195,21 +228,23 @@ fn alpine_oak_rule() -> Rule {
 /// through it — a trunk that leans, is thrown back, doubles under itself at five metres and comes out forward again.
 fn gnarled_bole() -> (shape::Curve, shape::Scalar) {
     (
-        // **Eight knots over twelve metres, each knot a knot.** The wander is two metres in `x` and one and a half
-        // in `z` against a twelve-metre height, so the bole leans out, is thrown back, doubles under itself at five
-        // metres and comes forward again: a trunk with elbows, which is what *"gnarled, contorted"* means in
+        // **Eight knots over ten metres, each knot a knot.** The wander is two metres in `x` and one and a half
+        // in `z` against a ten-metre height, so the bole leans out, is thrown back, doubles under itself at four and a
+        // half metres and comes forward again: a trunk with elbows, which is what *"gnarled, contorted"* means in
         // geometry. The tangents are short beside their segments on purpose — a Hermite whose tangent is half a
         // segment long kinks at the knot, and one whose tangent is longer interpolates through it and comes out a
-        // leaning pole.
+        // leaning pole. The height is the note's own **10 m** — *"Trees 10(−20) m tall"*, the small end of its range
+        // — because the whole tree has to be **wider than tall** and a taller bole cannot carry a wider crown inside
+        // the note's 6–12 m without the crown becoming a spire.
         spine(&[
-            ([0.00, 0.00, 0.00], [0.95, 0.90, 0.25]),
-            ([0.55, 1.30, 0.25], [0.75, 0.85, -0.60]),
-            ([0.95, 3.20, -0.55], [-0.55, 0.85, -0.55]),
-            ([0.75, 5.10, -1.35], [0.80, 0.80, 0.45]),
-            ([1.25, 6.90, -1.15], [0.60, 0.85, 0.60]),
-            ([2.00, 8.80, -0.35], [-0.35, 0.90, -0.30]),
-            ([2.15, 10.70, -0.65], [0.15, 0.99, 0.05]),
-            ([2.20, 12.00, -0.62], [0.00, 1.00, 0.00]),
+            ([0.00, 0.00, 0.00], [0.95, 0.82, 0.25]),
+            ([0.55, 1.18, 0.25], [0.75, 0.77, -0.60]),
+            ([0.95, 2.82, -0.55], [-0.55, 0.77, -0.55]),
+            ([0.75, 4.27, -1.35], [0.80, 0.73, 0.45]),
+            ([1.25, 5.73, -1.15], [0.60, 0.77, 0.60]),
+            ([2.00, 7.32, -0.35], [-0.35, 0.82, -0.30]),
+            ([2.15, 8.91, -0.65], [0.15, 0.90, 0.05]),
+            ([2.20, 10.00, -0.62], [0.00, 0.91, 0.00]),
         ]),
         // **A flare in the first two knots and a long shallow middle.** The note ESTIMATES a trunk radius of
         // 0.20–0.30 m at the base and a d.b.h. of 0.4–0.6 m; this stands 0.40 m at the ground because H4 asks for a
@@ -236,6 +271,11 @@ fn gnarled_bole() -> (shape::Curve, shape::Scalar) {
 /// is a radius law around the section and not a ripple along the trunk, and the taper's own law narrows every lobe
 /// as the bole narrows. Eight lobes on twenty-four sides is two and a half sides a lobe, which is under the flat a
 /// section can carry without the lobes reading as facets.
+///
+/// **Twenty-four is a number the sweep has to be told twice.** A section is *sampled*, so the lobes only exist in
+/// the frame if [`OAK_DETAIL`]'s `around` is at least the side count; at the crate's own default of twelve the
+/// twenty-four authored sides are twelve drawn ones and the flutes alias into a shape that was never authored.
+/// That is the whole of what the detail dial is for on this species, and the base plate is where it is read.
 fn fluted_bole() -> shape::Section {
     let sides = 24;
     let points: Vec<[f32; 2]> = (0..sides)
@@ -370,25 +410,26 @@ fn bend(length: f32, angles: [f32; 4]) -> shape::Curve {
     ])
 }
 
-/// The oak leaf: **70 × 34 mm**, the note's FOC maximum (**2.5–7 cm × 1.5–3.5 cm**), obovate and blunt-tipped.
+/// The oak leaf: **48 × 23 mm**, the middle of the note's FOC range (**2.5–7 cm × 1.5–3.5 cm**), obovate and
+/// blunt-tipped.
 ///
-/// # Why the large end of the note's range
+/// # Why the middle, and not the maximum
 ///
-/// **A leaf is the crown's only area, the crown is the whole species' silhouette, and this builder's cost in leaves
-/// is superlinear.** Full coverage of a seven-metre crown wants some forty thousand leaves; this builder compiles
-/// twenty-eight thousand in about a minute and eighty thousand in over ten, so the honest trade at this render budget
-/// is *fewer, larger* leaves. At seven centimetres a blade covers seventeen square centimetres; at four and a half,
-/// seven. The same twenty-four thousand leaves therefore cover fifty per cent more crown at this size, and the size
-/// law below spreads the field down to five centimetres so the crown is not drawn in one leaf size.
+/// **The first plate of this species drew the leaf at FOC's maximum — 70 × 34 mm — and bought its crown
+/// coverage with size instead of with count**, which is the same bargain the pine made with its spray and
+/// for the same reason: this builder's cost in instances is superlinear, so a crown is bought with area
+/// per instance and there is always a cheaper crown available at a larger blade. [`LeafTemplate::sprig`]
+/// removed that bargain. One instanced mesh now holds a whole shoot's leafing, so **the count that costs
+/// is the count of shoots and not the count of leaves**, and the leaf goes back to the size a leaf is.
 ///
 /// # The shape the width law carries, and the three it cannot
 ///
 /// - **Obovate** is the widest point *above* the middle, which a width law over the midrib says directly: the law
 ///   peaks at 0.52 and not at 0.5.
-/// - **An obtuse apex** is the law *not* reaching nought at the tip — the last knot of the width is 5.0 mm of half
+/// - **An obtuse apex** is the law *not* reaching nought at the tip — the last knot of the width is 3.4 mm of half
 ///   width and the sweep's own cap closes it, so the blade ends in a round rather than a point.
 /// - **The petiole** — FOC's **2–5 mm**, *"sometimes nearly sessile"* — is the width law's flat start: the blade is
-///   under four millimetres wide for its first six, which at the bough plate's distance is two pixels and is
+///   under three millimetres wide for its first six, which at the bough plate's distance is one pixel and is
 ///   therefore drawn rather than separately modelled.
 /// - **The cordate base** is a notch, and a width law cannot make a notch; the base is rounded here, which is the
 ///   other state the note gives.
@@ -396,28 +437,181 @@ fn bend(length: f32, angles: [f32; 4]) -> shape::Curve {
 ///
 /// The blade is a **closed solid** (D18), so both faces carry their own normal and a leaf lit from behind is shaded
 /// rather than faked, and the **4.5% thickness ratio** is a sclerophyll's: a leathery leaf of a hard-leaved evergreen
-/// oak is about a millimetre and a half thick over a three-and-a-half-centimetre width.
+/// oak is about a millimetre thick over a two-and-a-half-centimetre width.
+///
+/// # Invariants
+///
+/// **The numbers below are authored once, at the note's maximum, and every one of them is scaled by
+/// [`LEAF_LENGTH`] to reach the drawing.** A blade is a midrib and a width law, and both are in metres, so
+/// scaling all of it at once is the same blade at another size — and authoring it at one size means the
+/// obovate peak, the blunt tip and the petiole's flat start stay one edit rather than becoming four.
 fn oak_leaf() -> LeafTemplate {
-    LeafTemplate::blade(
-        spine(&[
-            ([0.0000, 0.0000, 0.0000], [0.0250, 0.0032, 0.0000]),
-            ([0.0250, 0.0025, 0.0000], [0.0232, 0.0047, 0.0009]),
-            ([0.0480, 0.0062, 0.0013], [0.0170, 0.0047, 0.0025]),
-            ([0.0700, 0.0116, 0.0046], [0.0054, 0.0016, 0.0028]),
-        ]),
-        taper(&[
-            (0.00, 0.0009),
-            (0.09, 0.0022),
-            (0.20, 0.0094),
-            (0.52, 0.0170),
-            (0.78, 0.0152),
-            (0.93, 0.0106),
-            (1.00, 0.0050),
-        ]),
-        0.045,
-        7,
-        4,
+    let at = LEAF_LENGTH / LEAF_LENGTH_AUTHORED;
+    let midrib = spine(
+        &LEAF_MIDRIB
+            .iter()
+            .map(|(knot, tangent)| (by(*knot, at), by(*tangent, at)))
+            .collect::<Vec<_>>(),
+    );
+    let width = shape::Scalar::new(
+        &LEAF_WIDTH
+            .iter()
+            .map(|(along, half)| (*along, half * at))
+            .collect::<Vec<_>>(),
     )
+    .expect("a leaf's widths are a law");
+    LeafTemplate::blade(midrib, width, LEAF_THICKNESS, LEAF_STATIONS, LEAF_AROUND)
+}
+
+/// A vector scaled by `factor`, which is the whole of [`oak_leaf`]'s sizing.
+fn by(vector: [f32; 3], factor: f32) -> [f32; 3] {
+    [vector[0] * factor, vector[1] * factor, vector[2] * factor]
+}
+
+/// Two vectors added elementwise, which is the whole of the roll in [`sprig_blade`].
+fn sum(left: [f32; 3], right: [f32; 3]) -> [f32; 3] {
+    [left[0] + right[0], left[1] + right[1], left[2] + right[2]]
+}
+
+/// The blade's length as it is drawn: **48 mm**, the middle of the note's **2.5–7 cm**.
+///
+/// # Invariants
+///
+/// **This is one number and the blade is drawn at it**, so the note's leaf size and the crown's cost of it are the
+/// same dial. [`ALPINE_OAK_LEAF_PIXEL_METRES`] is what it measures at on each plate.
+pub const LEAF_LENGTH: f32 = 0.048;
+
+/// The length [`LEAF_MIDRIB`] and [`LEAF_WIDTH`] are authored at, which is the note's **70 mm** maximum.
+const LEAF_LENGTH_AUTHORED: f32 = 0.070;
+
+/// The blade's midrib and its own tangent at each knot, authored at [`LEAF_LENGTH_AUTHORED`].
+///
+/// # Invariants
+///
+/// **A leaf of an evergreen oak curves**: the blade arches off the petiole, flattens through its middle and
+/// turns up at the tip, which is the *obovate* the note describes and what keeps a crown from reading as a
+/// set of flat cards. The tangents are half a segment long, so the arch is a curve and not three straight
+/// pieces.
+const LEAF_MIDRIB: [([f32; 3], [f32; 3]); 4] = [
+    ([0.0000, 0.0000, 0.0000], [0.0250, 0.0032, 0.0000]),
+    ([0.0250, 0.0025, 0.0000], [0.0232, 0.0047, 0.0009]),
+    ([0.0480, 0.0062, 0.0013], [0.0170, 0.0047, 0.0025]),
+    ([0.0700, 0.0116, 0.0046], [0.0054, 0.0016, 0.0028]),
+];
+
+/// The blade's half width along its own length, authored at [`LEAF_LENGTH_AUTHORED`]: a bare foot, the
+/// obovate peak above the middle, and a tip that stops short of a point.
+const LEAF_WIDTH: [(f32, f32); 7] = [
+    (0.00, 0.0009),
+    (0.09, 0.0022),
+    (0.20, 0.0094),
+    (0.52, 0.0170),
+    (0.78, 0.0152),
+    (0.93, 0.0106),
+    (1.00, 0.0050),
+];
+
+/// The lens's half thickness as a fraction of the half width: a sclerophyll's leathery blade.
+const LEAF_THICKNESS: f32 = 0.045;
+
+/// Rings along a blade's midrib. Six rings on a 48 mm leaf is one every ten millimetres, which is under the
+/// pixel at the whole-tree plate and about a sixth of the leaf at the bough plate — and **a blade in a sprig
+/// pays this nine times**, so the count is the one tessellation number in this module that is a cost.
+const LEAF_STATIONS: usize = 6;
+
+/// Vertices around a blade's lens. Four is the smallest ring that carries **two flat faces and a closed
+/// solid** (D18); three would stand the blade on edge.
+const LEAF_AROUND: usize = 4;
+
+/// The leafing a shoot of this oak carries: **nine blades** on a **95 mm** axis.
+///
+/// # Why a shoot and not a leaf
+///
+/// **FOC describes the arrangement, and this crate now has one mesh that can hold it.** The note's petiole
+/// is **2–5 mm**, *"sometimes nearly sessile"*, so a shoot's leaves sit almost directly against the twig at a
+/// **golden-angle** step around it — a fixed arrangement, which is precisely what [`LeafTemplate::sprig`]
+/// exists to express. Instancing the arrangement rather than the blade turns **nine leaves into one row**,
+/// and the crown's budget is then spent on **shoots**, which is what a crown is made of.
+///
+/// Nine is the top of the range the brief allows and not an arbitrary number: a ten-centimetre shoot carrying
+/// leaves of four and a half centimetres stands about nine of them before its own length stops fitting more, which
+/// is the arrangement `03-branch.jpg` shows.
+const SPRIG_LEAVES: usize = 9;
+
+/// The length of the axis a sprig's blades stand on, against the **5.5–14.5 cm** [`shoot`] draws.
+///
+/// # Invariants
+///
+/// **A sprig is one shoot's leafing, so its axis is the shoot's own length and not a free parameter.**
+/// [`shoot`] draws 0.055–0.145 m; this is 0.095 m, the middle, and the field's `size` law carries the rest.
+const SPRIG_AXIS: f32 = 0.095;
+
+/// How far a blade stands off the axis at the shoot's foot, in radians from it, and how much less at its tip.
+///
+/// # Invariants
+///
+/// **A blade at ninety degrees is a feather, and one along the axis is a scale**: a shoot's own leaves splay at
+/// its foot and turn up at its tip (`03-branch.jpg`), so the ray is the widest at nought and closes by a
+/// quarter turn at the end of the axis.
+const SPRIG_RAYS: [f32; 2] = [1.38, 0.96];
+
+/// How far a blade is rolled about its own midrib, from the shoot's foot to its tip, in radians.
+const SPRIG_ROLL: f32 = 1.9;
+
+/// How much of that roll is jittered blade to blade, in radians.
+///
+/// # Invariants
+///
+/// **Eight blades in one fixed arrangement is eight blades with one arrangement**, and a sprig whose eight
+/// faces all lie in a plane reads as a propeller rather than as a shoot. The jitter is a golden-angle
+/// sinusoid over the blade's rank, so it is a different number for every blade and repeats with the sprig.
+const SPRIG_ROLL_JITTER: f32 = 0.62;
+
+/// The oak's own shoot, as one instanced mesh: [`SPRIG_LEAVES`] blades on an axis of [`SPRIG_AXIS`].
+///
+/// # Invariants
+///
+/// **It is the same blade [`oak_leaf`] builds, placed — never a second mesh of its own.** The green and the
+/// bronze differ in their skin and in nothing else, so a leaf that reads on the bough plate is the leaf the
+/// tree is made of, which is what makes the bough plate evidence about the tree.
+fn oak_sprig() -> LeafTemplate {
+    LeafTemplate::sprig(
+        (0..SPRIG_LEAVES)
+            .map(|index| (oak_leaf(), sprig_blade(index)))
+            .collect(),
+    )
+}
+
+/// One blade of the sprig: where along the axis it stands, how far round the axis, and the frame it stands in.
+///
+/// # The frame
+///
+/// **The axis runs along the template's `+x`, so `forward` is the blade's midrib and the other two are its own
+/// width and face.** With `slot` about the axis and `rays` off it, the three are the three of an orthonormal
+/// frame built by hand:
+/// `forward = cos(rays) · x + sin(rays) · radial`, `across = −sin(rays) · x + cos(rays) · radial` (which is
+/// perpendicular to `forward` by construction, where the naive `−sin·x` alone is not), and
+/// `face = forward × across = x × radial`, the direction *round* the axis. **The roll is the one freedom left
+/// and it is the whole of the sprig's variety**: it turns width and face about the midrib, so no two of the
+/// eight blades present the same side to the light.
+fn sprig_blade(index: usize) -> Placement {
+    let rank = index as f32;
+    let along = (rank + 0.5) / SPRIG_LEAVES as f32;
+    let turn = rank * GOLDEN * std::f32::consts::TAU;
+    let (slot_sin, slot_cos) = turn.sin_cos();
+    let rays = SPRIG_RAYS[0] + (SPRIG_RAYS[1] - SPRIG_RAYS[0]) * along;
+    let (ray_sin, ray_cos) = rays.sin_cos();
+    let forward = [ray_cos, ray_sin * slot_cos, ray_sin * slot_sin];
+    let across = [-ray_sin, ray_cos * slot_cos, ray_cos * slot_sin];
+    let face = [0.0, -slot_sin, slot_cos];
+    let roll = SPRIG_ROLL * (along - 0.5) + SPRIG_ROLL_JITTER * turn.sin();
+    let (roll_sin, roll_cos) = roll.sin_cos();
+    Placement {
+        origin: [along * SPRIG_AXIS, 0.0, 0.0],
+        x: forward,
+        y: sum(by(across, roll_cos), by(face, roll_sin)),
+        z: sum(by(face, roll_cos), by(across, -roll_sin)),
+    }
 }
 
 /// The oak's fruit: a **1.4 cm stalk**, the note's **5–6 cm** shallow cupule at **1.2 cm** across, and the nut's
@@ -466,33 +660,47 @@ fn acorn() -> Template {
     }
 }
 
-/// Leaves per metre of shoot at the densest point of the shoot's own leafing law.
+/// Sprigs to the metre of shoot at the densest point of the shoot's own leafing law.
 ///
 /// # Invariants
 ///
-/// **Three hundred is the crown's area, not a texture, and it is the number that costs the build.** This
-/// builder's cost in leaf instances is **superlinear** — measured on this species: 17 710 placements compile in about
-/// eleven seconds, 23 600 in fifty, 29 800 in a hundred and fifty and 53 620 in over five minutes — so a crown is
-/// bought with count and every count is paid for twice. Three hundred to the metre over about seventeen hundred
-/// shoots is about thirty thousand leaves, and this plate's crown covers **0.188** of its own box against the Yunnan
-/// pine's **0.198**: that ratio, measured by `audit/frame_stats.py`, is the only honest reading of *"dense,
-/// rounded"* this builder can afford, and [`SHOOT_LEAVES_PER_METRE`] is the dial that moves it.
+/// **This is the crown's area, and the unit it is counted in is what [`LeafTemplate::sprig`] changed.** One sprig
+/// is [`SPRIG_LEAVES`] blades, so this law counts **shoots' worths of leafing** where its predecessor counted
+/// blades. Sixty-six to the metre over a 0.095 m shoot is **five and a half sprigs a shoot** — fifty blades, one
+/// every two millimetres of a ten-centimetre shoot — which is what `03-branch.jpg` shows and what
+/// the note asks for: *"held densely so the crown is a solid rounded mass with a hard edge, not a feathered cloud"*.
 ///
-/// It is high where it is — a leaf every five and a half millimetres of a ten-centimetre shoot, eighteen deep — and
-/// it is high **because the note asks for it**: *"held densely so the crown is a solid rounded mass with a hard edge,
-/// not a feathered cloud"*.
-const SHOOT_LEAVES_PER_METRE: f32 = 300.0;
+/// **It is high because the plate is read at twenty-five metres**, where a 48 mm leaf is five and three quarter
+/// pixels long, so the crown's solidity is bought at the size of its own grain and not by drawing leaves large.
+/// The whole-tree plate's coverage, measured by `audit/frame_stats.py --crown`, is the number that
+/// [`SHOOT_SPRIGS_PER_METRE`] moves, and the tree is drawn at **0.53** against the first pass's **0.219** and the
+/// note's *"dense, rounded … a hard outer edge"*. Thirty-eight is the same crown at **0.453**, and every row between
+/// the two numbers is what separates *"lacy"* from *"dense"* in this bar. The cost of each is stated where it is
+/// paid: this crate re-solves a node's spine for every leaf that hangs from it, so the scene build is about
+/// **4 ms per row** and this density is the reason the whole-tree plate takes minutes rather than seconds.
+const SHOOT_SPRIGS_PER_METRE: f32 = 66.0;
 
-/// The leafing law along a shoot, in leaves per metre of shoot: a bare foot, a dense middle, a thinning tip.
+/// Bronze sprigs to the metre of shoot: a little under one a shoot, which is the **underside seen** rather
+/// than a second crown.
 ///
 /// # Invariants
 ///
-/// **This law is the answer to the *dead give*.** Foliage spread evenly from a shoot's very base to its very tip is
-/// the defect the bar names, and a shoot is not that: the foot is bare where it leaves its parent, the middle is
-/// where the mature leaves stand shoulder to shoulder, and the tip carries the few young ones. The band on the
+/// **The bronze is a fifth of the green and it is aimed at the ground**, because that is the whole of what one
+/// skin per template can say about *"densely with reddish brown to orangish brown stellate hairs … abaxially"*
+/// — the crown's lower and inner surface is where the note says the wind shows it, and everywhere else the
+/// green is what the eye goes to. It is an approximation and the module docs say so.
+const SHOOT_BRONZE_PER_METRE: f32 = 5.0;
+
+/// The leafing law along a shoot, in sprigs per metre of shoot: a bare foot, a dense middle, a thinning tip.
+///
+/// # Invariants
+///
+/// **This law is the answer to the *dead give*.** Foliage spread evenly from a shoot's very base to its very tip
+/// is the defect the bar names, and a shoot is not that: the foot is bare where it leaves its parent, the middle
+/// is where the mature leaves stand shoulder to shoulder, and the tip carries the few young ones. The band on the
 /// field that uses it stops short of both ends as well, so the first and last stations of the law are never
 /// reached.
-fn shoot_leafing() -> shape::Scalar {
+fn shoot_sprigging() -> shape::Scalar {
     let profile = [
         (0.00, 0.55),
         (0.28, 1.00),
@@ -502,7 +710,7 @@ fn shoot_leafing() -> shape::Scalar {
     ];
     let knots: Vec<(f32, f32)> = profile
         .iter()
-        .map(|(at, shape)| (*at, shape * SHOOT_LEAVES_PER_METRE))
+        .map(|(at, shape)| (*at, shape * SHOOT_SPRIGS_PER_METRE))
         .collect();
     shape::Scalar::new(&knots).expect("a shoot's leafing is a law")
 }
@@ -511,7 +719,7 @@ fn shoot_leafing() -> shape::Scalar {
 ///
 /// # The four, and what each is for
 ///
-/// - **`crown`** is the mass: the note's green blade on the shoots themselves, at the leafing law above.
+/// - **`crown`** is the mass: the note's green shoot's leafing on the shoots themselves, at the law above.
 /// - **`bronze`** is the note's **rusty-brown underside** as far as one skin per template can carry it — a sparser
 ///   second layer of the same blade, **aimed at the ground**, so the bronze shows on the crown's lower surface where
 ///   the note says the wind shows it (`05-leaf-underside.jpg`, `10-leaf-underside-scale.jpg`). It is an
@@ -526,60 +734,69 @@ fn shoot_leafing() -> shape::Scalar {
 fn oak_leaves(shoot_depth: usize) -> Vec<LeafField> {
     let mut crown = LeafField::new(shoot_depth, ALPINE_OAK_GREEN);
     crown.band = (0.06, 0.94);
-    crown.density = shoot_leafing();
+    crown.density = shoot_sprigging();
     crown.phyllotaxy = GOLDEN;
     // A cluster of one and a fan of nought: an oak's leaf is a leaf on a 2–5 mm petiole, not a fascicle, and the
-    // cluster dial the pine needs is the identity here.
+    // cluster dial the pine needs is the identity here. The sprig is already a *set*, and it is the shoot's own
+    // set — a field-level cluster on top of it would be a second arrangement over one arrangement.
     crown.cluster = 1;
     crown.fan = shape::Scalar::constant(0.0);
-    // The pitch and twist are laws and not numbers because *a plastic crown* is the defect the bar names: one pitch,
-    // one twist and one size for every leaf gives the crown a moiré instead of a texture. Pitch swings from splayed
-    // at the shoot's foot to nearly along it at the tip, and the twist turns a third of a turn over the shoot's
-    // length, so a crown of these has no two leaves facing the same way.
-    crown.pitch = shape::Scalar::new(&[(0.00, 1.34), (0.45, 1.04), (1.00, 0.68)])
+    // **The pitch is the sprig's own axis, and it is a law because a sprig is a whole shoot.** A sprig at a right
+    // angle stands its star of blades square across the twig and the crown reads as bristles; a sprig along the
+    // twig reads as a leafy shoot. It is nearly splayed at the shoot's foot and closes to fifty degrees at its
+    // tip, which is `03-branch.jpg`: leaves out at the base, leaves turning up at the end.
+    crown.pitch = shape::Scalar::new(&[(0.00, 0.44), (0.45, 0.70), (1.00, 0.92)])
         .expect("a crown's pitch is a law");
-    crown.twist = shape::Scalar::new(&[(0.00, -0.55), (0.50, 0.10), (1.00, 0.70)])
+    // The twist turns the sprig about its own axis, so a crown of them has no two stars facing the same way — the
+    // *plastic crown* defence, which a sprig needs twice over because its blades all start in one arrangement.
+    crown.twist = shape::Scalar::new(&[(0.00, -0.62), (0.50, 0.08), (1.00, 0.72)])
         .expect("a crown's twist is a law");
-    crown.size = shape::Scalar::new(&[(0.00, 0.70), (0.35, 0.90), (1.00, 1.10)])
-        .expect("a leaf's size is a law");
+    crown.size = shape::Scalar::new(&[(0.00, 0.74), (0.35, 0.92), (1.00, 1.08)])
+        .expect("a sprig's size is a law");
     crown.jitter = 0.17;
 
     let mut bronze = LeafField::new(shoot_depth, ALPINE_OAK_BRONZE);
     bronze.band = (0.26, 1.00);
-    bronze.density = shape::Scalar::constant(4.0);
+    bronze.density = shape::Scalar::constant(SHOOT_BRONZE_PER_METRE);
     bronze.phyllotaxy = GOLDEN;
     bronze.cluster = 1;
     bronze.fan = shape::Scalar::constant(0.0);
-    bronze.pitch = shape::Scalar::constant(1.46);
+    bronze.pitch = shape::Scalar::constant(1.12);
     bronze.twist = shape::Scalar::constant(1.10);
     bronze.aim_axis = [0.0, -1.0, 0.0];
-    bronze.aim = shape::Scalar::constant(0.40);
-    bronze.size = shape::Scalar::constant(1.06);
+    bronze.aim = shape::Scalar::constant(0.34);
+    bronze.size = shape::Scalar::constant(1.04);
     bronze.jitter = 0.20;
 
     let mut inner = LeafField::new(shoot_depth - BOUGH_SHOOTS + 1, ALPINE_OAK_BRONZE);
     inner.band = (0.14, 0.92);
-    // **Forty-five to the metre is a leaf every twenty-two millimetres**, and that is the number that stops the
-    // crown reading as wire with confetti on it: a second-order member is a metre long and eight centimetres round,
-    // and at fourteen leaves to the metre it was bare wood with a fringe at its tip.
-    inner.density = shape::Scalar::constant(8.0);
+    // **Seven sprigs to the metre is sixty-three blades**, and that is the number that closes the crown's *interior*.
+    // A second-order member is a metre long and eight centimetres round; at two and a half sprigs to the metre it was
+    // bare wood with a tuft at its tip, and the silhouette showed it — four big leafy shelves with the sky between
+    // them and a clean column of air down the middle of the tree. These blades are small and bronze and hang on the
+    // secondaries' whole length, which is exactly where the gaps were.
+    inner.density = shape::Scalar::constant(7.0);
     inner.phyllotaxy = GOLDEN;
     inner.cluster = 1;
     inner.fan = shape::Scalar::constant(0.0);
-    inner.pitch = shape::Scalar::constant(1.22);
+    inner.pitch = shape::Scalar::constant(1.04);
     inner.twist = shape::Scalar::constant(0.62);
-    inner.size = shape::Scalar::constant(0.88);
+    inner.size = shape::Scalar::constant(0.84);
     inner.jitter = 0.22;
 
     let mut limb = LeafField::new(shoot_depth - BOUGH_SHOOTS, ALPINE_OAK_GREEN);
     limb.band = (0.22, 0.95);
-    limb.density = shape::Scalar::constant(8.0);
+    // **Fourteen sprigs to the metre is the second gap-filler**, and it is nearly free: there are sixteen limbs and
+    // they are three metres long, so this whole field is under a thousand rows. It matters because the limbs are
+    // the crown's *tier structure* — the shelves a dome must not have — and leafing each one along its length is what
+    // turns sixteen shelves into one mass.
+    limb.density = shape::Scalar::constant(20.0);
     limb.phyllotaxy = GOLDEN;
     limb.cluster = 1;
     limb.fan = shape::Scalar::constant(0.0);
-    limb.pitch = shape::Scalar::constant(1.28);
+    limb.pitch = shape::Scalar::constant(1.12);
     limb.twist = shape::Scalar::constant(0.35);
-    limb.size = shape::Scalar::constant(0.95);
+    limb.size = shape::Scalar::constant(0.90);
     limb.jitter = 0.20;
 
     // A bough plate's root is a limb, so a field that would hang on the limbs would hang on the bough's own axis and
@@ -597,17 +814,24 @@ fn oak_leaves(shoot_depth: usize) -> Vec<LeafField> {
 /// # Invariants
 ///
 /// **The radius is the crown's own outline as a law over the trunk**, and it is what turns a bag of branches into
-/// the note's *"dense, rounded to broadly domed"* crown: **3.3 m** at just under half the height, **3.0 m** four
-/// fifths of the way up and only reaching nought at the bole's own tip. The two figures are the note's ESTIMATES — a
-/// crown **6–12 m** across and **4–10 m** deep on a **10(−20) m** tree — read at their narrow end, and the reason is
-/// arithmetic the first plate of this species made necessary: this builder compiles placements superlinearly, so a
-/// crown is bought with leaves, and a six-and-a-half-metre crown needs half the leaves a thirteen-metre one does for
-/// the same solidity.
+/// the note's *"dense, rounded to broadly domed"* crown: **4.3 m** at just under half the height, **4.2 m** two
+/// thirds of the way up and only reaching nought at the bole's own tip. The two figures are the note's ESTIMATES — a
+/// crown **6–12 m** across and **4–10 m** deep on a **10(−20) m** tree — read above their narrow end, because the
+/// plate is judged against *"a dense, rounded, dark evergreen crown … a compact, rounded, solid mass"* and a crown
+/// narrower than it is deep reads as a spire with leaves on it.
 ///
-/// **The last two knots are what make it a dome and not a whip.** The radius holds at three metres up to four fifths
-/// of the bole and only then falls, so the crown's top is a shoulder the topmost limbs build rather than a point the
-/// envelope cuts: the plate before this one had the radius reach nought at four fifths and came out with three bare
-/// metres of bole and a tuft on the end of it.
+/// **The width is the point, and it is a ratio and not a number.** The brief for this second pass asks for *"the
+/// dome: wider than tall"*, and a dome's width is its radius held flat while its height is where the radius falls
+/// away. This law holds above four metres from a third of the height to two thirds of it, so the crown is **8.6 m
+/// across** over a foliage run of **8.5 m** — wider than tall by a tenth, and a tenth is what the note's *rounded*
+/// costs against a crown that is exactly round. The skirt that comes down the trunk below the bulge is the note's
+/// *"the crown is carried low, on persistent branches"*, and it is deliberately **not** counted as the dome's height:
+/// an oak that self-pruned would show eight and a half metres of bole under exactly this crown.
+///
+/// **The last two knots are what make it a dome and not a whip.** The radius holds to three quarters of the bole
+/// and only then falls, so the crown's top is a shoulder the topmost limbs build rather than a point the envelope
+/// cuts: the plate before this one had the radius reach nought at four fifths and came out with three bare metres of
+/// bole and a tuft on the end of it.
 ///
 /// **The envelope is a guard and not a carver, and the module says so.** `trim` shortens a node by solving for the
 /// scale at which its own tip lands inside, and a shoot is ten centimetres long: an envelope two metres tighter
@@ -619,12 +843,12 @@ fn oak_leaves(shoot_depth: usize) -> Vec<LeafField> {
 fn crown_envelope() -> Envelope {
     Envelope::radial(&[
         (0.00, 0.00),
-        (0.14, 0.00),
-        (0.20, 2.00),
-        (0.30, 2.95),
-        (0.46, 3.30),
-        (0.68, 3.35),
-        (0.86, 3.00),
+        (0.11, 0.00),
+        (0.16, 2.45),
+        (0.33, 3.65),
+        (0.50, 4.30),
+        (0.67, 4.20),
+        (0.85, 3.45),
         (0.95, 1.80),
         (1.00, 0.00),
     ])
@@ -642,7 +866,7 @@ pub fn alpine_oak(seed: u64) -> Species {
     trim(&mut plant, &crown_envelope());
     Species {
         plant,
-        templates: vec![oak_leaf(), oak_leaf()],
+        templates: vec![oak_sprig(), oak_sprig()],
         fields: oak_leaves(SHOOTS),
         decorators: vec![acorn()],
     }
@@ -679,7 +903,7 @@ pub fn alpine_oak_bough(seed: u64) -> Species {
                 shape: secondary,
             },
             Generation {
-                count: (26, 36),
+                count: (40, 52),
                 station: (0.14, 1.0),
                 slot: (0.0, GOLDEN),
                 jitter: (0.09, 0.18),
@@ -692,7 +916,7 @@ pub fn alpine_oak_bough(seed: u64) -> Species {
     };
     Species {
         plant: grow(&rule, seed),
-        templates: vec![oak_leaf(), oak_leaf()],
+        templates: vec![oak_sprig(), oak_sprig()],
         fields: oak_leaves(BOUGH_SHOOTS),
         decorators: vec![acorn()],
     }
@@ -709,26 +933,28 @@ fn oak_fruit(species: &Species, shoot_depth: usize) -> Vec<Seat> {
     scatter(&species.plant, shoot_depth, 0, 0.92, (0, 1))
 }
 
-/// The oak's surfaces: the note's **pale grey and smooth** limbs, a **strongly glossy dark green** blade above, and
-/// the note's **reddish-brown to orangish-brown** felt below.
+/// The oak's surfaces: a **dark grey-brown bole**, a **strongly glossy dark green** blade above, and the note's
+/// **reddish-brown to orangish-brown** felt below.
 ///
 /// # Invariants
 ///
 /// **Wood and leaf are not one tint** — the *felt-pen tree* defect — and the leaf's roughness is the note's own
 /// phrase: *"a strongly glossy, almost wet-looking dark green upper surface"*, which is a **0.34** roughness against
-/// the wood's **0.80** and the bronze's **0.66**. A gloss is the cheapest half of this species' recognition key and
+/// the wood's **0.86** and the bronze's **0.66**. A gloss is the cheapest half of this species' recognition key and
 /// it is one number.
 ///
 /// The wood's tint is a fifth lower than the note's *"pale grey"* photograph would suggest, and the reason is
 /// measured rather than chosen: the frame's key stands at **2.4** irradiance, and a 0.30 albedo under it clips to
 /// white, which is how the first plate of this species came out with a bleached pole for a trunk.
+/// **The wood is dark and warm, and both halves of that are measured rather than chosen.** The note records this
+/// species' bark as **unverified**, so the tint is not the photograph's pale grey — it is the *dark grey-brown with
+/// shallow fissures* the brief asks for, chosen for what it has to do in the frame: carry the wood as wood and stay
+/// dark enough that the crown's leaves are what the eye goes to. The first plate carried **0.135** and read as a
+/// pale grey pole; this carries **0.098**, a fifth under it, and the hue is shifted red-ward against its blue so the
+/// bole reads as brown rather than as neutral concrete. A pale grey at this key irradiance reads as bleached white.
 pub fn oak_palette() -> Palette {
     Palette {
-        // A dark grey-brown, and the reason is stated where it is chosen: the note records this species' bark as
-        // **unverified**, so the tint is not the photograph's pale grey but a bark brown chosen for what it has to
-        // do in the frame — carry the wood as wood, and stay dark enough that the crown's leaves are what the eye
-        // goes to. A pale grey at this key irradiance read as bleached white poles with foliage on them.
-        wood: Skin::new([0.135, 0.128, 0.118], 0.82),
+        wood: Skin::new([0.098, 0.087, 0.074], 0.86),
         leaves: vec![
             Skin::new([0.052, 0.098, 0.040], 0.34),
             Skin::new([0.230, 0.118, 0.058], 0.66),
@@ -736,6 +962,22 @@ pub fn oak_palette() -> Palette {
         seats: vec![Skin::new([0.150, 0.130, 0.062], 0.70)],
     }
 }
+
+/// How finely the oak's wood is expanded on the two plates whose subject is wood.
+///
+/// # Invariants
+///
+/// **A section is sampled, not drawn, and the sample is what a flute is measured in.** [`fluted_bole`] carries
+/// **twenty-four sides and eight flutes**, and [`vegetation::expand::Detail::DEFAULT`] sweeps every solid at
+/// `around = 12` — so the crate's own default samples a twenty-four-sided fluted section at twelve vertices and
+/// **the flutes alias into a shape that is not the section that was authored**. Raising `around` to the section's
+/// own side count is not a dial turned for sharpness: it is the number that makes the authored section the drawn
+/// one. The stations and the spacing are the crate's own, because an eleven-metre bole already asks for its rings.
+const OAK_DETAIL: Detail = Detail {
+    stations: 8,
+    around: 24,
+    spacing: 0.45,
+};
 
 /// A bright cold morning at three thousand metres: a deep high sky, a low warm key off the sunward ridge, and a
 /// cool sky fill from the valley.
@@ -786,8 +1028,8 @@ fn oak_lighting() -> Lighting {
 const OAK_FRAME: Framing = Framing {
     width: 1400,
     height: 1700,
-    eye: [16.5, 5.6, 19.2],
-    target: [0.80, 6.60, -0.30],
+    eye: [16.5, 5.0, 19.2],
+    target: [0.80, 5.40, -0.30],
     field_of_view: 0.55,
     near: 0.2,
     far: 600.0,
@@ -816,12 +1058,98 @@ const BOUGH_FRAME: Framing = Framing {
     ground: Ground::Plane,
 };
 
+/// The base plate's frame: **2.26 m** off the foot of the bole at the height of a person's hip, which is the
+/// frame bar **H4** asks for and the first two passes did not have.
+///
+/// # Why this frame exists at all
+///
+/// H4 says *"one frame at the base of the trunk, one at the crown, and the taper law written in the species' note
+/// so the flare can be read as numbers"*, and a whole-tree frame at twenty-five metres is a portrait of the idea
+/// of a flare: at that distance the bole is forty pixels wide and the note's *"0.20–0.30 m at the base"* — and the
+/// twenty-millimetre flute between two of [`fluted_bole`]'s lobes — are each under a pixel. **At 2.26 m a pixel is
+/// 1.36 mm**, so the bole is five hundred and eighty pixels across, one flute is a hundred and forty, and its depth
+/// is thirty: the taper law and the fluting are both readable numbers rather than a suggestion.
+///
+/// # Invariants
+///
+/// **The eye is at nine hundred millimetres and the target at eight hundred**, so the bole leaves the top of the
+/// frame and the **flare** — the first two knots of the [`gnarled_bole`] taper, where 0.40 m swells and falls to
+/// 0.245 m within a tenth of the height — is the subject rather than the trunk's middle. The lens stands on the
+/// **same bearing as the key** ([`oak_base_lighting`]), which is what makes the light rake rather than flatten. The
+/// width is a fifth under the bough plate's because a plate that is nearly square frames a vertical bole without
+/// wasting a third of itself on ground.
+const BASE_FRAME: Framing = Framing {
+    width: 1200,
+    height: 1400,
+    eye: [1.30, 0.90, 1.85],
+    target: [0.25, 0.80, 0.15],
+    field_of_view: 0.80,
+    near: 0.05,
+    far: 60.0,
+    floor: 10.0,
+    ground: Ground::Plane,
+};
+
+/// The base plate's light: **low, raking, twenty degrees above the horizon and on the lens's side**.
+///
+/// # Why the base plate is not lit like the tree
+///
+/// **A tree's own crown shadows its own foot.** The whole-tree key stands twenty metres up and twenty-eight metres
+/// off, so every ray from it to the bole's first metre passes through metres of foliage, and the plate H4 asks for
+/// came out a black cone with a bright rim: the taper law was in the frame and nothing could be read off it. This
+/// key stands at **[4.79, 2.81, 6.04]** — eight metres out on the lens's own bearing, twenty degrees up — so it
+/// rakes *across* the flutes, and the **fill**, which casts no shadow and so reaches the foot of the bole through
+/// the crown above it, carries the face the lens sees. It is a different hour at the same site, and the plate says
+/// so.
+///
+/// # Invariants
+///
+/// The reach is the base frame's floor diagonal, 10 × √2 = **14.1 m**, and the irradiance is stated **at** it: the
+/// light's own irradiance falls off with the square of the distance, so the number in the document is the subject's
+/// divided by `(reach / distance)²` — `1.80 × (14.1 / 7.9)²` is **5.74** at the subject. **The sign of that ratio is
+/// the whole of the key**, and getting it the other way round is what put a blown-white pole in the first base
+/// plate this species rendered.
+///
+/// **The crown still shadows the bole, and the fill is the answer rather than the key.** Traced, not guessed: the
+/// ray from a key twenty degrees up to a point a metre up the bole is at **1.72 m** where it crosses the crown's
+/// 4.3 m radius, and the crown's skirt begins at **1.6 m** — so the key is blocked by two centimetres of oak over
+/// three metres of air, which is the *whole* of the problem this plate exists to avoid. The fill casts no shadow,
+/// so it reaches that face through the canopy; it is therefore **the brighter of the two at the subject**
+/// (`0.16 × (14.1 / 2.9)²` = **3.78**), and the key is what puts the edge on the flutes. This is the dove tree's
+/// arrangement and for the dove tree's reason.
+fn oak_base_lighting() -> Lighting {
+    Lighting {
+        key_position: [4.79, 2.81, 6.04],
+        key_colour: [1.0, 0.94, 0.82],
+        key_irradiance: 1.80,
+        key_reach: 14.1,
+        key_distance: 7.9,
+        key_extent: 4.0,
+        fill_position: [1.6, 1.2, 2.0],
+        fill_colour: [0.52, 0.58, 0.70],
+        fill_irradiance: 0.16,
+        fill_distance: 14.1,
+        floor: Skin::new([0.26, 0.23, 0.185], 0.95),
+        sky: Atmosphere::new()
+            .zenith([0.05, 0.13, 0.40])
+            .horizon([0.52, 0.63, 0.74])
+            .ground([0.28, 0.26, 0.22])
+            .density(0.0005)
+            .scale_height(3000.0),
+        sky_radiance: 0.48,
+        // A sixth of the tree plate's haze: the subject here is two metres away, and the tree's own coefficient would
+        // put a fifth of this frame's own contrast into the air between the lens and the bark.
+        haze: 0.003,
+    }
+}
+
 /// Builds the oak's whole-tree plate: one tree, its own light and ground, its fruit and its own foliage.
 pub fn alpine_oak_picture() -> Value {
     let species = alpine_oak(SEED);
     let planting = Planting::new(species.clone())
         .with_seats(oak_fruit(&species, SHOOTS))
-        .with_palette(oak_palette());
+        .with_palette(oak_palette())
+        .with_detail(OAK_DETAIL);
     plant_scene_lit(&[planting], &OAK_FRAME, ALPINE_OAK, &oak_lighting(), &[])
 }
 
@@ -836,6 +1164,30 @@ pub fn alpine_oak_bough_picture() -> Value {
         &BOUGH_FRAME,
         ALPINE_OAK_BOUGH,
         &oak_lighting(),
+        &[],
+    )
+}
+
+/// Builds the oak's base plate: the foot of the bole at **2.26 m**, under its own low raking key.
+///
+/// # Invariants
+///
+/// **It is the same tree and the same fields — not a second model of a trunk.** The only things that change are
+/// the frame and the light, which is what makes the plate evidence about the tree the whole-tree plate drew:
+/// the same [`gnarled_bole`] flare and the same [`fluted_bole`] lobes, read from two metres instead of twenty-five.
+/// The foliage is carried rather than cut, because a trunk plate with no crown in it cannot show the crown's own
+/// shadow falling across the frame — which is the thing [`oak_base_lighting`] exists to prevent.
+pub fn alpine_oak_base_picture() -> Value {
+    let species = alpine_oak(SEED);
+    let planting = Planting::new(species.clone())
+        .with_seats(oak_fruit(&species, SHOOTS))
+        .with_palette(oak_palette())
+        .with_detail(OAK_DETAIL);
+    plant_scene_lit(
+        &[planting],
+        &BASE_FRAME,
+        ALPINE_OAK_BASE,
+        &oak_base_lighting(),
         &[],
     )
 }
