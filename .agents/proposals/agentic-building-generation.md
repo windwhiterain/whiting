@@ -6510,3 +6510,36 @@ so the before-value was measured rather than assumed: on the tip this branch sta
 pictures are the recorded hashes, unchanged. That is *The rule a narrowed check owes the tree* turned on this change
 — the instrument is built before the thing it measures, so the gate is measured against it rather than around it.
 
+
+## The state the arc closed on (2026-10-27)
+
+**Every scene can now answer the floor question.** The last two exceptions were closed by giving each the opening its
+floor needed: `house` a window on the east face (`Opening` on edge 1, 2.867 × 2.00 m), and `yard`'s store a **doorway**
+on the west face — a doorway and not a window because that plate's top stands at **2.56 m** and a 7.8° sight line
+crosses the wall only **0.038 m above the ring's base**, where no sill can reach. Both prove **25/25**:
+`house` `--locate (729, 514)` → `slab 0, its top` (15,943 px), `yard` `--locate (1025, 213)` → `slab 1, its top`
+(1,442 px).
+
+**The numbers to carry forward, replacing every earlier count in this file:**
+
+- **Identity: 852 rows** across nine tables — `77, 109, 77, 35, 66, 123, 162, 99, 104` for
+  `house, hall, hall_large, shed, terrace, wing, workshop, yard, identity`. (Earlier sections say 806 and 845;
+  806 predates the workbench, 845 predates the two openings, and `workshop`'s 162 corrects a list that put 123 there.)
+- **Frames: nine aspects, 1.207–3.000**, each a scene's own — `house 1392×752`, `hall 1328×816`,
+  `hall_large 1264×816`, `shed 1344×768`, `terrace 1536×512`, `wing 1424×736`, `workshop 1120×928`,
+  `yard 1264×816`, `identity 1280×816`. Fills went 27.3→50.8, 31.1→45.6, 47.2→47.6, 24.6→55.7, 44.9→44.9,
+  8.3→59.2, 34.5→55.4, 33.0→39.2, 35.7→44.2 percent, and **no building touches a frame edge that did not before**
+  (`hall` 47 px, `hall_large` 533 px, `yard` 198 px and `identity` 121 px were cut by the square frame; all four are
+  clear now).
+- **`.png` hashes** (the domain the table carries): `house 2F60685F737F7ED7`, `hall 96F61FA5E9F18E60`,
+  `hall_large 478E692C6CBE2D3B`, `shed 48909F693ACBA634`, `terrace E32C1CA08D9F3016`, `wing 2EF5C4FB206167F4`,
+  `workshop EB8E05CD755B9B4B`, `yard C1092EB9343518A8`, `identity 48F13F7D84A24480`.
+- **Gates**: 29 building + 16 gallery examples exit 0, 0 warnings, `cargo fmt --all -- --check` clean, and the export
+  size equals the frame's for all nine, proved by real Cycles subprocess renders.
+
+**What is still deliberately open, each measured rather than assumed:** `yard`'s **shed** plate still reads 0 (one
+opening per scene; the shed is the one a window would answer); `house`'s floor is **in shadow** — the sun travels `+x`
+and an east window admits none, so the id channel names the plate while a reader of the png cannot see it by eye; the
+**authored pinch** is the one courtyard whose areas nothing can check; a **mass's interior** is not a documentable
+concept; `covers` remains necessary and not a proof; and the nine frames are no longer mutually comparable, which is
+the accepted price of the owner's decision.
