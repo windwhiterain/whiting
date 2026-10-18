@@ -24,6 +24,14 @@
 //! does with a slope — cut and fill to a level floor, and let the downhill side show its slab — and it
 //! keeps every invariant the shell already has.
 //!
+//! # And what stands under the floor
+//!
+//! A terrace is the right answer to a slope for masonry and the wrong one for a timber house on a
+//! river bank: there the floor is levelled to the *uphill* grade and the downhill side stands on
+//! posts, with air under it. [`posts`] adds those posts to an already seated document — it appends
+//! solids and moves nothing — and the range of post lengths it produces **is** the site's relief
+//! under the house, which is what makes a 吊脚楼 a building rather than a box on a plinth.
+//!
 //! # The sample set is stated, because an outline is not a point
 //!
 //! "The highest ground under the outline" has no exact answer from a sampling function, so the answer
@@ -35,8 +43,9 @@
 
 use crate::grid::GRID_TOLERANCE;
 use crate::mass::{MassId, PlanNode};
-use crate::math::{Vec2, lerp};
+use crate::math::{Vec2, distance, lerp};
 use crate::skeleton::BuildingSkeleton;
+use crate::wall::Wall;
 
 /// What seating one mass did.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -201,6 +210,184 @@ pub fn seat(
         report.slabs += 1;
     }
     report
+}
+
+/// What standing a building on posts did, one entry per mass that was given them.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct StiltReport {
+    /// One entry per mass posts were placed under, in the document's own order.
+    pub masses: Vec<Stilt>,
+    /// How many posts were appended to the document's walls.
+    pub posts: usize,
+    /// How many post positions were dropped because the ground did not answer under them.
+    pub refused: usize,
+}
+
+impl StiltReport {
+    /// Returns how many masses were given posts.
+    pub fn len(&self) -> usize {
+        self.masses.len()
+    }
+
+    /// Returns whether no mass was given a post, which is what a flat site answers.
+    pub fn is_empty(&self) -> bool {
+        self.masses.is_empty()
+    }
+
+    /// Returns the deepest any one of these buildings hangs over its ground.
+    ///
+    /// It is the number this arc exists to make printable: the drop on the downhill side *is* the
+    /// building's proportion, and a 吊脚楼 with a tenth of a metre of drop is a house with a plinth.
+    pub fn deepest_drop(&self) -> f32 {
+        self.masses.iter().map(Stilt::drop).fold(0.0_f32, f32::max)
+    }
+}
+
+/// One mass's posts, and the relief of the ground they stand on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Stilt {
+    /// The mass the posts stand under.
+    pub mass: MassId,
+    /// The elevation the posts reach: the mass's lowest node, one slab down.
+    pub underside: f32,
+    /// The highest ground any of its posts stands on.
+    pub highest: f32,
+    /// The lowest ground any of its posts stands on.
+    pub lowest: f32,
+    /// How many posts it got.
+    pub posts: usize,
+}
+
+impl Stilt {
+    /// Returns how far the building hangs over the lowest ground it stands on.
+    pub fn drop(&self) -> f32 {
+        self.underside - self.lowest
+    }
+
+    /// Returns how much the ground rises across the house's own posts.
+    pub fn relief(&self) -> f32 {
+        self.highest - self.lowest
+    }
+}
+
+/// Stands a seated building on posts, the way a house on a bank stands: the floor stays where
+/// [`seat`] levelled it and the downhill side is carried by columns instead of by a plinth.
+///
+/// # Why this is a second call and not a mode of seating
+///
+/// Seating answers *where the floor is*, and its answer — the highest ground under the outline plus an
+/// offset — is right for this house as well: a 吊脚楼's floor is the uphill grade. What a terrace and a
+/// stilt house do **not** share is what stands under that floor, and that is what this function adds.
+/// Keeping the two apart is what lets a caller seat a document and then decide, mass by mass, which
+/// ones hang.
+///
+/// # Invariants
+///
+/// - **Nothing here moves.** This appends solids below an underside that seating already levelled; it
+///   does not raise, lower or rotate a mass, a roof or a plate. A post that moved a floor would be a
+///   second opinion about where the floor is.
+/// - **A post's top is the building's underside and its bottom is the sampled ground.** Its length is
+///   therefore a *query* and not a parameter, which is the whole of D4: the range of post lengths is the
+///   site's relief under the house.
+/// - **A post is placed where the ground is below the floor and nowhere else.** The uphill side of a
+///   stilt house has no posts because its wall meets the hill; a post whose ground reaches the
+///   underside would be a post buried in it. The comparison is against the **higher** of a post's two
+///   foot samples, so a post is placed only if it clears the ground at both ends.
+/// - **A ground that does not answer is refused, not guessed** — the rule `seat` follows for a mass
+///   (`site.rs`'s own refusal) applied to a post: a non-finite sample skips that post and counts it.
+/// - **Call it after seating.** A later [`seat`] moves these walls the way it moves a fence — each end
+///   to the ground under it and the top by the change in its mean — which would leave a post standing on
+///   the ground with its top no longer at the underside. Order is the caller's, and it is stated here
+///   rather than enforced because the document has no way to mark a wall as a post.
+/// - **A post is a short [`Wall`] run**, because that is what a square post is: a run of `section`
+///   metres with a `section`-metre thickness, a level top and a bottom that follows the ground at its
+///   two ends. D3's member replaces this when it lands; nothing here depends on it not existing.
+///
+/// `O(nodes + perimeter / spacing)` per mass.
+pub fn posts(
+    skeleton: &mut BuildingSkeleton,
+    ground: impl Fn(Vec2) -> f32,
+    spacing: f32,
+    section: f32,
+) -> StiltReport {
+    let mut report = StiltReport::default();
+    if !(spacing.is_finite() && section.is_finite()) || spacing <= 0.0 || section <= 0.0 {
+        return report;
+    }
+    let half = section * 0.5;
+    let mut appended: Vec<Wall> = Vec::new();
+    for (index, mass) in skeleton.masses.iter().enumerate() {
+        let underside = mass.lowest() - mass.slab;
+        if !underside.is_finite() {
+            continue;
+        }
+        let mut placed = 0usize;
+        let mut highest = f32::NEG_INFINITY;
+        let mut lowest = f32::INFINITY;
+        for at in post_positions(&mass.outline, spacing) {
+            let from_at = [at[0] - half, at[1]];
+            let to_at = [at[0] + half, at[1]];
+            let (from_ground, to_ground) = (ground(from_at), ground(to_at));
+            if !(from_ground.is_finite() && to_ground.is_finite()) {
+                report.refused += 1;
+                continue;
+            }
+            if from_ground.max(to_ground) >= underside {
+                continue;
+            }
+            highest = highest.max(from_ground.max(to_ground));
+            lowest = lowest.min(from_ground.min(to_ground));
+            appended.push(Wall::new(
+                PlanNode::new(from_at, from_ground),
+                PlanNode::new(to_at, to_ground),
+                section,
+                underside,
+            ));
+            placed += 1;
+        }
+        if placed > 0 {
+            report.masses.push(Stilt {
+                mass: MassId(index),
+                underside,
+                highest,
+                lowest,
+                posts: placed,
+            });
+        }
+    }
+    report.posts = appended.len();
+    skeleton.walls.extend(appended);
+    report
+}
+
+/// Returns the plan points posts are placed at: every node of the closed outline, and the interior
+/// stops of each edge at roughly `spacing`.
+///
+/// # Invariants
+///
+/// **Each edge contributes its own start and not its own end**, so the closed walk names every node
+/// exactly once and no position twice: a corner post is one post. The count per edge is
+/// `round(length / spacing)` and never zero, so a short edge still gets a node post and a long one
+/// cannot be missed.
+fn post_positions(outline: &[PlanNode], spacing: f32) -> Vec<Vec2> {
+    let count = outline.len();
+    let mut positions = Vec::new();
+    if count < 2 {
+        return positions;
+    }
+    for index in 0..count {
+        let from = outline[index].position;
+        let to = outline[(index + 1) % count].position;
+        let length = distance(from, to);
+        if length <= f32::EPSILON {
+            continue;
+        }
+        let steps = (length / spacing).round().max(1.0) as usize;
+        for step in 0..steps {
+            positions.push(lerp(from, to, step as f32 / steps as f32));
+        }
+    }
+    positions
 }
 
 /// Returns the plan points one outline is sampled at: its nodes, its edges' midpoints, its centroid.

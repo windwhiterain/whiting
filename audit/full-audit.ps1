@@ -212,7 +212,7 @@ foreach ($pkg in $expect.Keys) {
 "--------------------------------------------------------------------"
 "[5/8] every example in building and gallery"
 "--------------------------------------------------------------------"
-foreach ($pair in @(@("whiting-building", "building", 29), @("whiting-gallery", "gallery", 16))) {
+foreach ($pair in @(@("whiting-building", "building", 30), @("whiting-gallery", "gallery", 16))) {
     $pkg = $pair[0]; $dir = $pair[1]; $want = $pair[2]
     $examples = Get-ChildItem (Join-Path (Join-Path (Join-Path $root "crates") $dir) "examples") -Filter *.rs | Sort-Object Name
     $ran = 0; $bad = @()
