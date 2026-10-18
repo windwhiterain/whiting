@@ -34,7 +34,7 @@
 //! - A vertex buffer belongs to a mesh and is shared by every instance that draws it; an
 //!   instance buffer belongs to an instance and holds that instance's row alone.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
 use definition::{FieldMap, PackedList, Path, Schema, SchemaKind, Value};
@@ -2341,6 +2341,33 @@ fn finish_mesh(
     (found, entry)
 }
 
+/// Indexes a table of labelled reads by label, so a name is resolved once rather than by walking
+/// the table for every row that names it.
+///
+/// # Why the first entry wins
+///
+/// This answers what a scan for the first matching label answered, which matters because the
+/// tables are read in document order and a scene that declares the same label twice resolves to
+/// the one it declared first. A later declaration does not displace it.
+///
+/// # Why this is a table and not a scan
+///
+/// A scan is linear in the size of the table and the row loop is linear in the number of rows, so
+/// resolving a label by walking costs the product of the two. A vegetation scene has a few
+/// thousand meshes and materials and tens of thousands of rows, and the product of those is where
+/// the compile time of such a scene went: not in packing a transform, but in finding the name it
+/// had to pack.
+fn index_by_label<'read, T>(
+    table: &'read [T],
+    label_of: impl Fn(&T) -> &str,
+) -> HashMap<&'read str, usize> {
+    let mut index = HashMap::with_capacity(table.len());
+    for (position, entry) in table.iter().enumerate() {
+        index.entry(label_of(entry)).or_insert(position);
+    }
+    index
+}
+
 /// Reads the instances of the scene, which are listed in buckets, one per pass.
 ///
 /// # Invariants
@@ -2363,25 +2390,25 @@ fn read_instances(
         return Err(malformed(&path, "the instances as a map of pass to list"));
     };
 
+    // What an instance row takes from its material is a property of the material and the shader
+    // rather than of the row, and a scene draws far more rows than it declares materials, so it is
+    // read once per material here and borrowed by every row that names it. The slot is filled by
+    // the first row that names the material rather than before this loop, which keeps two things
+    // true that would otherwise be traded for the speed: a material no instance draws is never
+    // read, and the first row naming a material that fails still fails with the message it always
+    // failed with.
+    let mut bundles: Vec<Option<MaterialBundle>> = (0..materials.len()).map(|_| None).collect();
+    let mesh_index = index_by_label(meshes, |mesh| mesh.label.as_str());
+    let material_index = index_by_label(materials, |material| material.label.as_str());
+    // A label is refused the second time it is read, so the labels read so far are what answers
+    // "has this one been read already". Every row contributed to this: a scene listing tens of
+    // thousands of instances asked, for each of them, whether every earlier one had its name,
+    // which is a quadratic walk that measured as the single largest cost in compiling a
+    // vegetation scene. A row is refused on the same row as before, because the set and the walk
+    // agree on which row repeats a label and on the label it repeats.
+    let mut labels: HashSet<String> = HashSet::new();
+
     let mut read: Vec<InstanceRead> = Vec::new();
-    // **One map per label space, built once, and a set for the rows themselves.** An instance names
-    // its mesh and its material by label, and a vegetation scene holds a row per leaf per pass —
-    // hundreds of thousands of rows — so resolving each row by scanning the list it names is the row
-    // count times the list's length, and checking each row's label against every row already read is
-    // the row count squared. Measured on one pine, that square was the whole of a forty-second scene
-    // compile against three seconds of raster. The lists' labels are unique by construction —
-    // [`read_materials`] and the mesh reader refuse a duplicate — so a map loses nothing.
-    let mesh_index: std::collections::HashMap<&str, usize> = meshes
-        .iter()
-        .enumerate()
-        .map(|(index, mesh)| (mesh.label.as_str(), index))
-        .collect();
-    let material_index: std::collections::HashMap<&str, usize> = materials
-        .iter()
-        .enumerate()
-        .map(|(index, material)| (material.label.as_str(), index))
-        .collect();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (name, bucket) in buckets {
         let bucket_path = path.key(name);
         let Some(stage) = Stage::from_suffix(name) else {
@@ -2402,9 +2429,10 @@ fn read_instances(
                 &material_index,
                 shaders,
                 images,
+                &mut bundles,
                 stage,
             )?;
-            if !seen.insert(found.label.clone()) {
+            if !labels.insert(found.label.clone()) {
                 return Err(CompileError::DuplicateLabel {
                     kind: "instance",
                     label: found.label,
@@ -2414,6 +2442,74 @@ fn read_instances(
         }
     }
     Ok(read)
+}
+
+/// Everything one material contributes to every instance row drawn with it.
+///
+/// # Why this is read once per material
+///
+/// Four of the things an instance row is built from are answers about the material and the shader
+/// rather than about the row: the custom data verified against the shader's custom schema, the
+/// images that data names, that data with the image fields left out, and the schema the row is
+/// read and packed with. Every one of them costs a clone of the custom data, a scan of the
+/// schema's fields, or a schema built and thrown away — none of which is a function of the row.
+///
+/// A scene draws many rows from few materials: a vegetation scene declares a few thousand
+/// materials and lists tens of thousands of rows, so reading these per row did each of them
+/// dozens of times more often than there was a reason to. They are read into one of these per
+/// material, and each row borrows it.
+struct MaterialBundle {
+    /// The material's custom data without the fields that name an image, which is what the row
+    /// carries: an image is a name the compiler resolves into a texture, and everything else is a
+    /// number the row packs.
+    numbers: Value,
+    /// The images this material's custom data names, and the fields it names them in.
+    images: Vec<ImageBinding>,
+    /// The schema one instance row of this material is read with and packed against.
+    row_schema: Rc<Schema>,
+}
+
+/// Reads what one material contributes to every instance row drawn with it.
+///
+/// # Invariants
+///
+/// The checks are made in the order and with the arguments they were made in before this was
+/// hoisted out of the row loop, and this is reached only from the first row naming the material,
+/// so a document that is refused is refused with the same [`CompileError`], at the same row.
+///
+/// A custom data that is not a struct is refused here rather than where the row is built, which
+/// is the same refusal at the same row: nothing between the two can fail, and the path named is
+/// the material's own rather than the row's.
+fn material_bundle(
+    material: &MeshMaterialRead,
+    shaders: &[ShaderRead],
+    images: &[ImageRead],
+) -> Result<MaterialBundle, CompileError> {
+    let shader = &shaders[material.shader];
+    let custom_data = &material.custom_data;
+    let custom_path = material.path.key(scene_schema::CUSTOM_DATA);
+
+    verify(
+        custom_data,
+        &custom_path,
+        shader.custom_schema.as_ref(),
+        "the custom data",
+        "the shader custom schema",
+    )?;
+    let images = material_images(custom_data, shader, &material.label, &material.path, images)?;
+    let numbers = numbers_only(custom_data, &image_fields(&shader.custom_schema));
+    let Some(_) = numbers.as_field_map() else {
+        return Err(malformed(&custom_path, "the custom data as a struct"));
+    };
+    let row_schema = merged_row_schema(
+        shader.instance_schema.as_ref(),
+        shader.custom_schema.as_ref(),
+    )?;
+    Ok(MaterialBundle {
+        numbers,
+        images,
+        row_schema,
+    })
 }
 
 /// Reads one instance and every schema it is verified against.
@@ -2426,11 +2522,12 @@ fn read_instances(
 fn read_instance(
     instance: &Value,
     path: &Path,
-    mesh_index: &std::collections::HashMap<&str, usize>,
+    mesh_index: &HashMap<&str, usize>,
     materials: &[MeshMaterialRead],
-    material_index: &std::collections::HashMap<&str, usize>,
+    material_index: &HashMap<&str, usize>,
     shaders: &[ShaderRead],
     images: &[ImageRead],
+    bundles: &mut [Option<MaterialBundle>],
     stage: Stage,
 ) -> Result<InstanceRead, CompileError> {
     let label = text(instance, path, scene_schema::LABEL)?.to_owned();
@@ -2445,15 +2542,13 @@ fn read_instance(
     let transform = read_transform(instance, path)?;
     let material_path = path.key(scene_schema::MATERIAL);
     let material_label = text(instance, path, scene_schema::MATERIAL)?;
-    let Some(material) = material_index
-        .get(material_label)
-        .map(|index| &materials[*index])
-    else {
+    let Some(material_at) = material_index.get(material_label).copied() else {
         return Err(CompileError::UnknownMaterial {
             path: material_path,
             material: material_label.to_owned(),
         });
     };
+    let material = &materials[material_at];
     let shader_read = &shaders[material.shader];
     // The bucket is the pass and the material says how the instance is drawn in it, so the two
     // have to agree. A material whose shader belongs to another stage would be drawn by this
@@ -2474,15 +2569,17 @@ fn read_instance(
     // schema when the mesh was read, once for the whole scene rather than once per
     // instance. The check's answer depends only on the points and the schema, so doing it
     // again here would be the same answer the same number of times as there are instances.
-    let custom_data = &material.custom_data;
-    let custom_path = material.path.key(scene_schema::CUSTOM_DATA);
-    verify(
-        custom_data,
-        &custom_path,
-        shader_read.custom_schema.as_ref(),
-        "the custom data",
-        "the shader custom schema",
-    )?;
+    //
+    // The same is true of everything else this row takes from its material: the custom data
+    // verified, the images it names, that data with the image fields left out, and the merged row
+    // schema. All four are read into the material's slot the first time an instance names it and
+    // borrowed by every row after, which is what keeps the cost of a row a function of the row.
+    if bundles[material_at].is_none() {
+        bundles[material_at] = Some(material_bundle(material, shaders, images)?);
+    }
+    let bundle = bundles[material_at]
+        .as_ref()
+        .expect("the material's bundle was just read");
 
     // The instance row is where the instance is, plus the material's custom data. Both are per
     // instance, and once one pass draws several instances at once a per instance attribute is the
@@ -2494,18 +2591,9 @@ fn read_instance(
     // A field that names an image is left out of both. It is a name the compiler resolves into a
     // texture rather than a number the row can carry, so the row is built from the custom data
     // without it and the image is bound beside the row instead of packed into it.
-    let images = material_images(
-        custom_data,
-        shader_read,
-        &material.label,
-        &material.path,
-        images,
-    )?;
-    let custom_data = &numbers_only(custom_data, &image_fields(&shader_read.custom_schema));
-    let row_schema = merged_row_schema(
-        shader_read.instance_schema.as_ref(),
-        shader_read.custom_schema.as_ref(),
-    )?;
+    let custom_data = &bundle.numbers;
+    let row_schema = bundle.row_schema.clone();
+    let images = bundle.images.clone();
     let model = transform.matrix();
     let mut fields = vec![(
         MODEL.to_owned(),
@@ -2528,9 +2616,10 @@ fn read_instance(
             ),
         ));
     }
-    let Some(custom_fields) = custom_data.as_field_map() else {
-        return Err(malformed(&custom_path, "the custom data as a struct"));
-    };
+    // The bundle was refused unless this is a struct, so there is nothing left to decide here.
+    let custom_fields = custom_data
+        .as_field_map()
+        .expect("a bundle is only read from a custom data that is a struct");
     fields.extend(
         custom_fields
             .iter()
@@ -4847,18 +4936,30 @@ struct InstanceBounds {
 /// when the points were packed.
 ///
 /// The positions are read a component at a time out of the packed run, so the whole loop is a
-/// strided walk of bytes with no map lookup and no per point allocation.
+/// strided walk of bytes with no map lookup and no per point allocation. **Where those bytes
+/// are** is resolved once per mesh by [`PointPositions`] rather than per point, which is what
+/// makes the walk a walk: the run of a mesh has one position layout, and asking the layout for
+/// it once per point was asking it thousands of times for one answer.
 fn bounds_of_instances(meshes: &[MeshRead], instances: &[InstanceRead]) -> InstanceBounds {
     let mut scene: Option<Bounds> = None;
     let mut each = Vec::with_capacity(instances.len());
+    // Where each mesh's positions sit in its run is a property of the mesh, resolved the first
+    // time an instance draws it and kept for the instances after. See `PointPositions`.
+    let mut positions: Vec<Option<PointPositions<'_>>> = (0..meshes.len()).map(|_| None).collect();
     for instance in instances {
         let mesh = &meshes[instance.mesh];
+        if positions[instance.mesh].is_none() {
+            positions[instance.mesh] = Some(PointPositions::of(mesh));
+        }
+        let positions = positions[instance.mesh]
+            .as_ref()
+            .expect("the mesh's positions were just resolved");
         let mut covered = Bounds {
             minimum: [f64::INFINITY; 3],
             maximum: [f64::NEG_INFINITY; 3],
         };
         for point in 0..mesh.points.len() {
-            let world = apply(&instance.model, packed_point_position(mesh, point));
+            let world = apply(&instance.model, positions.at(point));
             for axis in [0, 1, 2] {
                 covered.minimum[axis] = covered.minimum[axis].min(world[axis]);
                 covered.maximum[axis] = covered.maximum[axis].max(world[axis]);
@@ -5042,7 +5143,7 @@ fn quoted(labels: &[&str]) -> String {
     }
 }
 
-/// Returns the position one packed point carries.
+/// Where a mesh's packed points carry their positions, resolved once for the whole mesh.
 ///
 /// # Invariants
 ///
@@ -5054,35 +5155,93 @@ fn quoted(labels: &[&str]) -> String {
 ///
 /// A schema naming no `position` falls back to the first three components, which is the only
 /// reasonable guess; the fallback is over the run's own field order, which is the schema's.
-fn packed_point_position(mesh: &MeshRead, index: usize) -> [f64; 3] {
-    if let Some(declared) = mesh.point_schema.struct_field(POSITION_FIELD) {
-        let width = components(POSITION_FIELD, declared).unwrap_or(3).min(3);
-        let mut position = [0.0f64; 3];
-        for (axis, slot) in position.iter_mut().enumerate().take(width) {
-            *slot = mesh
-                .points
-                .component(index, POSITION_FIELD, axis)
-                .unwrap_or(0.0);
-        }
-        return position;
-    }
-    first_packed_components(mesh, index)
+///
+/// A component the point does not carry reads as zero rather than as a failure, which is what a
+/// position field narrower than three components has always answered.
+///
+/// # Why this is resolved once
+///
+/// Which byte a position is at, and how many of them there are, are properties of the mesh's
+/// layout and of nothing else. Answering them per point meant a schema field lookup and an
+/// extension lookup per point, and then three scans of the layout's field names per point on top:
+/// four name comparisons for every point of every instance, to arrive at an offset that is the
+/// same for the whole run. It measured, on the southwest pine scene, as 49 s of a 53 s compile —
+/// the walk was already single-pass and strided, and was spending almost all of its time
+/// deciding where to read rather than reading.
+struct PointPositions<'read> {
+    /// The whole run the offsets index into.
+    bytes: &'read [u8],
+    /// The number of bytes one point occupies.
+    stride: usize,
+    /// The byte offset within one point of each of the three position components, or `None` for
+    /// a component this mesh does not carry.
+    at: [Option<usize>; 3],
 }
 
-/// Returns the first three numbers a packed point carries, in layout order.
-fn first_packed_components(mesh: &MeshRead, index: usize) -> [f64; 3] {
-    let mut position = [0.0f64; 3];
-    let mut at = 0;
-    'fields: for (name, components) in mesh.points.layout().fields() {
-        for component in 0..*components {
-            if at == 3 {
-                break 'fields;
+impl<'read> PointPositions<'read> {
+    /// Resolves where the positions of one mesh's points are.
+    fn of(mesh: &'read MeshRead) -> Self {
+        let layout = mesh.points.layout();
+        let mut at = [None; 3];
+        match mesh.point_schema.struct_field(POSITION_FIELD) {
+            // The width is the narrower of what the schema declares and what the run lays out,
+            // because the run is what is read: a component the run does not carry read as zero.
+            Some(declared) => {
+                let declared = components(POSITION_FIELD, declared).unwrap_or(3);
+                if let Some((offset, laid_out)) = layout.field(POSITION_FIELD) {
+                    for (axis, slot) in at
+                        .iter_mut()
+                        .enumerate()
+                        .take(declared.min(laid_out).min(3))
+                    {
+                        *slot = Some(offset + axis * 4);
+                    }
+                }
             }
-            position[at] = mesh.points.component(index, name, component).unwrap_or(0.0);
-            at += 1;
+            None => {
+                let mut filled = 0;
+                for (name, count) in layout.fields() {
+                    let Some((offset, _)) = layout.field(name) else {
+                        continue;
+                    };
+                    for component in 0..*count {
+                        if filled == 3 {
+                            break;
+                        }
+                        at[filled] = Some(offset + component * 4);
+                        filled += 1;
+                    }
+                    if filled == 3 {
+                        break;
+                    }
+                }
+            }
+        }
+        Self {
+            bytes: mesh.points.bytes(),
+            stride: layout.stride_bytes(),
+            at,
         }
     }
-    position
+
+    /// Returns the position one point of the run carries.
+    fn at(&self, index: usize) -> [f64; 3] {
+        let start = index * self.stride;
+        let mut position = [0.0f64; 3];
+        for (axis, offset) in self.at.iter().enumerate() {
+            let Some(offset) = offset else {
+                continue;
+            };
+            let at = start + offset;
+            position[axis] = self
+                .bytes
+                .get(at..at + 4)
+                .and_then(|slice| slice.try_into().ok())
+                .map(f32::from_le_bytes)
+                .unwrap_or(0.0) as f64;
+        }
+        position
+    }
 }
 
 /// Returns the two binding points every pass of a group carries.

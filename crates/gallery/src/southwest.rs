@@ -444,7 +444,7 @@ fn pine_palette() -> Palette {
     Palette {
         wood: Skin::new([0.14, 0.11, 0.085], 0.95),
         leaves: vec![Skin::new([0.10, 0.17, 0.08], 0.80)],
-        seats: vec![Skin::new([0.45, 0.32, 0.20], 0.85)],
+        seats: vec![Skin::new([0.52, 0.38, 0.24], 0.85)],
     }
 }
 
