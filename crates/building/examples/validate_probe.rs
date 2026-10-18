@@ -706,6 +706,7 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::ZeroHeight { .. } => "ZeroHeight",
         Violation::UnattachedOverlap { .. } => "UnattachedOverlap",
         Violation::OverlapNotMeasured { .. } => "OverlapNotMeasured",
+        Violation::OutlineNotMeasured { .. } => "OutlineNotMeasured",
         Violation::MassHostMissing { .. } => "MassHostMissing",
         Violation::RoofHostMissing { .. } => "RoofHostMissing",
         Violation::RoofEaveTooShort { .. } => "RoofEaveTooShort",
@@ -1144,6 +1145,7 @@ fn main() {
 
     a_mass_outline_that_meets_itself();
     plans_the_clipper_cannot_compare();
+    a_mass_outline_with_no_triangulation();
 
     let mut lost_host = house();
     lost_host.masses[0].attachment = Some(Attachment {
@@ -1448,7 +1450,10 @@ fn overlapping_pair(attachment: Option<MassId>) -> BuildingSkeleton {
 ///   and a crossing are the two ways [`SelfMeeting`] reads, and an authored pinch and a collinear node
 ///   are the two ways an outline this crate writes on purpose looks. The last of those is
 ///   [`ops::split_outline`](whiting_building::ops::split_outline)'s own insertion, so a gate that caught
-///   it would refuse a document the crate builds itself.
+///   it would refuse a document the crate builds itself. **The authored pinch is named here by the *other*
+///   reading — [`Violation::OutlineNotMeasured`] — and that is the point of the pair rather than a breach of
+///   it**: the two are asked of one [`OutlineReading`] and are its alternatives, so a plan `clip` cannot
+///   measure gets a name and a plan it can is not touched, whatever its shape.
 /// - **Both entry points are printed for every row**, because the fault this section is about is one
 ///   that arrived only through [`Building::validate`]'s `DidNotExpand`: `report_document` is
 ///   [`validate::document`] alone, and a name that exists in one and not the other is not the shape the
@@ -1507,9 +1512,16 @@ fn a_mass_outline_that_meets_itself() {
 ///   the one meeting [`Violation::OutlineNotSimple`] is deliberately silent about, so a pinched
 ///   plan reaches [`Violation::UnattachedOverlap`] with nothing in front of it; the second row is
 ///   the same plan against a neighbour it does not touch, where the two plans really are apart and
-///   must stay silent; and the third is a plan this crate's own [`ops::split_outline`]
+///   the *pair* must stay silent; and the third is a plan this crate's own [`ops::split_outline`]
 ///   (whiting_building::ops::split_outline) writes against the control's own neighbour, where the
 ///   subtraction works and must go on reporting.
+/// - **The second row is where [`Violation::OutlineNotMeasured`] earns its place, and it used to be
+///   silent in full.** Bounding boxes that miss are a measurement, so the *pair* question was
+///   answered and the pair's name must not appear — but the mass itself carries a plan the clipper
+///   cannot triangulate, and until the name moved into the document half that was a fact only
+///   [`Building::validate`] reported. **The absence of [`Violation::OverlapNotMeasured`] on this row
+///   is what says the pair was compared**, and the presence of [`Violation::OutlineNotMeasured`] is
+///   what says the loop behind it was not.
 /// - **The true area is printed beside every row**, because "`clip` cannot measure the first plan"
 ///   cannot tell a pair that really does share area from a pair that really does not — and the
 ///   first two rows are one plan and two neighbours, so that difference is the whole content.
@@ -1563,8 +1575,10 @@ fn plans_the_clipper_cannot_compare() {
         "  the first row carries no OutlineNotSimple, so the gate in front of the subtraction did not \
          skip this pair and the pair's reading is whatever the subtraction returned. The second row's \
          two plans were compared and are apart: their bounding boxes miss, which is a measurement \
-         rather than a refusal, so the row must stay silent. The third row is the same neighbour \
-         against a plan `clip` can measure"
+         rather than a refusal, so no OverlapNotMeasured is named for the pair — and it now carries \
+         OutlineNotMeasured, because the mass standing in it still has a plan nothing can measure, \
+         which is the one fact that used to arrive only through Building::validate. The third row is \
+         the same neighbour against a plan `clip` can measure"
     );
 }
 
@@ -1609,6 +1623,126 @@ fn pinched_pair() -> Vec<PlanNode> {
         PlanNode::new([0.0, 3.0], 0.0),
         PlanNode::new([0.0, 0.0], 0.0),
         PlanNode::new([-3.0, 0.0], 0.0),
+    ]
+}
+
+/// Asks whether a **mass outline that has no triangulation** has a name, and it is asked on the half
+/// of this module that expands nothing.
+///
+/// # Invariants
+///
+/// - **Every row stands alone in its document**, because a *pair* is what
+///   [`Violation::OverlapNotMeasured`](whiting_building::validate::Violation::OverlapNotMeasured) is
+///   about. A mass with no neighbour beside it asks no pair question at all, so a document of one mass
+///   is exactly where a mass that cannot be measured has nothing else left to say for it — and that is
+///   the shape the boundary recorded above the overlap gate was drawn around.
+/// - **Both entry points are printed for every row**, because the fault under test is one that can
+///   arrive through only one of them: `report_document` is
+///   [`validate::document`](whiting_building::validate::document) alone, and `report_building` is
+///   [`Building::validate`](whiting_building::Building::validate), which adds the expander's own
+///   [`Violation::DidNotExpand`](whiting_building::validate::Violation::DidNotExpand). **A name that
+///   exists in one and not the other is not the shape the author has to fix.**
+/// - **The clip's own reading is printed on every row**, because a plan that measured `0.0000` and a
+///   plan that could not be measured at all print the same line otherwise — the silence this section is
+///   about, in its smallest form.
+/// - **Three rows must stay silent and one must keep the name it already has.** The last three are
+///   plans the clipper can measure — including the edge of no length
+///   [`ops::split_outline`](whiting_building::ops::split_outline) writes on purpose, which is taken out
+///   of the loop before the walk — and the third is the gate's own control, a needle `self_meeting`
+///   names. **A check that is too wide is caught here and nowhere else.**
+fn a_mass_outline_with_no_triangulation() {
+    println!(
+        "\n# a mass outline the clipper cannot triangulate: one mass alone in each document, so no\n  \
+         overlap question is ever asked of it and only the two entry points can answer"
+    );
+    for (name, plan, truth) in [
+        (
+            "the control: two 3 x 3 squares sharing one authored corner",
+            pinched_pair(),
+            "18.0000",
+        ),
+        (
+            "the clipper's own needle, doubling back along its own line over the node it repeats",
+            doubling_needle(),
+            "64.0000",
+        ),
+        (
+            "a needle cut into the north edge, which the other reading names",
+            needled_square(),
+            "50.0000",
+        ),
+        (
+            "a square with one node written on its own east edge",
+            collinear_square(),
+            "100.0000",
+        ),
+        (
+            "a square with one node written down twice, an edge of no length",
+            node_written_twice(),
+            "100.0000",
+        ),
+        (
+            "a plain 10 x 10 square",
+            square((0.0, 0.0), (10.0, 10.0), 0.0),
+            "100.0000",
+        ),
+    ] {
+        let mut skeleton = BuildingSkeleton::default();
+        skeleton.masses = vec![Mass::new(plan.clone(), 3.2).with_wall(0.3).with_slab(0.4)];
+        let held: Vec<Vec2> = plan.iter().map(|node| node.position).collect();
+        println!(
+            "\n{name}: the loop encloses {truth} m2, and asked about itself `clip` reads {}",
+            match whiting_building::clip::shared_area(&held, &held) {
+                Some(area) => format!("{area:.4} m2, so the plan is measurable"),
+                None => "nothing, because it cannot measure this plan".to_owned(),
+            }
+        );
+        report_document(&format!("{name}, through validate::document"), &skeleton);
+        report_building(&format!("{name}, through Building::validate"), &skeleton);
+    }
+    println!(
+        "  the first two rows are the shapes `self_meeting` is deliberately silent about, so the gate\n  \
+         that names an outline for meeting itself has nothing to say about either of them. The third\n  \
+         row is that gate's own control: it is named there, and it is the row that says the reading\n  \
+         below did not widen into a second name for it. The last three are plans the clipper can\n  \
+         measure, including the edge of no length `ops::split_outline` writes, and a document check\n  \
+         that touched any of them would be reporting a measurement rather than a refusal"
+    );
+}
+
+/// Returns an `8 × 8` square with a needle cut into its east edge that doubles back along its own line
+/// over the node it repeats: [`clip`](whiting_building::clip)'s own fixture for a loop it cannot cover,
+/// and the second of the two shapes the mass-outline gate is silent about.
+///
+/// **The two repeats are two nodes apart in the list rather than neighbours**, so the clipper's own
+/// removal of an edge of no length cannot reach them, and the only meeting is at a point the author
+/// wrote down twice — which is the one coincidence `self_meeting` is silent for. The loop encloses
+/// `64.0000 m²` all the same, so the number is one a person can check.
+fn doubling_needle() -> Vec<PlanNode> {
+    vec![
+        PlanNode::new([-4.0, -4.0], 0.0),
+        PlanNode::new([4.0, -4.0], 0.0),
+        PlanNode::new([4.0, 0.0], 0.0),
+        PlanNode::new([2.0, 0.0], 0.0),
+        PlanNode::new([4.0, 0.0], 0.0),
+        PlanNode::new([4.0, 4.0], 0.0),
+        PlanNode::new([-4.0, 4.0], 0.0),
+    ]
+}
+
+/// Returns a square with one of its own nodes written down twice, which is the edge of no length
+/// [`ops::split_outline`](whiting_building::ops::split_outline) inserts when a station lands on a node.
+///
+/// It is the row that says the reading is about a **triangulation** and not about whether the walk can
+/// build: this loop bounds the same region a rectangle does, and the clipper takes the edge out before
+/// it starts, so it is measured exactly and must never be named by a refusal.
+fn node_written_twice() -> Vec<PlanNode> {
+    vec![
+        PlanNode::new([0.0, 0.0], 0.0),
+        PlanNode::new([0.0, 0.0], 0.0),
+        PlanNode::new([10.0, 0.0], 0.0),
+        PlanNode::new([10.0, 10.0], 0.0),
+        PlanNode::new([0.0, 10.0], 0.0),
     ]
 }
 

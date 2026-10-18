@@ -294,6 +294,50 @@ pub enum Violation {
         /// The other.
         other: MassId,
     },
+    /// A mass's own outline has no triangulation, so nothing about its plan can be measured.
+    ///
+    /// # Invariants
+    ///
+    /// **It is the name the document half owes a loop the expander already refuses.** A mass whose
+    /// outline [`self_meeting`] cannot name reaches [`clip`](crate::clip) with nothing standing in
+    /// front of it, and [`clip`](crate::clip) answers `None` for it: [`Building::validate`](crate::Building::validate)
+    /// then reports the expander's own [`DidNotExpand`](Self::DidNotExpand) carrying the walk's name,
+    /// and [`document`](Self::document) reported **nothing at all**. **The name must not depend on
+    /// which entry point ran**, which is the rule the mass-outline gate was built on, and a loop with
+    /// no triangulation is what was left over from it.
+    ///
+    /// **What arrives here is the one loop both readings are silent about**, and
+    /// [`OutlineNotSimple`](Self::OutlineNotSimple) is the other half of that pair: an outline that
+    /// meets itself is named there and is never asked the question below, and this is asked exactly
+    /// where that name is absent. One predicate, read twice, rather than two tests of one fact — and
+    /// **neither widens the other**, because a loop that meets itself is a statement about a shape and a
+    /// loop with no triangulation is a statement about a measurement, and a report carrying both would say
+    /// twice what one of them says once.
+    ///
+    /// **It carries the mass and no node, because what decides it is not a node.** The deciding test is
+    /// [`clip`](crate::clip)'s own coverage test — are the triangles the loop? — and **that is not the ear
+    /// walk stopping**: measured, a `1 m` slit stops the walk and the triangles it stopped with read `12.0000`
+    /// against a loop of `12.0000`, so there is no corner the triangulation "stuck on" to name. The corner the
+    /// walk *did* stop at is [`Problem::MiterUnresolved`](crate::expand::Problem::MiterUnresolved)'s, and it
+    /// arrives through [`DidNotExpand`](Self::DidNotExpand) beside this name — so an author who wants the node
+    /// reads it from the entry point that expands, and an author who only wants to know the plan is
+    /// unmeasurable is served here. **A second reading of where the walk stopped would be a second test that can
+    /// disagree with the first**, which is the fault every staging in this module exists to prevent.
+    ///
+    /// **It does not replace [`OverlapNotMeasured`](Self::OverlapNotMeasured), and a pair it applies to carries
+    /// both.** That variant is about a *pair* whose question went unanswered, and a mass standing alone asks no pair
+    /// question at all — which is the boundary the overlap gate was drawn around, and the shape above is the answer
+    /// to it. The two name one loop from the two sides it has: this says the mass's own plan cannot be measured, and
+    /// that says a comparison against it could not be run.
+    ///
+    /// **A plan the clipper can measure is never named by it**, and the edge of no length is the row that says so:
+    /// [`ops::split_outline`](crate::ops::split_outline) writes one on purpose, the clipper takes it out before the walk
+    /// and measures the loop exactly, and a check that named a refusal there would be reporting a measurement as a
+    /// fault.
+    OutlineNotMeasured {
+        /// The mass whose own plan has no triangulation.
+        mass: MassId,
+    },
     /// A mass names a host that does not exist, so the attachment it authorizes is not one.
     MassHostMissing {
         /// The mass.
@@ -1086,6 +1130,13 @@ pub fn mesh(skeleton: &BuildingSkeleton, built: &BuildingMesh) -> Vec<Violation>
 /// disagree with the first, which is the same argument [`check_voids`] makes about
 /// [`VoidNotInside`] and [`VoidNotSimple`].
 ///
+/// **The same one-pass reading now answers the second question too, and it is the one this module's
+/// whole refusal thread arrived at.** [`OutlineNotMeasured`](Violation::OutlineNotMeasured) is asked
+/// exactly where [`OutlineNotSimple`](Violation::OutlineNotSimple) is not — the two are the
+/// alternatives of one `match` on one [`OutlineReading`] — and the pair that a plan
+/// [`crate::clip`] declines then carries both, because one is about the loop and the other is about
+/// the comparison the loop could not take part in.
+///
 /// **An outline with fewer than three nodes is not asked, and needs no staging of its own**:
 /// [`self_meeting`] walks pairs at two or more apart, so a loop that short has no pair to compare
 /// and answers `None` by construction — the same `None` [`OutlineTooShort`](Violation::OutlineTooShort)
@@ -1095,13 +1146,10 @@ pub fn mesh(skeleton: &BuildingSkeleton, built: &BuildingMesh) -> Vec<Violation>
 /// [`document`]'s own docs state: it is called by an author asking what is wrong and never by
 /// `build`.
 fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
-    let meetings: Vec<Option<SelfMeeting>> = skeleton
+    let readings: Vec<OutlineReading> = skeleton
         .masses
         .iter()
-        .map(|mass| {
-            let outline: Vec<Vec2> = mass.outline.iter().map(|node| node.position).collect();
-            self_meeting(&outline)
-        })
+        .map(|mass| OutlineReading::of(&plan_of(&mass.outline)))
         .collect();
     for (index, mass) in skeleton.masses.iter().enumerate() {
         let id = MassId(index);
@@ -1120,12 +1168,21 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
                 violations.push(Violation::OutlineReversed { mass: id, area });
             }
         }
-        // **Not staged on the length: `self_meeting` is `None` for a loop too short to have a pair.**
-        // A needle cut into this outline reads `12.5000` against a true `50.0000` when it reaches
-        // the overlap subtraction, and reaches it silently, because nothing in `document` asked
-        // whether a **mass's** outline is simple — only a void loop's was asked.
-        if let Some(meeting) = meetings[index] {
-            violations.push(Violation::OutlineNotSimple { mass: id, meeting });
+        // **One reading, and the two names are the alternatives of one `match` on it.** An outline that
+        // meets itself is named by `OutlineNotSimple`, and an outline that does not is asked whether it has a
+        // triangulation at all — so a needle cut into this outline reads `12.5000` against a true `50.0000` when it
+        // reaches the overlap subtraction, and reaches it silently, because nothing in `document` asked whether a
+        // **mass's** outline is simple — only a void loop's was asked.
+        match readings[index] {
+            OutlineReading {
+                meeting: Some(meeting),
+                ..
+            } => violations.push(Violation::OutlineNotSimple { mass: id, meeting }),
+            OutlineReading {
+                meeting: None,
+                measurable: false,
+            } => violations.push(Violation::OutlineNotMeasured { mass: id }),
+            OutlineReading { .. } => {}
         }
         // Staged the same way: `highest` of an empty outline is not an elevation, it is a fold
         // over nothing that answers negative infinity.
@@ -1148,8 +1205,54 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             }
         }
     }
-    check_overlap(skeleton, violations, &meetings);
+    check_overlap(skeleton, violations, &readings);
     check_voids(skeleton, violations);
+}
+
+/// What one mass's own outline is, read once and read twice.
+///
+/// # Invariants
+///
+/// **Both fields come from one walk of one loop and are read by two callers**, which is the argument
+/// [`check_masses`] makes about the meeting on its own: a report and the gate in front of it are one
+/// answer or they are two tests of the same fact, and two tests drift.
+///
+/// **The second field is asked only where the first is `None`.** An outline that meets itself is
+/// already named and [`check_overlap`] never asks about it, so there is nothing for a triangulation
+/// to decide; the cost is paid once per mass rather than once per shape.
+///
+/// **`O(nodes²)` on both fields**, the same trade [`document`] states and never paid by `build`: the
+/// meeting is a sweep of edge pairs and the triangulation is an ear walk with a coverage test over the
+/// triangles it cut.
+struct OutlineReading {
+    /// Where the outline meets itself, or `None` when it does not.
+    meeting: Option<SelfMeeting>,
+    /// Whether the outline's own plan has a triangulation to measure with. **Only read when `meeting`
+    /// is `None`**, and `true` for an outline of fewer than three nodes, which has no region whatever and is named
+    /// by [`OutlineTooShort`](Violation::OutlineTooShort) beside.
+    measurable: bool,
+}
+
+impl OutlineReading {
+    /// Reads both halves of one outline's own reading, and asks [`crate::clip`] only where the first is silent.
+    ///
+    /// **The staging is the same one `self_meeting` gets for free, made explicit**: a loop too short to have a pair
+    /// of edges two or more apart answers `None` by construction, so the second field is where the length is
+    /// asked. Three nodes standing at one place do reach [`crate::clip`](crate::clip), and it answers `None` for
+    /// them — which is a true statement about a loop with no region, reported beside the winding fault that names
+    /// the same loop, rather than one name doing the work of two.
+    fn of(outline: &[Vec2]) -> Self {
+        match self_meeting(outline) {
+            Some(meeting) => Self {
+                meeting: Some(meeting),
+                measurable: false,
+            },
+            None => Self {
+                meeting: None,
+                measurable: outline.len() < 3 || plan_is_measurable(outline),
+            },
+        }
+    }
 }
 
 /// Reports every mass's voids that break the contract a courtyard is authored under.
@@ -1516,12 +1619,12 @@ fn plan_of(loop_nodes: &[PlanNode]) -> Vec<Vec2> {
 /// The pairs are read in list order and each pair is reported once, with the lower index first, so
 /// the list is the same whatever order the masses were found in.
 ///
-/// `meetings` is [`check_masses`]'s own reading, one entry per mass and in the same order, so the
-/// gate cannot be a second simplicity test that drifts from the one that reports.
+/// `readings` is [`check_masses`]'s own reading, one entry per mass and in the same order, so the gate
+/// and the payload's culprit cannot be a second pair of tests that drifts from the ones that report.
 fn check_overlap(
     skeleton: &BuildingSkeleton,
     violations: &mut Vec<Violation>,
-    meetings: &[Option<SelfMeeting>],
+    readings: &[OutlineReading],
 ) {
     for first in 0..skeleton.masses.len() {
         for second in (first + 1)..skeleton.masses.len() {
@@ -1533,7 +1636,7 @@ fn check_overlap(
             // [`Violation::OutlineNotSimple`] has already named the loop, so nothing is lost by not
             // asking — and everything is gained by not answering "no overlap" about two masses whose
             // plans were never compared.
-            if meetings[first].is_some() || meetings[second].is_some() {
+            if readings[first].meeting.is_some() || readings[second].meeting.is_some() {
                 continue;
             }
             match plans_share_area(
@@ -1553,9 +1656,10 @@ fn check_overlap(
                 // because that is the loop an author can do something about and the other is only
                 // the neighbour it stands against; both unmeasurable is reported with the lower
                 // index. The expander still names the loop itself through
-                // [`Violation::DidNotExpand`].
+                // [`Violation::DidNotExpand`], and [`check_masses`] names the loop itself through
+                // [`Violation::OutlineNotMeasured`] — this is the pair's question and that is the loop's.
                 None => {
-                    let (mass, other) = if plan_is_measurable(&skeleton.masses[first].outline) {
+                    let (mass, other) = if readings[first].measurable {
                         (second, first)
                     } else {
                         (first, second)
@@ -1581,14 +1685,18 @@ fn attached_either_way(skeleton: &BuildingSkeleton, first: usize, second: usize)
 /// Returns whether a mass's own plan has a triangulation to measure with.
 ///
 /// **It asks [`crate::clip`] about the loop against itself, which is the one question that answers it**,
-/// and it costs a second measurement of a pair only on the refusal path — the path that already
-/// returned no answer. A loop of fewer than three nodes answers `false` here and never reaches the
-/// refusal, because [`plans_share_area`] has already answered for it.
+/// and it is asked once per mass, from [`OutlineReading::of`], rather than once per refused pair — the
+/// payload of [`Violation::OverlapNotMeasured`] reads the answer [`check_masses`] already holds, so the
+/// mass it names cannot be a different loop from the one that has no triangulation.
 ///
-/// `O(nodes²)`, like every other quadratic in this module, and paid once per refused pair.
-fn plan_is_measurable(outline: &[PlanNode]) -> bool {
-    let plan: Vec<Vec2> = outline.iter().map(|node| node.position).collect();
-    crate::clip::shared_area(&plan, &plan).is_some()
+/// **A loop of fewer than three nodes is not asked**, and never reaches it: such a loop has no region
+/// whatever, [`plans_share_area`] has already answered [`Some(false)`] for it, and
+/// [`Violation::OutlineTooShort`] names it.
+///
+/// `O(nodes²)`, like every other quadratic in this module, and paid once per mass whose outline the
+/// meeting reading has nothing to say about.
+fn plan_is_measurable(outline: &[Vec2]) -> bool {
+    crate::clip::shared_area(outline, outline).is_some()
 }
 
 /// Returns whether two closed plan polygons share an area, or `None` when this module cannot
@@ -2811,6 +2919,16 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         Violation::OutlineNotSimple { mass, meeting } => {
             (0, mass.0 as u64, 0, 0, meeting_rank(meeting))
         }
+        // **Rank `0`'s fourth slot, beside `OutlineNotSimple` rather than after every grid and wall
+        // fault**, for the same reason that one took its own slots: a statement about a mass's own
+        // outline belongs with the other two, and it is about the loop rather than about a shape or a
+        // winding. The fourth slot is the whole of the choice — `0` is the outline that meets itself
+        // and is named for its shape, `1` is the outline nothing else can name because it has no
+        // triangulation. **They cannot both be reported for one mass**, because they are the two
+        // alternatives of one [`OutlineReading`], so the slot only has to order them; and it puts the
+        // shape first for the reason [`OutlineNotSimple`]'s own third slot does — a loop that meets
+        // itself has no area to be measured against, so the shape is the better question.
+        Violation::OutlineNotMeasured { mass } => (0, mass.0 as u64, 0, 1, 0),
         Violation::OutlineTooShort { mass, nodes } => (1, mass.0 as u64, *nodes as u64, 0, 0),
         Violation::ZeroHeight { mass, top, highest } => {
             (2, mass.0 as u64, ordered(*top), ordered(*highest), 0)

@@ -5269,8 +5269,164 @@ which reports the break and is silent on the same two rows in the right order. *
 the fault it was built for is not evidence that the fault is gone.**
 
 **What is still open, unchanged by this slice:** an authored pinch is the one courtyard whose areas nothing can
-check; and `validate::document` alone reports a mass with no triangulation only through `DidNotExpand`. **A part on a
+check; and `validate::document` alone reports a mass with no triangulation only through `DidNotExpand` — **the second of
+those is closed by *What the document-entry slice found* at the end of this file, which measures it and gives it the name
+`OutlineNotMeasured`.** **A part on a
 mass's inner wall is addressable and measured by no scene**, and `--where`'s inventory sweep remains the right tool for
 *the frame's list of elements* — but it is no longer the only one.
+
+## What the document-entry slice found: the last asymmetry was a name that depended on the entry point (2026-10-18, branch `feature/building-doc-entry`)
+
+The open item above is closed, and the shape behind it is the one the plans-decline slice drew a boundary around and
+left open: **a mass alone in its document, whose outline nothing can triangulate, was silent.** Not `OverlapNotMeasured`
+and not `OutlineNotSimple` — **zero violations** — while `Building::validate()` named the same loop through
+`DidNotExpand`. **One document, two entry points, two different statements**, and the rule the mass-gate slice
+established is that the name must not depend on which one ran.
+
+### The control, built first, and what it read before and after
+
+The control is **one mass and no neighbour**, because a *pair* is what `OverlapNotMeasured` is about and a mass standing
+alone asks no pair question at all — that is the shape the boundary was drawn around. Every row is printed through **both**
+entry points, and `clip`'s own reading of the loop against itself is printed beside the area the loop encloses, because a
+plan that measured `0.0000` and a plan that could not be measured print the same line otherwise.
+
+| the outline, alone in its document | the loop encloses | `clip`, asked of itself | `document` before | `document` after | `Building::validate` before | after |
+| --- | --- | --- | --- | --- | --- | --- |
+| **the control: two `3 × 3` squares sharing one authored corner** | **`18.0000 m²`** | `None` | **0 violations** | **`OutlineNotMeasured { mass: MassId(0) }`** | `DidNotExpand { OffsetSelfIntersecting { Outline { mass: MassId(0) }, left: 1, right: 6 }, OffsetSelfIntersecting { Outline { mass: MassId(0) }, left: 2, right: 5 } }` | the same, `OutlineNotMeasured` beside it |
+| **the clipper's own needle, doubling back along its own line over the node it repeats** | **`64.0000 m²`** | `None` | **0 violations** | **`OutlineNotMeasured { mass: MassId(0) }`** | `DidNotExpand { MiterUnresolved { loop_of: Outline { mass: MassId(0) }, node: 3 } }` | the same, `OutlineNotMeasured` beside it |
+| a needle cut into the north edge — the other reading's row | `50.0000 m²` | `None` | `OutlineNotSimple { mass: MassId(0), meeting: Touch { edge: 2, node: 4 } }` | **identical** | the same plus `DidNotExpand` | **identical** |
+| a square with one node written on its own east edge | `100.0000 m²` | **`100.0000 m²`** | **0** | **0** | **0** | **0** |
+| a square with one node written down twice — an edge of no length | `100.0000 m²` | **`100.0000 m²`** | **0** | **0** | `DidNotExpand { OutlineEdgeDegenerate { Outline { mass: MassId(0) }, edge: 0 } }` | **identical** |
+| a plain `10 × 10` square | `100.0000 m²` | **`100.0000 m²`** | **0** | **0** | **0** | **0** |
+
+**Two shapes rather than one, because a pinch is a pinch and a needle is not.** The first row is the meeting at a point
+the author wrote down twice — the coincidence `self_meeting` is deliberately silent for, and the one shape this crate
+writes on purpose. The second is `clip`'s own fixture, a needle that doubles back over the very node it repeats and so
+has **no** triangulation for the same reason and a different reading: `MiterUnresolved` at node 3 rather than an offset
+self-intersection. A gate proved against one would have passed a check that reported the other wrongly.
+
+**And four rows that must not move, three of which are the reason the last one is there.** The third row is the mass gate's
+own control: an outline `self_meeting` names keeps carrying that name and gains nothing. The fifth is the sharpest of the
+four — a node written down twice is **an edge of no length**, which `ops::split_outline` writes on purpose and the clipper
+takes out before it walks, so the loop measures **exactly** `100.0000 m²`. **A reading about triangulation must not be a
+reading about whether the walk can build**, and that row is what says so.
+
+### The shape of the answer, and why
+
+**`Violation::OutlineNotMeasured { mass }`, asked in `check_masses` exactly where `OutlineNotSimple` is not.** The two are
+the two alternatives of one `match` on one new private `OutlineReading { meeting, measurable }`, gathered in the single
+pass `check_masses` already made over each outline — which is the "asking once and reading it twice" argument the mass
+gate made, now extended to the second question rather than repeated for it. **`check_overlap` reads the same struct**, so
+the payload of `OverlapNotMeasured` names a mass from `check_masses`'s own answer rather than from a second measurement
+that could disagree with it, and `plan_is_measurable` is asked once per mass instead of once per refused pair.
+
+**Neither variant widens the other, and the gate is what keeps them apart.** An outline that meets itself has no
+triangulation either, but it is named for its *shape*, which is the more specific statement, so it is not named twice;
+`self_meeting` being `None` is the gate. **Rank `0`'s fourth slot**, beside the two outline faults and not at the end of
+the order, because a statement about a mass's own outline belongs with the other two.
+
+**The payload carries the mass and no node, and the brief's example of what it should carry is the reason.** It suggested
+"the loop and the node the triangulation stuck on". There is no such node, and that is measured rather than argued: what
+decides the refusal is `clip`'s own coverage test — *are the triangles the loop?* — and **that is not the ear walk
+stopping**. A `1 m` slit stops the walk with the loop unbroken and the triangles it stopped with read `12.0000` against a
+loop of `12.0000`, which is the right answer for that loop. **A node the walk stopped at would be a second test that can
+disagree with the first**, which is the fault every staging in this module exists to prevent. The node the walk *did*
+stop at is `MiterUnresolved`'s and it arrives through `DidNotExpand` beside the new name, so nothing is lost: an author who
+wants the node reads it from the entry point that expands, and an author who only wants to know the plan is unmeasurable is
+served from the one that does not. **The document half could only have had the node by expanding, which is the thing it is
+for not doing** — so it took the name, and the node stayed where it was.
+
+### Every right reading, still right
+
+**`courtyard_probe` is byte-identical before and after — `Compare-Object` reports 0 differing records** — which is the
+mechanical form of every table this arc has quoted:
+
+| the reading | the number |
+| --- | --- |
+| the `25`-cell overlap grid | `50.0000` at all 25 cells, **all 25 `fired`** |
+| the degenerate-edge sweep, `0.01` to `3.00 m` | `4 × over` exactly at all 11 steps (`0.0400`, `0.0800`, `0.1600`, `0.2000`, `0.4000`, `1.0000`, `2.0000`, `4.0000`, `6.0000`, `8.0000`, `12.0000`), `VoidNotInside and DidNotExpand` at every one |
+| one collinear node / one on every edge | `16.0000` against `16.0000`, difference `0.0000` at both |
+| the `0.0001 m` sliver | `15.9996`, and `7.9996` against `15.9996` → `8.0000` when it stands `2 m` outside |
+| the `1 m` slit | `12.0000` |
+| the simple-outside controls | `12.0000` against `20.0000` → `8.0000`; `8.0000` against `16.0000` → `8.0000`, both firing, `over: 11.960006` and `16.194408` |
+| the two authored pinches, 9 wall steps each (18 rows) | builds, `validate says nothing`, `clip` cannot measure, volumes to 4 dp — `3.8720`, `4.0097`, `37.1520`, `39.9219` at the ends |
+
+**`part_probe` and `patio_probe` are byte-identical too — 0 differing records each — so both tables stand to the digit.**
+
+**`validate_probe` differs by 34 records and every one of them is either the new name or a sentence this change falsified.**
+`ring_probe` differs by **3**, and all three are the new name beside the count moving `1 → 2`: its document is *"a `10 × 10`
+ring with a `4 × 4` hole, written as one loop with a neck"*, the neck is the same authored coincidence, and it read
+`DidNotExpand { OffsetSelfIntersecting { Outline { mass: MassId(0) }, left: 4, right: 7 } }` alone before. **That is the
+change landing on a document in the tree rather than on one a probe built for it**, and it is a fault the crate already
+named — the probe's own reading, *"the crate names the ring as a fault"*, is unchanged. `erode_probe` differs by **8**, and
+all 8 are wall-clock timings; **its non-timing lines are identical, 0 differing records.**
+
+### The gate, measured on the branch
+
+- **29/29 building examples and 16/16 gallery examples exit 0.** `cargo build --workspace --all-targets` exits 0 and
+  warns **only** of the `census.exe` / `census.pdb` filename collision — the set every earlier section quotes, and no new
+  warning. `cargo fmt --all -- --check` is clean.
+- **Nine before/after pairs on this adapter: 9 rows, 27 fields, 0 moved.** **Which hash is which, because the three are not
+  the same measurement:** `png` is the **SHA-256 of the written `.png` file**; `document` is the manifest's **hash over the
+  documents the compile emitted**; `image` is the manifest's **hash over the raw pixel buffer the gpu returned, before any
+  png encoding**. `house` reads `B13154AD7D29F938` and `4f343949d83b2064…` on both sides — **the two hashes of one frame
+  the section *Correction: the difference was the hash's domain* is about**, and the eight scenes that section's table
+  carries all reproduce it by fresh render, `terrace` aside (`0EBC78ABD314A90D` here, `EDF3F4B3CF2A9686` in that table,
+  because the terrace-camera slice moved it after the table was written).
+- **No gallery document reaches the new name, and it is measured rather than grepped.** A throwaway gallery probe read
+  `OutlineNotMeasured` out of **both** entry points for all nine scenes — `house`, `hall`, `hall_large`, `shed`, `terrace`,
+  `wing`, `workshop`, `yard`, `identity`, **13 masses** between them — and every one reads **0 from `document`, 0 from
+  `Building::validate`, and 0 violations of any kind**. **The probe carried a control and a canary**, because an instrument
+  that cannot fire agrees because it cannot differ: the `house` with its own first outline replaced by the authored pinch
+  reads **1 from `document` and 1 from `Building::validate`**, payload `OutlineNotMeasured { mass: MassId(0) }`. The canary
+  is the same `panic!` behind an argument, and under it the control run **exits 101**; the regex form `thread '.*'.*panicked`
+  matched that log **1** time and the bare `thread '.*' panicked` matched it **0** — the false negative measured again, on
+  this toolchain, for the same reason as the region slice. **Zero hits across the plain run.** The probe was deleted after
+  the measurement rather than committed, and the gallery is back to **16** examples.
+- `scene_identity_probe` reads **806 rows two-way** (77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101), contiguous, every name
+  non-empty, every name round-tripping, and **0 differing records** against the before run.
+
+### What this slice's brief got wrong, and what the instruments got wrong first
+
+**It offered "or, if the honest answer is that the document half genuinely cannot know without expanding, make the two
+entry points report a consistently declined answer instead" — and the honest answer is that it *can* know.** The document
+half already called `clip` about a mass's plan against itself, on the refusal path of `check_overlap`; the question was
+being asked and its answer was thrown away rather than read. **The brief described the fault as a limit of what the document
+half may know, and it is a limit of what it was printing.**
+
+**Its example of what the payload should carry — "the loop and the node the triangulation stuck on" — names a node that
+does not exist.** That is above, and it is the sharpest thing the brief got wrong: the deciding test is `covers`, not the
+walk stopping, so a node from the walk would be a *different* reading wearing the refusal's name. **"Carrying what decided
+it" is a constraint on the payload, not a description of one**, and reading it as the latter is what would have put a second
+test in the module.
+
+**And the brief did not name the shape, which cost the control its second row.** It said "a needle, or the shape `clip`
+declines", which is one row; the other row is the authored pinch on its own, whose expander refusal is a different
+`Problem` entirely, and a control carrying only the needle would have passed a change that reported pinches wrongly.
+
+**The instruments were wrong first, in the way this record keeps finding, and twice.** The gallery probe compiled against
+**the parent checkout's `whiting-building`** because one `cargo` run was issued without its `workdir`; the rlib that came
+back was the same artifact for the same commit, **so nothing looked wrong**, and the symptom was a compile error a long way
+from the cause — `no variant named OutlineNotMeasured found for enum Violation` in a probe whose own dependency was right.
+**Every measurement taken after that build was thrown away and retaken**, and the retake asserts the thing directly: every
+`Compiling` line in the build log names `C:\resource\whiting\.worktrees\building-doc-entry\crates`, and the count of lines
+that do not is **0**. The second was quieter: a `Get-ChildItem … -Filter *.rs -Exclude …` for the gallery examples returned
+**0 items**, so a loop over an empty set exits 0 and reports success. **Both were caught by printing the number the gate
+compares** — the count of compiling lines, and the count of examples — and not by the verdict either command printed.
+
+### What remains open
+
+- **Every shape found so far that reaches `OutlineNotMeasured` also fails to expand**, so the new name does not yet add a
+  fact that was unreachable — it moves one from the composing entry point into the document half, which is what the rule
+  asks. **Whether a mass outline can fail to triangulate and still expand was not found and was not constructed**, and it is
+  the question that would tell whether this is a name an author ever needs *without* also running a build.
+- **The authored pinch is still the one courtyard whose areas nothing can check**, unchanged for the void half and now
+  **named for the mass half**: a pinched mass outline reads `OutlineNotMeasured` from `document` where it used to read
+  nothing, and the offset walk still refuses it outright, so no mass stands there.
+- **`covers` is still a necessary condition and not a proof**, unchanged: a loop that meets itself whose triangles happened
+  to sum to its shoelace with positive-area overlap would pass it. What such a loop gets from the mass side is
+  `OutlineNotSimple`, which names it rather than measuring it, and from the pair side `OverlapNotMeasured`.
+- **`terrace` still shows one plate of three** in the frame census, and a part on a mass's inner wall is still measured by
+  no scene. Neither opened here.
 
 
