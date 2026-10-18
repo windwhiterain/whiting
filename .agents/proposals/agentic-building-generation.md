@@ -1268,7 +1268,17 @@ That is the difference between a style and a preset: **a preset is the numbers, 
 them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
 chosen twice.
 
-## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, again on 2026-10-31 when the ground was cut away from under every plate, again on 2026-10-17 when `RoofStyle::Flat` kept the plate every other style already carried, again on 2026-11-02 when `terrace` moved its camera, again on 2026-11-03 when `terrace` lengthened its lens, again on 2026-11-05 when the `workshop` grew a workbench on its own inner wall — **that one moved as well, and the eight beside it are byte-identical again** — again on **2026-11-06 when `terrace` asked for a frame of its own shape, which is the first scene in this table that is not square**, and again on **2026-10-18 when the other eight were reframed and every hash but `terrace`'s moved**, and again on **2026-11-07 when `house` and `yard` each grew the one opening their floor needed — two hashes moved and the seven beside them are byte-identical**, see *The terrace's camera, and what a floor costs to see* and *The terrace's lens, and the ceiling a square frame puts on a row* and *What the frame aspect slice found* further down, *What the second frame slice found* and *Two scenes grew the opening their floors needed* at the end of this file)
+## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, again on 2026-10-31 when the ground was cut away from under every plate, again on 2026-10-17 when `RoofStyle::Flat` kept the plate every other style already carried, again on 2026-11-02 when `terrace` moved its camera, again on 2026-11-03 when `terrace` lengthened its lens, again on 2026-11-05 when the `workshop` grew a workbench on its own inner wall — **that one moved as well, and the eight beside it are byte-identical again** — again on **2026-11-06 when `terrace` asked for a frame of its own shape, which is the first scene in this table that is not square**, and again on **2026-10-18 when the other eight were reframed and every hash but `terrace`'s moved**, and again on **2026-11-07 when `house` and `yard` each grew the one opening their floor needed — two hashes moved and the seven beside them are byte-identical**, see *The terrace's camera, and what a floor costs to see* and *The terrace's lens, and the ceiling a square frame puts on a row* and *What the frame aspect slice found* further down, *What the second frame slice found* and *Two scenes grew the opening their floors needed* at the end of this file, and again when **`yard`'s shed grew the window its own floor needed — one hash moved and the eight beside it are byte-identical**, see *The shed's plate grew the window it needed, and the 806 sweep* at the end of this file)
+
+**Any identity-row count other than the one in *The state the arc closed on* is a fact about the
+slice that measured it.** `806` stands in **thirty** places further down this file and in **four** more
+inside the section that found it stale, and `845` in one, and every one of those is **true of its own
+moment**: `806` is what the nine tables held before the workshop grew
+its workbench, and `845` is what they held before the two openings. **They are not rewritten, because
+a historical section that reports what a past slice measured is a measurement and not a claim about
+today**, and a reader who cannot tell which number is current is a worse problem than a reader who has
+to walk to the end of the file once. The current count is stated once, in that section, and it is the
+only number to budget against.
 
 Nine building scenes render, and each one's picture has a hash. They are recorded here because the question a
 refactor has to answer is *"did the picture change?"*, and a hash answers it in a way that looking at two images
@@ -1284,7 +1294,7 @@ does not. The hash is the first sixteen hex of the `sha256` of the scene's own `
 | `terrace` | `E32C1CA08D9F3016` | three units that touch, nine windows; **the frame is the scene's own and this scene asks for three to one — 1536 x 512 against the pipeline's 1024 square — with a vertical angle 2.197x shorter over an eye, a target and a distance that did not move**, so all three plates are still in frame (`slab 0` 1,779, `slab 1` 3,022, `slab 2` 3,435) and the row's own pixels went from **25.36 %** of the square to **44.88 %** of the wide one. **Re-recorded 2026-10-06; and on 2026-10-18 it was the control for the eight beside it — byte-identical, 152,125 bytes either way, with its manifest `document` hash identical too** |
 | `wing` | **`2EF5C4FB206167F4`** | host plus attached wing, windows on the weather faces; **re-recorded 2026-10-18: the frame is 1424 × 736 at 1.935 and the lens is the longest in the gallery**, because the square put an L at 8.25 % of the frame — the smallest of the nine and not too small, only lost. `slab 0`'s top went **380 → 2,738**; `slab 1`'s is **21**, too few for the neighbour rule; the building's own pixels went **8.25 % → 59.23 %** |
 | `workshop` | **`EB8E05CD755B9B4B`** | two storeys, a plate, five instanced shutters, and one workbench on the mass's own inner wall face; **re-recorded 2026-10-18: the frame is 1120 × 928 at 1.207 and only the aim moved**, because the silhouette already fitted at 0.888 by 0.870 and its centre was 52.5 px right and 60.5 px above the frame's. The ground plate's top went **2,974 → 4,803**, the mezzanine's is **still 0**, and the building's own pixels went **34.54 % → 55.41 %** |
-| `yard` | **`C1092EB9343518A8`** (was **`DCFC79EFB0F78DD4`**) | the courtyard and its gate; **re-recorded 2026-10-18: the frame is 1264 × 816 at 1.549 and only the aim moved.** The square **cut 198 px of building off its left edge**; this frame carries none. **Neither plate can answer the floor question and the brief did not say so** — both are 1.20 m foundations on a slope with **no opening over either**, so their tops are not in frame while their edges are, at 9,717 and 3,815 px. **Re-recorded again 2026-11-07, when the store grew one doorway on its west wall: `slab 1, its top` reads `1,442` pixels where it read `0`, the first time either of the yard's two foundations has been seen from above at all.** The sentence above is history and is left standing as it was written — see *Two scenes grew the opening their floors needed* at the end of this file |
+| `yard` | **`D33D5F3372A4F0B0`** (was **`C1092EB9343518A8`**) | the courtyard and its gate; **re-recorded 2026-10-18: the frame is 1264 × 816 at 1.549 and only the aim moved.** The square **cut 198 px of building off its left edge**; this frame carries none. **Neither plate can answer the floor question and the brief did not say so** — both are 1.20 m foundations on a slope with **no opening over either**, so their tops are not in frame while their edges are, at 9,717 and 3,815 px. **Re-recorded again 2026-11-07, when the store grew one doorway on its west wall: `slab 1, its top` reads `1,442` pixels where it read `0`, the first time either of the yard's two foundations has been seen from above at all.** The sentence above is history and is left standing as it was written — see *Two scenes grew the opening their floors needed* at the end of this file. **Re-recorded again when the shed grew the one window its floor needed: `slab 0, its top` reads `3,686` pixels where it read `0`, `x 539..=617, y 347..=414`, and `--locate (578, 380)` answers that plate with `--region` holding `25 px` of one id — see *The shed's plate grew the window it needed, and the 806 sweep* at the end of this file.** 282,250 bytes against 283,962 |
 | `identity` | **`48F13F7D84A24480`** | the identity picture, and every pixel still names itself; **re-recorded 2026-10-18: the frame is 1280 × 816 at 1.569 and only the aim moved**, 0.80 m of yaw and 0.71 m of pitch. The square **cut 121 px of building off its left edge**; this frame carries none. The plate's top went **1,261 → 1,579** through the one opening |
 
 
@@ -6513,18 +6523,27 @@ pictures are the recorded hashes, unchanged. That is *The rule a narrowed check 
 
 ## The state the arc closed on (2026-10-27)
 
-**Every scene can now answer the floor question.** The last two exceptions were closed by giving each the opening its
-floor needed: `house` a window on the east face (`Opening` on edge 1, 2.867 × 2.00 m), and `yard`'s store a **doorway**
-on the west face — a doorway and not a window because that plate's top stands at **2.56 m** and a 7.8° sight line
-crosses the wall only **0.038 m above the ring's base**, where no sill can reach. Both prove **25/25**:
+**Every scene can now answer the floor question, and the yard answers it twice.** The last two
+exceptions were closed by giving each the opening its floor needed: `house` a window on the east face
+(`Opening` on edge 1, 2.867 × 2.00 m), and `yard`'s store a **doorway** on the west face — a doorway and
+not a window because that plate's top stands at **2.56 m** and a 7.8° sight line crosses the wall only
+**0.038 m above the ring's base**, where no sill can reach. Both prove **25/25**:
 `house` `--locate (729, 514)` → `slab 0, its top` (15,943 px), `yard` `--locate (1025, 213)` → `slab 1, its top`
-(1,442 px).
+(1,442 px). **The third floor this arc was missing closed on the same geometry run the other way:** the
+shed's plate stands at `0.4` under the same eye at `6.4`, a metre and more below the store's, so its
+sight lines cross its wall a metre above its floor and a **window** answers — `--locate (578, 380)` →
+`slab 0, its top` (3,686 px), 25/25 — see *The shed's plate grew the window it needed, and the 806 sweep*
+below.
 
 **The numbers to carry forward, replacing every earlier count in this file:**
 
-- **Identity: 852 rows** across nine tables — `77, 109, 77, 35, 66, 123, 162, 99, 104` for
+- **Identity: 856 rows** across nine tables — `77, 109, 77, 35, 66, 123, 162, 99, 108` for
   `house, hall, hall_large, shed, terrace, wing, workshop, yard, identity`. (Earlier sections say 806 and 845;
-  806 predates the workbench, 845 predates the two openings, and `workshop`'s 162 corrects a list that put 123 there.)
+  806 predates the workbench, 845 predates the two openings, 856 is what this file carried until `yard`'s shed
+  grew its window, and `workshop`'s 162 corrects a list that put 123 there. **All three are true of their own
+  moment and none of them is rewritten: a historical section that reports what a past slice measured is a
+  measurement, and the count above is the only one to budget against.** The baseline section above carries the
+  same statement once, for the thirty `806`s this file carries in sections older than this one.)
 - **Frames: nine aspects, 1.207–3.000**, each a scene's own — `house 1392×752`, `hall 1328×816`,
   `hall_large 1264×816`, `shed 1344×768`, `terrace 1536×512`, `wing 1424×736`, `workshop 1120×928`,
   `yard 1264×816`, `identity 1280×816`. Fills went 27.3→50.8, 31.1→45.6, 47.2→47.6, 24.6→55.7, 44.9→44.9,
@@ -6533,13 +6552,183 @@ crosses the wall only **0.038 m above the ring's base**, where no sill can reach
   clear now).
 - **`.png` hashes** (the domain the table carries): `house 2F60685F737F7ED7`, `hall 96F61FA5E9F18E60`,
   `hall_large 478E692C6CBE2D3B`, `shed 48909F693ACBA634`, `terrace E32C1CA08D9F3016`, `wing 2EF5C4FB206167F4`,
-  `workshop EB8E05CD755B9B4B`, `yard C1092EB9343518A8`, `identity 48F13F7D84A24480`.
-- **Gates**: 29 building + 16 gallery examples exit 0, 0 warnings, `cargo fmt --all -- --check` clean, and the export
-  size equals the frame's for all nine, proved by real Cycles subprocess renders.
+  `workshop EB8E05CD755B9B4B`, `yard D33D5F3372A4F0B0`, `identity 48F13F7D84A24480`.
+- **Gates**: 29 building + 16 gallery examples exit 0, `cargo fmt --all -- --check` clean, and the export
+  size equals the frame's for all nine, proved by real Cycles subprocess renders. **On warnings, read the
+  date:** this file has said *0 warnings* for several slices, and `cargo build --workspace --all-targets`
+  now prints **two** lines that are not this crate's — `output filename collision` for `census.exe` and
+  `census.pdb`, which `whiting-building` and `whiting-mountain` both claim an example of. **They are
+  pre-existing by construction rather than by measurement against a base**, and the honest statement is
+  **0 new warnings from the building work**, not `0`.
 
-**What is still deliberately open, each measured rather than assumed:** `yard`'s **shed** plate still reads 0 (one
-opening per scene; the shed is the one a window would answer); `house`'s floor is **in shadow** — the sun travels `+x`
+**What is still deliberately open, each measured rather than assumed:** `yard`'s **shed** plate reads
+`3,686` and its store's `1,442`, so the scene answers the floor question on **both** foundations and the
+item this list carried is closed; `house`'s floor is **in shadow** — the sun travels `+x`
 and an east window admits none, so the id channel names the plate while a reader of the png cannot see it by eye; the
 **authored pinch** is the one courtyard whose areas nothing can check; a **mass's interior** is not a documentable
 concept; `covers` remains necessary and not a proof; and the nine frames are no longer mutually comparable, which is
 the accepted price of the owner's decision.
+
+## The shed's plate grew the window it needed, and the 806 sweep (2026-11-08, branch `feature/building-shed-window`)
+
+The record closed its floor arc with one item still open: **`yard`'s shed plate read `0`**, because the
+"one opening per scene" rule gave the store a doorway and the shed nothing. **That rule is the whole
+content of this slice's brief and it was the brief's own reading of the record rather than a constraint
+the record states** — `yard` now carries two openings, and the reason is in the arithmetic below.
+
+### Which wall, and why a window and not a doorway
+
+**The shed's plate top stands at `0.4`** — the seat cuts a terrace to the highest ground under the
+footprint, and `0.16 * 2.5`, the shed's own east edge, is that highest — where the store's stands at
+`2.56`, and the eye is at `6.4` for both. A sight line from that eye to a point of the shed's plate
+crosses the plane `x = -2.5` at
+
+```text
+y = 6.4 - 6.0 * 10.5 / (x + 13.0)   ->  0.5395 at x = -2.25,   2.2689 at x = 2.25
+```
+
+**a band `1.73 m` tall whose lower edge stands `0.14 m` above the floor.** The store's band is `0.46 m`
+tall with its lower edge `0.038 m` above the ring's base annulus, which is why no sill inset reaches it
+and why the previous slice cut a doorway. **A sill `0.14 m` up this wall is still under every crossing
+on it**, so the shed takes a window and the geometry — not the scene — chooses which.
+
+| what the window is | value |
+| --- | --- |
+| mass | the **shed**, `MassId(0)` |
+| wall | **edge 3**, the west face at `x = -2.5`, running `z 4 .. -4` — the same face the store's doorway is cut into |
+| rhythm | `Rhythm::Even { count: 3 }` by `Even { count: 1 }`, on **every** face of both masses — `shed`'s own two numbers |
+| bay | **column 0**, spanning `z 1.333..=4`; the `0.30 m` jambs leave the hole `z 1.633..=3.70`, and at `pz = 0` the crossings of that wall run `z 0.36 .. 4.83` |
+| insets | jamb **`0.30`**, jamb **`0.30`**, sill **`1.05`**, head **`0.55`** — `shed`'s sill and head unchanged, in metres |
+| the hole it cuts | **`2.067 m` across and `1.20 m` tall**, sill at `1.45 m`, head `0.55 m` below the `3.2 m` wall top |
+| the floor behind it | **`6.67 m²`** of the plate's `33.75 m²`, `px -0.27 .. 2.25` by `pz -3.75 .. 1.19` |
+
+**The jambs are this wall's own, for the reason the house's were** — a wall's offset loop runs
+`wall ..= length - wall`, so a `0.30 m` jamb over a `0.25 m` wall is the thickness plus the `50 mm`
+`shed` leaves over its own, and anything narrower puts the reveal on a corner `expand` calls
+`past_offset`. **The sill and the head are `shed`'s numbers and were not moved.** They are not a tuned
+pair: the sill's height is what *selects* a band of the plate, and `1.05` is the one `shed` already draws
+a window at. Lowering it to `0.50` would put `9.70 m²` behind the hole instead of `6.67 m²` and produce
+a window `shed` does not have.
+
+**The geometry was measured before the edit and reproduced a number the record already holds**, which is
+what made it usable rather than merely plausible: run over the store's doorway — `x = 12`, `z 0.30..2.20`,
+`y 2.56..4.51` — the same walk returns **`7.2003 m²` of visible floor, and the frame measures `1,442`
+pixels**. The shed's `6.67 m²` is therefore about the same picture, and it measures **`3,686`**.
+
+**Nothing stands in the way, and that was checked rather than assumed:** the same rays cross the
+courtyard's own west run at `y 2.99 .. 3.86` against a run whose top is at most `0.86` — `1.9` of wall
+over ground `-1.04` — and they cross `z = 6.5` at `y 2.9 .. 3.6` against that run's top, which is lower
+still. **The camera did not move**, and neither did the lens, the aim or the frame's shape.
+
+### What the picture says, asked of the picture and not of the source
+
+| measurement | before | after |
+| --- | --- | --- |
+| `--where "slab 0, its top"` | id 93, **not visible in this frame** | id **97**, **`3,686`** pixels, `x 539..=617`, `y 347..=414` |
+| `--locate 578,380` | — | **`slab 0, its top`**, `authored_id [97.0, 0.0, 0.0, 1.0]`, `pixels identical` |
+| `--region 576,378,580,382` | — | **`25 px`, one distinct id, id 97** — **25/25**, and three more rectangles at `(573,373)`, `(578,383)` and `(576,388)` read the same |
+| `--where "slab 1, its top"` (the store's) | id 99, **`1,442`** pixels | id **103**, **`1,442`** pixels — the same floor, on a table four rows longer |
+| `yard`'s own `validate` | **empty** | **empty** |
+| frame hash | `C1092EB9343518A8` | **`D33D5F3372A4F0B0`**, 282,250 bytes against 283,962 |
+
+**The id moved and the pixels did not**, which is the shape worth reading: four new rows land inside
+`mass 0`'s own block and every id after them shifts by four, so the store's floor answers `103` where it
+answered `99` and covers the same `1,442`. That is *The rule a narrowed check owes the tree* running the
+other way — the pin was **re-read**, not edited.
+
+### The eight that did not move
+
+All nine were rendered on the tip this branch started from and again on its tip, and compared **byte for
+byte**. Every "before" reading reproduced the table above **to the digit**, which is what makes the pair
+a before-and-after on one machine rather than two runs of one tree.
+
+| scene | before | after | identical |
+| --- | --- | --- | --- |
+| `house` | `2F60685F737F7ED7` | `2F60685F737F7ED7` | **yes** |
+| `hall` | `96F61FA5E9F18E60` | `96F61FA5E9F18E60` | **yes** |
+| `hall_large` | `478E692C6CBE2D3B` | `478E692C6CBE2D3B` | **yes** |
+| `shed` | `48909F693ACBA634` | `48909F693ACBA634` | **yes** |
+| `terrace` | `E32C1CA08D9F3016` | `E32C1CA08D9F3016` | **yes** |
+| `wing` | `2EF5C4FB206167F4` | `2EF5C4FB206167F4` | **yes** |
+| `workshop` | `EB8E05CD755B9B4B` | `EB8E05CD755B9B4B` | **yes** |
+| **`yard`** | `C1092EB9343518A8` | **`D33D5F3372A4F0B0`** | **no** — one window |
+| `identity` | `48F13F7D84A24480` | `48F13F7D84A24480` | **yes** |
+
+The nine `-authored_id` images were compared beside them and agree on the same eight. **The domain of
+every hash in this file is the SHA-256 of the written `.png`, first sixteen hex upper case** — which is
+*Correction: the difference was the hash's domain, not an adapter* restated as the first line of a
+merge gate, and not the `-manifest.json`'s `image` hash, which `render.rs` takes over the raw pixel
+buffer before any png is encoded.
+
+### The identity rows
+
+`scene_identity_probe` read nine tables two-way on this tip.
+
+| | before | after | delta |
+| --- | --- | --- | --- |
+| `hall` | 77 | 77 | — |
+| `hall_large` | 109 | 109 | — |
+| `identity` | 77 | 77 | — |
+| `house` | 35 | 35 | — |
+| `shed` | 66 | 66 | — |
+| `terrace` | 123 | 123 | — |
+| `workshop` | 162 | 162 | — |
+| `wing` | 99 | 99 | — |
+| **`yard`** | **104** | **108** | **+4** — left reveal, right reveal, head, sill |
+| **total** | **852** | **856** | **+4** |
+
+**Every row is contiguous from the first, every name is non-empty and every name round-trips to its
+id**, the probe reports `the channel is two-way for every scene: true`, and its four pinned readings are
+unchanged and pass — **`house` id 15 still reads `mass 0, the head reveal of opening 0 in edge 1`**, so
+the previous slice's re-read still holds after a second scene grew an opening.
+
+### The sweep the last slice left, and why it was done this way
+
+The previous slice wrote *"someone may want a sweep"* over the **`806`** this file carries. The sweep is
+done, and it is **a pointer rather than a rewrite**, for one reason: **thirty-four of those places are
+in sections that report what a past slice measured** — thirty above and four inside the section that
+found the figure stale. `806` was what the nine tables held before the
+workshop grew its workbench, and it is **true of that moment**. Rewriting it to `856` would make the
+file say a past slice measured something it did not measure, which is the same failure as a hash read
+against the wrong domain — *the number is right, the claim about it is false*.
+
+What was done instead, in two places and nowhere else:
+
+1. **One paragraph in the baseline section** — the one a slice reads before it budgets anything — saying
+   that any count other than the state section's is a fact about the slice that measured it, and that
+   `806` is what the tables held before the workbench and `845` what they held before the two openings.
+2. **The state section's own parenthetical**, extended to name `856` as well, and saying plainly that
+   none of the three is rewritten because a historical measurement is a measurement.
+
+**The state section's own numbers were updated, because that section is not history.** It is titled *The
+numbers to carry forward, replacing every earlier count in this file*, so `852 → 856`, `yard 104 → 108`
+and the yard hash were changed there — and nowhere else.
+
+### The gates, all measured on this branch
+
+| gate | reading |
+| --- | --- |
+| `yard`'s own `validate` | **empty** — asserted in the scene before the frame is built, and the **before**-value was measured on the tip this branch starts from rather than assumed |
+| building examples | **29 / 29 exit 0** |
+| gallery examples | **16 / 16 exit 0** |
+| panic lines across all 45 | **0**, under `thread '.*'.*panicked` — proved on a control first: two real panicking threads read **2** under that pattern and **0** under the bare `thread '...' panicked` |
+| `cargo fmt --all -- --check` | **clean**, exit 0 and 0 diff lines |
+| new warnings | **0**; the workspace build's only two warning lines are the pre-existing `census.exe` collision between `whiting-building` and `whiting-mountain`, which two examples of the same name cause and this change does not touch |
+
+### What this brief got wrong
+
+**It said the store got "a doorway, one opening per scene was the constraint".** No such rule is
+written down; it is the previous slice's reading of its own change, and this slice's numbers show it was
+never a property of the geometry — **the two plates are more than a metre apart on one slope and take
+opposite answers**, `slab 1` at `2.56` needing a doorway and `slab 0` at `0.4` taking a window. A
+constraint read off one slice's outcome and written into the next one's brief as a rule is the same
+error as a number copied out of a section that did not measure it.
+
+**It called the eight neighbours "byte-identical" before saying which hash it meant.** The domain is
+named above because the record has already paid for the ambiguity once: two hashes of one frame, the
+written `.png` and the raw gpu buffer.
+
+**It asked for a window on the shed without asking whether the camera could reach one.** The camera
+reaches it — measured before the edit, against a geometric walk that reproduces the store's recorded
+`1,442` pixels from its `7.2003 m²` — but that check is the whole answer, and a brief that assumed it
+would have had no way to tell a window that worked from one that put a hole in a wall.

@@ -188,7 +188,7 @@ const STORE_WEST_EDGE: usize = 3;
 /// **Two bays, and the first** — the nearer half of a wall the eye approaches from `+z`. The lines
 /// above reach the wall between `z = 0.37` and `z = 5.5` while bay 0 spans `z 0..=2.5`, so the whole
 /// northern half of the crossing is inside it and none of it is cut off at either jamb.
-const STORE_BAYS: usize = 2;
+const STORE_WALL_BAYS: usize = 2;
 const DOOR_BAY: usize = 0;
 
 /// The doorway's own insets: [`shed`](crate::shed)'s door, in metres — a jamb at each end, nothing
@@ -200,6 +200,67 @@ const DOOR_BAY: usize = 0;
 fn store_door() -> Inset {
     let jamb = STORE.wall + 0.05;
     Inset::new(jamb, jamb, 0.0, 0.45)
+}
+
+/// The shed's own mass in this skeleton, which is the one [`site`] composes first.
+const SHED_MASS: MassId = MassId(0);
+
+/// The wall the window is cut into: **edge 3** of the shed's own outline, which `derive::starter`
+/// builds centred on the origin as `[(-2.5,-4), (2.5,-4), (2.5,4), (-2.5,4)]`, so edge 3 runs from
+/// `(-2.5, 4)` to `(-2.5, -4)` — the **west** face. It is the same face [`STORE_WEST_EDGE`] names
+/// on the store and for the same reason: the eye at `[-13.0, 6.4, 15.5]` stands west of both
+/// buildings.
+///
+/// # Why this wall takes a window and the store's takes a doorway
+///
+/// **The two plates are more than a metre apart on the same slope, and that is the whole
+/// difference.** The seat cuts a terrace to the highest ground under each footprint, so the shed's
+/// plate top stands at **`0.4`** — `0.16 * 2.5`, the shed's own east edge — where the store's stands
+/// at **`2.56`**, and the eye is at `6.4` for both. A sight line from that eye to a point of the
+/// shed's plate crosses the plane `x = -2.5` at
+///
+/// ```text
+/// y = 6.4 - 6.0 * 10.5 / (x + 13.0)   ->  0.5395 at x = -2.25,   2.2689 at x = 2.25
+/// ```
+///
+/// **a band `1.73 m` tall whose lower edge stands `0.14 m` above the floor**, where the store's band
+/// is `0.46 m` tall with its lower edge `0.038 m` above the ring's base annulus. **A sill can be
+/// `0.14 m` up this wall and still lie under every crossing on it; on the store's wall no sill inset
+/// at all reaches.** So the shed answers a window and the store a doorway, and the geometry chooses
+/// between them rather than the scene.
+///
+/// **Nothing stands in the way, and it was checked rather than assumed.** The same rays cross the
+/// courtyard's own west run at `y 2.99 .. 3.86` against a run whose top is at most `0.86` — `1.9` of
+/// wall over ground `-1.04` — and they cross `z = 6.5` at `y 2.9 .. 3.6` against that run's top,
+/// which is lower still.
+const SHED_WEST_EDGE: usize = 3;
+
+/// How many bays the shed's walls carry, and which one the window stands in.
+///
+/// **Three bays and the first** — [`shed`](crate::shed)'s own number, and the bay the eye
+/// approaches. The face runs `8.0 m` from `z = 4` to `z = -4`, so bay 0 spans `z 1.333..=4` and the
+/// `0.30 m` jambs leave the hole `z 1.633..=3.70`: at `pz = 0` the sight lines that reach the plate
+/// cross this wall between `z = 0.36` and `z = 4.83`, and bay 0's window holds every crossing of
+/// that band inside the wall's own run.
+const SHED_BAYS: usize = 3;
+const WINDOW_BAY: usize = 0;
+
+/// The window's own insets: a jamb at each end, and [`shed`](crate::shed)'s sill and head unchanged.
+///
+/// **The sill and the head are `shed`'s numbers, `1.05 m` up and `0.55 m` down**, which on this
+/// wall's `0.4 .. 3.2` extent reads a hole **`1.2 m` tall**. The jambs are this wall's own thickness
+/// plus the same `50 mm` [`shed`](crate::shed) leaves over its own, for the reason [`store_door`]
+/// gives: a wall's offset loop runs `wall ..= length - wall`, and a jamb narrower than the wall puts
+/// the reveal on a corner the neighbouring wall still claims whole, which `expand` calls
+/// `past_offset`. Here that reads a hole **`2.067 m` across**.
+///
+/// **The numbers are `shed`'s, and the geometry is met without moving them.** Swinging the grid
+/// alone changes how much of the plate stands behind the hole, because the sill's height is what
+/// selects a band of it: this window puts **`6.67 m²`** of the plate's `33.75 m²` where a reader can
+/// see it, and `shed`'s own `1.05` is what puts that there.
+fn shed_window() -> Inset {
+    let jamb = SHED.wall + 0.05;
+    Inset::new(jamb, jamb, 1.05, 0.55)
 }
 
 fn node(x: f32, z: f32) -> PlanNode {
@@ -269,7 +330,7 @@ fn site() -> BuildingSkeleton {
     skeleton
 }
 
-/// Cuts the one opening this site carries, through the store's west wall.
+/// Cuts the two openings this site carries: the store's doorway and the shed's window.
 ///
 /// # Invariants
 ///
@@ -280,13 +341,17 @@ fn site() -> BuildingSkeleton {
 /// building rather than a hole in its wall — and `shed` and `house`, which are never seated, are
 /// the only reason the two call orders are not visibly different from the outside.
 ///
-/// **One opening, one wall, one bay**, authored the way [`shed`](crate::shed) and [`house`](crate::house)
-/// author theirs: `Rhythm::Even` over every face and `Opening` on one slot of one of them.
-fn open_the_store(skeleton: &mut BuildingSkeleton) {
-    let columns = Rhythm::Even { count: STORE_BAYS };
+/// **One rhythm, one storey, over both buildings and every face**, so a re-split of either moves
+/// both openings with it. Each opening is then **one slot of one of those faces**, authored the way
+/// [`shed`](crate::shed) and [`house`](crate::house) author theirs: `Rhythm::Even` over every face
+/// and `Opening` on one slot of one of them.
+fn open_the_two_walls(skeleton: &mut BuildingSkeleton) {
     let rows = Rhythm::Even { count: 1 };
-    for face in skeleton.faces_of(STORE_MASS) {
-        ops::split_face(skeleton, face, &columns, &rows);
+    for (mass, bays) in [(STORE_MASS, STORE_WALL_BAYS), (SHED_MASS, SHED_BAYS)] {
+        let columns = Rhythm::Even { count: bays };
+        for face in skeleton.faces_of(mass) {
+            ops::split_face(skeleton, face, &columns, &rows);
+        }
     }
     ops::add_opening(
         skeleton,
@@ -298,6 +363,16 @@ fn open_the_store(skeleton: &mut BuildingSkeleton) {
         ),
     )
     .expect("the doorway names a bay of the grid");
+    ops::add_opening(
+        skeleton,
+        Opening::new(
+            FaceRef::new(SHED_MASS, SHED_WEST_EDGE),
+            0,
+            WINDOW_BAY,
+            shed_window(),
+        ),
+    )
+    .expect("the window names a bay of the grid");
 }
 
 /// Returns a gate leaf: a panel `width` across, `height` tall, `thickness` through, standing at its own
@@ -344,8 +419,8 @@ pub fn yard() -> Value {
         seated.walls
     );
     // **After the seat and before the document**, because the store's bays are laid over the
-    // elevations the ground wrote into it. See `open_the_store`.
-    open_the_store(&mut skeleton);
+    // elevations the ground wrote into it. See `open_the_two_walls`.
+    open_the_two_walls(&mut skeleton);
     let document = Building::new(skeleton.clone());
     let built = document.build().expect("the seated site expands");
     // **The scene refuses to draw a site the crate's validator would not**, for the reason the seat's
@@ -632,8 +707,8 @@ pub fn document() -> Building {
         |plan| ground(plan[0] as f64, plan[1] as f64) as f32,
         0.0,
     );
-    // **The same opening the frame draws**, for the same reason and in the same place: a caller
-    // naming what this frame shows must name the seated document, not the document before it.
-    open_the_store(&mut skeleton);
+    // **The same two openings the frame draws**, for the same reason and in the same places: a
+    // caller naming what this frame shows must name the seated document, not the document before it.
+    open_the_two_walls(&mut skeleton);
     Building::new(skeleton)
 }
