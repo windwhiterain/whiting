@@ -42,9 +42,23 @@
 //! A station whose `scale` is `0` collapses its ring to a point. The caps are still built, so the
 //! surface stays closed and only its geometry degenerates — that is a leaf's tip, and it is why the tip
 //! needs no special case here.
+//!
+//! # A sweep may carry other sweeps
+//!
+//! **One template is one instanced mesh, and a mesh may hold several bands.** A corolla is five petals, a
+//! cone is a whorl of scales and a shoot is a leaf and a stipule: each is several small authored things
+//! standing in a larger one's own coordinates, and a consumer that instances one mesh per petal pays a
+//! row for what is one object. So a [`Sweep`] carries [`Part`]s beside its own band and [`Sweep::sample`]
+//! returns **the join of the two** — each part moved into its carrier's frame and concatenated, which is
+//! [`Loft::joined`] and nothing else. A join is not a grid, so the result answers [`Loft::positions`] and
+//! [`Loft::triangles`] and refuses [`Loft::vertex`], exactly as [`Loft::joined`] states.
+//!
+//! **A sweep that carries nothing is the sweep this repository already made**: the join is over an empty
+//! list, so every trunk, blade and envelope draws the mesh it drew before the parts existed.
 
 use crate::curve::Curve;
 use crate::loft::Loft;
+use crate::math::Vec3;
 use crate::scalar::Scalar;
 use crate::section::Section;
 
@@ -61,10 +75,59 @@ pub struct Sweep {
     pub twist: Scalar,
     /// Whether the two ends are closed by a fan.
     pub capped: bool,
+    /// Further sweeps this one carries, each standing in its own frame inside this one's coordinates:
+    /// the petals of a corolla, the blades of a sprig, the scales of a cone.
+    ///
+    /// # Invariants
+    ///
+    /// **Empty is the identity.** [`Sweep::new`] leaves it empty, and [`Sweep::sample`] joins over it, so a
+    /// sweep that was never given a part samples exactly as it did before the parts existed.
+    pub parts: Vec<Part>,
+}
+
+/// A sweep carried inside a larger one, in its own frame within the larger one's coordinates.
+///
+/// # Invariants
+///
+/// **The frame is rigid and is the part's own authored frame, not a second transform.** `origin`, `x`, `y`
+/// and `z` are [`Loft::moved`]'s own four arguments, so a part's mesh is moved by exactly the call that
+/// moves a loft and a part cannot be scaled or twisted on the way in: a template's parts are the same size
+/// as they were authored.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Part {
+    /// The sweep this part is.
+    pub sweep: Sweep,
+    /// How many stations it is sampled at, which is its own and not its carrier's.
+    pub stations: usize,
+    /// How many slots around its own section.
+    pub around: usize,
+    /// Where the part's own origin stands, in the carrying sweep's coordinates.
+    pub origin: Vec3,
+    /// The frame's `x`: outward from the part's own base, which is the direction a sweep's axis is authored along.
+    pub x: Vec3,
+    /// The frame's `y`.
+    pub y: Vec3,
+    /// `x × y`, which completes the right-handed frame.
+    pub z: Vec3,
+}
+
+impl Part {
+    /// The part's own mesh, moved into the coordinates of the sweep that carries it.
+    ///
+    /// # Invariants
+    ///
+    /// **Only the positions move**: the `(u, v)` are parameters of the sweep that made the loft and not of
+    /// the space it stands in, which is [`Loft::moved`]'s own rule and is why a part's texture coordinates
+    /// read as they were authored.
+    pub fn mesh(&self) -> Loft {
+        self.sweep
+            .sample(self.stations, self.around)
+            .moved(self.origin, self.x, self.y, self.z)
+    }
 }
 
 impl Sweep {
-    /// A sweep of `section` along `spine`: unscaled, untwisted, and capped.
+    /// A sweep of `section` along `spine`: unscaled, untwisted, capped, and carrying nothing.
     pub fn new(spine: Curve, section: Section) -> Self {
         Self {
             spine,
@@ -72,12 +135,23 @@ impl Sweep {
             scale: Scalar::constant(1.0),
             twist: Scalar::constant(0.0),
             capped: true,
+            parts: Vec::new(),
         }
     }
 
-    /// The loft of `stations` rings of `around` vertices each.
+    /// The loft of `stations` rings of `around` vertices each, and every part this sweep carries joined to it.
     ///
     /// # Invariants
+    ///
+    /// - **A sweep that carries nothing samples exactly the mesh it sampled before the parts existed** — the
+    ///   join is over an empty list — so every trunk, blade and envelope in this repository is untouched by
+    ///   the parts a template may carry.
+    /// - **A part is sampled at its own `stations` and `around`**, not at its carrier's, because a petal is
+    ///   not a ring of the calyx's grid: a five-petalled corolla is five bands of a petal's own density
+    ///   rather than five samples of the flower along one spine.
+    /// - **The join is a concatenation, not a union**, so a consumer that smooths a normal over the vertices
+    ///   a triangle touches smooths within one band and never across a part boundary — [`Loft::joined`]'s
+    ///   own rule, and the reason a sprig does not melt where its blades meet.
     ///
     /// A ring's `u` is its station's arc-length fraction and slot `j`'s `v` is `j / around`, so a
     /// vertex's parameter is its station and its slot and nothing else — a consumer reads the pair from
@@ -86,6 +160,15 @@ impl Sweep {
     /// The section is sampled **once** and carried to every station. Its shape therefore cannot vary
     /// along the spine; only its scale and its twist can.
     pub fn sample(&self, stations: usize, around: usize) -> Loft {
+        let mut loft = self.grid(stations, around);
+        for part in &self.parts {
+            loft = loft.joined(part.mesh());
+        }
+        loft
+    }
+
+    /// The sweep's own ring grid, without the parts it carries.
+    fn grid(&self, stations: usize, around: usize) -> Loft {
         assert!(stations >= 2, "a sweep needs two rings to have a surface");
         assert!(
             around >= 3,

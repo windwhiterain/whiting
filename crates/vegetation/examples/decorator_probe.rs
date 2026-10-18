@@ -11,11 +11,12 @@
 use shape::math::span;
 use shape::mesh::{boundary_loops, euler_characteristic, signed_volume};
 use shape::{Curve, Jet, Scalar, Section, Sweep};
-use whiting_vegetation::decorator::{Placed, Seat, Template, placed};
+use whiting_vegetation::decorator::{Placed, Seat, Template, placed, scatter, scatter_in};
 use whiting_vegetation::derive::{Species, bamboo};
 use whiting_vegetation::handle::Handle;
 use whiting_vegetation::node::Prune;
 use whiting_vegetation::ops::{Change, Edit, Property, apply};
+use whiting_vegetation::plant::Placement;
 
 fn main() {
     let mut checks: Vec<(&str, bool)> = Vec::new();
@@ -28,6 +29,19 @@ fn main() {
         "a tombstone takes its knot",
         a_tombstone_takes_its_decorator(),
     ));
+    checks.push((
+        "a whole band is scatter",
+        a_whole_band_is_whole_plant_scatter(),
+    ));
+    checks.push((
+        "a band seats the upper crown",
+        a_band_seats_the_upper_crown(),
+    ));
+    checks.push((
+        "a one-part sprig is its part",
+        a_one_part_sprig_is_its_part(),
+    ));
+    checks.push(("a sprig is its parts joined", a_sprig_is_its_parts_joined()));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -305,4 +319,177 @@ fn a_tombstone_takes_its_decorator() -> bool {
         "  the control is the count: a decorator placed from a list of handles would draw on a node the plant no longer draws"
     );
     report.clean() && lost == 1 && bough_gone && others
+}
+
+/// `scatter_in` over the whole node is `scatter`, seat for seat: the band is the one thing added, and a
+/// band that names every node cannot have changed which nodes are seated or where.
+fn a_whole_band_is_whole_plant_scatter() -> bool {
+    let species = species();
+    // A range the seed decides, so the count and the slots are both drawn from the node's own stream and
+    // the two calls can only agree if they draw the same numbers in the same order.
+    let mut rows = Vec::new();
+    let mut same = true;
+    for generation in 1..=2 {
+        let plain = scatter(&species.plant, generation, 0, 1.0, (1, 3));
+        let banged = scatter_in(&species.plant, generation, 0, 1.0, (1, 3), (0.0, 1.0));
+        rows.push((generation, plain.len(), banged.len()));
+        same &= plain == banged && !banged.is_empty();
+    }
+    println!("\n# the whole band");
+    for (generation, plain, banged) in &rows {
+        println!(
+            "  generation {generation}: scatter seats {plain}, scatter_in over (0.0, 1.0) seats {banged}"
+        );
+    }
+    println!(
+        "  the control is the plant: a band that dropped a node would seat fewer than scatter on every generation"
+    );
+    same && rows
+        .iter()
+        .all(|(_, plain, banged)| plain == banged && *plain > 0)
+}
+
+/// A band is the parent's station, read on each node: `(0.5, 1.0)` seats the boughs of the culm's upper
+/// half and nothing else, and the seats it does seat are the seats `scatter` drew for them.
+fn a_band_seats_the_upper_crown() -> bool {
+    let species = species();
+    // One seat per bough, so the seats name nodes rather than counts: this row is about *which* nodes the
+    // band keeps.
+    let plain = scatter(&species.plant, 1, 0, 1.0, (1, 1));
+    let upper = scatter_in(&species.plant, 1, 0, 1.0, (1, 1), (0.5, 1.0));
+    // Where every node of that generation hangs on the culm, which is the number the band reads.
+    let hanging: Vec<(Handle, f32)> = species
+        .plant
+        .live()
+        .filter(|(handle, _)| handle.depth() == 1)
+        .map(|(handle, node)| (handle.clone(), node.effective_attachment().station))
+        .collect();
+    let kept = hanging
+        .iter()
+        .filter(|(_, station)| *station >= 0.5)
+        .count();
+    let dropped = hanging.iter().filter(|(_, station)| *station < 0.5).count();
+    // **Every seat is on a node the band kept**, and every kept node has its `scatter` seat unchanged: the
+    // band's test is before the node's stream is opened, so narrowing a band removes seats and moves none.
+    let mut lowest = f32::MAX;
+    let mut highest = f32::MIN;
+    for seat in &upper {
+        let station = hanging
+            .iter()
+            .find(|(handle, _)| handle == &seat.node)
+            .map(|(_, station)| *station)
+            .expect("a seat's node is a node of the generation");
+        lowest = lowest.min(station);
+        highest = highest.max(station);
+    }
+    let same_seats = upper
+        .iter()
+        .all(|seat| plain.iter().any(|other| other == seat));
+    println!("\n# a band of the parent");
+    println!(
+        "  {} boughs hang on the culm at {:?}, so a (0.5, 1.0) band keeps {kept} and drops {dropped}",
+        hanging.len(),
+        hanging
+            .iter()
+            .map(|(_, station)| (station * 100.0).round() / 100.0)
+            .collect::<Vec<f32>>()
+    );
+    println!(
+        "  {} seats above the band, hung between {lowest:.2} and {highest:.2}: the same seats scatter drew: {same_seats}",
+        upper.len()
+    );
+    println!(
+        "  the control is the culm's own station: a scatter that read a seat's station along a bough would see all {} nodes whatever the band said",
+        plain.len()
+    );
+    let strictly_upper = upper.iter().all(|seat| {
+        hanging
+            .iter()
+            .any(|(handle, station)| handle == &seat.node && *station >= 0.5)
+    });
+    plain.len() > upper.len() && dropped > 0 && kept == upper.len() && strictly_upper && same_seats
+}
+
+/// A sprig of one part is that part: the same vertices, the same `(u, v)`, the same triangles, bit for
+/// bit — so a template that gained a sprig drew every mesh it drew before.
+fn a_one_part_sprig_is_its_part() -> bool {
+    let template = knot();
+    let sprig = Template::sprig(vec![(template.clone(), Placement::IDENTITY)]);
+    let plain = template.loft();
+    let joined = sprig.loft();
+    // The strongest statement available: two lofts equal under `PartialEq` are equal everywhere, and the
+    // worst span beside it says how far off that reading is when it is wrong.
+    let equal = joined == plain;
+    let mut worst = 0.0f32;
+    for ((point, _), (other, _)) in joined.vertices().zip(plain.vertices()) {
+        worst = worst.max(span(point, other));
+    }
+    println!("\n# a sprig of one part");
+    println!(
+        "  {} vertices and {} triangles, the same loft under `PartialEq`: {equal}, and the worst span between them {worst:.3e}",
+        plain.positions().len(),
+        plain.triangles().len()
+    );
+    println!(
+        "  the control is the template itself: a join that moved a band, even by the identity frame, would show a span rather than a zero"
+    );
+    sprig.parts() == 1 && equal && worst == 0.0
+}
+
+/// A sprig of several parts is one mesh of their bands: the first at the template's own frame, each other
+/// at its own, and nothing welded between them — two closed solids whose volumes add.
+fn a_sprig_is_its_parts_joined() -> bool {
+    let part = knot();
+    let plain = part.loft();
+    // A pure lift, so the second band is the first moved by one number and the row can be read by eye.
+    let lift = Placement {
+        origin: [0.0, 0.040, 0.0],
+        ..Placement::IDENTITY
+    };
+    let sprig = Template::sprig(vec![
+        (part.clone(), Placement::IDENTITY),
+        (part.clone(), lift),
+    ]);
+    let joined = sprig.loft();
+    let band = plain.positions().len();
+    let mut worst = 0.0f32;
+    for (point, other) in joined.positions()[band..]
+        .iter()
+        .zip(plain.positions().iter())
+    {
+        worst = worst.max(span(
+            *point,
+            [
+                other[0] + lift.origin[0],
+                other[1] + lift.origin[1],
+                other[2] + lift.origin[2],
+            ],
+        ));
+    }
+    let volume = signed_volume(joined.view());
+    let once = signed_volume(plain.view());
+    println!("\n# a sprig of two parts");
+    println!(
+        "  {} bands of {} vertices and {} triangles, joined into {}: the second band is the first lifted by 40 mm to {worst:.3e}",
+        sprig.parts(),
+        band,
+        plain.triangles().len(),
+        joined.triangles().len()
+    );
+    println!(
+        "  {} boundary loops and a volume of {volume:.3e} against {once:.3e} for one knot, a difference of {:.3e}: the join adds the two solids rather than welding them",
+        boundary_loops(joined.view()),
+        (volume - 2.0 * once).abs()
+    );
+    println!(
+        "  the control is the volume: a sprig whose parts had been fused would measure one solid, not two"
+    );
+    // **The volume is the sum to `f32` rounding**: the two bands are the same solid, so the joined loft's
+    // volume is twice one band's to within the arithmetic of summing twice as many terms.
+    sprig.parts() == 2
+        && joined.positions().len() == 2 * band
+        && joined.triangles().len() == 2 * plain.triangles().len()
+        && worst == 0.0
+        && boundary_loops(joined.view()) == 0
+        && (volume - 2.0 * once).abs() <= 1.0e-5 * once.abs()
 }

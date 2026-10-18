@@ -50,4 +50,4 @@ pub use loft::Loft;
 pub use math::{Vec2, Vec3};
 pub use scalar::{Scalar, ScalarError};
 pub use section::{Outline, Section, SectionError};
-pub use sweep::Sweep;
+pub use sweep::{Part, Sweep};
