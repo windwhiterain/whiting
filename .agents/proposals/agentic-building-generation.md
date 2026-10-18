@@ -6769,3 +6769,32 @@ differed in **length**. `git log -S` confirms no row for `shed`, `hall` or `hous
    case-insensitive `-match 'FAILED|panicked'` over a test log reports fifteen failures on a fully green suite, and a
    "last occurrence" grep over a table that now holds both `before` and `after` columns reads the before column. **The
    person writing the instrument is inside the class of things the instrument is meant to catch.**
+
+## The full audit, run as one list (2026-10-27)
+
+Every gate named at once, on `main` @ `2254822`, so that "all gates green" is an audit rather than a claim:
+
+| gate | result |
+| --- | --- |
+| `cargo build --workspace --all-targets -j 3` | **exit 0, 0 warning lines, 0 error lines** |
+| `cargo test -p whiting-scene` | **111 passed, 0 failed** across 15 binaries |
+| `cargo test -p whiting-gallery` | **10 passed, 0 failed** (1 pre-existing ignored doctest) |
+| `cargo test -p whiting-device-cycles` | **3 passed, 0 failed** (the export-size pins) |
+| `cargo test -p whiting-device-rasterize` | **49 passed, 0 failed** |
+| building examples | **29/29 exit 0** |
+| gallery examples | **16/16 exit 0** |
+| `cargo fmt --all -- --check` | **exit 0** |
+| nine `.png` hashes | **9 rendered, 0 moved** |
+| `scene_identity_probe` | **856 rows, two-way** |
+| **a floor pixel names the plate, all nine** | `house` (729,514) · `hall` (364,538) · `shed` (884,527) · `terrace` (442,312) · `wing` (415,497) · `workshop` (787,773) · `identity` (788,625) · `yard` store (1025,213) · `yard` shed (578,380) — **all `slab N, its top`** |
+
+**Two of my own probes were wrong while running this audit, and both are lessons this record already carries.**
+For `hall` I first asked a pixel at `(364, 315)` and got nothing, then `(600, 530)` and got a wall — because the
+plate's `--where` box (`x 340..=973, y 465..=603`) is a **bounding box, and a bounding box is not a pixel**; the pixel
+the per-scene slice had proved, `(364, 538)`, answers the plate. And the path-traced export is `--example render_cycles`,
+not `render`; its size claim is pinned by `export_size.rs`'s three green tests rather than re-derived here.
+
+**This is the state the arc leaves.** A mass is a wall ring and a plate; a courtyard is a third ring that may be
+non-convex and takes openings and parts on both faces; every plate is visible in its scene and the ground is cut out
+from under it; every scene has a frame of its own shape and a camera composed for it; every reader that could not
+measure now says so in a name; and every gate in the list above has been run, including the ones that were red.
