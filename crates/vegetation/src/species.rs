@@ -59,6 +59,14 @@ pub struct Generation {
     pub slot: (f32, f32),
     /// How far the seed may move a child: a fraction of the station band, and a fraction of the slot step.
     pub jitter: (f32, f32),
+    /// How many children share one station, `1` for one child to a station.
+    ///
+    /// A conifer's whorl is the branch-side twin of a leaf field's [`crate::leaf::LeafField::cluster`]:
+    /// `count` children gathered at `count / cluster` stations, the children of one station standing
+    /// `1 / cluster` of a turn apart and each next station advancing by the slot step. It is the same
+    /// word and the same meaning as the leaf's, because it is the same fact — how many siblings share
+    /// one place — asked of a branch instead of a leaf.
+    pub cluster: u32,
     /// How far the child's origin sinks into the parent, in the plant's units.
     pub sink: f32,
     /// The child's spine and taper, in the child's own frame: its `x` is outward from the parent's surface.
@@ -102,13 +110,21 @@ pub fn grow(rule: &Rule, seed: u64) -> Plant {
                 let drawn = rng.range(generation.count.0 as f32, (generation.count.1 + 1) as f32);
                 (drawn as u32).min(generation.count.1)
             };
+            // **A cluster of children is one station**, so the band is spread over the stations and not
+            // over the children: at a cluster of one the station index is the child index and the
+            // within-station turn is nought, which is exactly the spread this rule has always made.
+            let cluster = generation.cluster.max(1) as usize;
+            let stations = (count as usize).div_ceil(cluster);
             for index in 0..count {
-                let station = spread(generation.station, index, count)
+                let tier = index as usize / cluster;
+                let within = index as usize % cluster;
+                let station = spread(generation.station, tier as u32, stations as u32)
                     + rng.signed()
                         * generation.jitter.0
                         * (generation.station.1 - generation.station.0);
                 let slot = generation.slot.0
-                    + generation.slot.1 * index as f32
+                    + generation.slot.1 * tier as f32
+                    + within as f32 / cluster as f32
                     + rng.signed() * generation.jitter.1 * generation.slot.1;
                 let station = station.clamp(0.0, 1.0);
                 let parent_radius = plant

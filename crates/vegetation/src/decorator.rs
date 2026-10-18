@@ -191,7 +191,10 @@ pub fn scatter(
     count: (u32, u32),
 ) -> Vec<Seat> {
     let mut seats = Vec::new();
-    for (handle, _) in plant.live().filter(|(handle, _)| handle.depth() == generation) {
+    for (handle, _) in plant
+        .live()
+        .filter(|(handle, _)| handle.depth() == generation)
+    {
         let mut path = handle.path().to_vec();
         path.push(SCATTER_INDEX);
         let mut rng = Rng::for_path(plant.seed(), &path);

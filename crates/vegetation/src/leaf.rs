@@ -338,13 +338,13 @@ impl LeafField {
                     let rank = place * cluster + member;
                     // The cluster's members stand `1 / cluster` of a turn apart, so a fascicle spreads
                     // around the parent's loop and a cluster of one advances by the phyllotaxy alone.
-                    let slot = (phase
-                        + place as f32 * self.phyllotaxy
-                        + member as f32 / cluster as f32)
-                        .rem_euclid(1.0);
+                    let slot =
+                        (phase + place as f32 * self.phyllotaxy + member as f32 / cluster as f32)
+                            .rem_euclid(1.0);
                     // A negative scale is not a leaf: it would stand the template's winding inside out, and
                     // the template's volume is the check that would see it.
-                    let scale = (self.size.at(station) * (1.0 + self.jitter * rng.signed())).max(0.0);
+                    let scale =
+                        (self.size.at(station) * (1.0 + self.jitter * rng.signed())).max(0.0);
                     // A handle from the walk resolves, so this arm is the staleness case the API allows
                     // for; the group ends there rather than carrying a leaf with no anchor.
                     let Ok(surface) = plant.surface(&handle, Attachment::new(station, slot)) else {
