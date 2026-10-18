@@ -565,6 +565,40 @@ background and the document carries both, but no Cycles binary is installed on t
 comparison cannot be run here. Arc 7 delivers the frames and the exported documents, and records E4
 as unverified-with-reason rather than passing it silently.
 
+### 4.14 What the dry valley and the fern asked for, and what they get
+
+Arc 6's two species came back with nine things the crate cannot say
+([the valley author's report, 2026-10-19]). Each is decided here rather than left to drift, because
+a limitation that is not decided gets re-discovered by every later species:
+
+| limitation | decision | reason |
+| --- | --- | --- |
+| `scatter` seats at one station of the node, so "fruit on the upper crown only" is unwriteable | **fixed**, §4.15: `scatter_in` with a band of the parent's station | a fir's cones and a kapok's flowers are both terminal; two species needed it in one arc |
+| `decorator::Template` is one sweep, so a corolla was a ten-pointed star section | **fixed**, §4.15: a decorator template may be a sprig | the leaf side already had the join; the decorator side was the same want one type down |
+| `envelope::trim` measures about the root's spine, so a buttressed root trims against two and a half metres of trunk | **defer** | a crown law about the root is the right frame for a single-stem tree; a buttressed species shapes its crown from `Joint::station` laws and the kapok does. Revisit when a third species hits it |
+| a node's section cannot vary along its length, so packed leaf bases became a ripple in the taper | **won't fix** | a section varying along a spine is a second sweep; the taper is the radius law and a ripple in it is the same fact told once |
+| `Detail` is per planting, not per node, so a buttress and a bole want two constants | **won't fix** | the planting is the level-of-detail unit; a node-level dial would make one plant two resolutions and break the rule that a walk is one geometry |
+| a `Placement` carries no scale, so a pinna's taper is eighteen blade geometries in a sprig | **defer** | eighteen blades are authored once per species; a scale law would save authoring, not rendering |
+| a leaf template is one arrangement, so "five to seven leaflets" is two templates | **won't fix** | a part count that varies per instance varies the instanced mesh, which is the one thing instancing forbids; two templates is the honest spelling |
+| a leaf's two faces share one skin, so "paler beneath" is not drawn | **defer to a materials arc** | needs a per-face material channel; nothing else in the crate wants one yet |
+| a frond or a buttress cannot be `trim`med without crushing | **defer**, with the trim item | same cause, same revisit |
+
+### 4.15 A scatter that reads a band, and a decorator that is a sprig
+
+**Pulls it:** 3, 4 (erect cones on the upper crown), 9 (flowers at every twig tip of a bare crown),
+7 (a truss inside a rosette).
+
+`scatter` seats on every live node of a generation at one station of that node, and
+`decorator::Template` is one sweep. The first cannot say *where on the parent* the fruiting nodes
+are, and the second cannot be a corolla of five petals. Both get the smallest addition that says it:
+`scatter_in(…, band)` seating only the nodes whose attachment station lies in the band, with
+`scatter` as the full band; and a decorator template that is a sprig of parts, joining lofts exactly
+as [`LeafTemplate::sprig`] does, so `Template::loft` stays the one entry the gallery calls and a
+one-part template's loft is bit-identical to today's.
+
+**Size:** one band parameter and one constructor; the seed's draw order is untouched, so every
+existing seat is where it was.
+
 ### 4.13 The scene compile pays per instance row, and most of it is per material
 
 **Pulls it:** every site frame, and every dense crown.
