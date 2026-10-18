@@ -145,6 +145,26 @@ pub const NAMINGS: &[Naming] = &[
         note: "one bough at arm's length: this pixel is that node of the bough, and a needle carries its twig's",
     },
     Naming {
+        scene: crate::southwest_flag::DOVE_TREE,
+        resolve: crate::southwest_flag::dove_tree_handle_of,
+        note: "this pixel is that node of the dove tree; a leaf carries its twig's id and a bract its spur's, and only the white bracts are a second blade",
+    },
+    Naming {
+        scene: crate::southwest_flag::DOVE_TREE_BOUGH,
+        resolve: crate::southwest_flag::dove_tree_bough_handle_of,
+        note: "one first-order bough at arm's length, in flower: this pixel is that node of the bough",
+    },
+    Naming {
+        scene: crate::southwest_flag::GIANT_RHODODENDRON,
+        resolve: crate::southwest_flag::giant_rhododendron_handle_of,
+        note: "this pixel is that node of the giant rhododendron; a rosette leaf and the truss in the middle of it both carry their shoot's id",
+    },
+    Naming {
+        scene: crate::southwest_flag::GIANT_RHODODENDRON_BOUGH,
+        resolve: crate::southwest_flag::giant_rhododendron_bough_handle_of,
+        note: "one crown branch at arm's length: this pixel is that node of the branch",
+    },
+    Naming {
         scene: crate::vegetation_picture::GROVE,
         resolve: crate::vegetation_picture::grove_handle_of,
         note: "the planting is the id's quotient by the stride and the node is its remainder",
