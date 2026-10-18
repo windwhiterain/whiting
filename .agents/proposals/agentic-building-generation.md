@@ -4722,3 +4722,128 @@ template's own solid — `f32` cancellation in the divergence sum, and the outer
 **sign**: `-1.0` against `+1.0`, `-0.025004` against `+0.025003`, one `SolidInsideOut`. **A tolerance
 close enough to be useful is close enough to be wrong**, which is why the crate's predicate is `<= 0.0`
 and not a tolerance.
+
+## What the spelling slice found: two constructors, and the face that needed one (2026-11-01, branch `feature/building-inner-api`)
+
+**The project's owner decided it, and the decision is the recommendation above taken as it stands:
+two constructors and nothing else.** `FaceRef::inner(mass, edge)` and
+`BuildingSkeleton::inner_faces_of(mass)` — the exact counterparts of `court_rooms` and `room_faces_of`
+— and **no new element kind, no new violation, no new geometry path, no new walk, no refusal, and no
+"room"**. The inner-face slice recorded the recommendation rather than making it, because the question
+it was asked was *what does the language say*; this slice is the answer being carried out.
+
+**The sentence the whole thread arrives at: a mass's inner wall face is a feature whose missing thing
+was a spelling.** The mechanism was written by the slice that measured it and it was never wrong —
+`expand::part_frame` is one rule on all four faces of a ring, and `LoopSide` was already on `FaceRef`
+and already what keeps that rule true. What was missing was a way to *say* the address, and the only
+constructor that reached `LoopSide::Offset` was `court_rooms`, which is about a courtyard's ring. So a
+document that wanted a sconce on its own wall had to reach for a struct literal — which is a spelling
+failure, and looks in the source like a mechanism that does not exist.
+
+### The two, and what each answers
+
+| | signature | answers | its courtyard counterpart |
+| --- | --- | --- | --- |
+| one face | `FaceRef::inner(mass: MassId, edge: usize) -> Self` | one edge of **a mass's own wall, read off the loop a wall's thickness inside its outline** | [`FaceRef::court_rooms`], the same thing about a courtyard's ring |
+| every face | `BuildingSkeleton::inner_faces_of(&self, mass: MassId) -> Vec<FaceRef>` | **every edge of that same loop, in edge order** | [`BuildingSkeleton::room_faces_of`], the same list for a courtyard |
+
+**The one fact they differ from their counterpart in is the direction the mitre ran, and it is the
+fact a rhythm notices.** A courtyard's rooms-facing loop is **longer** than its void loop by one wall
+thickness at *each* end; a mass's inner loop is **shorter** than its outline by the same. So `part_probe`
+still reads `10.4000 m` against the outer face's `11.0000 m`, and `patio_probe` still reads `4.6000 m`
+against the near face's `4.0000 m`. `face_length` already read each side's own loop, so both lists
+return faces whose own op lays a rhythm over the edge that face names.
+
+**And one thing is still refused, unchanged and for the old reason.** A hole on the inner loop is
+`OpeningOnAFarLoop`, because a hole is cut through both of a ring's faces from the loop the walk
+reads. The new constructors add no refusal and remove none; `LoopSide::Offset`'s own doc now points at
+the two names rather than describing a face no spelling reaches.
+
+**And `part_probe` now reaches the inner face the way every other face is reached.** The struct
+literal and its helper function are gone: `FaceRef::inner(mass, 1)` names the face, and the rhythm is
+laid by chaining `faces_of` with `inner_faces_of`, which is what "lay a rhythm on every face of this
+mass" now means — both halves of the ring rather than the outside and a stop. A rhythm alone emits no
+geometry (`ops::split_face` writes a grid and returns), so the document measured below is the same
+document.
+
+### The gate, measured on the branch
+
+- **`part_probe`'s whole output is byte-identical before and after** — both files `5421` bytes,
+  SHA-256 `9F8BF0A7E5A899D8…`, `Compare-Object` **0 differing lines**. To the digit: the inner face is
+  `FaceRef { mass: MassId(0), edge: 1, void: None, loop_side: Offset }`, its edge `10.4000 m`, bay
+  `[0.0000, 3.4667]`, frame origin `(3.2000, 0.0000, -4.7000)` with `along (0.0, 0.0, 1.0)`,
+  `up (0.0, 1.0, 0.0)`, `inward (-1.0, 0.0, 0.0)`, determinant `+1.0`, **0 violations**, `Part(1)`
+  `32 faces, loops 0, euler 0, manifold true, volume 0.025003`, plan `x [3.1400, 3.2000]`,
+  `z [-4.7000, -3.8000]`, `y 0.0200 to 1.3500`, and the three booleans **in the rooms `true`, out of
+  the wall `true`, inside the building `true`**. The control beside it is unchanged too: determinant
+  `-1.0`, volume `-0.025004`, one `SolidInsideOut { solid: Part(1), volume: -0.025003694 }`.
+- **Every other right reading still right.** `part_probe`'s two original parts read `0.025002` and
+  `0.044745`; `patio_probe`'s output is byte-identical (`10243` bytes both sides) and reproduces the
+  courtyard table to the digit — near `4.0000` against rooms-facing `4.6000`, bays `[0.0000, 1.3333]`
+  and `[0.0000, 1.5333]`, origins `(-1.8000, 0.1000, -2.0000)` and `(-2.1000, 0.1000, -2.3000)`, both
+  `+1.0`, volume `0.025004`, `x [-2.1000, -1.2000]`, `z [-2.3000, -2.2400]`, `y 0.1200` to `1.4500`,
+  and both rings `manifold true, loops 0, euler 0`.
+- **29/29 building examples and 16/16 gallery examples exit 0**, each run by name from the built
+  binary. `cargo build --workspace --all-targets` exits 0 and warns **only** of the pre-existing
+  `census.exe` / `census.pdb` output filename collision — no new warning. `cargo fmt --all -- --check`
+  clean.
+- **Nine before/after pairs on this machine, identical on all three hashes: 9 rows, 27 fields, 0
+  moved.** The before set was rendered from **this worktree at `5b0cda7`, before the first edit**, with
+  its own private `target`, to the names `before-*`; the after set to `after-*`, and the two compared
+  **field by field**. **Which hash is which, because the three are not the same measurement:** `png`
+  is the **SHA-256 of the written `.png` file**; `document` and `image` are **the manifest's own
+  fields** — the document hash over the two definitions the compile emitted, and the image hash over
+  the **raw pixel buffer the gpu returned**.
+
+  | scene | `.png` file SHA-256, before and after | manifest `document` | manifest `image` (raw buffer) |
+  | --- | --- | --- | --- |
+  | `house` | `B13154AD7D29F938` | `f285144da26fec5e` | `4f343949d83b2064` |
+  | `hall` | `C4339E6310EA1C37` | `8ad46af4dec6ad57` | `d3861ab9a49e11df` |
+  | `hall_large` | `43D3780A15E3D08E` | `7930acde40622338` | `ac283053024091ef` |
+  | `shed` | `882B8F9A7C671B0D` | `fab2859d5a542659` | `929a983d1b57d8c3` |
+  | `terrace` | `EDF3F4B3CF2A9686` | `1d2963d762cc1f59` | `d6478e6600918037` |
+  | `wing` | `14E3E27F9F9E1A83` | `0a890abcb64118c9` | `e92705c66973ad53` |
+  | `workshop` | `7DD5D40894181EA7` | `32c95c8aade51358` | `d9617c18c39b0fdb` |
+  | `yard` | `FDC446B24E98CE04` | `ca2fb43788334947` | `2ab63de3b0a4f727` |
+  | `identity` | `974FB5B24E1E7A35` | `e170170e5822c26c` | `0f3026193ce73439` |
+
+  The `.png` column is the one every earlier section carries, reproduced by fresh render on this
+  machine, which is the canary that says the pair is *this* tree and *this* machine. And **`house`'s
+  `image` reads `4f343949d83b2064`** — the exact second of the two hashes of one frame that
+  *Correction: the difference was the hash's domain* is about, sitting in the same manifest as the
+  `.png` hash. **One frame, two hashes, two domains**, confirmed on this tip rather than re-argued.
+- **No gallery scene places a part on a mass's inner face, and the canary was fired to make the claim
+  mean something.** The pattern `\bloop[_-]?side\b`, case-insensitive, returns **no match at all** in
+  `crates/gallery` — neither `src` nor `examples`. **It was proved live on its control first**: it
+  fires **3 times** on this probe's own **before** output, including the literal
+  `loop_side: LoopSide::Offset`, and **10 times** on `crates/building/src/grid.rs`, including the two
+  `loop_side: LoopSide::Offset` field values that `court_rooms` and `inner` now both build. A second,
+  independent instrument agrees: every `FaceRef` the gallery names is built by `FaceRef::new`, which is
+  `Authored`, and every `ops::place_part` either names one of those `front` faces or hangs on a
+  `WallId` run (`yard.rs`'s gate leaf) — so no gallery scene reaches `Offset` by either route.
+- **`scene_identity_probe` reads 806 rows two-way** (`77 + 109 + 77 + 31 + 66 + 123 + 123 + 99 + 101`),
+  contiguous, every name non-empty, every name round-tripping, the channel two-way — and byte-identical
+  to the before set (`2642` bytes, SHA-256 `0EDE05200017123D…`).
+
+### What this slice got wrong, and what it is still open
+
+**Its own acceptance asked for byte-identical *readings*, which is a weaker gate than it looks, and
+this slice replaced it with byte-identical *output*.** The enumerated fields could have been equal
+while a line somewhere else in the file moved — a new heading, a reworded sentence — and the
+measurement would still have read as a pass. Diffing the whole file is the same amount of work and
+catches the rest.
+
+**It asked the change to "use both constructors" in a probe whose output had to stay byte-identical,
+which is a tension with no perfect answer.** Laying the rhythm through `faces_of` chained with
+`inner_faces_of` is the honest use and it is free — a rhythm emits no geometry — but it does put a
+rhythm on faces the section does not measure, which is a wider document than the section's own claim
+("two documents differing in one field") describes. The narrower reading, `FaceRef::inner(mass, 1)`
+and two `split_face` calls, would have kept the document exactly as it was and left the list
+exercised only by the constructor behind it. Both readings measure the same numbers; the wider one is
+what the second constructor *is for*, and it is the one kept.
+
+**Still open, and unchanged by this slice:** the inner face will not take a **hole**, and
+`OpeningOnAFarLoop` is the right refusal — a window seen from inside a room is a second rectangle for
+one hole with no second wall to put it in. A **mass's interior is still not a documented concept**, and
+the fact that a part on the inner face lands in the rooms stays a consequence of `inward` being the
+walker's left rather than a place a document can name. Nothing here opened either.

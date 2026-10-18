@@ -8,15 +8,15 @@
 //!
 //! **The fourth face.** A mass has two faces of its own ring — the outline it was drawn on and the
 //! loop a wall's thickness inside it — and `patio_probe` measures the two faces of a *courtyard's*
-//! ring. `mass_inner_face_part` measures this pair, and its first reading is that the inner one is
-//! addressable but has **no constructor**: `FaceRef::new` builds `Authored` and the only spelling
-//! that reaches `Offset` is `court_rooms`.
+//! ring. `mass_inner_face_part` measures this pair, and it is reached by name on both sides of the
+//! pair: [`FaceRef::new`] for the outer face, [`FaceRef::inner`] for the inner one, and
+//! `BuildingSkeleton::faces_of` / `inner_faces_of` for the two lists they are the edge of.
 //!
 //! Run with `cargo run -p whiting-building --example part_probe`.
 
 use whiting_building::derive::{RoofStyle, Starter, starter};
 use whiting_building::expand::part_frame;
-use whiting_building::grid::{FaceRef, LoopSide, Rhythm};
+use whiting_building::grid::{FaceRef, Rhythm};
 use whiting_building::math::{Vec3, cross3, dot3, subtract};
 use whiting_building::mesh::SolidId;
 use whiting_building::openings::{Inset, Opening};
@@ -61,25 +61,6 @@ fn door_leaf(width: f32, height: f32, thickness: f32) -> Template {
     )
 }
 
-/// Returns a mass's **own inner wall face**: the loop a wall's thickness inside its outline.
-///
-/// # Invariants
-///
-/// **There is no constructor for it, and that is one of the readings this probe records.**
-/// [`FaceRef::new`] builds [`LoopSide::Authored`] and the only constructor that reaches
-/// [`LoopSide::Offset`] is [`FaceRef::court_rooms`], which is about a courtyard's ring. So the
-/// address is written out here, and it is exactly `FaceRef::new(mass, edge)` with its `loop_side`
-/// set: a face names a loop, and a mass's inner wall is the other loop of the very ring its outer
-/// wall was built from.
-fn mass_inner_face(mass: MassId, edge: usize) -> FaceRef {
-    FaceRef {
-        mass,
-        edge,
-        void: None,
-        loop_side: LoopSide::Offset,
-    }
-}
-
 /// Measures a part standing on **a mass's own inner wall face**: the fourth of the four faces of a
 /// ring this crate can name, and the one no scene measured.
 ///
@@ -113,7 +94,7 @@ fn mass_inner_face_part(columns: &Rhythm, rows: &Rhythm) {
     let mut skeleton = starter(&plan).skeleton.clone();
     let mass = MassId(0);
     let outside = FaceRef::new(mass, 1);
-    let inside = mass_inner_face(mass, 1);
+    let inside = FaceRef::inner(mass, 1);
 
     println!("\n# a part on a mass's own inner wall face");
     println!(
@@ -121,8 +102,18 @@ fn mass_inner_face_part(columns: &Rhythm, rows: &Rhythm) {
          mass, read off the loop a wall's thickness in"
     );
 
-    ops::split_face(&mut skeleton, outside, columns, rows);
-    ops::split_face(&mut skeleton, inside, columns, rows);
+    // **The rhythm is laid on both halves of the ring, through the two lists that name them.**
+    // `faces_of` walks the outline and `inner_faces_of` the loop a wall's thickness inside it, so
+    // chaining them is what makes "every face of this mass" reach the inside — which is the whole
+    // of what the second constructor is for. The two loops are walked in step, so edge 1 of each is
+    // the pair measured below, and a rhythm alone emits no geometry.
+    for face in skeleton
+        .faces_of(mass)
+        .into_iter()
+        .chain(skeleton.inner_faces_of(mass))
+    {
+        ops::split_face(&mut skeleton, face, columns, rows);
+    }
     let outside_length = skeleton
         .face_length(outside)
         .expect("the outline's own edge");

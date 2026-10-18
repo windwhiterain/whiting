@@ -63,6 +63,9 @@ pub enum LoopSide {
     Authored,
     /// The loop a wall's thickness away from the authored one: a mass's inner wall, or the wall a
     /// courtyard's ring shows **to the rooms**.
+    ///
+    /// Each of the two is one constructor — [`FaceRef::inner`] and [`FaceRef::court_rooms`] — so the
+    /// variant itself is never spelled out by a caller.
     Offset,
 }
 
@@ -172,6 +175,45 @@ impl FaceRef {
             mass,
             edge,
             void: Some(void),
+            loop_side: LoopSide::Offset,
+        }
+    }
+
+    /// Builds a reference to one edge of a mass's own wall **as its own rooms see it**.
+    ///
+    /// This is that ring's **offset** loop, a wall's thickness inside the outline the author drew: the
+    /// other face of the very masonry [`new`](Self::new) names, read off the other of its two loops.
+    /// It is a face like any other and takes a rhythm, a bay and a part exactly as the outer one
+    /// does. A part pinned in one of these bays stands **in the mass's own rooms with its depth
+    /// running away from the wall**, which is the rule [`court_rooms`](Self::court_rooms) follows on
+    /// the far face of a courtyard's ring.
+    ///
+    /// **It measures differently from the outer face, and that is the whole of the difference between
+    /// the two.** A mitre runs the offset edge's ends back past the authored edge's at both corners —
+    /// *inwards* for a mass, where a courtyard's runs *outwards* — so **a mass's inner loop is the
+    /// shorter of its two loops**, by one wall's thickness less at **each** end, while **a courtyard's
+    /// rooms-facing loop is the longer one**. The two ends of this edge and the two ends of the outer
+    /// edge are therefore two different pieces of masonry, and an arc length measured here is not an
+    /// arc length there. [`BuildingSkeleton::face_length`](crate::skeleton::BuildingSkeleton::face_length)
+    /// reads the offset loop's own length for a face that names it, which is what makes a rhythm laid
+    /// here span it exactly.
+    ///
+    /// **The frame is still a rotation.** `inward` is the walker's left on every face of a ring, so
+    /// `along × up` holds on all four and the determinant reads `+1` here as everywhere else; what
+    /// changes from face to face is only which way the material lies. See
+    /// [`PartFrame`](crate::parts::PartFrame) for the frame a placement is stood in.
+    ///
+    /// **And one thing is refused here, by the same rule and the same name as a courtyard's far
+    /// face.** A hole is cut through both of a ring's faces from the loop the walk reads, so one
+    /// authored on this loop would be a second rectangle for one hole with no second wall to put it
+    /// in. That is [`Violation::OpeningOnAFarLoop`](crate::validate::Violation::OpeningOnAFarLoop),
+    /// and it is the whole of what this face gives up: a rhythm, a bay, a pin and a part are not
+    /// refused.
+    pub fn inner(mass: MassId, edge: usize) -> Self {
+        Self {
+            mass,
+            edge,
+            void: None,
             loop_side: LoopSide::Offset,
         }
     }

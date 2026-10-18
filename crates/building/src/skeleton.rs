@@ -361,6 +361,31 @@ impl BuildingSkeleton {
         }
     }
 
+    /// Returns every face of a mass's own wall **as its own rooms see it**, in edge order.
+    ///
+    /// The exact counterpart of [`room_faces_of`](Self::room_faces_of) for a mass's own ring: the
+    /// same wall's offset loop, a wall's thickness **inside** the outline the author drew where a
+    /// courtyard's is a wall's thickness **outside** its void loop. It is the list that makes *"lay a
+    /// rhythm on every face of this mass"* mean **both** of its faces — walking
+    /// [`faces_of`](Self::faces_of) alone reaches the outside and stops.
+    ///
+    /// **A rhythm laid on these spans the offset edge, which is the *shorter* one**, by one wall's
+    /// thickness less at each end; the same rhythm on [`room_faces_of`](Self::room_faces_of) spans the
+    /// **longer** one, because that mitre runs the other way. That single fact is the whole difference
+    /// between the two lists beyond which wall they walk, and
+    /// [`face_length`](Self::face_length) already reads each side's own loop.
+    ///
+    /// `O(nodes of that outline)`, the same walk as [`faces_of`](Self::faces_of); the edges are the
+    /// same indices, because the two loops of one ring are walked in step.
+    pub fn inner_faces_of(&self, mass: MassId) -> Vec<FaceRef> {
+        match self.mass(mass) {
+            Some(held) => (0..held.outline.len())
+                .map(|edge| FaceRef::inner(mass, edge))
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
     /// Returns the id of every mass, in list order.
     pub fn mass_ids(&self) -> Vec<MassId> {
         (0..self.masses.len()).map(MassId).collect()
