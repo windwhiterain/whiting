@@ -6732,3 +6732,37 @@ written `.png` and the raw gpu buffer.
 reaches it — measured before the edit, against a geometric walk that reproduces the store's recorded
 `1,442` pixels from its `7.2003 m²` — but that check is the whole answer, and a brief that assumed it
 would have had no way to tell a window that worked from one that put a hole in a wall.
+
+## The gate that was red for a whole arc, and why nobody saw it (2026-10-27)
+
+A test in `crates/scene/tests/clustered_lights.rs` pins **every gallery scene's pass count by stage**. It was red for
+the entire volume arc. It was red on `main` for dozens of slices, and every slice's report — including several that said
+"all gates green" — was written without running it.
+
+**Why it was red, measured, because the failure message reads like something else.** `assert_eq!(left, right)` failed at
+element 0, which reads like a wrong number. It was not: **no pinned number was stale**. All fourteen rows measured
+exactly as written. The arc had **added seven scenes to `Gallery::names()` with no rows for them**, so the two vectors
+differed in **length**. `git log -S` confirms no row for `shed`, `hall` or `house` had ever existed in that file.
+
+**And the one change that mattered is not the one a reader would guess.** Of everything the arc did to those scenes:
+
+- the seven scenes gaining a **`floors` mesh** moved all three mesh stages by **+1** (`house`/`hall`/`hall_large`/
+  `terrace`/`wing` 3→4, `shed` 5→6) — **the only visible change**;
+- **cutting the ground out from under every plate: 0.** It changed *which triangles* the one `ground` mesh holds;
+- **`house`'s window and `yard`'s doorway: 0.** An opening is a hole *in* the `walls` mesh, so it moved
+  `scene_identity_probe` (845→852) and not the pass count;
+- `identity` gaining no `floors` mesh: **0**, because `packed()` is a catch-all that already carried `Element::Slab` —
+  **that is the control for the `floors` row**;
+- `shed`'s `door` and `canopy`: **+2 each**, from the facade phase, which is why `shed` is 6 and not 4.
+
+**Two things follow, and both are about the record rather than the code.**
+
+1. **"All gates green" must name the gates.** The examples, the nine renders, the two identity probes and `fmt` were run
+   every slice; **the crate test binaries were not**. A gate list that omits them is a claim, not an audit — and
+   `workshop` and `yard` are **still outside this gate** because `Gallery::build` enumerates them and `Gallery::names()`
+   does not, so no pass-count change in either is visible here.
+2. **A filter written to find failures finds the word "failed" in "0 failed".** This record's own rule — *print the
+   value you compared, not the verdict* — caught two false alarms in the very round that repaired this gate: a
+   case-insensitive `-match 'FAILED|panicked'` over a test log reports fifteen failures on a fully green suite, and a
+   "last occurrence" grep over a table that now holds both `before` and `after` columns reads the before column. **The
+   person writing the instrument is inside the class of things the instrument is meant to catch.**
