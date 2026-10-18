@@ -2364,6 +2364,24 @@ fn read_instances(
     };
 
     let mut read: Vec<InstanceRead> = Vec::new();
+    // **One map per label space, built once, and a set for the rows themselves.** An instance names
+    // its mesh and its material by label, and a vegetation scene holds a row per leaf per pass —
+    // hundreds of thousands of rows — so resolving each row by scanning the list it names is the row
+    // count times the list's length, and checking each row's label against every row already read is
+    // the row count squared. Measured on one pine, that square was the whole of a forty-second scene
+    // compile against three seconds of raster. The lists' labels are unique by construction —
+    // [`read_materials`] and the mesh reader refuse a duplicate — so a map loses nothing.
+    let mesh_index: std::collections::HashMap<&str, usize> = meshes
+        .iter()
+        .enumerate()
+        .map(|(index, mesh)| (mesh.label.as_str(), index))
+        .collect();
+    let material_index: std::collections::HashMap<&str, usize> = materials
+        .iter()
+        .enumerate()
+        .map(|(index, material)| (material.label.as_str(), index))
+        .collect();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (name, bucket) in buckets {
         let bucket_path = path.key(name);
         let Some(stage) = Stage::from_suffix(name) else {
@@ -2380,12 +2398,14 @@ fn read_instances(
                 instance,
                 &bucket_path.index(index),
                 meshes,
+                &mesh_index,
                 materials,
+                &material_index,
                 shaders,
                 images,
                 stage,
             )?;
-            if read.iter().any(|other| other.label == found.label) {
+            if !seen.insert(found.label.clone()) {
                 return Err(CompileError::DuplicateLabel {
                     kind: "instance",
                     label: found.label,
@@ -2408,18 +2428,16 @@ fn read_instance(
     instance: &Value,
     path: &Path,
     meshes: &[MeshRead],
+    mesh_index: &std::collections::HashMap<&str, usize>,
     materials: &[MeshMaterialRead],
+    material_index: &std::collections::HashMap<&str, usize>,
     shaders: &[ShaderRead],
     images: &[ImageRead],
     stage: Stage,
 ) -> Result<InstanceRead, CompileError> {
     let label = text(instance, path, scene_schema::LABEL)?.to_owned();
     let mesh_label = text(instance, path, scene_schema::MESH)?;
-    let Some((mesh, _found)) = meshes
-        .iter()
-        .enumerate()
-        .find(|(_, mesh)| mesh.label == mesh_label)
-    else {
+    let Some(mesh) = mesh_index.get(mesh_label).copied() else {
         return Err(CompileError::UnknownMesh {
             path: path.key(scene_schema::MESH),
             mesh: mesh_label.to_owned(),
@@ -2429,9 +2447,9 @@ fn read_instance(
     let transform = read_transform(instance, path)?;
     let material_path = path.key(scene_schema::MATERIAL);
     let material_label = text(instance, path, scene_schema::MATERIAL)?;
-    let Some(material) = materials
-        .iter()
-        .find(|material| material.label == material_label)
+    let Some(material) = material_index
+        .get(material_label)
+        .map(|index| &materials[*index])
     else {
         return Err(CompileError::UnknownMaterial {
             path: material_path,
