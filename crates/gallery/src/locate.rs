@@ -210,6 +210,11 @@ pub const NAMINGS: &[Naming] = &[
         note: "one upright shoot at arm's length: this pixel is that node, and a flat needle carries its spray's",
     },
     Naming {
+        scene: crate::southwest_site::SITE_MONTANE,
+        resolve: crate::southwest_site::site_montane_handle_of,
+        note: "the planting is the id's quotient by the stride and the node its remainder: three heroes and their companions on one slope",
+    },
+    Naming {
         scene: crate::vegetation_picture::GROVE,
         resolve: crate::vegetation_picture::grove_handle_of,
         note: "the planting is the id's quotient by the stride and the node is its remainder",

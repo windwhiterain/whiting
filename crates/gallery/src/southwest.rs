@@ -68,6 +68,10 @@ pub enum Foliage {
     /// has at twenty-five metres: the eye resolves plumes, not needles, and the comb's teeth are one to
     /// two pixels each, which is exactly the grain the reference photographs show at that distance.
     Spray,
+    /// The spray at a companion's density: a tree on a site frame's far ridge is the same rule at a
+    /// third of the hero's foliage, because a stand reads by its masses and not by its sprigs, and the
+    /// scene compile pays for every row a site frame carries.
+    Stand,
 }
 
 impl Foliage {
@@ -75,7 +79,7 @@ impl Foliage {
     fn template(self) -> LeafTemplate {
         match self {
             Foliage::Needle => needle(NEEDLE_HALF_WIDTH),
-            Foliage::Spray => spray(),
+            Foliage::Spray | Foliage::Stand => spray(),
         }
     }
 
@@ -85,6 +89,7 @@ impl Foliage {
         match self {
             Foliage::Needle => 1.0,
             Foliage::Spray => 0.14,
+            Foliage::Stand => 0.05,
         }
     }
 }
@@ -344,7 +349,7 @@ fn needles(twig_depth: usize, foliage: Foliage) -> Vec<LeafField> {
     // holds; a spray is already a plume, and a cluster of plumes is a pom-pom.
     let per_station = match foliage {
         Foliage::Needle => 3,
-        Foliage::Spray => 1,
+        Foliage::Spray | Foliage::Stand => 1,
     };
     let mut candle = LeafField::new(0, 0);
     candle.band = (0.86, 1.0);
@@ -440,7 +445,7 @@ fn pine_cones(species: &Species, twig_depth: usize) -> Vec<Seat> {
 }
 
 /// The pine's surfaces: a fissured grey-brown bole, grey-green glaucous needles and chestnut cones.
-fn pine_palette() -> Palette {
+pub fn pine_palette() -> Palette {
     Palette {
         wood: Skin::new([0.14, 0.11, 0.085], 0.95),
         leaves: vec![Skin::new([0.10, 0.17, 0.08], 0.80)],

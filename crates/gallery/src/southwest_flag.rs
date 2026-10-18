@@ -672,7 +672,7 @@ fn dove_bough_rule() -> Rule {
 /// *"adaxially bright green"* against a bract the note's own source calls white *"sometimes pale yellow"*. The head is
 /// the note's *"small dark purplish-brown globular head"*, which is the dove's body and the only dark thing in the
 /// inflorescence.
-fn dove_palette() -> Palette {
+pub fn dove_palette() -> Palette {
     Palette {
         wood: Skin::new([0.145, 0.115, 0.092], 0.94),
         leaves: vec![
@@ -1358,7 +1358,7 @@ fn rhodo_bough_rule() -> Rule {
 /// (*"glabrous … bright to dark green, glossy"*, roughness low), the bole (*"grey to grey-brown"*, roughness high) and
 /// the truss (*"creamy-white tinged rose"* in Flora of China, a saturated pink in every photograph of var. *giganteum*,
 /// so the photographs win the tint and the flora wins the roughness) three different numbers.
-fn rhodo_palette() -> Palette {
+pub fn rhodo_palette() -> Palette {
     Palette {
         // **Dark and warm, because a grey one is a pole.** 03-trunk-bark-CONGENER-delavayi.jpg is grey against moss; the
         // first plate's 0.155 grey rendered as a pale blue-grey pole lighter than the leaves, because a vertical surface

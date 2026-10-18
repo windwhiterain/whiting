@@ -628,7 +628,7 @@ fn spruce_cones(species: &Species, shoot_depth: usize, count: (u32, u32)) -> Vec
 /// **The wood is darker than the pine's and greyer than its own bark photograph**, because the pine's
 /// bole at this size was reading pink under the same key: the *felt-pen tree* defect is two tints too
 /// close, and here the wood and the leaf are the pair that must not agree.
-fn spruce_palette() -> Palette {
+pub fn spruce_palette() -> Palette {
     Palette {
         wood: Skin::new([0.090, 0.080, 0.066], 0.96),
         leaves: vec![Skin::new([0.082, 0.142, 0.104], 0.84)],
@@ -1182,7 +1182,7 @@ fn fir_leader_cones() -> Vec<Seat> {
 /// spruce's — the note's *"bright dark green"* against the spruce's *"blue-green to glaucous grey-green"*,
 /// which is the other half of the two species' colour difference — and a cone of its own, **black and
 /// glaucous**, which is the only tint in this module no other part of either species carries.
-fn fir_palette() -> Palette {
+pub fn fir_palette() -> Palette {
     Palette {
         wood: Skin::new([0.086, 0.076, 0.062], 0.97),
         leaves: vec![Skin::new([0.042, 0.080, 0.040], 0.72)],

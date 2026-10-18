@@ -109,6 +109,8 @@ pub mod shed;
 pub mod southwest;
 /// Arc 5's two flagships: 珙桐's white bracts and 大树杜鹃's terminal leaf rosettes.
 pub mod southwest_flag;
+/// The site: one Hengduan slope drawn at the height of each belt.
+pub mod southwest_site;
 /// 川滇高山栎, the evergreen oak of the subalpine belt: the dense rounded crown on a short gnarled bole.
 pub mod southwest_oak;
 /// The spire conifers: 丽江云杉 and 苍山冷杉, one rule with different numbers.
@@ -240,6 +242,7 @@ impl Gallery {
             "giant_rhododendron" => southwest_flag::giant_rhododendron_picture(),
             "giant_rhododendron_bough" => southwest_flag::giant_rhododendron_bough_picture(),
             "giant_rhododendron_base" => southwest_flag::giant_rhododendron_base_picture(),
+            "site_montane" => southwest_site::site_montane(),
             "alpine_oak" => southwest_oak::alpine_oak_picture(),
             "alpine_oak_bough" => southwest_oak::alpine_oak_bough_picture(),
             "lijian_spruce" => southwest_spire::lijian_spruce_picture(),

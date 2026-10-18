@@ -722,7 +722,7 @@ fn oak_fruit(species: &Species, shoot_depth: usize) -> Vec<Seat> {
 /// The wood's tint is a fifth lower than the note's *"pale grey"* photograph would suggest, and the reason is
 /// measured rather than chosen: the frame's key stands at **2.4** irradiance, and a 0.30 albedo under it clips to
 /// white, which is how the first plate of this species came out with a bleached pole for a trunk.
-fn oak_palette() -> Palette {
+pub fn oak_palette() -> Palette {
     Palette {
         // A dark grey-brown, and the reason is stated where it is chosen: the note records this species' bark as
         // **unverified**, so the tint is not the photograph's pale grey but a bark brown chosen for what it has to
