@@ -1,20 +1,20 @@
-//! A stilt house: the floor levelled to the uphill grade, the downhill side standing on posts.
+//! A stilt house: the floor levelled to the uphill grade, the downhill side standing on posts, and the
+//! gallery that hangs off that side on brackets.
 //!
-//! This is the first scene of the Chinese vernacular level, and it draws two things the crate could
+//! This is the first scene of the Chinese vernacular level, and it draws four things the crate could
 //! not draw before: **a building whose floor is not on the ground** (`site::posts` under a seated
-//! mass) and **a roof whose slope bends at every purlin** (a 举架 profile). `site::seat` puts every
-//! node of the mass on one level — the highest ground under its outline — and `site::posts` stands it
-//! on columns down to the ground it hangs over. Everything else is the crate's existing hip: a mass
-//! with a gable roof, a plate under it, and a wall ring.
+//! mass), **a roof whose slope bends at every purlin** (a 举架 profile), **a gable wall that rises to
+//! its roof** (a crown), and **a 挑廊** — a plate outside the wall carried by members whose own ends are
+//! anchored on the posts they brace against.
 //!
 //! What this scene deliberately does not draw, because the constructs do not exist yet:
 //!
-//! - **no crowned wall top** — the gable is closed by the roof's fascia (Arc 3, D2);
-//! - **no gallery** — a 挑廊 is a plate standing on cantilevers, and a cantilever is a member (Arc 4);
-//! - **no tiles** — the covering is geometry in the design and not in the crate yet (Arc 5, D9).
+//! - **no tiles** — the covering is geometry in the design and not in the crate yet (Arc 5, D9);
+//! - **no upper storey** — the house is one room deep and one storey tall, and a second floor is the
+//!   crate's `derive::floor_slab` rather than this arc's business.
 //!
-//! A scene that faked any of those would be a picture of a building the document does not hold, which
-//! is the one thing this gallery's scenes are for not doing.
+//! A scene that faked either would be a picture of a building the document does not hold, which is the
+//! one thing this gallery's scenes are for not doing.
 
 use definition::Value;
 use scene::standard::Stage;
@@ -400,7 +400,157 @@ pub fn document() -> Building {
         }
     }
     skeleton.masses[0].crowns = crowns;
+    gallery(&mut skeleton);
     Building::new(skeleton)
+}
+
+/// How far the gallery stands proud of the wall it hangs from, and how wide its plate is.
+const GALLERY_DEPTH: f32 = 1.2;
+
+/// How high the rail stands above its plate. The joists are placed **at the posts**, which is where a
+/// bracket can be braced from: a joist between two posts would have nothing under it to push against.
+const RAIL_HEIGHT: f32 = 0.95;
+
+/// The section of every piece of the gallery's frame: a joist, a strut, a baluster and the rail.
+const GALLERY_SECTION: f32 = 0.07;
+
+/// Adds the **挑廊**: the plate that hangs outside the downhill wall, the brackets that carry it, and
+/// the rail along its edge.
+///
+/// # Invariants
+///
+/// **Every piece is anchored to a piece that is already there.** A joist starts at a post's head — a
+/// fraction of that member's own axis — and a strut starts lower on the same post and ends on the
+/// joist's own outer end, so each bracket is a closed triangle in the document rather than three
+/// pieces that happen to meet at a coordinate.
+///
+/// **The plate is a `Floor` outside the wall it belongs to**, which is what a 挑廊 is: a deck, not a
+/// ground plate and not a roof. It names the mass as its host, and the coverage check reads `Plate`
+/// roles only, so a floor that oversails its host is a deck and not a fault.
+fn gallery(skeleton: &mut building::BuildingSkeleton) {
+    let mass = &skeleton.masses[0];
+    let floor = mass.lowest();
+    let slab = mass.slab;
+    let side = STARTER.width * 0.5;
+    let depth = STARTER.depth * 0.5;
+    let underside = floor - slab;
+    // The posts that stand along the downhill wall, in the order the plan walks them.
+    let mut posts: Vec<([f32; 2], usize)> = Vec::new();
+    for (index, member) in skeleton.members.iter().enumerate() {
+        let Some(foot) = foot_of_member(member) else {
+            continue;
+        };
+        if (foot[0] + side).abs() < 1.0e-3 && foot[1].abs() <= depth + 1.0e-3 {
+            posts.push((foot, index));
+        }
+    }
+    posts.sort_by(|left, right| {
+        left.0[1]
+            .partial_cmp(&right.0[1])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    if posts.len() < 2 {
+        return;
+    }
+
+    // The plate, wound positively: a reversed loop is a slab whose faces point inward.
+    let mut plan = vec![
+        [-side - GALLERY_DEPTH, -depth],
+        [-side, -depth],
+        [-side, depth],
+        [-side - GALLERY_DEPTH, depth],
+    ];
+    if loop_area(&plan) < 0.0 {
+        plan.reverse();
+    }
+    skeleton
+        .slabs
+        .push(building::Slab::floor(plan, underside, floor).with_host(building::MassId(0)));
+
+    // The joists: one from each post's head out to the plate's own edge, running at the heads' level.
+    // A joist's axis is `x`, so `across = [0, 1]` puts its width along `z` and its depth along `y`, and
+    // the plate's own thickness swallows it — which is what a floor structure is.
+    let head = underside + POST_EMBED;
+    let mut joists = Vec::new();
+    for (foot, post) in &posts {
+        let joist = building::Member::new(
+            building::Anchor::OnMember {
+                member: building::MemberId(*post),
+                t: 1.0,
+            },
+            building::Anchor::Free {
+                at: [-side - GALLERY_DEPTH, head, foot[1]],
+            },
+            [0.0, 1.0],
+            GALLERY_SECTION,
+            0.14,
+        );
+        joists.push(skeleton.members.len());
+        skeleton.members.push(joist);
+    }
+
+    // The struts: a diagonal from each post, a fixed drop below its head, out to its joist's end. The
+    // drop is a **length** rather than a fraction, because the posts are not one length and a fraction
+    // of a short post is a strut with no room in it.
+    for (at, joist) in joists.iter().enumerate() {
+        let (_foot, post) = posts[at];
+        let foot_height = match skeleton.members[post].from {
+            building::Anchor::Free { at } => at[1],
+            building::Anchor::OnMember { .. } => head - 1.0,
+        };
+        let post_length = (head - foot_height).max(0.1);
+        let drop = 0.65_f32.min(post_length * 0.75);
+        let t = 1.0 - drop / post_length;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::OnMember {
+                member: building::MemberId(post),
+                t,
+            },
+            building::Anchor::OnMember {
+                member: building::MemberId(*joist),
+                t: 1.0,
+            },
+            [0.0, 1.0],
+            GALLERY_SECTION,
+            GALLERY_SECTION,
+        ));
+    }
+
+    // The balusters and the rail: one baluster on the plate's own edge at every joist, and one rail
+    // across their tops.
+    let edge = -side - GALLERY_DEPTH + GALLERY_SECTION * 0.5;
+    let mut tops: Vec<[f32; 3]> = Vec::new();
+    for (foot, _) in &posts {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [edge, floor, foot[1]],
+            },
+            building::Anchor::Free {
+                at: [edge, floor + RAIL_HEIGHT, foot[1]],
+            },
+            [1.0, 0.0],
+            GALLERY_SECTION,
+            GALLERY_SECTION,
+        ));
+        tops.push([edge, floor + RAIL_HEIGHT, foot[1]]);
+    }
+    if let (Some(first), Some(last)) = (tops.first(), tops.last()) {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free { at: *first },
+            building::Anchor::Free { at: *last },
+            [1.0, 0.0],
+            GALLERY_SECTION,
+            GALLERY_SECTION,
+        ));
+    }
+}
+
+/// Returns the plan point a member's foot stands at, which for a post is its `from` anchor's plan.
+fn foot_of_member(member: &building::Member) -> Option<[f32; 2]> {
+    match member.from {
+        building::Anchor::Free { at } => Some([at[0], at[2]]),
+        building::Anchor::OnMember { .. } => None,
+    }
 }
 
 /// Answers whether a node stands under the ridge: the middle of one of the two gable ends.
@@ -412,7 +562,7 @@ fn under_the_ridge(mass: &building::Mass, node: usize, half_width: f32) -> bool 
     at[1].abs() < 1.0e-3 && (at[0].abs() - half_width).abs() < 1.0e-3
 }
 
-/// Returns the arc-length stations at which the two gable ends are, in descending order.
+/// Returns the arc-length stations at which the two gable ends are, far one first.
 ///
 /// A gable end's two nodes share an `x` of magnitude `half_width`; its middle is the station half way
 /// along it. Both stations are measured on the **closed** loop before either insertion, and answered
@@ -442,6 +592,16 @@ fn gable_stations(mass: &building::Mass, half_width: f32) -> Vec<f32> {
     stations
 }
 
+/// Returns the signed plan area of a loop, positive when it is wound so its up normal is not negative.
+fn loop_area(plan: &[[f32; 2]]) -> f32 {
+    let mut twice = 0.0_f32;
+    for index in 0..plan.len() {
+        let from = plan[index];
+        let to = plan[(index + 1) % plan.len()];
+        twice += from[0] * to[1] - to[0] * from[1];
+    }
+    twice * 0.5
+}
 /// Returns how far a light position stands from the scene's own middle.
 fn distance_to_origin(position: [f64; 3]) -> f64 {
     (position[0] * position[0] + position[1] * position[1] + position[2] * position[2]).sqrt()

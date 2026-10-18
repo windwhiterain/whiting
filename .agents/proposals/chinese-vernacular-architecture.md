@@ -793,7 +793,7 @@ ring grows the parameter, and `cut_edge` interpolates the top along its stations
 probe's rows went **999 → 1009** — the four warped strips' second halves and the strips the split
 added.
 
-### Arc 4 is half closed: the frame exists, the 挑廊 does not yet
+### Arc 4 is closed: the frame, and the 挑廊 it carries
 
 `Member` is the crate's **sixth kind of solid**: one straight piece of frame from one
 [`Anchor`](crate::member::Anchor) to another, with a rectangular section swept along its own axis.
@@ -819,6 +819,18 @@ Measured on `member_probe` — two posts, a beam across their heads, a bracket o
 outside the mass's outline standing on brackets, so it needs `Anchor::OnMember` in a scene and a plate
 that `site::posts` did not place. `Anchor::OnFace` (a bracket pinned to a wall) is not a variant yet
 either — a variant is added when a scene draws it, not before.
+
+**The 挑廊 is what the frame was for, and it is in the picture.** A `Floor`-role plate hangs
+`1.2 m` outside the downhill wall and `1.0 m` under the eave that shelters it; under the plate, one
+**joist** runs from each post's head out to the plate's edge and one **strut** runs from a fixed drop
+below that head to the joist's own outer end, so every bracket is a closed triangle whose three
+vertices are a fraction of a member that already exists. On the plate's edge stand the balusters and
+across their tops one rail.
+
+The numbers the scene moves: the picture's hash is `532FF169FCB14F04`, and the identity probe's rows go
+**1009 → 1111** — nineteen members at six surfaces each, and the deck's own six. The document is one
+plate, nineteen members, a crowned mass, a profiled roof and the posts: **no face of the gallery is
+authored as a coordinate that some other face has to agree with.**
 
 ## What would make this proposal wrong
 
