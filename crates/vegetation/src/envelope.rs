@@ -22,20 +22,135 @@
 //! fields and approximate with them, because a field bends a shorter spine differently. So the trim runs one pass
 //! on the model and then **measures what is left**, which is why [`Trim::pressed`] exists rather than a claim.
 
-use shape::math::{dot3, length3, subtract};
+use shape::math::{Vec2, dot3, length3, subtract};
 use shape::{Scalar, Section};
 
 use crate::handle::Handle;
 use crate::ops::{Change, Edit, Property, apply};
 use crate::plant::Plant;
 
-/// The crown a plant may reach: a radius law about the trunk, drawn with a section.
+/// The crown a plant may reach: a radius law about the trunk, and the shape law it is drawn with.
+///
+/// # The two laws, and why they are two
+///
+/// **The radius is a smooth scale and the shape is a family of outlines.** A crown's size varies continuously along
+/// the trunk — a Hermite law, the same `Scalar` every other law in the crate uses — while its *shape* changes in steps
+/// an author cares about: round at the base where the trunk is free, flattened at the top where a soffit is. Keeping
+/// them apart means the coarse envelope is `radius` alone (the empty shape law is a circle) and refining it is filling
+/// in a family, which is what the design asked for: *a radius curve first, refined to the surface of a curve in the
+/// plane across the trunk at each parameter*.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Envelope {
     /// The radius at each arc-length fraction of the trunk, in the plant's units.
     pub radius: Scalar,
-    /// The section that radius is drawn with: a circle, or an outline refined in the plane across the trunk.
-    pub section: Section,
+    /// The shape the radius is drawn with, at each fraction of the trunk.
+    pub shape: Outline,
+}
+
+/// A law of outlines: the shape an envelope has at a station, and how it passes to the next one.
+///
+/// # Invariants
+///
+/// - **An empty law is the circle**, so the coarse envelope is one number and no data: `Envelope::radial` is the
+///   coarse form, and a refined crown differs from it by the shape alone.
+/// - **A section is star-shaped about its origin** (that is what [`Section::reach`] is: one radius per direction), so
+///   the reach of the shape between two keys is the **linear blend of the two keys' reaches in the same direction** —
+///   the same answer as blending the outlines themselves, at one query per key and no allocation.
+/// - **Below the first key and above the last the nearest key holds**, because a family of outlines has to cover the
+///   trunk: an envelope that answered nothing at its ends would trim a plant to nothing where nobody said so.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Outline {
+    keys: Vec<(f32, Section)>,
+}
+
+impl Outline {
+    /// The circle: one shape at every station, which is the coarse envelope.
+    pub const CIRCLE: Outline = Outline { keys: Vec::new() };
+
+    /// A family of outlines keyed along the trunk, in the trunk's arc-length fraction.
+    ///
+    /// # Invariants
+    ///
+    /// The keys must **start at zero, end at one, and increase strictly**, which is the domain claim [`Scalar::new`]
+    /// makes about its knots and for the same reason: a family that does not reach both ends of the trunk would have
+    /// to be extended by a rule nobody wrote.
+    pub fn of(keys: &[(f32, Section)]) -> Self {
+        let mut sorted: Vec<(f32, Section)> = keys.to_vec();
+        sorted.sort_by(|one, other| {
+            one.0
+                .partial_cmp(&other.0)
+                .expect("a station is a finite fraction of a trunk")
+        });
+        assert!(
+            !sorted.is_empty(),
+            "an outline law with no key is the circle, which `Outline::CIRCLE` says once"
+        );
+        assert!(
+            (sorted[0].0 - 0.0).abs() < 1e-6 && (sorted[sorted.len() - 1].0 - 1.0).abs() < 1e-6,
+            "an outline law's first key is at zero and its last at one"
+        );
+        assert!(
+            sorted.windows(2).all(|pair| pair[0].0 < pair[1].0),
+            "an outline law's stations increase strictly"
+        );
+        Outline { keys: sorted }
+    }
+
+    /// The same family with one section at every station, which is what a single refined section is.
+    pub fn constant(section: Section) -> Self {
+        Outline {
+            keys: vec![(0.0, section.clone()), (1.0, section)],
+        }
+    }
+
+    /// The furthest the outline reaches at `station`, over every direction: how wide the envelope is there.
+    ///
+    /// # Invariants
+    ///
+    /// **Sixty-four directions**, the same ring the report draws a section with, so the number a crown is reported
+    /// against is the number a reader sees when that section is drawn: a shape whose widest direction falls between two
+    /// samples is reported as the wider of them and never as the narrower.
+    pub fn widest(&self, station: f32) -> f32 {
+        let mut widest = 0.0f32;
+        for step in 0..64 {
+            let angle = step as f32 * (std::f32::consts::TAU / 64.0);
+            let (sin, cos) = angle.sin_cos();
+            widest = widest.max(self.reach(station, [cos, sin]));
+        }
+        widest
+    }
+    /// How far the outline reaches in `direction` at `station`, as a fraction of the envelope's radius.
+    ///
+    /// # Invariants
+    ///
+    /// **One query per bracketing key and one blend**, so a refined envelope costs a search over its own keys and not a
+    /// pass over a table: the keys are few and `partition_point` finds them in `log n`.
+    pub fn reach(&self, station: f32, direction: Vec2) -> f32 {
+        if self.keys.is_empty() {
+            return 1.0;
+        }
+        let station = station.clamp(0.0, 1.0);
+        let after = self
+            .keys
+            .partition_point(|(at, _)| *at <= station)
+            .min(self.keys.len() - 1);
+        let (to, upper) = (&self.keys[after].1, self.keys[after].0);
+        let (from, lower) = match after {
+            0 => (to, upper),
+            index => {
+                let (at, section) = &self.keys[index - 1];
+                (section, *at)
+            }
+        };
+        let width = upper - lower;
+        let blend = if width > 0.0 {
+            (station - lower) / width
+        } else {
+            1.0
+        };
+        let reached = from.reach(direction);
+        reached + (to.reach(direction) - reached) * blend
+    }
 }
 
 /// How far a node was trimmed, and how far it could not be.
@@ -52,13 +167,13 @@ impl Envelope {
     pub fn radial(knots: &[(f32, f32)]) -> Self {
         Self {
             radius: Scalar::new(knots).expect("an envelope's radius is a law"),
-            section: Section::circle(),
+            shape: Outline::CIRCLE,
         }
     }
 
     /// The same radius law drawn with a section other than a circle: a crown that is wider across than along.
     pub fn with_section(mut self, section: Section) -> Self {
-        self.section = section;
+        self.shape = Outline::constant(section);
         self
     }
 
@@ -85,7 +200,7 @@ impl Envelope {
         let offset = subtract(point, nearest.position);
         let across = [dot3(offset, frame.normal), dot3(offset, frame.binormal)];
         let radial = length3([across[0], across[1], 0.0]);
-        let allowed = self.radius.at(nearest.t) * self.section.reach(across);
+        let allowed = self.radius.at(nearest.t) * self.shape.reach(nearest.t, across);
         (radial - allowed).max(0.0)
     }
 }

@@ -1579,7 +1579,7 @@ is a **pair or a triptych**: the plant without the law beside the same plant wit
 | **`thin` and `Prune::Thinned`** | `thinned` |
 | **`Selector` and `paint` — the brush** | `brushed` |
 | **the trunk is a curve** (`Change::Spine` on the root, every consumer deriving from it) | `arching` |
-| **the envelope is a surface** — a curve in the plane across the trunk, reached by `Section::reach` | `panelled` |
+| **the envelope is a surface** — a law of outlines keyed along the trunk (`Outline`), reached by `Section::reach` | `panelled` |
 | **the leaf field's dials** — band, density law, phyllotaxy, size law | `bands` |
 | the offline backend | any scene, by name: `render_cycles <scene> <out.png>` |
 
@@ -1618,12 +1618,22 @@ The four scenes the demonstration round added, with their readings:
    scenes did not show was a trunk whose curvature is **visible** — the culm's own spine moves 0.19 m over 2.2 m, which
    reads as straight because a bamboo is. `arching` bakes an S into the root with `Change::Spine` and the whole plant
    follows its stations.
-2. *Is the envelope a surface?* Yes, in the design's own terms: the coarse form is `radius(t)` and the refined form is
-   **a closed curve in the plane across the trunk at each station** — `Section::reach(direction)` answers it, and the
-   trim law reads that one query per station. What is **not** implemented is a section whose *shape* changes with `t`:
-   the family of curves is one outline scaled by a radius law, so the surface is a swept prism and not a general one.
-   The general case needs a law of outlines rather than a law and an outline, and no demo asked for it. `panelled` shows
-   the refined form: the same radius law drawn as a circle and as an ellipse.
+2. *Is the envelope a surface?* Yes, and now in the general form. The coarse form is `radius(t)`, a Hermite scale law;
+   the refined form is `Envelope::shape: Outline`, **a law of outlines keyed along the trunk** whose `reach(station,
+   direction)` blends the two bracketing keys' reaches in the point's own direction. A star-shaped section has one radius
+   per direction, so blending reaches *is* blending outlines — the same surface, one query per key and no allocation.
+   `Outline::CIRCLE` (the empty family) is the coarse form, so the two are one type and refining is filling in data.
+
+   | invariant | reading |
+   | --- | --- |
+   | a shape law varies along the trunk | a family from `ellipse(1, 1)` to `ellipse(1, 0.25)` reaches **1.000000 / 0.625000 / 0.250000** in its narrow direction at the base, half way and the top, and its widest direction at the top is still **1.000000** |
+   | the blend is a blend and not a step | the middle reading is the mean of the two ends, exactly |
+   | the coarse form is the circle | the empty family and a circle section **differ in their data** — nothing against two keys — and agree in every reading to **0.000e0** |
+
+   `panelled` draws the three forms side by side: one radius law, three shapes — the coarse circle, one section at every
+   station, and a family that is round at the base and pinched at the top. The first attempt at this frame showed three
+   nearly identical crowns, because the section's narrow axis is the trunk frame's *second* axis, which the camera looks
+   straight down; a family whose shape changes has to change where a frame can see it.
 3. *Are the leaves instanced from a field?* Yes: `LeafField` is the distribution field (band, density law, phyllotaxy,
    pitch, twist, size law, jitter, `reference`, `aim`) and `LeafField::groups` turns it into one placement per leaf; the
    scene kit draws **one blade mesh and one instance matrix per leaf**, so the grove's 146 plantings are one blade mesh

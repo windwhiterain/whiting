@@ -11,7 +11,7 @@
 use shape::Section;
 use shape::math::{length3, subtract};
 use whiting_vegetation::derive::{Species, bamboo};
-use whiting_vegetation::envelope::{Envelope, trim};
+use whiting_vegetation::envelope::{Envelope, Outline, trim};
 use whiting_vegetation::expand::Detail;
 use whiting_vegetation::handle::Handle;
 use whiting_vegetation::report::{BANDS, report};
@@ -27,6 +27,14 @@ fn main() {
     ));
     checks.push(("the report agrees", the_report_agrees()));
     checks.push(("the crown reaches the plant", the_crown_reaches_the_plant()));
+    checks.push((
+        "a shape law varies along the trunk",
+        a_shape_law_varies_along_the_trunk(),
+    ));
+    checks.push((
+        "the coarse form is the circle",
+        the_coarse_form_is_the_circle(),
+    ));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -327,4 +335,64 @@ fn the_crown_reaches_the_plant() -> bool {
         "  the control is the difference: a report measuring something else — a leaf, a solid's vertex — would read differently"
     );
     (reached - widest).abs() < 1e-5
+}
+
+/// The shape law: a family of outlines keyed along the trunk, blended between its keys.
+///
+/// # Invariants
+///
+/// An ellipse answered in its narrow direction is its own half-axis, so the three readings are the law itself: one at
+/// the base, a quarter at the top, and the mean half way — **a blend and not a step**, which is what makes the shape a
+/// surface rather than two envelopes stacked.
+fn a_shape_law_varies_along_the_trunk() -> bool {
+    let shape = Outline::of(&[
+        (0.0, Section::ellipse(1.0, 1.0)),
+        (1.0, Section::ellipse(1.0, 0.25)),
+    ]);
+    let (base, middle, top) = (
+        shape.reach(0.0, [0.0, 1.0]),
+        shape.reach(0.5, [0.0, 1.0]),
+        shape.reach(1.0, [0.0, 1.0]),
+    );
+    let widest = shape.widest(1.0);
+    println!("\n# a shape law");
+    println!(
+        "  the narrow direction reaches {base:.6} at the base, {middle:.6} half way, {top:.6} at the top; the widest direction at the top is {widest:.6}"
+    );
+    println!(
+        "  the control is the middle: a step would read one end's value, and the mean is 0.625000"
+    );
+    (base - 1.0).abs() < 1e-6
+        && (top - 0.25).abs() < 1e-6
+        && (middle - 0.625).abs() < 1e-6
+        && (widest - 1.0).abs() < 1e-6
+}
+
+/// The coarse envelope is the circle, and refining it to a circle changes nothing.
+fn the_coarse_form_is_the_circle() -> bool {
+    let radius = [(0.0f32, 0.52f32), (0.5, 0.40), (1.0, 0.28)];
+    let coarse = Envelope::radial(&radius);
+    let refined = Envelope::radial(&radius).with_section(Section::circle());
+    let circle = Outline::CIRCLE.reach(0.37, [0.6, -0.8]);
+    println!("\n# the coarse form");
+    println!(
+        "  the empty shape law reaches {circle:.6} in every direction, and a circle section reaches the same, so the coarse envelope is the refined one"
+    );
+    println!(
+        "  the control is the data: a coarse crown is one number per station, which is what `radial` writes"
+    );
+    let mut worst = 0.0f32;
+    for step in 0..16 {
+        let station = step as f32 / 15.0;
+        let angle = step as f32 * 0.7;
+        let direction = [angle.cos(), angle.sin()];
+        worst = worst.max(
+            (coarse.shape.reach(station, direction) - refined.shape.reach(station, direction))
+                .abs(),
+        );
+    }
+    println!(
+        "  the two laws differ in their data — an empty family against two circle keys — and agree in every reading to {worst:.3e}, which is the invariant that matters"
+    );
+    (circle - 1.0).abs() < 1e-6 && worst < 1e-6
 }

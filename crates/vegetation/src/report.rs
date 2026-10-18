@@ -96,23 +96,18 @@ pub fn report(
             }
         }
     }
-    let widest = envelope.map(|held| {
-        held.section
-            .ring(64)
-            .iter()
-            .map(|point| (point[0] * point[0] + point[1] * point[1]).sqrt())
-            .fold(0.0f32, f32::max)
-    });
     let crown = (0..BANDS)
         .map(|band| {
             let station = (band as f32 + 0.5) / BANDS as f32;
             Reach {
                 station,
                 reached: reached[band],
-                allowed: match (envelope, widest) {
-                    (Some(held), Some(width)) => held.radius.at(station) * width,
-                    _ => 0.0,
-                },
+                // **The allowance is the envelope's own widest at that station**, because a crown's reach is measured
+                // radially and a shape law can be wider one way than the other: the number compared has to be the
+                // most the envelope allows anywhere at that station, or a wide direction would read as an excess.
+                allowed: envelope.map_or(0.0, |held| {
+                    held.radius.at(station) * held.shape.widest(station)
+                }),
             }
         })
         .collect();
