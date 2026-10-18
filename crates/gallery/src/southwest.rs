@@ -197,11 +197,11 @@ fn bole() -> (shape::Curve, shape::Scalar) {
 /// runs with the grain and not around it. The taper multiplies it, so the fissures narrow as the bole
 /// does.
 fn bark() -> shape::Section {
-    let sides = 16;
+    let sides = 12;
     let points: Vec<[f32; 2]> = (0..sides)
         .map(|index| {
             let theta = index as f32 / sides as f32 * std::f32::consts::TAU;
-            let ridge = 1.0 - 0.07 * (theta * 4.0).sin().powi(2);
+            let ridge = 1.0 - 0.13 * (theta * 3.0).sin().powi(2);
             [theta.cos() * ridge, theta.sin() * ridge]
         })
         .collect();
@@ -543,10 +543,12 @@ const BASE_FRAME: Framing = Framing {
 /// its own foot under its own light, so a base plate always wants a light of its own.
 fn base_lighting() -> Lighting {
     Lighting {
-        key_position: [6.0, 3.0, 7.0],
+        // Fifteen degrees up and on the lens's side: any higher and the tree's own crown shadows the
+        // foot this plate exists to show, which is the trap the base plate of every species must dodge.
+        key_position: [7.0, 6.0, 8.0],
         key_colour: [1.0, 0.94, 0.84],
         key_irradiance: 2.4,
-        key_distance: 9.8,
+        key_distance: 12.2,
         key_reach: 40.0,
         key_extent: 4.0,
         fill_position: [-5.0, 2.0, -4.0],
