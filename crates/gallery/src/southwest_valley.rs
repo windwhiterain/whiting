@@ -58,7 +58,8 @@
 //! | [`TREE_FERN_FROND`] | 1.40 mm at 1.66 m | a 7 × 4 mm pinnule segment = 5 × 3 px | [`Foliage::Pinna`], the **combed** pinnule |
 //! | [`TREE_FERN_BASE`] | 1.18 mm at 1.70 m | a 12 mm root cord = 10 px | the true cord |
 //! | [`KAPOK`] | 15.0 mm at 45.3 m | a 43 mm leaflet = 2.9 px | the true leaflet; **no card** |
-//! | [`KAPOK_BOUGH`] | 6.4 mm at 8.8 m | the same leaflet = 6.7 px | the true leaflet |
+//! | [`KAPOK_BOUGH`] | 7.0 mm at 9.6 m | the same leaflet = 6.1 px | the true leaflet |
+//! | [`KAPOK_BASE`] | 3.3 mm at 5.1 m | a 250 mm plank board = 76 px | the true board |
 //!
 //! **The fern is the only species in this set that needs a card, and its card is a margin rather than a
 //! card**: at the whole-tree plate a pinnule *segment* is a fifth of a pixel and is not drawn at all, and
@@ -71,6 +72,25 @@
 //! one: a frond standing at `y = 4.55` looks *down* at its own ground, and a twelve-metre floor put its
 //! far edge across the bottom of the frame as a hard diagonal — a straight line that is not a horizon is
 //! the one artefact a picture of a frond must not carry.
+//!
+//! # What these seven scenes cost
+//!
+//! The scene document pays **per instance row**, and on this branch a row still costs about two hundred
+//! microseconds to compile, so the count is measured before the first render rather than discovered by one.
+//! Every plate is far inside the ninety-thousand-row ceiling and every one renders in under half a second
+//! of raster after a compile of under one and a half:
+//!
+//! | scene | rows per stage | compile | render |
+//! | --- | --- | --- | --- |
+//! | [`TREE_FERN`] · [`TREE_FERN_BASE`] | **1 236** | 0.9 s | 0.44 s |
+//! | [`TREE_FERN_FROND`] | **64** | 0.2 s | 0.08 s |
+//! | [`KAPOK`] · [`KAPOK_BASE`] | **4 843** | 1.3 s | 0.31 s |
+//! | [`KAPOK_FLOWER`] | **178** | 0.2 s | 0.23 s |
+//! | [`KAPOK_BOUGH`] | **253** | 0.1 s | 0.08 s |
+//!
+//! **The fern's 1 236 rows carry 36 blades each** and the kapok's 4 843 carry seven, and that is
+//! [`LeafTemplate::sprig`] doing the only thing it can do: a pinna and a palmate hand are one instance of
+//! one mesh, and a species whose finest organ is drawn as its own leaf would want four hundred thousand.
 //!
 //! # Four things these two species state that the crate cannot say
 //!
@@ -1729,13 +1749,13 @@ const KAPOK_FRAME: Framing = Framing {
 ///
 /// # Invariants
 ///
-/// **`2 · 8.66 · tan(0.35) / 1000` is 6.3 mm**, and this is H2's own number: the note's `43 mm` leaflet is
-/// **6.8 pixels** and the whole `285 mm` hand is **45**, so the palmate arrangement — the thing H2 asks a
+/// **`2 · 9.61 · tan(0.35) / 1000` is 7.0 mm**, and this is H2's own number: the note's `43 mm` leaflet is
+/// **6.1 pixels** and the whole `285 mm` hand is **41**, so the palmate arrangement — the thing H2 asks a
 /// broadleaf plate to show — is countable at this distance and is not at the whole-tree plate's fifteen
 /// millimetres, where it is 2.9. The plate is therefore **further off than an arm's length**, which is the
 /// opposite of the fern's and for the opposite reason: a fern's finest organ is four millimetres and a
 /// kapok's is forty-five, so the two plates that answer H2 stand at distances that differ by a factor of
-/// five and neither can serve the other.
+/// six and neither can serve the other.
 ///
 /// **The limb stands at nine metres**, a crown's own height, and not on the ground: a branch plate whose
 /// branch lies in the dirt reads as a fallen limb, and this species' photo `04-branch.jpg` is a crown read
