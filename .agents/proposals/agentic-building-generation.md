@@ -1268,7 +1268,7 @@ That is the difference between a style and a preset: **a preset is the numbers, 
 them for whatever you ask** — and the picture of the second size is the evidence, because nothing in it was
 chosen twice.
 
-## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, again on 2026-10-31 when the ground was cut away from under every plate, again on 2026-10-17 when `RoofStyle::Flat` kept the plate every other style already carried, and again on 2026-11-02 when `terrace` moved its camera — **that one moved, and the eight beside it are byte-identical**, see *The terrace's camera, and what a floor costs to see* further down)
+## The baseline a later slice measures against (2026-10-27, re-recorded by the volume refactor, again on 2026-10-29 when the plates were drawn, again on 2026-10-30 when the starter's plate was seated on the inner loop, again on 2026-10-31 when the ground was cut away from under every plate, again on 2026-10-17 when `RoofStyle::Flat` kept the plate every other style already carried, again on 2026-11-02 when `terrace` moved its camera, and again on 2026-11-03 when `terrace` lengthened its lens — **that one moved as well, and the eight beside it are byte-identical again**, see *The terrace's camera, and what a floor costs to see* and *The terrace's lens, and the ceiling a square frame puts on a row* further down)
 
 Nine building scenes render, and each one's picture has a hash. They are recorded here because the question a
 refactor has to answer is *"did the picture change?"*, and a hash answers it in a way that looking at two images
@@ -1281,7 +1281,7 @@ does not. The hash is the first sixteen hex of the `sha256` of the scene's own `
 | `hall` | `C4339E6310EA1C37` | `HALL` at 10 × 16, three bays; the camera is untouched and the plate's top went **665 → 3,166** now that the ground is not tied with it |
 | `hall_large` | `43D3780A15E3D08E` | `HALL` at 14 × 20, five bays, its own lower and closer camera; the plate reads **2,483**, and `--locate` inside it now answers the slab where it answered a wall |
 | `shed` | `882B8F9A7C671B0D` | a doorway, two windows, a door leaf and a canopy; the 0.30 m plate **2,246 → 2,255** |
-| `terrace` | `E7F76E4D030A202E` | three units that touch, nine windows; **all three plates are in frame — `slab 0` 715, `slab 1` 1,229, `slab 2` 1,384** — because the camera moved off the row's near corner and into front of it, and nothing else in the scene did |
+| `terrace` | `0EBC78ABD314A90D` | three units that touch, nine windows; **all three plates are in frame — `slab 0` 1,527, `slab 1` 2,619, `slab 2` 2,961** — because the lens is 1.4x longer over an eye that did not move, which took the row's own pixels from 13.49 % of a 1024x1024 frame to **25.36 %**, and the eight scenes beside it are byte-identical |
 | `wing` | `14E3E27F9F9E1A83` | host plus attached wing, windows on the weather faces; `slab 0`'s top went **0 → 380** and `slab 1`'s is 3 — unchanged |
 | `workshop` | `7DD5D40894181EA7` | two storeys, a plate, five instanced shutters; the ground plate's top **1,844 → 3,082** and the mezzanine's is still 0 |
 | `yard` | `FDC446B24E98CE04` | the courtyard and its gate; the two 1.20 m foundations still stand clear of the slope, **15,458 → 15,460** pixels of their own sides |
@@ -4993,3 +4993,140 @@ ask, and the lens is the free variable: a longer one from a little closer would 
 **Still open, unchanged by this slice:** `--region` prints at most 24 rows; an authored pinch is the one courtyard whose
 areas nothing can check; and `validate::document` alone reports a mass with no triangulation only through
 `DidNotExpand`.
+
+## The terrace's lens, and the ceiling a square frame puts on a row (2026-11-03, branch `feature/building-terrace-lens`)
+
+**The opening was the section above's own closing note, and it was true by eye and wrong by a factor of three.** "the
+row fills under half the frame" was read off the picture; **measured, the row's own ids held 141,426 of the frame's
+1,048,576 pixels — 13.49 %.** This is the fourth time in this record that a convenient summary of a frame has been
+loose where the instrument was exact, and the loose one was written by a slice whose instrument was `--locate`.
+
+### The measurement, and what "fills" is made of here
+
+`--region 0,0,1023,1023` over the whole frame counts **the reserved zero like any other id** — which is the one reading
+`--where` deliberately refuses to count — so the building's pixels are the frame's area minus that single row, and
+need no per-element census:
+
+| | before | after |
+| --- | --- | --- |
+| the frame | 1024 x 1024 = **1,048,576 px** | 1024 x 1024 = **1,048,576 px** |
+| id 0 — the ground and the sky, which `--where` will not count | **907,150** | **782,658** |
+| the building's own ids | **141,426** | **265,918** |
+| **share of the frame** | **13.49 %** | **25.36 %** |
+
+**53 distinct ids before and 51 after, and that difference is the lens's own signature**: a narrower cone can only
+take pixels out of a frame, never add one, so two elements fell out of it whole. That is a check the numbers could
+have failed and did not.
+
+### The lens, and why the eye stayed where it was
+
+```text
+before  field_of_view PI/3 * 0.95       = 1.04720 rad = 60.0 deg
+after   field_of_view PI/3 * 0.95 / 1.4 = 0.74800 rad = 42.9 deg
+        eye [UNIT_WIDTH * 0.6, ridge * 1.15, UNIT_DEPTH * 3.0] = [3.6, 4.8875, 24.0]
+        target [0.0, ridge * 0.35, 0.0] = [0.0, 1.4875, 0.0]   -- both unchanged
+```
+
+**One sentence: the eye, the target and the distance did not move, because that placement is what puts a floor in each
+of the three windows and a floor's absence is a fault in the eye rather than in the lens, so the lens is the one free
+variable that fills a frame without disturbing anything a plate depends on.**
+
+**The brief offered the distance as a second variable and it was not needed, which is worth saying rather than
+assuming.** The sill's cut is `d = sill * S / (h - sill)`, which at `S = 20` and `h = 4.8875` gives **4.83 m** and
+leaves 4.83–8 m of floor visible in each unit — the number the section above measured into place. Shortening `S`
+moves that number and nothing else, and it buys no frame: the camera's own arithmetic — the same model that predicted
+the three ridge apexes at pixels 209, 480 and 777 and was read against the measured roof boxes afterwards — puts the
+right-hand gable's apex at **1.02** of the frame's half-width from the axis at `z = 14` and its near wall corner at
+**1.55**, against the half-width of 1 the frame has, so a closer eye at the wider lens loses a unit outright. That two
+figures are the model's and not a render's, and the render is the one that measured what was kept.
+
+**The magnification was measured, not assumed**: 1,527/715 = 2.135, 2,619/1,229 = 2.131 and 2,961/1,384 = 2.139, and
+the square root of each of those three plate counts is **1.461** — the lens factor the arithmetic predicted to two
+places. Three independent pixels saying the same factor is also why the plates are evidence about the lens rather than
+a coincidence of the aperture.
+
+### The three plates, after, by the same interior rule
+
+| unit | plate | pixels | box | `--locate` pixel | answer | neighbours two off |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | `slab 0, its top` | **1,527** | x 58..=239, y 549..=636 | **(199, 552)** | `slab 0, its top` | **25 of 25** |
+| 1 | `slab 1, its top` | **2,619** | x 312..=631, y 555..=640 | **(452, 559)** | `slab 1, its top` | **25 of 25** |
+| 2 | `slab 2, its top` | **2,961** | x 717..=1018, y 562..=665 | **(720, 566)** | `slab 2, its top` | **25 of 25** |
+
+The rule is the section above's and is the strict one: each pixel was read together with **all twenty-five texels
+within two pixels of it on all four sides**, and all twenty-five carry that unit's own plate, so none of the three is
+an edge pixel of a patch.
+
+**"A lens cannot lose a plate" is an argument until it is a measurement, and the measurement is that each plate's box
+before, mapped into the narrower cone, is still inside the frame**: `slab 0`'s leftmost pixel 197 → **58**, `slab 1`'s
+469..=593 → **312..=631**, and `slab 2`'s rightmost 855 → **1018**, five pixels inside 1023. So every plate pixel the
+before frame held is still in the after frame, and `--where`'s counts rise by the square of the magnification rather
+than falling. **That last number is what decided the factor**: `slab 2`'s right edge has 5 px of margin at 1.4x, so a
+1.5x lens — the obvious next step — puts unit 2's plate on the frame's edge and a 1.6x one cuts it.
+
+### The row still reads as a row, and three numbers carry it
+
+- **Three masses, each with its own front wall in the frame**: `mass 0, outer wall over edge 2` id 3 (**41,996 px**, x
+  0..=280), `mass 1` id 28 (**60,930 px**, x 277..=675), `mass 2` id 53 (**56,786 px**, x 673..=1023). The three boxes
+  meet at x = 277..280 and x = 673..=675, which is the party wall itself seen end-on.
+- **Three ridges**: three distinct roof elements, each reaching the top of the silhouette in its own band — `roof 0` id
+  76 (**18,579 px**, x 72..=418, y 354..=481), `roof 1` id 86 (**9,736 px**, x 466..=709, y 355..=489), `roof 2` id 97
+  (**7,929 px**, x 641..=896, y 356..=487). **None of the three boxes touches a frame edge**, so all three gables are
+  whole in the crop that took the outer walls.
+- **The party walls as valleys**: a `--region` over each notch finds the two roofs closing over the wall. At
+  250,380..320,540 there are **9 distinct ids and 2 pixels** of background, and the notch itself answers
+  `roof 1, the fascia over the skin's boundary edge 4` at (285, 470) and (290, 455) — two fascias meeting, no hole.
+  At 640,380..720,540 the second valley is **open above the notch** (2,858 px of the reserved zero between the two
+  roofs), which is what an eye above the ridge sees down between two roofs and not a defect: `--where 0`'s own
+  sentence is that the id is the ground or the sky, and the frame still reads three masses under three gables.
+
+### The ceiling, stated so the next session does not spend a turn finding it
+
+**A square frame and a row 18.9 m wide by 4.4 m tall cannot be filled outright, and this is arithmetic rather than
+taste.** The row is about four times as wide as it is tall and the frame is one to one, so if the whole outline is
+inside the frame the row's own pixels are bounded above at about a quarter of the frame's — and past that zoom every
+further crop takes building off one edge as fast as it takes sky off the top. Measured on the before frame, the row's
+three front walls span x 101..=920 and the roofs carry the silhouette from y 401 down to the near corner at y 618, so
+**a magnification of about 1.21 is all that keeps the whole outline inside the frame** — which would have read about
+19 % — and at the 1.46 chosen here the outer eaves are trimmed and the frame reads **25.36 %**. **The remaining three
+quarters is sky above the ridges and the ground in front of the wall, and only the eye's height and the target's aim
+can move that**, and both of those are the placement the section above measured into place for the floors. A terrace
+seen at eye level, square on, is a wider row still, and is the frame that would hold it.
+
+### The gate, measured on the branch
+
+- **One hash of nine moved, and it was the right one**: `terrace` `E7F76E4D030A202E` → **`0EBC78ABD314A90D`**, the
+  **SHA-256 of the written `.png`**, first sixteen hex — the hash the baseline table carries, not the `binary f6ac8e9a0241`
+  the harness prints beside it, which is a hash of the binary the gpu returned and is a different domain over the same
+  frame. The eight beside it are **byte-identical**, compared byte for byte and not only by `sha256`: `house
+  B13154AD7D29F938`, `hall C4339E6310EA1C37`, `hall_large 43D3780A15E3D08E`, `shed 882B8F9A7C671B0D`, `wing
+  14E3E27F9F9E1A83`, `workshop 7DD5D40894181EA7`, `yard FDC446B24E98CE04`, `identity 974FB5B24E1E7A35`.
+- **The nine before-hashes were reproduced by fresh render before the edit**, and they reproduced the table on this
+  machine value for value, so the eight are a before-against-after pair on one tree and not two runs of one branch.
+- **`scene_identity_probe` reads 806 rows two-way and `terrace` still holds 123 of them** (77 + 109 + 77 + 31 + 66 + 123
+  + 123 + 99 + 101). That number is the proof the document did not change, which is what the brief forbade changing.
+- **29/29 building examples and 16/16 gallery examples exit 0**, under the canary `thread '.*'.*panicked`, which was
+  **proved to fire on its own control first** (a real rustc panic: 1 hit; and the bare `thread '...' panicked` this
+  toolchain never writes, because it writes `thread 'main' (27700) panicked at …` — **0 hits**, the false negative this
+  arc has paid for before). **Zero hits across all 45 runs, and zero warning lines.** `cargo fmt --all -- --check` clean.
+
+### What this slice's brief got wrong, and what remains open
+
+**The brief said "the row fills under half the frame", which is the claim this slice was sent to improve and is not
+what the frame holds.** Measured, it was 13.49 %: a third of what the note said. A brief that quotes a number another
+note read off a picture should have the number re-measured before it is built on.
+
+**The brief asked for the lens and, if needed, the distance, and read "from a little closer" as though the two were a
+pair.** They are not: the distance is what the previous slice measured the floor's visibility into, and shortening it
+loses a unit's wall at the wider lens and buys nothing at the narrower one. The distance stayed and the lens moved
+alone, which is the stronger result — a frame change that provably cannot lose a plate, because it leaves every
+number the plate's sight line depends on untouched.
+
+**And one thing neither the brief nor the note above asked, which is the useful half: the ceiling is the frame's
+shape, not the lens.** Four numbers for a session that wants more than a quarter of a square frame — the row is 18.9 m
+by 4.4 m, the frame is 1:1, the whole outline fits at 1.21x, and `slab 2`'s plate runs out of frame at about 1.5x.
+Past both of those the next lever is not a longer lens but a different frame, and every scene's hash moves with it.
+
+**Still open, unchanged by this slice:** `--region` prints at most 24 rows, which is why the fill is measured as the
+frame minus one row rather than as a census; an authored pinch is the one courtyard whose areas nothing can check; and
+`validate::document` alone reports a mass with no triangulation only through `DidNotExpand`.

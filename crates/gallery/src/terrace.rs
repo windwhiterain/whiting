@@ -19,7 +19,10 @@
 //! which is what a terrace looks like from the street — and **all three units' floors**, seen through their own
 //! windows. The camera stands square in front of the row rather than off its near corner for that reason alone: a
 //! row seen down its length puts two of its three floors behind the third, and a floor is only in frame from in
-//! front of the wall that holds it.
+//! front of the wall that holds it. **The lens then does the rest**: a square frame and a row four times as wide as
+//! it is tall leave most of the picture to the sky above the ridges and the ground in front of the wall, so the
+//! lens is 1.4x longer than that placement alone wanted, which fills the frame with the row and leaves every plate
+//! pixel where it was.
 
 use definition::Value;
 use scene::standard::Stage;
@@ -233,6 +236,17 @@ pub fn terrace() -> Value {
             // are only in frame from in front of them and high enough for the sight line over a sill to reach the
             // back of a room, and from here every unit is seen through its own windows rather than past its neighbour.
             // Standing off the near corner instead puts two of the three plates behind the row.
+            //
+            // **The lens carries the composition and the eye does not.** Standing at `ridge * 1.15` and `UNIT_DEPTH
+            // * 3.0` is what puts a floor in each of the three windows, and that geometry is left exactly as it was:
+            // the distance, the height and the target are unchanged, so the sight line over a sill still reaches the
+            // back of every room and every plate pixel the frame held is still in it. What the wide lens spent that
+            // on was sky above the ridges and an empty foreground in front of the wall, which is two thirds of a
+            // square frame holding nothing. **The lens is therefore 1.4x longer** — the same `0.95` of a radian third,
+            // over 1.4 — which magnifies the row by 1.46 about the view axis and so takes the building's own pixels
+            // from about an eighth of the frame to about a quarter of it. A square frame against a row four times as
+            // wide as it is tall cannot be filled outright: at 1.46 the three ridges and the two party-wall valleys
+            // are inside the frame with room to spare, and only the outer eaves are trimmed by it.
             Value::List(vec![camera(
                 [
                     f64::from(UNIT_WIDTH) * 0.6,
@@ -240,7 +254,7 @@ pub fn terrace() -> Value {
                     f64::from(UNIT_DEPTH) * 3.0,
                 ],
                 [0.0, ridge * 0.35, 0.0],
-                std::f64::consts::FRAC_PI_3 * 0.95,
+                std::f64::consts::FRAC_PI_3 * 0.95 / 1.4,
             )]),
         ),
         (
