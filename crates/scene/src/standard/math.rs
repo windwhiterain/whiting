@@ -234,15 +234,21 @@ impl Bounds {
 /// covers all of it. `padding` widens the box, which keeps geometry exactly on the edge
 /// from being clipped by a rounding error. The near and far planes are derived from how
 /// far the camera is from the box, so the whole box is between them.
+///
+/// # Invariants
+///
+/// - **The page's half width is the box's half width times `padding`, and nothing else.**
+///   [`orthographic`] takes a **half** width, so the call passes `half_width * padding`: a
+///   page twice that wide is a page that rasterises geometry the box was fitted to exclude,
+///   and a fragment outside the box then shares its column with whatever inside the box does
+///   instead of reading unshadowed. It is not a wider picture; it is a wider *wrong* one.
+/// - The two lateral axes take the same number, so the page is square and a texel is the
+///   same size in each of them, which is what the shader's own `texel_world` measure assumes.
 pub fn projection_of(box_of: &Bounds, eye: [f64; 3], target: [f64; 3], padding: f64) -> Matrix {
     let distance = dot(subtract(eye, target), subtract(eye, target)).sqrt();
     let depth = distance + 2.0 * box_of.largest_half_width();
     let view = look_at(eye, target, [0.0, 1.0, 0.0]);
-    let ortho = orthographic(
-        2.0 * box_of.largest_half_width() * padding,
-        depth / 4.0,
-        depth,
-    );
+    let ortho = orthographic(box_of.largest_half_width() * padding, depth / 4.0, depth);
     multiply(&ortho, &view)
 }
 
