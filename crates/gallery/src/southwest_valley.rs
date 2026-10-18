@@ -79,6 +79,31 @@
 //! distance was opened by the same quarter rather than left at 1.66 m: a frond that grew by a quarter and a
 //! camera that did not would have cropped the tip and been a picture of a stipe.
 //!
+//! # The shadow-map dither on the fern's base plate: it is gone
+//!
+//! The first pass noted a **dither across the fern's cast shadow** on [`TREE_FERN_BASE`] and blamed the
+//! shadow page. `crates/scene/src/standard/math.rs` then halved a point light's orthographic half-width to
+//! the box it was fitted to, and this pass re-rendered the plate to find out. **It is gone, and so is
+//! something the note did not mention: the shadow was doubled.**
+//!
+//! | what is on the floor at `x 60…460, y 400…700` of the base plate | first pass | this branch |
+//! | --- | --- | --- |
+//! | the fern's cast shadow | **two overlapping images** of every frond, offset from one another | **one** |
+//! | the shadow's edge | soft, doubled, with the two copies disagreeing by up to a dozen pixels | **hard**, and the fronds are individually countable |
+//! | the interior of the broad shadow lobes | **dithered** — a checkerboard of lit and unlit texels | **solid** |
+//! | the floor between the horizon and the tree | a **dark band** across the whole width | **a smooth gradient**, the band gone |
+//!
+//! **The doubling is the finding, not the dither.** Two copies of one shadow is a page fitted twice at two
+//! resolutions and the two being composited, and the halved half-width is what stops the second copy: a page
+//! that reaches past the casters it was fitted to carries the *far* side of the plant's own bounding box
+//! through the light's near side, so the whole floor was being tested against geometry behind it. **That is
+//! the same defect the module's [`kapok_base_picture`] doc has been describing as "the plate pays the
+//! dither"** — and that sentence is now wrong, so it has been corrected at the call rather than left to
+//! contradict the picture four hundred lines away.
+//!
+//! **What is left on [`TREE_FERN_BASE`] is a stair-step on the shadow's own edge**, at the pixel the
+//! shadow page's texel works out to, and that is the price of a hard shadow rather than a fault in one.
+//!
 //! **The fern is the only species in this set that needs a card, and its card is a margin rather than a
 //! card**: at the whole-tree plate a pinnule *segment* is a fifth of a pixel and is not drawn at all, and
 //! at the frond plate the same segment is five pixels and **is** drawn — as the teeth of the pinnule's
@@ -2168,7 +2193,10 @@ pub fn kapok_bough_picture() -> Value {
 /// **Its own lighting, and the reason is the shadow page.** The key's extent sizes the page, and nine is
 /// right for a nineteen-metre crown; four was tried for this plate's 17.6 mm texel and the ground beyond
 /// the smaller page then read as one dark band from the horizon to the tree's own shadow. **The key's
-/// extent is the subject's and not the plate's**, so the plate pays the dither and says so.
+/// extent is the subject's and not the plate's.** The first pass went on to say this plate "pays the
+/// dither", and **that is no longer true**: the shadow page's half-width is now fitted to its box, so the
+/// band this sentence describes is gone from this plate as well. See the module's own section on it for the
+/// comparison, which was measured on [`TREE_FERN_BASE`] and holds here for the same reason.
 pub fn kapok_base_picture() -> Value {
     let species = kapok(KAPOK_SEED, Season::Leaf);
     let planting = Planting::new(species)
