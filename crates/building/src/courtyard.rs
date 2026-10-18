@@ -114,7 +114,11 @@ pub(crate) fn ring(
     let Some(loops) = expand::loops_of(skeleton, loop_of, wall, problems) else {
         return Err(Vec::new());
     };
-    let ring = loops.ring(loop_of, wall, top);
+    // **A courtyard's ring keeps the level top**, because a crown is authored per node of the *mass's
+    // own* outline and a void's loop has its own nodes: the two counts are unrelated, so indexing one
+    // with the other would be a guess. `validate` refuses a crowned mass that has a courtyard rather
+    // than letting the two readings drift.
+    let ring = loops.ring(loop_of, wall, top, &[]);
     let mut solid = Solid::default();
     ring_walk(&mut solid, &ring, skeleton, grouped, problems);
     if !problems.is_empty() {

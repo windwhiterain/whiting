@@ -217,7 +217,14 @@ fn mass_surface(surface: MassSurface) -> String {
     match surface {
         MassSurface::OuterWall { edge } => format!("outer wall over edge {edge}"),
         MassSurface::InnerWall { edge } => format!("inner wall over edge {edge}"),
-        MassSurface::WallTop { edge } => format!("wall top over edge {edge}"),
+        // **The second half of a warped strip is named and the first is not.** A strip is one plane
+        // unless a crown warps it, so the name every recorded reading holds — "the wall top over edge
+        // 2" — is still the strip's first triangle, and only the second half a crown creates needs a
+        // name of its own.
+        MassSurface::WallTop { edge, half: 0 } => format!("wall top over edge {edge}"),
+        MassSurface::WallTop { edge, half } => {
+            format!("the second plane of the wall top over edge {edge} (half {half})")
+        }
         MassSurface::WallBase => "its wall's base".to_owned(),
         // A courtyard's faces are named by the courtyard first, so a person asking about "void 0" gets every face of
         // one courtyard rather than a wall here and a paving there.

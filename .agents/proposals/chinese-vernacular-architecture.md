@@ -688,7 +688,7 @@ the pass counts, which is the cheap half of the same list.
    Chinese detail does, and the scene exists to be improved.
 2. **Arc 2 — the profile (D1).** *Done, 2026-10-18 — see below.* The hip becomes a 悬山 whose two planes carry a 举架 section, with a deep
    eave. The straight tent becomes a Chinese roof, and the bargeboard arrives with it.
-3. **Arc 3 — the crown (D2).** Gable walls that reach the roof (硬山) and one party wall that passes
+3. **Arc 3 — the crown (D2).** *Done, 2026-10-18 — see below.* Gable walls that reach the roof (硬山) and one party wall that passes
    through the eave (封火墙). This is the arc after which the house reads from the side.
 4. **Arc 4 — the frame (D3).** Columns under every purlin, ties threading them, cantilevers carrying the
    front gallery, brackets under the cantilevers — anchored, so moving a column moves its tie.
@@ -750,6 +750,48 @@ one scene that asked for a 举架 roof (`stilt`, `F8630F6784B70585`). Getting th
 the first version walked each strip's corners from the eave up, which put the quad's diagonal on the
 other pair of corners and moved **all ten** hashes for a difference no viewer can see. The corners run
 crest-to-eave in the authored rows' order, and the nine came back.
+
+### Arc 3 is closed: the 山墙 rises to its roof, and a warped strip is two planes
+
+`Mass::crowns` is **one elevation per outline node, and empty is the level case** — exact rather than a
+row of copies of `top`, the same shape `FaceRef::void` already had. `Mass::top_at` is the one reading
+(the ring's `Ring::top_at` is the same line), `expand` lifts the walk's top per node, and `site::seat`
+carries a crown with its mass. `stilt`'s gable ends are split at their middles and the two nodes under
+the ridge are crowned to **the roof's underside less a centimetre**, so the 山墙 is a triangle that
+meets its roof instead of an open band under it.
+
+The finding is what the first measurement produced: **a crowned strip of wall top at a plan corner is
+not planar.** The strip's four corners are the edge's two outer nodes and its two inner, mitered ones;
+at one elevation any three span a plane the fourth lies in, but a crowned strip is planar only if the
+two ends' **offset directions are parallel**, and a rectangle corner's miter is never parallel to a
+straight node's perpendicular. The warp is **0.037 m** — 15 % of the 0.24 m band — and it arrives as
+four `FaceNotPlanar` violations.
+
+The resolution applies D1's rule to a warp: a bend was its own element, so a **warped strip is its two
+triangles with their own elements**, `WallTop { edge, half: 0 }` and `{ edge, half: 1 }`. A level strip
+stays one element, so every recorded picture and every recorded name is unchanged — the second half is
+named and the first is not.
+
+Measured on `wall_crown_probe`, a 10 × 6 gable with two crowned apexes at 5.27:
+
+| number | value |
+| --- | --- |
+| the ring | **48 faces, euler 0** (a ring, not a box), manifold, **26.693367 m³**, **0 violations** |
+| the wall-top elements | **10** over six nodes, **4** of them the second half of a warped strip |
+| planarity | the largest departure of any element is **7.8e-8 m**; the two level edges keep one element and are flat to `0.00e0` |
+| the lean | the crowned strips' normals run **0.6869 .. 0.8237 up** — they lean, which is the whole point |
+| the apex | the mass reaches **5.2650**, exactly the roof's underside at the ridge |
+| the refusals | `CrownCountMismatch`, `CrownBelowBase`, `GridOnACrownedFace`, and `CrownWithACourtyard` for the case the ring cannot express |
+
+**Two boundaries, both by name rather than by silence**: a crowned mass that has a courtyard (a crown is
+authored per node of the mass's outline and a courtyard's ring per node of the *void's* loop — two node
+counts with no rule between them), and a crowned edge that carries an opening (`cut_edge` reads the
+ring's level top at its stations). Both are one arc's worth of work when a scene needs them: the void
+ring grows the parameter, and `cut_edge` interpolates the top along its stations.
+
+`stilt`'s picture moved for the first time since the profile: `2DB5EE0D9E0E1297`, and the identity
+probe's rows went **999 → 1009** — the four warped strips' second halves and the strips the split
+added.
 
 ## What would make this proposal wrong
 

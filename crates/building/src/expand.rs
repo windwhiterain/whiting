@@ -783,7 +783,7 @@ pub fn part_frame(
                 };
             };
             let wall = loops
-                .ring(loop_of, mass.wall, mass.top)
+                .ring(loop_of, mass.wall, mass.top, &mass.crowns)
                 .face(face.edge, face.loop_side);
             let origin = lift(
                 wall.outer_at(bay.from + placed.at.along),
@@ -1112,7 +1112,7 @@ fn expand_mass(
     // the group is keyed by the exact face, which is what keeps a courtyard's hole out of the mass's
     // own wall.
     let grouped = skeleton.openings.by_face();
-    let ring = loops.ring(outline_of, mass.wall, mass.top);
+    let ring = loops.ring(outline_of, mass.wall, mass.top, &mass.crowns);
     let mut solid = Solid::default();
     ring_walk(&mut solid, &ring, skeleton, &grouped, &mut problems);
     // **A courtyard is built before anything is spliced, and refused with the mass.** The ring is
@@ -1157,7 +1157,7 @@ fn expand_mass(
 /// quad on it must be — because a walk that assumed the mass's arrangement would wind every face of
 /// a courtyard backwards, and a courtyard with no hole in it is exactly the case that would have
 /// looked right while it was wrong.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct Ring<'a> {
     /// Which authored loop this ring is built from, which is what every fault about it names.
     pub(crate) loop_of: AuthoredLoop,
@@ -1167,13 +1167,24 @@ pub(crate) struct Ring<'a> {
     pub(crate) offset: &'a [Vec2],
     /// The wall's thickness.
     pub(crate) wall: f32,
-    /// The wall's top, which both loops stand at.
+    /// The wall's top, which both loops stand at when it is level.
     pub(crate) top: f32,
+    /// One top per walked node, or empty for the level `top`: the crown, if the wall has one.
+    pub(crate) crown: Vec<f32>,
     /// Which way the offset was taken from the authored loop.
     pub(crate) side: OffsetSide,
 }
 
 impl Ring<'_> {
+    /// Returns the wall top over one node: the crown's own elevation, or the level top.
+    ///
+    /// It is the reading [`Mass::top_at`](crate::mass::Mass::top_at) makes, written here because a
+    /// ring can be held by a caller whose mass is no longer borrowed — what must not differ is the
+    /// rule, and the rule is one line.
+    fn top_at(&self, node: usize) -> f32 {
+        self.crown.get(node).copied().unwrap_or(self.top)
+    }
+
     /// Returns whether the ring's **authored** loop is the face an outside viewer sees.
     ///
     /// A mass's wall is built inward, so its outline is the outer face and its offset the inner one. A
@@ -1239,7 +1250,7 @@ impl RingSurfaces {
             AuthoredLoop::Outline { .. } => Self {
                 authored: MassSurface::OuterWall { edge },
                 offset: MassSurface::InnerWall { edge },
-                top: MassSurface::WallTop { edge },
+                top: MassSurface::WallTop { edge, half: 0 },
                 base: MassSurface::WallBase,
             },
             AuthoredLoop::Void { void, .. } => Self {
@@ -1284,13 +1295,20 @@ pub(crate) struct FaceLoops<'a> {
 
 impl FaceLoops<'_> {
     /// Returns the ring these two loops are, read by anything that needs one edge of it.
-    pub(crate) fn ring(&self, loop_of: AuthoredLoop, wall: f32, top: f32) -> Ring<'_> {
+    pub(crate) fn ring(
+        &self,
+        loop_of: AuthoredLoop,
+        wall: f32,
+        top: f32,
+        crown: &[f32],
+    ) -> Ring<'_> {
         Ring {
             loop_of,
             walked: self.walked.as_ref(),
             offset: &self.offset,
             wall,
             top,
+            crown: crown.to_vec(),
             side: self.side,
         }
     }
@@ -1329,7 +1347,7 @@ pub(crate) fn face_length(skeleton: &BuildingSkeleton, face: FaceRef) -> Option<
     let mass = skeleton.mass(face.mass)?;
     let mut problems = Vec::new();
     let loops = loops_of(skeleton, face.loop_of(), mass.wall, &mut problems)?;
-    let ring = loops.ring(face.loop_of(), mass.wall, mass.top);
+    let ring = loops.ring(face.loop_of(), mass.wall, mass.top, &mass.crowns);
     Some(ring.face(face.edge, LoopSide::Offset).length)
 }
 
@@ -1471,9 +1489,9 @@ pub(crate) fn ring_walk(
             ring.walked[node].position,
             ring.walked[node].elevation,
         )));
-        authored_top.push(solid.point(lift(ring.walked[node].position, ring.top)));
+        authored_top.push(solid.point(lift(ring.walked[node].position, ring.top_at(node))));
         offset_base.push(solid.point(lift(ring.offset[node], ring.walked[node].elevation)));
-        offset_top.push(solid.point(lift(ring.offset[node], ring.top)));
+        offset_top.push(solid.point(lift(ring.offset[node], ring.top_at(node))));
     }
     let faces: Vec<WallFace> = (0..count)
         .map(|edge| ring.face(edge, LoopSide::Authored))
@@ -1511,18 +1529,37 @@ pub(crate) fn ring_walk(
                 ),
                 Element::Mass(mass, surfaces.authored),
             );
-            solid.quad(
-                wound(
-                    authored_is_outer,
-                    [
-                        authored_top[edge],
-                        offset_top[edge],
-                        offset_top[next],
-                        authored_top[next],
-                    ],
-                ),
-                Element::Mass(mass, surfaces.top),
+            // **A strip of wall top is one plane unless the wall's top is crowned at one end.** Its
+            // four corners are the edge's two outer nodes and its two inner, mitered ones; a level
+            // top puts all four at one elevation, but a crowned strip is planar only if the two ends'
+            // offset directions are parallel — and a corner's miter is never parallel to a straight
+            // node's perpendicular. So the strip warps, and an element is a *planar* shading group
+            // (the roof's profile taught the same rule one arc ago): the two triangles the strip has
+            // always been are given two elements, and the crease between them is where the warp is.
+            let corners = wound(
+                authored_is_outer,
+                [
+                    authored_top[edge],
+                    offset_top[edge],
+                    offset_top[next],
+                    authored_top[next],
+                ],
             );
+            let warp = warp_of(solid, corners);
+            let element = Element::Mass(mass, surfaces.top);
+            if warp > crate::validate::PLANARITY_TOLERANCE {
+                let halves = halves_of(surfaces.top);
+                solid.triangle(
+                    [corners[0], corners[1], corners[2]],
+                    Element::Mass(mass, halves.0),
+                );
+                solid.triangle(
+                    [corners[0], corners[2], corners[3]],
+                    Element::Mass(mass, halves.1),
+                );
+            } else {
+                solid.quad(corners, element);
+            }
             solid.quad(
                 wound(
                     authored_is_outer,
@@ -1586,6 +1623,44 @@ pub(crate) fn ring_walk(
     }
     if std::env::var("SHED_DEBUG").is_ok() {
         report_unclosed(solid, ring.loop_of, outer.len());
+    }
+}
+
+/// Returns how far the fourth corner stands from the plane of the first three.
+///
+/// It is the same reading [`validate`](crate::validate)'s `FaceNotPlanar` makes of an element, taken
+/// here before the element is chosen: a strip whose warp is under
+/// [`PLANARITY_TOLERANCE`](crate::validate::PLANARITY_TOLERANCE) is one plane and stays one element.
+fn warp_of(solid: &Solid, corners: [u32; 4]) -> f32 {
+    let at = |index: u32| solid.points[index as usize];
+    let (a, b, c, d) = (
+        at(corners[0]),
+        at(corners[1]),
+        at(corners[2]),
+        at(corners[3]),
+    );
+    let along = subtract(b, a);
+    let across = subtract(c, a);
+    let normal = cross3(along, across);
+    let magnitude = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+    if magnitude < f32::EPSILON {
+        return 0.0;
+    }
+    let out = subtract(d, a);
+    ((out[0] * normal[0] + out[1] * normal[1] + out[2] * normal[2]) / magnitude).abs()
+}
+
+/// Returns the two elements a **warped** strip of wall top is split into.
+///
+/// A courtyard's ring is level — a crowned mass that has a courtyard is refused — so its strip keeps
+/// one element and both halves answer the same surface.
+fn halves_of(surface: MassSurface) -> (MassSurface, MassSurface) {
+    match surface {
+        MassSurface::WallTop { edge, .. } => (
+            MassSurface::WallTop { edge, half: 0 },
+            MassSurface::WallTop { edge, half: 1 },
+        ),
+        other => (other, other),
     }
 }
 

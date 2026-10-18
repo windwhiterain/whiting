@@ -157,6 +157,9 @@ pub fn seat(
             node.elevation += delta;
         }
         skeleton.masses[index].top += delta;
+        for top in &mut skeleton.masses[index].crowns {
+            *top += delta;
+        }
         let host = MassId(index);
         for roof in skeleton.roofs.iter_mut() {
             if roof.host != host {

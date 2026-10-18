@@ -24,6 +24,7 @@ use building::Building;
 use building::derive::{self, RoofStyle, Starter};
 use building::identity::Identity;
 use building::math::Vec2;
+use building::ops;
 use building::roof::Step;
 use building::site;
 
@@ -359,6 +360,16 @@ pub fn document() -> Building {
     for plane in &mut skeleton.roofs[0].planes {
         plane.profile = PROFILE.to_vec();
     }
+    // **The 山墙, which is a crown and a split.** A gable wall rises to its roof, and a per-node top
+    // can only do that where there is a node under the ridge — so each gable end is split at its
+    // middle before anything is seated, and the node that appears is crowned after, because the
+    // height it takes is the roof's own underside once the house has been levelled.
+    let gable = gable_stations(&skeleton.masses[0], STARTER.width * 0.5);
+    debug_assert_eq!(gable.len(), 2, "a gable has two ends");
+    for station in gable {
+        ops::split_outline(&mut skeleton.masses[0], station)
+            .expect("a gable end splits at its middle");
+    }
     let seated = site::seat(&mut skeleton, ground, 0.0);
     debug_assert_eq!(seated.len(), 1, "the house is one mass");
     let report = site::posts(
@@ -372,7 +383,64 @@ pub fn document() -> Building {
         report.posts > 0,
         "a house on a 35 % bank must stand on posts, and this one drew none"
     );
+    // The apex is the roof's **underside** at the ridge less a centimetre: the wall stands under the
+    // roof and not in it, and a crown set exactly at the underside would put two faces at one depth.
+    let roof = &skeleton.roofs[0];
+    let ridge = roof
+        .crest
+        .iter()
+        .map(|point| point.elevation)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let apex = ridge - roof.thickness - 0.01;
+    let level = skeleton.masses[0].top;
+    let nodes = skeleton.masses[0].outline.len();
+    let mut crowns = vec![level; nodes];
+    for (node, crown) in crowns.iter_mut().enumerate() {
+        if under_the_ridge(&skeleton.masses[0], node, STARTER.width * 0.5) {
+            *crown = apex;
+        }
+    }
+    skeleton.masses[0].crowns = crowns;
     Building::new(skeleton)
+}
+
+/// Answers whether a node stands under the ridge: the middle of one of the two gable ends.
+///
+/// A gable end is a wall at one of the two extremes of the ridge's own axis, and its middle is the
+/// point where the gable's two rakes meet. The test reads the **plan**, so it survives seating.
+fn under_the_ridge(mass: &building::Mass, node: usize, half_width: f32) -> bool {
+    let at = mass.outline[node].position;
+    at[1].abs() < 1.0e-3 && (at[0].abs() - half_width).abs() < 1.0e-3
+}
+
+/// Returns the arc-length stations at which the two gable ends are, in descending order.
+///
+/// A gable end's two nodes share an `x` of magnitude `half_width`; its middle is the station half way
+/// along it. Both stations are measured on the **closed** loop before either insertion, and answered
+/// far end first, because an insertion moves every station after it.
+fn gable_stations(mass: &building::Mass, half_width: f32) -> Vec<f32> {
+    let count = mass.outline.len();
+    let lengths: Vec<f32> = (0..count)
+        .map(|edge| {
+            let from = mass.outline[edge].position;
+            let to = mass.outline[(edge + 1) % count].position;
+            ((to[0] - from[0]).powi(2) + (to[1] - from[1]).powi(2)).sqrt()
+        })
+        .collect();
+    let perimeter: f32 = lengths.iter().sum();
+    let mut stations = Vec::new();
+    let mut walked = 0.0_f32;
+    for (edge, length) in lengths.iter().enumerate() {
+        let from = mass.outline[edge].position;
+        let to = mass.outline[(edge + 1) % count].position;
+        let gable = (from[0] - to[0]).abs() < 1.0e-4 && (from[0].abs() - half_width).abs() < 1.0e-4;
+        if gable {
+            stations.push((walked + length * 0.5) / perimeter);
+        }
+        walked += length;
+    }
+    stations.sort_by(|left, right| right.partial_cmp(left).unwrap_or(std::cmp::Ordering::Equal));
+    stations
 }
 
 /// Returns how far a light position stands from the scene's own middle.

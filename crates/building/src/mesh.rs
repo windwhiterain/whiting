@@ -37,9 +37,22 @@ pub enum MassSurface {
         edge: usize,
     },
     /// The ring of wall top between the outer and inner faces, one per outline edge.
+    ///
+    /// # Invariants
+    ///
+    /// **A strip is one plane when the wall's top is level and two when it is crowned at one end.** The
+    /// strip's four corners are the edge's two outer nodes and its two inner, mitered ones; at one
+    /// elevation any three of them span a plane the fourth lies in, but a crowned strip lies in a plane
+    /// only if the two ends' offset directions are parallel — and a corner's miter is never parallel to
+    /// a straight node's perpendicular. So the strip **warps**, and since an element is a *planar*
+    /// shading group — the rule the roof's profile was built on one arc earlier — the two triangles it
+    /// has always been are given two elements instead of one. `half` is which: `0` is the first
+    /// triangle and the whole strip when it is planar, `1` is the second triangle of a warped one.
     WallTop {
         /// Index of the outline edge.
         edge: usize,
+        /// Which triangle of the strip: `0`, or `1` for the second half of a warped strip.
+        half: usize,
     },
     /// A surface of the wall's own thickness inside an opening: a jamb, a head or a sill.
     ///

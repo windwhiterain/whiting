@@ -57,7 +57,7 @@ use crate::skeleton::BuildingSkeleton;
 ///
 /// A millimetre therefore keeps the two apart with a decade of head-room on each side, and is the
 /// same kind of number as `mountain`'s `WELD` rather than a value tuned per building.
-const PLANARITY_TOLERANCE: f32 = 1.0e-3;
+pub(crate) const PLANARITY_TOLERANCE: f32 = 1.0e-3;
 
 /// How close in plan two masses have to stand before their outlines count as touching rather than
 /// overlapping.
@@ -248,6 +248,47 @@ pub enum Violation {
         top: f32,
         /// The highest elevation of the outline.
         highest: f32,
+    },
+    /// A crown carries a different number of elevations than the outline has nodes.
+    ///
+    /// # Invariants
+    ///
+    /// **Neither empty nor one per node is a wall.** Empty is the level top and is the state every
+    /// mass in this gallery is in; a crown is a per-node elevation, so a count that disagrees with the
+    /// outline cannot be read node by node — and indexing past the end of one would be a mass whose
+    /// walls are right up to the node that is missing.
+    CrownCountMismatch {
+        /// The mass.
+        mass: MassId,
+        /// How many elevations its crown holds.
+        crowns: usize,
+        /// How many nodes its outline has.
+        nodes: usize,
+    },
+    /// A crown at or below the elevation its node stands on, so the wall has been cut into its base.
+    CrownBelowBase {
+        /// The mass.
+        mass: MassId,
+        /// Which node.
+        node: usize,
+        /// The crown there.
+        top: f32,
+        /// The elevation the node stands on.
+        base: f32,
+    },
+    /// A mass carries both a crown and a courtyard, which are two node counts with no rule between
+    /// them: a crown is authored per node of the mass's outline and a courtyard's ring per node of the
+    /// void's loop.
+    CrownWithACourtyard {
+        /// The mass.
+        mass: MassId,
+        /// How many courtyards it has.
+        voids: usize,
+    },
+    /// A face with a rhythm is on a crowned edge, which is a trapezoid and not a rectangle.
+    GridOnACrownedFace {
+        /// The face the rhythm names.
+        face: crate::grid::FaceRef,
     },
     /// Two masses' plans overlap and neither names the other as a host.
     UnattachedOverlap {
@@ -1212,16 +1253,52 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             OutlineReading { .. } => {}
         }
         // Staged the same way: `highest` of an empty outline is not an elevation, it is a fold
-        // over nothing that answers negative infinity.
+        // over nothing that answers negative infinity. A crowned mass is measured by its **highest**
+        // top, because a gable that rises to its roof is a wall and not a zero-height one.
         if !mass.outline.is_empty() {
             let highest = mass.highest();
-            if mass.top <= highest {
+            let top = mass.highest_top();
+            if top <= highest {
                 violations.push(Violation::ZeroHeight {
                     mass: id,
-                    top: mass.top,
+                    top,
                     highest,
                 });
             }
+        }
+        // **A crown is one elevation per node, and the two counts are the statement.** A crown that is
+        // neither empty nor the outline's length cannot be read node by node, so it is reported rather
+        // than indexed past the end of.
+        if !mass.crowns.is_empty() && mass.crowns.len() != mass.outline.len() {
+            violations.push(Violation::CrownCountMismatch {
+                mass: id,
+                crowns: mass.crowns.len(),
+                nodes: mass.outline.len(),
+            });
+        }
+        // Every crown stands above the wall's own foot, or it is a wall that has been cut into its base.
+        for (node, top) in mass.crowns.iter().enumerate() {
+            let Some(node_at) = mass.outline.get(node) else {
+                break;
+            };
+            if *top <= node_at.elevation {
+                violations.push(Violation::CrownBelowBase {
+                    mass: id,
+                    node,
+                    top: *top,
+                    base: node_at.elevation,
+                });
+            }
+        }
+        // **A courtyard's ring is authored per node of the void's loop, not the mass's outline**, so a
+        // crowned mass that has a courtyard is two node counts with no rule between them. Refused
+        // rather than guessed at: nothing in this gallery needs it, and the day something does, the
+        // courtyard's ring grows the same parameter the mass's own ring has.
+        if !mass.crowns.is_empty() && !mass.voids.is_empty() {
+            violations.push(Violation::CrownWithACourtyard {
+                mass: id,
+                voids: mass.voids.len(),
+            });
         }
         if let Some(attachment) = mass.attachment {
             if skeleton.mass(attachment.host).is_none() {
@@ -2132,6 +2209,16 @@ fn check_grids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
         let Some(grid) = skeleton.grid(face) else {
             continue;
         };
+        // **A crowned edge is a trapezoid and a rhythm divides a rectangle.** The levels a grid holds
+        // are read against one wall top, and a crowned edge's top is a line with two different ends,
+        // so a bay's sill and head would be two numbers about no single face. Reported by name rather
+        // than cut into bays a part cannot stand in.
+        if let Some(mass) = skeleton.mass(face.mass) {
+            if !mass.crowns.is_empty() {
+                violations.push(Violation::GridOnACrownedFace { face });
+                continue;
+            }
+        }
         let (Some(length), Some((base, top))) =
             (skeleton.face_length(face), skeleton.face_extent(face))
         else {
@@ -2978,6 +3065,26 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         Violation::ZeroHeight { mass, top, highest } => {
             (2, mass.0 as u64, ordered(*top), ordered(*highest), 0)
         }
+        // Ranks `46`–`48`, at the end for the same reason the profile's are: a crown arrived after the
+        // mass's own block closed, and a crown fault is a statement about a mass that already exists.
+        Violation::CrownCountMismatch {
+            mass,
+            crowns,
+            nodes,
+        } => (46, mass.0 as u64, *crowns as u64, *nodes as u64, 0),
+        Violation::CrownBelowBase {
+            mass,
+            node,
+            top,
+            base,
+        } => (
+            47,
+            mass.0 as u64,
+            *node as u64,
+            ordered(*top),
+            ordered(*base),
+        ),
+        Violation::CrownWithACourtyard { mass, voids } => (48, mass.0 as u64, *voids as u64, 0, 0),
         Violation::UnattachedOverlap { mass, other } => (3, mass.0 as u64, other.0 as u64, 0, 0),
         // **Rank `3` and its fourth slot, beside `UnattachedOverlap` and not at the end.** The two are
         // one question asked of one pair of masses — whether two unattached plans share area — and the
@@ -3083,6 +3190,13 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         ),
         Violation::GridOutsideFace { face } => (
             23,
+            face.mass.0 as u64,
+            face.edge as u64,
+            void_rank(*face),
+            0,
+        ),
+        Violation::GridOnACrownedFace { face } => (
+            49,
             face.mass.0 as u64,
             face.edge as u64,
             void_rank(*face),

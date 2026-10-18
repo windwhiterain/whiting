@@ -124,8 +124,30 @@ pub struct Attachment {
 pub struct Mass {
     /// The outer face of the wall, wound so [`Mass::plan_area`] is positive, stored open.
     pub outline: Vec<PlanNode>,
-    /// The elevation of the wall top.
+    /// The elevation of the wall top, when the wall top is level.
     pub top: f32,
+    /// One elevation per outline node, when it is not: a gable that rises to the roof, a parapet, a
+    /// stepped wall.
+    ///
+    /// # Invariants
+    ///
+    /// **Empty is the level case and it is exact.** A mass whose wall top is level carries no crown,
+    /// so every reading of it is `top` itself and not a row of copies that could drift from it; a
+    /// crowned mass carries exactly **one elevation per outline node**, and then
+    /// [`Mass::top_at`] is the only reading — `top` is what the crown replaced and is still what
+    /// [`Mass::highest_top`] falls back on when the crown is shorter than the outline, which
+    /// [`validate`](crate::validate) reports rather than repairs.
+    ///
+    /// **The strip of wall top over each edge stays planar**, and that is arithmetic rather than
+    /// luck: the strip's four corners are the edge's two outer nodes at their own tops and the two
+    /// inner, offset nodes at the same tops, and all four lie on the plane spanned by the edge's
+    /// direction and the wall's thickness, tilted by the difference between the two tops. Nothing
+    /// needs triangulating and no tolerance is spent.
+    ///
+    /// **A crowned edge is not a rectangle, so it carries no grid.** A rhythm divides a rectangle into
+    /// bays and a crowned face is a trapezoid; [`validate`](crate::validate) reports a grid on one
+    /// (`GridOnACrownedFace`) rather than cutting bays a sill cannot be placed in.
+    pub crowns: Vec<f32>,
     /// Wall thickness, measured inward from the outline.
     pub wall: f32,
     /// Floor slab thickness, measured down from the outline's elevations.
@@ -169,12 +191,37 @@ impl Mass {
         Self {
             outline,
             top,
+            crowns: Vec::new(),
             wall: 0.3,
             slab: 0.4,
             attachment: None,
             name: None,
             voids: Vec::new(),
         }
+    }
+
+    /// Raises the wall top over chosen nodes: one elevation per outline node.
+    ///
+    /// A crown of the wrong length is reported by [`validate`](crate::validate) as
+    /// `CrownCountMismatch` rather than indexed past.
+    pub fn with_crowns(mut self, crowns: Vec<f32>) -> Self {
+        self.crowns = crowns;
+        self
+    }
+
+    /// Returns the wall top over one node of the outline: the crown's own elevation, or the level top.
+    pub fn top_at(&self, node: usize) -> f32 {
+        self.crowns.get(node).copied().unwrap_or(self.top)
+    }
+
+    /// Returns the highest wall top the mass has, which is the level top or the crown's maximum.
+    pub fn highest_top(&self) -> f32 {
+        self.crowns.iter().copied().fold(self.top, f32::max)
+    }
+
+    /// Returns the lowest wall top the mass has, which is what a floor must stay under.
+    pub fn lowest_top(&self) -> f32 {
+        self.crowns.iter().copied().fold(self.top, f32::min)
     }
 
     /// Authors a courtyard: a loop inside the outline that the mass has a hole into.

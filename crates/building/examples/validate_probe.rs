@@ -78,29 +78,29 @@ const RING_FACES: [([u32; 3], MassSurface); 32] = [
     // edge 0
     ([4, 5, 1], MassSurface::OuterWall { edge: 0 }),
     ([4, 1, 0], MassSurface::OuterWall { edge: 0 }),
-    ([4, 12, 13], MassSurface::WallTop { edge: 0 }),
-    ([4, 13, 5], MassSurface::WallTop { edge: 0 }),
+    ([4, 12, 13], MassSurface::WallTop { edge: 0, half: 0 }),
+    ([4, 13, 5], MassSurface::WallTop { edge: 0, half: 0 }),
     ([13, 12, 8], MassSurface::InnerWall { edge: 0 }),
     ([13, 8, 9], MassSurface::InnerWall { edge: 0 }),
     // edge 1
     ([5, 6, 2], MassSurface::OuterWall { edge: 1 }),
     ([5, 2, 1], MassSurface::OuterWall { edge: 1 }),
-    ([5, 13, 14], MassSurface::WallTop { edge: 1 }),
-    ([5, 14, 6], MassSurface::WallTop { edge: 1 }),
+    ([5, 13, 14], MassSurface::WallTop { edge: 1, half: 0 }),
+    ([5, 14, 6], MassSurface::WallTop { edge: 1, half: 0 }),
     ([14, 13, 9], MassSurface::InnerWall { edge: 1 }),
     ([14, 9, 10], MassSurface::InnerWall { edge: 1 }),
     // edge 2
     ([6, 7, 3], MassSurface::OuterWall { edge: 2 }),
     ([6, 3, 2], MassSurface::OuterWall { edge: 2 }),
-    ([6, 14, 15], MassSurface::WallTop { edge: 2 }),
-    ([6, 15, 7], MassSurface::WallTop { edge: 2 }),
+    ([6, 14, 15], MassSurface::WallTop { edge: 2, half: 0 }),
+    ([6, 15, 7], MassSurface::WallTop { edge: 2, half: 0 }),
     ([15, 14, 10], MassSurface::InnerWall { edge: 2 }),
     ([15, 10, 11], MassSurface::InnerWall { edge: 2 }),
     // edge 3
     ([7, 4, 0], MassSurface::OuterWall { edge: 3 }),
     ([7, 0, 3], MassSurface::OuterWall { edge: 3 }),
-    ([7, 15, 12], MassSurface::WallTop { edge: 3 }),
-    ([7, 12, 4], MassSurface::WallTop { edge: 3 }),
+    ([7, 15, 12], MassSurface::WallTop { edge: 3, half: 0 }),
+    ([7, 12, 4], MassSurface::WallTop { edge: 3, half: 0 }),
     ([12, 15, 11], MassSurface::InnerWall { edge: 3 }),
     ([12, 11, 8], MassSurface::InnerWall { edge: 3 }),
     // the base annulus, one strip per edge
@@ -546,7 +546,7 @@ fn sloped_quad(lift: f32) -> BuildingMesh {
             4.0 + normal[2] * lift,
         ],
     ];
-    let element = Element::Mass(MassId(0), MassSurface::WallTop { edge: 0 });
+    let element = Element::Mass(MassId(0), MassSurface::WallTop { edge: 0, half: 0 });
     built.faces = vec![
         BuildingFace {
             indices: [0, 1, 2],
@@ -703,6 +703,10 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::OutlineReversed { .. } => "OutlineReversed",
         Violation::OutlineTooShort { .. } => "OutlineTooShort",
         Violation::OutlineNotSimple { .. } => "OutlineNotSimple",
+        Violation::CrownCountMismatch { .. } => "CrownCountMismatch",
+        Violation::CrownBelowBase { .. } => "CrownBelowBase",
+        Violation::CrownWithACourtyard { .. } => "CrownWithACourtyard",
+        Violation::GridOnACrownedFace { .. } => "GridOnACrownedFace",
         Violation::ZeroHeight { .. } => "ZeroHeight",
         Violation::UnattachedOverlap { .. } => "UnattachedOverlap",
         Violation::OverlapNotMeasured { .. } => "OverlapNotMeasured",
