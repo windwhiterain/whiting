@@ -248,6 +248,14 @@ pub enum Element {
     /// ends answer to what it joins rather than to the ground — and a post, a bracket and a purlin are
     /// one kind because that is the whole of what they are.
     Member(crate::member::MemberId, crate::member::MemberSurface),
+    /// A face of one roll of a roof's covering.
+    ///
+    /// # Invariants
+    ///
+    /// **A roll is one solid from the eave to the crest**, and the bend at a purlin is inside it: the
+    /// skin bends there and the bend is a face of the *skin*, while the roll is a body whose surface is
+    /// the swept prism's boundary. `roll.roof` and `roll.index` are what name it.
+    Roll(crate::covering::RollId, crate::covering::RollSurface),
 }
 
 /// What a part's face was inside the template it was copied from.
@@ -276,6 +284,8 @@ pub enum PartSurface {
     /// A face of one of the template's members, which no template holds today for the reason the wall
     /// and slab variants give: the map has to be total.
     Member(crate::member::MemberId, crate::member::MemberSurface),
+    /// A face of one of the template's covering rolls, for the same reason.
+    Roll(crate::covering::RollId, crate::covering::RollSurface),
 }
 
 impl Element {
@@ -288,6 +298,7 @@ impl Element {
             Self::Wall(id, _) => SolidId::Wall(*id),
             Self::Slab(id, _) => SolidId::Slab(*id),
             Self::Member(id, _) => SolidId::Member(*id),
+            Self::Roll(id, _) => SolidId::Roll(*id),
         }
     }
 }
@@ -339,6 +350,12 @@ pub enum SolidId {
     /// A member, by its index in the document's members: one straight piece of frame, closed and
     /// oriented outward like every other solid.
     Member(crate::member::MemberId),
+    /// One roll of a roof's covering, which is the crate's seventh kind of solid.
+    ///
+    /// It is a solid rather than a surface of the roof because **rolls do not touch each other** — they
+    /// stand a period apart with a channel between them — and because a roll that crosses a purlin is
+    /// still one body, its bend a section rather than a face.
+    Roll(crate::covering::RollId),
 }
 
 /// One triangle, and the element that produced it.

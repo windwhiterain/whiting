@@ -677,6 +677,7 @@ fn authored_loop_area(skeleton: &BuildingSkeleton, solid: SolidId) -> Option<f32
         | SolidId::Part(_)
         | SolidId::Wall(_)
         | SolidId::Member(_)
+        | SolidId::Roll(_)
         | SolidId::Void { .. } => None,
     }
 }
@@ -721,6 +722,7 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::RoofPlaneTooShort { .. } => "RoofPlaneTooShort",
         Violation::ProfileOutOfOrder { .. } => "ProfileOutOfOrder",
         Violation::ProfileReachesTheCrest { .. } => "ProfileReachesTheCrest",
+        Violation::CoveringFault { .. } => "CoveringFault",
         Violation::RoofCrestMissing { .. } => "RoofCrestMissing",
         Violation::DidNotExpand { .. } => "DidNotExpand",
         Violation::SolidOpen { .. } => "SolidOpen",

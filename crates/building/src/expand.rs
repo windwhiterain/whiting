@@ -65,6 +65,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 
 use crate::courtyard;
+use crate::covering::{Covering, RollId, RollSurface};
 use crate::grid::{FaceRef, GRID_TOLERANCE, LoopSide};
 use crate::mass::{AuthoredLoop, Mass, MassId, PlanNode};
 use crate::math::{
@@ -374,6 +375,20 @@ pub enum Problem {
         wall: WallId,
         /// The thickness that was given.
         thickness: f32,
+    },
+    /// A roof's covering is not a covering: a period that is not a length, a fill outside `(0, 1)`, or
+    /// a height that is not a rise.
+    CoveringFault {
+        /// The roof.
+        roof: RoofId,
+        /// What is wrong with it.
+        fault: crate::covering::CoveringFault,
+    },
+    /// A roof's covering is a spec that drew no roll: a roof with no plane, or one whose every band is
+    /// too narrow to hold a roll.
+    CoveringDrewNothing {
+        /// The roof.
+        roof: RoofId,
     },
     /// A member's axis has no length, or its `across` is parallel to it, so there is no section to
     /// sweep.
@@ -939,6 +954,7 @@ fn expand_placement(
                     // A member inside a template is the same statement one kind further out: the map
                     // is total, and a template that held a frame piece would name it here.
                     Element::Member(id, surface) => PartSurface::Member(id, surface),
+                    Element::Roll(id, surface) => PartSurface::Roll(id, surface),
                 },
             },
         })
@@ -1674,6 +1690,15 @@ pub(crate) fn ring_walk(
     }
 }
 
+/// Returns the point a fraction of the way from one point to another, in space.
+fn lerp3(from: Vec3, to: Vec3, amount: f32) -> Vec3 {
+    [
+        from[0] + (to[0] - from[0]) * amount,
+        from[1] + (to[1] - from[1]) * amount,
+        from[2] + (to[2] - from[2]) * amount,
+    ]
+}
+
 /// Returns how far the fourth corner stands from the plane of the first three.
 ///
 /// It is the same reading [`validate`](crate::validate)'s `FaceNotPlanar` makes of an element, taken
@@ -1864,6 +1889,186 @@ fn resolve_members(
     ends
 }
 
+/// The tile bed: how far a roll's base stands off the skin it covers.
+///
+/// **A millimetre, and for the reason a post is tenoned into its plate.** A roll whose base is exactly
+/// on the skin puts two faces at one depth — the base looking down and the skin looking up — and a
+/// rasteriser draws that as a fight. It is not a gap anybody can see: the channel between the rolls
+/// shows the skin, and the tile bed is what a real roof has under it.
+const TILE_BED: f32 = 1.0e-3;
+
+/// Expands a roof's covering into **one closed solid per roll per step**.
+///
+/// # Invariants
+///
+/// **A roll is one prism per 步架, and that is a course of tiles and not a compromise.** A bend inside a
+/// body is a *section* of it rather than a face, so a bent roll would be one solid with a creased
+/// surface; the crate winds a solid by giving its faces in one consistent order and checking the body's
+/// own signed volume, and a surface with a crease inside it has no such order to give. Measured: a
+/// hand-wound bent roll left **24 boundary edges**, and the same roll as one prism per step closes.
+///
+/// **Each prism is straight and convex**, so its six face groups are two caps and three sides and its
+/// winding is decided by its own signed volume: the faces are emitted in one order and the whole solid
+/// is reversed if that order came out inward. A rule that flips a **body** is safe where a rule that
+/// flips a **face** is not — the roll's base, its slopes and its caps have no common outward direction,
+/// and a per-face test on a six-centimetre body is a test whose reference point is inside the slack.
+///
+/// The indexing is deterministic — the same document answers the same [`RollId`]s — and it counts along
+/// the roof's planes, then its bands, then the rolls of a band, then their steps.
+fn expand_covering(
+    mesh: &mut BuildingMesh,
+    roof_id: RoofId,
+    roof: &Roof,
+    covering: &Covering,
+    problems: &mut Vec<Problem>,
+) {
+    let mut index = 0;
+    for plane in &roof.planes {
+        let steps = plane.profile.len();
+        for band in 0..plane.rows.len().saturating_sub(1) {
+            let (from, to) = (plane.rows[band], plane.rows[band + 1]);
+            let (Some(from_eave), Some(to_eave)) =
+                (roof.eave_point(from.eave), roof.eave_point(to.eave))
+            else {
+                continue;
+            };
+            let width = distance([from_eave[0], from_eave[2]], [to_eave[0], to_eave[2]]);
+            if width.is_nan() || width <= 1.0e-3 {
+                continue;
+            }
+            let (Some(first), Some(second)) = (
+                row_stations(roof, &from, &plane.profile),
+                row_stations(roof, &to, &plane.profile),
+            ) else {
+                continue;
+            };
+            let count = ((width / covering.period).floor() as usize).max(1);
+            let pitch = 1.0 / count as f32;
+            for roll in 0..count {
+                let start = roll as f32 * pitch;
+                let finish = start + pitch * covering.fill;
+                for step in 0..=steps {
+                    let (low, high) = (
+                        section(&first[step], &second[step], start, finish, covering.height),
+                        section(
+                            &first[step + 1],
+                            &second[step + 1],
+                            start,
+                            finish,
+                            covering.height,
+                        ),
+                    );
+                    push_roll(mesh, roof_id, index, low, high);
+                    index += 1;
+                }
+            }
+        }
+    }
+    if index == 0 {
+        problems.push(Problem::CoveringDrewNothing { roof: roof_id });
+    }
+}
+
+/// Returns one row's station points: its eave, one point per purlin, and its crest.
+fn row_stations(roof: &Roof, row: &RoofRow, profile: &[Step]) -> Option<Vec<Vec3>> {
+    let eave = roof.eave_point(row.eave)?;
+    let crest = roof.crest_point(row.crest)?;
+    let mut points = vec![eave];
+    for step in profile {
+        let along = lerp([eave[0], eave[2]], [crest[0], crest[2]], step.fraction);
+        points.push([along[0], eave[1] + step.rise, along[1]]);
+    }
+    points.push(crest);
+    Some(points)
+}
+
+/// Returns one section of a roll at one station, as its two base corners and its apex.
+///
+/// The base corners are the band interpolated at the roll's own two fractions, lifted off the skin by
+/// [`TILE_BED`]; the apex is their midpoint lifted by the covering's height.
+fn section(first: &Vec3, second: &Vec3, start: f32, finish: f32, height: f32) -> [Vec3; 3] {
+    let mut low = lerp3(*first, *second, start);
+    let mut high = lerp3(*first, *second, finish);
+    low[1] += TILE_BED;
+    high[1] += TILE_BED;
+    let apex = [
+        (low[0] + high[0]) * 0.5,
+        (low[1] + high[1]) * 0.5 + height,
+        (low[2] + high[2]) * 0.5,
+    ];
+    [low, high, apex]
+}
+
+/// Appends one straight roll segment: a triangular prism between two sections.
+///
+/// # Invariants
+///
+/// The six face groups are the two caps and the three sides, and the body's own signed volume decides
+/// which way round they are: the faces are appended in one order and, if that order is inward, the
+/// solid's own triangles are reversed as a body. It is the same reading
+/// [`validate`](crate::validate)'s `SolidInsideOut` makes, taken here so that a covering cannot be
+/// emitted inside out in the first place.
+fn push_roll(
+    mesh: &mut BuildingMesh,
+    roof: RoofId,
+    index: usize,
+    start: [Vec3; 3],
+    finish: [Vec3; 3],
+) {
+    let base = mesh.points.len() as u32;
+    for point in start.iter().chain(finish.iter()) {
+        mesh.points.push(*point);
+    }
+    let id = RollId { roof, index };
+    let element = |surface: RollSurface| Element::Roll(id, surface);
+    let mut faces: Vec<([u32; 3], RollSurface)> = Vec::new();
+    let at = |which: u32| base + which;
+    let push =
+        |corners: [u32; 4], surface: RollSurface, faces: &mut Vec<([u32; 3], RollSurface)>| {
+            faces.push(([corners[0], corners[1], corners[2]], surface));
+            faces.push(([corners[0], corners[2], corners[3]], surface));
+        };
+    // Caps first, so that a reversed body stays easy to read: the start cap is wound the other way
+    // round from the finish one by construction, and the volume test below is what settles both.
+    faces.push(([at(0), at(2), at(1)], RollSurface::End { start: true }));
+    faces.push(([at(3), at(4), at(5)], RollSurface::End { start: false }));
+    push([at(0), at(1), at(4), at(3)], RollSurface::Base, &mut faces);
+    push(
+        [at(1), at(2), at(5), at(4)],
+        RollSurface::Slope { side: 1 },
+        &mut faces,
+    );
+    push(
+        [at(2), at(0), at(3), at(5)],
+        RollSurface::Slope { side: 0 },
+        &mut faces,
+    );
+    // The body's own signed volume, from its own triangles, decides the winding.
+    let mut volume = 0.0_f64;
+    for (corners, _) in &faces {
+        let (a, b, c) = (
+            mesh.points[corners[0] as usize],
+            mesh.points[corners[1] as usize],
+            mesh.points[corners[2] as usize],
+        );
+        let cross = cross3(subtract(b, a), subtract(c, a));
+        volume += f64::from(a[0]) * f64::from(cross[0])
+            + f64::from(a[1]) * f64::from(cross[1])
+            + f64::from(a[2]) * f64::from(cross[2]);
+    }
+    let outward = volume >= 0.0;
+    for (corners, surface) in faces {
+        let indices = if outward {
+            corners
+        } else {
+            [corners[0], corners[2], corners[1]]
+        };
+        mesh.faces.push(BuildingFace {
+            indices,
+            element: element(surface),
+        });
+    }
+}
 /// Prints every edge of a ring that has no opposite, naming the face that drew it.
 ///
 /// # Invariants
@@ -3635,5 +3840,18 @@ fn expand_roof(mesh: &mut BuildingMesh, id: RoofId, roof: &Roof) -> Result<(), V
         );
     }
     walk.solid.splice(mesh);
+    // **The covering comes after the roof it covers**, and it is refused before any of it is drawn: a
+    // bad spec is one problem about one field, and a roof that drew half its tiles would be a document
+    // whose picture and whose report disagree.
+    if let Some(covering) = roof.covering {
+        if let Some(fault) = covering.fault() {
+            return Err(vec![Problem::CoveringFault { roof: id, fault }]);
+        }
+        let mut found = Vec::new();
+        expand_covering(mesh, id, roof, &covering, &mut found);
+        if !found.is_empty() {
+            return Err(found);
+        }
+    }
     Ok(())
 }

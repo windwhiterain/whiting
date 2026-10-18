@@ -1,20 +1,19 @@
 //! A stilt house: the floor levelled to the uphill grade, the downhill side standing on posts, and the
 //! gallery that hangs off that side on brackets.
 //!
-//! This is the first scene of the Chinese vernacular level, and it draws four things the crate could
+//! This is the first scene of the Chinese vernacular level, and it draws five things the crate could
 //! not draw before: **a building whose floor is not on the ground** (`site::posts` under a seated
 //! mass), **a roof whose slope bends at every purlin** (a 举架 profile), **a gable wall that rises to
-//! its roof** (a crown), and **a 挑廊** — a plate outside the wall carried by members whose own ends are
-//! anchored on the posts they brace against.
+//! its roof** (a crown), **a 挑廊** — a plate outside the wall carried by members whose own ends are
+//! anchored on the posts it braces against — and **tiles as geometry**, the covering's 瓦垄.
 //!
-//! What this scene deliberately does not draw, because the constructs do not exist yet:
+//! What this scene deliberately does not draw, because the construct does not exist yet:
 //!
-//! - **no tiles** — the covering is geometry in the design and not in the crate yet (Arc 5, D9);
 //! - **no upper storey** — the house is one room deep and one storey tall, and a second floor is the
 //!   crate's `derive::floor_slab` rather than this arc's business.
 //!
-//! A scene that faked either would be a picture of a building the document does not hold, which is the
-//! one thing this gallery's scenes are for not doing.
+//! A scene that faked it would be a picture of a building the document does not hold, which is the one
+//! thing this gallery's scenes are for not doing.
 
 use definition::Value;
 use scene::standard::Stage;
@@ -74,6 +73,17 @@ const POST_SECTION: f32 = 0.2;
 /// against it, and two coincident faces are two surfaces at one depth — the first render of this scene
 /// carried a comb of stripes along the plate's edge until this number existed.
 const POST_EMBED: f32 = 0.02;
+
+/// The covering: one roll every 30 cm of plan, 62 % of that period wide, 6 cm proud of the skin.
+///
+/// The numbers are the scene's. A 筒瓦 is about 15 cm across with a 5 cm roll; what is drawn here is
+/// coarser than that on purpose — at the distance this frame stands, a 15 cm period would be a
+/// texture rather than geometry, and the point of the geometry is that it is there.
+const COVERING: building::Covering = building::Covering {
+    period: 0.30,
+    fill: 0.62,
+    height: 0.06,
+};
 
 /// The 步架 ladder: four strips of `0.9 m` of plan each, at **五举 0.50, 六举 0.60, 七五举 0.75 and
 /// 八举 0.80** — the coefficients the Qing worked example attests arithmetically (see
@@ -183,7 +193,10 @@ pub fn stilt() -> Value {
         matches!(element, building::Element::Mass(_, _))
     });
     let roof = packed_where(&built, &table, |element| {
-        matches!(element, building::Element::Roof(_, _))
+        matches!(
+            element,
+            building::Element::Roof(_, _) | building::Element::Roll(_, _)
+        )
     });
     // **The plate's two caps and not its rim.** `derive::starter` seats the plate on the mass's inner
     // loop on purpose — the plate is the room's inside and its sides stand clear of every *outer* wall
@@ -359,6 +372,8 @@ pub fn document() -> Building {
     for plane in &mut skeleton.roofs[0].planes {
         plane.profile = PROFILE.to_vec();
     }
+    // The tiles: rolls every 30 cm of plan, 62 % of that wide, 6 cm proud of the skin.
+    skeleton.roofs[0] = skeleton.roofs[0].clone().with_covering(COVERING);
     // **The 山墙, which is a crown and a split.** A gable wall rises to its roof, and a per-node top
     // can only do that where there is a node under the ridge — so each gable end is split at its
     // middle before anything is seated, and the node that appears is crowned after, because the

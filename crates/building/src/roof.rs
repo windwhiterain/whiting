@@ -216,6 +216,15 @@ pub struct Roof {
     pub thickness: f32,
     /// The mass this roof sits on, and the authorization for the two to touch.
     pub host: MassId,
+    /// The tiles on it, as geometry: the rolls that run down its slopes.
+    ///
+    /// # Invariants
+    ///
+    /// **The covering covers and does not build.** It is a spec — a period, a fill, a height — and the
+    /// rolls are *derived* from it by the expansion, so a covering is one field rather than sixty
+    /// solids an author would have to lay out by hand. Each derived roll is its own solid
+    /// ([`RollId`](crate::covering::RollId)) and is named by its roof and its index on that roof.
+    pub covering: Option<crate::covering::Covering>,
 }
 
 impl Roof {
@@ -227,7 +236,14 @@ impl Roof {
             planes: Vec::new(),
             thickness,
             host,
+            covering: None,
         }
+    }
+
+    /// Sets the covering: the tiles, as the rolls that run down the slopes.
+    pub fn with_covering(mut self, covering: crate::covering::Covering) -> Self {
+        self.covering = Some(covering);
+        self
     }
 
     /// Sets the crest network.

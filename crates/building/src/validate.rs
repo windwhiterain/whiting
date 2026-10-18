@@ -434,6 +434,21 @@ pub enum Violation {
         /// Which step, counting from the eave.
         step: usize,
     },
+    /// A roof's covering is not a covering: a period that is not a length, a fill outside `(0, 1)`, or
+    /// a height that is not a rise.
+    ///
+    /// # Invariants
+    ///
+    /// It is [`Covering::fault`](crate::covering::Covering::fault)'s own answer and
+    /// [`expand`](crate::expand)'s own problem, so a covering that a document check refuses is a
+    /// covering the expansion will not draw either — one reading with two names, the way the profile's
+    /// fault is.
+    CoveringFault {
+        /// The roof.
+        roof: RoofId,
+        /// What is wrong with it.
+        fault: crate::covering::CoveringFault,
+    },
     /// A roof row names a crest point that does not exist.
     RoofCrestMissing {
         /// The roof.
@@ -1920,6 +1935,9 @@ fn check_roofs(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
                     plane: plane_index,
                 });
             }
+            if let Some(fault) = roof.covering.and_then(|covering| covering.fault()) {
+                violations.push(Violation::CoveringFault { roof: id, fault });
+            }
             match roof.profile_fault(plane_index) {
                 Some(crate::roof::ProfileFault::OutOfOrder { step }) => {
                     violations.push(Violation::ProfileOutOfOrder {
@@ -2000,14 +2018,15 @@ fn check_solid(
         // it — and a door in its wall is a handle through the ring's own thickness exactly as a
         // window in the mass's wall is a handle through the mass's.
         SolidId::Void { mass, void } => handles(skeleton, mass, Some(void)),
-        // A part, a wall, a roof, a slab and a member are cut by nothing: a hole is authored against
-        // a mass's own wall, a template's masses are its own private document, and a member's own box
-        // is solid.
+        // A part, a wall, a roof, a slab, a member and a roll are cut by nothing: a hole is authored
+        // against a mass's own wall, a template's masses are its own private document, and a member's
+        // box and a roll's prism are solid.
         SolidId::Roof(_)
         | SolidId::Part(_)
         | SolidId::Wall(_)
         | SolidId::Slab(_)
-        | SolidId::Member(_) => 0,
+        | SolidId::Member(_)
+        | SolidId::Roll(_) => 0,
     };
     // **A ring is one handle before any opening is cut.** The volume model makes a mass a closed tube: its
     // inner and outer surfaces meet at the wall top and again at the base ring, so the solid is a torus and a torus is
@@ -3142,6 +3161,9 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
         Violation::ProfileReachesTheCrest { roof, plane, step } => {
             (45, roof.0 as u64, *plane as u64, *step as u64, 0)
         }
+        Violation::CoveringFault { roof, fault } => {
+            (50, roof.0 as u64, covering_rank(*fault), 0, 0)
+        }
         Violation::RoofCrestMissing {
             roof,
             plane,
@@ -3360,6 +3382,16 @@ fn solid_rank(solid: &SolidId) -> u64 {
         SolidId::Slab(slab) => (4 << 32) | slab.0 as u64,
         SolidId::Void { mass, void } => (5 << 32) | ((mass.0 as u64) << 16) | *void as u64,
         SolidId::Member(member) => (6 << 32) | member.0 as u64,
+        SolidId::Roll(roll) => (7 << 32) | ((roll.roof.0 as u64) << 20) | roll.index as u64,
+    }
+}
+
+/// Returns a rank for one covering fault, so two coverings' faults sort by which number is wrong.
+fn covering_rank(fault: crate::covering::CoveringFault) -> u64 {
+    match fault {
+        crate::covering::CoveringFault::PeriodNotALength { .. } => 0,
+        crate::covering::CoveringFault::FillOutOfRange { .. } => 1,
+        crate::covering::CoveringFault::HeightNotARise { .. } => 2,
     }
 }
 

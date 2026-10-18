@@ -692,7 +692,7 @@ the pass counts, which is the cheap half of the same list.
    through the eave (封火墙). This is the arc after which the house reads from the side.
 4. **Arc 4 — the frame (D3).** *Done, 2026-10-18 — see below.* Columns under every purlin, ties threading them, cantilevers carrying the
    front gallery, brackets under the cantilevers — anchored, so moving a column moves its tie.
-5. **Arc 5 — the covering (D9).** Fifty 瓦垄 a slope, hosted by the roof, with the eave end decided.
+5. **Arc 5 — the covering (D9).** *Done, 2026-10-18 — see below.* Fifty 瓦垄 a slope, hosted by the roof, with the eave end decided.
 6. **Arc 6 — the interior (D7).** The hearth bay with no ceiling over it, and the stair through the floor.
 7. **Arc 7 — the compound (D8).** A second scene: 三坊一照壁, the arc that proves D8 was needed at all.
 8. **Arc 8 — the town.** Only if F6 is answered yes; the settlement layer does not exist yet.
@@ -831,6 +831,31 @@ The numbers the scene moves: the picture's hash is `532FF169FCB14F04`, and the i
 **1009 → 1111** — nineteen members at six surfaces each, and the deck's own six. The document is one
 plate, nineteen members, a crowned mass, a profiled roof and the posts: **no face of the gallery is
 authored as a coordinate that some other face has to agree with.**
+
+### Arc 5 is closed: the tiles are geometry
+
+`Roof::covering` is a three-number spec — `period`, `fill`, `height` — and the expansion derives the
+rolls from it: **one straight triangular prism per roll per 步架**, standing on the skin it covers.
+`stilt`'s roof carries 296 of them in 2 368 triangles.
+
+**The bend cost the arc its first design, and the measurement is the record.** A roll that crosses a
+purlin is bent, and a bent body is one solid with a creased surface — topologically fine, and not
+writable by the crate's rule, which winds a solid by one consistent corner order and checks the body's
+own signed volume. The hand-wound bent roll left **24 boundary edges**; the same roll as one prism per
+step closes, and it is also what a tiled roof is: a course laid up to the purlin and the next course
+above it.
+
+| number | value |
+| --- | --- |
+| the rolls | **296** over the roof (2 planes × 37 × 4 steps), **2 368 triangles** |
+| every roll | **8 faces, euler 2, manifold, closed** — a body, not a surface |
+| the volume | **1.499899 m³** over 296 rolls of 6 cm × 19 cm × ~0.9 m |
+| the tile bed | the base stands **1 mm** off the skin, for the same reason a post is tenoned into its plate |
+| the refusals | `CoveringFault` for a period of zero, a fill of one and a height of zero, each also reaching `expand` |
+
+`stilt`'s hash is `4833AA82E627DD0E`, and the identity probe's rows go **1111 → 2591**: 296 rolls at five
+surfaces each is 1 480 of them, which is the price of drawing tiles as solids rather than as a texture —
+stated here rather than discovered later.
 
 ## What would make this proposal wrong
 
