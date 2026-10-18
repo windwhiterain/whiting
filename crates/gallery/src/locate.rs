@@ -200,6 +200,11 @@ pub const NAMINGS: &[Naming] = &[
         note: "one tier at arm's length: this pixel is that node of the bough, and a needle carries its shoot's",
     },
     Naming {
+        scene: crate::southwest_spire::LIJIAN_SPRUCE_BASE,
+        resolve: crate::southwest_spire::lijian_spruce_base_handle_of,
+        note: "the same tree two and a half metres from its own foot: this pixel is that node, and the bole's plating is this node's section",
+    },
+    Naming {
         scene: crate::southwest_spire::CANGSHAN_FIR,
         resolve: crate::southwest_spire::cangshan_fir_handle_of,
         note: "this pixel is that node of the fir, and a flat needle drawn by the blade mesh carries its shoot's",
@@ -213,6 +218,11 @@ pub const NAMINGS: &[Naming] = &[
         scene: crate::southwest_site::SITE_MONTANE,
         resolve: crate::southwest_site::site_montane_handle_of,
         note: "the planting is the id's quotient by the stride and the node its remainder: three heroes and their companions on one slope",
+    },
+    Naming {
+        scene: crate::southwest_spire::CANGSHAN_FIR_BASE,
+        resolve: crate::southwest_spire::cangshan_fir_base_handle_of,
+        note: "the same tree two and a half metres from its own foot: this pixel is that node, and the bole's furrows are this node's section",
     },
     Naming {
         scene: crate::vegetation_picture::GROVE,

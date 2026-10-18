@@ -29,6 +29,7 @@ use crate::geometry::cuboid;
 use crate::southwest::{yunnan_pine, Foliage, pine_palette};
 use crate::southwest_flag::{dove_palette, dove_tree};
 use crate::southwest_oak::{alpine_oak, oak_palette};
+use vegetation::derive::tuft;
 use crate::vegetation_picture::{
     Framing, Ground, Lighting, Palette, Planting, Prop, Skin, plant_scene_lit, planting_handle,
 };
@@ -36,9 +37,11 @@ use crate::vegetation_picture::{
 /// The name the montane site frame is built and rendered under.
 pub const SITE_MONTANE: &str = "site_montane";
 
-/// The slope: a ridge falling south-west at about eleven degrees, a broad swell along it, and a gully
-/// running with it at `z` near eleven, which is where the dove trees stand because that is where the
-/// moisture is.
+/// The slope: a ridge falling south-west at about eleven degrees, a broad swell along it, a gully
+/// running with it at `z` near eleven where the dove trees stand because that is where the moisture
+/// is, a shoulder rising behind at `x` near minus fifty-five, and the floor of the valley dropping
+/// away ahead past `x` seventy — so the frame has a behind, a here and a beyond, which a tilted plane
+/// does not.
 ///
 /// # Invariants
 ///
@@ -49,6 +52,8 @@ pub fn slope_height(x: f64, z: f64) -> f64 {
     -0.20 * x
         + 0.8 * (x * 0.045).sin() * (z * 0.038).cos()
         - 1.6 * (-((z - 11.0) / 5.0).powi(2)).exp()
+        + 6.0 * (-((x + 55.0) / 25.0).powi(2)).exp()
+        - 14.0 / (1.0 + (-(x - 70.0) / 12.0).exp())
 }
 
 /// The slope at `f32`, for seating.
@@ -107,29 +112,72 @@ fn montane_plantings() -> Vec<Planting> {
         1.1,
         Detail::DEFAULT,
     ));
-    for index in 0..5 {
-        let across = -14.0 + 6.0 * index as f32 + 3.0 * rng.signed();
-        let deep = -16.0 + 6.0 * rng.unit() + 0.30 * across;
+    // Three clumps, because a pine stand on a dry slope is clumps and not a grid: the centres are where
+    // the soil is shallow, and the trees are where the seed landed.
+    let centres: [[f32; 2]; 3] = [[-16.0, -10.0], [8.0, -24.0], [24.0, -6.0]];
+    for index in 0..6 {
+        let centre = centres[index % 3];
+        let across = centre[0] + 5.0 * rng.signed();
+        let deep = centre[1] + 5.0 * rng.signed();
         plantings.push(seated(
-            yunnan_pine(100 + index, Foliage::Stand),
+            yunnan_pine(100 + index as u64, Foliage::Stand),
             pine_palette(),
             [across, deep],
             rng.unit() * 6.28,
             COMPANION,
         ));
     }
+    // A far row on the shoulder behind, so the frame has a middle distance and the haze has something
+    // to lie on.
+    for index in 0..5 {
+        let across = -38.0 - 6.0 * index as f32 + 4.0 * rng.signed();
+        let deep = -14.0 + 10.0 * rng.signed();
+        plantings.push(seated(
+            yunnan_pine(400 + index as u64, Foliage::Stand),
+            pine_palette(),
+            [across, deep],
+            rng.unit() * 6.28,
+            COMPANION,
+        ));
+    }
+    // The ground cover: a montane slope at two thousand metres is grass and litter, not sand, and a
+    // tuft is seven nodes and no leaves, so a hundred and twenty of them cost a hundred and twenty
+    // instance rows — the cheapest mass in the crate.
+    for index in 0..120 {
+        let across = -6.0 + 40.0 * rng.unit();
+        let deep = -18.0 + 34.0 * rng.unit();
+        plantings.push(
+            Planting::new(tuft(9_000 + index as u64))
+                .at(seat(
+                    Placement {
+                        origin: [across, 0.0, deep],
+                        x: [1.0, 0.0, 0.0],
+                        y: [0.0, 1.0, 0.0],
+                        z: [0.0, 0.0, 1.0],
+                    },
+                    slope,
+                ))
+                .with_palette(Palette {
+                    wood: Skin::new([0.40, 0.36, 0.18], 0.9),
+                    leaves: Vec::new(),
+                    seats: Vec::new(),
+                }),
+        );
+    }
     plantings
 }
 
-/// The standing stone: 1.8 metres of it, which is the known size E2 asks the frame to carry.
+/// The standing stone: 1.8 metres of it, which is the known size E2 asks the frame to carry. It is
+/// sunk a hand's depth and darkened, because a bright cuboid on a slope reads as a box and not as a
+/// stone.
 fn montane_stone() -> Prop {
     let at = [5.0, slope_height(5.0, -4.0), -4.0];
     Prop {
         name: "stone".to_owned(),
-        points: cuboid(0.9, 1.8, 0.7),
-        tint: [0.34, 0.33, 0.31],
+        points: cuboid(0.8, 1.2, 0.6),
+        tint: [0.28, 0.27, 0.26],
         roughness: 0.95,
-        at: [at[0], at[1] + 0.7, at[2]],
+        at: [at[0], at[1] + 0.35, at[2]],
     }
 }
 
@@ -147,39 +195,45 @@ fn montane_lighting() -> Lighting {
         fill_colour: [0.44, 0.52, 0.70],
         fill_irradiance: 0.5,
         fill_distance: 43.7,
-        floor: Skin::new([0.32, 0.28, 0.20], 0.95),
+        floor: Skin::new([0.30, 0.30, 0.17], 0.95),
         sky: Atmosphere::new()
             .zenith([0.09, 0.19, 0.42])
-            .horizon([0.52, 0.60, 0.68])
+            .horizon([0.62, 0.58, 0.50])
             .ground([0.30, 0.28, 0.24])
-            .density(0.0016)
+            .density(0.0009)
             .scale_height(900.0),
         sky_radiance: 0.7,
-        haze: 0.005,
+        haze: 0.003,
     }
 }
 
-/// The montane frame: standing off down-slope so the stand is seen against the ridge behind it.
-const MONTANE_FRAME: Framing = Framing {
-    width: 1600,
-    height: 1000,
-    eye: [34.0, 6.0, 30.0],
-    target: [-2.0, 7.0, 2.0],
-    field_of_view: 0.72,
-    near: 0.3,
-    far: 900.0,
-    floor: 220.0,
-    ground: Ground::Fielded {
-        height: slope_height,
-        divisions: 120,
-    },
-};
+/// The montane frame: standing off down-slope at a person's eye height above the ground the eye stands
+/// on, so the trees tower and the ridge line sits high in the frame. The eye's height is the slope's
+/// own at its plan position plus 1.7 m, because a site frame's camera is a person and a person stands
+/// on the ground, not at an absolute altitude.
+fn montane_frame() -> Framing {
+    Framing {
+        width: 1600,
+        height: 1000,
+        eye: [34.0, slope_height(34.0, 30.0) + 1.7, 30.0],
+        target: [-2.0, 7.0, 2.0],
+        field_of_view: 0.72,
+        near: 0.3,
+        far: 900.0,
+        floor: 220.0,
+        ground: Ground::Fielded {
+            height: slope_height,
+            divisions: 120,
+        },
+    }
+}
 
-/// Builds the montane site frame: three heroes, fourteen companions, one stone, one morning.
+/// Builds the montane site frame: three heroes, eleven companions, a hundred and twenty tufts, one
+/// stone, one morning.
 pub fn site_montane() -> Value {
     plant_scene_lit(
         &montane_plantings(),
-        &MONTANE_FRAME,
+        &montane_frame(),
         SITE_MONTANE,
         &montane_lighting(),
         &[montane_stone()],
