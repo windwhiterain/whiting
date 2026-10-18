@@ -41,10 +41,7 @@ fn main() {
         "a one-part sprig is its part",
         a_one_part_sprig_is_its_part(),
     ));
-    checks.push((
-        "a sprig is its parts joined",
-        a_sprig_is_its_parts_joined(),
-    ));
+    checks.push(("a sprig is its parts joined", a_sprig_is_its_parts_joined()));
 
     println!("\n# the exit");
     for (name, passed) in &checks {
@@ -347,7 +344,9 @@ fn a_whole_band_is_whole_plant_scatter() -> bool {
     println!(
         "  the control is the plant: a band that dropped a node would seat fewer than scatter on every generation"
     );
-    same && rows.iter().all(|(_, plain, banged)| plain == banged && *plain > 0)
+    same && rows
+        .iter()
+        .all(|(_, plain, banged)| plain == banged && *plain > 0)
 }
 
 /// A band is the parent's station, read on each node: `(0.5, 1.0)` seats the boughs of the culm's upper
@@ -369,10 +368,7 @@ fn a_band_seats_the_upper_crown() -> bool {
         .iter()
         .filter(|(_, station)| *station >= 0.5)
         .count();
-    let dropped = hanging
-        .iter()
-        .filter(|(_, station)| *station < 0.5)
-        .count();
+    let dropped = hanging.iter().filter(|(_, station)| *station < 0.5).count();
     // **Every seat is on a node the band kept**, and every kept node has its `scatter` seat unchanged: the
     // band's test is before the node's stream is opened, so narrowing a band removes seats and moves none.
     let mut lowest = f32::MAX;
@@ -406,13 +402,11 @@ fn a_band_seats_the_upper_crown() -> bool {
         "  the control is the culm's own station: a scatter that read a seat's station along a bough would see all {} nodes whatever the band said",
         plain.len()
     );
-    let strictly_upper = upper
-        .iter()
-        .all(|seat| {
-            hanging
-                .iter()
-                .any(|(handle, station)| handle == &seat.node && *station >= 0.5)
-        });
+    let strictly_upper = upper.iter().all(|seat| {
+        hanging
+            .iter()
+            .any(|(handle, station)| handle == &seat.node && *station >= 0.5)
+    });
     plain.len() > upper.len() && dropped > 0 && kept == upper.len() && strictly_upper && same_seats
 }
 
@@ -463,7 +457,14 @@ fn a_sprig_is_its_parts_joined() -> bool {
         .iter()
         .zip(plain.positions().iter())
     {
-        worst = worst.max(span(*point, [other[0] + lift.origin[0], other[1] + lift.origin[1], other[2] + lift.origin[2]]));
+        worst = worst.max(span(
+            *point,
+            [
+                other[0] + lift.origin[0],
+                other[1] + lift.origin[1],
+                other[2] + lift.origin[2],
+            ],
+        ));
     }
     let volume = signed_volume(joined.view());
     let once = signed_volume(plain.view());
