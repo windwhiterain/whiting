@@ -84,7 +84,7 @@ impl Foliage {
     fn density_factor(self) -> f32 {
         match self {
             Foliage::Needle => 1.0,
-            Foliage::Spray => 0.09,
+            Foliage::Spray => 0.14,
         }
     }
 }
