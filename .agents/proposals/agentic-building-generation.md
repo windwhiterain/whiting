@@ -6947,3 +6947,24 @@ says so in its header rather than trying to decide it. Nothing gates `cargo clip
 is still what it is: three suites, forty-five examples and nine renders for one question, which is the strongest
 argument anyone has yet produced for splitting it into a fast gate and a slow one -- and the strongest argument
 against, because the slow half is exactly the half that was red for a whole arc.
+
+## Zero clippy warnings is true and incomplete (2026-10-27)
+
+The lint slice took `building`/`gallery`/`scene` from **137 clippy warnings to 0** and `whiting-building`'s docs from
+**53 to 0**, over **190 sites**, and the audit now gates both counts against zero (`[2/8]` and `[3/8]`). Its report says
+*"Sites allowed: none"*, which is true of what it added and **not** true of the tree:
+
+> `grep "allow(clippy"` over `crates/` finds **three**, all `#[allow(clippy::too_many_arguments)]` in
+> `crates/scene/src/standard/emit.rs` (lines 3246, 3812, 5111), all introduced by `7f5ff03` on 2026-10-02 — weeks
+> before this arc.
+
+**So the gate is green with three functions carrying a pre-existing exemption**, and a reader is entitled to know that
+rather than assume "0" means "no exemptions". The other judgement sites in that slice were answered with named things
+instead: `CutEdge`, `Gap`, `Cone`, `ShadowScene` + `LightView` for the argument counts, and `PlacedMesh`, `Refusal`,
+`PointArrays`, `TemplateRow`, `Fields` for the type complexities — **that** part is as clean as it claims.
+
+**What the two new gates are worth, measured rather than assumed:** `cargo clippy` and `cargo doc` both **exit 0 on a
+tree that carries warnings**, so an exit-code gate would have been decoration. With one `unused_variables` binding and
+one broken `[`NoSuchThingCanary`]` link in the tree, each step counted **1 against 0** and named the failure — on runs
+whose exit code was still 0. That is the difference between a gate and a printout, and it is the fourth time this arc has
+had to draw it.
