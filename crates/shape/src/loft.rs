@@ -99,4 +99,49 @@ impl Loft {
             corners: &self.triangles,
         }
     }
+
+    /// This loft carried by a rigid frame: `origin` plus the point's own coordinates along `x`, `y` and
+    /// `z`.
+    ///
+    /// # Invariants
+    ///
+    /// **Only the positions move.** The `(u, v)` are parameters of the sweep that made the loft and not
+    /// of the space it stands in, and the triangles are indices, which a rigid move does not renumber.
+    pub fn moved(mut self, origin: Vec3, x: Vec3, y: Vec3, z: Vec3) -> Self {
+        for point in &mut self.positions {
+            *point = [
+                origin[0] + x[0] * point[0] + y[0] * point[1] + z[0] * point[2],
+                origin[1] + x[1] * point[0] + y[1] * point[1] + z[1] * point[2],
+                origin[2] + x[2] * point[0] + y[2] * point[1] + z[2] * point[2],
+            ];
+        }
+        self
+    }
+
+    /// This loft with `other` appended: one mesh of several disjoint bands, which is what a sprig of
+    /// blades is.
+    ///
+    /// # Invariants
+    ///
+    /// **The join is a concatenation and nothing else**: `other`'s triangle indices are renumbered past
+    /// this loft's positions and the two bands share no vertex, so a consumer that smooths a normal
+    /// over the vertices a triangle touches still smooths within one band and never across two blades.
+    /// The result is **not a grid**: `rings` and `around` are nought and [`Loft::vertex`], which is a
+    /// grid's query, refuses it.
+    pub fn joined(mut self, other: Self) -> Self {
+        let offset = self.positions.len() as u32;
+        self.positions.extend(other.positions);
+        self.uvs.extend(other.uvs);
+        self.triangles
+            .extend(other.triangles.into_iter().map(|triangle| {
+                [
+                    triangle[0] + offset,
+                    triangle[1] + offset,
+                    triangle[2] + offset,
+                ]
+            }));
+        self.rings = 0;
+        self.around = 0;
+        self
+    }
 }

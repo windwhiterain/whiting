@@ -54,11 +54,28 @@ const SIDE: Vec3 = [0.0, 1.0, 0.0];
 /// ([`LeafField::twist`]), which is a rotation of a frame rather than a change of a baked mesh.
 /// `stations >= 2` and `around >= 3` are [`Sweep::sample`]'s assertions, so they are made there and
 /// are not checked twice here.
+///
+/// # A template may be a sprig
+///
+/// **One template is one instanced mesh, and a mesh may hold several blades.** A shoot of oak carries
+/// nine leaves in a fixed arrangement, and instancing them as nine placements of one blade costs nine
+/// rows where one row and a nine-blade template would do; at the instance counts a crown wants, that
+/// ratio is the difference between a plate that renders and one that does not. So a template is a list
+/// of parts, each a blade in its own frame inside the template's, and [`LeafTemplate::sprig`] joins
+/// them. A single blade is a sprig of one part at the identity, which is every template this crate had
+/// before the sprig existed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LeafTemplate {
+    parts: Vec<Part>,
+}
+
+/// One blade of a template, and the frame it stands in within the template's own coordinates.
+#[derive(Debug, Clone, PartialEq)]
+struct Part {
     sweep: Sweep,
     stations: usize,
     around: usize,
+    at: Placement,
 }
 
 impl LeafTemplate {
@@ -103,33 +120,83 @@ impl LeafTemplate {
         let mut sweep = Sweep::new(midrib, section);
         sweep.scale = width;
         Self {
-            sweep,
-            stations,
-            around,
+            parts: vec![Part {
+                sweep,
+                stations,
+                around,
+                at: Placement::IDENTITY,
+            }],
         }
     }
 
-    /// The blade in the template's own coordinates: base at the origin, forward `+x`, face `+z`.
+    /// Several blades in one template: a shoot, a fascicle, a pinna's leaflets — whatever a crown
+    /// instances as one unit. Each part keeps its own frame inside the template's, so a sprig is
+    /// authored as blades placed where they grow and instanced as one mesh.
+    ///
+    /// # Invariants
+    ///
+    /// **The parts' frames compose the way placements do**: a part already carrying a frame inside a
+    /// template that is itself a part of a larger sprig keeps both, because `at` is `outer.then(inner)`.
+    /// An empty list is refused by construction of every caller — a template with no blade has no mesh,
+    /// and [`LeafTemplate::loft`] would have nothing to join.
+    pub fn sprig(parts: Vec<(LeafTemplate, Placement)>) -> Self {
+        Self {
+            parts: parts
+                .into_iter()
+                .flat_map(|(blade, at)| {
+                    blade
+                        .parts
+                        .into_iter()
+                        .map(|part| Part {
+                            at: at.then(&part.at),
+                            ..part
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect(),
+        }
+    }
+
+    /// How many blades the template holds.
+    pub fn blades(&self) -> usize {
+        self.parts.len()
+    }
+
+    /// The template in its own coordinates: base at the origin, forward `+x`, face `+z`.
     ///
     /// A width law that reaches zero collapses that ring to a point and the cap stays, so a blade
-    /// pointed at both ends is a closed solid without a special case in the walk.
+    /// pointed at both ends is a closed solid without a special case in the walk. A sprig is the join
+    /// of its blades' solids, which [`shape::Loft::joined`] states is not a grid: the walk that packs
+    /// it reads positions and triangles and never asks for a ring.
     pub fn loft(&self) -> Loft {
-        self.sweep.sample(self.stations, self.around)
+        let mut joined: Option<Loft> = None;
+        for part in &self.parts {
+            let at = &part.at;
+            let loft = part
+                .sweep
+                .sample(part.stations, part.around)
+                .moved(at.origin, at.x, at.y, at.z);
+            joined = Some(match joined {
+                Some(held) => held.joined(loft),
+                None => loft,
+            });
+        }
+        joined.expect("a template holds at least one blade")
     }
 
-    /// The blade's own spine, in the template's coordinates.
+    /// The first blade's own spine, in the template's coordinates.
     pub fn midrib(&self) -> &Curve {
-        &self.sweep.spine
+        &self.parts[0].sweep.spine
     }
 
-    /// How many rings [`LeafTemplate::loft`] draws.
+    /// How many rings the first blade's loft draws.
     pub fn stations(&self) -> usize {
-        self.stations
+        self.parts[0].stations
     }
 
-    /// How many vertices each ring holds.
+    /// How many vertices each ring of the first blade holds.
     pub fn around(&self) -> usize {
-        self.around
+        self.parts[0].around
     }
 }
 
