@@ -225,6 +225,21 @@ pub const NAMINGS: &[Naming] = &[
         note: "the planting is the id's quotient by the stride and the node its remainder: three heroes and their companions on one slope",
     },
     Naming {
+        scene: crate::southwest_sites::SITE_VALLEY,
+        resolve: crate::southwest_sites::site_valley_handle_of,
+        note: "the planting is the id's quotient by the stride and the node its remainder: a kapok in flower at eight hundred metres, its own kind around it, and three ferns in the gully at z near eleven; the fallen log beside the lens is four and a half metres long and carries the reserved zero, because a log is not an authored element of any plant",
+    },
+    Naming {
+        scene: crate::southwest_sites::SITE_SUBALPINE,
+        resolve: crate::southwest_sites::site_subalpine_handle_of,
+        note: "the planting is the id's quotient by the stride and the node its remainder: a spruce and a fir as co-heroes on the shoulder at three thousand two hundred metres, four companions of each, and four rhododendrons under them; the stone is one point two metres and carries the reserved zero",
+    },
+    Naming {
+        scene: crate::southwest_sites::SITE_TRANSECT,
+        resolve: crate::southwest_sites::site_transect_handle_of,
+        note: "the planting is the id's quotient by the stride and the node its remainder: every species in its own belt on one slope, and the frame's own compression is about fifty to one -- two thousand four hundred metres of altitude are drawn across forty-seven metres of ground, so a belt reads by what grows in it and not by how far above the belt below it stands; the stone is one point two metres and carries the reserved zero",
+    },
+    Naming {
         scene: crate::southwest_spire::CANGSHAN_FIR_BASE,
         resolve: crate::southwest_spire::cangshan_fir_base_handle_of,
         note: "the same tree two and a half metres from its own foot: this pixel is that node, and the bole's furrows are this node's section",
