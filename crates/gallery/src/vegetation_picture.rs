@@ -953,20 +953,20 @@ pub struct Prop {
 /// view that writes all four run the same builder and differ only in four strings — a view cannot change the
 /// geometry, the lights or the ids, which is what makes two views of one plant comparable.
 #[derive(Debug, Clone, Copy)]
-struct View {
+pub struct View {
     /// The plant's surface body, spliced after the lighting has been added and before the fragment writes.
-    plant: &'static str,
+    pub plant: &'static str,
     /// The ground's surface body, in the same place.
-    ground: &'static str,
+    pub ground: &'static str,
     /// Helpers both bodies may call, appended to the shader's own helpers.
-    helpers: &'static str,
+    pub helpers: &'static str,
     /// The post stage's body; empty means the scene's own grade.
-    grade: &'static str,
+    pub grade: &'static str,
 }
 
 impl View {
     /// The photograph: the default lighting, and the grade the plant scenes have always had.
-    const PHOTOGRAPH: View = View {
+    pub const PHOTOGRAPH: View = View {
         plant: "",
         ground: "",
         helpers: "",
@@ -983,7 +983,54 @@ impl View {
 /// lights or the ids, which is what makes two views of one plant comparable. `plant` and `ground` are spliced after
 /// the lighting has been added and before the fragment writes its outputs, where `color` is the accumulation and
 /// `in` is the varying struct; `helpers` is appended to the shader's own; `grade` replaces the post stage's body.
-fn plant_scene_with(
+/// One planting as the document builder consumes it: its geometry, the ids its nodes carry, and where
+/// its ornaments stand in the world.
+///
+/// **This is the shape a stage boundary has in this crate.** The expansion is the expensive half of a
+/// plant scene, and a host that retains it can hand this back in rather than paying for it again — so
+/// the split between [`draw`] and [`plant_scene_drawn`] is the one the incremental path rides on.
+#[derive(Clone)]
+pub struct Drawn {
+    /// The plant's solids and its leaf groups.
+    pub expansion: Expansion,
+    /// The id each node's corners carry, so a pixel names the node it came from.
+    pub ids: std::collections::BTreeMap<Handle, u32>,
+    /// The ornaments a seat placed, in the world.
+    pub decorators: Vec<Placed>,
+    /// Where the whole planting stands.
+    pub placement: Placement,
+}
+
+/// Draws one planting: its expansion, its node ids, and its decorators in the world.
+///
+/// # Invariants
+///
+/// **`index` is the planting's rank in the scene**, because a planting's node ids are allocated in that
+/// order: two plantings of one species differ in the id range their corners carry, which is what makes a
+/// pixel say *which* planting it is rather than which species.
+pub fn draw(index: usize, planting: &Planting) -> Drawn {
+    Drawn {
+        expansion: expansion(&planting.species, planting.detail),
+        ids: node_ids_from(
+            &planting.species.plant,
+            LEAF_BASE_ID + index as u32 * PLANTING_STRIDE,
+        ),
+        decorators: placed(&planting.species.plant, &planting.seats)
+            .into_iter()
+            .map(|instance| Placed {
+                placement: planting.placement.then(&instance.placement),
+                ..instance
+            })
+            .collect(),
+        placement: planting.placement,
+    }
+}
+
+/// The whole document, from plantings already drawn.
+///
+/// [`plant_scene_with`] calls this after drawing, and a host that keeps the drawings calls it directly.
+pub fn plant_scene_drawn(
+    drawn: &[Drawn],
     plantings: &[Planting],
     framing: &Framing,
     name: &str,
@@ -1108,32 +1155,8 @@ fn plant_scene_with(
         }
     };
 
-    // Everything a planting contributes, read once: its expansion, its ids, and its decorators in the world.
-    struct Drawn {
-        expansion: Expansion,
-        ids: std::collections::BTreeMap<Handle, u32>,
-        decorators: Vec<Placed>,
-        placement: Placement,
-    }
-    let drawn: Vec<Drawn> = plantings
-        .iter()
-        .enumerate()
-        .map(|(index, planting)| Drawn {
-            expansion: expansion(&planting.species, planting.detail),
-            ids: node_ids_from(
-                &planting.species.plant,
-                LEAF_BASE_ID + index as u32 * PLANTING_STRIDE,
-            ),
-            decorators: placed(&planting.species.plant, &planting.seats)
-                .into_iter()
-                .map(|instance| Placed {
-                    placement: planting.placement.then(&instance.placement),
-                    ..instance
-                })
-                .collect(),
-            placement: planting.placement,
-        })
-        .collect();
+    // Everything a planting contributes is already read: [`Drawn`] carries the expansion, the ids and the
+    // decorators in the world, which is the split the incremental path exists for.
 
     // **One copy of the air**: the shader's helpers and the environment map are the same struct's numbers, so the
     // rasterised sky and the traced one cannot drift apart. A view with a body of its own appends its helpers here,
@@ -1505,4 +1528,21 @@ fn plant_scene_with(
             ]),
         ),
     ])
+}
+
+/// Builds a scene document from a set of plantings.
+fn plant_scene_with(
+    plantings: &[Planting],
+    framing: &Framing,
+    name: &str,
+    view: &View,
+    lighting: &Lighting,
+    props: &[Prop],
+) -> Value {
+    let drawn: Vec<Drawn> = plantings
+        .iter()
+        .enumerate()
+        .map(|(index, planting)| draw(index, planting))
+        .collect();
+    plant_scene_drawn(&drawn, plantings, framing, name, view, lighting, props)
 }

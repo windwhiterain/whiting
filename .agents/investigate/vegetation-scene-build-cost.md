@@ -6,6 +6,15 @@ scene's GPU compile is seconds — and which numbers in a species module move th
 **Measured:** 2026-10-19, in the worktree `.worktrees/sw-oak2`, branch `feature/sw-oak2`, on
 川滇高山栎 *Quercus aquifolioides* (`crates/gallery/src/southwest_oak.rs`).
 
+> **Superseded on its mechanism, and not on its numbers (2026-10-19).**
+> [where-a-vegetation-plate-spends-its-build](where-a-vegetation-plate-spends-its-build.md)
+> measures the same plate on `main` and finds a different cause. `expand`, `wood`, `leaf`,
+> `thin` and `trim` share one `Derived` table there, `Plant::surface` is used only by the edit
+> ops, and the species carries no fields at all — so the two rows below that attribute the cost
+> to a field charged once per leaf instance describe a tree this one is not. The rows about
+> `trim` survive, and the new note puts `trim` at 39 % of the whole build. What is superseded is
+> the mechanism; the clock below is what the worktree it names cost.
+
 **Sources:** `cargo run -p whiting-device-rasterize --example render -- <scene> <stem> --census`,
 which returns before any GPU work and so times the document build alone;
 `crates/vegetation/src/plant.rs`, `crates/vegetation/src/field.rs`,

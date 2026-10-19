@@ -105,7 +105,7 @@ use vegetation::envelope::{Envelope, trim};
 use vegetation::expand::Detail;
 use vegetation::handle::Handle;
 use vegetation::leaf::{LeafField, LeafTemplate};
-use vegetation::plant::Placement;
+use vegetation::plant::{Placement, Plant};
 use vegetation::rng::Rng;
 use vegetation::species::{Generation, Joint, Rule, grow, spine, taper};
 
@@ -125,13 +125,13 @@ pub const ALPINE_OAK_BOUGH: &str = "alpine_oak_bough";
 pub const ALPINE_OAK_BASE: &str = "alpine_oak_base";
 
 /// The seed both plates' leaf fields are derived from.
-const SEED: u64 = 34;
+pub const SEED: u64 = 34;
 
 /// The golden angle as a fraction of a turn, which is the step between two successive shoots.
 const GOLDEN: f32 = 0.381_966_01;
 
 /// How deep the shoots hang in the whole tree: trunk `0`, limbs `1`, secondaries `2`, shoots `3`.
-const SHOOTS: usize = 3;
+pub const SHOOTS: usize = 3;
 
 /// How deep the same three orders hang in the bough plate: the bough **is** the trunk, so its secondaries hang at
 /// `1` and its shoots at `2`.
@@ -170,7 +170,7 @@ pub const ALPINE_OAK_LEAF_PIXEL_METRES: f32 = 0.0083;
 /// the note's whorled tiers are the fir's and the spruce's. Branch attitude is a law over
 /// [`Joint::station`]: the note's **40–80°** ESTIMATE runs from nearly horizontal on the lowest limb to ascending on
 /// the topmost, which is *"ascending to horizontal, the crown building as a rounded mass"*.
-fn alpine_oak_rule() -> Rule {
+pub fn alpine_oak_rule() -> Rule {
     Rule {
         trunk: gnarled_bole,
         generations: vec![
@@ -300,7 +300,7 @@ fn gnarled_bole() -> (shape::Curve, shape::Scalar) {
 /// the frame if [`OAK_DETAIL`]'s `around` is at least the side count; at the crate's own default of twelve the
 /// twenty-four authored sides are twelve drawn ones and the flutes alias into a shape that was never authored.
 /// That is the whole of what the detail dial is for on this species, and the base plate is where it is read.
-fn fluted_bole() -> shape::Section {
+pub fn fluted_bole() -> shape::Section {
     let sides = 24;
     let points: Vec<[f32; 2]> = (0..sides)
         .map(|index| {
@@ -948,7 +948,7 @@ fn oak_leaves(shoot_depth: usize) -> Vec<LeafField> {
 /// was drawn through an envelope tighter than its architecture and came out as bare wire with tufts on it. So the
 /// radius law here is drawn to sit just outside what the rule grows, the trim takes the few per cent of the frontier
 /// that overshoots, and the dome is the **limb's departure law and the secondary's station law** working together.
-fn crown_envelope() -> Envelope {
+pub fn crown_envelope() -> Envelope {
     Envelope::radial(&[
         (0.00, 0.00),
         (0.11, 0.00),
@@ -964,14 +964,41 @@ fn crown_envelope() -> Envelope {
 
 /// The oak: its tree, its foliage, its four fields and the fruit its shoots carry.
 pub fn alpine_oak(seed: u64) -> Species {
-    let mut plant = grow(&alpine_oak_rule(), seed);
-    // **The bole is dressed after the growth and the crown is cut after that.** A section is a node's own and
-    // `grow` authors circles, so the flutes are the trunk's and not the rule's. The trim runs last because it
-    // measures the tips the fluting and the bake have already settled.
+    let mut plant = alpine_oak_tree(seed);
+    alpine_oak_dress(&mut plant);
+    alpine_oak_species(plant)
+}
+
+/// Grows the whole-tree plate's skeleton: the rule and the seed, before any dressing.
+///
+/// **This is the plate's first stage and the only one that is not a function of a grown tree.** A host
+/// outside this crate drives the stages separately, which is why the growth, the dressing and the species
+/// are three names here rather than three statements inside [`alpine_oak`].
+pub fn alpine_oak_tree(seed: u64) -> Plant {
+    grow(&alpine_oak_rule(), seed)
+}
+
+/// Dresses a grown skeleton: the fluted bole, then the crown's envelope.
+///
+/// # Invariants
+///
+/// **The bole is dressed after the growth and the crown is cut after that.** A section is a node's own
+/// and `grow` authors circles, so the flutes are the trunk's and not the rule's. The trim runs last
+/// because it measures the tips the fluting and the bake have already settled.
+pub fn alpine_oak_dress(plant: &mut Plant) {
     if let Ok(bole) = plant.get_mut(&Handle::root()) {
         bole.set_section(fluted_bole());
     }
-    trim(&mut plant, &crown_envelope());
+    trim(plant, &crown_envelope());
+}
+
+/// The species a dressed skeleton draws with: two blade templates, the leaf fields and the fruit template.
+///
+/// # Invariants
+///
+/// Nothing here depends on the tree but the tree itself, so this is the stage a leaf field or a template
+/// edit re-derives without touching the growth or the envelope.
+pub fn alpine_oak_species(plant: Plant) -> Species {
     Species {
         plant,
         templates: vec![oak_sprig(), oak_sprig()],
@@ -1037,7 +1064,7 @@ pub fn alpine_oak_bough(seed: u64) -> Species {
 /// **The count is a range the seed decides and not a fruit per shoot**, so the crown is *studded* rather than
 /// hung: the note bears **1–4 cupules** on stalks of **0.5–2.5 cm** among the leaves, and which of three thousand
 /// shoots fruit in a given year is the seed's business and not the rule's.
-fn oak_fruit(species: &Species, shoot_depth: usize) -> Vec<Seat> {
+pub fn oak_fruit(species: &Species, shoot_depth: usize) -> Vec<Seat> {
     scatter(&species.plant, shoot_depth, 0, 0.92, (0, 1))
 }
 
@@ -1081,7 +1108,7 @@ pub fn oak_palette() -> Palette {
 /// **the flutes alias into a shape that is not the section that was authored**. Raising `around` to the section's
 /// own side count is not a dial turned for sharpness: it is the number that makes the authored section the drawn
 /// one. The stations and the spacing are the crate's own, because an eleven-metre bole already asks for its rings.
-const OAK_DETAIL: Detail = Detail {
+pub const OAK_DETAIL: Detail = Detail {
     stations: 8,
     around: 24,
     spacing: 0.45,
@@ -1098,7 +1125,7 @@ const OAK_DETAIL: Detail = Detail {
 ///
 /// The frame is a whole tree at twenty-six metres, so the grade's haze is the brief's **0.005** for a tree framed at
 /// twenty metres — a fifth of a garden's, because the air at three thousand metres is thin.
-fn oak_lighting() -> Lighting {
+pub fn oak_lighting() -> Lighting {
     Lighting {
         key_position: [16.0, 20.0, 12.0],
         key_colour: [1.0, 0.93, 0.79],
@@ -1133,7 +1160,7 @@ fn oak_lighting() -> Lighting {
 /// in the tree, because the first frame that put the crown's top against the top row had the topmost limbs cut off
 /// and three hundred rows of empty ground under the trunk. This one leaves the crown a tenth of the frame below the
 /// top and the trunk a fifth above the bottom.
-const OAK_FRAME: Framing = Framing {
+pub const OAK_FRAME: Framing = Framing {
     width: 1400,
     height: 1700,
     eye: [16.5, 5.0, 19.2],
