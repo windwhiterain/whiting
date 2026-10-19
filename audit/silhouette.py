@@ -2,9 +2,11 @@
 
 Usage: python silhouette.py <authored_id.png> <out.png>
 
-The authored_id png holds the id normalised into eight bits of red, so a pixel the plant drew is a
-red byte above a small threshold; ids one and two round to nought and are lost, which costs the
-trunk's own outline nothing at the crown and a little at the very base of the bole.
+The authored_id png holds the id normalised into eight bits of red, so an id of one lands on a red
+byte of one or two. **Any nonzero red is a pixel the plant drew**, and a threshold of four — which
+this script used to apply — silently dropped the root's own id and therefore every trunk from every
+cut-out on every sheet: the oak's "hole in its crown" in the ten-species sheet was its own bole,
+missing. Measure the mask at `> 0` and a silhouette is a silhouette.
 """
 
 import sys
@@ -15,7 +17,7 @@ from PIL import Image
 
 def main(argv: list[str]) -> int:
     rgb = np.asarray(Image.open(argv[0]).convert("RGB"), dtype=np.uint8)
-    mask = rgb[..., 0] > 4
+    mask = rgb[..., 0] > 0
     out = np.where(mask, 0, 255).astype(np.uint8)
     Image.fromarray(out, mode="L").save(argv[1])
     print(f"{argv[1]}: plant covers {mask.mean():.3f} of the frame")

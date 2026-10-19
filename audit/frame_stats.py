@@ -88,7 +88,10 @@ def main(argv: list[str]) -> int:
     lum = luminance(frame)
     height, width = lum.shape
     if "--crown" in argv:
-        mask_all = ids_of(argv[1]) > 0.004
+        # **Any nonzero id is a pixel the plant drew**, and the smallest ids sit only just above
+        # zero once normalised into eight bits — a threshold of 0.004 dropped the root's own id and
+        # with it every trunk. See silhouette.py's docstring for how that was found.
+        mask_all = ids_of(argv[1]) > 0.0
         rows = np.where(mask_all.any(axis=1))[0]
         top = rows[0]
         bottom = rows[-1]

@@ -677,38 +677,51 @@ it; E4 (the two backends) is unverified repo-wide, no Cycles binary on this mach
 
 | species | H1 | H2 | H3 tree / bough | H4 | H5 | epic frame | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 云南松 *Pinus yunnanensis* | pass (sheet) | pass | 0.628 / 0.575 · 0.794 pass | pass (base7) | pass | `site_montane`, `site_transect` | the arc-2 reference species; bough plate re-lit and its shoots authored at the note's 11 mm |
+| 云南松 *Pinus yunnanensis* | pass (sheet) | pass | 0.628 / 0.575 · 0.800 pass | pass (base7) | pass | `site_montane`, `site_transect` | the arc-2 reference species; bough plate re-lit, its shoots at the note's 11 mm |
 | 华山松 *Pinus armandii* | pass (2.1× ratio from 云南松) | pass | 0.651 / 0.687 · 0.651 pass | pass | pass | `site_montane`, `site_transect` | five-needle fascicles; crown ratio 0.464 against 云南松's 0.986 |
 | 丽江云杉 *Picea likiangensis* | pass (0.158 ratio) | pass | 0.663 / 0.582 · 0.479 pass | pass | pass | `site_subalpine`, `site_transect` | second pass; bough reframed to 1.09 m |
-| 苍山冷杉 *Abies delavayi* | pass (0.254 ratio) | pass | 0.789 / 0.724 · 0.622 pass | pass | pass | `site_subalpine`, `site_transect` | cones pale-glaucous to read; `FIR_CROWN_TOP` is a stated compromise |
-| 川滇高山栎 *Quercus aquifolioides* | weak (mid-crown hole) | pass | 0.792 / 0.904 · 0.715 pass | pass (base) | pass | `site_montane`, `site_transect` | H1 polish in flight; sprig crown at the note's leaf size |
-| 珙桐 *Davidia involucrata* | pass (sheet) | pass | tree 0.899 / 0.941 · 0.666 pass | pass (base) | pass | `site_montane`, `site_transect` | bracts as two templates, unequal pair |
-| 大树杜鹃 *Rhododendron protistum* | pass (sheet) | pass | tree 0.848 / 0.943 · 0.723 pass | pass (base) | pass | `site_subalpine`, `site_transect` | rosettes and truss; bole wander authored |
-| 桫椤 *Alsophila spinulosa* | weak (palm-like from one angle) | pass | 0.690 / 0.343 · 0.650 pass | pass | pass | `site_valley`, `site_transect` | fronds at the photograph's crown spread, note's length broken and stated |
+| 苍山冷杉 *Abies delavayi* | pass (0.254 ratio) | pass | 0.788 / 0.724 · 0.622 pass | pass | pass | `site_subalpine`, `site_transect` | cones pale-glaucous to read; `FIR_CROWN_TOP` is a stated compromise |
+| 川滇高山栎 *Quercus aquifolioides* | pass, with a V gap above the fork | pass | 0.774 / 0.904 · 0.715 pass | pass (base) | pass | `site_montane`, `site_transect` | third pass closed the dome; the sheet's "hole" was the missing trunk in the mask |
+| 珙桐 *Davidia involucrata* | pass (sheet) | pass | 0.899 / 0.941 · 0.663 pass | pass (base) | pass | `site_montane`, `site_transect` | bracts as two templates, unequal pair |
+| 大树杜鹃 *Rhododendron protistum* | pass (sheet) | pass | 0.875 / 0.943 · 0.723 pass | pass (base) | pass | `site_subalpine`, `site_transect` | rosettes and truss; bole wander authored |
+| 桫椤 *Alsophila spinulosa* | pass, palm-like from one angle | pass | 0.690 / 0.343 · 0.650 pass | pass | pass | `site_valley`, `site_transect` | fronds at the photograph's crown spread; note's length broken and stated |
 | 木棉 *Bombax ceiba* | pass (sheet) | pass | 0.561 · 0.747 / 0.726 · 0.709 pass; flower exempt | pass (base) | pass | `site_valley`, `site_transect` | two seasons; corollas of five petals on the twigs that carry them |
 | 筇竹 *Qiongzhuea tumidinoda* | pass | pass | 0.588 / 0.836 · 0.745 pass (clump 0.764) | pass | pass, rhizome rim stated | `site_valley` | twelve culms from one rhizome crown; seven-knot sawtooth with undercut |
-| 西南桦 *Betula alnoides* | weak (reads conifer-strip) | pass | 0.521 / 0.828 · 0.666 pass | pass, bark pattern stated absent | pass | `site_montane` | H1 polish in flight; red-brown bark, never chalk |
-| 滇油杉 *Keteleeria evelyniana* | weak (rough spruce) | pass | 0.757 / 0.811 · 0.588 pass | pass | pass | `site_montane`, `site_transect` | H1 polish in flight; cones at the note's ceiling |
+| 西南桦 *Betula alnoides* | pass (width ÷ height 0.581) | pass | 0.550 / 0.828 · 0.666 pass | pass, bark pattern stated absent | pass | `site_montane` | third pass widened the fringe; red-brown bark, never chalk |
+| 滇油杉 *Keteleeria evelyniana* | pass (flat ragged plate) | pass | 0.687 / 0.811 · 0.588 pass | pass | pass | `site_montane`, `site_transect` | third pass opened the crown; cones at the note's ceiling |
 
-The H3 column reads *interior share / interior-over-lit-p90*, measured 2026-10-19 by
-`audit/frame_stats.py --crown` on every plate on disk; the second clause is the bough plate's, per
-§2.1. All ten bough plates pass both clauses under the stricter 0.75 bar as well as the 0.80 one.
+The H3 column reads *interior share / bough interior · bough interior-over-lit-p90*, re-measured
+2026-10-19 under the corrected identity mask (§10) by `audit/frame_stats.py --crown` on every plate
+on disk; the second clause is the bough plate's, per §2.1. **All twelve pass both clauses**, eleven
+of them under the stricter 0.75 bar as well as the 0.80 one — 云南松's bough sits exactly on 0.800
+and is the one that needs the bar as written.
 
 ## 10. Open questions
 
-**H1's first running, 2026-10-19** (`out/h1-sheet2.png`, ten silhouettes, read by the author of the
-bar against the reference photographs): eight of the ten are nameable at a glance — 桫椤's parasol on
-a pole, 木棉's flat plate of heavy limbs, 大树杜鹃's candelabra of discrete stars, the two spires
-told apart by ratio and tip attitude, 云南松's tiered feathering, 珙桐's rounded mass, and 滇油杉's
-rough cone. The bar's failure line is seven. The confusions are the middle three: 川滇高山栎's dome,
-滇油杉's crown and 西南桦's weeping column each read as *a broadleaf* or *a narrow conifer* before
-they read as their species, and the oak's silhouette carries a hole at mid-crown that no photograph
-of it has. Those three are the remaining H1 work, and the sheet is the instrument that will say when
-it is done. 华山松 and 筇竹 join the sheet when arc 3's and arc 6's last species land.
+**H1's first running, 2026-10-19** (`out/h1-sheet2.png`, ten silhouettes, read against the reference
+photographs): eight of the ten were nameable at a glance, and the confusions were the middle three —
+川滇高山栎's dome, 滇油杉's crown and 西南桦's weeping column. 华山松 and 筇竹 joined the sheet when
+arc 3's and arc 6's last species landed.
 
-**H1's second running, 2026-10-20** (`out/sw-h1/h1-sheet3.png`, the nine unchanged plates of `out/h1-*.png`
-and the three re-rendered ones; the before/after pairs beside it in the same folder). All three names are
-separate at a glance now, and the numbers each moved on are in its own module.
+**H1's second running, 2026-10-19** (`out/h1-sheet5.png`, twelve silhouettes, after a third pass on
+those three): **eleven of twelve are nameable at a glance.** The three fixes were a dome made
+continuous from shoulder to shoulder with its foliage carried low, a birch fringe wider than the
+crown is deep (width ÷ height 0.441 → 0.581, which puts it among the broadleaves and not among the
+spires), and a keteleeria crown opened into a flat ragged plate of long boughs. The one honest
+reservation is the oak's V gap above its fork, which no number in its module closed.
+
+**And one finding about the instrument, which is worth more than the three fixes.** The oak's
+"mid-crown hole" was not in the tree: `audit/silhouette.py` and `audit/frame_stats.py` both masked
+the identity image at a threshold of four (or a fortieth), and the root's own id — the trunk, and
+every leaf standing on the root — lands on a red byte of one or two once the id is normalised into
+eight bits. **No trunk was in any cut-out on any sheet**, so a bole seen through its own crown read
+as a hole in the crown, and a species author spent a pass chasing a number that could not move (its
+leader field went from 85 to 140 sprigs a metre and moved the cut-out by under one per cent). Both
+scripts now mask at `> 0`; the twelve trunks came back and the oak's V is the only gap left. A
+measuring instrument that silently drops the smallest id is worse than no instrument: it reports a
+plausible shape and hides the limb that would have explained it.
+
+**What each of the three moved, as measured** (before/after pairs in `out/sw-h1/`):
 
 | species | what the sheet called it | what moved | measured |
 | --- | --- | --- | --- |
@@ -716,26 +729,13 @@ separate at a glance now, and the numbers each moved on are in its own module.
 | 滇油杉 | *"a rough spruce"*, whose cut-out's top tenth was a third of its widest however the boughs were drawn | topmost boughs 0.9 → 2.7 m, departure turning with the station to the note's *开展*, sixteen whorls → thirteen, two to three cones a fruiting node | top tenth 263 → **368 px** of 775; coverage 0.466 → 0.435; interior 0.760 → 0.687 |
 | 川滇高山栎 | *"a dome with a hole at mid-crown"*, and lopsided | secondaries 1.45 → 1.80 m so a limb is leafed along its own length, the limb field doubled, and **the crown envelope's top no longer reaches nought** — a limb at 0.95 of the bole ends 1.4 m above the bole's own tip and a law that reached nought at 1.0 was cutting the crown's top third with its own guard | top tenth 312 → **352 px** of 749; coverage 0.501 → 0.510; interior 0.792 → 0.774 |
 
-**One thing H1 cannot see, recorded because it is a limit of the instrument and not of a species.** The
-cut-out is the `authored_id` mask, and a node's id is normalised into eight bits of red: **the bole is the
-root, its id is one, and one rounds to nothing**, so `audit/silhouette.py` cannot record the trunk of any of
-the ten trees. For nine of them that costs the outline of a pole the crown already stands on. For the oak it
-is a two-metre white slot down the middle of the shape, because the oak is the one broadleaf whose trunk runs
-visibly through its own crown — which is the note's own second recognition fact, *the crown is carried low on
-persistent branches, not lifted onto a clean pole*. **Raising the oak's leader field from eighty-five sprigs a
-metre to a hundred and forty, and moving its band, moved the cut-out by under one per cent of its pixels
-while the plate itself changed visibly**: every leaf on the leader hangs on the root and carries the root's
-id. Closing that hole needs an instrument change — a mask written at sixteen or thirty-two bits — and not a
-number in a species module.
-
 1. **Does H3's ratio need to be a stated number before arc 2, or can arc 2 set it?** — **Closed, 2026-10-19: arc 2 set it, from two measured regimes rather than from one candidate.** The p90/p10 luminance ratio the first draft proposed does not separate a deep crown from a sparse lit one (a bamboo's separated leaves scored 1.82 against the pine's 1.70), and a rim mask does not either, because silhouette-edge pixels face away from the key as often as toward it (interior over rim measured 0.99 on a crown that was plainly not self-shadowing *and* 0.97 on one that was). The bar is therefore the interior share at least **0.25** and the interior's mean over the plant's lit p90 at most **0.80**: the pine under a frontal key with foliage shadowing disabled measures **0.99**, and under a raking key with the foliage shadow bias of §4.11 measures **0.76**, so 0.80 sits between the two regimes with margin on both sides. A species that cannot reach it has either a see-through crown or a light that flattens it, and the number says which.
 2. **Bark as texture.** §4.7 says plates and flutes are a `Section`. That is form, not colour
-   variation, and a hero frame at three metres may want a mottled bark that no geometry gives. Whether
-   a per-vertex tint along a trunk is worth a change is deferred to arc 4, when the oak's bark is the
-   subject.
-3. **Two seasons.** 木棉 flowers leafless and 珙桐's bracts are seasonal. Whether a species carries a
-   `season` dial that switches a leaf field off, or whether a season is a second species, is deferred
-   to arc 6.
-4. **Does the rasteriser's shadow map survive a crown of forty thousand leaves?** The handoffs on
-   shadow texel push and virtual shadow maps suggest this is live elsewhere. Arc 2 measures it on one
-   pine before arc 3 puts ten firs in a frame.
+   variation, and a hero frame at three metres may want a mottled bark that no geometry gives. — **Closed, 2026-10-19: won't fix.** Form is what the frame reads at the distances this project draws, the crease gives the facets, and a per-vertex tint is a materials arc nothing in these twelve species is waiting for (§4.16). The birch's peeling flakes and lenticels are stated absent in its module rather than faked.
+3. **Two seasons.** 木棉 flowers leafless and 珙桐's bracts are seasonal. — **Closed, 2026-10-19: a season is a second species.** `kapok_flower` is its own scene and its own rule (empty leaf fields, flower decorators on the twigs), which cost one function and no crate change; a `season` dial would have been a second way to author the same tree. The flowered plate is judged with H3's interior clause exempt, because a leafless crown has no interior and saying so is the verdict.
+4. **Does the rasteriser's shadow map survive a crown of forty thousand leaves?** — **Closed, 2026-10-19: yes at bough distance, no at whole-tree distance, and the bar says which.** A plant-only `shadow_bias_scale` of 0.05 against wood's 1.0 plus the page's orthographic half-width fix made leaf-on-leaf shadow real, and every one of the twelve bough plates passes both H3 clauses. At whole-tree distance the page's penumbra is coarser than a needle's gap, so a dense crown's interior is lit leaves and the ratio rises with density (the oak measured 0.778 sparse, 0.824 dense); §2.1 therefore reads the second clause on the bough plate.
+
+**What is genuinely open after arc 7:** the site frames' four named improvements (§8); the transect's E3
+(the belts read, the picture is thin); the four deferred limitations in §4.14 and the decorator field in
+§4.16 that the fern needed and that only one species has wanted so far; and E4's two backends, waiting on
+a Cycles binary this machine does not have.
