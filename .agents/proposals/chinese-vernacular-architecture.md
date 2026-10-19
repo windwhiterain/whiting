@@ -1033,6 +1033,33 @@ front edge up to the wall — and a roof whose skin covers a single slope is the
 one. What this round owes the drawing is the anchor, and what it owes the record is that the drawing is
 still waiting for it.
 
+### A lean-to, and the 夏子 it was for
+
+A 夏子 is the porch across a 正房's front, and its roof is **one plane**: high at the wall, an eave at the
+porch's own edge. The crate could not derive it, and the measurement that mattered was whether it could
+*express* it — a gable and a hip both put the crest **inside** the eave loop, so the question was a crest
+**on** the loop's own back edge.
+
+**It can, and the reason is the model's own rule**: a roof's skin must cover its eave loop, and a single
+plane from the eave edge up to the back edge covers exactly that loop. Measured over a 9.3 × 1.35 porch:
+skin plan area **12.5550 m² against the loop's own 12.5550**, euler **2**, manifold, volume **1.506599 m³**,
+**0 violations**. Two things the probe cost and the derivation keeps: the loop must be **wound
+positively** (the other way round is a roof inside out — it measured a volume of −0.753299), and the
+plane's rows stand at **the eave edge's two ends**, not at two arbitrary stations (stations `0` and `0.5`
+covered a diagonal half, 6.2775 m²).
+
+`derive::lean_to(host, plan, low, high, thickness)` is that derivation, and the 一颗印 now wears a 夏子:
+nine metres of lean-to across the 正房's court wall, two posts at its edge, and **two struts whose wall ends
+are `Anchor::OnFace`** — the face anchor's first use in a scene, and its own proof that an anchor follows
+the wall: the porch's court edge is found *by position*, because the 正房's outline was split when its gable
+ends were crowned and edge indices move when a loop grows.
+
+| number | value |
+| --- | --- |
+| the identity rows | the 一颗印 **5 091 → 5 276**, thirteen scenes **18 711 → 18 896** |
+| the frame | **unchanged** — `C2A71A8F65326125` |
+| why the frame is unchanged | **the 夏子 stands inside the sealed court**, and the block's own frame cannot see into a three-metre well. Its evidence is the document, the probe and the rows, and an interior camera still does not exist. |
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

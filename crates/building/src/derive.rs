@@ -386,6 +386,60 @@ pub fn gable_roof_by(
     Some(gable_over(&eave, host, rise, thickness))
 }
 
+/// Builds a **lean-to**: one plane from a high edge against a wall down to a low eave.
+///
+/// # Invariants
+///
+/// **The crest stands on the loop's own back edge, and the model allows it because the skin covers the
+/// loop exactly.** A gable and a hip both put the crest *inside* the eave loop and shed to it from two
+/// sides; a lean-to sheds from one, so its crest is the loop's back edge and its single plane spans the
+/// whole loop — measured on a 9.3 × 1.35 porch, skin **12.5550 m² against the loop's own 12.5550**.
+///
+/// **The loop is wound positively** — up one side, across the high edge, down the other, along the eave —
+/// because a roof's orientation is read from its eave loop, and the other way round is a roof inside out.
+/// The `plan` is given in the order a wall is walked: front-left, front-right, back-right, back-left, with
+/// `low` the eave and `high` the crest; a `plan` whose front and back are the same is refused rather than
+/// built as a roof with no slope.
+///
+/// Returns `None` when the rectangle has no area or the two elevations are not a rise.
+pub fn lean_to(host: MassId, plan: [Vec2; 4], low: f32, high: f32, thickness: f32) -> Option<Roof> {
+    let ordered = low.is_finite() && high.is_finite() && thickness.is_finite();
+    if !ordered || high <= low || thickness <= 0.0 {
+        return None;
+    }
+    let [front_left, front_right, back_right, back_left] = plan;
+    let width = distance(front_left, front_right);
+    let run = distance(front_left, back_left);
+    if width <= 1.0e-3 || run <= 1.0e-3 {
+        return None;
+    }
+    // **The loop, wound positively**: front-left, back-left, back-right, front-right. The eave is the edge
+    // from the last node back to the first, which is what the single plane's rows stand on.
+    let eaves = vec![
+        PlanNode::new(front_left, low),
+        PlanNode::new(back_left, high),
+        PlanNode::new(back_right, high),
+        PlanNode::new(front_right, low),
+    ];
+    let crest = vec![
+        CrestPoint::new(back_left, high),
+        CrestPoint::new(back_right, high),
+    ];
+    // **The eave edge runs from the loop's last node back to its first**, so its two rows stand at
+    // station `0` and at the last node's own station — which is one edge short of the whole loop.
+    let perimeter = 2.0 * (width + run);
+    let last = 1.0 - width / perimeter;
+    let plane = RoofPlane::new(vec![
+        RoofRow::new(0, EaveStation::new(0.0)),
+        RoofRow::new(1, EaveStation::new(last)),
+    ]);
+    Some(
+        Roof::new(host, eaves, thickness)
+            .with_crest(crest)
+            .with_planes(vec![plane]),
+    )
+}
+
 /// The key a building's body derives from: the root of every ancestry.
 ///
 /// # Invariants

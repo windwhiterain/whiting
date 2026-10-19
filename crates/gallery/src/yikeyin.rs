@@ -316,10 +316,101 @@ pub fn document() -> Building {
             Opening::new(gate, 0, 1, Inset::new(0.35, 0.35, 0.0, 0.9)),
         );
     }
+    // **The 夏子**, the porch across the 正房's front: a lean-to of its own, two posts at its edge, and two
+    // struts pinned to the 正房's wall face — the face anchor's first use in a scene.
+    porch(&mut skeleton);
     // **One seat for the whole compound**, so the four ranges share a level rather than each finding its
     // own: a 一颗印 is built flat, and its court is a well and not a slope.
     let _ = site::seat(&mut skeleton, |_| 0.0, 0.0);
     Building::new(skeleton)
+}
+
+/// Adds the **夏子**: the porch roof, its two posts and the two struts that hold it to the wall.
+///
+/// # Invariants
+///
+/// **Its roof is a lean-to and its struts are pinned to a face.** The porch stands in front of the 正房's
+/// court wall (mass 0's edge 2, which runs from `x = +6.5` to `x = -6.5`), so a strut's wall end is an
+/// [`Anchor::OnFace`] at a station along that edge and its outer end is free at the porch's own eave —
+/// which is the whole point of the face anchor: the strut follows the wall rather than a coordinate that
+/// has to be kept in step with it.
+fn porch(skeleton: &mut BuildingSkeleton) {
+    let wall = -HALF_Z + MAIN_DEPTH;
+    let depth = 1.2;
+    let low = 2.9;
+    let high = 3.55;
+    let half = 4.5;
+    let Some(roof) = derive::lean_to(
+        MassId(0),
+        [
+            [-half - 0.15, wall + depth + 0.15],
+            [half + 0.15, wall + depth + 0.15],
+            [half + 0.15, wall],
+            [-half - 0.15, wall],
+        ],
+        low,
+        high,
+        0.1,
+    ) else {
+        return;
+    };
+    skeleton.roofs.push(roof.with_covering(COVERING));
+    // The two posts at the porch's own edge, and the two struts from the wall to them.
+    for side in [-1.0_f32, 1.0] {
+        let x = side * (half - 0.3);
+        let edge = wall + depth + 0.1;
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free { at: [x, 0.0, edge] },
+            building::Anchor::Free {
+                at: [x, low - 0.05, edge],
+            },
+            [1.0, 0.0],
+            0.16,
+            0.16,
+        ));
+        // The strut: from below the porch roof's high edge, down and out to the post's head. **The
+        // court edge is found by position and not by index**: the 正房's outline was split when its gable
+        // ends were crowned, so edge 2 is a three-metre gable edge now and the court wall is somewhere else
+        // in the loop.
+        let Some((wall_edge, start, _length)) = court_edge(&skeleton.masses[0], wall) else {
+            continue;
+        };
+        skeleton.members.push(building::Member::new(
+            building::Anchor::OnFace {
+                face: FaceRef::new(MassId(0), wall_edge),
+                along: (start - x).abs(),
+                up: high - 0.35,
+            },
+            building::Anchor::Free {
+                at: [x, low - 0.05, edge],
+            },
+            [0.0, 1.0],
+            0.12,
+            0.12,
+        ));
+    }
+}
+
+/// Returns the mass's edge that lies on the plan line `z`, its start node's `x`, and its length.
+///
+/// # Invariants
+///
+/// **The edge is matched by its two nodes' own `z`**, both of them on the line, which is the only reading
+/// that survives a split: an index into the outline changes when a gable end is split, and a scene that
+/// remembered one would name a different wall the moment a crown moved.
+fn court_edge(mass: &building::Mass, z: f32) -> Option<(usize, f32, f32)> {
+    let count = mass.outline.len();
+    for edge in 0..count {
+        let from = mass.outline[edge].position;
+        let to = mass.outline[(edge + 1) % count].position;
+        if (from[1] - z).abs() < 1.0e-3 && (to[1] - z).abs() < 1.0e-3 {
+            let length = (to[0] - from[0]).abs();
+            if length > 1.0 {
+                return Some((edge, from[0], length));
+            }
+        }
+    }
+    None
 }
 
 /// Adds one range: a mass, its intermediate floor and its crowned 硬山 roof, in that order.
