@@ -231,7 +231,7 @@ foreach ($pair in @(@("whiting-building", "building", 38), @("whiting-gallery", 
 }
 
 "--------------------------------------------------------------------"
-"[6/8] the twelve written .png hashes  (sha256 of the file, first 16 hex upper)"
+"[6/8] the thirteen written .png hashes  (sha256 of the file, first 16 hex upper)"
 "--------------------------------------------------------------------"
 $pinned = [ordered]@{
     house      = "4A8795039E713F32"; hall       = "8B6495E3A9B2FE89"; hall_large = "CD2FA9166AACB06C"
@@ -239,6 +239,7 @@ $pinned = [ordered]@{
     workshop   = "7FE07F345A451B51"; yard       = "F36F4CB6A14312FA"; identity   = "717B5570DDAD7A0D"
     stilt      = "03510DF10AD236E4"; compound   = "FA4AD3009BD581AC"
     street     = "BD46F1ACB223C05F"
+    yikeyin    = "C2A71A8F65326125"
 }
 # **The eleven above moved together on 2026-10-19, and it is recorded here rather than in a commit
 # message nobody reads beside the number.** Causes, each measured by a verification pass that rendered
@@ -290,9 +291,9 @@ $rows = 0
 foreach ($line in $p) { if ($line -match '^\s+\S+\s+(\d+) row\(s\), ids 1\.\.=(\d+)') { $rows += [int]$Matches[1] } }
 $twoWay = @($p | Where-Object { $_ -match 'the channel is two-way for every scene: (\w+)' })
 $twoWayValue = if ($twoWay.Count -gt 0) { ($twoWay[0] -split ': ')[-1] } else { "(line absent)" }
-"  rows summed over scenes : $rows   (audit says 13620)"
+"  rows summed over scenes : $rows   (audit says 18711)"
 "  two-way line reads      : $twoWayValue"
-if ($rows -ne 13620) { $script:fail += "identity rows ($rows, expected 13620)" }
+if ($rows -ne 18711) { $script:fail += "identity rows ($rows, expected 18711)" }
 if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
 Gate "scene_identity_probe" $code 0
 

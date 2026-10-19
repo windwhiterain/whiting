@@ -600,6 +600,19 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // **Four groups, and a 一颗印 is four ranges that touch.** Three two-storey ranges and a
+            // gate house round a three-metre court: four masses, four roofs, four intermediate floors
+            // and the ground, packed into four meshes — the same four a single house costs, and the
+            // same four the compound pays for three buildings.
+            "yikeyin",
+            Stages {
+                shadowing: 4,
+                depthing: 4,
+                lighting: 4,
+                other: 1,
+            },
+        ),
+        (
             // The one gallery scene whose light is a spot, so the one whose shadow is now a
             // **grid of pages** rather than one page — and the count is what that costs. Its lamp
             // reaches a cone seventeen and a half world units across at the far plane, which at

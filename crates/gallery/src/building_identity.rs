@@ -291,6 +291,7 @@ fn document_of(scene: &str) -> Option<Building> {
         "wing" => crate::wing::document(),
         "workshop" => crate::workshop::document(),
         "yard" => crate::yard::document(),
+        "yikeyin" => crate::yikeyin::document(),
         "house" => crate::house::document(),
         "hall" => crate::hall::document(),
         "hall_large" => crate::hall::document_at(14.0, 20.0, 1),

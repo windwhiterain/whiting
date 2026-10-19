@@ -153,6 +153,16 @@ pub fn split_outline(mass: &mut Mass, station: f32) -> Option<usize> {
         from.elevation + (to.elevation - from.elevation) * within,
     );
     let at = index + 1;
+    // **A crown vector moves with the loop or it stops being a crown vector.** The two are one array per
+    // node by definition (`CrownCountMismatch` holds them to it), so the new node takes the crown the wall
+    // top has at its own station — the same interpolation the elevation gets — and a mass that had no
+    // crowns keeps having none.
+    if mass.crowns.len() == count {
+        let before = mass.crowns[index];
+        let after = mass.crowns[(index + 1) % count];
+        let crown = before + (after - before) * within;
+        mass.crowns.insert(at, crown);
+    }
     mass.outline.insert(at, mixed);
     Some(at)
 }

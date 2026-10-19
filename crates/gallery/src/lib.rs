@@ -153,6 +153,8 @@ pub mod wing;
 pub mod workshop;
 /// The yard scene: a site on a slope, with a courtyard and a gate.
 pub mod yard;
+/// The 一颗印 scene: four ranges round a three-metre court, every gable crowned, every roof 硬山.
+pub mod yikeyin;
 
 pub use dunes::dunes;
 pub use foldyard::foldyard;
@@ -219,6 +221,7 @@ impl Gallery {
             "wing",
             "workshop",
             "yard",
+            "yikeyin",
             "spotlight",
             "stilllife",
             "studio",
@@ -309,6 +312,7 @@ impl Gallery {
             "wing" => wing::wing(),
             "workshop" => workshop::workshop(),
             "yard" => yard::yard(),
+            "yikeyin" => yikeyin::yikeyin(),
             "spotlight" => spotlight(),
             "stilllife" => stilllife(),
             "studio" => scene::standard::example_standard_scene(),

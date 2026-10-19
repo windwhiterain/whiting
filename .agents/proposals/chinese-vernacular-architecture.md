@@ -982,6 +982,32 @@ two elements and a levelled one keeps the name it had.
 | the crowned court | top **5.0000**, the crown's own high side; the south wall tops at **3.2000** and the north at **5.0000**, so the court rises with the gable; **0 violations**; both rings close |
 | what it cost | one violation variant deleted, one surface field added, and the crown threaded through one call — no new authored field, and no scene moved |
 
+### A 一颗印: the type the last three arcs were for
+
+`crates/gallery/src/yikeyin.rs` is the Yunnan seal: thirteen by fifteen metres, four ranges round a
+three-metre well, the 正房 at the back, two 厢房 down the sides, and a gate house across the front with
+the one gate in it. It is the first scene built from **硬山** gable ends (so each range's roof stops at
+its own gable wall) and **山墙冠** (so each gable wall rises to its ridge), and the two are why the type
+reads at all.
+
+| number | value |
+| --- | --- |
+| the frame | **1280 × 800**, hash `C2A71A8F65326125`, **13 passes** (4 meshes × 3 stages + the post) |
+| the identity rows | **5 091** for the house, **18 711** over the thirteen scenes |
+| the document | four masses that touch at their corners, four crowned 硬山 roofs, four intermediate floors and one gate — **0 violations** |
+
+**One crate defect fell out of it, and it is the round's other half.** `ops::split_outline` inserted a node
+into a mass's outline and left `crowns` alone, so a crowned mass could not be split without falling out of
+step with `CrownCountMismatch` — and a crown has to be set *after* a split, because the height a gable's
+middle node takes is the roof's own apex. The split now interpolates the crown exactly as it interpolates
+the elevation, which is what makes "split the gable end, then crown it" one verb pair instead of two
+readings that have to agree.
+
+**What the picture shows and what it cannot**: a 一颗印 is a sealed block with a slot of sky, and that is
+what the frame is. The court itself is dark at the bottom of its well — three metres of sky over six-metre
+walls, which is the type's own light. It does not draw doors or windows behind the gate, the 夏子 porch,
+or the court's paving.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not
