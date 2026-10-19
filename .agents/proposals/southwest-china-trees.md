@@ -615,10 +615,11 @@ height. A stone also belongs in every one of these belts, which a person in a ka
 horizon; a subalpine frame carries 0.002 and a deep zenith. The two numbers are the whole of the
 difference between a humid gully and a clear ridge at 3200 m, and both are already dials (§4.6).
 
-**E4, the two backends, is deferred with a reason.** The exporter writes the scene's sky as a Cycles
-background and the document carries both, but no Cycles binary is installed on this machine, so the
-comparison cannot be run here. Arc 7 delivers the frames and the exported documents, and records E4
-as unverified-with-reason rather than passing it silently.
+**E4, the two backends, is deferred with a reason, and the reason was checked.** The exporter writes
+the scene's sky as a Cycles background and the document carries both, but no Cycles binary is
+installed on this machine — looked for, not assumed: `blender`, `cycles` and `blender.exe` are not on
+`PATH`, and no Blender Foundation install root exists. Arc 7 delivers the frames and the exported
+documents, and records E4 as unverified-with-reason rather than passing it silently.
 
 ### 4.14 What the dry valley and the fern asked for, and what they get
 
