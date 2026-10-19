@@ -115,6 +115,9 @@ pub mod southwest_flag;
 pub mod southwest_oak;
 /// The site: one Hengduan slope drawn at the height of each belt.
 pub mod southwest_site;
+/// The three belts the montane frame does not stand in: the dry-hot valley, the subalpine stand, and
+/// the whole slope in one frame.
+pub mod southwest_sites;
 /// The spire conifers: 丽江云杉 and 苍山冷杉, one rule with different numbers.
 pub mod southwest_spire;
 /// The valley pair: 桫椤, a tree with no branch graph at all, and 木棉, one rule at two seasons.
@@ -253,6 +256,9 @@ impl Gallery {
             "giant_rhododendron_bough" => southwest_flag::giant_rhododendron_bough_picture(),
             "giant_rhododendron_base" => southwest_flag::giant_rhododendron_base_picture(),
             "site_montane" => southwest_site::site_montane(),
+            "site_valley" => southwest_sites::site_valley(),
+            "site_subalpine" => southwest_sites::site_subalpine(),
+            "site_transect" => southwest_sites::site_transect(),
             "alpine_oak" => southwest_oak::alpine_oak_picture(),
             "alpine_oak_bough" => southwest_oak::alpine_oak_bough_picture(),
             "alpine_oak_base" => southwest_oak::alpine_oak_base_picture(),
