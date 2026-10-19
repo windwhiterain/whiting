@@ -1060,6 +1060,32 @@ ends were crowned and edge indices move when a loop grows.
 | the frame | **unchanged** — `C2A71A8F65326125` |
 | why the frame is unchanged | **the 夏子 stands inside the sealed court**, and the block's own frame cannot see into a three-metre well. Its evidence is the document, the probe and the rows, and an interior camera still does not exist. |
 
+### The court's four faces, and the check that refused them
+
+A 一颗印's court faces are where the house is *used*: the court is the circulation, and every range opens
+onto it. The scene cut them — three bays by two storeys, a door in the middle bay of the ground floor and a
+window in every bay above — and it could not, because `GridOnACrownedFace` refuses **every** grid on a mass
+that has **any** crown.
+
+That is the wrong question, and the round's other half is asking the right one. **A crowned mass has level
+edges** — every wall between two corners at the same height, which is precisely what a court's four faces
+are — and a rhythm divides a rectangle. `edge_crowns` answers the face's own two ends (the mass's outline's
+crowns for its own walls, the court's derived crowns for its ring), and the violation now fires only when
+those two differ.
+
+| number | value |
+| --- | --- |
+| the openings | four court faces: 3 bays × 2 storeys on the three ranges, 3 × 1 with one door on the gate house |
+| the identity rows | **18 896 → 18 932**, and the 一颗印's frame is re-pinned at `FDFC5862BC8DF946` |
+| the exterior | the composition does not change, because the openings are **inside** the sealed block — the picture shows the gate's own bay moved and nothing else |
+
+**A finding this round paid for and did not fix.** An interior camera was written for the court, rendered,
+and **rejected before landing**: the well is three metres across and six deep, its only light is one
+directional sun, and the frame came back almost black — a plate that would have been pinned as "the court"
+while showing nothing. The reason is not the camera: **the shading has no sky ambient term**, so a well can
+only ever be a dark hole under one sun. That is the next round's work, and until it exists the court's
+openings are document evidence and not picture evidence.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

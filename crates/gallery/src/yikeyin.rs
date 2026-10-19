@@ -97,8 +97,19 @@ const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 const GROUND_DIVISIONS: usize = 120;
 const GROUND_EXTENT: f64 = 60.0;
 
-/// Builds the scene.
+/// Builds the scene, from outside the block.
 pub fn yikeyin() -> Value {
+    scene(
+        [17.0, 19.0, 23.0],
+        [-0.5, 1.2, 0.5],
+        FIELD_OF_VIEW,
+        "yikeyin",
+        SUN,
+    )
+}
+
+/// Builds the scene from one camera: the document, its meshes, and the sky it hangs under.
+fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [f64; 3]) -> Value {
     let building = document();
     let built = building
         .build()
@@ -191,15 +202,11 @@ pub fn yikeyin() -> Value {
     let ground = crate::ground::mesh(&building, GROUND_DIVISIONS, GROUND_EXTENT, |_, _| 0.0);
 
     Value::structure([
-        ("name".to_owned(), Value::String("yikeyin".to_owned())),
+        ("name".to_owned(), Value::String(name.to_owned())),
         ("frame".to_owned(), frame(FRAME_WIDTH, FRAME_HEIGHT)),
         (
             "cameras".to_owned(),
-            Value::List(vec![camera(
-                [17.0, 19.0, 23.0],
-                [-0.5, 1.2, 0.5],
-                FIELD_OF_VIEW,
-            )]),
+            Value::List(vec![camera(eye, target, field_of_view)]),
         ),
         (
             "lights".to_owned(),
@@ -207,7 +214,7 @@ pub fn yikeyin() -> Value {
                 "sun",
                 SUN,
                 [1.0, 0.92, 0.78],
-                flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(SUN)),
+                flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(sun)),
                 SHADOW_EXTENT,
                 170.0,
             )]),
@@ -316,6 +323,9 @@ pub fn document() -> Building {
             Opening::new(gate, 0, 1, Inset::new(0.35, 0.35, 0.0, 0.9)),
         );
     }
+    // **Every range opens onto the court**, which is what a 一颗印's four inner faces are: bays of doors
+    // and windows, two storeys of them, and the court is the circulation they open onto.
+    court_faces(&mut skeleton);
     // **The 夏子**, the porch across the 正房's front: a lean-to of its own, two posts at its edge, and two
     // struts pinned to the 正房's wall face — the face anchor's first use in a scene.
     porch(&mut skeleton);
@@ -323,6 +333,79 @@ pub fn document() -> Building {
     // own: a 一颗印 is built flat, and its court is a well and not a slope.
     let _ = site::seat(&mut skeleton, |_| 0.0, 0.0);
     Building::new(skeleton)
+}
+
+/// Cuts every range's court face into bays and puts a door and windows in them.
+///
+/// # Invariants
+///
+/// **Each face is found by position, not by index**, and each is gridded three bays wide by two storeys
+/// tall: a door in the middle bay of the ground storey, and a window in every bay of the upper one — which
+/// is what a 一颗印's four inner walls are. The 门房 is the exception and it is the type's own: one storey,
+/// one bay, one door, because it is a gate house and not a range.
+fn court_faces(skeleton: &mut BuildingSkeleton) {
+    // The four court faces, as (mass, the plan line they stand on, whether the line is a `z`).
+    let faces = [
+        (MassId(0), -HALF_Z + MAIN_DEPTH, true),
+        (MassId(1), -COURT, false),
+        (MassId(2), COURT, false),
+        (MassId(3), COURT, true),
+    ];
+    for (mass, line, on_z) in faces {
+        let Some(mass_ref) = skeleton.masses.get(mass.0) else {
+            continue;
+        };
+        let Some(edge) = court_face(mass_ref, line, on_z) else {
+            continue;
+        };
+        let face = FaceRef::new(mass, edge);
+        let storeys = if mass == MassId(3) {
+            Rhythm::Even { count: 1 }
+        } else {
+            Rhythm::Even { count: 2 }
+        };
+        if ops::split_face(skeleton, face, &Rhythm::Even { count: 3 }, &storeys).is_none() {
+            continue;
+        }
+        let _ = ops::add_opening(
+            skeleton,
+            Opening::new(face, 1, 0, Inset::new(0.5, 0.5, 0.0, 0.4)),
+        );
+        if mass == MassId(3) {
+            continue;
+        }
+        for column in 0..3 {
+            let _ = ops::add_opening(
+                skeleton,
+                Opening::new(face, column, 1, Inset::new(0.5, 0.5, 0.9, 0.5)),
+            );
+        }
+    }
+}
+
+/// Returns the edge of a mass that stands on the plan line `line`, matching on `z` or on `x`.
+///
+/// # Invariants
+///
+/// **The edge is matched by its two nodes' own coordinate**, both of them on the line, and the longest such
+/// edge wins: a split loop has several short edges at a corner, and the wall a court opens onto is the long
+/// one. An index would not survive the split that crowns a gable end.
+fn court_face(mass: &building::Mass, line: f32, on_z: bool) -> Option<usize> {
+    let count = mass.outline.len();
+    let mut best: Option<(usize, f32)> = None;
+    for edge in 0..count {
+        let from = mass.outline[edge].position;
+        let to = mass.outline[(edge + 1) % count].position;
+        let along = if on_z { 1 } else { 0 };
+        if (from[along] - line).abs() < 1.0e-3 && (to[along] - line).abs() < 1.0e-3 {
+            let length = (to[1 - along] - from[1 - along]).abs();
+            if best.is_none_or(|(_, held)| length > held) {
+                best = Some((edge, length));
+            }
+        }
+    }
+    best.filter(|(_, length)| *length > 1.0)
+        .map(|(edge, _)| edge)
 }
 
 /// Adds the **夏子**: the porch roof, its two posts and the two struts that hold it to the wall.
@@ -548,7 +631,7 @@ fn sky_at(ray: vec3<f32>) -> vec3<f32> {
     let horizon = vec3<f32>(0.85, 0.84, 0.79);
     let zenith = vec3<f32>(0.23, 0.41, 0.67);
     let below = vec3<f32>(0.27, 0.25, 0.20);
-    let sun = normalize(vec3<f32>(-18.0, 40.0, 24.0));
+    let sun = normalize(vec3<f32>(-8.0, 58.0, 12.0));
     let glow = pow(clamp(dot(normalize(ray), sun), 0.0, 1.0), 9.0) * 0.26;
     let sky = select(mix(horizon, below, clamp(-ray.y * 4.0, 0.0, 1.0)),
                      mix(horizon, zenith, above),

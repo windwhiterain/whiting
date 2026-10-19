@@ -2215,6 +2215,45 @@ fn on_eave_loop(point: Vec3, roof: &Roof) -> bool {
 ///
 /// Staged: a rhythm on a face whose mass is not in the document is reported as that and nothing else,
 /// because there is nothing to measure its stops against.
+/// Returns the two wall tops a face's edge stands at, or `None` when the face is not in the document.
+///
+/// # Invariants
+///
+/// **The two ends are what a grid has to be a rectangle between**, which is a fact about the *edge* and not
+/// about the mass: a crowned mass has level edges, and a level mass has none. A court's own ring takes the
+/// crown its wall reads at the court's nodes, so its top is answered the same way and by the same reading
+/// the ring is built from.
+fn edge_crowns(skeleton: &BuildingSkeleton, face: crate::grid::FaceRef) -> Option<(f32, f32)> {
+    let mass = skeleton.mass(face.mass)?;
+    let loop_: &[crate::mass::PlanNode] = match face.void {
+        None => &mass.outline,
+        Some(void) => mass.voids.get(void)?,
+    };
+    let count = loop_.len();
+    if count < 2 || face.edge >= count {
+        return None;
+    }
+    let at = |index: usize| loop_[index % count];
+    let (first, second) = (at(face.edge), at(face.edge + 1));
+    let (low, high) = match face.void {
+        None if mass.crowns.len() == count => {
+            (mass.crowns[face.edge], mass.crowns[(face.edge + 1) % count])
+        }
+        None => (mass.top, mass.top),
+        // A court's ring is crowned by the mass's own crown surface read at the court's nodes, which is
+        // the same array `courtyard::ring` builds from.
+        Some(void) => {
+            let crowns = crate::courtyard::court_crowns(mass, void);
+            match crowns.len() {
+                length if length == count => (crowns[face.edge], crowns[(face.edge + 1) % count]),
+                _ => (mass.top, mass.top),
+            }
+        }
+    };
+    let _ = (first, second);
+    Some((low, high))
+}
+
 fn check_grids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
     for face in skeleton.grids.faces() {
         let Some(grid) = skeleton.grid(face) else {
@@ -2224,8 +2263,13 @@ fn check_grids(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
         // are read against one wall top, and a crowned edge's top is a line with two different ends,
         // so a bay's sill and head would be two numbers about no single face. Reported by name rather
         // than cut into bays a part cannot stand in.
-        if let Some(mass) = skeleton.mass(face.mass) {
-            if !mass.crowns.is_empty() {
+        //
+        // **The question is the edge's own two ends and not its mass's crown vector.** A crowned mass has
+        // edges that are not crowned — every wall between two corners at the same height, which is what a
+        // court's four faces are — and refusing a grid on those refused the one face a 一颗印 is all
+        // openings on.
+        if let Some((low, high)) = edge_crowns(skeleton, face) {
+            if (high - low).abs() > GRID_TOLERANCE {
                 violations.push(Violation::GridOnACrownedFace { face });
                 continue;
             }

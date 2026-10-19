@@ -239,7 +239,7 @@ $pinned = [ordered]@{
     workshop   = "7FE07F345A451B51"; yard       = "F36F4CB6A14312FA"; identity   = "717B5570DDAD7A0D"
     stilt      = "03510DF10AD236E4"; compound   = "FA4AD3009BD581AC"
     street     = "BD46F1ACB223C05F"
-    yikeyin    = "C2A71A8F65326125"
+    yikeyin    = "FDFC5862BC8DF946"
 }
 # **The eleven above moved together on 2026-10-19, and it is recorded here rather than in a commit
 # message nobody reads beside the number.** Causes, each measured by a verification pass that rendered
@@ -291,9 +291,9 @@ $rows = 0
 foreach ($line in $p) { if ($line -match '^\s+\S+\s+(\d+) row\(s\), ids 1\.\.=(\d+)') { $rows += [int]$Matches[1] } }
 $twoWay = @($p | Where-Object { $_ -match 'the channel is two-way for every scene: (\w+)' })
 $twoWayValue = if ($twoWay.Count -gt 0) { ($twoWay[0] -split ': ')[-1] } else { "(line absent)" }
-"  rows summed over scenes : $rows   (audit says 18896)"
+"  rows summed over scenes : $rows   (audit says 18932)"
 "  two-way line reads      : $twoWayValue"
-if ($rows -ne 18896) { $script:fail += "identity rows ($rows, expected 18896)" }
+if ($rows -ne 18932) { $script:fail += "identity rows ($rows, expected 18932)" }
 if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
 Gate "scene_identity_probe" $code 0
 
