@@ -276,15 +276,6 @@ pub enum Violation {
         /// The elevation the node stands on.
         base: f32,
     },
-    /// A mass carries both a crown and a courtyard, which are two node counts with no rule between
-    /// them: a crown is authored per node of the mass's outline and a courtyard's ring per node of the
-    /// void's loop.
-    CrownWithACourtyard {
-        /// The mass.
-        mass: MassId,
-        /// How many courtyards it has.
-        voids: usize,
-    },
     /// A face with a rhythm is on a crowned edge, which is a trapezoid and not a rectangle.
     GridOnACrownedFace {
         /// The face the rhythm names.
@@ -1304,16 +1295,6 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
                     base: node_at.elevation,
                 });
             }
-        }
-        // **A courtyard's ring is authored per node of the void's loop, not the mass's outline**, so a
-        // crowned mass that has a courtyard is two node counts with no rule between them. Refused
-        // rather than guessed at: nothing in this gallery needs it, and the day something does, the
-        // courtyard's ring grows the same parameter the mass's own ring has.
-        if !mass.crowns.is_empty() && !mass.voids.is_empty() {
-            violations.push(Violation::CrownWithACourtyard {
-                mass: id,
-                voids: mass.voids.len(),
-            });
         }
         if let Some(attachment) = mass.attachment {
             if skeleton.mass(attachment.host).is_none() {
@@ -3114,7 +3095,6 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
             ordered(*top),
             ordered(*base),
         ),
-        Violation::CrownWithACourtyard { mass, voids } => (48, mass.0 as u64, *voids as u64, 0, 0),
         Violation::UnattachedOverlap { mass, other } => (3, mass.0 as u64, other.0 as u64, 0, 0),
         // **Rank `3` and its fourth slot, beside `UnattachedOverlap` and not at the end.** The two are
         // one question asked of one pair of masses — whether two unattached plans share area — and the

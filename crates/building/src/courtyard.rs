@@ -69,10 +69,66 @@ use std::collections::BTreeMap;
 
 use crate::expand::{self, Problem, Solid, ring_walk};
 use crate::grid::FaceRef;
-use crate::mass::{AuthoredLoop, MassId};
+use crate::mass::{AuthoredLoop, Mass, MassId};
 use crate::math::Vec3;
 use crate::mesh::BuildingFace;
 use crate::skeleton::BuildingSkeleton;
+
+/// Returns the wall-top elevations a courtyard's ring takes: **the mass's own crown surface, read at the
+/// court's own nodes**.
+///
+/// # Invariants
+///
+/// **The wall top is one surface, and the court is the same wall seen from inside.** A crown is authored
+/// per node of the mass's outline, so it is a piecewise-linear function of the outline's station; a court's
+/// node does not lie on the outline, and the honest reading of "the wall top over this node" is the crown
+/// at the **nearest point of the loop** — which is what a wall top between two authored corners is.
+///
+/// A mass with no crowns answers an empty vector, which every caller reads as *level at the mass's top*,
+/// so the levelled case is untouched and the two node counts never have to agree.
+pub(crate) fn court_crowns(mass: &Mass, void: usize) -> Vec<f32> {
+    if mass.crowns.is_empty() || mass.crowns.len() != mass.outline.len() {
+        return Vec::new();
+    }
+    let Some(loop_) = mass.voids.get(void) else {
+        return Vec::new();
+    };
+    let count = mass.outline.len();
+    loop_
+        .iter()
+        .map(|node| {
+            let mut best = (f32::INFINITY, 0usize, 0.0_f32);
+            for edge in 0..count {
+                let from = mass.outline[edge].position;
+                let to = mass.outline[(edge + 1) % count].position;
+                let (along, distance) = nearest_on_edge(node.position, from, to);
+                if distance < best.0 {
+                    best = (distance, edge, along);
+                }
+            }
+            let (_, edge, along) = best;
+            let low = mass.crowns[edge];
+            let high = mass.crowns[(edge + 1) % count];
+            low + (high - low) * along
+        })
+        .collect()
+}
+
+/// Returns how far along one plan edge the nearest point to `at` stands, and how far away it is.
+fn nearest_on_edge(at: [f32; 2], from: [f32; 2], to: [f32; 2]) -> (f32, f32) {
+    let step = [to[0] - from[0], to[1] - from[1]];
+    let length = (step[0] * step[0] + step[1] * step[1]).sqrt();
+    if length <= f32::EPSILON {
+        return (0.0, f32::INFINITY);
+    }
+    let along = (((at[0] - from[0]) * step[0] + (at[1] - from[1]) * step[1]) / (length * length))
+        .clamp(0.0, 1.0);
+    let point = [from[0] + step[0] * along, from[1] + step[1] * along];
+    (
+        along,
+        ((at[0] - point[0]).powi(2) + (at[1] - point[1]).powi(2)).sqrt(),
+    )
+}
 
 /// Builds one courtyard: the ring of wall a mass's void is, in its own point numbering.
 ///
@@ -114,11 +170,14 @@ pub(crate) fn ring(
     let Some(loops) = expand::loops_of(skeleton, loop_of, wall, problems) else {
         return Err(Vec::new());
     };
-    // **A courtyard's ring keeps the level top**, because a crown is authored per node of the *mass's
-    // own* outline and a void's loop has its own nodes: the two counts are unrelated, so indexing one
-    // with the other would be a guess. `validate` refuses a crowned mass that has a courtyard rather
-    // than letting the two readings drift.
-    let ring = loops.ring(loop_of, wall, top, &[]);
+    // **The court's wall top is the mass's own crown surface**, read at each of the court's nodes by the
+    // station of the nearest point of the mass's outline. It is one wall seen from inside, so it has one
+    // top: a court under a rising gable rises with it, and a court in a levelled mass stays level.
+    let crowns = match skeleton.masses.get(mass.0) {
+        Some(mass_ref) => court_crowns(mass_ref, void),
+        None => Vec::new(),
+    };
+    let ring = loops.ring(loop_of, wall, top, &crowns);
     let mut solid = Solid::default();
     ring_walk(&mut solid, &ring, skeleton, grouped, problems);
     if !problems.is_empty() {

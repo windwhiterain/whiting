@@ -962,6 +962,26 @@ in `z` by the long edge (which did) — which is the one thing a corner of a 硬
 | the street | five houses become 硬山: hash `BD46F1ACB223C05F`, and **the five roofs stop reaching into their neighbours** — the interpenetration the 悬山 row drew was the party wall being crossed twice |
 | the rows | street **4 940 → 4 340**, twelve scenes **14 220 → 13 620**: a shorter eave carries four fewer rolls per slope, and 160 fewer roll segments is 800 of the 600 measured — the rest is the bands' own re-count |
 
+### The court under a crown: the wall top is one surface
+
+`CrownWithACourtyard` is gone, and what replaced it is one sentence rather than a new field: **the court's
+wall top is the mass's own crown surface, read at the court's own nodes** by the station of the nearest
+point of the mass's outline. A crown is authored per node of the outline, so it is a piecewise-linear
+function of the outline's station; a court's node does not lie on the outline, and *the wall top over
+this node* is the crown at the nearest point of the loop — which is what a wall top between two authored
+corners already is. The two node counts never have to agree, which was the whole objection.
+
+The second half was a defect the first half exposed: a court's top strip under a crown **warps**, exactly
+as the mass's own wall top does when it is crowned at one end, and the two triangles it has always been
+are two planes. `VoidTop` grew the same `half` the mass's `WallTop` carries, so a warped court strip is
+two elements and a levelled one keeps the name it had.
+
+| number | value |
+| --- | --- |
+| the levelled court | top **3.2000** — the mass's own top, unchanged; **0 violations**; mass and court both **euler 0**, manifold |
+| the crowned court | top **5.0000**, the crown's own high side; the south wall tops at **3.2000** and the north at **5.0000**, so the court rises with the gable; **0 violations**; both rings close |
+| what it cost | one violation variant deleted, one surface field added, and the crown threaded through one call — no new authored field, and no scene moved |
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

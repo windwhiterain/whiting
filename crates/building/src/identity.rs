@@ -277,8 +277,16 @@ fn mass_surface(surface: MassSurface) -> String {
         MassSurface::VoidInner { void, edge } => {
             format!("void {void}, the rooms' wall over edge {edge}")
         }
-        MassSurface::VoidTop { void, edge } => {
-            format!("void {void}, its wall top over edge {edge}")
+        // **The second half of a warped court strip is named and the first is not**, which is the same
+        // rule the mass's own wall top carries: a strip that is planar is one name, and only the half a
+        // crown creates needs saying.
+        MassSurface::VoidTop {
+            void,
+            edge,
+            half: 0,
+        } => format!("void {void}, its wall top over edge {edge}"),
+        MassSurface::VoidTop { void, edge, half } => {
+            format!("void {void}, the second plane of its wall top over edge {edge} (half {half})")
         }
         // **The base is called a base and not a floor**, for the reason the mass's own is
         // (`MassSurface::WallBase`): it is the ring's underside, hidden inside the plate, while the

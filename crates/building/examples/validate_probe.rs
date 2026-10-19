@@ -710,7 +710,7 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::OutlineNotSimple { .. } => "OutlineNotSimple",
         Violation::CrownCountMismatch { .. } => "CrownCountMismatch",
         Violation::CrownBelowBase { .. } => "CrownBelowBase",
-        Violation::CrownWithACourtyard { .. } => "CrownWithACourtyard",
+
         Violation::GridOnACrownedFace { .. } => "GridOnACrownedFace",
         Violation::ZeroHeight { .. } => "ZeroHeight",
         Violation::UnattachedOverlap { .. } => "UnattachedOverlap",

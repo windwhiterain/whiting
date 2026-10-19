@@ -1392,7 +1392,11 @@ impl RingSurfaces {
             AuthoredLoop::Void { void, .. } => Self {
                 authored: MassSurface::VoidWall { void, edge },
                 offset: MassSurface::VoidInner { void, edge },
-                top: MassSurface::VoidTop { void, edge },
+                top: MassSurface::VoidTop {
+                    void,
+                    edge,
+                    half: 0,
+                },
                 base: MassSurface::VoidBase { void },
             },
         }
@@ -1797,13 +1801,27 @@ fn warp_of(solid: &Solid, corners: [u32; 4]) -> f32 {
 
 /// Returns the two elements a **warped** strip of wall top is split into.
 ///
-/// A courtyard's ring is level — a crowned mass that has a courtyard is refused — so its strip keeps
-/// one element and both halves answer the same surface.
+/// **A court's top warps under a crown exactly as the mass's own does**, and its two triangles are two
+/// planes for the same reason: the strip's four corners are the court's loop's two nodes and the ring's
+/// two mitered ones, and a crowned strip lies in a plane only if the two ends' offset directions are
+/// parallel — which a corner's miter never is.
 fn halves_of(surface: MassSurface) -> (MassSurface, MassSurface) {
     match surface {
         MassSurface::WallTop { edge, .. } => (
             MassSurface::WallTop { edge, half: 0 },
             MassSurface::WallTop { edge, half: 1 },
+        ),
+        MassSurface::VoidTop { void, edge, .. } => (
+            MassSurface::VoidTop {
+                void,
+                edge,
+                half: 0,
+            },
+            MassSurface::VoidTop {
+                void,
+                edge,
+                half: 1,
+            },
         ),
         other => (other, other),
     }

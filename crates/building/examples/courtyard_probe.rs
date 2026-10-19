@@ -362,7 +362,7 @@ fn faces_sit_on_their_loops(built: &BuildingMesh, walked: &[Vec2], offset: &[Vec
         let want: &[Vec2] = match surface {
             MassSurface::VoidWall { void: 0, edge } => &[walked[edge], walked[(edge + 1) % count]],
             MassSurface::VoidInner { void: 0, edge } => &[offset[edge], offset[(edge + 1) % count]],
-            MassSurface::VoidTop { void: 0, edge } => &[
+            MassSurface::VoidTop { void: 0, edge, .. } => &[
                 walked[edge],
                 walked[(edge + 1) % count],
                 offset[edge],

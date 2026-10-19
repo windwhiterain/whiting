@@ -119,11 +119,21 @@ pub enum MassSurface {
         edge: usize,
     },
     /// The strip of wall top between a courtyard's two loops, one per void edge.
+    ///
+    /// # Invariants
+    ///
+    /// **`half` is the same reading [`WallTop`](Self::WallTop) carries, and for the same reason**: a court
+    /// under a crowned wall has a strip whose two ends stand at different elevations, so the strip warps
+    /// and its two triangles are two planes — which means two elements, because an element is a *planar*
+    /// shading group. `0` is the first triangle and the whole strip when it is planar, `1` is the second
+    /// triangle of a warped one.
     VoidTop {
         /// Which of the mass's voids.
         void: usize,
         /// Index of the void loop's edge.
         edge: usize,
+        /// Which triangle of the strip: `0`, or `1` for the second half of a warped strip.
+        half: usize,
     },
     /// The annulus between a courtyard's two loops, at the void loop's own elevations.
     ///
