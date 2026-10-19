@@ -58,6 +58,12 @@ const WALL: f32 = 0.4;
 const PLATE: f32 = 0.35;
 const FLOOR: f32 = 3.0;
 const OVERHANG: f32 = 0.7;
+
+/// How far a gable end oversails. **Zero: the street is 硬山**, so each house's gable walls are its party
+/// walls and its roof stops at them. With the ends oversailing by the same 0.7 as the eaves, five
+/// neighbours' roofs would each reach 0.7 into the next one's — which is what this row drew before the
+/// derivation could say which end a number was about.
+const GABLE: f32 = 0.0;
 const RISE: f32 = 1.9;
 const SINK: f32 = 0.1;
 const ROOF_THICKNESS: f32 = 0.24;
@@ -333,8 +339,9 @@ pub fn document() -> Building {
 
 /// Returns the roof over one seated mass: a gable on the 举架 ladder, with its tiles.
 fn roof_over(mass_id: building::MassId, mass: &Mass) -> building::roof::Roof {
-    let mut roof = derive::gable_roof(mass_id, mass, OVERHANG, RISE, SINK, ROOF_THICKNESS)
-        .expect("a plot is a rectangle");
+    let mut roof =
+        derive::gable_roof_by(mass_id, mass, OVERHANG, GABLE, RISE, SINK, ROOF_THICKNESS)
+            .expect("a plot is a rectangle");
     for plane in &mut roof.planes {
         plane.profile = PROFILE.to_vec();
     }

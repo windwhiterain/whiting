@@ -354,7 +354,35 @@ pub fn gable_roof(
     sink: f32,
     thickness: f32,
 ) -> Option<Roof> {
-    let eave = Eave::read(mass, overhang, sink)?;
+    gable_roof_by(host, mass, overhang, overhang, rise, sink, thickness)
+}
+
+/// Builds a gable roof whose **two ends may overhang by their own amount**, which is how a 悬山 is told
+/// from a 硬山.
+///
+/// # Invariants
+///
+/// - **`gable = 0` is a 硬山**: the eave loop's two end edges stand on the mass's own outline, so the
+///   roof stops at the gable walls instead of oversailing them. Every other reading of the roof — the
+///   ridge, the two planes, the fascia band — is the same derivation, because the ends are only where
+///   the loop was pushed out.
+/// - **`gable = overhang` is a 悬山**, and it is exactly what [`gable_roof`] answers: one call into this
+///   one with the same number twice, so no scene that was drawn before can move.
+/// - **A 硬山's gable is the wall's own top**, which is why the two edges must be *the* two ends and not
+///   any pair: the axis is read from the loop pushed out by the sides' amount, and the ends are the edges
+///   the axis does not run along.
+///
+/// Returns `None` for the same reason [`gable_roof`] does.
+pub fn gable_roof_by(
+    host: MassId,
+    mass: &Mass,
+    overhang: f32,
+    gable: f32,
+    rise: f32,
+    sink: f32,
+    thickness: f32,
+) -> Option<Roof> {
+    let eave = Eave::read_by(mass, overhang, gable, sink)?;
     Some(gable_over(&eave, host, rise, thickness))
 }
 
@@ -478,20 +506,47 @@ impl Eave {
     /// A parallelogram passes both, and so does every rectangle, which is the shape a starter and
     /// an author reach for first.
     fn read(mass: &Mass, overhang: f32, sink: f32) -> Option<Self> {
+        let elevation = mass.top - sink;
+        let nodes = offset_outward(&mass.outline, overhang, elevation);
+        Self::from_nodes(nodes, elevation)
+    }
+
+    /// Reads the eave loop with **one overhang for the long sides and another for the two ends**.
+    ///
+    /// # Invariants
+    ///
+    /// **The axis is read before the loop is built**, from the loop pushed out by the sides' own amount,
+    /// because which edges are the ends is a fact about the *mass* and not about the offsets. `ends = 0`
+    /// then leaves a **硬山**: the eave loop's two end edges stand on the mass's own outline, so the roof
+    /// does not oversail its gable walls. `ends = sides` is the **悬山** every scene drew before a roof
+    /// could say which end it meant, and it is the same call this file's other entry points make.
+    fn read_by(mass: &Mass, sides: f32, ends: f32, sink: f32) -> Option<Self> {
+        let elevation = mass.top - sink;
+        let probe = offset_outward(&mass.outline, sides, elevation);
+        let long_side = long_side_of(&probe)?;
         let count = mass.outline.len();
+        let amounts: Vec<f32> = (0..count)
+            .map(|index| {
+                if index == long_side || index == (long_side + 2) % count {
+                    sides
+                } else {
+                    ends
+                }
+            })
+            .collect();
+        let nodes = offset_outward_by(&mass.outline, &amounts, elevation);
+        Self::from_nodes(nodes, elevation)
+    }
+
+    /// Reads everything a roof needs from an eave loop that has already been pushed out.
+    fn from_nodes(nodes: Vec<PlanNode>, elevation: f32) -> Option<Self> {
+        let count = nodes.len();
         if count != 4 {
             return None;
         }
-        let elevation = mass.top - sink;
-        let nodes = offset_outward(&mass.outline, overhang, elevation);
         let position = |index: usize| nodes[index].position;
 
-        // Which pair of opposite edges is longer: the pair that is, is the axis the roof runs along.
-        let pair = |first: usize, second: usize| {
-            distance(position(first), position((first + 1) % 4))
-                + distance(position(second), position((second + 1) % 4))
-        };
-        let long_side = if pair(0, 2) >= pair(1, 3) { 0 } else { 1 };
+        let long_side = long_side_of(&nodes)?;
         let near = (long_side + 3) % 4;
         let far = (long_side + 1) % 4;
         let across_side = (long_side + 2) % 4;
@@ -607,6 +662,41 @@ impl Eave {
 /// measures the difference: a reversed rectangle's eave comes out *smaller* than the outline it
 /// came from.
 fn offset_outward(nodes: &[PlanNode], amount: f32, elevation: f32) -> Vec<PlanNode> {
+    offset_outward_by(nodes, &vec![amount; nodes.len()], elevation)
+}
+
+/// Returns which pair of a quadrilateral's opposite edges is longer: `0` for the first pair, `1` for the
+/// second, which is the axis the roof runs along. `None` when an edge has no length.
+fn long_side_of(nodes: &[PlanNode]) -> Option<usize> {
+    if nodes.len() != 4 {
+        return None;
+    }
+    let pair = |first: usize, second: usize| {
+        distance(nodes[first].position, nodes[(first + 1) % 4].position)
+            + distance(nodes[second].position, nodes[(second + 1) % 4].position)
+    };
+    let (first, second) = (pair(0, 2), pair(1, 3));
+    if first <= f32::EPSILON || second <= f32::EPSILON {
+        return None;
+    }
+    Some(if first >= second { 0 } else { 1 })
+}
+
+/// Returns the loop pushed out by **one amount per edge**, mitred at every corner.
+///
+/// # Invariants
+///
+/// **A corner is the intersection of the two edges' own slid lines**, which is the one definition that
+/// stays true when the two edges slide by different amounts. Edge `i` slides to the line through its
+/// start point at a distance `amounts[i]` along its outward normal; the node between edges `i - 1` and
+/// `i` is where those two lines cross, so solving
+/// `(X - P)·u = a_before` and `(X - P)·v = a_after` for unit normals `u`, `v` gives it exactly, and the
+/// uniform case reduces to the same mitre the one-amount version already used.
+///
+/// **Two parallel edges that slide by different amounts leave no corner**, because their lines never
+/// cross. That is the doubled-back node the one-amount version answers with a single edge's normal, and
+/// so does this one: it takes the after edge's own amount, which is the line the node belongs to.
+fn offset_outward_by(nodes: &[PlanNode], amounts: &[f32], elevation: f32) -> Vec<PlanNode> {
     let count = nodes.len();
     let normal = |from: usize, to: usize| -> Vec2 {
         let step = difference(nodes[to].position, nodes[from].position);
@@ -616,21 +706,41 @@ fn offset_outward(nodes: &[PlanNode], amount: f32, elevation: f32) -> Vec<PlanNo
         }
         [step[1] / length, -step[0] / length]
     };
+    let amount = |index: usize| amounts.get(index).copied().unwrap_or(0.0);
+    // **The uniform case keeps the arithmetic it has always had.** The general crossing of two slid lines
+    // agrees with it in exact arithmetic and not in the last bit, and eleven rendered plates are pinned to
+    // what this function answered before it could take two amounts. A derivation that has been drawn from
+    // is not the place to change a rounding.
+    let uniform = amounts.len() == count && amounts.windows(2).all(|pair| pair[0] == pair[1]);
     (0..count)
         .map(|index| {
-            let before = normal((index + count - 1) % count, index);
-            let after = normal(index, (index + 1) % count);
-            let summed = [before[0] + after[0], before[1] + after[1]];
-            let length = length(summed);
-            let delta = if length <= f32::EPSILON {
-                // A node where the loop doubles back: one edge's normal is the best answer there is.
-                [after[0] * amount, after[1] * amount]
+            let before_edge = (index + count - 1) % count;
+            let after_edge = index;
+            let (u, v) = (
+                normal(before_edge, index),
+                normal(index, (index + 1) % count),
+            );
+            let (a, b) = (amount(before_edge), amount(after_edge));
+            let doubled_back = length([u[0] + v[0], u[1] + v[1]]) <= f32::EPSILON;
+            let delta = if uniform {
+                if doubled_back {
+                    [v[0] * b, v[1] * b]
+                } else {
+                    let summed = [u[0] + v[0], u[1] + v[1]];
+                    let reach = b / dot(summed, v).max(1.0e-3);
+                    [summed[0] * reach, summed[1] * reach]
+                }
+            } else if doubled_back || (1.0 - dot(u, v) * dot(u, v)) <= 1.0e-6 {
+                // Two edges that are parallel slide to two lines that never cross: the after edge's own
+                // normal is the line the node belongs to.
+                [v[0] * b, v[1] * b]
             } else {
-                // The bisector, scaled so that it reaches `amount` along either edge's normal. The
-                // two lengths cancel: the offset is the *sum* of the normals divided by its own dot
-                // with either of them, which is the intersection of the two slid edge lines.
-                let reach = amount / dot(summed, after).max(1.0e-3);
-                [summed[0] * reach, summed[1] * reach]
+                // The two slid lines' crossing, written in the normals' own basis.
+                let shared = dot(u, v);
+                let scale = 1.0 / (1.0 - shared * shared);
+                let alpha = (a - b * shared) * scale;
+                let beta = (b - a * shared) * scale;
+                [u[0] * alpha + v[0] * beta, u[1] * alpha + v[1] * beta]
             };
             PlanNode::new(
                 [

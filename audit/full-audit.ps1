@@ -212,7 +212,7 @@ foreach ($pkg in $expect.Keys) {
 "--------------------------------------------------------------------"
 "[5/8] every example in building and gallery"
 "--------------------------------------------------------------------"
-foreach ($pair in @(@("whiting-building", "building", 36), @("whiting-gallery", "gallery", 17))) {
+foreach ($pair in @(@("whiting-building", "building", 37), @("whiting-gallery", "gallery", 17))) {
     $pkg = $pair[0]; $dir = $pair[1]; $want = $pair[2]
     $examples = Get-ChildItem (Join-Path (Join-Path (Join-Path $root "crates") $dir) "examples") -Filter *.rs | Sort-Object Name
     $ran = 0; $bad = @()
@@ -238,7 +238,7 @@ $pinned = [ordered]@{
     shed       = "C3A11B4465746840"; terrace    = "D2E405C7B242E92B"; wing       = "B4516134C2EC5D6E"
     workshop   = "7FE07F345A451B51"; yard       = "F36F4CB6A14312FA"; identity   = "717B5570DDAD7A0D"
     stilt      = "03510DF10AD236E4"; compound   = "FA4AD3009BD581AC"
-    street     = "247F1868C99BD982"
+    street     = "BD46F1ACB223C05F"
 }
 # **The eleven above moved together on 2026-10-19, and it is recorded here rather than in a commit
 # message nobody reads beside the number.** Causes, each measured by a verification pass that rendered
@@ -290,9 +290,9 @@ $rows = 0
 foreach ($line in $p) { if ($line -match '^\s+\S+\s+(\d+) row\(s\), ids 1\.\.=(\d+)') { $rows += [int]$Matches[1] } }
 $twoWay = @($p | Where-Object { $_ -match 'the channel is two-way for every scene: (\w+)' })
 $twoWayValue = if ($twoWay.Count -gt 0) { ($twoWay[0] -split ': ')[-1] } else { "(line absent)" }
-"  rows summed over scenes : $rows   (audit says 14220)"
+"  rows summed over scenes : $rows   (audit says 13620)"
 "  two-way line reads      : $twoWayValue"
-if ($rows -ne 14220) { $script:fail += "identity rows ($rows, expected 14220)" }
+if ($rows -ne 13620) { $script:fail += "identity rows ($rows, expected 13620)" }
 if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
 Gate "scene_identity_probe" $code 0
 

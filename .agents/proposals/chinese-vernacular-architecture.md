@@ -943,6 +943,25 @@ arcade (the 骑楼 needs a first floor standing out over the walk — the 挑廊
 walls (the joint is two walls touching), and no plot behind a plot (a block's own depth polygon is a
 second derivation).
 
+### The two gables: 悬山 and 硬山 are one derivation with two numbers
+
+The roof arc left a gap that every 西南 民居 names: **a roof took one overhang for every edge**, so a
+硬山 — the gable end flush with the wall, which is what a terrace of party-walled houses is — could not be
+written at all. It is written now.
+
+`Eave::read_by(mass, sides, ends, sink)` builds the eave loop from **one amount per edge**, with the two
+gable ends chosen by the axis rather than by a caller's guess. A corner is the **crossing of the two
+edges' own slid lines**, so a 硬山's corner is held in `x` by the end edge (which did not move) and pushed
+in `z` by the long edge (which did) — which is the one thing a corner of a 硬山 *is*.
+
+| number | value |
+| --- | --- |
+| the probe | over one 10 × 6 mass: 悬山 **11.400 × 7.400, 84.360 m², 18.559214 m³**; 硬山 **10.000 × 7.400, 74.000 m², 16.279993 m³**; both **20 faces, euler 2, manifold, 0 violations** |
+| the difference | the run is **1.400 m** shorter, which is exactly two ends × 0.70, and the long sides do not move |
+| backwards | `gable_roof(x, y)` and `gable_roof_by(x, y, y)` are **the same roof, field for field** — the eleven pinned plates could not move, and the only uniform-case change is a rounding that was deliberately left alone |
+| the street | five houses become 硬山: hash `BD46F1ACB223C05F`, and **the five roofs stop reaching into their neighbours** — the interpenetration the 悬山 row drew was the party wall being crossed twice |
+| the rows | street **4 940 → 4 340**, twelve scenes **14 220 → 13 620**: a shorter eave carries four fewer rolls per slope, and 160 fewer roll segments is 800 of the 600 measured — the rest is the bands' own re-count |
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not
