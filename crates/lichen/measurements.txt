@@ -1,0 +1,59 @@
+=== lighting ===
+edit              : lighting
+baseline          : 12.083 s
+session           : 1.838 s
+fresh (cold)      : 11.958 s
+speed-up          : 6.51x
+cells             : reused 5 frozen 1 dropped 1
+session document  : id 6 fp cf82f9f2fcee03c2
+fresh document    : id 5 fp cf82f9f2fcee03c2
+equivalent        : yes
+slab holds        : 6
+
+=== detail ===
+edit              : detail
+baseline          : 12.053 s
+session           : 3.855 s
+fresh (cold)      : 12.218 s
+speed-up          : 3.17x
+cells             : reused 3 frozen 3 dropped 3
+session document  : id 8 fp 17b47bde3b28fa6b
+fresh document    : id 5 fp 17b47bde3b28fa6b
+equivalent        : yes
+slab holds        : 6
+
+=== leaves ===
+edit              : leaves
+baseline          : 12.009 s
+session           : 4.290 s
+fresh (cold)      : 12.824 s
+speed-up          : 2.99x
+cells             : reused 3 frozen 3 dropped 3
+session document  : id 8 fp bde4d5f12a67a844
+fresh document    : id 5 fp bde4d5f12a67a844
+equivalent        : yes
+slab holds        : 6
+
+=== envelope ===
+edit              : envelope
+baseline          : 11.997 s
+session           : 10.899 s
+fresh (cold)      : 11.810 s
+speed-up          : 1.08x
+cells             : reused 1 frozen 5 dropped 5
+session document  : id 10 fp 2d52c39a234b8a81
+fresh document    : id 5 fp 2d52c39a234b8a81
+equivalent        : yes
+slab holds        : 6
+
+=== seed ===
+edit              : seed
+baseline          : 12.125 s
+session           : 9.788 s
+fresh (cold)      : 9.784 s
+speed-up          : 1.00x
+cells             : reused 0 frozen 6 dropped 6
+session document  : id 11 fp 5beedf1789fd4241
+fresh document    : id 5 fp 5beedf1789fd4241
+equivalent        : yes
+slab holds        : 6

@@ -1,0 +1,21 @@
+[package]
+name = "whiting-lichen-stages"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The alpine oak's plant scene as six cacheable lichen stages over one interning slab."
+
+[dependencies]
+# The three crates the six stages read: the oak's own builder, the plant it
+# expands, and the document it writes. Nothing in `slab` or `stages` names lichen.
+gallery = { workspace = true }
+vegetation = { workspace = true }
+definition = { workspace = true }
+# The library source the generator renders, and the build tag it stamps. This is
+# the only arrow between the two repositories, and it points from Whiting to
+# lichen: lichen names no Whiting crate.
+lichen-language = { workspace = true }
+
+[[example]]
+name = "generate_link"

@@ -1,0 +1,18 @@
+[package]
+name = "whiting-lichen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The lichen program that draws the alpine oak, and the probe that times its edits."
+
+[dependencies]
+# The language the program runs on, and the loader that reads the `link`
+# directive. The dylib itself is reached by symbol through `libloading`, so the
+# driver never links it and never names the stages crate.
+lichen-language = { workspace = true }
+lichen-lowlevel = { workspace = true }
+libloading = "0.8"
+
+[[example]]
+name = "incremental_probe"

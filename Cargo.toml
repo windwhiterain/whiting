@@ -14,6 +14,9 @@ members = [
     "crates/patch",
     "crates/terrain",
     "crates/vegetation",
+    "crates/lichen-stages",
+    "crates/lichen-link",
+    "crates/lichen",
 ]
 
 [workspace.package]
@@ -37,6 +40,22 @@ building = { path = "crates/building", package = "whiting-building" }
 patch = { path = "crates/patch", package = "whiting-patch" }
 terrain = { path = "crates/terrain", package = "whiting-terrain" }
 vegetation = { path = "crates/vegetation", package = "whiting-vegetation" }
+
+# The lichen language, by path into a sibling checkout. **This is the only arrow
+# between the two repositories and it points this way**: lichen is the runtime and
+# this repository is the application, so a lichen-vm checkout must build with no
+# `Whiting` beside it and must never name one of these crates. What the dependency
+# is for is `crates/lichen-stages`: the alpine oak's plant scene as six cached
+# lichen stages, loaded through a `link` directive from
+# `crates/lichen/examples/alpine_oak.lichen`. See
+# `.agents/proposals/plant-pipeline-into-lichen.md`.
+lichen-language = { path = "../lichen-vm/crates/lichen-language" }
+lichen-lowlevel = { path = "../lichen-vm/crates/lichen-lowlevel" }
+lichen-utils = { path = "../lichen-vm/crates/lichen-utils" }
+# The generated dylib the stages are loaded through; written by
+# `cargo run -p whiting-lichen-stages --example generate_link`.
+lichen-stages = { path = "crates/lichen-stages", package = "whiting-lichen-stages" }
+lichen-link = { path = "crates/lichen-link", package = "whiting-lichen-link" }
 
 # The `facet` facade and `facet-core` must be the same line: `facet-json 0.44.7`
 # requires `facet ^0.45`, which pins `facet-core =0.45.0`. Declaring `facet = "0.44"`
