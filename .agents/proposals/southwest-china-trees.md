@@ -576,6 +576,25 @@ belts, from the notes' altitude ranges:
 The transect states its compression in the sidecar and in its own doc: it is a diagram that is also a
 picture, and it is the frame the ten silhouettes are finally judged in together.
 
+**The four frames, as delivered (2026-10-19).** `site_montane` (`out/arc7-montane6.png`): one slope
+with three heroes, eleven companions at a coarser dial, six hundred tufts and a standing stone,
+under a raking morning. `site_valley` (`out/sw-sites/sw-sites-site_valley.png`): red dry earth, a
+flowering 木棉 with red corollas on bare limbs as the subject, a second 木棉, two 桫椤 parasols and a
+fallen log for E2, under a hot noon. `site_subalpine` (`out/sw-sites/sw-sites-site_subalpine.png`):
+a closed stand of 丽江云杉 and 苍山冷杉 seen from inside it, 大树杜鹃 with pink trusses in the left
+foreground, a cold blue floor and a stone. `site_transect` (`out/sw-sites/sw-sites-site_transect.png`):
+the belts in one frame — spires on the shoulder, dove and oak mid-slope, the kapok's flowering
+armature at the valley end, all of it descending into haze.
+
+E1 passes on all four: every species stands at its note's altitude, in its belt, under an hour the
+belt would have. E2 passes on all four (a stone of 1.2 m, or the valley's log of stated length). E3
+passes on three and is weak on the transect, where the belts are legible but the slope's empty
+foreground and its heavy haze make a diagram more than a picture. The named improvements, in the
+order they would matter: **site heroes drawn at `around: 24`** (the subalpine stand's boles are
+smooth because a 20-side plated section is resampled to twelve at `Detail::DEFAULT`), a denser tuft
+cover in the near band, less haze on the transect (0.010 to about 0.006), and a darker kapok bark —
+its pale grey pillars are the one surface in the valley that reads as concrete.
+
 **H1–H5 are specimen bars and a site frame is not a specimen.** `audit/frame_stats.py --crown` on the
 montane frame reports coverage 0.056 and interior share 0.195, because its "crown box" is the whole
 1 600 × 1 000 frame rather than one tree's silhouette: the numbers are true and they mean nothing. A
