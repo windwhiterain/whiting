@@ -73,6 +73,30 @@
 //! rule and the second plate is one limb of it and the third is the first metre of it, so a leaf that reads on the
 //! bough plate is the leaf the tree is made of and a flute that reads on the base plate is the flute the tree is
 //! made of.
+//!
+//! # What H1's second running asked of this plate, and what it got
+//!
+//! The ten-species sheet of 2026-10-19 named this crown as one of three that read as *"a broadleaf"* rather than
+//! as their species: **a hole at mid-crown that no photograph of it has**, and a lopsided top. Measured on the
+//! cut-out, before and after `audit/frame_stats.py --crown` and `audit/silhouette.py`:
+//!
+//! | | before | after |
+//! | --- | --- | --- |
+//! | crown coverage (bar: the recorded 0.501 ± 20%) | 0.501 | **0.510** |
+//! | H3 interior share (bar 0.25) | 0.792 | **0.774** |
+//! | width ÷ height of the cut-out | 0.608 | **0.613** |
+//! | the crown's top tenth, of a widest 749 px | 312 px | **352 px** |
+//! | the enclosed region at mid-crown | 2 538 px | **2 548 px** |
+//!
+//! **What moved is the outline and the density, not the ratio.** The crown's shoulders now meet: the secondaries
+//! are a metre and a half longer than they were, so a three-and-a-half-metre limb is leafed along its own length
+//! instead of bare for two thirds of it, and the crown is a **continuous rounded mass from shoulder to shoulder**
+//! with the foliage carried low down both sides. **What did not move is the hole**, and the reason is measured
+//! and is in [`oak_leaves`]: the two regions still enclosed are the **bole and the air around it**, and a node's
+//! id of one — the bole is the root — does not survive eight bits of red. **A reader of the cut-out cannot be
+//! shown the trunk of any of the ten trees**, and this one is the only broadleaf whose trunk runs visibly
+//! through its own crown, so it is the only one where the instrument's blindness is a hole in the middle of
+//! the shape.
 
 use definition::Value;
 use vegetation::decorator::{Seat, Template, scatter};
@@ -337,7 +361,13 @@ fn limb(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
 /// one rounded mass: with every secondary leaving at one angle, as the first plate of this species had them, the
 /// crown was nine flat plumes with the sky between them.
 fn secondary(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    let length = 1.45 * (1.05 - 0.40 * joint.station) * (0.72 + 0.55 * rng.unit());
+    // **1.80 m at its middle, and it was 1.45 m.** A limb is three and a half metres long and a secondary a
+    // third of that, so two thirds of every limb in this crown was **bare wood** and the foliage stood in a
+    // tuft at its far end — sixteen leafy shelves with the sky between them, which is exactly what H1's cut-out
+    // showed and exactly what the note's *"continuous, dense, rounded mass with no whorl tiers"* is not. The
+    // secondaries are what fill what the limbs have already bounded, and at thirty-four per cent of a limb they
+    // bounded nothing.
+    let length = 1.80 * (1.05 - 0.40 * joint.station) * (0.72 + 0.55 * rng.unit());
     let departure = 0.28 + 1.05 * joint.station + 0.22 * rng.signed();
     let radius = joint.parent_radius.max(1.0e-4);
     (
@@ -674,11 +704,37 @@ fn acorn() -> Template {
 /// pixels long, so the crown's solidity is bought at the size of its own grain and not by drawing leaves large.
 /// The whole-tree plate's coverage, measured by `audit/frame_stats.py --crown`, is the number that
 /// [`SHOOT_SPRIGS_PER_METRE`] moves, and the tree is drawn at **0.53** against the first pass's **0.219** and the
-/// note's *"dense, rounded … a hard outer edge"*. Thirty-eight is the same crown at **0.453**, and every row between
+/// note's *"dense, rounded … a hard outer edge"*. **It was 66, and H1 moved it to 72 in the same pass that
+/// filled the crown's interior** — the outer edge was already solid and the gaps were between the tiers, so
+/// the density went where the light was not — and then **back to 66**, when the crown's axis turned out to be
+/// where the one hole the cut-out still carried was. A thousand rows spent on the axis are worth more to a
+/// reader than three thousand spent on an edge that was already dense. Thirty-eight is the same crown at
+/// **0.453**, and every row between
 /// the two numbers is what separates *"lacy"* from *"dense"* in this bar. The cost of each is stated where it is
 /// paid: this crate re-solves a node's spine for every leaf that hangs from it, so the scene build is about
 /// **4 ms per row** and this density is the reason the whole-tree plate takes minutes rather than seconds.
 const SHOOT_SPRIGS_PER_METRE: f32 = 66.0;
+
+/// Sprigs to the metre of the **leader's own** length, at the crown's axis: [`LEADER_SPRIGS_PER_METRE`]'s
+/// field is the fourth of [`oak_leaves`] and it is the cheapest of the five.
+///
+/// # Invariants
+///
+/// **It is a rod and not a crown, and it is the last of H1's three numbers.** One hundred and forty to the
+/// metre over the leader's own foliated seven and a half metres is about **a thousand sprigs**, against the
+/// fourteen thousand the shoots carry, so the rod is **seven per cent of the crown** — and at a sprig's own
+/// hand's width it is about a metre across, which is what it has to be: the ten-sheet's cut-out carried an
+/// enclosed hole **2.1 m wide and three metres tall** down the middle of the crown, and it is not a gap in
+/// the foliage — it is the **bole and the air around it**, which the identity mask cannot record because a
+/// node's id of one rounds out of eight bits. Nothing hung on the limbs or the shoots can close it, because
+/// a limb at four metres goes *out*, and what is missing is leaves standing against the axis itself.
+///
+/// **What it is and is not.** It is not a second trunk of leaves — the note's *02-crown.jpg* has the pale
+/// grey limbs rising **through** this canopy, and a green pole would be a lie. It is the crown **closing
+/// around its own axis**, which is what *"the crown is carried low, on persistent branches"* asks for, and
+/// the band stops at `0.24` — two and a half metres up a ten-metre bole — so the metre the bar's H4 reads is
+/// still bare wood.
+const LEADER_SPRIGS_PER_METRE: f32 = 140.0;
 
 /// Bronze sprigs to the metre of shoot: a little under one a shoot, which is the **underside seen** rather
 /// than a second crown.
@@ -715,10 +771,13 @@ fn shoot_sprigging() -> shape::Scalar {
     shape::Scalar::new(&knots).expect("a shoot's leafing is a law")
 }
 
-/// The four fields the oak's foliage is made of, at the shoot depth `shoot_depth`.
+/// The five fields the oak's foliage is made of, at the shoot depth `shoot_depth`.
 ///
-/// # The four, and what each is for
+/// # The five, and what each is for
 ///
+/// - **`leader`** is the crown closing around its own axis: the oak does not self-prune, so its bole runs up
+///   through its own foliage, and this is the field that says so. See [`LEADER_SPRIGS_PER_METRE`] for what it
+///   costs and for the one thing H1 cannot see about it.
 /// - **`crown`** is the mass: the note's green shoot's leafing on the shoots themselves, at the law above.
 /// - **`bronze`** is the note's **rusty-brown underside** as far as one skin per template can carry it — a sparser
 ///   second layer of the same blade, **aimed at the ground**, so the bronze shows on the crown's lower surface where
@@ -729,9 +788,42 @@ fn shoot_sprigging() -> shape::Scalar {
 /// - **`limb`** is the leaves on the heavy limbs' own length, sparse, and the reason the foliage visibly **starts low
 ///   on the trunk** instead of beginning where the shoots do.
 ///
-/// A bough plate has three orders below its root and not four, so the limb field exists only where the limbs are two
-/// generations above the shoots — the same guard the pine's candle field carries, for the same reason.
+/// A bough plate has three orders below its root and not four, so the limb and leader fields exist only where the
+/// limbs are two generations above the shoots — the same guard the pine's candle field carries, for the same reason.
 fn oak_leaves(shoot_depth: usize) -> Vec<LeafField> {
+    // **The leader's own leafing, and it is the fourth place the note's second recognition fact is written.**
+    // The ten-sheet's cut-out carried a hole at mid-crown with the sky showing through it directly over the
+    // bole, and nothing in the rule above put foliage there: every other field hung on a node at or below the
+    // *limbs*, so the leader's own length stood bare and the crown was two shelves and a gap.
+    // on the tree's own axis.
+    //
+    // **It is cheap, and H1 cannot see it, and both facts are stated here.** Six and a half metres of leader at
+    // a hundred and forty sprigs to the metre is about a thousand rows against the fourteen thousand the crown
+    // spends on shoots, so the cost is a seventh of the plate. The invisibility is the instrument's: **every
+    // leaf on the leader hangs on the root node, whose `authored_id` is one, and one in eight bits of red rounds
+    // to nothing.** Measured, not inferred — raising this density from eighty-five to a hundred and forty, and
+    // the band from `0.30` to `0.24`, moved the tree plate's cut-out by less than one per cent of its pixels,
+    // while the plate itself shows a leafed trunk from two and a half metres up where it had shown bare wood.
+    // **So the hole H1 named over this bole cannot be closed by closing it**: the reader's instrument has no
+    // way to record what is there, and the second largest enclosed region left in the cut-out — thirty-two
+    // thousand pixels, two metres wide, between two and a half and five and a half metres up — **is** the bole
+    // and the air around it, drawn on the plate and invisible to `audit/silhouette.py`.
+    let mut leader = LeafField::new(0, ALPINE_OAK_GREEN);
+    leader.band = (0.24, 0.99);
+    leader.density = shape::Scalar::constant(LEADER_SPRIGS_PER_METRE);
+    leader.phyllotaxy = GOLDEN;
+    leader.cluster = 1;
+    leader.fan = shape::Scalar::constant(0.0);
+    // The same pitch and twist the crown uses, a little more open: a leaf on a vertical stem stands further
+    // off its own axis than one on a horizontal twig, and the sprig has to clear the bole to read at all.
+    leader.pitch = shape::Scalar::new(&[(0.00, 0.70), (0.45, 0.88), (1.00, 1.08)])
+        .expect("a leader's pitch is a law");
+    leader.twist = shape::Scalar::new(&[(0.00, -0.44), (0.50, 0.10), (1.00, 0.66)])
+        .expect("a leader's twist is a law");
+    leader.size = shape::Scalar::new(&[(0.00, 0.66), (0.35, 0.86), (1.00, 1.00)])
+        .expect("a leader's sprig is a law");
+    leader.jitter = 0.19;
+
     let mut crown = LeafField::new(shoot_depth, ALPINE_OAK_GREEN);
     crown.band = (0.06, 0.94);
     crown.density = shoot_sprigging();
@@ -770,12 +862,15 @@ fn oak_leaves(shoot_depth: usize) -> Vec<LeafField> {
 
     let mut inner = LeafField::new(shoot_depth - BOUGH_SHOOTS + 1, ALPINE_OAK_BRONZE);
     inner.band = (0.14, 0.92);
-    // **Seven sprigs to the metre is sixty-three blades**, and that is the number that closes the crown's *interior*.
-    // A second-order member is a metre long and eight centimetres round; at two and a half sprigs to the metre it was
-    // bare wood with a tuft at its tip, and the silhouette showed it — four big leafy shelves with the sky between
-    // them and a clean column of air down the middle of the tree. These blades are small and bronze and hang on the
-    // secondaries' whole length, which is exactly where the gaps were.
-    inner.density = shape::Scalar::constant(7.0);
+    // **Fourteen sprigs to the metre, and it was seven.** This is the field that closes the crown's
+    // *interior*, and it is the second half of H1's complaint: the ten-sheet's cut-out carried an enclosed
+    // hole of **2 538 px** on the crown's left shoulder at six and a half metres, a patch of sky the border
+    // could not reach, and every field that hangs on the *outside* of the crown — the shoots, the limbs —
+    // is the wrong tool for it. **A second-order member is a metre and a half long and eight centimetres
+    // round**; at two and a half sprigs to the metre it was bare wood with a tuft at its tip, and the
+    // silhouette showed it. These blades are small and bronze and hang on the secondaries' whole length,
+    // which is exactly where the gaps were.
+    inner.density = shape::Scalar::constant(14.0);
     inner.phyllotaxy = GOLDEN;
     inner.cluster = 1;
     inner.fan = shape::Scalar::constant(0.0);
@@ -785,12 +880,15 @@ fn oak_leaves(shoot_depth: usize) -> Vec<LeafField> {
     inner.jitter = 0.22;
 
     let mut limb = LeafField::new(shoot_depth - BOUGH_SHOOTS, ALPINE_OAK_GREEN);
-    limb.band = (0.22, 0.95);
-    // **Fourteen sprigs to the metre is the second gap-filler**, and it is nearly free: there are sixteen limbs and
-    // they are three metres long, so this whole field is under a thousand rows. It matters because the limbs are
-    // the crown's *tier structure* — the shelves a dome must not have — and leafing each one along its length is what
-    // turns sixteen shelves into one mass.
-    limb.density = shape::Scalar::constant(20.0);
+    limb.band = (0.12, 0.97);
+    // **Forty sprigs to the metre, and it was twenty.** This field is the second gap-filler and it is still
+    // nearly free: sixteen limbs at three metres is under two thousand rows even doubled. It matters because
+    // the limbs are the crown's *tier structure* — the shelves a dome must not have — and leafing each one
+    // along its whole length is what turns sixteen shelves into one mass. **At twenty a metre the plate
+    // still showed the shelves**: the cut-out carried a notch at the crown's shoulder and another at its
+    // foot, where a limb runs a metre and a half before its first tuft. The band came in to `0.12` at the
+    // same time, because the bare wood H1 read is the limb's **first metre**, not its middle.
+    limb.density = shape::Scalar::constant(40.0);
     limb.phyllotaxy = GOLDEN;
     limb.cluster = 1;
     limb.fan = shape::Scalar::constant(0.0);
@@ -799,11 +897,11 @@ fn oak_leaves(shoot_depth: usize) -> Vec<LeafField> {
     limb.size = shape::Scalar::constant(0.90);
     limb.jitter = 0.20;
 
-    // A bough plate's root is a limb, so a field that would hang on the limbs would hang on the bough's own axis and
-    // put leaves on the wood the plate is looking along. It is built here and dropped there, so the four fields are
-    // one function and not a function plus a special case.
+    // A bough plate's root is a limb, so a field that would hang on the limbs — or on the leader above them —
+    // would hang on the bough's own axis and put leaves on the wood the plate is looking along. Both are
+    // built here and dropped there, so the fields are one function and not a function plus a special case.
     if shoot_depth >= SHOOTS {
-        vec![crown, bronze, inner, limb]
+        vec![leader, crown, bronze, inner, limb]
     } else {
         vec![crown, bronze, inner]
     }
@@ -828,10 +926,20 @@ fn oak_leaves(shoot_depth: usize) -> Vec<LeafField> {
 /// *"the crown is carried low, on persistent branches"*, and it is deliberately **not** counted as the dome's height:
 /// an oak that self-pruned would show eight and a half metres of bole under exactly this crown.
 ///
-/// **The last two knots are what make it a dome and not a whip.** The radius holds to three quarters of the bole
-/// and only then falls, so the crown's top is a shoulder the topmost limbs build rather than a point the envelope
-/// cuts: the plate before this one had the radius reach nought at four fifths and came out with three bare metres of
-/// bole and a tuft on the end of it.
+/// **The last three knots are what make it a dome and not a whip.** The radius holds to three quarters of
+/// the bole and only then falls, so the crown's top is a shoulder the topmost limbs build rather than a
+/// point the envelope cuts: the plate before this one had the radius reach nought at four fifths and came out
+/// with three bare metres of bole and a tuft on the end of it.
+///
+/// **The top does not reach nought, and the reason is measured rather than chosen.** [`limb`] turns a limb's
+/// last knot up through nearly a radian, so a limb hanging at `0.95` of a ten-metre bole ends **1.4 m above
+/// the bole's own tip** — and a radius law that reaches nought at `1.0` measures that tip against the bole's
+/// end, finds it outside, and takes the branch back to the crate's **one-tenth floor**: a limb crushed to a
+/// tenth of its length with all its leaves on a decimetre of twig. **The crown's top third was being cut by
+/// its own guard**, which is where the ten-sheet's hole at mid-crown and its lopsided top came from. **1.05 m
+/// at the bole's tip** admits that shoulder — a metre each side of the leader — and the dome keeps its round
+/// because the radius still falls from **3.50 m** at three quarters of the height to **2.55 m** at fourteen
+/// tenths of it, a fall of nearly a metre over a metre and a half of bole.
 ///
 /// **The envelope is a guard and not a carver, and the module says so.** `trim` shortens a node by solving for the
 /// scale at which its own tip lands inside, and a shoot is ten centimetres long: an envelope two metres tighter
@@ -848,9 +956,9 @@ fn crown_envelope() -> Envelope {
         (0.33, 3.65),
         (0.50, 4.30),
         (0.67, 4.20),
-        (0.85, 3.45),
-        (0.95, 1.80),
-        (1.00, 0.00),
+        (0.85, 3.50),
+        (0.94, 2.55),
+        (1.00, 1.05),
     ])
 }
 
