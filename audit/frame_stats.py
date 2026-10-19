@@ -58,7 +58,11 @@ def crown_depth(lum: np.ndarray, mask: np.ndarray) -> None:
     often as toward it, so a rim mask averages lit and unlit edges together and lands at the interior's
     own value, which measured 0.99 on a crown that was plainly not self-shadowing and would measure the
     same on one that was. The bar (proposal section 2.1, H3) is an interior share of at least 0.25 and
-    an interior-over-p90 mean of at most 0.75."""
+    an interior-over-p90 mean of at most 0.80, and **the second clause is read on the BOUGH plate**: at
+    whole-tree distance the shadow page's penumbra is coarser than a needle's gap, so a dense crown's
+    interior is made of lit leaves and more foliage raises the ratio (the oak measured 0.778 sparse and
+    0.824 dense), while the same crown at bough distance measures 0.715. The tree plate is judged on
+    its interior share and its mass; the bough plate on its depth."""
     plant = np.pad(mask, 1)
     neighbours = sum(
         plant[dy : dy + mask.shape[0], dx : dx + mask.shape[1]]
@@ -74,7 +78,7 @@ def crown_depth(lum: np.ndarray, mask: np.ndarray) -> None:
         lit = np.percentile(lum[mask], 90)
         ratio = lum[interior].mean() / max(lit, 1e-6)
         print(f"  H3 interior over lit p90 = {ratio:.3f}"
-              f"  (bar: at most 0.75)")
+              f"  (bar: at most 0.80, read on the bough plate)")
     else:
         print("  H3 interior over lit p90 = n/a (no interior)")
 

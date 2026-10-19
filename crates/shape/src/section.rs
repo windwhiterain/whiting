@@ -25,6 +25,19 @@
 //! counts over an edge table, and an answer here costs an ear-clip and a pairwise clip rather than a
 //! predicate one calls in a loop. The checks that *are* here are the ones whose failure would make
 //! the arc-length table a division by zero rather than a difference of taste.
+//!
+//! # Sampling, which is a promise about the author's features
+//!
+//! [`Section::ring`] resamples **by arc length** at the vertex count the caller asks for, whatever the
+//! outline authored. Two consequences an author must plan for, both measured on real bark:
+//!
+//! - **A feature narrower than one sample is lost, not blurred.** A fifteen-degree fissure placed on
+//!   one point of a twenty-four-point outline came back as a smooth column at `around = 12`, because
+//!   the resample landed either side of it. A fissure a whole point wide survives.
+//! - **Raising the dial is the cure, and the caller is where it is raised.** `vegetation::expand::wood`
+//!   samples at `max(detail.around, section.corners())` so an authored corner count is never silently
+//!   rounded off; a section whose *notch* is one point wide still wants its corners echoed, which is
+//!   what that `max` is for. State a feature's width in the section's own comment.
 
 use crate::math::{Vec2, clamp, cross, distance, lerp};
 
