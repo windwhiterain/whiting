@@ -160,6 +160,7 @@ fn describe(element: Element) -> String {
         Element::Wall(id, surface) => format!("wall {}, {}", id.0, wall_surface(surface)),
         Element::Slab(id, surface) => format!("slab {}, {}", id.0, slab_surface(surface)),
         Element::Member(id, surface) => format!("member {}, {}", id.0, member_surface(surface)),
+        Element::Roll(id, surface) => format!("{}, {}", roll_title(id), roll_surface(surface)),
         Element::Part { placement, surface } => match surface {
             PartSurface::Mass(id, surface) => format!(
                 "part {placement}, template mass {}, {}",
@@ -186,6 +187,11 @@ fn describe(element: Element) -> String {
                 id.0,
                 member_surface(surface)
             ),
+            PartSurface::Roll(id, surface) => format!(
+                "part {placement}, template {}, {}",
+                roll_title(id),
+                roll_surface(surface)
+            ),
         },
     }
 }
@@ -197,6 +203,9 @@ fn slab_surface(surface: crate::slab::SlabSurface) -> String {
         crate::slab::SlabSurface::Bottom => "its underside".to_owned(),
         crate::slab::SlabSurface::Edge { index } => {
             format!("the edge from node {index}")
+        }
+        crate::slab::SlabSurface::VoidEdge { index } => {
+            format!("the side of the hole from node {index}")
         }
     }
 }
@@ -210,6 +219,22 @@ fn wall_surface(surface: crate::wall::WallSurface) -> String {
         crate::wall::WallSurface::End { start: false } => "its far end".to_owned(),
         crate::wall::WallSurface::Bottom => "its underside".to_owned(),
         crate::wall::WallSurface::Top => "its top".to_owned(),
+    }
+}
+
+/// Returns what a roll is called in a name: its roof and its own index on that roof.
+fn roll_title(id: crate::covering::RollId) -> String {
+    format!("roof {}, its roll {}", id.roof.0, id.index)
+}
+
+/// Returns the sentence for one of a roll's surfaces.
+fn roll_surface(surface: crate::covering::RollSurface) -> String {
+    match surface {
+        crate::covering::RollSurface::Base => "its base".to_owned(),
+        crate::covering::RollSurface::Slope { side: 0 } => "its near slope".to_owned(),
+        crate::covering::RollSurface::Slope { .. } => "its far slope".to_owned(),
+        crate::covering::RollSurface::End { start: true } => "its eave end".to_owned(),
+        crate::covering::RollSurface::End { start: false } => "its crest end".to_owned(),
     }
 }
 

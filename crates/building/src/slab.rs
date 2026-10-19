@@ -54,6 +54,19 @@ pub enum SlabSurface {
         /// The index of the loop's starting node of that edge.
         index: usize,
     },
+    /// One side of the hole through the slab, numbered by the hole loop's own start.
+    ///
+    /// # Invariants
+    ///
+    /// **It looks into the hole**, which is the side the material is not on: the slab is the ring
+    /// around it, so the hole's own wall faces the void. It is a surface of its own rather than an
+    /// [`Edge`](Self::Edge) because the two are different questions — one is the outside of the slab
+    /// and one is the inside of its hole — and a report that mixed them would name a face an author
+    /// cannot find.
+    VoidEdge {
+        /// The index of the hole loop's starting node of that edge.
+        index: usize,
+    },
 }
 
 /// What a slab is in the building it stands in.
@@ -113,6 +126,23 @@ pub struct Slab {
     /// role**: a plate, a floor and a roof all carry one, and a slab with no host does not move — which
     /// is what a canopy hung from a wall head and a step on a path both are.
     pub host: Option<MassId>,
+    /// The hole through it, if it has one: a stair going up, or a ceiling deliberately left open.
+    ///
+    /// # Invariants
+    ///
+    /// **One hole, and it is a loop strictly inside the plan.** A slab with a hole is a prism over a
+    /// ring: its two faces are annuli — the crate already has the annulus triangulation in
+    /// [`fill::ring_fill`](crate::fill::ring_fill), which is what a courtyard's own base uses — and the
+    /// hole's wall is a face of its own that looks *into* the hole. Either winding is accepted and
+    /// normalised, the way a courtyard's loop is: which way a hole is walked is not a fact about the
+    /// building.
+    ///
+    /// **A hole that cannot be filled is refused and not approximated.** The annulus triangulation
+    /// bridges two *convex* loops; a non-convex hole, or one that is not inside the plan, would be
+    /// filled with triangles that overlap, so the expansion answers
+    /// [`Problem::SlabVoidNotFilled`](crate::expand::Problem::SlabVoidNotFilled) instead. A hole that is
+    /// inside but whose solid came out open is caught by the document check like any other fault.
+    pub void: Option<Vec<Vec2>>,
 }
 
 impl Slab {
@@ -170,8 +200,18 @@ impl Slab {
             bottom,
             top,
             role,
+            void: None,
             host: None,
         }
+    }
+
+    /// Cuts one hole through it.
+    ///
+    /// The loop is taken as authored and normalised where it is read, because a hole's winding is not
+    /// a fact about the building.
+    pub fn with_void(mut self, void: Vec<Vec2>) -> Self {
+        self.void = Some(void);
+        self
     }
 
     /// Makes this slab the building's own, so seating moves it with the building.

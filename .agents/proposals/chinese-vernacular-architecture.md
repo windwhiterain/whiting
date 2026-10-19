@@ -692,9 +692,9 @@ the pass counts, which is the cheap half of the same list.
    through the eave (封火墙). This is the arc after which the house reads from the side.
 4. **Arc 4 — the frame (D3).** *Done, 2026-10-18 — see below.* Columns under every purlin, ties threading them, cantilevers carrying the
    front gallery, brackets under the cantilevers — anchored, so moving a column moves its tie.
-5. **Arc 5 — the covering (D9).** Fifty 瓦垄 a slope, hosted by the roof, with the eave end decided.
-6. **Arc 6 — the interior (D7).** The hearth bay with no ceiling over it, and the stair through the floor.
-7. **Arc 7 — the compound (D8).** A second scene: 三坊一照壁, the arc that proves D8 was needed at all.
+5. **Arc 5 — the covering (D9).** *Done, 2026-10-18 — see below.* Fifty 瓦垄 a slope, hosted by the roof, with the eave end decided.
+6. **Arc 6 — the interior (D7).** *Done, 2026-10-19 — see below.* The hearth bay with no ceiling over it, and the stair through the floor.
+7. **Arc 7 — the compound (D8).** *Done, 2026-10-18 — see below.* A second scene: 三坊一照壁, the arc that proves D8 was needed at all.
 8. **Arc 8 — the town.** Only if F6 is answered yes; the settlement layer does not exist yet.
 
 ### Arc 1 is closed, with its numbers
@@ -831,6 +831,86 @@ The numbers the scene moves: the picture's hash is `532FF169FCB14F04`, and the i
 **1009 → 1111** — nineteen members at six surfaces each, and the deck's own six. The document is one
 plate, nineteen members, a crowned mass, a profiled roof and the posts: **no face of the gallery is
 authored as a coordinate that some other face has to agree with.**
+
+### Arc 5 is closed: the tiles are geometry
+
+`Roof::covering` is a three-number spec — `period`, `fill`, `height` — and the expansion derives the
+rolls from it: **one straight triangular prism per roll per 步架**, standing on the skin it covers.
+`stilt`'s roof carries 296 of them in 2 368 triangles.
+
+**The bend cost the arc its first design, and the measurement is the record.** A roll that crosses a
+purlin is bent, and a bent body is one solid with a creased surface — topologically fine, and not
+writable by the crate's rule, which winds a solid by one consistent corner order and checks the body's
+own signed volume. The hand-wound bent roll left **24 boundary edges**; the same roll as one prism per
+step closes, and it is also what a tiled roof is: a course laid up to the purlin and the next course
+above it.
+
+| number | value |
+| --- | --- |
+| the rolls | **296** over the roof (2 planes × 37 × 4 steps), **2 368 triangles** |
+| every roll | **8 faces, euler 2, manifold, closed** — a body, not a surface |
+| the volume | **1.499899 m³** over 296 rolls of 6 cm × 19 cm × ~0.9 m |
+| the tile bed | the base stands **1 mm** off the skin, for the same reason a post is tenoned into its plate |
+| the refusals | `CoveringFault` for a period of zero, a fill of one and a height of zero, each also reaching `expand` |
+
+`stilt`'s hash is `4833AA82E627DD0E`, and the identity probe's rows go **1111 → 2591**: 296 rolls at five
+surfaces each is 1 480 of them, which is the price of drawing tiles as solids rather than as a texture —
+stated here rather than discovered later.
+
+### Arc 7 is closed: the compound is three buildings and a wall
+
+The order of the last two arcs changed, and the reason is the third one's: **the interior needs a
+second storey**, and the compound is where a second storey lives. So the compound came first.
+
+`crates/gallery/src/compound.rs` is a 三坊一照壁: a main hall 18 × 6 at the back, two wings 6 × 15 down
+the sides, a screen wall across the front, three gable roofs with the 举架 ladder and its tiles, and an
+intermediate floor in every range. **Sixteen single-storey constructs compose into a compound, and not
+one of them was added for it.**
+
+The finding is the **order of the courts**: a 四合院 with four ranges is one mass with a courtyard void,
+which the crate has had since it had courtyards — and this type is not that, because its fourth side is
+a **single-storey screen** and a mass's walls are all one height. So the court is a *gap* between three
+masses that touch at two corners, and the fourth side is a `Wall`. Two ways to one square of ground, and
+the second is the one that lets a wall be lower than the ranges.
+
+| number | value |
+| --- | --- |
+| the frame | **1280 × 800**, hash `19CA92920AB35238` |
+| the passes | **5 meshes × 3 stages + 1 post = 16** — the covering's 652 roll segments ride in the roofs' own mesh, so sixty metres of tiles cost no pass |
+| the identity rows | **6 685** for the compound alone, and **9 276** over the eleven scenes |
+| the violations | **0**, on three masses that touch, three roofs, six plates and a wall |
+
+**What it does not draw, and what that costs the type**: no openings (every range is a closed ring,
+where the doors and windows are), no stair between the storeys, and no 厦子 — the Yunnan front porch.
+The first two are the interior arc's work now that the second storey exists; the third is a plate on
+two rows of posts, which is the frame arc again.
+
+### Arc 6 is closed, and its evidence is a document rather than a picture
+
+`Slab::void` is **one hole through a plate**, and a slab with a hole is a **prism over a ring**: its two
+faces are annuli and the hole's wall is a surface of its own that looks *into* the hole. The annulus
+triangulation was already in the crate — `fill::ring_fill`, which a courtyard's own base stands on — so
+what this arc added is the third surface, the document check that knows a holed slab is a **torus**
+(euler `0`, not `2`), and one rule the whole arc turned on:
+
+**No winding is written by hand.** The first version decided each face's order from the body's own
+middle and left **48 boundary edges**; the second passed each face through
+`Solid::oriented_triangle`, which decides by the face's own up component, and left **0**. The lesson is
+the same one the roof's skin already carried, and this arc is where it became a rule to write down:
+*a planar face's winding is a fact about the surface and not about the code that emits it.*
+
+| number | value |
+| --- | --- |
+| the probe's ring | a 6 × 4 floor with a 1.2 × 1.2 stairwell, 0.3 m thick: **32 faces, loops 0, euler 0, manifold, volume 6.767998** against 6.768 |
+| the hole's wall | **8 of 8 sides look into the hole**, and none away |
+| the refusal | an L-shaped (non-convex) hole is `SlabVoidNotFilled`, because `ring_fill` bridges convex loops |
+| the compound | the main hall's floor carries a **1.5 × 1.4 stairwell**: the document's identity rows go **6 685 → 6 689**, and the picture's hash **does not move at all** |
+
+**That last row is the arc's real result.** The interior is invisible from outside the ranges, so an
+interior construct's evidence cannot be the frame — it is the document, the probe, and the four surfaces
+the identity table names. A scene that *showed* the hole would be a camera inside the hall, which is an
+interior view this gallery does not yet have; drawing one now would be a picture of a room whose walls
+the document closes.
 
 ## What would make this proposal wrong
 

@@ -54,6 +54,7 @@
 
 pub mod clip;
 pub mod courtyard;
+pub mod covering;
 pub mod derive;
 pub mod expand;
 pub mod fill;
@@ -73,6 +74,7 @@ pub mod slab;
 pub mod validate;
 pub mod wall;
 
+pub use covering::{Covering, CoveringFault, RollId, RollSurface};
 pub use expand::{BuildError, Problem, build};
 pub use grid::{Bay, FaceGrid, FaceRef, GRID_TOLERANCE, Grids, Rhythm};
 pub use mass::{Attachment, AuthoredLoop, Mass, MassId, PlanNode};
