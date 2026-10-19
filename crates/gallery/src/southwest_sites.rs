@@ -122,10 +122,15 @@ fn seated(species: Species, palette: Palette, at: [f32; 2], turn: f32, detail: D
 ///
 /// # Invariants
 ///
-/// **A tuft is in the foreground band and nowhere else**, because a tuft twenty metres from the lens
-/// is two pixels and one at sixty is nothing; the band each frame gives is the statement of how near
-/// is near enough, and it is written at each frame rather than here because the three bands are three
-/// different rectangles.
+/// - **A tuft is in the foreground band and nowhere else**, because a tuft twenty metres from the lens
+///   is two pixels and one at sixty is nothing; the band each frame gives is the statement of how near
+///   is near enough, and it is written at each frame rather than here because the three bands are three
+///   different rectangles.
+/// - **A tuft costs no instance rows at all.** Seven nodes with no leaf field is one baked mesh and
+///   zero placements, so a foreground of nine hundred of them is nine hundred draws of free geometry:
+///   the valley's seven hundred and the transect's nine hundred add nothing to the twenty thousand rows
+///   the transect's pines carry, and cover is therefore a question of mesh points and not of the
+///   budget that decides how many companions a frame can hold.
 fn tufted(seed: u64, at: [f32; 2], tint: [f64; 3]) -> Planting {
     Planting::new(tuft(seed))
         .at(seat(
@@ -806,7 +811,8 @@ pub fn site_subalpine_handle_of(id: u32) -> Option<String> {
 /// hundred.** The first pass wrote the band as `z` 100 to 148 while the camera stood at `z` ninety
 /// looking toward `-z`, so every tuft it had was behind the lens and the lower half of the plate was
 /// bare tan; the second wrote `z` 34 to 86 at three hundred, which is one tuft to twelve square
-/// metres and still reads as a dune. Cover is a density and not a count.
+/// metres and still reads as a dune. Cover is a density and not a count — and it is free, because
+/// [`tufted`] writes no instance rows.
 const TRANSECT_TUFTS: usize = 900;
 
 /// The transect's plantings: **every species this crate has built, each in its own belt**, at the
