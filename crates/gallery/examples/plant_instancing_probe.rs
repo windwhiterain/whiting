@@ -539,6 +539,13 @@ fn passes(leaves: usize) -> bool {
     let mut single = 0i64;
     // Every pass over the blade, with the stage it is in and the size of the buffer it binds.
     let mut blades: Vec<(&str, i64)> = Vec::new();
+    // **One placement's row, per stage.** A caster row carries only the fields its shader declares, so a
+    // scene that puts a shading-only field on its plants has a shadow row shorter than a lighting row.
+    // The `culm` buffer is one placement, which makes it the stride of its own stage — and dividing a
+    // stage's blade buffer by *another* stage's stride answers a number of rows that never existed.
+    // Measured: 9 288 bytes of lighting row over a 168-byte caster row read as 55 leaves where 54 were
+    // drawn.
+    let mut strides: Vec<(&str, i64)> = Vec::new();
     for pass in &passes {
         let label = pass.label().expect("a pass names itself");
         let bound = pass
@@ -548,20 +555,27 @@ fn passes(leaves: usize) -> bool {
             .find(|name| name.ends_with("_instance_data"))
             .unwrap_or("none");
         let size = if bound == "none" { 0 } else { bytes(bound) };
-        if size > 0 && single == 0 {
+        if size > 0 && single == 0 && label.starts_with("lighting/") {
             single = size;
         }
         println!("  {label:<44} {size:>12}  {bound}");
         if let Some(stage) = label.split('/').next().filter(|_| label.contains("/leaf")) {
             blades.push((stage, size));
         }
+        if let Some(stage) = label.split('/').next().filter(|_| label.contains("/culm")) {
+            strides.push((stage, size));
+        }
     }
     let passes_over = |stage: &str| blades.iter().filter(|(held, _)| *held == stage).count();
     let rows_in = |stage: &str| {
+        let stride = strides
+            .iter()
+            .find(|(held, _)| *held == stage)
+            .map_or(0, |(_, size)| *size);
         blades
             .iter()
             .find(|(held, _)| *held == stage)
-            .map_or(0, |(_, size)| size / single.max(1))
+            .map_or(0, |(_, size)| if stride > 0 { size / stride } else { 0 })
     };
     let shadows = passes_over("shadow");
     let depths = passes_over("depth");

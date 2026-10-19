@@ -399,7 +399,7 @@ fn valley_plantings() -> Vec<Planting> {
                 species.clone(),
                 valley_kapok_palette(),
                 *at,
-                rng.unit() * 6.28,
+                rng.unit() * std::f32::consts::TAU,
                 COMPANION,
             )
             .with_seats(kapok_flowers(&species)),
@@ -421,7 +421,7 @@ fn valley_plantings() -> Vec<Planting> {
                 species.clone(),
                 valley_fern_palette(),
                 at,
-                rng.unit() * 6.28,
+                rng.unit() * std::f32::consts::TAU,
                 COMPANION,
             )
             .with_seats(fern_mantles(&species)),
@@ -615,7 +615,7 @@ fn subalpine_plantings() -> Vec<Planting> {
                 species.clone(),
                 spruce_palette(),
                 at,
-                rng.unit() * 6.28,
+                rng.unit() * std::f32::consts::TAU,
                 COMPANION,
             )
             .with_seats(spruce_cones(&species)),
@@ -633,7 +633,7 @@ fn subalpine_plantings() -> Vec<Planting> {
                 species.clone(),
                 spruce_palette(),
                 *at,
-                rng.unit() * 6.28,
+                rng.unit() * std::f32::consts::TAU,
                 COMPANION,
             )
             .with_seats(spruce_cones(&species)),
@@ -647,7 +647,7 @@ fn subalpine_plantings() -> Vec<Planting> {
                 species.clone(),
                 fir_palette(),
                 *at,
-                rng.unit() * 6.28,
+                rng.unit() * std::f32::consts::TAU,
                 COMPANION,
             )
             .with_seats(fir_cones(&species)),
@@ -673,7 +673,7 @@ fn subalpine_plantings() -> Vec<Planting> {
                 species.clone(),
                 rhodo_palette(),
                 at,
-                rng.unit() * 6.28,
+                rng.unit() * std::f32::consts::TAU,
                 COMPANION,
             )
             .with_seats(rhodo_trusses(&species)),
@@ -881,7 +881,7 @@ fn transect_plantings() -> Vec<Planting> {
                 species.clone(),
                 rhodo_palette(),
                 at,
-                rng.unit() * 6.28,
+                rng.unit() * std::f32::consts::TAU,
                 DISTANT,
             )
             .with_seats(rhodo_trusses(&species)),
@@ -905,7 +905,7 @@ fn transect_plantings() -> Vec<Planting> {
                 species.clone(),
                 pine_palette(),
                 at,
-                rng.unit() * 6.28,
+                rng.unit() * std::f32::consts::TAU,
                 COMPANION,
             )
             .with_seats(pine_cones(&species)),
@@ -941,7 +941,7 @@ fn transect_plantings() -> Vec<Planting> {
                 species.clone(),
                 valley_kapok_palette(),
                 at,
-                rng.unit() * 6.28,
+                rng.unit() * std::f32::consts::TAU,
                 COMPANION,
             )
             .with_seats(kapok_flowers(&species)),
@@ -954,7 +954,7 @@ fn transect_plantings() -> Vec<Planting> {
                 species.clone(),
                 valley_fern_palette(),
                 at,
-                rng.unit() * 6.28,
+                rng.unit() * std::f32::consts::TAU,
                 COMPANION,
             )
             .with_seats(fern_mantles(&species)),

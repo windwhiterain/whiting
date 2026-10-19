@@ -212,7 +212,7 @@ foreach ($pkg in $expect.Keys) {
 "--------------------------------------------------------------------"
 "[5/8] every example in building and gallery"
 "--------------------------------------------------------------------"
-foreach ($pair in @(@("whiting-building", "building", 36), @("whiting-gallery", "gallery", 16))) {
+foreach ($pair in @(@("whiting-building", "building", 36), @("whiting-gallery", "gallery", 17))) {
     $pkg = $pair[0]; $dir = $pair[1]; $want = $pair[2]
     $examples = Get-ChildItem (Join-Path (Join-Path (Join-Path $root "crates") $dir) "examples") -Filter *.rs | Sort-Object Name
     $ran = 0; $bad = @()
@@ -234,12 +234,27 @@ foreach ($pair in @(@("whiting-building", "building", 36), @("whiting-gallery", 
 "[6/8] the twelve written .png hashes  (sha256 of the file, first 16 hex upper)"
 "--------------------------------------------------------------------"
 $pinned = [ordered]@{
-    house      = "2F60685F737F7ED7"; hall       = "96F61FA5E9F18E60"; hall_large = "478E692C6CBE2D3B"
-    shed       = "48909F693ACBA634"; terrace    = "E32C1CA08D9F3016"; wing       = "2EF5C4FB206167F4"
-    workshop   = "EB8E05CD755B9B4B"; yard       = "D33D5F3372A4F0B0"; identity   = "48F13F7D84A24480"
-    stilt      = "4833AA82E627DD0E"; compound   = "19CA92920AB35238"
+    house      = "4A8795039E713F32"; hall       = "8B6495E3A9B2FE89"; hall_large = "CD2FA9166AACB06C"
+    shed       = "C3A11B4465746840"; terrace    = "D2E405C7B242E92B"; wing       = "B4516134C2EC5D6E"
+    workshop   = "7FE07F345A451B51"; yard       = "F36F4CB6A14312FA"; identity   = "717B5570DDAD7A0D"
+    stilt      = "03510DF10AD236E4"; compound   = "FA4AD3009BD581AC"
     street     = "247F1868C99BD982"
 }
+# **The eleven above moved together on 2026-10-19, and it is recorded here rather than in a commit
+# message nobody reads beside the number.** Causes, each measured by a verification pass that rendered
+# the plates at four commits and diffed them pixel by pixel:
+#
+# - `f5ed72d` halved a point light's shadow page (`projection_of` went from `2 * half * padding` to
+#   `half * padding`), so every point-lit surface's shadow lookup changed. That is what moved the eleven:
+#   1.2 % to 7.2 % of pixels, maximum magnitude 26..103 of 255 and not one pixel above 128, on the mass,
+#   its cast shadow and the ground line under it, with the sky and the roofs reading zero.
+# - The emitter rewrite (`2508818`, `5213583`, `507a29e`, `ee7f258`) moved **no pixel at all**: the two
+#   plates rendered at the rung that carries all of it are byte-identical to the baseline, and the
+#   emitted document's own hash is unchanged. `4398d41`'s `ShadowBias` changed the shader *text* and no
+#   pixel, because `f32 * 1.0` is exact for every building schema.
+# - No building scene module changed between the green commit and this one, and the identity probe's
+#   rows are the same numbers (9 280 over eleven scenes, 14 220 with the street).
+$pinned
 # How it is proved to fail: change one pinned value above, run it, watch the two numbers
 # disagree and the exit code come back 1, then change it back. That is the whole test, and it
 # was run that way rather than by a switch inside this file: an earlier version carried a
