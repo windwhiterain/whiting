@@ -649,20 +649,24 @@ A living table: `pass` is measured or read against the bar by the author and che
 (§2.1). The epic columns name the site frame the species stands in and whether E1–E3 were judged on
 it; E4 (the two backends) is unverified repo-wide, no Cycles binary on this machine.
 
-| species | H1 | H2 | H3 | H4 | H5 | epic frame | notes |
+| species | H1 | H2 | H3 tree / bough | H4 | H5 | epic frame | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 云南松 *Pinus yunnanensis* | pass (sheet) | pass | 0.628 / 0.769 pass | pass (base7) | pass | `site_montane`, `site_transect` | the arc-2 reference species; cones faint at tree distance |
+| 云南松 *Pinus yunnanensis* | pass (sheet) | pass | 0.628 / 0.620 · 0.600 pass | pass (base7) | pass | `site_montane`, `site_transect` | the arc-2 reference species; cones faint at tree distance |
 | 华山松 *Pinus armandii* | — | — | — | — | — | `site_montane` | in flight (wave 3); the two-pine separation is its H1 |
-| 丽江云杉 *Picea likiangensis* | pass (0.158 ratio) | pass | 0.663 / 0.479 pass | pass | pass | `site_subalpine`, `site_transect` | second pass; bough reframed to 1.09 m |
-| 苍山冷杉 *Abies delavayi* | pass (0.254 ratio) | pass | 0.789 / 0.622 pass | pass | pass | `site_subalpine`, `site_transect` | cones pale-glaucous to read; `FIR_CROWN_TOP` is a stated compromise |
-| 川滇高山栎 *Quercus aquifolioides* | weak (mid-crown hole) | pass | 0.792 / 0.715 bough pass | pass (base) | pass | `site_montane`, `site_transect` | H1 polish in flight; sprig crown at the note's leaf size |
-| 珙桐 *Davidia involucrata* | pass (sheet) | pass | 0.899 / bough | pass (base) | pass | `site_montane`, `site_transect` | bracts as two templates, unequal pair |
-| 大树杜鹃 *Rhododendron protistum* | pass (sheet) | pass | 0.848 / bough | pass (base) | pass | `site_subalpine`, `site_transect` | rosettes and truss; bole wander authored |
-| 桫椤 *Alsophila spinulosa* | weak (palm-like from one angle) | pass | 0.690 / 0.650 pass | pass | pass | `site_valley`, `site_transect` | fronds at the photograph's crown spread, note's length broken and stated |
-| 木棉 *Bombax ceiba* | pass (sheet) | pass | 0.561 / 0.747 pass; flower exempt | pass (base) | pass | `site_valley`, `site_transect` | two seasons; corollas of five petals on the twigs that carry them |
+| 丽江云杉 *Picea likiangensis* | pass (0.158 ratio) | pass | 0.663 / 0.582 · 0.479 pass | pass | pass | `site_subalpine`, `site_transect` | second pass; bough reframed to 1.09 m |
+| 苍山冷杉 *Abies delavayi* | pass (0.254 ratio) | pass | 0.789 / 0.724 · 0.622 pass | pass | pass | `site_subalpine`, `site_transect` | cones pale-glaucous to read; `FIR_CROWN_TOP` is a stated compromise |
+| 川滇高山栎 *Quercus aquifolioides* | weak (mid-crown hole) | pass | 0.792 / 0.904 · 0.715 pass | pass (base) | pass | `site_montane`, `site_transect` | H1 polish in flight; sprig crown at the note's leaf size |
+| 珙桐 *Davidia involucrata* | pass (sheet) | pass | tree 0.899 / 0.941 · 0.666 pass | pass (base) | pass | `site_montane`, `site_transect` | bracts as two templates, unequal pair |
+| 大树杜鹃 *Rhododendron protistum* | pass (sheet) | pass | tree 0.848 / 0.943 · 0.723 pass | pass (base) | pass | `site_subalpine`, `site_transect` | rosettes and truss; bole wander authored |
+| 桫椤 *Alsophila spinulosa* | weak (palm-like from one angle) | pass | 0.690 / 0.343 · 0.650 pass | pass | pass | `site_valley`, `site_transect` | fronds at the photograph's crown spread, note's length broken and stated |
+| 木棉 *Bombax ceiba* | pass (sheet) | pass | 0.561 · 0.747 / 0.726 · 0.709 pass; flower exempt | pass (base) | pass | `site_valley`, `site_transect` | two seasons; corollas of five petals on the twigs that carry them |
 | 筇竹 *Qiongzhuea tumidinoda* | — | — | — | — | — | `site_valley` | in flight (wave 3) |
-| 西南桦 *Betula alnoides* | weak (reads conifer-strip) | pass | 0.521 / 0.724 pass | pass, bark pattern stated absent | pass | `site_montane` | H1 polish in flight; red-brown bark, never chalk |
-| 滇油杉 *Keteleeria evelyniana* | weak (rough spruce) | pass | 0.757 / 0.677 pass | pass | pass | `site_montane`, `site_transect` | H1 polish in flight; cones at the note's ceiling |
+| 西南桦 *Betula alnoides* | weak (reads conifer-strip) | pass | 0.521 / 0.828 · 0.666 pass | pass, bark pattern stated absent | pass | `site_montane` | H1 polish in flight; red-brown bark, never chalk |
+| 滇油杉 *Keteleeria evelyniana* | weak (rough spruce) | pass | 0.757 / 0.811 · 0.588 pass | pass | pass | `site_montane`, `site_transect` | H1 polish in flight; cones at the note's ceiling |
+
+The H3 column reads *interior share / interior-over-lit-p90*, measured 2026-10-19 by
+`audit/frame_stats.py --crown` on every plate on disk; the second clause is the bough plate's, per
+§2.1. All ten bough plates pass both clauses under the stricter 0.75 bar as well as the 0.80 one.
 
 ## 10. Open questions
 
