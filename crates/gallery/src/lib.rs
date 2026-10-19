@@ -117,6 +117,9 @@ pub mod southwest_site;
 pub mod southwest_spire;
 /// The valley pair: 桫椤, a tree with no branch graph at all, and 木棉, one rule at two seasons.
 pub mod southwest_valley;
+/// The last two of the ten: 华山松, the pine that stays conical, and 筇竹, the bamboo whose name is
+/// its node.
+pub mod southwest_wave3;
 mod spotlight;
 mod stilllife;
 /// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
@@ -261,6 +264,12 @@ impl Gallery {
             "kapok_bough" => southwest_valley::kapok_bough_picture(),
             "kapok_base" => southwest_valley::kapok_base_picture(),
             "cangshan_fir_base" => southwest_spire::cangshan_fir_base_picture(),
+            "armand_pine" => southwest_wave3::armand_pine_picture(),
+            "armand_pine_bough" => southwest_wave3::armand_pine_bough_picture(),
+            "armand_pine_base" => southwest_wave3::armand_pine_base_picture(),
+            "qiong_bamboo" => southwest_wave3::qiong_bamboo_picture(),
+            "qiong_bamboo_culm" => southwest_wave3::qiong_bamboo_culm_picture(),
+            "qiong_bamboo_base" => southwest_wave3::qiong_bamboo_base_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
