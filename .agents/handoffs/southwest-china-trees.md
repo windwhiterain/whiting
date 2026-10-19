@@ -50,10 +50,10 @@ number sourced; photographs in `out/refs/<slug>/`.
 - `audit/silhouette.py <authored_id> <out>` — the H1 cut-out.
 - `audit/sheet.py <out> <name>=<silhouette> …` — the H1 contact sheet; first sheet
   `out/h1-sheet1.png` with six species, and it already named the spruce/fir confusion pair.
-- The canary: `render -- bamboo` must equal the CURRENT baseline. The baseline moved twice on
-  purpose — `arc0-bamboo.png` before the shadow-bias merge, `328B509A…` after it, and the shadow-page
-  fix moved it again by measured false-shadow removal. Re-baseline with a stated reason, never
-  silently; the current one is in `out/sw-scatter-final-bamboo.png`.
+- The canary: `render -- bamboo` must equal the CURRENT baseline, `out/arc1g-bamboo.png`. It has
+  moved three times, each on purpose and each measured: the shadow-bias merge (0.811 % of pixels,
+  plant only), the shadow-page half-width fix (6.4 %, false shadows removed from floor and plant),
+  and never otherwise. Re-baseline with a stated reason, never silently.
 
 ## Commands
 
