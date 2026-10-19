@@ -299,6 +299,36 @@ pub const NAMINGS: &[Naming] = &[
         resolve: crate::southwest_wave2::evelyn_keteleeria_base_handle_of,
         note: "the foot of the same bole: this pixel is that node, whose flare and blocky fissures are the subject",
     },
+    Naming {
+        scene: crate::southwest_wave3::ARMAND_PINE,
+        resolve: crate::southwest_wave3::armand_pine_handle_of,
+        note: "this pixel is that node of the Armand pine, and a needle drawn by the blade mesh carries its twig's; a cone carries its twig's too",
+    },
+    Naming {
+        scene: crate::southwest_wave3::ARMAND_PINE_BOUGH,
+        resolve: crate::southwest_wave3::armand_pine_bough_handle_of,
+        note: "one bough at arm's length in the true five-needle fascicle: this pixel is that node of the bough, and a needle carries its twig's",
+    },
+    Naming {
+        scene: crate::southwest_wave3::ARMAND_PINE_BASE,
+        resolve: crate::southwest_wave3::armand_pine_base_handle_of,
+        note: "the same tree two and a half metres from its own foot: this pixel is that node, and the bole's square plates are this node's section",
+    },
+    Naming {
+        scene: crate::southwest_wave3::QIONG_BAMBOO,
+        resolve: crate::southwest_wave3::qiong_bamboo_handle_of,
+        note: "twelve culms from one crown: this pixel is that node of the clump, and a leaf drawn by the blade mesh carries its twig's",
+    },
+    Naming {
+        scene: crate::southwest_wave3::QIONG_BAMBOO_CULM,
+        resolve: crate::southwest_wave3::qiong_bamboo_culm_handle_of,
+        note: "one culm at one metre: this pixel is that node of the culm, and its swollen node is this node's own taper",
+    },
+    Naming {
+        scene: crate::southwest_wave3::QIONG_BAMBOO_BASE,
+        resolve: crate::southwest_wave3::qiong_bamboo_base_handle_of,
+        note: "the same clump at its own foot: this pixel is that node, and the rhizome crown under the first node is the root's own taper",
+    },
 ];
 
 /// The row a scene registered, or `None` when it names nothing.

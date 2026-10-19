@@ -121,6 +121,9 @@ pub mod southwest_spire;
 pub mod southwest_valley;
 /// The second wave: 西南桦, a wholly pendulous crown, and 滇油杉, erect cones all over the crown.
 pub mod southwest_wave2;
+/// The last two of the ten: 华山松, the pine that stays conical, and 筇竹, the bamboo whose name is
+/// its node.
+pub mod southwest_wave3;
 mod spotlight;
 mod stilllife;
 /// The stilt scene: a house whose floor is not on the ground, standing on posts down a bank.
@@ -272,6 +275,12 @@ impl Gallery {
             "evelyn_keteleeria" => southwest_wave2::evelyn_keteleeria_picture(),
             "evelyn_keteleeria_bough" => southwest_wave2::evelyn_keteleeria_bough_picture(),
             "evelyn_keteleeria_base" => southwest_wave2::evelyn_keteleeria_base_picture(),
+            "armand_pine" => southwest_wave3::armand_pine_picture(),
+            "armand_pine_bough" => southwest_wave3::armand_pine_bough_picture(),
+            "armand_pine_base" => southwest_wave3::armand_pine_base_picture(),
+            "qiong_bamboo" => southwest_wave3::qiong_bamboo_picture(),
+            "qiong_bamboo_culm" => southwest_wave3::qiong_bamboo_culm_picture(),
+            "qiong_bamboo_base" => southwest_wave3::qiong_bamboo_base_picture(),
             "dunes" => dunes(),
             "foldyard" => foldyard(),
             "hermite" => hermite::hermite(),
