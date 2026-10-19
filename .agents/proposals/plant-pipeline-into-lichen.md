@@ -125,10 +125,11 @@ the document's structural fingerprint.
 | `envelope` | `2d52c39a234b8a81` | `2d52c39a234b8a81` |
 | `seed` | `5beedf1789fd4241` | `5beedf1789fd4241` |
 
-The fingerprints are reproducible across a rebuild: an earlier run of the same
-five edits, before the generated crate was made `rustfmt`-stable, produced the
-same five values in both columns and the same six session ids. The document a
-plant scene produces is a function of its dials and of nothing else.
+The fingerprints are reproducible across a rebuild. Three independent runs
+produced the same five values in both columns and the same six session ids: one
+on lichen-vm before the `link` ABI settled, one after `dev` moved the build tag
+to `git describe`, and one here after the move. The document a plant scene
+produces is a function of its dials and of nothing else.
 
 ### What these say against the earlier cost note
 
@@ -160,7 +161,58 @@ what it costs**, and its ratios survive the correction: 6.09× where it expected
 about 4.3×, 3.15× and 2.91× where it expected about 2.5×, and 1.07× and 1.00×
 where it expected 1.0×.
 
-## What the design gives up
+## What the build tag costs, and the order that pays it
+
+`lichen_language::link::build_tag()` is the crate version plus
+`crates/lichen-language/build.rs`'s `git describe --always --dirty --abbrev=12`,
+so the gate that refuses a foreign library is only satisfied by a library built
+**from the same revision** — and the committed `crates/lichen-link/src/lib.rs`
+carries the tag of the revision that generated it. It is therefore stale the
+moment `lichen-language` is rebuilt: after a pull that touches it, or a clean
+build.
+
+The failure is loud rather than silent — `the library was built for "…"; this
+compiler is "…"`, `native-link-library.md` §12 — so this costs a regeneration,
+not a wrong picture. Three things follow, and they are not obvious:
+
+- **Both sides must be built from one target directory and one profile.** The tag
+  is baked into the compiled `lichen-language`, so a debug-built driver and a
+  release-built dylib disagree even on one revision.
+- **Committing the regenerated file does not by itself keep it fresh**, because
+  the commit moves the revision the tag names. What keeps a working tree usable
+  is that `build.rs` reruns only when `lichen-language`'s own package changes: a
+  revision that moves without touching it leaves both sides on the tag they were
+  built with. That is a fragile agreement rather than a guarantee.
+- **The durable fix is not built.** Generating the source in the dylib crate's
+  own `build.rs`, so the tag and the entries cannot be out of step, is the answer
+  and it is not written. It was not needed for this measurement; it would be
+  needed before the vertical is anything a second person runs.
+
+**The tag moved under this note and the measurements did not.** The first run of
+these five edits was measured while `build_tag()` was the constant `0.1.0+dev`;
+the second, after `dev` moved to a revision that made it `git describe`, stamped
+`0.1.0+5f6b04661316`. Both runs, and a third on the sibling checkout before the
+move, produced the same five fingerprints — so the tag gates the library without
+gating the document.
+
+## Why the branch question is settled
+
+An earlier version of this proposal lived on a lichen-vm branch, because the
+three crates were lichen-vm workspace members reaching `../Whiting` from a root
+`[workspace.dependencies]`. Cargo resolves a workspace's members before it builds
+anything, so a checkout with no sibling `Whiting` failed **every** workspace
+command, and `.github/workflows/ci.yml` runs `cargo clippy --workspace
+--all-targets -- -D warnings`, `cargo test --workspace` and
+`cargo fmt --all -- --check` on a runner that has no such sibling. That was a
+merge blocker and the branch stayed off `dev` because of it.
+
+The move settles it, and cheaply. The dependency now points out of this
+repository, a lichen-vm checkout builds with no application beside it, and there
+is nothing to block. The price is the one named above: the vertical is not part
+of lichen's CI, so a change to the `link` ABI is caught when someone runs the
+probe rather than on a pull request.
+
+## What this design gives up
 
 - **No persistence across processes.** The slab is a `static` inside the loaded
   dylib. A second process starts empty and re-runs every stage. That is sound —
