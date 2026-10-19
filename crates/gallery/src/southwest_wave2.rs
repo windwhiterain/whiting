@@ -69,17 +69,35 @@
 //!
 //! | scene | nodes | leaf rows | seats | rows | compile | render |
 //! | --- | --- | --- | --- | --- | --- | --- |
-//! | [`SOUTHWEST_BIRCH`] · [`SOUTHWEST_BIRCH_BASE`] | **866** | **13 603** | **940** | **14 543** | 5.9 s | 2.5 s |
+//! | [`SOUTHWEST_BIRCH`] · [`SOUTHWEST_BIRCH_BASE`] | **1 164** | ~25 000 | ~1 100 | ~26 100 | 10.7 s | 3.5 s |
 //! | [`SOUTHWEST_BIRCH_BOUGH`] | 17 | 269 | 18 | **287** | 0.4 s | 0.8 s |
-//! | [`EVELYN_KETELEERIA`] · [`EVELYN_KETELEERIA_BASE`] | **2 989** | **58 094** | **3 353** | **61 447** | 48.2 s | 7.7 s |
+//! | [`EVELYN_KETELEERIA`] · [`EVELYN_KETELEERIA_BASE`] | **2 447** | ~53 000 | ~5 000 | ~58 000 | 52.2 s | 7.3 s |
 //! | [`EVELYN_KETELEERIA_BOUGH`] | 15 | 1 591 | 7 | **1 598** | 0.6 s | 0.8 s |
+//!
+//! **The birch's and the Keteleeria's row counts are the only figures in this table that are not read off
+//! the expansion**, and they are marked with a tilde rather than left to look measured: the **node counts**
+//! are read off the `-authored_id.txt` sidecar's own red maximum, and the leaf and seat rows follow from
+//! the same arithmetic the rule states. Both plates are still well inside the ceiling.
 //!
 //! **The two whole-tree crowns, measured by `audit/frame_stats.py --crown`:**
 //!
 //! | scene | coverage | interior share (bar 0.25) | interior over lit p90 (bar 0.80) |
 //! | --- | --- | --- | --- |
-//! | [`SOUTHWEST_BIRCH`] | 0.335 | **0.521** | **0.724** |
-//! | [`EVELYN_KETELEERIA`] | 0.466 | **0.757** | **0.677** |
+//! | [`SOUTHWEST_BIRCH`] | 0.367 | **0.550** | **0.719** |
+//! | [`EVELYN_KETELEERIA`] | 0.435 | **0.687** | **0.675** |
+//!
+//! **And the crown's own outline, measured by `audit/silhouette.py` on the whole-tree plate's identity mask**
+//! (the number H1's ten-sheet actually turns on, and `audit/sheet.py` normalises every species to one height
+//! before the reader sees it, so this ratio is what the reader compares):
+//!
+//! | species | width ÷ height of its cut-out, before | after |
+//! | --- | --- | --- |
+//! | [`SOUTHWEST_BIRCH`] | 0.44 — the spruce's own number (0.29) and the fir's (0.39) | **0.58** |
+//! | [`EVELYN_KETELEERIA`] | 0.70 | 0.71 |
+//!
+//! **The Keteleeria's ratio barely moved and its outline did: what H1 named was a *spruce*, and a spruce is
+//! not a ratio.** Its cut-out's top tenth was **263 px** wide against a widest of 771 — a third — and it is
+//! now **368 of 775**, forty-seven per cent, which is what "an open irregular plate … flat-topped" is.
 //!
 //! # The droop, and why it is a law and not a field
 //!
@@ -176,7 +194,7 @@ const BIRCH_PETIOLE_LENGTH: f32 = 0.030;
 /// branch, and the number every crown law in this species is measured inside.
 ///
 /// **It is 0.40 and not the 0.355 of the first plate, and the branchlets' length is why.** A branchlet of
-/// 1.1 m hanging off a bough at `t = 0.40` reaches `4.5 m`, which is the note's own *"the crown occupies the
+/// 1.7 m hanging off a bough at `t = 0.40` reaches `4.5 m`, which is the note's own *"the crown occupies the
 /// upper two-thirds"* read on a fourteen-metre tree — `14 − 9.3 = 4.7 m`. The first plate's band put the
 /// lowest foliage near three metres and the crown hung into the lower third, which is a different tree.
 const BIRCH_CROWN_BASE: f32 = 0.40;
@@ -218,8 +236,8 @@ impl BirchFoliage {
 /// | level | count | where | what |
 /// | --- | --- | --- | --- |
 /// | **0** | **1** | — | the **bole**, clean to 5 m |
-/// | **1** | **28–32** | `0.40`–`1.0` of the bole | the **boughs**, `2.6 m` at the crown's foot falling to `1.2 m` at the leader's tip |
-/// | **2** | **26–32** | `0.18`–`1.0` of a bough | the **branchlets**, `0.8`–`1.4 m`, the pendulous shoots |
+/// | **1** | **30–36** | `0.40`–`0.93` of the bole | the **boughs**, `3.3 m` at the crown's foot falling to `1.6 m` at the leader's tip |
+/// | **2** | **34–40** | `0.18`–`1.0` of a bough | the **branchlets**, `1.2`–`1.8 m`, the pendulous shoots |
 ///
 /// **`cluster = 1` on both generations is the species' first number and it is a contrast.** A conifer's
 /// tier is a whorl and a kapok's limb is a pseudo-whorl, both `cluster > 1`; the note's *Betula* branches
@@ -241,12 +259,20 @@ fn birch_rule() -> Rule {
         trunk: birch_bole,
         generations: vec![
             Generation {
-                count: (28, 32),
-                station: (BIRCH_CROWN_BASE, 1.0),
+                count: (30, 36),
+                // **The band's top is `0.93` and not `1.0`, and it is the crown's HEIGHT that H1 moved.** A
+                // branchlet on a bough at the very top of the leader leaves that bough's own heading, which
+                // is already twelve to twenty-nine degrees above horizontal, and stands up as far as it
+                // reaches out — so a bough at `1.0` carries foliage two and a half metres **above** the
+                // leader's own tip, the whole-tree plate's top row was foliage, and the crown ran a metre
+                // clear of its own frame. **A birch's leader is the highest thing on it**, and `0.93` puts
+                // the topmost boughs at thirteen metres on a fourteen-metre tree and lets the leader's own
+                // leafing be the crown's crown.
+                station: (BIRCH_CROWN_BASE, 0.93),
                 slot: (0.0, GOLDEN),
-                // **A tenth of the band is the jitter, and it is what breaks the tiers.** Thirty boughs over
-                // the crown's 8.4 m of leader is 0.28 m between them, and `±0.06` of station is `±0.5 m` of
-                // leader either side of that — so the stations overlap and the crown is an irregular mass.
+                // **A tenth of the band is the jitter, and it is what breaks the tiers.** Thirty-three boughs
+                // over the crown's 7.4 m of leader is 0.22 m between them, and `±0.06` of station is `±0.4 m`
+                // of leader either side of that — so the stations overlap and the crown is an irregular mass.
                 // The first plate stood at `0.06`, which is `±0.3 m` on the same band and drew **six visible
                 // whorls**: the *cauliflower* defect, and the reason a conifer-looking birch is a birch that
                 // has lost its signature.
@@ -257,7 +283,11 @@ fn birch_rule() -> Rule {
                 shape: birch_bough,
             },
             Generation {
-                count: (26, 32),
+                // **Thirty-four to forty, and it was twenty-six to thirty-two.** A skirt is a *fringe* and a
+                // fringe is a count of strands across the bough's own width: twenty-nine a bough left a metre
+                // of bare limb between each pair, which the silhouette reads as a ladder rather than as a
+                // curtain. The note's twig count of `6–14` is per twig and is not this number.
+                count: (34, 40),
                 station: (0.18, 1.0),
                 slot: (0.0, GOLDEN),
                 jitter: (0.12, 0.26),
@@ -352,12 +382,20 @@ fn birch_bark() -> shape::Section {
 /// crown"* — and a bough law that stopped at horizontal would draw an ordinary broadleaf.
 ///
 /// **The length is a law over the station**, which is what [`Joint::station`] exists for and what the
-/// note's `4–7 m` crown across is made of: `2.55 m` at the crown's foot and `1.22 m` at the leader's tip,
-/// which with the branchlets hanging off the outer part makes a crown **5.5 m across** — the note's own
-/// crown width at its middle.
+/// note's `4–7 m` crown across is made of: `3.30 m` at the crown's foot and `1.55 m` at the leader's tip,
+/// which with the branchlets hanging off the outer part makes a crown **7.5 m** across. **It was `2.55 m`,
+/// and H1 is the reason it moved.** A crown 5.5 m across on a fourteen-metre tree measured **0.44** of its
+/// own height, which is the spruce's number and not a broadleaf's; the width this species is read by is
+/// its crown's.
+///
+/// **The 7.5 m is a fifth over the note's `4–7 m` and the reason is stated rather than hidden: the note
+/// read that range off `01-habit.jpg`, which is a LEAFLESS tree, and a birch's crown in leaf is thirty per
+/// cent of pendant branchlets that are not there in February.** The boughs alone reach the note's own 7 m;
+/// what stands past them is the fringe, which is the species' signature and the thing H1 asks to be able to
+/// see. Measured on the plate: **0.44 → 0.58** of the cut-out's height.
 fn birch_bough(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
     let profile = crown_profile(joint.station, BIRCH_CROWN_BASE);
-    let length = 2.55 * (1.0 - 0.52 * profile.powf(0.80)) * (0.80 + 0.40 * rng.unit());
+    let length = 3.30 * (1.0 - 0.53 * profile.powf(0.80)) * (0.80 + 0.40 * rng.unit());
     let departure = 1.16 + 0.30 * rng.unit() - 0.10 * profile;
     let radius = joint.parent_radius.max(1.0e-3);
     (
@@ -391,15 +429,25 @@ fn birch_bough(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
 /// below the horizontal**, which is the number the note's fifth recognition fact is and the number a reader
 /// of `01-habit.jpg` checks before anything else.
 ///
-/// `0.50`–`0.90 m` is the note's `0.3–0.8 m` twig at the top of its range plus a fifth, and the module says
-/// so rather than hiding it: the node here is a **branchlet**, and the note's twig is a shoot of it.
+/// `1.38`–`2.06 m` is the note's `0.3–0.8 m` twig at the top of its range more than doubled, and the module
+/// says so rather than hiding it: the node here is a **branchlet**, and the note's twig is a shoot of it.
+/// It is the one number in this species that leaves the note's range outright, and it leaves it on purpose —
+/// see the H1 note in the body below and in [`birch_bough`].
 fn birch_branchlet(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
-    // **1.05 m at its middle, and it is an extension of the note's `0.3–0.8 m` twig that the module
+    // **1.72 m at its middle, and it is an extension of the note's `0.3–0.8 m` twig that the module
     // declares.** The note's twig is a shoot; the node drawn here is the **branchlet** that shoot hangs
     // from, and a branchlet is the unit the *weeping* is drawn in — thirty of them a bough is a fringe
     // hanging a metre below the limb, and a bough with eight 40 cm twigs is a fir's bough. The first plate
     // drew 0.50–0.90 m and the crown read as a conifer; this is the change that makes it a birch.
-    let length = 1.05 * (0.75 + 0.55 * rng.unit());
+    //
+    // **H1 moved it twice, 1.05 m → 1.50 m → 1.72 m, and what it moved is the WIDTH of the droop.** The
+    // ten-sheet read this crown as *"a narrow conifer strip"* at a width-to-height of **0.44**, against the
+    // spruce's 0.29 and the fir's 0.39 — a metre of pendant branchlet on a limb that reaches three metres
+    // out hangs its fringe almost straight down, so the skirt's outer edge fell a hand's width beyond the
+    // limb and the crown was a column. The droop itself was never the defect and the departure law below is
+    // unchanged; **what was missing was how far out that droop is carried**, so the length is the fix and
+    // the hang is still the signature. Measured on the plate: **0.44 → 0.58**.
+    let length = 1.72 * (0.80 + 0.40 * rng.unit());
     let departure = 0.85 + 0.45 * rng.unit();
     let radius = joint.parent_radius.max(1.0e-5);
     (
@@ -601,16 +649,18 @@ fn birch_catkin() -> Template {
 ///
 /// # The density, and the number it is not
 ///
-/// **Fifteen leaves to the metre of branchlet** is one leaf every sixty-six millimetres under a blade a
+/// **Twelve leaves to the metre of branchlet** is one leaf every eighty-three millimetres under a blade a
 /// hundred and ten millimetres long, which is the *spacing* `05-leaf-and-male-catkins.jpg` shows — a leaf's
 /// own length to the next leaf's stalk, and sky between every second one. **The note's own `6–14 leaves
 /// per twig` is not the count drawn here and the module says which number it is**: the note's twig is
-/// `0.3–0.8 m` and the branchlet drawn is its parent, so a 1.05 m branchlet at the note's *count* would carry
-/// ten and eleven at the note's *spacing*. The first plate of this species read the count and drew **seventy
-/// two a metre** — a leaf every fourteen millimetres, six deep — and the branchlet came out as a **fern
-/// pinna**: a green feather on a rod, which is the *bare broom* and a *plastic crown* both. A birch's
+/// `0.3–0.8 m` and the branchlet drawn is its parent, so a 1.72 m branchlet at the note's *count* would carry
+/// twelve and thirteen at the note's *spacing*. The first plate of this species read the count and drew
+/// **seventy two a metre** — a leaf every fourteen millimetres, six deep — and the branchlet came out as a
+/// **fern pinna**: a green feather on a rod, which is the *bare broom* and a *plastic crown* both. A birch's
 /// branchlet is a rod with big leaves on it, and the difference is the number of leaves an arm's length
-/// shows.
+/// shows. **It was fifteen a metre at the branchlet's `1.05 m` and it is twelve at `1.72 m`**, because the
+/// spacing is the note's and the length is H1's, and holding the count across the change would have made the
+/// skirt a solid green wall instead of the *airy* crown the note's first recognition fact asks for.
 ///
 /// **The band on every field stops short of both ends**, which is the *dead give* the bar also names: no
 /// real shoot is foliated evenly from the wood it grows on to its own tip.
@@ -653,7 +703,14 @@ fn birch_leaves(branchlet_depth: usize) -> Vec<LeafField> {
 
     let mut branchlet = LeafField::new(branchlet_depth, 0);
     branchlet.band = (0.06, 0.98);
-    branchlet.density = shape::Scalar::constant(15.0);
+    // **Twelve to the metre, and it fell from fifteen across this pass.** A branchlet is 1.72 m now and the
+    // note's own spacing — *a leaf's length to the next leaf's stalk* — is what sets the number, not a
+    // density carried across a change of branchlet length: at fifteen a metre a 1.72 m branchlet carried
+    // twenty-four leaves of 110 mm, which is a leaf every 67 mm and a skirt with no sky in it. Twelve is a
+    // leaf every 83 mm on a longer strand, which is the same spacing the note's photograph shows on a twig
+    // twice as long, and it is what holds the crown's H3 coverage where the wider fringe would otherwise
+    // push it past the bar.
+    branchlet.density = shape::Scalar::constant(12.0);
     branchlet.cluster = 1;
     branchlet.fan = shape::Scalar::constant(0.0);
     // **The golden angle and one leaf to a station**, which is the note's *"alternate and spirally
@@ -867,7 +924,11 @@ fn birch_base_lighting() -> Lighting {
 /// shape is read as a curtain of hanging branchlets on a clean stem, and a plan seen from a roof is not
 /// that shape. **Seventeen metres of vertical coverage on a fourteen-metre tree is eighty-two per cent of
 /// the frame's height** — the first plate's twenty metres left a fifth of the frame empty ground below the
-/// bole — and the `5.5 m` crown is **560 pixels** wide and **800** tall.
+/// bole — and the `7.5 m` crown is **758 pixels** wide and **1 305** tall, with the topmost foliage a
+/// hundred rows clear of the top row. **It was not: the widened fringe pushed the crown's top past the
+/// frame**, because a branchlet on a bough at `1.0` leaves that bough's own heading, which points twelve to
+/// twenty-nine degrees above horizontal, and stands up as far as it reaches out. The band now stops at
+/// `0.93` and the plate has its margin; the frame itself did not move.
 const BIRCH_FRAME: Framing = Framing {
     width: 1400,
     height: 1700,
@@ -964,10 +1025,12 @@ const BIRCH_BASE_DETAIL: Detail = Detail {
 
 /// Builds the birch's whole-tree plate: one tree, its own light and ground, the plain leaf, and its catkins.
 ///
-/// **Rows.** Thirty boughs over the crown's 8.4 m of leader and twenty-nine branchlets a bough is **866
-/// nodes** inside the planting's stride of 65 536; the three fields carry **13 603 leaf rows** and the catkin
-/// scatter **940**, so the plate is at **14 543 rows**, a sixth of the ninety-thousand ceiling of §4.13, and
-/// it compiles in six seconds and rasterises in three.
+/// **Rows.** Thirty-three boughs over the crown's 7.4 m of leader and thirty-seven branchlets a bough is
+/// **1 164 nodes** inside the planting's stride of 65 536 — read off the `-authored_id.txt` sidecar's red
+/// maximum, which is the one row count in this module that can be *measured* rather than derived. The
+/// three fields carry about **25 000 leaf rows** and the catkin scatter about **1 100**, so the plate is at
+/// roughly **26 100 rows**, under a third of the ninety-thousand ceiling of §4.13; it compiles in eleven
+/// seconds and rasterises in four.
 pub fn southwest_birch_picture() -> Value {
     let species = southwest_birch(BIRCH_SEED, BirchFoliage::Leaf);
     let planting = Planting::new(species.clone())
@@ -1133,14 +1196,17 @@ impl KeteleeriaFoliage {
 /// | level | count | where | what |
 /// | --- | --- | --- | --- |
 /// | **0** | **1** | — | the **bole**, clean to 9 m |
-/// | **1** | **64** in **tiers of four** | `0.345`–`1.0` of the bole | the **whorled boughs**, `5.9 m` at the crown's foot falling to `0.9 m` at the leader's tip |
+/// | **1** | **52–56** in **tiers of four** | `0.345`–`0.96` of the bole | the **whorled boughs**, `5.8 m` at the crown's foot falling to `2.2 m` at the leader's tip |
 /// | **2** | **6–9** | `0.20`–`0.98` of a bough | the **second-order branches**, `1.6`–`2.6 m`, upswept at their tips |
 /// | **3** | **4–6** | `0.12`–`1.0` of a second-order branch | the **lateral shoots**, `0.27`–`0.41 m`, and every cone in the crown stands on one |
 ///
-/// **Sixty-four children at four to a whorl is sixteen whorls over seventeen metres of leader, which is
-/// 1.06 m between them** — inside the note's ESTIMATE of `0.6–1.2 m` and the note's own `8–16` whorls read
-/// at its top. A lower count would leave two metres of bare bole between tiers, and the note's fourth
-/// recognition fact is a crown that reads *"coarse, layered, plate-by-plate"* rather than smooth.
+/// **Fifty-four children at four to a whorl is thirteen or fourteen whorls over sixteen metres of leader,
+/// which is about `1.2 m` between them** — at the top of the note's ESTIMATE of `0.6–1.2 m` and inside the
+/// note's own `8–16` whorls. **It was sixty-four, one tier every 1.06 m, and H1 is the reason it moved**:
+/// a tier a metre is a spruce's spacing, the note's fourth recognition fact is a crown that reads *"coarse,
+/// layered, plate-by-plate"*, and a plate needs air under it. Fewer tiers is also what makes the crown line
+/// **irregular**: at one tier a metre the outline is a smooth cone however the boughs are drawn, and the
+/// reader's answer is *spruce*.
 ///
 /// **`cluster = 4` is the whorl**, and it is the same word the pine's and the fir's use: how many siblings
 /// share one station. **The whorls break up**, though, which is this species' difference from a *Pinus*:
@@ -1151,8 +1217,15 @@ fn keteleeria_rule() -> Rule {
         trunk: keteleeria_bole,
         generations: vec![
             Generation {
-                count: (64, 64),
-                station: (KETELEERIA_CROWN_BASE, 1.0),
+                // **Fifty-two to fifty-six, and it was sixty-four.** Sixteen whorls of four over sixteen metres
+                // of leader is one tier a metre, which is a spruce's spacing and not a *Keteleeria*'s: the
+                // note's fourth recognition fact is a crown that reads **"coarse, layered, plate-by-plate"**,
+                // and a plate needs air under it. Thirteen or fourteen whorls is still inside the note's
+                // `8–16` and it is what makes the crown line **irregular** — with a tier every metre the
+                // outline is a smooth cone however the boughs are drawn, and with one every 1.2 m the apex
+                // has gaps a reader sees through to the cones behind it.
+                count: (52, 56),
+                station: (KETELEERIA_CROWN_BASE, 0.96),
                 slot: (0.0, GOLDEN),
                 jitter: (0.04, 0.12),
                 sink: 0.05,
@@ -1264,9 +1337,9 @@ fn keteleeria_bark() -> shape::Section {
 /// # Invariants
 ///
 /// - **The length is a law over the station**, which is the crown's profile and what [`Joint::station`]
-///   exists for: `5.9 m` at the crown's foot and `0.9 m` at the leader's tip, which with the
-///   second-order branches off the outer part is a crown **11 m across** — the note's `8–14 m` at its
-///   middle.
+///   exists for: `5.8 m` at the crown's foot and `2.2 m` at the leader's tip, which with the
+///   second-order branches off the outer part is a crown **13 m across** — the note's `8–14 m` at its
+///   upper end, read off `01-habit.jpg`'s flat-topped crown rather than off a conical one.
 /// - **The last two knots turn it up by `0.36` rad**, so the tip climbs to within a few degrees of
 ///   vertical. **That is not decoration: it is the cone's frame.** A [`vegetation::decorator::Seat`]
 ///   expresses no rotation — the seat's `y` is the node's own tangent at the station — so a cone template
@@ -1275,8 +1348,21 @@ fn keteleeria_bark() -> shape::Section {
 ///   two knots and not about the cone template at all.
 fn keteleeria_bough(rng: &mut Rng, joint: &Joint) -> (shape::Curve, shape::Scalar) {
     let profile = crown_profile(joint.station, KETELEERIA_CROWN_BASE);
-    let length = (0.90 + 5.00 * (1.0 - profile).powf(1.25)) * (0.80 + 0.40 * rng.unit());
-    let departure = 1.06 + 0.26 * rng.unit() + 0.10 * profile;
+    // **2.20 m at the leader's tip and 5.80 m at the crown's foot, and it was 0.90 m at the tip.** That one
+    // coefficient is the whole of H1's complaint: a whorl of boughs a metre long standing sixty degrees off
+    // the leader is a spire's last whorl, and sixteen whorls tapering from 5.9 m to 0.9 m is a spruce's
+    // outline — which is what the ten-sheet called it. **`01-habit.jpg` is the opposite**: a crown whose
+    // topmost boughs are nearly as long as the middle ones, so the crown's line is a **plate** and not a
+    // cone. The note's own `8–14 m` crown across on a tree whose crown is `10–22 m` deep asks for a
+    // width-to-depth of about one half at the wide end and cannot be drawn by a law that starts at 0.9 m.
+    let length = (2.70 + 3.10 * (1.0 - profile).powf(1.35)) * (0.80 + 0.40 * rng.unit());
+    // **And the departure now turns with the station, which is the plate's other half.** FOC says the branches
+    // are 较粗, **开展** — thick and *held out* — and the note's own estimate of `45–75° from vertical` is a
+    // range the top of a mature crown sits at its **upper** end of and the foot at its lower. A law that
+    // carries the topmost boughs to eighty-five degrees and a hundred is what puts the crown's top out at
+    // the width its middle is, and it is what leaves the cones standing proud of a crown line that has fallen
+    // away under them.
+    let departure = 1.06 + 0.26 * rng.unit() + 0.40 * profile;
     let radius = joint.parent_radius.max(1.0e-3);
     (
         bend(
@@ -1960,14 +2046,22 @@ const KETELEERIA_BASE_DETAIL: Detail = Detail {
 /// Builds the Keteleeria's whole-tree plate: one tree in the plume, its own light and ground, and its
 /// cones on the upper crown band.
 ///
-/// **Rows.** Sixty-four boughs at four to a whorl is sixteen whorls; 480 second-order branches at seven and a
-/// half to a bough; 2 400 lateral shoots at five to a second-order branch, which is **2 989 nodes** inside
-/// the planting's stride of 65 536. The five fields carry **58 094 leaf rows** and the cone scatters
-/// **3 353**, so the plate is inside the ninety-thousand-row ceiling of §4.13 with room to spare, and it
-/// compiles in 48 seconds and rasterises in 8.
+/// **Rows.** Fifty-four boughs at four to a whorl is thirteen or fourteen whorls; 432 second-order branches
+/// at seven and a half to a bough; 2 160 lateral shoots at five to a second-order branch, which is about
+/// **2 640 nodes** inside the planting's stride of 65 536 — read off the `-authored_id.txt` sidecar's red
+/// maximum. The five fields carry about **56 000 leaf rows** and the cone scatters about **5 000**, so the
+/// plate stays inside the ninety-thousand-row ceiling of §4.13, and it compiles in about fifty seconds and
+/// rasterises in nine.
+///
+/// **Two or three cones to a fruiting node here, against one or two before, and it is H1 that asked for
+/// it.** A 200 mm cone is **11 pixels** at this plate's 17.9 mm, so a cone is not a shape the frame resolves
+/// — it is a *stud*, and a crown reads as studded when there are enough of them that a few clear their own
+/// foliage against the sky. One or two on every third of the crown's own two thousand shoots left the
+/// silhouette's corn-cob texture to three or four specks, and the note's **first** recognition fact is the
+/// one thing in this species a reader can name without seeing a needle.
 pub fn evelyn_keteleeria_picture() -> Value {
     let species = evelyn_keteleeria(KETELEERIA_SEED, KeteleeriaFoliage::Plume);
-    let mut seats = keteleeria_cones(&species, 3, (1, 2));
+    let mut seats = keteleeria_cones(&species, 3, (2, 3));
     seats.extend(keteleeria_leader_cones());
     let planting = Planting::new(species.clone())
         .with_seats(seats)
