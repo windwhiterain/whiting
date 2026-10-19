@@ -286,6 +286,7 @@ fn document_of(scene: &str) -> Option<Building> {
         "shed" => crate::shed::document(),
         "compound" => crate::compound::document(),
         "stilt" => crate::stilt::document(),
+        "street" => crate::street::document(),
         "terrace" => crate::terrace::document(),
         "wing" => crate::wing::document(),
         "workshop" => crate::workshop::document(),

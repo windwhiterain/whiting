@@ -122,7 +122,7 @@ fn montane_plantings() -> Vec<Planting> {
             yunnan_pine(100 + index as u64, Foliage::Stand),
             pine_palette(),
             [across, deep],
-            rng.unit() * 6.28,
+            rng.unit() * std::f32::consts::TAU,
             COMPANION,
         ));
     }
@@ -135,7 +135,7 @@ fn montane_plantings() -> Vec<Planting> {
             yunnan_pine(400 + index as u64, Foliage::Stand),
             pine_palette(),
             [across, deep],
-            rng.unit() * 6.28,
+            rng.unit() * std::f32::consts::TAU,
             COMPANION,
         ));
     }

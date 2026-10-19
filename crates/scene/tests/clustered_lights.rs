@@ -483,6 +483,19 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // **Four groups, and the street is five houses that touch.** A frontage's plots become
+            // masses, and five masses, five roofs, five floors and the ground are four meshes — the
+            // same four a single house costs, because the row is what a mass list is for. The tiles
+            // ride in the roofs' own mesh and cost nothing, as they do in the compound.
+            "street",
+            Stages {
+                shadowing: 4,
+                depthing: 4,
+                lighting: 4,
+                other: 1,
+            },
+        ),
+        (
             // Four groups and three buildings, and **the plural in `roofs` is the whole of it**:
             // the terrace is three units that touch, and their roofs are packed into one mesh, so
             // the count is four and not six. Packing two things into one mesh is a saving this
