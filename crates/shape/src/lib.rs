@@ -44,7 +44,8 @@ pub mod section;
 pub mod sweep;
 
 pub use curve::{
-    Bezier, CLOSEST_SAMPLES, CLOSEST_STEPS, Closest, Curve, CurveError, Frame, Jet, Nearest, Station,
+    Bezier, CLOSEST_SAMPLES, CLOSEST_STEPS, Closest, Curve, CurveError, Frame, Jet, Nearest,
+    Station,
 };
 pub use loft::Loft;
 pub use math::{Vec2, Vec3};

@@ -314,7 +314,9 @@ impl Plant {
                 .get(handle)
                 .expect("the drawn spine is under this handle");
         }
-        derived.drawn.insert(handle.clone(), self.shape(node, placement));
+        derived
+            .drawn
+            .insert(handle.clone(), self.shape(node, placement));
         derived
             .drawn
             .get(handle)

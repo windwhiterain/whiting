@@ -407,11 +407,7 @@ impl LeafField {
 
     /// [`LeafField::groups`] with a derived table the caller already holds, so an expansion shares one
     /// walk's placements and drawn spines across its wood and all of its fields.
-    pub(crate) fn groups_in(
-        &self,
-        plant: &Plant,
-        derived: &mut Derived,
-    ) -> Vec<LeafGroup> {
+    pub(crate) fn groups_in(&self, plant: &Plant, derived: &mut Derived) -> Vec<LeafGroup> {
         let mut groups = Vec::new();
         for (handle, node) in plant.walk() {
             if handle.depth() != self.generation {
