@@ -292,6 +292,8 @@ fn document_of(scene: &str) -> Option<Building> {
         "workshop" => crate::workshop::document(),
         "yard" => crate::yard::document(),
         "yikeyin" => crate::yikeyin::document(),
+        // **Two cameras, one document**: the court view is the same expansion, so it names the same rows.
+        "yikeyin_court" => crate::yikeyin::document(),
         "house" => crate::house::document(),
         "hall" => crate::hall::document(),
         "hall_large" => crate::hall::document_at(14.0, 20.0, 1),

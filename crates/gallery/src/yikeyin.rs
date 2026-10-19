@@ -30,14 +30,30 @@ use building::openings::{Inset, Opening};
 use building::site;
 use building::{Building, BuildingSkeleton, Covering, Mass, MassId, PlanNode, ops};
 
+use crate::air::Atmosphere;
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
 use crate::kit::{
-    camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
-    mesh_material, post_processes, screen_material, surface,
+    camera, environment_light, flux_for_irradiance, frame, image, instance, instances,
+    light_with_radius, mesh, mesh_material, post_processes, screen_material, surface,
 };
-use crate::shaders::post_shader;
+use crate::shaders::{Projection, post_shader};
+
+/// The air over the block, and **the half of the light the sun is not**.
+///
+/// A well three metres across under one directional lamp is a hole with nothing in it: the shading
+/// already carries a sky term, but it reads that term out of the scene's own environment map, and a scene
+/// that declares none answers zero there. This is that map's own sky, and the same one the frame is graded
+/// against, so the ambient and the background cannot disagree.
+fn atmosphere() -> Atmosphere {
+    Atmosphere::new()
+        .zenith([0.18, 0.34, 0.60])
+        .horizon([0.80, 0.77, 0.71])
+        .ground([0.36, 0.33, 0.28])
+        .density(0.0009)
+        .scale_height(220.0)
+}
 
 /// The site: a nearly square plan, thirteen by fifteen, which is the type's own proportion.
 const HALF_X: f32 = 6.5;
@@ -96,6 +112,23 @@ const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 /// How the ground is drawn: one-metre cells over 120 metres, level.
 const GROUND_DIVISIONS: usize = 120;
 const GROUND_EXTENT: f64 = 60.0;
+
+/// Builds **the same building** from inside its court, which is the only place its own faces can be seen.
+///
+/// # Invariants
+///
+/// **It is one document and two cameras**: the expansion, its rows and its meshes are the same, and only
+/// the eye differs. The eye stands in the court at a person's height, in the corner the sun does not fill,
+/// looking at the 正房 and the 夏子 across the well.
+pub fn yikeyin_court() -> Value {
+    scene(
+        [1.15, 1.5, 1.25],
+        [-1.0, 3.9, -1.4],
+        1.22,
+        "yikeyin_court",
+        SUN,
+    )
+}
 
 /// Builds the scene, from outside the block.
 pub fn yikeyin() -> Value {
@@ -210,21 +243,44 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
         ),
         (
             "lights".to_owned(),
-            Value::List(vec![light_with_radius(
-                "sun",
-                SUN,
-                [1.0, 0.92, 0.78],
-                flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(sun)),
-                SHADOW_EXTENT,
-                170.0,
+            Value::List(vec![
+                light_with_radius(
+                    "sun",
+                    sun,
+                    [1.0, 0.92, 0.78],
+                    flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(sun)),
+                    SHADOW_EXTENT,
+                    170.0,
+                ),
+                // **The sky as a light**, which is the term the court lives on: a well under one lamp is a
+                // hole, and its own walls see the dome instead. The pixels below are the same air, so the
+                // ambient and the background are one sky and cannot drift apart.
+                environment_light("air", "air", [1.0; 3], 1.06),
+            ]),
+        ),
+        (
+            "images".to_owned(),
+            Value::List(vec![image(
+                "air",
+                256,
+                128,
+                atmosphere().environment_pixels(256, 128),
+                Projection::Latlong,
             )]),
         ),
         (
             "shaders".to_owned(),
             Value::List({
-                let mut shaders = stage_set("authored", "", "", &point, &extras);
-                shaders.extend(stage_set("plain", "", "", &plain.point_schema(), &plain));
-                shaders.push(post_shader(GRADE, SKY, None));
+                let helpers = atmosphere().wgsl();
+                let mut shaders = stage_set("authored", "", helpers.as_str(), &point, &extras);
+                shaders.extend(stage_set(
+                    "plain",
+                    "",
+                    helpers.as_str(),
+                    &plain.point_schema(),
+                    &plain,
+                ));
+                shaders.push(post_shader(GRADE, &helpers, Some(Projection::Latlong)));
                 shaders
             }),
         ),
@@ -624,32 +680,23 @@ fn distance_to_origin(position: [f64; 3]) -> f64 {
     (position[0] * position[0] + position[1] * position[1] + position[2] * position[2]).sqrt()
 }
 
-/// The sky this scene draws: a highland afternoon over a sealed court.
-const SKY: &str = r#"
-fn sky_at(ray: vec3<f32>) -> vec3<f32> {
-    let above = pow(clamp(ray.y, 0.0, 1.0), 0.52);
-    let horizon = vec3<f32>(0.85, 0.84, 0.79);
-    let zenith = vec3<f32>(0.23, 0.41, 0.67);
-    let below = vec3<f32>(0.27, 0.25, 0.20);
-    let sun = normalize(vec3<f32>(-8.0, 58.0, 12.0));
-    let glow = pow(clamp(dot(normalize(ray), sun), 0.0, 1.0), 9.0) * 0.26;
-    let sky = select(mix(horizon, below, clamp(-ray.y * 4.0, 0.0, 1.0)),
-                     mix(horizon, zenith, above),
-                     ray.y > 0.0);
-    return sky + vec3<f32>(1.0, 0.92, 0.74) * glow;
-}
-"#;
-
 /// What the post stage does to the frame.
 const GRADE: &str = r#"
+    // **The sky is read out of the scene's own environment map**, which is the same air the ambient term
+    // reads: a sky law written here instead would give the background and the bounce two different skies,
+    // and no number could bring them back together.
     if depth >= 1.0 {
-        color = sky_at(ray_through(in.uv));
+        color = environment_sky(ray_through(in.uv));
     }
     if depth < 1.0 {
         let ray = ray_through(in.uv);
         let along_ray = length(world_position(in.uv, depth) - uniforms.camera.position);
         let air = clamp((1.0 - exp(-along_ray * 0.0021)) * 0.52, 0.0, 0.78);
-        color = mix(color, sky_at(vec3<f32>(ray.x, max(ray.y, -0.04), ray.z)), air);
+        color = mix(
+            color,
+            environment_sky(vec3<f32>(ray.x, max(ray.y, -0.04), ray.z)),
+            air,
+        );
     }
     color = color / (color + vec3<f32>(1.0));
     color = pow(color, vec3<f32>(0.4545));

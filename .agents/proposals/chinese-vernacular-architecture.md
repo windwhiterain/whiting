@@ -1086,6 +1086,28 @@ while showing nothing. The reason is not the camera: **the shading has no sky am
 only ever be a dark hole under one sun. That is the next round's work, and until it exists the court's
 openings are document evidence and not picture evidence.
 
+### The sky is a light, and the court finally has a camera
+
+The last round found that a three-metre well under one directional lamp is a hole. The cause was not a
+missing shader term: **the lighting stage already carries a sky term, and reads it out of the scene's own
+environment map** — and a scene that declares no environment answers zero there. A 一颗印 declared a sun
+and nothing else.
+
+`crates/gallery/src/yikeyin.rs` now declares the air: an `Atmosphere` (zenith, horizon, ground, density,
+scale height) baked into a 256 × 128 latlong map, handed to the lighting stage as an `environment_light`
+and to the post stage as the frame's own sky. **One air, three readers**, so the bounce and the background
+cannot drift apart — and the grade reads `environment_sky(ray)` instead of a sky law of its own.
+
+| | before | after |
+| --- | --- | --- |
+| the exterior plate | `FDFC5862BC8DF946`, shadowed walls at zero | **`19D6B13ADEC8B470`**, the shadowed side is sky-lit and the court's own walls are visible down the well |
+| the court plate | *rejected a round ago as unreadable* | **`B88182140B4C4AD7`** — the sky slot, the 夏子's tiled edge, the 正房's door and the ambient-lit walls, all in one frame |
+| the identity rows | 18 932 over 13 scenes | **24 244 over 14** — the court view is the same document, so its 5 312 rows are the same rows |
+
+**The two plates are one document and two cameras**, which is the point: `yikeyin_court` re-renders the
+expansion the exterior plate renders, from a person's height in the corner the sun does not fill. That is
+the evidence the 夏子 and the courtyard arc never had.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

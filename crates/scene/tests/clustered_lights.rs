@@ -613,6 +613,18 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // **The same document from inside its court**: one expansion, two cameras, so the passes are
+            // the passes — and the row is here because the scene list is ordered by name and the count is
+            // per scene rather than per document.
+            "yikeyin_court",
+            Stages {
+                shadowing: 4,
+                depthing: 4,
+                lighting: 4,
+                other: 1,
+            },
+        ),
+        (
             // The one gallery scene whose light is a spot, so the one whose shadow is now a
             // **grid of pages** rather than one page — and the count is what that costs. Its lamp
             // reaches a cone seventeen and a half world units across at the far plane, which at
