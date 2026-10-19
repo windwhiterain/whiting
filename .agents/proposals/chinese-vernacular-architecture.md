@@ -666,7 +666,7 @@ first covering arc.
 **F5. Which building first.** *Decided: the 吊脚楼.* The owner's first-named type and the one that tests
 D4; 三坊一照壁 is the richest and waits for Arc 7.
 
-**F6. Scope of the old town — still open.** A street of houses is not a building: it needs a *settlement*
+**F6. Scope of the old town — answered: a layer.** A street of houses is not a building: it needs a *settlement*
 layer — frontage, blind walls on party lines, the arcade, the slope of the street, water. That layer does
 not exist in this workspace (the gallery draws one building per scene). This proposal stops at the
 building; the settlement is a separate question and should be named before an arc promises it.
@@ -911,6 +911,37 @@ interior construct's evidence cannot be the frame — it is the document, the pr
 the identity table names. A scene that *showed* the hole would be a camera inside the hall, which is an
 interior view this gallery does not yet have; drawing one now would be a picture of a room whose walls
 the document closes.
+
+### Arc 8 is closed: the settlement layer is a frontage, and F6 is answered
+
+**F6 is answered by the owner: the settlement stays in scope, as a layer and not as a diorama.** So this
+arc adds the smallest layer that answers a street's three questions and nothing else.
+
+`building::frontage` is a line, a side, a depth and a list of widths. Walking the line by those widths
+gives one `Plot` per building: the segment of the line it faces and the segment behind it. **The plots
+tile the line** — their widths and the gaps between them sum to the length walked — which is what makes
+a party wall a party wall rather than two walls with a street between them, and what makes `gap = 0` the
+statement "these two houses share a wall".
+
+| number | value |
+| --- | --- |
+| the probe | five 4 m plots on a 20 m line: fronts tile to **20.000 m**, area **120.000 m²**; the other side mirrors by **12 m**; a bent line turns the last two plots from `-z` to `+x`; **six refusals** each named |
+| the scene | `street`: five plots of 6 × 5, one two-storey house on each, a 3-bay × 2-storey facade with a door and three windows, the 举架 ladder and its tiles on every roof, the row climbing at 5.5 % |
+| the frame | **1280 × 800**, hash `247F1868C99BD982`, **13 passes** (4 meshes × 3 stages + the post) |
+| the identity rows | **4 940** for the street, **14 220** over the twelve scenes |
+
+**Three rules this arc cost, each measured.** A plot's quad is built and then reversed when its own plan
+area is negative — *the winding of a plot is the crate's business and not the frontage's*. A plot's
+direction is read at its own **middle**, because a plot that starts exactly on a corner would otherwise
+be turned by the segment it left. And **a house is built, seated, then cut**: a face's grid holds
+absolute elevations, so a grid cut before `site::seat` keeps the level the house had before it climbed
+the hill, and every opening in it ends up 0.33 m below its own wall — one house's worth of the slope, and
+that is the number the expansion reported.
+
+**What the street does not draw**, and each is a named next step rather than a gap: no pavement or
+arcade (the 骑楼 needs a first floor standing out over the walk — the 挑廊's plate again), no blind party
+walls (the joint is two walls touching), and no plot behind a plot (a block's own depth polygon is a
+second derivation).
 
 ## What would make this proposal wrong
 

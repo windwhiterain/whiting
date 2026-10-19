@@ -58,6 +58,7 @@ pub mod covering;
 pub mod derive;
 pub mod expand;
 pub mod fill;
+pub mod frontage;
 pub mod grid;
 pub mod identity;
 pub mod mass;
@@ -76,6 +77,7 @@ pub mod wall;
 
 pub use covering::{Covering, CoveringFault, RollId, RollSurface};
 pub use expand::{BuildError, Problem, build};
+pub use frontage::{Frontage, FrontageFault, Plot};
 pub use grid::{Bay, FaceGrid, FaceRef, GRID_TOLERANCE, Grids, Rhythm};
 pub use mass::{Attachment, AuthoredLoop, Mass, MassId, PlanNode};
 pub use member::{Anchor, Member, MemberId, MemberSurface};

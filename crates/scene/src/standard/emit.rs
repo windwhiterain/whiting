@@ -2357,10 +2357,7 @@ fn finish_mesh(
 /// thousand meshes and materials and tens of thousands of rows, and the product of those is where
 /// the compile time of such a scene went: not in packing a transform, but in finding the name it
 /// had to pack.
-fn index_by_label<'read, T>(
-    table: &'read [T],
-    label_of: impl Fn(&T) -> &str,
-) -> HashMap<&'read str, usize> {
+fn index_by_label<T>(table: &[T], label_of: impl Fn(&T) -> &str) -> HashMap<&str, usize> {
     let mut index = HashMap::with_capacity(table.len());
     for (position, entry) in table.iter().enumerate() {
         index.entry(label_of(entry)).or_insert(position);
@@ -2519,6 +2516,9 @@ fn material_bundle(
 /// A point is verified against its mesh's own point schema and against the point schema of
 /// the shader that draws it. Verifying one and not the other is how a mesh ends up carrying a
 /// field no shader asked for, or a shader that reads a field no point carries.
+#[allow(clippy::too_many_arguments)]
+// Eight readings, each one a separate table the instance must be checked against; grouping them into a
+// struct would make one type whose only job is to be an argument list.
 fn read_instance(
     instance: &Value,
     path: &Path,

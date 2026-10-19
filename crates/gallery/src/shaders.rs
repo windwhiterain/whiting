@@ -1375,6 +1375,9 @@ fn shadow_bias_of(custom: &Schema) -> ShadowBias {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+// A stage is its blocks, and each block is one thing a caller composes; a struct for them would be a
+// second name for the same list.
 fn lighting_stage<'text>(
     vertex_inputs: &str,
     displace: Block<'text>,
