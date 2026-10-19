@@ -24,7 +24,7 @@ use shape::Vec3;
 
 use crate::expand::Detail;
 use crate::handle::Handle;
-use crate::plant::Plant;
+use crate::plant::{Derived, Plant};
 
 /// One place a plant's wood stands inside something.
 #[derive(Debug, Clone, PartialEq)]
@@ -50,10 +50,14 @@ pub struct Contact {
 ///   ordered by how badly each point is buried and the first entry is the worst.
 /// - **Nothing is repaired.** A plant is taken by reference and returned to unchanged; shaping it out of an
 ///   obstacle is [`crate::field::Field::Obstacle`]'s job and [`crate::envelope::trim`]'s for a crown.
+///
+/// **One derived table for the whole walk**, so each node's placed spine — and every ancestor's placement —
+/// is derived once and reused, and the table is dropped when this call returns.
 pub fn collide(plant: &Plant, occupancy: impl Fn(Vec3) -> f32, detail: Detail) -> Vec<Contact> {
     let mut contacts = Vec::new();
+    let mut derived = Derived::default();
     for (handle, _) in plant.live() {
-        let Ok(spine) = plant.spine(&handle) else {
+        let Ok(spine) = plant.spine_in(&handle, &mut derived) else {
             continue;
         };
         for station in spine.stations(detail.stations.max(2)) {

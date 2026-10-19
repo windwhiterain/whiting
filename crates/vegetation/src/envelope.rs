@@ -21,13 +21,22 @@
 //! The linear model — a length scale moves a node's tip along the segment from its origin — is exact *without*
 //! fields and approximate with them, because a field bends a shorter spine differently. So the trim runs one pass
 //! on the model and then **measures what is left**, which is why [`Trim::pressed`] exists rather than a claim.
+//!
+//! # What a trim derives once
+//!
+//! **The envelope is measured against the trunk, and the trunk does not move inside a pass.** So [`trim`]
+//! reads it once per pass and asks [`Envelope::outside_of`] the thirty-three times per node its bisection
+//! needs, and each node's placed spine is derived once rather than once per probe. **The two passes take two
+//! tables, not one table across the edit**: the second pass measures the plant the first one trimmed, and a
+//! table carried across `apply` would answer with the plant the trim started from — a wrong picture, with no
+//! error to notice it by.
 
 use shape::math::{Vec2, dot3, length3, subtract};
-use shape::{Scalar, Section};
+use shape::{Curve, Nearest, Scalar, Section};
 
 use crate::handle::Handle;
 use crate::ops::{Change, Edit, Property, apply};
-use crate::plant::Plant;
+use crate::plant::{Derived, Plant};
 
 /// The crown a plant may reach: a radius law about the trunk, and the shape law it is drawn with.
 ///
@@ -315,10 +324,28 @@ impl Envelope {
     ///   draws a section in, so an envelope and the sections of the wood it encloses are measured in one space.
     /// - **The outside distance is the radial excess**: how much further the point is than the section reaches,
     ///   so a point inside is `0.0` and not a negative number a caller has to know about.
+    ///
+    /// **The trunk is read once per query here, and [`Envelope::outside_of`] is the same measurement against
+    /// a search the caller already holds** — which is what makes a trim's bisection cost a nearest-point query
+    /// rather than a spine rebuild *and* a bracketing scan per probe. Both are the same defect at two levels:
+    /// a curve derived again on every read of one that had not moved.
     pub fn outside(&self, plant: &Plant, point: [f32; 3]) -> f32 {
         let Ok(trunk) = plant.spine(&Handle::root()) else {
             return 0.0;
         };
+        self.outside_of(&trunk.nearest(), point)
+    }
+
+    /// How far a world point is outside, measured against a trunk search already built.
+    ///
+    /// # Invariants
+    ///
+    /// **The same measurement [`Envelope::outside`] makes, on the same numbers**: `shape::Nearest` answers
+    /// what [`shape::Curve::closest`] answers, bit for bit, and a trunk of no length answers `0.0` exactly as
+    /// a plant whose trunk cannot be resolved does. So a caller that holds one search for a whole pass — a
+    /// trim asks tens of thousands of points against one trunk — gets the numbers `outside` would have given
+    /// it, and pays for the trunk's bracketing scan once rather than once per probe.
+    pub(crate) fn outside_of(&self, trunk: &Nearest<'_>, point: [f32; 3]) -> f32 {
         if trunk.length() <= 0.0 {
             return 0.0;
         }
@@ -356,6 +383,11 @@ const MIN_SCALE: f32 = 0.1;
 /// - **The model is linear and the result is measured.** A length scale moves the tip along the segment from the
 ///   node's origin, which is exact until a field bends the shorter spine; the trim runs one pass and then reports
 ///   what is still outside rather than claiming the envelope is met.
+/// - **Two derivations, not one table across both passes.** The first pass reads the trunk once and derives
+///   each node's placed spine once, holds them for the whole pass, and drops them before `apply` writes; the
+///   second reads them again from the trimmed plant — as **tips**, because that is all a press is. A table
+///   carried across the edit would answer with the plant the trim started from, and **a stale placed spine is
+///   a wrong picture with no error**.
 pub fn trim(plant: &mut Plant, envelope: &Envelope) -> Trim {
     let mut edits: Vec<Edit> = Vec::new();
     let mut trimmed: Vec<(Handle, f32)> = Vec::new();
@@ -364,63 +396,79 @@ pub fn trim(plant: &mut Plant, envelope: &Envelope) -> Trim {
         .filter(|(handle, _)| !handle.is_root())
         .map(|(handle, _)| handle)
         .collect();
-    for handle in handles {
-        let Ok(spine) = plant.spine(&handle) else {
-            continue;
+    // **The trunk is the envelope's own axis and the plant is not written until `apply` below**, so one
+    // reading — and one bracketing table over it — serves the whole pass, including the thirty-two
+    // bisection probes per node, which are the reason this loop used to rebuild a spine per probe.
+    let curve = plant.spine(&Handle::root()).ok();
+    {
+        let trunk = curve.as_ref().map(Curve::nearest);
+        let outside = |point: [f32; 3]| {
+            trunk
+                .as_ref()
+                .map_or(0.0, |trunk| envelope.outside_of(trunk, point))
         };
-        let tip = spine.at(1.0);
-        if envelope.outside(plant, tip) <= 0.0 {
-            continue;
-        }
-        let Ok(placement) = plant.placement(&handle) else {
-            continue;
-        };
-        let origin = placement.origin;
-        let length = spine.length();
-        if length <= 0.0 {
-            continue;
-        }
-        let inside = |scale: f32| {
-            let probe = [
-                origin[0] + (tip[0] - origin[0]) * scale,
-                origin[1] + (tip[1] - origin[1]) * scale,
-                origin[2] + (tip[2] - origin[2]) * scale,
-            ];
-            envelope.outside(plant, probe) <= 0.0
-        };
-        if !inside(0.0) {
-            // Even pulled back to its own origin the node is outside: the crown does not reach where it hangs.
-            continue;
-        }
-        let mut low = 0.0f32;
-        let mut high = 1.0f32;
-        for _ in 0..32 {
-            let middle = 0.5 * (low + high);
-            if inside(middle) {
-                low = middle;
-            } else {
-                high = middle;
+        let mut derived = Derived::default();
+        for handle in handles {
+            let Ok(spine) = plant.spine_in(&handle, &mut derived) else {
+                continue;
+            };
+            let tip = spine.at(1.0);
+            if outside(tip) <= 0.0 {
+                continue;
             }
+            let Ok(placement) = plant.placement_in(&handle, &mut derived) else {
+                continue;
+            };
+            let origin = placement.origin;
+            let length = spine.length();
+            if length <= 0.0 {
+                continue;
+            }
+            let inside = |scale: f32| {
+                let probe = [
+                    origin[0] + (tip[0] - origin[0]) * scale,
+                    origin[1] + (tip[1] - origin[1]) * scale,
+                    origin[2] + (tip[2] - origin[2]) * scale,
+                ];
+                outside(probe) <= 0.0
+            };
+            if !inside(0.0) {
+                // Even pulled back to its own origin the node is outside: the crown does not reach where it hangs.
+                continue;
+            }
+            let mut low = 0.0f32;
+            let mut high = 1.0f32;
+            for _ in 0..32 {
+                let middle = 0.5 * (low + high);
+                if inside(middle) {
+                    low = middle;
+                } else {
+                    high = middle;
+                }
+            }
+            if low < MIN_SCALE {
+                // The crown would take almost the whole branch: a note for its author, not a seven-micron limb.
+                continue;
+            }
+            let removed = (1.0 - low) * length;
+            if removed <= 1e-6 {
+                continue;
+            }
+            trimmed.push((handle.clone(), removed));
+            edits.push(Edit::new(
+                handle,
+                Change::Offset {
+                    property: Property::Length,
+                    by: -removed,
+                },
+            ));
         }
-        if low < MIN_SCALE {
-            // The crown would take almost the whole branch: a note for its author, not a seven-micron limb.
-            continue;
-        }
-        let removed = (1.0 - low) * length;
-        if removed <= 1e-6 {
-            continue;
-        }
-        trimmed.push((handle.clone(), removed));
-        edits.push(Edit::new(
-            handle,
-            Change::Offset {
-                property: Property::Length,
-                by: -removed,
-            },
-        ));
     }
     apply(plant, &edits);
     // What the linear model could not know: read every candidate again, after the edits and with the fields on.
+    let curve = plant.spine(&Handle::root()).ok();
+    let trunk = curve.as_ref().map(Curve::nearest);
+    let mut derived = Derived::default();
     let mut pressed: Vec<(Handle, f32)> = Vec::new();
     for handle in plant
         .live()
@@ -428,10 +476,14 @@ pub fn trim(plant: &mut Plant, envelope: &Envelope) -> Trim {
         .map(|(handle, _)| handle)
         .collect::<Vec<_>>()
     {
-        let Ok(spine) = plant.spine(&handle) else {
+        // **A press is a question about a tip**, so this pass asks for the tip rather than rebuilding every
+        // placed spine to read one knot off it. [`crate::plant::Plant::tip_in`] is `at(1.0)` bit for bit.
+        let Ok(tip) = plant.tip_in(&handle, &mut derived) else {
             continue;
         };
-        let excess = envelope.outside(plant, spine.at(1.0));
+        let excess = trunk
+            .as_ref()
+            .map_or(0.0, |trunk| envelope.outside_of(trunk, tip));
         if excess > 1e-5 {
             pressed.push((handle, excess));
         }

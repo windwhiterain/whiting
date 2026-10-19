@@ -22,7 +22,7 @@ use shape::math::{length3, subtract};
 use crate::handle::Handle;
 use crate::node::Prune;
 use crate::ops::{Change, Edit, apply};
-use crate::plant::Plant;
+use crate::plant::{Derived, Plant};
 
 /// What a thinning took.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -44,6 +44,10 @@ pub struct Thin {
 ///   ended up and not where the rule put it.
 /// - **The prune is the same edit a hand writes**, `Prune::Thinned`, applied through [`crate::ops::apply`], so a
 ///   report can say what went and a caller can keep the list.
+/// - **One derived table, dropped before the edits land.** The prunes are all decided against the plant as it
+///   was, so the table is scoped to the deciding loop; a table carried into `apply` would answer with the
+///   unthinned plant, which is exactly the state the decisions were made against and no longer the one the
+///   caller holds.
 pub fn thin(plant: &mut Plant, spacing: f32) -> Thin {
     let mut edits = Vec::new();
     let mut pruned = Vec::new();
@@ -51,37 +55,40 @@ pub fn thin(plant: &mut Plant, spacing: f32) -> Thin {
         return Thin { pruned };
     }
     let parents: Vec<Handle> = plant.live().map(|(handle, _)| handle).collect();
-    for parent in parents {
-        let count = plant
-            .get(&parent)
-            .map(|node| node.children().len())
-            .unwrap_or(0);
-        let mut kept: Vec<Vec3> = Vec::new();
-        for index in 0..count {
-            let child = parent.child(index as u32);
-            let Ok(node) = plant.get(&child) else {
-                continue;
-            };
-            if node.pruned().is_some() {
-                continue;
-            }
-            let Ok(spine) = plant.spine(&child) else {
-                continue;
-            };
-            let tip = spine.at(1.0);
-            let crowded = kept
-                .iter()
-                .any(|other| length3(subtract(tip, *other)) < spacing);
-            if crowded {
-                pruned.push(child.clone());
-                edits.push(Edit::new(
-                    child,
-                    Change::Prune {
-                        reason: Prune::Thinned,
-                    },
-                ));
-            } else {
-                kept.push(tip);
+    {
+        let mut derived = Derived::default();
+        for parent in parents {
+            let count = plant
+                .get(&parent)
+                .map(|node| node.children().len())
+                .unwrap_or(0);
+            let mut kept: Vec<Vec3> = Vec::new();
+            for index in 0..count {
+                let child = parent.child(index as u32);
+                let Ok(node) = plant.get(&child) else {
+                    continue;
+                };
+                if node.pruned().is_some() {
+                    continue;
+                }
+                let Ok(spine) = plant.spine_in(&child, &mut derived) else {
+                    continue;
+                };
+                let tip = spine.at(1.0);
+                let crowded = kept
+                    .iter()
+                    .any(|other| length3(subtract(tip, *other)) < spacing);
+                if crowded {
+                    pruned.push(child.clone());
+                    edits.push(Edit::new(
+                        child,
+                        Change::Prune {
+                            reason: Prune::Thinned,
+                        },
+                    ));
+                } else {
+                    kept.push(tip);
+                }
             }
         }
     }
@@ -95,6 +102,7 @@ pub fn thin(plant: &mut Plant, spacing: f32) -> Thin {
 /// its spacing is exactly what [`thin`] would act on.
 pub fn closest_tips(plant: &Plant, parent: &Handle) -> Option<f32> {
     let count = plant.get(parent).ok()?.children().len();
+    let mut derived = Derived::default();
     let mut tips: Vec<Vec3> = Vec::new();
     for index in 0..count {
         let child = parent.child(index as u32);
@@ -105,7 +113,7 @@ pub fn closest_tips(plant: &Plant, parent: &Handle) -> Option<f32> {
         {
             continue;
         }
-        let Ok(spine) = plant.spine(&child) else {
+        let Ok(spine) = plant.spine_in(&child, &mut derived) else {
             continue;
         };
         tips.push(spine.at(1.0));

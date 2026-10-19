@@ -19,12 +19,21 @@
 //! the parent by its [`crate::node::Attachment::sink`], and the two surfaces meet by construction rather
 //! than by a merge pass. That is the same answer a socket gets in `building` — a joint is one subtraction,
 //! not a transform — and it is why every wood loft is a solid that can be graded on its own.
+//!
+//! # What a walk derives once
+//!
+//! **The whole expansion holds one [`crate::plant::Derived`] table, and the table is this walk's own local.**
+//! Every node's placed spine is a function of the node, its ancestors' placements and the plant's fields, so
+//! the wood and every leaf field read the same answers rather than re-deriving them; and the table is dropped
+//! when the call returns, so there is no cache inside [`crate::plant::Plant`] that a mutation could leave
+//! behind. A stale placed spine would be a wrong picture with no error, so the invalidation is structural:
+//! **the table cannot outlive the immutable borrow of the plant it was derived from.**
 
 use shape::{Loft, Sweep};
 
 use crate::handle::Handle;
 use crate::leaf::{LeafField, LeafGroup};
-use crate::plant::Plant;
+use crate::plant::{Derived, Plant};
 
 /// How finely a plant is expanded: rings along each spine, and vertices around each section.
 ///
@@ -90,12 +99,23 @@ pub struct Wood {
 /// taper and capped, so each is a closed solid and the whole plant's wood is a list of solids rather than
 /// one surface with seams. The walk's handles always resolve, so a failure here is a defect in the tree and
 /// not data a caller has to handle.
+///
+/// **One derived table for the whole walk**: each node's placed spine is a function of the node and of the
+/// plant's fields alone, so the walk asks [`crate::plant::Plant::spine_in`] once per node and reuses every
+/// ancestor's answer. The table is this call's own local, dropped when it returns, so it cannot outlive the
+/// immutable borrow of the plant it was derived from.
 pub fn wood(plant: &Plant, detail: Detail) -> Vec<Wood> {
+    wood_in(plant, detail, &mut Derived::default())
+}
+
+/// [`wood`] with a derived table the caller already holds, so an expansion shares one walk's derivations
+/// with its leaf fields rather than re-deriving every ancestor chain per field.
+pub(crate) fn wood_in(plant: &Plant, detail: Detail, derived: &mut Derived) -> Vec<Wood> {
     plant
         .live()
         .map(|(handle, node)| {
             let spine = plant
-                .spine(&handle)
+                .spine_in(&handle, derived)
                 .expect("a handle the walk yielded resolves");
             let rings = detail.rings(spine.length());
             // **A section's authored corners survive the sampling.** An outline drawn at fewer
@@ -130,11 +150,27 @@ pub struct Expansion {
 /// leaf, so `k` leaves of one template cost the template's own triangles once and `k` transforms — which is
 /// the whole reason a field is a distribution rather than a generator. The wood is the opposite by design: it
 /// is baked, one solid per node, because a branch's shape is the document and a leaf's is a template.
+///
+/// **One derived table for the wood and every field**, because a leaf field's leaves hang on the same nodes
+/// the wood sweeps and every field asks for the same placed spines. The table is this call's own local and
+/// is dropped when the call returns: the whole expansion holds one immutable borrow of one plant, so there
+/// is nothing a mutation could be observed through.
 pub fn expand(plant: &Plant, detail: Detail, fields: &[LeafField]) -> Expansion {
-    let wood = wood(plant, detail);
+    expand_in(plant, detail, fields, &mut Derived::default())
+}
+
+/// [`expand`] with the caller's derived table, so a caller that expands and then measures reads one set of
+/// placements rather than two.
+pub(crate) fn expand_in(
+    plant: &Plant,
+    detail: Detail,
+    fields: &[LeafField],
+    derived: &mut Derived,
+) -> Expansion {
+    let wood = wood_in(plant, detail, derived);
     let mut leaves = Vec::new();
     for field in fields {
-        leaves.extend(field.groups(plant));
+        leaves.extend(field.groups_in(plant, derived));
     }
     Expansion { wood, leaves }
 }

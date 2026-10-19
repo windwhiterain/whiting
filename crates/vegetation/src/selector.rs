@@ -30,7 +30,7 @@ use shape::math::Vec3;
 
 use crate::handle::Handle;
 use crate::node::Node;
-use crate::plant::Plant;
+use crate::plant::{Derived, Plant};
 
 /// A set of nodes, as a predicate rather than a list: the brush.
 ///
@@ -137,6 +137,18 @@ impl Selector {
     /// already has; passing a node that is not the one `handle` names would make the answer
     /// meaningless, so the two travel together rather than one being looked up again.
     pub fn matches(&self, plant: &Plant, handle: &Handle, node: &Node) -> bool {
+        self.matches_in(plant, handle, node, &mut Derived::default())
+    }
+
+    /// [`Selector::matches`] with the walk's derived table, so a selector that reads a node's placement
+    /// composes each ancestor chain once over a whole walk.
+    pub(crate) fn matches_in(
+        &self,
+        plant: &Plant,
+        handle: &Handle,
+        node: &Node,
+        derived: &mut Derived,
+    ) -> bool {
         match self {
             Selector::Every => true,
             Selector::Generation(depth) => handle.depth() == *depth,
@@ -151,15 +163,15 @@ impl Selector {
                 let slot = node.attachment().slot;
                 slot >= *from && slot <= *to
             }
-            Selector::Inside { corner, opposite } => match plant.placement(handle) {
+            Selector::Inside { corner, opposite } => match plant.placement_in(handle, derived) {
                 Ok(placement) => spans(corner, opposite, placement.origin),
                 Err(_) => false,
             },
             Selector::Ids(ids) => ids.contains(handle),
             Selector::Any(selectors) => selectors
                 .iter()
-                .any(|selector| selector.matches(plant, handle, node)),
-            Selector::Not(selector) => !selector.matches(plant, handle, node),
+                .any(|selector| selector.matches_in(plant, handle, node, derived)),
+            Selector::Not(selector) => !selector.matches_in(plant, handle, node, derived),
         }
     }
 
@@ -171,10 +183,14 @@ impl Selector {
     /// a repeated [`Selector::Ids`] entry does not repeat an answer — and the order is the plant's
     /// own, which is the order a report and an edit both read. Because it walks the plant, the list
     /// is also `walk().filter(matches)` by construction; the two routes are one route.
+    ///
+    /// **One derived table for the walk**, dropped when it returns: a selector that reads a node's
+    /// placement over a whole plant otherwise re-composes every ancestor chain once per node.
     pub fn handles(&self, plant: &Plant) -> Vec<Handle> {
+        let mut derived = Derived::default();
         plant
             .walk()
-            .filter(|(handle, node)| self.matches(plant, handle, node))
+            .filter(|(handle, node)| self.matches_in(plant, handle, node, &mut derived))
             .map(|(handle, _)| handle)
             .collect()
     }
