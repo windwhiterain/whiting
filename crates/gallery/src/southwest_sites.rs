@@ -559,33 +559,41 @@ pub fn site_valley_handle_of(id: u32) -> Option<String> {
 // site_subalpine — the closed stand at three thousand two hundred metres
 // ---------------------------------------------------------------------------
 
-/// Where the stand's tufts stand: the rectangle in front of the camera, `x` from -58 to -34 and `z`
-/// from 12 to 34, which is the band between the lens and twenty-two metres of it.
-const SUBALPINE_TUFTS: usize = 420;
+/// Where the stand's tufts stand: the rectangle in front of the camera, `x` from -86 to -58 and `z`
+/// from 8 to 34, which is the band between the lens and twenty-six metres of it.
+const SUBALPINE_TUFTS: usize = 600;
 
 /// The mossy floor's own cover: a dark moss green, and the darkest skin any of the three frames puts
 /// on the ground.
 const MOSS: [f64; 3] = [0.135, 0.165, 0.090];
 
-/// The subalpine stand's plantings: **a spruce and a fir as co-heroes, four more of each around them
-/// close enough that the crowns interlock, and four giant rhododendrons under them**.
+/// The subalpine stand's plantings: **a spruce and a fir as co-heroes on the camera's own bearing, one
+/// more of each beside the lens at twelve metres, six more between them and the heroes, and four
+/// giant rhododendrons under the lot**.
 ///
 /// # Invariants
 ///
-/// **The foliage is [`SpireFoliage::Plume`] on every planting, hero and companion alike.** The spire
-/// module has no stand tier of its own and does not need one: `Plume` is already the ninth of the
-/// needle's density, and a ninth is what makes a thirty-four-metre crown cost forty thousand rows
-/// rather than three hundred and four.
+/// - **The foliage is [`SpireFoliage::Plume`] on every planting, hero and companion alike.** The spire
+///   module has no stand tier of its own and does not need one: `Plume` is already the ninth of the
+///   needle's density, and a ninth is what makes a thirty-four-metre crown cost forty thousand rows
+///   rather than three hundred and four.
+/// - **A companion stands within half a frame-width of the lens on both sides.** That is what a closed
+///   stand *is* — the first pass put its nearest companion at nineteen metres and drew a treeline on
+///   an open hill with fifty-five per cent of the picture bare — and the two near boles are also what
+///   keep the ground band from being the whole of the lower half.
 fn subalpine_plantings() -> Vec<Planting> {
     let mut rng = Rng::new(8_200);
     let mut plantings = Vec::new();
-    // The two co-heroes at the crate's own dial, each carrying its own species' cone rule.
+    // The two co-heroes on the camera's own bearing, forty-eight and sixty-one metres out, at the
+    // crate's own dial and each carrying its own species' cone rule. They are on the axis because the
+    // fir's erect candlesticks are the frame's one thing that has to reach the sky, and a cone that is
+    // thirty degrees off centre is a cone in a corner.
     let hero_spruce = lijian_spruce(3_001, SpireFoliage::Plume);
     plantings.push(
         seated(
             hero_spruce.clone(),
             spruce_palette(),
-            [-110.0, 24.0],
+            [-108.0, 14.0],
             0.5,
             Detail::DEFAULT,
         )
@@ -596,17 +604,32 @@ fn subalpine_plantings() -> Vec<Planting> {
         seated(
             hero_fir.clone(),
             fir_palette(),
-            [-100.0, -8.0],
+            [-116.0, 0.0],
             2.6,
             Detail::DEFAULT,
         )
         .with_seats(fir_cones(&hero_fir)),
     );
-    // Four companions of each, at the coarser dial, standing between the camera and the heroes so that
-    // the near crowns run out of the top of the frame and the far crowns break the skyline. Eight is
-    // the smallest number at which two species' crowns interlock, and every one of them costs the same
-    // rows the hero does.
-    let spruce_companions: [[f32; 2]; 4] = [[-56.0, 20.0], [-70.0, 34.0], [-84.0, 12.0], [-98.0, 30.0]];
+    // The two near boles, one each side of the lens at twelve metres, whose crowns run out of the top
+    // of the frame and whose roots stand in the foreground band.
+    for (index, at) in [[-74.0f32, 31.0f32], [-70.0, 19.0]].into_iter().enumerate() {
+        let species = lijian_spruce(3_090 + index as u64, SpireFoliage::Plume);
+        plantings.push(
+            seated(
+                species.clone(),
+                spruce_palette(),
+                at,
+                rng.unit() * 6.28,
+                COMPANION,
+            )
+            .with_seats(spruce_cones(&species)),
+        );
+    }
+    // Six more between the lens and the heroes, so that the crowns interlock along the whole depth of
+    // the frame rather than at one distance. Every one of them costs the same rows the hero does, and
+    // this is the frame's whole row budget: ten companions is where a hundred and forty thousand
+    // companion rows stop buying a denser picture.
+    let spruce_companions: [[f32; 2]; 3] = [[-92.0, 26.0], [-80.0, 8.0], [-104.0, 4.0]];
     for (index, at) in spruce_companions.iter().enumerate() {
         let species = lijian_spruce(3_100 + index as u64, SpireFoliage::Plume);
         plantings.push(
@@ -620,7 +643,7 @@ fn subalpine_plantings() -> Vec<Planting> {
             .with_seats(spruce_cones(&species)),
         );
     }
-    let fir_companions: [[f32; 2]; 4] = [[-62.0, 8.0], [-78.0, 26.0], [-90.0, 4.0], [-104.0, 18.0]];
+    let fir_companions: [[f32; 2]; 3] = [[-86.0, 16.0], [-98.0, 22.0], [-112.0, -12.0]];
     for (index, at) in fir_companions.iter().enumerate() {
         let species = cangshan_fir(3_200 + index as u64, SpireFoliage::Plume);
         plantings.push(
@@ -635,8 +658,11 @@ fn subalpine_plantings() -> Vec<Planting> {
         );
     }
     // The understory: 大树杜鹃 is a two-hundred-year-old tree of **2100–3200 m** on the Gaoligongshan
-    // and it is the subalpine forest's own shrub layer, not a montane one.
-    for (index, at) in [[-68.0f32, 16.0f32], [-80.0, 20.0], [-92.0, 26.0], [-74.0, 10.0]]
+    // and it is the subalpine forest's own shrub layer, not a montane one. Four of them at the
+    // coarser dial, **none of them on the camera's bearing** — the first pass put one dead ahead and a
+    // glossy dark-green crown with a rose truss on it outshone both co-heroes, which is the
+    // understory taking the frame from the canopy.
+    for (index, at) in [[-74.0f32, 30.0f32], [-86.0, 32.0], [-98.0, 6.0], [-110.0, 24.0]]
         .into_iter()
         .enumerate()
     {
@@ -653,8 +679,8 @@ fn subalpine_plantings() -> Vec<Planting> {
         );
     }
     for index in 0..SUBALPINE_TUFTS {
-        let across = -58.0 + 24.0 * rng.unit();
-        let deep = 12.0 + 22.0 * rng.unit();
+        let across = -86.0 + 28.0 * rng.unit();
+        let deep = 8.0 + 26.0 * rng.unit();
         plantings.push(tufted(9_200 + index as u64, [across, deep], MOSS));
     }
     plantings
@@ -662,6 +688,10 @@ fn subalpine_plantings() -> Vec<Planting> {
 
 /// The subalpine stand's standing stone: **1.2 m**, the same known size the montane frame states, so
 /// the two frames' E2 answers are the same object at the same height in two different belts.
+///
+/// It stands twenty-two metres off the lens and fourteen degrees left of the axis, because the first
+/// pass put it at eight and the frame's own foreground at eight is the base of a thirty-four-metre
+/// spruce — a stone at a tree's foot measures the tree and the reader never sees the stone.
 fn subalpine_stone() -> Prop {
     let mut sweep = shape::Sweep::new(
         vegetation::species::spine(&[
@@ -677,64 +707,71 @@ fn subalpine_stone() -> Prop {
         (0.8, 0.22),
         (1.0, 0.06),
     ]);
-    let at = [-47.0, slope_height(-47.0, 25.0) - 0.10, 25.0];
-    packed_prop(
-        "stone",
-        sweep,
-        8,
-        9,
-        [0.215, 0.225, 0.215],
-        0.96,
-        at,
-    )
+    let at = [-84.0, slope_height(-84.0, 28.9) - 0.10, 28.9];
+    packed_prop("stone", sweep, 8, 9, [0.215, 0.225, 0.215], 0.96, at)
 }
 
 /// A cold high sun over the subalpine stand.
 ///
 /// # Invariants
 ///
-/// - **The key is at `57.3` degrees of elevation and `84` degrees in azimuth from the camera's own**, so
-///   the light comes in over the camera's left shoulder and the frame's right-hand trunks carry a dark
-///   flank. A stand lit frontally has no lit side and no dark side and is a grey wall.
-/// - **The fill is a deep blue at 0.85**, which is the frame's "deep blue shadow" stated as a number:
-///   the shadow's colour is the sky's own and its strength is what puts blue in it.
+/// - **The key's elevation is stated from the stand and not from the origin**, and that is the whole
+///   of what the first pass got wrong. A key at `[22, 58, -30]` is fifty-seven degrees above the
+///   *origin* and **twenty-one degrees above a camera standing sixty metres away in `x`**, so the
+///   first pass drew a high-sun frame at the elevation of a late afternoon and every shadow in it
+///   lay the wrong way. The sun here is **fifty-five degrees above the stand** and `55` degrees in
+///   azimuth from the camera's own bearing, which is what puts the near boles' lit flanks on the
+///   camera's side and their shadow sides facing the lens.
+/// - **The fill is a deep blue at `0.90`**, which is the frame's "deep blue shadow" stated as a
+///   number: a shadow's colour is the sky's own and its strength is what puts blue in it. The first
+///   pass's fill of `0.85` against a `0.75` sky radiance left the shadowed sides a neutral grey-brown;
+///   the second pass's `1.20` put so much blue in the whole frame that the moss read as mint, and
+///   `0.90` against a `0.45` sky is the ratio that keeps the shadow blue and the lit flank white.
+/// - **The floor's albedo is `0.030` and not `0.115`**, which is the finding of two passes and is a
+///   statement about this renderer's grade rather than about moss: the post stage lifts the low end
+///   hard enough that a floor four times darker than a valley's red earth draws as the **paler** of
+///   the two. "Mossy dark" is not a tint a frame gets by writing moss in the palette; it is the tint
+///   that comes out dark under this grade.
 /// - **The haze is `0.002`** against the valley frame's `0.010`, and those two numbers are the whole of
 ///   the difference between a humid gully at eight hundred metres and a clear ridge at three thousand
 ///   two hundred.
 fn subalpine_lighting() -> Lighting {
     Lighting {
-        key_position: [22.0, 58.0, -30.0],
-        key_colour: [0.98, 0.98, 1.00],
+        key_position: [-82.8, 88.0, 62.5],
+        key_colour: [1.00, 1.00, 1.00],
         key_irradiance: 4.2,
-        key_distance: 68.9,
+        key_distance: 136.0,
         key_reach: 700.0,
-        key_extent: 5.0,
-        fill_position: [-26.0, 16.0, 34.0],
-        fill_colour: [0.30, 0.44, 0.78],
-        fill_irradiance: 0.85,
-        fill_distance: 45.7,
-        floor: Skin::new([0.115, 0.135, 0.078], 0.98),
+        key_extent: 12.0,
+        fill_position: [-95.8, 38.0, -25.6],
+        fill_colour: [0.26, 0.40, 0.82],
+        fill_irradiance: 0.90,
+        fill_distance: 106.2,
+        floor: Skin::new([0.030, 0.038, 0.020], 0.98),
         sky: Atmosphere::new()
-            .zenith([0.055, 0.115, 0.32])
-            .horizon([0.58, 0.62, 0.68])
-            .ground([0.18, 0.20, 0.20])
+            .zenith([0.105, 0.195, 0.46])
+            .horizon([0.60, 0.67, 0.76])
+            .ground([0.16, 0.19, 0.20])
             .density(0.0007)
             .scale_height(800.0),
-        sky_radiance: 0.75,
+        sky_radiance: 0.45,
         haze: 0.002,
     }
 }
 
-/// The subalpine frame: standing **inside** the stand, at a person's eye above the shoulder the stand
-/// is on, with a wide lens — `0.90` rad, a 41-degree horizontal — because a closed canopy is
-/// photographed wide or not at all, and the far fir's crown and its candlesticks have to reach the sky
-/// at the top of the picture.
+/// The subalpine frame: standing **inside** the stand on the shoulder itself, at a person's eye above
+/// the ground under those feet, with a wide lens — `0.90` rad, a fifty-two-degree horizontal — because
+/// a closed canopy is photographed wide or not at all.
+///
+/// The eye is aimed at `18` degrees of elevation and that is the frame's balance: at `10` degrees the
+/// spruce's crown top is thirty degrees below the top edge and the picture is a third sky; at `26`
+/// the foreground starts twenty-six metres out and the ground band is half the picture.
 fn subalpine_frame() -> Framing {
     Framing {
         width: 1600,
         height: 1000,
-        eye: [-40.0, slope_height(-40.0, 30.0) + 1.7, 30.0],
-        target: [-105.0, 25.0, 10.0],
+        eye: [-62.0, slope_height(-62.0, 28.0) + 1.7, 28.0],
+        target: [-108.0, 35.05, 14.0],
         field_of_view: 0.90,
         near: 0.3,
         far: 900.0,
@@ -746,8 +783,8 @@ fn subalpine_frame() -> Framing {
     }
 }
 
-/// Builds the subalpine frame: two co-heroes, eight companions, four rhododendrons, four hundred and
-/// twenty mossy tufts, one stone, one cold noon.
+/// Builds the subalpine frame: two co-heroes, eight companions, four rhododendrons, six hundred mossy
+/// tufts, one stone, one cold noon.
 pub fn site_subalpine() -> Value {
     plant_scene_lit(
         &subalpine_plantings(),
