@@ -1128,6 +1128,32 @@ now readable. A black shadow is not a look; it is an absent light, and the archi
 thing these scenes exist to show. The identity rows do not move — 24 244, unchanged — because this is a
 change to the light and not to the document.
 
+### The last nine buildings
+
+Every building scene now owns an air. The nine that remained — `house`, `hall`, `hall_large`, `shed`,
+`terrace`, `wing`, `workshop`, `yard`, `identity` — were converted to the same pattern as the valley's
+three: one `Atmosphere` carrying the numbers their own sky law already had, baked into the map the shading
+reads, declared as an `environment_light` beside the sun, and read by the grade through
+`environment_sky`. The identity rows do not move — this is the light and not the document.
+
+| scene | hash | scene | hash |
+| --- | --- | --- | --- |
+| `house` | `2C18FA24229A832E` | `workshop` | `D869C688B924047D` |
+| `hall` | `0E369523A20D972B` | `yard` | `B6FB314FC1721046` |
+| `hall_large` | `F6A821084C92768B` | `identity` | `3029BDBFE9E3E7EC` |
+| `shed` | `2BE00AF7BD9C658B` | `terrace` | `8A0E101DB18C8AFB` |
+| `wing` | `1A0FC6D69838214D` | | |
+
+**Two things the conversion found rather than caused**, both recorded rather than fixed:
+
+- **Three scenes' sky glow points at a different sun than the light they declare.** `hall`, `terrace` and
+  `wing` carry `sun = normalize(-22, 30, 20)` in their sky law while their `SUN` constant is
+  `[-26, 34, 24]` (or `[-30, 36, 26]`). The baked map keeps the glow where the *sky law* put it, because
+  that is the look the plate was drawn with; the light is where the light is. Whether the two should agree
+  is a scene question nobody has answered.
+- **`density` and `scale_height` are inert in these scenes**: they feed `air_closure`, which no building
+  shader calls. They are carried for the day a scene's air is drawn rather than approximated.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

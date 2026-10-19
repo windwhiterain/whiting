@@ -234,9 +234,9 @@ foreach ($pair in @(@("whiting-building", "building", 40), @("whiting-gallery", 
 "[6/8] the fourteen written .png hashes  (sha256 of the file, first 16 hex upper)"
 "--------------------------------------------------------------------"
 $pinned = [ordered]@{
-    house      = "4A8795039E713F32"; hall       = "8B6495E3A9B2FE89"; hall_large = "CD2FA9166AACB06C"
-    shed       = "C3A11B4465746840"; terrace    = "D2E405C7B242E92B"; wing       = "B4516134C2EC5D6E"
-    workshop   = "7FE07F345A451B51"; yard       = "F36F4CB6A14312FA"; identity   = "717B5570DDAD7A0D"
+    house      = "2C18FA24229A832E"; hall       = "0E369523A20D972B"; hall_large = "F6A821084C92768B"
+    shed       = "2BE00AF7BD9C658B"; terrace    = "8A0E101DB18C8AFB"; wing       = "1A0FC6D69838214D"
+    workshop   = "D869C688B924047D"; yard       = "B6FB314FC1721046"; identity   = "3029BDBFE9E3E7EC"
     stilt      = "580E69E31DE732FF"; compound   = "3F8FF1A57FD70BCE"
     street     = "82B1EAF35E21F0D0"
     yikeyin    = "19D6B13ADEC8B470"; yikeyin_court = "B88182140B4C4AD7"
