@@ -654,6 +654,28 @@ they read as their species, and the oak's silhouette carries a hole at mid-crown
 of it has. Those three are the remaining H1 work, and the sheet is the instrument that will say when
 it is done. 华山松 and 筇竹 join the sheet when arc 3's and arc 6's last species land.
 
+**H1's second running, 2026-10-20** (`out/sw-h1/h1-sheet3.png`, the nine unchanged plates of `out/h1-*.png`
+and the three re-rendered ones; the before/after pairs beside it in the same folder). All three names are
+separate at a glance now, and the numbers each moved on are in its own module.
+
+| species | what the sheet called it | what moved | measured |
+| --- | --- | --- | --- |
+| 西南桦 | *"a narrow conifer strip"*, at a width-to-height of 0.44 — the spruce's own number (0.29) and the fir's (0.39) | the **width of the droop**, not the droop: branchlets 1.05 → 1.72 m, boughs 2.55 → 3.30 m, thirty-four to forty of them, leaf spacing held at the note's | 0.44 → **0.58**; coverage 0.335 → 0.367; interior 0.521 → 0.550 |
+| 滇油杉 | *"a rough spruce"*, whose cut-out's top tenth was a third of its widest however the boughs were drawn | topmost boughs 0.9 → 2.7 m, departure turning with the station to the note's *开展*, sixteen whorls → thirteen, two to three cones a fruiting node | top tenth 263 → **368 px** of 775; coverage 0.466 → 0.435; interior 0.760 → 0.687 |
+| 川滇高山栎 | *"a dome with a hole at mid-crown"*, and lopsided | secondaries 1.45 → 1.80 m so a limb is leafed along its own length, the limb field doubled, and **the crown envelope's top no longer reaches nought** — a limb at 0.95 of the bole ends 1.4 m above the bole's own tip and a law that reached nought at 1.0 was cutting the crown's top third with its own guard | top tenth 312 → **352 px** of 749; coverage 0.501 → 0.510; interior 0.792 → 0.774 |
+
+**One thing H1 cannot see, recorded because it is a limit of the instrument and not of a species.** The
+cut-out is the `authored_id` mask, and a node's id is normalised into eight bits of red: **the bole is the
+root, its id is one, and one rounds to nothing**, so `audit/silhouette.py` cannot record the trunk of any of
+the ten trees. For nine of them that costs the outline of a pole the crown already stands on. For the oak it
+is a two-metre white slot down the middle of the shape, because the oak is the one broadleaf whose trunk runs
+visibly through its own crown — which is the note's own second recognition fact, *the crown is carried low on
+persistent branches, not lifted onto a clean pole*. **Raising the oak's leader field from eighty-five sprigs a
+metre to a hundred and forty, and moving its band, moved the cut-out by under one per cent of its pixels
+while the plate itself changed visibly**: every leaf on the leader hangs on the root and carries the root's
+id. Closing that hole needs an instrument change — a mask written at sixteen or thirty-two bits — and not a
+number in a species module.
+
 1. **Does H3's ratio need to be a stated number before arc 2, or can arc 2 set it?** — **Closed, 2026-10-19: arc 2 set it, from two measured regimes rather than from one candidate.** The p90/p10 luminance ratio the first draft proposed does not separate a deep crown from a sparse lit one (a bamboo's separated leaves scored 1.82 against the pine's 1.70), and a rim mask does not either, because silhouette-edge pixels face away from the key as often as toward it (interior over rim measured 0.99 on a crown that was plainly not self-shadowing *and* 0.97 on one that was). The bar is therefore the interior share at least **0.25** and the interior's mean over the plant's lit p90 at most **0.80**: the pine under a frontal key with foliage shadowing disabled measures **0.99**, and under a raking key with the foliage shadow bias of §4.11 measures **0.76**, so 0.80 sits between the two regimes with margin on both sides. A species that cannot reach it has either a see-through crown or a light that flattens it, and the number says which.
 2. **Bark as texture.** §4.7 says plates and flutes are a `Section`. That is form, not colour
    variation, and a hero frame at three metres may want a mottled bark that no geometry gives. Whether
