@@ -1108,6 +1108,26 @@ cannot drift apart — and the grade reads `environment_sky(ray)` instead of a s
 expansion the exterior plate renders, from a person's height in the corner the sun does not fill. That is
 the evidence the 夏子 and the courtyard arc never had.
 
+### The valley's three scenes get their air
+
+The 一颗印's sky was one scene's fix for a defect every scene had: **the shading's sky term reads the
+scene's own environment map, and a sun-only scene answers zero there**, so every shadowed face in the
+gallery was black. `kit::sky(atmosphere)` hands back the two halves of one air — the map a path tracer reads
+and the light this renderer bounces — and the three vernacular scenes now each own an `Atmosphere` whose
+numbers are the ones their old hand-written sky law carried.
+
+| scene | its air | hash |
+| --- | --- | --- |
+| `street` | a clear afternoon: zenith `0.24 0.42 0.68`, the sun's bloom `10.0 / 0.30` | `82B1EAF35E21F0D0` |
+| `compound` | a bright highland afternoon: `0.22 0.40 0.66`, bloom `8.0 / 0.24` | `3F8FF1A57FD70BCE` |
+| `stilt` | a hazy river morning: `0.28 0.42 0.62`, bloom `6.0 / 0.30` | `580E69E31DE732FF` |
+
+**What it bought, and it is legibility rather than decoration**: the street's gable ends, the compound's
+照壁 and court walls, and the stilt house's posts, gallery and hillside were all near-black before and are
+now readable. A black shadow is not a look; it is an absent light, and the architecture it hid was the
+thing these scenes exist to show. The identity rows do not move — 24 244, unchanged — because this is a
+change to the light and not to the document.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

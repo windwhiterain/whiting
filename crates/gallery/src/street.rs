@@ -35,14 +35,15 @@ use building::openings::{Inset, Opening};
 use building::site;
 use building::{Building, BuildingSkeleton, Covering, Mass, PlanNode, ops};
 
+use crate::air::Atmosphere;
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
 use crate::kit::{
     camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
-    mesh_material, post_processes, screen_material, surface,
+    mesh_material, post_processes, screen_material, sky, surface,
 };
-use crate::shaders::post_shader;
+use crate::shaders::{Projection, post_shader};
 
 /// The frontage: five plots of six metres, five deep, on a street that runs along `x`.
 const PLOTS: usize = 5;
@@ -198,6 +199,9 @@ pub fn street() -> Value {
     let ground = crate::ground::mesh(&building, GROUND_DIVISIONS, GROUND_EXTENT, |x, _z| {
         f64::from(SLOPE) * x.max(0.0)
     });
+    // **One air, handed to two renderers**: the map a world reads and the light a surface sees. Without the
+    // light the shading's sky term is zero, which is why a sun-only scene's shadowed side is black.
+    let (sky_image, sky_light) = sky(&atmosphere());
 
     Value::structure([
         ("name".to_owned(), Value::String("street".to_owned())),
@@ -212,21 +216,32 @@ pub fn street() -> Value {
         ),
         (
             "lights".to_owned(),
-            Value::List(vec![light_with_radius(
-                "sun",
-                SUN,
-                [1.0, 0.92, 0.78],
-                flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(SUN)),
-                SHADOW_EXTENT,
-                190.0,
-            )]),
+            Value::List(vec![
+                light_with_radius(
+                    "sun",
+                    SUN,
+                    [1.0, 0.92, 0.78],
+                    flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(SUN)),
+                    SHADOW_EXTENT,
+                    190.0,
+                ),
+                sky_light,
+            ]),
         ),
+        ("images".to_owned(), Value::List(vec![sky_image])),
         (
             "shaders".to_owned(),
             Value::List({
-                let mut shaders = stage_set("authored", "", "", &point, &extras);
-                shaders.extend(stage_set("plain", "", "", &plain.point_schema(), &plain));
-                shaders.push(post_shader(GRADE, SKY, None));
+                let helpers = atmosphere().wgsl();
+                let mut shaders = stage_set("authored", "", helpers.as_str(), &point, &extras);
+                shaders.extend(stage_set(
+                    "plain",
+                    "",
+                    helpers.as_str(),
+                    &plain.point_schema(),
+                    &plain,
+                ));
+                shaders.push(post_shader(GRADE, &helpers, Some(Projection::Latlong)));
                 shaders
             }),
         ),
@@ -385,32 +400,38 @@ fn distance_to_origin(position: [f64; 3]) -> f64 {
     (position[0] * position[0] + position[1] * position[1] + position[2] * position[2]).sqrt()
 }
 
-/// The sky this scene draws: a clear afternoon down a street.
-const SKY: &str = r#"
-fn sky_at(ray: vec3<f32>) -> vec3<f32> {
-    let above = pow(clamp(ray.y, 0.0, 1.0), 0.5);
-    let horizon = vec3<f32>(0.86, 0.84, 0.78);
-    let zenith = vec3<f32>(0.24, 0.42, 0.68);
-    let below = vec3<f32>(0.28, 0.26, 0.21);
-    let sun = normalize(vec3<f32>(-30.0, 30.0, -26.0));
-    let glow = pow(clamp(dot(normalize(ray), sun), 0.0, 1.0), 10.0) * 0.30;
-    let sky = select(mix(horizon, below, clamp(-ray.y * 4.0, 0.0, 1.0)),
-                     mix(horizon, zenith, above),
-                     ray.y > 0.0);
-    return sky + vec3<f32>(1.0, 0.92, 0.74) * glow;
+/// The air over the street: a clear afternoon, and **the light the sun is not**.
+///
+/// The numbers are the ones this scene's own sky law carried — zenith, horizon, ground and the sun's
+/// bloom — read out of it and handed to one `Atmosphere`, which bakes them into the map the shading reads
+/// its sky term from. A street whose shadows are black is a street with no air, not a street with the
+/// wrong colours.
+fn atmosphere() -> Atmosphere {
+    Atmosphere::new()
+        .zenith([0.24, 0.42, 0.68])
+        .horizon([0.86, 0.84, 0.78])
+        .ground([0.28, 0.26, 0.21])
+        .sun([-30.0, 30.0, -26.0], [1.0, 0.92, 0.74], 10.0, 0.30)
+        .density(0.0008)
+        .scale_height(240.0)
 }
-"#;
 
 /// What the post stage does to the frame.
 const GRADE: &str = r#"
+    // **The sky is read out of the scene's own environment map**, the same air the bounce reads, so the
+    // background and the light cannot be two skies.
     if depth >= 1.0 {
-        color = sky_at(ray_through(in.uv));
+        color = environment_sky(ray_through(in.uv));
     }
     if depth < 1.0 {
         let ray = ray_through(in.uv);
         let along_ray = length(world_position(in.uv, depth) - uniforms.camera.position);
         let air = clamp((1.0 - exp(-along_ray * 0.0020)) * 0.5, 0.0, 0.75);
-        color = mix(color, sky_at(vec3<f32>(ray.x, max(ray.y, -0.04), ray.z)), air);
+        color = mix(
+            color,
+            environment_sky(vec3<f32>(ray.x, max(ray.y, -0.04), ray.z)),
+            air,
+        );
     }
     color = color / (color + vec3<f32>(1.0));
     color = pow(color, vec3<f32>(0.4545));

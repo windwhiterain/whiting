@@ -26,15 +26,16 @@ use building::ops;
 use building::roof::Step;
 use building::site;
 
+use crate::air::Atmosphere;
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
 use crate::geometry;
 use crate::kit::{
     camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
-    mesh_material, post_processes, screen_material, surface,
+    mesh_material, post_processes, screen_material, sky, surface,
 };
-use crate::shaders::post_shader;
+use crate::shaders::{Projection, post_shader};
 
 /// What the house is: three bays across a 10 m front, 6 m deep, one storey under a gable.
 ///
@@ -294,6 +295,9 @@ pub fn stilt() -> Value {
     let hillside = geometry::heightfield_over(GROUND_DIVISIONS, GROUND_EXTENT, height, |cell| {
         vec![cell.to_vec()]
     });
+    // **One air, handed to two renderers**: the map a world reads and the light a surface sees. Without the
+    // light the shading's sky term is zero, and the ground under the floor would be black.
+    let (sky_image, sky_light) = sky(&atmosphere());
 
     Value::structure([
         ("name".to_owned(), Value::String("stilt".to_owned())),
@@ -311,21 +315,32 @@ pub fn stilt() -> Value {
         ),
         (
             "lights".to_owned(),
-            Value::List(vec![light_with_radius(
-                "sun",
-                SUN,
-                [1.0, 0.88, 0.72],
-                flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(SUN)),
-                SHADOW_EXTENT,
-                160.0,
-            )]),
+            Value::List(vec![
+                light_with_radius(
+                    "sun",
+                    SUN,
+                    [1.0, 0.88, 0.72],
+                    flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(SUN)),
+                    SHADOW_EXTENT,
+                    160.0,
+                ),
+                sky_light,
+            ]),
         ),
+        ("images".to_owned(), Value::List(vec![sky_image])),
         (
             "shaders".to_owned(),
             Value::List({
-                let mut shaders = stage_set("authored", "", "", &point, &extras);
-                shaders.extend(stage_set("plain", "", "", &plain.point_schema(), &plain));
-                shaders.push(post_shader(GRADE, SKY, None));
+                let helpers = atmosphere().wgsl();
+                let mut shaders = stage_set("authored", "", helpers.as_str(), &point, &extras);
+                shaders.extend(stage_set(
+                    "plain",
+                    "",
+                    helpers.as_str(),
+                    &plain.point_schema(),
+                    &plain,
+                ));
+                shaders.push(post_shader(GRADE, &helpers, Some(Projection::Latlong)));
                 shaders
             }),
         ),
@@ -624,32 +639,36 @@ fn distance_to_origin(position: [f64; 3]) -> f64 {
     (position[0] * position[0] + position[1] * position[1] + position[2] * position[2]).sqrt()
 }
 
-/// The sky this scene draws: a hazy river valley rather than the house scene's warm afternoon.
-const SKY: &str = r#"
-fn sky_at(ray: vec3<f32>) -> vec3<f32> {
-    let above = pow(clamp(ray.y, 0.0, 1.0), 0.50);
-    let horizon = vec3<f32>(0.86, 0.82, 0.74);
-    let zenith = vec3<f32>(0.28, 0.42, 0.62);
-    let below = vec3<f32>(0.30, 0.28, 0.22);
-    let sun = normalize(vec3<f32>(-18.0, 26.0, 15.0));
-    let glow = pow(clamp(dot(normalize(ray), sun), 0.0, 1.0), 6.0) * 0.30;
-    let sky = select(mix(horizon, below, clamp(-ray.y * 4.0, 0.0, 1.0)),
-                     mix(horizon, zenith, above),
-                     ray.y > 0.0);
-    return sky + vec3<f32>(1.0, 0.88, 0.66) * glow;
+/// The air over the valley: a hazy river morning, and **the light the sun is not**.
+///
+/// The numbers are the ones this scene's own sky law carried — zenith, horizon, ground and the sun's bloom
+/// — read out of it and handed to one `Atmosphere`, which bakes them into the map the shading reads its sky
+/// term from.
+fn atmosphere() -> Atmosphere {
+    Atmosphere::new()
+        .zenith([0.28, 0.42, 0.62])
+        .horizon([0.86, 0.82, 0.74])
+        .ground([0.30, 0.28, 0.22])
+        .sun([-18.0, 26.0, 15.0], [1.0, 0.88, 0.66], 6.0, 0.30)
+        .density(0.0011)
+        .scale_height(200.0)
 }
-"#;
 
 /// What the post stage does to the frame: the air, the curve, and the vignette, in that order.
 const GRADE: &str = r#"
+    // **The sky is read out of the scene's own environment map**, the same air the bounce reads.
     if depth >= 1.0 {
-        color = sky_at(ray_through(in.uv));
+        color = environment_sky(ray_through(in.uv));
     }
     if depth < 1.0 {
         let ray = ray_through(in.uv);
         let along_ray = length(world_position(in.uv, depth) - uniforms.camera.position);
         let air = clamp((1.0 - exp(-along_ray * 0.004)) * 0.55, 0.0, 0.85);
-        color = mix(color, sky_at(vec3<f32>(ray.x, max(ray.y, -0.04), ray.z)), air);
+        color = mix(
+            color,
+            environment_sky(vec3<f32>(ray.x, max(ray.y, -0.04), ray.z)),
+            air,
+        );
     }
     color = color / (color + vec3<f32>(1.0));
     color = pow(color, vec3<f32>(0.4545));

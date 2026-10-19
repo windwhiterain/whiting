@@ -286,6 +286,32 @@ pub fn environment_light(label: &str, image: &str, color: [f64; 3], radiance: f6
     )
 }
 
+/// Returns the two halves of one air: **the map a world reads and the light a surface sees**.
+///
+/// # Invariants
+///
+/// **One atmosphere, two renderers.** A path tracer reads the world out of the image and this renderer
+/// reads its bounce out of the light, and handing both from one [`Atmosphere`](crate::air::Atmosphere) is
+/// what stops the two from being two different skies. The pixels are latlong because that is the
+/// projection a tracer reads, and the radiance is measured rather than copied: at 1.06 the traced sky and
+/// the raster sky agree to within 2.4 of 256 (see `dunes`, where the sweep is written out).
+///
+/// A scene that declares **no** environment light has no bounce at all — the lighting stage reads its sky
+/// term from this map and answers zero without it — which is why a scene whose shadows are black is a
+/// scene missing this call rather than a scene whose air is the wrong colour.
+pub fn sky(atmosphere: &crate::air::Atmosphere) -> (Value, Value) {
+    (
+        image(
+            "air",
+            256,
+            128,
+            atmosphere.environment_pixels(256, 128),
+            crate::shaders::Projection::Latlong,
+        ),
+        environment_light("air", "air", [1.0; 3], 1.06),
+    )
+}
+
 /// Builds one mesh of a scene: its label, how its points are read, and the points.
 ///
 /// # Invariants

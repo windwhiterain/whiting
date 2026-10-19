@@ -237,8 +237,8 @@ $pinned = [ordered]@{
     house      = "4A8795039E713F32"; hall       = "8B6495E3A9B2FE89"; hall_large = "CD2FA9166AACB06C"
     shed       = "C3A11B4465746840"; terrace    = "D2E405C7B242E92B"; wing       = "B4516134C2EC5D6E"
     workshop   = "7FE07F345A451B51"; yard       = "F36F4CB6A14312FA"; identity   = "717B5570DDAD7A0D"
-    stilt      = "03510DF10AD236E4"; compound   = "FA4AD3009BD581AC"
-    street     = "BD46F1ACB223C05F"
+    stilt      = "580E69E31DE732FF"; compound   = "3F8FF1A57FD70BCE"
+    street     = "82B1EAF35E21F0D0"
     yikeyin    = "19D6B13ADEC8B470"; yikeyin_court = "B88182140B4C4AD7"
 }
 # **The eleven above moved together on 2026-10-19, and it is recorded here rather than in a commit
