@@ -237,7 +237,7 @@ pub const NAMINGS: &[Naming] = &[
     Naming {
         scene: crate::southwest_sites::SITE_TRANSECT,
         resolve: crate::southwest_sites::site_transect_handle_of,
-        note: "the planting is the id's quotient by the stride and the node its remainder: every species in its own belt on one slope, and the frame's own compression is about fifty to one -- two thousand four hundred metres of altitude are drawn across forty-seven metres of ground, so a belt reads by what grows in it and not by how far above the belt below it stands; the stone is one point two metres and carries the reserved zero",
+        note: "the planting is the id's quotient by the stride and the node its remainder: every species in its own belt on one slope, and the frame's own compression is about fifty-six to one -- two thousand four hundred metres of altitude are drawn across forty-two metres of ground, so a belt reads by what grows in it and not by how far above the belt below it stands; the stone is one point two metres and carries the reserved zero",
     },
     Naming {
         scene: crate::southwest_spire::CANGSHAN_FIR_BASE,

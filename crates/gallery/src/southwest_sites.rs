@@ -17,19 +17,20 @@
 //! # The transect's compression, stated
 //!
 //! [`site_transect`] is a diagram that is also a picture, and the honest way to read it is as a section
-//! drawn in perspective. **Two thousand four hundred metres of altitude are drawn across 47.2 m of
-//! ground** — [`slope_height`] falls from **18.16 m** at the fir's own foot (`x = -66, z = -6`) to
-//! **-29.04 m** at the kapok's (`x = 86, z = 4`) — so one metre of ground carries **fifty-one metres**
-//! of altitude and the frame's compression is **about fifty to one**. Nothing in the picture is to
-//! scale vertically between the belts, and a reader who measures the ground and concludes that a fir
-//! grows a hundred metres above a kapok is reading the picture's own rule rather than its error.
+//! drawn in perspective. **Two thousand four hundred metres of altitude are drawn across 43.1 m of
+//! ground** — [`slope_height`] falls from **18.37 m** at the frame's highest planting (the fir
+//! companion on the shoulder, `x = -72, z = 18`) to **-24.77 m** at its lowest (the fern in the valley
+//! gully, `x = 68, z = 10`) — so one metre of ground carries **fifty-six metres** of altitude and the
+//! frame's compression is **about fifty-six to one**. Nothing in the picture is to scale vertically
+//! between the belts, and a reader who measures the ground and concludes that a fir grows a hundred
+//! metres above a kapok is reading the picture's own rule rather than its error.
 //!
 //! **The second compression is the trees'.** Each species is drawn at the height its own modelling
 //! table states — the kapok at twenty metres, the pine at sixteen, the spruce at thirty-four — because
 //! the silhouettes are what this frame is finally judged on, and a silhouette drawn at its belt's
 //! scale rather than its own is not a silhouette. So a belt reads by *what grows in it* and by the
-//! tree's own height, and the ground's fifty-to-one compression is what keeps the four belts in one
-//! frame at all.
+//! tree's own height, and the ground's fifty-six-to-one compression is what keeps the four belts in
+//! one frame at all.
 //!
 //! # What the two shared files this module appends to are
 //!
@@ -126,20 +127,21 @@ fn seated(species: Species, palette: Palette, at: [f32; 2], turn: f32, detail: D
 /// is near enough, and it is written at each frame rather than here because the three bands are three
 /// different rectangles.
 fn tufted(seed: u64, at: [f32; 2], tint: [f64; 3]) -> Planting {
-    Planting::new(tuft(seed)).at(seat(
-        Placement {
-            origin: [at[0], 0.0, at[1]],
-            x: [1.0, 0.0, 0.0],
-            y: [0.0, 1.0, 0.0],
-            z: [0.0, 0.0, 1.0],
-        },
-        slope,
-    ))
-    .with_palette(Palette {
-        wood: Skin::new(tint, 0.97),
-        leaves: Vec::new(),
-        seats: Vec::new(),
-    })
+    Planting::new(tuft(seed))
+        .at(seat(
+            Placement {
+                origin: [at[0], 0.0, at[1]],
+                x: [1.0, 0.0, 0.0],
+                y: [0.0, 1.0, 0.0],
+                z: [0.0, 0.0, 1.0],
+            },
+            slope,
+        ))
+        .with_palette(Palette {
+            wood: Skin::new(tint, 0.97),
+            leaves: Vec::new(),
+            seats: Vec::new(),
+        })
 }
 
 /// Packs a sweep as a prop: world geometry on the ground's own point schema, which carries no
@@ -205,14 +207,7 @@ const KAPOK_FLOWER: usize = 0;
 /// the rim of the crown's plate — which is where `08-flowering-bare-tree.jpg` masses the red and
 /// nowhere else. The depths are four and three because a rule's `trunk` is depth nought.
 fn kapok_flowers(species: &Species) -> Vec<Seat> {
-    let mut seats = scatter_in(
-        &species.plant,
-        4,
-        KAPOK_FLOWER,
-        1.0,
-        (3, 6),
-        (0.80, 1.0),
-    );
+    let mut seats = scatter_in(&species.plant, 4, KAPOK_FLOWER, 1.0, (3, 6), (0.80, 1.0));
     seats.extend(scatter_in(
         &species.plant,
         3,
@@ -293,22 +288,26 @@ fn pine_cones(species: &Species) -> Vec<Seat> {
 ///
 /// # Invariants
 ///
-/// **The walk is here rather than a call to `scatter_in`, because `scatter_in`'s band is read on the
-/// node's attachment on its parent** and the fern's only node is the root, whose attachment is station
-/// nought — a band on the column is the plant's own foot and nothing more. A mantle is a band *along*
-/// a node, and the fern has no generation to band.
+/// - **The walk is here rather than a call to `scatter_in`, because `scatter_in`'s band is read on the
+///   node's attachment on its parent** and the fern's only node is the root, whose attachment is station
+///   nought — a band on the column is the plant's own foot and nothing more. A mantle is a band *along*
+///   a node, and the fern has no generation to band.
+/// - **Each band carries its own template, written down rather than derived.** The root mantle is the
+///   crown's own decorator nought and the skirt is nought and one, and the species module's own walk
+///   passes the template as an argument; reading it out of the ring counter would put the skirt's
+///   first two rings in the root's skin, which is a mistake that looks like nothing at forty metres.
 fn fern_mantles(species: &Species) -> Vec<Seat> {
     let mut seats = Vec::new();
-    for (band, stations, each) in [
-        ((0.012f32, 0.452f32), 12u32, (12u32, 20u32)),
-        ((0.680, 0.950), 7, (6, 11)),
+    for (template, band, stations, each) in [
+        (0usize, (0.012f32, 0.452f32), 12u32, (12u32, 20u32)),
+        (1, (0.680, 0.950), 7, (6, 11)),
     ] {
         let step = (band.1 - band.0) / (stations - 1) as f32;
         for station in 0..stations {
             seats.extend(scatter_in(
                 &species.plant,
                 0,
-                station.min(1) as usize,
+                template,
                 band.0 + station as f32 * step,
                 each,
                 (0.0, 1.0),
@@ -459,15 +458,7 @@ fn valley_log() -> Prop {
         (1.0, 0.090),
     ]);
     let at = [81.0, slope_height(81.0, 11.6) + 0.24, 11.6];
-    packed_prop(
-        "fallen_log",
-        sweep,
-        8,
-        12,
-        [0.360, 0.272, 0.180],
-        0.95,
-        at,
-    )
+    packed_prop("fallen_log", sweep, 8, 12, [0.360, 0.272, 0.180], 0.95, at)
 }
 
 /// A hot noon on a valley floor at eight hundred metres.
@@ -662,9 +653,14 @@ fn subalpine_plantings() -> Vec<Planting> {
     // coarser dial, **none of them on the camera's bearing** — the first pass put one dead ahead and a
     // glossy dark-green crown with a rose truss on it outshone both co-heroes, which is the
     // understory taking the frame from the canopy.
-    for (index, at) in [[-74.0f32, 30.0f32], [-86.0, 32.0], [-98.0, 6.0], [-110.0, 24.0]]
-        .into_iter()
-        .enumerate()
+    for (index, at) in [
+        [-74.0f32, 30.0f32],
+        [-86.0, 32.0],
+        [-98.0, 6.0],
+        [-110.0, 24.0],
+    ]
+    .into_iter()
+    .enumerate()
     {
         let species = giant_rhododendron(3_300 + index as u64);
         plantings.push(
@@ -701,12 +697,8 @@ fn subalpine_stone() -> Prop {
         ]),
         shape::Section::circle(),
     );
-    sweep.scale = vegetation::species::taper(&[
-        (0.0, 0.42),
-        (0.35, 0.34),
-        (0.8, 0.22),
-        (1.0, 0.06),
-    ]);
+    sweep.scale =
+        vegetation::species::taper(&[(0.0, 0.42), (0.35, 0.34), (0.8, 0.22), (1.0, 0.06)]);
     let at = [-84.0, slope_height(-84.0, 28.9) - 0.10, 28.9];
     packed_prop("stone", sweep, 8, 9, [0.215, 0.225, 0.215], 0.96, at)
 }
@@ -804,20 +796,35 @@ pub fn site_subalpine_handle_of(id: u32) -> Option<String> {
 // site_transect — the whole slope, four belts, one frame
 // ---------------------------------------------------------------------------
 
-/// Where the transect's tufts stand: the near shoulder between the camera and the montane belt,
-/// `x` from -80 to -15 and `z` from 100 to 148, which is four to twenty-five metres of the picture's
-/// own foreground.
-const TRANSECT_TUFTS: usize = 260;
-
-/// The transect's plantings: **every species this crate has built, each in its own belt**, at the
-/// dials a hundred-and-eighty-metre subject can be drawn at.
+/// Where the transect's tufts stand: the near shoulder **between the lens and the montane belt**, `x`
+/// from -62 to -18 and `z` from 60 to 88, which is four to thirty-two metres of the picture's own
+/// foreground.
 ///
 /// # Invariants
 ///
-/// **A species appears once at its hero's dial and its companions at [`DISTANT`]**, because the frame
-/// is a diagram first: fifteen plants at the crate's default would cost three hundred and fifty
-/// thousand rows and the standing stone beside the lens would still be the only thing in the picture
-/// whose size a reader could check.
+/// **Nine hundred of them in forty-four square metres, and not three hundred in three thousand six
+/// hundred.** The first pass wrote the band as `z` 100 to 148 while the camera stood at `z` ninety
+/// looking toward `-z`, so every tuft it had was behind the lens and the lower half of the plate was
+/// bare tan; the second wrote `z` 34 to 86 at three hundred, which is one tuft to twelve square
+/// metres and still reads as a dune. Cover is a density and not a count.
+const TRANSECT_TUFTS: usize = 900;
+
+/// The transect's plantings: **every species this crate has built, each in its own belt**, at the
+/// dials a hundred-and-forty-metre subject can be drawn at.
+///
+/// # Invariants
+///
+/// - **A species appears once at its hero's dial and its companions at [`DISTANT`]**, because the frame
+///   is a diagram first: fifteen plants at the crate's default would cost three hundred and fifty
+///   thousand rows and the standing stone beside the lens would still be the only thing in the picture
+///   whose size a reader could check.
+/// - **The pine hero and all three of its companions are [`PineFoliage::Spray`]**, which is the one
+///   species in the frame whose stand tier is switched off altogether. At `Stand` the pine's plumes
+///   are three per cent of the needle's density, and eighty metres away that is a rounded grey-green
+///   mass with no cone and no leader — this is the frame the ten silhouettes are judged in, and a pine
+///   that reads as a broadleaf is a wrong answer and not a small one. It costs fifty thousand rows a
+///   tree against eleven, which is a hundred and fifty-six thousand on the one species, and the frame
+///   still compiles inside a minute.
 fn transect_plantings() -> Vec<Planting> {
     let mut rng = Rng::new(8_300);
     let mut plantings = Vec::new();
@@ -826,15 +833,14 @@ fn transect_plantings() -> Vec<Planting> {
     // of each, with the rhododendrons under them.
     let fir = cangshan_fir(4_002, SpireFoliage::Plume);
     plantings.push(
-        seated(fir.clone(), fir_palette(), [-76.0, 4.0], 1.4, DISTANT)
-            .with_seats(fir_cones(&fir)),
+        seated(fir.clone(), fir_palette(), [-74.0, 4.0], 1.4, DISTANT).with_seats(fir_cones(&fir)),
     );
     let fir_companion = cangshan_fir(4_003, SpireFoliage::Plume);
     plantings.push(
         seated(
             fir_companion.clone(),
             fir_palette(),
-            [-84.0, 20.0],
+            [-72.0, 18.0],
             3.1,
             COMPANION,
         )
@@ -845,7 +851,7 @@ fn transect_plantings() -> Vec<Planting> {
         seated(
             spruce.clone(),
             spruce_palette(),
-            [-80.0, 14.0],
+            [-78.0, 14.0],
             0.9,
             DISTANT,
         )
@@ -856,41 +862,52 @@ fn transect_plantings() -> Vec<Planting> {
         seated(
             spruce_companion.clone(),
             spruce_palette(),
-            [-72.0, 24.0],
+            [-70.0, 24.0],
             4.2,
             COMPANION,
         )
         .with_seats(spruce_cones(&spruce_companion)),
     );
-    for (index, at) in [[-70.0f32, 10.0f32], [-66.0, 18.0]].into_iter().enumerate() {
+    for (index, at) in [[-66.0f32, 10.0f32], [-62.0, 18.0]].into_iter().enumerate() {
         let species = giant_rhododendron(4_100 + index as u64);
         plantings.push(
-            seated(species.clone(), rhodo_palette(), at, rng.unit() * 6.28, DISTANT)
-                .with_seats(rhodo_trusses(&species)),
+            seated(
+                species.clone(),
+                rhodo_palette(),
+                at,
+                rng.unit() * 6.28,
+                DISTANT,
+            )
+            .with_seats(rhodo_trusses(&species)),
         );
     }
 
     // **The montane belt**, in the middle distance: the pine stand on the sunny slope, the oak in the
     // draw and the dove tree at the gully's edge.
-    let pine = yunnan_pine(4_101, PineFoliage::Stand);
+    let pine = yunnan_pine(4_101, PineFoliage::Spray);
     plantings.push(
-        seated(pine.clone(), pine_palette(), [-20.0, 16.0], 0.3, DISTANT)
+        seated(pine.clone(), pine_palette(), [-20.0, 16.0], 0.3, COMPANION)
             .with_seats(pine_cones(&pine)),
     );
     for (index, at) in [[-8.0f32, 8.0f32], [-28.0, 22.0], [0.0, 20.0]]
         .into_iter()
         .enumerate()
     {
-        let species = yunnan_pine(4_200 + index as u64, PineFoliage::Stand);
+        let species = yunnan_pine(4_200 + index as u64, PineFoliage::Spray);
         plantings.push(
-            seated(species.clone(), pine_palette(), at, rng.unit() * 6.28, COMPANION)
-                .with_seats(pine_cones(&species)),
+            seated(
+                species.clone(),
+                pine_palette(),
+                at,
+                rng.unit() * 6.28,
+                COMPANION,
+            )
+            .with_seats(pine_cones(&species)),
         );
     }
     let oak = alpine_oak(4_300);
     plantings.push(
-        seated(oak.clone(), oak_palette(), [-14.0, 4.0], 2.0, DISTANT)
-            .with_seats(oak_fruit(&oak)),
+        seated(oak.clone(), oak_palette(), [-14.0, 4.0], 2.0, DISTANT).with_seats(oak_fruit(&oak)),
     );
     let dove = dove_tree(4_400);
     plantings.push(
@@ -905,13 +922,13 @@ fn transect_plantings() -> Vec<Planting> {
         seated(
             kapok_hero.clone(),
             valley_kapok_palette(),
-            [70.0, 6.0],
+            [56.0, 6.0],
             1.1,
             DISTANT,
         )
         .with_seats(kapok_flowers(&kapok_hero)),
     );
-    for (index, at) in [[62.0f32, 18.0f32], [80.0, 16.0]].into_iter().enumerate() {
+    for (index, at) in [[48.0f32, 18.0f32], [62.0, 16.0]].into_iter().enumerate() {
         let species = kapok(4_600 + index as u64, Season::Flower);
         plantings.push(
             seated(
@@ -924,7 +941,7 @@ fn transect_plantings() -> Vec<Planting> {
             .with_seats(kapok_flowers(&species)),
         );
     }
-    for (index, at) in [[72.0f32, 12.0f32], [82.0, 10.0]].into_iter().enumerate() {
+    for (index, at) in [[58.0f32, 12.0f32], [68.0, 10.0]].into_iter().enumerate() {
         let species = tree_fern(4_700 + index as u64, FernFoliage::Frond);
         plantings.push(
             seated(
@@ -939,16 +956,16 @@ fn transect_plantings() -> Vec<Planting> {
     }
 
     for index in 0..TRANSECT_TUFTS {
-        let across = -80.0 + 65.0 * rng.unit();
-        let deep = 100.0 + 48.0 * rng.unit();
+        let across = -62.0 + 44.0 * rng.unit();
+        let deep = 60.0 + 28.0 * rng.unit();
         plantings.push(tufted(9_300 + index as u64, [across, deep], DRY_GRASS));
     }
     plantings
 }
 
 /// The transect's standing stone: the same **1.2 m** stone the other two frames carry, and the only
-/// object in the frame a reader can measure against — which is why it stands twenty-three metres from
-/// the lens and not beside a tree.
+/// object in the frame a reader can measure against — which is why it stands eighteen metres from the
+/// lens and not beside a tree, where at a hundred metres a stone of it is eleven pixels.
 fn transect_stone() -> Prop {
     let mut sweep = shape::Sweep::new(
         vegetation::species::spine(&[
@@ -958,44 +975,43 @@ fn transect_stone() -> Prop {
         ]),
         shape::Section::circle(),
     );
-    sweep.scale = vegetation::species::taper(&[
-        (0.0, 0.42),
-        (0.35, 0.34),
-        (0.8, 0.22),
-        (1.0, 0.06),
-    ]);
-    let at = [-33.0, slope_height(-33.0, 128.0) - 0.10, 128.0];
-    packed_prop(
-        "stone",
-        sweep,
-        8,
-        9,
-        [0.260, 0.230, 0.190],
-        0.96,
-        at,
-    )
+    sweep.scale =
+        vegetation::species::taper(&[(0.0, 0.42), (0.35, 0.34), (0.8, 0.22), (1.0, 0.06)]);
+    let at = [-36.0, slope_height(-36.0, 72.0) - 0.10, 72.0];
+    packed_prop("stone", sweep, 8, 9, [0.260, 0.230, 0.190], 0.96, at)
 }
 
 /// One low sun along the valley, which is the transect's own light: the proposal's table gives this
 /// frame a low sun rather than any belt's own, because a frame that puts four belts in one picture
 /// cannot be lit four ways.
 ///
-/// The key is at `17.9` degrees of elevation and `63` degrees to the right of the camera's axis, so
-/// the shadows rake across the slope from the valley's own mouth and the four belts are separated by
-/// shadow rather than by colour.
+/// # Invariants
+///
+/// - **The sun is at `22` degrees of elevation and its bearing is down the valley**, and the second
+///   half of that is the half the first pass got wrong. A key at `[80, 26, 6]` is `17.9` degrees above
+///   the *origin* and **nine degrees above the near ground seventy metres away**, because the slope
+///   falls toward `+x` and so faces down-valley while the sun was almost due `-z` of it: the whole
+///   first plate was a black silhouette with a lit horizon behind it. The sun here is `50` degrees from
+///   the camera's own bearing, which is what a low afternoon light down a valley is.
+/// - **A light's reach is its cutoff and must clear the floor's own diagonal**: the floor reaches
+///   240 m and its diagonal is 339 m, so the reach is **700 m**. The *distance* is where the irradiance
+///   is stated, and it is the key's own length from the origin, **129.9 m**.
+/// - **The floor's albedo is `0.150` and not `0.230`,** because a dry mountain slope read pale enough
+///   to be sand rather than the montane frame's own olive, and the two frames' floors are meant to be
+///   the same mountain at two belts.
 fn transect_lighting() -> Lighting {
     Lighting {
-        key_position: [80.0, 26.0, 6.0],
+        key_position: [22.5, 46.3, 119.3],
         key_colour: [1.0, 0.90, 0.74],
-        key_irradiance: 3.4,
-        key_distance: 84.3,
+        key_irradiance: 3.8,
+        key_distance: 129.9,
         key_reach: 700.0,
-        key_extent: 20.0,
-        fill_position: [-40.0, 22.0, -30.0],
+        key_extent: 14.0,
+        fill_position: [-60.0, 22.0, -20.0],
         fill_colour: [0.46, 0.55, 0.72],
-        fill_irradiance: 0.55,
-        fill_distance: 54.6,
-        floor: Skin::new([0.270, 0.235, 0.155], 0.96),
+        fill_irradiance: 0.60,
+        fill_distance: 67.0,
+        floor: Skin::new([0.150, 0.128, 0.082], 0.96),
         sky: Atmosphere::new()
             .zenith([0.14, 0.24, 0.46])
             .horizon([0.86, 0.72, 0.55])
@@ -1007,25 +1023,33 @@ fn transect_lighting() -> Lighting {
     }
 }
 
-/// The transect frame: standing **off the slope's side** at `z` one hundred and fifty, on the shoulder
-/// the law carries out that far, at a person's eye above the ground under those feet, with a
-/// fifty-four-degree horizontal that holds both the valley floor at `x` seventy and the subalpine belt
-/// at `x` minus eighty in one picture.
+/// The transect frame: standing **off the slope's side** at `z` ninety, on the shoulder the law carries
+/// out that far, at a person's eye above the ground under those feet, with an eighty-two-degree
+/// horizontal that holds the subalpine belt at `x` minus eighty-two and the valley floor at `x` seventy
+/// in one picture.
 ///
 /// # Invariants
 ///
-/// **The camera is off to the side and never below.** The only ground on this slope above thirty
-/// metres is the shoulder crest, so a side view that is also a view from above has to stand on the
-/// shoulder and look down-slope across it — and at `z` one hundred and fifty the horizontal spread
-/// from the fir at `x` minus eighty-four to the kapok at `x` eighty is fifty-five degrees, which is
-/// what the lens is chosen for.
+/// - **The camera is off to the side and never below.** The only ground on this slope above thirty
+///   metres is the shoulder crest, so a side view that is also a view from above has to stand on the
+///   shoulder and look down-slope across it.
+/// - **The axis is the middle of the span, not the middle of the map.** From this eye the fir at
+///   `x` minus seventy-eight bears `243` degrees and the kapok at `x` fifty-six bears `319`, so the
+///   axis is `284` degrees and the belts sit `41` and `35` degrees either side of it inside an
+///   eighty-six-degree frame. The first pass aimed at the map's own middle, which put the subalpine
+///   belt outside the frame and the montane belt dead centre — a section of a third of the mountain
+///   with the two ends of it cropped.
+/// - **The eye is level.** The slope's own band runs from `+1.5` degrees at the subalpine crest to
+///   `-14.7` degrees at the valley floor; a level axis splits the picture into a ground half and a sky
+///   half with the band across the middle, and any downward tilt from there buys sky by spending
+///   foreground.
 fn transect_frame() -> Framing {
     Framing {
         width: 1600,
         height: 1000,
-        eye: [-40.0, slope_height(-40.0, 150.0) + 1.7, 150.0],
-        target: [27.0, 30.2, 6.0],
-        field_of_view: 0.90,
+        eye: [-40.0, slope_height(-40.0, 90.0) + 1.7, 90.0],
+        target: [-8.6, 14.96, -36.1],
+        field_of_view: 1.06,
         near: 0.3,
         far: 900.0,
         floor: 240.0,
@@ -1036,8 +1060,8 @@ fn transect_frame() -> Framing {
     }
 }
 
-/// Builds the transect: fifteen plants in four belts, two hundred and sixty tufts, one stone, one low
-/// sun, and fifty to one of compression stated above.
+/// Builds the transect: fifteen plants in four belts, three hundred tufts, one stone, one low sun, and
+/// fifty-six to one of compression stated above.
 pub fn site_transect() -> Value {
     plant_scene_lit(
         &transect_plantings(),
