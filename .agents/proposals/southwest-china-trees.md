@@ -555,7 +555,7 @@ set that was being lied about.
 
 **Size:** one `max` and a `Section` accessor for its authored corner count, nought for an ellipse.
 
-## 7. The site: how a species stands in its belt (arc 7's design)
+## 8. The site: how a species stands in its belt (arc 7's design)
 
 A hero specimen is a tree; an epic frame is a place. The ten species live in four belts of one
 mountain, and a frame that puts a kapok in mist or a fir in a dry valley is a frame that lies, so the
@@ -642,7 +642,29 @@ to compute them once per material and borrow them per row; the emitted document 
 every pixel and every pinned hash stays where it is. Until it lands, a species' whole-tree plate is
 budgeted at 90 000 rows and the site frames at companions enough to read as a stand.
 
-## 8. Open questions
+## 9. The verdicts, species by species
+
+A living table: `pass` is measured or read against the bar by the author and checked by the artist;
+`weak` passes with a named caveat; `—` is not yet run. H3's second clause is read on the bough plate
+(§2.1). The epic columns name the site frame the species stands in and whether E1–E3 were judged on
+it; E4 (the two backends) is unverified repo-wide, no Cycles binary on this machine.
+
+| species | H1 | H2 | H3 | H4 | H5 | epic frame | notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 云南松 *Pinus yunnanensis* | pass (sheet) | pass | 0.628 / 0.769 pass | pass (base7) | pass | `site_montane`, `site_transect` | the arc-2 reference species; cones faint at tree distance |
+| 华山松 *Pinus armandii* | — | — | — | — | — | `site_montane` | in flight (wave 3); the two-pine separation is its H1 |
+| 丽江云杉 *Picea likiangensis* | pass (0.158 ratio) | pass | 0.663 / 0.479 pass | pass | pass | `site_subalpine`, `site_transect` | second pass; bough reframed to 1.09 m |
+| 苍山冷杉 *Abies delavayi* | pass (0.254 ratio) | pass | 0.789 / 0.622 pass | pass | pass | `site_subalpine`, `site_transect` | cones pale-glaucous to read; `FIR_CROWN_TOP` is a stated compromise |
+| 川滇高山栎 *Quercus aquifolioides* | weak (mid-crown hole) | pass | 0.792 / 0.715 bough pass | pass (base) | pass | `site_montane`, `site_transect` | H1 polish in flight; sprig crown at the note's leaf size |
+| 珙桐 *Davidia involucrata* | pass (sheet) | pass | 0.899 / bough | pass (base) | pass | `site_montane`, `site_transect` | bracts as two templates, unequal pair |
+| 大树杜鹃 *Rhododendron protistum* | pass (sheet) | pass | 0.848 / bough | pass (base) | pass | `site_subalpine`, `site_transect` | rosettes and truss; bole wander authored |
+| 桫椤 *Alsophila spinulosa* | weak (palm-like from one angle) | pass | 0.690 / 0.650 pass | pass | pass | `site_valley`, `site_transect` | fronds at the photograph's crown spread, note's length broken and stated |
+| 木棉 *Bombax ceiba* | pass (sheet) | pass | 0.561 / 0.747 pass; flower exempt | pass (base) | pass | `site_valley`, `site_transect` | two seasons; corollas of five petals on the twigs that carry them |
+| 筇竹 *Qiongzhuea tumidinoda* | — | — | — | — | — | `site_valley` | in flight (wave 3) |
+| 西南桦 *Betula alnoides* | weak (reads conifer-strip) | pass | 0.521 / 0.724 pass | pass, bark pattern stated absent | pass | `site_montane` | H1 polish in flight; red-brown bark, never chalk |
+| 滇油杉 *Keteleeria evelyniana* | weak (rough spruce) | pass | 0.757 / 0.677 pass | pass | pass | `site_montane`, `site_transect` | H1 polish in flight; cones at the note's ceiling |
+
+## 10. Open questions
 
 **H1's first running, 2026-10-19** (`out/h1-sheet2.png`, ten silhouettes, read by the author of the
 bar against the reference photographs): eight of the ten are nameable at a glance — 桫椤's parasol on
