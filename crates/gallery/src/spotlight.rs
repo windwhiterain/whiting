@@ -76,7 +76,13 @@ pub fn spotlight() -> Value {
         shader(
             Stage::Lighting,
             "lighting",
-            &lighting(&inputs, "", "", crate::shaders::Projection::Latlong),
+            &lighting(
+                &inputs,
+                "",
+                "",
+                crate::shaders::Projection::Latlong,
+                &crate::kit::gallery_custom_schema(),
+            ),
             scene::standard::light_pass_schema(),
             point.clone(),
             gallery_instance_schema(),

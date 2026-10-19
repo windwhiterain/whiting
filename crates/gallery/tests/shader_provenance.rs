@@ -26,6 +26,7 @@
 use std::fs;
 
 use graphics::provenance::{MARKER, explain, origin_of};
+use whiting_gallery::kit::gallery_custom_schema;
 use whiting_gallery::shaders::{Block, Projection, lighting, post};
 use whiting_gallery::wgsl;
 
@@ -57,7 +58,13 @@ const STATEMENT_IN_BLOCK: &str = "    color = color * (0.4 + 0.6 * shade);";
 
 #[test]
 fn a_declared_block_is_spliced_under_a_marker_naming_its_file_and_line() {
-    let module = lighting("", SURFACE, "", Projection::Latlong);
+    let module = lighting(
+        "",
+        SURFACE,
+        "",
+        Projection::Latlong,
+        &gallery_custom_schema(),
+    );
     let marker = marker(&module, "surface").expect("a declared block is spliced with a marker");
     // A literal opening with a newline puts the block's first line of text — an empty one — on
     // the line above the statement, so the marker names the statement's line less one.
@@ -80,7 +87,13 @@ fn a_declared_block_is_spliced_under_a_marker_naming_its_file_and_line() {
 
 #[test]
 fn an_assembled_line_maps_back_to_the_exact_line_of_the_file_it_came_from() {
-    let module = lighting("", SURFACE, "", Projection::Latlong);
+    let module = lighting(
+        "",
+        SURFACE,
+        "",
+        Projection::Latlong,
+        &gallery_custom_schema(),
+    );
     // The marker is on one line, the block's first line of WGSL is the empty one below it, and
     // the statement is the third line from the marker.
     let statement = marker_line(&module, "surface") + 2;
@@ -123,7 +136,13 @@ fn a_block_that_declared_nothing_is_spliced_in_verbatim() {
     // The additive property. A scene that writes a plain `&str` gets the module it always got:
     // no marker, and the text spliced where it always was. The proof that this moves no pixel
     // is two renders compared by hash; this is the half of it that is arithmetic.
-    let module = lighting("", SURFACE_AS_TEXT, "", Projection::Latlong);
+    let module = lighting(
+        "",
+        SURFACE_AS_TEXT,
+        "",
+        Projection::Latlong,
+        &gallery_custom_schema(),
+    );
 
     assert!(
         !module.contains(MARKER),
@@ -145,7 +164,19 @@ fn a_block_that_declared_nothing_is_spliced_in_verbatim() {
 fn the_same_text_in_two_stages_is_two_blocks_with_two_meanings() {
     // The marker names the splice point rather than only the file, because a reader told only
     // a line in a sixty thousand line scene file is not told what they are looking at.
-    assert!(marker(&lighting("", SURFACE, "", Projection::Latlong), "surface").is_some());
+    assert!(
+        marker(
+            &lighting(
+                "",
+                SURFACE,
+                "",
+                Projection::Latlong,
+                &gallery_custom_schema()
+            ),
+            "surface"
+        )
+        .is_some()
+    );
     assert!(
         marker(&post(SURFACE, "", None), "grade").is_some(),
         "the same text is a grade in the post stage, and the marker says so"
@@ -170,7 +201,13 @@ fn the_block_starts_on_the_line_after_the_one_the_macro_was_invoked_on() {
          one line, the literal opening on the next, and the statement on the line after that"
     );
 
-    let module = lighting("", SURFACE, "", Projection::Latlong);
+    let module = lighting(
+        "",
+        SURFACE,
+        "",
+        Projection::Latlong,
+        &gallery_custom_schema(),
+    );
     let marker = marker(&module, "surface").expect("the block is marked");
     assert!(
         marker.contains(&format!("{}:{} ", this_file(), invoked_at + 1)),

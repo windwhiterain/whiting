@@ -15,9 +15,9 @@ use definition::Value;
 
 use crate::geometry::heightfield;
 use crate::kit::{
-    IMAGE_FIELD, camera_placed, gallery_custom_schema_with_image, gallery_instance_schema, image,
-    instance, instances, light_with_radius, mesh, mesh_material, post_processes, screen_material,
-    shaded_point_schema, shader, surface,
+    IMAGE_FIELD, camera_placed, gallery_custom_schema, gallery_custom_schema_with_image,
+    gallery_instance_schema, image, instance, instances, light_with_radius, mesh, mesh_material,
+    post_processes, screen_material, shaded_point_schema, shader, surface,
 };
 use crate::shaders::{Projection, depthing, post_shader, shadowing, textured, tile_pixels};
 use scene::standard::Stage;
@@ -49,7 +49,7 @@ pub fn tiles_of(pixels: Vec<u8>) -> Value {
     // every gallery shader reads the row and a material that carried only an image would be a
     // material whose row has nothing in it.
     let custom = gallery_custom_schema_with_image();
-    let lighting_source = textured(&inputs, "");
+    let lighting_source = textured(&inputs, "", &gallery_custom_schema());
 
     let shaders = Value::List(vec![
         shader(

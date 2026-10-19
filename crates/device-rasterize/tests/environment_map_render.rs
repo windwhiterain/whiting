@@ -292,7 +292,7 @@ fn scene(environment: bool, roughness: f64) -> Value {
                 shader(
                     Stage::Lighting,
                     "lighting",
-                    &lighting(&inputs, "", "", Projection::Octahedral),
+                    &lighting(&inputs, "", "", Projection::Octahedral, &custom),
                     scene::standard::light_pass_schema(),
                     shaded_point_schema(),
                     gallery_instance_schema(),

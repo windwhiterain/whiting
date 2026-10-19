@@ -1178,6 +1178,25 @@ therefore leaves the jamb exactly on the corner, and the expansion refuses it by
 (`OpeningOutsideWall { past: 0.0009999871 }`). The margin is now the wall's own thickness plus five
 centimetres — which for the 一颗印's 0.45 m wall is the half metre it always had, so its plates did not move.
 
+### The schema a builder carries, and the measurement that closed it
+
+For five rounds this proposal carried a named hazard: **`shaders::lighting_with_normal` and
+`shaders::textured` hard-code the gallery's custom schema**, so a scene whose rows carry a field the gallery
+does not — a plant's shadow-bias scale — would shade through a schema that never declared it, and the
+shading would be silently wrong rather than refused.
+
+**Measured, and the hazard was latent rather than live.** The one scene in the gallery with a different
+schema is `vegetation_picture`, and it does not use either builder: it calls
+`stage_set_over_schema(..., &plant_custom_schema())`, which takes the schema as an argument and always did.
+The two builders' own callers — `lighting` (every building scene, through `mesh_shaders`), `sweep_picture`
+and `tiles` — all use the gallery's, the last two with an `image` field appended **at the end**, where it
+shifts nothing.
+
+So the fix is the one that makes the hazard unrepresentable rather than the one that "repairs" a defect
+that was not happening: **both builders now take `custom: &Schema`**, every existing caller passes
+`&gallery_custom_schema()`, and a scene with another schema can now say so. The proof that it changed
+nothing else is the audit: **15 of 15 plates unmoved, 31 005 identity rows unmoved**.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

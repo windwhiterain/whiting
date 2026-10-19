@@ -690,8 +690,9 @@ pub fn lighting<'text>(
     surface: impl Into<Block<'text>>,
     helpers: impl Into<Block<'text>>,
     projection: Projection,
+    custom: &Schema,
 ) -> String {
-    lighting_with_normal(vertex_inputs, "", surface, helpers, projection)
+    lighting_with_normal(vertex_inputs, "", surface, helpers, projection, custom)
 }
 /// The lighting stage of a scene that displaces the normal it is lit by.
 ///
@@ -712,6 +713,7 @@ pub fn lighting_with_normal<'text>(
     surface: impl Into<Block<'text>>,
     helpers: impl Into<Block<'text>>,
     projection: Projection,
+    custom: &Schema,
 ) -> String {
     lighting_stage(
         vertex_inputs,
@@ -721,7 +723,7 @@ pub fn lighting_with_normal<'text>(
         lighting_bindings(false, &Extras::NONE.binding_points()),
         &Extras::NONE,
         projection,
-        &kit::gallery_custom_schema(),
+        custom,
     )
 }
 
@@ -2465,7 +2467,11 @@ fn fragment_main(in: Vertex) -> {fragment_type} {{
 /// The image is declared in the custom schema under the name `image`, so the compiler binds it at
 /// that point and the shader reads it there. It is the one place a scene's document and a shader's
 /// source meet, and it is a name rather than a number.
-pub fn textured<'text>(vertex_inputs: &str, helpers: impl Into<Block<'text>>) -> String {
+pub fn textured<'text>(
+    vertex_inputs: &str,
+    helpers: impl Into<Block<'text>>,
+    custom: &Schema,
+) -> String {
     lighting_stage(
         vertex_inputs,
         "".into(),
@@ -2476,12 +2482,7 @@ pub fn textured<'text>(vertex_inputs: &str, helpers: impl Into<Block<'text>>) ->
         lighting_bindings(true, &Extras::NONE.binding_points()),
         &Extras::NONE,
         Projection::Latlong,
-        // **The gallery's schema, which is the one `vertex_inputs` was written against.** This is
-        // the same split [`sweep_picture::lighting_shader`] documents: the field that names an
-        // image is a binder and not an attribute, so a shader that declares it reads its row
-        // through the gallery's own attribute list. The schema below is that list's own, which is
-        // also why this stage declares no shadow-bias scale.
-        &kit::gallery_custom_schema(),
+        custom,
     )
 }
 
@@ -3015,7 +3016,14 @@ pub fn mesh_shaders_over<'text>(
         kit::shader(
             Stage::Lighting,
             &named("lighting"),
-            &lighting_with_normal(&inputs, displace, surface, helpers, Projection::default()),
+            &lighting_with_normal(
+                &inputs,
+                displace,
+                surface,
+                helpers,
+                Projection::default(),
+                &kit::gallery_custom_schema(),
+            ),
             light_pass_schema(),
             point.clone(),
             kit::gallery_instance_schema(),

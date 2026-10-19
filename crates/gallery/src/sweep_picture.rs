@@ -263,7 +263,7 @@ pub fn sweep_picture() -> Value {
         shader(
             Stage::Lighting,
             "parameterised",
-            &textured(&inputs, ""),
+            &textured(&inputs, "", &crate::kit::gallery_custom_schema()),
             scene::standard::light_pass_schema(),
             point.clone(),
             gallery_instance_schema(),
@@ -429,7 +429,14 @@ fn lighting_shader(label: &str, inputs: &str, point: &Schema, custom: &Schema) -
     shader(
         Stage::Lighting,
         label,
-        &lighting_with_normal(inputs, "", "", "", Projection::default()),
+        &lighting_with_normal(
+            inputs,
+            "",
+            "",
+            "",
+            Projection::default(),
+            &crate::kit::gallery_custom_schema(),
+        ),
         scene::standard::light_pass_schema(),
         point.clone(),
         gallery_instance_schema(),

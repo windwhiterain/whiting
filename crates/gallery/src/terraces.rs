@@ -317,6 +317,7 @@ fn build_shaders() -> Vec<Value> {
             "",
             "",
             crate::shaders::Projection::Latlong,
+            &gallery_custom_schema(),
         ),
         light_pass_schema(),
         shaded_point_schema(),
