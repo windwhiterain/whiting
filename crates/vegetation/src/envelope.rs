@@ -32,7 +32,7 @@
 //! error to notice it by.
 
 use shape::math::{Vec2, dot3, length3, subtract};
-use shape::{Curve, Scalar, Section};
+use shape::{Curve, Nearest, Scalar, Section};
 
 use crate::handle::Handle;
 use crate::ops::{Change, Edit, Property, apply};
@@ -325,25 +325,27 @@ impl Envelope {
     /// - **The outside distance is the radial excess**: how much further the point is than the section reaches,
     ///   so a point inside is `0.0` and not a negative number a caller has to know about.
     ///
-    /// **The trunk is read once per query here**, and [`Envelope::outside_of`] is the same measurement against
-    /// a spine the caller already holds — which is what makes a trim's bisection cost a closest-point search
-    /// rather than a curve rebuild per probe.
+    /// **The trunk is read once per query here, and [`Envelope::outside_of`] is the same measurement against
+    /// a search the caller already holds** — which is what makes a trim's bisection cost a nearest-point query
+    /// rather than a spine rebuild *and* a bracketing scan per probe. Both are the same defect at two levels:
+    /// a curve derived again on every read of one that had not moved.
     pub fn outside(&self, plant: &Plant, point: [f32; 3]) -> f32 {
         let Ok(trunk) = plant.spine(&Handle::root()) else {
             return 0.0;
         };
-        self.outside_of(&trunk, point)
+        self.outside_of(&trunk.nearest(), point)
     }
 
-    /// How far a world point is outside, measured against a trunk spine already read.
+    /// How far a world point is outside, measured against a trunk search already built.
     ///
     /// # Invariants
     ///
-    /// **The same measurement [`Envelope::outside`] makes**, on a spine the caller has already derived: a
-    /// trunk of no length answers `0.0`, exactly as a plant whose trunk cannot be resolved does. So a caller
-    /// that holds one trunk for a whole pass gets the same numbers `outside` would have given it, and a
-    /// thirty-two-step bisection does not rebuild the trunk thirty-two times.
-    pub(crate) fn outside_of(&self, trunk: &Curve, point: [f32; 3]) -> f32 {
+    /// **The same measurement [`Envelope::outside`] makes, on the same numbers**: `shape::Nearest` answers
+    /// what [`shape::Curve::closest`] answers, bit for bit, and a trunk of no length answers `0.0` exactly as
+    /// a plant whose trunk cannot be resolved does. So a caller that holds one search for a whole pass — a
+    /// trim asks tens of thousands of points against one trunk — gets the numbers `outside` would have given
+    /// it, and pays for the trunk's bracketing scan once rather than once per probe.
+    pub(crate) fn outside_of(&self, trunk: &Nearest<'_>, point: [f32; 3]) -> f32 {
         if trunk.length() <= 0.0 {
             return 0.0;
         }
@@ -394,10 +396,11 @@ pub fn trim(plant: &mut Plant, envelope: &Envelope) -> Trim {
         .map(|(handle, _)| handle)
         .collect();
     // **The trunk is the envelope's own axis and the plant is not written until `apply` below**, so one
-    // reading serves the whole pass — including the thirty-two bisection probes per node, which are the
-    // reason this loop used to rebuild a spine per probe.
-    let trunk = plant.spine(&Handle::root()).ok();
+    // reading — and one bracketing table over it — serves the whole pass, including the thirty-two
+    // bisection probes per node, which are the reason this loop used to rebuild a spine per probe.
+    let curve = plant.spine(&Handle::root()).ok();
     {
+        let trunk = curve.as_ref().map(Curve::nearest);
         let outside = |point: [f32; 3]| {
             trunk
                 .as_ref()
@@ -462,7 +465,8 @@ pub fn trim(plant: &mut Plant, envelope: &Envelope) -> Trim {
     }
     apply(plant, &edits);
     // What the linear model could not know: read every candidate again, after the edits and with the fields on.
-    let trunk = plant.spine(&Handle::root()).ok();
+    let curve = plant.spine(&Handle::root()).ok();
+    let trunk = curve.as_ref().map(Curve::nearest);
     let mut derived = Derived::default();
     let mut pressed: Vec<(Handle, f32)> = Vec::new();
     for handle in plant

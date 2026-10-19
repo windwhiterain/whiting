@@ -89,6 +89,9 @@ pub fn report(
     let mut reached = [0.0f32; BANDS];
     if let Ok(trunk) = plant.spine_in(&Handle::root(), &mut derived) {
         if trunk.length() > 0.0 {
+            // **One bracketing table for the whole crown walk**: every tip is measured against the same
+            // trunk, so the positions the search compares are derived once rather than once per node.
+            let trunk = trunk.nearest();
             for (handle, _) in plant.live() {
                 let Ok(spine) = plant.spine_in(&handle, &mut derived) else {
                     continue;

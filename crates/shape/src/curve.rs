@@ -112,6 +112,44 @@ pub struct Station {
     pub frame: Frame,
 }
 
+/// A curve that has already paid for its own bracketing table, so a nearest-point query costs the
+/// refinement rather than the scan.
+///
+/// # Invariants
+///
+/// - **Every answer is [`Curve::closest`]'s answer, bit for bit.** The bracketing scan compares
+///   [`CLOSEST_SAMPLES`] positions per segment spaced evenly in arc length — *the same positions whatever
+///   point is asked about* — and the golden section that narrows the best bracket is [`Curve::closest`]'s.
+///   This is one implementation, not a second one: [`Curve::closest`] builds a scan and hands it here.
+/// - **The table is the curve's, so it is valid exactly as long as the borrow is.** It is derived in
+///   [`Curve::nearest`] from the curve it borrows and cannot outlive it, which is why a nearest-point search
+///   over an edited curve is a new search rather than a stale one.
+/// - **It buys the scan, not the search.** The [`CLOSEST_STEPS`] golden-section evaluations are per point
+///   and are not cached; a caller with many points of one curve still pays for them.
+#[derive(Debug, Clone)]
+pub struct Nearest<'a> {
+    curve: &'a Curve,
+    scan: Vec<Vec3>,
+}
+
+impl<'a> Nearest<'a> {
+    /// The nearest point to `point`: exactly what [`Curve::closest`] answers for it.
+    pub fn closest(&self, point: Vec3) -> Closest {
+        self.curve.closest_among(point, &self.scan)
+    }
+
+    /// The curve's total length, so a caller holding a search can ask the curve's other questions of it
+    /// without holding the curve as well.
+    pub fn length(&self) -> f32 {
+        self.curve.length()
+    }
+
+    /// The frame at an arc-length fraction: [`Curve::frame`], for the same reason as [`Nearest::length`].
+    pub fn frame(&self, t: f32) -> Frame {
+        self.curve.frame(t)
+    }
+}
+
 /// The nearest point on a curve to somewhere else: what a search is for.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Closest {
@@ -402,16 +440,44 @@ impl Curve {
     /// `t`, so once the squared distance stops changing at `f32`'s own precision the fraction can still move: a
     /// point 2 cm from a 4 m line pins its foot to about `1e-4` of the curve and no search in `f32` can do better.
     /// The comparisons are therefore made on squared distances, which is one rounding better than on their roots.
+    ///
+    /// **The bracketing scan is the curve's, not the point's**, so a caller asking many points of one curve builds
+    /// [`Nearest`] once through [`Curve::nearest`] and asks those instead. One question here pays for the scan,
+    /// which is most of the cost; a hundred questions pay for it once. The answers are the same numbers either way.
     pub fn closest(&self, point: Vec3) -> Closest {
+        self.closest_among(point, &self.scan())
+    }
+
+    /// This curve with its bracketing scan already derived, for a caller with many points to ask about.
+    pub fn nearest(&self) -> Nearest<'_> {
+        Nearest {
+            curve: self,
+            scan: self.scan(),
+        }
+    }
+
+    /// The [`CLOSEST_SAMPLES`] positions per segment [`Curve::closest`] brackets its answer with, evenly
+    /// spaced in arc length: `segment_count × CLOSEST_SAMPLES + 1` of them.
+    ///
+    /// **They are a function of the curve alone**, which is the whole of [`Nearest`]'s claim, and they are
+    /// derived in the order the scan compares them so a table read back in that order is the same numbers.
+    fn scan(&self) -> Vec<Vec3> {
         let samples = self.segment_count().max(1) * CLOSEST_SAMPLES;
+        (0..=samples)
+            .map(|index| self.at(index as f32 / samples as f32))
+            .collect()
+    }
+
+    /// [`Curve::closest`] bracketed against a scan the caller already holds.
+    fn closest_among(&self, point: Vec3, scan: &[Vec3]) -> Closest {
+        let samples = scan.len() - 1;
         let mut best = 0.0f32;
         let mut best_squared = f32::MAX;
-        for index in 0..=samples {
-            let t = index as f32 / samples as f32;
-            let squared = squared_distance(self.at(t), point);
+        for (index, position) in scan.iter().enumerate() {
+            let squared = squared_distance(*position, point);
             if squared < best_squared {
                 best_squared = squared;
-                best = t;
+                best = index as f32 / samples as f32;
             }
         }
         let step = 1.0 / samples as f32;
