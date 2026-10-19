@@ -464,6 +464,34 @@ impl Plant {
         self.spine_in(handle, &mut Derived::default())
     }
 
+    /// The node's tip in the world: where its drawn spine's last knot lands under its placement.
+    ///
+    /// # Invariants
+    ///
+    /// **This is `spine_in(handle).at(1.0)`, bit for bit.** `shape` states that `Curve::at`'s two ends are
+    /// the two ends and not one bisection step away from them — `t = 1` answers the last segment at
+    /// `u = 1`, so `at` returns the last jet's position exactly — and [`Plant::place_spine`] maps every
+    /// jet, last included, with the same [`Placement::place`]. So a caller that wants the tip pays for one
+    /// knot rather than for a whole rebuilt curve, and gets the same point.
+    ///
+    /// The placed spine is still what a caller that needs the curve's *length* asks for: an arc length is a
+    /// quadrature over the rotated derivatives, and this is not a way to answer one.
+    pub(crate) fn tip_in(
+        &self,
+        handle: &Handle,
+        derived: &mut Derived,
+    ) -> Result<Vec3, HandleOrphaned> {
+        let node = self.get(handle)?;
+        let placement = self.placement_in(handle, derived)?;
+        let drawn = self.drawn_in(handle, node, &placement, derived);
+        let tip = drawn
+            .jets()
+            .pop()
+            .expect("a curve holds at least two knots")
+            .position;
+        Ok(placement.place(tip))
+    }
+
     /// [`Plant::spine`] with the walk's table, so a walk that places many nodes derives each placed spine
     /// once — a [`shape::Curve`] rebuild is the single most expensive thing this crate does per node.
     ///

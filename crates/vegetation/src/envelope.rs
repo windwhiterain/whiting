@@ -385,8 +385,9 @@ const MIN_SCALE: f32 = 0.1;
 ///   what is still outside rather than claiming the envelope is met.
 /// - **Two derivations, not one table across both passes.** The first pass reads the trunk once and derives
 ///   each node's placed spine once, holds them for the whole pass, and drops them before `apply` writes; the
-///   second reads them again from the trimmed plant. A table carried across the edit would answer with the
-///   plant the trim started from, and **a stale placed spine is a wrong picture with no error**.
+///   second reads them again from the trimmed plant — as **tips**, because that is all a press is. A table
+///   carried across the edit would answer with the plant the trim started from, and **a stale placed spine is
+///   a wrong picture with no error**.
 pub fn trim(plant: &mut Plant, envelope: &Envelope) -> Trim {
     let mut edits: Vec<Edit> = Vec::new();
     let mut trimmed: Vec<(Handle, f32)> = Vec::new();
@@ -475,12 +476,14 @@ pub fn trim(plant: &mut Plant, envelope: &Envelope) -> Trim {
         .map(|(handle, _)| handle)
         .collect::<Vec<_>>()
     {
-        let Ok(spine) = plant.spine_in(&handle, &mut derived) else {
+        // **A press is a question about a tip**, so this pass asks for the tip rather than rebuilding every
+        // placed spine to read one knot off it. [`crate::plant::Plant::tip_in`] is `at(1.0)` bit for bit.
+        let Ok(tip) = plant.tip_in(&handle, &mut derived) else {
             continue;
         };
         let excess = trunk
             .as_ref()
-            .map_or(0.0, |trunk| envelope.outside_of(trunk, spine.at(1.0)));
+            .map_or(0.0, |trunk| envelope.outside_of(trunk, tip));
         if excess > 1e-5 {
             pressed.push((handle, excess));
         }
