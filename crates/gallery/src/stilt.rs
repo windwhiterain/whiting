@@ -511,7 +511,9 @@ fn gallery(skeleton: &mut building::BuildingSkeleton) {
         let (_foot, post) = posts[at];
         let foot_height = match skeleton.members[post].from {
             building::Anchor::Free { at } => at[1],
-            building::Anchor::OnMember { .. } => head - 1.0,
+            // A post is a free member, and the two other ways of naming an end are not posts: the
+            // fallback is what keeps this reading total without pretending either of them is a foot.
+            building::Anchor::OnMember { .. } | building::Anchor::OnFace { .. } => head - 1.0,
         };
         let post_length = (head - foot_height).max(0.1);
         let drop = 0.65_f32.min(post_length * 0.75);
@@ -564,7 +566,7 @@ fn gallery(skeleton: &mut building::BuildingSkeleton) {
 fn foot_of_member(member: &building::Member) -> Option<[f32; 2]> {
     match member.from {
         building::Anchor::Free { at } => Some([at[0], at[2]]),
-        building::Anchor::OnMember { .. } => None,
+        building::Anchor::OnMember { .. } | building::Anchor::OnFace { .. } => None,
     }
 }
 

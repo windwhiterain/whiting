@@ -216,6 +216,6 @@ fn main() {
 fn foot_of(member: &whiting_building::Member) -> [f32; 2] {
     match member.from {
         Anchor::Free { at } => [at[0], at[2]],
-        Anchor::OnMember { .. } => [f32::NAN, f32::NAN],
+        Anchor::OnMember { .. } | Anchor::OnFace { .. } => [f32::NAN, f32::NAN],
     }
 }

@@ -1931,6 +1931,10 @@ fn resolve_members(
     let resolvable = |anchor: &Anchor| match anchor {
         Anchor::Free { at } => at.iter().all(|value| value.is_finite()),
         Anchor::OnMember { member, t } => member.0 < count && t.is_finite(),
+        // **The same question the resolution asks, and not a weaker one.** A point the wall does not have
+        // can never resolve, so reporting it as a cycle would name the one fault it is not: `on_face`
+        // answers `None` for a point off the wall, and that is `MemberAnchorUnresolved`.
+        Anchor::OnFace { face, along, up } => on_face(skeleton, *face, *along, *up).is_some(),
     };
     for (index, member) in skeleton.members.iter().enumerate() {
         for (end, anchor) in [(0_usize, member.from), (1, member.to)] {
@@ -1959,6 +1963,7 @@ fn resolve_members(
                         from[2] + (to[2] - from[2]) * t,
                     ]
                 }),
+                Anchor::OnFace { face, along, up } => on_face(skeleton, face, along, up),
             };
             if let (Some(from), Some(to)) = (point(member.from), point(member.to)) {
                 ends[index] = Some((from, to));
@@ -1977,6 +1982,53 @@ fn resolve_members(
         }
     }
     ends
+}
+
+/// Returns the point an [`Anchor::OnFace`] names, or `None` when the wall does not have it.
+///
+/// # Invariants
+///
+/// **The face is a wall and a wall is a line in plan with a base line under it.** The point stands `along`
+/// metres from the edge's own start node, on the line between the edge's two base elevations, `up` metres
+/// above that line. It is on the *face's plane* by construction — the plane is the vertical strip over the
+/// base line — so no normal is consulted and nothing is snapped: `along` and `up` in, one point out.
+///
+/// A face that names a void, or one whose `along` or `up` leaves the wall, answers `None`: the document
+/// asked for a point the wall does not have.
+fn on_face(
+    skeleton: &BuildingSkeleton,
+    face: crate::grid::FaceRef,
+    along: f32,
+    up: f32,
+) -> Option<Vec3> {
+    if face.void.is_some() {
+        return None;
+    }
+    let mass = skeleton.mass(face.mass)?;
+    let count = mass.outline.len();
+    if count < 2 || face.edge >= count || !along.is_finite() || !up.is_finite() {
+        return None;
+    }
+    let from = mass.outline[face.edge];
+    let to = mass.outline[(face.edge + 1) % count];
+    let step = [
+        to.position[0] - from.position[0],
+        to.position[1] - from.position[1],
+    ];
+    let length = (step[0] * step[0] + step[1] * step[1]).sqrt();
+    if length <= f32::EPSILON || along < -1.0e-3 || along > length + 1.0e-3 {
+        return None;
+    }
+    let share = (along / length).clamp(0.0, 1.0);
+    let base = from.elevation + (to.elevation - from.elevation) * share;
+    if up < -1.0e-3 || base + up > mass.top + 1.0e-3 {
+        return None;
+    }
+    Some([
+        from.position[0] + step[0] * share,
+        base + up.max(0.0),
+        from.position[1] + step[1] * share,
+    ])
 }
 
 /// The tile bed: how far a roll's base stands off the skin it covers.

@@ -80,6 +80,25 @@ pub enum Anchor {
         /// Where along it, in `[0, 1]`.
         t: f32,
     },
+    /// A point on a **wall's own face**: which face, how far along its edge, and how far above its base.
+    ///
+    /// # Invariants
+    ///
+    /// **The face is a wall, and a wall is a line in plan with a base line under it.** `along` is metres
+    /// from the edge's own start node and `up` is metres above the wall's base at that station — the base
+    /// being the two outline nodes' elevations, interpolated, so a wall on a slope answers the point on its
+    /// own base line rather than on a level one. An `along` past the edge's end, or an `up` past the wall's
+    /// top, is [`MemberAnchorUnresolved`](crate::expand::Problem::MemberAnchorUnresolved) and not a clamp:
+    /// an anchor that names a point the wall does not have is a document that says something untrue about
+    /// itself.
+    OnFace {
+        /// The face the point is pinned to.
+        face: crate::grid::FaceRef,
+        /// How far along the face's edge, in metres from its start.
+        along: f32,
+        /// How far above the wall's base, in metres.
+        up: f32,
+    },
 }
 
 /// One straight piece of frame.

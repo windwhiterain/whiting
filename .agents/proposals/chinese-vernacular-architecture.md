@@ -1008,6 +1008,31 @@ what the frame is. The court itself is dark at the bottom of its well — three 
 walls, which is the type's own light. It does not draw doors or windows behind the gate, the 夏子 porch,
 or the court's paving.
 
+### The last named boundary: `Anchor::OnFace`
+
+A bracket can be pinned to a **wall's own face** now: `Anchor::OnFace { face, along, up }`, where `along`
+is metres from the edge's own start node and `up` is metres above the wall's base **at that station** —
+the base being the two outline nodes' elevations interpolated, so a wall on a slope answers the point on
+its own base line and not on a level one.
+
+| number | value |
+| --- | --- |
+| the corner | a bracket at `along = 0, up = 0` lands on the mass's own corner: box `x −5.0100..−4.9900`, `y −0.0053..2.4053`, `z −4.5085..−2.9915` |
+| the station | `along = 2.5, up = 1.8` on a ten-metre wall: box `x −2.5100..−2.4900`, `y 1.7900..1.8100` |
+| the refusals | past the edge's end, past the wall's top, and a face on a mass that is not there: **all three `MemberAnchorUnresolved`** |
+| the difference from `OnMember` | **no other member is needed**, so a face anchor resolves in the first pass and a cycle through one is impossible |
+
+**One naming fault the probe caught and the code now does not make**: the resolvability test was weaker
+than the resolution — it asked whether the mass existed, not whether the wall had the point — so an anchor
+past the edge was reported as a `MemberAnchorCycle`. It is the same question now, and the fault named is
+the fault that happened: *a point the wall does not have can never resolve, which is not a cycle*.
+
+`OnFace` has no user in the thirteen scenes yet, and that is stated rather than hidden: its first scene
+use is the **夏子** (the Yunnan front porch), which needs a *lean-to* roof — one plane from the porch's
+front edge up to the wall — and a roof whose skin covers a single slope is the next derivation, not this
+one. What this round owes the drawing is the anchor, and what it owes the record is that the drawing is
+still waiting for it.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not
