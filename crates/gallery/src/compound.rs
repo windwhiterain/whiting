@@ -35,6 +35,7 @@ use crate::air::Atmosphere;
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
+use crate::facade;
 use crate::kit::{
     camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
     mesh_material, post_processes, screen_material, sky, surface,
@@ -102,8 +103,30 @@ const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 const GROUND_DIVISIONS: usize = 120;
 const GROUND_EXTENT: f64 = 60.0;
 
-/// Builds the scene.
+/// Builds the scene, from outside the compound.
 pub fn compound() -> Value {
+    scene(
+        [10.0, 13.0, 33.0],
+        [0.0, 2.5, 1.0],
+        FIELD_OF_VIEW,
+        "compound",
+    )
+}
+
+/// Builds **the same compound** from inside its courtyard, looking north up the court at the 正房.
+///
+/// # Invariants
+///
+/// **One document and two cameras.** The expansion, its meshes and its rows are the same; only the eye
+/// differs. The eye stands at a person's height near the 照壁 and looks the length of the court, which is
+/// the space the type is named for and the one place its own inner faces — the two wings' galleries, the
+/// court's paving, the 正房's front — can all be seen at once.
+pub fn compound_court() -> Value {
+    scene([0.3, 1.65, -1.2], [0.0, 2.6, 12.0], 1.2, "compound_court")
+}
+
+/// Builds the scene from one camera.
+fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Value {
     let building = document();
     let built = building
         .build()
@@ -208,15 +231,11 @@ pub fn compound() -> Value {
     let (sky_image, sky_light) = sky(&atmosphere());
 
     Value::structure([
-        ("name".to_owned(), Value::String("compound".to_owned())),
+        ("name".to_owned(), Value::String(name.to_owned())),
         ("frame".to_owned(), frame(FRAME_WIDTH, FRAME_HEIGHT)),
         (
             "cameras".to_owned(),
-            Value::List(vec![camera(
-                [10.0, 13.0, 33.0],
-                [0.0, 2.5, 1.0],
-                FIELD_OF_VIEW,
-            )]),
+            Value::List(vec![camera(eye, target, field_of_view)]),
         ),
         (
             "lights".to_owned(),
@@ -321,7 +340,17 @@ pub fn document() -> Building {
         WING_FLOOR,
         None,
     );
-    let _ = (main, west, east);
+    // **The court's three faces open onto it**, which is what a 三坊一照壁 is: the court is the circulation,
+    // and each range's front is a door in the middle of the ground floor with a window in every other bay.
+    // The faces are found by position, because a range's outline has been split by the time its gable ends
+    // are crowned and an index would name a different wall.
+    for (mass, line, on_z) in [
+        (main, COURT_BACK, true),
+        (west, -COURT_HALF, false),
+        (east, COURT_HALF, false),
+    ] {
+        facade::open_court_face(&mut skeleton, mass, line, on_z, facade::Front::RANGE);
+    }
     // The 照壁: one wall across the front, from the west wing's end to the east wing's.
     skeleton.walls.push(Wall::new(
         PlanNode::new([-SITE_HALF, COURT_FRONT], 0.0),

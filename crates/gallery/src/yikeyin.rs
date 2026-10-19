@@ -34,6 +34,7 @@ use crate::air::Atmosphere;
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
+use crate::facade;
 use crate::kit::{
     camera, environment_light, flux_for_irradiance, frame, image, instance, instances,
     light_with_radius, mesh, mesh_material, post_processes, screen_material, surface,
@@ -400,68 +401,16 @@ pub fn document() -> Building {
 /// is what a 一颗印's four inner walls are. The 门房 is the exception and it is the type's own: one storey,
 /// one bay, one door, because it is a gate house and not a range.
 fn court_faces(skeleton: &mut BuildingSkeleton) {
-    // The four court faces, as (mass, the plan line they stand on, whether the line is a `z`).
+    // The four court faces, as (mass, the plan line they stand on, whether the line is a `z`, its front).
     let faces = [
-        (MassId(0), -HALF_Z + MAIN_DEPTH, true),
-        (MassId(1), -COURT, false),
-        (MassId(2), COURT, false),
-        (MassId(3), COURT, true),
+        (MassId(0), -HALF_Z + MAIN_DEPTH, true, facade::Front::RANGE),
+        (MassId(1), -COURT, false, facade::Front::RANGE),
+        (MassId(2), COURT, false, facade::Front::RANGE),
+        (MassId(3), COURT, true, facade::Front::GATE),
     ];
-    for (mass, line, on_z) in faces {
-        let Some(mass_ref) = skeleton.masses.get(mass.0) else {
-            continue;
-        };
-        let Some(edge) = court_face(mass_ref, line, on_z) else {
-            continue;
-        };
-        let face = FaceRef::new(mass, edge);
-        let storeys = if mass == MassId(3) {
-            Rhythm::Even { count: 1 }
-        } else {
-            Rhythm::Even { count: 2 }
-        };
-        if ops::split_face(skeleton, face, &Rhythm::Even { count: 3 }, &storeys).is_none() {
-            continue;
-        }
-        let _ = ops::add_opening(
-            skeleton,
-            Opening::new(face, 1, 0, Inset::new(0.5, 0.5, 0.0, 0.4)),
-        );
-        if mass == MassId(3) {
-            continue;
-        }
-        for column in 0..3 {
-            let _ = ops::add_opening(
-                skeleton,
-                Opening::new(face, column, 1, Inset::new(0.5, 0.5, 0.9, 0.5)),
-            );
-        }
+    for (mass, line, on_z, front) in faces {
+        facade::open_court_face(skeleton, mass, line, on_z, front);
     }
-}
-
-/// Returns the edge of a mass that stands on the plan line `line`, matching on `z` or on `x`.
-///
-/// # Invariants
-///
-/// **The edge is matched by its two nodes' own coordinate**, both of them on the line, and the longest such
-/// edge wins: a split loop has several short edges at a corner, and the wall a court opens onto is the long
-/// one. An index would not survive the split that crowns a gable end.
-fn court_face(mass: &building::Mass, line: f32, on_z: bool) -> Option<usize> {
-    let count = mass.outline.len();
-    let mut best: Option<(usize, f32)> = None;
-    for edge in 0..count {
-        let from = mass.outline[edge].position;
-        let to = mass.outline[(edge + 1) % count].position;
-        let along = if on_z { 1 } else { 0 };
-        if (from[along] - line).abs() < 1.0e-3 && (to[along] - line).abs() < 1.0e-3 {
-            let length = (to[1 - along] - from[1 - along]).abs();
-            if best.is_none_or(|(_, held)| length > held) {
-                best = Some((edge, length));
-            }
-        }
-    }
-    best.filter(|(_, length)| *length > 1.0)
-        .map(|(edge, _)| edge)
 }
 
 /// Adds the **夏子**: the porch roof, its two posts and the two struts that hold it to the wall.

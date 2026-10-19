@@ -1154,6 +1154,30 @@ reads, declared as an `environment_light` beside the sun, and read by the grade 
 - **`density` and `scale_height` are inert in these scenes**: they feed `air_closure`, which no building
   shader calls. They are carried for the day a scene's air is drawn rather than approximated.
 
+### The court is where a courtyard house is read
+
+The 三坊一照壁's court had never been photographed and its ranges' fronts were blank walls. Both are fixed,
+and the two fixes are one story: **a court face is a façade**, and it is what the court camera exists to
+show.
+
+`crates/gallery/src/facade.rs` is the one place that says what a range's front is: **three bays, two
+storeys, a door in the middle bay of the ground floor and a window in every bay above** — the 明间/次间
+division the sources describe — with the gate house as the type's own exception. Both courtyard scenes call
+it, so the 一颗印 and the 三坊一照壁 cannot disagree about what a range's front is, and the 一颗印's plates
+prove the refactor reproduced the document exactly: same two hashes, same 5 312 rows.
+
+| number | value |
+| --- | --- |
+| the compound's court | three faces opened; hash **`DDA7A8DBBBE9B6F3`** |
+| the court camera | **`F183A16EECEADE87`** — the two wings' inner faces with their windows, the paving, the 照壁 at the end and the sky slot above |
+| the identity rows | the compound **5 276 → 6 725**, fifteen scenes **31 005** |
+
+**And one defect the metre margins exposed**: an opening's jambs are measured against the *inner* face,
+whose ends the wall's own miter pulls in by the wall thickness. A half-metre margin on a half-metre wall
+therefore leaves the jamb exactly on the corner, and the expansion refuses it by **one millimetre**
+(`OpeningOutsideWall { past: 0.0009999871 }`). The margin is now the wall's own thickness plus five
+centimetres — which for the 一颗印's 0.45 m wall is the half metre it always had, so its plates did not move.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

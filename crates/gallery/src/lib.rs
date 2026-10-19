@@ -94,6 +94,8 @@ pub mod compound;
 /// The dawn over the rice terraces, held as numbers so a tracer can be handed it as a world.
 mod dawn;
 mod dunes;
+/// Where a courtyard house's own fronts are, and what one is made of.
+pub mod facade;
 mod foldyard;
 pub mod hall;
 pub mod house;
@@ -209,6 +211,7 @@ impl Gallery {
             "hall",
             "hall_large",
             "compound",
+            "compound_court",
             "house",
             "identity",
             "landscape",
@@ -299,6 +302,7 @@ impl Gallery {
             "hermite" => hermite::hermite(),
             "hermite_massif" => hermite_massif::hermite_massif(),
             "compound" => compound::compound(),
+            "compound_court" => compound::compound_court(),
             "hall" => hall::hall(),
             "hall_large" => hall::hall_large(),
             "house" => house::house(),

@@ -372,6 +372,17 @@ fn every_gallery_scene_still_emits_the_pass_count_it_emitted_before() {
             },
         ),
         (
+            // **The same document from inside its court**: one expansion, two cameras, so the passes are
+            // the passes — and the row is here because the table is ordered by name.
+            "compound_court",
+            Stages {
+                shadowing: 5,
+                depthing: 5,
+                lighting: 5,
+                other: 1,
+            },
+        ),
+        (
             // The same four meshes and the same one sun, and **this is the row the building arc's
             // invisible changes are measured against**, because `house` is the one scene that drew
             // the plate (`882c0d8`, three groups to four), had the ground cut out from under it

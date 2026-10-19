@@ -285,6 +285,8 @@ fn document_of(scene: &str) -> Option<Building> {
         "identity" => crate::authored::document(),
         "shed" => crate::shed::document(),
         "compound" => crate::compound::document(),
+        // **Two cameras, one document**: the court view is the same expansion.
+        "compound_court" => crate::compound::document(),
         "stilt" => crate::stilt::document(),
         "street" => crate::street::document(),
         "terrace" => crate::terrace::document(),
