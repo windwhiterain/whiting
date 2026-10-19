@@ -644,6 +644,16 @@ budgeted at 90 000 rows and the site frames at companions enough to read as a st
 
 ## 8. Open questions
 
+**H1's first running, 2026-10-19** (`out/h1-sheet2.png`, ten silhouettes, read by the author of the
+bar against the reference photographs): eight of the ten are nameable at a glance — 桫椤's parasol on
+a pole, 木棉's flat plate of heavy limbs, 大树杜鹃's candelabra of discrete stars, the two spires
+told apart by ratio and tip attitude, 云南松's tiered feathering, 珙桐's rounded mass, and 滇油杉's
+rough cone. The bar's failure line is seven. The confusions are the middle three: 川滇高山栎's dome,
+滇油杉's crown and 西南桦's weeping column each read as *a broadleaf* or *a narrow conifer* before
+they read as their species, and the oak's silhouette carries a hole at mid-crown that no photograph
+of it has. Those three are the remaining H1 work, and the sheet is the instrument that will say when
+it is done. 华山松 and 筇竹 join the sheet when arc 3's and arc 6's last species land.
+
 1. **Does H3's ratio need to be a stated number before arc 2, or can arc 2 set it?** — **Closed, 2026-10-19: arc 2 set it, from two measured regimes rather than from one candidate.** The p90/p10 luminance ratio the first draft proposed does not separate a deep crown from a sparse lit one (a bamboo's separated leaves scored 1.82 against the pine's 1.70), and a rim mask does not either, because silhouette-edge pixels face away from the key as often as toward it (interior over rim measured 0.99 on a crown that was plainly not self-shadowing *and* 0.97 on one that was). The bar is therefore the interior share at least **0.25** and the interior's mean over the plant's lit p90 at most **0.80**: the pine under a frontal key with foliage shadowing disabled measures **0.99**, and under a raking key with the foliage shadow bias of §4.11 measures **0.76**, so 0.80 sits between the two regimes with margin on both sides. A species that cannot reach it has either a see-through crown or a light that flattens it, and the number says which.
 2. **Bark as texture.** §4.7 says plates and flutes are a `Section`. That is form, not colour
    variation, and a hero frame at three metres may want a mottled bark that no geometry gives. Whether
