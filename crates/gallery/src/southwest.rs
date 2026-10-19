@@ -202,15 +202,55 @@ fn bole() -> (shape::Curve, shape::Scalar) {
 /// runs with the grain and not around it. The taper multiplies it, so the fissures narrow as the bole
 /// does.
 fn bark() -> shape::Section {
-    let sides = 12;
+    bark_of(12, 3.0, 0.13)
+}
+
+/// A fissured ring of `sides` points with `fissures` ridges around it, each `depth` of the radius deep.
+///
+/// # Invariants
+///
+/// **The side count is the surface's scale, and a rose is not.** At the bole's 45 cm radius twelve
+/// sides is finer than a pixel at every frame this module draws, so twelve is right and free. A bough
+/// at arm's length is 5 cm across, where twelve sides is a visible dodecagon — the *polygonal
+/// silhouette* defect drawn in the plate that exists to show bark — so the bough plate asks for
+/// twenty-four. `vegetation::expand::wood` samples at the finer of the dial and the authored corners,
+/// so the section's own count is what the frame gets.
+fn bark_of(sides: usize, fissures: f32, depth: f32) -> shape::Section {
     let points: Vec<[f32; 2]> = (0..sides)
         .map(|index| {
             let theta = index as f32 / sides as f32 * std::f32::consts::TAU;
-            let ridge = 1.0 - 0.13 * (theta * 3.0).sin().powi(2);
+            let ridge = 1.0 - depth * (theta * fissures).sin().powi(2);
             [theta.cos() * ridge, theta.sin() * ridge]
         })
         .collect();
     shape::Section::outline(&points).expect("a fissured ring is a section")
+}
+
+/// A twig at arm's length: the same droop as [`twig`] and the note's own shoot diameter instead of a
+/// fraction of its parent's.
+///
+/// # Invariants
+///
+/// **The whole-tree law is a fraction of the parent and a bough plate's law is the note's number.** On
+/// a tree a shoot is 45 % of the radius of the bough it leaves, which at a bough's far end is one
+/// centimetre. On the bough plate the bough's own base is the plate's "trunk", so that fraction makes
+/// every shoot two centimetres and the wood, not the needles, becomes the subject. The plate authors
+/// the note's own 8–11 mm shoot instead, and the crown's law is untouched.
+fn twig_at_arm_length(rng: &mut Rng, _joint: &Joint) -> (shape::Curve, shape::Scalar) {
+    let length = 0.46 * (0.85 + 0.30 * rng.unit());
+    let departure = 1.05 + 0.30 * rng.signed();
+    (
+        bend(
+            length,
+            [
+                departure,
+                departure + 0.22,
+                departure + 0.36,
+                departure + 0.46,
+            ],
+        ),
+        taper(&[(0.0, 0.011), (0.35, 0.008), (1.0, 0.0035)]),
+    )
 }
 
 /// A first-order bough: it leaves the leader at the note's 55–75°, runs out and slightly down, and turns
@@ -426,15 +466,27 @@ pub fn yunnan_pine_bough(seed: u64) -> Species {
                 taper(&[(0.0, 0.055), (0.5, 0.035), (1.0, 0.012)]),
             )
         },
-        generations: vec![twig_generation(0.15)],
+        generations: vec![Generation {
+            shape: twig_at_arm_length,
+            count: (26, 30),
+            station: (0.15, 1.0),
+            ..twig_generation(0.15)
+        }],
         fields: Vec::new(),
     };
-    Species {
+    let mut species = Species {
         plant: grow(&rule, seed),
         templates: vec![needle(NEEDLE_HALF_WIDTH)],
         fields: needles(1, Foliage::Needle),
         decorators: vec![cone()],
+    };
+    // The bough carries the bole's own section, because a plate at arm's length is the one place the
+    // bark's fissures are close enough to read and a smooth rod would be the only smooth surface in a
+    // species whose whole wood is fissured.
+    if let Ok(bough) = species.plant.get_mut(&Handle::root()) {
+        bough.set_section(bark_of(24, 4.0, 0.10));
     }
+    species
 }
 
 /// The cones a pine's twigs carry at depth `twig_depth`: **old cones persist for years**, so a twig
@@ -449,7 +501,7 @@ pub fn pine_palette() -> Palette {
     Palette {
         wood: Skin::new([0.14, 0.11, 0.085], 0.95),
         leaves: vec![Skin::new([0.10, 0.17, 0.08], 0.80)],
-        seats: vec![Skin::new([0.52, 0.38, 0.24], 0.85)],
+        seats: vec![Skin::new([0.26, 0.19, 0.12], 0.92)],
     }
 }
 
@@ -515,8 +567,8 @@ const PINE_FRAME: Framing = Framing {
     ground: Ground::Plane,
 };
 
-/// The bough plate's frame: two metres off a three-metre bough, looking along it, so a needle is a pixel
-/// and a half wide and the fascicle is the unit the eye reads.
+/// The bough plate's frame: close enough that a needle is two pixels wide, aimed just above the bough
+/// so the frame holds the twigs and not the rod the camera is standing on.
 const BOUGH_FRAME: Framing = Framing {
     width: 1400,
     height: 1000,
@@ -525,9 +577,36 @@ const BOUGH_FRAME: Framing = Framing {
     field_of_view: 0.70,
     near: 0.03,
     far: 20.0,
-    floor: 8.0,
+    floor: 20.0,
     ground: Ground::Plane,
 };
+
+/// The bough plate's own light: a key on the lens's side at forty degrees, because the tree plate's
+/// raking key stands behind this bough and a needle lit from behind is a hairline silhouette. A plate
+/// whose subject is a needle's arrangement needs the needles lit to be seen at all.
+fn bough_lighting() -> Lighting {
+    Lighting {
+        key_position: [3.2, 4.2, 3.0],
+        key_colour: [1.0, 0.94, 0.82],
+        key_irradiance: 2.8,
+        key_distance: 6.1,
+        key_reach: 40.0,
+        key_extent: 6.0,
+        fill_position: [-3.0, 1.5, -2.0],
+        fill_colour: [0.45, 0.53, 0.70],
+        fill_irradiance: 0.55,
+        fill_distance: 4.0,
+        floor: Skin::new([0.28, 0.24, 0.17], 0.95),
+        sky: Atmosphere::new()
+            .zenith([0.10, 0.20, 0.44])
+            .horizon([0.50, 0.58, 0.66])
+            .ground([0.30, 0.28, 0.24])
+            .density(0.0010)
+            .scale_height(2500.0),
+        sky_radiance: 0.55,
+        haze: 0.006,
+    }
+}
 
 /// The base plate's frame: three and a half metres from the bole at a person's eye height, so the flare
 /// and two metres of fissured bark are the subject and the trunk runs out of the top of the frame.
@@ -597,7 +676,7 @@ pub fn yunnan_pine_bough_picture() -> Value {
         &[planting],
         &BOUGH_FRAME,
         YUNNAN_PINE_BOUGH,
-        &pine_lighting(),
+        &bough_lighting(),
         &[],
     )
 }

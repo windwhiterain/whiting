@@ -651,7 +651,7 @@ it; E4 (the two backends) is unverified repo-wide, no Cycles binary on this mach
 
 | species | H1 | H2 | H3 tree / bough | H4 | H5 | epic frame | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 云南松 *Pinus yunnanensis* | pass (sheet) | pass | 0.628 / 0.620 · 0.600 pass | pass (base7) | pass | `site_montane`, `site_transect` | the arc-2 reference species; cones faint at tree distance |
+| 云南松 *Pinus yunnanensis* | pass (sheet) | pass | 0.628 / 0.575 · 0.794 pass | pass (base7) | pass | `site_montane`, `site_transect` | the arc-2 reference species; bough plate re-lit and its shoots authored at the note's 11 mm |
 | 华山松 *Pinus armandii* | pass (2.1× ratio from 云南松) | pass | 0.651 / 0.687 · 0.651 pass | pass | pass | `site_montane`, `site_transect` | five-needle fascicles; crown ratio 0.464 against 云南松's 0.986 |
 | 丽江云杉 *Picea likiangensis* | pass (0.158 ratio) | pass | 0.663 / 0.582 · 0.479 pass | pass | pass | `site_subalpine`, `site_transect` | second pass; bough reframed to 1.09 m |
 | 苍山冷杉 *Abies delavayi* | pass (0.254 ratio) | pass | 0.789 / 0.724 · 0.622 pass | pass | pass | `site_subalpine`, `site_transect` | cones pale-glaucous to read; `FIR_CROWN_TOP` is a stated compromise |
