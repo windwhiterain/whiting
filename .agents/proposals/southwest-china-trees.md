@@ -576,6 +576,12 @@ belts, from the notes' altitude ranges:
 The transect states its compression in the sidecar and in its own doc: it is a diagram that is also a
 picture, and it is the frame the ten silhouettes are finally judged in together.
 
+**H1–H5 are specimen bars and a site frame is not a specimen.** `audit/frame_stats.py --crown` on the
+montane frame reports coverage 0.056 and interior share 0.195, because its "crown box" is the whole
+1 600 × 1 000 frame rather than one tree's silhouette: the numbers are true and they mean nothing. A
+site frame is judged by E1 (sidecar against the notes), E2 (a known size in frame) and E3 (the hero is
+still the subject among its companions), and the specimen bars stay with the specimen plates.
+
 **Companions are the same species at a coarser dial.** `Planting::with_detail` and the spray/plume
 foliages exist precisely so that a background tree is the same rule at a coarser resolution: a site
 frame holds one hero planting at full detail and eight to twenty companions at `Detail::scaled(1)`
