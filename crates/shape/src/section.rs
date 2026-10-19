@@ -279,6 +279,20 @@ impl Section {
             .collect()
     }
 
+    /// How many corners the section authored: nought for an ellipse, which has none, and the point
+    /// count for an outline.
+    ///
+    /// A sweep samples a section at its own `around`, and an outline sampled coarser than it was
+    /// authored loses corners **silently** — a sixteen-lobed column drawn at fourteen vertices is a
+    /// fourteen-gon with a hard terminator where a lobe used to be. This is the number a sampler needs
+    /// in order not to: `vegetation::expand::wood` takes the finer of its dial and this.
+    pub fn corners(&self) -> usize {
+        match self {
+            Section::Ellipse { .. } => 0,
+            Section::Outline(outline) => outline.points.len(),
+        }
+    }
+
     /// This section's sampling rule, with its arc-length table measured once.
     ///
     /// # Invariants

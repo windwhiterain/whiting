@@ -143,9 +143,20 @@ fn montane_plantings() -> Vec<Planting> {
     // tuft is seven nodes and no leaves, so six hundred of them cost six hundred instance rows — the
     // cheapest mass in the crate. They stand in the foreground band only, because a tuft twenty metres
     // from the lens is two pixels and one at sixty is nothing.
-    for index in 0..600 {
-        let across = -4.0 + 34.0 * rng.unit();
-        let deep = -14.0 + 26.0 * rng.unit();
+    for index in 0..900 {
+        // A third of the tufts stand in the near band between the lens and the stand, because a
+        // foreground with nothing in it is a floor and not a ground.
+        let near = index % 3 == 0;
+        let across = if near {
+            18.0 + 22.0 * rng.unit()
+        } else {
+            -4.0 + 30.0 * rng.unit()
+        };
+        let deep = if near {
+            8.0 + 24.0 * rng.unit()
+        } else {
+            -14.0 + 24.0 * rng.unit()
+        };
         plantings.push(
             Planting::new(tuft(9_000 + index as u64))
                 .at(seat(
@@ -250,9 +261,9 @@ fn montane_frame() -> Framing {
     Framing {
         width: 1600,
         height: 1000,
-        eye: [36.0, slope_height(36.0, 26.0) + 1.7, 26.0],
-        target: [4.0, 6.0, 0.0],
-        field_of_view: 0.72,
+        eye: [38.0, slope_height(38.0, 30.0) + 1.7, 30.0],
+        target: [0.0, 6.5, 2.0],
+        field_of_view: 0.80,
         near: 0.3,
         far: 900.0,
         floor: 220.0,

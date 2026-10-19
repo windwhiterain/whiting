@@ -44,7 +44,7 @@ A species is at **hero grade** when one individual, drawn alone in one frame, pa
 | --- | --- | --- |
 | H1 | **Silhouette recognition.** The frame reduced to a black shape on white is the right species, not "a tree". | The `authored_id` mask is already written by every render. Cut the species out of it, lay ten silhouettes side by side, and ask a reader who has seen the reference photographs and not the models to name them. Fewer than seven of ten correct is a fail, and the answer says which species look alike. |
 | H2 | **Species-specific foliage.** At a range where one leaf is 3–20 pixels across, the foliage reads as a needle fascicle, a sclerophyllous oak leaf, a fern pinna, a white bract — and not as a generic spray. | A close frame, one branch, at a stated camera distance, beside the reference photograph it was cut from. Judged by eye and recorded as a judgement, not a number. |
-| H3 | **Crown depth.** The crown has a lit outside and a dark inside, so it reads as a volume. | Measured, not judged, by `audit/frame_stats.py --crown` over the plant's own pixels inside the crown's identity-mask box: the **interior share** — plant pixels wholly surrounded by plant — at least **0.25**, and the interior's mean luminance over the plant's own lit p90 at most **0.80**. |
+| H3 | **Crown depth.** The crown has a lit outside and a dark inside, so it reads as a volume. | Measured, not judged, by `audit/frame_stats.py --crown` over the plant's own pixels inside the crown's identity-mask box: the **interior share** — plant pixels wholly surrounded by plant — at least **0.25** on the whole-tree plate, and the interior's mean luminance over the plant's own lit p90 at most **0.80** measured on the **bough plate**. The second clause moved to the bough plate on 2026-10-19, measured: at whole-tree distance a dense crown's interior is made of *lit* leaves, because the shadow page's penumbra is coarser than a needle's gap, so more foliage raises the interior toward the rim (the oak measured 0.778 sparse and 0.824 dense); at bough distance self-shadowing resolves and the same crown measures 0.715. A species therefore shows its mass at the tree plate and its depth at the bough plate, and each plate says which it is being judged by. |
 | H4 | **Wood reads as wood.** The trunk has a flare at the ground, a taper that is not a cone, and a bark whose form — plates, flutes, peeling sheets, persistent leaf bases — is in the geometry. | One frame at the base of the trunk, one at the crown, and the taper law written in the species' note so the flare can be read as numbers. |
 | H5 | **No artefact on the list.** | Every frame is checked against the defect list in §2.3 and the check is recorded. |
 
@@ -524,6 +524,36 @@ such question.
 - **Each species gets a probe row**, not a test: a line in the species' own note giving its node
   count, leaf count, triangle count and crown reach at the default detail, so that a later change to
   a shared law shows up as ten numbers moving.
+
+### 4.16 What the second passes asked for, decided
+
+The second passes of arcs 3–6 and the second wave came back with six more wants. Each is decided
+here, because a limitation that is not decided gets re-litigated by every later species:
+
+| want | decision | reason |
+| --- | --- | --- |
+| a `Field` scoped to a generation, so a droop hangs the branchlets and not the bole | **won't fix** | three species (birch, spruce, fir) drew the droop in their shape functions and the fourth (oak) never wanted one; a field that reaches only some depths is a second author of the same curve, and a droop is a drawing |
+| `Detail::around` silently below a section's authored point count, which drew a hard terminator across 330 px of birch bark | **fix**, §4.17 | the loss is silent and it is the polygonal-silhouette defect drawn by the plate whose subject is the wood |
+| a leaf field that leaves a node's apex bare for the cone seated there | **won't fix** | the band is the dial that says where foliage stands and `scatter_in`'s band is the one that says where fruit stands; keeping two bands in step is authoring, and the alternative is a field that reads another field |
+| the shadow page's fitted boundary drawing a straight line across the ground | **defer to the shadow subsystem** | the page is fitted to the subject by design and the line is its edge; widening it is the virtual-shadow-maps roadmap's question, not this proposal's |
+| an emissive term on `Skin`, for a flower that is saturated without being lit | **won't fix now** | a flower's read is a tint and a roughness at every distance this project draws; emissive is a materials arc that nothing else here is waiting for |
+| a decorator distribution along a node's own length (the fern's mantles of leaf-base scars) | **defer** | it is a decorator *field*, a new type mirroring `LeafField`; the fern's local `mantle()` helper is honest and small, and one species wanting it is not yet two |
+
+### 4.17 A section's authored corners must survive the sweep's sampling
+
+**Pulls it:** 4, 5, 9, 10 — every species whose bark is a section.
+
+`expand::wood` samples every solid at `detail.around` vertices, and a section authored with more
+corners than that loses them silently: a sixteen-lobed birch column drawn at fourteen came out with
+a hard vertical terminator, and a twenty-four-fissured keteleeria at sixteen rounded its own fissures
+off. Both were found by looking at a frame, which is the last place a silent loss should surface.
+
+**Change:** `wood` samples at `detail.around` or the section's authored corner count, whichever is
+finer. An ellipse has no corners and is unchanged; every existing round-section plant keeps its
+twelve; only the sections that authored more corners than the dial draws move, which is exactly the
+set that was being lied about.
+
+**Size:** one `max` and a `Section` accessor for its authored corner count, nought for an ellipse.
 
 ## 7. The site: how a species stands in its belt (arc 7's design)
 

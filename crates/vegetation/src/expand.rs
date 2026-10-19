@@ -98,11 +98,16 @@ pub fn wood(plant: &Plant, detail: Detail) -> Vec<Wood> {
                 .spine(&handle)
                 .expect("a handle the walk yielded resolves");
             let rings = detail.rings(spine.length());
+            // **A section's authored corners survive the sampling.** An outline drawn at fewer
+            // vertices than it was authored loses its lobes silently — a bark column with a hard
+            // terminator where a flute used to be — so the dial is a floor and the section's own
+            // corner count is the law above it. An ellipse authors nought corners and is unchanged.
+            let around = detail.around.max(node.section().corners());
             let mut sweep = Sweep::new(spine, node.section().clone());
             sweep.scale = node.taper_now();
             Wood {
                 handle,
-                loft: sweep.sample(rings, detail.around),
+                loft: sweep.sample(rings, around),
             }
         })
         .collect()
