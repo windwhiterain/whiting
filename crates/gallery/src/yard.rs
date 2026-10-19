@@ -29,15 +29,16 @@ use building::site::seat;
 use building::wall::{Wall, WallId};
 use building::{Building, BuildingSkeleton, Element, Mass, MassId, PlanNode};
 
+use crate::air::Atmosphere;
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
 use crate::instancing::standing;
 use crate::kit::{
     camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
-    mesh_material, offset_by, post_processes, screen_material, shaded_point_schema, surface,
+    mesh_material, offset_by, post_processes, screen_material, shaded_point_schema, sky, surface,
 };
-use crate::shaders::post_shader;
+use crate::shaders::{Projection, post_shader};
 use building::identity::Identity;
 
 /// The ground the site stands on, in metres: it falls one unit in eleven as `x` rises.
@@ -584,6 +585,9 @@ pub fn yard() -> Value {
     let extras = building_extras();
     let point = extras.point_schema();
     let plain = not_authored_extras();
+    // **One air, handed to two renderers**: the map a world reads and the light a surface sees. Without the
+    // light the shading's sky term is zero, which is why a sun-only scene's shadowed side is black.
+    let (sky_image, sky_light) = sky(&atmosphere());
 
     Value::structure([
         ("name".to_owned(), Value::String("yard".to_owned())),
@@ -601,21 +605,32 @@ pub fn yard() -> Value {
         ),
         (
             "lights".to_owned(),
-            Value::List(vec![light_with_radius(
-                "sun",
-                SUN,
-                [1.0, 0.87, 0.70],
-                flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(SUN)),
-                16.0,
-                160.0,
-            )]),
+            Value::List(vec![
+                light_with_radius(
+                    "sun",
+                    SUN,
+                    [1.0, 0.87, 0.70],
+                    flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(SUN)),
+                    16.0,
+                    160.0,
+                ),
+                sky_light,
+            ]),
         ),
+        ("images".to_owned(), Value::List(vec![sky_image])),
         (
             "shaders".to_owned(),
             Value::List({
-                let mut shaders = stage_set("authored", "", "", &point, &extras);
-                shaders.extend(stage_set("plain", "", "", &plain.point_schema(), &plain));
-                shaders.push(post_shader(GRADE, SKY, None));
+                let helpers = atmosphere().wgsl();
+                let mut shaders = stage_set("authored", "", helpers.as_str(), &point, &extras);
+                shaders.extend(stage_set(
+                    "plain",
+                    "",
+                    helpers.as_str(),
+                    &plain.point_schema(),
+                    &plain,
+                ));
+                shaders.push(post_shader(GRADE, &helpers, Some(Projection::Latlong)));
                 shaders
             }),
         ),
@@ -654,21 +669,21 @@ pub fn yard() -> Value {
     ])
 }
 
-/// The sky this scene draws, written once so the haze and the background agree.
-const SKY: &str = r#"
-fn sky_at(ray: vec3<f32>) -> vec3<f32> {
-    let above = pow(clamp(ray.y, 0.0, 1.0), 0.55);
-    let horizon = vec3<f32>(0.86, 0.73, 0.56);
-    let zenith = vec3<f32>(0.14, 0.25, 0.47);
-    let below = vec3<f32>(0.30, 0.27, 0.21);
-    let sun = normalize(vec3<f32>(-16.0, 30.0, 24.0));
-    let glow = pow(clamp(dot(normalize(ray), sun), 0.0, 1.0), 8.0) * 0.32;
-    let sky = select(mix(horizon, below, clamp(-ray.y * 4.0, 0.0, 1.0)),
-                     mix(horizon, zenith, above),
-                     ray.y > 0.0);
-    return sky + vec3<f32>(1.0, 0.86, 0.62) * glow;
+/// The air over the yard: a clear afternoon, and **the light the sun is not**.
+///
+/// The numbers are the ones this scene's own sky law carried — zenith, horizon, ground and the sun's
+/// bloom — read out of it and handed to one `Atmosphere`, which bakes them into the map the shading reads
+/// its sky term from. A yard whose shadows are black is a yard with no air, not a yard with the wrong
+/// colours.
+fn atmosphere() -> Atmosphere {
+    Atmosphere::new()
+        .zenith([0.14, 0.25, 0.47])
+        .horizon([0.86, 0.73, 0.56])
+        .ground([0.30, 0.27, 0.21])
+        .sun([-16.0, 30.0, 24.0], [1.0, 0.86, 0.62], 8.0, 0.32)
+        .density(0.0011)
+        .scale_height(200.0)
 }
-"#;
 
 /// Returns how far a light position stands from the scene's own middle.
 fn distance_to_origin(position: [f64; 3]) -> f64 {
@@ -677,14 +692,20 @@ fn distance_to_origin(position: [f64; 3]) -> f64 {
 
 /// What the post stage does to the frame: the same shape as the shed's, with the air of a wider view.
 const GRADE: &str = r#"
+    // **The sky is read out of the scene's own environment map**, the same air the bounce reads, so the
+    // background and the light cannot be two skies.
     if depth >= 1.0 {
-        color = sky_at(ray_through(in.uv));
+        color = environment_sky(ray_through(in.uv));
     }
     if depth < 1.0 {
         let ray = ray_through(in.uv);
         let along_ray = length(world_position(in.uv, depth) - uniforms.camera.position);
         let air = clamp(1.0 - exp(-along_ray * 0.005), 0.0, 0.60);
-        color = mix(color, sky_at(vec3<f32>(ray.x, max(ray.y, -0.04), ray.z)), air);
+        color = mix(
+            color,
+            environment_sky(vec3<f32>(ray.x, max(ray.y, -0.04), ray.z)),
+            air,
+        );
     }
     color = color / (color + vec3<f32>(1.0));
     color = pow(color, vec3<f32>(0.4545));

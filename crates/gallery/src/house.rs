@@ -29,14 +29,15 @@ use building::identity::Identity;
 use building::openings::{Inset, Opening};
 use building::ops;
 
+use crate::air::Atmosphere;
 use crate::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
 use crate::kit::{
     camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
-    mesh_material, post_processes, screen_material, surface,
+    mesh_material, post_processes, screen_material, sky, surface,
 };
-use crate::shaders::post_shader;
+use crate::shaders::{Projection, post_shader};
 
 /// What the derived house is: a rectangular two-bay cottage with a hipped roof.
 ///
@@ -281,6 +282,9 @@ pub fn house() -> Value {
     let extras = building_extras();
     let point = extras.point_schema();
     let plain = not_authored_extras();
+    // **One air, handed to two renderers**: the map a world reads and the light a surface sees. Without the
+    // light the shading's sky term is zero, which is why a sun-only scene's shadowed side is black.
+    let (sky_image, sky_light) = sky(&atmosphere());
 
     Value::structure([
         ("name".to_owned(), Value::String("house".to_owned())),
@@ -314,21 +318,32 @@ pub fn house() -> Value {
             "lights".to_owned(),
             // A `power` rather than a brightness, derived from the irradiance wanted at the
             // house's own distance from the light: see `.agents/proposals/physical-light-units.md`.
-            Value::List(vec![light_with_radius(
-                "sun",
-                SUN,
-                [1.0, 0.87, 0.70],
-                flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(SUN)),
-                SHADOW_EXTENT,
-                160.0,
-            )]),
+            Value::List(vec![
+                light_with_radius(
+                    "sun",
+                    SUN,
+                    [1.0, 0.87, 0.70],
+                    flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(SUN)),
+                    SHADOW_EXTENT,
+                    160.0,
+                ),
+                sky_light,
+            ]),
         ),
+        ("images".to_owned(), Value::List(vec![sky_image])),
         (
             "shaders".to_owned(),
             Value::List({
-                let mut shaders = stage_set("authored", "", "", &point, &extras);
-                shaders.extend(stage_set("plain", "", "", &plain.point_schema(), &plain));
-                shaders.push(post_shader(GRADE, SKY, None));
+                let helpers = atmosphere().wgsl();
+                let mut shaders = stage_set("authored", "", helpers.as_str(), &point, &extras);
+                shaders.extend(stage_set(
+                    "plain",
+                    "",
+                    helpers.as_str(),
+                    &plain.point_schema(),
+                    &plain,
+                ));
+                shaders.push(post_shader(GRADE, &helpers, Some(Projection::Latlong)));
                 shaders
             }),
         ),
@@ -370,29 +385,21 @@ fn distance_to_origin(position: [f64; 3]) -> f64 {
     (position[0] * position[0] + position[1] * position[1] + position[2] * position[2]).sqrt()
 }
 
-/// The sky this scene draws, as a function the grade can call more than once.
+/// The air over the house: a clear afternoon, and **the light the sun is not**.
 ///
-/// # Invariants
-///
-/// The law is written once and the sky behind the house and the air in front of it both call it, so
-/// the haze a distant wall fades into is the colour of the sky it is fading into rather than three
-/// numbers copied out of a branch.
-const SKY: &str = r#"
-fn sky_at(ray: vec3<f32>) -> vec3<f32> {
-    let above = pow(clamp(ray.y, 0.0, 1.0), 0.55);
-    let horizon = vec3<f32>(0.88, 0.74, 0.56);
-    let zenith = vec3<f32>(0.16, 0.27, 0.50);
-    let below = vec3<f32>(0.34, 0.30, 0.24);
-    let sun = normalize(vec3<f32>(-22.0, 30.0, 20.0));
-    // A glow rather than a disc: the light itself is not in this frame, and what a sky shows of a
-    // sun it does not contain is the scattering around it.
-    let glow = pow(clamp(dot(normalize(ray), sun), 0.0, 1.0), 8.0) * 0.35;
-    let sky = select(mix(horizon, below, clamp(-ray.y * 4.0, 0.0, 1.0)),
-                     mix(horizon, zenith, above),
-                     ray.y > 0.0);
-    return sky + vec3<f32>(1.0, 0.86, 0.62) * glow;
+/// The numbers are the ones this scene's own sky law carried — zenith, horizon, ground and the sun's
+/// bloom — read out of it and handed to one `Atmosphere`, which bakes them into the map the shading reads
+/// its sky term from. A house whose shadows are black is a house with no air, not a house with the
+/// wrong colours.
+fn atmosphere() -> Atmosphere {
+    Atmosphere::new()
+        .zenith([0.16, 0.27, 0.50])
+        .horizon([0.88, 0.74, 0.56])
+        .ground([0.34, 0.30, 0.24])
+        .sun([-22.0, 30.0, 20.0], [1.0, 0.86, 0.62], 8.0, 0.35)
+        .density(0.0011)
+        .scale_height(200.0)
 }
-"#;
 
 /// What the post stage does to the frame.
 ///
@@ -403,8 +410,10 @@ fn sky_at(ray: vec3<f32>) -> vec3<f32> {
 /// is the post stage's own recovery of where the pixel is rather than a number assembled out of a
 /// near and a far plane.
 const GRADE: &str = r#"
+    // **The sky is read out of the scene's own environment map**, the same air the bounce reads, so the
+    // background and the light cannot be two skies.
     if depth >= 1.0 {
-        color = sky_at(ray_through(in.uv));
+        color = environment_sky(ray_through(in.uv));
     }
     if depth < 1.0 {
         let ray = ray_through(in.uv);
@@ -412,7 +421,11 @@ const GRADE: &str = r#"
         let air = clamp(1.0 - exp(-along_ray * 0.006) * 0.85, 0.0, 0.92);
         // The air in front of a surface takes the colour of the sky *behind* it, so the ray's
         // height is held to the horizon rather than allowed to point into the ground.
-        color = mix(color, sky_at(vec3<f32>(ray.x, max(ray.y, -0.04), ray.z)), air);
+        color = mix(
+            color,
+            environment_sky(vec3<f32>(ray.x, max(ray.y, -0.04), ray.z)),
+            air,
+        );
     }
     color = color / (color + vec3<f32>(1.0));
     color = pow(color, vec3<f32>(0.4545));
