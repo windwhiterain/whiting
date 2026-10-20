@@ -412,6 +412,11 @@ pub fn document() -> Building {
             .expect("a gable end splits at its middle");
     }
     let seated = site::seat(&mut skeleton, ground, 0.0);
+    // **The rafter tails under the eave that hangs over the bank**: the overhang is the whole point of a
+    // 吊脚楼's roof on its downhill side, and what an eave shows from below is the ends of its rafters.
+    for tail in derive::rafter_tails(&skeleton.roofs[0], &skeleton.masses[0], 0.40, 0.08, 0.10) {
+        skeleton.members.push(tail);
+    }
     debug_assert_eq!(seated.len(), 1, "the house is one mass");
     let report = site::posts(
         &mut skeleton,

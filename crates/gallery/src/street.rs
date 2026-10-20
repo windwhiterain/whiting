@@ -73,6 +73,11 @@ const OVERHANG: f32 = 0.7;
 const GABLE: f32 = 0.0;
 const RISE: f32 = 1.9;
 const SINK: f32 = 0.1;
+
+/// The rafter tails under every eave: how far apart they stand, and the wood's own section.
+const RAFTER_SPACING: f32 = 0.42;
+const RAFTER_WIDTH: f32 = 0.09;
+const RAFTER_DEPTH: f32 = 0.11;
 const ROOF_THICKNESS: f32 = 0.24;
 
 /// The covering every roof wears, and the 举架 ladder its slopes carry.
@@ -357,6 +362,19 @@ pub fn document() -> Building {
     // **The 骑楼 goes up after the seat**, because a walk is at the street's own level and the street
     // is what the seat reads: five canopies, one to a plot, each shedding away from the shop, and the
     // posts that hold their outer edges at the grade under them.
+    // **And the rafter tails under every eave**, from the same seated masses the roofs are on: ten
+    // ranges in two rows, each showing the ends of its own rafters the way a street of shops does.
+    for (mass_id, _plot) in &plot_of {
+        for tail in derive::rafter_tails(
+            &skeleton.roofs[mass_id.0],
+            &skeleton.masses[mass_id.0],
+            RAFTER_SPACING,
+            RAFTER_WIDTH,
+            RAFTER_DEPTH,
+        ) {
+            skeleton.members.push(tail);
+        }
+    }
     arcade(&mut skeleton, &plot_of);
     // The floors are derived from the seated masses, so their elevation is the storey's own.
     for (mass_id, _plot) in &plot_of {

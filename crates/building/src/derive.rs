@@ -956,54 +956,58 @@ pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Op
     }
     Some(Slab::floor(inner_loop(mass, id)?, elevation - thickness, elevation).with_host(id))
 }
-
-/// Builds the **rafter tails** under a mass's eave: the ends of the rafters a Chinese eave shows from
-/// below, one run along each of the loop's four sides.
+/// Builds the **rafter tails** under a roof: the ends of the rafters a Chinese eave shows from below.
 ///
 /// # Invariants
 ///
-/// **A tail is the piece the overhang exposes, not the whole rafter.** It runs from the wall's own top —
-/// the mass's outline at `mass.top` — out and down to the eave node's own line, so its slope is the roof's
-/// slope by construction rather than by a second number that could disagree with the first. The part inside
-/// the roof is the roof's business and is not drawn twice.
+/// **A tail runs from the wall's own top out and down to the roof's eave loop**, so its slope is the
+/// roof's slope by construction rather than by a second number that could disagree with the first. The
+/// part inside the roof is the roof's business and is not drawn twice.
 ///
-/// **The stations are taken on the authored loop and not on the roof's rows.** A roof plane has two rows and
-/// a run of rafters needs a spacing, so the spacing is this function's argument and the positions are
-/// interpolated between the loop's own two nodes — the same two nodes the plane's rows stand on, which is
-/// what keeps a tail under its own roof however the eave was read.
+/// **Tails go under the eave sides, and a side is an eave side when it runs along the ridge.** That is
+/// read from the roof's own crest points, not assumed: a gable has two such sides and two gable ends that
+/// rise, a hip has two as well, and a lean-to has one — its single plane sheds from its crest edge down to
+/// the one side that is parallel to it. A tail on a gable end would stand in the air above the slope, which
+/// is what the first version of this drew.
 ///
 /// **`spacing` is honoured as a maximum.** A side whose length is not a whole number of spacings gets the
 /// count that fits and an even division, because a gap at one end of an eave is a mistake a reader can see.
 ///
-/// Returns nothing for a mass with no area or for a spacing that is not positive.
-pub fn rafter_tails(
-    mass: &Mass,
-    overhang: f32,
-    sink: f32,
-    spacing: f32,
-    width: f32,
-    depth: f32,
-) -> Vec<Member> {
-    if spacing <= 0.0 || width <= 0.0 || depth <= 0.0 {
+/// Returns nothing for a roof with fewer than two crest points or a spacing that is not positive.
+pub fn rafter_tails(roof: &Roof, mass: &Mass, spacing: f32, width: f32, depth: f32) -> Vec<Member> {
+    if spacing <= 0.0 || width <= 0.0 || depth <= 0.0 || roof.crest.len() < 2 {
         return Vec::new();
     }
-    let count = mass.outline.len();
+    let count = roof.eaves.len().min(mass.outline.len());
     if count < 3 {
         return Vec::new();
     }
-    let Some(eave) = Eave::read(mass, overhang, sink) else {
+    let ridge = [
+        roof.crest[1].position[0] - roof.crest[0].position[0],
+        roof.crest[1].position[1] - roof.crest[0].position[1],
+    ];
+    let ridge_length = (ridge[0] * ridge[0] + ridge[1] * ridge[1]).sqrt();
+    if ridge_length <= 1.0e-4 {
         return Vec::new();
-    };
-    let inner_elevation = mass.top;
+    }
+    let ridge = [ridge[0] / ridge_length, ridge[1] / ridge_length];
     let mut tails = Vec::new();
     for edge in 0..count {
+        let eave_from = roof.eaves[edge].position;
+        let eave_to = roof.eaves[(edge + 1) % count].position;
+        let along = [eave_to[0] - eave_from[0], eave_to[1] - eave_from[1]];
+        let length = (along[0] * along[0] + along[1] * along[1]).sqrt();
+        if length <= 1.0e-4 {
+            continue;
+        }
+        // Parallel to the ridge, or not an eave side at all.
+        let alignment = (along[0] * ridge[0] + along[1] * ridge[1]).abs() / length;
+        if alignment < 0.999 {
+            continue;
+        }
         let wall_from = mass.outline[edge].position;
         let wall_to = mass.outline[(edge + 1) % count].position;
-        let eave_from = eave.nodes[edge].position;
-        let eave_to = eave.nodes[(edge + 1) % count].position;
-        let length = distance(eave_from, eave_to);
         let steps = (length / spacing).ceil().max(1.0) as usize;
-        // Half a spacing in from each corner, so the first and last tail are not on the corner itself.
         for step in 0..steps {
             let t = (step as f32 + 0.5) / steps as f32;
             let wall = [
@@ -1014,21 +1018,14 @@ pub fn rafter_tails(
                 lerp(eave_from[0], eave_to[0], t),
                 lerp(eave_from[1], eave_to[1], t),
             ];
-            // The width is measured across the edge's own direction, so a tail lies flat against the eave
-            // rather than square to the frame.
-            let along = [eave_to[0] - eave_from[0], eave_to[1] - eave_from[1]];
-            let span = (along[0] * along[0] + along[1] * along[1]).sqrt();
-            if span <= 1.0e-4 {
-                continue;
-            }
             tails.push(Member::new(
                 crate::member::Anchor::Free {
-                    at: [wall[0], inner_elevation, wall[1]],
+                    at: [wall[0], mass.top, wall[1]],
                 },
                 crate::member::Anchor::Free {
-                    at: [outer[0], eave.elevation, outer[1]],
+                    at: [outer[0], roof.eaves[edge].elevation, outer[1]],
                 },
-                [along[0] / span, along[1] / span],
+                [along[0] / length, along[1] / length],
                 width,
                 depth,
             ));

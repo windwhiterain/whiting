@@ -1306,6 +1306,24 @@ Only the 一颗印 carries them so far. The street's ranges would take the same 
 lean-tos whose tails would have to be derived from a lean-to's single plane — a different reading of the
 same idea, and not one to guess at.
 
+### The rafter tails, and the rule that says where they go
+
+The tails reached the street's ten ranges and the stilt house this round, and doing so found the first
+version's mistake: **it hung a tail under every edge of the eave loop**, which on a gable puts them in the air
+above the gable slope. The rule is geometric and is now read from the roof itself — **a side is an eave side
+when it runs along the ridge**, the ridge being the roof's own two crest points. A gable has two such sides, a
+hip has two, and a lean-to has one; a gable end has none, because its edge is perpendicular to the ridge.
+
+| scene | rows | document |
+| --- | --- | --- |
+| `street` (ten ranges, two rows) | 9 610 → **11 530** | `7AF4130F7541F00D`, arcade `D0947AF8263A984C` |
+| `stilt` | 1 735 → **2 071** | `CAF75052AA593363`, gallery `2E359A3D718A60AF` |
+| `yikeyin` (re-derived under the new rule) | 5 670 → **6 402** | `F57D07D988AE3AB1`, court `3E15895308BA44E5` |
+| seventeen scenes | **54 332 rows** | |
+
+The 一颗印's count grew because its crowned outline splits each long side into two, and both halves are
+parallel to the ridge — two runs a side where there was one, which is what a crowned gable actually is.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

@@ -290,10 +290,10 @@ $pinned = [ordered]@{
     house      = "1F648E1FB44D0D73"; hall       = "18F9EE14235A31F4"; hall_large = "276B44CC8C82691F"
     shed       = "E7457703620E9085"; terrace    = "23541F590BC93856"; wing       = "4E57123C48D74B4B"
     workshop   = "046ADB591CABC007"; yard       = "5DF1EBB9AED91D54"; identity   = "4298E2960A48285D"
-    stilt      = "86F74C0B66348F56"; compound   = "6AAD1D2CD464B03C"; compound_court = "7C99C4BDA8890F27"
-    stilt_gallery = "B8EDEBDC592E2FDE"
-    street     = "07E1337D733A0725"; street_arcade = "0AAED8AD9C1EE823"
-    yikeyin    = "273D958F73EE63AD"; yikeyin_court = "681FB58AB7AE8A29"
+    stilt      = "CAF75052AA593363"; compound   = "6AAD1D2CD464B03C"; compound_court = "7C99C4BDA8890F27"
+    stilt_gallery = "2E359A3D718A60AF"
+    street     = "7AF4130F7541F00D"; street_arcade = "D0947AF8263A984C"
+    yikeyin    = "F57D07D988AE3AB1"; yikeyin_court = "3E15895308BA44E5"
 }
 # How it is proved to fail: change one pinned value, run the stage, watch the numbers disagree and the
 # exit code come back 1, then change it back.
@@ -328,9 +328,9 @@ $rows = 0
 foreach ($line in $p) { if ($line -match '^\s+\S+\s+(\d+) row\(s\), ids 1\.\.=(\d+)') { $rows += [int]$Matches[1] } }
 $twoWay = @($p | Where-Object { $_ -match 'the channel is two-way for every scene: (\w+)' })
 $twoWayValue = if ($twoWay.Count -gt 0) { ($twoWay[0] -split ': ')[-1] } else { "(line absent)" }
-"  rows summed over scenes : $rows   (audit says 48356)"
+"  rows summed over scenes : $rows   (audit says 54332)"
 "  two-way line reads      : $twoWayValue"
-if ($rows -ne 48356) { $script:fail += "identity rows ($rows, expected 48356)" }
+if ($rows -ne 54332) { $script:fail += "identity rows ($rows, expected 54332)" }
 if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
 Gate "scene_identity_probe" $code 0
 

@@ -561,14 +561,14 @@ fn range(skeleton: &mut BuildingSkeleton, corners: [[f32; 2]; 4], height: f32, c
     if crowned {
         crown_gables(&mut skeleton.masses[mass_id.0], &roof);
     }
+    let roof_id = skeleton.roofs.len();
     skeleton.roofs.push(roof);
     // **The rafter tails under that roof**: the piece of every rafter the eave exposes, from the wall's
     // own top out and down to the eave's line. They are derived from the roof the mass already carries,
     // so a tail cannot disagree with the slope above it.
     for tail in derive::rafter_tails(
+        &skeleton.roofs[roof_id],
         &skeleton.masses[mass_id.0],
-        OVERHANG,
-        SINK,
         RAFTER_SPACING,
         RAFTER_WIDTH,
         RAFTER_DEPTH,
