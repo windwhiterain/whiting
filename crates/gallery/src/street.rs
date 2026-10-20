@@ -30,11 +30,12 @@
 use definition::Value;
 use scene::standard::Stage;
 
+use crate::facade::{Bar, open_with_bars};
 use building::derive;
 use building::frontage::Frontage;
 use building::grid::{FaceRef, Rhythm};
 use building::identity::Identity;
-use building::openings::{Inset, Opening};
+use building::openings::Inset;
 use building::site;
 use building::{Building, BuildingSkeleton, Covering, Mass, PlanNode, ops};
 
@@ -398,14 +399,55 @@ pub fn document() -> Building {
         if ops::split_face(&mut skeleton, face, &columns, &rows).is_none() {
             continue;
         }
-        for opening in [
-            Opening::new(face, 0, 1, Inset::new(0.45, 0.45, 0.0, 0.45)),
-            Opening::new(face, 0, 0, Inset::new(0.55, 0.55, 1.15, 0.55)),
-            Opening::new(face, 0, 2, Inset::new(0.55, 0.55, 1.15, 0.55)),
-            Opening::new(face, 1, 1, Inset::new(0.40, 0.40, 0.95, 0.50)),
-        ] {
-            let _ = ops::add_opening(&mut skeleton, opening);
+        // **The ground floor is the shop**, so its middle bay is a shopfront and not a door: the whole bay
+        // opens behind boards, the boards are the members that close it, and a rail across the head carries
+        // the transom band above it. A shop that shuts at night is a shop whose front comes out, and a
+        // 门板 is exactly what comes out.
+        open_with_bars(
+            &mut skeleton,
+            face,
+            0,
+            1,
+            Inset::new(0.45, 0.45, 0.0, 0.45),
+            Bar {
+                count: 0,
+                width: 0.0,
+                depth: 0.0,
+            },
+        );
+        // **A rail across the shopfront's head**, which is where the boards stop and the transom begins: a
+        // horizontal member needs the face's outward normal for its section, and `rail` reads it from the
+        // edge so the sign cannot be got wrong.
+        crate::facade::rail_across(
+            &mut skeleton,
+            face,
+            0,
+            1,
+            Inset::new(0.45, 0.45, 0.0, 0.45),
+            2.15,
+            0.10,
+            0.07,
+        );
+        // The two side bays of the ground floor are shop windows, barred like every other window here.
+        for column in [0, 2] {
+            open_with_bars(
+                &mut skeleton,
+                face,
+                0,
+                column,
+                Inset::new(0.55, 0.55, 1.15, 0.55),
+                Bar::WINDOW,
+            );
         }
+        // The upper middle bay is the one window the house has over the shop.
+        open_with_bars(
+            &mut skeleton,
+            face,
+            1,
+            1,
+            Inset::new(0.40, 0.40, 0.95, 0.50),
+            Bar::WINDOW,
+        );
     }
     Building::new(skeleton)
 }
