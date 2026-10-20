@@ -1,6 +1,6 @@
-//! Renders a named gallery scene to pngs, on the real gpu.
+//! Renders a scene document to pngs, on the real gpu.
 //!
-//! This is the authoring loop: a scene is built, compiled by the `StandardScene` compiler,
+//! This is the authoring loop: a document is compiled by the `StandardScene` compiler,
 //! rendered headlessly, and written out as an image. Nothing here is part of the framework —
 //! it is the harness that makes a scene visible while it is being written.
 //!
@@ -11,38 +11,35 @@
 //! rather than a fresh one.
 //!
 //! ```text
-//! cargo run -p whiting-device-rasterize --example render -- <scene> <out> [times] [mode]
+//! cargo run -p whiting-device-rasterize --example render -- --document <path> <out> [times] [mode]
 //!
-//!   render dunes out/dunes                          one frame, at the time the scene carries
-//!   render dunes out/dunes 2.5                      one frame, at t = 2.5
-//!   render dunes out/dunes 0 6 0.25                 thirteen frames, a quarter second apart
-//!   render dunes out/dunes 0 6 0.25 --sheet         the same range, as one contact sheet
-//!   render dunes out/dunes 0 6 0.25 --sheet-full    the same sheet, at every pixel of each frame
-//!   render dunes out/dunes 0 6 0.1  --video         the same range, as an mp4
-//!   render dunes out/dunes --debug position         and one image of where each pixel is
-//!   render --document dunes.json out/dunes          one frame, from the document and not the gallery
+//!   render --document dunes.json out/dunes          one frame, at the time the scene carries
+//!   render --document dunes.json out/dunes 2.5      one frame, at t = 2.5
+//!   render --document dunes.json out/dunes 0 6 0.25 thirteen frames, a quarter second apart
+//!   render --document dunes.json out/dunes 0 6 0.25 --sheet     the same range, as one sheet
+//!   render --document dunes.json out/dunes 0 6 0.1  --video     the same range, as an mp4
+//!   render --document dunes.json out/dunes --debug position     and one image of each pixel
 //!   render dunes out/dunes --document dunes.json    the same, under the name `dunes`
 //! ```
 //!
 //! # The document
 //!
-//! **A scene is a document, and the gallery is one way of getting one.** `--document` reads the
-//! document from a file instead of building it from a name, and that path calls no gallery at
-//! all: the file is put in the registry the way the rpc's `PUT /definition/{name}` puts one
-//! there — validated against the scene schema, stored under the scene's own name — and the
-//! scene that is compiled is the one the registry holds afterwards.
+//! **A scene is a document, and the gallery is the producer of one.** The document is read from
+//! a file, put in the registry the way the rpc's `PUT /definition/{name}` puts one there —
+//! validated against the scene schema, stored under the scene's own name — and the scene that is
+//! compiled is the one the registry holds afterwards. The gallery writes those files: `cargo run
+//! -p whiting-gallery --example scene_document -- <name> <path>`.
 //!
-//! The name is what the document is registered under and what the manifest records, so the two
-//! paths can be compared against each other: a frame drawn from a document and a frame drawn
-//! from the name are the same frame if the documents they compiled were the same, and the
+//! The name is what the document is registered under and what the manifest records, so a frame
+//! drawn from a document can be compared against the frame the same document drew before: the
 //! manifest beside the images says so in hashes rather than in an opinion. **A document with no
 //! name of its own takes the name from the document's own `name` field**, and one with neither
 //! is refused: the registry is keyed by name, and a scene registered under nothing is a scene
 //! nothing can ask for again.
 //!
-//! The census is the other half of the gallery's side of the bargain and is not answered here:
-//! it reads the document, and the document is the producer's to write. `cargo run -p
-//! whiting-gallery --example scene_document -- <name> <path> --census` prints it.
+//! The census is the other half of the producer's side and is not answered here: it reads the
+//! document, and the document is the producer's to write. `cargo run -p whiting-gallery --example
+//! scene_document -- <name> <path> --census` prints it.
 //!
 //! # The contact sheet
 //!
@@ -2312,10 +2309,10 @@ fn set_time(scene: &mut Value, time: f64) {
 /// Returns the usage this harness was run with.
 fn usage() -> String {
     concat!(
-        "usage: render <scene> <out> [start [stop [step]]] ",
-        "[--sheet | --sheet-full | --video] [--debug <channel>] [--census]\n",
-        "       render --document <path> <out> [start [stop [step]]] (the scene's name is the ",
-        "document's own)"
+        "usage: render --document <path> <out> [start [stop [step]]] ",
+        "[--sheet | --sheet-full | --video] [--debug <channel>] [--locate x,y] [--region x0,y0,x1,y1] ",
+        "[--where <id or name>]\n",
+        "       render <name> <out> ... --document <path> (the name the document is recorded under)"
     )
     .to_owned()
 }

@@ -2140,7 +2140,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "whiting-definition",
- "whiting-gallery",
  "whiting-graphics",
  "whiting-scene",
 ]
@@ -2149,11 +2148,11 @@ dependencies = [
 name = "whiting-device-cycles"
 version = "0.1.0"
 dependencies = [
+ "facet-json",
  "png",
  "thiserror",
  "whiting-definition",
  "whiting-device",
- "whiting-gallery",
  "whiting-graphics",
  "whiting-scene",
 ]
@@ -2169,9 +2168,22 @@ dependencies = [
  "wgpu",
  "whiting-definition",
  "whiting-device",
- "whiting-gallery",
+ "whiting-document",
  "whiting-graphics",
  "whiting-scene",
+]
+
+[[package]]
+name = "whiting-document"
+version = "0.1.0"
+dependencies = [
+ "whiting-building",
+ "whiting-definition",
+ "whiting-graphics",
+ "whiting-mountain",
+ "whiting-scene",
+ "whiting-shape",
+ "whiting-vegetation",
 ]
 
 [[package]]
@@ -2179,8 +2191,12 @@ name = "whiting-gallery"
 version = "0.1.0"
 dependencies = [
  "facet-json",
+ "tokio",
  "whiting-building",
  "whiting-definition",
+ "whiting-device",
+ "whiting-device-rasterize",
+ "whiting-document",
  "whiting-graphics",
  "whiting-mountain",
  "whiting-patch",
@@ -2254,6 +2270,7 @@ dependencies = [
  "png",
  "thiserror",
  "whiting-definition",
+ "whiting-document",
  "whiting-gallery",
  "whiting-graphics",
 ]
