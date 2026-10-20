@@ -210,6 +210,8 @@ const LANE_AT: [f32; 2] = [8.0, 0.0];
 /// **A house pad on a slope is a cut and a fill**, and the fill is a forest of short posts rather than a wall:
 /// the same construction the 吊脚楼 makes of its whole floor, at the scale of one corner of a house.
 const PAD_SPACING: f32 = 1.6;
+/// How far a house's stone plinth stands proud of its own plan, in metres.
+const PLINTH_MARGIN: f32 = 0.28;
 const PAD_SECTION: f32 = 0.16;
 const PAD_EMBED: f32 = 0.03;
 
@@ -516,6 +518,69 @@ fn scene_of(
 ///
 /// **A merge appends where the document was authored**, so each one is translated first — and translated by its
 /// own offset, which is the only thing this function says about where anything stands.
+/// Gives one seated house its **stone plinth**: the pad it is cut into and filled up to, under the posts.
+///
+/// # Invariants
+///
+/// **The plinth is the house's own plan, proud by [`PLINTH_MARGIN`] on every side**, from the lowest ground under
+/// that plan up to the sill. It therefore has no thickness of its own: it is deep where the fill is deep and a
+/// step where the ground is level, which is what a plinth is — the masonry between a building and a slope, with
+/// the slope's own shape in its underside.
+///
+/// **A house whose sill is already on the ground gets no plate at all.** A plate thinner than two centimetres is
+/// a face at a face, and the expansion would report the two as one solid or as a crack.
+fn pad_plinth(part: &mut BuildingSkeleton, ground: &impl Fn(Vec2) -> f32) {
+    let under = part
+        .masses
+        .iter()
+        .flat_map(|mass| mass.outline.iter().map(|node| node.position))
+        .map(ground)
+        .fold(f32::INFINITY, f32::min);
+    let plans: Vec<(Vec<[f32; 2]>, f32)> = part
+        .masses
+        .iter()
+        .map(|mass| {
+            let sill = mass.lowest();
+            let mut plan: Vec<[f32; 2]> = mass.outline.iter().map(|node| node.position).collect();
+            let middle = {
+                let sum = plan.iter().fold([0.0_f32, 0.0_f32], |sum, at| {
+                    [sum[0] + at[0], sum[1] + at[1]]
+                });
+                [sum[0] / plan.len() as f32, sum[1] / plan.len() as f32]
+            };
+            for at in &mut plan {
+                let out = [at[0] - middle[0], at[1] - middle[1]];
+                let length = (out[0] * out[0] + out[1] * out[1]).sqrt().max(1.0e-3);
+                let grow = (length + PLINTH_MARGIN) / length;
+                *at = [middle[0] + out[0] * grow, middle[1] + out[1] * grow];
+            }
+            if loop_area(&plan) < 0.0 {
+                plan.reverse();
+            }
+            (plan, sill)
+        })
+        .collect();
+    for (plan, sill) in plans {
+        let foot = under.min(sill) - PLINTH_MARGIN;
+        if sill - foot > 0.02 {
+            part.slabs.push(building::Slab::plate(plan, foot, sill));
+        }
+    }
+}
+
+/// Returns a plan loop's signed area, which is how this file tells a positive winding from a reversed one.
+fn loop_area(plan: &[[f32; 2]]) -> f32 {
+    if plan.len() < 3 {
+        return 0.0;
+    }
+    let mut area = 0.0;
+    for index in 0..plan.len() {
+        let here = plan[index];
+        let next = plan[(index + 1) % plan.len()];
+        area += here[0] * next[1] - next[0] * here[1];
+    }
+    area * 0.5
+}
 pub fn document() -> Building {
     compose(grade, true, 0.0)
 }
@@ -595,6 +660,7 @@ pub fn compose(ground: impl Fn(f64, f64) -> f64, lane: bool, platform: f32) -> B
                 stilt.refused == 0,
                 "the grade answers under every post position of every house"
             );
+            pad_plinth(&mut part, &seated_ground);
         }
         assert!(
             ops::merge(&mut skeleton, part),

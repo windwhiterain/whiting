@@ -42,3 +42,18 @@ and erodes it, and a building stands on the result.
 
 Identity: **4 643 rows** (from 4 559: the houses stand on more posts now that the ground has relief), and
 twenty-two scenes in the gallery.
+## The pads: a stone plinth under every house
+
+The hillside village had posts under its houses and nothing else, and posts alone are a house on stilts — a
+different building from a house on a pad. Every seated house now gets a **stone plinth**: its own plan, proud by
+`0.28 m` on every side, from the lowest ground under that plan up to the sill.
+
+**It has no thickness of its own**, and that is the whole of the design: it is deep where the fill is deep and a
+step where the ground is level, because its underside is the slope's own shape. Two consequences follow and both
+are in the code rather than in a comment: the outline is inflated **about its own centre**, so a plan that is not
+a rectangle still gets a margin on every side; and a house whose sill is already on the ground gets **no plate at
+all**, because a plate thinner than two centimetres is a face at a face and the expansion reports that as one
+solid or as a crack.
+
+Rows: `village_square` 16 497 → **16 521**, `hillside_village` 4 643 → **4 667** — six rows a house and four
+houses, in both villages, because the plinth is the composition's and not the terrain's.
