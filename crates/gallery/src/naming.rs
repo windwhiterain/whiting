@@ -399,6 +399,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "compound_court" => crate::compound::document(),
         "stilt" => crate::stilt::document(),
         "street" => crate::street::document(),
+        "street_arcade" => crate::street::document(),
         "terrace" => crate::terrace::document(),
         "wing" => crate::wing::document(),
         "workshop" => crate::workshop::document(),

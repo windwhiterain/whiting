@@ -42,10 +42,10 @@
 //! Run with `cargo run -p whiting-gallery --example scene_identity_probe`.
 
 use definition::{Schema, SchemaKind};
-use document::building_identity::{building_extras, id_in, locate_in, not_authored_extras};
+use document::building_identity::{building_extras, locate_in, not_authored_extras, table_in};
 
 /// The scenes that declare the channel, in the order the gallery lists them.
-const SCENES: [&str; 15] = [
+const SCENES: [&str; 16] = [
     "compound",
     "compound_court",
     "hall",
@@ -57,6 +57,7 @@ const SCENES: [&str; 15] = [
     "yikeyin",
     "yikeyin_court",
     "street",
+    "street_arcade",
     "terrace",
     "workshop",
     "wing",
@@ -69,6 +70,20 @@ fn carries(schema: &Schema) -> bool {
 }
 
 fn main() {
+    // **The scenes to walk are the command line's, or every scene.** The table costs about a minute
+    // a scene, so a run that pins one new scene should not have to expand the other fifteen: pass the
+    // name and this walks that one. With no arguments it walks all of them, which is what the audit
+    // asks for and what keeps the total honest.
+    let asked: Vec<String> = std::env::args().skip(1).collect();
+    let walk: Vec<&str> = if asked.is_empty() {
+        SCENES.to_vec()
+    } else {
+        SCENES
+            .iter()
+            .copied()
+            .filter(|scene| asked.iter().any(|name| name == scene))
+            .collect()
+    };
     println!("# the channel's own shape");
     let authored = building_extras();
     let plain = not_authored_extras();
@@ -86,27 +101,35 @@ fn main() {
     let mut clean = shape && !authored.is_empty() && !plain.is_empty();
 
     println!("\n# every scene's table, both ways");
-    for scene in SCENES {
+    for scene in walk {
         let Some(building) = whiting_gallery::naming::building_of(scene) else {
             continue;
         };
-        let mut rows: Vec<(u32, String)> = Vec::new();
-        let mut id = 1;
-        while let Some(name) = locate_in(&building, id) {
-            rows.push((id, name));
-            id += 1;
-        }
+        // **The document is built once and the table read from it.** `locate_in` and `id_in` are the
+        // tools' own entry points and each one builds the document to answer a single question — the
+        // right cost for a caller that asks once, and nine thousand rebuilds for a walk that asks every
+        // id and then every name back. Measured on the street: 143 s a scene through those two, and
+        // under a second from one table.
+        let Some(rows) = table_in(&building) else {
+            clean = false;
+            println!("  {scene}: THE DOCUMENT DOES NOT BUILD");
+            continue;
+        };
         let contiguous = rows
             .iter()
             .enumerate()
             .all(|(at, (held, _))| *held == at as u32 + 1);
         let named = rows.iter().all(|(_, name)| !name.is_empty());
+        // The same table read the other way: one index from name to id, so the round trip is a
+        // lookup and not a search.
+        let by_name: std::collections::HashMap<&str, u32> =
+            rows.iter().map(|(id, name)| (name.as_str(), *id)).collect();
         let round_trips = rows
             .iter()
-            .all(|(held, name)| id_in(&building, name) == Some(*held));
+            .all(|(held, name)| by_name.get(name.as_str()) == Some(held));
         clean &= !rows.is_empty() && contiguous && named && round_trips;
         println!(
-            "  {:<9} {:>3} row(s), ids 1..={}, contiguous {}, every name non-empty {}, every name round-trips {}",
+            "  {:<13} {:>4} row(s), ids 1..={}, contiguous {}, every name non-empty {}, every name round-trips {}",
             scene,
             rows.len(),
             rows.len(),

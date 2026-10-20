@@ -105,8 +105,33 @@ const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 const GROUND_DIVISIONS: usize = 140;
 const GROUND_EXTENT: f64 = 70.0;
 
-/// Builds the scene.
+/// Builds the scene from outside the row, on the street, looking up it.
 pub fn street() -> Value {
+    scene(
+        [-13.0, 8.5, -24.0],
+        [16.0, 3.0, 3.0],
+        FIELD_OF_VIEW,
+        "street",
+    )
+}
+
+/// Builds **the same street** from under the 骑楼, which is where a street is walked.
+///
+/// # Invariants
+///
+/// **One document and two cameras.** The eyes differ and nothing else: the arcade is the same set of
+/// canopies and posts the other view sees from outside, and the rows are the same rows.
+pub fn street_arcade() -> Value {
+    scene(
+        [2.4, 1.65, -1.15],
+        [26.0, 2.45, -1.15],
+        1.25,
+        "street_arcade",
+    )
+}
+
+/// Builds the scene from one camera.
+fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Value {
     let building = document();
     let built = building
         .build()
@@ -120,6 +145,11 @@ pub fn street() -> Value {
     let table = Identity::of(&built, 1);
     let walls = packed_where(&built, &table, |element| {
         matches!(element, building::Element::Mass(_, _))
+    });
+    // **The frame is its own mesh**: a post is not a wall with a different elevation, and it is not
+    // rendered at all unless a scene asks for it. Nothing drew a member before this one.
+    let timbers = packed_where(&built, &table, |element| {
+        matches!(element, building::Element::Member(_, _))
     });
     let roofs = packed_where(&built, &table, |element| {
         matches!(
@@ -141,11 +171,13 @@ pub fn street() -> Value {
     let tiles = || surface([0.30, 0.29, 0.28], 0.0, 0.60, [0.0; 3]);
     let floor = || surface([0.32, 0.24, 0.16], 0.0, 0.80, [0.0; 3]);
     let earth = || surface([0.30, 0.27, 0.21], 0.0, 0.94, [0.0; 3]);
+    let timber = || surface([0.34, 0.24, 0.15], 0.0, 0.78, [0.0; 3]);
 
     let mut materials = Vec::new();
     for (name, body) in [
         ("wall", plaster as fn() -> Value),
         ("roof", tiles as fn() -> Value),
+        ("timber", timber as fn() -> Value),
         ("floor", floor as fn() -> Value),
     ] {
         materials.push(mesh_material(
@@ -177,6 +209,7 @@ pub fn street() -> Value {
             ("walls", "wall"),
             ("roofs", "roof"),
             ("floors", "floor"),
+            ("frame", "timber"),
             ("ground", "ground"),
         ]
         .into_iter()
@@ -204,15 +237,11 @@ pub fn street() -> Value {
     let (sky_image, sky_light) = sky(&atmosphere());
 
     Value::structure([
-        ("name".to_owned(), Value::String("street".to_owned())),
+        ("name".to_owned(), Value::String(name.to_owned())),
         ("frame".to_owned(), frame(FRAME_WIDTH, FRAME_HEIGHT)),
         (
             "cameras".to_owned(),
-            Value::List(vec![camera(
-                [-13.0, 8.5, -24.0],
-                [16.0, 3.0, 3.0],
-                FIELD_OF_VIEW,
-            )]),
+            Value::List(vec![camera(eye, target, field_of_view)]),
         ),
         (
             "lights".to_owned(),
@@ -252,6 +281,7 @@ pub fn street() -> Value {
                 mesh("walls", "Triangles", point.clone(), walls),
                 mesh("roofs", "Triangles", point.clone(), roofs),
                 mesh("floors", "Triangles", point.clone(), floors),
+                mesh("frame", "Triangles", point.clone(), timbers),
                 mesh("ground", "Triangles", plain.point_schema(), ground),
             ]),
         ),
@@ -318,6 +348,11 @@ pub fn document() -> Building {
     // one's private average: `site::seat` moves every node of every mass to the highest ground it stands
     // on, and the roofs follow their masses.
     let _ = site::seat(&mut skeleton, at_grade, 0.0);
+
+    // **The 骑楼 goes up after the seat**, because a walk is at the street's own level and the street
+    // is what the seat reads: five canopies, one to a plot, each shedding away from the shop, and the
+    // posts that hold their outer edges at the grade under them.
+    arcade(&mut skeleton);
     // The floors are derived from the seated masses, so their elevation is the storey's own.
     for plot in &plots {
         let mass_id = building::MassId(plot.index);
@@ -353,6 +388,77 @@ pub fn document() -> Building {
 }
 
 /// Returns the roof over one seated mass: a gable on the 举架 ladder, with its tiles.
+/// Builds the **骑楼**: the covered walk the shops stand behind.
+///
+/// # Invariants
+///
+/// **One canopy a plot, shedding away from the shop.** The canopy is a lean-to whose crest is on the
+/// house's own front wall and whose eave stands `WALK_DEPTH` out over the street, so the water it
+/// catches runs to the street and not through the shopfront — which is what the type is for and what a
+/// flat awning would not do.
+///
+/// **Every post stands on the ground under it**, because the street climbs: the posts of one plot do
+/// not share an elevation with the next plot's, and a walk built on one level would float at the top of
+/// the hill and be buried at the bottom.
+///
+/// **The canopy is hosted by the mass it covers.** A roof is authorized to touch the mass its `host`
+/// names, so a single canopy spanning the row would have to claim one of the five and lie about it.
+fn arcade(skeleton: &mut BuildingSkeleton) {
+    const DEPTH: f32 = 2.2;
+    const LOW: f32 = 2.95;
+    const HIGH: f32 = 3.55;
+    const POST: f32 = 0.16;
+    for index in 0..skeleton.masses.len() {
+        let mass_id = building::MassId(index);
+        let Some(mass) = skeleton.masses.get(index) else {
+            continue;
+        };
+        let (x0, x1, front) = extents(mass);
+        // Half a metre in from the party wall at each end, so two neighbouring canopies are two
+        // canopies rather than one with a seam in it.
+        let left = x0 + 0.5;
+        let right = x1 - 0.5;
+        let base = mass.lowest();
+        let plan = [
+            [left, front - DEPTH],
+            [right, front - DEPTH],
+            [right, front],
+            [left, front],
+        ];
+        let Some(roof) = derive::lean_to(mass_id, plan, base + LOW, base + HIGH, 0.08) else {
+            continue;
+        };
+        skeleton.roofs.push(roof.with_covering(COVERING));
+        for x in [left, right] {
+            let ground = grade(x);
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [x, ground, front - DEPTH + POST],
+                },
+                building::Anchor::Free {
+                    at: [x, base + LOW - 0.04, front - DEPTH + POST],
+                },
+                [1.0, 0.0],
+                POST,
+                POST,
+            ));
+        }
+    }
+}
+
+/// Returns a mass's plan extents along the street and its front line, which is its lowest `z`.
+fn extents(mass: &Mass) -> (f32, f32, f32) {
+    let mut x0 = f32::MAX;
+    let mut x1 = f32::MIN;
+    let mut front = f32::MAX;
+    for node in &mass.outline {
+        x0 = x0.min(node.position[0]);
+        x1 = x1.max(node.position[0]);
+        front = front.min(node.position[1]);
+    }
+    (x0, x1, front)
+}
+
 fn roof_over(mass_id: building::MassId, mass: &Mass) -> building::roof::Roof {
     let mut roof =
         derive::gable_roof_by(mass_id, mass, OVERHANG, GABLE, RISE, SINK, ROOF_THICKNESS)

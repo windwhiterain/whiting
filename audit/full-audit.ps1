@@ -175,7 +175,7 @@ $clippy | Out-File -FilePath $log -Append -Encoding utf8
 # kind: a code span, a note and a `help:` line cannot match it, and the run prints no
 # "N warnings emitted" summary of its own. The same form counted 137 on the tree this gate was
 # added to and 1 on a tree carrying a single `unused_variables` binding.
-$lintLines = @($clippy | Where-Object { "$_" -cmatch '^(warning|error)(\[|:)' })
+$lintLines = @(Get-OwnWarnings $clippy $root)
 "  exit code                       : $code"
 "  warning/error lines counted     : $($lintLines.Count)   (the gate compares this against 0)"
 $lintLines | Select-Object -First 10 | ForEach-Object { "      $_" }
@@ -258,14 +258,14 @@ foreach ($pair in @(@("whiting-building", "building", 40), @("whiting-gallery", 
 }
 
 "--------------------------------------------------------------------"
-"[6/8] the fifteen written .png hashes  (sha256 of the file, first 16 hex upper)"
+"[6/8] the sixteen written .png hashes  (sha256 of the file, first 16 hex upper)"
 "--------------------------------------------------------------------"
 $pinned = [ordered]@{
     house      = "2C18FA24229A832E"; hall       = "0E369523A20D972B"; hall_large = "F6A821084C92768B"
     shed       = "2BE00AF7BD9C658B"; terrace    = "8A0E101DB18C8AFB"; wing       = "1A0FC6D69838214D"
     workshop   = "D869C688B924047D"; yard       = "B6FB314FC1721046"; identity   = "3029BDBFE9E3E7EC"
     stilt      = "580E69E31DE732FF"; compound   = "DDA7A8DBBBE9B6F3"; compound_court = "F183A16EECEADE87"
-    street     = "82B1EAF35E21F0D0"
+      street     = "38CF44CB39379FF2"; street_arcade = "9FD8058E477DD2A9"
     yikeyin    = "19D6B13ADEC8B470"; yikeyin_court = "B88182140B4C4AD7"
 }
 # **The eleven above moved together on 2026-10-19, and it is recorded here rather than in a commit
@@ -294,7 +294,14 @@ $moved = 0
 $rendered = 0
 foreach ($scene in $pinned.Keys) {
     $stem = Join-Path $out $scene
-    $r = cargo run -q -p whiting-device-rasterize --example render -- $scene $stem 2>&1
+    # **A scene is a document now**: the gallery writes it out and the renderer draws the file.
+    # The two steps are one arm because a document that fails to write must fail this gate, not
+    # the next one.
+    $document = Join-Path $out "$scene.json"
+    $r = cargo run -q -p whiting-gallery --example scene_document -- $scene $document 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        $r += cargo run -q -p whiting-device-rasterize --example render -- --document $document $stem 2>&1
+    }
     $code = $LASTEXITCODE
     $r | Out-File -FilePath $log -Append -Encoding utf8
     $png = "$stem.png"
@@ -318,9 +325,9 @@ $rows = 0
 foreach ($line in $p) { if ($line -match '^\s+\S+\s+(\d+) row\(s\), ids 1\.\.=(\d+)') { $rows += [int]$Matches[1] } }
 $twoWay = @($p | Where-Object { $_ -match 'the channel is two-way for every scene: (\w+)' })
 $twoWayValue = if ($twoWay.Count -gt 0) { ($twoWay[0] -split ': ')[-1] } else { "(line absent)" }
-"  rows summed over scenes : $rows   (audit says 31005)"
+"  rows summed over scenes : $rows   (audit says 36275)"
 "  two-way line reads      : $twoWayValue"
-if ($rows -ne 31005) { $script:fail += "identity rows ($rows, expected 31005)" }
+if ($rows -ne 36275) { $script:fail += "identity rows ($rows, expected 36275)" }
 if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
 Gate "scene_identity_probe" $code 0
 
