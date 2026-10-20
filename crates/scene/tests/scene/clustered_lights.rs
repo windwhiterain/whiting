@@ -24,7 +24,7 @@
 //! since 2026-10-16 carries a post stage as well — so its pass list has four entries where it
 //! had three, and its name says so.
 
-use super::support::{bounds, identity, parallel};
+use super::support::{bounds, identity, parallel, triple};
 use definition::{Definition, DefinitionIdentifier, Path, Registry, SchemaIdentifier, Value};
 use graphics::{ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 use whiting_scene::CompileContext;
@@ -467,7 +467,6 @@ fn parallel_at(distance: f64) -> [f64; 3] {
 /// Returns a perspective camera with its near plane at one and its far plane at twenty one,
 /// its eye standing at z ten.
 fn perspective() -> Projection {
-    let triple = |v: [f64; 3]| Value::List(v.into_iter().map(Value::Float).collect());
     Camera::read(
         Some(&Value::structure([
             ("eye".to_owned(), triple([0.0, 0.0, 10.0])),
