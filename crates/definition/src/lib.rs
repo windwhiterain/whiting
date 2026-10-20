@@ -73,6 +73,7 @@ mod schema_document;
 mod value;
 mod version;
 
+pub mod binary;
 pub mod bytes;
 
 pub use definition::Definition;
