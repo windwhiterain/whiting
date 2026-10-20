@@ -1,20 +1,26 @@
 # The deep audit of the building arc: opt-in, and not the round's gate.
 #
+# **A scene is an aesthetic decision and this file does not audit one.** It used to write seventeen scene
+# documents and hash them, and before that it compared rendered plates; both were pinning a camera, a
+# material table and a composition, which are the owner's judgements and not invariants. What is left is
+# what a machine can actually judge: that the workspace builds, that the lints and the docs are clean, that
+# the suites pass, that the identity table of every scene is what it was, and that the formatting is one
+# style. The examples are **compiled** by [1/6] and never run one by one: they are measuring
+# instruments, their output is a number a person reads, and nothing here reads it.
+#
 # **The round's gate is `fast-audit.ps1`, and it is capped at ten seconds.** This file is the pass to run
-# before a merge that moves a plate, a pin or a dependency, because it is the only one that compiles the whole
-# workspace, lints it, documents it, runs every example and writes every scene document. Measured on one warm
-# tree, stage by stage, and it is why it is not the default:
+# before a merge that moves a crate, a dependency or an invariant, because it is the only one that compiles the
+# whole workspace, lints it and documents it. Measured on one warm tree, stage by stage, and it is why it is
+# not the default:
 #
-#   [1/8] cargo build --workspace --all-targets   20 s warm, minutes cold
-#   [2/8] cargo clippy over three crates          ~30 s
-#   [3/8] cargo doc                               ~20 s
-#   [4/8] the four suites that run                ~5 s   (gallery 0.7 s, scene 2.3 s, definition 1.1 s, graphics 0.9 s)
-#   [5/8] 64 examples, one `cargo run` each       minutes -- every launch pays cargo's start and a build check
-#   [6/8] 17 scene documents                      ~4 min -- each builds its building before writing a byte
-#   [7/8] scene_identity_probe                    ~0.6 s
-#   [8/8] cargo fmt --all -- --check              8 s
+#   [1/6] cargo build --workspace --all-targets   20 s warm, minutes cold; this is also what compiles the examples
+#   [2/6] cargo clippy over three crates          ~30 s
+#   [3/6] cargo doc                               ~20 s
+#   [4/6] the suites that run                    ~5 s   (gallery 0.7 s, scene 2.3 s, definition 1.1 s, graphics 0.9 s)
+#   [5/6] scene_identity_probe                    ~0.6 s
+#   [6/6] cargo fmt --all -- --check              8 s
 #
-# A gate that costs ten minutes is a gate nobody runs, so the ten-second one exists and this one is the
+# A gate that costs minutes is a gate nobody runs every round, so the ten-second one exists and this is the
 # deliberate, occasional, expensive pass.
 #
 # It prints the VALUES it compared, never a bare verdict, because a bare match is how a
@@ -143,7 +149,7 @@ function Get-OwnWarnings {
 }
 
 "--------------------------------------------------------------------"
-"[1/8] build --workspace --all-targets, and the worktree discipline"
+"[1/6] build --workspace --all-targets, and the worktree discipline"
 "--------------------------------------------------------------------"
 $build = cargo build --workspace --all-targets -j 3 2>&1
 $code = $LASTEXITCODE
@@ -184,7 +190,7 @@ if ($relWarn.Count -ne 0) { $script:fail += "the release build printed $($relWar
 Gate "cargo build --workspace --all-targets --release" $code 0
 
 "--------------------------------------------------------------------"
-"[2/8] cargo clippy over the three building crates: warning count against 0"
+"[2/6] cargo clippy over the three building crates: warning count against 0"
 "--------------------------------------------------------------------"
 # The exit code is printed beside the count and is NOT the gate. Both readings are taken because
 # they are two claims -- "clippy ran" and "clippy had nothing to say" -- and the first is true of a
@@ -204,7 +210,7 @@ if ($lintLines.Count -ne 0) { $script:fail += "clippy printed $($lintLines.Count
 Gate "cargo clippy -p building -p gallery -p scene" $code 0
 
 "--------------------------------------------------------------------"
-"[3/8] cargo doc -p whiting-building --no-deps: warning count against 0"
+"[3/6] cargo doc -p whiting-building --no-deps: warning count against 0"
 "--------------------------------------------------------------------"
 # The same two readings and the same reason. `--no-deps` because this is this crate's own
 # documentation and the count a reader of docs.rs would see; rustdoc checks only public
@@ -220,7 +226,7 @@ if ($docLines.Count -ne 0) { $script:fail += "cargo doc printed $($docLines.Coun
 Gate "cargo doc -p whiting-building --no-deps" $code 0
 
 "--------------------------------------------------------------------"
-"[4/8] the six test suites"
+"[4/6] the suites that run without a gpu, and the rasterising one built and not run"
 "--------------------------------------------------------------------"
 # The two the audit list never ran -- definition and graphics -- are in this table with their
 # counts, because the debt sweep found them compiled by the build and executed by nobody:
@@ -259,7 +265,7 @@ foreach ($pkg in $expect.Keys) {
 # **`whiting-device-rasterize` is compiled and not run.** Thirty-eight of its tests draw frames through
 # wgpu, and the gpu on this machine is the owner's: the rule is that no frame is drawn through it. The
 # suite is therefore built here and its tests are left unexecuted, which is a real loss of coverage and
-# is recorded as one. Neither is any frame compared: see [6/8], which reads documents.
+# is recorded as one. No frame is drawn and none is compared anywhere in this file.
 $t = cargo test -q -p whiting-device-rasterize --no-run 2>&1
 $code = $LASTEXITCODE
 $t | Out-File -FilePath $log -Append -Encoding utf8
@@ -268,76 +274,7 @@ $counted = @($t | Select-Object -Skip 0) | Out-Null
 Gate "cargo test -p whiting-device-rasterize --no-run" $code 0
 
 "--------------------------------------------------------------------"
-"[5/8] every example in building and gallery"
-"--------------------------------------------------------------------"
-foreach ($pair in @(@("whiting-building", "building", 40), @("whiting-gallery", "gallery", 24))) {
-    $pkg = $pair[0]; $dir = $pair[1]; $want = $pair[2]
-    $examples = Get-ChildItem (Join-Path (Join-Path (Join-Path $root "crates") $dir) "examples") -Filter *.rs | Sort-Object Name
-    # **An example that declares a usage line is a harness and needs arguments**, so it is counted and
-    # not run: `scene_document` writes a scene to a path the caller names, and running it bare exits 1 by
-    # design. The list is read from the source rather than written here, so a new harness is skipped the
-    # day it is added and a new *test* example is not.
-    $harnesses = @($examples | Where-Object {
-            (Get-Content $_.FullName) -match 'usage: '
-        } | ForEach-Object { $_.BaseName })
-    $ran = 0; $bad = @(); $skipped = @()
-    foreach ($ex in $examples) {
-        $name = $ex.BaseName
-        $ran++
-        if ($harnesses -contains $name) { $skipped += $name; continue }
-        $e = cargo run -q -p $pkg --example $name 2>&1
-        $code = $LASTEXITCODE
-        $e | Out-File -FilePath $log -Append -Encoding utf8
-        if ($code -ne 0) { $bad += "$name(exit=$code)" }
-    }
-    "  {0,-18} ran={1} expected={2} failures={3} harnesses={4}" -f $dir, $ran, $want, $bad.Count, ($skipped -join ",")
-    $bad | ForEach-Object { "      FAILED $_" }
-    if ($ran -ne $want) { $script:fail += "$dir example count ($ran, expected $want)" }
-    if ($bad.Count -ne 0) { $script:fail += "$dir failing examples" }
-}
-
-"--------------------------------------------------------------------"
-"[6/8] the seventeen scene documents: hashes of the compiled documents"
-"--------------------------------------------------------------------"
-# **No gpu, and no picture.** The rasterising harness drives one, and the machine this audit runs on
-# has other work for it. The gate below is the **document** the renderer reads rather than the pixels
-# it makes: a document is renderer-independent and deterministic (measured: two writes of one scene
-# are the same 6.7 MB and the same hash), so this pins what the scenes *are* without spending a gpu
-# — or a comparison of images — on what they look like.
-$pinned = [ordered]@{
-    house      = "1F648E1FB44D0D73"; hall       = "18F9EE14235A31F4"; hall_large = "276B44CC8C82691F"
-    shed       = "E7457703620E9085"; terrace    = "23541F590BC93856"; wing       = "4E57123C48D74B4B"
-    workshop   = "046ADB591CABC007"; yard       = "5DF1EBB9AED91D54"; identity   = "4298E2960A48285D"
-    stilt      = "CAF75052AA593363"; compound   = "6AAD1D2CD464B03C"; compound_court = "7C99C4BDA8890F27"
-    stilt_gallery = "2E359A3D718A60AF"
-    street     = "7AF4130F7541F00D"; street_arcade = "D0947AF8263A984C"
-    yikeyin    = "F57D07D988AE3AB1"; yikeyin_court = "3E15895308BA44E5"
-}
-# How it is proved to fail: change one pinned value, run the stage, watch the numbers disagree and the
-# exit code come back 1, then change it back.
-$moved = 0
-$written = 0
-foreach ($scene in $pinned.Keys) {
-    $document = Join-Path $out "$scene.json"
-    $r = cargo run -q -p whiting-gallery --example scene_document -- $scene $document 2>&1
-    $code = $LASTEXITCODE
-    $r | Out-File -FilePath $log -Append -Encoding utf8
-    $written++
-    if ($code -ne 0 -or -not (Test-Path $document)) {
-        "  $scene  DOCUMENT FAILED exit=$code"; $script:fail += "$scene document (exit $code)"; $moved++
-        continue
-    }
-    $got = (Get-FileHash -Algorithm SHA256 $document).Hash.Substring(0, 16)
-    $want = $pinned[$scene]
-    $same = $got -ceq $want
-    "  {0,-14} got {1}  pinned {2}  same={3}" -f $scene, $got, $want, $same
-    if (-not $same) { $script:fail += "$scene document: got $got, pinned $want"; $moved++ }
-}
-"  documents written: $written of $($pinned.Count)   hashes moved: $moved of $($pinned.Count)"
-
-
-"--------------------------------------------------------------------"
-"[7/8] scene_identity_probe: rows and two-way"
+"[5/6] scene_identity_probe: rows and two-way"
 "--------------------------------------------------------------------"
 $p = cargo run -q -p whiting-gallery --example scene_identity_probe 2>&1
 $code = $LASTEXITCODE
@@ -353,7 +290,7 @@ if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
 Gate "scene_identity_probe" $code 0
 
 "--------------------------------------------------------------------"
-"[8/8] cargo fmt --all -- --check"
+"[6/6] cargo fmt --all -- --check"
 "--------------------------------------------------------------------"
 # Both readings, because they are two claims: exit 0 says "rustfmt is satisfied", and an
 # empty output says "it printed no diff". A rustfmt that exits 0 while saying something is a

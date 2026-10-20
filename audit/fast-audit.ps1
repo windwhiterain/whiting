@@ -101,8 +101,14 @@ if ($unformatted.Count -ne 0) { $script:fail.Add("$($unformatted.Count) unformat
 
 # ---------------------------------------------------------------- [3/5]
 "--------------------------------------------------------------------"
-"[3/5] the four suites that run without a gpu"
+"[3/5] the four suites that run without a gpu, in the binaries cargo says are current"
 "--------------------------------------------------------------------"
+# **Cargo is asked where the binaries are, not to run them.** A `cargo test` pays the resolver, the
+# fingerprint check and a fresh process for every crate: on a warm tree 0.6-1.2 s each, and now and then one
+# of them decides to relink and the stage costs nine seconds -- measured: a suite that runs in 2.0 s took
+# 9.24 s, which alone broke the budget. `--no-run --message-format=json` answers in 0.2-0.4 s and *builds
+# what is stale*, so the binaries it names are current by cargo's own judgement, and running them directly
+# costs hundredths of a second.
 $expect = [ordered]@{
     "whiting-scene"      = 106
     "whiting-gallery"    = 10
@@ -111,26 +117,44 @@ $expect = [ordered]@{
 }
 foreach ($package in $expect.Keys) {
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
-    $text = cargo test -q -p $package -j 3 2>&1
-    $code = $LASTEXITCODE
-    $timer.Stop()
-    $script:stage.Add([pscustomobject]@{ Name = "test $package"; Seconds = $timer.Elapsed.TotalSeconds })
+    $listed = cargo test -q --no-run --message-format=json -p $package -j 3 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        $timer.Stop()
+        "  {0,-20} COULD NOT BUILD" -f $package
+        $script:fail.Add("$package did not build")
+        $script:stage.Add([pscustomobject]@{ Name = "test $package"; Seconds = $timer.Elapsed.TotalSeconds })
+        continue
+    }
+    # Only this package's own targets: the message stream carries every dependency that was linked too.
+    $binaries = @($listed | ForEach-Object {
+            if ("$_" -match '"package_id":"[^"]*' + [regex]::Escape($package) + '[^"]*"' -and
+                "$_" -match '"executable":"((?:[^"\\]|\\.)+)"' -and $Matches[1] -ne "null") {
+                $Matches[1] -replace '\\\\(.)', '$1'
+            }
+        } | Sort-Object -Unique)
     $passed = 0
     $failed = 0
-    foreach ($line in $text) {
-        if ($line -match 'test result:.*?(\d+) passed; (\d+) failed') {
-            $passed += [int]$Matches[1]
-            $failed += [int]$Matches[2]
+    $failedTests = @()
+    foreach ($binary in $binaries) {
+        if (-not (Test-Path $binary)) { continue }
+        $text = & $binary 2>&1
+        foreach ($line in $text) {
+            if ("$_" -match 'test result:.*?(\d+) passed; (\d+) failed') {
+                $passed += [int]$Matches[1]
+                $failed += [int]$Matches[2]
+            }
         }
+        $failedTests += @($text | Where-Object { "$_" -match 'FAILED' })
     }
+    $timer.Stop()
+    $script:stage.Add([pscustomobject]@{ Name = "test $package"; Seconds = $timer.Elapsed.TotalSeconds })
     $same = $passed -eq $expect[$package]
-    "  {0,-20} passed={1,-4} failed={2,-3} expected={3,-4} same={4}  {5:N2} s" -f $package, $passed, $failed, $expect[$package], $same, $timer.Elapsed.TotalSeconds
+    "  {0,-20} passed={1,-4} failed={2,-3} expected={3,-4} same={4}  binaries={5}  {6:N2} s" -f $package, $passed, $failed, $expect[$package], $same, $binaries.Count, $timer.Elapsed.TotalSeconds
+    foreach ($one in ($failedTests | Select-Object -First 4)) { "      $($one.Trim())" }
     if (-not $same) { $script:fail.Add("$package count ($passed, expected $($expect[$package]))") }
     if ($failed -ne 0) { $script:fail.Add("$package has $failed failing test(s)") }
-    Gate "cargo test -p $package" $code 0
 }
 
-# ---------------------------------------------------------------- [4/5]
 "--------------------------------------------------------------------"
 "[4/5] scene_identity_probe: seventeen scenes, every row, both ways"
 "--------------------------------------------------------------------"
