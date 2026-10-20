@@ -37,10 +37,7 @@ fn main() {
     let started = Instant::now();
     let bytes = binary::encode(&value);
     let written = started.elapsed();
-    println!(
-        "encoded: {} bytes, in {written:.2?}",
-        bytes.len()
-    );
+    println!("encoded: {} bytes, in {written:.2?}", bytes.len());
     println!("the first bytes: {}", head(&bytes));
     println!();
 
@@ -67,7 +64,11 @@ fn main() {
     if again == bytes {
         println!("written twice: the same {} bytes", bytes.len());
     } else {
-        println!("written twice: DIFFERENT ({} and {} bytes)", bytes.len(), again.len());
+        println!(
+            "written twice: DIFFERENT ({} and {} bytes)",
+            bytes.len(),
+            again.len()
+        );
     }
     println!();
 
@@ -86,7 +87,11 @@ fn the_value() -> Value {
     variant.insert("intensity".to_owned(), Value::Float(0.5));
     variant.insert(
         "direction".to_owned(),
-        Value::List(vec![Value::Float(0.0), Value::Float(0.0), Value::Float(-1.0)]),
+        Value::List(vec![
+            Value::Float(0.0),
+            Value::Float(0.0),
+            Value::Float(-1.0),
+        ]),
     );
 
     let mut dictionary = FieldMap::new();
@@ -114,8 +119,14 @@ fn the_value() -> Value {
     fields.insert("nothing".to_owned(), Value::Bytes(Vec::new()));
     fields.insert("bytes".to_owned(), Value::Bytes(vec![0, 1, 127, 255]));
     fields.insert("points".to_owned(), Value::Packed(small_packed()));
-    fields.insert("nested".to_owned(), Value::List(vec![Value::Packed(small_packed())]));
-    fields.insert("list".to_owned(), Value::List(vec![Value::Int(1), Value::Unit]));
+    fields.insert(
+        "nested".to_owned(),
+        Value::List(vec![Value::Packed(small_packed())]),
+    );
+    fields.insert(
+        "list".to_owned(),
+        Value::List(vec![Value::Int(1), Value::Unit]),
+    );
     fields.insert("empty_list".to_owned(), Value::List(Vec::new()));
     fields.insert(
         "variant".to_owned(),
@@ -137,14 +148,22 @@ fn small_packed() -> PackedList {
             ("normal".to_owned(), Value::List(vec![Value::Float(0.0); 3])),
             (
                 "position".to_owned(),
-                Value::List(vec![Value::Float(0.0), Value::Float(1.0), Value::Float(2.0)]),
+                Value::List(vec![
+                    Value::Float(0.0),
+                    Value::Float(1.0),
+                    Value::Float(2.0),
+                ]),
             ),
         ]),
         Value::structure([
             ("normal".to_owned(), Value::List(vec![Value::Float(0.0); 3])),
             (
                 "position".to_owned(),
-                Value::List(vec![Value::Float(3.0), Value::Float(4.0), Value::Float(5.0)]),
+                Value::List(vec![
+                    Value::Float(3.0),
+                    Value::Float(4.0),
+                    Value::Float(5.0),
+                ]),
             ),
         ]),
     ];
@@ -242,7 +261,10 @@ fn same_fields(left: &BTreeMap<String, Value>, right: &BTreeMap<String, Value>) 
 fn refusals() -> Vec<(&'static str, Vec<u8>)> {
     let mut refusals = Vec::new();
 
-    refusals.push(("a file that is not a document", b"{\"name\": \"hall\"}".to_vec()));
+    refusals.push((
+        "a file that is not a document",
+        b"{\"name\": \"hall\"}".to_vec(),
+    ));
     refusals.push(("an empty file", Vec::new()));
 
     let mut wrong_version = header();

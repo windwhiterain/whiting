@@ -194,10 +194,7 @@ fn write_value(out: &mut Vec<u8>, value: &Value) {
             out.push(tag::STRUCT);
             write_fields(out, fields);
         }
-        Value::Enum {
-            tag: name,
-            fields,
-        } => {
+        Value::Enum { tag: name, fields } => {
             out.push(tag::ENUM);
             write_string(out, name);
             write_fields(out, fields);
@@ -275,7 +272,9 @@ impl<'a> Reader<'a> {
     /// Returns the capacity a run of `count` elements is given, which is bounded by what is
     /// left to read.
     fn capacity(&self, count: u64) -> usize {
-        usize::try_from(count).unwrap_or(usize::MAX).min(self.remaining())
+        usize::try_from(count)
+            .unwrap_or(usize::MAX)
+            .min(self.remaining())
     }
 
     /// Takes the next `count` bytes.
@@ -462,8 +461,8 @@ impl<'a> Reader<'a> {
         let stride = components
             .checked_mul(4)
             .ok_or(BinaryError::StrideTooLarge { found: components })?;
-        let stride =
-            usize::try_from(stride).map_err(|_| BinaryError::StrideTooLarge { found: components })?;
+        let stride = usize::try_from(stride)
+            .map_err(|_| BinaryError::StrideTooLarge { found: components })?;
         if stride == 0 {
             return Err(BinaryError::EmptyLayout);
         }
