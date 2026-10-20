@@ -36,7 +36,7 @@ const NOTHING: &str = "";
 
 /// Returns every `@binding(n) var name` a generated module declares, in the order the module
 /// declares them — which is the order the device numbers them.
-fn declarations(module: &str) -> Vec<(u32, String)> {
+fn binding_declarations(module: &str) -> Vec<(u32, String)> {
     let mut found = Vec::new();
     for line in module.lines() {
         let Some(rest) = line.strip_prefix("@group(0) @binding(") else {
@@ -99,7 +99,7 @@ fn the_lighting_stage_declares_its_bindings_in_the_order_the_device_numbers_them
         shaders::Projection::Latlong,
         &gallery_custom_schema(),
     );
-    let declared = declarations(&module);
+    let declared = binding_declarations(&module);
     assert!(
         declared.len() > 4,
         "a template that declared nothing would pass an ordering test it was written to fail: \
@@ -134,7 +134,7 @@ fn the_lighting_stage_reads_the_atlas_the_shadowing_stage_writes() {
         shaders::Projection::Latlong,
         &gallery_custom_schema(),
     );
-    let names: Vec<String> = declarations(&module)
+    let names: Vec<String> = binding_declarations(&module)
         .into_iter()
         .map(|(_, name)| name)
         .collect();

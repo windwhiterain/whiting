@@ -117,7 +117,7 @@ fn an_assembled_line_maps_back_to_the_exact_line_of_the_file_it_came_from() {
 
     let written = fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/shader_provenance.rs"
+        "/tests/gallery/shader_provenance.rs"
     ))
     .expect("this file is on disk");
     assert_eq!(
@@ -223,7 +223,7 @@ fn every_block_the_crate_declares_is_written_in_the_shape_the_macro_can_report()
     // declaration in this crate's own sources is therefore read and held to the shape, doc
     // comments included: a documented example of the other shape would teach it.
     let mut found = Vec::new();
-    declarations(concat!(env!("CARGO_MANIFEST_DIR"), "/src"), &mut found);
+    block_declarations(concat!(env!("CARGO_MANIFEST_DIR"), "/src"), &mut found);
 
     assert!(
         !found.is_empty(),
@@ -240,13 +240,13 @@ fn every_block_the_crate_declares_is_written_in_the_shape_the_macro_can_report()
 
 /// Returns every line of the gallery's own sources that declares a block with the macro, as
 /// the path it was found under, its line number and the line itself.
-fn declarations(directory: &str, found: &mut Vec<(String, usize, String)>) {
+fn block_declarations(directory: &str, found: &mut Vec<(String, usize, String)>) {
     let entries =
         fs::read_dir(directory).unwrap_or_else(|error| panic!("{directory} is readable: {error}"));
     for entry in entries {
         let path = entry.expect("an entry of the directory is readable").path();
         if path.is_dir() {
-            declarations(&path.to_string_lossy(), found);
+            block_declarations(&path.to_string_lossy(), found);
             continue;
         }
         if path.extension().is_none_or(|extension| extension != "rs") {
@@ -287,7 +287,7 @@ fn this_file() -> &'static str {
 fn this_file_text() -> String {
     fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/shader_provenance.rs"
+        "/tests/gallery/shader_provenance.rs"
     ))
     .expect("this file is on disk")
 }
