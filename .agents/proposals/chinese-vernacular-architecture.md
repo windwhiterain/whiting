@@ -1462,3 +1462,17 @@ Three things, and only the first is a number:
 
 Identity: 6 550 → **6 580 rows**. What the compound still lacks is the **踏步** — the three or five stone steps
 from the court up to each range's door, which is the other half of a 台明 and is not drawn.
+### The 踏步, and why there is no picture of them
+
+Two stone steps now stand at every range's door: the range's court-facing wall is found by taking the edge whose
+middle stands nearest the court's centre, and the flight is laid out along that edge's outward normal — two treads
+of `0.34`, `1.9` wide, from the court's level up to the platform. Four ranges, two steps each.
+
+**Measured, and exact:** identity 6 580 → **6 628 rows**, which is 4 × 2 × 6 — the steps exist, one flight a door,
+and the arithmetic of the count is the evidence because the frame cannot give it.
+
+**Two frames were tried and neither shows them.** The court's own camera looks steeply up at the sky-well, and an
+eye-level camera inside the court renders **almost black**: the sun stands low and the ranges' four roofs leave the
+court in their own shadow, which is what a 一颗印's court *is* at that hour — 四水归堂 means the light comes down
+the one hole in the middle. A plate of the 踏步 therefore needs either the sun raised for the court's own scene or
+an interior light, and neither is a thing to change in the middle of a round that was about the steps.

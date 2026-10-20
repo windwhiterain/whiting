@@ -84,6 +84,9 @@ const GATE_HEIGHT: f32 = 3.6;
 const TAI_MING: f32 = 0.45;
 const TAI_MING_PROUD: f32 = 0.30;
 
+/// How wide the 踏步 at each door are, in metres.
+const STEP_WIDTH: f32 = 1.9;
+
 const GATE_SILL: f32 = 0.15;
 const GATE_HOOD: f32 = 0.85;
 const GATE_HEAD: f32 = GATE_HEIGHT - 0.9;
@@ -493,6 +496,71 @@ pub fn document() -> Building {
             .slabs
             .push(building::Slab::plate(plan, 0.0, TAI_MING));
     }
+    // **The 踏步: two stone steps at every door.** A 台明 without steps is a platform a person cannot reach, and
+    // the steps are the half of it the eye reads first. Each range's court-facing wall is found by taking the
+    // edge whose own middle stands nearest the court's centre — the court is the square the four ranges face —
+    // and the flight is laid out along that edge's outward normal, one tread a step, from the court's level up
+    // to the platform.
+    for index in 0..4 {
+        let Some(mass) = skeleton.masses.get(index) else {
+            continue;
+        };
+        let mut best: Option<([f32; 2], [f32; 2], f32)> = None;
+        for edge in 0..mass.outline.len() {
+            let here = mass.outline[edge].position;
+            let there = mass.outline[(edge + 1) % mass.outline.len()].position;
+            let middle = [(here[0] + there[0]) * 0.5, (here[1] + there[1]) * 0.5];
+            let distance = middle[0] * middle[0] + middle[1] * middle[1];
+            let axis = [there[0] - here[0], there[1] - here[1]];
+            let length = (axis[0] * axis[0] + axis[1] * axis[1]).sqrt().max(1.0e-3);
+            // The outward normal, taken towards the court: the edge's own left-hand normal points away from a
+            // positively wound loop's solid, and which way is "away" is decided by the edge's middle.
+            let mut normal = [-axis[1] / length, axis[0] / length];
+            if normal[0] * middle[0] + normal[1] * middle[1] > 0.0 {
+                normal = [-normal[0], -normal[1]];
+            }
+            if best.map_or(true, |(_, _, was)| distance < was) {
+                best = Some((middle, normal, distance));
+            }
+        }
+        let Some((middle, normal, _)) = best else {
+            continue;
+        };
+        // The flight: `STEPS` treads, each a plate `STEP_WIDTH` wide, stepping out along the normal.
+        let risers = 2;
+        let rise = TAI_MING / risers as f32;
+        let run = 0.34;
+        for step in 0..risers {
+            let out = 0.12 + run * (step as f32 + 0.5);
+            let at = [middle[0] + normal[0] * out, middle[1] + normal[1] * out];
+            let across = [-normal[1], normal[0]];
+            let level = rise * (step + 1) as f32;
+            let half = STEP_WIDTH * 0.5;
+            let mut plan = vec![
+                [
+                    at[0] - across[0] * half - normal[0] * run * 0.5,
+                    at[1] - across[1] * half - normal[1] * run * 0.5,
+                ],
+                [
+                    at[0] + across[0] * half - normal[0] * run * 0.5,
+                    at[1] + across[1] * half - normal[1] * run * 0.5,
+                ],
+                [
+                    at[0] + across[0] * half + normal[0] * run * 0.5,
+                    at[1] + across[1] * half + normal[1] * run * 0.5,
+                ],
+                [
+                    at[0] - across[0] * half + normal[0] * run * 0.5,
+                    at[1] - across[1] * half + normal[1] * run * 0.5,
+                ],
+            ];
+            if loop_area(&plan) < 0.0 {
+                plan.reverse();
+            }
+            skeleton.slabs.push(building::Slab::plate(plan, 0.0, level));
+        }
+    }
+
     // **And the court is paved, with its grating at the middle** — which is where 四水归堂's water ends:
     // the four roofs shed inward and the paving's one hole is what they shed into.
     let court = [
