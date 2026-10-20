@@ -1,4 +1,21 @@
-# The full audit of the building arc, run as one list on this worktree.
+# The deep audit of the building arc: opt-in, and not the round's gate.
+#
+# **The round's gate is `fast-audit.ps1`, and it is capped at ten seconds.** This file is the pass to run
+# before a merge that moves a plate, a pin or a dependency, because it is the only one that compiles the whole
+# workspace, lints it, documents it, runs every example and writes every scene document. Measured on one warm
+# tree, stage by stage, and it is why it is not the default:
+#
+#   [1/8] cargo build --workspace --all-targets   20 s warm, minutes cold
+#   [2/8] cargo clippy over three crates          ~30 s
+#   [3/8] cargo doc                               ~20 s
+#   [4/8] the four suites that run                ~5 s   (gallery 0.7 s, scene 2.3 s, definition 1.1 s, graphics 0.9 s)
+#   [5/8] 64 examples, one `cargo run` each       minutes -- every launch pays cargo's start and a build check
+#   [6/8] 17 scene documents                      ~4 min -- each builds its building before writing a byte
+#   [7/8] scene_identity_probe                    ~0.6 s
+#   [8/8] cargo fmt --all -- --check              8 s
+#
+# A gate that costs ten minutes is a gate nobody runs, so the ten-second one exists and this one is the
+# deliberate, occasional, expensive pass.
 #
 # It prints the VALUES it compared, never a bare verdict, because a bare match is how a
 # canary reports success on a green log. Every gate keeps its own exit code, read on the
@@ -6,7 +23,8 @@
 #
 # Run with `pwsh -NoProfile -File audit/full-audit.ps1`, from the worktree.
 #
-# THE ONE COMMAND:  pwsh -NoProfile -File audit/full-audit.ps1
+# THE ONE COMMAND:  pwsh -NoProfile -File audit/fast-audit.ps1   (the round's gate, ten seconds)
+#                   pwsh -NoProfile -File audit/full-audit.ps1   (this file, ten minutes)
 #
 # Language: PowerShell 7 (`pwsh`). Platform: none of its own -- every path is built with
 # Join-Path from $PSScriptRoot and no path is spelled with a separator, so the same script
