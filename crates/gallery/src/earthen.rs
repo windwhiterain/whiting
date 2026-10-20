@@ -26,7 +26,7 @@
 //!   materials the scene gives it rather than structure;
 //! - **no 厦子**: the lean-to porch most of these houses carry on one side.
 
-use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode};
+use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, derive};
 use definition::Value;
 use document::air::Atmosphere;
 use document::building_identity::{
@@ -56,6 +56,12 @@ const ROOF_THICK: f32 = 0.35;
 /// The parapet on the roof's edge: `PARAPET` thick and `PARAPET_HIGH` tall, standing on the slab.
 const PARAPET: f32 = 0.28;
 const PARAPET_HIGH: f32 = 0.55;
+
+/// The 厦子: how far its roof reaches out from the door's wall, and the elevations of its eave and its crest.
+const PORCH_DEPTH: f32 = 1.9;
+const PORCH_LOW: f32 = 2.55;
+const PORCH_HIGH: f32 = 3.15;
+const POST: f32 = 0.18;
 
 /// The outside stair: `STEPS` treads of `TREAD` going, up the gable end and onto the roof.
 const STEPS: usize = 14;
@@ -114,13 +120,16 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
     let walls = packed_where(&built, &table, |element| {
         matches!(element, building::Element::Mass(_, _))
     });
-    let flats = packed_where(&built, &table, |element| {
+    // **The flat roof and the porch's shed are one mesh**, because they are one material: the earth the
+    // 晒场 is made of. The scene had no `Roof` in it until the 厦子 arrived, so a roof element would have
+    // been drawn by nothing.
+    let roofs = packed_where(&built, &table, |element| {
         matches!(
             element,
             building::Element::Slab(
                 _,
                 building::slab::SlabSurface::Top | building::slab::SlabSurface::Bottom
-            )
+            ) | building::Element::Roof(_, _)
         )
     });
     let timbers = packed_where(&built, &table, |element| {
@@ -169,7 +178,7 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
     let placed = |stage: &str| {
         [
             ("walls", "wall"),
-            ("flats", "roof"),
+            ("roofs", "roof"),
             ("stone", "stone"),
             ("ground", "ground"),
         ]
@@ -244,7 +253,7 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
             "meshes".to_owned(),
             Value::List(vec![
                 mesh("walls", "Triangles", point.clone(), walls),
-                mesh("flats", "Triangles", point.clone(), flats),
+                mesh("roofs", "Triangles", point.clone(), roofs),
                 mesh("stone", "Triangles", point.clone(), timbers),
                 mesh("ground", "Triangles", plain.point_schema(), ground),
             ]),
@@ -264,6 +273,16 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
             ]),
         ),
     ])
+}
+
+/// Returns how wide the stair is, measured from the wall it climbs.
+///
+/// # Invariants
+///
+/// **One number, three readers** — the treads, their stringer and the parapet's landing gap — so a stair
+/// narrowed in one place cannot leave a gap in the parapet that no longer fits it.
+fn stair_width() -> f32 {
+    1.1
 }
 
 /// Returns the plan direction perpendicular to a member's own axis, which is what its section is measured
@@ -320,12 +339,20 @@ pub fn document() -> Building {
     // not a second mass because a mass is a closed volume with its own floor, and a parapet has no floor —
     // it is a wall standing on another wall's top.
     let base = top + 0.02;
-    let sections = [
+    // **The stair's own side is two segments and not one**, because a parapet with no gap is a parapet you
+    // cannot step over: the landing's opening is the width of the stair, and it stands where the last tread
+    // does.
+    let landing = -deep + TREAD * STEPS as f32;
+    let gap = landing - stair_width() * 0.5..landing + stair_width() * 0.5;
+    let mut sections = vec![
         ([-half, -deep], [half, -deep]),
-        ([half, -deep], [half, deep]),
         ([half, deep], [-half, deep]),
         ([-half, deep], [-half, -deep]),
+        // The stair's side, in two pieces: from the low end to the gap, and from the gap to the high end.
+        ([half, -deep], [half, gap.start]),
+        ([half, gap.end], [half, deep]),
     ];
+    sections.retain(|(from, to)| (to[1] - from[1]).abs() > 0.05 || (to[0] - from[0]).abs() > 0.05);
     for (from, to) in sections {
         skeleton.members.push(building::Member::new(
             building::Anchor::Free {
@@ -345,7 +372,7 @@ pub fn document() -> Building {
     // tread through the whole depth of the house and climbed in `x`, which drew a fan of fins rather than a
     // stair, and the frame said so before any validator could.
     let rise = (top - ROOF_THICK) / STEPS as f32;
-    let stair_width = 1.1;
+    let stair_width = stair_width();
     for step in 0..STEPS {
         let y = rise * (step + 1) as f32;
         let z = -deep + TREAD * step as f32 + TREAD * 0.5;
@@ -359,6 +386,57 @@ pub fn document() -> Building {
             [0.0, 1.0],
             TREAD,
             TREAD_THICK,
+        ));
+    }
+    // **The stringer**, one sloped beam under the treads' outer edge: a run of floating treads reads as steps
+    // only because they are evenly spaced, and a stair that carries nothing is a ladder lying down. The beam
+    // starts under the first tread and ends under the last, so its own slope *is* the stair's.
+    skeleton.members.push(building::Member::new(
+        building::Anchor::Free {
+            at: [
+                half + stair_width - TREAD_THICK,
+                rise - TREAD_THICK,
+                -deep + TREAD * 0.5,
+            ],
+        },
+        building::Anchor::Free {
+            at: [
+                half + stair_width - TREAD_THICK,
+                top - ROOF_THICK - TREAD_THICK,
+                -deep + TREAD * (STEPS as f32 - 0.5),
+            ],
+        },
+        [1.0, 0.0],
+        TREAD_THICK,
+        0.30,
+    ));
+
+    // **The 厦子, the lean-to every one of these houses carries over its door.** It sheds away from the wall
+    // and stands on two posts at the yard, because a porch that hangs off a wall with nothing under it is a
+    // canopy, and the type's porch is where the year's work is done out of the rain.
+    let porch = deep + PORCH_DEPTH;
+    let plan = [
+        [-half + 0.6, porch],
+        [half - 0.6, porch],
+        [half - 0.6, deep],
+        [-half + 0.6, deep],
+    ];
+    if let Some(shed) = derive::lean_to(id, plan, PORCH_LOW, PORCH_HIGH, 0.16) {
+        skeleton.roofs.push(shed);
+    }
+    // **Two posts at the eave's own ends**, each standing on the ground under it: the porch's own bearers,
+    // and the reason a 厦子 reads as a place rather than as a lip of roof.
+    for x in [-half + 0.6, half - 0.6] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [x, 0.0, porch - 0.12],
+            },
+            building::Anchor::Free {
+                at: [x, PORCH_LOW - 0.16, porch - 0.12],
+            },
+            [1.0, 0.0],
+            POST,
+            POST,
         ));
     }
     // **A door and two small windows in the front**, which for a wall this thick are holes a metre deep: the
