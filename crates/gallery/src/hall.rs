@@ -13,15 +13,15 @@
 //! own glazing: the same relations that set the walls set the holes, which is what makes a style more
 //! than a table of numbers.
 
-use definition::Value;
+use definition::{PackedList, Value};
 use scene::standard::Stage;
 
-use building::derive::{self, HALL};
+use building::derive::{self, HALL, Starter};
 use building::grid::Rhythm;
 use building::identity::Identity;
 use building::openings::{Inset, Opening};
 use building::ops;
-use building::{Building, MassId};
+use building::{Building, BuildingMesh, MassId};
 
 use crate::air::Atmosphere;
 use crate::building_identity::{
@@ -104,28 +104,12 @@ pub fn hall() -> Value {
 /// building stands on covers no pixel of it at all. A camera has to be chosen for the subject rather than
 /// scaled onto it, and this scene's subject is a room.
 pub fn hall_large() -> Value {
-    hall_framed(
-        14.0,
-        20.0,
-        1,
-        close_and_low,
-        HALL_LARGE_FRAME,
-        HALL_LARGE_FIELD_OF_VIEW,
-        HALL_LARGE_AIM,
-    )
+    hall_framed(14.0, 20.0, 1, &close_and_low_view())
 }
 
 /// Builds the hall scene for a footprint and a storey count.
 pub fn hall_at(width: f32, depth: f32, storeys: usize) -> Value {
-    hall_framed(
-        width,
-        depth,
-        storeys,
-        three_quarter,
-        HALL_FRAME,
-        HALL_FIELD_OF_VIEW,
-        HALL_AIM,
-    )
+    hall_framed(width, depth, storeys, &three_quarter_view())
 }
 
 /// The three-quarter view [`hall_at`] draws from, kept whole so the other scenes keep their pictures.
@@ -271,39 +255,131 @@ const HALL_LARGE_FRAME: (i64, i64) = (1264, 816);
 /// the roof, and that reasoning is a statement about the subject, not about the frame's shape.
 const HALL_LARGE_FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.7850;
 
-/// Builds the hall scene for a footprint, a storey count, a camera of its own, a frame and a lens.
-fn hall_framed(
+/// The parts of a planned and expanded hall: every packed point list its document draws, and the
+/// size its frame follows.
+///
+/// # Invariants
+///
+/// **Nothing here is a function of a dial of presentation.** Every field is the building's own,
+/// which is what lets a lens or an aim edit read these back whole and re-run the document stage
+/// alone; the ground is among them for the same reason, because it is cut from the plan and not
+/// from the picture.
+#[derive(Clone)]
+pub struct HallParts {
+    walls: PackedList,
+    roof: PackedList,
+    floors: PackedList,
+    ground: PackedList,
     width: f32,
     depth: f32,
-    storeys: usize,
-    eye: fn(f32, f32, f64) -> [f64; 3],
-    image: (i64, i64),
-    field_of_view: f64,
-    aim: [f64; 3],
-) -> Value {
-    let building = document_at(width, depth, storeys);
-    // The ridge is the number the frame has to fit: the wall top plus the style's own rise.
-    let plan = HALL.starter(width, depth, storeys);
-    let ridge = f64::from(plan.height + plan.rise);
-    let extent = f64::from(width.max(depth)) * 1.3;
-    let built = building
-        .build()
-        .expect("the starter house expands: its outline is a quad and its roof's rows are paired");
+    ridge: f64,
+    extent: f64,
+}
 
+/// Builds the parts of a planned hall from its expansion.
+///
+/// # Invariants
+///
+/// **The identity table is numbered from one**, so a corner's `authored_id` is its element's own
+/// row and `0` stays reserved for the ground, and **the ridge and the extent are the starter's**,
+/// which is what makes two sizes two pictures of one building rather than one picture with a
+/// bigger box in it.
+pub fn parts(starter: &Starter, building: &Building, built: &BuildingMesh) -> HallParts {
     // **Every mesh the frame draws carries its elements' ids**, so a pixel of this house can be asked what it
     // is: the walls name their edges, the hip names its skins and its fascia.
-    let table = Identity::of(&built, 1);
-    let walls = packed_where(&built, &table, |element| {
+    let table = Identity::of(built, 1);
+    let walls = packed_where(built, &table, |element| {
         matches!(element, building::Element::Mass(_, _))
     });
     // The starter's own foundation plate: a mass is a wall ring **and** a plate, so this hall has always
     // authored one and this is the mesh that draws it.
-    let floors = packed_where(&built, &table, |element| {
+    let floors = packed_where(built, &table, |element| {
         matches!(element, building::Element::Slab(_, _))
     });
-    let roof = packed_where(&built, &table, |element| {
+    let roof = packed_where(built, &table, |element| {
         matches!(element, building::Element::Roof(_, _))
     });
+    HallParts {
+        walls,
+        roof,
+        floors,
+        ground: crate::ground::mesh(building, 140, 420.0, |_, _| 0.0),
+        width: starter.width,
+        depth: starter.depth,
+        // The ridge is the number the frame has to fit: the wall top plus the style's own rise.
+        ridge: f64::from(starter.height + starter.rise),
+        extent: f64::from(starter.width.max(starter.depth)) * 1.3,
+    }
+}
+
+/// The picture a hall is drawn into: the eye, the frame, the lens and the aim.
+pub struct HallView {
+    eye: fn(f32, f32, f64) -> [f64; 3],
+    image: (i64, i64),
+    field_of_view: f64,
+    aim: [f64; 3],
+}
+
+/// The view [`hall_at`] draws from: [`three_quarter`] at this file's own frame, lens and aim.
+fn three_quarter_view() -> HallView {
+    HallView {
+        eye: three_quarter,
+        image: HALL_FRAME,
+        field_of_view: HALL_FIELD_OF_VIEW,
+        aim: HALL_AIM,
+    }
+}
+
+/// The view [`hall_large`] draws from: [`close_and_low`] at that hall's own four numbers.
+fn close_and_low_view() -> HallView {
+    HallView {
+        eye: close_and_low,
+        image: HALL_LARGE_FRAME,
+        field_of_view: HALL_LARGE_FIELD_OF_VIEW,
+        aim: HALL_LARGE_AIM,
+    }
+}
+
+/// The view [`hall_at`] draws from, at a scaled lens and a moved aim.
+///
+/// # Invariants
+///
+/// **`1.0` and `[0.0; 3]` are [`three_quarter_view`] exactly**, because a multiplication by one and
+/// an addition of zero are the two operations that leave an `f64` alone, and a program that holds
+/// its dials as `f32` cannot hand over this file's own constants without rounding them. The dials
+/// are a scale and an offset for that reason, which is the shape `alpine_oak`'s `envelope` and
+/// `key_position` dials already have.
+pub fn hall_view(lens: f64, aim: [f64; 3]) -> HallView {
+    let own = three_quarter_view();
+    HallView {
+        field_of_view: own.field_of_view * lens,
+        aim: [
+            own.aim[0] + aim[0],
+            own.aim[1] + aim[1],
+            own.aim[2] + aim[2],
+        ],
+        ..own
+    }
+}
+
+/// Builds the hall scene for a footprint, a storey count and a view.
+fn hall_framed(width: f32, depth: f32, storeys: usize, view: &HallView) -> Value {
+    let starter = HALL.starter(width, depth, storeys);
+    let building = document_at(width, depth, storeys);
+    let built = building
+        .build()
+        .expect("the starter house expands: its outline is a quad and its roof's rows are paired");
+    hall_document_over_parts(&parts(&starter, &building, &built), view)
+}
+
+/// Builds the hall scene's document from parts already made.
+///
+/// # Invariants
+///
+/// **Every hall document is written here** — by [`hall_at`], by [`hall_large`] and by a lichen
+/// program alike. A document assembled anywhere else would be a second copy of this scene, and a
+/// copy is exactly what a cached stage may not be.
+pub fn hall_document_over_parts(parts: &HallParts, view: &HallView) -> Value {
 
     // A plaster wall, a tiled roof and dry ground. The three differ in tint and roughness and in
     // nothing else: what a surface *does* is the shader's business and this scene adds no body to
@@ -381,7 +457,7 @@ fn hall_framed(
         // The one field here that is about the picture rather than what is in it: a hall is a long
         // building, and a long building wants a long frame. A scene that names no frame is drawn
         // into the pipeline's own square, so this is a decision rather than a default.
-        ("frame".to_owned(), frame(image.0, image.1)),
+        ("frame".to_owned(), frame(view.image.0, view.image.1)),
         (
             "cameras".to_owned(),
             // A three-quarter view from the near corner, high enough that the roof reads as a
@@ -389,7 +465,11 @@ fn hall_framed(
             // which is what says the roof has a soffit and a thickness. **The eye and the target did
             // not move**; the lens is the free variable, and it is free because the frame is now the
             // silhouette's own shape rather than the pipeline's square.
-            Value::List(vec![camera(eye(width, depth, ridge), aim, field_of_view)]),
+            Value::List(vec![camera(
+                (view.eye)(parts.width, parts.depth, parts.ridge),
+                view.aim,
+                view.field_of_view,
+            )]),
         ),
         (
             "lights".to_owned(),
@@ -401,7 +481,7 @@ fn hall_framed(
                     SUN,
                     [1.0, 0.87, 0.70],
                     flux_for_irradiance(SUN_IRRADIANCE, distance_to_origin(SUN)),
-                    extent,
+                    parts.extent,
                     160.0,
                 ),
                 sky_light,
@@ -429,15 +509,10 @@ fn hall_framed(
         (
             "meshes".to_owned(),
             Value::List(vec![
-                mesh("walls", "Triangles", point.clone(), walls),
-                mesh("roof", "Triangles", point.clone(), roof),
-                mesh("floors", "Triangles", point, floors),
-                mesh(
-                    "ground",
-                    "Triangles",
-                    plain.point_schema(),
-                    crate::ground::mesh(&building, 140, 420.0, |_, _| 0.0),
-                ),
+                mesh("walls", "Triangles", point.clone(), parts.walls.clone()),
+                mesh("roof", "Triangles", point.clone(), parts.roof.clone()),
+                mesh("floors", "Triangles", point, parts.floors.clone()),
+                mesh("ground", "Triangles", plain.point_schema(), parts.ground.clone()),
             ]),
         ),
         (
