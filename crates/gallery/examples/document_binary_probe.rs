@@ -61,6 +61,10 @@ fn main() {
         "and {} of them are byte sequences of {} bytes",
         composition.sequences, composition.sequence_bytes
     );
+    println!(
+        "the longest list holds {} elements, and every list holds {} together",
+        composition.longest_list, composition.elements
+    );
 
     let json = measure(&scene, &directory.join(format!("{name}.json")), |value| {
         facet_json::to_string(value)
@@ -250,6 +254,10 @@ struct Composition {
     sequences: usize,
     /// How many bytes those sequences hold.
     sequence_bytes: usize,
+    /// How many elements the longest list holds.
+    longest_list: usize,
+    /// How many elements every list holds together.
+    elements: usize,
 }
 
 impl Composition {
@@ -261,6 +269,8 @@ impl Composition {
             run_bytes: 0,
             sequences: 0,
             sequence_bytes: 0,
+            longest_list: 0,
+            elements: 0,
         };
         composition.walk(value);
         composition
@@ -289,6 +299,8 @@ impl Composition {
                 }
             }
             Value::List(values) => {
+                self.longest_list = self.longest_list.max(values.len());
+                self.elements += values.len();
                 for value in values {
                     self.walk(value);
                 }
