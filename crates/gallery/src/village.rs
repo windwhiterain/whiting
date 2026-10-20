@@ -29,7 +29,7 @@
 
 use building::math::Vec2;
 use building::site;
-use building::{Building, BuildingSkeleton, derive, ops};
+use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, derive, ops};
 use definition::Value;
 use document::air::Atmosphere;
 use document::building_identity::{
@@ -49,6 +49,17 @@ const SQUARE: [f32; 4] = [-8.0, -6.0, 8.0, 6.0];
 const GRATE: f32 = 0.7;
 /// How far south the lane runs from the square's own edge, in metres of plan.
 const LANE_END: f32 = 15.0;
+
+/// The 寨门 at the lane's mouth: how wide it is, the two plan lines it spans, how tall, and how thick its walls
+/// are.
+///
+/// **The passage is cut on both faces at one place**, because a mass is a shell: two holes in line are one tunnel
+/// through it, and a gate is a tunnel with a roof on it.
+const GATE_WIDTH: f32 = 4.4;
+const GATE_DEPTH: [f32; 2] = [8.0, 9.6];
+const GATE_HEIGHT: f32 = 3.4;
+const GATE_WALL: f32 = 0.42;
+const GATE_HEAD: f32 = 0.25;
 
 /// How steeply the ground falls away outside the square, in metres of drop per metre, and how far it is
 /// allowed to fall.
@@ -666,6 +677,71 @@ pub fn compose(ground: impl Fn(f64, f64) -> f64, lane: bool, platform: f32) -> B
             ops::merge(&mut skeleton, part),
             "a building of the village places no parts, so the merge always happens"
         );
+    }
+    // **The 寨门: the village's gate, at the mouth of its lane.** A village with a square and no gate is a
+    // clearing; the gate is what makes the lane an entrance and the square a place inside something. It is a
+    // mass a lane wide, pierced on both faces, with a gable over it — the three pieces every gate in this country
+    // is made of — and it stands on the lane's own ground so the passage is level with the paving it opens onto.
+    {
+        let middle = [
+            (SQUARE[0] + SQUARE[2]) * 0.5,
+            (SQUARE[3] + GATE_DEPTH[1]) * 0.5 + GATE_DEPTH[1] * 0.5,
+        ];
+        let level = seated_ground(middle) as f32;
+        let half_gate = GATE_WIDTH * 0.5;
+        let deep_gate = (GATE_DEPTH[1] - GATE_DEPTH[0]) * 0.5;
+        let mut gate = Mass::new(
+            [
+                PlanNode::new([middle[0] - half_gate, GATE_DEPTH[0]], level),
+                PlanNode::new([middle[0] + half_gate, GATE_DEPTH[0]], level),
+                PlanNode::new([middle[0] + half_gate, GATE_DEPTH[1]], level),
+                PlanNode::new([middle[0] - half_gate, GATE_DEPTH[1]], level),
+            ]
+            .to_vec(),
+            level + GATE_HEIGHT,
+        );
+        gate.wall = GATE_WALL;
+        gate.slab = 0.30;
+        let gate_id = MassId(skeleton.masses.len());
+        skeleton.masses.push(gate);
+        // The passage, cut through **both** faces at the same place: a mass is a shell, so two holes in line are
+        // one tunnel through it, which is what a gate is.
+        for edge in [0_usize, 2] {
+            let face = building::grid::FaceRef::new(gate_id, edge);
+            if ops::split_face(
+                &mut skeleton,
+                face,
+                &building::grid::Rhythm::Even { count: 3 },
+                &building::grid::Rhythm::Even { count: 1 },
+            )
+            .is_some()
+            {
+                let _ = ops::add_opening(
+                    &mut skeleton,
+                    building::openings::Opening::new(
+                        face,
+                        0,
+                        1,
+                        building::openings::Inset::new(
+                            GATE_WALL + 0.05,
+                            GATE_WALL + 0.05,
+                            0.0,
+                            GATE_HEIGHT - GATE_HEAD - 0.4,
+                        ),
+                    ),
+                );
+            }
+        }
+        if let Some(roof) =
+            derive::gable_roof(gate_id, &skeleton.masses[gate_id.0], 0.55, 1.1, 0.08, 0.14)
+        {
+            skeleton.roofs.push(roof.with_covering(building::Covering {
+                period: 0.30,
+                fill: 0.62,
+                height: 0.05,
+            }));
+        }
+        let _ = deep_gate;
     }
     // **The terrace is held up by a wall**, one run to a side, standing on the ground at the foot of each drop:
     // a plateau cut into a hill is a cut face, and the village's own edge is what a person on the square sees

@@ -57,3 +57,29 @@ Two more pieces, both of them what a house on a slope actually stands on and wal
 because the scene's own camera looks across the square at the tower and the fill is under the houses at the
 bottom edge of the picture. A diagnostic view from below the slope — eye at 1.6 m, looking up at a log house —
 shows the row of posts under its sill, which is the piece the fill was for.
+## The 寨门: a village with a gate
+
+A village with a square and no gate is a clearing. The lane's mouth now has a **寨门** — a mass a lane wide,
+pierced on both faces, with a gable over it — and it is in the *composition*, so both villages get it.
+
+Three decisions, and the first is the one that makes it a gate:
+
+- **the passage is cut through both faces at one place.** A mass is a shell, so two holes in line are one tunnel
+  through it: the gate is a tunnel with a roof on it, and nothing new was needed to make the tunnel;
+- **the gate stands on the lane's own ground** (`seated_ground` at its own plan), so the passage is level with the
+  paving it opens onto — the lesson of the stair, which was laid on the wrong grade and buried nineteen metres
+  under a hill (round nineteen);
+- **the margin is the wall's thickness plus five centimetres**, the rule every opening in this crate follows, and
+  the head is the gate's own height less `GATE_HEAD` and its roof plate.
+
+Identity: `village_square` 16 521 → **17 414**, `hillside_village` 4 667 → **5 560** — the same `+893` in both,
+which is what a piece of the composition should cost.
+
+## Why there are still no plants
+
+`vegetation` was the candidate for this round and it was not taken, and the reason is worth recording: the crate's
+own picture module, `crate::vegetation_picture`, **builds a scene of its own** — its cameras, its lights, its
+ground — and a village is a `Building` whose document a different harness packs. Joining the two is not a matter
+of calling a function: it needs the leaf instances' frames converted into the harness's instance transforms, which
+is a piece of plumbing on the *picture* side and not on the building side. That is the scope a vegetation round
+would have to take, and it is written here so it is not discovered again.
