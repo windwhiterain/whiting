@@ -20,7 +20,29 @@
 //!   render dunes out/dunes 0 6 0.25 --sheet-full    the same sheet, at every pixel of each frame
 //!   render dunes out/dunes 0 6 0.1  --video         the same range, as an mp4
 //!   render dunes out/dunes --debug position         and one image of where each pixel is
+//!   render --document dunes.json out/dunes          one frame, from the document and not the gallery
+//!   render dunes out/dunes --document dunes.json    the same, under the name `dunes`
 //! ```
+//!
+//! # The document
+//!
+//! **A scene is a document, and the gallery is one way of getting one.** `--document` reads the
+//! document from a file instead of building it from a name, and that path calls no gallery at
+//! all: the file is put in the registry the way the rpc's `PUT /definition/{name}` puts one
+//! there — validated against the scene schema, stored under the scene's own name — and the
+//! scene that is compiled is the one the registry holds afterwards.
+//!
+//! The name is what the document is registered under and what the manifest records, so the two
+//! paths can be compared against each other: a frame drawn from a document and a frame drawn
+//! from the name are the same frame if the documents they compiled were the same, and the
+//! manifest beside the images says so in hashes rather than in an opinion. **A document with no
+//! name of its own takes the name from the document's own `name` field**, and one with neither
+//! is refused: the registry is keyed by name, and a scene registered under nothing is a scene
+//! nothing can ask for again.
+//!
+//! The census is the other half of the gallery's side of the bargain and is not answered here:
+//! it reads the document, and the document is the producer's to write. `cargo run -p
+//! whiting-gallery --example scene_document -- <name> <path> --census` prints it.
 //!
 //! # The contact sheet
 //!
@@ -116,6 +138,17 @@ const MANIFEST: &str = "manifest";
 /// is reported rather than half-read: a reader that quietly misreads a record is worse than one
 /// that says it cannot.
 const MANIFEST_FORMAT: u32 = 1;
+
+/// The stack a scene document is read on.
+///
+/// # Invariants
+///
+/// **It is the reader's size, and the reader's size is measured rather than guessed.**
+/// `facet_json::from_str` descends as it parses, and a document of a few hundred kilobytes
+/// needs more than the megabyte a windows main thread is given — the first run of
+/// `crates/device/examples/facet_value_probe.rs` died with a stack overflow before it could
+/// finish its report, and that probe is where the size comes from.
+const DOCUMENT_STACK_BYTES: usize = 64 * 1024 * 1024;
 
 /// A moment a scene is drawn at.
 struct Moment {
@@ -462,7 +495,6 @@ async fn main() {
 /// Renders the scene named on the command line into the images named after it.
 async fn run() -> Result<(), String> {
     let request = parse_arguments()?;
-    let name = &request.name;
 
     let renderer = rasterizer().await;
 
@@ -491,13 +523,36 @@ async fn run() -> Result<(), String> {
     // instance bucket, the box the placements occupy and the post stage's own constants. It is
     // the number "the grove looks thin" wants beside it, and it costs no gpu work at all — the
     // document is the cheap half of anything, and a scene that will not compile still has one.
+    //
+    // **A document's census is the producer's to print, and this path refuses it rather than
+    // reaching for the gallery.** The census reads the document, and on this path the document
+    // is the one that was read from the file; the gallery's own census reads the scene the
+    // gallery builds, which is a different document whenever the two have drifted apart.
     if request.census {
+        if request.document.is_some() {
+            return Err(
+                "the census of a document is the producer's to print: `cargo run -p \
+                 whiting-gallery --example scene_document -- <name> <path> --census`"
+                    .to_owned(),
+            );
+        }
+        let name = request.name.clone().ok_or_else(usage)?;
         print!("{}", Gallery::census(&name));
         print!("{}", Gallery::bounds(&name));
         return Ok(());
     }
 
-    let authored = Gallery::build(&name);
+    // **The scene is a document, and this is where the document comes from.** A name builds one
+    // through the gallery; a file gives one that was written before this run, and that path
+    // puts it in the registry the way the rpc's `PUT /definition/{name}` does, so the scene
+    // that is compiled is the one the registry holds rather than the one that was read.
+    let (name, authored) = match (&request.document, &request.name) {
+        (Some(path), Some(name)) => load_document(path, &mut registry, Some(name))?,
+        (Some(path), None) => load_document(path, &mut registry, None)?,
+        (None, Some(name)) => (name.clone(), Gallery::build(name)),
+        (None, None) => return Err(usage()),
+    };
+    let name = &name;
 
     // Every camera a scene names is rendered. A camera decides the projection every pass draws
     // through — and, for a fitted camera, how far back the eye stands — so it is an input to
@@ -688,6 +743,91 @@ async fn run() -> Result<(), String> {
     Ok(())
 }
 
+/// Reads a scene document and puts it in the registry, the way the rpc's `PUT /definition/{name}`
+/// puts one there.
+///
+/// # Invariants
+///
+/// - **The document is validated before it is stored**, so a document that does not satisfy the
+///   scene schema is refused at the boundary rather than at render time. The rpc refuses it the
+///   same way, and a harness that compiled a document the device would have refused would be
+///   drawing something no device would draw.
+/// - **The scene that is compiled is the one the registry holds afterwards**, not the one that was
+///   read off the disk. The round trip through the registry is the whole of what this path is:
+///   a document that is read and compiled directly is not the document a device would hold, and
+///   the two are the same only while nothing rewrites a value on the way in.
+/// - **The document is read on a thread with a larger stack than a windows main thread has**,
+///   because `facet_json::from_str` descends as it parses. See [`DOCUMENT_STACK_BYTES`].
+/// - **The name is the caller's, or the document's own, and there is no third answer.** The
+///   registry is keyed by name and the manifest records the name, so a document that carries
+///   neither is a document nothing can ask for again.
+fn load_document(
+    path: &Path,
+    registry: &mut Registry,
+    name: Option<&str>,
+) -> Result<(String, Value), String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("reading {} failed: {error}", path.display()))?;
+    let value = read_value(text)?;
+    let name = match name {
+        Some(name) => name.to_owned(),
+        None => document_name(&value).ok_or_else(|| {
+            format!(
+                "the document at {} names no scene, so it cannot be rendered on its own",
+                path.display()
+            )
+        })?,
+    };
+    let identifier = DefinitionIdentifier::new(&name);
+    let definition = Definition::new(
+        identifier.clone(),
+        SchemaIdentifier::new(STANDARD_SCENE_SCHEMA),
+        value,
+    );
+    definition
+        .validate(registry)
+        .map_err(|error| format!("the document does not satisfy the scene schema: {error}"))?;
+    if registry.definition(&identifier).is_ok() {
+        registry.remove_definition(&identifier).map_err(|error| {
+            format!("the document already in the registry cannot be removed: {error}")
+        })?;
+    }
+    registry
+        .insert_definition(definition)
+        .map_err(|error| format!("the document does not go into the registry: {error}"))?;
+    let stored = registry
+        .definition(&identifier)
+        .map_err(|error| format!("the document is not in the registry: {error}"))?;
+    Ok((name, stored.value.clone()))
+}
+
+/// Returns the name a scene document carries, or none when it carries none.
+fn document_name(value: &Value) -> Option<String> {
+    value
+        .as_field_map()
+        .and_then(|fields| fields.get(scene::standard::NAME))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
+/// Reads the json of a scene document into the value it holds.
+///
+/// # Invariants
+///
+/// **The read happens on a thread of its own, because the read is what needs the room.** The
+/// text is moved into that thread rather than copied, so the document is held once and not
+/// twice: a document of a few hundred megabytes copied once is a few hundred megabytes of
+/// memory the machine did not need to spend.
+fn read_value(text: String) -> Result<Value, String> {
+    std::thread::Builder::new()
+        .stack_size(DOCUMENT_STACK_BYTES)
+        .spawn(move || facet_json::from_str::<Value>(&text))
+        .map_err(|error| format!("the reading thread does not start: {error}"))?
+        .join()
+        .map_err(|_| "the reading thread panicked".to_owned())?
+        .map_err(|error| format!("the document does not read as a scene value: {error}"))
+}
+
 /// Prints what a compile wants the author of the documents to know about it, once each.
 ///
 /// # Invariants
@@ -768,20 +908,26 @@ fn camera_count(scene: &Value) -> usize {
 }
 
 /// Reads the command line into what to render and where to put it.
+///
+/// # Invariants
+///
+/// **The flags are taken out before the rest is read, and the rest is read in the order it was
+/// written.** The name, the path and the times used to be told apart by their positions — the
+/// first two arguments were the name and the path and everything after them was a time — and a
+/// flag that carries a path of its own breaks that: `--document` takes a path, and the path it
+/// takes is not the path the images are written under. So the flags go first, and what is left
+/// is the name, the path and the times, in that order.
 fn parse_arguments() -> Result<Request, String> {
-    let mut arguments = std::env::args().skip(1);
-    let name = arguments.next().ok_or_else(usage)?;
-    let path = arguments.next().unwrap_or_else(|| "out".to_owned());
-    let rest: Vec<String> = arguments.collect();
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
 
     // `--video`, `--sheet`, `--sheet-full` and `--debug` are flags, and every bare number after
     // the path is a time, so the times are whatever is left once the flags and their values are
     // taken out. `--sheet-full` is `--sheet` with a step of one rather than a mode of its own,
     // because it is the same picture at another resolution and there is nothing else to choose.
     let mut mode = Mode::Frames;
-    let mut times: Vec<String> = Vec::new();
     let mut debug: Vec<DebugChannel> = Vec::new();
     let mut census = false;
+    let mut document: Option<PathBuf> = None;
     // **--locate repeats**: one pixel per flag, in the order asked, because the interesting question is
     // usually a comparison — five shutters, five pixels, five names — and one flag per run made that five runs.
     let mut locate_at: Vec<(u32, u32)> = Vec::new();
@@ -789,39 +935,47 @@ fn parse_arguments() -> Result<Request, String> {
     // scanned for the ids under it. It is what turns a picture into the set of handles an edit can be aimed at.
     let mut regions: Vec<[u32; 4]> = Vec::new();
     let mut where_is: Vec<String> = Vec::new();
+    let mut rest: Vec<String> = Vec::new();
     let mut index = 0;
-    while index < rest.len() {
-        match rest[index].as_str() {
+    while index < arguments.len() {
+        match arguments[index].as_str() {
             "--sheet" => mode = Mode::Sheet { step: SHEET_STEP },
             "--sheet-full" => mode = Mode::Sheet { step: FULL_STEP },
             "--video" => mode = Mode::Video,
             "--census" => census = true,
+            "--document" => {
+                index += 1;
+                let asked = arguments
+                    .get(index)
+                    .ok_or_else(|| "--document needs the path of a scene document".to_owned())?;
+                document = Some(PathBuf::from(asked));
+            }
             "--locate" => {
                 index += 1;
-                let asked = rest
-                    .get(index)
-                    .ok_or_else(|| "--locate needs a pixel, written x,y".to_owned())?;
+                let asked = rest_arg(&arguments, index, "--locate needs a pixel, written x,y")?;
                 locate_at.push(parse_pixel(asked)?);
             }
             "--region" => {
                 index += 1;
-                let asked = rest
-                    .get(index)
-                    .ok_or_else(|| "--region needs a rectangle, written x0,y0,x1,y1".to_owned())?;
+                let asked = rest_arg(
+                    &arguments,
+                    index,
+                    "--region needs a rectangle, written x0,y0,x1,y1",
+                )?;
                 regions.push(parse_region(asked)?);
             }
             "--where" => {
                 index += 1;
-                let asked = rest
-                    .get(index)
-                    .ok_or_else(|| "--where needs an id or a name".to_owned())?;
-                where_is.push(asked.clone());
+                let asked = rest_arg(&arguments, index, "--where needs an id or a name")?;
+                where_is.push(asked.to_owned());
             }
             "--debug" => {
                 index += 1;
-                let asked = rest
-                    .get(index)
-                    .ok_or_else(|| format!("--debug needs a channel: {}", channel_names()))?;
+                let asked = rest_arg(
+                    &arguments,
+                    index,
+                    &format!("--debug needs a channel: {}", channel_names()),
+                )?;
                 for tag in asked.split(',') {
                     let channel = DebugChannel::from_tag(tag.trim()).ok_or_else(|| {
                         format!(
@@ -833,10 +987,23 @@ fn parse_arguments() -> Result<Request, String> {
                     debug.push(channel);
                 }
             }
-            other => times.push(other.to_owned()),
+            other => rest.push(other.to_owned()),
         }
         index += 1;
     }
+
+    // **The name is optional only where a document supplies one.** A document carries the name
+    // it was built under, so `render --document hall.json out/hall` is a whole invocation, and
+    // a name given beside a document is the name the document is registered and recorded
+    // under. Without a document the name is the scene's own and there is nowhere else to get
+    // it.
+    let (name, path, times) = match (document.is_some(), rest.as_slice()) {
+        (false, [name]) => (Some(name.clone()), "out".to_owned(), Vec::new()),
+        (false, [name, path, times @ ..]) => (Some(name.clone()), path.clone(), times.to_vec()),
+        (true, [path]) => (None, path.clone(), Vec::new()),
+        (true, [_, path, times @ ..]) => (Some(rest[0].clone()), path.clone(), times.to_vec()),
+        _ => return Err(usage()),
+    };
 
     let number = |text: &str| -> Result<f64, String> {
         text.parse::<f64>()
@@ -871,6 +1038,7 @@ fn parse_arguments() -> Result<Request, String> {
     Ok(Request {
         name,
         path,
+        document,
         mode,
         times: moments,
         debug,
@@ -879,6 +1047,18 @@ fn parse_arguments() -> Result<Request, String> {
         regions,
         where_is,
     })
+}
+
+/// Returns the argument after a flag, or the message the flag is answered with when there is none.
+fn rest_arg<'text>(
+    arguments: &'text [String],
+    index: usize,
+    missing: &str,
+) -> Result<&'text str, String> {
+    arguments
+        .get(index)
+        .map(String::as_str)
+        .ok_or_else(|| missing.to_owned())
 }
 
 /// Returns the channels a caller may ask for, as a list for a message about one that is not.
@@ -893,10 +1073,15 @@ fn channel_names() -> String {
 /// What a render was asked for.
 #[derive(Clone)]
 struct Request {
-    /// The scene to render.
-    name: String,
+    /// The scene to render, and the name the manifest records it under.
+    ///
+    /// It is absent when a document supplies one: the document carries the name it was built
+    /// under, and a name given beside a document is the name the document is registered under.
+    name: Option<String>,
     /// The path the images are written under, without an extension.
     path: String,
+    /// The scene document to render, where the scene is one that was written before this run.
+    document: Option<PathBuf>,
     /// How the moments are put down.
     mode: Mode,
     /// The moments to draw.
@@ -2121,7 +2306,9 @@ fn set_time(scene: &mut Value, time: f64) {
 fn usage() -> String {
     concat!(
         "usage: render <scene> <out> [start [stop [step]]] ",
-        "[--sheet | --sheet-full | --video] [--debug <channel>] [--census]"
+        "[--sheet | --sheet-full | --video] [--debug <channel>] [--census]\n",
+        "       render --document <path> <out> [start [stop [step]]] (the scene's name is the ",
+        "document's own)"
     )
     .to_owned()
 }
@@ -2286,6 +2473,9 @@ mod tests {
                         .collect(),
                 }],
             },
+            // A frame that was never described declares nothing, and the sidecars beside it
+            // say so rather than borrowing a claim from another image.
+            described: Vec::new(),
         }
     }
 
