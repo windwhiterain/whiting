@@ -77,6 +77,7 @@ pub mod compound;
 mod dawn;
 pub mod drum_tower;
 mod dunes;
+pub mod earthen;
 /// Where a courtyard house's own fronts are, and what one is made of.
 pub mod facade;
 mod foldyard;
@@ -203,6 +204,7 @@ impl Gallery {
             "shed",
             "stilt",
             "drum_tower",
+            "earthen_house",
             "stilt_gallery",
             "street",
             "street_arcade",
@@ -307,6 +309,7 @@ impl Gallery {
             "street_arcade" => street::street_arcade(),
             "stilt" => stilt::stilt(),
             "drum_tower" => drum_tower::drum_tower(),
+            "earthen_house" => earthen::earthen_house(),
             "stilt_gallery" => stilt::stilt_gallery(),
             "terrace" => terrace::terrace(),
             "wing" => wing::wing(),
