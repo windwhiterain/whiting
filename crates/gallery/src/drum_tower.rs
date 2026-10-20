@@ -56,6 +56,15 @@ const SHRINK: f32 = 0.34;
 const STOREY: f32 = 2.4;
 const PLINTH: f32 = 0.45;
 const WALL: f32 = 0.20;
+
+/// How many bays each storey is open in, per side, and how each bay is cut.
+///
+/// **The margin is the wall's thickness plus five centimetres**, the rule every opening in this crate follows;
+/// the sill is a rail's height above the floor and the head is the floor above less its plate.
+const BAYS: usize = 3;
+const BAY_MARGIN: f32 = 0.25;
+const BAY_SILL: f32 = 0.75;
+const BAY_HEAD: f32 = 0.45;
 const PLATE: f32 = 0.28;
 
 /// How far a skirt's eave hangs past the wall, and how far below the crest its eave line stands.
@@ -340,6 +349,41 @@ pub fn document() -> Building {
             skeleton.roofs.push(crown.with_covering(COVERING));
         }
         base = Some(id);
+    }
+
+    // **Every storey is an open pavilion**, which is what a 鼓楼 is: three bays to a side on each floor, cut
+    // between a rail's height and the floor above. A tower of closed boxes is a silo; the whole reason the type
+    // exists is that the village sits in it, one floor at a time, and looks out.
+    //
+    // The storeys are cut **after they are all authored**, because a storey's own mass has to exist before its
+    // faces can be given a rhythm, and the relation between them says nothing about their walls.
+    for storey in 0..STOREYS {
+        let id = MassId(storey);
+        let edges = skeleton.masses[id.0].outline.len();
+        for edge in 0..edges {
+            let face = building::grid::FaceRef::new(id, edge);
+            if ops::split_face(
+                &mut skeleton,
+                face,
+                &building::grid::Rhythm::Even { count: BAYS },
+                &building::grid::Rhythm::Even { count: 1 },
+            )
+            .is_none()
+            {
+                continue;
+            }
+            for column in 0..BAYS {
+                let _ = ops::add_opening(
+                    &mut skeleton,
+                    building::openings::Opening::new(
+                        face,
+                        0,
+                        column,
+                        building::openings::Inset::new(BAY_MARGIN, BAY_MARGIN, BAY_SILL, BAY_HEAD),
+                    ),
+                );
+            }
+        }
     }
 
     // **The plinth**, a stone foot the lowest storey stands clear of the ground on.
