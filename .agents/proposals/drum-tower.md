@@ -92,3 +92,32 @@ Two consequences:
 2. **The covering's fault is a defect of its own and wants its own round**: the roll geometry is laid against
    the skin but its side faces are built in a plane that does not follow the roof's slope, and a lean-to is
    where that shows. `crates/building/src/covering.rs` owns it.
+
+## The covering is fixed: a roll is a prism
+
+The defect was found and fixed in the round after that measurement. The cause is not the lean-to but the
+**taper** of a hip's band:
+
+- a roll's section was a **fraction of the band at each station**, and a hip's band narrows toward the crest,
+  so the roll narrowed as it climbed;
+- its ridge, however, was lifted by the **same `height` at every station**, so the ridge stopped being parallel
+  to the base and the roll's own side faces twisted. Measured on one hip: **0.0256 of a metre** between eave and
+  crest, against `PLANARITY_TOLERANCE` of 0.001 — and `validate` reported it as 284 `FaceNotPlanar`s between
+  0.0102 and 0.0202.
+
+The fix, in `crates/building/src/expand.rs`: a roll's width is now **measured once at the eave and carried**, so
+every section of one roll is congruent and the roll is a prism; the section is placed by the band's **centre**
+and the absolute width rather than by two fractions. On a gable, whose band does not taper, the geometry is
+unchanged by construction.
+
+Measured after the fix, with `lean_to_probe`:
+
+| document | before | after |
+| --- | --- | --- |
+| one hip wearing a covering | 284 violations | **0** |
+| the tower, four skirts at seven levels, a tiled crown | 284 | **0** |
+| every gable and every lean-to already in the scenes | 0 | **0** |
+
+So the tower now wears tiles: 4 599 identity rows, and the module note that said the eaves were boarded is
+gone. The guard that refuses a twisted roll segment stays as a belt — it turns a future geometry fault into a
+named `CoveringDrewNothing` instead of a mesh that is nearly flat.

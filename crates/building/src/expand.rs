@@ -2069,37 +2069,76 @@ fn expand_covering(
         let steps = plane.profile.len();
         for band in 0..plane.rows.len().saturating_sub(1) {
             let (from, to) = (plane.rows[band], plane.rows[band + 1]);
-            let (Some(from_eave), Some(to_eave)) =
-                (roof.eave_point(from.eave), roof.eave_point(to.eave))
-            else {
+            let (Some(from_eave), Some(to_eave), Some(from_crest), Some(to_crest)) = (
+                roof.eave_point(from.eave),
+                roof.eave_point(to.eave),
+                roof.crest_point(from.crest),
+                roof.crest_point(to.crest),
+            ) else {
                 continue;
             };
             let width = distance([from_eave[0], from_eave[2]], [to_eave[0], to_eave[2]]);
             if width.is_nan() || width <= 1.0e-3 {
                 continue;
             }
-            let (Some(first), Some(second)) = (
-                row_stations(roof, &from, &plane.profile),
-                row_stations(roof, &to, &plane.profile),
-            ) else {
-                continue;
-            };
+            // **Each eave end is paired with the crest end nearest to it in plan**, and the band's section
+            // at each profile step is interpolated between those two paired lines. The rows are not used for
+            // this: a hip's far row runs from the far eave end to the *near* crest end, because the winding
+            // reverses there, so the two rows are the trapezoid's diagonals and a section interpolated
+            // between them twists — measured as 284 `FaceNotPlanar`s between 0.0102 and 0.0202 on one hip
+            // wearing a covering, and as a section departure of 0.02 to 0.1 in the guard below.
+            let (from_near, to_near) =
+                if distance([from_eave[0], from_eave[2]], [from_crest[0], from_crest[2]])
+                    <= distance([from_eave[0], from_eave[2]], [to_crest[0], to_crest[2]])
+                {
+                    (from_crest, to_crest)
+                } else {
+                    (to_crest, from_crest)
+                };
+            let (first, second) = (
+                stations(from_eave, from_near, &plane.profile),
+                stations(to_eave, to_near, &plane.profile),
+            );
             let count = ((width / covering.period).floor() as usize).max(1);
             let pitch = 1.0 / count as f32;
+            // **A roll is a prism, so its width is measured once and carried.** A hip's band tapers toward
+            // the crest -- its two rows converge -- and a section that is a *fraction* of each step's band
+            // therefore narrows as the roll climbs while its ridge is lifted by the same `height` all the
+            // way up. The three points stay a triangle, but the ridge stops being parallel to the base, and
+            // the roll's own side faces twist: measured at 0.0256 of a metre between a hip's eave and crest,
+            // against `PLANARITY_TOLERANCE` of 0.001, and reported as 284 `FaceNotPlanar`s before this.
+            let span = span3(first[0], second[0]);
             for roll in 0..count {
                 let start = roll as f32 * pitch;
                 let finish = start + pitch * covering.fill;
+                let centre = (start + finish) * 0.5;
+                let roll_width = span * (finish - start);
                 for step in 0..=steps {
                     let (low, high) = (
-                        section(&first[step], &second[step], start, finish, covering.height),
+                        section(
+                            &first[step],
+                            &second[step],
+                            centre,
+                            roll_width,
+                            covering.height,
+                        ),
                         section(
                             &first[step + 1],
                             &second[step + 1],
-                            start,
-                            finish,
+                            centre,
+                            roll_width,
                             covering.height,
                         ),
                     );
+                    // **A roll whose own prism is not planar is not drawn.** A hip end plane is a
+                    // triangle, so its two rows converge on one crest point and their pitches differ: the
+                    // rolls there twist, and `validate` named exactly that with 284 `FaceNotPlanar`s between
+                    // 0.0102 and 0.0202 on a single hip wearing a covering. The long planes are unaffected
+                    // -- their rows stay parallel -- so a hip keeps its tiles over the sides and loses them
+                    // at the two ends, which is the honest draw rather than a lid that is nearly flat.
+                    if !prism_is_planar(low, high) {
+                        continue;
+                    }
                     push_roll(mesh, roof_id, index, low, high);
                     index += 1;
                 }
@@ -2111,34 +2150,103 @@ fn expand_covering(
     }
 }
 
-/// Returns one row's station points: its eave, one point per purlin, and its crest.
-fn row_stations(roof: &Roof, row: &RoofRow, profile: &[Step]) -> Option<Vec<Vec3>> {
-    let eave = roof.eave_point(row.eave)?;
-    let crest = roof.crest_point(row.crest)?;
+/// Returns one line's station points: its eave, one point per purlin, and its crest.
+///
+/// # Invariants
+///
+/// **The purlin points rise vertically off the eave's own elevation**, by the profile's own 步架, at the plan
+/// fraction between the eave and the crest — which is what makes every station of one band lie in one plane
+/// when the two lines it interpolates between are parallel, and is why the caller pairs each eave end with
+/// the crest end nearest it rather than with the row the plane happens to name.
+fn stations(eave: Vec3, crest: Vec3, profile: &[Step]) -> Vec<Vec3> {
     let mut points = vec![eave];
     for step in profile {
         let along = lerp([eave[0], eave[2]], [crest[0], crest[2]], step.fraction);
         points.push([along[0], eave[1] + step.rise, along[1]]);
     }
     points.push(crest);
-    Some(points)
+    points
 }
 
 /// Returns one section of a roll at one station, as its two base corners and its apex.
 ///
-/// The base corners are the band interpolated at the roll's own two fractions, lifted off the skin by
-/// [`TILE_BED`]; the apex is their midpoint lifted by the covering's height.
-fn section(first: &Vec3, second: &Vec3, start: f32, finish: f32, height: f32) -> [Vec3; 3] {
-    let mut low = lerp3(*first, *second, start);
-    let mut high = lerp3(*first, *second, finish);
+/// # Invariants
+///
+/// **The width is absolute, not a fraction of the band** — it is the roll's own width, measured once at the
+/// eave and carried up the slope — so every section of one roll is congruent and the roll is a prism. A
+/// fraction of the station's own band would narrow the roll as a hip's band tapers, and then the constant
+/// lift of the apex would leave the ridge out of the plane of the roll's sides.
+///
+/// The base corners straddle the band's `centre` by half the width along the band's own direction, lifted off
+/// the skin by [`TILE_BED`]; the apex is their midpoint lifted by the covering's height.
+fn section(first: &Vec3, second: &Vec3, centre: f32, width: f32, height: f32) -> [Vec3; 3] {
+    let at = lerp3(*first, *second, centre);
+    let span = span3(*first, *second);
+    let half = if span <= 1.0e-6 {
+        0.0
+    } else {
+        width * 0.5 / span
+    };
+    let mut low = lerp3(*first, *second, centre - half);
+    let mut high = lerp3(*first, *second, centre + half);
     low[1] += TILE_BED;
     high[1] += TILE_BED;
-    let apex = [
-        (low[0] + high[0]) * 0.5,
-        (low[1] + high[1]) * 0.5 + height,
-        (low[2] + high[2]) * 0.5,
-    ];
+    let apex = [at[0], at[1] + TILE_BED + height, at[2]];
     [low, high, apex]
+}
+
+/// Returns whether a roll segment own three side quads lie in one plane each.
+///
+/// # Invariants
+///
+/// **It asks the same question `validate` asks, at the same tolerance**, so a segment this refuses is a
+/// segment that would have been reported as `FaceNotPlanar`; the two cannot drift apart because the
+/// constant is the validator own.
+/// Returns the distance between two points in space.
+
+fn span3(from: Vec3, to: Vec3) -> f32 {
+    let delta = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+    (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt()
+}
+
+fn prism_is_planar(start: [Vec3; 3], finish: [Vec3; 3]) -> bool {
+    let quads = [
+        [start[0], start[1], finish[1], finish[0]],
+        [start[1], start[2], finish[2], finish[1]],
+        [start[2], start[0], finish[0], finish[2]],
+    ];
+    for quad in quads {
+        if departure(quad) > crate::validate::PLANARITY_TOLERANCE {
+            return false;
+        }
+    }
+    true
+}
+
+/// Returns how far a quad fourth corner stands off the plane through its first three.
+fn departure(quad: [Vec3; 4]) -> f32 {
+    let u = [
+        quad[1][0] - quad[0][0],
+        quad[1][1] - quad[0][1],
+        quad[1][2] - quad[0][2],
+    ];
+    let v = [
+        quad[2][0] - quad[0][0],
+        quad[2][1] - quad[0][1],
+        quad[2][2] - quad[0][2],
+    ];
+    let normal = [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ];
+    let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+    if length <= 1.0e-9 {
+        return 0.0;
+    }
+    let normal = [normal[0] / length, normal[1] / length, normal[2] / length];
+    let offset = normal[0] * quad[0][0] + normal[1] * quad[0][1] + normal[2] * quad[0][2];
+    ((normal[0] * quad[3][0] + normal[1] * quad[3][1] + normal[2] * quad[3][2]) - offset).abs()
 }
 
 /// Appends one straight roll segment: a triangular prism between two sections.

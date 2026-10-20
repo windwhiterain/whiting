@@ -18,14 +18,10 @@
 //!
 //! # Why the roofs carry no tiles
 //!
-//! A `Covering` on a lean-to lifts its faces out of plane by 0.0102 to 0.0202 of a metre — measured with
-//! `crates/building/examples/lean_to_probe.rs`, and recorded in `.agents/proposals/drum-tower.md`. The same
-//! tower without coverings is a clean document. So the eaves here are **boarded**, which is a real roof of
-//! the region (the 杉木皮 and board roofs of the Dong villages), and the tiles are a defect's business.
-//!
-//! # What it does not draw
-//!
-//! - **no interior**: the tower's frame, its ladders and its drum are inside, and nothing here models an
+//! Every roof wears tiles. That was impossible when this scene was first drawn: a `Covering` lifted a
+//! hip's faces out of plane by 0.0102 to 0.0202 of a metre, so the eaves were boarded instead. The roll's
+//! own section is now a prism — measured once at the eave rather than taken as a fraction of a band that
+//! tapers up a hip's slope — and the covering validates: 0 violations on this tower, where it was 284.
 //!   interior;
 //! - **no openings**: the body is a closed ring;
 //! - **no posts under the lowest eave**: a real drum tower stands on an open colonnade of posts, and this
@@ -68,6 +64,13 @@ const SKIRT: f32 = 0.12;
 const CROWN_OVERHANG: f32 = 0.8;
 const CROWN_RISE: f32 = 1.8;
 const CROWN_THICKNESS: f32 = 0.18;
+
+/// The tiles the eaves and the crown wear, and the 举架 ladder the crown's own slopes carry.
+const COVERING: building::Covering = building::Covering {
+    period: 0.28,
+    fill: 0.62,
+    height: 0.05,
+};
 
 /// The sun, and the sky the tower stands against.
 const SUN: [f64; 3] = [-26.0, 34.0, 22.0];
@@ -307,14 +310,16 @@ pub fn document() -> Building {
     ));
 
     // **A skirt at every storey's top, four lean-tos to a skirt**, each with its crest on the storey's own
-    // line and its eave hanging `REACH` past the wall. No covering: see the module's note on tiles.
+    // line and its eave hanging `REACH` past the wall. Every one of them wears tiles: a hip's covering was
+    // refused by the validator until the roll's own section became a prism, and `lean_to_probe` is the
+    // measurement that found it.
     for storey in 1..=STOREYS {
         let line = PLINTH + storey as f32 * STOREY;
         for side in 0..4 {
             if let Some(shed) =
                 derive::lean_to(id, skirt(half, deep, side), line - EAVE_DROP, line, SKIRT)
             {
-                skeleton.roofs.push(shed);
+                skeleton.roofs.push(shed.with_covering(COVERING));
             }
         }
     }
@@ -329,7 +334,7 @@ pub fn document() -> Building {
         CROWN_THICKNESS,
     )
     .expect("the body is a rectangle");
-    skeleton.roofs.push(crown);
+    skeleton.roofs.push(crown.with_covering(COVERING));
     Building::new(skeleton)
 }
 

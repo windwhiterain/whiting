@@ -78,6 +78,194 @@ fn main() {
     }
     println!("  worst departure over the whole roof: {worst:.6}");
 
+    println!("\n# one lean-to wearing a covering: the rolls, and their own six corners");
+    {
+        let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
+        let mut mass = Mass::new(
+            [
+                PlanNode::new([-HALF_X, -HALF_Z], 0.0),
+                PlanNode::new([HALF_X, -HALF_Z], 0.0),
+                PlanNode::new([HALF_X, HALF_Z], 0.0),
+                PlanNode::new([-HALF_X, HALF_Z], 0.0),
+            ]
+            .to_vec(),
+            TOP,
+        );
+        mass.wall = 0.24;
+        mass.slab = 0.30;
+        let id = MassId(skeleton.masses.len());
+        skeleton.masses.push(mass);
+        let out = HALF_Z + REACH;
+        let plan: [[f32; 2]; 4] = [
+            [-HALF_X, -out],
+            [HALF_X, -out],
+            [HALF_X, -HALF_Z],
+            [-HALF_X, -HALF_Z],
+        ];
+        let shed = derive::lean_to(id, plan, TOP - DROP, TOP, THICKNESS)
+            .expect("a rectangle between two heights is a lean-to")
+            .with_covering(whiting_building::Covering {
+                period: 0.28,
+                fill: 0.62,
+                height: 0.05,
+            });
+        skeleton.roofs.push(shed);
+        let document = Building::new(skeleton);
+        let violations = document.validate();
+        println!("  violations: {}", violations.len());
+        for violation in violations.iter().take(4) {
+            println!("    {violation:?}");
+        }
+        if let Ok(mesh) = document.build() {
+            // The first roll's own points, in the order `push_roll` wrote them: two sections of three.
+            let mut shown = 0;
+            for (index, face) in mesh.faces.iter().enumerate() {
+                let whiting_building::Element::Roll(id, _) = face.element else {
+                    continue;
+                };
+                if id.index != 0 {
+                    continue;
+                }
+                if shown == 0 {
+                    println!(
+                        "  roll 0 is element {id:?}, first triangle {index}: {:.4?}",
+                        mesh.triangle(face)
+                    );
+                }
+                shown += 1;
+            }
+            println!("  roll 0 draws {shown} triangle(s)");
+            // Its six corners, as the points its triangles name.
+            let mut corners: Vec<[f32; 3]> = Vec::new();
+            for face in &mesh.faces {
+                let whiting_building::Element::Roll(id, _) = face.element else {
+                    continue;
+                };
+                if id.index != 0 {
+                    continue;
+                }
+                for point in mesh.triangle(face) {
+                    if !corners.iter().any(|held| {
+                        (held[0] - point[0]).abs() < 1.0e-5
+                            && (held[1] - point[1]).abs() < 1.0e-5
+                            && (held[2] - point[2]).abs() < 1.0e-5
+                    }) {
+                        corners.push([point[0], point[1], point[2]]);
+                    }
+                }
+            }
+            for corner in &corners {
+                println!("    corner {:.4?}", corner);
+            }
+        }
+    }
+
+    println!("\n# the tower's skirts with coverings, one level at a time");
+    for levels in 1..=7_usize {
+        let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
+        let top = 0.45 + 7.0 * 2.4;
+        let mut mass = Mass::new(
+            [
+                PlanNode::new([-HALF_X, -HALF_Z], 0.45),
+                PlanNode::new([HALF_X, -HALF_Z], 0.45),
+                PlanNode::new([HALF_X, HALF_Z], 0.45),
+                PlanNode::new([-HALF_X, HALF_Z], 0.45),
+            ]
+            .to_vec(),
+            top,
+        );
+        mass.wall = 0.20;
+        mass.slab = 0.28;
+        let id = MassId(skeleton.masses.len());
+        skeleton.masses.push(mass);
+        let out_x = HALF_X + REACH;
+        let out_z = HALF_Z + REACH;
+        for level in 1..=levels {
+            let line = 0.45 + level as f32 * 2.4;
+            let plans: [[[f32; 2]; 4]; 4] = [
+                [
+                    [-HALF_X, -out_z],
+                    [HALF_X, -out_z],
+                    [HALF_X, -HALF_Z],
+                    [-HALF_X, -HALF_Z],
+                ],
+                [
+                    [out_x, -HALF_Z],
+                    [out_x, HALF_Z],
+                    [HALF_X, HALF_Z],
+                    [HALF_X, -HALF_Z],
+                ],
+                [
+                    [HALF_X, out_z],
+                    [-HALF_X, out_z],
+                    [-HALF_X, HALF_Z],
+                    [HALF_X, HALF_Z],
+                ],
+                [
+                    [-out_x, HALF_Z],
+                    [-out_x, -HALF_Z],
+                    [-HALF_X, -HALF_Z],
+                    [-HALF_X, HALF_Z],
+                ],
+            ];
+            for plan in plans {
+                if let Some(shed) = derive::lean_to(id, plan, line - DROP, line, THICKNESS) {
+                    skeleton
+                        .roofs
+                        .push(shed.with_covering(whiting_building::Covering {
+                            period: 0.28,
+                            fill: 0.62,
+                            height: 0.05,
+                        }));
+                }
+            }
+        }
+        let document = Building::new(skeleton);
+        let violations = document.validate();
+        println!(
+            "  {levels} level(s), {} roof(s): {} violation(s)",
+            levels * 4,
+            violations.len()
+        );
+        for violation in violations.iter().take(2) {
+            println!("    {violation:?}");
+        }
+    }
+
+    println!("\n# one hip, with and without a covering");
+    for wearing in [false, true] {
+        let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
+        let mut mass = Mass::new(
+            [
+                PlanNode::new([-HALF_X, -HALF_Z], 0.0),
+                PlanNode::new([HALF_X, -HALF_Z], 0.0),
+                PlanNode::new([HALF_X, HALF_Z], 0.0),
+                PlanNode::new([-HALF_X, HALF_Z], 0.0),
+            ]
+            .to_vec(),
+            TOP,
+        );
+        mass.wall = 0.20;
+        mass.slab = 0.28;
+        let id = MassId(skeleton.masses.len());
+        skeleton.masses.push(mass);
+        let mut hip = derive::hip_roof(id, &skeleton.masses[id.0], 0.8, 1.8, 0.08, 0.18)
+            .expect("a rectangle takes a hip");
+        if wearing {
+            hip = hip.with_covering(whiting_building::Covering {
+                period: 0.28,
+                fill: 0.62,
+                height: 0.05,
+            });
+        }
+        skeleton.roofs.push(hip);
+        let document = Building::new(skeleton);
+        let violations = document.validate();
+        println!("  covering {wearing}: {} violation(s)", violations.len());
+        for violation in violations.iter().take(4) {
+            println!("    {violation:?}");
+        }
+    }
     println!("\n# the whole tower: four skirts at seven levels and a crown on the same mass");
     {
         let mut document = four_skirts(7);
