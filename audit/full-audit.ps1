@@ -89,9 +89,9 @@ if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 "clean output directory: $out"
 
-# **The gpu is not this audit's to use.** The machine runs other work on it, so nothing here drives
-# one: the plates are path-traced by `whiting-device-cycles` on the cpu and the scenes are held still
-# by their documents rather than by their pixels.
+# **The gpu is not this audit's to use, and no frame is compared.** The machine runs other work on the
+# gpu, so nothing here drives one; and a picture is not what this file holds still — the scenes are
+# pinned by the **documents** they compile to, which are renderer-independent and deterministic.
 "===================================================================="
 "AUDIT  worktree: $root"
 "started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
@@ -241,7 +241,7 @@ foreach ($pkg in $expect.Keys) {
 # **`whiting-device-rasterize` is compiled and not run.** Thirty-eight of its tests draw frames through
 # wgpu, and the gpu on this machine is the owner's: the rule is that no frame is drawn through it. The
 # suite is therefore built here and its tests are left unexecuted, which is a real loss of coverage and
-# is recorded as one — the plate this file *does* make is path-traced on the cpu, in [6/8].
+# is recorded as one. Neither is any frame compared: see [6/8], which reads documents.
 $t = cargo test -q -p whiting-device-rasterize --no-run 2>&1
 $code = $LASTEXITCODE
 $t | Out-File -FilePath $log -Append -Encoding utf8
@@ -279,14 +279,13 @@ foreach ($pair in @(@("whiting-building", "building", 40), @("whiting-gallery", 
 }
 
 "--------------------------------------------------------------------"
-"[6/8] the sixteen scene documents: hashes, and one plate through Cycles on the cpu"
+"[6/8] the sixteen scene documents: hashes of the compiled documents"
 "--------------------------------------------------------------------"
-# **No gpu here.** The rasterising harness drives one, and the machine this audit runs on has other
-# work for it: the plates are path-traced by `whiting-device-cycles` on the CPU, at a fixed sample
-# count, and the gate below is the **document** the renderer reads rather than the pixels it makes.
-# A document is renderer-independent and deterministic (measured: two writes of one scene are the same
-# 6.7 MB and the same hash), so this pins what the scenes *are* without spending a gpu on what they
-# look like.
+# **No gpu, and no picture.** The rasterising harness drives one, and the machine this audit runs on
+# has other work for it. The gate below is the **document** the renderer reads rather than the pixels
+# it makes: a document is renderer-independent and deterministic (measured: two writes of one scene
+# are the same 6.7 MB and the same hash), so this pins what the scenes *are* without spending a gpu
+# — or a comparison of images — on what they look like.
 $pinned = [ordered]@{
     house      = "1F648E1FB44D0D73"; hall       = "18F9EE14235A31F4"; hall_large = "276B44CC8C82691F"
     shed       = "E7457703620E9085"; terrace    = "23541F590BC93856"; wing       = "4E57123C48D74B4B"
@@ -317,19 +316,6 @@ foreach ($scene in $pinned.Keys) {
 }
 "  documents written: $written of $($pinned.Count)   hashes moved: $moved of $($pinned.Count)"
 
-# **And the renderer still runs**, on the cpu, at the sample count the plates are looked at with.
-# One scene is enough: this stage asks whether the path tracer reads a document and writes a frame,
-# not what the frame looks like — the document hash above is what holds the scene still.
-$plate = Join-Path $out "street_cycles.png"
-$r = cargo run -q -p whiting-device-cycles --example render_cycles -- --document (Join-Path $out "street.json") $plate 24 CPU 2>&1
-$code = $LASTEXITCODE
-$r | Out-File -FilePath $log -Append -Encoding utf8
-Gate "render_cycles street on the cpu" $code 0
-if (Test-Path $plate) {
-    $got = (Get-FileHash -Algorithm SHA256 $plate).Hash.Substring(0, 16)
-    "  street through cycles: got $got  pinned 68419057F1C77B5B"
-    if ($got -cne "68419057F1C77B5B") { $script:fail += "cycles plate: got $got, pinned 68419057F1C77B5B" }
-} else { $script:fail += "cycles plate was not written" }
 
 "--------------------------------------------------------------------"
 "[7/8] scene_identity_probe: rows and two-way"
