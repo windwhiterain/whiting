@@ -1252,12 +1252,37 @@ of them would move with that one and leave the rest behind on the first seat.
 | documents | `yikeyin` `D150D4C141F7DCF9`, `yikeyin_court` `21BD72E24CC886C5`, `compound` `6AAD1D2CD464B03C`, `compound_court` `7C99C4BDA8890F27` |
 | seventeen scenes | **47 660 rows** |
 
-**A renderer finding, recorded rather than fixed**: the same document that lights its court in the
-rasterising pipeline draws a near-black well through Cycles. The court's only light is the sky slot and the
-environment light the document declares, and the Cycles path does not read that variant the way the lighting
-stage does. It is a difference between two renderers and not a fault in the building — the well *is* deep —
-but it means a picture of an interior court needs the rasteriser, which the machine's gpu no longer allows,
-so interior plates are for the owner's own machine until the Cycles path learns the environment light.
+**A renderer finding, measured and corrected here**: the 一颗印's court draws almost black through Cycles
+while it reads in the rasterising pipeline, and this proposal first said the tracer did not read the
+environment light. **That was wrong, and the measurement says so**: with the sun's power at 0, raising the
+declared radiance tenfold raises the court wall's mean luminance by **10.0132** (0.014962 → 0.149819); a
+light that is dropped does not scale. The emitted document carries the sky as
+
+```xml
+<background>
+  <environment_texture name="world_texture" filename="air.png" />
+  <background name="world" strength="1.06, 1.06, 1.06" />
+  <connect from="world_texture color" to="world color" />
+  <connect from="world background" to="output surface" />
+</background>
+```
+
+so the image *is* carried and the radiance *is* on the strength. The real difference is **what the two
+renderers do with it**: the rasteriser's ambient is an unoccluded map lookup (`environment_map` sampled by
+the normal), while the tracer's is traced and therefore respects the well. A 3 × 3 m court under 6.2 m of
+wall sees ≈0.34 sr of sky, and `albedo·L·Ω/π ≈ 0.015` — which is the measured wall. **The dark court is the
+correct picture and the bright one was the approximation.**
+
+`crates/device-cycles/examples/environment_probe.rs` is that measurement, kept: it rewrites the declared
+radiance, renders at two of them, and prints the region's luminance beside the document's own world block,
+with `--light-power 0` to switch the other lights off.
+
+**One related defect found and not fixed**: a **tinted** environment light loses its tint. The colour ×
+radiance triple lands on Cycles' `Strength` socket, which is a float, so only the first number survives —
+`[1.0, 0.2, 0.2]` renders identically to white, and the court's sky slot reads `41.57, 48.81, 60.23` in both
+cases. No gallery scene is tinted (all seven declare `[1.0; 3]`), and the fix is to put the radiance alone
+on `Strength` and multiply the texture by the tint with a `vector_math` node; it is left for a round that
+wants it, because the world block is a pinned output other notes have measured.
 
 ## What would make this proposal wrong
 
