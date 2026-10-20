@@ -106,6 +106,9 @@ function Get-OwnWarnings {
     $kept = @()
     for ($i = 0; $i -lt $Output.Count; $i++) {
         if ($Output[$i] -notmatch '^(warning|error)') { continue }
+        # A `generated N warnings` summary repeats what the individual lines already said, and cargo
+        # prints it for every crate in the build, dependency or not.
+        if ($Output[$i] -match 'generated \d+ warning') { continue }
         $where = $null
         for ($j = $i + 1; $j -lt [Math]::Min($Output.Count, $i + 6); $j++) {
             if ($Output[$j] -match '^\s+--> (.+)$') { $where = $Matches[1]; break }
