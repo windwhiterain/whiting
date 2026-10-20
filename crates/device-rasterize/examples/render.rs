@@ -30,6 +30,13 @@
 //! compiled is the one the registry holds afterwards. The gallery writes those files: `cargo run
 //! -p whiting-gallery --example scene_document -- <name> <path>`.
 //!
+//! **The reader is chosen by the file's magic, not by its extension.** A document in the binary
+//! form of [`definition::binary`] and a document in json are both read here, and which one a
+//! file is is decided by the eight bytes at its head. A file that was renamed is therefore still
+//! read as what it is, and a file that carries the magic and is cut short is refused by name,
+//! with the error saying where the payload ended, rather than read as a document that happens to
+//! be shorter. See [`read_document`].
+//!
 //! The name is what the document is registered under and what the manifest records, so a frame
 //! drawn from a document can be compared against the frame the same document drew before: the
 //! manifest beside the images says so in hashes rather than in an opinion. **A document with no
@@ -106,7 +113,9 @@ use std::collections::HashSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use definition::{Definition, DefinitionIdentifier, FieldMap, Registry, SchemaIdentifier, Value};
+use definition::{
+    Definition, DefinitionIdentifier, FieldMap, Registry, SchemaIdentifier, Value, binary,
+};
 use device::{RenderedFrame, RenderedImage, Renderer};
 use facet::Facet;
 use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
@@ -766,9 +775,7 @@ fn load_document(
     registry: &mut Registry,
     name: Option<&str>,
 ) -> Result<Naming, String> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|error| format!("reading {} failed: {error}", path.display()))?;
-    let value = read_value(text)?;
+    let value = read_document(path)?;
     let name = match name {
         Some(name) => name.to_owned(),
         None => document_name(&value).ok_or_else(|| {
@@ -812,6 +819,62 @@ fn document_name(value: &Value) -> Option<String> {
         .and_then(|fields| fields.get(scene::standard::NAME))
         .and_then(Value::as_str)
         .map(str::to_owned)
+}
+
+/// Reads a scene document, choosing the reader by the file's magic.
+///
+/// # Invariants
+///
+/// - **The magic decides, and the extension does not.** A document in the binary form and a
+///   document in json are both read here, and which one a file is is decided by the eight
+///   bytes at its head. A file that was renamed is therefore read as what it is, and a file
+///   that is neither form is refused by the reader that tried it rather than read as a
+///   document that happens to have the same shape.
+/// - **A file that carries the magic and is cut short is refused by the binary reader**,
+///   which says where the payload ended and how many more bytes were needed. A file that is
+///   not this format is never read as this format.
+fn read_document(path: &Path) -> Result<Value, String> {
+    let head = read_head(path)?;
+    if binary::has_magic(&head) {
+        let bytes = std::fs::read(path)
+            .map_err(|error| format!("reading {} failed: {error}", path.display()))?;
+        read_binary(path, bytes)
+    } else {
+        let text = std::fs::read_to_string(path)
+            .map_err(|error| format!("reading {} failed: {error}", path.display()))?;
+        read_value(text)
+    }
+}
+
+/// Returns the first bytes of a file, which is where the magic is.
+fn read_head(path: &Path) -> Result<Vec<u8>, String> {
+    let mut file = std::fs::File::open(path)
+        .map_err(|error| format!("reading {} failed: {error}", path.display()))?;
+    let mut head = vec![0u8; binary::MAGIC.len()];
+    let read = file
+        .read(&mut head)
+        .map_err(|error| format!("reading {} failed: {error}", path.display()))?;
+    head.truncate(read);
+    Ok(head)
+}
+
+/// Reads a binary document into the value it holds.
+///
+/// # Invariants
+///
+/// **The read happens on a thread of its own, because the read is what needs the room.** The
+/// bytes are moved into that thread rather than copied, so the document is held once and not
+/// twice: a document of a few hundred megabytes copied once is a few hundred megabytes of
+/// memory the machine did not need to spend.
+fn read_binary(path: &Path, bytes: Vec<u8>) -> Result<Value, String> {
+    let where_ = path.display().to_string();
+    std::thread::Builder::new()
+        .stack_size(DOCUMENT_STACK_BYTES)
+        .spawn(move || binary::decode(&bytes))
+        .map_err(|error| format!("the reading thread does not start: {error}"))?
+        .join()
+        .map_err(|_| "the reading thread panicked".to_owned())?
+        .map_err(|error| format!("the document at {where_} is not a whiting document: {error}"))
 }
 
 /// Reads the json of a scene document into the value it holds.
