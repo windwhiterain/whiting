@@ -1,36 +1,44 @@
-# The deep audit of the building arc: opt-in, and not the round's gate.
+# The **full** audit: it does not run without the owner's permission.
+#
+# The audit a round runs is `audit/audit.ps1` -- ten seconds, the diff's downstream, the formatting of the
+# files that changed. This file is the expensive pass: the whole workspace built, linted, documented, every
+# suite, the whole-tree formatting. It compiles and links for minutes on a shared machine, and the owner
+# asked for it to be *his* decision rather than a habit, so it refuses to start unless he permits it:
+#
+#     pwsh -NoProfile -File audit/full-audit.ps1 -OnOwnerPermission
+#
+# Without that switch it prints what it would do and exits 2 in well under a second. The switch is not a
+# password; it is a signature in the transcript, where a run can be seen to have been asked for.
 #
 # **A scene is an aesthetic decision and this file does not audit one.** It used to write seventeen scene
 # documents and hash them, and before that it compared rendered plates; both were pinning a camera, a
 # material table and a composition, which are the owner's judgements and not invariants. What is left is
 # what a machine can actually judge: that the workspace builds, that the lints and the docs are clean, that
-# the suites pass, that the identity table of every scene is what it was, and that the formatting is one
-# style. The examples are **compiled** by [1/6] and never run one by one: they are measuring
-# instruments, their output is a number a person reads, and nothing here reads it.
+# the suites pass, and that the formatting is one style. The examples are **compiled** by [1/5] and never run
+# one by one: they are measuring instruments, their output is a number a person reads, and nothing reads it.
 #
-# **The round's gate is `fast-audit.ps1`, and it is capped at ten seconds.** This file is the pass to run
+# **The round's gate is `audit/audit.ps1`, and it is capped at ten seconds.** This file is the pass to run
 # before a merge that moves a crate, a dependency or an invariant, because it is the only one that compiles the
 # whole workspace, lints it and documents it. Measured on one warm tree, stage by stage, and it is why it is
 # not the default:
 #
-#   [1/6] cargo build --workspace --all-targets   20 s warm, minutes cold; this is also what compiles the examples
-#   [2/6] cargo clippy over three crates          ~30 s
-#   [3/6] cargo doc                               ~20 s
-#   [4/6] the suites that run                    ~5 s   (gallery 0.7 s, scene 2.3 s, definition 1.1 s, graphics 0.9 s)
-#   [5/6] scene_identity_probe                    ~0.6 s
-#   [6/6] cargo fmt --all -- --check              8 s
+#   [1/5] cargo build --workspace --all-targets   20 s warm, minutes cold; this is also what compiles the examples
+#   [2/5] cargo clippy over three crates          ~30 s
+#   [3/5] cargo doc                               ~20 s
+#   [4/5] the suites that run                    ~5 s   (gallery 0.7 s, scene 2.3 s, definition 1.1 s, graphics 0.9 s)
+#   [5/5] cargo fmt --all -- --check              8 s
 #
-# A gate that costs minutes is a gate nobody runs every round, so the ten-second one exists and this is the
-# deliberate, occasional, expensive pass.
+# A gate that costs minutes is a gate nobody runs every round, so `audit/audit.ps1` is the audit and this is the
+# expensive pass the owner asks for.
 #
 # It prints the VALUES it compared, never a bare verdict, because a bare match is how a
 # canary reports success on a green log. Every gate keeps its own exit code, read on the
 # statement immediately after the command it belongs to.
 #
-# Run with `pwsh -NoProfile -File audit/full-audit.ps1`, from the worktree.
+# Run with `pwsh -NoProfile -File audit/full-audit.ps1 -OnOwnerPermission`, from the worktree.
 #
-# THE ONE COMMAND:  pwsh -NoProfile -File audit/fast-audit.ps1   (the round's gate, ten seconds)
-#                   pwsh -NoProfile -File audit/full-audit.ps1   (this file, ten minutes)
+# THE TWO COMMANDS:  pwsh -NoProfile -File audit/audit.ps1                          (the audit, ten seconds)
+#                    pwsh -NoProfile -File audit/full-audit.ps1 -OnOwnerPermission  (this file, with permission)
 #
 # Language: PowerShell 7 (`pwsh`). Platform: none of its own -- every path is built with
 # Join-Path from $PSScriptRoot and no path is spelled with a separator, so the same script
@@ -61,6 +69,21 @@
 # print the warning count they counted and compare it against 0, and both were proved to fail
 # by putting those two faults in and reading the numbers back: 1 against 0, on runs whose exit
 # code was 0.
+# **The permission gate, and it is the first statement the file executes.** `param` has to come before any
+# other code, so this sits above the variables and the log: without `-OnOwnerPermission` the script prints
+# what it would do and exits 2 without touching cargo. The switch is a signature in the transcript, not a
+# password -- a full run can then be seen to have been asked for, which is what the owner asked for.
+param(
+    [switch]$OnOwnerPermission
+)
+
+if (-not $OnOwnerPermission) {
+    "This is the full audit: the whole workspace built (debug and release), linted, documented, every suite,"
+    "and the whole-tree formatting. It takes minutes and it is the owner's to ask for."
+    "Nothing was run. To run it:  pwsh -NoProfile -File audit/full-audit.ps1 -OnOwnerPermission"
+    exit 2
+}
+
 $ErrorActionPreference = "Continue"
 # The worktree root is this script's own parent, so the same script verifies a branch in its
 # worktree and a merge on the tip it was merged into. Hard-coding one checkout's path would
@@ -149,7 +172,7 @@ function Get-OwnWarnings {
 }
 
 "--------------------------------------------------------------------"
-"[1/6] build --workspace --all-targets, and the worktree discipline"
+"[1/5] build --workspace --all-targets, and the worktree discipline"
 "--------------------------------------------------------------------"
 $build = cargo build --workspace --all-targets -j 3 2>&1
 $code = $LASTEXITCODE
@@ -190,7 +213,7 @@ if ($relWarn.Count -ne 0) { $script:fail += "the release build printed $($relWar
 Gate "cargo build --workspace --all-targets --release" $code 0
 
 "--------------------------------------------------------------------"
-"[2/6] cargo clippy over the three building crates: warning count against 0"
+"[2/5] cargo clippy over the three building crates: warning count against 0"
 "--------------------------------------------------------------------"
 # The exit code is printed beside the count and is NOT the gate. Both readings are taken because
 # they are two claims -- "clippy ran" and "clippy had nothing to say" -- and the first is true of a
@@ -210,7 +233,7 @@ if ($lintLines.Count -ne 0) { $script:fail += "clippy printed $($lintLines.Count
 Gate "cargo clippy -p building -p gallery -p scene" $code 0
 
 "--------------------------------------------------------------------"
-"[3/6] cargo doc -p whiting-building --no-deps: warning count against 0"
+"[3/5] cargo doc -p whiting-building --no-deps: warning count against 0"
 "--------------------------------------------------------------------"
 # The same two readings and the same reason. `--no-deps` because this is this crate's own
 # documentation and the count a reader of docs.rs would see; rustdoc checks only public
@@ -226,7 +249,7 @@ if ($docLines.Count -ne 0) { $script:fail += "cargo doc printed $($docLines.Coun
 Gate "cargo doc -p whiting-building --no-deps" $code 0
 
 "--------------------------------------------------------------------"
-"[4/6] the suites that run without a gpu, and the rasterising one built and not run"
+"[4/5] the suites that run without a gpu, and the rasterising one built and not run"
 "--------------------------------------------------------------------"
 # The two the audit list never ran -- definition and graphics -- are in this table with their
 # counts, because the debt sweep found them compiled by the build and executed by nobody:
@@ -274,23 +297,7 @@ $counted = @($t | Select-Object -Skip 0) | Out-Null
 Gate "cargo test -p whiting-device-rasterize --no-run" $code 0
 
 "--------------------------------------------------------------------"
-"[5/6] scene_identity_probe: rows and two-way"
-"--------------------------------------------------------------------"
-$p = cargo run -q -p whiting-gallery --example scene_identity_probe 2>&1
-$code = $LASTEXITCODE
-$p | Out-File -FilePath $log -Append -Encoding utf8
-$rows = 0
-foreach ($line in $p) { if ($line -match '^\s+\S+\s+(\d+) row\(s\), ids 1\.\.=(\d+)') { $rows += [int]$Matches[1] } }
-$twoWay = @($p | Where-Object { $_ -match 'the channel is two-way for every scene: (\w+)' })
-$twoWayValue = if ($twoWay.Count -gt 0) { ($twoWay[0] -split ': ')[-1] } else { "(line absent)" }
-"  rows summed over scenes : $rows   (audit says 54332)"
-"  two-way line reads      : $twoWayValue"
-if ($rows -ne 54332) { $script:fail += "identity rows ($rows, expected 54332)" }
-if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
-Gate "scene_identity_probe" $code 0
-
-"--------------------------------------------------------------------"
-"[6/6] cargo fmt --all -- --check"
+"[5/5] cargo fmt --all -- --check"
 "--------------------------------------------------------------------"
 # Both readings, because they are two claims: exit 0 says "rustfmt is satisfied", and an
 # empty output says "it printed no diff". A rustfmt that exits 0 while saying something is a

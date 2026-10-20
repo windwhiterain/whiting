@@ -1,12 +1,12 @@
-# The fast audit: the whole gate in **ten seconds**, run every round.
+# The audit: the gate a round runs, in ten seconds.
 #
 # WHY THIS FILE EXISTS
 #
-# `full-audit.ps1` grew a stage per arc, and the cost of it is dominated by things that are not gates but
+# The full pass grew a stage per arc, and its cost was dominated by things that are not gates but
 # builds: `cargo fmt --all -- --check` walks every crate (8 s), `cargo check --workspace --all-targets`
 # re-checks the world (20 s warm), and the two stages that *matter* -- sixty-four examples, seventeen scene
 # documents -- each pay a process launch and a scene build, which is where the ten minutes went. A gate that
-# costs ten minutes is a gate nobody runs, so the default is this file and the deep pass is opt-in.
+# costs ten minutes is a gate nobody runs, so this is the audit and the full pass needs the owner's word.
 #
 # What is kept here is what a round can actually break and what is cheap *when the tree is warm*:
 #
@@ -27,13 +27,13 @@
 # composition would turn the owner's judgement into a red gate. That is why there is no document hash here.
 #
 # The device-rasterize suite is not run: thirty-eight of its tests draw frames through the gpu, and the gpu
-# belongs to the machine's owner. Its binary is built by `full-audit.ps1` and left unexecuted there.
+# belongs to the machine's owner. Its binary is built by the full pass and left unexecuted there.
 #
 # WHAT IS NOT HERE, and where it went
 #
 # clippy, `cargo doc`, the whole-workspace build, the whole-tree fmt check and the rasterize build are all in
-# `full-audit.ps1`. Run that one before a merge that moves a crate, a dependency or an invariant; run this one
-# every round.
+# `full-audit.ps1`, which **does not run without the owner's permission** (it refuses with exit 2 otherwise).
+# This file is what a round runs.
 #
 # Language: PowerShell 7. Platform: none of its own -- every path is built with `Join-Path` from
 # `$PSScriptRoot`.
@@ -52,7 +52,7 @@ function Gate([string]$name, [int]$code, [int]$expected) {
 }
 
 "===================================================================="
-"AUDIT (fast)  worktree: $root"
+"AUDIT  worktree: $root"
 "started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 "===================================================================="
 
@@ -243,9 +243,9 @@ if ($clock.Elapsed.TotalSeconds -gt 10.0) {
 $verdict = @()
 $verdict += "===================================================================="
 if ($script:fail.Count -eq 0) {
-    $verdict += "AUDIT (fast) RESULT: every gate green, in under ten seconds."
+    $verdict += "AUDIT RESULT: every gate green, in under ten seconds."
 } else {
-    $verdict += "AUDIT (fast) RESULT: $($script:fail.Count) failure(s):"
+    $verdict += "AUDIT RESULT: $($script:fail.Count) failure(s):"
     foreach ($one in $script:fail) { $verdict += "  - $one" }
 }
 $verdict += "finished: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
