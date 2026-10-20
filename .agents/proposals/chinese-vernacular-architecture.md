@@ -1445,3 +1445,20 @@ Three measurements, and the first two were found by the document refusing to agr
   measured on the street's shopfront two rounds earlier. The stone below the door is what a person steps over.
 
 Rows 6 519 → **6 550**, and the gate carries its own 门罩 hosted by the gate house, shedding away from the wall.
+### The ranges stand on their 台明
+
+The four ranges stood level with the court's paving, which is not how a Chinese courtyard is built: the ranges
+stand on a **stone platform** — the 台明 — and the court is the floor below it, which is what makes the court a
+room and the ranges its walls.
+
+Three things, and only the first is a number:
+
+- **the seat's own offset is the platform's height** (`0.45`), so the ranges and their platforms cannot disagree:
+  the seat moves the building up by that much and the platforms fill exactly the gap it opens;
+- **each platform is its range's own plan, proud by `0.30`**, wound positively — the same inflation-about-the-
+  centre and the same `loop_area` test the village's house plinths use;
+- **the court stays where it was** (`0.02 .. 0.08`), so the paving is now the well floor of a four-sided room
+  rather than the level the ranges stand on.
+
+Identity: 6 550 → **6 580 rows**. What the compound still lacks is the **踏步** — the three or five stone steps
+from the court up to each range's door, which is the other half of a 台明 and is not drawn.

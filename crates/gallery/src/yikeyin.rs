@@ -77,6 +77,13 @@ const GATE_HEIGHT: f32 = 3.6;
 /// **The sill is a length and not a detail**: an opening that reaches the floor is a hole in the bottom of the
 /// wall, and a board standing in one splits the wall into two shells. `GATE_HEAD` is the door's own head, read
 /// off the same inset the cut uses.
+/// The platform's own height above the court, and how far it stands proud of the range it carries.
+///
+/// **The height is the seat's offset**, so the ranges and their platforms cannot disagree: the seat moves the
+/// building up by TAI_MING and the platforms fill exactly that gap.
+const TAI_MING: f32 = 0.45;
+const TAI_MING_PROUD: f32 = 0.30;
+
 const GATE_SILL: f32 = 0.15;
 const GATE_HOOD: f32 = 0.85;
 const GATE_HEAD: f32 = GATE_HEIGHT - 0.9;
@@ -454,7 +461,38 @@ pub fn document() -> Building {
     porch(&mut skeleton);
     // **One seat for the whole compound**, so the four ranges share a level rather than each finding its
     // own: a 一颗印 is built flat, and its court is a well and not a slope.
-    let _ = site::seat(&mut skeleton, |_| 0.0, 0.0);
+    //
+    // **And the seat is `TAI_MING` off the ground**, because a Chinese courtyard's ranges do not stand on the
+    // paving: they stand on a stone platform — the 台明 — and the court is the floor below it, which is what makes
+    // the court a room and the ranges its walls. The offset is the seat's own argument and the platform is what
+    // fills the gap it opens.
+    let _ = site::seat(&mut skeleton, |_| 0.0, TAI_MING);
+    // The four platforms, one under each range: the range's own plan proud of it by `TAI_MING_PROUD`, from the
+    // court's own level up to the seat.
+    for index in 0..4 {
+        let Some(mass) = skeleton.masses.get(index) else {
+            continue;
+        };
+        let mut plan: Vec<[f32; 2]> = mass.outline.iter().map(|node| node.position).collect();
+        let middle = {
+            let sum = plan.iter().fold([0.0_f32, 0.0_f32], |sum, at| {
+                [sum[0] + at[0], sum[1] + at[1]]
+            });
+            [sum[0] / plan.len() as f32, sum[1] / plan.len() as f32]
+        };
+        for at in &mut plan {
+            let out = [at[0] - middle[0], at[1] - middle[1]];
+            let length = (out[0] * out[0] + out[1] * out[1]).sqrt().max(1.0e-3);
+            let grow = (length + TAI_MING_PROUD) / length;
+            *at = [middle[0] + out[0] * grow, middle[1] + out[1] * grow];
+        }
+        if loop_area(&plan) < 0.0 {
+            plan.reverse();
+        }
+        skeleton
+            .slabs
+            .push(building::Slab::plate(plan, 0.0, TAI_MING));
+    }
     // **And the court is paved, with its grating at the middle** — which is where 四水归堂's water ends:
     // the four roofs shed inward and the paving's one hole is what they shed into.
     let court = [
@@ -578,6 +616,19 @@ fn court_edge(mass: &building::Mass, z: f32) -> Option<(usize, f32, f32)> {
     None
 }
 
+/// Returns a plan loop's signed area, which is how this file tells a positive winding from a reversed one.
+fn loop_area(plan: &[[f32; 2]]) -> f32 {
+    if plan.len() < 3 {
+        return 0.0;
+    }
+    let mut area = 0.0;
+    for index in 0..plan.len() {
+        let here = plan[index];
+        let next = plan[(index + 1) % plan.len()];
+        area += here[0] * next[1] - next[0] * here[1];
+    }
+    area * 0.5
+}
 /// Adds one range: a mass, its intermediate floor and its crowned 硬山 roof, in that order.
 ///
 /// # Invariants
