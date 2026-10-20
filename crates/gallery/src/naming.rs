@@ -401,6 +401,7 @@ pub fn building_of(scene: &str) -> Option<Building> {
         "drum_tower" => crate::drum_tower::document(),
         "earthen_house" => crate::earthen::document(),
         "log_house" => crate::log_house::document(),
+        "village_square" => crate::village::document(),
         "stilt_gallery" => crate::stilt::document(),
         "street" => crate::street::document(),
         "street_arcade" => crate::street::document(),

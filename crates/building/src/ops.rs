@@ -42,7 +42,9 @@
 
 use crate::grid::{FaceGrid, FaceRef, Rhythm};
 use crate::mass::{Attachment, Join, Mass, MassId, PlanNode};
+use crate::math::Vec2;
 use crate::math::{distance, lerp};
+use crate::member::{Anchor, MemberId};
 use crate::openings::Opening;
 use crate::parts::{Placement, Target, Template};
 use crate::roof::{Roof, RoofId};
@@ -387,4 +389,149 @@ pub fn place_part(skeleton: &mut BuildingSkeleton, placement: Placement) -> Opti
 /// Removes a placement by index and returns it.
 pub fn remove_placement(skeleton: &mut BuildingSkeleton, index: usize) -> Option<Placement> {
     skeleton.parts.remove(index)
+}
+
+/// Appends one document's skeleton to another, **re-basing every index it names**.
+///
+/// # Invariants
+///
+/// **A merge is a shift and not a copy**, because every reference in a document is an index into a list that is
+/// about to move: a mass names its host, a roof and a slab name the mass they sit on, a member names the member
+/// or the wall face it hangs from, an opening names the face it is cut into, and a rhythm names the face it was
+/// laid on. `offset` is added to each of those and to nothing else — the geometry does not move, so a document
+/// merged into another stands where it was authored, and a scene that wants it elsewhere translates its own
+/// plans before merging rather than asking this op to do two things.
+///
+/// **A document that places parts is refused.** A placement names a template by index, a bay by slot, and a pin
+/// inside that template; re-basing it is not a shift but a re-resolution against a grid that the base document
+/// may have authored differently. Answering `false` is the honest reply, and the caller can place its parts
+/// after the merge instead.
+///
+/// Returns whether the merge happened. Nothing is changed when it does not.
+pub fn merge(base: &mut BuildingSkeleton, other: BuildingSkeleton) -> bool {
+    if !other.parts.is_empty() {
+        return false;
+    }
+    let mass_offset = base.masses.len();
+    let member_offset = base.members.len();
+    let rebase_mass = |host: MassId| MassId(host.0 + mass_offset);
+    let rebase_member = |member: MemberId| MemberId(member.0 + member_offset);
+    let rebase_anchor = |anchor: Anchor| match anchor {
+        Anchor::Free { .. } => anchor,
+        Anchor::OnMember { member, t } => Anchor::OnMember {
+            member: rebase_member(member),
+            t,
+        },
+        Anchor::OnFace { face, along, up } => Anchor::OnFace {
+            face: rebase_face(face, mass_offset),
+            along,
+            up,
+        },
+    };
+
+    // **The grids are re-keyed and not rebuilt**: a rhythm is a value that names a face, and the face is the
+    // only part of it that a merge moves.
+    for face in other.grids.faces() {
+        if let Some(grid) = other.grids.get(face) {
+            base.grids
+                .replace(rebase_face(face, mass_offset), grid.clone());
+        }
+    }
+    for opening in other.openings.iter() {
+        let mut moved = opening.clone();
+        moved.face = rebase_face(opening.face, mass_offset);
+        base.openings.push(moved);
+    }
+    for mut mass in other.masses {
+        if let Some(attachment) = mass.attachment {
+            mass.attachment = Some(crate::mass::Attachment {
+                host: rebase_mass(attachment.host),
+                join: attachment.join,
+            });
+        }
+        base.masses.push(mass);
+    }
+    for mut roof in other.roofs {
+        roof.host = rebase_mass(roof.host);
+        base.roofs.push(roof);
+    }
+    for mut slab in other.slabs {
+        if let Some(host) = slab.host {
+            slab.host = Some(rebase_mass(host));
+        }
+        base.slabs.push(slab);
+    }
+    for mut member in other.members {
+        member.from = rebase_anchor(member.from);
+        member.to = rebase_anchor(member.to);
+        base.members.push(member);
+    }
+    // The site's own enclosures carry no indices into the lists above: a wall is a line and a height.
+    base.walls.extend(other.walls);
+    true
+}
+
+/// Returns a face with its mass re-based, which is the only field of it a merge moves.
+fn rebase_face(face: crate::grid::FaceRef, mass_offset: usize) -> crate::grid::FaceRef {
+    crate::grid::FaceRef {
+        mass: MassId(face.mass.0 + mass_offset),
+        ..face
+    }
+}
+
+/// Moves a document's **plans** by an offset, leaving every elevation where it is.
+///
+/// # Invariants
+///
+/// **A translate moves geometry and no index.** It is the other half of [`merge`]: a merge appends a document
+/// where it was authored, and a village that wants that document on the other side of a square translates it
+/// first. Nothing that names a list moves with it — a host is still the same mass, a rhythm still the same
+/// face — so the two ops commute with everything the expansion reads.
+///
+/// **Only the plan moves.** A roof's eaves and its crest points, a slab's outline, a member's free ends and the
+/// site's walls are all read in plan and shifted by the same `offset`; a crest's elevation, a mass's node
+/// elevations, a slab's two faces and a wall's height are untouched, because a document that moved up as well as
+/// across would be a different building.
+///
+/// A member anchored on another member, on a wall face or on nothing but a fraction of a neighbour carries no
+/// plan of its own: its two ends are derived from what they name, and that is moved for it.
+pub fn translate(skeleton: &mut BuildingSkeleton, offset: Vec2) {
+    let shift = |node: &mut PlanNode| {
+        node.position[0] += offset[0];
+        node.position[1] += offset[1];
+    };
+    for mass in &mut skeleton.masses {
+        for node in &mut mass.outline {
+            shift(node);
+        }
+    }
+    for roof in &mut skeleton.roofs {
+        for node in &mut roof.eaves {
+            shift(node);
+        }
+        for point in &mut roof.crest {
+            point.position[0] += offset[0];
+            point.position[1] += offset[1];
+        }
+    }
+    for slab in &mut skeleton.slabs {
+        for corner in &mut slab.outline {
+            corner[0] += offset[0];
+            corner[1] += offset[1];
+        }
+    }
+    for member in &mut skeleton.members {
+        let free = |anchor: &mut Anchor| {
+            if let Anchor::Free { at } = anchor {
+                at[0] += offset[0];
+                at[2] += offset[1];
+            }
+        };
+        free(&mut member.from);
+        free(&mut member.to);
+    }
+    for wall in &mut skeleton.walls {
+        shift(&mut wall.from);
+        shift(&mut wall.to);
+    }
 }

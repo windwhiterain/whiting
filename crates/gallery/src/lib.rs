@@ -135,6 +135,7 @@ pub mod vegetation_laws;
 pub mod vegetation_mesh;
 /// The bamboo picture: one plant's wood as a mesh and its leaves as one instanced blade.
 pub mod vegetation_picture;
+pub mod village;
 pub mod wing;
 /// The workshop scene: two storeys with a floor between them.
 pub mod workshop;
@@ -207,6 +208,7 @@ impl Gallery {
             "drum_tower",
             "earthen_house",
             "log_house",
+            "village_square",
             "stilt_gallery",
             "street",
             "street_arcade",
@@ -313,6 +315,7 @@ impl Gallery {
             "drum_tower" => drum_tower::drum_tower(),
             "earthen_house" => earthen::earthen_house(),
             "log_house" => log_house::log_house(),
+            "village_square" => village::village_square(),
             "stilt_gallery" => stilt::stilt_gallery(),
             "terrace" => terrace::terrace(),
             "wing" => wing::wing(),
