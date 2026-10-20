@@ -43,10 +43,7 @@ fn main() {
         each.push(ms(one));
     }
     let expanded = ms(phase);
-    println!(
-        "expansions   {expanded:9.1} ms   {} drawings",
-        drawn.len()
-    );
+    println!("expansions   {expanded:9.1} ms   {} drawings", drawn.len());
 
     // **The site's own build is where the assembly can be seen**, and it builds the two phases above
     // again rather than taking them: a phase is a measurement here, not an input.
@@ -72,7 +69,11 @@ fn main() {
         println!("{:9.1} ms  element {index}", each[*index]);
     }
     let tail_start = order.len().min(20);
-    let tail: f64 = order.iter().skip(tail_start).map(|index| each[*index]).sum();
+    let tail: f64 = order
+        .iter()
+        .skip(tail_start)
+        .map(|index| each[*index])
+        .sum();
     println!(
         "tail         {tail:9.1} ms   over {} elements",
         order.len().saturating_sub(tail_start)
