@@ -1324,6 +1324,38 @@ hip has two, and a lean-to has one; a gable end has none, because its edge is pe
 The 一颗印's count grew because its crowned outline splits each long side into two, and both halves are
 parallel to the ridge — two runs a side where there was one, which is what a crowned gable actually is.
 
+### The barred window: 直棂窗
+
+Every opening in this repository was a hole. A southwest Chinese window is not a hole — it is a hole with
+**bars in it**, and the oldest form of that is the 直棂窗, the straight-barred window: vertical timbers standing
+in the opening, three lights where there was one.
+
+`facade::lattice` stands two bars in every upper window the shared court face cuts, and it does so as
+**members anchored with `Anchor::OnFace`** — the face, how far along its edge, how far above the wall's base —
+so a bar travels with its wall when the building is seated, and a wall on a slope carries its bars at the
+slope's own height.
+
+Two mistakes were made and are recorded because both are instructive:
+
+- **The bars were placed from the mass's height at first, and stood in the wrong place.** A crowned mass's
+  `top` is its **apex**, not the top of the wall the window is cut in, so `height / 2 + 0.9` put the bars above
+  the hole on every range whose gable end was crowned. The fix is to place them from the **opening's own
+  resolved rectangle** (`Opening::extents` against the bay) and the face's own ground line
+  (`face_extent`): the bars now run between the sill and the head of the hole by construction.
+- **A document that carries members and a scene that does not draw them is a bar nobody can see.** The 一颗印's
+  scene packed masses, roofs and floors only; the bars existed, numbered 24 in the identity table, and rendered
+  as nothing at all. `Element::Member` now has its own mesh and a timber material, the way the street's frame
+  does.
+
+| number | value |
+| --- | --- |
+| the 一颗印 | 24 bars (4 ranges × 3 bays × 2), rows 6 402 → **6 474** |
+| the 三坊一照壁 | the same call on its court faces, rows 6 735 → **6 807** |
+| seventeen scenes | **54 620 rows** |
+
+The bars are not yet on the **street's** shopfronts or the stilt house, which carry different fronts (five bays
+of shop, one door) and would want their own reading of the pattern.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

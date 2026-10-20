@@ -182,16 +182,25 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
         )
     });
 
+    // **The bars of the 直棂窗**, which are members and had no mesh before: a document that carries them and a
+    // scene that does not draw them is a bar nobody can see.
+    let bars = packed_where(&built, &table, |element| {
+        matches!(element, building::Element::Member(_, _))
+    });
+
     let plaster = || surface([0.80, 0.76, 0.68], 0.0, 0.86, [0.0; 3]);
     let tiles = || surface([0.30, 0.29, 0.28], 0.0, 0.60, [0.0; 3]);
     let floor = || surface([0.33, 0.25, 0.17], 0.0, 0.80, [0.0; 3]);
     let earth = || surface([0.31, 0.28, 0.22], 0.0, 0.94, [0.0; 3]);
+    // The bars are wood, not plaster: a dark warm brown that reads against the wall behind them.
+    let timber = || surface([0.22, 0.14, 0.08], 0.0, 0.72, [0.0; 3]);
 
     let mut materials = Vec::new();
     for (name, body) in [
         ("wall", plaster as fn() -> Value),
         ("roof", tiles as fn() -> Value),
         ("floor", floor as fn() -> Value),
+        ("bars", timber as fn() -> Value),
     ] {
         materials.push(mesh_material(
             &format!("{name}-cast"),
@@ -222,6 +231,7 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
             ("walls", "wall"),
             ("roofs", "roof"),
             ("floors", "floor"),
+            ("bars", "bars"),
             ("ground", "ground"),
         ]
         .into_iter()
@@ -300,6 +310,7 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
                 mesh("walls", "Triangles", point.clone(), walls),
                 mesh("roofs", "Triangles", point.clone(), roofs),
                 mesh("floors", "Triangles", point.clone(), floors),
+                mesh("bars", "Triangles", point.clone(), bars),
                 mesh("ground", "Triangles", plain.point_schema(), ground),
             ]),
         ),

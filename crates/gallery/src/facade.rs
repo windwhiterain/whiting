@@ -118,10 +118,98 @@ pub fn open_court_face(
         return true;
     }
     for column in 0..front.bays {
-        let _ = ops::add_opening(
-            skeleton,
-            Opening::new(face, column, 1, Inset::new(margin, margin, 0.9, 0.5)),
-        );
+        let window = Opening::new(face, column, 1, Inset::new(margin, margin, 0.9, 0.5));
+        // **The bars are placed from the opening's own resolved hole**, not from a second reading of the
+        // inset: `extents` is the same rectangle the cut uses, and the face's ground turns its elevations
+        // into the heights `Anchor::OnFace` measures. A bar computed from the mass's height instead would
+        // stand in the wrong place on any face whose top is not the mass's own top — which is every range
+        // whose gable end was crowned.
+        let hole = skeleton
+            .bay(face, 1, column)
+            .and_then(|bay| window.extents(bay));
+        let ground = skeleton.face_extent(face).map(|(ground, _)| ground);
+        if ops::add_opening(skeleton, window).is_some() {
+            if let (Some(hole), Some(ground)) = (hole, ground) {
+                // **A 直棂窗, the barred window**, which is what an unglazed window of this region is: two
+                // vertical bars standing in the opening, anchored to the wall's face so they travel with it.
+                lattice(skeleton, face, hole, ground);
+            }
+        }
     }
     true
+}
+
+/// Stands the bars of a **直棂窗** in one opening.
+///
+/// # Invariants
+///
+/// **A bar is anchored to the wall's own face**, not placed at a world coordinate: `Anchor::OnFace` names the
+/// face, how far along its edge from the edge's start, and how far above the wall's base at that station — so
+/// a bar travels with the wall when the building is seated, and a wall on a slope carries its bars at the
+/// slope's own height rather than at one level.
+///
+/// **The bars are placed from the hole the cut actually made.** `hole` is what the opening resolves to and
+/// `ground` is the face's own ground line, which is the datum `Anchor::OnFace` measures `up` from; the bars
+/// therefore run between the sill and the head of the hole and nowhere else. Computing them from the mass's
+/// height instead put them in the wrong place on every range whose gable end was crowned, because a crowned
+/// mass's top is its apex and not the top of the wall the window is cut in.
+///
+/// **Two bars, at the opening's thirds**, because a 直棂窗 is read as a division of the light and three lights
+/// are what one bar-pair makes. The section is square-ish — five centimetres wide, four deep: thick enough to
+/// cast a shadow at a metre, thin enough to leave the opening open.
+///
+/// **A hole too narrow to hold them is left open**, rather than given overlapping bars or bars outside its
+/// own reveal.
+fn lattice(
+    skeleton: &mut BuildingSkeleton,
+    face: FaceRef,
+    hole: building::openings::Extents,
+    ground: f32,
+) {
+    const BARS: usize = 2;
+    const WIDTH: f32 = 0.05;
+    const DEPTH: f32 = 0.04;
+    if hole.width() <= 0.3 || hole.height() <= 0.3 {
+        return;
+    }
+    let (low, high) = (hole.low - ground, hole.high - ground);
+    if high - low <= 0.3 {
+        return;
+    }
+    let Some(mass) = skeleton.masses.get(face.mass.0) else {
+        return;
+    };
+    let (Some(from), Some(to)) = (
+        mass.outline.get(face.edge),
+        mass.outline.get((face.edge + 1) % mass.outline.len()),
+    ) else {
+        return;
+    };
+    let along = [
+        to.position[0] - from.position[0],
+        to.position[1] - from.position[1],
+    ];
+    let length = (along[0] * along[0] + along[1] * along[1]).sqrt();
+    if length <= 1.0e-3 {
+        return;
+    }
+    let across = [along[0] / length, along[1] / length];
+    for bar in 1..=BARS {
+        let at = hole.from + hole.width() * bar as f32 / (BARS as f32 + 1.0);
+        skeleton.members.push(building::Member::new(
+            building::Anchor::OnFace {
+                face,
+                along: at,
+                up: low,
+            },
+            building::Anchor::OnFace {
+                face,
+                along: at,
+                up: high,
+            },
+            across,
+            WIDTH,
+            DEPTH,
+        ));
+    }
 }
