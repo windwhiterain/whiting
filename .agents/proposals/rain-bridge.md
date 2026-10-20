@@ -33,3 +33,15 @@ raised over the middle, where the old people sit and the crossing becomes a room
 - **the abutments**: the deck ends in mid-air on both banks, and a real bridge lands on a stone abutment.
 
 Identity: **1 434 rows**, and twenty-three scenes in the gallery.
+## The gallery is open now
+
+A 风雨桥 is an arcade over the water with a bench between its posts, and the gallery was a closed thin-walled
+box — the roof needed a mass to hang on and the mass was solid. Both long walls are now **cut into nine bays each
+and every bay is opened** between a 0.55 m sill and 0.40 m under the wall's head, with the margin the crate's own
+rule names: the wall's thickness plus five centimetres.
+
+The sill is a hand's height above the deck because that is where the bench is, and the bridge now reads as what it
+is from the bank: nine dark bays in a row under one long tiled eave, with the railing in front of them and the
+pavilion over the middle.
+
+Identity: 1 434 → **1 506 rows**.

@@ -38,6 +38,7 @@ use document::kit::{
 use document::shaders::{Projection, post_shader};
 use scene::standard::Stage;
 
+use crate::facade;
 use crate::ground;
 
 /// The span: `SPAN` long, `WIDTH` wide, with the deck `DECK` above the water.
@@ -69,6 +70,15 @@ const COVERING: building::Covering = building::Covering {
 const PIERS: [f32; 2] = [-6.5, 6.5];
 const PIER_POSTS: [f32; 3] = [-1.4, 0.0, 1.4];
 const PIER: f32 = 0.45;
+
+/// How many bays the gallery is open in, down each of its long sides, and how each bay is cut.
+///
+/// **The margin is the wall's own thickness plus five centimetres**, the rule every opening in this crate
+/// follows, and the sill is a hand's height above the deck because a gallery's bay has a bench in it.
+const BAYS: usize = 9;
+const BAY_MARGIN: f32 = 0.23;
+const BAY_SILL: f32 = 0.55;
+const BAY_HEAD: f32 = 0.40;
 
 /// The railing on both edges of the deck: a post every `RAIL_SPACING`, and a top rail over them.
 const RAIL_SPACING: f32 = 1.7;
@@ -351,6 +361,37 @@ pub fn document() -> Building {
         ROOF_THICKNESS,
     ) {
         skeleton.roofs.push(hip.with_covering(COVERING));
+    }
+
+    // **The gallery is open down both sides**, which is what a 风雨桥 is: an arcade over the water with a bench
+    // between its posts, and not a shed. The two long walls are cut into `BAYS` bays each and every bay is
+    // opened between a `BAY_SILL` and the wall's own head — the openings machinery of `facade`, whose margins
+    // are the wall's own thickness plus five centimetres, the rule every opening in this crate follows.
+    for line in [-deep, deep] {
+        let Some(edge) = facade::edge_on(&skeleton.masses[gallery_id.0], line, true) else {
+            continue;
+        };
+        let face = building::grid::FaceRef::new(gallery_id, edge);
+        if ops::split_face(
+            &mut skeleton,
+            face,
+            &building::grid::Rhythm::Even { count: BAYS },
+            &building::grid::Rhythm::Even { count: 1 },
+        )
+        .is_some()
+        {
+            for column in 0..BAYS {
+                let _ = ops::add_opening(
+                    &mut skeleton,
+                    building::openings::Opening::new(
+                        face,
+                        0,
+                        column,
+                        building::openings::Inset::new(BAY_MARGIN, BAY_MARGIN, BAY_SILL, BAY_HEAD),
+                    ),
+                );
+            }
+        }
     }
 
     // **The deck: a plate from bank to bank**, wider than the gallery and under it.
