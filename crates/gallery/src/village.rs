@@ -60,6 +60,132 @@ const LANE_END: f32 = 15.0;
 const SLOPE: f64 = 0.12;
 const DROP_LIMIT: f64 = 2.4;
 
+/// The hill the hillside village stands on: a lattice of one-metre cells over 240 metres, with a smooth mound
+/// rising to the north-east.
+///
+/// # Invariants
+///
+/// **The field is the only terrain in this file**, and the hillside village reads it twice — once to seat its
+/// houses and once to draw its ground — through [`field_height`]. Its heights are a closed-form function of
+/// plan, so two runs of the scene draw the same hill, and there is no noise a seed could change.
+fn hillside() -> terrain::HeightField {
+    let cells = 320;
+    let cell = 1.0;
+    let origin = [-160.0, -160.0];
+    let mut heights = Vec::with_capacity(cells * cells);
+    let mut inside = Vec::with_capacity(cells * cells);
+    for row in 0..cells {
+        for column in 0..cells {
+            let x = origin[0] + column as f32 * cell;
+            let z = origin[1] + row as f32 * cell;
+            heights.push(hill_height(x, z));
+            inside.push(true);
+        }
+    }
+    terrain::HeightField::of(origin, cell, cells, cells, 0.0, heights, inside)
+        .expect("the lattice is square and its two buffers are the same length")
+}
+
+/// Returns the hill's own elevation at a plan point: a mound rising to the north-east and a shallow tilt under
+/// the village, so the slope is read under the buildings and not only in the distance.
+///
+/// **Closed form and smooth**, so the field and the scene agree by construction rather than by sampling.
+fn hill_height(x: f32, z: f32) -> f32 {
+    let sigma = 62.0;
+    let away = ((x - 26.0) * (x - 26.0) + (z + 44.0) * (z + 44.0)) / (2.0 * sigma * sigma);
+    let mound = 7.5 * (-away).exp();
+    mound + 0.035 * (-z).max(-20.0)
+}
+
+/// Returns the hill's elevation at a plan point, read off the field's own lattice.
+///
+/// # Invariants
+///
+/// **A point outside the lattice reads the function the lattice was filled from**, and not the field's `base`:
+/// `sample` answers `base` off the edge, and a base of `0.0` beside a hill of 5 m is a cliff the frame draws as
+/// a terrace. The two readings are one surface because the lattice was filled from that function, so the edge of
+/// the field is invisible — measured on the first frame of this scene, which showed a patchwork of plateaus and
+/// was the field's own rim.
+fn field_height(field: &terrain::HeightField, x: f64, z: f64) -> f64 {
+    let (half_width, half_depth) = (
+        field.origin()[0] + field.width() as f32 * field.cell(),
+        field.origin()[1] + field.height() as f32 * field.cell(),
+    );
+    let (x32, z32) = (x as f32, z as f32);
+    let inside = x32 >= field.origin()[0]
+        && x32 <= half_width
+        && z32 >= field.origin()[1]
+        && z32 <= half_depth;
+    if inside {
+        field.sample([x32, z32]) as f64
+    } else {
+        hill_height(x32, z32) as f64
+    }
+}
+
+/// Returns the **platform**'s level for the hillside village: the hill's own elevation at the square's centre,
+/// which is the level a terrace cut into that slope would be cut to.
+fn platform_level(field: &terrain::HeightField) -> f32 {
+    let middle = [
+        ((SQUARE[0] + SQUARE[2]) * 0.5) as f64,
+        ((SQUARE[1] + SQUARE[3]) * 0.5) as f64,
+    ];
+    field_height(field, middle[0], middle[1]) as f32
+}
+
+/// Returns the hillside's grade: the platform inside the square and the hill outside it.
+///
+/// # Invariants
+///
+/// **The cut is a step and not a ramp**, and that is what a terrace is: inside the square the ground is one
+/// level, outside it the hill is itself, and the retaining wall in [`compose`] is what stands in the face
+/// between them.
+/// Returns the field's own shape and a few of its heights, for the probe that measures it.
+pub fn field_report() -> String {
+    let field = hillside();
+    let relief = field.relief();
+    format!(
+        "origin {:?} cell {} {}x{} base {} relief {:?} first {:?} middle {:?}",
+        field.origin(),
+        field.cell(),
+        field.width(),
+        field.height(),
+        field.base(),
+        relief,
+        &field.heights()[0..4],
+        &field.heights()[field.heights().len() / 2 - 2..field.heights().len() / 2 + 2],
+    )
+}
+
+/// Returns the terrace village's grade at a point, for the probe that measures it.
+pub fn grade_at(x: f64, z: f64) -> f64 {
+    grade(x, z)
+}
+
+/// Returns the field's own `sample` at a point, for the probe that measures it.
+pub fn field_sample_at(x: f64, z: f64) -> f64 {
+    let field = hillside();
+    field.sample([x as f32, z as f32]) as f64
+}
+
+/// Returns the hillside village's grade at a point, for the probe that measures it.
+pub fn hillside_at(x: f64, z: f64) -> f64 {
+    let field = hillside();
+    let platform = platform_level(&field);
+    hill_grade(&field, platform, x, z)
+}
+
+fn hill_grade(field: &terrain::HeightField, platform: f32, x: f64, z: f64) -> f64 {
+    let inside = x >= SQUARE[0] as f64
+        && x <= SQUARE[2] as f64
+        && z >= SQUARE[1] as f64
+        && z <= SQUARE[3] as f64;
+    if inside {
+        platform as f64
+    } else {
+        field_height(field, x, z)
+    }
+}
 /// Returns the ground's own elevation at a plan point.
 ///
 /// # Invariants
@@ -142,9 +268,55 @@ pub fn village_square() -> Value {
     )
 }
 
-/// Builds the scene from one camera.
+/// Builds the scene from one camera, on the terrace.
 fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Value {
-    let building = document();
+    scene_of(
+        &document(),
+        &|x, z| grade(x, z),
+        eye,
+        target,
+        field_of_view,
+        name,
+    )
+}
+
+/// Builds the hillside's scene: the same composition on the field, from a camera standing on the slope below it.
+pub fn hillside_village() -> Value {
+    let field = hillside();
+    let platform = platform_level(&field);
+    let ground = move |x: f64, z: f64| hill_grade(&field, platform, x, z);
+    scene_of(
+        &hillside_document(),
+        &ground,
+        [-16.0, 6.0, 34.0],
+        [2.0, 5.5, -6.0],
+        FIELD_OF_VIEW,
+        "hillside_village",
+    )
+}
+
+/// Returns the divisions and the extent of the ground mesh a scene needs.
+///
+/// # Invariants
+///
+/// **A landscape's mesh is sized by the landscape and not by the building on it.**
+fn ground_scale(name: &str) -> (usize, f64) {
+    if name == "hillside_village" {
+        (600, 260.0)
+    } else {
+        (GROUND_DIVISIONS, GROUND_EXTENT)
+    }
+}
+/// Builds one scene of a village: a building and the ground it stands on, which is the only pair of facts the
+/// two variants of this village disagree about.
+fn scene_of(
+    building: &Building,
+    ground_at: &dyn Fn(f64, f64) -> f64,
+    eye: [f64; 3],
+    target: [f64; 3],
+    field_of_view: f64,
+    name: &str,
+) -> Value {
     let built = building
         .build()
         .expect("the village expands: every type it is made of expands on its own");
@@ -245,9 +417,12 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
     let extras = building_extras();
     let point = extras.point_schema();
     let plain = not_authored_extras();
-    // **The ground is the terrace's own grade**, not a level plane: the same function the houses were seated
-    // on, so a house cannot float and the hill cannot disagree with the building standing on it.
-    let ground = ground::mesh(&building, GROUND_DIVISIONS, GROUND_EXTENT, grade);
+    // **The ground is the scene's own grade**, not a level plane: the same function the houses were seated
+    // on, so a house cannot float and the hill cannot disagree with the building standing on it. Its mesh is
+    // sized by the landscape: the terrace's plateau is 90 m across, and a hill with a 62 m shoulder needs a box
+    // that reaches past its own shoulder, or the frame shows the edge of the mesh as a cliff.
+    let (divisions, extent) = ground_scale(name);
+    let ground = ground::mesh(building, divisions, extent, |x, z| ground_at(x, z));
 
     Value::structure([
         ("name".to_owned(), Value::String(name.to_owned())),
@@ -336,8 +511,38 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
 /// **A merge appends where the document was authored**, so each one is translated first — and translated by its
 /// own offset, which is the only thing this function says about where anything stands.
 pub fn document() -> Building {
+    compose(grade, true, 0.0)
+}
+
+/// Returns the document of the village **on a hillside**: the same five buildings, seated on a real
+/// [`terrain::HeightField`] instead of on the terrace's rule, with the square cut into the slope.
+///
+/// # Invariants
+///
+/// **The two villages are one composition and two grounds.** `compose` is the composition; the terrace's own
+/// `grade` and the hillside's field are the only things that differ, and neither variant re-derives a tower or
+/// a house. A second composition would be a second village, and the two would drift the first time one of them
+/// was edited.
+pub fn hillside_document() -> Building {
+    let field = hillside();
+    let platform = platform_level(&field);
+    compose(
+        move |x, z| hill_grade(&field, platform, x, z),
+        false,
+        platform,
+    )
+}
+
+/// The composition, given its ground and whether the lane is part of it.
+///
+/// # Invariants
+///
+/// **The ground is a function of plan and nothing else**, so it is the same one the houses are seated on and the
+/// one the frame draws. `lane` decides whether the street scene is joined on: the terrace's village has it, and
+/// the hillside's does not, because the street is authored on its own straight grade and a hillside is not one.
+pub fn compose(ground: impl Fn(f64, f64) -> f64, lane: bool, platform: f32) -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
-    let ground = |at: Vec2| grade(at[0] as f64, at[1] as f64) as f32;
+    let seated_ground = move |at: Vec2| ground(at[0] as f64, at[1] as f64) as f32;
     // **The tower stands on the terrace and the houses stand on the hill.** A seat moves every mass's nodes to
     // the ground under them, which is exactly what a house needs and exactly what a tower of stacked storeys
     // must not have: seating the tower would flatten its seven floors onto one elevation. So the tower is
@@ -355,9 +560,12 @@ pub fn document() -> Building {
         (crate::log_house::document().skeleton, LOG_WEST, true),
         (crate::log_house::document().skeleton, LOG_EAST, true),
     ] {
+        if !lane && at == LANE_AT {
+            continue;
+        }
         ops::translate(&mut part, at);
         if seated {
-            let report = site::seat(&mut part, ground, 0.0);
+            let report = site::seat(&mut part, &seated_ground, 0.0);
             assert!(
                 report.len() == part.masses.len(),
                 "every mass of a house is seated on the ground this grade reads"
@@ -370,7 +578,13 @@ pub fn document() -> Building {
             //
             // **The posts are placed before the merge**, so their anchors resolve against the house's own mass
             // and not against a village that has five of them.
-            let stilt = site::posts(&mut part, ground, PAD_SPACING, PAD_SECTION, PAD_EMBED);
+            let stilt = site::posts(
+                &mut part,
+                &seated_ground,
+                PAD_SPACING,
+                PAD_SECTION,
+                PAD_EMBED,
+            );
             assert!(
                 stilt.refused == 0,
                 "the grade answers under every post position of every house"
@@ -402,7 +616,7 @@ pub fn document() -> Building {
             [SQUARE[0] - 0.3, SQUARE[1] - 0.3],
         ),
     ] {
-        let foot = grade(from[0] as f64, from[1] as f64) as f32;
+        let foot = seated_ground([from[0], from[1]]) as f32;
         skeleton.walls.push(building::wall::Wall::new(
             building::PlanNode::new([from[0], from[1]], foot),
             building::PlanNode::new([to[0], to[1]], foot),
@@ -410,7 +624,11 @@ pub fn document() -> Building {
             // **The wall stands a kerb above the terrace and not level with it**: its top is an absolute
             // elevation, and a top of `0.0` sat below the ground on the east side once the lane began to climb
             // there -- `WallTooLow { top: 0.0, highest: 0.0165 }`, measured.
-            KERB,
+            // **The wall stands a kerb above whichever is higher: the platform or its own foot.** On the
+            // downhill side the foot is below the platform and the wall becomes a retaining wall; on the uphill
+            // side the hill itself rises above the platform, and a top of `platform + KERB` would be *under* the
+            // ground it stands in -- `WallTooLow { top: 0.35, highest: 5.57 }`, measured on all four.
+            foot.max(platform) + KERB,
         ));
     }
     // **The square is paved, with one grating at its middle**: the piece of ground the four types share, and

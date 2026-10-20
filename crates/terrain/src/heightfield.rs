@@ -240,18 +240,24 @@ impl HeightField {
     pub fn sample_run(&self, values: &[f32], plan: Vec2) -> Option<f32> {
         let column = (plan[0] - self.origin[0]) / self.cell;
         let row = (plan[1] - self.origin[1]) / self.cell;
-        let (left, right) = (column.floor(), column.ceil());
-        let (near, far) = (row.floor(), row.ceil());
+        // **The far cell is one past the near one and not `ceil`**, because `floor` and `ceil` are the same
+        // number on an exact lattice line and both shares then come out zero: the point's own cell is dropped
+        // for having no weight and the far one for having no share, the loop's total stays `0.0`, and the answer
+        // is the field's `base` instead of its height. Measured on a field filled from a closed-form hill: four
+        // plan points with integer coordinates -- the square's own centre among them -- each answered `0.0`
+        // while the buffer held `5.6`, and the scene then cut its terrace level from that zero.
+        let (left, right) = (column.floor(), column.floor() + 1.0);
+        let (near, far) = (row.floor(), row.floor() + 1.0);
         let mut weight = 0.0;
         let mut total = 0.0;
-        for (column, share_column) in [(left, right - column), (right, column - left)] {
+        for (column, share_column) in [(left, 1.0 - (column - left)), (right, column - left)] {
             // A lattice index is a `usize` and a float cast into one saturates at zero, so a
             // point left of the first column would otherwise borrow cell zero's height and
             // the field would extend itself out to the plane's negative quarter.
             if column < 0.0 {
                 continue;
             }
-            for (row, share_row) in [(near, far - row), (far, row - near)] {
+            for (row, share_row) in [(near, 1.0 - (row - near)), (far, row - near)] {
                 if row < 0.0 {
                     continue;
                 }
