@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "The lichen program that draws the alpine oak, and the probe that times its edits."
+description = "The lichen programs that draw the oak and the hall, and the probes that time their edits."
 
 [dependencies]
 # The language the program runs on, and the loader that reads the `link`
@@ -14,5 +14,15 @@ lichen-language = { workspace = true }
 lichen-lowlevel = { workspace = true }
 libloading = "0.8"
 
+# The two crates a probe reads a reference answer out of, and only a probe: the
+# oak's rows have never needed one, and the hall's do, because its stages compose
+# `gallery::hall::hall()` and that composition has to be printed rather than argued.
+[dev-dependencies]
+gallery = { workspace = true }
+lichen-stages = { workspace = true }
+
 [[example]]
 name = "incremental_probe"
+
+[[example]]
+name = "hall_probe"
