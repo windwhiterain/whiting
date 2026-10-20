@@ -178,11 +178,24 @@ not a wrong picture. Three things follow, and they are not obvious:
 - **Both sides must be built from one target directory and one profile.** The tag
   is baked into the compiled `lichen-language`, so a debug-built driver and a
   release-built dylib disagree even on one revision.
-- **Committing the regenerated file does not by itself keep it fresh**, because
-  the commit moves the revision the tag names. What keeps a working tree usable
-  is that `build.rs` reruns only when `lichen-language`'s own package changes: a
-  revision that moves without touching it leaves both sides on the tag they were
-  built with. That is a fragile agreement rather than a guarantee.
+- **The tag names the lichen-vm checkout, not this one.** `build.rs` runs with
+  `CARGO_MANIFEST_DIR` inside `../lichen-vm`, so `git describe` answers for
+  *that* repository: a Whiting commit cannot move the tag, and a lichen-vm commit
+  moves it as soon as `lichen-language` is recompiled. The coupling is therefore
+  one-directional and worth stating: **change lichen-vm and the generated library
+  is stale; change Whiting and it is not.**
+- **Committing the regenerated file is what keeps it fresh here** — the earlier
+  version of this list said the opposite, and it was written while the vertical
+  still lived in lichen-vm, where committing did move the named revision. In this
+  repository the revision that matters is the sibling's, so a committed tag stays
+  valid until lichen-vm moves.
+- **A stale binary is the more common failure than a stale tag**, measured on the
+  first build after this branch merged: the committed source carried
+  `0.1.0+038021c8b9f0` while `target/release/whiting_lichen_link.dll` was the
+  pre-merge build carrying `0.1.0+5f6b04661316`, so the loader refused a library
+  the tree had right. The dylib is not a dependency of the driver, so
+  `cargo build -p whiting-lichen --examples` does not rebuild it; the remedy is
+  `cargo build -p whiting-lichen-link`, with no regeneration involved.
 - **The durable fix is not built.** Generating the source in the dylib crate's
   own `build.rs`, so the tag and the entries cannot be out of step, is the answer
   and it is not written. It was not needed for this measurement; it would be
