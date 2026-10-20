@@ -13,8 +13,8 @@
 
 use std::time::Instant;
 
-use building::derive::HALL;
 use building::BuildingMesh;
+use building::derive::HALL;
 use scene::standard::POINTS;
 use whiting_gallery::Gallery;
 
@@ -85,7 +85,9 @@ fn main() {
         per_solid += whiting_gallery::building_mesh::points_of(&built, *solid).len();
     }
     let points_ms = ms(phase);
-    println!("  points      {points_ms:8.1} ms   {per_solid} elements, one solid at a time, no ids");
+    println!(
+        "  points      {points_ms:8.1} ms   {per_solid} elements, one solid at a time, no ids"
+    );
 
     let starter = HALL.starter(WIDTH, DEPTH, STOREYS);
     let phase = Instant::now();
@@ -96,7 +98,9 @@ fn main() {
     let phase = Instant::now();
     let _re_read = parts.clone();
     let re_read_ms = ms(phase);
-    println!("  re-read     {re_read_ms:8.1} ms   what a reused parts cell costs the document stage");
+    println!(
+        "  re-read     {re_read_ms:8.1} ms   what a reused parts cell costs the document stage"
+    );
 
     let phase = Instant::now();
     let view = whiting_gallery::hall::hall_view(1.0, [0.0; 3]);

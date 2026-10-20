@@ -106,7 +106,12 @@ pub fn run(program_path: &str, program: &str, edit: &Edit) -> Run {
         program_path,
         fresh_store.registry(),
     );
-    let fresh = compile(&mut fresh_session, &mut fresh_store, program_path, &source_edited);
+    let fresh = compile(
+        &mut fresh_session,
+        &mut fresh_store,
+        program_path,
+        &source_edited,
+    );
     let fresh_time = fresh.1;
     refuse(&fresh.0.diagnostics, "fresh");
     let fresh_id = host.published();
@@ -144,7 +149,12 @@ fn compile(
     source: &str,
 ) -> (SessionReport<LangProgram>, Duration) {
     let (code, base, imports) = view_of(source, program_path, store);
-    session.set_view(code, base, &lichen_language::lex::line_starts(source), &imports);
+    session.set_view(
+        code,
+        base,
+        &lichen_language::lex::line_starts(source),
+        &imports,
+    );
     let clock = Instant::now();
     let report = session.compile();
     (report, clock.elapsed())

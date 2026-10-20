@@ -380,7 +380,6 @@ fn hall_framed(width: f32, depth: f32, storeys: usize, view: &HallView) -> Value
 /// program alike. A document assembled anywhere else would be a second copy of this scene, and a
 /// copy is exactly what a cached stage may not be.
 pub fn hall_document_over_parts(parts: &HallParts, view: &HallView) -> Value {
-
     // A plaster wall, a tiled roof and dry ground. The three differ in tint and roughness and in
     // nothing else: what a surface *does* is the shader's business and this scene adds no body to
     // it, so the materials are the standard ones with a colour apiece.
@@ -512,7 +511,12 @@ pub fn hall_document_over_parts(parts: &HallParts, view: &HallView) -> Value {
                 mesh("walls", "Triangles", point.clone(), parts.walls.clone()),
                 mesh("roof", "Triangles", point.clone(), parts.roof.clone()),
                 mesh("floors", "Triangles", point, parts.floors.clone()),
-                mesh("ground", "Triangles", plain.point_schema(), parts.ground.clone()),
+                mesh(
+                    "ground",
+                    "Triangles",
+                    plain.point_schema(),
+                    parts.ground.clone(),
+                ),
             ]),
         ),
         (

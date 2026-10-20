@@ -80,7 +80,11 @@ fn main() {
     println!("hall()           : fp {scene:016x}");
     println!(
         "baseline is hall : {}",
-        if run.baseline_print == scene { "yes" } else { "NO" }
+        if run.baseline_print == scene {
+            "yes"
+        } else {
+            "NO"
+        }
     );
     print_row(&run.row);
     // **Below the shared row's resolution**: `millis` prints three decimals of a second, so an

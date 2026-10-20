@@ -101,5 +101,4 @@ pub const COMPOSITION: &str =
 /// The identity holds only at the **baseline dials**: `lens: 1.0` and a zero aim are the scene's own
 /// lens and aim exactly, and any dial that differs from them is a different picture by construction
 /// rather than a different building.
-pub const HALL_COMPOSITION: &str =
-    "hall_document(hall_parts(hall_built(hall_plan(width, depth, storeys))), 1.0, 0.0) == hall::hall()";
+pub const HALL_COMPOSITION: &str = "hall_document(hall_parts(hall_built(hall_plan(width, depth, storeys))), 1.0, 0.0) == hall::hall()";

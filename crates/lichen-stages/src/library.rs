@@ -252,9 +252,21 @@ pub fn source() -> LibrarySource {
             entry("whiting_leaves", "lichen_whiting_leaves", BODY_LEAVES),
             entry("whiting_drawn", "lichen_whiting_drawn", BODY_DRAWN),
             entry("whiting_document", "lichen_whiting_document", BODY_DOCUMENT),
-            entry("whiting_hall_plan", "lichen_whiting_hall_plan", BODY_HALL_PLAN),
-            entry("whiting_hall_built", "lichen_whiting_hall_built", BODY_HALL_BUILT),
-            entry("whiting_hall_parts", "lichen_whiting_hall_parts", BODY_HALL_PARTS),
+            entry(
+                "whiting_hall_plan",
+                "lichen_whiting_hall_plan",
+                BODY_HALL_PLAN,
+            ),
+            entry(
+                "whiting_hall_built",
+                "lichen_whiting_hall_built",
+                BODY_HALL_BUILT,
+            ),
+            entry(
+                "whiting_hall_parts",
+                "lichen_whiting_hall_parts",
+                BODY_HALL_PARTS,
+            ),
             entry(
                 "whiting_hall_document",
                 "lichen_whiting_hall_document",
