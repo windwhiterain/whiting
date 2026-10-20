@@ -60,18 +60,36 @@ const LANE_END: f32 = 15.0;
 const SLOPE: f64 = 0.12;
 const DROP_LIMIT: f64 = 2.4;
 
-/// Returns the ground's own elevation at a plan point: level inside the square, falling away outside it.
+/// Returns the ground's own elevation at a plan point.
+///
+/// # Invariants
+///
+/// **The square is the bottom of a lane that climbs east**, so the ground rises past the square's east edge at
+/// the lane's own grade and falls away on the other three sides. The two halves meet at `x = SQUARE[2]`, where
+/// both are `0.0`, which is what makes one function serve the lane's seating and the village's: the street is
+/// authored with `0.055 * x` from its own origin, and this is the same line read from the square's edge.
 fn grade(x: f64, z: f64) -> f64 {
+    let climbing = LANE_SLOPE * (x - SQUARE[2] as f64).max(0.0);
     let beyond = [
-        (x - SQUARE[2] as f64).max(0.0),
         (SQUARE[0] as f64 - x).max(0.0),
         (z - SQUARE[3] as f64).max(0.0),
         (SQUARE[1] as f64 - z).max(0.0),
     ];
     let out = beyond.iter().copied().fold(0.0, f64::max);
-    -(out * SLOPE).min(DROP_LIMIT)
+    let falling = -(out * SLOPE).min(DROP_LIMIT);
+    if climbing > 0.0 { climbing } else { falling }
 }
 
+/// The **lane**'s own grade, which is the street scene's own number: a straight climb east of `0.055` a metre.
+/// The village reads it from the square's edge, so the lane's first plot stands exactly where the square ends.
+const LANE_SLOPE: f64 = 0.055;
+
+/// How far the terrace's kerb stands above the square's own level.
+const KERB: f32 = 0.35;
+
+/// Where the lane is joined on: the offset its own document is moved by, so its first frontage is the square's
+/// east side.
+const LANE_AT: [f32; 2] = [8.0, 0.0];
 /// The fill: `PAD_SPACING` between posts, `PAD_SECTION` square, `PAD_EMBED` into the ground at the foot.
 ///
 /// **A house pad on a slope is a cut and a fill**, and the fill is a forest of short posts rather than a wall:
@@ -83,7 +101,7 @@ const PAD_EMBED: f32 = 0.03;
 /// Where each building stands, as the offset its own document is moved by.
 const TOWER_AT: [f32; 2] = [0.0, -13.0];
 const EARTHEN_WEST: [f32; 2] = [-13.0, 0.0];
-const EARTHEN_EAST: [f32; 2] = [13.0, 0.0];
+const EARTHEN_EAST: [f32; 2] = [-13.0, -13.0];
 const LOG_WEST: [f32; 2] = [-10.5, 12.0];
 const LOG_EAST: [f32; 2] = [10.5, 12.0];
 
@@ -329,6 +347,11 @@ pub fn document() -> Building {
         (crate::drum_tower::document().skeleton, TOWER_AT, false),
         (crate::earthen::document().skeleton, EARTHEN_WEST, true),
         (crate::earthen::document().skeleton, EARTHEN_EAST, true),
+        // **The lane is the street scene, joined on.** Its document seats its own five plots on its own grade,
+        // and that grade is the one this village's `grade` continues past the square, so the join is a
+        // continuation rather than two hills meeting: the street's `0.055 * x` from its own origin is this
+        // document's `0.055 * (x - 8)` from the square's edge.
+        (crate::street::document().skeleton, LANE_AT, false),
         (crate::log_house::document().skeleton, LOG_WEST, true),
         (crate::log_house::document().skeleton, LOG_EAST, true),
     ] {
@@ -384,7 +407,10 @@ pub fn document() -> Building {
             building::PlanNode::new([from[0], from[1]], foot),
             building::PlanNode::new([to[0], to[1]], foot),
             0.45,
-            0.0,
+            // **The wall stands a kerb above the terrace and not level with it**: its top is an absolute
+            // elevation, and a top of `0.0` sat below the ground on the east side once the lane began to climb
+            // there -- `WallTooLow { top: 0.0, highest: 0.0165 }`, measured.
+            KERB,
         ));
     }
     // **The square is paved, with one grating at its middle**: the piece of ground the four types share, and
