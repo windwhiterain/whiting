@@ -64,3 +64,31 @@ and lays its single plane over it, not in the authored rectangle.
 Until then the drum tower is a proposal and not a scene, and the honest summary is that this repository builds
 **courtyard houses, street rows and stilted houses** — three types of the region — well, and has not yet
 learned the fourth.
+
+## Follow-up, measured with a probe: the real blocker is the covering
+
+`crates/building/examples/lean_to_probe.rs` was written to find out which of the three refusals above is the
+one that matters, by building the tower's own pieces in isolation. It answers, and the answer is none of them:
+
+| document | violations |
+| --- | --- |
+| one lean-to on a rectangular wall (the skirt, on its own) | **0** |
+| one mass with two skirts, the second one a storey below the wall top | **0** |
+| one mass, four skirts a level, at 1, 2 and 7 levels | **0** |
+| a hip over plans from 6 × 6 to 6 × 2, rises 0.9 to 2.6, overhangs 0.8 to 1.1 | **0** |
+| **the whole tower: one mass, four skirts at seven levels, a hip crown** | **0** |
+| **the same tower, every roof wearing a `Covering`** | **284 `FaceNotPlanar`, departures 0.0102 – 0.0202** |
+
+So the crate's roofs are fine and **the tiles are not**: a `Covering` on a lean-to (and on a hip) lifts its
+faces out of plane by one to two centimetres, which is ten to twenty times `PLANARITY_TOLERANCE`. That is why
+the earlier attempts read as three separate refusals — the scene carried coverings, and the covering is what
+the validator was naming.
+
+Two consequences:
+
+1. **A drum tower can be built today without tiles.** The same tower with board roofs is a clean document, and
+   that is what the scene does: seven skirts and a crown, no `Covering`, so the eaves read as boarded soffits
+   rather than as tile. It is a real tower and a provisional one.
+2. **The covering's fault is a defect of its own and wants its own round**: the roll geometry is laid against
+   the skin but its side faces are built in a plane that does not follow the roof's slope, and a lean-to is
+   where that shows. `crates/building/src/covering.rs` owns it.

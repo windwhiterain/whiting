@@ -75,6 +75,7 @@ pub mod ridges;
 pub mod compound;
 /// The dawn over the rice terraces, held as numbers so a tracer can be handed it as a world.
 mod dawn;
+pub mod drum_tower;
 mod dunes;
 /// Where a courtyard house's own fronts are, and what one is made of.
 pub mod facade;
@@ -201,6 +202,7 @@ impl Gallery {
             "monoliths",
             "shed",
             "stilt",
+            "drum_tower",
             "stilt_gallery",
             "street",
             "street_arcade",
@@ -304,6 +306,7 @@ impl Gallery {
             "street" => street::street(),
             "street_arcade" => street::street_arcade(),
             "stilt" => stilt::stilt(),
+            "drum_tower" => drum_tower::drum_tower(),
             "stilt_gallery" => stilt::stilt_gallery(),
             "terrace" => terrace::terrace(),
             "wing" => wing::wing(),
