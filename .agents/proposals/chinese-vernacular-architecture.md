@@ -1476,3 +1476,20 @@ eye-level camera inside the court renders **almost black**: the sun stands low a
 court in their own shadow, which is what a 一颗印's court *is* at that hour — 四水归堂 means the light comes down
 the one hole in the middle. A plate of the 踏步 therefore needs either the sun raised for the court's own scene or
 an interior light, and neither is a thing to change in the middle of a round that was about the steps.
+### The court's own plate: a sun, a lens, and an aim
+
+The 踏步 were in the identity table and in no picture, because the court's own frame was **aimed at the sky-well**
+and lit by a sun that leaves a 3 m court in shadow all afternoon. Three scene numbers, none of them a change to any
+building:
+
+- **a sun of its own** (`COURT_SUN`, nearly overhead) so the shaft reaches the platform rather than stopping on the
+  four roofs. It is a scene's sun and not the building's: the same document, lit for the frame that is about the
+  court;
+- **the environment turned up** for that frame (`2.6` against the outside view's `1.06`), because a well's own
+  opening is bright and the sky is the court's only other light;
+- **a 97-degree lens looking *down***. The court is three metres across and six metres deep in walls, so the camera
+  stands on its south side; the earlier aim was 60 degrees *up*, which is a photograph of the sky-well and not of
+  the floor. What the frame now shows is the 正房's platform edge with its two steps, the porch's posts and their
+  shadows, and the sky-well above them.
+
+**What this is not**: the court is still genuinely dark, and the picture says so — that is the type.

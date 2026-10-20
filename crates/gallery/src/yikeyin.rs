@@ -137,6 +137,11 @@ const PROFILE: [building::roof::Step; 3] = [
 
 /// The sun, high and from the gate's own side, so the court is lit down one wall and not the other.
 const SUN: [f64; 3] = [-18.0, 40.0, 24.0];
+
+/// The court's own sun: high and from the south, so the shaft reaches the platform and the steps rather than
+/// stopping on the four roofs. **It is a scene's sun and not the building's** — the same document, lit for the
+/// one frame that is about the court.
+const COURT_SUN: [f64; 3] = [-6.0, 46.0, 10.0];
 const SUN_IRRADIANCE: f64 = 3.3;
 const SHADOW_EXTENT: f64 = 30.0;
 
@@ -157,12 +162,23 @@ const GROUND_EXTENT: f64 = 60.0;
 /// the eye differs. The eye stands in the court at a person's height, in the corner the sun does not fill,
 /// looking at the 正房 and the 夏子 across the well.
 pub fn yikeyin_court() -> Value {
+    // **The court has a sun of its own, and it is nearly overhead.** A 一颗印's court is a well: the four roofs
+    // leave it in shadow all afternoon, which is the type''s own fact (四水归堂 is the light coming down the one
+    // hole) and also why an eye-level frame of it rendered almost black — measured, the round that put the
+    // 台明's steps in found them in the identity table and could not show them. At `COURT_SUN` the light reaches
+    // the platform, the steps and the porch's posts, and the court is photographed as the room it is.
     scene(
-        [1.15, 1.5, 1.25],
-        [-1.0, 3.9, -1.4],
-        1.22,
+        // **The court is three metres across and six metres deep in walls**, so its photograph needs a wide lens
+        // and a place to stand: from the court's own south side, looking up at the 正房's platform and eaves
+        // through a 97-degree field, which is the only framing in which one frame holds the steps, the porch's
+        // posts and the sky-well together.
+        // **The camera looks down at the platform and not up at the eaves**: the steps are on the floor, and a
+        // court frame aimed at the sky-well is a frame of the sky-well.
+        [0.2, 2.1, 1.3],
+        [-0.2, 0.35, -1.4],
+        1.70,
         "yikeyin_court",
-        SUN,
+        COURT_SUN,
     )
 }
 
@@ -301,7 +317,15 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str, sun: [
                 // **The sky as a light**, which is the term the court lives on: a well under one lamp is a
                 // hole, and its own walls see the dome instead. The pixels below are the same air, so the
                 // ambient and the background are one sky and cannot drift apart.
-                environment_light("air", "air", [1.0; 3], 1.06),
+                // **The sky is the court's only other light, and a well's own opening is bright**: the court is
+                // photographed with the environment turned up, which is what a sky-well does to a small court and
+                // is a scene's own number, not a change to any building's material.
+                environment_light(
+                    "air",
+                    "air",
+                    [1.0; 3],
+                    if name == "yikeyin_court" { 2.6 } else { 1.06 },
+                ),
             ]),
         ),
         (
