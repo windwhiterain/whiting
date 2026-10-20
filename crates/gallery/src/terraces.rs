@@ -25,18 +25,18 @@
 
 use definition::Value;
 
-use crate::attributes::gallery_vertex_inputs;
 use crate::dawn;
-use crate::geometry::{
+use crate::ridges;
+use document::attributes::gallery_vertex_inputs;
+use document::geometry::{
     cone, cuboid, fractal_noise, hash01, heightfield, prism, ridged_noise, sphere, value_noise,
 };
-use crate::kit::{
+use document::kit::{
     camera, environment_light, gallery_custom_schema, gallery_instance_schema, image, instance,
     instances, light_with_radius, mesh, mesh_material, post_processes, screen_material,
     shaded_point_schema, shader, surface,
 };
-use crate::ridges;
-use crate::shaders::{Projection, lighting, mesh_shaders, post_shader};
+use document::shaders::{Projection, lighting, mesh_shaders, post_shader};
 use scene::standard::{Stage, light_pass_schema};
 
 /// How far the valley reaches from its centre, in world units.
@@ -316,7 +316,7 @@ fn build_shaders() -> Vec<Value> {
             &gallery_vertex_inputs(&shaded_point_schema()),
             "",
             "",
-            crate::shaders::Projection::Latlong,
+            document::shaders::Projection::Latlong,
             &gallery_custom_schema(),
         ),
         light_pass_schema(),

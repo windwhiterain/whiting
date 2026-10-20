@@ -34,7 +34,7 @@
 //!
 //! # What the two shared files this module appends to are
 //!
-//! `lib.rs` gains three build arms and `locate.rs` three [`crate::locate::Naming`] rows, which is the
+//! `lib.rs` gains three build arms and `locate.rs` three [`document::naming::Naming`] rows, which is the
 //! whole of the registration: the scene's own resolver names a planting and a node, and the row's
 //! `note` is the one sentence an asker puts after it. **The transect's compression is stated in that
 //! note as well as above**, because the row is the one piece of prose about a frame that reaches a
@@ -49,7 +49,6 @@ use vegetation::handle::Handle;
 use vegetation::plant::Placement;
 use vegetation::rng::Rng;
 
-use crate::air::Atmosphere;
 use crate::southwest::{Foliage as PineFoliage, pine_palette, yunnan_pine};
 use crate::southwest_flag::{dove_palette, dove_tree, giant_rhododendron, rhodo_palette};
 use crate::southwest_oak::{alpine_oak, oak_palette};
@@ -61,6 +60,7 @@ use crate::southwest_valley::{Foliage as FernFoliage, Season, kapok, tree_fern};
 use crate::vegetation_picture::{
     Framing, Ground, Lighting, Palette, Planting, Prop, Skin, plant_scene_lit, planting_handle,
 };
+use document::air::Atmosphere;
 
 // ---------------------------------------------------------------------------
 // The three frames' names
@@ -173,10 +173,10 @@ fn packed_prop(
         around,
     }
     .loft();
-    let schema = crate::building_identity::not_authored_extras().point_schema();
+    let schema = document::building_identity::not_authored_extras().point_schema();
     let layout = graphics::layout::packed_layout(&schema)
         .expect("the ground's own point schema is a struct of components");
-    let corners = crate::geometry::loft_corners(&loft);
+    let corners = document::geometry::loft_corners(&loft);
     let mut points = definition::PackedBuilder::new(layout);
     points.reserve(corners.len());
     for corner in &corners {

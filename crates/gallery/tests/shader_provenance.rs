@@ -25,10 +25,10 @@
 
 use std::fs;
 
+use document::kit::gallery_custom_schema;
+use document::shaders::{Block, Projection, lighting, post};
+use document::wgsl;
 use graphics::provenance::{MARKER, explain, origin_of};
-use whiting_gallery::kit::gallery_custom_schema;
-use whiting_gallery::shaders::{Block, Projection, lighting, post};
-use whiting_gallery::wgsl;
 
 /// A surface body, declared, in the shape `rustfmt` leaves a `wgsl!` invocation in: the literal
 /// opens on the line after the invocation, so the block's first line of text is the empty tail

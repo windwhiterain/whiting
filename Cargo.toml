@@ -4,6 +4,7 @@ members = [
     "crates/definition",
     "crates/graphics",
     "crates/scene",
+    "crates/document",
     "crates/gallery",
     "crates/device",
     "crates/device-rasterize",
@@ -30,6 +31,7 @@ license = "MIT OR Apache-2.0"
 definition = { path = "crates/definition", package = "whiting-definition" }
 graphics = { path = "crates/graphics", package = "whiting-graphics" }
 scene = { path = "crates/scene", package = "whiting-scene" }
+document = { path = "crates/document", package = "whiting-document" }
 gallery = { path = "crates/gallery", package = "whiting-gallery" }
 device = { path = "crates/device", package = "whiting-device" }
 device-rasterize = { path = "crates/device-rasterize", package = "whiting-device-rasterize" }

@@ -10,6 +10,10 @@ description = "Builders for standard scene documents, and the scenes built with 
 definition = { workspace = true }
 graphics = { workspace = true }
 scene = { workspace = true }
+# The document itself: the builders that write one, the identity it carries, and the naming it
+# answers with. The gallery is the content — the scenes — and the document is what a renderer
+# is handed, so the gallery is above it and never the other way round.
+document = { workspace = true }
 # The `landscape` scene is the mountain crate's first caller: it authors a massif as a ridge and
 # valley skeleton, expands it, and draws the facets.
 mountain = { workspace = true }
@@ -41,3 +45,10 @@ vegetation = { workspace = true }
 # so the two agree on the spelling by construction.
 [dev-dependencies]
 facet-json = { workspace = true }
+# The shadow probe: it measures what a caster that asks for its own shadow resolution gets, and
+# it is reconciled against a scene of this crate's, so it draws on the renderer. The renderer
+# does not draw on this crate in return, and the cycle exists only for probes, which cargo
+# allows and the dependency graph of the published library never sees.
+whiting-device-rasterize = { path = "../device-rasterize" }
+device = { path = "../device", package = "whiting-device" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

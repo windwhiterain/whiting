@@ -41,15 +41,15 @@
 use definition::Value;
 use scene::standard::Stage;
 
-use crate::geometry::{cone, fractal_noise, hash01, heightfield, normalized, ridged_noise};
-use crate::kit::{
+use document::geometry::{cone, fractal_noise, hash01, heightfield, normalized, ridged_noise};
+use document::kit::{
     camera_placed_on_lens, environment_light, image, instance, instances, light_with_radius, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{
+use document::shaders::{
     Block, Projection, emission_shader, mesh_shaders_with_normal, post_shader, sunset_pixels,
 };
-use crate::wgsl;
+use document::wgsl;
 
 use std::f64::consts::TAU;
 

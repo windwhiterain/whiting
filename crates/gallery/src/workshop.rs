@@ -36,18 +36,18 @@ use building::ops;
 use building::parts::{Pin, Placement, Template};
 use building::{Building, Mass, MassId, PlanNode};
 
-use crate::air::Atmosphere;
-use crate::building_identity::{
+use crate::instancing::{Standing, standing};
+use building::expand::part_frame;
+use building::identity::Identity;
+use document::air::Atmosphere;
+use document::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
-use crate::instancing::{Standing, standing};
-use crate::kit::{
+use document::kit::{
     camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
     mesh_material, offset_by, post_processes, screen_material, shaded_point_schema, sky, surface,
 };
-use crate::shaders::{Projection, post_shader};
-use building::expand::part_frame;
-use building::identity::Identity;
+use document::shaders::{Projection, post_shader};
 
 /// The workshop: two storeys, a shallow gable, and enough wall for three bays a storey.
 const STARTER: Starter = Starter {

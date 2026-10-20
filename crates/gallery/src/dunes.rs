@@ -19,13 +19,13 @@
 use definition::Value;
 use scene::standard::Stage;
 
-use crate::air::Atmosphere;
-use crate::geometry::{fractal_noise, heightfield};
-use crate::kit::{
+use document::air::Atmosphere;
+use document::geometry::{fractal_noise, heightfield};
+use document::kit::{
     camera, environment_light, image, instance, instances, light_with_radius, mesh, mesh_material,
     post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{Projection, mesh_shaders, post_shader};
+use document::shaders::{Projection, mesh_shaders, post_shader};
 
 /// How far the field reaches, in world units.
 const EXTENT: f64 = 165.0;
@@ -117,7 +117,7 @@ pub fn dunes() -> Value {
                 256,
                 128,
                 atmosphere().environment_pixels(256, 128),
-                crate::shaders::Projection::Latlong,
+                document::shaders::Projection::Latlong,
             )]),
         ),
         (

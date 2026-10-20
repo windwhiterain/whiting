@@ -208,11 +208,11 @@ use vegetation::plant::Placement;
 use vegetation::rng::Rng;
 use vegetation::species::{Generation, Joint, Rule, grow, spine, taper};
 
-use crate::air::Atmosphere;
 use crate::vegetation_mesh::node_ids;
 use crate::vegetation_picture::{
     Framing, Ground, Lighting, Palette, Planting, Skin, plant_scene_lit,
 };
+use document::air::Atmosphere;
 
 /// The name the tree fern's whole-plant plate is built and rendered under.
 pub const TREE_FERN: &str = "tree_fern";

@@ -56,11 +56,11 @@ use vegetation::leaf::{LeafField, LeafTemplate};
 use vegetation::rng::Rng;
 use vegetation::species::{Generation, Joint, Rule, grow, spine, taper};
 
-use crate::air::Atmosphere;
 use crate::vegetation_mesh::node_ids;
 use crate::vegetation_picture::{
     Framing, Ground, Lighting, Palette, Planting, Skin, plant_scene_lit,
 };
+use document::air::Atmosphere;
 
 /// The golden angle as a fraction of a turn, which is the step between two siblings that are not a whorl.
 const GOLDEN: f32 = 0.381_966_01;
@@ -696,7 +696,7 @@ pub fn dove_palette() -> Palette {
 ///   the frame, which is exactly what the first pair of plates carried in the bottom right corner. The floor is 400 m
 ///   square, so its diagonal is 566 m; the irradiance written here is **what a surface 566 m from the key receives**,
 ///   which for a subject 37.5 m away is `3.0 × (37.5 / 566)²` — the arithmetic is the
-///   conversion [`flux_for_irradiance`](crate::kit::flux_for_irradiance) performs and it is written out rather than
+///   conversion [`flux_for_irradiance`](document::kit::flux_for_irradiance) performs and it is written out rather than
 ///   folded into a bigger number. The key's **position** — and so the distance at which the subject is lit — is
 ///   unchanged from the first plate.
 /// - The air is the note's own belt — 1100–2600 m in montane mixed forest — so it is thicker than the pine's two
@@ -707,7 +707,7 @@ pub fn dove_palette() -> Palette {
 ///   the frame, which is exactly what the first pair of plates carried in the bottom right corner. The floor is 400 m
 ///   square, so its diagonal is 566 m; the irradiance written here is **what a surface 566 m from the key receives**,
 ///   which for a subject 37.5 m away is `3.0 × (37.5 / 566)²` — the arithmetic is the
-///   conversion [`flux_for_irradiance`](crate::kit::flux_for_irradiance) performs and it is written out rather than
+///   conversion [`flux_for_irradiance`](document::kit::flux_for_irradiance) performs and it is written out rather than
 ///   folded into a bigger number. The key's **position** — and so the distance at which the subject is lit — is
 ///   unchanged from the first plate.
 fn dove_lighting() -> Lighting {
@@ -1381,7 +1381,7 @@ pub fn rhodo_palette() -> Palette {
 ///   lights draws the light cluster's own boundary on that ground as a straight line across the frame, which is the
 ///   edge the first pair of plates carried; the irradiance written here is therefore **what a surface 566 m from the
 ///   light receives**, and the subject's own is `2.6 × (35.1 / 566)²` and `0.28 × (24.1 / 566)²`. The arithmetic is
-///   [`flux_for_irradiance`](crate::kit::flux_for_irradiance)'s own and it is written out rather than folded into a
+///   [`flux_for_irradiance`](document::kit::flux_for_irradiance)'s own and it is written out rather than folded into a
 ///   bigger number; the lights' **positions** are unchanged, so the distance at which the subject is lit has not moved.
 /// - **The belt is the note's Chinese field record** — **2100–3200 m in evergreen broad-leaved forest** — so the sky is
 ///   a pale high overcast rather than the pine's deep blue, and the air is the thickest of the three trees here: a

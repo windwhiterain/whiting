@@ -12,26 +12,10 @@
 //!
 //! # What is here
 //!
-//! - [`kit`] — one builder per field a scene document has: a light, a mesh, a material, a shader,
-//!   an image, a camera, an instance, and the frame the scene is drawn into.
-//! - [`air`] — the air a scene is drawn through, written once and handed to every stage, so
-//!   the sky and the haze a distant surface fades into are the same number.
-//! - [`ridges`] — far ranges painted into the sky behind whatever the air has already closed
-//!   over, for a horizon that is otherwise a patch of sky a shade off.
-//! - [`geometry`] — the generators that produce points: a heightfield, a sphere, a cuboid, and the
-//!   noise a heightfield is usually given.
-//! - [`ground`] — the ground a building scene stands on, with each building's own floor cut out of
-//!   it, so a plate's pixels are the plate's own rather than a tie the raster settled by draw order.
-//! - [`shaders`] — WGSL the standard stages are written from, and the vertex attribute lists they
-//!   read.
-//! - [`attributes`] — derives those attribute lists from the schemas a scene declares, so a scene
-//!   that changes its point schema gets matching shader input without writing it out.
+//! - [`naming`] — the content's own naming: what a scene's ids mean, and what they name.
+//! - [`landscape`] — the mountain scene, and the massif it stands on.
 //! - [`patchmesh`] — a massif's facets as an editable patch surface. The one place this crate
 //!   joins `mountain` to `patch`, which is the only reason it is here rather than in either.
-//! - [`hermite`] — a patch surface with a crease in it, authored here rather than converted and
-//!   sampled into the triangles a scene document holds. It replaced the `nurbs` scene, which drew the
-//!   same picture on the per-patch Bernstein model; keeping both would have been two scenes doing one
-//!   job, and the crease is made by one call rather than a tag plus two order-sensitive writes.
 //! - [`vegetation_mesh`] and [`vegetation_instancing`] — a plant's wood as one mesh and its blade as
 //!   one instanced template, which is the `vegetation` crate's first caller here for the same reason
 //!   [`patchmesh`] is `mountain`'s: neither crate may know about a scene, so the conversion lives in
@@ -43,6 +27,11 @@
 //! The builders are the part worth reusing and the scenes are what a particular set of them
 //! produced. Keeping both here means a new scene is a file beside the others rather than an
 //! addition to the compiler, and it means the builders can be depended on without the scenes.
+//!
+//! **The builders themselves are not here.** They are in the `document` crate, which owns the
+//! scene document: how one is written, what an id in it means, and what a caller is told about a
+//! pixel. A renderer draws a document and knows no scene by name; the gallery builds the
+//! documents and knows every scene by name. The two meet at a file.
 //!
 //! # Two things make a scene worth building in code
 //!
@@ -63,26 +52,19 @@
 
 use definition::Value;
 
-pub mod air;
-pub mod attributes;
 /// The identity scene: a building drawn so every pixel names its element.
 pub mod authored;
-/// The identity a building's frame can carry: which element a pixel shows.
-pub mod building_identity;
 pub mod building_mesh;
 pub mod built;
-pub mod geometry;
 /// The ground a building scene stands on, with each building's own floor cut out of it.
 pub mod ground;
-pub mod identity;
 /// Standing one template's mesh in many places.
 pub mod instancing;
-pub mod kit;
 pub mod land;
-pub mod locate;
+/// The content's own naming: what a scene's ids mean, and what they name.
+pub mod naming;
 pub mod patchmesh;
 pub mod ridges;
-pub mod shaders;
 
 /// The shell phase's proof scene: one authored building, derived and expanded, standing in a frame.
 ///
@@ -239,8 +221,15 @@ impl Gallery {
     ///
     /// An unknown name lists the ones that exist rather than panicking, because the caller
     /// is usually a command line and a list is more use than a backtrace.
+    ///
+    /// # What the document carries
+    ///
+    /// **The naming travels with the scene.** A scene's ids are named by the content that made
+    /// them, and a renderer that has to ask the content to find out what a pixel is would have to
+    /// link the content. So the scene carries its own table of ids and handles, and the renderer
+    /// reads it out of the document it was handed.
     pub fn build(name: &str) -> Value {
-        match name {
+        let scene = match name {
             "bamboo" => vegetation_picture::bamboo_picture(),
             "bamboo_wind" => vegetation_picture::windy_picture(),
             "bamboo_crown" => vegetation_picture::crowned_picture(),
@@ -335,6 +324,13 @@ impl Gallery {
                 Self::names().len(),
                 Self::names().join(", ")
             ),
+        };
+        // **A scene that names its own elements carries the naming with it.** The plant scenes
+        // write their table where the ids were numbered, so they are left alone; a building and
+        // the landscape are named here, where the scene's own document is known.
+        match naming::handles_of(name) {
+            Some(handles) => naming::with_elements(scene, name, handles),
+            None => scene,
         }
     }
 

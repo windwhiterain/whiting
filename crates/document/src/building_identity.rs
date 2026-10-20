@@ -35,7 +35,7 @@ use building::BuildingMesh;
 use building::identity::Identity;
 use definition::{PackedBuilder, PackedList, Value};
 
-use crate::identity::ID_OUTPUT;
+use crate::naming::{ID_OUTPUT, NOT_AUTHORED};
 use crate::shaders::{
     Authored, Block, Extras, Projection, lighting_shader_declaring, mesh_shaders_over,
 };
@@ -179,7 +179,7 @@ pub fn not_authored_extras() -> Extras {
     Extras::new([(
         ID_OUTPUT.to_owned(),
         1,
-        Authored::Constant(f64::from(building::identity::NOT_AUTHORED)),
+        Authored::Constant(f64::from(NOT_AUTHORED)),
     )])
 }
 
@@ -260,8 +260,9 @@ pub fn stage_set_over_schema<'text>(
 /// - A name the table does not hold answers `None` rather than zero, because *"no such element"* and *"an
 ///   element off screen"* are different answers and a caller that conflated them would read the second as the
 ///   first.
-pub fn id_in(scene: &str, name: &str) -> Option<u32> {
-    let building = document_of(scene)?;
+/// - **The building is the caller's.** Which building a scene draws is the content's own fact, and a
+///   document crate that carried the list would be carrying the gallery with it.
+pub fn id_in(building: &Building, name: &str) -> Option<u32> {
     let built = building.build().ok()?;
     let numbering = Identity::of(&built, 1);
     numbering
@@ -271,63 +272,18 @@ pub fn id_in(scene: &str, name: &str) -> Option<u32> {
         .map(|row| row.id)
 }
 
-/// Returns the document a building scene draws, by the scene's name, or `None` for a name this crate
-/// does not draw a building for.
-///
-/// # Invariants
-///
-/// **One table, and it was two.** [`id_in`] and [`locate_in`] each carried this match out in full —
-/// nine arms, twice — which is a table that can be extended on one side and not the other: a scene
-/// added to `id_in` alone answers a name and not an id, and the identity probe's own circle is what
-/// finds that. It is one function now, and `stilt` is the scene that added the tenth arm.
-fn document_of(scene: &str) -> Option<Building> {
-    Some(match scene {
-        "identity" => crate::authored::document(),
-        "shed" => crate::shed::document(),
-        "compound" => crate::compound::document(),
-        // **Two cameras, one document**: the court view is the same expansion.
-        "compound_court" => crate::compound::document(),
-        "stilt" => crate::stilt::document(),
-        "street" => crate::street::document(),
-        "terrace" => crate::terrace::document(),
-        "wing" => crate::wing::document(),
-        "workshop" => crate::workshop::document(),
-        "yard" => crate::yard::document(),
-        "yikeyin" => crate::yikeyin::document(),
-        // **Two cameras, one document**: the court view is the same expansion, so it names the same rows.
-        "yikeyin_court" => crate::yikeyin::document(),
-        "house" => crate::house::document(),
-        "hall" => crate::hall::document(),
-        "hall_large" => crate::hall::document_at(14.0, 20.0, 1),
-        _ => return None,
-    })
-}
-
-/// Resolves an `authored_id` written by **any building scene this crate knows** into the name of the element
-/// it shows.
+/// Resolves an `authored_id` written by **a building scene** into the name of the element it shows.
 ///
 /// # Invariants
 ///
 /// - **The document is rebuilt from the scene's own builder**, so a caller holding a number from a frame is
 ///   handed the name the *same* document gives it: rebuilding is what makes the two agree by construction
 ///   rather than by hope.
-/// - **A scene this module cannot name answers `None`**, and so does an id the table does not hold — zero, the
+/// - **A building this module cannot name answers `None`**, and so does an id the table does not hold — zero, the
 ///   sky's, the ground's, and any number from another build. That is the reserved zero doing its job: *"not an
 ///   element of this building"* is an answer, and it is different from *"an element I cannot name"*.
-/// - It is the building side of [`crate::identity::locate`], with the same argument: the hops happen here and
-///   nowhere else, because a caller that chained them itself would be wrong in the middle where the answer
-///   looks like an answer.
-pub fn locate_in(scene: &str, id: u32) -> Option<String> {
-    let building = document_of(scene)?;
+pub fn locate_in(building: &Building, id: u32) -> Option<String> {
     let built = building.build().ok()?;
     let numbering = Identity::of(&built, 1);
     numbering.row(id).map(|row| row.path.clone())
-}
-
-/// Resolves an `authored_id` written by the **identity scene** into the name of the element it shows.
-///
-/// It is [`locate_in`] with the scene this module was built for, kept because that scene is the one the crate
-/// documents as its identity picture.
-pub fn locate(id: u32) -> Option<String> {
-    locate_in("identity", id)
 }

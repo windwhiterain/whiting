@@ -50,14 +50,14 @@ use mountain::{FacetMesh, Massif};
 use scene::standard::Stage;
 use terrain::HeightField;
 
-use crate::air::Atmosphere;
-use crate::geometry::{fractal_noise, heightfield, smoothstep};
-use crate::identity::{Identity, massif_extras, outputs_field, plain_extras};
-use crate::kit::{
+use document::air::Atmosphere;
+use document::geometry::{fractal_noise, heightfield, smoothstep};
+use document::identity::{Identity, massif_extras, outputs_field, plain_extras};
+use document::kit::{
     camera_placed_up, directional, environment_light, image, instance, instances, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{
+use document::shaders::{
     Block, Extras, Projection, lighting_shader_declaring, mesh_shaders_over, post_shader,
 };
 
@@ -100,9 +100,9 @@ fn stage_set<'text>(
         "",
         body,
         helpers,
-        crate::kit::gallery_custom_schema(),
+        document::kit::gallery_custom_schema(),
         extras,
-        crate::shaders::Projection::Latlong,
+        document::shaders::Projection::Latlong,
     ));
     shaders
 }
@@ -697,7 +697,7 @@ pub fn landscape() -> Value {
                 256,
                 128,
                 atmosphere.environment_pixels(256, 128),
-                crate::shaders::Projection::Latlong,
+                document::shaders::Projection::Latlong,
             )]),
         ),
         (

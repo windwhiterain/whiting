@@ -14,12 +14,12 @@
 use definition::Value;
 use scene::standard::Stage;
 
-use crate::geometry::{cuboid, hash01, heightfield};
-use crate::kit::{
+use document::geometry::{cuboid, hash01, heightfield};
+use document::kit::{
     camera_placed, instance, instances, light_with_radius, mesh, mesh_material, post_processes,
     screen_material, shaded_point_schema, surface, surface_reflecting,
 };
-use crate::shaders::{emission_shader, mesh_shaders, post_shader};
+use document::shaders::{emission_shader, mesh_shaders, post_shader};
 
 /// How far the field reaches, in world units.
 const EXTENT: f64 = 52.0;

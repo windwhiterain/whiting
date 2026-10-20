@@ -278,10 +278,8 @@ fn report_slivers(mesh: &FacetMesh) {
 /// of the edge instead measures the surface's curvature between two different vertices and calls
 /// every curve a crease, which is a measurement of the mountain rather than of the mesh.
 fn report_creases(mesh: &FacetMesh) {
-    let flank =
-        mountain::CornerNormals::of_grouped(mesh, whiting_gallery::identity::across_the_flank);
-    let belt =
-        mountain::CornerNormals::of_grouped(mesh, whiting_gallery::identity::across_the_belt);
+    let flank = mountain::CornerNormals::of_grouped(mesh, document::identity::across_the_flank);
+    let belt = mountain::CornerNormals::of_grouped(mesh, document::identity::across_the_belt);
 
     // Every edge, with the faces on it. The key is the edge's own two endpoints **in order**, so a
     // face that walks the edge the other way — which every two do, or the mesh would not be

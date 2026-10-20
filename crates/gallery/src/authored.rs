@@ -33,15 +33,15 @@ use building::parts::{Pin, Placement, Template};
 use building::wall::Wall;
 use building::{Building, Mass, MassId, PlanNode};
 
-use crate::air::Atmosphere;
-use crate::building_identity::{
+use document::air::Atmosphere;
+use document::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed, stage_set,
 };
-use crate::kit::{
+use document::kit::{
     camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
     mesh_material, post_processes, screen_material, sky, surface,
 };
-use crate::shaders::{Projection, post_shader};
+use document::shaders::{Projection, post_shader};
 
 /// The building this frame draws: a small two-storey shell, so the frame holds a mass, a roof, a plate, a
 /// wall and a part — five kinds of element, each with an id of its own.

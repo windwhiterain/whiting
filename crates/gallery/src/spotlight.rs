@@ -29,12 +29,12 @@
 
 use definition::Value;
 
-use crate::geometry::{cuboid, plane_facing};
-use crate::kit::{
+use document::geometry::{cuboid, plane_facing};
+use document::kit::{
     Cone, camera_placed, gallery_custom_schema, gallery_instance_schema, instance, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, shader, spot, surface,
 };
-use crate::shaders::{depthing, lighting, post_shader, shadowing};
+use document::shaders::{depthing, lighting, post_shader, shadowing};
 use scene::standard::Stage;
 
 /// How far the floor reaches either side of the middle, in world units.
@@ -51,7 +51,7 @@ const LAMP: [f64; 3] = [-1.6, 8.5, 4.2];
 /// Builds the scene.
 pub fn spotlight() -> Value {
     let point = shaded_point_schema();
-    let inputs = crate::attributes::gallery_vertex_inputs(&point);
+    let inputs = document::attributes::gallery_vertex_inputs(&point);
     let custom = gallery_custom_schema();
 
     let shaders = Value::List(vec![
@@ -80,8 +80,8 @@ pub fn spotlight() -> Value {
                 &inputs,
                 "",
                 "",
-                crate::shaders::Projection::Latlong,
-                &crate::kit::gallery_custom_schema(),
+                document::shaders::Projection::Latlong,
+                &document::kit::gallery_custom_schema(),
             ),
             scene::standard::light_pass_schema(),
             point.clone(),

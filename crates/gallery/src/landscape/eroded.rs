@@ -51,7 +51,8 @@ use definition::{PackedBuilder, PackedList};
 use mountain::FacetMesh;
 use terrain::{Books, ErodeParams, HeightField, Hydraulic, Provenance, erode_traced, rasterize};
 
-use crate::identity::{ID_OUTPUT, Identity, U_OUTPUT, V_OUTPUT};
+use document::identity::Identity;
+use document::naming::{ID_OUTPUT, U_OUTPUT, V_OUTPUT};
 
 /// The lattice's plan spacing, in the mesh's own units.
 ///
@@ -211,7 +212,7 @@ impl Erosion {
     ///   of its corners, which makes them constant across the cell: a lattice cannot say
     ///   which facet a pixel is on at a resolution finer than the lattice, and interpolating
     ///   an id between two facets would name ids that belong to neither.
-    /// - **The winding is [`crate::geometry::heightfield`]'s**, which is the winding this
+    /// - **The winding is [`document::geometry::heightfield`]'s**, which is the winding this
     ///   pipeline already draws ground with and the one every other height field in the
     ///   gallery is drawn with.
     pub fn lattice(
@@ -220,7 +221,7 @@ impl Erosion {
         identity: &Identity,
         below: &[&HeightField],
     ) -> PackedList {
-        let schema = crate::identity::massif_extras().point_schema();
+        let schema = document::identity::massif_extras().point_schema();
         // The layout is the schema's own, read through the same function the renderer reads
         // it with; writing the field order out here would be a second copy of the rule.
         let layout = graphics::layout::packed_layout(&schema)

@@ -26,10 +26,10 @@
 //! page's side, and how many words a light record is. Both are the compiler's facts, restated in
 //! `WGSL`, and the restatement is the whole risk.
 
+use document::kit::gallery_custom_schema;
+use document::shaders;
 use scene::lighting::light_record_stride;
 use scene::vshadow::PAGE_SIZE;
-use whiting_gallery::kit::gallery_custom_schema;
-use whiting_gallery::shaders;
 
 /// A surface body empty enough to assemble.
 const NOTHING: &str = "";

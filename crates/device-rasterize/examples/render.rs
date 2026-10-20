@@ -112,7 +112,6 @@ use std::path::{Path, PathBuf};
 use definition::{Definition, DefinitionIdentifier, FieldMap, Registry, SchemaIdentifier, Value};
 use device::{RenderedFrame, RenderedImage, Renderer};
 use facet::Facet;
-use gallery::Gallery;
 use graphics::{GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 use scene::{
     CompileContext, CompileNote, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene,
@@ -235,15 +234,14 @@ fn parse_region(written: &str) -> Result<[u32; 4], String> {
 /// - **The order is a total one, and it is printed with the answer**: deepest first, ties by id ascending. Frames
 ///   carry ids covering equal numbers of pixels (`terrace`'s ids 33 and 89 each cover 1,918), so the count alone
 ///   leaves rows free to swap, and two runs of the same frame must not disagree about which came first.
-/// - **The naming is the content's**, asked of the tables `--locate` and `--where` ask and in that order: a
-///   building's own elements from `gallery::building_identity`, the reserved zero from `gallery::locate`, and
-///   the vegetation naming registry only after both have declined. What an id *means* lives with the content,
-///   and this harness only counts.
+/// - **The naming is the document's**, asked of the tables `--locate` and `--where` ask and in that order: the
+///   document's own handles, and the reserved zero from the same table. What an id *means* lives with the content
+///   that wrote the document, and this harness only counts.
 /// - **A rectangle outside the frame is clamped rather than refused**: a caller comparing two frames of different
 ///   sizes has already made the interesting decision, and an empty answer would hide it.
-fn region(scene: &str, rendered: &RenderedFrame, region: [u32; 4]) {
+fn region(naming: &Naming, rendered: &RenderedFrame, region: [u32; 4]) {
     let [x0, y0, x1, y1] = region;
-    println!("region {scene} ({x0}, {y0})..({x1}, {y1}):");
+    println!("region {} ({x0}, {y0})..({x1}, {y1}):", naming.scene);
     let Some(image) = rendered
         .images
         .iter()
@@ -271,12 +269,8 @@ fn region(scene: &str, rendered: &RenderedFrame, region: [u32; 4]) {
     // holds ids that cover the same number of pixels -- `terrace`'s ids 33 and 89 each carry 1,918
     // -- and an order that leaves those two free to swap is an order two runs can disagree about.
     rows.sort_by(|one, other| other.1.cmp(&one.1).then(one.0.cmp(&other.0)));
-    let naming = gallery::locate::naming(scene);
     for (id, count) in rows.iter() {
-        println!(
-            "  {count:>7} px  id {id:<6} {}",
-            name_for_row(scene, naming, *id)
-        );
+        println!("  {count:>7} px  id {id:<6} {}", name_for_row(naming, *id));
     }
     // **The counted zero is a rectangle, while the sentence on it is a pixel's.** A region counts the
     // reserved zero like any other id -- that is what the scan above did before anything here named it,
@@ -284,7 +278,7 @@ fn region(scene: &str, rendered: &RenderedFrame, region: [u32; 4]) {
     // than one pixel's reading, and the words beside them are asked of `locate` rather than written here.
     if rows
         .iter()
-        .any(|(id, _)| *id == gallery::identity::NOT_AUTHORED)
+        .any(|(id, _)| *id == document::naming::NOT_AUTHORED)
     {
         println!(
             "  the reserved zero is counted here like any other id, so its row is this rectangle's \
@@ -306,31 +300,26 @@ fn region(scene: &str, rendered: &RenderedFrame, region: [u32; 4]) {
 ///
 /// # Invariants
 ///
-/// - **A building's own id is asked of `gallery::building_identity`, and that table comes before the
-///   naming registry.** The registry is the *vegetation* one -- a scene registers there to say its ids
-///   are nodes of a plant -- and no building scene registers in it, so asking it first is what printed
-///   `id 0, and this scene names nothing` for *every* id of *every* building: a wall, a slab and the
-///   reserved zero alike, on the scenes whose elements [`locate`] and [`where_is`] both name.
 /// - **The reserved zero is asked of [`reserved_zero_answers`] and never written here**, for the reason
 ///   [`where_is`] gives at length: it is no element to name, it is the one id every subsystem answers,
 ///   and `--where 0` asks that same call about the same number.
-/// - **A row wants a handle and asks [`gallery::locate::handle_in`] for one.** A row of a rectangle is a count of
+/// - **A row wants a handle and asks [`document::naming::handle_in`] for one.** A row of a rectangle is a count of
 ///   ids and carries no pixel, so the sentences `--locate` puts under the handle — a face, a place on it, an edit —
-///   are about a pixel this table does not have. The registry answers both questions from one table, and which of the
-///   two a caller asks is the caller's decision rather than the registry's.
-/// - **A scene the gallery cannot name at all still answers in the harness's own words**, which are true
+///   are about a pixel this table does not have. The document's own table answers both questions, and which of the
+///   two a caller asks is the caller's decision rather than the table's.
+/// - **A document that names nothing still answers in the harness's own words**, which are true
 ///   rather than a fallback for want of trying, and are the sentences this table carried before.
-fn name_for_row(scene: &str, naming: Option<&'static gallery::locate::Naming>, id: u32) -> String {
-    if id == gallery::identity::NOT_AUTHORED {
-        if let Some(answer) = reserved_zero_answers(scene) {
+fn name_for_row(naming: &Naming, id: u32) -> String {
+    if id == document::naming::NOT_AUTHORED {
+        if let Some(answer) = reserved_zero_answers(naming) {
             return answer;
         }
     }
-    if let Some(handle) = gallery::locate::handle_in(scene, id) {
+    if let Some(handle) = document::naming::handle_in(naming.elements.as_ref(), id) {
         return handle;
     }
-    match naming {
-        Some(_) if id == gallery::identity::NOT_AUTHORED => {
+    match naming.elements {
+        Some(_) if id == document::naming::NOT_AUTHORED => {
             "not an authored element: the ground or the sky".to_owned()
         }
         Some(_) => format!("id {id} names nothing here"),
@@ -338,18 +327,17 @@ fn name_for_row(scene: &str, naming: Option<&'static gallery::locate::Naming>, i
     }
 }
 
-/// Returns the sentence the reserved zero is given by whichever domain owns the scene, or `None` when the
-/// gallery names neither the scene nor the number.
+/// Returns the sentence the reserved zero is given by the document that was drawn, or `None` when the
+/// document names neither the scene nor the number.
 ///
 /// # Invariants
 ///
 /// **One ask, for every direction.** `--where 0` and the zero row of `--region` are the same question about
 /// the same number, and two call sites each spelling out the `locate` call is two places to be wrong the day
-/// the answer moves. A building scene gets its answer from the building's own identity table's refusal, a
-/// landscape from the plain's, and a scene neither names from the sentence the gallery itself carries.
-fn reserved_zero_answers(scene: &str) -> Option<String> {
-    let the_values = &[(String::from(gallery::identity::ID_OUTPUT), 0.0)];
-    gallery::locate::locate(scene, the_values)
+/// the answer moves.
+fn reserved_zero_answers(naming: &Naming) -> Option<String> {
+    let the_values = &[(String::from(document::naming::ID_OUTPUT), 0.0)];
+    document::naming::locate(naming.elements.as_ref(), the_values)
 }
 
 /// Prints what one pixel is, in the terms the scene that drew it uses.
@@ -361,12 +349,12 @@ fn reserved_zero_answers(scene: &str) -> Option<String> {
 ///   scene this harness has never heard of still gets an answer, and the numbers are the ones
 ///   the shader wrote.
 ///
-/// - **The domain half is the scene's, and the harness only asks.** What an id *means* is the
-///   content's own naming, which lives with the content and not here — this harness knows
-///   nothing about a ridge or a belt. `gallery::locate` is asked, and a scene it does not know
-///   says so rather than the harness guessing.
-fn locate(scene: &str, rendered: &RenderedFrame, x: u32, y: u32) {
-    println!("locate {scene} ({x}, {y}):");
+/// - **The domain half is the document's, and the harness only asks.** What an id *means* is the
+///   content's own naming, which the document carries and not here — this harness knows
+///   nothing about a ridge or a belt. The document's own table is asked, and a document that
+///   names nothing says so rather than the harness guessing.
+fn locate(naming: &Naming, rendered: &RenderedFrame, x: u32, y: u32) {
+    println!("locate {} ({x}, {y}):", naming.scene);
     let mut values: Vec<(String, f32)> = Vec::new();
     for image in &rendered.images {
         if image.name == graphics::PRESENT_OUTPUT {
@@ -383,12 +371,11 @@ fn locate(scene: &str, rendered: &RenderedFrame, x: u32, y: u32) {
             ),
         }
     }
-    match gallery::locate::locate(scene, &values) {
+    match document::naming::locate(naming.elements.as_ref(), &values) {
         Some(answer) => println!("  ->\n{answer}"),
         None => println!(
-            "  -> this harness has no domain reading for `{scene}`. The numbers above are the \
-             ones the shader wrote, and they are the answer for a scene whose content does not \
-             name its own."
+            "  -> this document names nothing. The numbers above are the ones the shader wrote, and \
+             they are the answer for a document whose content does not name its own."
         ),
     }
 }
@@ -407,7 +394,7 @@ fn describe_texel(texel: &[f32; 4]) -> String {
 ///
 /// # Invariants
 ///
-/// - **A number is an id and anything else is a name**, resolved by `gallery::building_identity::id_in`, so the
+/// - **A number is an id and anything else is a name**, resolved by the document's own table, so the
 ///   two directions are one table: the id `locate` reads off a pixel is the id `where_is` finds pixels for.
 /// - **"No such element" and "not visible" are different answers.** A name the table does not hold says so; an
 ///   id that holds but covers no pixel says the element is not in this frame. A caller that conflated them would
@@ -416,11 +403,12 @@ fn describe_texel(texel: &[f32; 4]) -> String {
 ///   one, so id 0 is not an element that happened to be off screen: it is what a surface that is not an authored
 ///   element writes, and the scan below skips it on purpose. Reported as "not visible" it said the opposite of
 ///   the truth about the largest region of a building frame — the ground and the sky between them cover
-///   686,410 of `workshop`'s 1,048,576 pixels — so the sentence is `gallery::locate`'s own, asked for the same
+///   686,410 of `workshop`'s 1,048,576 pixels — so the sentence is the document's own, asked for the same
 ///   number `--locate` is asked, and the two directions cannot drift apart.
-/// - A scene that writes no `authored_id` says so rather than reporting zero pixels, for the same reason the
-///   harness's `--locate` refuses a scene whose content does not name its own.
-fn where_is(scene: &str, rendered: &RenderedFrame, asked: &str) {
+/// - A document that writes no `authored_id` says so rather than reporting zero pixels, for the same reason the
+///   harness's `--locate` refuses a document whose content does not name its own.
+fn where_is(naming: &Naming, rendered: &RenderedFrame, asked: &str) {
+    let scene = &naming.scene;
     let Some(image) = rendered
         .images
         .iter()
@@ -433,7 +421,10 @@ fn where_is(scene: &str, rendered: &RenderedFrame, asked: &str) {
     };
     let id = match asked.parse::<u32>() {
         Ok(id) => Some(id),
-        Err(_) => gallery::building_identity::id_in(scene, asked),
+        Err(_) => naming
+            .elements
+            .as_ref()
+            .and_then(|elements| elements.handles.id_named(asked)),
     };
     let Some(id) = id else {
         println!("where {scene} {asked}: no element of this scene is called that");
@@ -449,8 +440,8 @@ fn where_is(scene: &str, rendered: &RenderedFrame, asked: &str) {
     // the same question about the same number, and two places to write one answer are two places to be wrong.
     // Nothing is lost by not counting it either: `--region` reads the same image and counts the reserved zero
     // like any other id, which is what a rectangle is for.
-    if id == gallery::identity::NOT_AUTHORED {
-        match reserved_zero_answers(scene) {
+    if id == document::naming::NOT_AUTHORED {
+        match reserved_zero_answers(naming) {
             Some(answer) => println!("where {scene} {asked}: {answer}"),
             None => println!(
                 "where {scene} {asked}: id 0 is the reserved `not an authored element`, and this scene \
@@ -526,33 +517,29 @@ async fn run() -> Result<(), String> {
     //
     // **A document's census is the producer's to print, and this path refuses it rather than
     // reaching for the gallery.** The census reads the document, and on this path the document
-    // is the one that was read from the file; the gallery's own census reads the scene the
-    // gallery builds, which is a different document whenever the two have drifted apart.
+    // is the one that was read from the file; the producer prints the census of the document it
+    // wrote, which is the same document whenever the two have drifted apart.
     if request.census {
-        if request.document.is_some() {
-            return Err(
-                "the census of a document is the producer's to print: `cargo run -p \
-                 whiting-gallery --example scene_document -- <name> <path> --census`"
-                    .to_owned(),
-            );
-        }
-        let name = request.name.clone().ok_or_else(usage)?;
-        print!("{}", Gallery::census(&name));
-        print!("{}", Gallery::bounds(&name));
-        return Ok(());
+        return Err(
+            "the census of a document is the producer's to print: `cargo run -p \
+             whiting-gallery --example scene_document -- <name> <path> --census`"
+                .to_owned(),
+        );
     }
 
-    // **The scene is a document, and this is where the document comes from.** A name builds one
-    // through the gallery; a file gives one that was written before this run, and that path
-    // puts it in the registry the way the rpc's `PUT /definition/{name}` does, so the scene
-    // that is compiled is the one the registry holds rather than the one that was read.
-    let (name, authored) = match (&request.document, &request.name) {
-        (Some(path), Some(name)) => load_document(path, &mut registry, Some(name))?,
-        (Some(path), None) => load_document(path, &mut registry, None)?,
-        (None, Some(name)) => (name.clone(), Gallery::build(name)),
-        (None, None) => return Err(usage()),
+    // **The scene is a document, and this is where the document comes from.** A file gives one
+    // that was written before this run, and it is put in the registry the way the rpc's
+    // `PUT /definition/{name}` puts one there, so the scene that is compiled is the one the
+    // registry holds rather than the one that was read.
+    let Some(path) = &request.document else {
+        return Err(format!(
+            "a scene is a document now, and this harness renders one: {}",
+            usage()
+        ));
     };
-    let name = &name;
+    let naming = load_document(path, &mut registry, request.name.as_deref())?;
+    let name = &naming.scene;
+    let authored = naming.value.clone();
 
     // Every camera a scene names is rendered. A camera decides the projection every pass draws
     // through — and, for a fitted camera, how far back the eye stands — so it is an input to
@@ -681,19 +668,19 @@ async fn run() -> Result<(), String> {
             // disk, because the answer is worth most next to the picture and least without it. Every
             // `--locate` is answered, in the order asked, so a comparison is one run.
             for (x, y) in &request.locate {
-                locate(&name, &rendered, *x, *y);
+                locate(&naming, &rendered, *x, *y);
             }
 
             // **A rectangle is a selection**, and this is the answer that turns a picture into the set of handles an
             // edit can be aimed at: the ids the rectangle covers, each with the pixels it owns, named by the content's
             // own table. A box in world space cannot answer this, which is why it is asked of the frame.
             for rectangle in &request.regions {
-                region(&name, &rendered, *rectangle);
+                region(&naming, &rendered, *rectangle);
             }
 
             // The other direction: the element asked for, and where the frame put it.
             for asked in &request.where_is {
-                where_is(&name, &rendered, asked);
+                where_is(&naming, &rendered, asked);
             }
 
             // The three are reported apart because they are three different costs, and only
@@ -743,6 +730,22 @@ async fn run() -> Result<(), String> {
     Ok(())
 }
 
+/// The naming a document carries, and the name it is registered under.
+///
+/// # Invariants
+///
+/// **The elements are the document's own, read out of it.** A renderer that asked the content
+/// would have to link the content, and a renderer that asked a registry of its own would answer
+/// about the content *now* rather than about the document in hand.
+struct Naming {
+    /// The name the document is registered and recorded under.
+    scene: String,
+    /// What the document says about its own ids, when it says anything.
+    elements: Option<document::naming::Naming>,
+    /// The document itself.
+    value: Value,
+}
+
 /// Reads a scene document and puts it in the registry, the way the rpc's `PUT /definition/{name}`
 /// puts one there.
 ///
@@ -765,7 +768,7 @@ fn load_document(
     path: &Path,
     registry: &mut Registry,
     name: Option<&str>,
-) -> Result<(String, Value), String> {
+) -> Result<Naming, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|error| format!("reading {} failed: {error}", path.display()))?;
     let value = read_value(text)?;
@@ -782,7 +785,7 @@ fn load_document(
     let definition = Definition::new(
         identifier.clone(),
         SchemaIdentifier::new(STANDARD_SCENE_SCHEMA),
-        value,
+        value.clone(),
     );
     definition
         .validate(registry)
@@ -798,7 +801,11 @@ fn load_document(
     let stored = registry
         .definition(&identifier)
         .map_err(|error| format!("the document is not in the registry: {error}"))?;
-    Ok((name, stored.value.clone()))
+    Ok(Naming {
+        scene: name,
+        elements: document::naming::elements_of(&stored.value),
+        value: stored.value.clone(),
+    })
 }
 
 /// Returns the name a scene document carries, or none when it carries none.

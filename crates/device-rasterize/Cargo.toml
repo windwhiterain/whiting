@@ -24,7 +24,14 @@ facet-json = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 [dev-dependencies]
-gallery = { workspace = true }
+# The document crate: the builders that write a scene document. The probes and the render
+# harness build their scenes with these, and the harness reads a document the gallery wrote.
+#
+# The gallery is **not** a dependency here, and that is the point of the split: a renderer draws
+# a document and knows no scene by name, so a change to a scene must not relink the renderer. The
+# one probe that is reconciled against a gallery scene lives with the gallery, in
+# `crates/gallery/examples/shadow_probe.rs`.
+document = { workspace = true }
 
 # Everything below draws on a real gpu and reads the pixels back, which is a question only an
 # adapter can answer. They are named here rather than auto-discovered so that a plain
@@ -32,9 +39,6 @@ gallery = { workspace = true }
 # resolve `wgpu` at all.
 [[example]]
 name = "render"
-
-[[example]]
-name = "shadow_probe"
 
 [[test]]
 name = "texture_channel_render"

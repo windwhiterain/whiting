@@ -211,6 +211,21 @@ pub const STAGE: &str = "stage";
 /// Field holding the extra images the scene's own shaders write.
 pub const OUTPUTS: &str = "outputs";
 
+/// Field holding the naming the scene's own ids answer with.
+///
+/// # What this field is
+///
+/// A scene's frame carries a number per pixel — the `authored_id` — and the number is only
+/// useful if something can turn it back into a name. This field is that something, carried by
+/// the document rather than asked of the scene that made it: **a document written before an edit
+/// and a frame drawn from it are one picture, and the name that goes with the picture is the
+/// name the document carried when it was written.** A table rebuilt on every question answers
+/// about the content *now*, which is a different question.
+///
+/// The three parts are the naming itself: what an id means here, what the reserved zero means
+/// here, and the handle each id names.
+pub const ELEMENTS: &str = "elements";
+
 /// Field holding the `@location` a declared output's shader writes it at.
 pub const LOCATION: &str = "location";
 
@@ -250,6 +265,42 @@ pub fn scene_output_schema() -> Schema {
                  image is drawn in follows from it rather than being chosen beside it, and a type \
                  no format in this device can create **and read back** is refused by name.",
             ),
+        ),
+    ]))
+}
+
+/// Builds the schema of a scene's naming: what its ids mean and what they name.
+///
+/// # Invariants
+///
+/// - **Every part is optional.** A scene that names nothing says so by leaving the field out,
+///   and a scene that names its elements but has no sentence about the reserved zero leaves
+///   that part out rather than writing an empty one.
+/// - **The handles are keyed by the id, as the id is spelled.** A scene's ids are not
+///   necessarily a run — a scene that draws several plants numbers them a stride apart — so the
+///   id is a key and not a position.
+pub fn elements_schema() -> Schema {
+    Schema::new(SchemaKind::structure([
+        (
+            "note".to_owned(),
+            Schema::new(SchemaKind::String)
+                .optional()
+                .with_documentation("What an id means in this scene, as one clause."),
+        ),
+        (
+            "zero".to_owned(),
+            Schema::new(SchemaKind::String)
+                .optional()
+                .with_documentation("What the reserved zero means in this scene, as one sentence."),
+        ),
+        (
+            "handles".to_owned(),
+            Schema::new(SchemaKind::dictionary(Schema::new(SchemaKind::String)))
+                .optional()
+                .with_documentation(
+                    "The handle each id names, keyed by the id as it is spelled. The reserved zero \
+                     is never a key: it is not an authored element.",
+                ),
         ),
     ]))
 }
@@ -360,6 +411,17 @@ pub fn standard_scene_schema() -> Schema {
                  emitted documents rather than being something a renderer picks afterwards. A \
                  scene without a camera is drawn by the stated convention: parallel, dead \
                  ahead, framing everything that is drawn.",
+                ),
+        ),
+        (
+            ELEMENTS.to_owned(),
+            elements_schema()
+                .optional()
+                .with_documentation(
+                    "What this scene's own ids name: the handle each one carries, the sentence \
+                     about what an id means here, and the sentence about the reserved zero. A \
+                     renderer reads it out of the document rather than out of the scene that made \
+                     it, so a document and the frame drawn from it can be read together.",
                 ),
         ),
         (

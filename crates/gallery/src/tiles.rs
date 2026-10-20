@@ -13,13 +13,13 @@
 
 use definition::Value;
 
-use crate::geometry::heightfield;
-use crate::kit::{
+use document::geometry::heightfield;
+use document::kit::{
     IMAGE_FIELD, camera_placed, gallery_custom_schema, gallery_custom_schema_with_image,
     gallery_instance_schema, image, instance, instances, light_with_radius, mesh, mesh_material,
     post_processes, screen_material, shaded_point_schema, shader, surface,
 };
-use crate::shaders::{Projection, depthing, post_shader, shadowing, textured, tile_pixels};
+use document::shaders::{Projection, depthing, post_shader, shadowing, textured, tile_pixels};
 use scene::standard::Stage;
 
 /// The size of the generated texture, in texels a side.
@@ -43,7 +43,7 @@ pub fn tiles() -> Value {
 /// differ are the whole of the evidence, and this is how a caller gets the second one.
 pub fn tiles_of(pixels: Vec<u8>) -> Value {
     let point = shaded_point_schema();
-    let inputs = crate::attributes::gallery_vertex_inputs(&point);
+    let inputs = document::attributes::gallery_vertex_inputs(&point);
 
     // The shader reads the image, so its custom schema declares one. `tint` is beside it because
     // every gallery shader reads the row and a material that carried only an image would be a

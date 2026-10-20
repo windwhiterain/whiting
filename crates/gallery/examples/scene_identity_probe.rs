@@ -42,7 +42,7 @@
 //! Run with `cargo run -p whiting-gallery --example scene_identity_probe`.
 
 use definition::{Schema, SchemaKind};
-use whiting_gallery::building_identity::{building_extras, id_in, locate_in, not_authored_extras};
+use document::building_identity::{building_extras, id_in, locate_in, not_authored_extras};
 
 /// The scenes that declare the channel, in the order the gallery lists them.
 const SCENES: [&str; 15] = [
@@ -87,9 +87,12 @@ fn main() {
 
     println!("\n# every scene's table, both ways");
     for scene in SCENES {
+        let Some(building) = whiting_gallery::naming::building_of(scene) else {
+            continue;
+        };
         let mut rows: Vec<(u32, String)> = Vec::new();
         let mut id = 1;
-        while let Some(name) = locate_in(scene, id) {
+        while let Some(name) = locate_in(&building, id) {
             rows.push((id, name));
             id += 1;
         }
@@ -100,7 +103,7 @@ fn main() {
         let named = rows.iter().all(|(_, name)| !name.is_empty());
         let round_trips = rows
             .iter()
-            .all(|(held, name)| id_in(scene, name) == Some(*held));
+            .all(|(held, name)| id_in(&building, name) == Some(*held));
         clean &= !rows.is_empty() && contiguous && named && round_trips;
         println!(
             "  {:<9} {:>3} row(s), ids 1..={}, contiguous {}, every name non-empty {}, every name round-trips {}",
@@ -138,7 +141,8 @@ fn main() {
             "part 0, template mass 0, outer wall over edge 2",
         ),
     ] {
-        let answered = locate_in(scene, id);
+        let answered = whiting_gallery::naming::building_of(scene)
+            .and_then(|building| locate_in(&building, id));
         let matches = answered.as_deref() == Some(expected);
         clean &= matches;
         println!("  {scene} id {id} → {answered:?}; expected {expected:?}: {matches}");

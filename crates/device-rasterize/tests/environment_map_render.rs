@@ -25,13 +25,15 @@
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use device::{Frame, Renderer};
-use gallery::geometry::plane_facing;
-use gallery::kit::{
+use document::geometry::plane_facing;
+use document::kit::{
     camera_placed, environment_light, gallery_custom_schema, gallery_instance_schema, image,
     instance, instances, mesh, mesh_material, post_processes, screen_material, shaded_point_schema,
     shader, surface,
 };
-use gallery::shaders::{Projection, depthing, lighting, octahedral_pixels, post_shader, shadowing};
+use document::shaders::{
+    Projection, depthing, lighting, octahedral_pixels, post_shader, shadowing,
+};
 use scene::standard::Stage;
 use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
 use whiting_device_rasterize::WgpuRenderer;
@@ -212,7 +214,7 @@ fn probe(frame: &Frame, down: f64) -> u32 {
 fn scene(environment: bool, roughness: f64) -> Value {
     let point = shaded_point_schema();
     let custom = gallery_custom_schema();
-    let inputs = gallery::attributes::gallery_vertex_inputs(&point);
+    let inputs = document::attributes::gallery_vertex_inputs(&point);
     let stone = surface([0.9; 3], 0.0, roughness, [0.0; 3]);
 
     let meshes = Value::List(vec![

@@ -22,7 +22,7 @@
 //!   the same image.
 //! - **The id is the node's position in [`vegetation::plant::Plant::walk`]'s order, counted from one.**
 //!   Zero is the value a surface that is not an authored element writes (see
-//!   [`crate::identity::NOT_AUTHORED`]), so the walk's first node is one and the two answers cannot
+//!   [`document::naming::NOT_AUTHORED`]), so the walk's first node is one and the two answers cannot
 //!   collide. The numbering is taken from the walk rather than from the position in [`Wood`] so that a
 //!   caller passing a filtered list of solids cannot renumber the plant under itself.
 //! - **The blade is packed once, in the blade's own frame.** [`vegetation::leaf::LeafTemplate::loft`]
@@ -51,9 +51,9 @@ use vegetation::handle::Handle;
 use vegetation::leaf::LeafTemplate;
 use vegetation::plant::{Placement, Plant};
 
-use crate::building_identity::building_extras;
-use crate::geometry::{Corner, loft_corners, loft_corners_creased_at};
-use crate::identity::ID_OUTPUT;
+use document::building_identity::building_extras;
+use document::geometry::{Corner, loft_corners, loft_corners_creased_at};
+use document::naming::ID_OUTPUT;
 
 /// The id every corner of a blade's own mesh carries.
 ///
@@ -80,7 +80,7 @@ pub const LEAF_BASE_ID: u32 = 1;
 /// which a barely-coarser circle starts to read as a decagon's edges.
 ///
 /// The alternative reading — an interior angle rather than a turn — would put the same threshold at
-/// 145 degrees, and is stated in [`crate::geometry::loft_corners_creased_at`] as the one it is not.
+/// 145 degrees, and is stated in [`document::geometry::loft_corners_creased_at`] as the one it is not.
 pub const WOOD_CREASE: f32 = 0.61;
 
 /// The id of every node of a plant: its position in [`vegetation::plant::Plant::walk`]'s order, counted
@@ -153,7 +153,7 @@ pub fn wood_points_at(
 /// - **Wood is the only path here that creases, and it is the only one that may.** A blade and a
 ///   decorator are leaves and seats, both of them smooth by nature, and a building carries a pinned
 ///   hash per mesh that a normal cannot move. Wood is what a fluted bole is made of, so wood is
-///   where [`crate::geometry::loft_corners_creased_at`] is asked for — at [`WOOD_CREASE`], which every
+///   where [`document::geometry::loft_corners_creased_at`] is asked for — at [`WOOD_CREASE`], which every
 ///   round section is under, so a culm drawn today is the culm drawn yesterday.
 pub fn wood_points_of<'a>(
     plantings: impl IntoIterator<Item = (&'a [Wood], &'a BTreeMap<Handle, u32>, &'a Placement)>,

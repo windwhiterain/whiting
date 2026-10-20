@@ -55,19 +55,19 @@
 use definition::{PackedList, Value};
 use scene::standard::Stage;
 
-use crate::air::Atmosphere;
 use crate::built::{self, BASKET, JAR, MILL, WallGap};
-use crate::geometry::{
+use crate::land::{self, Ridge, Valley};
+use crate::ridges;
+use document::air::Atmosphere;
+use document::geometry::{
     Shaded, add, heightfield, lathe, normalized, plane_facing, scale, smoothstep, subtract,
 };
-use crate::kit::{
+use document::kit::{
     camera_placed_on_lens, environment_light, image, instance, instances, light_with_radius, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, surface,
     surface_reflecting,
 };
-use crate::land::{self, Ridge, Valley};
-use crate::ridges;
-use crate::shaders::{Projection, displaced_lighting_shader, mesh_shaders, post_shader};
+use document::shaders::{Projection, displaced_lighting_shader, mesh_shaders, post_shader};
 
 // ---------------------------------------------------------------------------
 // The ground
@@ -627,7 +627,7 @@ fn cut_heightfield(
             let (p10, n10, t10) = at(column + 1, row);
             let (p01, n01, t01) = at(column, row + 1);
             let (p11, n11, t11) = at(column + 1, row + 1);
-            // Wound the way [`crate::geometry::heightfield`] writes its cells, so the winding
+            // Wound the way [`document::geometry::heightfield`] writes its cells, so the winding
             // points up with the gradient normal rather than against it. This is a second copy
             // of a heightfield that differs only in what the second texture channel carries,
             // and it used to wind the other way round from the generator it copies.

@@ -48,19 +48,19 @@ use vegetation::handle::Handle;
 use vegetation::leaf::LeafTemplate;
 use vegetation::plant::Placement;
 
-use crate::air::Atmosphere;
-use crate::building_identity::{
+use document::air::Atmosphere;
+use document::building_identity::{
     building_extras, not_authored_extras, outputs_field, stage_set, stage_set_over_schema,
 };
-use crate::geometry::plane_facing;
-use crate::kit::{
+use document::geometry::plane_facing;
+use document::kit::{
     camera_placed, environment_light, flux_for_irradiance, image, instance, instances, light,
     light_with_radius, mesh, mesh_material, offset_by, plant_custom_schema, post_processes,
     screen_material, shadow_bias_scale, surface,
 };
 
-use crate::shaders::{Projection, post_shader};
 use crate::vegetation_mesh::{LEAF_BASE_ID, node_ids, node_ids_from, template_points};
+use document::shaders::{Projection, post_shader};
 
 /// The name the still scene is built and rendered under.
 pub const SCENE: &str = "bamboo";
@@ -364,8 +364,8 @@ pub const PLANT_SHADOW_BIAS_SCALE: f64 = 0.05;
 /// # Invariants
 ///
 /// **`None` leaves the row exactly as it was, and it is the caster and depther rows that pass it.**
-/// The plant's shading stage declares [`crate::kit::plant_custom_schema`]; its shadowing and
-/// depthing stages come from [`crate::shaders::mesh_shaders_over`] and declare the gallery's own. A
+/// The plant's shading stage declares [`document::kit::plant_custom_schema`]; its shadowing and
+/// depthing stages come from [`document::shaders::mesh_shaders_over`] and declare the gallery's own. A
 /// caster row naming a field its shader does not declare is a row the compiler refuses by name, so
 /// the field goes on the shaded rows and on nothing else.
 fn plant_row(row: Value, scale: Option<f64>) -> Value {
@@ -718,7 +718,7 @@ pub fn grove_handle_of(id: u32) -> Option<String> {
 /// than one plant. A planting with **no rows at all** still costs its stride, so removing a plant never renumbers the
 /// ones after it.
 pub(crate) fn planting_handle(plantings: &[Planting], id: u32) -> Option<String> {
-    if id == crate::identity::NOT_AUTHORED {
+    if id == document::naming::NOT_AUTHORED {
         return None;
     }
     let index = (id / PLANTING_STRIDE) as usize;
@@ -1184,7 +1184,7 @@ pub fn plant_scene_drawn(
                 // the numbers the shadow test biases by are written for exactly that distance.
                 plant_row(
                     skin.value(),
-                    (stage == "shade").then_some(crate::kit::DEFAULT_SHADOW_BIAS_SCALE),
+                    (stage == "shade").then_some(document::kit::DEFAULT_SHADOW_BIAS_SCALE),
                 ),
             ));
         }
@@ -1361,7 +1361,7 @@ pub fn plant_scene_drawn(
         placements
     };
 
-    Value::structure([
+    let scene = Value::structure([
         ("name".to_owned(), Value::String(name.to_owned())),
         (
             "frame".to_owned(),
@@ -1499,7 +1499,7 @@ pub fn plant_scene_drawn(
             let floor = match framing.ground {
                 Ground::Plane => plane_facing(framing.floor, 0.0, true),
                 Ground::Fielded { height, divisions } => {
-                    crate::geometry::heightfield(divisions, framing.floor, height)
+                    document::geometry::heightfield(divisions, framing.floor, height)
                 }
             };
             meshes.push(mesh("floor", "Triangles", ground.point_schema(), floor));
@@ -1527,7 +1527,12 @@ pub fn plant_scene_drawn(
                 (Stage::Lighting, placed_rows("shade")),
             ]),
         ),
-    ])
+    ]);
+
+    // **The naming travels with the document**, so a renderer can say what a pixel is without
+    // knowing which plant made it. The table is built here because this is where the ids were
+    // numbered: the plantings' own walk, and the same walk the mesh's corners carry.
+    crate::naming::with_elements(scene, name, crate::naming::planting_handles(plantings))
 }
 
 /// Builds a scene document from a set of plantings.

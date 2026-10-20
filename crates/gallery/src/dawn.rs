@@ -15,7 +15,7 @@
 //!
 //! # What this law is not
 //!
-//! It is not [`crate::air::Atmosphere`], and it is deliberately not an `Atmosphere` with more
+//! It is not [`document::air::Atmosphere`], and it is deliberately not an `Atmosphere` with more
 //! fields. This sky's horizon **follows the sun around the compass** — the east burns and the
 //! west holds the night's cool — and its glow is two lobes rather than one. Those are not
 //! settings of the gallery's air; they are this valley's hour. `air.rs` grants a scene the right
@@ -219,7 +219,7 @@ fn sky_base(ray: vec3<f32>) -> vec3<f32> {{
 
     /// Returns this sky as a latlong map, the world a tracer is handed.
     pub fn pixels(&self, width: i64, height: i64) -> Vec<u8> {
-        crate::shaders::environment_pixels_of(width, height, |ray| self.radiance(ray))
+        document::shaders::environment_pixels_of(width, height, |ray| self.radiance(ray))
     }
 }
 

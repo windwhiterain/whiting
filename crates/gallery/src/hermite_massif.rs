@@ -27,12 +27,12 @@ use patch::Point3;
 use scene::standard::Stage;
 
 use crate::blockmesh::{self, BeltSurfaces};
-use crate::kit::{
+use crate::landscape;
+use document::kit::{
     camera_placed_up, directional, environment_light, image, instance, instances, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, surface,
 };
-use crate::landscape;
-use crate::shaders::{mesh_shaders, post_shader};
+use document::shaders::{mesh_shaders, post_shader};
 
 /// The massif's grid resolution per belt.
 const SIDE: usize = 6;
@@ -207,8 +207,8 @@ pub fn hermite_massif() -> Value {
                 "air",
                 256,
                 128,
-                crate::air::Atmosphere::default().environment_pixels(256, 128),
-                crate::shaders::Projection::Latlong,
+                document::air::Atmosphere::default().environment_pixels(256, 128),
+                document::shaders::Projection::Latlong,
             )]),
         ),
         (

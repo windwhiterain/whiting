@@ -31,19 +31,19 @@
 //! - **The hole is the plate, so there is never a floor-less hole.** The loop cut is read from the
 //!   same `slabs` the scenes pack their `floors` meshes from, which is what makes "the plate is the
 //!   only surface in its own hole" a fact about the document rather than a hope about the picture.
-//! - A cell no plate reaches is written **byte for byte** as [`crate::geometry::heightfield`] wrote
+//! - A cell no plate reaches is written **byte for byte** as [`document::geometry::heightfield`] wrote
 //!   it: only a cell a cut reached is cut.
 
 use building::Building;
 use definition::PackedList;
 
-use crate::geometry::{self, Station, between, plan_of};
+use document::geometry::{self, Station, between, plan_of};
 
 /// Builds the ground a scene draws, with every building's ground plate cut out of it.
 ///
 /// # Invariants
 ///
-/// The grid, the heights and the divisions are [`crate::geometry::heightfield`]'s own, and the plates
+/// The grid, the heights and the divisions are [`document::geometry::heightfield`]'s own, and the plates
 /// are read from the **document the scene draws** rather than from a second derivation of it, so a
 /// plate the scene forgot to draw is still a plate the ground gets out of the way of.
 pub fn mesh(

@@ -8,13 +8,13 @@
 //! # Invariants
 //!
 //! - Every ramp here names its two bounds **in ascending order**, which is the contract
-//!   [`crate::geometry::smoothstep`] documents. A landscape read off a call with its
+//!   [`document::geometry::smoothstep`] documents. A landscape read off a call with its
 //!   bounds the other way round is one that cannot be read.
 //! - Every function here is a pure function of its arguments. A heightfield takes its
 //!   normal from the height at four neighbouring points, so a height that depends on
 //!   anything else is a surface whose normal belongs to a different surface.
 
-use crate::geometry::{fract, fractal_noise, normalized, ridged_noise, smoothstep};
+use document::geometry::{fract, fractal_noise, normalized, ridged_noise, smoothstep};
 
 /// The second coordinate the crest profile along a ridge's axis is sampled at, held
 /// constant so that the profile is one dimensional.

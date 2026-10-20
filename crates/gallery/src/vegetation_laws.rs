@@ -27,10 +27,10 @@ use vegetation::ops::{Change, Edit, Frame, Property, apply, paint};
 use vegetation::selector::Selector;
 use vegetation::thin::thin;
 
-use crate::geometry::cuboid;
 use crate::vegetation_picture::{
     Framing, Ground, Planting, plant_scene, planted_at, planting_handle,
 };
+use document::geometry::cuboid;
 
 /// The framing every pair is drawn in: two plants, near enough that the law's difference is the subject.
 const PAIR: Framing = Framing {

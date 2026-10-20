@@ -26,8 +26,3 @@ thiserror = { workspace = true }
 half = { workspace = true }
 
 png = { workspace = true, optional = true }
-
-# The gallery is what the probes draw and what the render test reads, so it is a development
-# dependency: nothing in the device itself knows a scene by name.
-[dev-dependencies]
-gallery = { workspace = true }

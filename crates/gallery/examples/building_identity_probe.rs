@@ -18,7 +18,7 @@ use building::parts::{Pin, Placement, Template};
 use building::wall::Wall;
 use building::{Building, Mass, MassId, PlanNode};
 
-use whiting_gallery::building_identity::{building_extras, ids, outputs_field, packed};
+use document::building_identity::{building_extras, ids, outputs_field, packed};
 
 /// Returns a shutter: a panel `width` across, `height` tall, `thickness` through.
 fn shutter(width: f32, height: f32, thickness: f32) -> Template {
@@ -166,10 +166,12 @@ fn main() {
     );
 
     println!("\n# the join closes: an id from a frame names the element it shows");
+    let identity = whiting_gallery::naming::building_of("identity")
+        .expect("the identity scene draws a building");
     for id in [3, 4, 16, 20, 0, 9999] {
         println!(
             "  id {id:4} → {:?}",
-            whiting_gallery::building_identity::locate(id)
+            document::building_identity::locate_in(&identity, id)
         );
     }
 }

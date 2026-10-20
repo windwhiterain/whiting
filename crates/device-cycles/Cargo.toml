@@ -19,10 +19,11 @@ device = { workspace = true }
 png = { workspace = true }
 thiserror = { workspace = true }
 
-# The render harness builds a scene by name and asks for a picture, so it needs the gallery the
-# same way the rasterising harness does. Nothing in the backend itself knows a scene by name.
+# The render harness reads a scene document and hands it to the path tracer, so it needs the
+# document crate the same way the rasterising harness does. Nothing in the backend itself knows
+# a scene by name.
 [dev-dependencies]
-gallery = { workspace = true }
+facet-json = { workspace = true }
 
 # Driving Cycles needs a binary and a scene, which is a question only a machine with one can answer.
 [[example]]

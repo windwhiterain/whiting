@@ -30,12 +30,12 @@ use patch::topology::{EdgeKey, canonical};
 use patch::{FaceId, Point3, VertexId};
 use scene::standard::Stage;
 
-use crate::geometry::Shaded;
-use crate::kit::{
+use document::geometry::Shaded;
+use document::kit::{
     camera, instance, instances, light_with_radius, mesh, mesh_material, post_processes,
     screen_material, shaded_point_schema, surface,
 };
-use crate::shaders::{mesh_shaders, post_shader};
+use document::shaders::{mesh_shaders, post_shader};
 
 /// Patches across the sheet.
 const COLUMNS: usize = 13;
@@ -142,7 +142,7 @@ pub fn hermite() -> Value {
                 "key",
                 [-7.0, 6.0, 5.0],
                 [1.0, 0.95, 0.88],
-                crate::kit::flux_for_irradiance(4.0, 110.0f64.sqrt()),
+                document::kit::flux_for_irradiance(4.0, 110.0f64.sqrt()),
                 14.0,
                 30.0,
             )]),

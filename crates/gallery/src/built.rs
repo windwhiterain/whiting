@@ -14,7 +14,7 @@
 //!   buffer appends both into one [`Shaded`] through [`push_wall_run`] rather than calling
 //!   [`wall_run`] twice and living with two meshes and two passes.
 //! - Every face is wound to the normal it is **told**, through
-//!   [`quad_normal`](crate::geometry::quad_normal), and never to one derived from the order
+//!   [`quad_normal`](document::geometry::quad_normal), and never to one derived from the order
 //!   its corners happen to be listed in. The faces of a composed form are the faces of a
 //!   box, and a box's top face looks up and its outer face looks outward whatever order its
 //!   corners are given: a generator that took the normal from the corner order would be a
@@ -26,7 +26,7 @@
 
 use definition::PackedList;
 
-use crate::geometry::{
+use document::geometry::{
     Shaded, add, cross, dot, normalized, quad_normal, scale, smoothstep, subtract,
 };
 
@@ -305,7 +305,7 @@ pub fn wall_ring(
 
 /// A tent roof profile: a ridge at the local origin, a straight fall to either side, and the
 /// last stretch of each slope turned up into an eave. It is the height function of a
-/// [`heightfield`](crate::geometry::heightfield), so the ridge runs along the x axis and the
+/// [`heightfield`](document::geometry::heightfield), so the ridge runs along the x axis and the
 /// roof falls away along z.
 ///
 /// # Invariants
@@ -336,7 +336,7 @@ pub fn wall_ring(
 /// the eave the fall stops at `rise`, so the profile can be swept past its own edge without
 /// folding over.
 ///
-/// **A roof built from this is single sided.** A [`heightfield`](crate::geometry::heightfield)
+/// **A roof built from this is single sided.** A [`heightfield`](document::geometry::heightfield)
 /// takes each point's normal from the height function itself, and this one rises outward from
 /// the ridge and falls again, so every normal it produces points up and there is no face
 /// turned down at all. A camera below the eave line therefore looks straight through the roof
@@ -501,7 +501,7 @@ pub fn sweep(
 /// inside of its base. An open profile turned into a vessel gives an inside made of the
 /// outside's back faces, and a seam at the rim where the two were joined by hand.
 ///
-/// This is a profile and not a mesh. [`lathe`](crate::geometry::lathe) turns one, and a
+/// This is a profile and not a mesh. [`lathe`](document::geometry::lathe) turns one, and a
 /// vessel of a size nobody asked for is the profile scaled rather than a second list of
 /// numbers, so nothing here wraps it: pass this to `lathe` with the segment count the
 /// distance wants, which is the same argument a cube makes for a box.

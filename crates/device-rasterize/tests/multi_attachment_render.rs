@@ -37,16 +37,16 @@ use std::sync::OnceLock;
 use definition::{
     Definition, DefinitionIdentifier, Path, Registry, Schema, SchemaIdentifier, SchemaKind, Value,
 };
-use gallery::geometry::heightfield;
+use document::geometry::heightfield;
 // Aliased rather than imported plainly: the document builders below already have helpers called
 // `instance` and `instances`, and two meanings in one file is a name that has to be read at
 // every use rather than at its definition.
 use device::{RenderedImage, Renderer};
-use gallery::kit::{
+use document::kit::{
     camera_placed, directional, instance as plane_instance, instances as stage_instances, mesh,
     mesh_material, shaded_point_schema, surface,
 };
-use gallery::shaders::mesh_shaders;
+use document::shaders::mesh_shaders;
 use scene::standard::{Bounds, Camera, Projection, Stage};
 use scene::{CompileContext, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene};
 use whiting_device_rasterize::WgpuRenderer;

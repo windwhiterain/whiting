@@ -21,7 +21,7 @@
 use building::{BuildingMesh, Element, SolidId};
 use definition::PackedList;
 
-use crate::geometry::Shaded;
+use document::geometry::Shaded;
 
 /// Builds the points of every face an element filter keeps.
 pub fn points_where(built: &BuildingMesh, keep: impl Fn(&Element) -> bool) -> PackedList {

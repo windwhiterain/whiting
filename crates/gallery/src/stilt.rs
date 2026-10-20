@@ -26,16 +26,16 @@ use building::ops;
 use building::roof::Step;
 use building::site;
 
-use crate::air::Atmosphere;
-use crate::building_identity::{
+use document::air::Atmosphere;
+use document::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
-use crate::geometry;
-use crate::kit::{
+use document::geometry;
+use document::kit::{
     camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
     mesh_material, post_processes, screen_material, sky, surface,
 };
-use crate::shaders::{Projection, post_shader};
+use document::shaders::{Projection, post_shader};
 
 /// What the house is: three bays across a 10 m front, 6 m deep, one storey under a gable.
 ///

@@ -44,13 +44,13 @@
 use definition::Value;
 use scene::standard::Stage;
 
-use crate::geometry::{cuboid, fractal_noise, hash01, heightfield, lathe, sphere};
-use crate::kit::{
+use document::geometry::{cuboid, fractal_noise, hash01, heightfield, lathe, sphere};
+use document::kit::{
     camera_placed_on_lens, gallery_custom_schema, gallery_instance_schema, instance, instances,
     light_with_radius, mesh, mesh_material, post_processes, screen_material, shaded_point_schema,
     shader, surface, surface_reflecting,
 };
-use crate::shaders::{depthing, post_shader, shadowing};
+use document::shaders::{depthing, post_shader, shadowing};
 
 /// World units in a metre.
 ///
@@ -165,7 +165,7 @@ fn scaled(profile: &[[f64; 2]]) -> Vec<[f64; 2]> {
 pub fn stilllife() -> Value {
     let helpers = shared_helpers();
     let point = shaded_point_schema();
-    let inputs = crate::attributes::gallery_vertex_inputs(&point);
+    let inputs = document::attributes::gallery_vertex_inputs(&point);
 
     let mut shaders = vec![
         shader(
@@ -188,7 +188,7 @@ pub fn stilllife() -> Value {
         ),
     ];
     for (label, displace, body) in surface_bodies() {
-        shaders.push(crate::shaders::displaced_lighting_shader(
+        shaders.push(document::shaders::displaced_lighting_shader(
             label, displace, body, &helpers,
         ));
     }

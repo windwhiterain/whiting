@@ -30,16 +30,16 @@ use building::openings::{Inset, Opening};
 use building::site;
 use building::{Building, BuildingSkeleton, Covering, Mass, MassId, PlanNode, ops};
 
-use crate::air::Atmosphere;
-use crate::building_identity::{
+use crate::facade;
+use document::air::Atmosphere;
+use document::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
-use crate::facade;
-use crate::kit::{
+use document::kit::{
     camera, environment_light, flux_for_irradiance, frame, image, instance, instances,
     light_with_radius, mesh, mesh_material, post_processes, screen_material, surface,
 };
-use crate::shaders::{Projection, post_shader};
+use document::shaders::{Projection, post_shader};
 
 /// The air over the block, and **the half of the light the sun is not**.
 ///

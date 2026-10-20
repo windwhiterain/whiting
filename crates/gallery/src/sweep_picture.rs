@@ -48,12 +48,12 @@
 //!
 //! No normals: [`shape::loft::Loft`] carries none, because a consumer's shading chooses its own, so
 //! the ones in [`points_of`] are accumulated from the triangles the loft wrote, by
-//! [`crate::geometry::loft_corners`]. No windings of their
+//! [`document::geometry::loft_corners`]. No windings of their
 //! own either: every triangle comes out of the loft in the order it was wound, and the frame is
 //! evidence of that order rather than a correction to it.
 //!
 //! [`render`]: ../../../device-rasterize/examples/render.rs
-//! [`textured`]: crate::shaders::textured
+//! [`textured`]: document::shaders::textured
 
 use definition::{PackedList, Schema, Value};
 use scene::standard::Stage;
@@ -64,14 +64,14 @@ use shape::scalar::Scalar;
 use shape::section::Section;
 use shape::sweep::Sweep;
 
-use crate::attributes::gallery_vertex_inputs;
-use crate::geometry::{Shaded, plane_facing};
-use crate::kit::{
+use document::attributes::gallery_vertex_inputs;
+use document::geometry::{Shaded, plane_facing};
+use document::kit::{
     IMAGE_FIELD, camera_placed, flux_for_irradiance, gallery_custom_schema_with_image,
     gallery_instance_schema, image, instance, instances, light, light_with_radius, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, shader, surface,
 };
-use crate::shaders::{
+use document::shaders::{
     Projection, depthing, lighting_with_normal, post_shader, shadowing, textured,
 };
 
@@ -263,7 +263,7 @@ pub fn sweep_picture() -> Value {
         shader(
             Stage::Lighting,
             "parameterised",
-            &textured(&inputs, "", &crate::kit::gallery_custom_schema()),
+            &textured(&inputs, "", &document::kit::gallery_custom_schema()),
             scene::standard::light_pass_schema(),
             point.clone(),
             gallery_instance_schema(),
@@ -435,7 +435,7 @@ fn lighting_shader(label: &str, inputs: &str, point: &Schema, custom: &Schema) -
             "",
             "",
             Projection::default(),
-            &crate::kit::gallery_custom_schema(),
+            &document::kit::gallery_custom_schema(),
         ),
         scene::standard::light_pass_schema(),
         point.clone(),
@@ -577,10 +577,10 @@ fn lobes() -> Vec<Vec2> {
 
 /// The loft written as the triangle list a scene document draws: one shaded point per corner.
 ///
-/// The corners themselves are [`crate::geometry::loft_corners`]'s, so the winding, the `(u, v)`
+/// The corners themselves are [`document::geometry::loft_corners`]'s, so the winding, the `(u, v)`
 /// and the per vertex normals are that function's rules and not a second copy of them.
 fn points_of(loft: &Loft) -> PackedList {
-    let corners = crate::geometry::loft_corners(loft);
+    let corners = document::geometry::loft_corners(loft);
     let mut points = Shaded::with_capacity(corners.len());
     for corner in corners {
         points.push(corner.position, corner.normal, corner.texture);

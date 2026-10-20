@@ -35,15 +35,15 @@ use building::openings::{Inset, Opening};
 use building::site;
 use building::{Building, BuildingSkeleton, Covering, Mass, PlanNode, ops};
 
-use crate::air::Atmosphere;
-use crate::building_identity::{
+use document::air::Atmosphere;
+use document::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
-use crate::kit::{
+use document::kit::{
     camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
     mesh_material, post_processes, screen_material, sky, surface,
 };
-use crate::shaders::{Projection, post_shader};
+use document::shaders::{Projection, post_shader};
 
 /// The frontage: five plots of six metres, five deep, on a street that runs along `x`.
 const PLOTS: usize = 5;

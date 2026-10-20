@@ -8,7 +8,7 @@
 //! — is untested from the document to the pixel. This measures it.
 //!
 //! ```text
-//! cargo run -p whiting-device --features wgpu --example shadow_probe
+//! cargo run -p whiting-gallery --example shadow_probe
 //! ```
 //!
 //! Every probe is a **controlled pair**: one variable moved, everything else held, and a number
@@ -64,13 +64,12 @@
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use device::{RenderedFrame, RenderedImage, Renderer};
-use gallery::Gallery;
-use gallery::geometry::{cuboid, plane_facing};
-use gallery::kit::{
+use document::geometry::{cuboid, plane_facing};
+use document::kit::{
     Cone, camera_placed, instance, instances, mesh, mesh_material, post_processes, screen_material,
     shaded_point_schema, spot, surface,
 };
-use gallery::shaders::{mesh_shaders, post_shader};
+use document::shaders::{mesh_shaders, post_shader};
 use graphics::{ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA, passes};
 use scene::lighting::{LIGHT_RECORDS_ENTRY, SHADOW_ATLAS_SIDE_PAGES};
 use scene::standard::{SHADOW_DENSITY, Stage};
@@ -79,6 +78,7 @@ use scene::{
     CompileContext, CompileOutput, Compiler, DebugChannel, STANDARD_SCENE_SCHEMA, StandardScene,
 };
 use whiting_device_rasterize::rasterizer;
+use whiting_gallery::Gallery;
 
 /// Where the frames go, which `out` already keeps out of the tree.
 const OUTPUT: &str = "out/probe";

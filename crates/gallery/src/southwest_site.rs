@@ -24,13 +24,13 @@ use vegetation::ground::seat;
 use vegetation::plant::Placement;
 use vegetation::rng::Rng;
 
-use crate::air::Atmosphere;
 use crate::southwest::{Foliage, pine_palette, yunnan_pine};
 use crate::southwest_flag::{dove_palette, dove_tree};
 use crate::southwest_oak::{alpine_oak, oak_palette};
 use crate::vegetation_picture::{
     Framing, Ground, Lighting, Palette, Planting, Prop, Skin, plant_scene_lit, planting_handle,
 };
+use document::air::Atmosphere;
 use vegetation::derive::tuft;
 
 /// The name the montane site frame is built and rendered under.
@@ -202,10 +202,10 @@ fn montane_stone() -> Prop {
         around: 9,
     };
     let loft = template.loft();
-    let schema = crate::building_identity::not_authored_extras().point_schema();
+    let schema = document::building_identity::not_authored_extras().point_schema();
     let layout = graphics::layout::packed_layout(&schema)
         .expect("the ground's own point schema is a struct of components");
-    let corners = crate::geometry::loft_corners(&loft);
+    let corners = document::geometry::loft_corners(&loft);
     let mut points = definition::PackedBuilder::new(layout);
     points.reserve(corners.len());
     for corner in &corners {

@@ -65,11 +65,11 @@ use vegetation::plant::Placement;
 use vegetation::rng::Rng;
 use vegetation::species::{Generation, Joint, Rule, grow, spine, taper};
 
-use crate::air::Atmosphere;
 use crate::vegetation_mesh::node_ids;
 use crate::vegetation_picture::{
     Framing, Ground, Lighting, Palette, Planting, Skin, plant_scene_lit,
 };
+use document::air::Atmosphere;
 
 // ---------------------------------------------------------------------------------------------
 // 华山松 Pinus armandii

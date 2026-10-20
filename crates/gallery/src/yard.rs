@@ -29,17 +29,17 @@ use building::site::seat;
 use building::wall::{Wall, WallId};
 use building::{Building, BuildingSkeleton, Element, Mass, MassId, PlanNode};
 
-use crate::air::Atmosphere;
-use crate::building_identity::{
+use crate::instancing::standing;
+use building::identity::Identity;
+use document::air::Atmosphere;
+use document::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
-use crate::instancing::standing;
-use crate::kit::{
+use document::kit::{
     camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
     mesh_material, offset_by, post_processes, screen_material, shaded_point_schema, sky, surface,
 };
-use crate::shaders::{Projection, post_shader};
-use building::identity::Identity;
+use document::shaders::{Projection, post_shader};
 
 /// The ground the site stands on, in metres: it falls one unit in eleven as `x` rises.
 ///

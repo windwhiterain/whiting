@@ -31,16 +31,16 @@ use building::identity::Identity;
 use building::wall::Wall;
 use building::{Building, BuildingSkeleton, Covering, Mass, PlanNode};
 
-use crate::air::Atmosphere;
-use crate::building_identity::{
+use crate::facade;
+use document::air::Atmosphere;
+use document::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
 };
-use crate::facade;
-use crate::kit::{
+use document::kit::{
     camera, flux_for_irradiance, frame, instance, instances, light_with_radius, mesh,
     mesh_material, post_processes, screen_material, sky, surface,
 };
-use crate::shaders::{Projection, post_shader};
+use document::shaders::{Projection, post_shader};
 
 /// The court: its half width, and the two depths it runs between.
 const COURT_HALF: f32 = 3.0;

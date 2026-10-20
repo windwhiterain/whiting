@@ -54,12 +54,12 @@
 
 use definition::Value;
 
-use crate::geometry::{cuboid, plane_facing};
-use crate::kit::{
+use document::geometry::{cuboid, plane_facing};
+use document::kit::{
     camera_placed, directional, gallery_custom_schema, gallery_instance_schema, instance, mesh,
     mesh_material, post_processes, screen_material, shaded_point_schema, shader, surface,
 };
-use crate::shaders::{depthing, lighting, post_shader, shadowing};
+use document::shaders::{depthing, lighting, post_shader, shadowing};
 use scene::standard::Stage;
 
 /// How far the floor reaches either side of the middle, in world units.
@@ -72,7 +72,7 @@ const FLOOR_EXTENT: f64 = 8.5;
 /// Builds the scene.
 pub fn sunlight() -> Value {
     let point = shaded_point_schema();
-    let inputs = crate::attributes::gallery_vertex_inputs(&point);
+    let inputs = document::attributes::gallery_vertex_inputs(&point);
     let custom = gallery_custom_schema();
 
     let shaders = Value::List(vec![
@@ -101,8 +101,8 @@ pub fn sunlight() -> Value {
                 &inputs,
                 "",
                 "",
-                crate::shaders::Projection::Latlong,
-                &crate::kit::gallery_custom_schema(),
+                document::shaders::Projection::Latlong,
+                &document::kit::gallery_custom_schema(),
             ),
             scene::standard::light_pass_schema(),
             point.clone(),

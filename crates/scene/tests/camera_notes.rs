@@ -29,7 +29,7 @@ use definition::{
 };
 /// The field a scene holds its instances under, which standard does not re export.
 const INSTANCES: &str = "instances";
-use whiting_gallery::kit::camera_placed;
+use whiting_document::kit::camera_placed;
 use whiting_scene::standard::{CAMERAS, EYE, TARGET};
 use whiting_scene::{
     CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene, register_standard_scene_schema,

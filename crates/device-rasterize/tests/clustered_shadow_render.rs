@@ -29,13 +29,13 @@
 
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
 use device::{Frame, Renderer};
-use gallery::geometry::heightfield;
-use gallery::kit::{
+use document::geometry::heightfield;
+use document::kit::{
     camera_placed, gallery_custom_schema, gallery_instance_schema, instance, instances,
     light_with_radius, mesh, mesh_material, post_processes, screen_material, shaded_point_schema,
     shader, surface,
 };
-use gallery::shaders::{depthing, lighting, post_shader, shadowing};
+use document::shaders::{depthing, lighting, post_shader, shadowing};
 use scene::standard::Stage;
 use scene::{CompileContext, Compiler, STANDARD_SCENE_SCHEMA, StandardScene};
 use whiting_device_rasterize::WgpuRenderer;
@@ -181,7 +181,7 @@ fn scene(occluder: bool) -> Value {
 fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
     let point = shaded_point_schema();
     let custom = gallery_custom_schema();
-    let inputs = gallery::attributes::gallery_vertex_inputs(&point);
+    let inputs = document::attributes::gallery_vertex_inputs(&point);
     let lit = surface([0.8, 0.8, 0.8], 0.0, 1.0, [0.0; 3]);
     let stone = surface([0.7; 3], 0.0, 1.0, [0.0; 3]);
 
@@ -373,7 +373,7 @@ fn scene_of(lights: usize, pages: i64, occluder: bool) -> Value {
                         &inputs,
                         "",
                         "",
-                        gallery::shaders::Projection::Latlong,
+                        document::shaders::Projection::Latlong,
                         &custom,
                     ),
                     scene::standard::light_pass_schema(),

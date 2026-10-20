@@ -1,0 +1,23 @@
+[package]
+name = "whiting-document"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The standard scene document: the builders that write one, the identity it carries, and the naming it answers."
+
+[dependencies]
+definition = { workspace = true }
+graphics = { workspace = true }
+scene = { workspace = true }
+# The massif's facets: an authored id names a belt of one, and the table that turns the number
+# back into a name is the massif's own walk over its skeleton.
+mountain = { workspace = true }
+# The building's solids: an authored id names an element of one, and the table is the mesh's own
+# list of the elements its faces name.
+building = { workspace = true }
+# The sweep primitives the geometry generators loft from.
+shape = { workspace = true }
+# A plant's placement: the geometry generators stand a loft where a plant's node is, and the
+# placement is the plant's own word for where that is.
+vegetation = { workspace = true }
