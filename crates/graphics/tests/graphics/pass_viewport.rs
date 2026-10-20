@@ -143,7 +143,7 @@ fn rasterize(extra: &[(&'static str, Value)]) -> Value {
         (SHADER.to_owned(), Value::String("caster".to_owned())),
         (
             BINDERS.to_owned(),
-            Value::dictionary([("atlas".to_owned(), texture_declaration())]),
+            Value::dictionary([("atlas".to_owned(), viewport_texture_declaration())]),
         ),
         (
             TARGETS.to_owned(),
@@ -168,7 +168,7 @@ fn rasterize(extra: &[(&'static str, Value)]) -> Value {
 }
 
 /// Builds the binder declaration of a pass targeting one depth texture.
-fn texture_declaration() -> Value {
+fn viewport_texture_declaration() -> Value {
     Value::variant(
         "Resource",
         [(

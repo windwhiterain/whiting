@@ -37,7 +37,7 @@ fn a_flat_texture_is_exactly_the_document_it_was() {
          the inference the two kinds exist to remove"
     );
 
-    let declaration = texture_declaration("Texture", None, None);
+    let declaration = layer_texture_declaration("Texture", None, None);
     binder_declaration_schema()
         .validate(&declaration)
         .expect("a flat texture declaration is unchanged");
@@ -60,7 +60,7 @@ fn a_texture_array_says_how_deep_it_is_and_which_layer_a_pass_writes() {
         "the count is read from the variant that declares it"
     );
 
-    let declaration = texture_declaration("TextureArray", Some(64), Some(3));
+    let declaration = layer_texture_declaration("TextureArray", Some(64), Some(3));
     binder_declaration_schema()
         .validate(&declaration)
         .expect("an array declaration that names a layer is legal");
@@ -70,7 +70,7 @@ fn a_texture_array_says_how_deep_it_is_and_which_layer_a_pass_writes() {
         "a pass reads back the layer it said it draws into"
     );
     assert_eq!(
-        layer_of(&texture_declaration("TextureArray", Some(64), None)),
+        layer_of(&layer_texture_declaration("TextureArray", Some(64), None)),
         None,
         "a pass that names no layer draws into the first, and says nothing"
     );
@@ -110,7 +110,7 @@ fn texture_payload(tag: &str, layers: Option<i64>) -> Value {
 }
 
 /// Builds a texture declaration of the given shape, with a count and a layer or neither.
-fn texture_declaration(tag: &str, layers: Option<i64>, layer: Option<i64>) -> Value {
+fn layer_texture_declaration(tag: &str, layers: Option<i64>, layer: Option<i64>) -> Value {
     let mut fields = vec![
         (SOURCE.to_owned(), Value::String("shadow_pool".to_owned())),
         (WIDTH.to_owned(), Value::Int(1024)),
