@@ -133,3 +133,32 @@ under one tiled skirt each. Identity: 3 457 → **3 745 rows**.
 
 **The cut is made after all seven storeys are authored**, because a storey's mass has to exist before its faces can
 be given a rhythm; the storey relation says nothing about the walls, so it does not order this step.
+## A flight up every storey, and the rule this crate's scenes keep forgetting
+
+Opening the storeys made the tower's own defect plain: it was a stack of rooms with no way between them. Each
+storey but the last now has a **straight flight** climbing along its `+z` wall — ten risers from this floor to the
+next, a tread a step, a stringer under their ends — and because the storeys are open the flight is visible through
+the bays, which is how the picture says it is there.
+
+**The run is computed from the storey's own plan**, not written down: a storey shrinks as the tower rises, and a
+flight of fixed run would end inside its own wall by the fourth floor.
+
+Identity: 3 745 → **4 141 rows**.
+
+### The same mistake, three times
+
+`MemberDegenerate` is the expansion refusing a member whose section has no width, and it answers with the
+member's **own length** — a number that reads like a length fault and is not one. All three of these were the
+same mistake: an `across` written **parallel to the member's own axis**.
+
+| round | member | axis | written | why |
+| --- | --- | --- | --- | --- |
+| 8 | the 土掌房's parapet | two of its four sides run `z` | `[0, 1]` | copied from the two that run `x` |
+| 20 | the 风雨桥's top rails | the span, `x` | `[1, 0]` | written with the bridge's own axis in mind |
+| 24 | the drum tower's treads | across the stair, `z` | `[0, 1]` | a tread reads as "along the stair" until it is drawn |
+
+**Three times is a shape, not an accident.** `Member::new` takes the axis and the section's own direction as two
+separate arguments with nothing relating them, so a caller can state an axis and a section that contradict each
+other, and the only thing that catches it is the expansion. A `Member::new` that **derived `across` from the axis
+and one sign** would make the contradiction unrepresentable — a crate change this session has not made, because
+the axis and the section are not always perpendicular in a real member (a raked strut's section is cut plumb).

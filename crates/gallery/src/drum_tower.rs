@@ -65,6 +65,16 @@ const BAYS: usize = 3;
 const BAY_MARGIN: f32 = 0.25;
 const BAY_SILL: f32 = 0.75;
 const BAY_HEAD: f32 = 0.45;
+
+/// The stair up each storey: how many risers it has, how wide it is, how far it stands off the wall it climbs,
+/// and how thick a tread is.
+///
+/// **The run is computed from the storey's own plan**, so a storey that shrinks as the tower rises gets a
+/// steeper flight in the same number of treads rather than a flight that runs through its own wall.
+const STAIR_RISERS: usize = 10;
+const STAIR_WIDTH: f32 = 1.1;
+const STAIR_INSET: f32 = 0.35;
+const STAIR_TREAD: f32 = 0.10;
 const PLATE: f32 = 0.28;
 
 /// How far a skirt's eave hangs past the wall, and how far below the crest its eave line stands.
@@ -334,6 +344,48 @@ pub fn document() -> Building {
                 skeleton.roofs.push(shed.with_covering(COVERING));
             }
         }
+        // **A flight up to the next floor, in every storey but the last.** The storeys are open now, so a tower
+        // with no stair is a stack of rooms with no way between them: the flight climbs along the storey's own
+        // `+z` wall, one tread a step, from this floor to the next, and its stringer is the beam the treads hang
+        // on. It stands inside the storey's plan, `STAIR_INSET` off the wall, so it never reaches a bay.
+        if storey + 1 < STOREYS {
+            let treads = STAIR_RISERS;
+            let rise = STOREY / treads as f32;
+            let run = (side * 2.0 - STAIR_INSET * 2.0 - STAIR_WIDTH) / treads as f32;
+            let z = deep_side - STAIR_INSET - STAIR_WIDTH * 0.5;
+            let from = -side + STAIR_INSET;
+            for step in 0..treads {
+                let y = floor + rise * (step + 1) as f32;
+                let x = from + run * (step as f32 + 0.5);
+                skeleton.members.push(building::Member::new(
+                    building::Anchor::Free {
+                        at: [x, y, z - STAIR_WIDTH * 0.5],
+                    },
+                    building::Anchor::Free {
+                        at: [x, y, z + STAIR_WIDTH * 0.5],
+                    },
+                    // **The tread's section is measured across its own axis**: the tread runs along `z`, so a
+                    // `[0, 1]` across is parallel to it and the member has no width -- `MemberDegenerate` with the
+                    // treads' own 1.1, the third time a scene of this crate has made that mistake.
+                    [1.0, 0.0],
+                    run * 0.92,
+                    STAIR_TREAD,
+                ));
+            }
+            // The stringer: one beam under the treads' own ends, from the first riser to the last.
+            skeleton.members.push(building::Member::new(
+                building::Anchor::Free {
+                    at: [from + run * 0.5, floor + rise - STAIR_TREAD, z],
+                },
+                building::Anchor::Free {
+                    at: [from + run * (treads as f32 - 0.5), floor + STOREY, z],
+                },
+                [0.0, 1.0],
+                STAIR_WIDTH * 0.9,
+                STAIR_TREAD,
+            ));
+        }
+
         // **The crown is a hip on the last storey**, the one form in the crate that closes a plan on all four
         // sides.
         if storey + 1 == STOREYS {
