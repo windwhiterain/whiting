@@ -40,3 +40,20 @@ its own comment states as "seating first is the whole of the order").
   make a real hillside, and no village has yet stood on one;
 - **the pads**: each house is seated flat on the ground under its own outline, which on a slope means its uphill
   side is cut in and its downhill side is filled — the fill is not drawn and a real one stands on posts.
+## The fill, and the way out of the square
+
+Two more pieces, both of them what a house on a slope actually stands on and walks out of:
+
+- **the fill**: `site::seat` puts a house on the highest ground under its own outline, which on a slope leaves its
+  downhill side standing in air. Each house now gets `site::posts` after it is seated — the same op the 吊脚楼
+  uses for its whole floor, at the scale of one pad — so the cut side is cut and the filled side is posts. The
+  posts are placed **before** the merge, so they anchor against the house's own mass and not against a village
+  that has five of them. Rows 4 253 → 4 505.
+- **the lane**: the square opens south between the two log houses, and the way out of it is a **stone stair** —
+  one plate a step, each landing on the grade at its own run. A ramp is a surface this crate cannot cut, and a
+  stair is what a village on a hillside lays down at the end of its square. Rows 4 505 → 4 559.
+
+**What the first render said, and the second one:** the pads were drawn and the frame showed none of them,
+because the scene's own camera looks across the square at the tower and the fill is under the houses at the
+bottom edge of the picture. A diagnostic view from below the slope — eye at 1.6 m, looking up at a log house —
+shows the row of posts under its sill, which is the piece the fill was for.

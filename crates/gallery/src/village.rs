@@ -47,6 +47,8 @@ use crate::ground;
 /// The square: sixteen metres by twelve, and the grating at its middle.
 const SQUARE: [f32; 4] = [-8.0, -6.0, 8.0, 6.0];
 const GRATE: f32 = 0.7;
+/// How far south the lane runs from the square's own edge, in metres of plan.
+const LANE_END: f32 = 15.0;
 
 /// How steeply the ground falls away outside the square, in metres of drop per metre, and how far it is
 /// allowed to fall.
@@ -69,6 +71,14 @@ fn grade(x: f64, z: f64) -> f64 {
     let out = beyond.iter().copied().fold(0.0, f64::max);
     -(out * SLOPE).min(DROP_LIMIT)
 }
+
+/// The fill: `PAD_SPACING` between posts, `PAD_SECTION` square, `PAD_EMBED` into the ground at the foot.
+///
+/// **A house pad on a slope is a cut and a fill**, and the fill is a forest of short posts rather than a wall:
+/// the same construction the 吊脚楼 makes of its whole floor, at the scale of one corner of a house.
+const PAD_SPACING: f32 = 1.6;
+const PAD_SECTION: f32 = 0.16;
+const PAD_EMBED: f32 = 0.03;
 
 /// Where each building stands, as the offset its own document is moved by.
 const TOWER_AT: [f32; 2] = [0.0, -13.0];
@@ -329,6 +339,19 @@ pub fn document() -> Building {
                 report.len() == part.masses.len(),
                 "every mass of a house is seated on the ground this grade reads"
             );
+            // **A house on a slope is cut in on one side and filled on the other**, and the fill is what stands
+            // the house up: `site::posts` puts a post under the outline wherever the ground has fallen away
+            // from the pad, which is the same op the 吊脚楼 uses for its whole floor. Seating the house on the
+            // highest ground under it — which is what `seat` does — leaves the downhill side in the air, and a
+            // house standing on nothing is a house drawn halfway.
+            //
+            // **The posts are placed before the merge**, so their anchors resolve against the house's own mass
+            // and not against a village that has five of them.
+            let stilt = site::posts(&mut part, ground, PAD_SPACING, PAD_SECTION, PAD_EMBED);
+            assert!(
+                stilt.refused == 0,
+                "the grade answers under every post position of every house"
+            );
         }
         assert!(
             ops::merge(&mut skeleton, part),
@@ -379,6 +402,22 @@ pub fn document() -> Building {
         0.40,
     ) {
         skeleton.slabs.push(paving);
+        // **The lane steps down from the square.** The square opens south between the two log houses, and the
+        // way out of it is a stone stair: one plate a step, each landing on the grade at its own run. A ramp is a
+        // surface this crate cannot cut, and a stair is what a village on a hillside lays down at the end of its
+        // square.
+        let lane = 1.6;
+        let step = 1.1;
+        let mut z = SQUARE[3];
+        while z < LANE_END {
+            let level = grade(0.0, z as f64) as f32;
+            skeleton.slabs.push(building::Slab::plate(
+                vec![[-lane, z], [lane, z], [lane, z + step], [-lane, z + step]],
+                level - 0.16,
+                level + 0.10,
+            ));
+            z += step;
+        }
     }
     Building::new(skeleton)
 }
