@@ -60,67 +60,51 @@ const LANE_END: f32 = 15.0;
 const SLOPE: f64 = 0.12;
 const DROP_LIMIT: f64 = 2.4;
 
-/// The hill the hillside village stands on: a lattice of one-metre cells over 240 metres, with a smooth mound
-/// rising to the north-east.
+/// The hill the hillside village stands on: **a massif, read onto a lattice and eroded**, which is the pipeline
+/// `mountain` and `terrain` exist for and which no scene of a building has ever stood on.
 ///
 /// # Invariants
 ///
-/// **The field is the only terrain in this file**, and the hillside village reads it twice — once to seat its
-/// houses and once to draw its ground — through [`field_height`]. Its heights are a closed-form function of
-/// plan, so two runs of the scene draw the same hill, and there is no noise a seed could change.
+/// **Nothing here is a formula.** A fan of ridges is authored by `mountain`'s own starter, expanded into a facet
+/// mesh, rasterized onto a two-metre lattice and solved by the hydraulic erosion; the village then reads the
+/// solved field through [`field_height`]. The three crates meet in the order their documents state —
+/// `mountain` makes the rock, `terrain` reads and erodes it, and a building stands on the result — and this is
+/// the first place all three are in one frame.
+///
+/// **The field's own plain is zero**, because the massif's rim is levelled to it and the solve is faded back to
+/// the massif at that rim. The village's ground outside the lattice is therefore the plain, and no fallback
+/// formula is needed or wanted.
 fn hillside() -> terrain::HeightField {
-    let cells = 320;
-    let cell = 1.0;
-    let origin = [-160.0, -160.0];
-    let mut heights = Vec::with_capacity(cells * cells);
-    let mut inside = Vec::with_capacity(cells * cells);
-    for row in 0..cells {
-        for column in 0..cells {
-            let x = origin[0] + column as f32 * cell;
-            let z = origin[1] + row as f32 * cell;
-            heights.push(hill_height(x, z));
-            inside.push(true);
-        }
-    }
-    terrain::HeightField::of(origin, cell, cells, cells, 0.0, heights, inside)
-        .expect("the lattice is square and its two buffers are the same length")
-}
-
-/// Returns the hill's own elevation at a plan point: a mound rising to the north-east and a shallow tilt under
-/// the village, so the slope is read under the buildings and not only in the distance.
-///
-/// **Closed form and smooth**, so the field and the scene agree by construction rather than by sampling.
-fn hill_height(x: f32, z: f32) -> f32 {
-    let sigma = 62.0;
-    let away = ((x - 26.0) * (x - 26.0) + (z + 44.0) * (z + 44.0)) / (2.0 * sigma * sigma);
-    let mound = 7.5 * (-away).exp();
-    mound + 0.035 * (-z).max(-20.0)
-}
-
-/// Returns the hill's elevation at a plan point, read off the field's own lattice.
-///
-/// # Invariants
-///
-/// **A point outside the lattice reads the function the lattice was filled from**, and not the field's `base`:
-/// `sample` answers `base` off the edge, and a base of `0.0` beside a hill of 5 m is a cliff the frame draws as
-/// a terrace. The two readings are one surface because the lattice was filled from that function, so the edge of
-/// the field is invisible — measured on the first frame of this scene, which showed a patchwork of plateaus and
-/// was the field's own rim.
-fn field_height(field: &terrain::HeightField, x: f64, z: f64) -> f64 {
-    let (half_width, half_depth) = (
-        field.origin()[0] + field.width() as f32 * field.cell(),
-        field.origin()[1] + field.height() as f32 * field.cell(),
+    let massif = mountain::starter(
+        HILL_SEED,
+        mountain::Starter {
+            ridges: 5,
+            nodes: 6,
+            reach: 120.0,
+            summit: 34.0,
+            tip: 1.5,
+            bulge: 9.0,
+            ..mountain::Starter::default()
+        },
     );
-    let (x32, z32) = (x as f32, z as f32);
-    let inside = x32 >= field.origin()[0]
-        && x32 <= half_width
-        && z32 >= field.origin()[1]
-        && z32 <= half_depth;
-    if inside {
-        field.sample([x32, z32]) as f64
-    } else {
-        hill_height(x32, z32) as f64
-    }
+    let mesh = massif
+        .build()
+        .expect("a fan of five ridges is a mesh with a footprint");
+    let read =
+        terrain::rasterize(&mesh, HILL_CELL).expect("a 240 m hill is far larger than two metres");
+    let (eroded, _books) = terrain::erode_traced(
+        &terrain::ErodeParams::default(),
+        &read.field,
+        &terrain::Hydraulic,
+    )
+    .expect("a height field is a height field");
+    eroded
+}
+
+/// Returns the hill's elevation at a plan point: the village reads the hill's south-western flank, so its own
+/// plan is offset by `HILL_AT` into the massif's.
+fn field_height(field: &terrain::HeightField, x: f64, z: f64) -> f64 {
+    field.sample([x as f32 + HILL_AT[0], z as f32 + HILL_AT[1]]) as f64
 }
 
 /// Returns the **platform**'s level for the hillside village: the hill's own elevation at the square's centre,
@@ -140,41 +124,6 @@ fn platform_level(field: &terrain::HeightField) -> f32 {
 /// **The cut is a step and not a ramp**, and that is what a terrace is: inside the square the ground is one
 /// level, outside it the hill is itself, and the retaining wall in [`compose`] is what stands in the face
 /// between them.
-/// Returns the field's own shape and a few of its heights, for the probe that measures it.
-pub fn field_report() -> String {
-    let field = hillside();
-    let relief = field.relief();
-    format!(
-        "origin {:?} cell {} {}x{} base {} relief {:?} first {:?} middle {:?}",
-        field.origin(),
-        field.cell(),
-        field.width(),
-        field.height(),
-        field.base(),
-        relief,
-        &field.heights()[0..4],
-        &field.heights()[field.heights().len() / 2 - 2..field.heights().len() / 2 + 2],
-    )
-}
-
-/// Returns the terrace village's grade at a point, for the probe that measures it.
-pub fn grade_at(x: f64, z: f64) -> f64 {
-    grade(x, z)
-}
-
-/// Returns the field's own `sample` at a point, for the probe that measures it.
-pub fn field_sample_at(x: f64, z: f64) -> f64 {
-    let field = hillside();
-    field.sample([x as f32, z as f32]) as f64
-}
-
-/// Returns the hillside village's grade at a point, for the probe that measures it.
-pub fn hillside_at(x: f64, z: f64) -> f64 {
-    let field = hillside();
-    let platform = platform_level(&field);
-    hill_grade(&field, platform, x, z)
-}
-
 fn hill_grade(field: &terrain::HeightField, platform: f32, x: f64, z: f64) -> f64 {
     let inside = x >= SQUARE[0] as f64
         && x <= SQUARE[2] as f64
@@ -185,6 +134,37 @@ fn hill_grade(field: &terrain::HeightField, platform: f32, x: f64, z: f64) -> f6
     } else {
         field_height(field, x, z)
     }
+}
+/// Returns the massif field's own shape, for the probe that measures it.
+pub fn field_report() -> String {
+    let field = hillside();
+    format!(
+        "origin {:?} cell {} {}x{} base {} relief {:?}",
+        field.origin(),
+        field.cell(),
+        field.width(),
+        field.height(),
+        field.base(),
+        field.relief(),
+    )
+}
+
+/// Returns the field's own `sample` at a point, for the probe that measures it.
+pub fn field_sample_at(x: f64, z: f64) -> f64 {
+    let field = hillside();
+    field_height(&field, x, z)
+}
+
+/// Returns the hillside village's grade at a point, for the probe that measures it.
+pub fn hillside_at(x: f64, z: f64) -> f64 {
+    let field = hillside();
+    let platform = platform_level(&field);
+    hill_grade(&field, platform, x, z)
+}
+
+/// Returns the terrace village's grade at a point, for the probe that measures it.
+pub fn grade_at(x: f64, z: f64) -> f64 {
+    grade(x, z)
 }
 /// Returns the ground's own elevation at a plan point.
 ///
@@ -209,6 +189,15 @@ fn grade(x: f64, z: f64) -> f64 {
 /// The **lane**'s own grade, which is the street scene's own number: a straight climb east of `0.055` a metre.
 /// The village reads it from the square's edge, so the lane's first plot stands exactly where the square ends.
 const LANE_SLOPE: f64 = 0.055;
+
+/// The massif the hillside village stands on: its seed, the lattice it is read onto, and where the village sits
+/// on it.
+///
+/// **`HILL_AT` is the village`s own plan offset into the massif**, so the square stands on a flank and the summit
+/// is out of frame to the north-east — a village on a summit is a different building type.
+const HILL_SEED: i64 = 11;
+const HILL_CELL: f32 = 16.0;
+const HILL_AT: [f32; 2] = [-30.0, -34.0];
 
 /// How far the terrace's kerb stands above the square's own level.
 const KERB: f32 = 0.35;
@@ -285,11 +274,28 @@ pub fn hillside_village() -> Value {
     let field = hillside();
     let platform = platform_level(&field);
     let ground = move |x: f64, z: f64| hill_grade(&field, platform, x, z);
+    // **The camera stands on the hill and not at an elevation written by hand.** The massif's flank is sixteen
+    // metres above the plain, so a camera at y = 6 was under the ground it came to look at -- which is what the
+    // first frame of this scene showed: a village seen through the underside of its own hill.
+    // **The camera is placed above the ground under its own feet**, which is the only statement about height
+    // that survives a terrain: a fixed elevation is a statement about the plain, and this village is not on
+    // one. It also stands outside the hill's shoulder and looks along the slope, so the frame is the village
+    // and not the underside of the ground that carries it.
+    // **The camera stands above the ground under its own feet**, and the village is framed from the south-west
+    // as the terrace's village is: a terrain has no side an architect would have picked, so the framing is the
+    // one the flat scene already earned and the terrain is what moves under it.
+    let eye_plan = [-18.0_f64, 34.0_f64];
+    let eye = [
+        eye_plan[0],
+        ground(eye_plan[0], eye_plan[1]) + 7.0,
+        eye_plan[1],
+    ];
+    let target = [2.0, f64::from(platform) + 4.0, -6.0];
     scene_of(
         &hillside_document(),
         &ground,
-        [-16.0, 6.0, 34.0],
-        [2.0, 5.5, -6.0],
+        eye,
+        target,
         FIELD_OF_VIEW,
         "hillside_village",
     )

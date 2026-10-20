@@ -1,51 +1,44 @@
-# 山坡上的村寨 — a village on a real `terrain::HeightField`
+# 山坡上的村寨 — the hillside village now stands on an eroded massif
 
-Every village so far has stood on a rule: a plateau, a line, a slope written as arithmetic. This one stands on
-**terrain**: a `terrain::HeightField` of 320 × 320 one-metre cells, filled from a closed-form hill, with a
-platform cut into it for the square.
+The hillside scene was merged with its ground written as a closed-form formula, and the proposal said plainly what
+that was: *the point of `HeightField` is that the reader is the one a real field would be read by, not that the
+field is real.* It is real now.
 
-## One composition, two grounds
+## The pipeline, in the order the three crates state it
 
-The village's document was already a composition of five buildings; it is now a function of its ground:
-
-| | `document()` | `hillside_document()` |
+| step | call | what it makes |
 | --- | --- | --- |
-| ground | the terrace's own `grade` — flat inside the square, climbing east along the lane, falling away on the other three sides | the hill, with the square cut to a platform at the hill's own elevation at the square's centre |
-| the lane | joined on, because the street's own grade is the one this village continues | **not** joined on: the street is authored on a straight climb and a hill is not one |
-| the tower | on the terrace, not seated | on the platform, not seated — a seat would flatten its seven storeys |
+| **the rock** | `mountain::starter(seed, Starter { ridges: 5, nodes: 6, reach: 65, summit: 9, tip: 0.4, bulge: 4, spread: TAU })` | a fan of five ridges expanded into a `FacetMesh` |
+| **the lattice** | `terrain::rasterize(&mesh, 16.0)` | the massif read onto 168 × 186 cells |
+| **the erosion** | `terrain::erode_traced(&ErodeParams::default(), &read.field, &Hydraulic)` | the solved field, which is what the village stands on |
+| **the village** | `compose(ground, lane, platform)` | the same five buildings, seated on the solved field, with the square cut to a platform at the hill's own elevation there |
 
-`compose(ground, lane, platform)` is the composition; neither variant re-derives a tower or a house.
+This is the first frame in which all three crates are in one picture: `mountain` makes the rock, `terrain` reads
+and erodes it, and a building stands on the result.
 
-## The defect this found: a height field read its `base` on a lattice line
+## Three measurements, all of them refusals of the obvious choice
 
-The hillside's first frame was a patchwork of plateaus at wildly different heights, and the probe found why in
-one line: **`HeightField::sample` answered `0.0` for any plan point exactly on a lattice line.**
+- **A massif's footprint is not its `reach`.** Five ridges at `reach = 65` with the default spread produced a
+  field **1 343 × 1 486 cells at two metres — 2.7 km across** — because a fan spread over less than a full turn
+  leaves a closing wedge whose corner stands hundreds of metres out. `spread: TAU` closes the fan and the corner
+  goes away; the footprint is still kilometres, because it is the *massif's* and not the hill's.
+- **Erosion is priced by the lattice, not by the hill.** At two metres the field is two million cells and one
+  build took **~15 s** (28 builds, 428 s of probe). At sixteen metres it is thirty thousand cells and **~0.4 s**.
+  The village stands on forty metres of the field, where the solve's detail is below the scale of a house, so the
+  coarse lattice is the right lattice here and not a compromise.
+- **A camera written for a flat site does not survive a terrain.** The scene's own eye was at `y = 6` and the
+  massif's flank is sixteen metres up: the first frame was the village seen through the underside of its own
+  hill. The second framing — a high oblique — put the camera above the shoulder but framed a dark plane. What
+  works is the one rule a terrain allows: **the eye stands above the ground under its own feet**, and the
+  composition is framed from the side the flat scene had already earned.
 
-`sample_run` took `left = floor(column)` and `right = ceil(column)` and weighted them by `right - column` and
-`column - left`. On an integer coordinate the two are the **same number**, so both shares are zero, the weight
-total stays zero, and the function returns `None` — which `sample` answers with the field's `base`. Nothing about
-that is specific to this scene: the field's own centre, and every whole-metre point in it, was unreadable.
+## What the hillside village still is not
 
-The fix is one line in `crates/terrain/src/heightfield.rs`: the far cell is `floor + 1` and its share is
-`column - left`, which is the bilinear interpolation everyone means. Measured after:
+- **one summit, one seed**: the massif is `mountain`'s own starter fan, not an authored skeleton, so it has no
+  front and no back and the village sits on whichever flank the offset names;
+- **one cut**: the square's platform is cut, and the houses fill under themselves with posts, but each house's own
+  pad is not cut and filled as a stair;
+- **no lane**: the street is a straight climb and this hill is not one.
 
-| plan point | before | after |
-| --- | --- | --- |
-| (0, −48) | 0.000 | **8.534** |
-| (0, 0) | 0.000 | **5.340** |
-| (26, −44) | 0.000 | **9.040** |
-| (100, 100) | 0.000 | **−0.452** |
-
-The scene had been cutting its platform from that zero — which is why the square's platform stood five metres
-below the hill it was cut into, and the frame showed the step.
-
-## What the hillside village is not
-
-- **no lane**: the street is a straight climb and this hill is not one, so joining it would be the two hills
-  meeting that the terrace version was built to avoid;
-- **no real terrain data**: the field is filled from a formula, not from `mountain`'s massif or from `erode`. The
-  point of using `HeightField` is that the *reader* is the same one a real field would be read by;
-- **one platform, one cut**: the houses are seated on the hill and fill under themselves with posts, but nothing
-  cuts a pad for each of them, and a real hillside village is a stair of pads.
-
-Identity: **4 559 rows**, and twenty-two scenes in the gallery.
+Identity: **4 643 rows** (from 4 559: the houses stand on more posts now that the ground has relief), and
+twenty-two scenes in the gallery.
