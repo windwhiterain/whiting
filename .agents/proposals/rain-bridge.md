@@ -45,3 +45,18 @@ is from the bank: nine dark bays in a row under one long tiled eave, with the ra
 pavilion over the middle.
 
 Identity: 1 434 → **1 506 rows**.
+## The bridge lands, and the river is a channel
+
+The deck used to stop in mid-air on both banks, and the ground under the bridge was the harness's own plane. Three
+pieces now, and they are the type's setting rather than its structure:
+
+- **the river is a height function**: a channel `1.6 m` deep and `10 m` wide along the bridge's own axis, with
+  `2 m` of bank either side rising to `1.1 m`. The ground mesh is drawn from it, so the piers stand in the cut and
+  the deck clears the water — and **the water is the channel bed and not a surface**: nothing in this frame is a
+  liquid, and a river with a reflection is a material this scene does not author;
+- **two stone abutments**, one at each end, `1.8 m` of plate carried down from the deck to the bed. A slab and not
+  a mass, because a retaining block has no inside — the same reason a parapet is a member;
+- **a bench down each side of the gallery**, `0.46 m` above the deck and `0.36 m` wide: a 风雨桥 is where the
+  village sits, and open bays without benches are a colonnade with nowhere to sit.
+
+Identity: 1 506 → **1 530 rows**.

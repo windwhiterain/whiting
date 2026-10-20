@@ -66,6 +66,34 @@ const COVERING: building::Covering = building::Covering {
     height: 0.05,
 };
 
+/// The river the bridge crosses: its bed, the half-width of its channel, and where the water's edge is.
+///
+/// **The channel is authored by the scene and not by a terrain crate**: the ground under the bridge is one height
+/// function, and a river in this frame is a cut in it — deep enough that the piers stand in water and the deck
+/// clears it.
+const RIVER_BED: f32 = -1.6;
+const RIVER_HALF: f64 = 5.0;
+const RIVER_BANK: f64 = 7.0;
+const BANK_HEIGHT: f32 = 1.1;
+
+/// The bench down each side of the gallery: how high its seat stands above the deck, and its section.
+const BENCH_HEIGHT: f32 = 0.46;
+const BENCH_WIDTH: f32 = 0.36;
+const BENCH_THICK: f32 = 0.09;
+
+/// Returns the ground's own elevation at a plan point: a channel along the bridge's own axis, and a bank outside
+/// it.
+fn river(_x: f64, z: f64) -> f64 {
+    let away = z.abs();
+    if away <= RIVER_HALF {
+        f64::from(RIVER_BED)
+    } else if away >= RIVER_BANK {
+        f64::from(BANK_HEIGHT)
+    } else {
+        let t = (away - RIVER_HALF) / (RIVER_BANK - RIVER_HALF);
+        f64::from(RIVER_BED) + t * f64::from(BANK_HEIGHT - RIVER_BED)
+    }
+}
 /// The piers: `PIERS` sets of `PIER_POSTS` stone posts, `PIER` square, standing in the water.
 const PIERS: [f32; 2] = [-6.5, 6.5];
 const PIER_POSTS: [f32; 3] = [-1.4, 0.0, 1.4];
@@ -218,7 +246,7 @@ fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Val
     let extras = building_extras();
     let point = extras.point_schema();
     let plain = not_authored_extras();
-    let river = ground::mesh(&building, GROUND_DIVISIONS, GROUND_EXTENT, |_, _| 0.0);
+    let river = ground::mesh(&building, GROUND_DIVISIONS, GROUND_EXTENT, river);
 
     Value::structure([
         ("name".to_owned(), Value::String(name.to_owned())),
@@ -405,6 +433,39 @@ pub fn document() -> Building {
         DECK,
         gallery_base,
     ));
+
+    // **The bridge lands on two stone abutments.** The deck used to stop in mid-air on both banks, which is what
+    // a plate does when nothing under it is authored: an abutment is the plate's own end carried down into the
+    // bank, and it is a slab rather than a mass because a retaining block has no inside.
+    for side in [-1.0_f32, 1.0] {
+        let x = side * (half + 1.2);
+        skeleton.slabs.push(building::Slab::plate(
+            vec![
+                [x - 0.9, -deep - 0.9],
+                [x + 0.9, -deep - 0.9],
+                [x + 0.9, deep + 0.9],
+                [x - 0.9, deep + 0.9],
+            ],
+            RIVER_BED,
+            gallery_base,
+        ));
+    }
+
+    // **A bench down each side, under the bays.** A 风雨桥 is where the village sits: the two long benches are
+    // the room's furniture, and without them the open bays are a colonnade with nowhere to sit.
+    for z in [-deep + 0.32, deep - 0.32] {
+        skeleton.members.push(building::Member::new(
+            building::Anchor::Free {
+                at: [-half + 0.4, gallery_base + BENCH_HEIGHT, z],
+            },
+            building::Anchor::Free {
+                at: [half - 0.4, gallery_base + BENCH_HEIGHT, z],
+            },
+            [0.0, 1.0],
+            BENCH_WIDTH,
+            BENCH_THICK,
+        ));
+    }
 
     // **The piers: three stone posts to a set, standing in the water** and carrying the deck.
     for x in PIERS {
