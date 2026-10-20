@@ -63,6 +63,9 @@ const HALF_Z: f32 = 7.5;
 /// The court: three metres square, the well the ranges are built round.
 const COURT: f32 = 1.5;
 
+/// The grating through the court's paving, at its middle, and the stone it stands clear of.
+const GRATE: f32 = 0.45;
+
 /// The depths of the four ranges, and their heights. The 正房 is the tallest, the gate house the lowest.
 const MAIN_DEPTH: f32 = 6.0;
 const MAIN_HEIGHT: f32 = 6.2;
@@ -389,6 +392,17 @@ pub fn document() -> Building {
     // **One seat for the whole compound**, so the four ranges share a level rather than each finding its
     // own: a 一颗印 is built flat, and its court is a well and not a slope.
     let _ = site::seat(&mut skeleton, |_| 0.0, 0.0);
+    // **And the court is paved, with its grating at the middle** — which is where 四水归堂's water ends:
+    // the four roofs shed inward and the paving's one hole is what they shed into.
+    let court = [
+        [-COURT, -COURT],
+        [COURT, -COURT],
+        [COURT, COURT],
+        [-COURT, COURT],
+    ];
+    if let Some(paving) = derive::court_paving(court, 0.02, 0.08, GRATE, 0.30) {
+        skeleton.slabs.push(paving);
+    }
     Building::new(skeleton)
 }
 

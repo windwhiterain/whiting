@@ -1234,6 +1234,31 @@ where the posts read as a texture under a floor. It now has a camera on the deck
 The frame holds what the type is: the deck underfoot, the rail at hip height, the posts the deck hangs
 between, the dark of the eave above, and the valley the whole thing is hung over.
 
+### The water: a paved court with one hole
+
+四水归堂 says the four roofs shed inward, and the proposal has said so since the courtyard arc — but the
+court itself was the terrain, so the sentence ended in air. `derive::court_paving` is where it ends now: **a
+plate over the court's own rectangle, with the drain's grate cut through it at its middle**.
+
+Two invariants decide whether it builds at all: the hole must stand `margin` clear of every edge (a grating
+at the lip is a gutter, so such a court answers `None` rather than paving a basin whose outlet is its own
+edge), and **the plate carries no host** — a court is the space *between* masses, and a plate hosted by one
+of them would move with that one and leave the rest behind on the first seat.
+
+| number | value |
+| --- | --- |
+| the 一颗印's court | 3 × 3 m, grate 0.45 m, paving 0.08 m thick; rows 5 312 → **5 322** |
+| the 三坊一照壁's court | 6 × 15 m, grate 0.6 m; rows 6 725 → **6 735** |
+| documents | `yikeyin` `D150D4C141F7DCF9`, `yikeyin_court` `21BD72E24CC886C5`, `compound` `6AAD1D2CD464B03C`, `compound_court` `7C99C4BDA8890F27` |
+| seventeen scenes | **47 660 rows** |
+
+**A renderer finding, recorded rather than fixed**: the same document that lights its court in the
+rasterising pipeline draws a near-black well through Cycles. The court's only light is the sky slot and the
+environment light the document declares, and the Cycles path does not read that variant the way the lighting
+stage does. It is a difference between two renderers and not a fault in the building — the well *is* deep —
+but it means a picture of an interior court needs the rasteriser, which the machine's gpu no longer allows,
+so interior plates are for the owner's own machine until the Cycles path learns the environment light.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

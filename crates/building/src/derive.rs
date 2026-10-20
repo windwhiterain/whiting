@@ -956,6 +956,57 @@ pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Op
     Some(Slab::floor(inner_loop(mass, id)?, elevation - thickness, elevation).with_host(id))
 }
 
+/// Builds the **paved court**: a plate over a court's own rectangle, with the drain's grate cut through
+/// it at its centre.
+///
+/// # Invariants
+///
+/// **The hole is the court's low point and it is strictly inside it.** A court that collects its own roof
+/// water (四水归堂, "four waters return to the hall") ends in a stone grating, and a grating at the edge is a
+/// gutter: the plate's hole must stand clear of all four edges by `margin`, so a court whose grate would
+/// touch an edge answers `None` rather than paving a basin whose outlet is its own lip.
+///
+/// **The plate carries no host**, because the court is the *space between* masses rather than one mass's
+/// floor: a plate hosted by one of them would move with that one and leave the other three behind the first
+/// time the site was seated.
+///
+/// **Its top is the court's level and its bottom is one thickness below it**, so a paving of no thickness is
+/// refused, and the two elevations being the wrong way round is the slab's own reading to report rather than
+/// a prism built inside out.
+///
+/// `O(1)`: one rectangle and one square.
+pub fn court_paving(
+    plan: [Vec2; 4],
+    elevation: f32,
+    thickness: f32,
+    grate: f32,
+    margin: f32,
+) -> Option<Slab> {
+    if thickness <= 0.0 || grate <= 0.0 || margin <= 0.0 || !elevation.is_finite() {
+        return None;
+    }
+    let [a, b, _c, d] = plan;
+    let width = distance(a, b);
+    let depth = distance(a, d);
+    if grate + 2.0 * margin >= width || grate + 2.0 * margin >= depth {
+        return None;
+    }
+    // The grate is a square at the rectangle's centre, walked the way the rectangle is, so a reader of the
+    // document sees one direction rather than a hole wound against its own plan.
+    let middle = [
+        (a[0] + b[0] + _c[0] + d[0]) * 0.25,
+        (a[1] + b[1] + _c[1] + d[1]) * 0.25,
+    ];
+    let half = grate * 0.5;
+    let hole = [
+        [middle[0] - half, middle[1] - half],
+        [middle[0] + half, middle[1] - half],
+        [middle[0] + half, middle[1] + half],
+        [middle[0] - half, middle[1] + half],
+    ];
+    Some(Slab::plate(plan.to_vec(), elevation - thickness, elevation).with_void(hole.to_vec()))
+}
+
 /// Returns the loop a mass's walls stand on: its outline offset inward by the wall's own thickness.
 ///
 /// # Invariants

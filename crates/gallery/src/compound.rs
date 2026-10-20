@@ -358,6 +358,18 @@ pub fn document() -> Building {
         0.4,
         3.6,
     ));
+    // **The court is paved, with its grating at the middle**: the three ranges shed inward and the one
+    // hole is what the water reaches, which is the same construct the 一颗印 uses on a quarter of the
+    // plan — the court is long here and square there, and a paving does not care which.
+    let court = [
+        [-COURT_HALF, COURT_BACK],
+        [COURT_HALF, COURT_BACK],
+        [COURT_HALF, COURT_FRONT],
+        [-COURT_HALF, COURT_FRONT],
+    ];
+    if let Some(paving) = derive::court_paving(court, 0.02, 0.08, 0.6, 0.6) {
+        skeleton.slabs.push(paving);
+    }
     Building::new(skeleton)
 }
 
