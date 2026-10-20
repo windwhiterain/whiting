@@ -65,9 +65,17 @@ if ($artefacts.Count -eq 0) {
     "  sources         : $($sources.Count), $($stale.Count) newer than it"
     foreach ($one in ($stale | Select-Object -First 5)) { "      stale: $($one.FullName.Substring($root.Length + 1))" }
     if ($stale.Count -ne 0) {
-        # Not a failure on its own -- cargo will rebuild inside [3/5] and the clock in [5/5] will say what
-        # that cost. Saying it here is what makes a ten-minute run explain itself.
-        "  the suites below will rebuild $($stale.Count) file(s); a cold tree cannot be audited in ten seconds"
+        # **A warning, not a refusal, because a modification time is not the truth about a build.** A fresh
+        # checkout, a rebase or a `git checkout` stamps every file with "now", so a refusal on this signal
+        # fires on a tree whose target is perfectly valid -- measured: a new worktree over a fully built
+        # target refused with all 376 sources "newer". The truth is what carrying a stale tree *costs*, and
+        # that is [5/5]'s business: a stage that rebuilt is a stage the clock reports, and the audit is the
+        # run after it.
+        "  $($stale.Count) source(s) carry a newer stamp than the newest artefact"
+        "  (a fresh checkout stamps every file; if a stage below rebuilds, the clock says so and the"
+        "   audit is the run after it)"
+    } else {
+        "  the tree is warm: no source is newer than the artefacts it built"
     }
 }
 
