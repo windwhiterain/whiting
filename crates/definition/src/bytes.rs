@@ -23,6 +23,9 @@
 //! Base64 is implemented here rather than taken from a crate because this crate depends on
 //! nothing but `facet` and `thiserror`, and the codec is small enough to be read.
 //!
+//! The binary form of a document is the other spelling of the same thing, and it writes a
+//! byte sequence as bytes rather than as text; see [`binary`](crate::binary).
+//!
 //! # Invariants
 //!
 //! [`encode_bytes`] and [`decode_bytes`] are inverses on every byte sequence, and

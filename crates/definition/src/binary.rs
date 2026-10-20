@@ -3,17 +3,17 @@
 //! # Why a binary form
 //!
 //! A document is a [`Value`] tree, and a tree of text is a tree of decimal numbers and of
-//! base64. The `alpine_oak` scene is 652,794,206 bytes of json for ten million triangle
-//! corners and 194,167 labelled rows, and the bulk of it is spent twice over: the packed
-//! runs are carried as base64, which costs four text bytes for every three bytes of data,
-//! and every row and every float is written as decimal text that has to be parsed back.
+//! base64. The `alpine_oak` scene is 652,794,206 bytes of json for 421,799,808 bytes of packed
+//! runs and 194,167 labelled rows, and the bulk of it is spent twice over: the runs are carried
+//! as base64, which costs four text bytes for every three bytes of data, and every row and
+//! every float is written as decimal text that has to be parsed back.
 //!
-//! The geometry is already packed — a run of bytes per element, indexed by a stride — so
-//! what the text form adds is the cost of spelling a byte sequence as characters. This
-//! module spells it as bytes: a run is a length and the bytes, and a float is its bits.
+//! Written as bytes the same document is 480,911,625 bytes, and it reads back in 0.65 s rather
+//! than 6.75 s: a run is a length and the bytes, and a float is its bits.
 //!
-//! The measurement is `crates/gallery/examples/document_binary_probe.rs`, which reports
-//! the same document in both spellings and says what each costs to write and to read.
+//! The measurement is `crates/gallery/examples/document_binary_probe.rs`, which reports the
+//! same document in both spellings and says what each costs to write and to read, and
+//! `.agents/investigate/the-cost-of-the-binary-form-of-a-scene-document.md`, which records it.
 //!
 //! # The format
 //!
