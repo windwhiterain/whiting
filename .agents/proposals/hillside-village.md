@@ -57,3 +57,18 @@ solid or as a crack.
 
 Rows: `village_square` 16 497 → **16 521**, `hillside_village` 4 643 → **4 667** — six rows a house and four
 houses, in both villages, because the plinth is the composition's and not the terrain's.
+## The stair was under the hill
+
+The lane out of the square is one plate a step, each landing on the grade at its own run — and it was cut from
+**`grade`**, which is the *flat* village's arithmetic: level inside the square, falling twelve centimetres a metre
+outside it, to a limit of 2.4. In the hillside village, where the terrain is seventeen metres up, that put the
+whole stair **nineteen metres under the hill it was cut into**, and nothing in the document said so: the plates
+were there, their elevations were finite, and `validate` had no question to ask about a plate that is simply
+somewhere else.
+
+It is laid on `seated_ground` now — the scene's own ground, the same one the houses were seated on and the frame
+draws — so the stair descends the slope between the earth houses and the log house, which is what a hillside
+village's way out of its square is.
+
+**Identity is unchanged (16 521 and 4 667)**, and that is the point of keeping the number: the defect was not a
+missing plate but a misplaced one, so a count of the document could not have found it and only the frame could.

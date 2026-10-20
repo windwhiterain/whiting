@@ -726,7 +726,10 @@ pub fn compose(ground: impl Fn(f64, f64) -> f64, lane: bool, platform: f32) -> B
         let step = 1.1;
         let mut z = SQUARE[3];
         while z < LANE_END {
-            let level = grade(0.0, z as f64) as f32;
+            // **The lane is laid on the scene's own ground and not on the terrace's rule**: `grade` is the
+            // flat village's arithmetic, and a stair cut from it in a hillside village is a stair under the hill
+            // -- which is where it was, nineteen metres down, until this was read.
+            let level = seated_ground([0.0, z]) as f32;
             skeleton.slabs.push(building::Slab::plate(
                 vec![[-lane, z], [lane, z], [lane, z + step], [-lane, z + step]],
                 level - 0.16,
