@@ -153,7 +153,7 @@
 //!     .clone();
 //! registry
 //!     .insert_definition(Definition::new(
-//!         DefinitionIdentifier::new("studio.mesh"),
+//!         DefinitionIdentifier::new("example.mesh"),
 //!         SchemaIdentifier::new(MESH_SCHEMA),
 //!         named_mesh,
 //!     ))
@@ -165,7 +165,7 @@
 //!     .and_then(|fields| fields.get_mut("meshes"))
 //! {
 //!     meshes[0] =
-//!         definition::Reference::External(definition::Path::root().key("studio.mesh")).to_value();
+//!         definition::Reference::External(definition::Path::root().key("example.mesh")).to_value();
 //! }
 //! let naming = Definition::new(
 //!     DefinitionIdentifier::new("naming.source"),

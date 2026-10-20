@@ -67,7 +67,7 @@ fn example_point_schema() -> Schema {
 /// has no bounds, no padding, and no orthographic camera, so it falls back to the identity: a
 /// perspective camera standing at the origin looking along `+Z`.
 ///
-/// Measured: `Gallery::build("studio")` returned this document, and the subprocess wrote
+/// Measured: the gallery's own demo scene was this document, and the subprocess wrote
 /// 2 073 600 texels of `max = 0` — a black frame, exit status zero, no error. The rasterised
 /// path drew the same document without complaint.
 ///
@@ -78,7 +78,7 @@ fn example_point_schema() -> Schema {
 /// here.
 pub fn example_standard_scene() -> Value {
     Value::structure([
-        ("name".to_owned(), Value::String("studio".to_owned())),
+        ("name".to_owned(), Value::String("example".to_owned())),
         (
             "cameras".to_owned(),
             Value::List(vec![Value::structure([
