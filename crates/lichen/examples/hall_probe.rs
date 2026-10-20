@@ -83,4 +83,7 @@ fn main() {
         if run.baseline_print == scene { "yes" } else { "NO" }
     );
     print_row(&run.row);
+    // **Below the shared row's resolution**: `millis` prints three decimals of a second, so an
+    // edit that reuses every cell reads as `0.000 s`, and this is what says how far below.
+    println!("session (fine)   : {} µs", run.row.session.as_micros());
 }

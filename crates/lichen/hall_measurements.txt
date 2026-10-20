@@ -1,0 +1,56 @@
+=== width ===
+hall()           : fp 1b88435f8c900ab1
+baseline is hall : yes
+edit              : width
+baseline          : 0.018 s
+session           : 0.017 s
+fresh (cold)      : 0.017 s
+speed-up          : 1.00x
+cells             : reused 0 frozen 4 dropped 4
+session document  : id 7 fp 5e15c4a7140d7771
+fresh document    : id 3 fp 5e15c4a7140d7771
+equivalent        : yes
+slab holds        : 4
+session (fine)   : 17309 µs
+=== lens ===
+hall()           : fp 1b88435f8c900ab1
+baseline is hall : yes
+edit              : lens
+baseline          : 0.018 s
+session           : 0.005 s
+fresh (cold)      : 0.017 s
+speed-up          : 4.00x
+cells             : reused 3 frozen 1 dropped 1
+session document  : id 4 fp e4b0d0f50ed419f2
+fresh document    : id 3 fp e4b0d0f50ed419f2
+equivalent        : yes
+slab holds        : 4
+session (fine)   : 4847 µs
+=== whitespace ===
+hall()           : fp 1b88435f8c900ab1
+baseline is hall : yes
+edit              : whitespace
+baseline          : 0.017 s
+session           : 0.000 s
+fresh (cold)      : 0.017 s
+speed-up          : 17.00x
+cells             : reused 0 frozen 0 dropped 0
+session document  : id 3 fp 1b88435f8c900ab1
+fresh document    : id 3 fp 1b88435f8c900ab1
+equivalent        : yes
+slab holds        : 4
+session (fine)   : 161 µs
+=== same ===
+hall()           : fp 1b88435f8c900ab1
+baseline is hall : yes
+edit              : same
+baseline          : 0.017 s
+session           : 0.000 s
+fresh (cold)      : 0.018 s
+speed-up          : 17.00x
+cells             : reused 0 frozen 0 dropped 0
+session document  : id 3 fp 1b88435f8c900ab1
+fresh document    : id 3 fp 1b88435f8c900ab1
+equivalent        : yes
+slab holds        : 4
+session (fine)   : 161 µs
