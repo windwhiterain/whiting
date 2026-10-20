@@ -4,12 +4,12 @@
 //!
 //! A document is a [`Value`] tree, and a tree of text is a tree of decimal numbers and of
 //! base64. The `alpine_oak` scene is 652,794,206 bytes of json for 421,799,808 bytes of packed
-//! runs and 194,167 labelled rows, and the bulk of it is spent twice over: the runs are carried
+//! runs and 3,315,173 values, and the bulk of it is spent twice over: the runs are carried
 //! as base64, which costs four text bytes for every three bytes of data, and every row and
 //! every float is written as decimal text that has to be parsed back.
 //!
-//! Written as bytes the same document is 480,911,625 bytes, and it reads back in 0.65 s rather
-//! than 6.75 s: a run is a length and the bytes, and a float is its bits.
+//! Written as bytes the same document is 480,911,625 bytes, and it reads back in 0.63 s rather
+//! than 7.14 s: a run is a length and the bytes, and a float is its bits.
 //!
 //! The measurement is `crates/gallery/examples/document_binary_probe.rs`, which reports the
 //! same document in both spellings and says what each costs to write and to read, and

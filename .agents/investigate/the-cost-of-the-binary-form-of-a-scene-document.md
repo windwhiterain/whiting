@@ -18,31 +18,37 @@ the same document.** The size that is left is not the encoding's: it is the mesh
 | | json | binary |
 | --- | --- | --- |
 | bytes | 5,602,756 | **4,273,159** (76.3%) |
-| encoded | 10.98 ms | **2.54 ms** |
-| written | 1.94 ms | **1.66 ms** |
-| read | 8.82 ms | **5.99 ms** |
-| parsed / decoded | 33.59 ms | **2.13 ms** |
-| read, end to end | 42.41 ms | **8.12 ms** (5.2×) |
-| written, end to end | 12.92 ms | **4.20 ms** (3.1×) |
+| encoded | 13.71 ms | **4.22 ms** |
+| written | 2.91 ms | **3.24 ms** |
+| read | 9.98 ms | **12.20 ms** |
+| parsed / decoded | 43.85 ms | **4.29 ms** |
+| read, end to end | 53.83 ms | **16.49 ms** (3.3×) |
+| written, end to end | 16.62 ms | **7.46 ms** (2.2×) |
 
 The document holds 4,794 values, of which 4 are packed runs of 3,819,648 bytes and 1 is a byte
-sequence of 131,072 bytes.
+sequence of 131,072 bytes. Every list in it holds 238 elements together, and the longest holds
+12.
 
 ## `alpine_oak`
 
 | | json | binary |
 | --- | --- | --- |
 | bytes | 652,794,206 | **480,911,625** (73.7%) |
-| encoded | 1.87 s | **386.09 ms** |
-| written | 343.48 ms | **257.98 ms** |
-| read | 264.17 ms | **200.37 ms** |
-| parsed / decoded | 6.48 s | **454.45 ms** |
-| read, end to end | 6.75 s | **0.65 s** (10.3×) |
-| written, end to end | 2.21 s | **0.64 s** (3.4×) |
+| encoded | 2.48 s | **419.58 ms** |
+| written | 401.40 ms | **453.27 ms** |
+| read | 302.39 ms | **190.67 ms** |
+| parsed / decoded | 6.84 s | **435.41 ms** |
+| read, end to end | 7.14 s | **0.63 s** (11.4×) |
+| written, end to end | 2.88 s | **0.87 s** (3.3×) |
 
-The scene builds in 9.71 s, and the json size is the 652,794,206 bytes the proposal
+The scene builds in 9.83 s, and the json size is the 652,794,206 bytes the proposal
 [scene-def-the-renderer-draws-a-document.md](../proposals/scene-def-the-renderer-draws-a-document.md)
 records, so the measurement is of the same document that proposal measured.
+
+**The writing times are the disk's, not the codec's.** Across the runs of this measurement the
+json write was 343 ms to 401 ms and the binary write 258 ms to 453 ms, and the encoding itself
+is the part that moved: 1.87 s to 2.48 s of json against 386 ms to 448 ms of binary. The read
+is the number to read, and it is the disk either way.
 
 ## What the size is made of
 
@@ -53,12 +59,13 @@ records, so the measurement is of the same document that proposal measured.
 | everything else | 89,695,410 | **58,587,529** |
 | the geometry's share | 86.2% | **87.7%** |
 
-The tree holds 3,315,173 values, of which 5 are packed runs.
+The tree holds 3,315,173 values, of which 5 are packed runs. Every list in it holds 1,894,770
+elements together, and the longest holds 59,521.
 
 **The base64 is the whole of the difference in the runs**: 421,799,808 bytes of run are
 562,399,744 bytes of text, and the binary form writes the 421,799,808. Everything else — the
-194,167 labelled rows and the floats in them — shrinks from 89,695,410 bytes of decimal text to
-58,587,529, which is the difference between a float as text and a float as eight bytes.
+rows and the floats in them — shrinks from 89,695,410 bytes of decimal text to 58,587,529, which
+is the difference between a float as text and a float as eight bytes.
 
 ## The two forms hold the same document
 
