@@ -10,20 +10,30 @@
 #
 # What is kept here is what a round can actually break and what is cheap *when the tree is warm*:
 #
-#   [1/5] freshness   -- is every source older than the artefacts it built? (measured: ~0.1 s)
-#   [2/5] rustfmt     -- on the files this branch and this working tree changed, not on the world (~0.1 s)
-#   [3/5] the suites  -- scene 106, gallery 10, definition 22, graphics 15 (measured warm: 5.1 s together)
-#   [4/5] the probe   -- seventeen scenes, 54 332 identity rows, both directions (measured: 0.55 s)
-#   [5/5] the clock   -- **the audit fails if it takes longer than ten seconds**, and names the stage that did
+#   [1/4] freshness   -- is every source older than the artefacts it built? (measured: ~0.1 s)
+#   [2/4] rustfmt     -- on the files this branch and this working tree changed, not on the world (~0.1 s)
+#   [3/4] the suites  -- scene 106, gallery 10, definition 22, graphics 15 (measured warm: 0.3 s to run)
+#   [4/4] the clock   -- **the audit fails if it takes longer than ten seconds**, and names the stage that did
+#
+# **A generated scene is not audited, because the generator is the proof.** The identity table is total by
+# construction: `Identity::of` numbers a loop from one, every row's path is written by a `format!`, and a name
+# is one key -- so a probe that walks it and reports "contiguous true, every name non-empty, both ways" is
+# asserting three things the code cannot do otherwise. Its fourth reading, the seventeen-scene row total, was
+# not an invariant but a change detector, and it fired on every legitimate round: adding rafter tails *is*
+# changing the table (5 322 rows to 5 670, then to 6 402 when the rule for where a tail goes was corrected).
+# `scene_identity_probe` stays as the instrument one runs to *print* the table; it is not a gate.
+#
+# Nor is a **scene** audited: it is an aesthetic decision, and pinning a camera, a material table or a
+# composition would turn the owner's judgement into a red gate. That is why there is no document hash here.
 #
 # The device-rasterize suite is not run: thirty-eight of its tests draw frames through the gpu, and the gpu
 # belongs to the machine's owner. Its binary is built by `full-audit.ps1` and left unexecuted there.
 #
 # WHAT IS NOT HERE, and where it went
 #
-# clippy, `cargo doc`, the sixty-four examples, the seventeen document hashes, the whole-tree fmt check and
-# the rasterize build are all in `full-audit.ps1`. Run that one before a merge that moves a plate, a pin or a
-# dependency; run this one every round.
+# clippy, `cargo doc`, the whole-workspace build, the whole-tree fmt check and the rasterize build are all in
+# `full-audit.ps1`. Run that one before a merge that moves a crate, a dependency or an invariant; run this one
+# every round.
 #
 # Language: PowerShell 7. Platform: none of its own -- every path is built with `Join-Path` from
 # `$PSScriptRoot`.
@@ -46,9 +56,9 @@ function Gate([string]$name, [int]$code, [int]$expected) {
 "started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 "===================================================================="
 
-# ---------------------------------------------------------------- [1/5]
+# ---------------------------------------------------------------- [1/4]
 "--------------------------------------------------------------------"
-"[1/5] every source older than the artefact it built  (a stale tree pays for its own build)"
+"[1/4] every source older than the artefact it built  (a stale tree pays for its own build)"
 "--------------------------------------------------------------------"
 $target = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $root "target" }
 $artefacts = @(Get-ChildItem (Join-Path $target "debug\deps") -Filter *.exe -ErrorAction SilentlyContinue |
@@ -79,9 +89,9 @@ if ($artefacts.Count -eq 0) {
     }
 }
 
-# ---------------------------------------------------------------- [2/5]
+# ---------------------------------------------------------------- [2/4]
 "--------------------------------------------------------------------"
-"[2/5] rustfmt over the files this branch and this tree changed"
+"[2/4] rustfmt over the files this branch and this tree changed"
 "--------------------------------------------------------------------"
 $changed = @()
 $changed += @(git -C $root diff --name-only main -- '*.rs' 2>$null)
@@ -99,9 +109,9 @@ foreach ($file in $changed) {
 foreach ($file in $unformatted) { "      $file" }
 if ($unformatted.Count -ne 0) { $script:fail.Add("$($unformatted.Count) unformatted file(s)") }
 
-# ---------------------------------------------------------------- [3/5]
+# ---------------------------------------------------------------- [3/4]
 "--------------------------------------------------------------------"
-"[3/5] the four suites that run without a gpu, in the binaries cargo says are current"
+"[3/4] the four suites that run without a gpu, in the binaries cargo says are current"
 "--------------------------------------------------------------------"
 # **Cargo is asked where the binaries are, not to run them.** A `cargo test` pays the resolver, the
 # fingerprint check and a fresh process for every crate: on a warm tree 0.6-1.2 s each, and now and then one
@@ -155,29 +165,9 @@ foreach ($package in $expect.Keys) {
     if ($failed -ne 0) { $script:fail.Add("$package has $failed failing test(s)") }
 }
 
+# ---------------------------------------------------------------- [4/4]
 "--------------------------------------------------------------------"
-"[4/5] scene_identity_probe: seventeen scenes, every row, both ways"
-"--------------------------------------------------------------------"
-$timer = [System.Diagnostics.Stopwatch]::StartNew()
-$probe = cargo run -q -p whiting-gallery --example scene_identity_probe 2>&1
-$code = $LASTEXITCODE
-$timer.Stop()
-$script:stage.Add([pscustomobject]@{ Name = "identity probe"; Seconds = $timer.Elapsed.TotalSeconds })
-$rows = 0
-$scenes = 0
-foreach ($line in $probe) {
-    if ($line -match '^\s+(\S+)\s+(\d+) row\(s\)') { $rows += [int]$Matches[2]; $scenes++ }
-}
-$two_way = @($probe | Where-Object { "$_" -match 'two-way for every scene:\s+true' }).Count -gt 0
-"  scenes={0}  rows={1}  two-way={2}  (the audit says 17 and 54332)  {3:N2} s" -f $scenes, $rows, $two_way, $timer.Elapsed.TotalSeconds
-if ($scenes -ne 17) { $script:fail.Add("probe scenes ($scenes, expected 17)") }
-if ($rows -ne 54332) { $script:fail.Add("probe rows ($rows, expected 54332)") }
-if (-not $two_way) { $script:fail.Add("the probe's table is not two-way") }
-Gate "scene_identity_probe" $code 0
-
-# ---------------------------------------------------------------- [5/5]
-"--------------------------------------------------------------------"
-"[5/5] the clock: ten seconds, and the stage that spent them"
+"[4/4] the clock: ten seconds, and the stage that spent them"
 "--------------------------------------------------------------------"
 $clock.Stop()
 $slowest = $script:stage | Sort-Object Seconds -Descending | Select-Object -First 1
