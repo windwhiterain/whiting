@@ -89,6 +89,9 @@ if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 "clean output directory: $out"
 
+# **The gpu is not this audit's to use.** The machine runs other work on it, so nothing here drives
+# one: the plates are path-traced by `whiting-device-cycles` on the cpu and the scenes are held still
+# by their documents rather than by their pixels.
 "===================================================================="
 "AUDIT  worktree: $root"
 "started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
@@ -239,7 +242,7 @@ foreach ($pkg in $expect.Keys) {
 "--------------------------------------------------------------------"
 "[5/8] every example in building and gallery"
 "--------------------------------------------------------------------"
-foreach ($pair in @(@("whiting-building", "building", 40), @("whiting-gallery", "gallery", 19))) {
+foreach ($pair in @(@("whiting-building", "building", 40), @("whiting-gallery", "gallery", 24))) {
     $pkg = $pair[0]; $dir = $pair[1]; $want = $pair[2]
     $examples = Get-ChildItem (Join-Path (Join-Path (Join-Path $root "crates") $dir) "examples") -Filter *.rs | Sort-Object Name
     $ran = 0; $bad = @()
@@ -258,62 +261,57 @@ foreach ($pair in @(@("whiting-building", "building", 40), @("whiting-gallery", 
 }
 
 "--------------------------------------------------------------------"
-"[6/8] the sixteen written .png hashes  (sha256 of the file, first 16 hex upper)"
+"[6/8] the sixteen scene documents: hashes, and one plate through Cycles on the cpu"
 "--------------------------------------------------------------------"
+# **No gpu here.** The rasterising harness drives one, and the machine this audit runs on has other
+# work for it: the plates are path-traced by `whiting-device-cycles` on the CPU, at a fixed sample
+# count, and the gate below is the **document** the renderer reads rather than the pixels it makes.
+# A document is renderer-independent and deterministic (measured: two writes of one scene are the same
+# 6.7 MB and the same hash), so this pins what the scenes *are* without spending a gpu on what they
+# look like.
 $pinned = [ordered]@{
-    house      = "2C18FA24229A832E"; hall       = "0E369523A20D972B"; hall_large = "F6A821084C92768B"
-    shed       = "2BE00AF7BD9C658B"; terrace    = "8A0E101DB18C8AFB"; wing       = "1A0FC6D69838214D"
-    workshop   = "D869C688B924047D"; yard       = "B6FB314FC1721046"; identity   = "3029BDBFE9E3E7EC"
-    stilt      = "580E69E31DE732FF"; compound   = "DDA7A8DBBBE9B6F3"; compound_court = "F183A16EECEADE87"
-      street     = "38CF44CB39379FF2"; street_arcade = "9FD8058E477DD2A9"
-    yikeyin    = "19D6B13ADEC8B470"; yikeyin_court = "B88182140B4C4AD7"
+    house      = "1F648E1FB44D0D73"; hall       = "18F9EE14235A31F4"; hall_large = "276B44CC8C82691F"
+    shed       = "E7457703620E9085"; terrace    = "23541F590BC93856"; wing       = "4E57123C48D74B4B"
+    workshop   = "046ADB591CABC007"; yard       = "5DF1EBB9AED91D54"; identity   = "4298E2960A48285D"
+    stilt      = "86F74C0B66348F56"; compound   = "4A0B1AA7F1E877C5"; compound_court = "069DE6791097BE2F"
+    street     = "F00E1D10DE53C84E"; street_arcade = "C262467916F99539"
+    yikeyin    = "C293B3936CBEE56E"; yikeyin_court = "3AE3924183A02627"
 }
-# **The eleven above moved together on 2026-10-19, and it is recorded here rather than in a commit
-# message nobody reads beside the number.** Causes, each measured by a verification pass that rendered
-# the plates at four commits and diffed them pixel by pixel:
-#
-# - `f5ed72d` halved a point light's shadow page (`projection_of` went from `2 * half * padding` to
-#   `half * padding`), so every point-lit surface's shadow lookup changed. That is what moved the eleven:
-#   1.2 % to 7.2 % of pixels, maximum magnitude 26..103 of 255 and not one pixel above 128, on the mass,
-#   its cast shadow and the ground line under it, with the sky and the roofs reading zero.
-# - The emitter rewrite (`2508818`, `5213583`, `507a29e`, `ee7f258`) moved **no pixel at all**: the two
-#   plates rendered at the rung that carries all of it are byte-identical to the baseline, and the
-#   emitted document's own hash is unchanged. `4398d41`'s `ShadowBias` changed the shader *text* and no
-#   pixel, because `f32 * 1.0` is exact for every building schema.
-# - No building scene module changed between the green commit and this one, and the identity probe's
-#   rows are the same numbers (9 280 over eleven scenes, 14 220 with the street).
-$pinned
-# How it is proved to fail: change one pinned value above, run it, watch the two numbers
-# disagree and the exit code come back 1, then change it back. That is the whole test, and it
-# was run that way rather than by a switch inside this file: an earlier version carried a
-# `-Canary` switch, and the first full run of it found that PowerShell variable names are
-# case-insensitive, so `$canary = if ($Canary) {...}` was assigning a string back into the
-# switch parameter and printing "canary: False" on a run that had armed it. A self-test whose
-# own message variable collides with its own parameter is decoration wearing a gate's name.
+# How it is proved to fail: change one pinned value, run the stage, watch the numbers disagree and the
+# exit code come back 1, then change it back.
 $moved = 0
-$rendered = 0
+$written = 0
 foreach ($scene in $pinned.Keys) {
-    $stem = Join-Path $out $scene
-    # **A scene is a document now**: the gallery writes it out and the renderer draws the file.
-    # The two steps are one arm because a document that fails to write must fail this gate, not
-    # the next one.
     $document = Join-Path $out "$scene.json"
     $r = cargo run -q -p whiting-gallery --example scene_document -- $scene $document 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        $r += cargo run -q -p whiting-device-rasterize --example render -- --document $document $stem 2>&1
-    }
     $code = $LASTEXITCODE
     $r | Out-File -FilePath $log -Append -Encoding utf8
-    $png = "$stem.png"
-    $rendered++
-    if ($code -ne 0 -or -not (Test-Path $png)) { "  $scene  RENDER FAILED exit=$code file=$([bool](Test-Path $png))"; $script:fail += "$scene render (exit $code)"; $moved++; continue }
-    $got = (Get-FileHash -Algorithm SHA256 $png).Hash.Substring(0, 16)
+    $written++
+    if ($code -ne 0 -or -not (Test-Path $document)) {
+        "  $scene  DOCUMENT FAILED exit=$code"; $script:fail += "$scene document (exit $code)"; $moved++
+        continue
+    }
+    $got = (Get-FileHash -Algorithm SHA256 $document).Hash.Substring(0, 16)
     $want = $pinned[$scene]
     $same = $got -ceq $want
-    "  {0,-11} got {1}  pinned {2}  same={3}" -f $scene, $got, $want, $same
-    if (-not $same) { $script:fail += "$scene hash: got $got, pinned $want"; $moved++ }
+    "  {0,-14} got {1}  pinned {2}  same={3}" -f $scene, $got, $want, $same
+    if (-not $same) { $script:fail += "$scene document: got $got, pinned $want"; $moved++ }
 }
-"  scenes rendered: $rendered of $($pinned.Count)   hashes moved: $moved of $($pinned.Count)"
+"  documents written: $written of $($pinned.Count)   hashes moved: $moved of $($pinned.Count)"
+
+# **And the renderer still runs**, on the cpu, at the sample count the plates are looked at with.
+# One scene is enough: this stage asks whether the path tracer reads a document and writes a frame,
+# not what the frame looks like — the document hash above is what holds the scene still.
+$plate = Join-Path $out "street_cycles.png"
+$r = cargo run -q -p whiting-device-cycles --example render_cycles -- --document (Join-Path $out "street.json") $plate 24 CPU 2>&1
+$code = $LASTEXITCODE
+$r | Out-File -FilePath $log -Append -Encoding utf8
+Gate "render_cycles street on the cpu" $code 0
+if (Test-Path $plate) {
+    $got = (Get-FileHash -Algorithm SHA256 $plate).Hash.Substring(0, 16)
+    "  street through cycles: got $got  pinned 68419057F1C77B5B"
+    if ($got -cne "68419057F1C77B5B") { $script:fail += "cycles plate: got $got, pinned 68419057F1C77B5B" }
+} else { $script:fail += "cycles plate was not written" }
 
 "--------------------------------------------------------------------"
 "[7/8] scene_identity_probe: rows and two-way"
