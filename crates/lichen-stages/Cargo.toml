@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "The alpine oak's plant scene as six cacheable lichen stages over one interning slab."
+description = "The alpine oak's plant scene and the hall's building plate, as ten cacheable lichen stages over one interning slab."
 
 [dependencies]
 # The three crates the six stages read: the oak's own builder, the plant it
@@ -12,6 +12,8 @@ description = "The alpine oak's plant scene as six cacheable lichen stages over 
 gallery = { workspace = true }
 vegetation = { workspace = true }
 definition = { workspace = true }
+# The hall's own plan, its expansion and its scene: the second family's four stages.
+building = { workspace = true }
 # The library source the generator renders, and the build tag it stamps. This is
 # the only arrow between the two repositories, and it points from Whiting to
 # lichen: lichen names no Whiting crate.

@@ -18,6 +18,9 @@ pub enum Held {
     Leaves(Vec<vegetation::leaf::LeafGroup>),
     Drawn(gallery::vegetation_picture::Drawn),
     Document(definition::Value),
+    Plan(building::Building),
+    Built(building::BuildingMesh),
+    Parts(gallery::hall::HallParts),
 }
 
 /// One stage's identity: which stage, which parents, which parameter bits.
@@ -36,19 +39,33 @@ pub struct Key {
 }
 
 /// The stage tags, one per stage function.
+///
+/// # Invariant
+///
+/// **One contiguous block per family**, so a tag says which family interned under it: `1..=6` are
+/// the oak's and `7..=10` the hall's, and the document a `slab::document` caller holds is
+/// reachable from either.
 pub mod stage {
-    /// [`crate::tree`].
+    /// [`crate::stages::tree`].
     pub const TREE: u8 = 1;
-    /// [`crate::dressed`].
+    /// [`crate::stages::dressed`].
     pub const DRESSED: u8 = 2;
-    /// [`crate::wood`].
+    /// [`crate::stages::wood`].
     pub const WOOD: u8 = 3;
-    /// [`crate::leaves`].
+    /// [`crate::stages::leaves`].
     pub const LEAVES: u8 = 4;
-    /// [`crate::drawn`].
+    /// [`crate::stages::drawn`].
     pub const DRAWN: u8 = 5;
-    /// [`crate::document`].
+    /// [`crate::stages::document`].
     pub const DOCUMENT: u8 = 6;
+    /// [`crate::hall::plan`].
+    pub const PLAN: u8 = 7;
+    /// [`crate::hall::built`].
+    pub const BUILT: u8 = 8;
+    /// [`crate::hall::parts`].
+    pub const PARTS: u8 = 9;
+    /// [`crate::hall::document`].
+    pub const PLATE: u8 = 10;
 }
 
 /// The one slab: its index, and each slot's own key beside its value.
@@ -90,14 +107,33 @@ pub fn get(stage: u8, id: u64) -> Option<Held> {
     if key.stage != stage {
         return None;
     }
-    Some(match held {
+    Some(clone_of(held))
+}
+
+/// The value interned under `id`, whatever stage interned it, cloned.
+///
+/// # Invariant
+///
+/// **The stage tag is not checked here**, because [`document`] must answer for either family and a
+/// host holds one id and no tag; [`get`] is the reader that refuses a wrong stage.
+fn held(id: u64) -> Option<Held> {
+    let slab = SLAB.read().unwrap_or_else(PoisonError::into_inner);
+    Some(clone_of(&slab.held.get(id as usize)?.1))
+}
+
+/// A copy of one slot's value.
+fn clone_of(held: &Held) -> Held {
+    match held {
         Held::Tree(plant) => Held::Tree(plant.clone()),
         Held::Dressed(plant) => Held::Dressed(plant.clone()),
         Held::Wood(wood) => Held::Wood(wood.clone()),
         Held::Leaves(leaves) => Held::Leaves(leaves.clone()),
         Held::Drawn(drawn) => Held::Drawn(drawn.clone()),
         Held::Document(document) => Held::Document(document.clone()),
-    })
+        Held::Plan(plan) => Held::Plan(plan.clone()),
+        Held::Built(built) => Held::Built(built.clone()),
+        Held::Parts(parts) => Held::Parts(parts.clone()),
+    }
 }
 
 /// The parent ids the value under `id` was interned from.
@@ -152,15 +188,20 @@ pub fn lookup(key: &Key) -> Option<u64> {
 /// `0` is what an id that names no document answers, and no live document
 /// fingerprints as `0`.
 pub fn fingerprint(id: u64) -> u64 {
-    match get(stage::DOCUMENT, id) {
-        Some(Held::Document(document)) => crate::fingerprint::of(&document),
-        _ => 0,
+    match document(id) {
+        Some(document) => crate::fingerprint::of(&document),
+        None => 0,
     }
 }
 
-/// The document interned under `id`.
+/// The document interned under `id`, whichever family interned it.
+///
+/// # Invariant
+///
+/// **A document of either stage tag, and nothing else**: the two families have one document stage
+/// each, and both hold the same [`definition::Value`], so the shape alone says a document is here.
 pub fn document(id: u64) -> Option<definition::Value> {
-    match get(stage::DOCUMENT, id) {
+    match held(id) {
         Some(Held::Document(document)) => Some(document),
         _ => None,
     }

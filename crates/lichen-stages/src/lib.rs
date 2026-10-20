@@ -1,13 +1,16 @@
-//! Whiting's alpine-oak plant scene as six cacheable stages.
+//! Whiting's scenes as cacheable lichen stages.
 //!
 //! # The vertical this crate is
 //!
-//! A lichen program draws a whole *Quercus aquifolioides* with six `@cache`
-//! cells, one per stage, and a Whiting edit re-runs only the stages its own
-//! parameter reaches. Nothing of Whiting is a native op inside the language: the
-//! stages live in a generated `dylib`, the program reaches them through
-//! [`lichen_language::link`]'s `External` operator, and every value that crosses
-//! the boundary is a `usize`.
+//! A lichen program draws a whole scene with `@cache` cells, one per stage, and a Whiting edit
+//! re-runs only the stages its own parameter reaches. Nothing of Whiting is a native op inside the
+//! language: the stages live in a generated `dylib`, the program reaches them through
+//! [`lichen_language::link`]'s `External` operator, and every value that crosses the boundary is a
+//! `usize`.
+//!
+//! Two families live here, on **one slab** and through **one wrapper**:
+//!
+//! **The plant** — [`stages`], six stages for a whole *Quercus aquifolioides*.
 //!
 //! | stage | reads | produces |
 //! |---|---|---|
@@ -18,26 +21,33 @@
 //! | [`drawn`] | `wood`, `leaves`, `index` | the expansion, the ids, the decorators |
 //! | [`document`] | `drawn`, key-light position | the scene document |
 //!
+//! **The building** — [`hall`], four stages for one hall plate.
+//!
+//! | stage | reads | produces |
+//! |---|---|---|
+//! | [`hall::plan`] | `width`, `depth`, `storeys` | the skeleton and the scene's `ops` |
+//! | [`hall::built`] | `plan` | the expanded solids |
+//! | [`hall::parts`] | `built` | the identity table and the four packed point lists |
+//! | [`hall::document`] | `parts`, `lens`, `aim` | the scene document |
+//!
 //! # Why an opaque intermediate is a `usize`
 //!
-//! `lichen_highlevel::ValueExt` is `Debug + Copy + PartialEq`, so a lichen value
-//! cannot hold an `Arc`, a `Box` or any other handle: a lichen value is copied by
-//! the engine on every read and compared by value on every key. A `Plant` is
-//! megabytes of curves and a `Drawn` holds a whole expansion, so neither can be a
-//! lichen value. **The boundary therefore carries an id and the slab carries the
-//! object**, and that is the whole of the design's one hard constraint.
+//! `lichen_highlevel::ValueExt` is `Debug + Copy + PartialEq`, so a lichen value cannot hold an
+//! `Arc`, a `Box` or any other handle: a lichen value is copied by the engine on every read and
+//! compared by value on every key. A `Plant` is megabytes of curves and a `Drawn` holds a whole
+//! expansion, so neither can be a lichen value. **The boundary therefore carries an id and the slab
+//! carries the object**, and that is the whole of the design's one hard constraint.
 //!
 //! # The slab, and the requirement it imposes
 //!
-//! [`slab::intern`] is content-addressed: the key is the stage tag, the parent
-//! ids and every parameter bit, and the same key answers the same id for as long
-//! as the process lives. **This is not an optimisation — it is what makes the
-//! vertical work.** A stage's id is the only name the next stage is given, so the
-//! next stage's key is a function of it. An id that moved between two compiles of
-//! the same source would move every downstream key with it, every `@cache` cell
-//! would miss, and nothing downstream of the first recompute would ever be
-//! reused. The id is stable because the slab is never reordered and never
-//! renumbered: an id is a position in a vector that only ever grows at the end.
+//! [`slab::intern`] is content-addressed: the key is the stage tag, the parent ids and every
+//! parameter bit, and the same key answers the same id for as long as the process lives. **This is
+//! not an optimisation — it is what makes the vertical work.** A stage's id is the only name the
+//! next stage is given, so the next stage's key is a function of it. An id that moved between two
+//! compiles of the same source would move every downstream key with it, every `@cache` cell would
+//! miss, and nothing downstream of the first recompute would ever be reused. The id is stable
+//! because the slab is never reordered and never renumbered: an id is a position in a vector that
+//! only ever grows at the end.
 //!
 //! # What the design gives up
 //!
@@ -66,6 +76,7 @@
 //! §15.
 
 pub mod fingerprint;
+pub mod hall;
 pub mod library;
 pub mod slab;
 pub mod stages;
@@ -82,3 +93,13 @@ pub use stages::{document, drawn, dressed, leaves, tree, wood};
 /// from its baseline is a different plant by construction.
 pub const COMPOSITION: &str =
     "alpine_oak(seed) == alpine_oak_species(alpine_oak_dress(alpine_oak_tree(seed)))";
+
+/// The hall's whole plate, as the four stages compose it.
+///
+/// # Invariant
+///
+/// The identity holds only at the **baseline dials**: `lens: 1.0` and a zero aim are the scene's own
+/// lens and aim exactly, and any dial that differs from them is a different picture by construction
+/// rather than a different building.
+pub const HALL_COMPOSITION: &str =
+    "hall_document(hall_parts(hall_built(hall_plan(width, depth, storeys))), 1.0, 0.0) == hall::hall()";

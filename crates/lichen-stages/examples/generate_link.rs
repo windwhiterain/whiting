@@ -62,7 +62,7 @@ fn manifest(program: &str) -> String {
          edition.workspace = true\n\
          rust-version.workspace = true\n\
          license.workspace = true\n\
-         description = \"The alpine-oak stages, loaded through a `link` directive.\"\n\
+         description = \"The oak's six stages and the hall's four, loaded through a `link` directive.\"\n\
          \n\
          [lib]\n\
          crate-type = [\"dylib\"]\n\

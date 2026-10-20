@@ -2205,6 +2205,8 @@ dependencies = [
  "libloading",
  "lichen-language",
  "lichen-lowlevel",
+ "whiting-gallery",
+ "whiting-lichen-stages",
 ]
 
 [[package]]
@@ -2222,6 +2224,7 @@ name = "whiting-lichen-stages"
 version = "0.1.0"
 dependencies = [
  "lichen-language",
+ "whiting-building",
  "whiting-definition",
  "whiting-gallery",
  "whiting-vegetation",

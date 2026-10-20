@@ -7,6 +7,13 @@
 //! are one thin body per family. Everything structural — the ABI, the `item`
 //! helper, the manifest, the program gate — is [`LibrarySource`]'s own, so a
 //! generator author writes the mapping and nothing else.
+//!
+//! # Two families, one wrapper
+//!
+//! The wrapper is **one namespace for every family the dylib carries**, so a binding is named
+//! after the scene it belongs to (`tree`, `dressed`, … for the oak; `hall_plan`, `hall_built`,
+//! `hall_parts`, `hall_document` for the hall) rather than after its stage. The hall's `parts` and
+//! `document` would otherwise be a second `wood` and a second `document` in one program.
 
 use lichen_language::link::{Entry, LibrarySource};
 
@@ -26,6 +33,10 @@ wood = wood: Int => stations: Int => around: Int => spacing: Float => {r = $whit
 leaves = leaves: Int => density: Float => {r = $whiting_leaves(leaves, density); r: Int; r}
 drawn = wood: Int => leaves: Int => index: Int => {r = $whiting_drawn(wood, leaves, index); r: Int; r}
 document = drawn: Int => key_x: Float => key_y: Float => key_z: Float => {r = $whiting_document(drawn, key_x, key_y, key_z); r: Int; r}
+hall_plan = width: Float => depth: Float => storeys: Int => {r = $whiting_hall_plan(width, depth, storeys); r: Int; r}
+hall_built = plan: Int => {r = $whiting_hall_built(plan); r: Int; r}
+hall_parts = built: Int => {r = $whiting_hall_parts(built); r: Int; r}
+hall_document = parts: Int => lens: Float => aim_x: Float => aim_y: Float => aim_z: Float => {r = $whiting_hall_document(parts, lens, aim_x, aim_y, aim_z); r: Int; r}
 publish = published: Int => {r = $whiting_publish(published); r: Int; r}
 ";
 
@@ -204,6 +215,26 @@ const BODY_PUBLISH: &str = r#"match counts(module, operand, 0, 1) {
     None => missed(),
 }"#;
 
+const BODY_HALL_PLAN: &str = r#"match (scalars(module, operand, 0, 2), counts(module, operand, 2, 1)) {
+    (Some(a), Some(b)) => id(stages::hall::plan(a[0], a[1], b[0])),
+    _ => missed(),
+}"#;
+
+const BODY_HALL_BUILT: &str = r#"match counts(module, operand, 0, 1) {
+    Some(a) => id_of(stages::hall::built(a[0] as u64)),
+    None => missed(),
+}"#;
+
+const BODY_HALL_PARTS: &str = r#"match counts(module, operand, 0, 1) {
+    Some(a) => id_of(stages::hall::parts(a[0] as u64)),
+    None => missed(),
+}"#;
+
+const BODY_HALL_DOCUMENT: &str = r#"match (counts(module, operand, 0, 1), scalars(module, operand, 1, 4)) {
+    (Some(a), Some(b)) => id_of(stages::hall::document(a[0] as u64, b[0], [b[1], b[2], b[3]])),
+    _ => missed(),
+}"#;
+
 /// The library this crate generates, for the program the toolchain runs.
 ///
 /// # Invariant
@@ -221,6 +252,14 @@ pub fn source() -> LibrarySource {
             entry("whiting_leaves", "lichen_whiting_leaves", BODY_LEAVES),
             entry("whiting_drawn", "lichen_whiting_drawn", BODY_DRAWN),
             entry("whiting_document", "lichen_whiting_document", BODY_DOCUMENT),
+            entry("whiting_hall_plan", "lichen_whiting_hall_plan", BODY_HALL_PLAN),
+            entry("whiting_hall_built", "lichen_whiting_hall_built", BODY_HALL_BUILT),
+            entry("whiting_hall_parts", "lichen_whiting_hall_parts", BODY_HALL_PARTS),
+            entry(
+                "whiting_hall_document",
+                "lichen_whiting_hall_document",
+                BODY_HALL_DOCUMENT,
+            ),
             entry("whiting_publish", "lichen_whiting_publish", BODY_PUBLISH),
         ],
     }

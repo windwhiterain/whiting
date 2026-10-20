@@ -159,7 +159,7 @@ pub fn item(
     module.evaluate_node(item.node, None)
 }
 
-const MANIFEST: &str = "lichen-link 1\nprogram lichen_language::program::LangProgram\nbuild 0.1.0+5f6b04661316\nfamily whiting_tree 0 lichen_whiting_tree\nfamily whiting_dressed 1 lichen_whiting_dressed\nfamily whiting_wood 2 lichen_whiting_wood\nfamily whiting_leaves 3 lichen_whiting_leaves\nfamily whiting_drawn 4 lichen_whiting_drawn\nfamily whiting_document 5 lichen_whiting_document\nfamily whiting_publish 6 lichen_whiting_publish\nbind tree\nbind dressed\nbind wood\nbind leaves\nbind drawn\nbind document\nbind publish\nsource\ntree = seed: Int => {r = $whiting_tree(seed); r: Int; r}\ndressed = tree: Int => envelope: Float => {r = $whiting_dressed(tree, envelope); r: Int; r}\nwood = wood: Int => stations: Int => around: Int => spacing: Float => {r = $whiting_wood(wood, stations, around, spacing); r: Int; r}\nleaves = leaves: Int => density: Float => {r = $whiting_leaves(leaves, density); r: Int; r}\ndrawn = wood: Int => leaves: Int => index: Int => {r = $whiting_drawn(wood, leaves, index); r: Int; r}\ndocument = drawn: Int => key_x: Float => key_y: Float => key_z: Float => {r = $whiting_document(drawn, key_x, key_y, key_z); r: Int; r}\npublish = published: Int => {r = $whiting_publish(published); r: Int; r}\n";
+const MANIFEST: &str = "lichen-link 1\nprogram lichen_language::program::LangProgram\nbuild 0.1.0+038021c8b9f0\nfamily whiting_tree 0 lichen_whiting_tree\nfamily whiting_dressed 1 lichen_whiting_dressed\nfamily whiting_wood 2 lichen_whiting_wood\nfamily whiting_leaves 3 lichen_whiting_leaves\nfamily whiting_drawn 4 lichen_whiting_drawn\nfamily whiting_document 5 lichen_whiting_document\nfamily whiting_hall_plan 6 lichen_whiting_hall_plan\nfamily whiting_hall_built 7 lichen_whiting_hall_built\nfamily whiting_hall_parts 8 lichen_whiting_hall_parts\nfamily whiting_hall_document 9 lichen_whiting_hall_document\nfamily whiting_publish 10 lichen_whiting_publish\nbind tree\nbind dressed\nbind wood\nbind leaves\nbind drawn\nbind document\nbind hall_plan\nbind hall_built\nbind hall_parts\nbind hall_document\nbind publish\nsource\ntree = seed: Int => {r = $whiting_tree(seed); r: Int; r}\ndressed = tree: Int => envelope: Float => {r = $whiting_dressed(tree, envelope); r: Int; r}\nwood = wood: Int => stations: Int => around: Int => spacing: Float => {r = $whiting_wood(wood, stations, around, spacing); r: Int; r}\nleaves = leaves: Int => density: Float => {r = $whiting_leaves(leaves, density); r: Int; r}\ndrawn = wood: Int => leaves: Int => index: Int => {r = $whiting_drawn(wood, leaves, index); r: Int; r}\ndocument = drawn: Int => key_x: Float => key_y: Float => key_z: Float => {r = $whiting_document(drawn, key_x, key_y, key_z); r: Int; r}\nhall_plan = width: Float => depth: Float => storeys: Int => {r = $whiting_hall_plan(width, depth, storeys); r: Int; r}\nhall_built = plan: Int => {r = $whiting_hall_built(plan); r: Int; r}\nhall_parts = built: Int => {r = $whiting_hall_parts(built); r: Int; r}\nhall_document = parts: Int => lens: Float => aim_x: Float => aim_y: Float => aim_z: Float => {r = $whiting_hall_document(parts, lens, aim_x, aim_y, aim_z); r: Int; r}\npublish = published: Int => {r = $whiting_publish(published); r: Int; r}\n";
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lichen_link_manifest(out: *mut *const u8, len: *mut usize) {
@@ -260,6 +260,70 @@ pub unsafe extern "C" fn lichen_whiting_document(
     let operand = unsafe { &*(operand as *const Value) };
     let result: Value = match (counts(module, operand, 0, 1), scalars(module, operand, 1, 3)) {
     (Some(a), Some(b)) => id_of(stages::document(a[0] as u64, [b[0], b[1], b[2]])),
+    _ => missed(),
+};
+    unsafe { (out as *mut Value).write(result) };
+}
+
+#[rustfmt::skip]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lichen_whiting_hall_plan(
+    module: *mut c_void,
+    operand: *const c_void,
+    out: *mut c_void,
+) {
+    let module = unsafe { &mut *(module as *mut Module<lichen_language::program::LangProgram>) };
+    let operand = unsafe { &*(operand as *const Value) };
+    let result: Value = match (scalars(module, operand, 0, 2), counts(module, operand, 2, 1)) {
+    (Some(a), Some(b)) => id(stages::hall::plan(a[0], a[1], b[0])),
+    _ => missed(),
+};
+    unsafe { (out as *mut Value).write(result) };
+}
+
+#[rustfmt::skip]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lichen_whiting_hall_built(
+    module: *mut c_void,
+    operand: *const c_void,
+    out: *mut c_void,
+) {
+    let module = unsafe { &mut *(module as *mut Module<lichen_language::program::LangProgram>) };
+    let operand = unsafe { &*(operand as *const Value) };
+    let result: Value = match counts(module, operand, 0, 1) {
+    Some(a) => id_of(stages::hall::built(a[0] as u64)),
+    None => missed(),
+};
+    unsafe { (out as *mut Value).write(result) };
+}
+
+#[rustfmt::skip]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lichen_whiting_hall_parts(
+    module: *mut c_void,
+    operand: *const c_void,
+    out: *mut c_void,
+) {
+    let module = unsafe { &mut *(module as *mut Module<lichen_language::program::LangProgram>) };
+    let operand = unsafe { &*(operand as *const Value) };
+    let result: Value = match counts(module, operand, 0, 1) {
+    Some(a) => id_of(stages::hall::parts(a[0] as u64)),
+    None => missed(),
+};
+    unsafe { (out as *mut Value).write(result) };
+}
+
+#[rustfmt::skip]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lichen_whiting_hall_document(
+    module: *mut c_void,
+    operand: *const c_void,
+    out: *mut c_void,
+) {
+    let module = unsafe { &mut *(module as *mut Module<lichen_language::program::LangProgram>) };
+    let operand = unsafe { &*(operand as *const Value) };
+    let result: Value = match (counts(module, operand, 0, 1), scalars(module, operand, 1, 4)) {
+    (Some(a), Some(b)) => id_of(stages::hall::document(a[0] as u64, b[0], [b[1], b[2], b[3]])),
     _ => missed(),
 };
     unsafe { (out as *mut Value).write(result) };
