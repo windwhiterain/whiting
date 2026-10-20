@@ -21,6 +21,7 @@
 //! the record is what a fragment would look the page up in, and the number the test pins is
 //! then the number the shader sees.
 
+use super::support::{CONE_BYTES, LIGHT_RECORDS, RECORD_BYTES, SPOT_CONES, lighting_pass, triple};
 use definition::{Definition, DefinitionIdentifier, FieldMap, Registry, SchemaIdentifier, Value};
 use graphics::{ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA, LABEL, PASSES_FIELD};
 use whiting_scene::standard::RADIUS;
@@ -29,24 +30,8 @@ use whiting_scene::{
     CompileContext, CompileError, CompileOutput, Compiler, STANDARD_SCENE_SCHEMA, StandardScene,
 };
 
-/// The instance entry holding the record of every light.
-const LIGHT_RECORDS: &str = "light_records";
-
-/// The instance entry holding the cone of every light.
-const SPOT_CONES: &str = "spot_cones";
-
 /// The uniform field carrying the scene's directional light.
 const DIRECTIONAL: &str = "directional";
-
-/// A light record is seven four byte blocks: a colour and a page, a position and a radius, a four
-/// by four projection, and the address of the light's virtual shadow pages. A directional light is
-/// a **stated input of the pass** and not a record, so this is the size it still costs.
-const RECORD_BYTES: i64 = 112;
-
-/// A cone record is two four component vectors, because a `WGSL` `array<T>` in a storage buffer
-/// lays its elements out at `roundUp(align_of_T, size_of_T)` and a struct holding a vector is
-/// aligned to sixteen bytes.
-const CONE_BYTES: i64 = 32;
 
 /// The byte the record's page sits at, inside one record.
 ///
@@ -70,7 +55,8 @@ fn an_exempt_light_that_casts_a_shadow_is_still_given_a_page() {
     // is false for it, and a page decided by `reached` alone would be page minus one — which
     // a fragment reads as **unshadowed**, by design. The scene would then render correctly and
     // wrongly at once: a sun that lights everything and casts nothing.
-    let compiled = compiled(&scene(&[directional("sun", [0.0, -1.0, 0.0])]));
+    let compiled =
+        directional_compiled(&directional_scene(&[directional("sun", [0.0, -1.0, 0.0])]));
 
     assert_ne!(
         page_of(&compiled, 0),
@@ -96,7 +82,8 @@ fn a_page_given_to_a_sun_is_drawn_through_a_parallel_projection() {
     // `m[11]` is **not** the test, even though it is zero for a sun: for the perspective product
     // it is `-back.z`, which is zero for any light shining straight up or down, so it would pass
     // for a spot light aimed at the floor.
-    let compiled = compiled(&scene(&[directional("sun", [0.0, -1.0, 0.0])]));
+    let compiled =
+        directional_compiled(&directional_scene(&[directional("sun", [0.0, -1.0, 0.0])]));
     let projection = projection_of(&compiled, 0);
 
     assert_eq!(
@@ -111,7 +98,8 @@ fn a_page_given_to_a_sun_is_drawn_through_a_parallel_projection() {
     // light: a spot light's cone gives its page a field of view, while a **point** light's page
     // is `orthographic × look_at` and therefore already a parallel projection. A test that
     // contrasted with a point light would be asserting that two identical shapes differ.
-    let cone = compile(&scene(&[spot("lamp")])).expect("a spot light compiles");
+    let cone = directional_compile(&directional_scene(&[directional_spot("lamp")]))
+        .expect("a spot light compiles");
     let frustum = projection_of(&cone, 0);
     assert_ne!(
         frustum[15], 1.0,
@@ -124,20 +112,20 @@ fn a_directional_light_costs_nothing_in_the_clustered_buffers() {
     // Three lights, one of them a sun. Its data is a uniform field rather than record fields,
     // so the record is still one per light and the cone run is still thirty two bytes of it — a
     // scene of a thousand point lights pays nothing for a sun it does not have.
-    let compiled = compiled(&scene(&[
-        point("first"),
+    let compiled = directional_compiled(&directional_scene(&[
+        directional_point("first"),
         directional("sun", [0.0, -1.0, 0.0]),
-        point("second"),
+        directional_point("second"),
     ]));
 
     assert_eq!(
-        size_of(&compiled, LIGHT_RECORDS),
+        record_size_of(&compiled, LIGHT_RECORDS),
         3 * RECORD_BYTES,
         "one record per light whatever the kind, which is what keeps a cluster index a plain \
          index into an array"
     );
     assert_eq!(
-        size_of(&compiled, SPOT_CONES),
+        record_size_of(&compiled, SPOT_CONES),
         3 * CONE_BYTES,
         "and one cone record per light, so the two runs are indexed by the same numbers"
     );
@@ -149,8 +137,9 @@ fn a_sun_is_given_a_shadowing_pass_exactly_as_a_point_light_is() {
     // in the texture array before, and a fragment compared against that reads as lit. So the
     // pass count is checked rather than assumed, and against the other kind rather than
     // against a number: one light either way is one pass either way.
-    let with_sun = compiled(&scene(&[directional("sun", [0.0, -1.0, 0.0])]));
-    let with_point = compiled(&scene(&[point("lamp")]));
+    let with_sun =
+        directional_compiled(&directional_scene(&[directional("sun", [0.0, -1.0, 0.0])]));
+    let with_point = directional_compiled(&directional_scene(&[directional_point("lamp")]));
 
     assert_eq!(
         shadowing_passes(&with_sun),
@@ -169,8 +158,13 @@ fn a_scenes_uniform_carries_the_sun_whether_the_scene_names_one_or_not() {
     // that came and went with the document would put every field after it somewhere else, and
     // the device's uniform check would report a shader and an interface that disagree — or
     // worse, agree by accident and read the wrong numbers.
-    let named = uniform_of(&compiled(&scene(&[directional("sun", [0.0, -1.0, 0.0])])));
-    let unnamed = uniform_of(&compiled(&scene(&[point("lamp")])));
+    let named = uniform_of(&directional_compiled(&directional_scene(&[directional(
+        "sun",
+        [0.0, -1.0, 0.0],
+    )])));
+    let unnamed = uniform_of(&directional_compiled(&directional_scene(&[
+        directional_point("lamp"),
+    ])));
 
     assert!(
         has_field(&named, DIRECTIONAL),
@@ -199,7 +193,8 @@ fn a_suns_uniform_page_is_the_page_its_record_carries() {
     // the uniform field a fragment actually reads. A sun reads the second and a point light
     // reads the first, and the two are the same number by construction rather than by two
     // answers happening to agree.
-    let compiled = compiled(&scene(&[directional("sun", [0.0, -1.0, 0.0])]));
+    let compiled =
+        directional_compiled(&directional_scene(&[directional("sun", [0.0, -1.0, 0.0])]));
     let page = vector_fourth(&uniform_of(&compiled), "direction") as f32;
 
     assert_eq!(
@@ -216,7 +211,7 @@ fn a_second_directional_light_is_refused() {
     // nowhere is in no cluster list and a fragment reaches it through a stated input rather than
     // through a record. A scene naming two would have one of them read and the other ignored,
     // which is a light an author wrote and nobody sees.
-    let message = refused(&scene(&[
+    let message = directional_refused(&directional_scene(&[
         directional("first", [0.0, -1.0, 0.0]),
         directional("second", [1.0, -1.0, 0.0]),
     ]));
@@ -231,7 +226,7 @@ fn a_direction_that_is_not_a_direction_is_refused() {
     // A zero direction has no axis to compare a surface against, and dividing by its length
     // would put a `NaN` in a fragment rather than a refusal in a document. The spot light's own
     // refusal is the same check reached from the other kind that declares the field.
-    let message = refused(&scene(&[directional("sun", [0.0, 0.0, 0.0])]));
+    let message = directional_refused(&directional_scene(&[directional("sun", [0.0, 0.0, 0.0])]));
     assert!(
         message.contains("direction") && message.contains("sun"),
         "the refusal names the field and the light: {message}"
@@ -253,7 +248,7 @@ fn directional(label: &str, direction: [f64; 3]) -> Value {
 }
 
 /// Builds a point light standing at a position, which is the kind that does have one.
-fn point(label: &str) -> Value {
+fn directional_point(label: &str) -> Value {
     Value::variant(
         "Point",
         [
@@ -270,7 +265,7 @@ fn point(label: &str) -> Value {
 }
 
 /// Builds a spot light, which is the only kind whose page is a perspective frustum.
-fn spot(label: &str) -> Value {
+fn directional_spot(label: &str) -> Value {
     Value::variant(
         "Spot",
         [
@@ -288,18 +283,13 @@ fn spot(label: &str) -> Value {
 
 /// Builds the example scene with its one light replaced, which is the smallest document that
 /// compiles and therefore the smallest way to ask what the compiler does with a different light.
-fn scene(lights: &[Value]) -> Value {
+fn directional_scene(lights: &[Value]) -> Value {
     let mut fields = example_standard_scene()
         .as_field_map()
         .cloned()
         .expect("the example scene is a structure");
     fields.insert("lights".to_owned(), Value::List(lights.to_vec()));
     Value::structure(fields)
-}
-
-/// Builds a three component list of floats.
-fn triple(components: [f64; 3]) -> Value {
-    Value::List(components.into_iter().map(Value::Float).collect())
 }
 
 /// Returns the page the light at `index` was given, read out of its packed record.
@@ -383,7 +373,7 @@ fn entry_bytes(compiled: &CompileOutput, entry: &str) -> Vec<u8> {
 }
 
 /// Returns the byte size the instance document gives one packed run.
-fn size_of(compiled: &CompileOutput, entry: &str) -> i64 {
+fn record_size_of(compiled: &CompileOutput, entry: &str) -> i64 {
     entry_bytes(compiled, entry).len() as i64
 }
 
@@ -411,44 +401,24 @@ fn shadowing_passes(compiled: &CompileOutput) -> usize {
         .count()
 }
 
-/// Returns the scene's one lighting pass.
-fn lighting_pass(compiled: &CompileOutput) -> Value {
-    compiled
-        .graphics
-        .value
-        .as_field_map()
-        .and_then(|fields| fields.get(PASSES_FIELD))
-        .and_then(Value::as_list)
-        .expect("the graphics document holds passes")
-        .iter()
-        .find(|pass| {
-            pass.variant_fields()
-                .and_then(|fields| fields.get(LABEL))
-                .and_then(Value::as_str)
-                .is_some_and(|label| label.starts_with("lighting/"))
-        })
-        .expect("the example scene has one lighting pass")
-        .clone()
-}
-
 /// Compiles a scene, expecting it to succeed.
-fn compiled(scene: &Value) -> CompileOutput {
-    compile(scene).expect("the scene compiles")
+fn directional_compiled(scene: &Value) -> CompileOutput {
+    directional_compile(scene).expect("the scene compiles")
 }
 
 /// Compiles a scene expecting it to be refused, and returns what it was told.
 ///
 /// `CompileOutput` is not `Debug`, so `Result::expect_err` cannot be used here; this is the same
 /// assertion written out.
-fn refused(scene: &Value) -> String {
-    match compile(scene) {
+fn directional_refused(scene: &Value) -> String {
+    match directional_compile(scene) {
         Ok(_) => panic!("the scene compiles, and this test is about a document it must refuse"),
         Err(failure) => failure.to_string(),
     }
 }
 
 /// Compiles a scene the way a host would.
-fn compile(scene: &Value) -> Result<CompileOutput, CompileError> {
+fn directional_compile(scene: &Value) -> Result<CompileOutput, CompileError> {
     let mut registry = Registry::new();
     registry.put_schema(
         SchemaIdentifier::new(GRAPHICS_SCHEMA),

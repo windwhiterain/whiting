@@ -21,7 +21,7 @@ use whiting_scene::{
 };
 
 /// Compiles a scene with the channels a caller asked for.
-fn compiled(channels: &[DebugChannel]) -> whiting_scene::CompileOutput {
+fn declaration_compiled(channels: &[DebugChannel]) -> whiting_scene::CompileOutput {
     let mut registry = Registry::new();
     registry.put_schema(
         SchemaIdentifier::new(graphics::GRAPHICS_SCHEMA),
@@ -66,7 +66,7 @@ fn declared<'document>(outputs: &[Output<'document>], name: &str) -> Output<'doc
 
 #[test]
 fn the_frame_is_declared_with_a_point_a_location_and_a_type() {
-    let emitted = compiled(&[]);
+    let emitted = declaration_compiled(&[]);
     let outputs = graphics::outputs(&emitted.graphics.value).expect("the outputs read");
     let frame = declared(&outputs, graphics::PRESENT_OUTPUT);
 
@@ -87,7 +87,7 @@ fn the_frame_is_declared_with_a_point_a_location_and_a_type() {
 
 #[test]
 fn a_builtin_channel_is_declared_from_its_own_registry_entry() {
-    let emitted = compiled(&[DebugChannel::Position, DebugChannel::Depth]);
+    let emitted = declaration_compiled(&[DebugChannel::Position, DebugChannel::Depth]);
     let outputs = graphics::outputs(&emitted.graphics.value).expect("the outputs read");
 
     // Each built-in's three facts come from the registry entry rather than from the emitter, so

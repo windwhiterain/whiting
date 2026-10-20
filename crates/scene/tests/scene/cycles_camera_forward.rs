@@ -40,6 +40,7 @@
 //!
 //! See `.agents/proposals/the-cycles-emitter-has-no-tests.md`.
 
+use super::support::triple;
 use definition::Value;
 use whiting_scene::cycles_export::{EmitOptions, emit_to_string};
 use whiting_scene::standard::CAMERAS;
@@ -105,10 +106,6 @@ fn scene_placing(eye: [f64; 3], target: [f64; 3]) -> Value {
             ("far".to_owned(), Value::Float(1000.0)),
         ])]),
     )])
-}
-
-fn triple(vector: [f64; 3]) -> Value {
-    Value::List(vector.into_iter().map(Value::Float).collect())
 }
 
 /// Returns the `<transform>` element that opens the camera's scope.

@@ -177,8 +177,8 @@ fn asking_for_the_grade_channel_moves_no_pixel_of_the_picture() {
     // declared output. The beauty image is the `present` output either way, and a channel that
     // could reach it would change what that output names. The picture half of this is measured
     // on the adapter in the handoff, by sha-256 over the png.
-    let quiet = compiled(&document(), &[]);
-    let loud = compiled(&document(), &[DebugChannel::Grade]);
+    let quiet = grade_compiled(&document(), &[]);
+    let loud = grade_compiled(&document(), &[DebugChannel::Grade]);
     assert_eq!(
         frame_output(&quiet),
         frame_output(&loud),
@@ -295,7 +295,7 @@ fn reaches_the_frame_target(emitted: &whiting_scene::CompileOutput) -> Vec<Strin
 }
 
 /// Compiles a scene with the channels a caller asked for.
-fn compiled(scene: &Value, channels: &[DebugChannel]) -> whiting_scene::CompileOutput {
+fn grade_compiled(scene: &Value, channels: &[DebugChannel]) -> whiting_scene::CompileOutput {
     let mut registry = Registry::new();
     registry.put_schema(
         SchemaIdentifier::new(graphics::GRAPHICS_SCHEMA),

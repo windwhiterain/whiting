@@ -24,6 +24,7 @@
 //! document that names no camera are all ordinary, and the document under test is the evidence
 //! that none of them is reported.
 
+use super::support::triple;
 use definition::{
     Definition, DefinitionIdentifier, FieldMap, Path, Registry, SchemaIdentifier, Value,
 };
@@ -192,11 +193,11 @@ fn a_scene_naming_no_camera_is_not_told_about_the_convention_one() {
 /// the harness's own manifest check is what closes the loop on the pixels.
 #[test]
 fn a_scene_that_raises_a_note_still_emits_the_pipeline_it_always_did() {
-    let quiet = compiled(&with_camera(
+    let quiet = camera_compiled(&with_camera(
         &isolating(&with_a_cube(&example_document()), "quad"),
         &placed([0.0, 0.0, 20.0], [0.0, 0.0, -10.0]),
     ));
-    let buried = compiled(&with_camera(
+    let buried = camera_compiled(&with_camera(
         &isolating(&with_a_cube(&example_document()), "quad"),
         &placed([0.4, -0.7, 0.4], [0.0, 0.0, -10.0]),
     ));
@@ -255,7 +256,7 @@ fn a_scene_that_raises_a_note_still_emits_the_pipeline_it_always_did() {
 /// scene that buries nothing says nothing" a statement about cameras rather than about every
 /// note the compiler now knows how to raise.
 fn camera_notes_of(scene: &Value) -> Vec<whiting_scene::CompileNote> {
-    compiled(scene)
+    camera_compiled(scene)
         .notes
         .into_iter()
         .filter(|note| note.path != Path::root().key("instances"))
@@ -263,7 +264,7 @@ fn camera_notes_of(scene: &Value) -> Vec<whiting_scene::CompileNote> {
 }
 
 /// Compiles a scene the way a host would, and returns what it emitted.
-fn compiled(scene: &Value) -> whiting_scene::CompileOutput {
+fn camera_compiled(scene: &Value) -> whiting_scene::CompileOutput {
     let mut registry = Registry::new();
     registry.put_schema(
         SchemaIdentifier::new(graphics::GRAPHICS_SCHEMA),
@@ -424,8 +425,4 @@ fn instances_of(scene: &mut Value) -> &mut FieldMap {
         .and_then(|fields| fields.get_mut(INSTANCES))
         .and_then(Value::as_dict_mut)
         .expect("a scene names its instances")
-}
-
-fn triple(vector: [f64; 3]) -> Value {
-    Value::List(vector.into_iter().map(Value::Float).collect())
 }

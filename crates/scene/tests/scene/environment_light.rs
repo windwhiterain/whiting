@@ -13,8 +13,9 @@
 //! environment light still binds a map and still carries the flag, because a binding that came
 //! and went with the document would move every binding number below it.
 
+use super::support::{lighting_pass, triple};
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
-use graphics::{BINDERS, ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA, LABEL, PASSES_FIELD, UNIFORM};
+use graphics::{BINDERS, ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA, UNIFORM};
 use whiting_scene::standard::RADIUS;
 use whiting_scene::standard::example_standard_scene;
 use whiting_scene::{
@@ -32,7 +33,7 @@ const MAP: i64 = 4;
 
 #[test]
 fn an_environment_light_reaches_the_pass_as_a_map_and_a_flag() {
-    let compiled = compiled(&scene(&[environment("dusk", "dusk", 2.0)]));
+    let compiled = environment_compiled(&environment_scene(&[environment("dusk", "dusk", 2.0)]));
 
     // The map is uploaded as an **image**, so the entry is named after the image rather than
     // after the light, and the pass binds that entry. One image is one texture however many
@@ -59,7 +60,7 @@ fn an_environment_light_reaches_the_pass_as_a_map_and_a_flag() {
 
 #[test]
 fn a_scene_naming_no_environment_still_binds_a_map_and_writes_the_flag() {
-    let compiled = compiled(&scene(&[point("key")]));
+    let compiled = environment_compiled(&environment_scene(&[environment_point("key")]));
 
     // Both halves are what make the binding numbers the same in every scene. A map that was
     // absent rather than black would move `environment_map` out of the numbering and every
@@ -83,7 +84,7 @@ fn a_scene_naming_no_environment_still_binds_a_map_and_writes_the_flag() {
 
 #[test]
 fn a_second_environment_light_is_refused_rather_than_one_of_them_being_ignored() {
-    let failure = compile(&scene(&[
+    let failure = environment_compile(&environment_scene(&[
         environment("dusk", "dusk", 1.0),
         environment("night", "dusk", 1.0),
     ]))
@@ -100,7 +101,7 @@ fn a_second_environment_light_is_refused_rather_than_one_of_them_being_ignored()
 ///
 /// The example scene is a complete document that already compiles, so replacing its one light is
 /// the smallest way to ask what the compiler does with a different one.
-fn scene(lights: &[Value]) -> Value {
+fn environment_scene(lights: &[Value]) -> Value {
     let mut fields = example_standard_scene()
         .as_field_map()
         .cloned()
@@ -123,7 +124,7 @@ fn scene(lights: &[Value]) -> Value {
 }
 
 /// Builds a point light, which is what the example scene had.
-fn point(label: &str) -> Value {
+fn environment_point(label: &str) -> Value {
     Value::variant(
         "Point",
         [
@@ -151,11 +152,6 @@ fn environment(label: &str, image: &str, radiance: f64) -> Value {
     )
 }
 
-/// Builds a three component list of floats.
-fn triple(components: [f64; 3]) -> Value {
-    Value::List(components.into_iter().map(Value::Float).collect())
-}
-
 /// Returns the entries of the emitted instance document.
 fn entries(compiled: &CompileOutput) -> definition::FieldMap {
     compiled
@@ -166,26 +162,6 @@ fn entries(compiled: &CompileOutput) -> definition::FieldMap {
         .and_then(Value::as_dict)
         .cloned()
         .expect("an instance holds its entries under one field")
-}
-
-/// Returns the scene's one lighting pass.
-fn lighting_pass(compiled: &CompileOutput) -> Value {
-    compiled
-        .graphics
-        .value
-        .as_field_map()
-        .and_then(|fields| fields.get(PASSES_FIELD))
-        .and_then(Value::as_list)
-        .expect("the graphics document holds passes")
-        .iter()
-        .find(|pass| {
-            pass.variant_fields()
-                .and_then(|fields| fields.get(LABEL))
-                .and_then(Value::as_str)
-                .is_some_and(|label| label.starts_with("lighting/"))
-        })
-        .expect("the example scene has one lighting pass")
-        .clone()
 }
 
 /// Returns the entry the lighting pass binds the environment map from.
@@ -234,12 +210,12 @@ fn environment_uniform(compiled: &CompileOutput) -> Vec<f64> {
 }
 
 /// Compiles a scene the way a host would, and returns what it emitted.
-fn compiled(scene: &Value) -> CompileOutput {
-    compile(scene).expect("the scene compiles")
+fn environment_compiled(scene: &Value) -> CompileOutput {
+    environment_compile(scene).expect("the scene compiles")
 }
 
 /// Compiles a scene the way a host would.
-fn compile(scene: &Value) -> Result<CompileOutput, whiting_scene::CompileError> {
+fn environment_compile(scene: &Value) -> Result<CompileOutput, whiting_scene::CompileError> {
     let mut registry = Registry::new();
     registry.put_schema(
         SchemaIdentifier::new(GRAPHICS_SCHEMA),

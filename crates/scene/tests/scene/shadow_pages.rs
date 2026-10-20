@@ -18,6 +18,7 @@
 //!   and so is neither given a page nor reported as having missed one;
 //! - the pool's own shape, bounded rather than refused, with a note naming what was lost.
 
+use super::support::{identity, parallel};
 use definition::{Definition, DefinitionIdentifier, Path, Registry, SchemaIdentifier, Value};
 use whiting_scene::CompileContext;
 use whiting_scene::Compiler;
@@ -26,15 +27,16 @@ use whiting_scene::lighting::{
     assign, read_light_pool,
 };
 use whiting_scene::standard::example_standard_scene;
-use whiting_scene::standard::{Bounds, Camera, FRAME, Projection, register_standard_scene_schema};
+use whiting_scene::standard::{FRAME, register_standard_scene_schema};
 use whiting_scene::{
     CompileError, CompileNote, DeviceLimits, STANDARD_SCENE_SCHEMA, StandardScene,
 };
 
 #[test]
 fn a_pool_larger_than_the_scene_gives_every_reaching_light_a_page_and_reports_nothing() {
-    let lights = vec![light("dim", 0.5), light("bright", 1.0)];
-    let clusters = assign(&grid(), &lights, &parallel(), &pool_of(8)).expect("the assignment runs");
+    let lights = vec![pool_light("dim", 0.5), pool_light("bright", 1.0)];
+    let clusters =
+        assign(&pool_grid(), &lights, &parallel(), &pool_of(8)).expect("the assignment runs");
 
     assert_eq!(
         clusters.page_of(1),
@@ -53,12 +55,12 @@ fn a_pool_that_cannot_hold_the_scene_keeps_the_brightest_and_says_so_with_number
     // Three lights and one page. The first in document order is the dimmest and the furthest,
     // so a pool that kept the first one to be offered would be keeping the wrong light.
     let lights = vec![
-        light("dim", 0.05),
-        light("bright", 4.0),
-        light("middle", 1.0),
+        pool_light("dim", 0.05),
+        pool_light("bright", 4.0),
+        pool_light("middle", 1.0),
     ];
     let full = pool_of(1);
-    let clusters = assign(&grid(), &lights, &parallel(), &full).expect("the assignment runs");
+    let clusters = assign(&pool_grid(), &lights, &parallel(), &full).expect("the assignment runs");
 
     assert_eq!(clusters.page_of(1), Some(0), "the brightest took the page");
     assert_eq!(
@@ -103,7 +105,7 @@ fn a_light_that_reaches_nothing_is_not_reported_as_dropped_by_a_full_pool() {
         virtual_page: [NO_PAGE; 4],
     };
     let clusters = assign(
-        &grid(),
+        &pool_grid(),
         std::slice::from_ref(&behind),
         &parallel(),
         &pool_of(1),
@@ -134,7 +136,7 @@ fn a_light_that_takes_no_cluster_slot_and_casts_no_shadow_is_given_no_page() {
         virtual_page: [NO_PAGE; 4],
     };
     let clusters = assign(
-        &grid(),
+        &pool_grid(),
         std::slice::from_ref(&sky),
         &parallel(),
         &pool_of(4),
@@ -168,7 +170,7 @@ fn a_light_that_takes_no_cluster_slot_but_casts_a_shadow_is_still_given_a_page()
         virtual_page: [NO_PAGE; 4],
     };
     let clusters = assign(
-        &grid(),
+        &pool_grid(),
         std::slice::from_ref(&sun),
         &parallel(),
         &pool_of(4),
@@ -208,8 +210,8 @@ fn a_light_recorded_as_pages_asks_the_pool_for_nothing_and_is_not_missed() {
     };
     let pool_of_one = pool_of(1);
     let clusters = assign(
-        &grid(),
-        &[lamp.clone(), light("candle", 0.5)],
+        &pool_grid(),
+        &[lamp.clone(), pool_light("candle", 0.5)],
         &parallel(),
         &pool_of_one,
     )
@@ -227,7 +229,7 @@ fn a_light_recorded_as_pages_asks_the_pool_for_nothing_and_is_not_missed() {
         "and the page the lamp did not spend is the candle's"
     );
     assert!(
-        notes(&[lamp, light("candle", 0.5)], &pool_of_one, &clusters).is_empty(),
+        notes(&[lamp, pool_light("candle", 0.5)], &pool_of_one, &clusters).is_empty(),
         "a light that never asked the pool is not a light the pool turned away"
     );
 }
@@ -238,8 +240,8 @@ fn a_record_says_no_page_with_a_value_no_real_page_can_carry() {
     // it would look up the first page for a light that has no shadow map, which is a lookup
     // into somebody else's shadow.
     let clusters = assign(
-        &grid(),
-        &[light("reaching", 0.0), light("hidden", 0.0)],
+        &pool_grid(),
+        &[pool_light("reaching", 0.0), pool_light("hidden", 0.0)],
         &parallel(),
         &pool_of(1),
     )
@@ -470,7 +472,7 @@ fn with_a_pool_of_one_page(scene: Value) -> Value {
 
 /// Returns the labels of every lighting pass a scene emits, in order.
 fn lighting_pass_labels(scene: &Value) -> Vec<String> {
-    graphics::passes(&compiled(scene).graphics.value)
+    graphics::passes(&pool_compiled(scene).graphics.value)
         .expect("the passes read")
         .iter()
         .filter(|pass| {
@@ -484,7 +486,7 @@ fn lighting_pass_labels(scene: &Value) -> Vec<String> {
 
 /// Returns how many shadowing passes a scene emits.
 fn shadowing_pass_count(scene: &Value) -> usize {
-    graphics::passes(&compiled(scene).graphics.value)
+    graphics::passes(&pool_compiled(scene).graphics.value)
         .expect("the passes read")
         .iter()
         .filter(|pass| {
@@ -497,7 +499,7 @@ fn shadowing_pass_count(scene: &Value) -> usize {
 
 /// Returns the labels of every pass a scene emits, in order.
 fn pass_labels(scene: &Value) -> Vec<String> {
-    graphics::passes(&compiled(scene).graphics.value)
+    graphics::passes(&pool_compiled(scene).graphics.value)
         .expect("the passes read")
         .iter()
         .map(|pass| pass.label().expect("a pass is labelled").to_owned())
@@ -563,7 +565,7 @@ fn with_one_more_light(scene: &Value) -> Value {
 }
 
 /// Returns the grid these tests use, which is small enough to read.
-fn grid() -> Clustering {
+fn pool_grid() -> Clustering {
     Clustering {
         width_extents: 2,
         height_extents: 2,
@@ -587,7 +589,7 @@ fn notes(lights: &[ClusterLight], pool: &LightPool, assignment: &Clusters) -> Ve
 }
 
 /// Returns a point light with the given brightness, standing in the middle of the view.
-fn light(label: &str, brightness: f64) -> ClusterLight {
+fn pool_light(label: &str, brightness: f64) -> ClusterLight {
     ClusterLight {
         label: label.to_owned(),
         position: [0.0, 0.0, 0.0],
@@ -602,34 +604,8 @@ fn light(label: &str, brightness: f64) -> ClusterLight {
     }
 }
 
-/// Returns the identity matrix, which is the projection a light no shadow is looked up
-/// through carries.
-///
-/// Nothing in the pool reads it — a page is a page and a light either has one or does not —
-/// so what a projection holds is of no interest to which lights are given a page.
-fn identity() -> [f64; 16] {
-    [
-        1.0, 0.0, 0.0, 0.0, //
-        0.0, 1.0, 0.0, 0.0, //
-        0.0, 0.0, 1.0, 0.0, //
-        0.0, 0.0, 0.0, 1.0,
-    ]
-}
-
-/// Returns the parallel camera the convention gives a box of half width four.
-fn parallel() -> Projection {
-    Camera::read(None, &Path::root(), &bounds(), 1.0)
-        .expect("the convention camera reads")
-        .projection()
-}
-
-/// Returns the box the cameras frame.
-fn bounds() -> Bounds {
-    Bounds::around([0.0, 0.0, 0.0], 4.0)
-}
-
 /// Compiles a scene the way a host would, and returns what it emitted.
-fn compiled(scene: &Value) -> whiting_scene::CompileOutput {
+fn pool_compiled(scene: &Value) -> whiting_scene::CompileOutput {
     let mut registry = Registry::new();
     registry.put_schema(
         SchemaIdentifier::new(graphics::GRAPHICS_SCHEMA),

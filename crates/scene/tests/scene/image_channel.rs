@@ -36,7 +36,11 @@ const TEXEL: [u8; 4] = [0x40, 0x80, 0xC0, 0xFF];
 
 #[test]
 fn a_named_image_becomes_a_texture_at_the_field_s_name() {
-    let compiled = compiled(&scene(vec![material("quad", "lighting", Some("brick"))]));
+    let compiled = image_compiled(&image_scene(vec![material(
+        "quad",
+        "lighting",
+        Some("brick"),
+    )]));
 
     // The pass binds a texture at `image`, which is the field the material named it in.
     let binders = binders_of(&compiled.graphics, "lighting");
@@ -47,7 +51,7 @@ fn a_named_image_becomes_a_texture_at_the_field_s_name() {
     );
 
     // The pixels reached the instance document, once, under the image's own name.
-    let entries = entries_of(&compiled.instance);
+    let entries = image_entries_of(&compiled.instance);
     let texture = entries
         .get("image_brick")
         .unwrap_or_else(|| panic!("the image is emitted: {:?}", entries.keys()));
@@ -71,9 +75,13 @@ fn a_named_image_becomes_a_texture_at_the_field_s_name() {
 
 #[test]
 fn the_name_is_not_packed_into_the_instance_row() {
-    let compiled = compiled(&scene(vec![material("quad", "lighting", Some("brick"))]));
+    let compiled = image_compiled(&image_scene(vec![material(
+        "quad",
+        "lighting",
+        Some("brick"),
+    )]));
 
-    let entries = entries_of(&compiled.instance);
+    let entries = image_entries_of(&compiled.instance);
     let (name, rows) = entries
         .iter()
         .find(|(name, _)| name.contains("lighting") && name.ends_with("instance_data"))
@@ -107,12 +115,12 @@ fn the_name_is_not_packed_into_the_instance_row() {
 
 #[test]
 fn two_materials_naming_one_image_upload_it_once() {
-    let compiled = compiled(&scene(vec![
+    let compiled = image_compiled(&image_scene(vec![
         material("quad", "lighting", Some("brick")),
         material("quad_again", "lighting", Some("brick")),
     ]));
 
-    let entries = entries_of(&compiled.instance);
+    let entries = image_entries_of(&compiled.instance);
     let uploaded: Vec<&String> = entries
         .keys()
         .filter(|name| name.starts_with("image_"))
@@ -126,9 +134,13 @@ fn two_materials_naming_one_image_upload_it_once() {
 
 #[test]
 fn a_name_no_image_carries_is_an_error() {
-    let failure = compile(&scene(vec![material("quad", "lighting", Some("nonesuch"))]))
-        .err()
-        .expect("an unknown image name is refused");
+    let failure = image_compile(&image_scene(vec![material(
+        "quad",
+        "lighting",
+        Some("nonesuch"),
+    )]))
+    .err()
+    .expect("an unknown image name is refused");
     let message = failure.to_string();
     assert!(
         message.contains("nonesuch") && message.contains("quad"),
@@ -155,7 +167,7 @@ fn a_screen_material_names_an_image_the_same_way() {
     // A grade over the frame reads its data from the same slot a mesh material's data comes
     // from, so a screen material names an image by the same rule and the compiler resolves it by
     // the same code. What differs is where the image is bound, not how it is named.
-    let compiled = compiled(&scene_with_grade(vec![material(
+    let compiled = image_compiled(&scene_with_grade(vec![material(
         "quad",
         "lighting",
         Some("brick"),
@@ -167,7 +179,7 @@ fn a_screen_material_names_an_image_the_same_way() {
         "the post pass binds the field's own name: {:?}",
         binders.keys().collect::<Vec<_>>()
     );
-    let entries = entries_of(&compiled.instance);
+    let entries = image_entries_of(&compiled.instance);
     assert!(
         entries.contains_key("image_film"),
         "the grade's image is emitted: {:?}",
@@ -180,7 +192,7 @@ fn a_grade_that_names_no_image_binds_nothing() {
     // The common case, and the one that has to keep working: a grade whose arithmetic is all in
     // its own source declares the unit custom schema and carries no data at all, and the optional
     // binder is what lets it.
-    let compiled = compiled(&scene_with_plain_grade(vec![material(
+    let compiled = image_compiled(&scene_with_plain_grade(vec![material(
         "quad",
         "lighting",
         Some("brick"),
@@ -195,12 +207,12 @@ fn a_grade_that_names_no_image_binds_nothing() {
 }
 
 /// Compiles a scene that is expected to compile.
-fn compiled(scene: &Value) -> Compiled {
-    compile(scene).expect("the test scene compiles")
+fn image_compiled(scene: &Value) -> Compiled {
+    image_compile(scene).expect("the test scene compiles")
 }
 
 /// Compiles a scene, or returns why it would not.
-fn compile(scene: &Value) -> Result<Compiled, whiting_scene::CompileError> {
+fn image_compile(scene: &Value) -> Result<Compiled, whiting_scene::CompileError> {
     let mut registry = Registry::new();
     register_standard_scene_schema(&mut registry);
     // A compile verifies the documents it emitted against the schemas they claim, and an
@@ -270,7 +282,7 @@ fn binders_of(graphics: &Value, stage: &str) -> BTreeMap<String, Value> {
 }
 
 /// Returns the entries of the emitted instance document.
-fn entries_of(instance: &Value) -> BTreeMap<String, Value> {
+fn image_entries_of(instance: &Value) -> BTreeMap<String, Value> {
     instance
         .as_field_map()
         .and_then(|fields| fields.get(ENTRIES))
@@ -284,7 +296,7 @@ fn entries_of(instance: &Value) -> BTreeMap<String, Value> {
 /// The example already carries one instance in each mesh stage and a material drawing it, so the
 /// only things added are the image, the materials that name it, and one more lighting instance so
 /// that a group has something to share.
-fn scene(materials: Vec<Value>) -> Value {
+fn image_scene(materials: Vec<Value>) -> Value {
     scene_of(materials, None)
 }
 

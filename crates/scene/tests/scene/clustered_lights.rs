@@ -24,6 +24,7 @@
 //! since 2026-10-16 carries a post stage as well — so its pass list has four entries where it
 //! had three, and its name says so.
 
+use super::support::{bounds, identity, parallel};
 use definition::{Definition, DefinitionIdentifier, Path, Registry, SchemaIdentifier, Value};
 use graphics::{ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA};
 use whiting_scene::CompileContext;
@@ -34,7 +35,7 @@ use whiting_scene::lighting::{
     LIGHT_RECORDS_ENTRY, LightPool, NO_PAGE, assign,
 };
 use whiting_scene::standard::{
-    Bounds, CLUSTERING, Camera, DEPTH_EXTENTS, LIGHTS_PER_CLUSTER, Projection, WIDTH_EXTENTS,
+    CLUSTERING, Camera, DEPTH_EXTENTS, LIGHTS_PER_CLUSTER, Projection, WIDTH_EXTENTS,
     example_standard_scene, register_standard_scene_schema,
 };
 use whiting_scene::{CompileError, STANDARD_SCENE_SCHEMA, StandardScene};
@@ -44,7 +45,7 @@ const WIDE: f64 = 16.0;
 
 #[test]
 fn an_all_point_scene_emits_one_pass_per_stage_and_a_post_stage() {
-    let compiled = compiled(&example_standard_scene());
+    let compiled = cluster_compiled(&example_standard_scene());
 
     let labels: Vec<&str> = graphics::passes(&compiled.graphics.value)
         .expect("the passes read")
@@ -172,9 +173,9 @@ fn a_grid_of_nothing_is_refused_rather_than_read_as_no_clusters() {
 
 #[test]
 fn a_light_behind_the_eye_is_recorded_and_reaches_no_cluster() {
-    let grid = grid(2, 2, 2, 4);
+    let grid = cluster_grid(2, 2, 2, 4);
     // The parallel camera stands at z twelve, so a light at z twenty is eight units behind it.
-    let behind = light("behind", [0.0, 0.0, 20.0], 1.0);
+    let behind = cluster_light("behind", [0.0, 0.0, 20.0], 1.0);
     let clusters = assign(&grid, &[behind], &parallel(), &pool()).expect("the assignment runs");
 
     assert_eq!(clusters.records.len(), 1, "the light has a record");
@@ -188,8 +189,8 @@ fn a_light_behind_the_eye_is_recorded_and_reaches_no_cluster() {
 
 #[test]
 fn a_light_covering_the_view_is_in_every_cluster() {
-    let grid = grid(2, 2, 2, 4);
-    let everything = light("everything", [0.0, 0.0, 0.0], 1000.0);
+    let grid = cluster_grid(2, 2, 2, 4);
+    let everything = cluster_light("everything", [0.0, 0.0, 0.0], 1000.0);
     let clusters = assign(&grid, &[everything], &parallel(), &pool()).expect("the assignment runs");
 
     assert_eq!(clusters.counts.len(), 8);
@@ -201,10 +202,10 @@ fn a_light_covering_the_view_is_in_every_cluster() {
 
 #[test]
 fn a_light_off_to_one_side_reaches_no_cluster() {
-    let grid = grid(2, 2, 2, 4);
+    let grid = cluster_grid(2, 2, 2, 4);
     // A thousand units to the side of a frame eight and a bit wide, at a distance in the middle
     // of the frustum: the failure here is lateral, not one of depth.
-    let aside = light("aside", [1000.0, 0.0, -2.0], 1.0);
+    let aside = cluster_light("aside", [1000.0, 0.0, -2.0], 1.0);
     let clusters = assign(&grid, &[aside], &parallel(), &pool()).expect("the assignment runs");
 
     assert_eq!(clusters.records.len(), 1);
@@ -222,8 +223,8 @@ fn a_volume_straddling_a_slice_boundary_is_in_both_slices() {
     // therefore has a near plane at five and a far plane at twenty, which four slices divide
     // at 5.0, 8.75, 12.5, 16.25 and 20.0. A light two and a half units across the 12.5
     // boundary is in the slice before it and the slice after, and in neither of the others.
-    let grid = grid(1, 1, 4, 4);
-    let across = light("across", parallel_at(12.5), 2.5);
+    let grid = cluster_grid(1, 1, 4, 4);
+    let across = cluster_light("across", parallel_at(12.5), 2.5);
     let clusters = assign(&grid, &[across], &parallel(), &pool()).expect("the assignment runs");
 
     let reached: Vec<usize> = (0..4)
@@ -240,8 +241,8 @@ fn the_slices_divide_depth_rather_than_distance() {
     // would put them five apart, so a light two and a half units out would land in its first
     // slice — it is seven and a half per cent of the way along the distances — and here it is
     // in its third. That is the whole of what dividing depth rather than distance means.
-    let grid = grid(1, 1, 4, 4);
-    let two_and_a_half_out = light("out", perspective_at(2.5), 0.1);
+    let grid = cluster_grid(1, 1, 4, 4);
+    let two_and_a_half_out = cluster_light("out", perspective_at(2.5), 0.1);
     let clusters =
         assign(&grid, &[two_and_a_half_out], &perspective(), &pool()).expect("the assignment runs");
 
@@ -253,9 +254,9 @@ fn the_slices_divide_depth_rather_than_distance() {
 
 #[test]
 fn a_light_at_each_plane_lands_in_the_slice_at_that_plane() {
-    let grid = grid(1, 1, 4, 4);
-    let near = light("near", perspective_at(1.0), 0.1);
-    let far = light("far", perspective_at(21.0), 0.1);
+    let grid = cluster_grid(1, 1, 4, 4);
+    let near = cluster_light("near", perspective_at(1.0), 0.1);
+    let far = cluster_light("far", perspective_at(21.0), 0.1);
     let clusters =
         assign(&grid, &[near, far], &perspective(), &pool()).expect("the assignment runs");
 
@@ -274,7 +275,7 @@ fn a_cluster_over_its_cap_keeps_the_highest_contributing_lights() {
     // One cluster, and two lights that reach it. The first in document order is dim and sits
     // its radius away from the box, so it is the weakest light in the cluster; the second is
     // brighter and stands inside it. A cap of one has to keep the second.
-    let grid = grid(1, 1, 1, 1);
+    let grid = cluster_grid(1, 1, 1, 1);
     let dim = ClusterLight {
         label: "dim".to_owned(),
         position: [WIDE / 2.0 + 4.0, 0.0, -0.5],
@@ -347,7 +348,7 @@ fn a_light_that_covers_the_view_takes_no_cluster_slot() {
     // design, whether it got there by naming no reach or by naming one that holds the whole
     // scene. A scene of nothing but those emits a full record buffer and a wholly empty pair
     // of lists.
-    let grid = grid(1, 1, 2, 4);
+    let grid = cluster_grid(1, 1, 2, 4);
     let sun = ClusterLight {
         label: "sun".to_owned(),
         position: [0.0, 0.0, -0.5],
@@ -378,7 +379,7 @@ fn a_light_that_covers_the_view_takes_no_cluster_slot() {
 
 /// Returns the bytes a named buffer entry carries.
 fn buffer_bytes(instance: &Definition, entry: &str) -> i64 {
-    entries_of(instance)
+    instance_entries_of(instance)
         .get(entry)
         .unwrap_or_else(|| panic!("the entry `{entry}` is emitted"))
         .variant_fields()
@@ -388,7 +389,7 @@ fn buffer_bytes(instance: &Definition, entry: &str) -> i64 {
 }
 
 /// Returns the instance entries a compile emitted.
-fn entries_of(instance: &Definition) -> std::collections::BTreeMap<String, Value> {
+fn instance_entries_of(instance: &Definition) -> std::collections::BTreeMap<String, Value> {
     instance
         .value
         .as_field_map()
@@ -399,7 +400,7 @@ fn entries_of(instance: &Definition) -> std::collections::BTreeMap<String, Value
 }
 
 /// Returns the grid these tests use, which is small enough to read.
-fn grid(width: usize, height: usize, depth: usize, cap: usize) -> Clustering {
+fn cluster_grid(width: usize, height: usize, depth: usize, cap: usize) -> Clustering {
     Clustering {
         width_extents: width,
         height_extents: height,
@@ -426,7 +427,7 @@ fn pool() -> LightPool {
 /// belongs to: `virtual_shadow` false is what says so, and it is the flag rather than the
 /// sentinel address that says it, because a light with no address could be either a pool light or
 /// a virtual one whose camera saw nothing.
-fn light(label: &str, position: [f64; 3], radius: f64) -> ClusterLight {
+fn cluster_light(label: &str, position: [f64; 3], radius: f64) -> ClusterLight {
     ClusterLight {
         label: label.to_owned(),
         position,
@@ -439,21 +440,6 @@ fn light(label: &str, position: [f64; 3], radius: f64) -> ClusterLight {
         virtual_shadow: false,
         virtual_page: [NO_PAGE; 4],
     }
-}
-
-/// Returns the identity matrix, which is the projection a light no shadow is looked up
-/// through carries.
-///
-/// The assignment does not read it and the packing only writes it, so a test that is about
-/// which lights reach which clusters has nothing to say about a projection — but the record
-/// has to carry one, and a light with no page is never looked up through it.
-fn identity() -> [f64; 16] {
-    [
-        1.0, 0.0, 0.0, 0.0, //
-        0.0, 1.0, 0.0, 0.0, //
-        0.0, 0.0, 1.0, 0.0, //
-        0.0, 0.0, 0.0, 1.0,
-    ]
 }
 
 /// Returns how many lights a cluster kept.
@@ -471,17 +457,6 @@ fn light_at(clusters: &Clusters, cluster: usize, slot: usize) -> f64 {
         .indices
         .component(cluster * cap + slot, "light", 0)
         .expect("every cluster has a row of the cap")
-}
-
-/// Returns a parallel camera: the convention one, framing a box of half width four.
-///
-/// Its eye stands at z twelve looking at the origin, its frame is eight and a bit wide each
-/// way, and its depth range is five to twenty — so a world position is a distance from the eye
-/// by subtracting its z from twelve, which is what the two helpers below do.
-fn parallel() -> Projection {
-    Camera::read(None, &Path::root(), &bounds(), 1.0)
-        .expect("the convention camera reads")
-        .projection()
 }
 
 /// Returns a world position a given distance in front of the parallel camera.
@@ -514,13 +489,8 @@ fn perspective_at(distance: f64) -> [f64; 3] {
     [0.0, 0.0, 10.0 - distance]
 }
 
-/// Returns the box the cameras frame, whose half width the tests read their light positions off.
-fn bounds() -> Bounds {
-    Bounds::around([0.0, 0.0, 0.0], 4.0)
-}
-
 /// Compiles a scene the way a host would, and returns what it emitted.
-fn compiled(scene: &Value) -> CompileOutput {
+fn cluster_compiled(scene: &Value) -> CompileOutput {
     let mut registry = Registry::new();
     registry.put_schema(
         SchemaIdentifier::new(GRAPHICS_SCHEMA),

@@ -22,10 +22,9 @@
 //! was drawn into it, so [`the_pages_a_spot_light_emits_are_the_pages_its_table_answers`] reads
 //! both halves out of one compiled document and holds them against each other.
 
+use super::support::{CONE_BYTES, LIGHT_RECORDS, RECORD_BYTES, SPOT_CONES, lighting_pass, triple};
 use definition::{Definition, DefinitionIdentifier, Registry, SchemaIdentifier, Value};
-use graphics::{
-    BINDERS, ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA, LABEL, PASSES_FIELD, layers_of,
-};
+use graphics::{BINDERS, ENTRIES, GRAPHICS_SCHEMA, INSTANCE_SCHEMA, layers_of};
 use std::collections::BTreeMap;
 use whiting_scene::lighting::record_table_base;
 use whiting_scene::standard::RADIUS;
@@ -36,31 +35,19 @@ use whiting_scene::{
     CompileContext, CompileError, CompileOutput, Compiler, STANDARD_SCENE_SCHEMA, StandardScene,
 };
 
-/// The instance entry holding the cone of every light.
-const SPOT_CONES: &str = "spot_cones";
-
-/// The instance entry holding the record of every light.
-const LIGHT_RECORDS: &str = "light_records";
-
-/// A light record is seven four byte blocks: a colour and a page, a position and a radius, a four
-/// by four projection, and the address of the light's virtual shadow pages. It is the size the cone
-/// run's existence is protecting.
-const RECORD_BYTES: i64 = 112;
-
-/// A cone record is two four component vectors, because a `WGSL` `array<T>` in a storage buffer
-/// lays its elements out at `roundUp(align_of_T, size_of_T)` and a struct holding a vector is
-/// aligned to sixteen bytes.
-const CONE_BYTES: i64 = 32;
-
 #[test]
 fn the_light_record_grew_by_a_page_address_and_not_by_a_cone() {
     // **A scene of nothing but point lights**, because a spot light's record run carries its
     // virtual page table appended to the records, and a size read off that run is a size that has
     // to be subtracted before it means anything. Three records of a fixed size is the claim; a
     // run that holds three records and a table is a different measurement.
-    let points = compiled(&scene(&[point("first"), point("second"), point("third")]));
+    let points = spot_compiled(&spot_scene(&[
+        spot_point("first"),
+        spot_point("second"),
+        spot_point("third"),
+    ]));
     assert_eq!(
-        size_of(&points, LIGHT_RECORDS),
+        entry_size_of(&points, LIGHT_RECORDS),
         3 * RECORD_BYTES,
         "a record is one size whatever kind of light it is, so the million light path is \
          unchanged by spot lights existing"
@@ -74,13 +61,13 @@ fn the_light_record_grew_by_a_page_address_and_not_by_a_cone() {
     // cone run is written to avoid, made the other way on purpose: the two numbers a virtual
     // lookup needs are eight bytes, and a record has to stay a whole number of sixteen byte
     // blocks, so eight bytes of pad came with them whether a scene wanted them or not.
-    let compiled = compiled(&scene(&[
-        point("first"),
-        spot("lamp", [0.0, -1.0, 0.0], 0.16, 0.56),
-        point("second"),
+    let compiled = spot_compiled(&spot_scene(&[
+        spot_point("first"),
+        spot_light("lamp", [0.0, -1.0, 0.0], 0.16, 0.56),
+        spot_point("second"),
     ]));
     assert_eq!(
-        size_of(&compiled, SPOT_CONES),
+        entry_size_of(&compiled, SPOT_CONES),
         3 * CONE_BYTES,
         "and the cone is a run of its own, one record per light, in the same order"
     );
@@ -90,9 +77,9 @@ fn the_light_record_grew_by_a_page_address_and_not_by_a_cone() {
 fn a_light_with_no_cone_carries_the_whole_sphere_so_a_point_light_is_scaled_by_exactly_one() {
     // The run has one record per light **whatever the kinds are**, because a cluster index is a
     // plain index into it: a light with no cone cannot leave a hole for a fragment to test.
-    let compiled = compiled(&scene(&[point("only")]));
+    let compiled = spot_compiled(&spot_scene(&[spot_point("only")]));
     assert_eq!(
-        size_of(&compiled, SPOT_CONES),
+        entry_size_of(&compiled, SPOT_CONES),
         CONE_BYTES,
         "one light is one cone record, and a light with no cone of its own carries the whole \
          sphere rather than an absent field"
@@ -105,14 +92,14 @@ fn a_scene_naming_no_light_still_binds_a_cone_run_of_one() {
     // environment has no cluster pointing at any light, and the shader's `array<SpotCone>` wants
     // a whole record, so a run of nothing is four bytes of alignment where a binding wants a
     // record. wgpu refuses that draw by name rather than rendering it.
-    let compiled = compiled(&scene(&[]));
+    let compiled = spot_compiled(&spot_scene(&[]));
     assert_eq!(
-        size_of(&compiled, SPOT_CONES),
+        entry_size_of(&compiled, SPOT_CONES),
         CONE_BYTES,
         "no light is still one record, for the same reason the light record is"
     );
     assert_eq!(
-        size_of(&compiled, LIGHT_RECORDS),
+        entry_size_of(&compiled, LIGHT_RECORDS),
         RECORD_BYTES,
         "and the light record beside it"
     );
@@ -123,7 +110,7 @@ fn the_cone_run_is_bound_by_a_scene_that_names_no_spot_light() {
     // A pass binds its resources in name order, so a binding that came and went with the
     // document would move every number below it and a shader would have to be written for one
     // scene and not for another. This is the environment map's rule, applied again.
-    let compiled = compiled(&scene(&[point("only")]));
+    let compiled = spot_compiled(&spot_scene(&[spot_point("only")]));
     let binders = lighting_pass(&compiled)
         .variant_fields()
         .and_then(|fields| fields.get(BINDERS))
@@ -142,7 +129,12 @@ fn a_cone_whose_outer_angle_does_not_exceed_its_inner_one_is_refused() {
     // The two angles describe a cone, and a cone whose outer angle is inside its inner one is
     // inverted: a document whose two answers disagree, which is a refusal rather than a guess.
     for (inner, outer) in [(0.56, 0.16), (0.3, 0.3)] {
-        let message = refused(&scene(&[spot("lamp", [0.0, -1.0, 0.0], inner, outer)]));
+        let message = spot_refused(&spot_scene(&[spot_light(
+            "lamp",
+            [0.0, -1.0, 0.0],
+            inner,
+            outer,
+        )]));
         assert!(
             message.contains("outer_angle") && message.contains("lamp"),
             "the refusal names the field and the light: {message}"
@@ -154,7 +146,12 @@ fn a_cone_whose_outer_angle_does_not_exceed_its_inner_one_is_refused() {
 fn a_cone_wider_than_a_half_turn_is_refused() {
     // Past a half turn the "outer" region includes the light's own axis, and the falloff between
     // the two angles would be a ramp that goes back up. The same reason a zero radius is refused.
-    let message = refused(&scene(&[spot("lamp", [0.0, -1.0, 0.0], 0.2, 4.0)]));
+    let message = spot_refused(&spot_scene(&[spot_light(
+        "lamp",
+        [0.0, -1.0, 0.0],
+        0.2,
+        4.0,
+    )]));
     assert!(
         message.contains("outer_angle"),
         "the refusal names the field: {message}"
@@ -165,7 +162,12 @@ fn a_cone_wider_than_a_half_turn_is_refused() {
 fn a_direction_that_is_not_a_direction_is_refused() {
     // A zero direction has no axis to compare a surface against, and dividing by its length
     // would put a `NaN` in a fragment rather than a refusal in a document.
-    let message = refused(&scene(&[spot("lamp", [0.0, 0.0, 0.0], 0.16, 0.56)]));
+    let message = spot_refused(&spot_scene(&[spot_light(
+        "lamp",
+        [0.0, 0.0, 0.0],
+        0.16,
+        0.56,
+    )]));
     assert!(
         message.contains("direction"),
         "the refusal names the field: {message}"
@@ -173,7 +175,7 @@ fn a_direction_that_is_not_a_direction_is_refused() {
 }
 
 /// Builds a spot light standing at a position, shining along a direction between two half angles.
-fn spot(label: &str, direction: [f64; 3], inner: f64, outer: f64) -> Value {
+fn spot_light(label: &str, direction: [f64; 3], inner: f64, outer: f64) -> Value {
     Value::variant(
         "Spot",
         [
@@ -190,7 +192,7 @@ fn spot(label: &str, direction: [f64; 3], inner: f64, outer: f64) -> Value {
 }
 
 /// Builds a point light, which is the kind that has no cone of its own.
-fn point(label: &str) -> Value {
+fn spot_point(label: &str) -> Value {
     Value::variant(
         "Point",
         [
@@ -230,7 +232,7 @@ fn lamp_above() -> Value {
 
 /// Builds the example scene with its one light replaced, which is the smallest document that
 /// compiles and therefore the smallest way to ask what the compiler does with a different light.
-fn scene(lights: &[Value]) -> Value {
+fn spot_scene(lights: &[Value]) -> Value {
     let mut fields = example_standard_scene()
         .as_field_map()
         .cloned()
@@ -239,17 +241,12 @@ fn scene(lights: &[Value]) -> Value {
     Value::structure(fields)
 }
 
-/// Builds a three component list of floats.
-fn triple(components: [f64; 3]) -> Value {
-    Value::List(components.into_iter().map(Value::Float).collect())
-}
-
 /// Returns the byte size the instance document gives one packed run.
 ///
 /// A packed run is an instance entry holding the bytes, so the size is the length of its `data`
 /// rather than a number read out of a declaration: a declaration states the size a **binding**
 /// expects, and this is about what the compiler actually packed.
-fn size_of(compiled: &CompileOutput, entry: &str) -> i64 {
+fn entry_size_of(compiled: &CompileOutput, entry: &str) -> i64 {
     compiled
         .instance
         .value
@@ -266,44 +263,24 @@ fn size_of(compiled: &CompileOutput, entry: &str) -> i64 {
         }) as i64
 }
 
-/// Returns the scene's one lighting pass.
-fn lighting_pass(compiled: &CompileOutput) -> Value {
-    compiled
-        .graphics
-        .value
-        .as_field_map()
-        .and_then(|fields| fields.get(PASSES_FIELD))
-        .and_then(Value::as_list)
-        .expect("the graphics document holds passes")
-        .iter()
-        .find(|pass| {
-            pass.variant_fields()
-                .and_then(|fields| fields.get(LABEL))
-                .and_then(Value::as_str)
-                .is_some_and(|label| label.starts_with("lighting/"))
-        })
-        .expect("the example scene has one lighting pass")
-        .clone()
-}
-
 /// Compiles a scene, expecting it to succeed.
-fn compiled(scene: &Value) -> CompileOutput {
-    compile(scene).expect("the scene compiles")
+fn spot_compiled(scene: &Value) -> CompileOutput {
+    spot_compile(scene).expect("the scene compiles")
 }
 
 /// Compiles a scene expecting it to be refused, and returns what it was told.
 ///
 /// `CompileOutput` is not `Debug`, so `Result::expect_err` cannot be used here; this is the same
 /// assertion written out.
-fn refused(scene: &Value) -> String {
-    match compile(scene) {
+fn spot_refused(scene: &Value) -> String {
+    match spot_compile(scene) {
         Ok(_) => panic!("the scene compiles, and this test is about a document it must refuse"),
         Err(failure) => failure.to_string(),
     }
 }
 
 /// Compiles a scene the way a host would.
-fn compile(scene: &Value) -> Result<CompileOutput, CompileError> {
+fn spot_compile(scene: &Value) -> Result<CompileOutput, CompileError> {
     let mut registry = Registry::new();
     registry.put_schema(
         SchemaIdentifier::new(GRAPHICS_SCHEMA),
@@ -364,8 +341,8 @@ fn the_pages_a_spot_light_emits_are_the_pages_its_table_answers() {
     // that is not the page the bit was set for is a fragment reading a rectangle of somebody
     // else's depth. Both of those render, and render wrong by one lamp's worth of shadow, which is
     // why this compares the two documents instead of trusting either.
-    let scene = scene(&[lamp_above()]);
-    let compiled = compiled(&scene);
+    let scene = spot_scene(&[lamp_above()]);
+    let compiled = spot_compiled(&scene);
     let records = packed_words(&compiled, LIGHT_RECORDS);
     let header = records[VIRTUAL_PAGE_WORD];
     let layer = records[VIRTUAL_PAGE_WORD + 1];

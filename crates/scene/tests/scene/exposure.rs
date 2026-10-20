@@ -86,7 +86,7 @@ fn a_scene_naming_no_exposure_carries_no_exposure_in_its_documents() {
     // word does not appear in what the compiler emitted. The picture half is measured on the
     // adapter and is in the handoff; this is the same claim where it can be asserted on every
     // run of the suite.
-    let emitted = compile(&example_standard_scene());
+    let emitted = exposure_compile(&example_standard_scene());
     assert!(
         !mentions_exposure(&emitted.graphics.value) && !mentions_exposure(&emitted.instance.value),
         "a scene that names no exposure emits no exposure, so its frame is the frame it drew \
@@ -97,7 +97,7 @@ fn a_scene_naming_no_exposure_carries_no_exposure_in_its_documents() {
 #[test]
 fn a_scene_naming_an_exposure_carries_it_in_the_post_uniform() {
     let scene = with_an_exposure(&exposing_post(&example_standard_scene()), 0.5);
-    let emitted = compile(&scene);
+    let emitted = exposure_compile(&scene);
     let exposure = post_uniform_field(&emitted.graphics.value, EXPOSURE)
         .expect("the post uniform carries the exposure the scene named");
     assert_eq!(
@@ -135,7 +135,7 @@ fn a_scene_naming_an_exposure_and_no_post_process_is_told() {
         .expect("a scene is a struct")
         .insert(POST_PROCESSES.to_owned(), Value::List(Vec::new()));
     let scene = with_an_exposure(&scene, 0.5);
-    let notes = compile(&scene).notes;
+    let notes = exposure_compile(&scene).notes;
     let note = notes
         .iter()
         .find(|note| note.path == Path::root().key(EXPOSURE))
@@ -272,7 +272,7 @@ fn mentions_exposure(value: &Value) -> bool {
 }
 
 /// Compiles a scene the way a host would.
-fn compile(scene: &Value) -> whiting_scene::CompileOutput {
+fn exposure_compile(scene: &Value) -> whiting_scene::CompileOutput {
     compile_failing(scene).unwrap_or_else(|said| panic!("the scene compiles, and said: {said}"))
 }
 
