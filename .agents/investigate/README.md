@@ -10,6 +10,7 @@ moves into [handoffs](../handoffs/).
 
 | File | Question it answers | Recorded |
 | --- | --- | --- |
+| [the-cost-of-the-binary-form-of-a-scene-document.md](the-cost-of-the-binary-form-of-a-scene-document.md) | What does the binary form of a scene document cost, in bytes and in time, and does it hold the same document as the json form? **A quarter smaller and ten times faster to read, and the same document** — `alpine_oak` is 480,911,625 bytes against 652,794,206 of json, and 87.7% of what is left is the mesh. | 2026-10-20 |
 | [rust-offline-renderers.md](rust-offline-renderers.md) | What offline ray tracing renderers exist in the Rust ecosystem, and how mature are they? | 2026-10-07 |
 | [offline-renderer-backend.md](offline-renderer-backend.md) | Which mature open source renderer should produce final output, and how should we drive it from a scene compiler? | 2026-10-07 |
 | [cycles-standalone-scene-format.md](cycles-standalone-scene-format.md) | What does the Cycles Standalone XML scene format accept, and can `StandardScene` be emitted into it? Format read from source, and `principled_bsdf`, polygon triangulation, sun orientation and the `exposure` multiplier confirmed by rendering. | 2026-10-07 |
