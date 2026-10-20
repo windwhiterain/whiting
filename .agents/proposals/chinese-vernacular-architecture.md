@@ -1426,3 +1426,22 @@ gallery hangs from is the house's **gable end** as well, and that wall is split 
 the ridge can crown it. A three-bay grid laid on it either spans two half-walls of two metres (bays too narrow
 for their own margins) or has the crown's own node standing inside a bay. The window band therefore waits for a
 type whose gallery fronts a wall that is not also its gable.
+### The 一颗印's gate is a door, not a hole
+
+The compound had a 门房 — a three-metre gate house on its front — and the gate itself was a hole in it. A 一颗印
+is entered through that door, and what makes an entrance is three pieces: a **threshold** to step over, **boards**
+that close it, and a **门罩** over it so the rain never falls on a person waiting for the gate to open.
+
+Three measurements, and the first two were found by the document refusing to agree:
+
+- **the gate house is one bay, not three.** At three bays a 3 m front leaves a 0.30 m middle bay, and the boards
+  in it were skipped by the very guard that refuses bars in a hole too narrow for them — the frame showed a hole
+  and the identity table grew three rows for a gate that was never put in;
+- **the margin is the wall's thickness plus five centimetres.** The gate's first inset used 0.35 on a 0.45 wall
+  and overran the inner face by **0.101 m**: `OpeningOutsideWall`, exactly, and the rule every other opening in
+  this crate already follows;
+- **the threshold is the wall's own foot.** The opening starts 0.15 above the ground rather than at it, because a
+  member standing in an opening that reaches the floor splits the wall's shell into two loops — `SolidOpen`,
+  measured on the street's shopfront two rounds earlier. The stone below the door is what a person steps over.
+
+Rows 6 519 → **6 550**, and the gate carries its own 门罩 hosted by the gate house, shedding away from the wall.

@@ -25,12 +25,12 @@ use definition::Value;
 use scene::standard::Stage;
 
 use building::derive;
-use building::grid::{FaceRef, Rhythm};
-use building::openings::{Inset, Opening};
+use building::grid::FaceRef;
+use building::openings::Inset;
 use building::site;
 use building::{Building, BuildingSkeleton, Covering, Mass, MassId, PlanNode, ops};
 
-use crate::facade;
+use crate::facade::{self};
 use document::air::Atmosphere;
 use document::building_identity::{
     building_extras, not_authored_extras, outputs_field, packed_where, stage_set,
@@ -71,6 +71,23 @@ const MAIN_DEPTH: f32 = 6.0;
 const MAIN_HEIGHT: f32 = 6.2;
 const WING_HEIGHT: f32 = 5.6;
 const GATE_HEIGHT: f32 = 3.6;
+
+/// The gateway: how high its threshold stands, how far its 门罩 reaches out, and the head its door is hung at.
+///
+/// **The sill is a length and not a detail**: an opening that reaches the floor is a hole in the bottom of the
+/// wall, and a board standing in one splits the wall into two shells. `GATE_HEAD` is the door's own head, read
+/// off the same inset the cut uses.
+const GATE_SILL: f32 = 0.15;
+const GATE_HOOD: f32 = 0.85;
+const GATE_HEAD: f32 = GATE_HEIGHT - 0.9;
+
+/// The boards of the gate: four planks, `0.13` wide and `0.07` thick, so the gate reads as a door and not as a
+/// grille.
+const GATE_BOARDS: facade::Bar = facade::Bar {
+    count: 4,
+    width: 0.13,
+    depth: 0.07,
+};
 
 /// The common numbers: a wall, a plate, deep eaves, a gable, its rise, and **no overhang at the ends**.
 const WALL: f32 = 0.45;
@@ -381,23 +398,53 @@ pub fn document() -> Building {
         range(&mut skeleton, corners, height, crowned);
     }
     let _ = skeleton.masses.len();
-    // The one gate: the 门房's south face, one bay wide and two metres tall.
-    let gate = FaceRef::new(MassId(3), 3);
-    if let Some(edge) = skeleton.masses.get(3).map(|mass| mass.outline.len()) {
-        let _ = edge;
-    }
-    if ops::split_face(
-        &mut skeleton,
-        gate,
-        &Rhythm::Even { count: 3 },
-        &Rhythm::Even { count: 1 },
-    )
-    .is_some()
-    {
-        let _ = ops::add_opening(
+    // **The gate is a door and not a hole.** A 一颗印 is entered through its 门房, and what makes that an
+    // entrance is the three things a doorway has: a **threshold** to step over, **boards** that close it, and a
+    // **门罩** over it. The threshold is the wall's own foot — the opening starts `GATE_SILL` above the ground
+    // and the wall below it is the stone sill - because a member standing in an opening that reaches the floor
+    // splits the wall's own shell into two loops, which `validate` names `SolidOpen` (measured on the street's
+    // shopfront before it was given its own threshold).
+    if let Some(face) = facade::edge_on(&skeleton.masses[3], HALF_Z, true) {
+        let gate_face = FaceRef::new(MassId(3), face);
+        // **The gate house is one bay**, not three: a 3 m front cut into three leaves a 0.30 m middle bay,
+        // which is a cat flap, and the boards in it were skipped by the very guard that refuses bars in a hole
+        // too narrow for them -- measured as `yikeyin` gaining three identity rows for a gate it did not get.
+        if ops::split_face(
             &mut skeleton,
-            Opening::new(gate, 0, 1, Inset::new(0.35, 0.35, 0.0, 0.9)),
-        );
+            gate_face,
+            &building::grid::Rhythm::Even { count: 1 },
+            &building::grid::Rhythm::Even { count: 1 },
+        )
+        .is_some()
+        {
+            let _ = facade::open_with_bars(
+                &mut skeleton,
+                gate_face,
+                0,
+                0,
+                // **The margin is the wall's own thickness plus five centimetres**, the rule every other
+                // opening in this crate follows: the face an opening is measured against is the inner one, and
+                // a 0.35 margin on a 0.45 wall overran it by 0.101 -- `OpeningOutsideWall`, measured.
+                Inset::new(0.50, 0.50, GATE_SILL, 0.9),
+                GATE_BOARDS,
+            );
+        }
+        // **The 门罩**: a small shed over the door, hosted by the gate house, shedding away from the wall.
+        // Its crest stands on the wall above the door's head and its eave reaches out over the step, which is
+        // what a 门罩 is for — the rain never falls on the person waiting for the gate to open.
+        let half_gate = 1.1;
+        let plan = [
+            [-half_gate, HALF_Z + GATE_HOOD],
+            [half_gate, HALF_Z + GATE_HOOD],
+            [half_gate, HALF_Z],
+            [-half_gate, HALF_Z],
+        ];
+        use building::derive;
+        if let Some(hood) =
+            derive::lean_to(MassId(3), plan, GATE_HEAD - 0.15, GATE_HEAD + 0.35, 0.10)
+        {
+            skeleton.roofs.push(hood);
+        }
     }
     // **Every range opens onto the court**, which is what a 一颗印's four inner faces are: bays of doors
     // and windows, two storeys of them, and the court is the circulation they open onto.
