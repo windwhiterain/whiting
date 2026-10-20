@@ -1219,6 +1219,21 @@ walk facing its own street. Its posts stand at the grade under them, because the
 The lane is *not* paved, and that is deliberate: a paving slab's ends have to be authored where the hill is
 not level, and the terrain is already the floor of a lane that climbs.
 
+### Standing on the 挑廊
+
+The 吊脚楼's gallery was built, meshed and never stood on: every plate of the type was from down the bank,
+where the posts read as a texture under a floor. It now has a camera on the deck — the fourth scene to be
+**one document with two cameras**, after the 一颗印's court, the 三坊一照壁's court and the street's 骑楼.
+
+| number | value |
+| --- | --- |
+| `stilt_gallery` document | `B8EDEBDC592E2FDE` |
+| the stilt's rows | 1 735, the same in both views — one document |
+| seventeen scenes | **47 620 rows** |
+
+The frame holds what the type is: the deck underfoot, the rail at hip height, the posts the deck hangs
+between, the dark of the eave above, and the valley the whole thing is hung over.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

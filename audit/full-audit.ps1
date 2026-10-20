@@ -279,7 +279,7 @@ foreach ($pair in @(@("whiting-building", "building", 40), @("whiting-gallery", 
 }
 
 "--------------------------------------------------------------------"
-"[6/8] the sixteen scene documents: hashes of the compiled documents"
+"[6/8] the seventeen scene documents: hashes of the compiled documents"
 "--------------------------------------------------------------------"
 # **No gpu, and no picture.** The rasterising harness drives one, and the machine this audit runs on
 # has other work for it. The gate below is the **document** the renderer reads rather than the pixels
@@ -291,6 +291,7 @@ $pinned = [ordered]@{
     shed       = "E7457703620E9085"; terrace    = "23541F590BC93856"; wing       = "4E57123C48D74B4B"
     workshop   = "046ADB591CABC007"; yard       = "5DF1EBB9AED91D54"; identity   = "4298E2960A48285D"
     stilt      = "86F74C0B66348F56"; compound   = "4A0B1AA7F1E877C5"; compound_court = "069DE6791097BE2F"
+    stilt_gallery = "B8EDEBDC592E2FDE"
     street     = "07E1337D733A0725"; street_arcade = "0AAED8AD9C1EE823"
     yikeyin    = "C293B3936CBEE56E"; yikeyin_court = "3AE3924183A02627"
 }
@@ -327,9 +328,9 @@ $rows = 0
 foreach ($line in $p) { if ($line -match '^\s+\S+\s+(\d+) row\(s\), ids 1\.\.=(\d+)') { $rows += [int]$Matches[1] } }
 $twoWay = @($p | Where-Object { $_ -match 'the channel is two-way for every scene: (\w+)' })
 $twoWayValue = if ($twoWay.Count -gt 0) { ($twoWay[0] -split ': ')[-1] } else { "(line absent)" }
-"  rows summed over scenes : $rows   (audit says 45885)"
+"  rows summed over scenes : $rows   (audit says 47620)"
 "  two-way line reads      : $twoWayValue"
-if ($rows -ne 45885) { $script:fail += "identity rows ($rows, expected 45885)" }
+if ($rows -ne 47620) { $script:fail += "identity rows ($rows, expected 47620)" }
 if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
 Gate "scene_identity_probe" $code 0
 

@@ -171,8 +171,24 @@ const FIELD_OF_VIEW: f64 = std::f64::consts::FRAC_PI_3 * 0.56;
 const GROUND_DIVISIONS: usize = 120;
 const GROUND_EXTENT: f64 = 60.0;
 
-/// Builds the scene.
+/// Builds the scene from down the bank, low, looking up at the underside.
 pub fn stilt() -> Value {
+    scene([-18.5, 4.4, 14.0], [-0.4, 2.4, 0.0], FIELD_OF_VIEW, "stilt")
+}
+
+/// Builds **the same house** from its own 挑廊, which is where the type is lived in.
+///
+/// # Invariants
+///
+/// **One document and two cameras.** The eye stands on the gallery deck, a person's height above it,
+/// looking along the walk: the rail at hip height, the posts the deck hangs between, the brackets that
+/// hold it and the eave above — the four things a 吊脚楼 is, in one frame, from where its owner stands.
+pub fn stilt_gallery() -> Value {
+    scene([-5.9, 3.5, -2.5], [-6.1, 2.9, 3.4], 1.15, "stilt_gallery")
+}
+
+/// Builds the scene from one camera.
+fn scene(eye: [f64; 3], target: [f64; 3], field_of_view: f64, name: &str) -> Value {
     let building = document();
     let built = building
         .build()
@@ -300,18 +316,14 @@ pub fn stilt() -> Value {
     let (sky_image, sky_light) = sky(&atmosphere());
 
     Value::structure([
-        ("name".to_owned(), Value::String("stilt".to_owned())),
+        ("name".to_owned(), Value::String(name.to_owned())),
         ("frame".to_owned(), frame(FRAME_WIDTH, FRAME_HEIGHT)),
         (
             "cameras".to_owned(),
             // From down the bank, low, looking up at the underside: the eye is **below the floor's own
             // level**, so the frame sees the posts against the ground under the house rather than the
             // ground behind the house through them.
-            Value::List(vec![camera(
-                [-18.5, 4.4, 14.0],
-                [-0.4, 2.4, 0.0],
-                FIELD_OF_VIEW,
-            )]),
+            Value::List(vec![camera(eye, target, field_of_view)]),
         ),
         (
             "lights".to_owned(),
