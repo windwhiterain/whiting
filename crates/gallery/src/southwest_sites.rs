@@ -831,7 +831,13 @@ const TRANSECT_TUFTS: usize = 900;
 ///   that reads as a broadleaf is a wrong answer and not a small one. It costs fifty thousand rows a
 ///   tree against eleven, which is a hundred and fifty-six thousand on the one species, and the frame
 ///   still compiles inside a minute.
-fn transect_plantings() -> Vec<Planting> {
+///
+/// # Why it is public
+///
+/// `examples/site_cost_probe.rs` measures the site by building these plantings and their expansions
+/// as two phases, which [`site_transect`] cannot show because it builds the whole document in one
+/// call. Nothing else outside this module has a reason to ask for them.
+pub fn transect_plantings() -> Vec<Planting> {
     let mut rng = Rng::new(8_300);
     let mut plantings = Vec::new();
 
