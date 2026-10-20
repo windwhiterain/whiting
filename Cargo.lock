@@ -2178,6 +2178,7 @@ dependencies = [
 name = "whiting-gallery"
 version = "0.1.0"
 dependencies = [
+ "facet-json",
  "whiting-building",
  "whiting-definition",
  "whiting-graphics",

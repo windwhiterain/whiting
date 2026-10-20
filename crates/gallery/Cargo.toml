@@ -35,3 +35,9 @@ shape = { workspace = true }
 # is a tree of lofts and a field of rigid frames; a scene is packed points and instance transforms,
 # and neither crate may know about the other.
 vegetation = { workspace = true }
+
+# The producer writes the scene document out as the json a renderer reads, and the library
+# itself never writes a file. `facet-json` is the encoder both the writer and the reader use,
+# so the two agree on the spelling by construction.
+[dev-dependencies]
+facet-json = { workspace = true }

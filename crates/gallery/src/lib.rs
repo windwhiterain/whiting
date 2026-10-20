@@ -361,7 +361,20 @@ impl Gallery {
     /// when a frame is too bright or too dark, so it is printed by name when the document
     /// carries it and omitted when it does not.
     pub fn census(name: &str) -> String {
-        let scene = Self::build(name);
+        Self::census_of(&Self::build(name), name)
+    }
+
+    /// Reports what a scene document holds, in the terms the document is written in.
+    ///
+    /// # Why this is apart from [`Self::census`]
+    ///
+    /// **The report is over a document, and the name is only its heading.** A caller that has
+    /// already built a scene — the producer that writes the document out, or a caller that
+    /// wants both the document and its census — would otherwise build the same scene twice,
+    /// and building a scene is the expensive half of anything. The two answers are the same
+    /// text: [`Self::census`] is this over the document that name builds, and the report it
+    /// prints is the one described there.
+    pub fn census_of(scene: &Value, name: &str) -> String {
         let mut report = format!("{name}\n");
         let Some(fields) = scene.as_field_map() else {
             report.push_str("  the scene is not a field map, so it holds no lists\n");
@@ -429,7 +442,18 @@ impl Gallery {
     /// the bucket and left out of the box, so the two numbers can disagree. They are printed
     /// together because the disagreement is the finding.
     pub fn bounds(name: &str) -> String {
-        let scene = Self::build(name);
+        Self::bounds_of(&Self::build(name))
+    }
+
+    /// Reports the box every placement a scene document makes occupies, bucket by bucket.
+    ///
+    /// # Why this is apart from [`Self::bounds`]
+    ///
+    /// **The report is over a document, and the name is not part of it.** A caller that has
+    /// already built a scene would otherwise build the same scene twice to ask a question
+    /// about the document it already holds. The report it prints is the one described at
+    /// [`Self::bounds`].
+    pub fn bounds_of(scene: &Value) -> String {
         let mut report = String::new();
         let Some(buckets) = scene
             .as_field_map()
