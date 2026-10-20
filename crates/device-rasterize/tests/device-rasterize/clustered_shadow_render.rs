@@ -2,8 +2,9 @@
 //!
 //! # What this proves that a document level test cannot
 //!
-//! `crates/scene/tests/clustered_lights.rs` proves the assignment put the right lights in the
-//! right clusters and the pool gave the right lights a page. `tests/shadow_pages.rs` proves the
+//! `crates/scene/tests/scene/clustered_lights.rs` proves the assignment put the right lights in the
+//! right clusters and the pool gave the right lights a page.
+//! `crates/scene/tests/scene/shadow_pages.rs` proves the
 //! pass count stopped moving with the light count. Neither can say what the *gpu* did with any
 //! of it: a storage buffer bound at the wrong stride, a page index read as a mip level, a
 //! cluster resolved from the wrong end of the frame — each produces a document that is
