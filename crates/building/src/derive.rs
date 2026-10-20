@@ -45,6 +45,7 @@
 
 use crate::mass::{Mass, MassId, PlanNode};
 use crate::math::{Vec2, cross, difference, distance, dot, length};
+use crate::member::Member;
 use crate::ops::closed_spans;
 use crate::roof::{CrestPoint, EaveStation, Roof, RoofPlane, RoofRow};
 use crate::skeleton::{Building, BuildingSkeleton};
@@ -954,6 +955,91 @@ pub fn floor_slab(mass: &Mass, id: MassId, elevation: f32, thickness: f32) -> Op
         return None;
     }
     Some(Slab::floor(inner_loop(mass, id)?, elevation - thickness, elevation).with_host(id))
+}
+
+/// Builds the **rafter tails** under a mass's eave: the ends of the rafters a Chinese eave shows from
+/// below, one run along each of the loop's four sides.
+///
+/// # Invariants
+///
+/// **A tail is the piece the overhang exposes, not the whole rafter.** It runs from the wall's own top —
+/// the mass's outline at `mass.top` — out and down to the eave node's own line, so its slope is the roof's
+/// slope by construction rather than by a second number that could disagree with the first. The part inside
+/// the roof is the roof's business and is not drawn twice.
+///
+/// **The stations are taken on the authored loop and not on the roof's rows.** A roof plane has two rows and
+/// a run of rafters needs a spacing, so the spacing is this function's argument and the positions are
+/// interpolated between the loop's own two nodes — the same two nodes the plane's rows stand on, which is
+/// what keeps a tail under its own roof however the eave was read.
+///
+/// **`spacing` is honoured as a maximum.** A side whose length is not a whole number of spacings gets the
+/// count that fits and an even division, because a gap at one end of an eave is a mistake a reader can see.
+///
+/// Returns nothing for a mass with no area or for a spacing that is not positive.
+pub fn rafter_tails(
+    mass: &Mass,
+    overhang: f32,
+    sink: f32,
+    spacing: f32,
+    width: f32,
+    depth: f32,
+) -> Vec<Member> {
+    if spacing <= 0.0 || width <= 0.0 || depth <= 0.0 {
+        return Vec::new();
+    }
+    let count = mass.outline.len();
+    if count < 3 {
+        return Vec::new();
+    }
+    let Some(eave) = Eave::read(mass, overhang, sink) else {
+        return Vec::new();
+    };
+    let inner_elevation = mass.top;
+    let mut tails = Vec::new();
+    for edge in 0..count {
+        let wall_from = mass.outline[edge].position;
+        let wall_to = mass.outline[(edge + 1) % count].position;
+        let eave_from = eave.nodes[edge].position;
+        let eave_to = eave.nodes[(edge + 1) % count].position;
+        let length = distance(eave_from, eave_to);
+        let steps = (length / spacing).ceil().max(1.0) as usize;
+        // Half a spacing in from each corner, so the first and last tail are not on the corner itself.
+        for step in 0..steps {
+            let t = (step as f32 + 0.5) / steps as f32;
+            let wall = [
+                lerp(wall_from[0], wall_to[0], t),
+                lerp(wall_from[1], wall_to[1], t),
+            ];
+            let outer = [
+                lerp(eave_from[0], eave_to[0], t),
+                lerp(eave_from[1], eave_to[1], t),
+            ];
+            // The width is measured across the edge's own direction, so a tail lies flat against the eave
+            // rather than square to the frame.
+            let along = [eave_to[0] - eave_from[0], eave_to[1] - eave_from[1]];
+            let span = (along[0] * along[0] + along[1] * along[1]).sqrt();
+            if span <= 1.0e-4 {
+                continue;
+            }
+            tails.push(Member::new(
+                crate::member::Anchor::Free {
+                    at: [wall[0], inner_elevation, wall[1]],
+                },
+                crate::member::Anchor::Free {
+                    at: [outer[0], eave.elevation, outer[1]],
+                },
+                [along[0] / span, along[1] / span],
+                width,
+                depth,
+            ));
+        }
+    }
+    tails
+}
+
+/// Returns `from + (to - from) * t`, which is the one interpolation the derivations share.
+fn lerp(from: f32, to: f32, t: f32) -> f32 {
+    from + (to - from) * t
 }
 
 /// Builds the **paved court**: a plate over a court's own rectangle, with the drain's grate cut through

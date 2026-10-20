@@ -1284,6 +1284,28 @@ cases. No gallery scene is tinted (all seven declare `[1.0; 3]`), and the fix is
 on `Strength` and multiply the texture by the tint with a `vector_math` node; it is left for a round that
 wants it, because the world block is a pinned output other notes have measured.
 
+### The rafter tails: what an eave shows from below
+
+A Chinese eave is not a roof edge — it is a **row of rafter ends**, and every plate so far drew the roof's
+underside as a smooth soffit, which is the one thing an eave is not.
+
+`derive::rafter_tails` derives them from the roof the mass already carries: **a tail runs from the wall's own
+top — the outline at `mass.top` — out and down to the eave node's line**, so its slope is the roof's slope by
+construction rather than by a second number that could disagree with the first. Positions are interpolated
+between each eave edge's own two nodes, the same two nodes the plane's rows stand on, and `spacing` is
+honoured as a **maximum**: a side whose length is not a whole number of spacings gets the count that fits and
+an even division, because a gap at one end of an eave is a mistake a reader can see.
+
+| number | value |
+| --- | --- |
+| the 一颗印 | 4 ranges × 87 tails = **348 members**; rows 5 322 → **5 670** |
+| documents | `yikeyin` `273D958F73EE63AD`, `yikeyin_court` `681FB58AB7AE8A29` |
+| seventeen scenes | **48 356 rows** |
+
+Only the 一颗印 carries them so far. The street's ranges would take the same call, but its canopies are
+lean-tos whose tails would have to be derived from a lean-to's single plane — a different reading of the
+same idea, and not one to guess at.
+
 ## What would make this proposal wrong
 
 - If a roof needs a **hip's dress** — 推山, where the hip line is pushed back and the end plane is not

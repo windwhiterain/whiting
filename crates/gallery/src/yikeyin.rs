@@ -79,6 +79,11 @@ const OVERHANG: f32 = 0.65;
 const GABLE: f32 = 0.0;
 const RISE: f32 = 1.8;
 const SINK: f32 = 0.1;
+
+/// The rafter tails under every eave: how far apart they stand, and the wood's own section.
+const RAFTER_SPACING: f32 = 0.42;
+const RAFTER_WIDTH: f32 = 0.09;
+const RAFTER_DEPTH: f32 = 0.11;
 const ROOF_THICKNESS: f32 = 0.22;
 
 /// The covering every roof wears, and the 举架 ladder its slopes carry.
@@ -557,6 +562,19 @@ fn range(skeleton: &mut BuildingSkeleton, corners: [[f32; 2]; 4], height: f32, c
         crown_gables(&mut skeleton.masses[mass_id.0], &roof);
     }
     skeleton.roofs.push(roof);
+    // **The rafter tails under that roof**: the piece of every rafter the eave exposes, from the wall's
+    // own top out and down to the eave's line. They are derived from the roof the mass already carries,
+    // so a tail cannot disagree with the slope above it.
+    for tail in derive::rafter_tails(
+        &skeleton.masses[mass_id.0],
+        OVERHANG,
+        SINK,
+        RAFTER_SPACING,
+        RAFTER_WIDTH,
+        RAFTER_DEPTH,
+    ) {
+        skeleton.members.push(tail);
+    }
     if let Some(storey) = derive::floor_slab(
         &skeleton.masses[mass_id.0],
         mass_id,

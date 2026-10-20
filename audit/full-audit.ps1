@@ -293,7 +293,7 @@ $pinned = [ordered]@{
     stilt      = "86F74C0B66348F56"; compound   = "6AAD1D2CD464B03C"; compound_court = "7C99C4BDA8890F27"
     stilt_gallery = "B8EDEBDC592E2FDE"
     street     = "07E1337D733A0725"; street_arcade = "0AAED8AD9C1EE823"
-    yikeyin    = "D150D4C141F7DCF9"; yikeyin_court = "21BD72E24CC886C5"
+    yikeyin    = "273D958F73EE63AD"; yikeyin_court = "681FB58AB7AE8A29"
 }
 # How it is proved to fail: change one pinned value, run the stage, watch the numbers disagree and the
 # exit code come back 1, then change it back.
@@ -328,9 +328,9 @@ $rows = 0
 foreach ($line in $p) { if ($line -match '^\s+\S+\s+(\d+) row\(s\), ids 1\.\.=(\d+)') { $rows += [int]$Matches[1] } }
 $twoWay = @($p | Where-Object { $_ -match 'the channel is two-way for every scene: (\w+)' })
 $twoWayValue = if ($twoWay.Count -gt 0) { ($twoWay[0] -split ': ')[-1] } else { "(line absent)" }
-"  rows summed over scenes : $rows   (audit says 47660)"
+"  rows summed over scenes : $rows   (audit says 48356)"
 "  two-way line reads      : $twoWayValue"
-if ($rows -ne 47660) { $script:fail += "identity rows ($rows, expected 47660)" }
+if ($rows -ne 48356) { $script:fail += "identity rows ($rows, expected 48356)" }
 if ($twoWayValue -cne "true") { $script:fail += "identity channel not two-way" }
 Gate "scene_identity_probe" $code 0
 
