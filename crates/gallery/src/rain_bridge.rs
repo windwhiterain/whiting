@@ -76,10 +76,28 @@ const RIVER_HALF: f64 = 5.0;
 const RIVER_BANK: f64 = 7.0;
 const BANK_HEIGHT: f32 = 1.1;
 
+/// The two flights at the bridge's heads: how many risers each has, and how deep a tread is.
+const APPROACH_RISERS: usize = 6;
+const APPROACH_RUN: f32 = 0.42;
+
 /// The bench down each side of the gallery: how high its seat stands above the deck, and its section.
 const BENCH_HEIGHT: f32 = 0.46;
 const BENCH_WIDTH: f32 = 0.36;
 const BENCH_THICK: f32 = 0.09;
+
+/// Returns a plan loop's signed area, which is how this file tells a positive winding from a reversed one.
+fn loop_area(plan: &[[f32; 2]]) -> f32 {
+    if plan.len() < 3 {
+        return 0.0;
+    }
+    let mut area = 0.0;
+    for index in 0..plan.len() {
+        let here = plan[index];
+        let next = plan[(index + 1) % plan.len()];
+        area += here[0] * next[1] - next[0] * here[1];
+    }
+    area * 0.5
+}
 
 /// Returns the ground's own elevation at a plan point: a channel along the bridge's own axis, and a bank outside
 /// it.
@@ -449,6 +467,32 @@ pub fn document() -> Building {
             RIVER_BED,
             gallery_base,
         ));
+    }
+
+    // **The two heads: a flight of stone steps from each abutment up to the road on the bank.** The deck stands
+    // `gallery_base` above the water and the bank only `BANK_HEIGHT`, so a bridge that landed on its abutment and
+    // stopped would be a bridge with a two-and-a-half-metre drop at each end. The flights climb inland from the
+    // abutment's own outer face, one tread a step, and they are as wide as the deck: a bridge's approach is as
+    // wide as the bridge.
+    for side in [-1.0_f32, 1.0] {
+        let foot = side * (half + 2.1);
+        let reach = (gallery_base - BANK_HEIGHT) / APPROACH_RISERS as f32;
+        for step in 0..APPROACH_RISERS {
+            let inland = foot + side * APPROACH_RUN * step as f32;
+            let level = (gallery_base - reach * (step + 1) as f32).max(BANK_HEIGHT);
+            let mut plan = vec![
+                [inland, -deep - 0.45],
+                [inland + side * APPROACH_RUN, -deep - 0.45],
+                [inland + side * APPROACH_RUN, deep + 0.45],
+                [inland, deep + 0.45],
+            ];
+            if loop_area(&plan) < 0.0 {
+                plan.reverse();
+            }
+            skeleton
+                .slabs
+                .push(building::Slab::plate(plan, RIVER_BED, level));
+        }
     }
 
     // **A bench down each side, under the bays.** A 风雨桥 is where the village sits: the two long benches are

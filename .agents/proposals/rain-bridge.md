@@ -60,3 +60,17 @@ pieces now, and they are the type's setting rather than its structure:
   village sits, and open bays without benches are a colonnade with nowhere to sit.
 
 Identity: 1 506 → **1 530 rows**.
+## The two heads
+
+The deck stands `gallery_base` above the water and the bank only `1.1`, so a bridge that landed on its abutment and
+stopped would be a bridge with a two-and-a-half-metre drop at each end. Each head now has a **flight of six stone
+steps** climbing inland from the abutment's own outer face, one tread a step (`0.42` going), as wide as the deck —
+a bridge's approach is as wide as the bridge.
+
+Identity: 1 530 → **1 602 rows** (2 × 6 × 6, one flight at each head).
+
+## What the type still does not have
+
+- **the roads**: the flights land on the bank and stop; a village's lane arriving at the bridge is the settlement
+  scene's business and the two have not been joined;
+- **the water**: the channel is a cut in the ground, and the frame's surface is the bed and not a liquid.
