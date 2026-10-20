@@ -13,6 +13,15 @@
 
 if you have some ideas: new feature, fix, refactor, create a `<name>.md` under [proposals](.agents/proposals/).
 
+## Render
+
+- **Never draw a frame through the GPU.** The machine's gpu belongs to the owner, so
+  `whiting-device-rasterize`'s `render` harness (wgpu) is not to be run. A frame is path-traced on the
+  cpu instead: `scene_document` writes the document, then
+  `render_cycles --document <path> <out.png> [samples] [CPU]` hands it to `cycles.exe` through
+  `device-cycles`. Its reader takes the json document, so a plant plate is written as `.json` for a
+  picture and as `.whiting` only for a measurement that needs no picture.
+
 ## Handoffs
 
 - when start to implementation, create or follow a handoff under [handoffs](.agents/handoffs/). 
