@@ -10,7 +10,7 @@
 use whiting_building::derive::{RoofStyle, Starter, starter};
 use whiting_building::site::{report, seat};
 use whiting_building::wall::Wall;
-use whiting_building::{Attachment, Building, BuildingSkeleton, MassId, PlanNode};
+use whiting_building::{Attachment, Building, BuildingSkeleton, Join, MassId, PlanNode};
 
 /// Returns one building's mass, named, standing at `(x, z)` with its outline's own ground.
 fn shed(name: &str, at: [f32; 2], width: f32, depth: f32) -> whiting_building::Mass {
@@ -40,7 +40,7 @@ fn main() {
     site.masses.push(
         shed("store", [3.0, 0.0], 4.0, 3.0).with_attachment(Attachment {
             host: MassId(0),
-            station: 2.0,
+            join: Join::Wing { station: 2.0 },
         }),
     );
     // A courtyard around the first shed: four sides and a gate in the south one.

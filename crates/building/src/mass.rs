@@ -78,23 +78,51 @@ impl AuthoredLoop {
 ///
 /// # Invariants
 ///
-/// The attachment is **authored**, and that is the whole difference between a building and a pile
-/// of overlapping boxes. A mass whose plan overlaps another's with no attachment between them is
-/// reported by [`validate`](crate::validate) and nothing repairs it; a mass that names a host is a
-/// wing, and the joint is a named place rather than a coincidence of coordinates.
+/// How a mass is joined to the host it names.
 ///
-/// `station` is an arc-length parameter over the host's **closed** outline, in `[0, 1)`, read the
-/// way a station is read everywhere else in this workspace. The op that attaches a mass
-/// ([`ops::attach_mass`](crate::ops::attach_mass)) splits the host's outline at that parameter
-/// first, because an outline changes its direction only at a node: a wing joining the middle of a
-/// wall has to land on a node that exists, or the two solids touch at a place one of them does not
-/// have.
+/// # Invariants
+///
+/// **The relation is authored, and it is what makes two masses one building rather than a pile of boxes.**
+/// A mass whose plan overlaps another's with no relation between them is reported by
+/// [`validate`](crate::validate) and nothing repairs it. What a relation buys is not an exemption from that
+/// reading but a *stronger* one: each kind names the geometry it claims, and `validate` checks the claim.
+///
+/// - a **wing** lands on the host's wall at an arc-length station, and the host's outline is split there
+///   by [`ops::attach_mass`](crate::ops::attach_mass), because an outline turns only at a node and a wing
+///   joining the middle of a wall has to land on a node that exists;
+/// - a **storey** stands on the host's top, concentrically and inside its plan, and shares the host's plan
+///   area by standing above it rather than beside it. That is the only form in which two plans may overlap
+///   without either being a wing, and it is checked: the storey's own base must be the host's top and its
+///   outline must be inside the host's, or `validate` names the mass.
+///
+/// A storey is what a drum tower's seven floors are, and a wing is what its gallery is; without the two
+/// kinds one of them would have to be spelled as the other, which is a lie the validator would then have to
+/// accept unread.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Join {
+    /// A wing on the host's wall: the station is an arc-length parameter of the host's closed outline, in
+    /// `[0, 1)`, read the way a station is read everywhere else in this workspace.
+    Wing {
+        /// Where on the host's outline the wing lands.
+        station: f32,
+    },
+    /// A storey standing on the host's top: same plan centre, base at the host's top, inside its plan.
+    Storey,
+}
+
+/// The host a mass is joined to, and how.
+///
+/// # Invariants
+///
+/// **One relation per mass**, and it is authored rather than derived: a mass that names a host is joined to
+/// it, and the geometry the relation claims is checked by [`validate`](crate::validate) — a wing's station
+/// must be on the host's outline, a storey's base must be the host's top.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Attachment {
     /// The mass this one lands on.
     pub host: MassId,
-    /// Where on the host's outline, as an arc-length parameter of the closed loop.
-    pub station: f32,
+    /// How it is joined to that host.
+    pub join: Join,
 }
 
 /// A mass: the closed shell of one volume of a building.

@@ -41,7 +41,7 @@
 //! are the same place — not two readings of a parameter that happened to be written the same way.
 
 use crate::grid::{FaceGrid, FaceRef, Rhythm};
-use crate::mass::{Attachment, Mass, MassId, PlanNode};
+use crate::mass::{Attachment, Join, Mass, MassId, PlanNode};
 use crate::math::{distance, lerp};
 use crate::openings::Opening;
 use crate::parts::{Placement, Target, Template};
@@ -101,7 +101,30 @@ pub fn attach_mass(
 ) -> Option<MassId> {
     let station = station.rem_euclid(1.0);
     split_outline(skeleton.masses.get_mut(host.0)?, station)?;
-    mass.attachment = Some(Attachment { host, station });
+    mass.attachment = Some(Attachment {
+        host,
+        join: Join::Wing { station },
+    });
+    skeleton.masses.push(mass);
+    Some(MassId(skeleton.masses.len() - 1))
+}
+
+/// Adds a mass that **stands on the top of `base`**, and returns the index it was given.
+///
+/// # Invariants
+///
+/// **The two masses are not split or welded**: a storey's base is the host's top, so the shells meet face to
+/// face and each closes on its own. What the op records is the *relation*, which is the whole of what
+/// `validate` reads when it decides that two overlapping plans are one building — the geometry the relation
+/// claims (the base on the top, the plan inside the host's) is then checked, not assumed.
+///
+/// Returns `None` and changes nothing when the host is not in the skeleton.
+pub fn stack_mass(skeleton: &mut BuildingSkeleton, base: MassId, mut mass: Mass) -> Option<MassId> {
+    skeleton.masses.get(base.0)?;
+    mass.attachment = Some(Attachment {
+        host: base,
+        join: Join::Storey,
+    });
     skeleton.masses.push(mass);
     Some(MassId(skeleton.masses.len() - 1))
 }

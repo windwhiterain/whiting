@@ -26,7 +26,7 @@
 use whiting_building::derive::{self, Starter};
 use whiting_building::math::{Vec3, cross3, dot3, length3, subtract};
 use whiting_building::ops;
-use whiting_building::{Mass, MassId, PlanNode, Roof, RoofRow};
+use whiting_building::{Join, Mass, MassId, PlanNode, Roof, RoofRow};
 
 fn main() {
     let starter = Starter::default();
@@ -526,7 +526,10 @@ fn verbs() {
         skeleton.masses[0].outline.len(),
         skeleton.masses[id.0]
             .attachment
-            .map(|attachment| attachment.station)
+            .map(|attachment| match attachment.join {
+                Join::Wing { station } => station,
+                Join::Storey => 0.0,
+            })
     );
     println!(
         "  the joint the attachment names is at ({:.3}, {:.3}), and the host carries that node: {carried}",

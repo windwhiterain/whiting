@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use whiting_building::Building;
 use whiting_building::expand::build;
 use whiting_building::grid::{FaceRef, Rhythm};
-use whiting_building::mass::{Mass, MassId, PlanNode};
+use whiting_building::mass::{Join, Mass, MassId, PlanNode};
 use whiting_building::mesh::{BuildingMesh, Element, MassSurface, RoofSurface, SolidId};
 use whiting_building::openings::{Inset, Opening, RevealSide};
 use whiting_building::ops;
@@ -476,7 +476,10 @@ fn report_split_host(name: &str, skeleton: &BuildingSkeleton) {
     let nodes = skeleton.masses[0].outline.len();
     let station = skeleton.masses[1]
         .attachment
-        .map_or(0.0, |attachment| attachment.station);
+        .map_or(0.0, |attachment| match attachment.join {
+            Join::Wing { station } => station,
+            Join::Storey => 0.0,
+        });
     println!("  host outline: {nodes} node(s), wing attached at station {station:.6}");
     match build(skeleton) {
         Ok(mesh) => {

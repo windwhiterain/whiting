@@ -27,7 +27,7 @@
 //! - **no posts under the lowest eave**: a real drum tower stands on an open colonnade of posts, and this
 //!   scene stands it on a stone plinth instead.
 
-use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, derive};
+use building::{Building, BuildingSkeleton, Mass, MassId, PlanNode, derive, ops};
 use definition::Value;
 use document::air::Atmosphere;
 use document::building_identity::{
@@ -50,6 +50,9 @@ use crate::ground;
 const SIDE: f32 = 6.0;
 const DEPTH: f32 = 4.6;
 const STOREYS: usize = 7;
+/// How much each storey steps back from the one below, on every side: a tower is read as one storey per
+/// eave, and a tower whose storeys did not step back would be a single box wearing seven skirts.
+const SHRINK: f32 = 0.34;
 const STOREY: f32 = 2.4;
 const PLINTH: f32 = 0.45;
 const WALL: f32 = 0.20;
@@ -279,23 +282,67 @@ pub fn document() -> Building {
     let mut skeleton = BuildingSkeleton::new(Vec::new(), Vec::new());
     let half = SIDE * 0.5;
     let deep = DEPTH * 0.5;
-    let top = PLINTH + STOREYS as f32 * STOREY;
-    let mut mass = Mass::new(
-        [
-            PlanNode::new([-half, -deep], PLINTH),
-            PlanNode::new([half, -deep], PLINTH),
-            PlanNode::new([half, deep], PLINTH),
-            PlanNode::new([-half, deep], PLINTH),
-        ]
-        .to_vec(),
-        top,
-    );
-    mass.wall = WALL;
-    mass.slab = PLATE;
-    let id = MassId(skeleton.masses.len());
-    skeleton.masses.push(mass);
+    // **One mass a storey, and each one stands on the one below through the relation.** The plans are
+    // concentric and each is smaller than its host, so they overlap; what makes that a tower rather than a
+    // pile is `Join::Storey`, and `validate` reads the claim rather than granting it: the base has to be the
+    // host's top and the plan has to be inside the host's plan, or the mass is named.
+    let mut base: Option<MassId> = None;
+    for storey in 0..STOREYS {
+        let floor = PLINTH + storey as f32 * STOREY;
+        let step = storey as f32 * SHRINK;
+        let mut mass = Mass::new(
+            [
+                PlanNode::new([-half + step, -deep + step], floor),
+                PlanNode::new([half - step, -deep + step], floor),
+                PlanNode::new([half - step, deep - step], floor),
+                PlanNode::new([-half + step, deep - step], floor),
+            ]
+            .to_vec(),
+            floor + STOREY,
+        );
+        mass.wall = WALL;
+        mass.slab = PLATE;
+        let id = match base {
+            None => {
+                skeleton.masses.push(mass);
+                MassId(skeleton.masses.len() - 1)
+            }
+            Some(below) => ops::stack_mass(&mut skeleton, below, mass)
+                .expect("the storey below is in the skeleton"),
+        };
+        // **A skirt at every storey's top, four lean-tos to a skirt**, each with its crest on the storey's
+        // own line and its eave hanging `REACH` past the wall. Every one of them wears tiles.
+        let line = floor + STOREY;
+        let (side, deep_side) = (half - step, deep - step);
+        for side_index in 0..4 {
+            if let Some(shed) = derive::lean_to(
+                id,
+                skirt(side, deep_side, side_index),
+                line - EAVE_DROP,
+                line,
+                SKIRT,
+            ) {
+                skeleton.roofs.push(shed.with_covering(COVERING));
+            }
+        }
+        // **The crown is a hip on the last storey**, the one form in the crate that closes a plan on all four
+        // sides.
+        if storey + 1 == STOREYS {
+            let crown = derive::hip_roof(
+                id,
+                &skeleton.masses[id.0],
+                CROWN_OVERHANG,
+                CROWN_RISE,
+                0.08,
+                CROWN_THICKNESS,
+            )
+            .expect("a storey is a rectangle");
+            skeleton.roofs.push(crown.with_covering(COVERING));
+        }
+        base = Some(id);
+    }
 
-    // **The plinth**, a stone foot the timber stands clear of the ground on.
+    // **The plinth**, a stone foot the lowest storey stands clear of the ground on.
     let foot = half + 0.45;
     let foot_deep = deep + 0.45;
     skeleton.slabs.push(building::Slab::plate(
@@ -308,36 +355,8 @@ pub fn document() -> Building {
         0.0,
         PLINTH,
     ));
-
-    // **A skirt at every storey's top, four lean-tos to a skirt**, each with its crest on the storey's own
-    // line and its eave hanging `REACH` past the wall. Every one of them wears tiles: a hip's covering was
-    // refused by the validator until the roll's own section became a prism, and `lean_to_probe` is the
-    // measurement that found it.
-    for storey in 1..=STOREYS {
-        let line = PLINTH + storey as f32 * STOREY;
-        for side in 0..4 {
-            if let Some(shed) =
-                derive::lean_to(id, skirt(half, deep, side), line - EAVE_DROP, line, SKIRT)
-            {
-                skeleton.roofs.push(shed.with_covering(COVERING));
-            }
-        }
-    }
-
-    // **The crown is a hip**, the one form in the crate that closes a plan on all four sides.
-    let crown = derive::hip_roof(
-        id,
-        &skeleton.masses[id.0],
-        CROWN_OVERHANG,
-        CROWN_RISE,
-        0.08,
-        CROWN_THICKNESS,
-    )
-    .expect("the body is a rectangle");
-    skeleton.roofs.push(crown.with_covering(COVERING));
     Building::new(skeleton)
 }
-
 /// Returns one side's skirt in plan: **front-left, front-right, back-right, back-left**, with the front edge
 /// the eave and the back edge on the wall.
 ///

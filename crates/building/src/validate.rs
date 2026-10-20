@@ -32,7 +32,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::expand::Problem;
 use crate::grid::{FaceRef, GRID_TOLERANCE, LoopSide, increasing};
-use crate::mass::{Mass, MassId, PlanNode};
+use crate::mass::{Join, Mass, MassId, PlanNode};
 use crate::math::{Vec2, Vec3, distance, dot3, subtract};
 use crate::mesh::{BuildingMesh, Element, RoofSurface, SolidId};
 use crate::openings::Extents;
@@ -370,6 +370,37 @@ pub enum Violation {
     OutlineNotMeasured {
         /// The mass whose own plan has no triangulation.
         mass: MassId,
+    },
+    /// A **storey** whose base is not the top of the mass it stands on.
+    ///
+    /// The relation claims "this floor sits on that one", and the claim is geometry: the storey's own lowest
+    /// node must be the host's own top, within the tolerance a joint is allowed. A storey floating a
+    /// centimetre above its base is a gap nobody drew and nothing closes; one sunk into it is two shells
+    /// through each other.
+    StoreyNotOnTop {
+        /// The storey that is not on its host.
+        mass: MassId,
+        /// The host it was told to stand on.
+        host: MassId,
+        /// The storey's own base elevation.
+        base: f32,
+        /// The host's own top elevation.
+        top: f32,
+    },
+    /// A **storey** whose plan is not inside the plan of the mass it stands on.
+    ///
+    /// A storey steps back or stays put; it does not overhang. An overhang is a wing's business — a wing
+    /// lands on a wall at a station and the plan says where — and a storey that reaches past its base is a
+    /// cantilever with no host face under it, which the relation it declared does not describe.
+    StoreyOverhangs {
+        /// The storey that reaches past its host.
+        mass: MassId,
+        /// The host it was told to stand on.
+        host: MassId,
+        /// The storey's own plan area.
+        area: f32,
+        /// How much of that area stands over the host.
+        shared: f32,
     },
     /// A mass names a host that does not exist, so the attachment it authorizes is not one.
     MassHostMissing {
@@ -1297,11 +1328,49 @@ fn check_masses(skeleton: &BuildingSkeleton, violations: &mut Vec<Violation>) {
             }
         }
         if let Some(attachment) = mass.attachment {
-            if skeleton.mass(attachment.host).is_none() {
-                violations.push(Violation::MassHostMissing {
+            match skeleton.mass(attachment.host) {
+                None => violations.push(Violation::MassHostMissing {
                     mass: id,
                     host: attachment.host,
-                });
+                }),
+                // **A storey's relation is checked, not merely accepted.** The overlap question is dropped for
+                // any pair with a relation between them, so without this the "stands on" kind would be the
+                // exemption it was written not to be: the two things it claims -- the base on the top, the plan
+                // inside the host's -- are exactly what is read here.
+                Some(host) if attachment.join == Join::Storey => {
+                    let base = mass.lowest();
+                    if (base - host.top).abs() > TOUCH_TOLERANCE {
+                        violations.push(Violation::StoreyNotOnTop {
+                            mass: id,
+                            host: attachment.host,
+                            base,
+                            top: host.top,
+                        });
+                    }
+                    if let Some(area) = signed_plan_area(&mass.outline) {
+                        let one: Vec<Vec2> =
+                            mass.outline.iter().map(|node| node.position).collect();
+                        let other: Vec<Vec2> =
+                            host.outline.iter().map(|node| node.position).collect();
+                        if let Some(shared) = crate::clip::shared_area(&one, &other) {
+                            // **The tolerance is a length here, not an area**: the question is whether the storey
+                            // reaches past its host by a millimetre of wall, and a millimetre of wall on a
+                            // six-metre plan is 6e-3 m². Comparing the areas at `AREA_TOLERANCE` (a millimetre
+                            // squared) reported a storey that shares 20.854403 of its 20.8544 m² -- float noise
+                            // on a plan that is inside its host to the last digit.
+                            let slack = TOUCH_TOLERANCE * area.sqrt() * 4.0;
+                            if area > AREA_TOLERANCE && (area - shared).abs() > slack {
+                                violations.push(Violation::StoreyOverhangs {
+                                    mass: id,
+                                    host: attachment.host,
+                                    area,
+                                    shared,
+                                });
+                            }
+                        }
+                    }
+                }
+                Some(_) => {}
             }
         }
     }
@@ -1779,7 +1848,40 @@ fn attached_either_way(skeleton: &BuildingSkeleton, first: usize, second: usize)
     let names = |index: usize, host: MassId| {
         skeleton.masses[index].attachment.map(|one| one.host) == Some(host)
     };
-    names(first, MassId(second)) || names(second, MassId(first))
+    if names(first, MassId(second)) || names(second, MassId(first)) {
+        return true;
+    }
+    // **A stack is transitive, and the reading has to be.** Storey three stands on storey two, which
+    // stands on storey one, which stands on storey zero: three and zero overlap in plan with no direct
+    // relation between them, and the chain is the relation. A wing names its own host and the chain stops
+    // there, because a wing's host is not under it.
+    stacked_above(skeleton, MassId(first), MassId(second))
+        || stacked_above(skeleton, MassId(second), MassId(first))
+}
+
+/// Returns whether `upper` stands on `lower`, directly or through a chain of storeys.
+///
+/// # Invariants
+///
+/// **Only a `Storey` relation climbs.** A wing's host is beside it, not under it, so the walk stops at the
+/// first wing and answers `false` — a wing of a storey is not above the storey's own base. The walk is
+/// bounded by the number of masses, so a cycle an author writes by hand (a mass standing on its own
+/// descendant) answers `false` rather than hanging.
+fn stacked_above(skeleton: &BuildingSkeleton, upper: MassId, lower: MassId) -> bool {
+    let mut here = upper;
+    for _ in 0..skeleton.masses.len() {
+        let Some(attachment) = skeleton.masses.get(here.0).and_then(|mass| mass.attachment) else {
+            return false;
+        };
+        if attachment.join != Join::Storey {
+            return false;
+        }
+        if attachment.host == lower {
+            return true;
+        }
+        here = attachment.host;
+    }
+    false
 }
 
 /// Returns whether a mass's own plan has a triangulation to measure with.
@@ -1831,6 +1933,20 @@ fn plan_is_measurable(outline: &[Vec2]) -> bool {
 /// both answers.** A loop of fewer than three nodes encloses no area whatever it stands beside, and
 /// bounding boxes that miss cannot make polygons that meet: both are `Some(false)` because both are
 /// facts about the two plans rather than about this module's ability to measure them.
+/// Returns a loop's signed plan area, or `None` when it has fewer than three nodes.
+fn signed_plan_area(outline: &[PlanNode]) -> Option<f32> {
+    if outline.len() < 3 {
+        return None;
+    }
+    let mut area = 0.0;
+    for index in 0..outline.len() {
+        let here = outline[index].position;
+        let next = outline[(index + 1) % outline.len()].position;
+        area += here[0] * next[1] - next[0] * here[1];
+    }
+    Some(area * 0.5)
+}
+
 fn plans_share_area(first: &[PlanNode], second: &[PlanNode]) -> Option<bool> {
     if first.len() < 3 || second.len() < 3 {
         return Some(false);
@@ -3139,6 +3255,12 @@ fn order_key(violation: &Violation) -> (u8, u64, u64, u64, u64) {
             ordered(*top),
             ordered(*base),
         ),
+        // **A storey's two faults take rank `3`'s slots beside the overlap reading**, because they are what
+        // replaces it for a pair with a relation: a storey that is not on its host's top, or one that
+        // reaches past it, is the same edit the overlap would have reported as a coincidence of coordinates.
+        // The third slot is the host's own index, so the two sorts the same way the overlap does.
+        Violation::StoreyNotOnTop { mass, host, .. } => (3, mass.0 as u64, host.0 as u64, 0, 2),
+        Violation::StoreyOverhangs { mass, host, .. } => (3, mass.0 as u64, host.0 as u64, 0, 3),
         Violation::UnattachedOverlap { mass, other } => (3, mass.0 as u64, other.0 as u64, 0, 0),
         // **Rank `3` and its fourth slot, beside `UnattachedOverlap` and not at the end.** The two are
         // one question asked of one pair of masses — whether two unattached plans share area — and the

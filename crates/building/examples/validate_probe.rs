@@ -20,7 +20,7 @@
 use whiting_building::BuildingSkeleton as Skeleton;
 use whiting_building::derive::{RoofStyle, Starter, floor_slab, starter};
 use whiting_building::grid::{FaceRef, GRID_TOLERANCE, Rhythm};
-use whiting_building::mass::{Attachment, Mass, MassId, PlanNode};
+use whiting_building::mass::{Attachment, Join, Mass, MassId, PlanNode};
 use whiting_building::math::Vec2;
 use whiting_building::mesh::{
     BuildingFace, BuildingMesh, Element, MassSurface, RoofSurface, SolidId,
@@ -762,6 +762,8 @@ fn variant_name(violation: &Violation) -> &'static str {
         Violation::VoidOverlaps { .. } => "VoidOverlaps",
         Violation::VoidReachesTheWall { .. } => "VoidReachesTheWall",
         Violation::FaceDegenerate { .. } => "FaceDegenerate",
+        Violation::StoreyNotOnTop { .. } => "StoreyNotOnTop",
+        Violation::StoreyOverhangs { .. } => "StoreyOverhangs",
     }
 }
 
@@ -1164,7 +1166,7 @@ fn main() {
     let mut lost_host = house();
     lost_host.masses[0].attachment = Some(Attachment {
         host: MassId(9),
-        station: 0.25,
+        join: Join::Wing { station: 0.25 },
     });
     report_document("mass naming a host that does not exist", &lost_host);
 
@@ -1448,7 +1450,7 @@ fn overlapping_pair(attachment: Option<MassId>) -> BuildingSkeleton {
     let second = match attachment {
         Some(host) => second.with_attachment(Attachment {
             host,
-            station: 0.25,
+            join: Join::Wing { station: 0.25 },
         }),
         None => second,
     };
